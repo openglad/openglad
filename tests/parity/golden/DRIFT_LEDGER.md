@@ -438,22 +438,81 @@ five control captures identical before and after:
 | `effect_bomb_emission_scen99` | `EventKindAtLeast(play_sound, 12)` — the mutated run has 14, above the floor (the comment claiming 11 and "two bombs detonate" was wrong on both counts; the golden has one detonation) | `EventKindExactly(play_sound, 13)` -> 14 |
 | `bomb_l10_vs_cleric_l9_scen99` | `EventKindAtLeast(play_sound, 1)` — the tick-10 melee CLANG predates the cast, so the floor held with no blast at all | `EventKindExactly(play_sound, 4)` -> 3 (this row already had two flipping facts; the floor was the vacuous one) |
 
-The remaining **9** are open debt, listed here so the follow-up wave has the
-measurement rather than a re-run: `treasure_stain_pickup_scen99`,
-`treasure_life_gem_pickup_scen99`, `effect_flash_emission_scen99`,
-`effect_magic_shield_emission_scen99`, `effect_knife_back_emission_scen99`,
-`effect_boomerang_emission_scen99`, `special_skeleton_1_scen99`,
-`special_barbarian_2_scen99`, `weapon_rock_slot2_emit_scen99`. Each moves its
-dump (so the gate does hold them) but not one of its own facts; the cheapest
-discriminators visible in the measured pairs are an exact hp pin
-(`treasure_stain_pickup_scen99`: FAERIE 1700 cents vs 7494200 under the pin), an
-exact event count, and the trajectory predicates for the three
-position-only movers (`effect_magic_shield_emission_scen99`,
-`effect_boomerang_emission_scen99`, `weapon_rock_slot2_emit_scen99`, whose
-mutations move only track coordinates and `rng_state`). Until they are retuned,
-`run_mutation_canary.sh --all` exits 1 with those nine under the
-PREDICATE-TOOTHLESS heading; the number that must stay at zero unconditionally
-is the "zero flips" tally above it.
+### The remaining nine, retuned (2026-09-15)
+
+The nine rows that were open debt above now each carry ONE exact fact that
+flips under their own pin. The structural anchors they already had were KEPT,
+not replaced -- `behavioural_coverage_gate_effects` binds its families through
+the `EffectFamilyCount(F, 0, 0)` entries and `TreasureFamilyOfOrderRemovedFromOblist`
+is the Order-aware removal cover -- so every new fact is an APPEND at the end of
+the row's `kFacts_` array. No golden moved: facts, labels and comments are not
+in the dump, and all nine goldens are byte-identical before and after.
+
+Two rows needed a tool that did not exist: `WalkerOfOrderFamilyCount(family,
+order, min, max)` (`tests/parity/fact_predicate.h`, appended last so every
+existing ordinal keeps its value). `WalkerFamilyCount` / `WalkerPositionMoved` /
+`WalkerHpRangeAtFinalTick` all resolve arg0 through the Living table, so FX
+family id 4 would render as `FAMILY_SKELETON`, and `EffectFamilyCount` reads
+`dump.effects[]`, which an `add_ob(Order::FX)` entity never reaches. The dead
+`FAMILY_FLASH` entry parked in oblist is nameable by nothing else.
+
+| row | kept anchor | added fact | golden -> mutated | flip index |
+|---|---|---|---|---|
+| `treasure_stain_pickup_scen99` | `TreasureFamilyOfOrderRemovedFromOblist(FAMILY_STAIN, kOrderTreasure)` | `WalkerHpRangeAtFinalTick(FAMILY_FAERIE, 1700, 1700)` | 1700 -> 7494200 cents | #5 |
+| `treasure_life_gem_pickup_scen99` | `TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure)` | `WalkerOfOrderFamilyCount(FAMILY_FLASH, kOrderFX, 1, 1)` | 1 -> 0 (dead FLASH at (94,118)) | #5 |
+| `effect_flash_emission_scen99` | `EffectFamilyCount(FAMILY_FLASH, 0, 0)` | `WalkerOfOrderFamilyCount(FAMILY_FLASH, kOrderFX, 1, 1)` | 1 -> 0 | #5 |
+| `effect_magic_shield_emission_scen99` | `EffectFamilyCount(FAMILY_MAGIC_SHIELD, 0, 0)` | `EffectNetTravel(FAMILY_MAGIC_SHIELD, kWeaponPathReturns, 10000)` | 25 samples, pathlen 22380 / net 4754 -> pathlen 0 / net 0 | #6 |
+| `effect_knife_back_emission_scen99` | `EffectFamilyCount(FAMILY_KNIFE_BACK, 0, 0)` | `EventKindExactly(play_sound, 9)` | 9 -> 8 | #6 |
+| `effect_boomerang_emission_scen99` | `EffectFamilyCount(FAMILY_BOOMERANG, 0, 0)` | `EffectNetTravel(FAMILY_BOOMERANG, kWeaponPathReturns, 4000)` | 25 samples, pathlen 8227 / net 1709 -> pathlen 0 / net 0 | #6 |
+| `special_skeleton_1_scen99` | `WalkerDiedByFinal(FAMILY_SKELETON)` | `EventKindExactly(play_sound, 6)` | 6 -> 13 | #5 |
+| `special_barbarian_2_scen99` | `WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 5000, 12000)` | `WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 8300, 8300)` | 8300 -> 8200 cents | #4 |
+| `weapon_rock_slot2_emit_scen99` | `WeaponSpeed(FAMILY_ROCK, 650, 900)` + `WeaponNetTravel(FAMILY_ROCK, STRAIGHT, 1000)` | `WalkerPositionMoved(FAMILY_SOLDIER, 156, 120)` | (156,120) -> (152,120) | #7 |
+
+Each row's flip was measured twice: by the staged-packs fast path (copy the
+pinned pack file aside, `_apply_mutation.py` on `build/ci-test/packs/...`,
+`parity_runner_smoke --evaluate-facts`, restore, `cmp`) and by
+`run_mutation_canary.sh --scenario <id>`, which prints `predicate_flips=1`
+naming the index in the table above and `canary: OK` for all nine. A full
+`--all` re-measure is NOT claimed here: it costs about
+2 h 28 m under the current script and belongs to the CI-lane item (Q11) that
+puts the canary in CI; what is claimed is that the nine rows named in this
+section, plus the seventeen orphan pins attached in the same wave, each flip a
+predicate of their own.
+
+**Three false comments corrected in the same pass** (each on its own lines, so
+no pinned `src/` or `packs/` line moved):
+
+- `effect_boomerang_emission_scen99`'s `TEETH:` block claimed the unhandled FX
+  "animates one cycle, then set_dead/death within ~2 ticks -> team 0 collapses
+  to the lone caster = 1". Measured: the FX's own lifetime (30 + level*12 = 78
+  ticks) outlives the 45-tick budget, so it is alive at the final tick on BOTH
+  arms and `WalkerOfTeamAlive(0, 2, 3)` reads 3 either way. The block now says
+  so and points at the new `EffectNetTravel` as the discriminator.
+- `special_barbarian_2_scen99`'s HP-band label said "golden 8900 cents". The
+  golden is 8300.
+- `weapon_rock_slot2_emit_scen99`'s `WeaponSpeed` label claimed the mutation
+  raises the rock to "~1404 centi-px/tick (1404 > 900)". Measured: the seq-0
+  max consecutive-tick step goes 671 -> 781 and stays inside [650,900], so that
+  predicate does not flip; the same false number was repeated in the pin's own
+  rationale and is corrected there too. The `WeaponNetTravel` label's
+  "net=pathlen=1414" was equally unmeasured (golden net 5725 of pathlen 5727).
+- Two more pin rationales named flips that do not happen and were rewritten to
+  the measured one: `kMut_treasure_stain_pickup` claimed a
+  `WalkerDiedByFinal(FAMILY_FAERIE)` flip on a row that has never carried that
+  predicate (the faerie is alive and wounded at the final tick on both arms),
+  and `kMut_special_skeleton_1_scen99` claimed `WalkerFamilyCount(FAMILY_SKELETON,
+  0, 0)` and `WalkerDiedByFinal(FAMILY_SKELETON)` "both fail" (the skeleton dies
+  inside the budget either way; both still pass).
+
+The two anchor comments on the FLASH rows were wrong in the other direction:
+they said the telflash "is not directly countable at tick 150 under schema-v1"
+and offered the gem's removal plus a `score_change` event as proxies. The
+golden carries the FLASH itself -- expiring does not remove an oblist entry --
+and both proxies are inert under the pin (the un-eaten gem leaves the removal
+check `indeterminate`; the golden's `score_change` count is 0 on both arms).
+
+The tally that must stay at zero unconditionally is still the "zero flips" one
+above the PREDICATE-TOOTHLESS heading.
 
 ## Removed goldens
 

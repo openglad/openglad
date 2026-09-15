@@ -145,12 +145,25 @@ It is NOT in CI — CI only validates that pin files/lines exist. Facts:
   ZERO flips of any kind (`0 flips`, which must be 0, always) and rows
   with zero PREDICATE flips (`PREDICATE-TOOTHLESS`, carried by the byte
   compare only). Both fail the run.
-- `--all` exits 1 today on the nine PREDICATE-TOOTHLESS rows measured on
-  2026-09-08 and listed in `tests/parity/golden/DRIFT_LEDGER.md`
-  ("Predicate teeth after the byte compare") — open debt, and that list
-  may only shrink. Every row flips something, `smoke_empty_scen99`
-  included (its `TickReached(1)` is evaluated inside the Invariant arm's
-  gtest as well as by `--evaluate-facts`).
+- The nine PREDICATE-TOOTHLESS rows measured on 2026-09-08 were retuned
+  on 2026-09-15: each now carries one exact fact that flips under its own
+  pin, measured per row with `--scenario` and recorded as a table in
+  `tests/parity/golden/DRIFT_LEDGER.md` ("The remaining nine, retuned").
+  That list may only shrink — a row that reds only the byte compare is
+  debt, never a pass. A full `--all` has NOT been re-measured since
+  (about 2 h 28 m under the current script); measure the rows you touch
+  with `--scenario` and leave `--all` to the CI lane. Every row flips
+  something, `smoke_empty_scen99` included (its `TickReached(1)` is
+  evaluated inside the Invariant arm's gtest as well as by
+  `--evaluate-facts`).
+- A Lua pin can be measured with NO rebuild: `build/ci-test/packs` is a
+  byte mirror of `packs/`, so copying the pinned file aside, applying
+  `_apply_mutation.py` to the STAGED path, re-running
+  `parity_runner_smoke --evaluate-facts`, restoring and `cmp`-ing
+  reproduces the script's verdict in seconds instead of ~40 s. Verify
+  the mirror with `diff -rq packs build/ci-test/packs` first, and never
+  build while a staged mutation is in flight (`stage_runtime_assets`
+  re-mirrors on every build and would overwrite it).
 - The canary restores files via `git checkout --` and will DESTROY
   uncommitted changes in mutated files. On a dirty tree, drive mutations
   by hand: back up bytes → `_apply_mutation.py` → rebuild → gtest filter
