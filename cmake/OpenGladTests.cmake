@@ -777,6 +777,7 @@ og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_version.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_hud_counter_box.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scale_mode.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_display_state.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
