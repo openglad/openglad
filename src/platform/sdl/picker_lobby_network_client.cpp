@@ -2887,6 +2887,13 @@ public:
 
     bool request_start_game() override
     {
+        // Every GO press starts fresh: the previous press's verdict is not
+        // this one's, and a press that never reaches a verdict has none.
+        // This sits ABOVE the entry gate (as it does on the join client) so
+        // the contract holds for a press that is refused before anything is
+        // sent, too -- an earlier attempt's reason must not blip back as this
+        // press's answer.
+        last_start_verdict_ = og::sim::StartDenialReason::None;
         if (start_request_pending_ ||
             !local_client_transport_ || !state_.has_value() ||
             server_ == nullptr)
@@ -2898,9 +2905,6 @@ public:
             og::ui::detail::find_local_player(*state_);
 
         pending_game_start_config_.reset();
-        // Every GO press starts fresh: the previous press's verdict is not
-        // this one's, and a press that never reaches a verdict has none.
-        last_start_verdict_ = og::sim::StartDenialReason::None;
         start_request_pending_ = true;
         pending_start_request_id_ = next_start_request_id_++;
         if (next_start_request_id_ == 0)

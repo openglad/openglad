@@ -3005,6 +3005,66 @@ TEST(PickerNetworkClient,
     host_client->shutdown();
 }
 
+// A GO that never dispatches carries NO verdict -- on the HOST client too.
+// HostPickerLobbyClient::request_start_game clears the latch ABOVE its entry
+// gate (the shape the join client already had), so a press that is refused
+// before anything is sent reports None instead of blipping the previous
+// press's reason back as this one's answer.
+TEST(PickerNetworkClient,
+     host_start_refused_at_the_entry_gate_reports_no_verdict)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    using Health = og::ui::IPickerLobbyClient::StagedPreviewHealth;
+    host_client->initialize_from_save();
+
+    ASSERT_NE(nullptr, host_client->take_match_stage())
+        << "the host must own a real MatchStage";
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Staged;
+    })) << "the host stage never staged";
+
+    // Same ledger inflation as the StageFailed test above: the restage
+    // refuses at the wire message cap, so the next GO is really denied.
+    std::set<int>& ledger =
+        host_save.completed_levels[host_save.current_campaign];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return host_client->staged_preview_health() == Health::Failed;
+    })) << "the oversize restage never landed as Failed";
+
+    g_start_game_requested = false;
+    EXPECT_FALSE(host_client->request_start_game())
+        << "a Failed stage must never launch";
+    ASSERT_EQ(og::sim::StartDenialReason::StageFailed,
+              host_client->last_start_denial())
+        << "the denied press must latch ITS OWN verdict, or the entry-gate "
+           "pin below proves nothing";
+
+    // The link is gone: the next press is refused at the entry gate, before
+    // any start message is sent, so it carries no verdict at all.
+    host_client->shutdown();
+    EXPECT_FALSE(host_client->request_start_game())
+        << "a shut-down host client cannot dispatch a start request";
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              host_client->last_start_denial())
+        << "a press refused at the entry gate has no verdict; the StageFailed "
+           "from the previous press must not blip";
+
+    g_start_game_requested = false;
+}
+
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
