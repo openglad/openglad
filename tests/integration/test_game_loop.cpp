@@ -44,6 +44,7 @@
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include <openglad/core/util.h>
 #include "test_save_state_guard.h"
 
@@ -201,6 +202,24 @@ static int scripted_poll_adapter(SDL_Event* out)
     return scripted_poll(g_script, out);
 }
 
+// The sim RNG stream every scenario loaded through this helper runs on.
+//
+// A GameWorld carries its SimRandom forward ON PURPOSE: GameWorld::clear()
+// resets every other scalar but never rng_, and each level load seeds the
+// freshly loaded world from the previous world's state
+// (level_runtime_data.cpp, `GameWorld loaded_world(world().rng_.state_)`).
+// Callers here load a REAL gladiator level and then step the sim, so without
+// a pin the fight that runs under their pacing/timing assertions starts at
+// whatever stream position every earlier test in the binary happened to
+// leave behind -- and a level whose heroes lose is a level that ENDS, which
+// turns game_frame_with_result from Continue into Done underneath a caller
+// that is only trying to measure ticks. GameLoop.single_tick_per_call went
+// red exactly that way. The DISPLAY world is what the load seeds the new
+// world from; the AUTHORITATIVE world behind the shadow is what steps the
+// sim, so both are pinned.
+inline constexpr std::uint32_t kScenarioDisplayRngPin = 0x5eed0c07u;
+inline constexpr std::uint32_t kScenarioAuthorityRngPin = 0x5eed5e47u;
+
 static bool load_minimal_game_loop_scenario(const char* save_name)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -212,12 +231,19 @@ static bool load_minimal_game_loop_scenario(const char* save_name)
     game_screen->save_data.numplayers = 1;
     game_screen->save_data.save(save_name);
     game_screen->save_data.save("save0");
+    game_screen->world().rng_.state_ = kScenarioDisplayRngPin;
     if (load_saved_game(save_name, game_screen) == 0)
         return false;
 
     og::runtime::reset_local_transport_shadow(
         *og::runtime::current_game_session,
         *game_screen);
+    if (screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session))
+    {
+        server_screen->world().rng_.state_ = kScenarioAuthorityRngPin;
+    }
     return og::runtime::local_transport_active(
         *og::runtime::current_game_session);
 }
@@ -3742,6 +3768,78 @@ TEST(GameLoop, local_transport_shadow_send_input_reaches_the_server_and_finish_t
     game_screen->world().delete_objects();
 }
 
+// P13: the local transport shadow drives EVERY SDL session (single player,
+// split screen, networked host). The sim pushes floating damage numbers onto
+// the AUTHORITATIVE walkers; the display renders the mirror. This pins the
+// number crossing that seam and then actually reaching the painter, in both
+// states of the OPTIONS > EFFECTS toggle.
+TEST(GameLoop, local_transport_shadow_carries_damage_numbers_to_the_display_control)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_damage_numbers"))
+        << "the shadow must be live for this test";
+
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    ASSERT_NE(nullptr, server_screen->viewob[0]);
+    walker* const sc = server_screen->viewob[0]->control;
+    ASSERT_NE(nullptr, sc) << "the authority owes seat 0 a control walker";
+
+    walker* target = nullptr;
+    for (auto& uptr : server_screen->world().oblist)
+    {
+        walker* const w = uptr.get();
+        if (w == nullptr || w == sc || w->dead() ||
+            w->query_order() != Order::Living)
+            continue;
+        target = w;
+        break;
+    }
+    ASSERT_NE(nullptr, target) << "the level owes a second living to hit";
+
+    sc->do_hit_effects(sc, target, 9);
+    ASSERT_EQ(1u, sc->damage_numbers.size())
+        << "the hit stamps the attacker's own orange copy";
+
+    og::runtime::local_transport_shadow_finish_tick(session);
+
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+    walker* const dc = game_screen->viewob[0]->control;
+    ASSERT_NE(nullptr, dc) << "the display owes seat 0 a mirror control";
+    ASSERT_NE(sc, dc) << "the display renders the MIRROR, not the authority";
+    ASSERT_EQ(sc->entity_id(), dc->entity_id())
+        << "the mirror control is the same entity";
+    ASSERT_EQ(1u, dc->damage_numbers.size())
+        << "the lifted number must land on the display mirror";
+    EXPECT_FLOAT_EQ(9.0f, dc->damage_numbers.front().value);
+    EXPECT_EQ(235, static_cast<int>(dc->damage_numbers.front().color));
+    EXPECT_TRUE(sc->damage_numbers.empty())
+        << "the authoritative list is drained by the lift";
+
+    const bool entry_damage_on = cfg.is_on("effects", "damage_numbers");
+    cfg.apply_setting("effects", "damage_numbers", "on");
+    trace_clear();
+    game_screen->redraw();
+    EXPECT_TRUE(trace_contains("damage_numbers", "value=9 color=235"))
+        << "with the toggle ON the mirror's number must reach the painter";
+
+    cfg.apply_setting("effects", "damage_numbers", "off");
+    trace_clear();
+    game_screen->redraw();
+    EXPECT_FALSE(trace_contains("damage_numbers", "value=9 color=235"))
+        << "with the toggle OFF nothing is painted";
+
+    cfg.apply_setting("effects", "damage_numbers",
+                      entry_damage_on ? "on" : "off");
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, network_client_shadow_ends_session_after_connection_loss_timeout)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -4470,6 +4568,14 @@ TEST(GameLoop, single_tick_per_call)
     EXPECT_EQ(tick_count, kFrames);
     EXPECT_EQ(0u, st.render_pacer.interval_ms())
         << "render_pacer must stay uninitialized after all sim-only frames";
+    // The pacer contract above can only be measured while the session is
+    // live: the moment the level ends, game_frame_with_result answers Done
+    // and every remaining call ticks nothing. Say so, so a future end-of-
+    // level regression reads as one instead of a hundred "ran 0 ticks".
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the scenario must survive all " << kFrames
+        << " frames (the RNG pin in load_minimal_game_loop_scenario is what "
+           "keeps this fight from being a coin flip on test order)";
 
     game_screen->world().delete_objects();
 }
@@ -5722,12 +5828,40 @@ bool viewport_is_blank(screen* s)
     return true;
 }
 
+// See the pin comment inside record_cleric_low_magic_heal. Under these three
+// pins the cleric's first heal lands on frame 44 of the 240 -- in isolation,
+// after any predecessor, and under every shuffle order -- which the case
+// below ASSERTS so the pins can never silently stop producing a cast.
+inline constexpr std::uint32_t kClinicDisplayRngPin = 0x5eedc11cu;
+inline constexpr std::uint32_t kClinicAuthorityRngPin = 0x5eed0c07u;
+inline constexpr unsigned int kClinicLibcRandPin = 0x0c11c5eeu;
+
 void record_cleric_low_magic_heal(ClericClinicResult& out, float pinned_mp,
                                   int frames)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, s);
     build_save(s, "gladiator", 1, 1, {FAMILY_SOLDIER, FAMILY_CLERIC}, 4);
+    // Whether the AI cleric reaches for HEAL rather than MYSTIC MACE inside
+    // the 240-frame window is an RNG decision, and a GameWorld carries its
+    // SimRandom forward ON PURPOSE (GameWorld::clear() never touches rng_;
+    // each level load seeds the new world from the previous world's state --
+    // level_runtime_data.cpp). Unpinned, this scene therefore filmed from
+    // whatever stream position the preceding tests left, and no cast at all
+    // landed under roughly one shuffle order in twelve (11 of 135 seeds).
+    // Pin the DISPLAY world (what the load seeds the new world from) and the
+    // AUTHORITATIVE world (what steps the sim) below, plus libc rand() just
+    // under this. The pins fix the ORDER DEPENDENCE, not the film -- the
+    // shipped media was captured honestly from a pre-pin run and is
+    // unchanged.
+    s->world().rng_.state_ = kClinicDisplayRngPin;
+    // The third stream: walker_rng()/combat_rng() run through
+    // ProductionRandom, i.e. libc rand() (screen.cpp `random`), whose state
+    // is process-global and advanced by every test that came before. It is
+    // what made the cast land on a different frame in isolation than in a
+    // full run, so seed it too -- nothing may depend on where this process's
+    // rand() happens to stand.
+    std::srand(kClinicLibcRandPin);
     glad_init();
     all_capture_effects_on();
     // The patient's mini HP bar IS the film's motion; make the toggle
@@ -5740,6 +5874,8 @@ void record_cleric_low_magic_heal(ClericClinicResult& out, float pinned_mp,
             *og::runtime::current_game_session);
     ASSERT_NE(nullptr, server) << "the clinic scene needs the authoritative "
                                   "server world of the transport shadow";
+
+    server->world().rng_.state_ = kClinicAuthorityRngPin;
 
     walker* const server_patient = find_seat_control(server->world());
     ASSERT_NE(nullptr, server_patient)
@@ -5885,8 +6021,14 @@ TEST(GameLoop, zz_capture_real_gameplay)
 // SIMULATES unconditionally (only the PPM dump is gated on OG_FX_CAPTURE_DIR)
 // because it is also the session-level regression for P5: it pins that a
 // low-magic AI cleric's heal reaches the DISPLAY mirror as the replicated
-// notification and as a rising ally HP. It is red by design until the P5 fix
-// lands (the cast fizzles), which is the "before" the film records.
+// notification and as a rising ally HP.
+//
+// The P5 fix has landed (PR292 W-C1-P5-cleric-heal-floor, packs/core/
+// families/living-05-cleric.lua: the slot price is the floor of a heal), so
+// this case is now a plain forward regression -- it goes red if heal_or_mace
+// ever starts fizzling on a zero surcharge again. The film it records is the
+// "before/after" pair for that fix; the recorder's RNG pins keep WHICH
+// frame the cast lands on from being a function of test order.
 TEST(GameLoop, zz_capture_cleric_low_magic_heal)
 {
     const std::filesystem::path save0_path =
@@ -5924,6 +6066,13 @@ TEST(GameLoop, zz_capture_cleric_low_magic_heal)
     {
         EXPECT_EQ("Cleric healed 1 man!", clinic.heal_line)
             << "one hurt ally in range must read as exactly one healed man";
+        // Teeth for the recorder's three RNG pins: from those states the
+        // first cast lands on this frame, every run and in every order. If a
+        // sim or cleric-AI change moves it, the pin no longer produces the
+        // scene this film was cut around -- re-pin deliberately.
+        EXPECT_EQ(44, clinic.heal_line_frame)
+            << "the pinned stream no longer lands the cleric's first heal "
+               "where the clinic film expects it";
     }
     EXPECT_GT(clinic.patient_hp_peak, clinic.patient_hp_frame0)
         << "the patient's mirrored HP never rose above its frame-0 value "
@@ -7447,6 +7596,33 @@ void midgame_pump(og::runtime::GameSession& session, int frames,
     }
 }
 
+// The two sim RNG streams every case in this family plays on top of.
+//
+// A GameWorld carries its SimRandom forward ON PURPOSE: GameWorld::clear()
+// resets every other scalar but never rng_, and each level load seeds the
+// freshly loaded world from the previous world's state
+// (level_runtime_data.cpp, `GameWorld loaded_world(world().rng_.state_)`).
+// An unpinned case here therefore starts at whatever stream position every
+// earlier test in the binary happened to leave behind, and the level's spawn
+// census, where each seat's hero lands, and who is still standing after a
+// stretch of live play all move with it. Same remedy (and same reason) as
+// GameLoop.a_marker_less_team_teleports_and_may_share_a_team0_marker_tile.
+//
+// These cases need BOTH pins: the DISPLAY world is what the level load seeds
+// the new world from, and the AUTHORITATIVE world is what actually steps the
+// sim behind the shadow.
+inline constexpr std::uint32_t kMidgameDisplayRngPin = 0x5eed0c07u;
+inline constexpr std::uint32_t kMidgameAuthorityRngPin = 0x5eed5e47u;
+
+void midgame_pin_authority_rng(og::runtime::GameSession& session)
+{
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen)
+        << "the live shadow owes an authoritative screen to pin";
+    server_screen->world().rng_.state_ = kMidgameAuthorityRngPin;
+}
+
 walker* midgame_find_walker_by_user(screen* which_screen, int user)
 {
     if (which_screen == nullptr)
@@ -7560,12 +7736,14 @@ TEST(GameLoop, midgame_add_third_local_player)
     save.team_size = 2;
     ASSERT_TRUE(save.save("save0"));
 
+    game_screen->world().rng_.state_ = kMidgameDisplayRngPin;
     glad_init();
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     og::runtime::GameSession& session = *og::runtime::current_game_session;
     ASSERT_TRUE(
         og::runtime::local_transport_active(*og::runtime::current_session));
     ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+    midgame_pin_authority_rng(session);
 
     std::uint32_t tick = 0;
     midgame_pump(session, 8, tick);
@@ -7671,12 +7849,14 @@ TEST(GameLoop, midgame_remove_middle_player_of_three)
     save.team_size = 3;
     ASSERT_TRUE(save.save("save0"));
 
+    game_screen->world().rng_.state_ = kMidgameDisplayRngPin;
     glad_init();
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     og::runtime::GameSession& session = *og::runtime::current_game_session;
     ASSERT_TRUE(
         og::runtime::local_transport_active(*og::runtime::current_session));
     ASSERT_EQ(3u, og::runtime::local_transport_client_count(session));
+    midgame_pin_authority_rng(session);
 
     std::uint32_t tick = 0;
     midgame_pump(session, 8, tick);
@@ -8031,12 +8211,14 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     save.team_size = 1;
     ASSERT_TRUE(save.save("save0"));
 
+    game_screen->world().rng_.state_ = kMidgameDisplayRngPin;
     glad_init();
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     og::runtime::GameSession& session = *og::runtime::current_game_session;
     ASSERT_TRUE(
         og::runtime::local_transport_active(*og::runtime::current_session));
     ASSERT_EQ(1u, og::runtime::local_transport_client_count(session));
+    midgame_pin_authority_rng(session);
 
     std::uint32_t tick = 0;
     // Land the pause exactly on a periodic hash-checkpoint tick
@@ -8057,12 +8239,12 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // so the add SPAWNED a stock soldier (a brand-new server entity created
     // between ticks — the shape that must survive the delta stream). Park
     // every unclaimed lead-team walker on an unused team to force that path.
+    const short lead_team = game_screen->viewob[0]->my_team;
+    short empty_team = -1;
     {
         screen* const server_screen =
             og::runtime::local_transport_shadow_testing_server_screen(session);
         ASSERT_NE(nullptr, server_screen);
-        const short lead_team = game_screen->viewob[0]->my_team;
-        short empty_team = -1;
         for (short t = 0; t < 4 && empty_team < 0; ++t)
         {
             if (t != lead_team &&
@@ -8108,6 +8290,44 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     ASSERT_TRUE(og::runtime::local_transport_shadow_toggle_pause(session));
     trace_clear();
     midgame_pump(session, 420, tick);
+
+    // Teeth for the two RNG pins: from kMidgameAuthorityRngPin these 420
+    // ticks of real two-seat play end with BOTH seats' heroes standing, the
+    // single re-teamed walker still alive, and twelve livings on the board.
+    // Unpinned, this census is a coin flip on the process's stream position
+    // (at authority state 9 the heroes are cut down, the sim raises
+    // EndGame(1) -- "YOUR MEN ARE CRUSHED!" -- and world.end below reads 1),
+    // which is exactly the order dependence the pins remove. If a sim change
+    // moves these numbers the pin no longer produces the fight this case was
+    // written around: re-pin deliberately, never delete the census.
+    {
+        screen* const authority =
+            og::runtime::local_transport_shadow_testing_server_screen(session);
+        ASSERT_NE(nullptr, authority);
+        int living[4] = {0, 0, 0, 0};
+        int seat_controlled = 0;
+        int total_living = 0;
+        for (const auto& uptr : authority->world().oblist)
+        {
+            walker* const entity = uptr.get();
+            if (entity == nullptr || entity->dead() ||
+                entity->query_order() != Order::Living)
+                continue;
+            living[entity->team_num() & 3]++;
+            ++total_living;
+            if (entity->user() != -1)
+                ++seat_controlled;
+        }
+        EXPECT_EQ(2, seat_controlled)
+            << "both seats must still hold a living hero after the fight";
+        EXPECT_EQ(2, living[lead_team])
+            << "the lead team is the two heroes and nothing else";
+        EXPECT_EQ(1, living[empty_team])
+            << "the walker this case re-teamed must still be on the board";
+        EXPECT_EQ(12, total_living)
+            << "the pinned stream no longer produces the fight this case was "
+               "written around";
+    }
     EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"))
         << "the display peer must never be cut as desynced after ADD PLAYER";
     EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
@@ -8154,7 +8374,10 @@ void midgame_one_hero_boot(screen* game_screen)
     save.team_list[0] = std::move(leader);
     save.team_size = 1;
     ASSERT_TRUE(save.save("save0"));
+    game_screen->world().rng_.state_ = kMidgameDisplayRngPin;
     glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    midgame_pin_authority_rng(*og::runtime::current_game_session);
 }
 
 void midgame_one_hero_teardown(screen* game_screen)
@@ -8791,75 +9014,4 @@ TEST(GameLoop, host_and_join_basketball_camera_is_compact)
     }
 
     camera_ball_mode_teardown(display);
-}
-
-// P13: the local transport shadow drives EVERY SDL session (single player,
-// split screen, networked host). The sim pushes floating damage numbers onto
-// the AUTHORITATIVE walkers; the display renders the mirror. This pins the
-// number crossing that seam and then actually reaching the painter, in both
-// states of the OPTIONS > EFFECTS toggle.
-TEST(GameLoop, local_transport_shadow_carries_damage_numbers_to_the_display_control)
-{
-    screen* const game_screen = og::runtime::current_session->myscreen_;
-    ASSERT_TRUE(game_screen != nullptr);
-    GameSpeedGuard speed(1.0f);
-    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_damage_numbers"))
-        << "the shadow must be live for this test";
-
-    og::runtime::GameSession& session = *og::runtime::current_game_session;
-    screen* const server_screen =
-        og::runtime::local_transport_shadow_testing_server_screen(session);
-    ASSERT_NE(nullptr, server_screen);
-    ASSERT_NE(nullptr, server_screen->viewob[0]);
-    walker* const sc = server_screen->viewob[0]->control;
-    ASSERT_NE(nullptr, sc) << "the authority owes seat 0 a control walker";
-
-    walker* target = nullptr;
-    for (auto& uptr : server_screen->world().oblist)
-    {
-        walker* const w = uptr.get();
-        if (w == nullptr || w == sc || w->dead() ||
-            w->query_order() != Order::Living)
-            continue;
-        target = w;
-        break;
-    }
-    ASSERT_NE(nullptr, target) << "the level owes a second living to hit";
-
-    sc->do_hit_effects(sc, target, 9);
-    ASSERT_EQ(1u, sc->damage_numbers.size())
-        << "the hit stamps the attacker's own orange copy";
-
-    og::runtime::local_transport_shadow_finish_tick(session);
-
-    ASSERT_NE(nullptr, game_screen->viewob[0]);
-    walker* const dc = game_screen->viewob[0]->control;
-    ASSERT_NE(nullptr, dc) << "the display owes seat 0 a mirror control";
-    ASSERT_NE(sc, dc) << "the display renders the MIRROR, not the authority";
-    ASSERT_EQ(sc->entity_id(), dc->entity_id())
-        << "the mirror control is the same entity";
-    ASSERT_EQ(1u, dc->damage_numbers.size())
-        << "the lifted number must land on the display mirror";
-    EXPECT_FLOAT_EQ(9.0f, dc->damage_numbers.front().value);
-    EXPECT_EQ(235, static_cast<int>(dc->damage_numbers.front().color));
-    EXPECT_TRUE(sc->damage_numbers.empty())
-        << "the authoritative list is drained by the lift";
-
-    const bool entry_damage_on = cfg.is_on("effects", "damage_numbers");
-    cfg.apply_setting("effects", "damage_numbers", "on");
-    trace_clear();
-    game_screen->redraw();
-    EXPECT_TRUE(trace_contains("damage_numbers", "value=9 color=235"))
-        << "with the toggle ON the mirror's number must reach the painter";
-
-    cfg.apply_setting("effects", "damage_numbers", "off");
-    trace_clear();
-    game_screen->redraw();
-    EXPECT_FALSE(trace_contains("damage_numbers", "value=9 color=235"))
-        << "with the toggle OFF nothing is painted";
-
-    cfg.apply_setting("effects", "damage_numbers",
-                      entry_damage_on ? "on" : "off");
-    og::runtime::clear_local_transport_shadow(session);
-    game_screen->world().delete_objects();
 }
