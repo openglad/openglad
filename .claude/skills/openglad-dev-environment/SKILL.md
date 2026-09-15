@@ -163,10 +163,11 @@ the example. Re-run them on a new box; never carry the numbers over.
 - Run og_unit_*/og_test_* binaries from the REPO ROOT: ctest gives them
   `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}` (cmake/OpenGladTests.cmake), so
   they resolve assets relative to it. `cd build/ci-test && ./og_unit_data`
-  fails 8 ExampleClassPack tests that pass from the root
-  (`./build/ci-test/og_unit_data` → 534/534) — phantom reds that look
-  like a real regression. The exceptions are the three standalone
-  lifecycle tests (og_test_sdl_video_lifecycle,
+  fails 8 tests (six ExampleClassPack.*, plus FamilyRegistryGolden and
+  CompanyClock) that pass from the root (`./build/ci-test/og_unit_data`
+  → 534/534) — phantom reds that look like a real regression. The
+  exceptions are the three standalone lifecycle tests
+  (og_test_sdl_video_lifecycle,
   og_test_sdl_renderer_fallback, og_test_runtime_bootstrap_lifecycle),
   which ctest runs on `${CMAKE_BINARY_DIR}`, and og_test_curses, which
   finds its sources through the compile definition

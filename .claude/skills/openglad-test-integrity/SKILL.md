@@ -68,11 +68,13 @@ go red:
 A test that stays green under its mutation is not fixed: strengthen it,
 or find the observable the rule actually moves.
 
-Plant breaks that compile. Every CI preset sets
-`OPENGLAD_WARNINGS_AS_ERRORS=ON` over `-Wall -Wextra -Wpedantic
--Wconversion -Wsign-conversion -Wshadow` (CMakeLists.txt,
-`OG_WARNING_FLAGS`), so a mutation that does not build proves nothing and
-costs a rebuild. The forms that survive -Werror:
+Plant breaks that compile. The ci-test, ci-asan and ci-tsan presets set
+`OPENGLAD_WARNINGS_AS_ERRORS=ON` (CMakePresets.json; ci-coverage and
+ci-fuzz do not, and the option defaults OFF in CMakeLists.txt) over
+`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow`
+(CMakeLists.txt, `OG_WARNING_FLAGS`), so on the lanes you plant for a
+mutation that does not build proves nothing and costs a rebuild. The
+forms that survive -Werror:
 
 - Prepend the early exit and brace it — `if (true) { return v; }` — above
   the old body rather than replacing it, so the function's parameters and
@@ -152,7 +154,8 @@ test after the failure never ran.
 - Never bump a deadline to fix a timing-flaky test: measure the real
   cost, fix it, then convert the flat delay into a wait-on-condition
   with a generous ceiling, and prove the wait can still fail by planting
-  a break (see "Proving a test has teeth"). Gate cost regressions with counts (call counts), not clocks.
+  a break (see "Proving a test has teeth"). Gate cost regressions with
+  counts (call counts), not clocks.
 
 ## Tests that hang (the three known traps)
 
