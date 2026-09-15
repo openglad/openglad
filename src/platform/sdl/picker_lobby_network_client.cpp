@@ -4083,13 +4083,22 @@ public:
             std::clamp(local_player_count_, 0, MAX_PLAYERS));
     }
 
+    // Every machine may PRESS start; the SERVER decides. The host rule has
+    // exactly one implementation -- LobbyServer's start_allowed() rule 2 --
+    // and it answers a non-host requester with StartDenialReason::NotHost,
+    // which go_menu renders as "ONLY THE HOST CAN START". A client-side "am
+    // I host NOW" gate here would be a second home for that rule, and it is
+    // what used to leave a non-elected machine's press with no verdict at
+    // all. The GO button's VISIBILITY (host_controls_visible) is
+    // presentation, not the rule: it hides the button from an ordinary
+    // joiner, it does not decide the press.
     bool request_start_game() override
     {
         // Every GO press starts fresh: a previous press's verdict is not
         // this one's, and a press that never dispatches has none at all.
         start_request_outcome_ = og::ui::StartRequestOutcome::None;
         last_start_verdict_ = og::sim::StartDenialReason::None;
-        if (start_request_pending_ || !transport_ || !local_player_is_host() ||
+        if (start_request_pending_ || !transport_ ||
             pending_game_start_config_.has_value() ||
             g_start_game_requested)
             return false;
@@ -4824,7 +4833,7 @@ private:
     bool dispatch_start_request()
     {
         if (!transport_ || !state_.has_value() ||
-            !local_player_is_host() || join_confirmation_pending_ ||
+            join_confirmation_pending_ ||
             awaiting_round_ready_reset_ ||
             pending_game_start_config_.has_value() ||
             g_start_game_requested)

@@ -256,6 +256,11 @@ client as a GO popup, the curses client on the lobby band — including
 `StageFailed` and the no-verdict case, from a single reason-to-text mapping
 (`describe_start_denial`), so no refused GO is ever silent.
 
+No client gates the press itself on host-ness. Every machine may press start;
+the server's rule is the only implementation of "only the host can start", and
+it answers a non-host requester `NotHost` on every client. The GO control's
+visibility on a joiner is presentation, not the rule.
+
 ### 4.4 Ownership and controls
 
 `guy::teamnum` is combat allegiance. Player index and owner tags identify input

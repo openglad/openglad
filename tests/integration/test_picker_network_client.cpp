@@ -8058,9 +8058,12 @@ TEST(PickerNetworkClient, dedicated_server_denial_echo_reaches_elected_host_then
 // while its own GO is in flight, keeps the host's own MachinesNotReady.
 //
 // The guest here is a CRAFTED client: a raw WebSocket transport that joins the
-// lobby and puts the StartGame on the wire by hand. The shipping SDL join
-// client pre-checks host-ness before sending, so only a hand-written peer can
-// produce this message -- and writing one needs no TESTING seam in src/.
+// lobby and puts the StartGame on the wire by hand. That is no longer the only
+// way to produce this message -- PR #292 Q1-D deleted the shipping join
+// client's client-side host pre-check, and the sibling test below presses GO
+// on a REAL guest -- but the crafted peer stays as the RAW-WIRE proof: it
+// pins the echoed bytes (last_start_denial and last_start_request_id) that a
+// client-side accessor cannot show, and it needs no TESTING seam in src/.
 TEST(PickerNetworkClient,
      dedicated_server_guest_start_is_denied_not_host_without_touching_the_hosts_echo)
 {
@@ -8246,6 +8249,155 @@ TEST(PickerNetworkClient,
                 return message.kind() == og::sim::LobbyMessageKind::StartGame;
             });
     })) << "and the accepted start reaches the guest as a StartGame handoff";
+}
+
+// PR #292 Q1-D (no rule twins): "only the host can start" has exactly ONE
+// implementation -- LobbyServer::start_allowed() rule 2 -- and the SDL join
+// client's client-side `!local_player_is_host()` pre-check is gone from both
+// of its sites (request_start_game and dispatch_start_request). So a REAL,
+// non-elected create_join_picker_lobby_client's GO now goes ON THE WIRE and
+// comes back answered StartDenialReason::NotHost, the verdict go_menu renders
+// as "ONLY THE HOST CAN START". While the twin existed the press returned
+// false without sending, the SDL NotHost arm was unreachable outside a fake,
+// and only the CRAFTED peer above could produce this message.
+//
+// The GO button's VISIBILITY is presentation, not the rule: the guest's
+// host_controls_visible() is still false here, and that is pinned so the
+// deletion cannot be mistaken for "every joiner grew a GO button".
+TEST(PickerNetworkClient, dedicated_server_real_guest_start_is_answered_not_host)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Elected Host");
+    g_start_game_requested = false;
+
+    // server_main's exact transport + lobby shape (no local session).
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options transport_options;
+    transport_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server_transport(port, transport_options);
+    server_transport.accept_connections();
+    og::sim::LobbyServer lobby_server(server_transport);
+
+    og::ui::PickerJoinGameOptions host_options;
+    host_options.mode = og::ui::PickerJoinMode::Direct;
+    host_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto elected_host = og::ui::create_join_picker_lobby_client(host_options);
+    elected_host->initialize_from_save();
+
+    // The elected host must connect FIRST (election is first-connected).
+    ASSERT_TRUE(wait_until([&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        return elected_host->host_controls_visible();
+    })) << "the first-connected peer must be elected host";
+    elected_host->sync_roster_from_save();
+
+    // The guest is a REAL shipping join client in its own session, not a
+    // hand-written peer: this is the production press path.
+    og::runtime::GameSession::Config guest_cfg;
+    guest_cfg.create_display = false;
+    guest_cfg.install_legacy_globals = false;
+    og::runtime::GameSession guest_session(guest_cfg);
+    prepare_single_member_network_save(
+        guest_session.myscreen_->save_data, 1, "Real Guest");
+    og::ui::PickerJoinGameOptions guest_options;
+    guest_options.mode = og::ui::PickerJoinMode::Direct;
+    guest_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> guest;
+    {
+        auto guest_scope = guest_session.activate();
+        guest = og::ui::create_join_picker_lobby_client(guest_options);
+        guest->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* guest_session = nullptr;
+        og::ui::IPickerLobbyClient* elected_host = nullptr;
+        og::ui::IPickerLobbyClient* guest = nullptr;
+        ~CleanupGuard()
+        {
+            if (guest_session != nullptr && guest != nullptr)
+            {
+                auto guest_scope = guest_session->activate();
+                guest->shutdown();
+            }
+            if (elected_host != nullptr)
+                elected_host->shutdown();
+        }
+    } cleanup{&guest_session, elected_host.get(), guest.get()};
+
+    const auto pump_all = [&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        auto guest_scope = guest_session.activate();
+        guest->poll_and_apply();
+    };
+
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        auto guest_scope = guest_session.activate();
+        return lobby_server.state().players.size() == 2u &&
+            guest->lobby_players().size() == 2u &&
+            guest->local_seat_count() == 1u;
+    })) << "both machines should be seated in the dedicated lobby before the "
+           "guest presses GO (its join echo must have landed)";
+
+    {
+        auto guest_scope = guest_session.activate();
+        ASSERT_FALSE(guest->host_controls_visible())
+            << "the guest is NOT the elected host: its GO button stays hidden "
+               "-- visibility is presentation and Q1-D does not change it";
+
+        // The press is not ACCEPTED locally (false), but it is SENT: the
+        // pending flag is the proof the request went on the wire. The server
+        // has not been polled since the send, so no verdict can have arrived
+        // yet -- this observation is deterministic, not a race.
+        EXPECT_FALSE(guest->request_start_game())
+            << "a non-host GO never launches locally";
+        EXPECT_TRUE(guest->start_request_pending())
+            << "the guest's GO must reach the SERVER -- the deleted "
+               "client-side host gate returned false without sending, which "
+               "is the rule twin this test exists to keep deleted";
+        EXPECT_EQ(og::ui::StartRequestOutcome::None,
+                  guest->start_request_outcome())
+            << "still waiting: the verdict comes from the server";
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        auto guest_scope = guest_session.activate();
+        return !guest->start_request_pending();
+    })) << "the server's answer must release the guest's pending request "
+           "(go_menu's timeout-less wait loop rides on this)";
+
+    {
+        auto guest_scope = guest_session.activate();
+        EXPECT_EQ(og::sim::StartDenialReason::NotHost,
+                  guest->last_start_denial())
+            << "rule 2 is the ONE implementation of the host rule and it "
+               "answers the requester by name: SDL renders this as "
+               "\"ONLY THE HOST CAN START\"";
+        EXPECT_EQ(og::ui::StartRequestOutcome::None,
+                  guest->start_request_outcome())
+            << "answered (denied), not abandoned: no NoAnswer/LinkLost";
+        EXPECT_FALSE(guest->has_game_start_config())
+            << "a denied start hands the guest no world";
+    }
+
+    EXPECT_FALSE(g_start_game_requested)
+        << "a non-host start never reaches gameplay";
+    EXPECT_FALSE(elected_host->has_game_start_config());
+    EXPECT_FALSE(lobby_server.consume_start_game_requested())
+        << "server_main's loop read: the dedicated loop keeps polling";
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              elected_host->last_start_denial())
+        << "the elected host never pressed GO, so the guest's NotHost is not "
+           "its verdict -- the echo is scoped to the requester";
 }
 
 // LINEUP §6 on the DEDICATED shape: with no in-process host client anywhere,
