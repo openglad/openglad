@@ -55,6 +55,11 @@ MACROS=(
     FAKE_TOUCH_EVENTS
 )
 
+# Search roots: the compiled tree plus the build files that configure it.
+# .github/workflows and flake.nix are deliberately NOT scanned -- a stray
+# -DUSE_TOUCH_INPUT added to a CI lane or to the dev shell would slip past
+# this gate, but it would switch nothing on, because PR #292 deleted every
+# arm; the thing worth failing the build over is an #ifdef coming BACK.
 ROOTS=(
     src
     include
