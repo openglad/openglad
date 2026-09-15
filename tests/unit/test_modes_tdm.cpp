@@ -32,10 +32,6 @@
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 // The mode-var slot map of lib/mode_tdm_impl.lua (table S).
@@ -1113,30 +1109,27 @@ TEST_F(ModesTdm, tdm_bot_match_is_deterministic_across_runs)
 
 TEST_F(ModesTdm, full_tdm_tick_fits_a_tenth_of_the_instruction_budget)
 {
-    og::script::g_test_world_instruction_budget = 500000;
-    {
-        ModesCtfWorld fx(302);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(0, 224, 96);
-        fx.spawn_anchor(1, 96, 832);
-        fx.spawn_anchor(1, 224, 832);
-        walker* gen = fx.world().add_ob(Order::Generator, FAMILY_TENT);
-        ASSERT_NE(nullptr, gen);
-        gen->setxy(432, 432);
-        gen->set_team_num(4);
-        for (int i = 0; i < 6; ++i)
-            fx.spawn_living(FAMILY_SKELETON, 4, 500 + 20 * i, 500, ACT_RANDOM);
-        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
-        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
-        fx.world().ctf_requested_respawn_ticks = 30;
-        fx.tick(1);  // init (bot squads, the priciest dispatch)
-        ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
-        fx.tick(45);  // 3 director cadences + every per-tick phase
-        EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
-            << "a 10x-reduced budget must never trip";
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    og::script::g_test_world_instruction_budget = 0;
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx(302);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(0, 224, 96);
+    fx.spawn_anchor(1, 96, 832);
+    fx.spawn_anchor(1, 224, 832);
+    walker* gen = fx.world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, gen);
+    gen->setxy(432, 432);
+    gen->set_team_num(4);
+    for (int i = 0; i < 6; ++i)
+        fx.spawn_living(FAMILY_SKELETON, 4, 500 + 20 * i, 500, ACT_RANDOM);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
+    fx.world().ctf_requested_respawn_ticks = 30;
+    fx.tick(1);  // init (bot squads, the priciest dispatch)
+    ASSERT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    fx.tick(45);  // 3 director cadences + every per-tick phase
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================

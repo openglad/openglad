@@ -37,10 +37,6 @@
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 // The mode-var slot map of lib/mode_soccer_impl.lua (table S). A silent
@@ -3546,23 +3542,20 @@ TEST_F(ModesSoccer, directed_bot_match_is_deterministic)
 
 TEST_F(ModesSoccer, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
 {
-    og::script::g_test_world_instruction_budget = 500000;
-    {
-        ModesCtfWorld fx(kSoccerLevelA);
-        fx.spawn_anchor(0, 96, 432);
-        fx.spawn_anchor(0, 96, 496);
-        fx.spawn_anchor(1, 528, 432);
-        fx.spawn_anchor(1, 528, 496);
-        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
-        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
-        fx.tick(1);  // init (bot squads + ball) under the budget
-        ASSERT_TRUE(fx.world().mode.active);
-        fx.tick(45);  // 3 director cadences + kicks + flight + HUD
-        EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
-            << "a 10x-reduced budget must never trip";
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    og::script::g_test_world_instruction_budget = 0;
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 432);
+    fx.spawn_anchor(0, 96, 496);
+    fx.spawn_anchor(1, 528, 432);
+    fx.spawn_anchor(1, 528, 496);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
+    fx.tick(1);  // init (bot squads + ball) under the budget
+    ASSERT_TRUE(fx.world().mode.active);
+    fx.tick(45);  // 3 director cadences + kicks + flight + HUD
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 

@@ -9,7 +9,11 @@ open), and the CI `campaign-drift` job reruns the generator and fails on
 any diff.
 
 `packs/` is hand-authored — edit freely. The generator reads it (staged
-for the self-checks) but never rewrites it.
+for the self-checks) but never rewrites it. Besides the Ninefold Court's
+fight script it carries `scripts/clinic.lua`, a capture rig on level 600
+fenced on the campaign var `clinic`: unset (the default) Stairs plays exactly
+as generated, and `clinic=1` stages the low-magic cleric scene that
+`scripts/media/capture_pr292_cleric_clinic.sh` films.
 
 Dev-only: composed into `build/<preset>/builtin-dev/concept.glad` for tests,
 tooling and screenshots; never installed, packaged or preloaded into the web

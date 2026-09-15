@@ -247,6 +247,12 @@ std::size_t count_events_kind(const StateDump& d, std::int32_t kind_ordinal)
 FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
 {
     FactEvalResult r;
+    // NO `default:` arm, deliberately: -Wswitch keeps a NEW enumerator a
+    // compile error only while this switch has no default (GCC and Clang
+    // both silence -Wswitch as soon as a default exists), and the
+    // -Werror lanes (ci-test / ci-asan / ci-tsan) turn that warning into
+    // a build failure. The post-switch return below is the runtime guard
+    // for values no enumerator names; together they cover both halves.
     switch (p.kind)
     {
         case FactKind::TickReached:
@@ -577,7 +583,13 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             return r;
         }
     }
-    return r;
+    // Unreachable for every named enumerator (all arms above return),
+    // but -Wreturn-type demands it. Make THAT mandatory line the loud
+    // runtime guard for a value no enumerator names (a cast, a corrupted
+    // table entry, a stale serialised kind) instead of a silent PASS.
+    return (make_fail(r, p,
+                      "FactKind not handled by evaluate_one "
+                      "(out-of-range enumerator value)"), r);
 }
 
 FactEvalResult evaluate_facts(FactSide             side,

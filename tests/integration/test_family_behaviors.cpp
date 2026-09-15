@@ -2734,7 +2734,7 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
 }
 
 
-TEST(FamilyBehaviors, cleric_round6_heal_low_magic_and_undead_raise_no_target_guards)
+TEST(FamilyBehaviors, cleric_round6_thin_pool_lands_the_level_bonus_and_undead_raise_no_target_guards)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -2746,22 +2746,24 @@ TEST(FamilyBehaviors, cleric_round6_heal_low_magic_and_undead_raise_no_target_gu
     walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 108, 100);
     ASSERT_TRUE(cleric && ally) << "cleric and ally created";
 
-    // Heal special with low MP should take the low-magic adjustment branch.
+    // A pool too thin to price the heal still lands the level bonus (P5).
+    // compute_heal_amount(1, 12) banks base = 1/4 + rand(0) = 0, so the
+    // pool-scaled surcharge cost is 0 — but amount is base + level*5 = 60,
+    // and the slot's own mp_cost is the floor of the price, so the heal
+    // lands. (og::test::do_special dispatches the hook directly, bypassing
+    // walker::special's slot charge, so the pool is untouched here.)
     cleric->set_current_special(1);
     cleric->set_shifter_down(0);
     cleric->stats()->set_level(12);
     cleric->stats()->set_magicpoints(1);
     ally->stats()->set_hitpoints(ally->stats()->max_hitpoints() - 20.0f);
     const float ally_hp_before = ally->stats()->hitpoints();
-    // compute_heal_amount(1, 12) banks base = 1/4 + rand(0) = 0, so cost = 0
-    // and heal_or_mace breaks out of its loop before touching anyone: nobody
-    // is healed, so the cast refuses and charges nothing.
-    EXPECT_FALSE(og::test::do_special(*fd, cleric))
-        << "a heal whose computed cost is 0 heals nobody and refuses";
-    EXPECT_FLOAT_EQ(ally_hp_before, ally->stats()->hitpoints())
-        << "the refused heal must not move the ally's hitpoints";
+    EXPECT_TRUE(og::test::do_special(*fd, cleric))
+        << "a heal whose surcharge prices at 0 must still land";
+    EXPECT_FLOAT_EQ(ally_hp_before + 60.0f, ally->stats()->hitpoints())
+        << "the ally gains base(0) + level*5(60) hitpoints";
     EXPECT_FLOAT_EQ(1.0f, cleric->stats()->magicpoints())
-        << "the refused heal must not spend the cleric's last magic point";
+        << "Lua charges the zero surcharge; the slot's 2 MP is walker::special's";
 
     // Full-health ally path should produce didheal==0 and return false.
     cleric->stats()->set_magicpoints(200);

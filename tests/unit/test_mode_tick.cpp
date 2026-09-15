@@ -496,8 +496,29 @@ TEST(ModeTick, damage_gate_classic_path_untouched_without_hook)
     const float before = rig.hp();
     rig.attacker->attack(rig.target);
     EXPECT_LT(rig.hp(), before) << "no registered gate: damage lands";
-    // Nothing dispatched, no script errors.
-    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+    const float authored_drop = before - rig.hp();
+
+    // "Nothing dispatched" has no counter to read: level hooks never feed
+    // og::script::hooks::hook_failures() (note_hook_failure has a single
+    // caller, the family-hook HookFrame), so non-dispatch is observed
+    // through a sentinel log the gate would write and the cancellation it
+    // would apply. This rig registers on_damage for level 99 while the world
+    // is level 42; push_level_hook_fn consults the exact (kind, level) slot
+    // and then the wildcard slot, so this gate must never be found here.
+    GateRig other(
+        "og.register_level_hooks(99, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    og.log('gate_seen')\n"
+        "    return false\n"
+        "  end,\n"
+        "})\n");
+    const float other_before = other.hp();
+    other.attacker->attack(other.target);
+    EXPECT_EQ(authored_drop, other_before - other.hp())
+        << "a gate registered for another level is not this level's gate";
+    EXPECT_EQ(0, other.fx.log_count("gate_seen")) << "never dispatched";
+    EXPECT_TRUE(other.fx.world().scripts().host().errors().empty())
+        << "a gate that never fires cannot error";
 }
 
 TEST(ModeTick, damage_gate_nil_keeps_authored_amount)

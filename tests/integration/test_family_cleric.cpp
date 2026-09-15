@@ -1041,37 +1041,75 @@ walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, char o
 
 } // namespace
 
-// A pool too thin to PRICE a heal abandons the cast: compute_heal_amount
-// (src/core/combat_math.cpp:97-105) builds base = trunc(mp)/4 + rand(...),
-// so at mp = 1 the integer quarter is 0 and cost is 0. The named "low-magic
-// adjustment" arm (living-05-cleric.lua:82-87) is NOT the branch this
-// reaches and is in fact unreachable for any positive pool, because
-// cost = base/2 < mp whenever base is non-zero; the hook instead breaks on
-// `cost <= 0` at lua:89 with nobody healed and nothing charged.
-TEST(FamilyCleric, r15_a_pool_too_thin_to_price_a_heal_refuses_and_mace_is_busy_gated)
+// The slot price is the FLOOR of a heal (P5).
+//
+// compute_heal_amount (src/core/combat_math.cpp:97-105) builds
+// base = trunc(mp)/4 + rand(trunc(mp)/4) and prices the cast at cost =
+// base/2, so for any pool below 8 MP the surcharge is 0. That surcharge is
+// NOT the whole price: the HEAL slot's declared mp_cost (2) is, and the
+// engine charges it in walker::special on a true return
+// (src/gameplay/walker_specials.cpp:180-181). So the rule this test pins,
+// through the real engine path rather than the bare hook, is:
+//
+//   * below the slot price the cast is refused at the gate, with
+//     SpecialFailure::NoMP, nobody healed and nothing charged;
+//   * AT the slot price the heal lands for base + level*5 and the pool is
+//     emptied by exactly the slot price (Lua charges 0, the engine 2).
+//
+// Before the P5 fix the second arm was a silent fizzle: the hook broke on
+// `cost <= 0`, returned false, and a cleric the gate had just approved
+// healed nobody and paid nothing.
+TEST(FamilyCleric, r15_the_slot_price_is_the_floor_of_a_heal)
 {
+    og::test::mount_core_pack();
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
     ClericR15Fixture fx;
 
     living* cleric = add_living(fx, 0, FAMILY_CLERIC, 80, 80);
     living* ally = add_living(fx, 0, FAMILY_SOLDIER, 84, 80);
-    ASSERT_TRUE(cleric && ally);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, ally);
 
     cleric->stats()->set_level(8);
-    cleric->stats()->set_magicpoints(1.0f); // trunc(1)/4 == 0: unpriceable
     ally->stats()->set_max_hitpoints(100.0f);
     ally->stats()->set_hitpoints(5.0f);
     cleric->set_current_special(1);
     cleric->set_shifter_down(0);
+    // add_living() builds a bare walker; the loader is what copies the pack's
+    // declared slot prices onto a real cleric (src/resources/gloader.cpp:841),
+    // so do the same here and pin the declared value while we are at it.
+    ASSERT_EQ(2u, desc.special_cost[1])
+        << "the HEAL slot's declared price (living-05-cleric.lua mp_cost = 2) "
+           "is the floor this test is about";
+    cleric->stats()->set_special_cost(1, desc.special_cost[1]);
 
-    ASSERT_TRUE(!og::test::do_special(desc, cleric))
-        << "a heal that prices at 0 is abandoned, not cast";
+    // Below the floor: the engine refuses before the hook ever runs.
+    cleric->stats()->set_magicpoints(1.0f);
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    ASSERT_FALSE(cleric->special(&why))
+        << "a pool under the slot price cannot cast at all";
+    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
+        << "and it is the mp_cost gate that refuses, not the script";
     EXPECT_FLOAT_EQ(5.0f, ally->stats()->hitpoints())
-        << "an abandoned heal heals nobody";
+        << "a refused cast heals nobody";
     EXPECT_FLOAT_EQ(1.0f, cleric->stats()->magicpoints())
-        << "an abandoned heal charges nothing";
+        << "a refused cast charges nothing";
+
+    // At the floor: trunc(2)/4 == 0 prices the surcharge at 0, and the heal
+    // still lands for base(0) + level*5(40).
+    cleric->stats()->set_magicpoints(2.0f);
+    cleric->set_current_special(1);
+    why = walker::SpecialFailure::None;
+    ASSERT_TRUE(cleric->special(&why))
+        << "a heal the mp_cost gate approved must land";
+    EXPECT_EQ(walker::SpecialFailure::None, why);
+    EXPECT_FLOAT_EQ(45.0f, ally->stats()->hitpoints())
+        << "amount = base(0) + level*5(40) reaches the wounded ally";
+    EXPECT_FLOAT_EQ(0.0f, cleric->stats()->magicpoints())
+        << "the pool pays the slot price (Lua 0 + engine 2), no more";
 
     // shifter_down turns the same slot into MYSTIC MACE, which is busy-gated.
+    cleric->stats()->set_magicpoints(1.0f);
     cleric->set_current_special(1);
     cleric->set_shifter_down(1);
     cleric->set_busy(1);

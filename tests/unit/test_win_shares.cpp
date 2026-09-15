@@ -84,15 +84,20 @@ TEST(WinShares, seven_player_allied_split_matches_the_design_table)
     const std::array<std::uint8_t, 2> host = {0, 1};
     const std::array<std::uint8_t, 4> join_a = {2, 3, 4, 5};
     const std::array<std::uint8_t, 1> join_b = {6};
-    EXPECT_EQ(75u, machine_cash_share(capture, std::span<const std::uint8_t>(host)))
-        << "40 + 35";
-    EXPECT_EQ(140u,
-              machine_cash_share(capture, std::span<const std::uint8_t>(join_a)))
-        << "4 * 35";
-    EXPECT_EQ(35u,
-              machine_cash_share(capture, std::span<const std::uint8_t>(join_b)));
-    // The three machine banks conserve to the pot — no duplication.
-    EXPECT_EQ(250u, 75u + 140u + 35u);
+    const std::uint64_t host_bank =
+        machine_cash_share(capture, std::span<const std::uint8_t>(host));
+    const std::uint64_t join_a_bank =
+        machine_cash_share(capture, std::span<const std::uint8_t>(join_a));
+    const std::uint64_t join_b_bank =
+        machine_cash_share(capture, std::span<const std::uint8_t>(join_b));
+    EXPECT_EQ(75u, host_bank) << "40 + 35";
+    EXPECT_EQ(140u, join_a_bank) << "4 * 35";
+    EXPECT_EQ(35u, join_b_bank);
+    // No duplication: the three machine banks conserve to the pot the split
+    // was computed from.
+    EXPECT_EQ(std::uint64_t{capture.cash_delta[0]},
+              host_bank + join_a_bank + join_b_bank)
+        << "the three machine banks conserve to the pot";
 }
 
 // ---------------------------------------------------------------------------

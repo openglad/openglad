@@ -14,11 +14,9 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-// effect.cpp free functions the pin-the-constants tests read directly.
-void orbit_offset(int drawcycle, float &xd, float &yd);
+// effect.cpp free function the collision tests below read directly.
 short hits(short x, short y, short xsize, short ysize,
            short x2, short y2, short xsize2, short ysize2);
-std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
 
 namespace
 {
@@ -457,8 +455,9 @@ TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
 
 
 // explosion_on_death adopts itself when it has no owner, and skip_exit > 0
-// zeroes the level-derived blast range, which compute_explosion_range then
-// clamps back up to 16 -- so find_in_range reaches only 15 + 16 = 31 pixels.
+// zeroes the level-derived blast range, which packs/core/lib/effect_bomb.lua's
+// compute_explosion_range then clamps back up to 16 -- so find_in_range reaches
+// only 15 + 16 = 31 pixels.
 TEST(EffectMorePaths, effect_batch3_explosion_owner_fallback_and_skip_exit_range_clamp)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -859,25 +858,13 @@ TEST(EffectMorePaths, effect_batch6_chain_small_delta_else_branches)
 }
 
 
-TEST(EffectMorePaths, effect_round8_orbit_offset_and_default_act_death_paths)
+// A FAMILY_FLASH effect has no on_act hook, so effect::act falls through to the
+// default tail: an ANI_WALK effect has no animation left to finish, so it kills
+// itself and returns 0.
+TEST(EffectMorePaths, effect_round8_default_act_death_path)
 {
-    float x0 = 0.0f;
-    float y0 = 0.0f;
-    orbit_offset(0, x0, y0);
-    ASSERT_EQ(0, (int)x0) << "orbit offset at cycle 0 should have zero x";
-    ASSERT_EQ(-24, (int)y0) << "orbit offset at cycle 0 should have negative y arc";
-
-    float x1 = 0.0f;
-    float y1 = 0.0f;
-    orbit_offset(17, x1, y1); // wraps to index 1
-    ASSERT_EQ(-9, (int)x1) << "orbit offset should wrap every 16 cycles";
-    ASSERT_EQ(-22, (int)y1) << "orbit offset wrap y should match lookup table";
-
-    // Default effect::act path with ANI_WALK should force dead + death.
     auto eff = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::FX, FAMILY_FLASH);
-    ASSERT_TRUE(eff != nullptr) << "effect walker created";
-    if (!eff)
-        return;
+    ASSERT_NE(nullptr, eff) << "effect walker created";
 
     eff->set_ani_type(ANI_WALK);
     eff->set_dead(0);
@@ -908,12 +895,8 @@ TEST(EffectMorePaths, effect_round10_hits_overlap_and_axis_reject_paths)
 }
 
 
-TEST(EffectMorePaths, effect_round11_compute_explosion_range_clamps_and_hits_edge_touches)
+TEST(EffectMorePaths, effect_round11_hits_edge_touches)
 {
-    ASSERT_EQ(16, (int)compute_explosion_range(1, 0)) << "explosion range should clamp to minimum 16";
-    ASSERT_EQ(96, (int)compute_explosion_range(40, 0)) << "explosion range should clamp to maximum 96";
-    ASSERT_EQ(16, (int)compute_explosion_range(40, 1)) << "skip_exit branch should zero before min clamp, resulting in 16";
-
     // Boundary-touching boxes are still collisions in hits().
     ASSERT_EQ(1, (int)hits(10, 10, 10, 10, 20, 10, 5, 5)) << "touching on x edge should count as hit";
     ASSERT_EQ(1, (int)hits(10, 10, 10, 10, 10, 20, 5, 5)) << "touching on y edge should count as hit";

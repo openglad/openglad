@@ -352,7 +352,7 @@ TEST(StatsFright, walker_special_clamps_enemy_freeze_bank)
     // single golden cast is <= 300 pending).
     fx.level.world().enemy_freeze = 152; // the L12 enemy_freeze_mage golden value
     walker* cleric = add_walker(fx, FAMILY_CLERIC, 0);
-    cleric->stats()->set_magicpoints(1.0f); // heal (cost 50 in-family) fails
+    cleric->stats()->set_magicpoints(1.0f); // under the HEAL slot's mp_cost of 2: walker::special's gate refuses
     cleric->set_current_special(1);
     (void)cleric->special();
     ASSERT_EQ(152, fx.level.world().enemy_freeze)

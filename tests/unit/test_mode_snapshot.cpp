@@ -18,7 +18,7 @@
 #include <openglad/gameplay/world_snapshot.h>
 
 #include "test_game_world_fixture.h"
-#include "zlib.h"
+#include "test_zlib_helpers.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -303,46 +303,8 @@ std::size_t payload_length_from_header(const std::vector<std::uint8_t>& bytes)
            (static_cast<std::size_t>(bytes[3]) << 8);
 }
 
-std::vector<std::uint8_t> zlib_decompress_for_test(const std::uint8_t* data,
-                                                   std::size_t size)
-{
-    z_stream stream{};
-    stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data));
-    stream.avail_in = static_cast<uInt>(size);
-    EXPECT_EQ(Z_OK, inflateInit(&stream));
-
-    std::vector<std::uint8_t> output;
-    std::uint8_t chunk[512] = {};
-    int rc = Z_OK;
-    do
-    {
-        stream.next_out = chunk;
-        stream.avail_out = static_cast<uInt>(sizeof(chunk));
-        rc = inflate(&stream, Z_NO_FLUSH);
-        if (rc != Z_OK)
-        {
-            EXPECT_EQ(Z_STREAM_END, rc);
-        }
-        output.insert(output.end(), chunk,
-                      chunk + (sizeof(chunk) - stream.avail_out));
-    } while (rc != Z_STREAM_END);
-    EXPECT_EQ(Z_OK, inflateEnd(&stream));
-    return output;
-}
-
-std::vector<std::uint8_t> zlib_compress_for_test(
-    const std::vector<std::uint8_t>& payload)
-{
-    std::vector<std::uint8_t> compressed(
-        compressBound(static_cast<uLong>(payload.size())));
-    uLongf compressed_size = static_cast<uLongf>(compressed.size());
-    EXPECT_EQ(Z_OK, compress2(compressed.data(), &compressed_size,
-                              payload.data(),
-                              static_cast<uLong>(payload.size()),
-                              Z_DEFAULT_COMPRESSION));
-    compressed.resize(static_cast<std::size_t>(compressed_size));
-    return compressed;
-}
+using og::test_zlib::deflate_for_test;
+using og::test_zlib::inflate_for_test;
 
 // Rebuilds a snapshot wire message from a raw payload patched at offsets.
 std::vector<std::uint8_t> rebuild_patched_snapshot_message(
@@ -354,7 +316,7 @@ std::vector<std::uint8_t> rebuild_patched_snapshot_message(
     for (std::size_t i = 0; i < patch_count; ++i)
         raw_payload.at(patch_offset + i) = patch_value;
     const std::vector<std::uint8_t> compressed =
-        zlib_compress_for_test(raw_payload);
+        deflate_for_test(raw_payload);
 
     std::vector<std::uint8_t> message;
     message.reserve(og::sim::kTransportHeaderSize + compressed.size());
@@ -552,7 +514,7 @@ TEST(ModeSnapshot, deserializer_rejects_oversized_counts_in_crafted_payloads)
         og::sim::capture_keyframe_snapshot(fx.world());
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
     const std::size_t payload_length = payload_length_from_header(bytes);
-    const std::vector<std::uint8_t> raw_payload = zlib_decompress_for_test(
+    const std::vector<std::uint8_t> raw_payload = inflate_for_test(
         bytes.data() + og::sim::kTransportHeaderSize, payload_length);
 
     ASSERT_GE(raw_payload.size(), kQueueSizeOffset + 1 + 6);
@@ -580,7 +542,7 @@ TEST(ModeSnapshot, deserializer_nul_terminates_crafted_mode_text)
         og::sim::capture_keyframe_snapshot(fx.world());
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
     const std::size_t payload_length = payload_length_from_header(bytes);
-    const std::vector<std::uint8_t> raw_payload = zlib_decompress_for_test(
+    const std::vector<std::uint8_t> raw_payload = inflate_for_test(
         bytes.data() + og::sim::kTransportHeaderSize, payload_length);
 
     // Fill the whole 12-byte name region and the whole 26-byte hud[0] text
@@ -616,7 +578,7 @@ TEST(ModeSnapshot, deserializer_clamps_crafted_camera_style_byte)
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
     const std::size_t payload_length = payload_length_from_header(bytes);
-    const std::vector<std::uint8_t> raw_payload = zlib_decompress_for_test(
+    const std::vector<std::uint8_t> raw_payload = inflate_for_test(
         bytes.data() + og::sim::kTransportHeaderSize, payload_length);
 
     // The offsets are self-describing: the four little-endian entity-id bytes
@@ -672,7 +634,7 @@ TEST(ModeSnapshot, deserializer_clamps_crafted_respawn_queue_entries)
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
     const std::size_t payload_length = payload_length_from_header(bytes);
-    const std::vector<std::uint8_t> raw_payload = zlib_decompress_for_test(
+    const std::vector<std::uint8_t> raw_payload = inflate_for_test(
         bytes.data() + og::sim::kTransportHeaderSize, payload_length);
 
     // The one queue entry follows the queue-size byte: kind, team, family,
