@@ -1205,7 +1205,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 // keyframe + delta merge, so the canary's per-row `Parity.<scenario_id>`
 // filter sees this break.
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/world_snapshot.cpp", 2466,
+    "src/gameplay/world_snapshot.cpp", 2472,
     "snapshot.dirty_mask[i] = entity.dirty_mask_word(i);",
     "snapshot.dirty_mask[i] = 0;",
     "Captures an all-zero dirty mask for every entity of a non-keyframe snapshot. A zero mask is apply_delta's REMOVAL sentinel, so merging the delta over the keyframe baseline drops every live entity and the merged snapshot no longer matches a full capture.",

@@ -8792,3 +8792,74 @@ TEST(GameLoop, host_and_join_basketball_camera_is_compact)
 
     camera_ball_mode_teardown(display);
 }
+
+// P13: the local transport shadow drives EVERY SDL session (single player,
+// split screen, networked host). The sim pushes floating damage numbers onto
+// the AUTHORITATIVE walkers; the display renders the mirror. This pins the
+// number crossing that seam and then actually reaching the painter, in both
+// states of the OPTIONS > EFFECTS toggle.
+TEST(GameLoop, local_transport_shadow_carries_damage_numbers_to_the_display_control)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_damage_numbers"))
+        << "the shadow must be live for this test";
+
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    ASSERT_NE(nullptr, server_screen->viewob[0]);
+    walker* const sc = server_screen->viewob[0]->control;
+    ASSERT_NE(nullptr, sc) << "the authority owes seat 0 a control walker";
+
+    walker* target = nullptr;
+    for (auto& uptr : server_screen->world().oblist)
+    {
+        walker* const w = uptr.get();
+        if (w == nullptr || w == sc || w->dead() ||
+            w->query_order() != Order::Living)
+            continue;
+        target = w;
+        break;
+    }
+    ASSERT_NE(nullptr, target) << "the level owes a second living to hit";
+
+    sc->do_hit_effects(sc, target, 9);
+    ASSERT_EQ(1u, sc->damage_numbers.size())
+        << "the hit stamps the attacker's own orange copy";
+
+    og::runtime::local_transport_shadow_finish_tick(session);
+
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+    walker* const dc = game_screen->viewob[0]->control;
+    ASSERT_NE(nullptr, dc) << "the display owes seat 0 a mirror control";
+    ASSERT_NE(sc, dc) << "the display renders the MIRROR, not the authority";
+    ASSERT_EQ(sc->entity_id(), dc->entity_id())
+        << "the mirror control is the same entity";
+    ASSERT_EQ(1u, dc->damage_numbers.size())
+        << "the lifted number must land on the display mirror";
+    EXPECT_FLOAT_EQ(9.0f, dc->damage_numbers.front().value);
+    EXPECT_EQ(235, static_cast<int>(dc->damage_numbers.front().color));
+    EXPECT_TRUE(sc->damage_numbers.empty())
+        << "the authoritative list is drained by the lift";
+
+    const bool entry_damage_on = cfg.is_on("effects", "damage_numbers");
+    cfg.apply_setting("effects", "damage_numbers", "on");
+    trace_clear();
+    game_screen->redraw();
+    EXPECT_TRUE(trace_contains("damage_numbers", "value=9 color=235"))
+        << "with the toggle ON the mirror's number must reach the painter";
+
+    cfg.apply_setting("effects", "damage_numbers", "off");
+    trace_clear();
+    game_screen->redraw();
+    EXPECT_FALSE(trace_contains("damage_numbers", "value=9 color=235"))
+        << "with the toggle OFF nothing is painted";
+
+    cfg.apply_setting("effects", "damage_numbers",
+                      entry_damage_on ? "on" : "off");
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().delete_objects();
+}
