@@ -80,7 +80,18 @@ PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
   `bomb_l10_vs_cleric_l9_scen99` row, after which `--list` prints **222**,
   and `3f6e3cbd` for the review pass's fact retunes (five control captures
   identical before and after; facts and comments never reach the dumper).
-  The branch table compiles in the companion unchanged.
+  The tables are byte-identical again at companion `da657414`
+  (2026-09-15, PR #292 area H: 17 orphan family pins attached, three pin
+  definitions deleted, nine fact retunes, anchored source citations, and
+  the new `FactKind::WalkerOfOrderFamilyCount` enumerator + `pred::`
+  constructor mirrored into `tools/fact_predicate.h`) — `--list` still
+  prints **222** and three control captures are `diff -rq`-identical
+  before and after. The branch table compiles in the companion unchanged.
+  The companion header's FactKind ordinals sit one behind the branch's
+  from `WalkerOnFloor` onward (a branch-only multi-floor kind the
+  companion has no concept for and no table row names); that is harmless
+  because the companion never evaluates a FactKind — it only declares the
+  ones the shared table constructs.
 - `pkg-config` is not on the bare PATH here: run the companion build
   inside `nix develop /home/yans/code/openglad -c bash -c '...'` with the
   SDL2 `PKG_CONFIG_PATH` exported inside that shell, or the script exits
