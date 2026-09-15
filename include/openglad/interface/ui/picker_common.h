@@ -826,6 +826,26 @@ ReadyGoPresentation format_ready_go_button(bool networked,
 std::string format_go_blockers(
     const std::vector<og::sim::LobbyPlayer>& players);
 
+// The ONE reason->text mapping for a refused GO. `title`/`body` are the SDL
+// popup_dialog arguments (body lines <= 19 chars so the 46-char dialog never
+// wraps); `line` is the single-row form the curses lobby band prints. Every
+// client renders the verdict of its own start request from here, so the two
+// front ends can never drift apart or leave a reason silent.
+//
+// The switch inside is exhaustive BY DESIGN: it has no `default:` arm, so
+// -Wswitch (an error on the ci-test/ci-asan/ci-tsan lanes) is the tripwire
+// that makes a sixth StartDenialReason a build failure instead of a silent
+// swallow. MachinesNotReady consults `players` for the blocker roster; the
+// other reasons ignore it.
+struct StartDenialNotice {
+    std::string title;
+    std::string body;
+    std::string line;
+};
+StartDenialNotice describe_start_denial(
+    og::sim::StartDenialReason reason,
+    const std::vector<og::sim::LobbyPlayer>& players);
+
 // §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
 // controls its characters) / "CTRL: ALL" (players may control others'
 // characters in-level). Shared by the SDL DIFFICULTY row and the curses

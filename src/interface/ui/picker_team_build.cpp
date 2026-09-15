@@ -2737,16 +2737,17 @@ Sint32 go_menu(Sint32 arg1)
                 .count(),
             g_start_game_requested,
             static_cast<int>(wait_outcome));
-        if (wait_outcome == og::ui::StartRequestOutcome::NoAnswer)
+        // Exhaustive by design (no `default:`): -Wswitch under -Werror makes
+        // a new StartRequestOutcome a build error rather than a silent exit.
+        switch (wait_outcome)
         {
+        case og::ui::StartRequestOutcome::NoAnswer:
             TRACE("basecamp", "go_wait_timeout iterations=%llu",
                   static_cast<unsigned long long>(wait_iterations));
             popup_dialog("NO ANSWER FROM HOST",
                          "The host did not\nanswer the start\nrequest");
             return MENU_REDRAW;
-        }
-        if (wait_outcome == og::ui::StartRequestOutcome::LinkLost)
-        {
+        case og::ui::StartRequestOutcome::LinkLost:
             // Same notice the per-frame revert shows when the session is
             // declared over, said here because the GO is what the player is
             // waiting on. The link may still come back inside the reconnect
@@ -2756,36 +2757,31 @@ Sint32 go_menu(Sint32 arg1)
             popup_dialog("CONNECTION LOST",
                          "The link dropped\nbefore the host\nanswered");
             return MENU_REDRAW;
+        case og::ui::StartRequestOutcome::None:
+            // The host answered (accept or denial); the denial block below
+            // renders the verdict.
+            break;
         }
     }
 
     if (!g_start_game_requested)
     {
-        // §2.6: a server denial that beat the local pre-check (a joiner
-        // flipping unready mid-flight / the async echo race) still renders
-        // its reason — best-effort from the cached [NET-R4] echo (a repeated
-        // identical denial does not re-broadcast, and an accepted retry can
-        // blip a stale reason; both disclosed WP5 contracts).
+        // §2.6: the GO was refused, and the refusal is answered — never
+        // swallowed. `picker_lobby_last_start_denial()` is the correlated
+        // verdict of THIS start request (the client latches the server's
+        // reason at the point its own pending request drops), so the reason
+        // rendered here belongs to the press the player just made, including
+        // the no-verdict case (None: the request never went out at all).
+        // The text comes from the one shared reason->text mapping, which the
+        // curses lobby band reads too.
         if (picker_lobby_is_networked())
         {
-            switch (picker_lobby_last_start_denial())
-            {
-            case og::sim::StartDenialReason::MachinesNotReady:
-            {
-                std::string blockers =
-                    og::ui::format_go_blockers(picker_lobby_players());
-                if (blockers.empty())
-                    blockers = "Waiting for other\nmachines to ready";
-                popup_dialog("WAITING FOR:", blockers.c_str());
-                break;
-            }
-            case og::sim::StartDenialReason::NoDeployedCharacters:
-                popup_dialog("NO ONE IS DEPLOYED",
-                             "Deploy at least\none character\nbefore starting");
-                break;
-            default:
-                break;
-            }
+            const og::sim::StartDenialReason reason =
+                picker_lobby_last_start_denial();
+            const og::ui::StartDenialNotice notice =
+                og::ui::describe_start_denial(reason, picker_lobby_players());
+            TRACE("basecamp", "go_denied reason=%d", static_cast<int>(reason));
+            popup_dialog(notice.title.c_str(), notice.body.c_str());
         }
         return MENU_REDRAW;
     }

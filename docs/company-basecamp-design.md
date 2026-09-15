@@ -251,7 +251,10 @@ denial when the roster cannot satisfy the requested local views. Every start
 request is answered, and the denial is echoed to the requesting machine only
 (never to the rest of the lobby), so a machine can only ever read the verdict
 for its own request; a start request from a machine that is not the host is
-denied `NotHost`.
+denied `NotHost`. Every client renders the verdict of its own request — the SDL
+client as a GO popup, the curses client on the lobby band — including
+`StageFailed` and the no-verdict case, from a single reason-to-text mapping
+(`describe_start_denial`), so no refused GO is ever silent.
 
 ### 4.4 Ownership and controls
 

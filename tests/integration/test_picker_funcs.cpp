@@ -2088,7 +2088,42 @@ TEST(PickerFuncs, go_menu_surfaces_each_authoritative_start_denial)
     EXPECT_TRUE(trace_contains(
         "popup", "Deploy at least\none character\nbefore starting"))
         << "a late authoritative roster denial must identify deployment";
-    EXPECT_EQ(2, client.request_start_calls);
+
+    // Q1: the three verdicts the old switch swallowed through its `default:`
+    // arm. Each one is the correlated answer to THIS press, so each one gets
+    // a popup — the refused GO is never silent.
+    client.denial_result = og::sim::StartDenialReason::NotHost;
+    g_start_game_requested = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains(
+        "popup", "ONLY THE HOST CAN START: Only the host"))
+        << "a guest's start request names the host rule";
+    EXPECT_TRUE(trace_contains("basecamp", "go_denied reason=1"))
+        << "the refused GO names its reason";
+
+    client.denial_result = og::sim::StartDenialReason::StageFailed;
+    g_start_game_requested = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains(
+        "popup", "STAGING FAILED: The level could"))
+        << "an owner stage failure is the reason the old default arm swallowed";
+    EXPECT_TRUE(trace_contains("basecamp", "go_denied reason=4"))
+        << "the refused GO names its reason";
+
+    client.denial_result = og::sim::StartDenialReason::None;
+    g_start_game_requested = false;
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW, go_menu(0));
+    EXPECT_TRUE(trace_contains(
+        "popup", "COULD NOT START: The start request"))
+        << "a press that produced no verdict still answers the player";
+    EXPECT_TRUE(trace_contains("basecamp", "go_denied reason=0"))
+        << "every refused GO names its reason in the log, None included";
+
+    EXPECT_EQ(5, client.request_start_calls)
+        << "each of the five reasons was reached through a real GO press";
 }
 
 // (do_load retired with the slot menus; the lobby sync-on-load behavior is

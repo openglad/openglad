@@ -2720,6 +2720,159 @@ TEST(PickerCommon, scenario_report_degradation_lines_are_honest)
     EXPECT_EQ("PREVIEW UNAVAILABLE", failed_nothing_lines[1]);
 }
 
+// --- The refused-GO notice (Q1) ---------------------------------------------
+
+namespace {
+
+std::vector<std::string> split_denial_lines(const std::string& text)
+{
+    std::vector<std::string> lines;
+    std::size_t start = 0;
+    for (;;)
+    {
+        const std::size_t newline = text.find('\n', start);
+        if (newline == std::string::npos)
+        {
+            lines.push_back(text.substr(start));
+            return lines;
+        }
+        lines.push_back(text.substr(start, newline - start));
+        start = newline + 1;
+    }
+}
+
+og::sim::LobbyPlayer make_denial_player(og::sim::LobbyMachineId machine,
+                                        std::uint8_t index,
+                                        std::string company,
+                                        bool is_host,
+                                        bool ready)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = index;
+    player.machine_id = machine;
+    player.name = std::format("seat-{}", index);
+    player.company = std::move(company);
+    player.is_host = is_host;
+    player.ready = ready;
+    return player;
+}
+
+} // namespace
+
+// Q1: describe_start_denial is the ONE reason->text mapping behind a refused
+// GO (SDL popup title/body, curses band line). Every StartDenialReason value
+// must produce text — a silent arm is the defect this exists to prevent — and
+// the strings are pinned EXACTLY because two front ends and the existing
+// popup/band pins read them.
+TEST(PickerCommon, start_denial_notice_maps_every_reason)
+{
+    const std::vector<og::sim::LobbyPlayer> no_players;
+
+    struct ExpectedNotice
+    {
+        og::sim::StartDenialReason reason;
+        const char* title;
+        const char* body;
+        const char* line;
+    };
+    const ExpectedNotice expected[] = {
+        {og::sim::StartDenialReason::None,
+         "COULD NOT START",
+         "The start request\nwas not sent.\nTry GO again",
+         "Could not start"},
+        {og::sim::StartDenialReason::NotHost,
+         "ONLY THE HOST CAN START",
+         "Only the host\ncan start\nthe game",
+         "Only the host can start"},
+        {og::sim::StartDenialReason::MachinesNotReady,
+         "WAITING FOR:",
+         "Waiting for other\nmachines to ready",
+         "Waiting for other machines"},
+        {og::sim::StartDenialReason::NoDeployedCharacters,
+         "NO ONE IS DEPLOYED",
+         "Deploy at least\none character\nbefore starting",
+         "No one is deployed"},
+        {og::sim::StartDenialReason::StageFailed,
+         "STAGING FAILED",
+         "The level could\nnot be staged.\nChange the level\nor roster, then\n"
+         "try GO again",
+         "Staging failed: change the level or roster"},
+    };
+    ASSERT_EQ(5u, std::size(expected))
+        << "every StartDenialReason enumerator needs a row here; the formatter "
+           "switch has no default arm, so a sixth reason is a build error";
+
+    for (const ExpectedNotice& row : expected)
+    {
+        const int reason_value =
+            static_cast<int>(og::sim::start_denial_reason_value(row.reason));
+        const og::ui::StartDenialNotice notice =
+            og::ui::describe_start_denial(row.reason, no_players);
+        EXPECT_EQ(row.title, notice.title)
+            << "reason " << reason_value << " popup title";
+        EXPECT_EQ(row.body, notice.body)
+            << "reason " << reason_value << " popup body";
+        EXPECT_EQ(row.line, notice.line)
+            << "reason " << reason_value << " curses band line";
+        EXPECT_FALSE(notice.title.empty())
+            << "reason " << reason_value << " must never render silently";
+        EXPECT_FALSE(notice.body.empty())
+            << "reason " << reason_value << " must never render silently";
+        EXPECT_FALSE(notice.line.empty())
+            << "reason " << reason_value << " must never render silently";
+        for (const std::string& body_line : split_denial_lines(notice.body))
+        {
+            EXPECT_LE(body_line.size(), 19u)
+                << "reason " << reason_value << " body line does not fit the "
+                << "46-char popup: '" << body_line << "'";
+        }
+        EXPECT_LE(notice.line.size(), 48u)
+            << "reason " << reason_value << " band line overflows the lobby "
+            << "row: '" << notice.line << "'";
+    }
+
+    // MachinesNotReady with a live blocker roster: the body IS the shared
+    // blocker formatter's output (one implementation of "who are we waiting
+    // for"), not a second rendering of it; the fallback above is only for the
+    // roster that names nobody.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_denial_player(1, 0, "Host Company", true, true),
+        make_denial_player(2, 1, "Late Company", false, false),
+    };
+    const std::string blockers = og::ui::format_go_blockers(players);
+    ASSERT_EQ("Late Company", blockers)
+        << "fixture must produce exactly one blocker row";
+    const og::ui::StartDenialNotice roster_notice =
+        og::ui::describe_start_denial(
+            og::sim::StartDenialReason::MachinesNotReady, players);
+    EXPECT_EQ("WAITING FOR:", roster_notice.title);
+    EXPECT_EQ(blockers, roster_notice.body)
+        << "the blocker roster is carried through verbatim";
+    EXPECT_EQ("Waiting for other machines", roster_notice.line)
+        << "the band line never grows the roster";
+    for (const std::string& body_line : split_denial_lines(roster_notice.body))
+    {
+        // format_go_blockers clips a machine label to 26 chars, so the roster
+        // body's ceiling is the blocker clip, not the 19 of the fixed bodies.
+        EXPECT_LE(body_line.size(), 26u)
+            << "blocker row overflows the popup: '" << body_line << "'";
+    }
+
+    // The other four reasons ignore the roster entirely: same text with or
+    // without players, so a stale roster can never leak into their popups.
+    for (const ExpectedNotice& row : expected)
+    {
+        if (row.reason == og::sim::StartDenialReason::MachinesNotReady)
+            continue;
+        const og::ui::StartDenialNotice with_players =
+            og::ui::describe_start_denial(row.reason, players);
+        EXPECT_EQ(row.body, with_players.body)
+            << "reason " << static_cast<int>(row.reason)
+            << " must not consult the roster";
+    }
+}
+
+
 // --- Player seats in the View Level report (#218 seat block) ----------------
 
 namespace {
