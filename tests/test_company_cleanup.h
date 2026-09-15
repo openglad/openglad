@@ -13,16 +13,21 @@
 
 // --- [SAVE-R9] structural company-litter reap ------------------------------
 //
-// Defined in tests/integration/integration_main.cpp. Declared here so tests
-// can drive the harness rule directly (tests/integration/
-// test_company_litter_guard.cpp is the pin) rather than only observe it.
+// Defined in tests/integration/integration_main.cpp as a thin wrapper around
+// the shared rule in tests/company_litter_reap.h (the curses harness runs the
+// same rule). Declared here so tests can drive it directly
+// (tests/integration/test_company_litter_guard.cpp is the pin) rather than
+// only observe it.
 
 // Seeds comma-separated stray company slots into save/ AND into the process
 // baseline, the [SAVE-R5](c) diagnostic's own entry point.
 void seed_stray_company_slots(const std::string& csv);
 
-// Deletes every save/*.gtl (except netsession.gtl) and every
-// save/backups/<slot>.NNN.gtl whose slot is not in the baseline.
+// Deletes every save/ artifact whose name carries ".gtl" — "<slot>.gtl" and
+// the four atomic-save / backup-restore staging names ("<slot>.tmp.gtl",
+// "<slot>.gtl.tmp", "<slot>.gtl.restoretmp", "<slot>.gtl.restoretmp.tmp") —
+// and every save/backups/<slot>.NNN.gtl whose slot is not in the baseline.
+// The "netsession" slot is the one exemption.
 void reap_non_baseline_companies();
 
 // The slots that existed before the first test ran, plus every stray seeded
@@ -31,7 +36,7 @@ const std::set<std::string>& integration_company_baseline();
 
 // [SAVE-R9] The per-test half of this rule is STRUCTURAL now and lives in
 // tests/integration/integration_main.cpp: reset_integration_ui_state() runs
-// between every pair of tests and deletes every save/*.gtl and
+// between every pair of tests and deletes every save/ company artifact and
 // save/backups/*.gtl whose slot is not in the process baseline (the
 // [SAVE-R5](c) stray-slot seeds), save0 included. Nothing a test writes
 // survives into the next test, so no test needs a teardown reaper.

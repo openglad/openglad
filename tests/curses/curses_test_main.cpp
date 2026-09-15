@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+
+#include "company_litter_reap.h"
 
 void io_init(int argc, char* argv[]);
 void io_exit();
@@ -52,6 +55,16 @@ std::vector<std::string>& campaign_mount_leaks()
 {
     static std::vector<std::string> leaks;
     return leaks;
+}
+
+// [SAVE-R9] The company slots that exist BEFORE the first test runs. In the
+// fresh per-PID config dir this suite creates it is empty — save0 included,
+// so save0 is reaped like any other litter. Snapshotted in main() right after
+// io_init() so nothing a test writes can join it.
+std::set<std::string>& curses_company_baseline()
+{
+    static std::set<std::string> baseline;
+    return baseline;
 }
 
 // Restores the headless session's gameplay context between tests so a test that
@@ -95,6 +108,12 @@ public:
         session_.game_.session_rng_ref = &session_.ctx_.rng;
         session_.game_.gameplay_active_ref = &session_.gameplay_active_;
         session_.gameplay_active_ = false;
+        // [SAVE-R9] Structural company-litter reap: delete every company
+        // artifact and backup this test wrote. Same rule, same implementation
+        // as the SDL integration harness — tests/company_litter_reap.h — and
+        // pinned here by the a/b pair in
+        // tests/curses/test_curses_company_litter_guard.cpp.
+        og_test::reap_companies_outside_baseline(curses_company_baseline());
         // [SAVE-R8] Structural active-company reset: CursesPickerClient's
         // constructor asserts terminal slot authority, so every picker test
         // repoints the process-wide slot; restore the default between tests.
@@ -131,6 +150,15 @@ int main(int argc, char** argv)
 
     init_logging();
     io_init(argc, argv);
+    // [SAVE-R9] Snapshot the process baseline before any test can write:
+    // every slot already on disk is permanent and survives every reap. Listing
+    // the directory rather than assuming it is empty also covers anything a
+    // future harness pre-write puts there.
+    for (const std::string& name : list_files("save")) {
+        if (name.find(".gtl") == std::string::npos)
+            continue;
+        curses_company_baseline().insert(name.substr(0, name.find('.')));
+    }
     cfg.load_settings();
     init_all_registries();
 

@@ -1145,6 +1145,7 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_hosted_pack_sync.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_mount_guard.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_company_litter_guard.cpp
         ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
         ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
         ${OG_CURSES_LIB_SOURCES}
