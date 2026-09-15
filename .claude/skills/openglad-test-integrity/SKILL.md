@@ -47,6 +47,50 @@ a postcondition, not that the call returned. Every test asserts a
 specific expected value or state transition. Before claiming a coverage
 number, self-audit your new tests against this list.
 
+## Proving a test has teeth (planted breaks)
+
+Every fixed or new test is proven by breaking the product and watching it
+go red:
+
+1. Plant the break in src/ — the most natural one-line break of the rule
+   the test names: an early return, a flipped comparison, a wrong
+   constant. For a source tripwire (a test whose oracle is the source
+   tree) the plant goes in the sources it scans, not in src/.
+2. Batch independent mutations in different functions: one build, one run
+   of the group's binaries, each test red for ITS mutation. Two mutations
+   that could mask each other go in separate batches.
+3. Record per test the mutation (file:line, old → new) and the
+   `[  FAILED  ]` line it produced.
+4. Revert src/, rebuild, rerun: green again. `git status --short src
+   include packs` is empty before you commit — a planted break is never
+   committed.
+
+A test that stays green under its mutation is not fixed: strengthen it,
+or find the observable the rule actually moves.
+
+Plant breaks that compile. Every CI preset sets
+`OPENGLAD_WARNINGS_AS_ERRORS=ON` over `-Wall -Wextra -Wpedantic
+-Wconversion -Wsign-conversion -Wshadow` (CMakeLists.txt,
+`OG_WARNING_FLAGS`), so a mutation that does not build proves nothing and
+costs a rebuild. The forms that survive -Werror:
+
+- Prepend the early exit and brace it — `if (true) { return v; }` — above
+  the old body rather than replacing it, so the function's parameters and
+  locals stay used.
+- Do not plant into the body of an unbraced `if`/`for`/`while`: the plant
+  becomes that body, orphans the statement under it, and GCC reports
+  `this 'if' clause does not guard... [-Werror=misleading-indentation]`.
+  Bracing the plant does not cure that one — move it into a braced block.
+- Replacing a body wholesale needs `(void)` on every parameter and local
+  the old body read: `(void)x; (void)y; return true;`. Otherwise
+  -Wunused-parameter and -Wunused-but-set-variable fire.
+- Substituting a value for a parameter keeps a read of it: `alpha | 0xFF`,
+  not `255`; an out-parameter forced to `nullptr` needs `(void)r;`.
+- Deleting a variable's last writer leaves it set-but-unused: `(void)name;`.
+- Constants must match the target type and must not shadow: `return -1;`
+  from an `unsigned char` function is an error under -Wsign-conversion,
+  and a plant that re-declares a live local name is one under -Wshadow.
+
 ## Coverage run mechanics (local)
 
 - Judge a change by the local baseline→change DELTA in a worktree, not
@@ -108,7 +152,7 @@ test after the failure never ran.
 - Never bump a deadline to fix a timing-flaky test: measure the real
   cost, fix it, then convert the flat delay into a wait-on-condition
   with a generous ceiling, and prove the wait can still fail by planting
-  a break. Gate cost regressions with counts (call counts), not clocks.
+  a break (see "Proving a test has teeth"). Gate cost regressions with counts (call counts), not clocks.
 
 ## Tests that hang (the three known traps)
 
