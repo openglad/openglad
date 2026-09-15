@@ -1596,6 +1596,26 @@ set_tests_properties(parity_runner_smoke_cli PROPERTIES
     TIMEOUT 120
 )
 
+# The mutation canary's PLAN half: selection, pin grouping, the staged-packs
+# precondition and the fixture preflight. Nothing here mutates a source file or
+# builds anything — `--plan` is exactly "say what a run would do" — but it does
+# briefly hide temp/scen/scen99.fss to prove the preflight names it, which is
+# the same source-tree fixture og_test_level produces and og_test_parity
+# consumes. So it joins that pair's lock and ordering rather than racing them.
+add_test(NAME mutation_canary_plan_cli
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_mutation_canary_plan.sh
+        $<TARGET_FILE:og_test_parity>
+        $<TARGET_FILE:parity_runner_smoke>
+)
+set_tests_properties(mutation_canary_plan_cli PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    RESOURCE_LOCK source_scenario_fixtures
+    DEPENDS og_test_level
+    TIMEOUT 120
+)
+
 add_test(NAME openglad_text_picker_interactive
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
 )

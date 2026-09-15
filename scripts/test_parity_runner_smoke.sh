@@ -98,10 +98,13 @@ if grep -Fq '"indeterminate": true' <<<"$facts_output"; then
 fi
 
 # A row that builds its own arena is exempt from the load requirement: the
-# four scen9301 rows point at a header-only fixture on purpose, and
-# run_mutation_canary_runtime.py --all walks them. (The exemption is keyed on
-# that fixture, not on is_branch_internal — treasure_exit_open_prompt_scen99
-# is branch-internal and loads a real level.)
+# four scen9301 rows point at a header-only fixture on purpose and paint their
+# whole arena from spawns instead, so "the level did not load" is the expected
+# outcome there rather than a broken mount. (The exemption is keyed on that
+# fixture, not on is_branch_internal — treasure_exit_open_prompt_scen99 is
+# branch-internal and loads a real level.) The mutation canary never walks
+# those four: they are branch-internal, and canary_plan.py excludes
+# branch-internal rows exactly as lint.parse_scenarios does.
 env OPENGLAD_CONFIG_DIR="$healthy_dir" \
     "$smoke_bin" --scenario snapshot_dirty_bits_scen9301 \
     --out "$test_root/internal.json" >/dev/null 2>&1 ||
