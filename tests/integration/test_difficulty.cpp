@@ -10,8 +10,10 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include "test_click_ladder.h"
+#include "test_escape_tail.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -70,13 +72,35 @@ static void cleanup_picker_state()
 //      main menu, where GAME SETTINGS opens and closes cleanly
 
 struct DifficultyState {
-    bool started;
-    bool finished;
-    bool entered_submenu;
-    bool cycled_settings;
-    bool reached_base_camp;
-    bool returned_to_base_camp;
+    bool started = false;
+    bool finished = false;
+    bool entered_submenu = false;
+    bool cycled_settings = false;
+    bool reached_base_camp = false;
+    bool returned_to_base_camp = false;
+    // Set by the MAIN thread after picker_main returns, never by the
+    // injector -- it is what tells the escape tail the menus are gone.
+    std::atomic<bool> test_finished{false};
+    // Point one leg at an id the flow never publishes, so the give-up path
+    // itself is exercised by a committed test rather than by a defect.
+    int sabotage_leg = 0;
 };
+
+// The sabotaged leg waits for an id nothing ever publishes, and clicks an id
+// nothing answers, so the main thread stays exactly where that leg gave up.
+// The window is short on purpose: nothing is coming, and the point of that
+// run is the tail.
+static constexpr int kSabotageWaitMs = 500;
+
+static const char* leg_id(const DifficultyState* state, int leg, const char* id)
+{
+    return state->sabotage_leg == leg ? "never_published_row" : id;
+}
+
+static int leg_wait(const DifficultyState* state, int leg, int wait_ms)
+{
+    return state->sabotage_leg == leg ? kSabotageWaitMs : wait_ms;
+}
 
 // The value ladder that drives every cycler lap below -- click the row, prove
 // the value it STORES moved on the menu thread, re-click on the documented
@@ -97,24 +121,32 @@ static int difficulty_injector(void* data)
     DifficultyState* state = static_cast<DifficultyState*>(data);
     state->started = true;
 
+    // Every give-up below goes through the shared escape tail
+    // (tests/test_escape_tail.h) with a numbered leg. A bare `return 0` here
+    // leaves the MAIN thread blocked inside picker_main with nothing left to
+    // click it free, and the binary rides to the 420 s CTest ceiling instead
+    // of naming the leg that quit.
+    // Difficulty.a_leg_that_gives_up_frees_the_main_thread is the regression.
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why);
+    };
+
     // The door lives in Base Camp now, so the flow starts with CONTINUE.
     wait_for_interactable("continue_game", 5000);
     wait_for_menu_frames(2);
     interact("continue_game");
-    if (!wait_for_interactable("difficulty", 10000)) {
-        fprintf(stderr, "  [test] Base Camp never showed the DIFFICULTY door\n");
-        return 0;
-    }
+    if (!wait_for_interactable(leg_id(state, 1, "difficulty"),
+                               leg_wait(state, 1, 10000)))
+        return escape(1, "Base Camp never showed the DIFFICULTY door");
     state->reached_base_camp = true;
     wait_for_menu_frames(2);
 
     // Open the DIFFICULTY door.
     fprintf(stderr, "  [test] clicking difficulty (door)\n");
-    interact("difficulty");
-    if (!wait_for_interactable("difficulty_back", 5000)) {
-        fprintf(stderr, "  [test] DIFFICULTY subscreen never appeared\n");
-        return 0;
-    }
+    interact(leg_id(state, 2, "difficulty"));
+    if (!wait_for_interactable(leg_id(state, 2, "difficulty_back"),
+                               leg_wait(state, 2, 5000)))
+        return escape(2, "the DIFFICULTY subscreen never appeared");
     state->entered_submenu = true;
     wait_for_menu_frames(2);
 
@@ -141,10 +173,8 @@ static int difficulty_injector(void* data)
     // Base Camp, not unwind it.
     fprintf(stderr, "  [test] clicking difficulty_back\n");
     interact("difficulty_back");
-    if (!wait_for_interactable("go", 5000)) {
-        fprintf(stderr, "  [test] Base Camp did not survive the nested BACK\n");
-        return 0;
-    }
+    if (!wait_for_interactable(leg_id(state, 3, "go"), leg_wait(state, 3, 5000)))
+        return escape(3, "Base Camp did not survive the nested BACK");
     state->returned_to_base_camp = true;
     wait_for_menu_frames(2);
     EXPECT_TRUE(has_interactable("difficulty"))
@@ -165,8 +195,9 @@ static int difficulty_injector(void* data)
         << "seat lifecycle belongs to the live Base Camp roster";
     fprintf(stderr, "  [test] clicking GAME SETTINGS\n");
     interact("options");
-    if (!wait_for_interactable("options_back", 5000))
-        return 0;
+    if (!wait_for_interactable(leg_id(state, 4, "options_back"),
+                               leg_wait(state, 4, 5000)))
+        return escape(4, "GAME SETTINGS never opened");
     wait_for_menu_frames(2);
     // Player controls are per-seat now: GAME SETTINGS must not carry the
     // retired global CONTROLS door or its RESET ALL.
@@ -176,7 +207,10 @@ static int difficulty_injector(void* data)
     interact("options_back");
 
     state->finished = true;
-    return 0;
+    // The flow's last BACK belongs to the tail for the same reason every
+    // give-up does: picker_main returns under it, and after that return
+    // there is no pump left to service a ladder's acknowledge post.
+    return escape(0, "");
 }
 
 TEST(Difficulty, submenu_door_flow) {
@@ -203,7 +237,7 @@ TEST(Difficulty, submenu_door_flow) {
         << "save0 must be seeded as the most recent company on disk";
     og::runtime::current_session->current_difficulty_ = 1;
 
-    DifficultyState state = { false, false, false, false, false, false };
+    DifficultyState state;
     SDL_Thread* thread = SDL_CreateThread(difficulty_injector, "difficulty_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -213,12 +247,17 @@ TEST(Difficulty, submenu_door_flow) {
     g_picker_max_mainmenu_calls = 2;
 
     picker_main(0, nullptr);
+    state.test_finished.store(true);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
 
     // The flow's whole claim is about THIS company's settings. CONTINUE
     // opens the most recent company on disk, not the one a test happened to
@@ -244,6 +283,67 @@ TEST(Difficulty, submenu_door_flow) {
     EXPECT_EQ(0, after.keep_fallen_heroes) << "permadeath should be back at On";
     EXPECT_EQ(0, after.generator_rate) << "generators should be back at Normal";
     EXPECT_EQ(0, after.infinite_gold) << "infinite gold should be back at Off";
+}
+
+// The regression for the wedge itself, and the reason every give-up above is
+// spelled `return escape(N, ...)`.
+//
+// Leg 2 is the worst arm in this file: the main thread is already INSIDE Base
+// Camp when the leg quits, and the sabotage points both the CLICK and the
+// EDGE at an id nothing publishes, so no subscreen the tail cannot close is
+// left open. The tail then has to walk BACK -> main menu until the iteration
+// cap makes present_menu answer Quit; only then does picker_main return and
+// SDL_WaitThread join.
+//
+// Restore the bare `return 0;` this arm carried before PR #292 and this test
+// hangs to the 420 s CTest ceiling instead of naming the leg.
+TEST(Difficulty, a_leg_that_gives_up_frees_the_main_thread)
+{
+    trace_clear();
+
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
+
+    DifficultyState state;
+    state.sabotage_leg = 2;
+    SDL_Thread* thread =
+        SDL_CreateThread(difficulty_injector, "difficulty_escape_test", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    // One capped pass: leg 2 gives up with the main thread inside Base Camp,
+    // so the tail's single BACK is all it takes to reach the cap.
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.started) << "the injector thread never ran";
+    EXPECT_EQ(2, thread_result)
+        << "the sabotaged leg must be reported by number, not swallowed";
+    EXPECT_TRUE(state.reached_base_camp)
+        << "leg 2 is the deep arm: it only fires after Base Camp published "
+           "the DIFFICULTY door";
+    EXPECT_FALSE(state.entered_submenu)
+        << "a flow that gave up at leg 2 never opened the subscreen";
+    EXPECT_FALSE(state.cycled_settings)
+        << "a flow that gave up at leg 2 never cycled a row";
+    EXPECT_FALSE(state.finished)
+        << "a flow that gave up at leg 2 never completed";
 }
 
 // Infinite gold is a SESSION-ONLY setting: the wallet is never inflated and

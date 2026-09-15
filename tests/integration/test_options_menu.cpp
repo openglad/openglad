@@ -21,6 +21,7 @@
 #include "test_input_helpers.h"
 #include "test_company_cleanup.h"
 #include "test_interact.h"
+#include "test_escape_tail.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/interface/ui/picker_common.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -189,7 +190,24 @@ struct OptionsState {
     // save/restore pair, leave the display screen on cleared cfg values), so
     // the whole flow is only meaningful while this stays true.
     bool main_thread_tasks_all_ran = true;
+    // Point one leg at an id the flow never publishes, so the give-up path
+    // itself is exercised by a committed test rather than by a defect.
+    int sabotage_leg = 0;
 };
+
+// The sabotaged leg waits for an id nothing ever publishes. Its window is
+// short on purpose: nothing is coming, and the point of that run is the tail.
+static constexpr int kSabotageWaitMs = 500;
+
+static const char* leg_id(const OptionsState* state, int leg, const char* id)
+{
+    return state->sabotage_leg == leg ? "never_published_row" : id;
+}
+
+static int leg_wait(const OptionsState* state, int leg, int wait_ms)
+{
+    return state->sabotage_leg == leg ? kSabotageWaitMs : wait_ms;
+}
 
 // blood.png is solid palette index 40 (the red); blood_friendly.png is drawn
 // from the grey/white indices instead. Whether the loader's live BLOOD sprite
@@ -585,11 +603,26 @@ static int options_injector(void* data)
     OptionsState* state = static_cast<OptionsState*>(data);
     state->started = true;
 
+    // Every give-up goes through the shared escape tail
+    // (tests/test_escape_tail.h) with a numbered leg. A bare `return 0` here
+    // leaves the MAIN thread blocked inside picker_main with nothing left to
+    // click it free, and the binary rides to the 420 s CTest ceiling instead
+    // of naming the leg that quit -- and `state->finished = true` on an arm
+    // that reached nothing is the banned shape besides: a wholly failed flow
+    // satisfied the caller's completion oracle.
+    // OptionsMenu.a_leg_that_gives_up_frees_the_main_thread is the regression.
+    //
+    // picker_returned IS the tail's flag: the MAIN thread stores it right
+    // after picker_main returns (TEST(OptionsMenu, options_menu) below), so
+    // it means exactly what escape_to_the_main_thread asks of it.
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->picker_returned, leg, why);
+    };
+
     // Wait for the main menu, then enter the shared settings family.
-    if (!wait_for_interactable("options", 5000)) {
-        state->finished = true;
-        return 0;
-    }
+    if (!wait_for_interactable(leg_id(state, 1, "options"),
+                               leg_wait(state, 1, 5000)))
+        return escape(1, "the main menu never published options");
     wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking options\n");
@@ -886,27 +919,20 @@ static int options_injector(void* data)
         }
     }
 
-    // Ensure mainmenu() returns so picker_main() can complete. Coverage builds
-    // can redraw the main menu slowly after leaving options, so use Escape to
-    // unwind whichever menu is currently active. A successful BACK already
-    // returned picker_main under this test's one-call cap and needs no input.
-    if (!state->used_options_back) {
-        const Uint64 quit_deadline = SDL_GetTicks() + 3000;
-        while (SDL_GetTicks() < quit_deadline) {
-            if (has_interactable("quit")) {
-                SDL_Delay(80);
-                fprintf(stderr, "  [test] clicking quit\n");
-                interact("quit");
-                break;
-            }
-
-            inject_key_press(SDLK_ESCAPE, 20);
-            SDL_Delay(150);
-        }
-    }
-
     state->finished = true;
-    return 0;
+    // Ensure mainmenu() returns so picker_main() can complete. A successful
+    // BACK already returned picker_main under this test's one-call cap, and
+    // then this is a no-op that observes picker_returned and leaves. When
+    // BACK did NOT land, this is the only way out.
+    //
+    // What used to stand here was a 3000 ms clock that pushed SDLK_ESCAPE at
+    // whatever screen was up. Both halves were wrong: a PUSHED key is not a
+    // keystate (tests/test_input_helpers.h), so the engine screens -- which
+    // read keystates_[hotkey] -- never saw it, and when the clock ran out the
+    // injector returned anyway and left the main thread blocked. The shared
+    // tail goes FORWARD through the main menu instead (CONTINUE -> Base Camp
+    // -> BACK), which is what actually reaches the iteration cap.
+    return escape(0, "");
 }
 
 // Direct coverage of the display-settings apply: all three mode branches and
@@ -1193,9 +1219,13 @@ TEST(OptionsMenu, options_menu) {
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
 
     // NO active-company oracle here, deliberately. Measured: this flow goes
     // straight from the main menu into SETTINGS and never clicks CONTINUE,
@@ -1329,6 +1359,69 @@ TEST(OptionsMenu, options_menu) {
         << "the eagle smoothing step must reach the renderer";
 }
 
+
+// The regression for the wedge itself, and the reason the give-up above is
+// spelled `return escape(1, ...)`.
+//
+// Leg 1 is pointed at an id the main menu never publishes, so the injector
+// quits with the MAIN thread blocked in the very first mainmenu() call. The
+// escape tail then has to walk CONTINUE -> Base Camp -> BACK until the
+// iteration cap makes present_menu answer Quit; only then does picker_main
+// return and SDL_WaitThread join.
+//
+// Restore the `state->finished = true; return 0;` this arm carried before
+// PR #292 and this test hangs to the 420 s CTest ceiling instead of naming
+// the leg -- and the caller's `finished` oracle reads green on a flow that
+// reached nothing.
+TEST(OptionsMenu, a_leg_that_gives_up_frees_the_main_thread)
+{
+    trace_clear();
+
+    // The tail's way out is CONTINUE -> Base Camp -> BACK, so the flow needs
+    // a company for CONTINUE to open, seeded through the stamping choke
+    // point like every other flow in this binary.
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
+
+    OptionsState state = {};
+    state.sabotage_leg = 1;
+    state.initial_control_mode = get_player_control_mode(0);
+    SDL_Thread* thread =
+        SDL_CreateThread(options_injector, "options_escape_test", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    // One capped pass: the tail's CONTINUE spends it, and its BACK then meets
+    // the cap.
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+    state.picker_returned.store(true, std::memory_order_release);
+
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.started) << "the injector thread never ran";
+    EXPECT_EQ(1, thread_result)
+        << "the sabotaged leg must be reported by number, not swallowed";
+    EXPECT_FALSE(state.saw_options)
+        << "leg 1 gave up before it ever saw the settings screen";
+    EXPECT_FALSE(state.finished)
+        << "a flow that gave up at leg 1 never completed";
+    EXPECT_FALSE(state.used_options_back)
+        << "leg 1 never reached the BACK it exists to prove";
+}
 
 // Every prompt the remap wizard draws consumes exactly one key event, and
 // under TESTING each consumption traces the fake ESC that keeps the existing
