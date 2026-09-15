@@ -67,9 +67,7 @@ static_assert((seed_for_roll(65) * kLcgMul + kLcgInc) == post_roll_state(65));
 struct BatteryFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0; // legacy sim-context slot (world owns the live bank)
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     BatteryFixture()
@@ -78,7 +76,7 @@ struct BatteryFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     // Script the next world-RNG draw to return exactly `roll`.
@@ -102,7 +100,6 @@ living* add_living(BatteryFixture& fx, char family, unsigned char team,
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);

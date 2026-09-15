@@ -64,7 +64,6 @@ struct SeqRandom final : IRandom {
 struct R17Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     ScopedGameplayContext gameplay;
@@ -75,7 +74,7 @@ struct R17Fixture {
     {
         init_family_registry();
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -91,7 +90,6 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -110,7 +108,6 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -572,16 +569,14 @@ public:
 struct MovementFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     MovementFixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -601,7 +596,6 @@ walker* add_living(MovementFixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -829,7 +823,6 @@ TEST(CoverageMisc, coverage_r18_family_cleric_check_special_default_false)
     MovementFixture fx;
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
-    bind_test_entity_sim_context(fx.level, &self);
     self.set_current_special(1);
     self.stats()->set_max_magicpoints(100.0f);
     self.stats()->set_magicpoints(1.0f);
@@ -1151,7 +1144,6 @@ struct SeqRandom final : IRandom {
 struct R19Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     ScopedGameplayContext gameplay;
@@ -1162,7 +1154,7 @@ struct R19Fixture {
     {
         init_family_registry();
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -1178,7 +1170,6 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -1455,7 +1446,6 @@ struct SequenceRandom final : IRandom {
 struct R20Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     ConstantRandom rng{1};
     ScopedGameplayContext gameplay;
@@ -1468,7 +1458,7 @@ struct R20Fixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
 
         gc.rng = &rng;
 
@@ -1485,7 +1475,6 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -1507,7 +1496,6 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -1823,7 +1811,6 @@ struct SeqRandom final : IRandom {
 struct FinalR16Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
     ScopedGameplayContext gameplay;
@@ -1836,7 +1823,7 @@ struct FinalR16Fixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -1852,7 +1839,6 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -1871,7 +1857,6 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);

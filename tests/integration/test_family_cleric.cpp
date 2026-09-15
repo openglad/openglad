@@ -166,9 +166,7 @@ namespace {
 struct ClericFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     ClericFixture()
@@ -177,7 +175,7 @@ struct ClericFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -185,7 +183,6 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -417,16 +414,14 @@ namespace {
 struct ClericR12Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     ClericR12Fixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -434,7 +429,6 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -634,7 +628,6 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
 
     auto s = std::make_unique<living>();
     s->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, s.get());
     s->setxy(60, 60);
     s->set_team_num(0);
     s->stats()->set_level(6);
@@ -683,8 +676,6 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
 
     auto t1 = std::make_unique<treasure>();
     auto t2 = std::make_unique<treasure>();
-    bind_test_entity_sim_context(fx.level, t1.get());
-    bind_test_entity_sim_context(fx.level, t2.get());
     t1->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t2->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t1->stats()->set_level(3);
@@ -759,7 +750,6 @@ namespace {
 struct ClericR14Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     ScopedGameplayContext gameplay;
@@ -769,7 +759,7 @@ struct ClericR14Fixture {
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -785,7 +775,6 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -990,7 +979,6 @@ namespace {
 struct ClericR15Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     ScopedGameplayContext gameplay;
@@ -1000,7 +988,7 @@ struct ClericR15Fixture {
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
 
         push_test_context(&gc);
@@ -1016,7 +1004,6 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);

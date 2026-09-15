@@ -38,7 +38,6 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -54,7 +53,6 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_team_num(team);
     w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
@@ -66,7 +64,6 @@ TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_team_num(team);
     w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();

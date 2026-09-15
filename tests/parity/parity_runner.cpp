@@ -462,8 +462,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec,
     og::sim::SimEventLog events;
     og::sim::SimEventLog parity_events;
 
-    level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                          &level.world().rng_, &::cfg);
+    level.set_sim_context(&save, &events, &::cfg);
 
     ScopedGameplayContext ctx(level.world(), save, events, ::cfg,
                               classic_fullscreen_view_contains);

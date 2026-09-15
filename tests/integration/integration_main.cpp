@@ -560,12 +560,9 @@ int main(int argc, char** argv)
         std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
 
     static og::sim::SimEventLog test_events;
-    static ProductionRandom test_rng;
     og::runtime::current_session->myscreen_->level_runtime_data().set_sim_context(
         &og::runtime::current_session->myscreen_->save_data,
-        &og::runtime::current_session->myscreen_->world().enemy_freeze,
         &test_events,
-        &test_rng,
         &cfg);
 
     ::testing::TestEventListeners& listeners =

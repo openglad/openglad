@@ -23,6 +23,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <type_traits>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -490,13 +491,23 @@ TEST(LevelDataCoverage, campaign_data_save_and_save_as_fail_for_missing_campaign
 TEST(LevelDataCoverage, level_data_set_sim_context_wires_pointers)
 {
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng(1);
     cfg_store cfg_local;
 
+    // P10d: set_sim_context binds save/events/config and NOTHING else. The
+    // two parameters it used to take (a freeze bank and an IRandom*) were
+    // discarded at the top of the body, so a caller reading the signature was
+    // told a lie about what it steers. Pin the shape here: reintroducing
+    // either dead parameter fails this TU to compile.
+    static_assert(
+        std::is_same_v<decltype(&LevelRuntimeData::set_sim_context),
+                       void (LevelRuntimeData::*)(SaveData*,
+                                                  og::sim::SimEventLog*,
+                                                  cfg_store*)>,
+        "set_sim_context binds save/events/config only");
+
     LevelRuntimeData d(42);
-    d.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg_local);
+    d.set_sim_context(&save, &events, &cfg_local);
 
     // set_sim_context forwards save/events/config into the world's gameplay
     // context bindings; populate_gameplay_context hands back those exact

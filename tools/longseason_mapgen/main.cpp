@@ -1643,9 +1643,7 @@ void self_check_book_script()
     LevelRuntimeData level(14, true, &headless_level_data_hooks());
     SaveData save;
     og::sim::SimEventLog events;
-    FixedRandom script_rng{0};
-    level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                          &script_rng, &cfg);
+    level.set_sim_context(&save, &events, &cfg);
     GameplayContext script_ctx;
     script_ctx.world = &level.world();
     script_ctx.save = &save;

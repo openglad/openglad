@@ -476,8 +476,7 @@ struct LoadedRealLevel
         : level(id, true, &modes_test_level_hooks())
         , gameplay(level, save, events, cfg)
     {
-        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                              &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
         push_test_context(&gc);
         loaded = level.load();

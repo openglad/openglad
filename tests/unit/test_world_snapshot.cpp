@@ -1715,11 +1715,9 @@ TEST(WorldSnapshot, apply_snapshot_works_for_attached_external_worlds)
 
     LevelRuntimeData mirror_level(2201, true);
     SaveData save;
-    std::int32_t freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     mirror_level.create_new_grid();
-    mirror_level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    mirror_level.set_sim_context(&save, &events, &cfg);
 
     GameWorld external_world;
     mirror_level.attach_world(&external_world);

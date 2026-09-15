@@ -920,7 +920,7 @@ TEST(CursesRenderer, renders_real_level_one_without_crashing)
     SaveData save;
     save.scen_num = 1;
     save.numplayers = 1;
-    level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
+    level.set_sim_context(&save, &events, &cfg);
     ASSERT_TRUE(level.load()) << "level 1 should load headlessly";
 
     // Spawn one player-controlled hero and follow it.

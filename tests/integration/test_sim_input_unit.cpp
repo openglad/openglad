@@ -33,9 +33,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -44,7 +42,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -52,7 +50,6 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -184,9 +181,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -195,7 +190,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -203,7 +198,6 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -519,9 +513,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -530,7 +522,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     GameWorld& world() { return level.world(); }
@@ -544,7 +536,6 @@ walker* add_char(SimInputFixture& fx, unsigned char team, signed char user,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -782,9 +773,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -793,7 +782,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     GameWorld& world() { return level.world(); }
@@ -804,7 +793,6 @@ walker* add_hero(SimInputFixture& fx, unsigned char team, signed char user,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);

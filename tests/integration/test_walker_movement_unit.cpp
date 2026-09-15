@@ -23,9 +23,7 @@ namespace {
 struct MovementFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     MovementFixture()
@@ -34,7 +32,7 @@ struct MovementFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -42,7 +40,6 @@ walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -196,9 +193,7 @@ namespace {
 struct WalkerMovementR11Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     WalkerMovementR11Fixture()
@@ -207,7 +202,7 @@ struct WalkerMovementR11Fixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -215,7 +210,6 @@ walker* add_living(WalkerMovementR11Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -449,16 +443,14 @@ namespace {
 struct MovementR12Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     MovementR12Fixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -466,7 +458,6 @@ walker* add_living(MovementR12Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
@@ -660,16 +651,14 @@ namespace {
 struct MovementR14Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     MovementR14Fixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -677,7 +666,6 @@ walker* add_living(MovementR14Fixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_stepsize(1.0f);
