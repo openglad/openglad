@@ -272,8 +272,9 @@ public:
     void attach_world(GameWorld* world);
 
     // Binds save/events/config into the world's gameplay-context bindings and
-    // stores them, so the snapshot-application paths can rebuild a per-world
-    // context on demand (see apply_snapshot in level_runtime_data.cpp).
+    // stores them, so LevelRuntimeData::attach_world can re-apply them to
+    // whichever world is attached next (the world-swap path used by screen.cpp
+    // and the snapshot mirrors).
     // It does NOT touch the enemy freeze (GameWorld::enemy_freeze is the live
     // field — write it directly) and it does NOT steer the sim RNG
     // (GameWorld::rng_; scripted in tests through ScopedSimRandom).
