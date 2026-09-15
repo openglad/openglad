@@ -28,6 +28,7 @@
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
+#include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -54,9 +55,8 @@ void picker_testing_set_force_real_dialogs(bool enabled);
 void picker_main(Sint32 argc, char** argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
-// Presenter pause handshake (TESTING; the uxshots capture seam).
-extern std::atomic_bool g_test_present_pause_requested;
-extern std::atomic_bool g_test_present_paused;
+// The presenter pause handshake these flows capture through is declared in
+// tests/test_frame_capture.h.
 
 namespace {
 
@@ -219,126 +219,11 @@ private:
     std::vector<og::script::PackScript> saved_;
 };
 
-// One capture's outcome. Recorded on the INJECTOR thread and asserted on
-// the main thread by verify_zone_shots: a gtest failure raised from an
-// injector that then dies mid-flow takes its own message with it, and the
-// capture flows already report their observations this way.
-struct ZoneShotResult {
-    std::string name;
-    std::string path;       // "" = no UXSHOTS_DIR, nothing to write
-    bool captured = false;  // the presenter handshake froze a real frame
-    bool written = false;   // the PPM exists on disk afterwards
-    std::size_t nonblack = 0;
-};
-
-std::mutex g_zone_shot_mutex;
-std::vector<ZoneShotResult> g_zone_shots;
-
-// The nonblank bar the uxshots probe uses (test_uxshots_probe.cpp): a
-// settled 320x200 menu frame inks far more than this, a black or
-// half-cleared one far less.
-constexpr std::size_t kZoneShotMinNonblackPixels = 1000;
-
-// Visual-verification capture (the uxshots PresentedFramePause handshake,
-// minimal form): freeze the settled 320x200 frame, count its ink, and dump
-// it as a PPM when UXSHOTS_DIR is set. The frame is read back either way —
-// "the capture produced a blank screen" is a real failure whether or not
-// anyone asked for the file. Runs on the injector thread.
-void capture_zone_frame(const char* name)
-{
-    ZoneShotResult result;
-    result.name = name;
-    const char* output_dir = std::getenv("UXSHOTS_DIR");
-    const bool want_file = output_dir != nullptr && output_dir[0] != '\0';
-    if (want_file) {
-        std::error_code error;
-        std::filesystem::create_directories(output_dir, error);
-        if (!error)
-            result.path = std::string(output_dir) + "/" + name + ".ppm";
-    }
-
-    auto record = [&result] {
-        const std::lock_guard<std::mutex> lock(g_zone_shot_mutex);
-        g_zone_shots.push_back(std::move(result));
-    };
-
-    bool expected = false;
-    if (!g_test_present_pause_requested.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel)) {
-        record();
-        return;
-    }
-    const Uint64 deadline = SDL_GetTicks() + 30000;
-    while (!g_test_present_paused.load(std::memory_order_acquire)) {
-        if (SDL_GetTicks() >= deadline) {
-            g_test_present_pause_requested.store(false,
-                                                 std::memory_order_release);
-            record();
-            return;
-        }
-        SDL_Delay(1);
-    }
-
-    std::vector<Uint8> rgb;
-    rgb.reserve(320 * 200 * 3);
-    screen* scr = test_screen();
-    for (int y = 0; y < 200; ++y) {
-        for (int x = 0; x < 320; ++x) {
-            Uint8 r = 0, g = 0, b = 0;
-            scr->get_pixel(x, y, &r, &g, &b);
-            if (r != 0 || g != 0 || b != 0)
-                ++result.nonblack;
-            rgb.push_back(r);
-            rgb.push_back(g);
-            rgb.push_back(b);
-        }
-    }
-    g_test_present_pause_requested.store(false, std::memory_order_release);
-    result.captured = true;
-
-    if (!result.path.empty()) {
-        FILE* f = fopen(result.path.c_str(), "wb");
-        if (f != nullptr) {
-            fprintf(f, "P6\n320 200\n255\n");
-            fwrite(rgb.data(), sizeof(Uint8), rgb.size(), f);
-            fclose(f);
-            std::error_code exists_error;
-            result.written =
-                std::filesystem::exists(result.path, exists_error) &&
-                !exists_error;
-            fprintf(stderr, "  [uxshot] wrote %s\n", result.path.c_str());
-        }
-    }
-    record();
-}
-
-// Main-thread verification of every shot the finished flow recorded, and
-// the reason the capture seam has teeth: a re-capture run that quietly
-// stopped producing stills (or started producing black ones) now fails the
-// test instead of leaving the media script nothing to convert. Clears the
-// ledger, so each flow only ever answers for its own captures.
-void verify_zone_shots(const char* flow, std::size_t expected_shots)
-{
-    std::vector<ZoneShotResult> shots;
-    {
-        const std::lock_guard<std::mutex> lock(g_zone_shot_mutex);
-        shots.swap(g_zone_shots);
-    }
-    EXPECT_EQ(expected_shots, shots.size())
-        << flow << ": the flow did not reach every capture point";
-    for (const ZoneShotResult& shot : shots) {
-        EXPECT_TRUE(shot.captured)
-            << flow << ": " << shot.name << " never froze a presented frame";
-        EXPECT_GE(shot.nonblack, kZoneShotMinNonblackPixels)
-            << flow << ": " << shot.name << " is blank (" << shot.nonblack
-            << " nonblack pixels)";
-        if (shot.path.empty())
-            continue;
-        EXPECT_TRUE(shot.written)
-            << flow << ": " << shot.name << " produced no file at "
-            << shot.path;
-    }
-}
+// The capture handshake, the ledger, the nonblank bar and the main-thread
+// verification moved VERBATIM to tests/test_frame_capture.h when the
+// menu-capture scenes needed the same rules: one implementation, not five
+// (PR #245). Every call site below resolves this suite's own output
+// directory (UXSHOTS_DIR) and hands it to the shared capture.
 
 void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
                                    const std::vector<int>& completed = {})
@@ -533,7 +418,7 @@ int zone_flow_injector(void* data)
         wait_for_interactable_label("zone_action_0", "STORES  >", 10000) &&
         wait_for_interactable_label("zone_action_1", "FIELD KIT  60g", 5000);
     SDL_Delay(500);
-    capture_zone_frame("zone_scripted_camp");
+    capture_presented_frame("zone_scripted_camp", std::getenv("UXSHOTS_DIR"));
 
     // Deploy-lock refusal: Alpha starts DEPLOYED, so bench first (allowed —
     // locks gate the toggle-ON only), then the re-deploy refuses with the
@@ -541,12 +426,12 @@ int zone_flow_injector(void* data)
     state->cycler_edges_acknowledged &=
         click_and_acknowledge_trace("roster_dep_0", "basecamp",
                                     "deploy slot=0 off");
-    capture_zone_frame("uxr_after_bench");
+    capture_presented_frame("uxr_after_bench", std::getenv("UXSHOTS_DIR"));
     state->cycler_edges_acknowledged &= click_and_acknowledge_trace(
         "roster_dep_0", "zone", "deploy_locked slot=0",
         /*waits_for_autosave=*/false);
     SDL_Delay(150);
-    capture_zone_frame("uxr_lock_toast");
+    capture_presented_frame("uxr_lock_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // The assign chip: unset -> WAR (undeployed cycle rides the autosave
@@ -555,13 +440,13 @@ int zone_flow_injector(void* data)
         click_and_acknowledge_trace("roster_team_0", "zone",
                                     "assign slot=0 tag=1");
     SDL_Delay(150);
-    capture_zone_frame("uxr_assign_war");
+    capture_presented_frame("uxr_assign_war", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
     state->cycler_edges_acknowledged &=
         click_and_acknowledge_trace("roster_team_0", "zone",
                                     "assign slot=0 tag=2");
     SDL_Delay(150);
-    capture_zone_frame("uxr_assign_burden");
+    capture_presented_frame("uxr_assign_burden", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Assigned heroes clear the unset-lock: the deploy sticks now.
@@ -576,7 +461,7 @@ int zone_flow_injector(void* data)
     SDL_Delay(300);
     interact("zone_action_2");
     SDL_Delay(200);
-    capture_zone_frame("uxr_level_fail_toast");
+    capture_presented_frame("uxr_level_fail_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     // The costed action: debit + state write-through + refetch retire (the
@@ -585,14 +470,14 @@ int zone_flow_injector(void* data)
     state->kit_label_flipped =
         wait_for_interactable_label("zone_action_1", "FIELD KIT  [DONE]",
                                     5000);
-    capture_zone_frame("uxr_kit_toast");
+    capture_presented_frame("uxr_kit_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Clicking a retired purchase refuses in the campaign's voice instead
     // of charging again.
     interact("zone_action_1");
     SDL_Delay(200);
-    capture_zone_frame("uxr_kit_done_toast");
+    capture_presented_frame("uxr_kit_done_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     // The level row: the load-with-rollback set tail commits scen_num and
@@ -612,7 +497,7 @@ int zone_flow_injector(void* data)
         }
         return false;
     }();
-    capture_zone_frame("uxr_level_current");
+    capture_presented_frame("uxr_level_current", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Clicking the road you are already on answers instead of going quiet
@@ -631,12 +516,12 @@ int zone_flow_injector(void* data)
     state->submenu_row_seen =
         wait_for_interactable_label("zone_row_0", "BREAD  10g", 10000);
     SDL_Delay(500);
-    capture_zone_frame("zone_submenu_stores");
+    capture_presented_frame("zone_submenu_stores", std::getenv("UXSHOTS_DIR"));
     // The purchase confirms exactly as it does at the root: a non-modal
     // message-line toast, no OK button to dismiss.
     interact("zone_row_0");
     SDL_Delay(400);
-    capture_zone_frame("uxr_submenu_after_buy");
+    capture_presented_frame("uxr_submenu_after_buy", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     // A page row INSIDE the submenu pushes a second page; BACK there pops
@@ -654,7 +539,7 @@ int zone_flow_injector(void* data)
     // load-with-rollback arm (a modal dialog, trace-only under TESTING).
     interact("zone_row_2");
     SDL_Delay(200);
-    capture_zone_frame("uxr_submenu_level_fail");
+    capture_presented_frame("uxr_submenu_level_fail", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     interact("back");
@@ -663,7 +548,7 @@ int zone_flow_injector(void* data)
     state->cycler_edges_acknowledged &=
         run_on_main_thread([] { reset_mouse_click_tracking(); });
     SDL_Delay(150);
-    capture_zone_frame("uxr_back_at_root");
+    capture_presented_frame("uxr_back_at_root", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Cycling a DEPLOYED hero first un-deploys through the full roster
@@ -713,7 +598,7 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
     g_picker_max_mainmenu_calls = 0;
 
     // The 13 unconditional capture points of the flow above.
-    verify_zone_shots("scripted_zone_flow", 13);
+    verify_captured_frames("scripted_zone_flow", 13);
 
     SaveData& save = test_screen()->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
@@ -853,7 +738,7 @@ int default_zone_injector(void* data)
     // The default composition: roster + HIRE, no zone action rows.
     state->hire_seen = wait_for_interactable("hire_troops", 10000);
     SDL_Delay(500);
-    capture_zone_frame("zone_default_camp");
+    capture_presented_frame("zone_default_camp", std::getenv("UXSHOTS_DIR"));
 
     // Deploy toggle by id (the classic flow).
     state->deploy_edges_acknowledged &=
@@ -915,7 +800,7 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("default_zone_flow", 1);
+    verify_captured_frames("default_zone_flow", 1);
 
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.hire_seen)
@@ -961,7 +846,7 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
     // The injector this shares with default_zone_keeps_the_classic_roster_flows
     // records a capture, and the shot ledger is process-wide: answer for it
     // here or the next verifying flow inherits it.
-    verify_zone_shots("default_zone_drop", 1);
+    verify_captured_frames("default_zone_drop", 1);
 
     EXPECT_EQ(0, g_click_ladder_click_drops) << "the injected drop must be consumed";
     EXPECT_TRUE(state.deploy_edges_acknowledged)
@@ -1009,7 +894,7 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
 
     // Shared injector, process-wide shot ledger: answer for the capture here
     // or the next verifying flow inherits it.
-    verify_zone_shots("default_zone_ack_drop", 1);
+    verify_captured_frames("default_zone_ack_drop", 1);
 
     EXPECT_EQ(0, g_click_ladder_ack_drops)
         << "the injected cancellation must be consumed";
@@ -2549,13 +2434,13 @@ int paged_docket_injector(void* data)
         !has_interactable("zone_action_2");
     state->pager_shown = wait_for_interactable("zone_pager_next_0", 5000);
     SDL_Delay(400);
-    capture_zone_frame("uxr_docket_pager_page1");
+    capture_presented_frame("uxr_docket_pager_page1", std::getenv("UXSHOTS_DIR"));
 
     interact("zone_pager_next_0");
     state->second_window =
         wait_for_interactable_label("zone_action_0", "ROW THREE", 10000);
     SDL_Delay(400);
-    capture_zone_frame("uxr_docket_pager_page2");
+    capture_presented_frame("uxr_docket_pager_page2", std::getenv("UXSHOTS_DIR"));
 
     interact("zone_pager_prev_0");
     state->wrapped_home =
@@ -2591,7 +2476,7 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("docket_pager", 2);
+    verify_captured_frames("docket_pager", 2);
 
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.first_window) << "the band renders its first window";
@@ -2708,7 +2593,7 @@ int default_tour_injector(void* data)
         wait_for_interactable_label("zone_action_0",
                                     state->expect_first_row_label, 5000);
     SDL_Delay(500);
-    capture_zone_frame(state->shot);
+    capture_presented_frame(state->shot, std::getenv("UXSHOTS_DIR"));
 
     state->go_seen = wait_for_interactable("go", 10000);
     SDL_Delay(300);
@@ -2770,7 +2655,7 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         cleanup_picker_state();
         g_picker_max_mainmenu_calls = 0;
 
-        verify_zone_shots(tour.campaign, 1);
+        verify_captured_frames(tour.campaign, 1);
 
         EXPECT_TRUE(tour.continue_seen) << tour.campaign << ": main menu";
         EXPECT_TRUE(tour.camp_seen)
@@ -2901,7 +2786,7 @@ int uxr_big_roster_injector(void* data)
         },
         nullptr, 3, 10000);
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_big_roster_p1");
+    capture_presented_frame("uxr_big_roster_p1", std::getenv("UXSHOTS_DIR"));
 
     // 14 heroes over the scripted zone's 3-row roster band: the pager is not
     // optional here. The row itself is ALWAYS published — an inert
@@ -2928,7 +2813,7 @@ int uxr_big_roster_injector(void* data)
         nullptr, 3, 10000);
     state->page_indicator = newest_basecamp_page_trace();
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_big_roster_p2");
+    capture_presented_frame("uxr_big_roster_p2", std::getenv("UXSHOTS_DIR"));
 
     state->finished = wait_for_interactable("go", 10000);
     (void)wait_for_menu_frames(2);
@@ -2986,7 +2871,7 @@ TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
         << "one pager click steps the 14-hero roster exactly one page";
     EXPECT_TRUE(state.finished)
         << "the flow must come back to the camp's command strip";
-    verify_zone_shots("uxr_full_roster", 2);
+    verify_captured_frames("uxr_full_roster", 2);
 }
 
 namespace {
@@ -3075,7 +2960,7 @@ int match_setup_injector(void* data)
     state->time_row_read_map = wait_for_interactable_label_containing(
         "zone_row_3", "TIME LIMIT: MAP", 10000);
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("zone_submenu_match_setup");
+    capture_presented_frame("zone_submenu_match_setup", std::getenv("UXSHOTS_DIR"));
 
     // The macros move: one TEAMS click wraps the four-side deal back to
     // two — the lowest opponent keeps FAIR, the other two turn NONE (both
@@ -3098,7 +2983,7 @@ int match_setup_injector(void* data)
             },
             "acted_autosave");
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_match_setup_macros");
+    capture_presented_frame("uxr_match_setup_macros", std::getenv("UXSHOTS_DIR"));
 
     // One click walks the score cycle one stop (map -> 1) and speaks it.
     state->score_row_stepped_to_one =
@@ -3110,7 +2995,7 @@ int match_setup_injector(void* data)
             },
             "acted_autosave");
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_match_setup_cycled");
+    capture_presented_frame("uxr_match_setup_cycled", std::getenv("UXSHOTS_DIR"));
 
     // The clock: a fresh match wears MAP — the limit the level's own
     // manifest authored — and one click hands the host the shortest
@@ -3124,7 +3009,7 @@ int match_setup_injector(void* data)
             },
             "acted_autosave");
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_match_setup_time");
+    capture_presented_frame("uxr_match_setup_time", std::getenv("UXSHOTS_DIR"));
 
     (void)click_until_edge("back", [](int wait_ms) {
         return wait_for_interactable("go", wait_ms);
@@ -3155,7 +3040,7 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("match_setup", 4);
+    verify_captured_frames("match_setup", 4);
 
     EXPECT_TRUE(state.camp_seen) << "main menu";
     EXPECT_TRUE(state.setup_row_seen)

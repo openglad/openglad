@@ -13,6 +13,7 @@
 #include "test_company_cleanup.h"
 #include "test_interact.h"
 #include "test_click_ladder.h"
+#include "test_escape_tail.h"
 #include <openglad/resources/save_data.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -52,13 +53,6 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 // the_main_thread is the regression for that.
 
 namespace {
-// Poll ticks, not settles. Every screen transition in this file settles on
-// wait_for_menu_frames(2) -- the main menu and base camp are both
-// run_menu_screen-hosted (menu_screen_specs.cpp) -- and every click is proven
-// consumed by the screen it opens. These are the ticks of wait-on-condition
-// loops, which is why they are spelled with "poll"
-// (scripts/check_injector_settles.sh, tier 2).
-constexpr Uint32 kEscapePollMs = 100;
 // Cancellation ceilings for a pump that has stopped, never budgets. Do not
 // raise them to buy time on an instrumented lane: a lane that needs more than
 // these has stopped pumping, and the escape tail is what turns that into a
@@ -72,54 +66,13 @@ constexpr int kMainMenuBackWaitMs = 5000;
 // The sabotaged leg waits for an id nothing ever publishes. Its window is
 // short on purpose: nothing is coming, and the point of that run is the tail.
 constexpr int kSabotageWaitMs = 500;
-// One press per screen, not one per tick: after each press the tail watches
-// for the screen it just acted on to go away, and only then presses again.
-// A blind re-press is a RAW COORDINATE click on whatever came up in the
-// meantime -- base camp's roster band sits where CONTINUE was -- which is how
-// an escape tail opens a submenu it does not know how to leave. Bounded, so a
-// press that evaporated is still re-sent.
-constexpr int kEscapeConfirmTicks = 20;
 
-// The escape tail, shared by both injectors (the shape of
-// tests/integration/test_pause_menu.cpp and test_overpowered_team.cpp): keep
-// closing whatever screen is currently published until the MAIN thread says it
-// is out of the blocking menu for good, and report the leg that gave up.
-//
-// It has no wall-clock bound on purpose. The main thread cannot leave
-// picker_main / picker_mainmenu_loop on its own, so a tail that stopped trying
-// early would GUARANTEE the wedge it exists to prevent.
-//
-// The happy path ends in this same loop (escape(0)), so the FINAL back of
-// every flow is driven by one exit rule and never by click_until_edge: after
-// picker_main returns there is no pump left to service a ladder's acknowledge
-// post, and the ladder would spend 3 x kAckPostCeilingMs there.
-int escape_to_the_main_thread(std::atomic<bool>& test_finished, int leg,
-                              const char* why)
-{
-    if (leg != 0)
-        fprintf(stderr, "  [test] ERROR: leg %d: %s\n", leg, why);
-    const auto press_and_watch = [&test_finished](const std::string& click_id,
-                                                  const std::string& watched) {
-        (void)interact(click_id);
-        for (int tick = 0; tick < kEscapeConfirmTicks &&
-                           !test_finished.load() && has_interactable(watched);
-             ++tick)
-            SDL_Delay(kEscapePollMs);
-    };
-    while (!test_finished.load()) {
-        // "Closing" the main menu means going FORWARD through it: mainmenu()
-        // blocks until the player picks something, and with the iteration cap
-        // reached the next visit is answered with QUIT without drawing, so
-        // CONTINUE -> base camp -> BACK is the way OUT.
-        if (has_interactable("go"))
-            press_and_watch("back", "go");
-        else if (has_interactable("continue_game"))
-            press_and_watch("continue_game", "continue_game");
-        else
-            SDL_Delay(kEscapePollMs);
-    }
-    return leg;
-}
+// escape_to_the_main_thread, kEscapePollMs and kEscapeConfirmTicks -- the
+// give-up rule this file's legs route through -- now live in
+// tests/test_escape_tail.h, so the capture flows share one implementation of
+// it (PR #245's no-rule-twins principle). The ruling comments moved with the
+// code; only the leg ceilings above stayed here, because they are this
+// file's budgets rather than the rule.
 }  // namespace
 
 struct BackTestState {
@@ -288,18 +241,7 @@ TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     state.test_finished.store(true);
     int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
-    // The tail's last press may have been HALF consumed: picker_main returned
-    // between its DOWN and its UP. Poll that release through the engine --
-    // reset_mouse_click_tracking() consumes the queued events before it
-    // re-baselines -- instead of flushing it. A FLUSHED release leaves
-    // mouse_state.left stuck true, so the next flow's first press makes no
-    // up->down edge and simply evaporates (measured: the legacy-loop CONTINUE
-    // burned its whole 10 s edge wait and landed only on the ladder's second
-    // attempt). What the flush is still for is the rest: motion and any press
-    // pushed after the menu stopped reading.
-    reset_mouse_click_tracking();
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
 
     // Exercise the legacy loop entry itself against a live, initialized
     // picker.  A natural CONTINUE -> team-build BACK round trip must complete
@@ -315,9 +257,7 @@ TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     loop_state.test_finished.store(true);
     int loop_thread_result = -1;
     SDL_WaitThread(loop_thread, &loop_thread_result);
-    reset_mouse_click_tracking();
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
     const int mainmenu_calls_after_loop = g_picker_mainmenu_calls;
 
     cleanup_picker_state();
@@ -376,9 +316,7 @@ TEST(BackToMainmenu, a_leg_that_gives_up_frees_the_main_thread) {
     state.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(thread, &injector_result);
-    reset_mouse_click_tracking();
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
@@ -390,4 +328,102 @@ TEST(BackToMainmenu, a_leg_that_gives_up_frees_the_main_thread) {
         << "leg 1 gave up before it ever saw the main menu it was pointed at";
     EXPECT_FALSE(state.finished)
         << "a flow that gave up at leg 1 never completed";
+}
+
+// --- The highlighted-button mirror ----------------------------------------
+//
+// run_menu_screen keeps its keyboard highlight in a LOCAL (`highlighted_button`,
+// menu_screen_runner.cpp) with no accessor, so an injector could prove a nav
+// key was consumed only through the pulsing highlight ring -- which
+// draw_highlight animates off wall-clock ticks and paints in the same YELLOW
+// as the hover box, i.e. an oracle that depends on the frame's phase.
+// menu_screen_testing_highlighted_button() is the TESTING mirror of that
+// local: published immediately BEFORE each completed-frames bump, and reset
+// to -1 by an RAII scope so every exit path of run_menu_screen (six of them,
+// two nested-door propagations included) leaves it cleared.
+//
+// This test pins BOTH halves on the main menu, whose spec fixes the entry
+// highlight at row 1 = continue_game (menu_screen_specs.cpp,
+// `spec.default_highlight = 1;  // continue_game`). The nav-walk teeth -- the
+// mirror MOVING with a nav key -- belong to the nav_step helper, not here.
+struct HighlightMirrorState {
+    std::atomic<bool> test_finished{false};
+    // -99 = the injector never got to read the mirror at all, which no
+    // passing run may leave behind.
+    int mirror_index = -99;
+    std::string mirror_id = "<unread>";
+};
+
+static int highlight_mirror_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    HighlightMirrorState* state = static_cast<HighlightMirrorState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why);
+    };
+
+    if (!wait_for_interactable("continue_game", kMainMenuWaitMs) ||
+        !wait_for_menu_frames(2))
+        return escape(1, "the main menu never published continue_game");
+
+    // Read the index and the array it indexes in ONE menu-thread task: a
+    // split read could pair this frame's index with the next screen's
+    // buttons.
+    if (!run_on_main_thread([state] {
+            state->mirror_index = og::ui::menu_screen_testing_highlighted_button();
+            state->mirror_id = "<no button at that index>";
+            AllButtonsLock lock;
+            if (state->mirror_index >= 0 && state->mirror_index < MAX_BUTTONS) {
+                const vbutton* row =
+                    og::runtime::current_session
+                        ->allbuttons_[static_cast<std::size_t>(
+                            state->mirror_index)];
+                if (row != nullptr)
+                    state->mirror_id = row->id;
+            }
+        }))
+        return escape(2, "the menu loop never read the highlight mirror");
+
+    return escape(0, "");
+}
+
+TEST(MenuScreenHighlightMirror, publishes_the_live_highlight_and_clears_on_exit) {
+    trace_clear();
+
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+    ASSERT_NO_FATAL_FAILURE(seed_continue_company());
+
+    ASSERT_EQ(-1, og::ui::menu_screen_testing_highlighted_button())
+        << "the mirror must read -1 while no engine menu screen is running";
+
+    HighlightMirrorState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(highlight_mirror_injector, "highlight_mirror", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create event injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    state.test_finished.store(true);
+    int injector_result = -1;
+    SDL_WaitThread(thread, &injector_result);
+    escape_tail_join_hygiene();
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, injector_result)
+        << "the injector gave up at leg " << injector_result;
+    EXPECT_EQ(1, state.mirror_index)
+        << "the live main menu must publish its entry highlight, row 1 "
+           "(menu_screen_specs.cpp: spec.default_highlight = 1)";
+    EXPECT_EQ("continue_game", state.mirror_id)
+        << "row 1 of the main menu is CONTINUE; the mirror must index the "
+           "live button array the injector clicks through";
+    EXPECT_EQ(-1, og::ui::menu_screen_testing_highlighted_button())
+        << "run_menu_screen must clear the mirror on its way out, so a "
+           "reader after a screen closed cannot see the last screen's index";
 }

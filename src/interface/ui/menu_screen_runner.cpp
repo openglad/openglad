@@ -79,11 +79,20 @@ namespace og::ui {
 #ifdef TESTING
 namespace {
 std::atomic<std::uint64_t> g_menu_screen_completed_frames{0};
+// Mirror of the live loop's `highlighted_button`, which is a local of
+// run_menu_screen with no accessor of its own. -1 whenever no engine screen
+// is running, so a waiter can tell "no highlight yet" from index 0.
+std::atomic<int> g_menu_screen_highlighted_button{-1};
 }
 
 std::uint64_t menu_screen_testing_completed_frames()
 {
     return g_menu_screen_completed_frames.load(std::memory_order_acquire);
+}
+
+int menu_screen_testing_highlighted_button()
+{
+    return g_menu_screen_highlighted_button.load(std::memory_order_acquire);
 }
 #endif
 
@@ -627,6 +636,18 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     if (spec.prepare_buttons != nullptr)
         spec.prepare_buttons(buttons, num_buttons, screen_state);
     int highlighted_button = spec.default_highlight;
+#ifdef TESTING
+    // The mirror is cleared on EVERY exit path of run_menu_screen (there are
+    // six, including two nested-door propagations), so an injector that reads
+    // it after a screen closed sees -1 rather than the last screen's index.
+    struct HighlightMirrorScope {
+        ~HighlightMirrorScope()
+        {
+            g_menu_screen_highlighted_button.store(-1,
+                                                   std::memory_order_release);
+        }
+    } highlight_mirror_scope;
+#endif
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     // The array these live buttons belong to (the loop's reset point below).
     unsigned int live_generation = allbuttons_generation();
@@ -854,6 +875,11 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (spec.frame_tick != nullptr && !spec.frame_tick(screen_state, frame))
             break;
 #ifdef TESTING
+        // Published BEFORE the completed-frames bump so a waiter that wakes
+        // on the frame count already sees THIS frame's post-navigation
+        // highlight, never the previous one.
+        g_menu_screen_highlighted_button.store(highlighted_button,
+                                               std::memory_order_release);
         // This is after input dispatch, action completion/reset, and the
         // screen's frame tick. Injector tests can therefore prove a queued
         // press/release belongs to a finished frame before sending another.

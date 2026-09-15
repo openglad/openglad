@@ -40,8 +40,8 @@
 #   SDL_Delay(300), SDL_Delay(500), SDL_Delay(750) and named settle constants
 #   such as SDL_Delay(kUiSettleMs) all fail: a settle spelled as a constant is
 #   still a clock. Tier 2 implies tier 1 (no argument it accepts is 750), so a
-#   file may be listed in both or in tier 2 alone — tests/test_click_ladder.h
-#   is tier 2 only.
+#   file may be listed in both or in tier 2 alone — tests/test_click_ladder.h,
+#   tests/test_escape_tail.h and tests/test_frame_capture.h are tier 2 only.
 #
 # A file graduates from pending to tier 1 to tier 2 as its conversion lands;
 # move its name out of the pending list below in the same commit. That list is
@@ -97,6 +97,8 @@ CONVERTED_FILES=(
     tests/integration/test_fade_ownership.cpp
     tests/test_interact.h
     tests/test_click_ladder.h
+    tests/test_escape_tail.h
+    tests/test_frame_capture.h
     tests/integration/test_difficulty.cpp
     tests/integration/test_hire_team.cpp
     tests/integration/test_cloud_ui.cpp
