@@ -269,7 +269,7 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
 };
 
 // The options-family panel chrome, shared by DIFFICULTY and every options
-// subscreen: full-window clear (the overscan may have been adjusted), the
+// subscreen: full-canvas clear (the overscan may have been adjusted), the
 // black frame, the inverted bevel.
 void options_panel_draw_background(void* /*screen_state*/)
 {

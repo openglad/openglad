@@ -293,6 +293,8 @@ class Screen
 		// still gone.
 		bool recreate_render_backend();
 
+		// Blank the CPU canvas; no present, no window_is_black_ change
+		// (see the definition).
 		void clear_window();
 
 		// Vsync for the presenting renderer. The choice is remembered and

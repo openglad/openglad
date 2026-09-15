@@ -819,7 +819,7 @@ static void run_sai2x_screen_class_paths()
         ASSERT_TRUE(SDL_FillSurfaceRect(s.render, nullptr, sentinel));
         s.clear_window();
         EXPECT_EQ(0u, render_pixel(s, 5, 5))
-            << "clear_window() blanks the CPU canvas before presenting it";
+            << "clear_window() blanks the CPU canvas (and only that: no present)";
     }
 
     {

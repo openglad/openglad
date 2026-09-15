@@ -1316,11 +1316,24 @@ TEST(MassCoverage, video_clearbuffer_rect_blacks_only_the_given_rect) {
         << "clearbuffer(rect) must not black the whole surface";
 }
 
-// clear_window() blacks the whole render surface before uploading it to the
-// window texture (src/platform/sdl/sai2x.cpp Screen::clear_window). It does NOT
-// set window_is_black_ -- only a completed fadeblack does.
-TEST(MassCoverage, video_clear_window_blacks_the_whole_render_surface) {
+// clear_window()'s whole contract (src/platform/sdl/sai2x.cpp
+// Screen::clear_window): it blanks the render surface, it never presents, and
+// it never touches window_is_black_. All four production callers use it as a
+// per-FRAME background wipe under a full panel repaint -- the options family
+// (menu_screen_specs.cpp options_panel_draw_background, shared by DIFFICULTY
+// and every options subscreen), the pause player screen (pause_menu.cpp), the
+// key-remap prompt and the sprite-sheet picker (picker.cpp). Setting the flag
+// here would make menu_screen_runner take its fade-in branch on EVERY frame of
+// those screens and disarm the #237 entry-violation listener, so the flag's
+// owners stay as documented (sai2x.h window_is_black): only a present
+// (Screen::swap) clears it, only a completed fadeblack(false) sets it.
+TEST(MassCoverage, video_clear_window_blanks_the_render_surface_and_never_presents) {
     screen* s = og::runtime::current_session->myscreen_;
+
+    // Half 1: black window in, black window out -- a wipe presents nothing.
+    s->testing_reset_window_state();
+    ASSERT_TRUE(s->window_is_black())
+        << "setup: testing_reset_window_state must arm the black-window flag";
     s->clearbuffer();
     s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
     s->draw_rect_filled(300, 190, 20, 10, WHITE, 255);
@@ -1334,6 +1347,23 @@ TEST(MassCoverage, video_clear_window_blacks_the_whole_render_surface) {
         << "clear_window must black the top-left of the surface";
     ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(310, 195))
         << "clear_window must black the far corner too, not a leading rect";
+    ASSERT_TRUE(s->window_is_black())
+        << "clear_window never presents: the black window stays black";
+
+    // Half 2: a live window stays live -- a wipe under a repaint is not a
+    // completed fade-out.
+    s->draw_rect_filled(0, 0, 40, 40, WHITE, 255);
+    s->swap();
+    ASSERT_FALSE(s->window_is_black())
+        << "setup: swap() presents the composed canvas and clears the flag";
+
+    s->clear_window();
+
+    ASSERT_FALSE(s->window_is_black())
+        << "a background wipe is not a completed fade-out; only fadeblack(false) "
+           "may set window_is_black";
+    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(10, 10))
+        << "the fill must still run on the live-window path";
 }
 
 // draw_rect_filled(x,y,w,h,color,alpha) fills exactly w*h pixels from (x,y);
