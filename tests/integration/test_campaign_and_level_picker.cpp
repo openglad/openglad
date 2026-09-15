@@ -1830,11 +1830,10 @@ int new_game_name_accepter(void* data)
 TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
 {
     // This flow FOUNDS a company, and founding is an autosave: the file it
-    // writes outranks every bare-save save0 in this binary and would take
-    // over the next CONTINUE flow's session. See
-    // new_game_flow_leaves_no_company_behind above.
-    ScopedCompanyFileCleanup founded_cleanup;
-
+    // writes outranks every bare-save save0 in this binary. It does not reach
+    // the next test — the harness reaps every non-baseline company between
+    // tests ([SAVE-R9], tests/integration/integration_main.cpp) — so this
+    // body only has to assert what the flow did to the campaign and mount.
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const std::string old_mounted = get_mounted_campaign();
 
@@ -1879,6 +1878,12 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
 // cover it; the snapshot-diff guard is the only shape that can. This test is
 // that guard's tooth: run the real founding entry point under it and prove
 // the company list comes back where it started.
+//
+// BETWEEN tests the rule is the harness's ([SAVE-R9]); ScopedCompanyFileCleanup
+// survives only for a scope that ends BEFORE the test does, which is exactly
+// what this body needs — the ASSERT_EQ below reads the list after the guard's
+// destructor and before the test returns, so the harness reap cannot be what
+// makes it pass. This is the last user of the RAII in the suite.
 TEST(CampaignAndLevelPicker, new_game_flow_leaves_no_company_behind)
 {
     const auto slots = [] {

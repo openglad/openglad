@@ -1209,7 +1209,7 @@ int networking_host_injector(void* data)
 // below then holds about somebody else's band.
 //
 // One shape for all eleven flows rather than eleven hand copies (PR #245,
-// "no rule twins"): the guards keep this test from becoming the next stray,
+// "no rule twins"): the pin keeps the process-wide active slot from leaking,
 // the seed goes through the autosave choke point that actually stamps, and
 // the destructor is the oracle — EXPECT in a destructor is gtest's own idiom
 // for a check that must run after the flow but cannot ASSERT, and the pin
@@ -1217,7 +1217,6 @@ int networking_host_injector(void* data)
 // flow left behind.
 struct SeededContinueCompany
 {
-    ScopedCompanyFileCleanup founded_cleanup;
     og::data::ScopedActiveCompany pin{"save0"};
     bool seeded = false;
 

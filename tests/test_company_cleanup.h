@@ -46,9 +46,12 @@ const std::set<std::string>& integration_company_baseline();
 //
 // This RAII is what is LEFT of the convention: the tool for a scope that ends
 // BEFORE the test does — a test that founds a company mid-body and must see
-// the list without it a few lines later (the one remaining user,
-// tests/integration/test_campaign_and_level_picker.cpp:1985). At the top of a
-// test body it is a twin of [SAVE-R9] and buys nothing.
+// the list without it a few lines later. Exactly one user is left,
+// CampaignAndLevelPicker.new_game_flow_leaves_no_company_behind in
+// tests/integration/test_campaign_and_level_picker.cpp, whose oracle reads
+// the list after the guard's scope closes and before the test returns. At the
+// top of a test body it is a twin of [SAVE-R9] and buys nothing, which is why
+// the nineteen test-top declarations this suite used to carry are gone.
 //
 // It snapshots the company list on entry and removes everything that is new
 // on exit; save0 is treated as pre-existing and is never touched by it.
