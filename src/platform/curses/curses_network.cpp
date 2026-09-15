@@ -1648,10 +1648,11 @@ public:
             // Every machine may PRESS start; the SERVER decides. The host
             // rule has exactly one implementation -- LobbyServer's
             // start_allowed() rule 2 -- and it answers a non-host requester
-            // with StartDenialReason::NotHost, which the denial switch below
-            // renders as "Only the host can start". A client-side "is host
-            // NOW" gate here would be a second home for that rule, and it is
-            // what used to leave a joiner's press with no feedback at all.
+            // with StartDenialReason::NotHost, which the shared denial
+            // formatter below renders as "Only the host can start". A
+            // client-side "is host NOW" gate here would be a second home for
+            // that rule, and it is what used to leave a joiner's press with
+            // no feedback at all.
             if (key.is_enter() || key.is_char(U's') || key.is_char(U'S')) {
                 request_start();
             }
@@ -2355,21 +2356,24 @@ private:
                 if (og::sim::start_denial_matches_request(
                         *state_, pending_start_request_id_))
                 {
-                    switch (static_cast<og::sim::StartDenialReason>(
-                        state_->last_start_denial))
-                    {
-                    case og::sim::StartDenialReason::NotHost:
-                        team_status_ = "Only the host can start";
-                        break;
-                    case og::sim::StartDenialReason::MachinesNotReady:
-                        team_status_ = "Waiting for other machines";
-                        break;
-                    case og::sim::StartDenialReason::NoDeployedCharacters:
-                        team_status_ = "No one is deployed";
-                        break;
-                    default:
-                        break;
-                    }
+                    // §4.3: the band answers the press with the SHARED
+                    // reason->text mapping (og::ui::describe_start_denial),
+                    // the same one go_menu pops in SDL — one implementation,
+                    // so the two front ends can never say different things
+                    // about the same verdict. This used to be a local switch
+                    // with a `default:` arm, which left StageFailed (and any
+                    // future reason) rendering nothing: team_status_ kept
+                    // whatever the PREVIOUS action had written, so a denied
+                    // GO read as the answer to an earlier press. The wire
+                    // byte is decoded once, by the gameplay-side helper, so
+                    // a crafted byte outside 0..4 lands on None rather than
+                    // an out-of-range enumerator.
+                    team_status_ =
+                        og::ui::describe_start_denial(
+                            og::sim::start_denial_reason_from_wire(
+                                state_->last_start_denial),
+                            state_->players)
+                            .line;
                     pending_start_request_id_ = 0;
                 }
             }

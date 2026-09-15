@@ -3639,3 +3639,104 @@ TEST(CursesNetwork, host_start_denial_names_an_empty_muster)
     EXPECT_TRUE(status_contains(*lobby, "No one is deployed"));
     EXPECT_EQ(lobby->take_session(), nullptr);
 }
+
+// Q1 (§4.3), the curses twin of the SDL go_menu verdict: a host whose
+// MatchStage is FAILED and who presses GO is told so, on its own band, in the
+// words every client shares (og::ui::describe_start_denial). This is the arm
+// the band's old local switch swallowed through `default:` — team_status_ kept
+// whatever the PREVIOUS action had written, so a refused GO either said
+// nothing or read as the answer to an earlier press. Both halves are pinned
+// here: the stale line must be gone AND the verdict must be there. The
+// recovery arm is the control — when the stage restages clean, the very same
+// GO starts the game.
+TEST(CursesNetwork, host_start_on_a_failed_stage_names_the_stage)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+    ASSERT_NE(save.team_list[0], nullptr);
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client, kPinnedCursesMatchSeed);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 200; ++i)
+        lobby->poll(term, clock);
+    ASSERT_EQ(std::string{}, lobby->stage_failure_line())
+        << "the lobby must stage cleanly before the ledger is inflated:\n"
+        << term.dump();
+
+    // The restage debounce (og::server::kStageDebounceMs) runs off the REAL
+    // steady clock the stage owner reads, not this test's FakeClock, so
+    // "poll until the stage has settled" is a bounded WALL-CLOCK wait that
+    // returns the instant the predicate holds — never a fixed iteration
+    // count (which the debounce would outrun) and never a flat sleep.
+    const auto poll_until = [&](auto&& predicate) {
+        const auto deadline = std::chrono::steady_clock::now() + 20s;
+        while (std::chrono::steady_clock::now() < deadline) {
+            lobby->poll(term, clock);
+            if (predicate())
+                return true;
+        }
+        return false;
+    };
+
+    // Inflate the host company's completed-levels ledger: the host-save
+    // digest moves, the restaged InitialSetup overruns the wire message cap,
+    // and the stage lands Failed. Same real-path lever the SDL side pulls in
+    // PickerNetworkClient.host_stage_failure_reports_honest_preview_health —
+    // no TESTING seam, no injected failure.
+    std::set<int>& ledger = save.completed_levels[save.current_campaign];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+    ASSERT_TRUE(poll_until([&] {
+        return lobby->stage_failure_line() == "STAGING FAILED";
+    })) << "the oversize restage never landed as Failed, so the GO below "
+           "would prove nothing:\n"
+        << term.dump();
+
+    // Leave a stale message on the band: 'k' over this machine's own seat
+    // writes one and changes nothing else. The denial has to REPLACE it.
+    term.push_char(U'k');
+    ASSERT_TRUE(poll_until([&] {
+        return status_contains(*lobby, "That is your own machine");
+    })) << "the kick refusal never reached the band:\n"
+        << term.dump();
+
+    lobby->request_start();
+    bool started = false;
+    for (int i = 0; i < 100; ++i)
+        started = lobby->poll(term, clock) || started;
+    EXPECT_FALSE(started) << "a stage that cannot be built must not launch";
+    EXPECT_TRUE(status_contains(
+        *lobby, "Staging failed: change the level or roster"))
+        << "the StageFailed verdict must reach the band in the shared "
+           "words:\n"
+        << term.dump();
+    EXPECT_FALSE(status_contains(*lobby, "That is your own machine"))
+        << "and it must REPLACE the previous message — a denied GO answered "
+           "with a stale line is the defect this arm exists for:\n"
+        << term.dump();
+    EXPECT_EQ(lobby->take_session(), nullptr)
+        << "a denied start yields no session";
+
+    // Control: the ledger shrinks, the digest moves back, the stage restages
+    // clean — and the SAME GO on the SAME lobby is accepted.
+    ledger.clear();
+    ASSERT_TRUE(poll_until([&] {
+        return lobby->stage_failure_line().empty();
+    })) << "the stage never recovered after the ledger shrank:\n"
+        << term.dump();
+    lobby->request_start();
+    bool restarted = false;
+    for (int i = 0; i < 200 && !restarted; ++i)
+        restarted = lobby->poll(term, clock) || restarted;
+    EXPECT_TRUE(restarted)
+        << "a recovered stage must accept the same GO the failed one denied:\n"
+        << term.dump();
+    EXPECT_NE(nullptr, lobby->take_session())
+        << "and the accepted start must yield the session";
+}
