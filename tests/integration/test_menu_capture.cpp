@@ -639,12 +639,13 @@ int menu_effects_injector(void* data)
     if (!open_door("options", leg_edge(state, 2, "gameplay_fx")))
         return escape(state, 2, "GAME SETTINGS never opened");
 
+    // Two legs per screen, so a give-up names ONE arm: 3/4 GAMEPLAY FX,
+    // 5/6 UI FX, 7/8 GRAPHICS FX (the door in, then its BACK).
     int leg = 3;
     for (const FxScreenPlan& plan : fx_screen_plans()) {
         if (!open_door(plan.opener,
                        leg_edge(state, leg, plan.nav_chain.front())))
             return escape(state, leg, "an FX subscreen never opened");
-        ++leg;
 
         for (const char* row : plan.nav_chain)
             (void)nav_step(KEY_DOWN, row, state);
@@ -669,11 +670,13 @@ int menu_effects_injector(void* data)
         }
 
         if (!open_door(plan.back, plan.opener))
-            return escape(state, leg, "an FX subscreen's BACK never returned");
+            return escape(state, leg + 1,
+                          "an FX subscreen's BACK never returned");
+        leg += 2;
     }
 
     if (!open_door("options_back", "continue_game"))
-        return escape(state, 6,
+        return escape(state, 9,
                       "GAME SETTINGS' BACK did not reach the main menu");
     return escape(state, 0, "");
 }
