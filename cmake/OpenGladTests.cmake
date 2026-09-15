@@ -1617,6 +1617,24 @@ set_tests_properties(mutation_canary_plan_cli PROPERTIES
     TIMEOUT 120
 )
 
+# The two build-gate scripts that scan whole directory roots
+# (check_no_std_regex, check_vendor_leaks) are themselves only as good as the
+# roots they find: GNU grep returns 2 for a missing root even when it printed a
+# match, so an `if grep ...` verdict certified trees it never read. The self-test
+# drives both gates over temp trees and pins all three exit codes — 0 clean,
+# 1 violation (named), 2 cannot run. Unconditional: bash and the scripts are all
+# it needs, and both gates are og_game_test dependencies (see :300), so a
+# silently-blind gate is a silently-blind test build.
+add_test(NAME check_script_roots_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_script_roots.sh
+)
+set_tests_properties(check_script_roots_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 add_test(NAME openglad_text_picker_interactive
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
 )
