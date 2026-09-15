@@ -154,12 +154,21 @@ the example. Re-run them on a new box; never carry the numbers over.
 
   The repo is a bind mount of the host LV (the one entry for it in
   `/proc/self/mountinfo`); `/` and `/tmp` — hence the scratchpad — are
-  the container overlay, at 95 % today. df's answer for a path outside
-  the repo mount is not trustworthy here: it names the LV for sibling
-  worktrees under /home/yans/code/, and a 500 MB probe file written into
-  one of them did not move `df /`, while the same file in the scratchpad
-  did. Before parking a multi-GB build tree outside the repo, write a
-  probe and re-read `df /`.
+  the container overlay, at 95 % today. Which filesystem a sibling tree
+  under /home/yans/code/ consumes depends on whether it is a symlink or
+  a real directory. The lane worktrees are symlinks INTO the repo mount:
+  `readlink -f /home/yans/code/og-audit-lane1` →
+  `/home/yans/code/openglad/.claude/worktrees/og-audit-lane1`, and
+  `git worktree list` shows all six lanes under `.claude/worktrees/`, so
+  they consume the LV and df reports them correctly. /home/yans/code
+  itself is on the overlay — `stat -c %d /home/yans/code` → `81`, the
+  same device as `stat -c %d /`, against `64513` for the repo mount —
+  so a worktree or build tree created there as a real directory eats the
+  overlay instead. `/home/yans/code/openglad-master` is one such real
+  directory (`stat -c %d` → `81`). Before parking a multi-GB tree, write
+  a 500 MB probe and re-read `df /` and `df <repo>`. Today's probe, inside
+  the symlinked lane: LV available 3323193264 → 3322680052 KB (−513212),
+  overlay available unmoved (27688392 → 27689020, noise).
 - Run og_unit_*/og_test_* binaries from the REPO ROOT: ctest gives them
   `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}` (cmake/OpenGladTests.cmake), so
   they resolve assets relative to it. `cd build/ci-test && ./og_unit_data`

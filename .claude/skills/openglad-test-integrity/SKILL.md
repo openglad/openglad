@@ -72,9 +72,9 @@ Plant breaks that compile. The ci-test, ci-asan and ci-tsan presets set
 `OPENGLAD_WARNINGS_AS_ERRORS=ON` (CMakePresets.json; ci-coverage and
 ci-fuzz do not, and the option defaults OFF in CMakeLists.txt) over
 `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow`
-(CMakeLists.txt, `OG_WARNING_FLAGS`), so on the lanes you plant for a
-mutation that does not build proves nothing and costs a rebuild. The
-forms that survive -Werror:
+(CMakeLists.txt, `OG_WARNING_FLAGS`), so on those lanes a mutation that
+does not build proves nothing and costs a rebuild. The forms that
+survive -Werror:
 
 - Prepend the early exit and brace it — `if (true) { return v; }` — above
   the old body rather than replacing it, so the function's parameters and
@@ -83,12 +83,20 @@ forms that survive -Werror:
   becomes that body, orphans the statement under it, and GCC reports
   `this 'if' clause does not guard... [-Werror=misleading-indentation]`.
   Bracing the plant does not cure that one — move it into a braced block.
-- Replacing a body wholesale needs `(void)` on every parameter and local
-  the old body read: `(void)x; (void)y; return true;`. Otherwise
-  -Wunused-parameter and -Wunused-but-set-variable fire.
+- Replacing a body wholesale needs `(void)` on every parameter:
+  `(void)x; (void)y; return true;`. The old locals went with the body,
+  so what fires is `error: unused parameter 'x'
+  [-Werror=unused-parameter]`, once per parameter.
 - Substituting a value for a parameter keeps a read of it: `alpha | 0xFF`,
   not `255`; an out-parameter forced to `nullptr` needs `(void)r;`.
-- Deleting a variable's last writer leaves it set-but-unused: `(void)name;`.
+- Deleting a variable's last READER — the statement that consumed it —
+  leaves it set-but-unused: `error: variable 'name' set but not used
+  [-Werror=unused-but-set-variable]`, or `error: unused variable 'name'
+  [-Werror=unused-variable]` when the declaration was its only write.
+  Add `(void)name;`. Deleting its last WRITER is the other case and
+  `(void)` does not help there: with an initialiser on the declaration
+  it compiles clean, without one it is `error: 'name' is used
+  uninitialized [-Werror=uninitialized]` and the plant needs a value.
 - Constants must match the target type and must not shadow: `return -1;`
   from an `unsigned char` function is an error under -Wsign-conversion,
   and a plant that re-declares a live local name is one under -Wshadow.
