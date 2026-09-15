@@ -14,9 +14,12 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
 
 ## How it works
 
-1. **Env-gated capture tests** render P6 PPM frame sequences into
-   `$OG_FX_CAPTURE_DIR/<scene>/NNN.ppm`. Without the env var they
-   `GTEST_SKIP`, so normal ctest runs are untouched.
+1. **Capture tests** render P6 PPM frame sequences into
+   `$OG_FX_CAPTURE_DIR/<scene>/NNN.ppm`. The rendering and gameplay scenes
+   are env-gated; the three MENU scenes are not — they run their oracles on
+   every ctest lane and only the camera holds, the settings laps and the
+   frame dump are behind `OG_FX_CAPTURE_DIR`, which is why a wedged menu
+   flow is now a red test rather than a disk filling up in the dark.
    - `RenderEffects.zz_capture_effect_scenes` (`tests/integration/test_render_effects.cpp`)
      — scripted close-ups: one per effect, plus the floor-glide legs and the
      depth-mode comparison set.
@@ -31,12 +34,13 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
      (2) and the Dead Marshes (19) as real gameplay; then the Long Season
      scenes (2 The Ferry Right, 14 The Long Toll, 17 Ashfall Gate, 18 The
      Warm Mint). `OG_FX_CAPTURE_ONLY=<level id>` records a single scene.
-   - `OptionsMenu.zz_capture_menu_tour` / `zz_capture_menu_effects` /
+   - `MenuCapture.zz_capture_menu_tour` / `zz_capture_menu_effects` /
      `zz_capture_menu_difficulty`
-     (`tests/integration/test_options_menu.cpp`) — injector-driven menu
+     (`tests/integration/test_menu_capture.cpp`) — injector-driven menu
      walkthroughs. The difficulty walkthrough enters through Base Camp: the
      DIFFICULTY door is on the command strip, not the main menu
-     (docs/camp-controls-design.md).
+     (docs/camp-controls-design.md). The menu tour goes main menu → GAME
+     SETTINGS → DISPLAY, where it steps BRIGHTNESS up and back.
 2. **TESTING hooks** make the blocking menu flows filmable:
    - `screen::buffer_to_screen` dumps every 3rd presented frame when
      `OG_DUMP_DIR` is set (`src/interface/screen.cpp`).

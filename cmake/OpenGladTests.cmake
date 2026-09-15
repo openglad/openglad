@@ -31,6 +31,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_team.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_player_hud_zoom.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_options_menu.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_capture.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_networking_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_networking_uxshots.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_layout.cpp
@@ -532,6 +533,7 @@ og_add_test_group(og_test_picker_network FILES
 
 og_add_test_group(og_test_menu_ui FILES
     test_back_to_mainmenu.cpp
+    test_menu_capture.cpp
     test_menu_frame_wait.cpp
     test_cloud_ui.cpp
     test_menu.cpp

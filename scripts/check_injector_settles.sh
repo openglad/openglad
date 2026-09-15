@@ -105,6 +105,7 @@ CONVERTED_FILES=(
     tests/integration/test_overpowered_team.cpp
     tests/integration/test_back_to_mainmenu.cpp
     tests/integration/test_campaign_sprite_uaf.cpp
+    tests/integration/test_menu_capture.cpp
 )
 
 status=0
