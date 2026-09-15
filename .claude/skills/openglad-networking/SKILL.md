@@ -60,6 +60,15 @@ if `src/interface/render/` writes any network-synced entity field — keep
 it green rather than exempting it. The parity companion must mirror any
 render-bump a sim behavior depends on (see openglad-parity).
 
+Cosmetic state travels the same way, and the split between delivery and
+display matters: floating damage/heal numbers are lifted by `GameServer` for
+EVERY oblist walker (seat-bound owners first, 512/tick budget —
+`damage_number_event.h`) and filtered per pane only at paint time
+(`walker_draw.cpp`, `view_buf->control == &w`). A spectator or follow pane's
+control is usually bound to no seat, so any lift-side filter on
+`player_controls_` darkens it (PR #292 Q3). Camera viewscreens draw no
+per-walker overlays at all (docs/camera-views-design.md §6, R1).
+
 ## Snapshot seeding and the hook latch
 
 Three construction paths build a world — direct load+tick, snapshot seed,

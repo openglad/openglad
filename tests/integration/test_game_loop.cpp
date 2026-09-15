@@ -248,6 +248,61 @@ static bool load_minimal_game_loop_scenario(const char* save_name)
         *og::runtime::current_game_session);
 }
 
+// The demo/local SPECTATOR shape: numplayers == 0 BEFORE the load
+// (demo.cpp), so load_saved_game takes its spectator branch — each view gets
+// a camera target, nobody gets set_user/ACT_CONTROL on the display — and
+// viewscreen::process_input routes SwitchChar into the legacy spectator cycle
+// (view.cpp) instead of the sim input path.
+//
+// One extra team-mate is spawned on the DISPLAY world between the load and
+// the shadow install, so the cycle always has somewhere to go that no seat
+// owns. The legacy display-seed install copies the display world into the
+// authority verbatim (local_transport_shadow.cpp,
+// apply_snapshot(server, capture_keyframe_snapshot(display))), so the walker
+// exists on BOTH sides under the SAME entity id and no context swap is
+// needed to reach it. Both RNG pins are kept, for the reason above.
+static bool load_minimal_spectator_scenario(const char* save_name,
+                                            std::uint32_t& spawned_entity_id)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    if (game_screen == nullptr ||
+        og::runtime::current_game_session == nullptr)
+        return false;
+
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 0;
+    game_screen->save_data.save(save_name);
+    game_screen->save_data.save("save0");
+    game_screen->world().rng_.state_ = kScenarioDisplayRngPin;
+    if (load_saved_game(save_name, game_screen) == 0)
+        return false;
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    if (view == nullptr || view->control == nullptr)
+        return false;
+    walker* const extra =
+        game_screen->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    if (extra == nullptr)
+        return false;
+    extra->setxy(static_cast<short>(view->control->xpos() + 64),
+                 view->control->ypos());
+    extra->set_team_num(static_cast<unsigned char>(view->my_team));
+    extra->set_user(-1);
+    spawned_entity_id = extra->entity_id();
+
+    og::runtime::reset_local_transport_shadow(
+        *og::runtime::current_game_session,
+        *game_screen);
+    if (screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session))
+    {
+        server_screen->world().rng_.state_ = kScenarioAuthorityRngPin;
+    }
+    return og::runtime::local_transport_active(
+        *og::runtime::current_game_session);
+}
+
 static void expect_browser_wrapper_immediate_step_runs_one_tick(
     const char* save_name,
     std::uint32_t sim_interval_ms)
@@ -3838,6 +3893,195 @@ TEST(GameLoop, local_transport_shadow_carries_damage_numbers_to_the_display_cont
     og::runtime::clear_local_transport_shadow(session);
     game_screen->world().end = 0;
     game_screen->world().delete_objects();
+}
+
+// Q3: the local SPECTATOR pane watches a walker that NO seat owns. The
+// authority lifts floating numbers off EVERY oblist walker (seat-bound
+// owners first, damage_number_event.cpp) and the render decides per pane
+// which of them paint (walker_draw.cpp, `view_buf->control == &w`). While
+// the lift was seat-only the watched walker's numbers never crossed the
+// shadow at all, so a spectator pane painted nothing whatever the
+// OPTIONS > EFFECTS toggles said. Both colours are exercised because the two
+// toggles ship differently (damage_numbers off, heal_numbers on), so a
+// single-colour test could be green by vacuity.
+//
+// Camera bookkeeping: on a LOCAL shadow every applied snapshot — delta as
+// well as keyframe — runs the client's control-mapping callback
+// (game_client.cpp apply_delta_snapshot -> notify_control_mapping_changed),
+// and sync_display_controls resolves view 0 straight back to the bound
+// seat's mirror. A local spectator's camera choice is therefore display-only
+// state that one tick later is gone (the networked zero-seat path keeps its
+// choice in DisplayFollowState instead — pinned by
+// GameLoop.networked_zero_seat_joiner_follow_cycles_and_survives_full_resync).
+// So this test cycles the camera AFTER each tick, immediately before the
+// paint it is measuring, and never asserts that the choice survives a tick.
+TEST(GameLoop,
+     local_spectator_camera_cycle_watches_a_walker_no_seat_owns_and_still_gets_its_numbers)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+    GameSpeedGuard speed(1.0f);
+    std::uint32_t spawned_id = 0u;
+    ASSERT_TRUE(load_minimal_spectator_scenario(
+        "test_game_loop_spectator_numbers", spawned_id))
+        << "the shadow must be live for this test";
+    ASSERT_NE(0u, spawned_id) << "the cycle needs a walker no seat owns";
+
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    og::sim::GameServer* const server =
+        og::runtime::local_transport_shadow_testing_server(session);
+    ASSERT_NE(nullptr, server);
+    ASSERT_TRUE(og::ui::is_spectator_mode(game_screen->save_data))
+        << "numplayers == 0 is what routes SwitchChar into the legacy "
+           "spectator cycle (view.cpp)";
+    ASSERT_FALSE(session.networked_session_)
+        << "the legacy spectator block owns the key only while the session is "
+           "not networked (view.cpp [NET-F1])";
+
+    // One tick so the install's control sync has landed on the display.
+    og::runtime::local_transport_shadow_finish_tick(session);
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    ASSERT_NE(nullptr, view->control);
+    walker* const sc = server->player_control(0);
+    ASSERT_NE(nullptr, sc) << "the authority owes seat 0 a control walker";
+    const std::uint32_t seat_id = sc->entity_id();
+    ASSERT_EQ(seat_id, view->control->entity_id())
+        << "the spectator pane starts on the install-time seat";
+
+    // The hit target: the spawned team-mate. It is bound to NO seat, which is
+    // the whole point of the case.
+    walker* const sw = server_screen->world().find_by_id(spawned_id);
+    ASSERT_NE(nullptr, sw)
+        << "the display-seed install must have copied the spawned walker into "
+           "the authority under the same entity id";
+    ASSERT_NE(sc, sw);
+    for (std::size_t player = 0u; player < og::sim::kMaxGlobalPlayers; ++player)
+    {
+        ASSERT_NE(sw, server->player_control(player))
+            << "the watched walker must be bound to no seat at all";
+    }
+
+    // Cycling the camera is a display-side act; do it right before each paint.
+    const auto cycle_camera_onto_spawned_walker = [&]() {
+        for (int attempt = 0; attempt < 16; ++attempt)
+        {
+            reset_viewscreen_input_debounce();
+            view->process_input(make_switch_char_input(0u));
+            if (view->control != nullptr &&
+                view->control->entity_id() == spawned_id)
+                return true;
+        }
+        return false;
+    };
+
+    ASSERT_TRUE(cycle_camera_onto_spawned_walker())
+        << "the legacy spectator cycle must reach a same-team walker that no "
+           "seat owns";
+    ASSERT_NE(nullptr, view->control);
+    ASSERT_NE(seat_id, view->control->entity_id())
+        << "the spectator cycle moved the camera off the bound seat";
+    EXPECT_EQ(-1, static_cast<int>(view->control->user()))
+        << "a spectator cycle watches; it never claims the walker "
+           "(no ACT_CONTROL, and send_input keeps sending the server empty "
+           "input for a spectator)";
+
+    sc->do_hit_effects(sc, sw, 9);
+    ASSERT_EQ(1u, sw->damage_numbers.size())
+        << "the hit stamps the target's own RED copy on the authority";
+    ASSERT_EQ(1u, sc->damage_numbers.size())
+        << "...and the attacker's orange copy on the seat";
+
+    og::runtime::local_transport_shadow_finish_tick(session);
+
+    walker* const watched_mirror = game_screen->world().find_by_id(spawned_id);
+    ASSERT_NE(nullptr, watched_mirror) << "the watched mirror must survive";
+    ASSERT_EQ(1u, watched_mirror->damage_numbers.size())
+        << "the watched walker is bound to NO seat; its number must still "
+           "cross the shadow (the seat-only lift never sent it)";
+    EXPECT_FLOAT_EQ(9.0f, watched_mirror->damage_numbers.front().value);
+    EXPECT_EQ(static_cast<int>(RED),
+              static_cast<int>(watched_mirror->damage_numbers.front().color))
+        << "the target's copy is RED";
+    EXPECT_TRUE(sw->damage_numbers.empty())
+        << "the authoritative list is drained by the lift";
+
+    walker* const seat_mirror = game_screen->world().find_by_id(seat_id);
+    ASSERT_NE(nullptr, seat_mirror);
+    ASSERT_EQ(1u, seat_mirror->damage_numbers.size())
+        << "the seat's own orange copy still lands on its mirror";
+    EXPECT_EQ(235,
+              static_cast<int>(seat_mirror->damage_numbers.front().color));
+
+    // --- paint: the pane's control is the only walker whose numbers draw ---
+    // Both keys are set explicitly. This binary starts with no user config
+    // mounted, so cfg.is_on() answers false for a key that was never applied
+    // ("cfg setting not found: effects/heal_numbers") and a green leg that
+    // leaned on the shipped default (gparser.cpp: damage_numbers off,
+    // heal_numbers on) would be vacuous here.
+    const bool entry_damage_on = cfg.is_on("effects", "damage_numbers");
+    const bool entry_heal_on = cfg.is_on("effects", "heal_numbers");
+    cfg.apply_setting("effects", "damage_numbers", "on");
+    cfg.apply_setting("effects", "heal_numbers", "on");
+    // The traces are matched BY OWNER: the seat mirror carries copies of the
+    // same hit and heal, so an owner-less substring could be satisfied by the
+    // wrong walker's number.
+    const std::string watched_red =
+        "owner=" + std::to_string(spawned_id) + " value=9 color=40";
+    const std::string watched_green =
+        "owner=" + std::to_string(spawned_id) + " value=5 color=56";
+    ASSERT_TRUE(cycle_camera_onto_spawned_walker())
+        << "the pane must be watching the unbound walker for this paint";
+    trace_clear();
+    game_screen->redraw();
+    EXPECT_TRUE(trace_contains("damage_numbers", watched_red.c_str()))
+        << "the spectator pane paints the watched walker's red number";
+    EXPECT_FALSE(trace_contains("damage_numbers", "color=235"))
+        << "the seat walker is not this pane's control: its orange copy must "
+           "NOT paint (render gate walker_draw.cpp `view_buf->control == &w`)";
+
+    // Green leg, on the shipped heal default.
+    sc->do_heal_effects(sc, sw, 5);
+    ASSERT_EQ(1u, sw->damage_numbers.size())
+        << "the heal stamps the target's own green copy on the authority";
+    og::runtime::local_transport_shadow_finish_tick(session);
+    walker* const watched_after_heal =
+        game_screen->world().find_by_id(spawned_id);
+    ASSERT_NE(nullptr, watched_after_heal);
+    ASSERT_EQ(2u, watched_after_heal->damage_numbers.size())
+        << "the heal number crosses the shadow onto the same unbound mirror";
+    EXPECT_EQ(56,
+              static_cast<int>(watched_after_heal->damage_numbers.back().color));
+    ASSERT_TRUE(cycle_camera_onto_spawned_walker())
+        << "the pane must be watching the unbound walker for this paint";
+    trace_clear();
+    game_screen->redraw();
+    EXPECT_TRUE(trace_contains("damage_numbers", watched_green.c_str()))
+        << "with heal_numbers ON the watched walker's green number paints too";
+
+    // Both toggles OFF: the pane paints nothing at all.
+    cfg.apply_setting("effects", "damage_numbers", "off");
+    cfg.apply_setting("effects", "heal_numbers", "off");
+    ASSERT_TRUE(cycle_camera_onto_spawned_walker())
+        << "same pane, same watched walker: only the toggles changed";
+    trace_clear();
+    game_screen->redraw();
+    EXPECT_FALSE(trace_contains("damage_numbers", "value="))
+        << "with both EFFECTS toggles OFF nothing is painted";
+
+    cfg.apply_setting("effects", "damage_numbers",
+                      entry_damage_on ? "on" : "off");
+    cfg.apply_setting("effects", "heal_numbers", entry_heal_on ? "on" : "off");
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+    // Leave save0 the way every other scenario in this binary expects it.
+    game_screen->save_data.numplayers = 1;
+    game_screen->save_data.save("save0");
 }
 
 TEST(GameLoop, network_client_shadow_ends_session_after_connection_loss_timeout)
