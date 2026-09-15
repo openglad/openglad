@@ -51,6 +51,13 @@
 #             scripted render scene draws the floating damage/heal numbers,
 #             the path's only production consumer.
 #   p5        a low-magic AI cleric healing a hurt ally — motion, so a GIF.
+#   q2        the TEAM/FOES counter box with a pending wave.  The base tree
+#             right-aligns "FOES: 12 (+34)" and "NEXT WAVE: 120s" to the
+#             viewport edge, so both rows hang off the 55-px box over the
+#             world; the fit rule sizes the box to its widest row instead.
+#             og_test_view's GladHud.zz_capture_pending_wave_counter_box
+#             asserts that geometry and dumps the frame, so it is red BY
+#             DESIGN on the base tree (SCENE_ALLOW_FAIL, like p5).
 #   p8        the curses lobby's start-denial band, as a terminal transcript.
 #   p13       the floating damage/heal numbers, which stopped painting on every
 #             client when the display began rendering a mirror world.  The
@@ -70,8 +77,8 @@ cd "$REPO_ROOT"
 BUILD_DIR="${OPENGLAD_BUILD_DIR:-$REPO_ROOT/build/ci-test}"
 MEDIA_ROOT="${OPENGLAD_PR292_MEDIA_DIR:-$REPO_ROOT/build/media/pr-292}"
 
-SCENES=(selftest p1 p5 p8 p13)
-DEFAULT_SCENES=(p1 p5 p8 p13)
+SCENES=(selftest p1 p5 p8 p13 q2)
+DEFAULT_SCENES=(p1 p5 p8 p13 q2)
 
 # A GIF that will not load on GitHub is not proof; this is the band every
 # shipped animation in the screenshots repo already sits in.
@@ -697,6 +704,43 @@ compose_p13() {
 
 # --- contact sheet ----------------------------------------------------------
 # One page of every still that ships, for the review pass.
+# Q2 — the TEAM/FOES counter box with a pending wave.  The scene test renders
+# one classic 320x200 frame with 12 awake foes, a 34-strong wave 120 s out,
+# and dumps it; the fix moves both wave rows out of the world and onto a box
+# sized to hold them.
+Q2_PPM=""
+scene_q2() {
+    SCENE_ALLOW_FAIL=1 run_scene_test q2 og_test_view \
+        'GladHud.zz_capture_pending_wave_counter_box'
+    Q2_PPM="$SCENE_DIR/pending_wave_counter_box/000.ppm"
+    ppm_still "$Q2_PPM" "$OUT_DIR/q2-counter-box-$PHASE.png"
+    expect_png "$OUT_DIR/q2-counter-box-$PHASE.png" 640 400
+    # The box occupies rows 1..24 of the pane; rows 0..33 give it some air.
+    ppm_crop4x "$Q2_PPM" "$OUT_DIR/q2-counter-box-$PHASE-crop-4x.png" 34 0
+    expect_png "$OUT_DIR/q2-counter-box-$PHASE-crop-4x.png" 1280 136
+}
+
+compose_q2() {
+    local b="$BEFORE_DIR/q2-counter-box-before.png"
+    local a="$AFTER_DIR/q2-counter-box-after.png"
+    side_by_side "$b" "$a" "$FINAL_DIR/q2-counter-box-side-by-side.png"
+    stack_vertical "$BEFORE_DIR/q2-counter-box-before-crop-4x.png" \
+        "$AFTER_DIR/q2-counter-box-after-crop-4x.png" \
+        "$FINAL_DIR/q2-counter-box-crop-4x.png"
+    cp -- "$b" "$FINAL_DIR/q2-counter-box-before.png"
+    cp -- "$a" "$FINAL_DIR/q2-counter-box-after.png"
+    local ae total pct
+    ae="$(pixel_diff "$b" "$a")"
+    total="$(magick identify -format '%[fx:w*h]' "$a")"
+    pct="$(python3 -c "print(f'{100.0*$ae/$total:.2f}')")"
+    printf 'q2: %s of %s pixels moved (%s %%)\n' "$ae" "$total" "$pct" \
+        | tee "$FINAL_DIR/q2-pixel-diff.txt"
+    expect_png "$FINAL_DIR/q2-counter-box-side-by-side.png" 1286 428
+    expect_png "$FINAL_DIR/q2-counter-box-crop-4x.png" 1280 334
+    expect_png "$FINAL_DIR/q2-counter-box-before.png" 640 400
+    expect_png "$FINAL_DIR/q2-counter-box-after.png" 640 400
+}
+
 contact_sheet() {
     local -a stills=()
     local f

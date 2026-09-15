@@ -11,6 +11,13 @@
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <system_error>
 #include <memory>
 #include <string>
 #include <vector>
@@ -118,6 +125,37 @@ static std::array<unsigned char, 64000> capture_rendered_frame(screen& scr)
         }
     }
     return frame;
+}
+
+// Optional visual still for review: a P6 PPM of the whole classic frame,
+// written only when OG_FX_CAPTURE_DIR is set (scripts/media/capture_pr292.sh
+// sets it; a normal ctest run pays nothing).  Model:
+// tests/integration/test_stair_overlay.cpp dump_viewport_ppm.  Palette
+// registers hold the VGA 0..63 range, so each channel takes the same *4 the
+// renderer applies before handing SDL an RGB triple (video_sdl.cpp, every
+// query_palette_reg -> map_surface_rgb_fast call site).
+static void dump_frame_ppm(const std::array<unsigned char, 64000>& frame,
+                           const char* scene)
+{
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    if (base == nullptr)
+        return;
+    const std::string dir = std::string(base) + "/" + scene;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    FILE* fp = fopen((dir + "/000.ppm").c_str(), "wb");
+    if (fp == nullptr)
+        return;
+    fprintf(fp, "P6\n320 200\n255\n");
+    for (unsigned char index : frame)
+    {
+        int r = 0, g = 0, b = 0;
+        query_palette_reg(index, &r, &g, &b);
+        fputc(std::min(255, r * 4), fp);
+        fputc(std::min(255, g * 4), fp);
+        fputc(std::min(255, b * 4), fp);
+    }
+    fclose(fp);
 }
 
 // The HUD probes below intentionally assert historical pixel positions and
@@ -1962,7 +2000,7 @@ TEST(FloorHudLabel, tower_multi_story_combines_floor_and_story)
     w.id = 723;
     w.set_floor_count(3);
     EXPECT_EQ("F23: 2/3", floor_hud_label(w, 1))
-        << "8 chars for 2-digit floors -- fits the 53px box right-aligned";
+        << "8 chars for 2-digit floors -- fits the classic 8-glyph box";
 }
 
 TEST(FloorHudLabel, tower_gate_is_unlabeled)
@@ -2477,4 +2515,388 @@ TEST_F(GladHud, freeze_countdown_cell_never_lands_on_the_notification_feed)
     probe_freeze_pixels("4p quadrants");
     EXPECT_GT(freeze_pixels, 0)
         << "a quadrant pane still has room for the cell";
+}
+
+// ---------------------------------------------------------------------------
+// Q2: the counter box fits the rows it holds.
+//
+// The 2026 wave rows print unbounded numbers, and the base tree right-aligns
+// them to rm-2 with max(lm, rm - 2 - 6*len): "FOES: 12 (+34)" and
+// "NEXT WAVE: 120s" start 29 and 35 px LEFT of the 55-px box and hang over
+// the world in DARK_BLUE.  The rule these three cases pin is the one the fix
+// implements: the box's WIDTH is derived from its widest row exactly as its
+// HEIGHT is already derived from its row count.  Every row is left-aligned at
+// one shared text column left+2 (the classic rm-55 column), with
+//
+//     left  = min(rm - 57, rm - 4 - 6 * widest_glyphs)
+//     floor = min(lm + 66, rm - 57)      (never left of the caption column)
+//
+// and a row that does not fit the capacity (rm - 4 - floor) / 6 drops its
+// label ("FOES: 1+2" -> "1+2") rather than hanging off the box.  Rows of <= 8
+// glyphs reproduce the classic box byte for byte, which is why
+// team_row_sits_at_the_pane_top and the two FLR band scans above stay green
+// unchanged.
+//
+// All three are RED BY DESIGN on the phase-3 base tree (ae396461 + the commit
+// that adds them): they assert the geometry the defect withholds.  That
+// refusal cut is also the "before" half of the PR's proof media --
+// scripts/media/capture_pr292.sh runs the first one as the `q2` scene with
+// SCENE_ALLOW_FAIL=1 and keeps the PPM it dumps.
+
+namespace {
+
+// Restores everything the Q2 cases touch on the shared viewscreen, from a
+// destructor, so a failing ASSERT cannot leak a pref into the next test
+// (the PrefRestore idiom of team_row_sits_at_the_pane_top).
+struct HudPrefRestore
+{
+    viewscreen* view;
+    walker* control;
+    char life, score, foes, overlay;
+    explicit HudPrefRestore(viewscreen* v)
+        : view(v)
+        , control(v->control)
+        , life(v->prefs[PREF_LIFE])
+        , score(v->prefs[PREF_SCORE])
+        , foes(v->prefs[PREF_FOES])
+        , overlay(v->prefs[PREF_OVERLAY])
+    {
+    }
+    ~HudPrefRestore()
+    {
+        view->control = control;
+        view->prefs[PREF_LIFE] = life;
+        view->prefs[PREF_SCORE] = score;
+        view->prefs[PREF_FOES] = foes;
+        view->prefs[PREF_OVERLAY] = overlay;
+    }
+};
+
+struct LevelTickGuard
+{
+    GameWorld& world;
+    std::uint32_t saved;
+    explicit LevelTickGuard(GameWorld& w)
+        : world(w), saved(w.level_tick_count())
+    {
+    }
+    ~LevelTickGuard() { world.set_level_tick_count(saved); }
+};
+
+struct FloorCountGuard
+{
+    GameWorld& world;
+    int saved;
+    explicit FloorCountGuard(GameWorld& w) : world(w), saved(w.floor_count()) {}
+    ~FloorCountGuard() { world.set_floor_count(saved); }
+};
+
+// One viewport mode, undone from a destructor (the ViewResize idiom of
+// tests/integration/test_view_resize.cpp).  The pref and the pane geometry
+// move TOGETHER: score_panel draws inside a ScopedGameplayUiViewLayout, which
+// recomputes the pane from prefs[PREF_VIEW], so a resize() the pref does not
+// agree with is thrown away before a single lm/rm is read.  The GladHud
+// fixture's TearDown relayout_views() runs after this.
+struct ViewModeGuard
+{
+    viewscreen* view;
+    char saved;
+    ViewModeGuard(viewscreen* v, char mode)
+        : view(v), saved(v->prefs[PREF_VIEW])
+    {
+        view->prefs[PREF_VIEW] = mode;
+        view->resize(mode);
+    }
+    ~ViewModeGuard()
+    {
+        view->prefs[PREF_VIEW] = saved;
+        view->resize(saved);
+    }
+};
+
+struct HudRefRow
+{
+    int x;
+    int y;
+    std::string text;
+};
+
+// Redraw the counter box by hand at the coordinates the fit rule prescribes
+// and demand the captured frame match it pixel for pixel over the whole box
+// rectangle: position, size, colour and text are all pinned at once.  This
+// clobbers the buffer, so `actual` must already be captured.
+static void expect_counter_box_pixels(
+    screen* s, const std::array<unsigned char, 64000>& actual,
+    int left, int top, int right, int bottom,
+    const std::vector<HudRefRow>& rows, const char* what)
+{
+    s->clearbuffer();
+    s->draw_button(left, top, right, bottom, 1, 1);
+    for (const HudRefRow& row : rows)
+        s->text_normal.write_xy(row.x, row.y, row.text.c_str(),
+                                static_cast<unsigned char>(DARK_BLUE),
+                                static_cast<short>(1));
+    const auto expected = capture_rendered_frame(*s);
+
+    std::vector<unsigned char> actual_box;
+    std::vector<unsigned char> expected_box;
+    for (int y = top; y <= bottom; ++y)
+        for (int x = left; x <= right; ++x)
+        {
+            const std::size_t offset = static_cast<std::size_t>(y * 320 + x);
+            actual_box.push_back(actual[offset]);
+            expected_box.push_back(expected[offset]);
+        }
+    EXPECT_EQ(expected_box, actual_box)
+        << what << ": the box must span x[" << left << "," << right << "] y["
+        << top << "," << bottom << "] with its rows at the shared text column "
+        << left + 2;
+}
+
+// Nothing may be drawn in the band the rows used to hang into.
+static void expect_band_clean(const std::array<unsigned char, 64000>& frame,
+                              int x0, int x1, int y0, int y1, const char* what)
+{
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x)
+            ASSERT_EQ(0, static_cast<int>(
+                          frame[static_cast<std::size_t>(y * 320 + x)]))
+                << what << ": pixel at (" << x << "," << y << ") must stay "
+                << "clean -- no counter row may hang off the box";
+}
+
+} // namespace
+
+TEST_F(GladHud, zz_capture_pending_wave_counter_box)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "the pane geometry below assumes the single-view layout";
+
+    ASSERT_EQ(0, static_cast<int>(v->mynum)) << "pane 0 of the layout";
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    ASSERT_EQ(1, world.floor_count()) << "no FLR row in this scene";
+    LevelTickGuard tick_guard(world);
+    HudPrefRestore restore(v);
+    ViewModeGuard view_mode(v, static_cast<char>(PREF_VIEW_FULL));
+
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    ASSERT_NE(nullptr, controlp->myguy);
+    ASSERT_EQ("SOLDIER", controlp->myguy->name)
+        << "the caption is 7 glyphs wide (lm+3 .. lm+44), clear of the band "
+           "scanned below";
+    world.oblist.push_back(std::move(control));
+
+    // 12 awake hostiles and a 34-strong wave that wakes at tick 1440
+    // (the wake rule is level_tick_count > spawn_delay).
+    for (int i = 0; i < 12; ++i)
+    {
+        auto foe = make_living(FAMILY_ORC, 1);
+        ASSERT_NE(nullptr, foe);
+        world.oblist.push_back(std::move(foe));
+    }
+    for (int i = 0; i < 34; ++i)
+    {
+        auto foe = make_living(FAMILY_ORC, 1);
+        ASSERT_NE(nullptr, foe);
+        foe->set_spawn_delay(1439);
+        foe->set_dormant(true);
+        world.oblist.push_back(std::move(foe));
+    }
+    world.set_level_tick_count(0);
+
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;    // no HP box in the scanned band
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF;  // the count-up consumes rng()
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    // Zero overscan in the default build, so these are the same lm/tm/rm
+    // score_panel computes from this pane.
+    const int tm = v->yloc;
+    const int lm = v->xloc;
+    const int rm = v->endx;
+    ASSERT_EQ(0, tm);
+    ASSERT_EQ(0, lm);
+    ASSERT_EQ(320, rm) << "the full classic pane";
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto actual = capture_rendered_frame(*s);
+    dump_frame_ppm(actual, "pending_wave_counter_box");
+
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake=12 pending=34 secs=120"))
+        << "46 living hostiles, 34 of them dormant -> 12 awake; the wave wakes "
+           "at tick 1440, i.e. (1440 + 11) / 12 = 120 s at the 12 Hz sim rate";
+
+    // Rows: "TEAM: 1" (7), "FOES: 12+34" (11), "WAVE: 120s" (10).  The floor
+    // is min(lm + 66, rm - 57) = 66, capacity (rm - 4 - 66) / 6 = 41, so every
+    // row is drawn whole.  Widest 11 glyphs -> left = rm - 4 - 6*11 = rm - 70,
+    // text column left + 2 = rm - 68, rows at tm+2 / tm+10 / tm+18 inside a
+    // box tm+1 .. tm+24 (the wave row's height, unchanged by this rule).
+    const int box_left = rm - 70;
+    const int text_x = rm - 68;
+    expect_counter_box_pixels(
+        s, actual, box_left, tm + 1, rm - 2, tm + 24,
+        {{text_x, tm + 2, "TEAM: 1"},
+         {text_x, tm + 10, "FOES: 12+34"},
+         {text_x, tm + 18, "WAVE: 120s"}},
+        "pending-wave counter box");
+
+    // Left of the box, right of the caption column: the band the base tree's
+    // right-aligned rows hang into (FOES at rm-86, NEXT WAVE at rm-92).
+    expect_band_clean(actual, lm + 64, box_left - 1, tm + 1, tm + 24,
+                      "pending-wave counter box");
+}
+
+TEST_F(GladHud, counter_box_drops_labels_in_the_108px_pane)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "PREF_VIEW_3's 1p geometry assumes the single-view layout";
+
+    ASSERT_EQ(0, static_cast<int>(v->mynum)) << "pane 0 of the layout";
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    ASSERT_EQ(1, world.floor_count()) << "no FLR row in this scene";
+    LevelTickGuard tick_guard(world);
+    HudPrefRestore restore(v);
+    ViewModeGuard view_mode(v, static_cast<char>(PREF_VIEW_3));
+
+    // The 1p VIEW_3 inset pane (test_view_resize.cpp 1p_view3).
+    ASSERT_EQ(106, static_cast<int>(v->xloc));
+    ASSERT_EQ(214, static_cast<int>(v->endx));
+    ASSERT_EQ(60, static_cast<int>(v->yloc));
+    const int tm = v->yloc;
+    const int lm = v->xloc;
+    const int rm = v->endx;
+
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    auto awake = make_living(FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, awake);
+    world.oblist.push_back(std::move(awake));
+    for (int i = 0; i < 2; ++i)
+    {
+        auto foe = make_living(FAMILY_ORC, 1);
+        ASSERT_NE(nullptr, foe);
+        foe->set_spawn_delay(143); // wakes at 144 -> (144 + 11) / 12 = 12 s
+        foe->set_dormant(true);
+        world.oblist.push_back(std::move(foe));
+    }
+    world.set_level_tick_count(0);
+
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto actual = capture_rendered_frame(*s);
+
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake=1 pending=2 secs=12"))
+        << "one awake hostile, a two-strong wave 144 ticks out";
+
+    // The floor is min(lm + 66, rm - 57) = rm - 57 = 157: classic already
+    // crosses the caption column in this 108-px pane, so the box may not grow
+    // past it.  Capacity (rm - 4 - 157) / 6 = 8, so "FOES: 1+2" (9) and
+    // "WAVE: 12s" (9) drop their labels to "1+2" / "12s" and "TEAM: 1" (7)
+    // stays whole -- widest 7 -> left = min(rm - 57, rm - 4 - 42) = rm - 57,
+    // the classic box, with its classic rm-55 text column.
+    expect_counter_box_pixels(
+        s, actual, rm - 57, tm + 1, rm - 2, tm + 24,
+        {{rm - 55, tm + 2, "TEAM: 1"},
+         {rm - 55, tm + 10, "1+2"},
+         {rm - 55, tm + 18, "12s"}},
+        "108-px pane counter box");
+
+    // PREF_LIFE_OFF draws no HP box, the name box ends at tm+9 and the SPC
+    // row sits at bm-24, so everything left of the box on the FOES/WAVE rows
+    // is world.  The base tree paints "FOES: 1 (+2)" from lm+34 here.
+    expect_band_clean(actual, lm, rm - 58, tm + 10, tm + 24,
+                      "108-px pane counter box");
+}
+
+TEST_F(GladHud, counter_box_widens_for_a_two_digit_floor_label)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "the pane geometry below assumes the single-view layout";
+
+    ASSERT_EQ(0, static_cast<int>(v->mynum)) << "pane 0 of the layout";
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    FloorCountGuard floor_guard(world);
+    HudPrefRestore restore(v);
+    ViewModeGuard view_mode(v, static_cast<char>(PREF_VIEW_FULL));
+
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    auto foe = make_living(FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, foe);
+    world.oblist.push_back(std::move(foe));
+
+    world.set_floor_count(12);
+    controlp->set_floor(9); // reads as floor 10 of 12 (players count from one)
+
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    const int tm = v->yloc;
+    const int lm = v->xloc;
+    const int rm = v->endx;
+    ASSERT_EQ(0, tm);
+    ASSERT_EQ(0, lm);
+    ASSERT_EQ(320, rm) << "the full classic pane";
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto actual = capture_rendered_frame(*s);
+
+    EXPECT_TRUE(trace_contains("hud", "floor FLR: 10/12"))
+        << "the shared floor_hud_label for floor 9 of 12";
+    EXPECT_FALSE(trace_contains("hud", "next_wave"))
+        << "no pending wave: the FLR row is the third row, at tm+18";
+
+    // Rows: "TEAM: 1" (7), "FOES: 1" (7), "FLR: 10/12" (10).  The FLR row
+    // goes through the identical fit path, so it -- not the classic pair --
+    // sets the width: left = rm - 4 - 6*10 = rm - 64, text column rm - 62,
+    // box tm+1 .. tm+24 (16 classic + 8 for the floor row).
+    const int box_left = rm - 64;
+    const int text_x = rm - 62;
+    expect_counter_box_pixels(
+        s, actual, box_left, tm + 1, rm - 2, tm + 24,
+        {{text_x, tm + 2, "TEAM: 1"},
+         {text_x, tm + 10, "FOES: 1"},
+         {text_x, tm + 18, "FLR: 10/12"}},
+        "two-digit floor counter box");
+
+    // The base tree right-aligns FLR from rm-62 while leaving the box at
+    // rm-57; nothing may sit left of the widened box on the floor row.
+    expect_band_clean(actual, lm + 64, box_left - 1, tm + 17, tm + 24,
+                      "two-digit floor counter box");
 }
