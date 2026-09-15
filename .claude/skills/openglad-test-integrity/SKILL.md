@@ -149,6 +149,24 @@ test after the failure never ran.
   OPENGLAD_TEST_LOBBY_CENSUS=1 to list the tests that end holding one.
   Still don't attribute a shuffle failure to new tests without
   reproducing on a clean tree.
+- [SAVE-R9], the same treatment for company files: between every pair
+  of integration tests the harness deletes every save/*.gtl (save0
+  included) and every save/backups/<slot>.NNN.gtl whose slot is not in
+  the process baseline, un-pins the company clock and zeroes the live
+  save's last_played_unix_s, so company files, the live stamp and the
+  clock pin all return to the process baseline. The baseline is the
+  [SAVE-R5](c) stray-slot seeds, which is why the diagnostic survives
+  the whole run. The a/b pin for it lives in
+  tests/integration/test_company_litter_guard.cpp; a per-test teardown
+  reaper is now a rule twin, not a safety net. CONTINUE opens the MOST
+  RECENT company, so a leaked file re-targets a later flow's whole
+  session and the red lands nowhere near the leaker.
+- A FILTERED `--gtest_shuffle` run preserves the full run's relative
+  order for the same seed AND the same binary (gtest shuffles the whole
+  registered set, then applies the filter), so a cheap filtered census
+  finds a bad order without paying for the full binary. Any change to
+  the registered test set re-deals every seed, so a seed recorded
+  before you added a test proves nothing after.
 - `Difficulty.submenu_door_flow` (og_test_menu_ui) used to be recorded
   here as load-flaky with "a rerun clears it". It was not load: its
   per-click oracle was `wait_for_interactable_label_change`, which

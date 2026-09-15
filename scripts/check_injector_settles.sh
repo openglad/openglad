@@ -54,12 +54,12 @@
 # and subtract the names already in FILES and CONVERTED_FILES below. As of this
 # commit that leaves these ungated by either tier:
 # test_campaign_zone_ui.cpp,
-# test_canvas_scale.cpp, test_company_list.cpp, test_fade_ownership.cpp,
+# test_canvas_scale.cpp,
 # test_fairy_death.cpp, test_go_no_team.cpp, test_help.cpp,
 # test_level_editor_issue12_wall_crash.cpp, test_lineup_ui.cpp,
 # test_menu_engine.cpp, test_menu_pins.cpp, test_networking_menu.cpp,
 # test_networking_uxshots.cpp, test_picker_funcs.cpp,
-# test_seat_chip.cpp, test_uxshots_probe.cpp, test_view_team.cpp. Two more census hits are not settles and need no
+# test_uxshots_probe.cpp, test_view_team.cpp. Two more census hits are not settles and need no
 # conversion: test_menu_frame_wait.cpp's 750 sits inside a comment describing
 # the cargo cult, and tests/test_input_helpers.h's static_cast<Uint32>(delay_ms)
 # is a caller-chosen press hold. On top of that, every tier-1 file still carries
@@ -86,9 +86,15 @@ FILES=(
     tests/integration/test_level_editor_interactions.cpp
     tests/integration/test_picker_detail_menu_driven.cpp
     tests/integration/test_train_team.cpp
+    tests/integration/test_company_list.cpp
+    tests/integration/test_seat_chip.cpp
+    tests/integration/test_fade_ownership.cpp
 )
 
 CONVERTED_FILES=(
+    tests/integration/test_company_list.cpp
+    tests/integration/test_seat_chip.cpp
+    tests/integration/test_fade_ownership.cpp
     tests/test_interact.h
     tests/test_click_ladder.h
     tests/integration/test_difficulty.cpp

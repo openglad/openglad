@@ -1218,7 +1218,6 @@ int networking_host_injector(void* data)
 struct SeededContinueCompany
 {
     ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin{"save0"};
     bool seeded = false;
 

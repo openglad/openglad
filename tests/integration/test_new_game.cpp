@@ -608,26 +608,12 @@ static int continue_player_count_injector(void* data)
 
 TEST(NewGame, player_count_survives_back_then_continue)
 {
-    struct ClockReset {
-        ~ClockReset()
-        {
-            og::data::set_company_clock_for_tests(std::nullopt);
-        }
-    } clock_reset;
-    struct FoundedCompanyCleanup {
-        std::string slot;
-        ~FoundedCompanyCleanup()
-        {
-            if (slot.empty() || slot == "save0")
-                return;
-            (void)og::data::set_active_company_slot("save0");
-            (void)og::data::delete_company(slot);
-        }
-    } company_cleanup;
-
     trace_clear();
     // Outrank any save0 or opt-in stray company created earlier in this
     // process, including when the suite runs shuffled within the same second.
+    // SETUP only: the clock pin and the company this flow founds both return
+    // to the process baseline at the next reset ([SAVE-R9],
+    // tests/integration/integration_main.cpp).
     og::data::set_company_clock_for_tests(4102444800LL); // 2100-01-01 UTC
 
     ContinuePlayerCountState state;
@@ -650,7 +636,6 @@ TEST(NewGame, player_count_survives_back_then_continue)
         og::runtime::current_session->myscreen_->save_data.numplayers;
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
-    company_cleanup.slot = state.founded_slot;
 
     ASSERT_TRUE(state.started);
     ASSERT_TRUE(state.finished) << "the complete user flow should unwind";

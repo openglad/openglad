@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -127,6 +128,9 @@ struct FlowState {
     bool finished = false;
     bool saw_name_entry = false;
     bool saw_base_camp = false;
+    // Published by the test body the instant picker_main returns, read by the
+    // escape tail on the injector thread — hence atomic.
+    std::atomic<bool> main_left{false};
     // Leg 1, measured live: main menu -> name entry.
     int fades_added_by_name_entry = -1;
     // The trace buffer as of Base Camp settled, before BACK: legs 2-4 are
@@ -149,6 +153,81 @@ bool wait_for_team_menu(int timeout_ms)
     return false;
 }
 
+// --- the escape tail -------------------------------------------------------
+//
+// A wait that dies must not leave the main thread blocked inside picker_main
+// on a screen nobody will ever click out of: that is the 420 s group TIMEOUT
+// with rc=124 that names no test (B1). The tail says which stage died, then
+// clicks its way out — BACK when the live screen publishes one, else QUIT —
+// until the test body publishes main_left, with no wall-clock bound
+// (openglad-test-integrity "Tests that hang" §1; G2's tail in
+// tests/integration/test_company_list.cpp is the shape).
+//
+// The exit id is a list: the main menu's QUIT, and the BACK that name entry
+// and Base Camp both carry. A tail that finds none of them says so in the log
+// every ~5 s, naming the live button ids, instead of spinning silently — the
+// failure mode that cost a 900 s hang while this package was being proven
+// (the sibling flow in test_seat_chip.cpp met a screen whose door is
+// "seat_settings_back").
+constexpr const char* kExitIds[] = {"back", "quit"};
+
+int abort_flow(FlowState* state, int stage)
+{
+    fprintf(stderr,
+            "  [test] FLOW ABORT at stage %d — unwinding so picker_main can "
+            "return\n",
+            stage);
+    int spins = 0;
+    while (!state->main_left.load())
+    {
+        for (const char* exit_id : kExitIds)
+        {
+            if (has_interactable(exit_id))
+            {
+                interact(exit_id);
+                break;
+            }
+        }
+        (void)wait_for_menu_frames(1, 250);
+        if (++spins % 20 == 0)
+        {
+            std::string ids;
+            for (const std::string& id : get_button_ids())
+                ids += id + " ";
+            fprintf(stderr,
+                    "  [test] escape tail still spinning after %d frames; "
+                    "live ids: %s\n",
+                    spins, ids.c_str());
+        }
+    }
+    return stage;
+}
+
+// The exit click has nobody left to notice it, so it is a condition too:
+// re-sent one completed frame at a time until picker_main publishes
+// main_left, every re-send logged.
+int finish_flow(FlowState* state, const char* exit_id)
+{
+    interact(exit_id);
+    int attempts = 1;
+    while (!state->main_left.load())
+    {
+        (void)wait_for_menu_frames(1, 250);
+        if (state->main_left.load())
+            break;
+        if (!has_interactable(exit_id))
+            continue;  // the screen took it; picker_main is unwinding
+        ++attempts;
+        fprintf(stderr,
+                "  [test] exit click '%s' not consumed — re-sending "
+                "(attempt %d)\n",
+                exit_id, attempts);
+        interact(exit_id);
+    }
+    state->finished = true;
+    return 0;
+}
+
 int count_fade_between_traces()
 {
     std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -161,16 +240,24 @@ int new_game_full_flow_injector(void* data)
     auto* state = static_cast<FlowState*>(data);
     state->started = true;
 
+    // Every settle here is a CONDITION, never a clock: wait_for_menu_frames
+    // returns once run_menu_screen has COMPLETED that many frames. That
+    // matters more here than anywhere — the per-leg fade counts are read
+    // immediately after these settles, and a completed frame proves the
+    // incoming screen composed, where the flat 750 ms sleep it replaced was
+    // waiting out a fadeblack animation a TESTING build never runs.
     if (!wait_for_interactable("begin_new_game", 5000))
-        return 1;
-    SDL_Delay(750);
+        return abort_flow(state, 1);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, 4);
     state->fades_at_new_game_click = count_fade_between_traces();
     interact("begin_new_game");
 
     if (!wait_for_interactable("company_name_accept", 5000))
-        return 2;
+        return abort_flow(state, 2);
     state->saw_name_entry = true;
-    SDL_Delay(750); // menu-entry settle
+    if (!wait_for_menu_frames(2)) // menu-entry settle
+        return abort_flow(state, 5);
     state->fades_added_by_name_entry =
         count_fade_between_traces() - state->fades_at_new_game_click;
     interact("company_name_accept");
@@ -178,18 +265,18 @@ int new_game_full_flow_injector(void* data)
     // Campaign select auto-accepts and the intro auto-dismisses, each one
     // presented frame in; Base Camp follows with no further input.
     if (!wait_for_team_menu(20000))
-        return 3;
+        return abort_flow(state, 3);
     state->saw_base_camp = true;
-    SDL_Delay(750); // Base Camp's entry settle
+    if (!wait_for_menu_frames(2)) // Base Camp's entry settle
+        return abort_flow(state, 6);
     {
         std::lock_guard<std::mutex> lock(g_trace_mutex);
         state->traces_at_base_camp = g_trace_buffer;
     }
 
-    SDL_Delay(300);
-    interact("back");
-    state->finished = true;
-    return 0;
+    if (!wait_for_menu_frames(1))
+        return abort_flow(state, 7);
+    return finish_flow(state, "back");
 }
 
 } // namespace
@@ -211,6 +298,8 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
+    // Release the escape tail before joining: it spins until this is set.
+    state.main_left.store(true);
 
     int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
