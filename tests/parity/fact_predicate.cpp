@@ -244,6 +244,40 @@ std::size_t count_events_kind(const StateDump& d, std::int32_t kind_ordinal)
 
 } // namespace
 
+const char* fact_kind_name(FactKind k)
+{
+    // Same no-`default:` discipline as evaluate_one below: a new enumerator
+    // must be a compile error here, not a silent "Unknown".
+    switch (k)
+    {
+        case FactKind::TickReached:                     return "TickReached";
+        case FactKind::LevelDoneEquals:                 return "LevelDoneEquals";
+        case FactKind::ScoreDelta:                      return "ScoreDelta";
+        case FactKind::WalkerFamilyCount:               return "WalkerFamilyCount";
+        case FactKind::WalkerOfTeamAlive:               return "WalkerOfTeamAlive";
+        case FactKind::WalkerHpRangeAtFinalTick:        return "WalkerHpRangeAtFinalTick";
+        case FactKind::WalkerKeysApplied:               return "WalkerKeysApplied";
+        case FactKind::WalkerPositionMoved:             return "WalkerPositionMoved";
+        case FactKind::WalkerDiedByFinal:               return "WalkerDiedByFinal";
+        case FactKind::WalkerAliveAtFinal:              return "WalkerAliveAtFinal";
+        case FactKind::TreasureFamilyRemovedFromOblist: return "TreasureFamilyRemovedFromOblist";
+        case FactKind::StatDeltaOnPickup:               return "StatDeltaOnPickup";
+        case FactKind::EffectFamilyCount:               return "EffectFamilyCount";
+        case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
+        case FactKind::EventKindExactly:                return "EventKindExactly";
+        case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
+        case FactKind::WeaponFamilyCount:               return "WeaponFamilyCount";
+        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
+            return "TreasureFamilyOfOrderRemovedFromOblist";
+        case FactKind::WeaponSpeed:                     return "WeaponSpeed";
+        case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
+        case FactKind::EffectNetTravel:                 return "EffectNetTravel";
+        case FactKind::WalkerOnFloor:                   return "WalkerOnFloor";
+        case FactKind::WalkerOfOrderFamilyCount:        return "WalkerOfOrderFamilyCount";
+    }
+    return "Unknown";
+}
+
 FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
 {
     FactEvalResult r;
@@ -580,6 +614,26 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
                 return (make_fail(r, p, "no alive walker of family " + sym +
                                   " with floor in [" + std::to_string(p.arg1) +
                                   "," + std::to_string(p.arg2) + "]"), r);
+            return r;
+        }
+        case FactKind::WalkerOfOrderFamilyCount:
+        {
+            // Order-aware count over oblist. arg1 selects the family table,
+            // so an FX family id renders as its FX symbol instead of being
+            // aliased onto the Living name that shares its ordinal. Counts
+            // alive AND dead entries: an expired FX or a consumed treasure
+            // stays in dump.walkers[] with alive=false, and that dead entry
+            // is exactly the evidence these rows exist to pin.
+            const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
+            std::size_t n = 0;
+            for (const auto& w : dump.walkers)
+                if (w.family == sym) ++n;
+            if (static_cast<std::int32_t>(n) < p.arg2 ||
+                static_cast<std::int32_t>(n) > p.arg3)
+                return (make_fail(r, p, "count=" + std::to_string(n) +
+                                  " of " + sym +
+                                  " out of [" + std::to_string(p.arg2) + "," +
+                                  std::to_string(p.arg3) + "]"), r);
             return r;
         }
     }

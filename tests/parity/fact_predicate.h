@@ -87,7 +87,26 @@ enum class FactKind : std::uint8_t
     // is satisfied by any ordinary ground walker and only the multi-floor
     // branch-internal scenarios exercise floor > 0.
     WalkerOnFloor,                   // arg0 = family, arg1 = min_floor, arg2 = max_floor
+    // Order-aware analogue of WalkerFamilyCount. arg0 = family id, arg1 =
+    // Order ordinal (kOrderLiving / kOrderTreasure / kOrderGenerator /
+    // kOrderWeapon / kOrderFX), arg2 = min, arg3 = max; counts
+    // dump.walkers[] entries (alive OR dead) whose family renders under
+    // arg1 via family_symbol_by_order — the oblist analogue of
+    // WalkerFamilyCount for FX/treasure entities, which the living-order
+    // kinds cannot name.
+    //
+    // APPEND-ONLY: this enumerator is last so every existing ordinal keeps
+    // its value (the companion header mirror must match ordinal for
+    // ordinal).
+    WalkerOfOrderFamilyCount,        // arg0 = family, arg1 = order, arg2 = min, arg3 = max
 };
+
+// Canonical spelling of a FactKind, shared by every consumer that prints a
+// kind (parity_runner_smoke's --facts output, scenario_facts_dump's
+// generated JSON). ONE switch, so a new enumerator reds exactly one -Wswitch
+// diagnostic instead of drifting between two copies of the same table.
+// Returns "Unknown" for a value no enumerator names.
+const char* fact_kind_name(FactKind k);
 
 // behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
 // (100 * pixel distance).
@@ -295,6 +314,19 @@ inline constexpr FactPredicate EffectNetTravel(std::int32_t family, std::int32_t
                                                std::string_view label = {}) noexcept
 {
     return {FactKind::EffectNetTravel, family, behavior_flag, threshold_centi, 0, 0, label};
+}
+// How many dump.walkers[] entries render as `family` under `order` — alive
+// OR dead, exactly like WalkerFamilyCount, but resolved in the requested
+// Order namespace instead of always Living. This is the only tool that can
+// name an FX or Treasure entity that the sim parked in oblist (an expired
+// FAMILY_FLASH, a consumed gem): WalkerFamilyCount would render arg0 through
+// the Living table and count the wrong symbol, and EffectFamilyCount reads
+// dump.effects[], which oblist residents never reach.
+inline constexpr FactPredicate WalkerOfOrderFamilyCount(std::int32_t family, std::int32_t order,
+                                                        std::int32_t mn, std::int32_t mx,
+                                                        std::string_view label = {}) noexcept
+{
+    return {FactKind::WalkerOfOrderFamilyCount, family, order, mn, mx, 0, label};
 }
 // At least one ALIVE walker of `family` is on a stacked floor in
 // [min_floor, max_floor]. Has teeth: fails if no such walker exists (e.g. a

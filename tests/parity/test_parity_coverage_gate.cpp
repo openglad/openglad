@@ -936,6 +936,11 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
         {
             const auto& p = spec.expected_facts[i];
             bool bad = false;
+            // Which pair of args the reported range comes from. Every kind
+            // below bounds arg1/arg2 except WalkerOfOrderFamilyCount, whose
+            // arg1 is the Order ordinal.
+            std::int32_t range_lo = p.arg1;
+            std::int32_t range_hi = p.arg2;
 
             switch (p.kind) {
             case FK::WalkerHpRangeAtFinalTick:
@@ -945,6 +950,15 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
             case FK::WalkerFamilyCount:
             case FK::WeaponFamilyCount:
                 if (p.arg2 > p.arg1 + 5 && !label_exempted(p.label))
+                    bad = true;
+                break;
+            // Same span rule as WalkerFamilyCount, one arg to the right:
+            // this kind carries the Order in arg1, so its [min,max] is
+            // arg2/arg3.
+            case FK::WalkerOfOrderFamilyCount:
+                range_lo = p.arg2;
+                range_hi = p.arg3;
+                if (p.arg3 > p.arg2 + 5 && !label_exempted(p.label))
                     bad = true;
                 break;
             case FK::WalkerOfTeamAlive:
@@ -973,7 +987,7 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
                 os << spec.id << "[#" << i << "] kind="
                    << static_cast<unsigned>(p.kind)
                    << " arg0=" << p.arg0
-                   << " range=[" << p.arg1 << "," << p.arg2 << "]"
+                   << " range=[" << range_lo << "," << range_hi << "]"
                    << " label=\"" << p.label << "\"";
                 violations.push_back(os.str());
             }

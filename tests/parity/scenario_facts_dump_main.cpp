@@ -55,36 +55,13 @@ std::mutex& get_allbuttons_mutex()
 
 namespace {
 
+// Single source of truth: og::parity::fact_kind_name (fact_predicate.cpp).
+// This file used to carry a second copy of the same switch; two copies of
+// one table drift, and only one of them reds under -Wswitch when a kind is
+// added.
 const char* kind_name(og::parity::FactKind k)
 {
-    using og::parity::FactKind;
-    switch (k)
-    {
-        case FactKind::TickReached:                     return "TickReached";
-        case FactKind::LevelDoneEquals:                 return "LevelDoneEquals";
-        case FactKind::ScoreDelta:                      return "ScoreDelta";
-        case FactKind::WalkerFamilyCount:               return "WalkerFamilyCount";
-        case FactKind::WalkerOfTeamAlive:               return "WalkerOfTeamAlive";
-        case FactKind::WalkerHpRangeAtFinalTick:        return "WalkerHpRangeAtFinalTick";
-        case FactKind::WalkerKeysApplied:               return "WalkerKeysApplied";
-        case FactKind::WalkerPositionMoved:             return "WalkerPositionMoved";
-        case FactKind::WalkerDiedByFinal:               return "WalkerDiedByFinal";
-        case FactKind::WalkerAliveAtFinal:              return "WalkerAliveAtFinal";
-        case FactKind::TreasureFamilyRemovedFromOblist: return "TreasureFamilyRemovedFromOblist";
-        case FactKind::StatDeltaOnPickup:               return "StatDeltaOnPickup";
-        case FactKind::EffectFamilyCount:               return "EffectFamilyCount";
-        case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
-        case FactKind::EventKindExactly:                return "EventKindExactly";
-        case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
-        case FactKind::WeaponFamilyCount:               return "WeaponFamilyCount";
-        case FactKind::WeaponSpeed:                     return "WeaponSpeed";
-        case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
-        case FactKind::EffectNetTravel:                 return "EffectNetTravel";
-        case FactKind::WalkerOnFloor:                   return "WalkerOnFloor";
-        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
-            return "TreasureFamilyOfOrderRemovedFromOblist";
-    }
-    return "Unknown";
+    return og::parity::fact_kind_name(k);
 }
 
 const char* mode_name(og::parity::CompareMode m)
@@ -194,10 +171,14 @@ void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(" ]");
 }
 
-int arg0_order_for_symbol(og::parity::FactKind k)
+// Which family table `arg0` must be rendered through. Order-carrying kinds
+// answer from the predicate itself (arg1), not from the kind, so an
+// FX-order count is not printed with a Living family name; that is why this
+// takes the whole predicate rather than just the kind.
+int arg0_order_for_symbol(const og::parity::FactPredicate& p)
 {
     using og::parity::FactKind;
-    switch (k)
+    switch (p.kind)
     {
         case FactKind::WalkerFamilyCount:
         case FactKind::WalkerHpRangeAtFinalTick:
@@ -206,8 +187,13 @@ int arg0_order_for_symbol(og::parity::FactKind k)
         case FactKind::WalkerAliveAtFinal:
         case FactKind::WalkerOnFloor:
             return og::parity::kOrderLiving;
-        case FactKind::TreasureFamilyRemovedFromOblist:
+        // arg1 IS the order. Every existing row passes kOrderTreasure to
+        // TreasureFamilyOfOrderRemovedFromOblist, so reading it from the
+        // predicate leaves the generated JSON byte-identical.
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
+        case FactKind::WalkerOfOrderFamilyCount:
+            return p.arg1;
+        case FactKind::TreasureFamilyRemovedFromOblist:
         case FactKind::StatDeltaOnPickup:
             return og::parity::kOrderTreasure;
         case FactKind::EffectFamilyCount:
@@ -244,7 +230,7 @@ void append_predicate_audit_array(std::string& out, const og::parity::ScenarioSp
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
         const auto& p = s.expected_facts[i];
-        const int order = arg0_order_for_symbol(p.kind);
+        const int order = arg0_order_for_symbol(p);
         if (order < 0) continue;
 
         if (has_any) out.push_back(',');
@@ -394,6 +380,12 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
         case FactKind::WalkerOnFloor:
             std::snprintf(buf, sizeof(buf), "WalkerOnFloor(%s, %d, %d)",
                           living(p.arg0).c_str(), p.arg1, p.arg2);
+            return buf;
+        case FactKind::WalkerOfOrderFamilyCount:
+            std::snprintf(buf, sizeof(buf),
+                          "WalkerOfOrderFamilyCount(%s, %d, %d, %d)",
+                          by_order(p.arg0, p.arg1).c_str(), p.arg1,
+                          p.arg2, p.arg3);
             return buf;
     }
     return "Unknown()";

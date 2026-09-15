@@ -624,17 +624,33 @@ def parse_spawn_arrays(text: str) -> dict[str, list[dict]]:
     return out
 
 
+# Count predicates whose [min, max] pair does NOT sit at args[1]/args[2].
+# WalkerOfOrderFamilyCount(family, order, min, max) carries the Order
+# ordinal in args[1], so its bounds are one position to the right; reading
+# args[1] there would compare a min against an Order and silently exempt
+# every widened range on the kind.
+COUNT_BOUND_ARG_INDEX = {
+    "WalkerFamilyCount":        (1, 2),
+    "WeaponFamilyCount":        (1, 2),
+    "WalkerOfTeamAlive":        (1, 2),
+    "EffectFamilyCount":        (1, 2),
+    "WalkerOfOrderFamilyCount": (2, 3),
+}
+
+
 def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
     """Return (is_widened, human-readable predicate signature). Widened
-    iff WalkerFamilyCount/WeaponFamilyCount/WalkerOfTeamAlive with
-    arg1 != arg2 OR WalkerHpRangeAtFinalTick with (arg2-arg1) > 200.
-    Unparseable args short-circuit to "not widened" so the lint never
-    false-fires on a novel call shape."""
-    if kind in ("WalkerFamilyCount", "WeaponFamilyCount", "WalkerOfTeamAlive"):
-        if len(args) < 3:
+    iff WalkerFamilyCount/WeaponFamilyCount/WalkerOfTeamAlive/
+    WalkerOfOrderFamilyCount with min != max OR WalkerHpRangeAtFinalTick
+    with (arg2-arg1) > 200. Unparseable args short-circuit to "not widened"
+    so the lint never false-fires on a novel call shape."""
+    if kind in ("WalkerFamilyCount", "WeaponFamilyCount", "WalkerOfTeamAlive",
+                "WalkerOfOrderFamilyCount"):
+        lo_i, hi_i = COUNT_BOUND_ARG_INDEX[kind]
+        if len(args) <= hi_i:
             return False, kind
-        mn = parse_int_arg(args[1])
-        mx = parse_int_arg(args[2])
+        mn = parse_int_arg(args[lo_i])
+        mx = parse_int_arg(args[hi_i])
         if mn is None or mx is None:
             return False, kind
         if mn == mx:
@@ -754,9 +770,10 @@ def main() -> int:
                     f"use EventKindAtLeast(*, 1) or EventKindExactly(*, n)")
 
     # Phase 04-prep — zero_zero_count_no_negation rule. A
-    # `WalkerFamilyCount(F, 0, 0)`, `WeaponFamilyCount(F, 0, 0)` or
-    # `EffectFamilyCount(F, 0, 0)` predicate is an assertion that the
-    # family is absent. That is
+    # `WalkerFamilyCount(F, 0, 0)`, `WeaponFamilyCount(F, 0, 0)`,
+    # `EffectFamilyCount(F, 0, 0)` or
+    # `WalkerOfOrderFamilyCount(F, order, 0, 0)` predicate is an assertion
+    # that the family is absent. That is
     # only honest as a paired negative assertion (policy P3), so the
     # source row MUST carry an inline `// negative_assertion: <reason>`
     # comment that the lint can grep for. Absent comment -> violation.
@@ -765,13 +782,14 @@ def main() -> int:
         for i, pred in enumerate(preds):
             kind = pred["kind"]
             if kind not in ("WalkerFamilyCount", "WeaponFamilyCount",
-                            "EffectFamilyCount"):
+                            "EffectFamilyCount", "WalkerOfOrderFamilyCount"):
                 continue
             args = pred["args"]
-            if len(args) < 3:
+            lo_i, hi_i = COUNT_BOUND_ARG_INDEX[kind]
+            if len(args) <= hi_i:
                 continue
-            mn = parse_int_arg(args[1])
-            mx = parse_int_arg(args[2])
+            mn = parse_int_arg(args[lo_i])
+            mx = parse_int_arg(args[hi_i])
             if mn != 0 or mx != 0:
                 continue
             trail = pred.get("trail", "")
