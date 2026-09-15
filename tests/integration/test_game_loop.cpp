@@ -44,6 +44,7 @@
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include <openglad/core/util.h>
 #include "test_save_state_guard.h"
 
@@ -201,6 +202,24 @@ static int scripted_poll_adapter(SDL_Event* out)
     return scripted_poll(g_script, out);
 }
 
+// The sim RNG stream every scenario loaded through this helper runs on.
+//
+// A GameWorld carries its SimRandom forward ON PURPOSE: GameWorld::clear()
+// resets every other scalar but never rng_, and each level load seeds the
+// freshly loaded world from the previous world's state
+// (level_runtime_data.cpp, `GameWorld loaded_world(world().rng_.state_)`).
+// Callers here load a REAL gladiator level and then step the sim, so without
+// a pin the fight that runs under their pacing/timing assertions starts at
+// whatever stream position every earlier test in the binary happened to
+// leave behind -- and a level whose heroes lose is a level that ENDS, which
+// turns game_frame_with_result from Continue into Done underneath a caller
+// that is only trying to measure ticks. GameLoop.single_tick_per_call went
+// red exactly that way. The DISPLAY world is what the load seeds the new
+// world from; the AUTHORITATIVE world behind the shadow is what steps the
+// sim, so both are pinned.
+inline constexpr std::uint32_t kScenarioDisplayRngPin = 0x5eed0c07u;
+inline constexpr std::uint32_t kScenarioAuthorityRngPin = 0x5eed5e47u;
+
 static bool load_minimal_game_loop_scenario(const char* save_name)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -212,12 +231,19 @@ static bool load_minimal_game_loop_scenario(const char* save_name)
     game_screen->save_data.numplayers = 1;
     game_screen->save_data.save(save_name);
     game_screen->save_data.save("save0");
+    game_screen->world().rng_.state_ = kScenarioDisplayRngPin;
     if (load_saved_game(save_name, game_screen) == 0)
         return false;
 
     og::runtime::reset_local_transport_shadow(
         *og::runtime::current_game_session,
         *game_screen);
+    if (screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session))
+    {
+        server_screen->world().rng_.state_ = kScenarioAuthorityRngPin;
+    }
     return og::runtime::local_transport_active(
         *og::runtime::current_game_session);
 }
@@ -4542,6 +4568,14 @@ TEST(GameLoop, single_tick_per_call)
     EXPECT_EQ(tick_count, kFrames);
     EXPECT_EQ(0u, st.render_pacer.interval_ms())
         << "render_pacer must stay uninitialized after all sim-only frames";
+    // The pacer contract above can only be measured while the session is
+    // live: the moment the level ends, game_frame_with_result answers Done
+    // and every remaining call ticks nothing. Say so, so a future end-of-
+    // level regression reads as one instead of a hundred "ran 0 ticks".
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "the scenario must survive all " << kFrames
+        << " frames (the RNG pin in load_minimal_game_loop_scenario is what "
+           "keeps this fight from being a coin flip on test order)";
 
     game_screen->world().delete_objects();
 }
@@ -5794,12 +5828,40 @@ bool viewport_is_blank(screen* s)
     return true;
 }
 
+// See the pin comment inside record_cleric_low_magic_heal. Under these three
+// pins the cleric's first heal lands on frame 44 of the 240 -- in isolation,
+// after any predecessor, and under every shuffle order -- which the case
+// below ASSERTS so the pins can never silently stop producing a cast.
+inline constexpr std::uint32_t kClinicDisplayRngPin = 0x5eedc11cu;
+inline constexpr std::uint32_t kClinicAuthorityRngPin = 0x5eed0c07u;
+inline constexpr unsigned int kClinicLibcRandPin = 0x0c11c5eeu;
+
 void record_cleric_low_magic_heal(ClericClinicResult& out, float pinned_mp,
                                   int frames)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, s);
     build_save(s, "gladiator", 1, 1, {FAMILY_SOLDIER, FAMILY_CLERIC}, 4);
+    // Whether the AI cleric reaches for HEAL rather than MYSTIC MACE inside
+    // the 240-frame window is an RNG decision, and a GameWorld carries its
+    // SimRandom forward ON PURPOSE (GameWorld::clear() never touches rng_;
+    // each level load seeds the new world from the previous world's state --
+    // level_runtime_data.cpp). Unpinned, this scene therefore filmed from
+    // whatever stream position the preceding tests left, and no cast at all
+    // landed under roughly one shuffle order in twelve (11 of 135 seeds).
+    // Pin the DISPLAY world (what the load seeds the new world from) and the
+    // AUTHORITATIVE world (what steps the sim) below, plus libc rand() just
+    // under this. The pins fix the ORDER DEPENDENCE, not the film -- the
+    // shipped media was captured honestly from a pre-pin run and is
+    // unchanged.
+    s->world().rng_.state_ = kClinicDisplayRngPin;
+    // The third stream: walker_rng()/combat_rng() run through
+    // ProductionRandom, i.e. libc rand() (screen.cpp `random`), whose state
+    // is process-global and advanced by every test that came before. It is
+    // what made the cast land on a different frame in isolation than in a
+    // full run, so seed it too -- nothing may depend on where this process's
+    // rand() happens to stand.
+    std::srand(kClinicLibcRandPin);
     glad_init();
     all_capture_effects_on();
     // The patient's mini HP bar IS the film's motion; make the toggle
@@ -5812,6 +5874,8 @@ void record_cleric_low_magic_heal(ClericClinicResult& out, float pinned_mp,
             *og::runtime::current_game_session);
     ASSERT_NE(nullptr, server) << "the clinic scene needs the authoritative "
                                   "server world of the transport shadow";
+
+    server->world().rng_.state_ = kClinicAuthorityRngPin;
 
     walker* const server_patient = find_seat_control(server->world());
     ASSERT_NE(nullptr, server_patient)
@@ -5957,8 +6021,14 @@ TEST(GameLoop, zz_capture_real_gameplay)
 // SIMULATES unconditionally (only the PPM dump is gated on OG_FX_CAPTURE_DIR)
 // because it is also the session-level regression for P5: it pins that a
 // low-magic AI cleric's heal reaches the DISPLAY mirror as the replicated
-// notification and as a rising ally HP. It is red by design until the P5 fix
-// lands (the cast fizzles), which is the "before" the film records.
+// notification and as a rising ally HP.
+//
+// The P5 fix has landed (PR292 W-C1-P5-cleric-heal-floor, packs/core/
+// families/living-05-cleric.lua: the slot price is the floor of a heal), so
+// this case is now a plain forward regression -- it goes red if heal_or_mace
+// ever starts fizzling on a zero surcharge again. The film it records is the
+// "before/after" pair for that fix; the recorder's RNG pins keep WHICH
+// frame the cast lands on from being a function of test order.
 TEST(GameLoop, zz_capture_cleric_low_magic_heal)
 {
     const std::filesystem::path save0_path =
@@ -5996,6 +6066,13 @@ TEST(GameLoop, zz_capture_cleric_low_magic_heal)
     {
         EXPECT_EQ("Cleric healed 1 man!", clinic.heal_line)
             << "one hurt ally in range must read as exactly one healed man";
+        // Teeth for the recorder's three RNG pins: from those states the
+        // first cast lands on this frame, every run and in every order. If a
+        // sim or cleric-AI change moves it, the pin no longer produces the
+        // scene this film was cut around -- re-pin deliberately.
+        EXPECT_EQ(44, clinic.heal_line_frame)
+            << "the pinned stream no longer lands the cleric's first heal "
+               "where the clinic film expects it";
     }
     EXPECT_GT(clinic.patient_hp_peak, clinic.patient_hp_frame0)
         << "the patient's mirrored HP never rose above its frame-0 value "
