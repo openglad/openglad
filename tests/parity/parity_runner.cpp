@@ -494,6 +494,9 @@ RunOutcome run_scenario(const ScenarioSpec& spec,
     auto bag_walker = [](const walker* w, CoverageObservation& obs) {
         if (w == nullptr) return;
         const auto family = static_cast<std::int32_t>(w->family());
+        // [SWITCH-GUARD] no default: arm — see the rationale above evaluate_one
+        // in fact_predicate.cpp; a new Order enumerator must be a compile error
+        // here, not a silently unbagged family.
         switch (w->query_order())
         {
             case Order::Living:    obs.walker_families.insert(family); break;
@@ -501,7 +504,9 @@ RunOutcome run_scenario(const ScenarioSpec& spec,
             case Order::Treasure:  obs.treasure_families.insert(family); break;
             case Order::Generator: obs.generator_families.insert(family); break;
             case Order::FX:        obs.effect_families.insert(family); break;
-            default:               break;
+            case Order::Special:
+            case Order::Button1:
+                break; // unmapped on purpose: no coverage bag for these orders
         }
     };
     auto sample_world = [&]() {
