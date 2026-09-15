@@ -4,7 +4,7 @@
 local C = og.C
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 
--- effect.cpp: compute_explosion_range(int32 level, short skip_exit)
+-- Ported from the former effect.cpp compute_explosion_range(level, skip_exit); this is the only copy now.
 local function compute_explosion_range(level, skip_exit)
   -- shim kept: narrows to int32 like the C++ destination.
   local range = og.i32(level * 4)

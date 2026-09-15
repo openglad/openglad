@@ -4,7 +4,7 @@
 
 local C = og.C
 
--- effect.cpp: orbit_offset(int drawcycle, float& xd, float& yd)
+-- Ported from the former effect.cpp orbit_offset(drawcycle, &xd, &yd); this is the only copy now.
 -- 16-step circle of integer offsets (all exactly representable in float).
 local ORBIT_X = { 0, -9, -17, -22, -24, -22, -17, -9,
                   0,   9,  17,  22,  24,  22,  17,  9 }
