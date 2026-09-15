@@ -1204,8 +1204,9 @@ TEST(OptionsMenu, options_menu) {
     // check an empty result also satisfies. The seeded save0 above still
     // earns its place: it is what the main menu's company view reads.
     // (Under a planted stray this test passes either way, which is the
-    // proof; OptionsMenu.zz_capture_* below DO click CONTINUE and do carry
-    // the oracle.)
+    // proof; the MenuCapture.zz_capture_* scenes in
+    // tests/integration/test_menu_capture.cpp DO click CONTINUE and do
+    // carry the oracle.)
 
     // Leave this integration process with the same default controls it began
     // with; the assertions below use the injector's captured results.
