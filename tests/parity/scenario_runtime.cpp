@@ -82,11 +82,11 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
             w->set_current_weapon(s.current_weapon);
 
         // Phase 01 (semantic-parity): caster preconditions for special slots
-        // >= 2. The cycling gate sim_input_handler.cpp:218 requires
-        // (N-1)*3+1 <= stats.level(); the firing gate living.cpp:532-533
-        // requires magicpoints >= special_cost(current_special). Zero
-        // defaults preserve byte-mirror layout for rows that don't need
-        // either.
+        // >= 2. Cycling gate: src/gameplay/sim_input_handler.cpp:310 `(control->current_special() - 1) * 3 + 1` must be <= stats()->level().
+        // Firing gate: src/gameplay/living.cpp:601 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
+        // Zero defaults preserve byte-mirror layout for rows that don't need
+        // either; the harness raises level/MP only when the SpawnSpec asks
+        // for it.
         if (w->stats() != nullptr)
         {
             if (s.stats_level != 0)

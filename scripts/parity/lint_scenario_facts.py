@@ -13,13 +13,17 @@ Asserts:
       is refused like a missing one
   (d) every special_<family>_<idx>_scen* row with idx >= 2 has a team-0
       caster SpawnSpec with stats_level >= (idx-1)*3+1 AND
-      magicpoints >= 600 (cycling gate sim_input_handler.cpp:218 +
-      firing gate living.cpp:532-533 preconditions; the 600 floor is
-      500 MP non-sentinel cap + 100 MP headroom).
+      magicpoints >= 600 (the cycling and firing gate preconditions, cited
+      in anchored form above `struct SpawnSpec` in the table; the 600 floor
+      is the 500 MP non-sentinel cap + 100 MP headroom).
   (e) every kMut_* definition in the table is the discriminating_mutation
       of at least one ScenarioSpec row (branch-internal rows count): an
       orphan pin is a mutation nothing ever applies, so nothing measures
       whether it still has teeth
+  (f) every ANCHORED source citation in tests/parity/*.h and *.cpp —
+      ``src/<path>:<N> `<verbatim fragment>``` — still resolves: line N of
+      <path> contains <fragment>. Bare citations (a line number with no
+      backticked fragment) are outside the rule by construction.
 
 The lint is regex-based, not a full C++ parser. It expects the
 scenario_table.h emitted by Phase 01 and breaks loudly on schema drift.
@@ -669,10 +673,83 @@ def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
     return False, kind
 
 
+# --- anchored citations ------------------------------------------------------
+
+# `src/<path>:<N> `<verbatim fragment of that line>`` — the ANCHORED form of a
+# source citation. The line number alone rots on the next insert above it and
+# nothing notices; the backticked fragment gives the citation an oracle, which
+# is this rule. A citation written WITHOUT a fragment is a bare citation and is
+# outside the rule by construction: the regex needs the backticks to match.
+ANCHORED_CITATION_RX = re.compile(
+    r"(src/[A-Za-z0-9_./-]+\.(?:cpp|h)):(\d+) `([^`]+)`")
+
+
+def check_anchored_citations(parity_dir: Path) -> list[str]:
+    """Resolve every anchored citation in tests/parity/*.h and *.cpp.
+
+    For each `src/<path>:<N> `<fragment>`` occurrence: <path> must exist,
+    1 <= N <= its line count, and line N must CONTAIN <fragment> verbatim.
+    When someone inserts a line above the cited one, the fragment stops
+    matching and the build reds with the stale comment's own location —
+    which is the whole point: a comment fix with no oracle rots again.
+    """
+    errors: list[str] = []
+    sources = sorted(
+        list(parity_dir.glob("*.h")) + list(parity_dir.glob("*.cpp")))
+    cache: dict[str, "list[str] | None"] = {}
+    for src_file in sources:
+        try:
+            text = src_file.read_text(encoding="utf-8")
+        except OSError as exc:  # pragma: no cover - unreadable sibling
+            errors.append(f"{src_file}: cannot read ({exc})")
+            continue
+        try:
+            where = src_file.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            where = src_file.as_posix()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for m in ANCHORED_CITATION_RX.finditer(line):
+                cited_path, target_s, fragment = m.group(1), m.group(2), m.group(3)
+                target = int(target_s)
+                if cited_path not in cache:
+                    cited_file = REPO_ROOT / cited_path
+                    try:
+                        cache[cited_path] = cited_file.read_text(
+                            encoding="utf-8").splitlines()
+                    except OSError:
+                        cache[cited_path] = None
+                cited_lines = cache[cited_path]
+                if cited_lines is None:
+                    errors.append(
+                        f"{where}:{lineno}: anchored citation "
+                        f"{cited_path}:{target} names a file that cannot be "
+                        f"read (the cited file moved — re-point the citation)")
+                    continue
+                if not 1 <= target <= len(cited_lines):
+                    errors.append(
+                        f"{where}:{lineno}: anchored citation "
+                        f"{cited_path}:{target} is outside the file "
+                        f"(1..{len(cited_lines)}) (the cited line moved — "
+                        f"re-point the citation)")
+                    continue
+                if fragment not in cited_lines[target - 1]:
+                    errors.append(
+                        f"{where}:{lineno}: anchored citation "
+                        f"{cited_path}:{target} does not contain "
+                        f"`{fragment}` (the cited line moved — re-point the "
+                        f"citation)")
+    return errors
+
+
 def main() -> int:
     table_env = os.environ.get("LINT_SCENARIO_TABLE")
     table = Path(table_env) if table_env else DEFAULT_TABLE
     text = _load_table(table)
+
+    # Spec-mandated rule (Q12) — anchored_citation. Source citations in the
+    # parity harness rot silently on every insert above the cited line; the
+    # anchored form carries a verbatim fragment so this lint can resolve it.
+    anchored_citation_errors = check_anchored_citations(table.parent)
 
     pred_arrays = parse_predicate_arrays(text)
     pred_calls  = parse_predicate_calls(text)
@@ -1055,6 +1132,7 @@ def main() -> int:
         + family_alias_errors
         + caster_zero_min_errors
         + orphan_mutation_errors
+        + anchored_citation_errors
     )
 
     if all_errors:

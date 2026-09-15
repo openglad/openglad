@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift (sim_input_handler.cpp:316 reads is_held(Shift) to set shifter_down)
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:435 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -166,11 +166,11 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // `default_weapon` / `current_weapon` are zero-meaning-skip.
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
-// raises walker level so cycle/fire gates accept later special slots
-// (cycling gate sim_input_handler.cpp:218 requires (N-1)*3+1 <=
-// stats.level(); firing gate living.cpp:532-533 requires
-// magicpoints >= special_cost(current_special)). Zero defaults preserve
-// byte-mirror layout; scenario_runtime applies them only when non-zero.
+// raises walker level so cycle/fire gates accept later special slots.
+// Cycling gate: src/gameplay/sim_input_handler.cpp:310 `(control->current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Firing gate: src/gameplay/living.cpp:601 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
+// Zero defaults preserve byte-mirror layout; scenario_runtime applies
+// them only when non-zero.
 struct SpawnSpec
 {
     std::int32_t  family;
@@ -2927,7 +2927,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
     // ONLY EffectFamilyCount(FAMILY_EXPLOSION, ...) binding in the table, so
     // it must stay for behavioural_coverage_gate_effects. FX spawned via
     // add_ob(Order::FX) land in oblist (dump.walkers[]), never fxlist
-    // (dump.effects[]) — see scenario_table.h:3832-3840 — so the family's
+    // (dump.effects[]) — see the FX-order note on the EffectFamilyCount anchor in kFacts_effect_boomerang_emission_scen99 — so the family's
     // dump.effects[] count is 0 on both arms; the source qualifier requires
     // a FAMILY_SOLDIER walker, which the spawn list provides.
     pred::EffectFamilyCount(FAMILY_EXPLOSION, 0, 0, /*source=FAMILY_SOLDIER*/0),
