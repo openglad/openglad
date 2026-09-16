@@ -4929,11 +4929,19 @@ private:
         abandon_start_request(og::ui::StartRequestOutcome::NoAnswer);
     }
 
+    // The third site of the host rule used to live here: a deferred press
+    // was CANCELLED locally when this machine was not the host, so a GO
+    // queued behind a roster echo produced no verdict at all -- the same
+    // silent exit the two send-site gates produced, one poll later. A
+    // deferred press is the SAME press; it dispatches on the same terms as
+    // an immediate one and LobbyServer::start_allowed() rule 2 answers it
+    // NotHost. Only a link that cannot carry the request (no transport, no
+    // lobby state) cancels it here.
     void maybe_dispatch_deferred_start()
     {
         if (!deferred_start_requested_)
             return;
-        if (!transport_ || !state_.has_value() || !local_player_is_host())
+        if (!transport_ || !state_.has_value())
         {
             deferred_start_requested_ = false;
             start_request_pending_ = false;

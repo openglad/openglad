@@ -8391,7 +8391,164 @@ TEST(PickerNetworkClient, dedicated_server_real_guest_start_is_answered_not_host
 
     EXPECT_FALSE(g_start_game_requested)
         << "a non-host start never reaches gameplay";
-    EXPECT_FALSE(elected_host->has_game_start_config());
+    EXPECT_FALSE(elected_host->has_game_start_config())
+        << "the denied guest's press hands NO machine a world, not even the "
+           "elected host";
+    EXPECT_FALSE(lobby_server.consume_start_game_requested())
+        << "server_main's loop read: the dedicated loop keeps polling";
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              elected_host->last_start_denial())
+        << "the elected host never pressed GO, so the guest's NotHost is not "
+           "its verdict -- the echo is scoped to the requester";
+}
+
+// PR #292 Q1-D rework: the DEFERRED leg of the same rule. A GO pressed while
+// an authoritative roster echo is still outstanding is not sent immediately —
+// request_start_game() queues it (deferred_start_requested_) and opens the
+// wait, and the poll loop dispatches it once the echo settles. That
+// dispatcher was the THIRD home of "only the host can start": it CANCELLED a
+// queued press when the local machine was not host, dropping the pending flag
+// with no verdict — the same silent exit the two send-site gates produced,
+// one poll later. With that sub-condition gone the deferred press dispatches
+// on the same terms as an immediate one and comes back NotHost from
+// LobbyServer::start_allowed() rule 2, the one implementation.
+//
+// The deferred branch is opened deterministically here: sync_roster_from_save
+// stamps a FRESH join request id the server has not answered yet, so
+// join_confirmation_pending_ cannot be cleared by any state already in
+// flight, and the GO that follows it can only be queued.
+TEST(PickerNetworkClient,
+     dedicated_server_real_guest_deferred_start_is_answered_not_host)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Elected Host");
+    g_start_game_requested = false;
+
+    // server_main's exact transport + lobby shape (no local session).
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options transport_options;
+    transport_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server_transport(port, transport_options);
+    server_transport.accept_connections();
+    og::sim::LobbyServer lobby_server(server_transport);
+
+    og::ui::PickerJoinGameOptions host_options;
+    host_options.mode = og::ui::PickerJoinMode::Direct;
+    host_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto elected_host = og::ui::create_join_picker_lobby_client(host_options);
+    elected_host->initialize_from_save();
+
+    // The elected host must connect FIRST (election is first-connected).
+    ASSERT_TRUE(wait_until([&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        return elected_host->host_controls_visible();
+    })) << "the first-connected peer must be elected host";
+    elected_host->sync_roster_from_save();
+
+    // The guest is a REAL shipping join client in its own session.
+    og::runtime::GameSession::Config guest_cfg;
+    guest_cfg.create_display = false;
+    guest_cfg.install_legacy_globals = false;
+    og::runtime::GameSession guest_session(guest_cfg);
+    prepare_single_member_network_save(
+        guest_session.myscreen_->save_data, 1, "Real Guest");
+    og::ui::PickerJoinGameOptions guest_options;
+    guest_options.mode = og::ui::PickerJoinMode::Direct;
+    guest_options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> guest;
+    {
+        auto guest_scope = guest_session.activate();
+        guest = og::ui::create_join_picker_lobby_client(guest_options);
+        guest->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* guest_session = nullptr;
+        og::ui::IPickerLobbyClient* elected_host = nullptr;
+        og::ui::IPickerLobbyClient* guest = nullptr;
+        ~CleanupGuard()
+        {
+            if (guest_session != nullptr && guest != nullptr)
+            {
+                auto guest_scope = guest_session->activate();
+                guest->shutdown();
+            }
+            if (elected_host != nullptr)
+                elected_host->shutdown();
+        }
+    } cleanup{&guest_session, elected_host.get(), guest.get()};
+
+    const auto pump_all = [&] {
+        lobby_server.poll_incoming_messages();
+        elected_host->poll_and_apply();
+        auto guest_scope = guest_session.activate();
+        guest->poll_and_apply();
+    };
+
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        auto guest_scope = guest_session.activate();
+        return lobby_server.state().players.size() == 2u &&
+            guest->lobby_players().size() == 2u &&
+            guest->local_seat_count() == 1u;
+    })) << "both machines should be seated in the dedicated lobby before the "
+           "guest edits its roster and presses GO";
+
+    {
+        auto guest_scope = guest_session.activate();
+        ASSERT_FALSE(guest->host_controls_visible())
+            << "the guest is NOT the elected host: its GO button stays hidden "
+               "-- visibility is presentation and Q1-D does not change it";
+
+        // Open the deferred branch: a fresh join declaration the server has
+        // not answered yet. Nothing already in flight carries this request
+        // id, so the confirmation wait cannot close before the next pump.
+        guest->sync_roster_from_save();
+
+        EXPECT_FALSE(guest->request_start_game())
+            << "a GO behind an outstanding roster echo is queued, not sent in "
+               "this call, so it never launches locally";
+        EXPECT_TRUE(guest->start_request_pending())
+            << "the queued intent opens the wait: go_menu's timeout-less wait "
+               "loop rides on this flag, so a deferred press that is silently "
+               "cancelled would hang or bounce with no verdict";
+        EXPECT_EQ(og::ui::StartRequestOutcome::None,
+                  guest->start_request_outcome())
+            << "still waiting: the verdict comes from the server";
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        auto guest_scope = guest_session.activate();
+        return !guest->start_request_pending();
+    })) << "the roster echo must release the queued press to the wire and the "
+           "server's answer must then release the wait";
+
+    {
+        auto guest_scope = guest_session.activate();
+        EXPECT_EQ(og::sim::StartDenialReason::NotHost,
+                  guest->last_start_denial())
+            << "a DEFERRED non-host press is answered by rule 2 exactly like "
+               "an immediate one: the deferred dispatcher must not cancel it "
+               "on a client-side host check (that was the third home of the "
+               "host rule)";
+        EXPECT_EQ(og::ui::StartRequestOutcome::None,
+                  guest->start_request_outcome())
+            << "answered (denied), not abandoned: no NoAnswer/LinkLost";
+        EXPECT_FALSE(guest->has_game_start_config())
+            << "a denied start hands the guest no world";
+        EXPECT_FALSE(guest->host_controls_visible())
+            << "pressing GO never grants host controls";
+    }
+
+    EXPECT_FALSE(g_start_game_requested)
+        << "a non-host start never reaches gameplay";
     EXPECT_FALSE(lobby_server.consume_start_game_requested())
         << "server_main's loop read: the dedicated loop keeps polling";
     EXPECT_EQ(og::sim::StartDenialReason::None,
