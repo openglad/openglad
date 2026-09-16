@@ -83,6 +83,21 @@ std::atomic<std::uint64_t> g_menu_screen_completed_frames{0};
 // run_menu_screen with no accessor of its own. -1 whenever no engine screen
 // is running, so a waiter can tell "no highlight yet" from index 0.
 std::atomic<int> g_menu_screen_highlighted_button{-1};
+
+// Clears the mirror on EVERY exit path of run_menu_screen (there are six,
+// including two nested-door propagations), so an injector that reads it after
+// a screen closed sees -1 rather than the last screen's index. It is defined
+// out here rather than inside run_menu_screen because a struct defined inside
+// a function hides that function from the site-key scanner in
+// scripts/check_fadeblack_sites.sh: with the definition nested, the three
+// classified fades below it read as unclassified calls from
+// `~HighlightMirrorScope` and the check (a build dependency) fails.
+struct HighlightMirrorScope {
+    ~HighlightMirrorScope()
+    {
+        g_menu_screen_highlighted_button.store(-1, std::memory_order_release);
+    }
+};
 }
 
 std::uint64_t menu_screen_testing_completed_frames()
@@ -637,16 +652,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         spec.prepare_buttons(buttons, num_buttons, screen_state);
     int highlighted_button = spec.default_highlight;
 #ifdef TESTING
-    // The mirror is cleared on EVERY exit path of run_menu_screen (there are
-    // six, including two nested-door propagations), so an injector that reads
-    // it after a screen closed sees -1 rather than the last screen's index.
-    struct HighlightMirrorScope {
-        ~HighlightMirrorScope()
-        {
-            g_menu_screen_highlighted_button.store(-1,
-                                                   std::memory_order_release);
-        }
-    } highlight_mirror_scope;
+    HighlightMirrorScope highlight_mirror_scope;
 #endif
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     // The array these live buttons belong to (the loop's reset point below).
