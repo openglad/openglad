@@ -200,9 +200,12 @@ test after the failure never ran.
    hand-rolled copy is `tests/integration/test_pause_menu.cpp`, filed
    as debt on PR #292. A capture/scene test never skips on a missing
    env var — it asserts its oracle always and writes media only when
-   asked (`RenderEffects.damage_number_glyphs_paint_in_the_requested_band`,
-   `MenuCapture.zz_capture_*`) — through the one presented-frame
-   handshake in `tests/test_frame_capture.h`, never a fifth copy.
+   asked:
+   `RenderEffects.damage_number_glyphs_paint_in_the_requested_band`
+   through `fx_capture::dump_frame`, `MenuCapture.zz_capture_*`
+   through the one presented-frame handshake in
+   `tests/test_frame_capture.h` (`capture_presented_frame` /
+   `verify_captured_frames`); do not add another copy of either.
 2. Never feed malformed YAML to gparser as a coverage target; it does
    not return.
 3. Run ctest with stdin PIPED, never under a pty — headless clients
