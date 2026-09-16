@@ -6325,6 +6325,227 @@ TEST(GameLoop, zz_capture_cleric_low_magic_heal)
            "that can raise it is a landed heal)";
 }
 
+// ---------------------------------------------------------------------------
+// Q15 capture scene: the local spectator's follow camera.
+//
+// A local spectator session (save_data.numplayers == 0 before the load:
+// openglad_demo and the lobby's 0-player autoplay start) is a zero-seat
+// display. SwitchChar is supposed to walk the camera to the next watchable
+// walker and LEAVE it there. The scene films exactly that claim through the
+// production frame path (game_frame_with_result -> run_game_tick -> send
+// input, process_input, finish_tick, redraw), with the key arriving the way a
+// player's key arrives: a bound keycode held for one frame against faked SDL
+// keystates.
+//
+// The defect this films is invisible in a still, which is why it is a GIF:
+// before the fix the local install bound seat 0 to the camera's walker, so
+// (1) the per-tick control re-sync put the camera back on that walker inside
+// the same frame the key was pressed -- the film never leaves it -- and
+// (2) the bound walker was claimed on the authority (ACT_CONTROL with no
+// input behind it), i.e. a hero frozen at its spawn tile for the whole level.
+namespace spectator_rec {
+
+// Same reason as the clinic's pins one screen up: a GameWorld carries its
+// SimRandom forward, so an unpinned scene films from wherever the preceding
+// tests left the stream and the walkers it follows wander differently in
+// every shuffle order. The film is a camera claim, not an RNG claim, but the
+// summary numbers this test asserts must not be order-dependent.
+inline constexpr std::uint32_t kSpectatorDisplayRngPin = 0x5eed5c07u;
+inline constexpr std::uint32_t kSpectatorAuthorityRngPin = 0x5eed11a7u;
+inline constexpr unsigned int kSpectatorLibcRandPin = 0x5c115eeeu;
+
+struct SpectatorFollowResult
+{
+    int frames_run = 0;
+    int switch_frame = -1;
+    // The watched entity on the frame before the key, and on the frame after.
+    std::uint32_t target_before = 0;
+    std::uint32_t target_after = 0;
+    int tail_frames = 0;
+    // Of the tail frames, how many the camera spent on something OTHER than
+    // the walker it was watching when the key was pressed. The stomp scores
+    // 0 here (the re-sync lands inside the same frame, before the render);
+    // a camera that moves and stays scores every one of them.
+    int frames_off_the_old_target = 0;
+    // The pre-key camera walker, on the AUTHORITY, at the end of the run:
+    // a claimed seat walker stands still under ACT_CONTROL with no input
+    // behind it, an AI hero acts.
+    bool hero_acted = false;
+    bool following_after = false;
+    int blank_frame = -1;
+};
+
+// The key a player would press. Any keycode works as long as the session's
+// own binding names it; F13 is outside every shipped default layout, so
+// nothing else in the frame can claim it.
+inline constexpr SDL_Keycode kSpectatorSwitchKey = SDLK_F13;
+
+void record_spectator_follow(SpectatorFollowResult& out, int switch_frame,
+                             int tail_frames)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    // numplayers == 0: the spectator/autoplay shape. Three roster families so
+    // the follow cycle always has somewhere to go.
+    gameplay_rec::build_save(s, "gladiator", 1, 0,
+                             {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
+    s->world().rng_.state_ = kSpectatorDisplayRngPin;
+    std::srand(kSpectatorLibcRandPin);
+    glad_init();
+    gameplay_rec::all_capture_effects_on();
+    gameplay_rec::force_weather(WeatherKind::None);
+
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session))
+        << "the spectator scene is filmed through the transport shadow";
+    ASSERT_TRUE(og::ui::is_spectator_mode(s->save_data))
+        << "numplayers == 0 is what makes this a spectator session";
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+    server->world().rng_.state_ = kSpectatorAuthorityRngPin;
+
+    viewscreen* const view = s->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+
+    SessionKeyStateGuard keystates;
+    const int saved_key =
+        og::runtime::current_session->player_keys_[0][KEY_SWITCH];
+    og::runtime::current_session->player_keys_[0][KEY_SWITCH] =
+        kSpectatorSwitchKey;
+    reset_viewscreen_input_debounce();
+
+    const bool capturing = getenv("OG_FX_CAPTURE_DIR") != nullptr;
+    out.switch_frame = switch_frame;
+    out.tail_frames = tail_frames;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    const int total_frames = switch_frame + 1 + tail_frames;
+    for (int f = 0; f < total_frames; ++f)
+    {
+        // One frame of SwitchChar, released again on the next: was_pressed is
+        // an edge, and a held key would re-cycle every frame.
+        keystates.set(kSpectatorSwitchKey, f == switch_frame);
+        if (f == switch_frame)
+        {
+            out.target_before = view->control != nullptr
+                ? view->control->entity_id()
+                : 0u;
+        }
+
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        out.frames_run = f + 1;
+
+        if (capturing)
+        {
+            // score_panel is what draws the classic HUD and the §2.8
+            // FOLLOWING caption, and which of the two a frame carries is
+            // half of what this film shows; redraw() alone would dump a
+            // world with neither.
+            s->redraw();
+            score_panel(s);
+            s->refresh();
+            s->swap();
+            // Dumped every frame, red run or not: the run whose point is the
+            // refusal is the "before" half of the pair.
+            gameplay_rec::dump_viewport(s, "spectator_follow", f);
+            if (out.blank_frame < 0 && gameplay_rec::viewport_is_blank(s))
+                out.blank_frame = f;
+        }
+
+        const std::uint32_t watched =
+            view->control != nullptr ? view->control->entity_id() : 0u;
+        if (f == switch_frame)
+            out.target_after = watched;
+        else if (f > switch_frame)
+        {
+            if (watched != out.target_before)
+                ++out.frames_off_the_old_target;
+        }
+
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+
+    out.following_after = view->following_;
+    if (walker* const authority_hero =
+            server->world().find_by_id(out.target_before))
+    {
+        out.hero_acted = authority_hero->act_type() != ACT_CONTROL;
+    }
+
+    if (capturing)
+    {
+        // The capture script reads this back to build its concat list.
+        printf("q15 spectator: switch_frame=%d target_before=%u "
+               "target_after=%u frames_on_new_target=%d/%d hero_acted=%d "
+               "following=%d frames=%d\n",
+               out.switch_frame, out.target_before, out.target_after,
+               out.frames_off_the_old_target, out.tail_frames,
+               out.hero_acted ? 1 : 0, out.following_after ? 1 : 0,
+               out.frames_run);
+        fflush(stdout);
+    }
+
+    og::runtime::current_session->player_keys_[0][KEY_SWITCH] = saved_key;
+    reset_viewscreen_input_debounce();
+    og::runtime::clear_local_transport_shadow(session);
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace spectator_rec
+
+// The Q15 film. Gated on OG_FX_CAPTURE_DIR like its zz_capture siblings: the
+// rule it asserts is pinned for every run by
+// GameLoop.local_spectator_shadow_is_seatless_and_follow_survives_every_resync,
+// and this case exists to dump the 120 viewport frames the before/after GIF
+// pair is cut from. On the base tree it is RED by design (that red run IS the
+// "before" cut; scripts/media/capture_pr292.sh runs it under
+// SCENE_ALLOW_FAIL=1).
+TEST(GameLoop, zz_capture_spectator_follow)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+
+    const std::filesystem::path save0_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    og::test::ScopedPhysicalFileState save0_restore(save0_path);
+    ASSERT_TRUE(save0_restore.ready())
+        << "failed to snapshot save0: " << save0_restore.error().message();
+
+    spectator_rec::SpectatorFollowResult follow;
+    spectator_rec::record_spectator_follow(follow, 30, 90);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+
+    ASSERT_EQ(121, follow.frames_run)
+        << "the level must stay open for the whole recording";
+    ASSERT_EQ(-1, follow.blank_frame)
+        << "frame " << follow.blank_frame
+        << " dumped a single-colour viewport (nothing composed)";
+    ASSERT_NE(0u, follow.target_before)
+        << "the spectator view must be watching somebody before the key";
+
+    EXPECT_TRUE(follow.following_after)
+        << "a zero-seat spectator view is a follow-camera view";
+    EXPECT_NE(follow.target_before, follow.target_after)
+        << "SwitchChar must move the camera off the walker it was watching";
+    EXPECT_EQ(follow.tail_frames, follow.frames_off_the_old_target)
+        << "the camera must STAY on its new target through every re-sync "
+           "(delta and keyframe); it left the old target on only "
+        << follow.frames_off_the_old_target << " of " << follow.tail_frames
+        << " frames after the key";
+    EXPECT_TRUE(follow.hero_acted)
+        << "no seat is bound in a spectator session, so the walker the camera "
+           "started on must still be AI-driven on the authority (it used to "
+           "be claimed as ACT_CONTROL with no input behind it: a statue)";
+}
+
 TEST(GameLoop, zz_capture_splitscreen_gameplay)
 {
     if (!getenv("OG_FX_CAPTURE_DIR"))

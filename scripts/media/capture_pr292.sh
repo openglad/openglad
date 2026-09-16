@@ -58,6 +58,15 @@
 #             og_test_view's GladHud.zz_capture_pending_wave_counter_box
 #             asserts that geometry and dumps the frame, so it is red BY
 #             DESIGN on the base tree (SCENE_ALLOW_FAIL, like p5).
+#   q15       the local spectator's follow camera.  A zero-seat display presses
+#             SwitchChar at frame 30 of 121; the base tree's per-tick control
+#             re-sync drags the camera back onto the seat-bound walker inside
+#             the same frame (and that walker stands claimed but unmanned for
+#             the whole level), the fixed tree moves the camera and keeps it.
+#             "Moves, then snaps back" is not a still, so this one is a GIF;
+#             og_test_game_core's GameLoop.zz_capture_spectator_follow asserts
+#             the fixed behaviour and is therefore red BY DESIGN on the base
+#             tree (SCENE_ALLOW_FAIL, like p5 and q2).
 #   p8        the curses lobby's start-denial band, as a terminal transcript.
 #   p13       the floating damage/heal numbers, which stopped painting on every
 #             client when the display began rendering a mirror world.  The
@@ -77,8 +86,8 @@ cd "$REPO_ROOT"
 BUILD_DIR="${OPENGLAD_BUILD_DIR:-$REPO_ROOT/build/ci-test}"
 MEDIA_ROOT="${OPENGLAD_PR292_MEDIA_DIR:-$REPO_ROOT/build/media/pr-292}"
 
-SCENES=(selftest p1 p5 p8 p13 q2)
-DEFAULT_SCENES=(p1 p5 p8 p13 q2)
+SCENES=(selftest p1 p5 p8 p13 q2 q15)
+DEFAULT_SCENES=(p1 p5 p8 p13 q2 q15)
 
 # A GIF that will not load on GitHub is not proof; this is the band every
 # shipped animation in the screenshots repo already sits in.
@@ -700,6 +709,99 @@ compose_p13() {
     expect_gif "$FINAL_DIR/p13-damage-numbers-after.gif"
     expect_png "$FINAL_DIR/p13-first-hit-side-by-side.png" 1286 428
     expect_png "$FINAL_DIR/p13-first-hit-crop-4x.png" 678 268
+}
+
+# Q15 - the local spectator's follow camera.  The scene test drives the real
+# frame path (game_frame_with_result -> run_game_tick) for 121 frames with a
+# one-frame SwitchChar press on frame 30, dumping the 320x200 viewport every
+# frame, and prints the summary line this recipe reads back.
+#
+# BEFORE: the camera never leaves the walker it started on (the install binds
+# seat 0 to it, and every snapshot apply re-resolves view->control back to that
+# seat before the frame renders), the walker itself stands frozen at its spawn
+# tile, and the classic HUD is drawn because the mirror walker wears a user
+# tag.  Summary: frames_on_new_target=0/90 hero_acted=0.
+# AFTER: the press moves the camera to the next watchable hero and it stays
+# there through the tick-60 keyframe, the view carries the FOLLOWING caption
+# and no HUD/radar, and the walker the camera left walks off as AI.
+# Summary: frames_on_new_target=90/90 hero_acted=1.
+Q15_SWITCH_FRAME=30
+Q15_LAST_FRAME=120
+scene_q15() {
+    SCENE_ALLOW_FAIL=1 run_scene_test q15 og_test_game_core \
+        'GameLoop.zz_capture_spectator_follow'
+    local frames="$SCENE_DIR/spectator_follow"
+    [ -s "$frames/000.ppm" ] \
+        || die "FAIL: the Q15 scene dumped no frames; see $SCENE_LOG"
+    local summary
+    summary="$(grep -m1 '^q15 spectator: ' "$SCENE_LOG" || echo 'no scene summary')"
+    printf 'q15 (%s): %s\n' "$PHASE" "$summary" | tee "$OUT_DIR/q15-summary-$PHASE.txt"
+
+    local list="$WORK_DIR/q15.ffconcat"
+    : > "$list"
+    emit "$list" "$frames" '%03d.ppm' 0.08 0 "$((Q15_SWITCH_FRAME - 1))" 1
+    # The key frame is held so a reader can see WHERE the camera was when the
+    # key was pressed; every frame after it is the claim.
+    hold "$list" "$frames" '%03d.ppm' "$Q15_SWITCH_FRAME" 0.6
+    emit "$list" "$frames" '%03d.ppm' 0.08 "$((Q15_SWITCH_FRAME + 1))" \
+        "$Q15_LAST_FRAME" 1
+    encode_gif "$list" "$WORK_DIR/q15-raw-$PHASE.gif" 8
+    gif_to_budget "$WORK_DIR/q15-raw-$PHASE.gif" \
+        "$OUT_DIR/q15-spectator-follow-$PHASE.gif" 12.5
+    expect_gif "$OUT_DIR/q15-spectator-follow-$PHASE.gif"
+    # The raw PPM directory is what the side-by-side composition consumes.
+    rm -rf -- "$OUT_DIR/q15-frames"
+    cp -r -- "$frames" "$OUT_DIR/q15-frames"
+}
+
+compose_q15() {
+    local bf="$BEFORE_DIR/q15-frames" af="$AFTER_DIR/q15-frames"
+    [ -d "$bf" ] || die "FAIL: $bf is missing (capture the before phase first)"
+    [ -d "$af" ] || die "FAIL: $af is missing (capture the after phase first)"
+    local pair="$WORK_DIR/q15-pair"
+    rm -rf -- "$pair"
+    python3 - "$bf" "$af" "$pair" <<'Q15PY'
+import sys
+sys.path.insert(0, 'scripts/fx_review')
+from make_site import compose_side_by_side
+print('q15 side-by-side frames:', compose_side_by_side(sys.argv[1], sys.argv[2], sys.argv[3]))
+Q15PY
+    local list="$WORK_DIR/q15-pair.ffconcat"
+    : > "$list"
+    emit "$list" "$pair" '%03d.ppm' 0.08 0 "$((Q15_SWITCH_FRAME - 1))" 1
+    hold "$list" "$pair" '%03d.ppm' "$Q15_SWITCH_FRAME" 0.6
+    emit "$list" "$pair" '%03d.ppm' 0.08 "$((Q15_SWITCH_FRAME + 1))" \
+        "$Q15_LAST_FRAME" 1
+    # The strip is built at the encoded width (the frames are doubled first).
+    local pair_w font cap="$WORK_DIR/q15-caption.png"
+    pair_w="$(magick identify -format '%w' "$pair/000.ppm")"
+    font="$(find_mono_font)" || die 'no DejaVuSansMono.ttf found (enter `nix develop`)'
+    magick -background '#202028' -fill '#d8dee9' -font "$font" -pointsize 18 \
+        -size "$((pair_w * 2))x28" -gravity center \
+        label:"BEFORE  ${BEFORE_CAPTION:-base tree}          AFTER  ${AFTER_CAPTION:-fixed tree}" \
+        -alpha off -depth 8 "$cap"
+    GIF_CAPTION="$cap" \
+        encode_gif "$list" "$WORK_DIR/q15-pair-raw.gif" 8
+    gif_to_budget "$WORK_DIR/q15-pair-raw.gif" \
+        "$FINAL_DIR/q15-spectator-follow-side-by-side.gif" 12.5
+    # The static outcome: the bottom strip of the last frame at 10x.  The
+    # BEFORE half carries the classic HUD row, the AFTER half the section 2.8
+    # "FOLLOWING <name>" caption (score_panel.cpp) and nothing else.
+    local last
+    last="$(printf '%03d.ppm' "$Q15_LAST_FRAME")"
+    ppm_crop_zoom "$bf/$last" "$WORK_DIR/q15-zoom-before.png" '160x24+80+174' 1000%
+    ppm_crop_zoom "$af/$last" "$WORK_DIR/q15-zoom-after.png" '160x24+80+174' 1000%
+    stack_vertical "$WORK_DIR/q15-zoom-before.png" "$WORK_DIR/q15-zoom-after.png" \
+        "$FINAL_DIR/q15-follow-caption-crop-10x.png"
+
+    cp -- "$BEFORE_DIR/q15-spectator-follow-before.gif" "$FINAL_DIR/"
+    cp -- "$AFTER_DIR/q15-spectator-follow-after.gif" "$FINAL_DIR/"
+    cp -- "$BEFORE_DIR/q15-summary-before.txt" "$FINAL_DIR/"
+    cp -- "$AFTER_DIR/q15-summary-after.txt" "$FINAL_DIR/"
+    expect_png "$FINAL_DIR/q15-follow-caption-crop-10x.png" 1600 542
+    expect_gif "$FINAL_DIR/q15-spectator-follow-side-by-side.gif"
+    expect_gif "$FINAL_DIR/q15-spectator-follow-before.gif"
+    expect_gif "$FINAL_DIR/q15-spectator-follow-after.gif"
 }
 
 # --- contact sheet ----------------------------------------------------------
