@@ -475,12 +475,19 @@ pinned pack file aside, `_apply_mutation.py` on `build/ci-test/packs/...`,
 naming the index in the table above and `canary: OK` for all nine at
 `0a151cb8` (the commit that added the facts; ~51 s per row). The same fast
 path run on the tree BEFORE that commit is the control: all nine reported
-`predicate_flips=0`, which is what PREDICATE-TOOTHLESS means. A full `--all`
-re-measure is NOT claimed here: it costs about
-2 h 28 m under the current script and belongs to the CI-lane item (Q11) that
-puts the canary in CI; what is claimed is that the nine rows named in this
-section, plus the seventeen orphan pins attached in the same wave, each flip a
-predicate of their own.
+`predicate_flips=0`, which is what PREDICATE-TOOTHLESS means.
+
+**The full `--all` re-measure (2026-09-16, `ed0076cb`).** Claimed now, and
+measured through the new CI lane's own step
+(`.github/workflows/parity-canary.yml`, the schedule arm):
+`canary: rows=222 groups=197 rebuilds=64 zero_flips=0 predicate_toothless=0`
+and `canary: OK -- every scenario flipped at least one predicate of its own`,
+in 19 minutes of wall clock at `CMAKE_BUILD_PARALLEL_LEVEL=2` (165 staged-lua
+groups in ~70 s with no rebuild, then 32 rebuild-cpp groups at two rebuilds
+each). The minimum `pred_flips` over the whole 222-row report is 1, so the nine
+rows retuned above and the seventeen orphan pins attached in the same wave are
+measured rather than argued, and the PREDICATE-TOOTHLESS list is empty for the
+first time since #283 made the byte compare the gtest oracle.
 
 **Three false comments corrected in the same pass** (each on its own lines, so
 no pinned `src/` or `packs/` line moved):

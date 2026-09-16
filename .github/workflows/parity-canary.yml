@@ -45,12 +45,15 @@ jobs:
   canary:
     name: Mutation canary (${{ github.event_name == 'pull_request' && 'touched' || 'all' }})
     runs-on: ubuntu-latest
-    # Measured on a 2-core box: warm build ~5 min, the og_test_level fixture
-    # ~11 s, the whole 159-row Lua arm ~40 s with zero rebuilds, and the C++
-    # half 32 distinct pins × 2 rebuilds. A full `--all` fits inside the
-    # nightly 90; an escalated PR (the expensive case, same work) gets 75, and
-    # a typical PR — Lua arm plus nothing or a couple of touched pins —
-    # finishes in single-digit minutes.
+    # Measured 2026-09-16 on this table (222 rows, 197 pin groups), with the
+    # canary's rebuilds capped at CMAKE_BUILD_PARALLEL_LEVEL=2: `--all` is 19
+    # minutes end to end — 176 Lua rows in 165 staged groups in ~70 s with
+    # zero rebuilds, then 46 C++ rows in 32 groups at two rebuilds each
+    # (~15 s per rebuild incremental). Add the og_test_level fixture (~40 s)
+    # and a warm-ccache build of the three targets. A runner has 4 cores, so
+    # the nightly 90 and the escalated-PR 75 both leave room for a cold cache;
+    # a typical PR — the Lua arm plus nothing or a couple of touched pins —
+    # is the 39 s case.
     timeout-minutes: ${{ github.event_name == 'pull_request' && 75 || 90 }}
     steps:
       - uses: actions/checkout@v7

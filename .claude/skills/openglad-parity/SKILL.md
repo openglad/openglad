@@ -181,6 +181,14 @@ still BITE. Facts:
   something, `smoke_empty_scen99` included (its `TickReached(1)` is
   evaluated inside the Invariant arm's gtest as well as by
   `--evaluate-facts`).
+- `--all` exits 0 as of `ed0076cb` — the first full re-measure since those
+  retunes, and the run this CI lane was accepted on: `rows=222 groups=197
+  rebuilds=64 zero_flips=0 predicate_toothless=0`, 19 minutes of wall
+  clock at `CMAKE_BUILD_PARALLEL_LEVEL=2` (ledger:
+  "The full `--all` re-measure"). `rebuilds` is exactly 2 × the 32
+  rebuild-cpp groups; another number means a group mutated without
+  restoring, or restored without rebuilding. The two tallies that must
+  stay 0 are unchanged.
 - Modes, all mutually exclusive: `--scenario <id>`, `--filter <glob>`,
   `--all`, `--touched <ref>`. On any of them, `--plan` prints the plan and
   runs the preflight while mutating NOTHING (the cheap "could this run at
