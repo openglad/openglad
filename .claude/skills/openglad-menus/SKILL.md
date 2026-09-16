@@ -217,8 +217,11 @@ GO / SET LEVEL / SET CAMPAIGN.
   `tests/test_escape_tail.h` (`escape_to_the_main_thread` — one press per
   screen, watch the screen you acted on go away before pressing again, a
   numbered leg for every give-up). Call it; do not re-type it.
-  `tests/integration/test_pause_menu.cpp` is the remaining file with its own
-  copy — the second consumer to convert, filed as debt on PR #292.
+  `tests/integration/test_pause_menu.cpp` is the next consumer to convert;
+  `tests/integration/test_overpowered_team.cpp`,
+  `test_campaign_sprite_uaf.cpp` and `test_campaign_zone_ui.cpp` still carry
+  their own `while (!test_finished)` exit loops (other binaries, same
+  shape) — all filed as debt on PR #292. Convert, do not add a fifth.
 - The id `back` is shared by several screens: disambiguate with
   `wait_for_interactable_at("back", x, y)` using each screen's unique
   geometry.

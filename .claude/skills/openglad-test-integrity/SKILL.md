@@ -196,9 +196,13 @@ test after the failure never ran.
    exists to prevent. Loop until the main thread signals it left the
    menu, and click BACK as well as RESUME — the player sub-screen
    publishes no RESUME. The rule lives once, in
-   `tests/test_escape_tail.h` (`escape_to_the_main_thread`); the last
-   hand-rolled copy is `tests/integration/test_pause_menu.cpp`, filed
-   as debt on PR #292. A capture/scene test never skips on a missing
+   `tests/test_escape_tail.h` (`escape_to_the_main_thread`);
+   `tests/integration/test_pause_menu.cpp` is the next consumer to
+   convert, and `test_overpowered_team.cpp`,
+   `test_campaign_sprite_uaf.cpp` and `test_campaign_zone_ui.cpp` still
+   carry their own `while (!test_finished)` exit loops (other binaries,
+   same shape) — all filed as debt on PR #292. Convert, do not add a
+   fifth. A capture/scene test never skips on a missing
    env var — it asserts its oracle always and writes media only when
    asked:
    `RenderEffects.damage_number_glyphs_paint_in_the_requested_band`
