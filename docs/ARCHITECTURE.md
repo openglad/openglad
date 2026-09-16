@@ -1014,10 +1014,18 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 1. **test** — Build all test binaries and run `ctest --parallel`
 2. **build** — Native release build (`openglad`, `openscen`)
 3. **headless-server** — SDL-free `openglad_text` / `openglad_server` build and test
-4. **asan** — ASan + UBSan build and test
-5. **tsan** — ThreadSanitizer build and test
+4. **campaign-drift** — Reruns every `tools/<x>_mapgen` generator against the
+   checkout and fails when a committed campaign tree drifts from its generator
+   (generated content under `campaigns/<id>/` is committed like a lockfile)
+5. **asan** — ASan + UBSan build and test
+6. **tsan** — ThreadSanitizer build and test
 
 Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
+`parity-canary.yml` (the parity mutation canary — the teeth oracle for
+`tests/parity`: on a pull request it mutates every pin whose file the PR
+touched plus the whole free Lua arm, nightly and on `workflow_dispatch` it
+mutates all of them, and it is red when a scenario's own predicates fail to
+notice their pin's mutation; see `.claude/skills/openglad-parity/SKILL.md`),
 `release.yml` (one versioned GitHub release per master commit, triggered by
 `workflow_run` when that commit's `wasm-e2e.yml` finishes successfully; on pull
 requests it only validates the three-platform build matrix), and `wasm-e2e.yml`

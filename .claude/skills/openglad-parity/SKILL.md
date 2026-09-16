@@ -144,8 +144,25 @@ hostile TOWER1 to hold `level_done=0`).
 ## The mutation canary (teeth oracle)
 
 `scripts/parity/run_mutation_canary.sh` applies a scenario's `kMut_*`
-from/to swap to real source, rebuilds, and requires ≥1 predicate flip.
-It is NOT in CI — CI only validates that pin files/lines exist. Facts:
+from/to swap to real source (or to the staged pack copy, which needs no
+compiler), re-evaluates every row that names that pin, and requires that
+at least one PREDICATE of the row flips.
+
+**It runs in CI**: `.github/workflows/parity-canary.yml`. On a pull
+request the job runs `--touched <merge-base>` — the whole Lua arm (free,
+no rebuild), every C++ pin whose file the PR changed, and every row whose
+parsed spec differs from the base table — escalating to `--all` when the
+PR touches the machinery itself (`scripts/parity/`, `tests/parity`
+sources, `cmake/OpenGladTests.cmake`, or the workflow), because a change
+there can detooth a pin without editing one. Nightly at 03:30 UTC and on
+`workflow_dispatch` it runs `--all`. Red is any nonzero exit of the
+script: a `0 flips` row, a PREDICATE-TOOTHLESS row, an environment abort,
+a staged-mirror mismatch or a dirty tree, with one `::error::` line per
+offending row and the tallies in the step summary. There is no
+`continue-on-error`, no narrowing filter and no retry.
+`check_mutation_pins.py` still validates anchors at build time; the two
+gates ask different questions — does the pin still APPLY, and does it
+still BITE. Facts:
 
 - Predicate flips and the gtest verdict are counted SEPARATELY, and the
   predicates are the oracle. Since #283 the SemanticParity gtest
@@ -158,29 +175,55 @@ It is NOT in CI — CI only validates that pin files/lines exist. Facts:
   compare only). Both fail the run.
 - The nine PREDICATE-TOOTHLESS rows measured on 2026-09-08 were retuned
   on 2026-09-15: each now carries one exact fact that flips under its own
-  pin, measured per row with `--scenario` and recorded as a table in
-  `tests/parity/golden/DRIFT_LEDGER.md` ("The remaining nine, retuned").
-  That list may only shrink — a row that reds only the byte compare is
-  debt, never a pass. A full `--all` has NOT been re-measured since
-  (about 2 h 28 m under the current script); measure the rows you touch
-  with `--scenario` and leave `--all` to the CI lane. Every row flips
+  pin, recorded as a table in `tests/parity/golden/DRIFT_LEDGER.md`
+  ("The remaining nine, retuned"). That list may only shrink — a row that
+  reds only the byte compare is debt, never a pass. Every row flips
   something, `smoke_empty_scen99` included (its `TickReached(1)` is
   evaluated inside the Invariant arm's gtest as well as by
   `--evaluate-facts`).
-- A Lua pin can be measured with NO rebuild: `build/ci-test/packs` is a
-  byte mirror of `packs/`, so copying the pinned file aside, applying
-  `_apply_mutation.py` to the STAGED path, re-running
-  `parity_runner_smoke --evaluate-facts`, restoring and `cmp`-ing
-  reproduces the script's verdict in seconds instead of ~40 s. Verify
-  the mirror with `diff -rq packs build/ci-test/packs` first, and never
-  build while a staged mutation is in flight (`stage_runtime_assets`
-  re-mirrors on every build and would overwrite it).
+- Modes, all mutually exclusive: `--scenario <id>`, `--filter <glob>`,
+  `--all`, `--touched <ref>`. On any of them, `--plan` prints the plan and
+  runs the preflight while mutating NOTHING (the cheap "could this run at
+  all?"), and `--report <path>` writes the per-row verdicts and the
+  tallies as JSON. `--changed-files-from <file>` is a test seam that
+  feeds `--touched` a changed-file list instead of `git diff --name-only`.
+  Selection and grouping live in `scripts/parity/canary_plan.py`
+  (`--self-test`), not in the shell.
+- Rows are GROUPED BY PIN, not by row: the group key is the pin's whole
+  tuple (file, line, from, to, context_before), so 63 C++ rows sharing 32
+  pins pay 32 mutations instead of 63, while two sibling pins that sit on
+  one line stay separate groups.
+- A Lua pin needs NO rebuild, and the script exploits that itself:
+  `build/ci-test/packs` is a byte mirror of `packs/` written by
+  `stage_runtime_assets`, and every binary resolves assets exe-adjacent,
+  so the staged copy is what the run mutates. The precondition is that
+  the mirror IS a mirror — `diff -rq packs build/ci-test/packs` must be
+  clean before the run and the restore must `cmp` equal after it (exit 9
+  either way) — and no build may run while a staged mutation is in
+  flight, since a build re-mirrors the directory and would silently
+  un-apply it. That is why the plan orders the whole staged arm ahead of
+  the rebuilding one. Driving a single pin by hand follows the same
+  recipe: copy aside → `_apply_mutation.py` on the STAGED path →
+  `parity_runner_smoke --evaluate-facts` → restore → `cmp`.
+- Branch-internal rows are excluded from every canary mode BY DESIGN
+  (as they are in `lint.parse_scenarios` and the companion's
+  `list_scenarios`): an Invariant row compares two dumps of the SAME
+  mutated binary, so no mutation can flip its compare. Their pins
+  (`kMut_snapshot_dirty`, `kMut_treasure_exit_open_prompt`) are anchored
+  and checked, never canaried.
+- Exit codes: 0 every selected row flipped a predicate of its own;
+  1 teeth failure (a zero-flip row, or a PREDICATE-TOOTHLESS row);
+  2 usage error or a dirty worktree; 3 the selection is empty;
+  7 environment abort (a missing binary, fixture or measurement —
+  nothing was measured, so nothing is reported as guarded);
+  9 staged-packs mirror mismatch, before or after the run.
 - The canary restores files via `git checkout --` and will DESTROY
   uncommitted changes in mutated files. On a dirty tree, drive mutations
   by hand: back up bytes → `_apply_mutation.py` → rebuild → gtest filter
   → restore the backup bytes.
 - C++ canary runs leave the MUTATED binary in build/ci-test — rebuild
-  before running anything else from that tree.
+  before running anything else from that tree. (The staged arm never
+  rebuilds, so it cannot leave mutated objects.)
 - Run the FULL suite under a mutation, not a single filter: collateral
   flips (a mutation that kills a whole Lua chunk reds many rows) are only
   measurable that way, and named-control greenness is the honesty check.

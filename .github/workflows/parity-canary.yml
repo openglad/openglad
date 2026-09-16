@@ -1,0 +1,184 @@
+# The parity mutation canary — the teeth oracle for tests/parity.
+#
+# scripts/parity/run_mutation_canary.sh applies each pin's discriminating
+# mutation to real source (or to the staged pack copy, which needs no compiler)
+# and requires that at least one of the mutated row's own PREDICATES flips.
+# Until this workflow existed the canary ran only by hand: CI validated that a
+# pin's file and line still exist, never that the pin still has teeth, so a
+# scenario whose facts had gone inert stayed green forever.
+#
+# Two modes, one job:
+#   pull_request  `--touched <merge-base>` — the whole Lua arm (free: no
+#                 rebuild), plus every C++ pin whose file this PR changed, plus
+#                 every row whose parsed spec differs from the base table. The
+#                 plan escalates itself to `--all` when the PR touches the
+#                 harness (scripts/parity/, tests/parity sources, the test
+#                 CMake, or this file) — machinery can detooth a pin without
+#                 editing one, and then the subset stops being an argument.
+#   schedule / workflow_dispatch
+#                 `--all` — every master-comparable row in the table.
+#
+# Red means: a row flipped nothing at all (`0 flips`), a row was carried only by
+# the #283 golden byte compare (`PREDICATE-TOOTHLESS`), the environment was
+# unusable (exit 7), the staged pack mirror was not a mirror (exit 9), or the
+# checkout was dirty (exit 2). There is no continue-on-error and no filter that
+# narrows the run: the script's exit code is the verdict.
+#
+# NOTE for anyone editing this file: a `git push` that touches
+# .github/workflows/ needs a credential with workflow scope (the default OAuth
+# token does not have it) — push over SSH, or with the HTTPS credential-helper
+# override.
+name: Parity Mutation Canary
+
+on:
+  pull_request:
+  schedule:
+    # Nightly at 03:30 UTC — after fuzz.yml's 03:00 slot so the two long
+    # nightly jobs do not contend for the same runner minute.
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Mutation canary (${{ github.event_name == 'pull_request' && 'touched' || 'all' }})
+    runs-on: ubuntu-latest
+    # Measured on a 2-core box: warm build ~5 min, the og_test_level fixture
+    # ~11 s, the whole 159-row Lua arm ~40 s with zero rebuilds, and the C++
+    # half 32 distinct pins × 2 rebuilds. A full `--all` fits inside the
+    # nightly 90; an escalated PR (the expensive case, same work) gets 75, and
+    # a typical PR — Lua arm plus nothing or a couple of touched pins —
+    # finishes in single-digit minutes.
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 75 || 90 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The canary reads the base revision of tests/parity/scenario_table.h
+          # and diffs file names against the merge base, so the full history is
+          # load-bearing here, not a convenience.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install dependencies
+        # Deliberately the Run Tests list verbatim (test.yml), gtest and
+        # ncurses included: the ccache key below is shared with that job and a
+        # configure that differs in any feature probe would compile different
+        # objects and miss the cache.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
+
+      - uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: ci-test
+
+      - name: Configure (ci-test preset)
+        # Same flags as the Run Tests job for the same reason as the apt list.
+        run: cmake --preset ci-test -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build the canary targets
+        # og_test_parity and parity_runner_smoke are what the canary measures;
+        # og_test_level is what produces the scenario fixtures below. The canary
+        # rebuilds the first two itself for every C++ pin, so keeping the target
+        # list this narrow is what makes those rebuilds incremental.
+        run: cmake --build --preset ci-test --target og_test_parity parity_runner_smoke og_test_level -j"$(nproc)"
+
+      - name: Produce the scenario fixtures
+        # Most rows load scen/scen1.fss, which og_test_level writes into
+        # temp/scen/. Without this the canary aborts with exit 7 (environment)
+        # rather than reporting anything about pins.
+        run: ctest --test-dir build/ci-test -R '^og_test_level$' --output-on-failure --timeout 420
+
+      - name: Refuse a dirty checkout
+        # The canary restores its mutations with `git checkout --` and refuses
+        # to start on a dirty tree (exit 2). The one thing that legitimately
+        # dirties the tree here is the build regenerating the facts JSON, and
+        # that means the committed copy is stale.
+        run: |
+          dirty="$(git status --porcelain)"
+          if [ -n "$dirty" ]; then
+            echo "$dirty"
+            echo "::error::the build regenerated tests/parity/scenario_facts_generated.json — commit it"
+            exit 1
+          fi
+
+      - name: Run canary
+        run: |
+          set -eo pipefail
+          mkdir -p build
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # The pull_request checkout is the refs/pull/N/merge commit, so the
+            # merge base with the base branch is the base tip this PR is
+            # measured against. Fetch it by name first: checkout leaves no
+            # credentials behind, but the repository is public and this is the
+            # one ref the canary's --touched selection needs.
+            git fetch --no-tags --prune --quiet origin \
+              "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+            BASE="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+            if [ -z "$BASE" ]; then
+              echo "::error::could not resolve the merge base with ${{ github.base_ref }}"
+              exit 1
+            fi
+            echo "canary base: $BASE"
+            scripts/parity/run_mutation_canary.sh --touched "$BASE" \
+              --report build/canary_report.json 2>&1 | tee build/canary.log
+          else
+            scripts/parity/run_mutation_canary.sh --all \
+              --report build/canary_report.json 2>&1 | tee build/canary.log
+          fi
+
+      - name: Summarise
+        if: always()
+        # Runs after a failure too: the tallies and the per-row `::error::`
+        # lines are exactly what a red run needs to be read from the summary
+        # page instead of by scrolling the log.
+        run: |
+          {
+            echo "## Parity mutation canary (${{ github.event_name == 'pull_request' && 'touched' || 'all' }})"
+            echo
+            if [ -f build/canary_report.json ]; then
+              echo "| rows | rebuilds | zero flips | predicate-toothless |"
+              echo "|---:|---:|---:|---:|"
+              python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["tallies"]; print("| %d | %d | %d | %d |" % (t["rows"], t["rebuilds"], t["zero_flips"], t["predicate_toothless"]))' build/canary_report.json
+            else
+              echo "_No report was written — the run aborted before the loop._"
+            fi
+            echo
+            if [ -f build/canary.log ]; then
+              echo '```'
+              grep -E '^canary: (rows=|processed )' build/canary.log || true
+              grep '^::error::' build/canary.log || echo 'no offending rows'
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert workspace restored
+        if: always()
+        # The canary mutates real files and restores them on every exit path,
+        # including signals. If a run ever leaves a mutation behind, the next
+        # thing to read this checkout would be measuring mutated code — so the
+        # invariant is checked here rather than assumed. Both halves: the
+        # sources (git) and the staged pack mirror the fast path writes into.
+        run: |
+          dirty="$(git status --porcelain)"
+          if [ -n "$dirty" ]; then
+            echo "$dirty"
+            echo "::error::the canary left the worktree mutated"
+            exit 1
+          fi
+          if ! diff -rq packs build/ci-test/packs; then
+            echo "::error::the canary left build/ci-test/packs out of sync with packs/"
+            exit 1
+          fi
+
+      - name: Upload canary report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: parity-canary-${{ github.event_name }}
+          path: |
+            build/canary_report.json
+            build/canary.log
+          if-no-files-found: warn
