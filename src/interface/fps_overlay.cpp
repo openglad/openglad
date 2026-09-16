@@ -50,7 +50,7 @@ int FpsCounter::update(std::uint64_t now_ms)
 
 // new_score_panel draws the TEAM/FOES counter in the top-right corner of the
 // top viewport; counter_bottom_y is that box's bottom edge (it grows with the
-// NEXT WAVE and FLR rows, so the caller computes it). Render one row below it
+// WAVE and FLR rows, so the caller computes it). Render one row below it
 // so the developer overlay never sits on top of the live foe count.
 void draw_fps_overlay(screen& s, int counter_bottom_y)
 {

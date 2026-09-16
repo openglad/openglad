@@ -66,7 +66,7 @@ fully deterministic too — scripts/make_glad.py pins order, mtimes, method).
   bit2 protected. Start-as-guard is NOT a flag bit — it rides the per-object
   command byte (writer round-trips act_type; loader applies only
   Living+ACT_GUARD). spawn_delay (reserved[4-5]) makes dormant walkers: they
-  hold level_done open, show in the NEXT WAVE HUD, are not
+  hold level_done open, show in the HUD's WAVE countdown row, are not
   switchable/targetable, and wake with a flash. The openscen SELECT panel
   authors this as the "Delay" prompt (ticks, 12/sec), and the OBJECT panel
   presets it on the brush so a whole wave places already delayed; only
