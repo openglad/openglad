@@ -21,6 +21,8 @@
 // teeth tests arm and the counts those tests pin. They are test-local globals;
 // nothing in src/ knows about them.
 
+#include <gtest/gtest.h>
+
 #include <openglad/core/test_trace.h>
 
 #include "test_input_helpers.h"
@@ -412,6 +414,79 @@ inline bool click_until_label_containing(const std::string& id,
             return label.find(want) != std::string::npos;
         },
         attempts, wait_ms, landed_trace, landed_category);
+}
+
+// --- The value ladder: click a row until the value it STORES moves ---------
+//
+// The fourth entry point, hoisted VERBATIM from
+// tests/integration/test_difficulty.cpp (interact_times) when the menu
+// capture scenes needed the same drive: one implementation of the rule, not
+// three (PR #245). Only the name and the linkage changed in the move; the
+// ruling text below travels with the code.
+//
+// It asserts and FAILs, so it stays a void helper -- gtest's ASSERT_* returns
+// from the enclosing void function, which is exactly the give-up this drive
+// wants.
+
+// Click `id` `times` times, proving each click was CONSUMED before queueing
+// the next.
+//
+// The oracle is the value the row STORES, read on the menu thread — not the
+// row's label. wait_for_interactable_label_change returns true for any label
+// that differs from the snapshot, including one produced by a neighbouring
+// per-frame re-derive, so it certified clicks the row never saw: under
+// ci-asan this flow lost one cycle step in roughly two runs out of three, and
+// the lap assertion sixty lines below then read one short with no complaint
+// from the injector at all.
+//
+// Same shape as test_options_menu.cpp's click_cycle_step, which drives 70
+// clicks per run through this engine and has never lost one: read the value,
+// click, poll for it to MOVE, re-click on the documented 300 ms spacing, and
+// fail by name on the deadline. The 5000 ms deadline is unchanged; the happy
+// path now exits on the first frame that lands the change instead of paying a
+// flat settle.
+inline void click_until_value_moves(const std::string& id, int times,
+                                    const std::function<int()>& read_value)
+{
+    for (int i = 0; i < times; ++i) {
+        fprintf(stderr, "  [test] clicking %s (%d/%d)\n", id.c_str(), i + 1, times);
+        int before = 0;
+        ASSERT_TRUE(run_on_main_thread([&] { before = read_value(); }))
+            << id << ": the menu loop never read the value before click "
+            << (i + 1);
+        ASSERT_TRUE(interact(id))
+            << id << " disappeared before click " << (i + 1);
+
+        const Uint64 deadline = SDL_GetTicks() + 5000;
+        Uint64 last_click = SDL_GetTicks();
+        for (;;) {
+            int now = before;
+            ASSERT_TRUE(run_on_main_thread([&] { now = read_value(); }))
+                << id << ": the menu loop never read the value after click "
+                << (i + 1);
+            if (now != before)
+                break;
+            if (SDL_GetTicks() >= deadline)
+                FAIL() << id << " never consumed click " << (i + 1)
+                       << " (value stuck at " << before << ")";
+            // 300 ms is the minimum RE-CLICK spacing: a shorter gap can land
+            // the next press while this one is still held, and it is dropped.
+            // It is not a poll interval.
+            if (SDL_GetTicks() - last_click >= 300) {
+                ASSERT_TRUE(interact(id))
+                    << id << " disappeared before a re-click of click "
+                    << (i + 1);
+                last_click = SDL_GetTicks();
+            }
+            SDL_Delay(20);
+        }
+
+        // The value changes on the press edge. Establish the next frame's
+        // pointer baseline on the menu thread so its event poll consumes the
+        // already-queued release before this injector sends another press.
+        ASSERT_TRUE(run_on_main_thread([] { reset_mouse_click_tracking(); }))
+            << id << " did not acknowledge click " << (i + 1);
+    }
 }
 
 #endif  // _TEST_CLICK_LADDER_H__

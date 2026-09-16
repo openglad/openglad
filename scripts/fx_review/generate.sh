@@ -37,17 +37,25 @@ restore_save() {
 }
 trap restore_save EXIT
 
+# Every capture invocation is wrapped in `timeout`: a flow that wedges here
+# used to write ~4.7 MB/s of PPM frames for as long as anyone let it (the
+# menu scenes' escape tail could not leave Base Camp after the DIFFICULTY
+# door moved there, and `set -euo pipefail` has no clock of its own).
+CAPTURE_TIMEOUT=${OG_FX_CAPTURE_TIMEOUT:-900}
+
 echo "=== effect close-ups ==="
-OG_FX_CAPTURE_DIR="$PWD/$ANIM" "$BUILD/og_test_rendering" \
+OG_FX_CAPTURE_DIR="$PWD/$ANIM" timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_rendering" \
     --gtest_filter='RenderEffects.zz_capture_effect_scenes'
 
 echo "=== live gameplay + split-screen + epic battles ==="
 OG_FX_CAPTURE_DIR="$PWD/$ANIM" ${OG_FX_CAPTURE_ONLY:+OG_FX_CAPTURE_ONLY="$OG_FX_CAPTURE_ONLY"} \
-    "$BUILD/og_test_game_core" --gtest_filter='GameLoop.zz_capture_*'
+    timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_game_core" --gtest_filter='GameLoop.zz_capture_*'
 
 echo "=== menu tours ==="
-OG_FX_CAPTURE_DIR="$PWD/$ANIM" "$BUILD/og_test_menu_ui" \
-    --gtest_filter='OptionsMenu.zz_capture_*'
+# The three menu scenes also run (dwell-free, oracles only) in every ctest
+# lane; OG_FX_CAPTURE_DIR is what turns the camera holds and the laps on.
+OG_FX_CAPTURE_DIR="$PWD/$ANIM" timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_menu_ui" \
+    --gtest_filter='MenuCapture.zz_capture_*'
 
 echo "=== encoding site ==="
 python3 scripts/fx_review/make_site.py --anim "$ANIM" --site "$SITE"

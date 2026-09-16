@@ -213,7 +213,15 @@ GO / SET LEVEL / SET CAMPAIGN.
   to prevent. Loop until the main thread signals it left the screen (an
   atomic set after the menu call returns), clicking whatever exit the current
   screen publishes — BACK as well as RESUME, since the player sub-screen
-  publishes no RESUME (`tests/integration/test_pause_menu.cpp`).
+  publishes no RESUME. That rule has ONE implementation:
+  `tests/test_escape_tail.h` (`escape_to_the_main_thread` — one press per
+  screen, watch the screen you acted on go away before pressing again, a
+  numbered leg for every give-up). Call it; do not re-type it.
+  `tests/integration/test_pause_menu.cpp` is the next consumer to convert;
+  `tests/integration/test_overpowered_team.cpp`,
+  `test_campaign_sprite_uaf.cpp` and `test_campaign_zone_ui.cpp` still carry
+  their own `while (!test_finished)` exit loops (other binaries, same
+  shape) — all filed as debt on PR #292. Convert, do not add a fifth.
 - The id `back` is shared by several screens: disambiguate with
   `wait_for_interactable_at("back", x, y)` using each screen's unique
   geometry.
@@ -227,7 +235,13 @@ GO / SET LEVEL / SET CAMPAIGN.
   is bounded and acknowledged: a press is re-sent ONLY with evidence it did
   not land (no witness — trace, label or edge — AND the edge still absent at
   re-press time), because re-pressing a cycler that did land walks it past
-  the face you wanted.
+  the face you wanted. The same header holds `click_until_value_moves` —
+  walk a cycler N faces, each step proven by the value the row wrote, which
+  is what a film lap or a restore-to-default leg needs. The presented-frame
+  handshake has one home too: `tests/test_frame_capture.h`
+  (`capture_presented_frame` / `verify_captured_frames`) freezes a settled
+  frame, records on the injector thread, asserts on the main thread, and
+  writes a PPM only when the caller hands it an output directory.
 - `popup_dialog` under TESTING is trace-only — assert via
   `trace_contains("popup", ...)`, nothing to dismiss.
 - Flow tests overwrite `save/save0.gtl`; write your own save first and restore

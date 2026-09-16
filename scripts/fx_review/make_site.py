@@ -164,7 +164,7 @@ LONGSEASON = [
 
 MENUS = [
     ("menu_tour", "Menu system tour",
-     "The picker driven by a scripted session: main menu into SETTINGS, the controls screen, and back. Watch buttons highlight and screens swap — this is the real SDL menu loop, captured live."),
+     "The picker driven by a scripted session: the main-menu highlight walk, GAME SETTINGS, then the DISPLAY subscreen where BRIGHTNESS steps up and back. Watch buttons highlight and screens swap — this is the real SDL menu loop, captured live."),
     ("menu_difficulty", "Difficulty submenu walkthrough",
      "CONTINUE into Base Camp, then the DIFFICULTY door on the command strip opens the submenu: Difficulty (Battle/Skirmish/Slaughter), Respawns (Off/Heroes/Everyone/Team 1 Heroes), Respawn Delay (Normal/Fast/Slow), Permadeath (On/Off) and Generators (Normal/Calm/Frenzy). Every row is cycled through a full loop — labels change live and every setting ends where it started."),
     ("menu_effects", "Effects settings walkthrough",

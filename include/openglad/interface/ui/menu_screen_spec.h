@@ -232,6 +232,9 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // run the screen's frame tick; waiting on it avoids timing guesses about
 // synchronous autosaves.
 std::uint64_t menu_screen_testing_completed_frames();
+// Mirror of the live loop's highlighted-button index, published just before
+// each completed-frame bump; -1 when no engine screen is running.
+int menu_screen_testing_highlighted_button();
 #endif
 
 // #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
