@@ -36,6 +36,11 @@
 #                              AFTER_CAPTION='PR #292'; --compose with those two
 #                              values reproduces the pushed files byte for byte,
 #                              without them it does not.
+#   OPENGLAD_Q15_DIR=<dir>     q15 only: re-encode the phase's cut from the
+#                              frames already in <dir>/q15-frames instead of
+#                              running the scene test.  Only the base tree can
+#                              dump the "before" frames, so on a merged
+#                              checkout --before needs this.
 #   OPENGLAD_P13_DIR=<dir>     p13 only: take the phase's assets from <dir>
 #                              instead of running the demo.  The "before" half
 #                              can only be filmed by the BASE tree's
@@ -728,26 +733,43 @@ compose_p13() {
 Q15_SWITCH_FRAME=30
 Q15_LAST_FRAME=120
 scene_q15() {
-    SCENE_ALLOW_FAIL=1 run_scene_test q15 og_test_game_core \
-        'GameLoop.zz_capture_spectator_follow'
-    local frames="$SCENE_DIR/spectator_follow"
+    local frames summary
+    if [ -n "${OPENGLAD_Q15_DIR:-}" ]; then
+        # Re-encode a cut whose frames are already on disk.  Only the base
+        # tree's og_test_game_core can dump the "before" frames, so on a
+        # merged checkout --before always needs this (the p13 precedent).
+        frames="$OPENGLAD_Q15_DIR/q15-frames"
+        [ -d "$frames" ] || die "FAIL: $frames is missing"
+        summary="$(cat "$OPENGLAD_Q15_DIR/q15-summary-$PHASE.txt" 2> /dev/null \
+            || echo 'no scene summary')"
+        summary="${summary#q15 ($PHASE): }"
+    else
+        SCENE_ALLOW_FAIL=1 run_scene_test q15 og_test_game_core \
+            'GameLoop.zz_capture_spectator_follow'
+        frames="$SCENE_DIR/spectator_follow"
+        summary="$(grep -m1 '^q15 spectator: ' "$SCENE_LOG" \
+            || echo 'no scene summary')"
+    fi
     [ -s "$frames/000.ppm" ] \
-        || die "FAIL: the Q15 scene dumped no frames; see $SCENE_LOG"
-    local summary
-    summary="$(grep -m1 '^q15 spectator: ' "$SCENE_LOG" || echo 'no scene summary')"
+        || die "FAIL: the Q15 scene dumped no frames; see ${SCENE_LOG:-$frames}"
     printf 'q15 (%s): %s\n' "$PHASE" "$summary" | tee "$OUT_DIR/q15-summary-$PHASE.txt"
 
     local list="$WORK_DIR/q15.ffconcat"
     : > "$list"
-    emit "$list" "$frames" '%03d.ppm' 0.08 0 "$((Q15_SWITCH_FRAME - 1))" 1
+    # Every 2nd frame at 0.08 s is the 121 sim ticks played back at roughly
+    # real speed.  The AFTER cut is a moving camera, i.e. no two frames alike:
+    # at every frame it lands near 5 MB, well over the band every shipped
+    # animation sits in, so the cut is halved here and halved again by
+    # gif_to_budget rather than being quantized or cropped.
+    emit "$list" "$frames" '%03d.ppm' 0.08 0 "$((Q15_SWITCH_FRAME - 2))" 2
     # The key frame is held so a reader can see WHERE the camera was when the
     # key was pressed; every frame after it is the claim.
     hold "$list" "$frames" '%03d.ppm' "$Q15_SWITCH_FRAME" 0.6
-    emit "$list" "$frames" '%03d.ppm' 0.08 "$((Q15_SWITCH_FRAME + 1))" \
-        "$Q15_LAST_FRAME" 1
+    emit "$list" "$frames" '%03d.ppm' 0.08 "$((Q15_SWITCH_FRAME + 2))" \
+        "$Q15_LAST_FRAME" 2
     encode_gif "$list" "$WORK_DIR/q15-raw-$PHASE.gif" 8
     gif_to_budget "$WORK_DIR/q15-raw-$PHASE.gif" \
-        "$OUT_DIR/q15-spectator-follow-$PHASE.gif" 12.5
+        "$OUT_DIR/q15-spectator-follow-$PHASE.gif" 6.25
     expect_gif "$OUT_DIR/q15-spectator-follow-$PHASE.gif"
     # The raw PPM directory is what the side-by-side composition consumes.
     rm -rf -- "$OUT_DIR/q15-frames"
@@ -768,10 +790,10 @@ print('q15 side-by-side frames:', compose_side_by_side(sys.argv[1], sys.argv[2],
 Q15PY
     local list="$WORK_DIR/q15-pair.ffconcat"
     : > "$list"
-    emit "$list" "$pair" '%03d.ppm' 0.08 0 "$((Q15_SWITCH_FRAME - 1))" 1
+    emit "$list" "$pair" '%03d.ppm' 0.08 0 "$((Q15_SWITCH_FRAME - 2))" 2
     hold "$list" "$pair" '%03d.ppm' "$Q15_SWITCH_FRAME" 0.6
-    emit "$list" "$pair" '%03d.ppm' 0.08 "$((Q15_SWITCH_FRAME + 1))" \
-        "$Q15_LAST_FRAME" 1
+    emit "$list" "$pair" '%03d.ppm' 0.08 "$((Q15_SWITCH_FRAME + 2))" \
+        "$Q15_LAST_FRAME" 2
     # The strip is built at the encoded width (the frames are doubled first).
     local pair_w font cap="$WORK_DIR/q15-caption.png"
     pair_w="$(magick identify -format '%w' "$pair/000.ppm")"
@@ -783,7 +805,7 @@ Q15PY
     GIF_CAPTION="$cap" \
         encode_gif "$list" "$WORK_DIR/q15-pair-raw.gif" 8
     gif_to_budget "$WORK_DIR/q15-pair-raw.gif" \
-        "$FINAL_DIR/q15-spectator-follow-side-by-side.gif" 12.5
+        "$FINAL_DIR/q15-spectator-follow-side-by-side.gif" 6.25
     # The static outcome: the bottom strip of the last frame at 10x.  The
     # BEFORE half carries the classic HUD row, the AFTER half the section 2.8
     # "FOLLOWING <name>" caption (score_panel.cpp) and nothing else.
