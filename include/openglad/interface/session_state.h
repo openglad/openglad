@@ -188,12 +188,14 @@ struct SessionState {
 extern thread_local SessionState* current_session;
 bool local_transport_active(const SessionState& session) noexcept;
 
-// §4.5 networked follow camera: cycle view `view_index`'s watched target
-// (Shift = reverse) on a SwitchChar press-edge. Declared here so the render
-// layer's input path can reach it; implemented by the platform local
-// transport shadow (local_transport_shadow.cpp) against the runtime's
-// DisplayFollowState. Returns false (a no-op) when no networked runtime is
-// installed or the view is not follow-engaged. Never stamps user tags.
+// §4.5 follow camera: cycle view `view_index`'s watched target (Shift =
+// reverse) on a SwitchChar press-edge. Declared here so the render layer's
+// input path can reach it; implemented by the platform local transport
+// shadow (local_transport_shadow.cpp) against the runtime's
+// DisplayFollowState. Any installed shadow qualifies — networked or local:
+// it is the SEAT that decides, and a seated view is never follow-engaged.
+// Returns false (a no-op) when no runtime is installed, the view is not
+// follow-engaged, or the cycle has nowhere to go. Never stamps user tags.
 bool display_follow_cycle_target(SessionState& session, int view_index,
                                  bool reverse);
 

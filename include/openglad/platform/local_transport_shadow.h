@@ -45,13 +45,16 @@ struct LocalSeatBinding {
     short team = 0;
 };
 
-// §4.5 follow camera: per-view watched-target state for a networked machine
-// with no controllable walker (0-deploy, all-dead, spectator). Client-side
-// only — the server's whole contribution is the null seat (ControlChange
-// entity 0). Lives on the local transport runtime so the per-snapshot
-// control re-sync cannot stomp the player's choice, and is honored by
-// select_control_for_view BEFORE the mapped-entity branch, so the mapped
-// user-tag stamp never runs for a follow target ([NET-R6] no local stamps).
+// §4.5 follow camera: per-view watched-target state for any view with no
+// controllable walker — a networked machine's 0-deploy / all-dead / spectator
+// seat, and a LOCAL spectator/autoplay session, whose install binds no seat
+// either. Any installed shadow carries it: a seated view disengages, a
+// seatless / null-seat view engages. Client-side only — the server's whole
+// contribution is the null seat (ControlChange entity 0). Lives on the local
+// transport runtime so the per-snapshot control re-sync cannot stomp the
+// player's choice, and is honored by select_control_for_view BEFORE the
+// mapped-entity branch, so the mapped user-tag stamp never runs for a follow
+// target ([NET-R6] no local stamps).
 struct DisplayFollowState {
     bool engaged = false;
     std::uint32_t target_entity_id = 0;
@@ -79,10 +82,12 @@ walker* select_control_for_view(
 
 // §4.5 follow engagement/maintenance for one view, run by
 // sync_display_controls BEFORE select_control_for_view honors the state
-// (exposed for tests). Engagement: the view's seat maps to entity 0 (or it
-// has no seat) AND no respawn-retained corpse holds the camera. A live
-// mapped walker disengages; a dead/unresolved target auto-advances to the
-// next eligible one (0 = static camera).
+// (exposed for tests), for every shadow rather than networked ones only.
+// Engagement: the view's seat maps to entity 0 (or it has no seat) AND no
+// respawn-retained corpse holds the camera. A live mapped walker disengages
+// — which is the whole of why a seated local view keeps its old behaviour;
+// a dead/unresolved target auto-advances to the next eligible one (0 =
+// static camera).
 void update_display_view_follow(
     DisplayFollowState& follow,
     viewscreen* view,

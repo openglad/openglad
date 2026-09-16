@@ -427,10 +427,20 @@ Every knob is opt-in: unset, the demo takes its production path.
 
 Setting `save_data.numplayers = 0` enables spectator mode:
 
-- Uses 1 viewscreen (camera only, no player control)
-- Skips all player input processing (movement, fire, special, yell)
-- Only `InputAction::SwitchChar` works (cycles camera target)
-- All characters remain AI-controlled
+- Uses 1 viewscreen with no seat bound at all — a true spectator peer, the
+  same shape as a networked spectator (the local transport shadow admits its
+  display client with `connect_spectator` and calls no `bind_player`)
+- The §4.5 follow camera engages on the first preferred walker; the view
+  renders the `FOLLOWING <name>` caption and no classic HUD/radar
+- `InputAction::SwitchChar` (Shift+ = backwards) cycles the watched target
+  through the runtime's `DisplayFollowState`, so the choice survives every
+  snapshot re-sync and auto-advances when the target dies; a cycle with
+  nowhere to go refuses and says `NO ONE TO FOLLOW`
+- Skips all other player input processing (movement, fire, special, yell)
+- All characters remain AI-controlled: no seat is bound, so no hero is
+  claimed (`user() == -1`, never `ACT_CONTROL`)
+- A spectator level ends on a win, the 36000-tick safety timeout, or QUIT
+  from the pause menu — never by its own team being wiped out
 
 In a network lobby, removing the machine's final owned seat through Base
 Camp's **SPECTATE** action leaves that client connected without a gameplay

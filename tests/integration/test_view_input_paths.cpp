@@ -131,78 +131,6 @@ TEST(ViewInputPaths, view_input_switch_control_forward_and_reverse)
 }
 
 
-// A1 regression (spectator variant): the spectator camera cycle must skip
-// dormant (delayed-spawn) walkers — they are invisible and absent from
-// snapshots, so a camera pinned to one shows nothing.
-TEST(ViewInputPaths, view_input_spectator_switch_skips_dormant)
-{
-    TeamListSwap swap;
-    disablePlayerJoystick(0);
-
-    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
-    KeyStateGuard ks;
-
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(v != nullptr) << "view should exist";
-    v->mynum = 0;
-    v->my_team = 0;
-
-    // Spectator mode = numplayers == 0 (og::ui::is_spectator_mode).
-    // RAII restore so an ASSERT failure cannot leak spectator mode into
-    // later tests in this binary.
-    struct SpectatorModeGuard
-    {
-        SaveData& save;
-        unsigned char saved;
-        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
-        {
-            save.numplayers = 0;
-        }
-        ~SpectatorModeGuard() { save.numplayers = saved; }
-    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
-
-    auto w1 = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    auto w2 = make_living(FAMILY_ELF, 0, 40, 20);
-    auto w3 = make_living(FAMILY_ARCHER, 0, 60, 20);
-    ASSERT_TRUE(w1 && w2 && w3) << "walkers should be created";
-
-    walker* w1p = w1.get();
-    walker* w2p = w2.get();
-    walker* w3p = w3.get();
-
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w1));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w2));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w3));
-    v->control = w1p;
-    w2p->set_dormant(true);
-
-    // Clear any SwitchChar debounce left behind by an earlier test in this
-    // binary (a frame with no press resets it).
-    InputState empty = {};
-    v->process_input(empty);
-    v->control = w1p;
-
-    InputState input = {};
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
-    v->process_input(input);
-    ASSERT_TRUE(v->control == w3p)
-        << "spectator camera cycle must skip the dormant walker";
-
-    // Cycle again over the wrap: dormant walker stays excluded.
-    v->process_input(empty);
-    v->process_input(input);
-    ASSERT_TRUE(v->control == w1p)
-        << "spectator camera wrap must land on the awake walker, not the dormant one";
-
-    // Release the SwitchChar debounce (the last frame above was a press):
-    // otherwise the next test's first switch press is silently swallowed
-    // under --gtest_shuffle.
-    v->process_input(empty);
-    w2p->set_dormant(false);
-}
-
-
 TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
 {
     TeamListSwap swap;
@@ -595,121 +523,16 @@ TEST(ViewInputPaths, view_input_cheat_switch_with_no_other_team_says_so)
     v->clear_text();
 }
 
-// #223 path 3: a spectator camera with nobody else on the watched team used
-// to eat the key in silence. The refusal is written to THIS view, and the
-// camera stays where it was.
-TEST(ViewInputPaths, view_input_spectator_switch_with_no_target_says_so)
-{
-    TeamListSwap swap;
-    disablePlayerJoystick(0);
-
-    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
-    KeyStateGuard ks;
-
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(v != nullptr) << "view should exist";
-    v->mynum = 0;
-    v->my_team = 0;
-
-    struct SpectatorModeGuard
-    {
-        SaveData& save;
-        unsigned char saved;
-        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
-        {
-            save.numplayers = 0;
-        }
-        ~SpectatorModeGuard() { save.numplayers = saved; }
-    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
-
-    auto only = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    ASSERT_TRUE(only != nullptr) << "walker should be created";
-    walker* onlyp = only.get();
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(only));
-
-    InputState empty = {};
-    v->process_input(empty);
-    v->control = onlyp;
-    v->clear_text();
-
-    InputState input = {};
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
-    v->process_input(input);
-    ASSERT_TRUE(v->control == onlyp) << "the camera must stay on its target";
-    bool said = false;
-    for (const std::string& line : v->textlist)
-        said = said || (line == "NO ONE TO WATCH");
-    ASSERT_TRUE(said) << "a refused spectator cycle must say so";
-
-    // Release the debounce for the next test in this binary.
-    v->process_input(empty);
-    v->clear_text();
-}
-
-// A spectator who has no camera target yet (the previous target died and the
-// view was cleared) must ACQUIRE one on the next SwitchChar rather than being
-// stuck on a black pane forever. That first press only acquires — it must not
-// also cycle past the walker it just picked up.
-TEST(ViewInputPaths, view_input_spectator_switch_acquires_a_target_from_none)
-{
-    TeamListSwap swap;
-    disablePlayerJoystick(0);
-
-    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
-    KeyStateGuard ks;
-
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_NE(nullptr, v);
-    v->mynum = 0;
-    v->my_team = 0;
-
-    struct SpectatorModeGuard
-    {
-        SaveData& save;
-        unsigned char saved;
-        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
-        {
-            save.numplayers = 0;
-        }
-        ~SpectatorModeGuard() { save.numplayers = saved; }
-    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
-
-    auto first = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    auto second = make_living(FAMILY_ELF, 0, 40, 20);
-    ASSERT_TRUE(first && second);
-    walker* const firstp = first.get();
-    walker* const secondp = second.get();
-    og::runtime::current_session->myscreen_->world().oblist.push_back(
-        std::move(first));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(
-        std::move(second));
-
-    InputState empty = {};
-    v->process_input(empty);
-    v->control = nullptr;
-    v->clear_text();
-
-    InputState input = {};
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
-    v->process_input(input);
-    EXPECT_EQ(firstp, v->control)
-        << "an empty spectator camera acquires the first live target";
-    for (const std::string& line : v->textlist)
-        EXPECT_NE("NO ONE TO WATCH", line)
-            << "acquiring is not a refused cycle";
-
-    // Control: with a target already held, the same press cycles instead.
-    v->process_input(empty);
-    v->process_input(input);
-    EXPECT_EQ(secondp, v->control)
-        << "a held camera cycles to the next live target";
-
-    v->process_input(empty);
-    v->control = nullptr;
-    v->clear_text();
-}
+// The three ViewInputPaths spectator cases that used to sit here
+// (view_input_spectator_switch_skips_dormant, ..._with_no_target_says_so,
+// ..._acquires_a_target_from_none) drove viewscreen::process_input's own
+// spectator SwitchChar cycle. That cycle is gone: a spectator session binds
+// no seat now, so the §4.5 follow camera owns the key and the display-side
+// cycle it used to race was deleted (view.cpp [NET-F1]). Their three rules —
+// skip dormant walkers, voice a refused cycle, auto-advance rather than
+// blank — are pinned on the product path that replaced them, by
+// GameLoop.local_spectator_shadow_is_seatless_and_follow_survives_every_resync
+// (og_test_game_core).
 
 // F3 posts the running frame rate into the pressing seat's message line. The
 // number is total frames over elapsed seconds, so a wrong divisor (or a

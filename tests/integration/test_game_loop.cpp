@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
@@ -20,6 +21,8 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/frame_rate_config.h>
@@ -112,6 +115,30 @@ struct SessionKeyStateGuard
 // wiped-out world must put the world back exactly as it found it: the
 // blanket set_dead(0) this replaces also RESURRECTED bodies that were
 // already corpses when the scope opened.
+// Install a gameplay context bound to the authoritative server world so
+// direct sim calls (attack, setxy) run against the right world/obmap and
+// have an event log to write to (the shadow's own server context is
+// installed only inside finish_tick).
+struct ScopedServerWorldContext
+{
+    GameplayContext context;
+    GameplayContext* previous;
+    og::sim::SimEventLog events;
+
+    explicit ScopedServerWorldContext(screen& server_screen)
+        : previous(current_game)
+    {
+        context.world = &server_screen.world();
+        context.save = &server_screen.save_data;
+        context.sim_events = &events;
+        current_game = &context;
+    }
+    ~ScopedServerWorldContext() { current_game = previous; }
+
+    ScopedServerWorldContext(const ScopedServerWorldContext&) = delete;
+    ScopedServerWorldContext& operator=(const ScopedServerWorldContext&) = delete;
+};
+
 struct DeadBitGuard
 {
     std::vector<std::pair<walker*, short>> saved;
@@ -288,6 +315,11 @@ static bool load_minimal_spectator_scenario(const char* save_name,
                  view->control->ypos());
     extra->set_team_num(static_cast<unsigned char>(view->my_team));
     extra->set_user(-1);
+    // A myguy is what makes a walker a PREFERRED follow target
+    // (sim_control_policy.cpp follow_target_preferred), i.e. one the §4.5
+    // cycle stops on; the snapshot carries guys, so both worlds see it.
+    extra->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    extra->myguy->teamnum = static_cast<unsigned char>(view->my_team);
     spawned_entity_id = extra->entity_id();
 
     og::runtime::reset_local_transport_shadow(
@@ -1529,7 +1561,20 @@ TEST(GameLoop, glad_init_drops_out_of_range_lobby_slots_and_upgrades_legacy_seat
     EXPECT_EQ(3, static_cast<int>(game_screen->viewob[1]->my_team));
     ASSERT_NE(nullptr, game_screen->viewob[0]->control);
     EXPECT_EQ(0, static_cast<int>(game_screen->viewob[0]->control->user()));
-    EXPECT_EQ(nullptr, game_screen->viewob[1]->control)
+    // §4.5: a seat whose team has no roster member controls nothing, so it
+    // engages the follow camera rather than staring at a black pane — in a
+    // LOCAL session now, exactly as in a networked one. It still steals no
+    // hero: the authority binds that seat no control at all, and a
+    // follow-engaged view never stamps a user tag ([NET-R6]).
+    EXPECT_TRUE(game_screen->viewob[1]->following_)
+        << "an empty-team seat is a follow-camera view";
+    EXPECT_NE(nullptr, game_screen->viewob[1]->control)
+        << "a follow-engaged view watches somebody";
+    og::sim::GameServer* const empty_seat_server =
+        og::runtime::local_transport_shadow_testing_server(
+            *og::runtime::current_game_session);
+    ASSERT_NE(nullptr, empty_seat_server);
+    EXPECT_EQ(nullptr, empty_seat_server->player_control(1))
         << "an empty-team seat is a spectator view, not a stolen hero";
 
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
@@ -2778,11 +2823,14 @@ TEST(GameLoop, display_view_follow_waits_while_a_respawning_corpse_holds_it)
 // §4.5 [NET-F1] + true-zero-seat regression: a networked spectator machine's
 // empty seat vector means NO local player binding even when remote player 0
 // has a live control. Its view engages the follow camera, SwitchChar cycles
-// the watched target CROSS-TEAM through the networked follow branch (the
-// legacy spectator block is my_team-filtered, so this outcome proves the
-// gate), and the choice survives a forced full snapshot resync. Without the
-// networked shadow the legacy spectator block still owns the key (demo/local
-// unchanged).
+// the watched target CROSS-TEAM through the follow branch, and the choice
+// survives a forced full snapshot resync. The cross-team hop is what proves
+// the target came from the runtime's DisplayFollowState: it is the one thing
+// the deleted my_team-filtered display-side cycle could never have produced.
+// With no shadow installed the key is inert (tail leg) — that cycle is gone,
+// and the follow state it was replaced by lives on the runtime.
+// The LOCAL spectator half of the same contract is pinned by
+// GameLoop.local_spectator_shadow_is_seatless_and_follow_survives_every_resync.
 TEST(GameLoop, networked_zero_seat_joiner_follow_cycles_and_survives_full_resync)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
@@ -2940,26 +2988,329 @@ TEST(GameLoop, networked_zero_seat_joiner_follow_cycles_and_survives_full_resync
     }
     view->clear_text();
 
-    // [NET-F1] negative: without the networked shadow the legacy spectator
-    // block owns the key again and cycles within my_team only (demo/local
-    // behavior unchanged).
+    // [NET-F1] negative: the follow branch is the ONLY implementation of
+    // "cycle the watched target" — the display-side spectator cycle that
+    // used to sit beside it is gone. With no shadow installed at all there
+    // is nothing to cycle THROUGH, so the key is inert: the camera keeps the
+    // walker it had and the view says nothing.
     og::runtime::clear_local_transport_shadow(session);
     ASSERT_FALSE(session.networked_session_);
+    ASSERT_FALSE(og::runtime::local_transport_active(session));
     view->following_ = false;
     view->follow_company_.clear();
-    walker* const legacy_start = game_screen->world().find_by_id(home_hero_id);
-    ASSERT_NE(nullptr, legacy_start);
-    view->control = legacy_start;
+    walker* const inert_start = game_screen->world().find_by_id(home_hero_id);
+    ASSERT_NE(nullptr, inert_start);
+    view->control = inert_start;
+    view->clear_text();
     reset_viewscreen_input_debounce();
     view->process_input(make_switch_char_input(0u));
-    ASSERT_NE(nullptr, view->control);
-    EXPECT_EQ(home_troop_id, view->control->entity_id())
-        << "the legacy spectator cycle stays on the view's own team";
+    EXPECT_EQ(inert_start, view->control)
+        << "with no shadow installed SwitchChar must not move the camera: "
+           "there is no display-side cycle any more";
+    EXPECT_FALSE(follow_cue_shown())
+        << "an inert key voices nothing; the refusal cue belongs to a "
+           "follow-engaged view that tried and failed to cycle";
+    EXPECT_EQ(-1, static_cast<int>(inert_start->user()))
+        << "and nothing claims a walker on the display";
+    walker* const inert_troop = game_screen->world().find_by_id(home_troop_id);
+    ASSERT_NE(nullptr, inert_troop);
+    EXPECT_EQ(-1, static_cast<int>(inert_troop->user()))
+        << "and the walker the deleted display-side cycle used to jump to is "
+           "not touched either";
 
     session.gameplay_active_ = saved_gameplay_active;
     game_screen->save_data.numplayers = 1;
     game_screen->world().delete_objects();
 }
+// ---------------------------------------------------------------------------
+// Q15. A LOCAL spectator session is save_data.numplayers == 0 before the load:
+// openglad_demo, and the lobby's 0-player "spectator / autoplay" start. It is
+// a TRUE zero-seat display, the same shape as a networked spectator peer —
+// the install admits one display client with connect_spectator and binds NO
+// seat, so nothing on the authority is claimed and the §4.5 follow camera
+// owns the view's camera.
+//
+// The install needs the real glad_init path (not a bare load) because the
+// seat binding under test is made there, and the roster is spelled out so the
+// follow cycle always has somewhere to go: only walkers carrying a myguy (or
+// a user tag) are PREFERRED follow targets (sim_control_policy.cpp
+// follow_target_preferred), and gladiator scen 1's own team-0 NPCs carry
+// neither.
+static bool install_local_spectator_session()
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    if (s == nullptr || og::runtime::current_game_session == nullptr)
+        return false;
+
+    SaveData& save = s->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 0; // the spectator / autoplay shape
+    save.allied_mode = 1;
+    const int roster[3] = {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE};
+    for (std::size_t i = 0; i < std::size(roster); ++i)
+    {
+        auto member = std::make_unique<guy>(roster[i]);
+        member->teamnum = 0;
+        member->upgrade_to_level(4);
+        save.team_list[i] = std::move(member);
+    }
+    save.team_size = static_cast<unsigned char>(std::size(roster));
+    if (!save.save("save0"))
+        return false;
+
+    // Both worlds pinned for the same reason the clinic scene pins them: a
+    // GameWorld carries its SimRandom forward, so an unpinned spectator level
+    // deploys its heroes wherever the preceding tests left the stream.
+    s->world().rng_.state_ = kScenarioDisplayRngPin;
+    glad_init();
+    if (screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session))
+    {
+        server_screen->world().rng_.state_ = kScenarioAuthorityRngPin;
+    }
+    return og::runtime::local_transport_active(
+        *og::runtime::current_game_session);
+}
+
+TEST(GameLoop, local_spectator_shadow_is_seatless_and_follow_survives_every_resync)
+{
+    const std::filesystem::path save0_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    og::test::ScopedPhysicalFileState save0_restore(save0_path);
+    ASSERT_TRUE(save0_restore.ready())
+        << "failed to snapshot save0: " << save0_restore.error().message();
+
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(install_local_spectator_session())
+        << "the spectator shadow must be live for this test";
+
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_FALSE(session.networked_session_)
+        << "this is the LOCAL spectator path; the networked one is pinned by "
+           "networked_zero_seat_joiner_follow_cycles_and_survives_full_resync";
+    ASSERT_TRUE(og::ui::is_spectator_mode(game_screen->save_data));
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    og::sim::GameServer* const server =
+        og::runtime::local_transport_shadow_testing_server(session);
+    ASSERT_NE(nullptr, server);
+    GameWorld& server_world = server_screen->world();
+    GameWorld& mirror = game_screen->world();
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_NE(nullptr, view);
+
+    const bool saved_gameplay_active = session.gameplay_active_;
+    // Mirrors the production game loop (glad_main), so the shadow guard keeps
+    // the local sim input path off exactly as it is during real gameplay.
+    session.gameplay_active_ = true;
+
+    // --- (a) seatless: nothing on the authority is claimed ------------------
+    for (std::size_t player = 0; player < og::sim::kMaxGlobalPlayers; ++player)
+    {
+        EXPECT_EQ(nullptr, server->player_control(player))
+            << "a local spectator install binds no seat at all (player "
+            << player << ")";
+    }
+    int server_heroes = 0;
+    for (const auto& uptr : server_world.oblist)
+    {
+        walker* const w = uptr.get();
+        if (w == nullptr || w->query_order() != Order::Living ||
+            w->myguy == nullptr)
+            continue;
+        ++server_heroes;
+        EXPECT_EQ(-1, static_cast<int>(w->user()))
+            << "hero " << w->entity_id() << " was claimed by the display seat";
+        EXPECT_NE(ACT_CONTROL, w->act_type())
+            << "hero " << w->entity_id()
+            << " lost its AI to a seat nobody is playing (the frozen-statue "
+               "defect)";
+    }
+    ASSERT_EQ(3, server_heroes)
+        << "the spectator level must deploy the three roster heroes the "
+           "follow cycle walks through";
+    EXPECT_EQ(-1, static_cast<int>(view->global_player_index_))
+        << "a zero-seat display borrows no player index";
+
+    // --- (b) the follow camera engaged on the first preferred walker -------
+    ASSERT_TRUE(view->following_)
+        << "a seatless view is a follow-camera view (§4.5)";
+    ASSERT_NE(nullptr, view->control);
+    const std::uint32_t first_target = view->control->entity_id();
+    EXPECT_EQ(og::sim::default_follow_target_id(
+                  mirror, std::span<const std::uint32_t>()),
+              first_target)
+        << "the camera starts on the first preferred walker, the same one a "
+           "networked spectator would get";
+    EXPECT_EQ(-1, static_cast<int>(view->control->user()))
+        << "[NET-R6] a followed walker is never stamped with a user tag";
+
+    // --- (c) SwitchChar cycles the watched target --------------------------
+    const std::uint32_t expected_second =
+        og::sim::next_follow_target_id(mirror, view->control, false);
+    ASSERT_NE(first_target, expected_second)
+        << "the level owes the cycle a second watchable hero";
+    reset_viewscreen_input_debounce();
+    view->process_input(make_switch_char_input(0u));
+    ASSERT_NE(nullptr, view->control);
+    const std::uint32_t watched = view->control->entity_id();
+    EXPECT_EQ(expected_second, watched)
+        << "SwitchChar must walk the camera to the next watchable walker";
+    ASSERT_NE(first_target, watched);
+
+    // --- (d) and the choice survives EVERY re-sync -------------------------
+    // sync_display_controls runs on every applied snapshot, delta as well as
+    // keyframe (game_client.cpp notify_control_mapping_changed), i.e. once
+    // per sim tick. Three deltas, then past the forced keyframe boundary.
+    const auto drive_tick = [&] {
+        og::runtime::local_transport_shadow_send_input(
+            session, InputState{}, mirror.tick_count_ + 1u);
+        og::runtime::local_transport_shadow_finish_tick(session);
+    };
+    for (int resync = 0; resync < 3; ++resync)
+    {
+        drive_tick();
+        ASSERT_NE(nullptr, view->control) << "delta re-sync " << resync;
+        EXPECT_EQ(watched, view->control->entity_id())
+            << "the per-tick control re-sync stomped the watched target on "
+               "delta re-sync " << resync;
+        EXPECT_TRUE(view->following_) << "delta re-sync " << resync;
+        walker* const mirror_watched = mirror.find_by_id(watched);
+        ASSERT_NE(nullptr, mirror_watched) << "delta re-sync " << resync;
+        EXPECT_EQ(-1, static_cast<int>(mirror_watched->user()))
+            << "[NET-R6] the re-sync must not stamp the watched walker";
+    }
+    while (mirror.tick_count_ <
+           static_cast<std::uint32_t>(og::sim::KEYFRAME_INTERVAL_TICKS) + 1u)
+    {
+        drive_tick();
+        if (::testing::Test::HasFatalFailure() || mirror.end != 0)
+            break;
+    }
+    EXPECT_EQ(0, static_cast<int>(mirror.end))
+        << "a spectator level ends on win / timeout / QUIT, never because "
+           "its heroes stopped being AI";
+    ASSERT_GT(mirror.tick_count_,
+              static_cast<std::uint32_t>(og::sim::KEYFRAME_INTERVAL_TICKS))
+        << "the run must cross the forced keyframe boundary";
+    ASSERT_NE(nullptr, view->control);
+    EXPECT_EQ(watched, view->control->entity_id())
+        << "the keyframe re-sync stomped the watched target";
+    EXPECT_TRUE(view->following_);
+
+    // --- (e) the hero the camera left is still AI --------------------------
+    walker* const first_on_server = server_world.find_by_id(first_target);
+    ASSERT_NE(nullptr, first_on_server)
+        << "the walker the camera started on must still be in the world";
+    EXPECT_EQ(-1, static_cast<int>(first_on_server->user()));
+    EXPECT_NE(ACT_CONTROL, first_on_server->act_type())
+        << "the hero the spectator's camera started on must keep its AI "
+           "after the level has been running (it used to stand claimed by a "
+           "seat with no input behind it)";
+
+    // --- (f) a cycle with nowhere to go refuses, and says so ---------------
+    const auto follow_cue_shown = [view] {
+        for (const std::string& line : view->textlist)
+        {
+            if (line == "NO ONE TO FOLLOW")
+                return true;
+        }
+        return false;
+    };
+    walker* const watched_before_refusal = view->control;
+    {
+        // Every body but the watched one is a corpse on the MIRROR: the
+        // cycle resolves on the display world.
+        DeadBitGuard corpses(mirror);
+        for (auto& uptr : mirror.oblist)
+        {
+            if (uptr && uptr.get() != watched_before_refusal)
+                uptr->set_dead(1);
+        }
+        view->clear_text();
+        reset_viewscreen_input_debounce();
+        view->process_input(make_switch_char_input(0u));
+        EXPECT_EQ(watched_before_refusal, view->control)
+            << "a refused cycle keeps the camera where it was";
+        EXPECT_TRUE(follow_cue_shown())
+            << "a refused cycle must tell THIS view why the camera did not "
+               "move";
+    }
+    view->clear_text();
+
+    // --- (g) the cycle skips a dormant walker ------------------------------
+    // Delayed-entry allies (spawn_delay) are invisible and absent from
+    // snapshots, so a camera pinned to one shows nothing (bug A1, spectator
+    // variant). The cycle runs on the DISPLAY world, so that is where the
+    // dormant body is staged; it sits between the watched hero and the first
+    // one in cycle order, so a follow that stopped honoring dormant() would
+    // land on it instead of wrapping.
+    ASSERT_NE(nullptr, view->control);
+    ASSERT_EQ(watched, view->control->entity_id());
+    // Named BEFORE the body is put to sleep: it is where the cycle would go
+    // if dormancy were ignored, which is the whole of what this leg denies.
+    const std::uint32_t dormant_id =
+        og::sim::next_follow_target_id(mirror, view->control, false);
+    ASSERT_NE(0u, dormant_id);
+    ASSERT_NE(first_target, dormant_id);
+    ASSERT_NE(watched, dormant_id);
+    walker* const dormant_body = mirror.find_by_id(dormant_id);
+    ASSERT_NE(nullptr, dormant_body);
+    dormant_body->set_spawn_delay(65535);
+    dormant_body->set_dormant(true);
+    reset_viewscreen_input_debounce();
+    view->process_input(make_switch_char_input(0u));
+    ASSERT_NE(nullptr, view->control);
+    EXPECT_NE(dormant_id, view->control->entity_id())
+        << "the cycle must skip a dormant (delayed-entry) walker: it is "
+           "invisible, so the camera would show an empty field";
+    EXPECT_EQ(first_target, view->control->entity_id())
+        << "with the dormant body skipped the cycle wraps to the only other "
+           "watchable hero";
+
+    // --- (h) a dead target auto-advances on its own ------------------------
+    // Losing a team-0 body is a SAVE_ALL loss on the levels that carry the
+    // bit, which would end the level instead of advancing the camera.
+    server_world.type =
+        static_cast<char>(server_world.type & ~SCEN_TYPE_SAVE_ALL);
+    mirror.type = static_cast<char>(mirror.type & ~SCEN_TYPE_SAVE_ALL);
+    const std::uint32_t doomed_id = view->control->entity_id();
+    {
+        ScopedServerWorldContext server_ctx(*server_screen);
+        walker* const doomed = server_world.find_by_id(doomed_id);
+        ASSERT_NE(nullptr, doomed);
+        doomed->set_dead(1);
+    }
+    drive_tick();
+
+    ASSERT_NE(nullptr, view->control)
+        << "a dead target must auto-advance, not blank the camera";
+    EXPECT_NE(doomed_id, view->control->entity_id())
+        << "the camera stayed on the corpse";
+    EXPECT_FALSE(view->control->dead());
+    EXPECT_FALSE(view->control->dormant());
+    EXPECT_EQ(Order::Living, view->control->query_order());
+    EXPECT_EQ(-1, static_cast<int>(view->control->user()));
+    EXPECT_TRUE(view->following_);
+    EXPECT_EQ(0, static_cast<int>(mirror.end))
+        << "a hero dying does not end a spectator level";
+
+    session.gameplay_active_ = saved_gameplay_active;
+    og::runtime::clear_local_transport_shadow(session);
+    mirror.end = 0;
+    mirror.delete_objects();
+    // Leave save0 the way every other scenario in this binary expects it.
+    game_screen->save_data.numplayers = 1;
+    game_screen->save_data.save("save0");
+}
+
 
 // The host install has the same empty-seat meaning as the joiner install. A
 // zero-seat host still owns match authority, but its display must not borrow
@@ -3905,16 +4256,14 @@ TEST(GameLoop, local_transport_shadow_carries_damage_numbers_to_the_display_cont
 // toggles ship differently (damage_numbers off, heal_numbers on), so a
 // single-colour test could be green by vacuity.
 //
-// Camera bookkeeping: on a LOCAL shadow every applied snapshot — delta as
-// well as keyframe — runs the client's control-mapping callback
-// (game_client.cpp apply_delta_snapshot -> notify_control_mapping_changed),
-// and sync_display_controls resolves view 0 straight back to the bound
-// seat's mirror. A local spectator's camera choice is therefore display-only
-// state that one tick later is gone (the networked zero-seat path keeps its
-// choice in DisplayFollowState instead — pinned by
-// GameLoop.networked_zero_seat_joiner_follow_cycles_and_survives_full_resync).
-// So this test cycles the camera AFTER each tick, immediately before the
-// paint it is measuring, and never asserts that the choice survives a tick.
+// Camera bookkeeping: a local spectator session binds NO seat (Q15), so its
+// pane is a §4.5 follow view and the watched target lives in the runtime's
+// DisplayFollowState, which the per-tick control re-sync honors first. The
+// cycle helper below therefore no-ops once the pane is already on the
+// spawned walker; that the choice survives the tick is
+// GameLoop.local_spectator_shadow_is_seatless_and_follow_survives_every_resync's
+// claim, not this one's. What this test owns is the LIFT: the numbers of a
+// walker no seat owns crossing the shadow and painting.
 TEST(GameLoop,
      local_spectator_camera_cycle_watches_a_walker_no_seat_owns_and_still_gets_its_numbers)
 {
@@ -3935,11 +4284,11 @@ TEST(GameLoop,
         og::runtime::local_transport_shadow_testing_server(session);
     ASSERT_NE(nullptr, server);
     ASSERT_TRUE(og::ui::is_spectator_mode(game_screen->save_data))
-        << "numplayers == 0 is what routes SwitchChar into the legacy "
-           "spectator cycle (view.cpp)";
+        << "numplayers == 0 is what makes this a zero-seat spectator session";
     ASSERT_FALSE(session.networked_session_)
-        << "the legacy spectator block owns the key only while the session is "
-           "not networked (view.cpp [NET-F1])";
+        << "this is the LOCAL spectator path";
+    const bool saved_gameplay_active = session.gameplay_active_;
+    session.gameplay_active_ = true;
 
     // One tick so the install's control sync has landed on the display.
     og::runtime::local_transport_shadow_finish_tick(session);
@@ -3947,11 +4296,33 @@ TEST(GameLoop,
     viewscreen* const view = game_screen->viewob[0].get();
     ASSERT_NE(nullptr, view);
     ASSERT_NE(nullptr, view->control);
-    walker* const sc = server->player_control(0);
-    ASSERT_NE(nullptr, sc) << "the authority owes seat 0 a control walker";
-    const std::uint32_t seat_id = sc->entity_id();
-    ASSERT_EQ(seat_id, view->control->entity_id())
-        << "the spectator pane starts on the install-time seat";
+    ASSERT_TRUE(view->following_)
+        << "a zero-seat spectator pane is a follow-camera pane";
+    for (std::size_t player = 0; player < og::sim::kMaxGlobalPlayers; ++player)
+    {
+        ASSERT_EQ(nullptr, server->player_control(player))
+            << "a local spectator session binds no seat at all (player "
+            << player << "), so NO walker in this world is seat-bound";
+    }
+    // Which walker a seatless pane opens on is the world's first preferred
+    // follow target, so it may already BE the spawned one. Step off it in
+    // that case, so the cycle below is exercised either way and the attacker
+    // named next is never the walker the pane ends up watching (its orange
+    // copy is the negative control for the render gate further down).
+    if (view->control->entity_id() == spawned_id)
+    {
+        reset_viewscreen_input_debounce();
+        view->process_input(make_switch_char_input(0u));
+        ASSERT_NE(nullptr, view->control);
+        ASSERT_NE(spawned_id, view->control->entity_id())
+            << "the spectator cycle must be able to leave a target";
+    }
+    const std::uint32_t camera_start_id = view->control->entity_id();
+    ASSERT_NE(spawned_id, camera_start_id);
+    walker* const sc = server_screen->world().find_by_id(camera_start_id);
+    ASSERT_NE(nullptr, sc)
+        << "the authority owes the camera's opening walker a body";
+    const std::uint32_t attacker_id = camera_start_id;
 
     // The hit target: the spawned team-mate. It is bound to NO seat, which is
     // the whole point of the case.
@@ -3960,31 +4331,28 @@ TEST(GameLoop,
         << "the display-seed install must have copied the spawned walker into "
            "the authority under the same entity id";
     ASSERT_NE(sc, sw);
-    for (std::size_t player = 0u; player < og::sim::kMaxGlobalPlayers; ++player)
-    {
-        ASSERT_NE(sw, server->player_control(player))
-            << "the watched walker must be bound to no seat at all";
-    }
 
-    // Cycling the camera is a display-side act; do it right before each paint.
+    // Walk the §4.5 follow cycle onto the spawned walker (and stop once it is
+    // there: the choice sticks now, so another press would move off it).
     const auto cycle_camera_onto_spawned_walker = [&]() {
         for (int attempt = 0; attempt < 16; ++attempt)
         {
-            reset_viewscreen_input_debounce();
-            view->process_input(make_switch_char_input(0u));
             if (view->control != nullptr &&
                 view->control->entity_id() == spawned_id)
                 return true;
+            reset_viewscreen_input_debounce();
+            view->process_input(make_switch_char_input(0u));
         }
-        return false;
+        return view->control != nullptr &&
+            view->control->entity_id() == spawned_id;
     };
 
     ASSERT_TRUE(cycle_camera_onto_spawned_walker())
-        << "the legacy spectator cycle must reach a same-team walker that no "
-           "seat owns";
+        << "the spectator cycle must reach a same-team walker that no seat "
+           "owns";
     ASSERT_NE(nullptr, view->control);
-    ASSERT_NE(seat_id, view->control->entity_id())
-        << "the spectator cycle moved the camera off the bound seat";
+    ASSERT_NE(camera_start_id, view->control->entity_id())
+        << "the spectator cycle moved the camera off the walker it opened on";
     EXPECT_EQ(-1, static_cast<int>(view->control->user()))
         << "a spectator cycle watches; it never claims the walker "
            "(no ACT_CONTROL, and send_input keeps sending the server empty "
@@ -3994,7 +4362,7 @@ TEST(GameLoop,
     ASSERT_EQ(1u, sw->damage_numbers.size())
         << "the hit stamps the target's own RED copy on the authority";
     ASSERT_EQ(1u, sc->damage_numbers.size())
-        << "...and the attacker's orange copy on the seat";
+        << "...and the attacker's orange copy on the attacker";
 
     og::runtime::local_transport_shadow_finish_tick(session);
 
@@ -4002,7 +4370,8 @@ TEST(GameLoop,
     ASSERT_NE(nullptr, watched_mirror) << "the watched mirror must survive";
     ASSERT_EQ(1u, watched_mirror->damage_numbers.size())
         << "the watched walker is bound to NO seat; its number must still "
-           "cross the shadow (the seat-only lift never sent it)";
+           "cross the shadow (the seat-only lift never sent it -- and in a "
+           "spectator session no walker is seat-bound at all)";
     EXPECT_FLOAT_EQ(9.0f, watched_mirror->damage_numbers.front().value);
     EXPECT_EQ(static_cast<int>(RED),
               static_cast<int>(watched_mirror->damage_numbers.front().color))
@@ -4010,12 +4379,13 @@ TEST(GameLoop,
     EXPECT_TRUE(sw->damage_numbers.empty())
         << "the authoritative list is drained by the lift";
 
-    walker* const seat_mirror = game_screen->world().find_by_id(seat_id);
-    ASSERT_NE(nullptr, seat_mirror);
-    ASSERT_EQ(1u, seat_mirror->damage_numbers.size())
-        << "the seat's own orange copy still lands on its mirror";
+    walker* const attacker_mirror =
+        game_screen->world().find_by_id(attacker_id);
+    ASSERT_NE(nullptr, attacker_mirror);
+    ASSERT_EQ(1u, attacker_mirror->damage_numbers.size())
+        << "the attacker's own orange copy still lands on its mirror";
     EXPECT_EQ(235,
-              static_cast<int>(seat_mirror->damage_numbers.front().color));
+              static_cast<int>(attacker_mirror->damage_numbers.front().color));
 
     // --- paint: the pane's control is the only walker whose numbers draw ---
     // Both keys are set explicitly. This binary starts with no user config
@@ -4041,7 +4411,7 @@ TEST(GameLoop,
     EXPECT_TRUE(trace_contains("damage_numbers", watched_red.c_str()))
         << "the spectator pane paints the watched walker's red number";
     EXPECT_FALSE(trace_contains("damage_numbers", "color=235"))
-        << "the seat walker is not this pane's control: its orange copy must "
+        << "the attacker is not this pane's control: its orange copy must "
            "NOT paint (render gate walker_draw.cpp `view_buf->control == &w`)";
 
     // Green leg, on the shipped heal default.
@@ -4076,6 +4446,7 @@ TEST(GameLoop,
     cfg.apply_setting("effects", "damage_numbers",
                       entry_damage_on ? "on" : "off");
     cfg.apply_setting("effects", "heal_numbers", entry_heal_on ? "on" : "off");
+    session.gameplay_active_ = saved_gameplay_active;
     og::runtime::clear_local_transport_shadow(session);
     game_screen->world().end = 0;
     game_screen->world().delete_objects();
@@ -7174,35 +7545,7 @@ TEST(GameLoop, zz_capture_imaginations)
 // reclaimed by the server and rebound on the display.
 // ---------------------------------------------------------------------------
 
-#include <openglad/gameplay/gameplay_context.h>
-#include <openglad/gameplay/sim_event_log.h>
-#include <openglad/gameplay/statistics.h>
-
 namespace {
-
-// Install a gameplay context bound to the authoritative server world so
-// direct sim calls (attack, setxy) run against the right world/obmap and
-// have an event log to write to (the shadow's own server context is
-// installed only inside finish_tick).
-struct ScopedServerWorldContext
-{
-    GameplayContext context;
-    GameplayContext* previous;
-    og::sim::SimEventLog events;
-
-    explicit ScopedServerWorldContext(screen& server_screen)
-        : previous(current_game)
-    {
-        context.world = &server_screen.world();
-        context.save = &server_screen.save_data;
-        context.sim_events = &events;
-        current_game = &context;
-    }
-    ~ScopedServerWorldContext() { current_game = previous; }
-
-    ScopedServerWorldContext(const ScopedServerWorldContext&) = delete;
-    ScopedServerWorldContext& operator=(const ScopedServerWorldContext&) = delete;
-};
 
 walker* find_server_hero(GameWorld& world)
 {

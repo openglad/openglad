@@ -55,8 +55,10 @@ OUT_DIR="${OPENGLAD_README_MEDIA_DIR:-$REPO_ROOT/build/media/readme}"
 # blast mid-frame, nothing clipped by an edge, and -- unlike the frames on
 # either side of it -- no announcement stack painted over the art. (Scanned
 # and rejected: every one of scen 500-509 on the static centre camera, which
-# frames an empty plaza or an empty field; CAPTURE_FOCUS=player, which pins
-# the camera to a map corner behind the radar; and scen 502's throne hall,
+# frames an empty plaza or an empty field; CAPTURE_FOCUS=player, whose camera
+# sat behind the radar on a hero that never moved -- that was the seat-bound
+# spectator statue PR #292 removed, and the focus is worth re-scanning now
+# that it follows a live AI hero; and scen 502's throne hall,
 # whose dithered floor reads as noise at 2x.)
 #
 # ninefold-court: the ninefold judgment pulse (the frame
