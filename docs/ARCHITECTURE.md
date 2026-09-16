@@ -301,20 +301,11 @@ GameSession
 
 The `og::sim` module defines typed events for decoupling game logic from rendering/audio. Entity code emits events during simulation ticks via `SimEventLog`; the runtime layer drains and dispatches them after each tick.
 
-```cpp
-enum class EventKind : uint32_t {
-    None = 0,
-    PlaySound = 4,     // Request sound: a=sound_id, b=0
-    Notification = 8,  // Text notification: message in text field
-    SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
-    RequestRedraw = 12, // Force full screen redraw
-    DamageNumber = 19  // Floating hit/heal number LIFTED by GameServer from
-                       // EVERY authoritative walker (never emitted by the
-                       // sim); per-pane filtering is a render rule:
-                       // a=owner entity id, b=(x<<16)|y world px,
-                       // c=(colour<<24)|value 16.8 fixed point
-};
+The enumerators live in `include/openglad/gameplay/event.h` — that enum is the
+only list; a copy here rots. `DamageNumber` is the one kind the sim never
+emits: `GameServer` lifts it from the authoritative walkers.
 
+```cpp
 struct Event {
     uint32_t tick;
     EventKind kind;

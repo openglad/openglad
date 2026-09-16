@@ -80,7 +80,18 @@ PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
   `bomb_l10_vs_cleric_l9_scen99` row, after which `--list` prints **222**,
   and `3f6e3cbd` for the review pass's fact retunes (five control captures
   identical before and after; facts and comments never reach the dumper).
-  The branch table compiles in the companion unchanged.
+  The tables are byte-identical again at companion `da657414`
+  (2026-09-15, PR #292 area H: 17 orphan family pins attached, three pin
+  definitions deleted, nine fact retunes, anchored source citations, and
+  the new `FactKind::WalkerOfOrderFamilyCount` enumerator + `pred::`
+  constructor mirrored into `tools/fact_predicate.h`) — `--list` still
+  prints **222** and three control captures are `diff -rq`-identical
+  before and after. The branch table compiles in the companion unchanged.
+  The companion header's FactKind ordinals sit one behind the branch's
+  from `WalkerOnFloor` onward (a branch-only multi-floor kind the
+  companion has no concept for and no table row names); that is harmless
+  because the companion never evaluates a FactKind — it only declares the
+  ones the shared table constructs.
 - `pkg-config` is not on the bare PATH here: run the companion build
   inside `nix develop /home/yans/code/openglad -c bash -c '...'` with the
   SDL2 `PKG_CONFIG_PATH` exported inside that shell, or the script exits
@@ -145,12 +156,25 @@ It is NOT in CI — CI only validates that pin files/lines exist. Facts:
   ZERO flips of any kind (`0 flips`, which must be 0, always) and rows
   with zero PREDICATE flips (`PREDICATE-TOOTHLESS`, carried by the byte
   compare only). Both fail the run.
-- `--all` exits 1 today on the nine PREDICATE-TOOTHLESS rows measured on
-  2026-09-08 and listed in `tests/parity/golden/DRIFT_LEDGER.md`
-  ("Predicate teeth after the byte compare") — open debt, and that list
-  may only shrink. Every row flips something, `smoke_empty_scen99`
-  included (its `TickReached(1)` is evaluated inside the Invariant arm's
-  gtest as well as by `--evaluate-facts`).
+- The nine PREDICATE-TOOTHLESS rows measured on 2026-09-08 were retuned
+  on 2026-09-15: each now carries one exact fact that flips under its own
+  pin, measured per row with `--scenario` and recorded as a table in
+  `tests/parity/golden/DRIFT_LEDGER.md` ("The remaining nine, retuned").
+  That list may only shrink — a row that reds only the byte compare is
+  debt, never a pass. A full `--all` has NOT been re-measured since
+  (about 2 h 28 m under the current script); measure the rows you touch
+  with `--scenario` and leave `--all` to the CI lane. Every row flips
+  something, `smoke_empty_scen99` included (its `TickReached(1)` is
+  evaluated inside the Invariant arm's gtest as well as by
+  `--evaluate-facts`).
+- A Lua pin can be measured with NO rebuild: `build/ci-test/packs` is a
+  byte mirror of `packs/`, so copying the pinned file aside, applying
+  `_apply_mutation.py` to the STAGED path, re-running
+  `parity_runner_smoke --evaluate-facts`, restoring and `cmp`-ing
+  reproduces the script's verdict in seconds instead of ~40 s. Verify
+  the mirror with `diff -rq packs build/ci-test/packs` first, and never
+  build while a staged mutation is in flight (`stage_runtime_assets`
+  re-mirrors on every build and would overwrite it).
 - The canary restores files via `git checkout --` and will DESTROY
   uncommitted changes in mutated files. On a dirty tree, drive mutations
   by hand: back up bytes → `_apply_mutation.py` → rebuild → gtest filter

@@ -13,9 +13,17 @@ Asserts:
       is refused like a missing one
   (d) every special_<family>_<idx>_scen* row with idx >= 2 has a team-0
       caster SpawnSpec with stats_level >= (idx-1)*3+1 AND
-      magicpoints >= 600 (cycling gate sim_input_handler.cpp:218 +
-      firing gate living.cpp:532-533 preconditions; the 600 floor is
-      500 MP non-sentinel cap + 100 MP headroom).
+      magicpoints >= 600 (the cycling and firing gate preconditions, cited
+      in anchored form above `struct SpawnSpec` in the table; the 600 floor
+      is the 500 MP non-sentinel cap + 100 MP headroom).
+  (e) every kMut_* definition in the table is the discriminating_mutation
+      of at least one ScenarioSpec row (branch-internal rows count): an
+      orphan pin is a mutation nothing ever applies, so nothing measures
+      whether it still has teeth
+  (f) every ANCHORED source citation in tests/parity/*.h and *.cpp —
+      ``src/<path>:<N> `<verbatim fragment>``` — still resolves: line N of
+      <path> contains <fragment>. Bare citations (a line number with no
+      backticked fragment) are outside the rule by construction.
 
 The lint is regex-based, not a full C++ parser. It expects the
 scenario_table.h emitted by Phase 01 and breaks loudly on schema drift.
@@ -386,7 +394,8 @@ _BRANCH_INTERNAL_RX = re.compile(
 )
 
 
-def parse_scenarios(text: str) -> list[dict[str, str]]:
+def parse_scenarios(text: str, *,
+                    include_branch_internal: bool = False) -> list[dict[str, str]]:
     """Return one dict per master-comparable row inside kScenarios[].
 
     Mirrors the companion's `list_scenarios()` filter in
@@ -394,6 +403,13 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
     (the bool positional field after compare_mode) are skipped. Branch-internal
     scenarios cannot be cross-binary verified against master, so they are not
     counted by lint, canary, or the Phase 02 mirror-parity check.
+
+    `include_branch_internal=True` keeps them, and every row then carries
+    `branch_internal`. Only the orphan_mutation_constant rule asks for that
+    view: a branch-internal row still NAMES its pin, so the pin is not an
+    orphan even though no canary mode exercises it. Splitting the rows twice
+    in two places is how the two views would drift apart, so they share this
+    one.
     """
     body = _balanced_block(text, "inline constexpr ScenarioSpec kScenarios[]")
     if not body:
@@ -415,7 +431,8 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
                 start = -1
     out = []
     for r in rows:
-        if _BRANCH_INTERNAL_RX.search(r):
+        branch_internal = bool(_BRANCH_INTERNAL_RX.search(r))
+        if branch_internal and not include_branch_internal:
             continue
         # ID is the first quoted token.
         m = re.search(r'"([^"]+)"', r)
@@ -466,6 +483,7 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
             "expected_facts":  facts_name,
             "fact_count":      facts_count_expr,
             "mutation_token":  mut_token,
+            "branch_internal": branch_internal,
         })
     return out
 
@@ -610,17 +628,33 @@ def parse_spawn_arrays(text: str) -> dict[str, list[dict]]:
     return out
 
 
+# Count predicates whose [min, max] pair does NOT sit at args[1]/args[2].
+# WalkerOfOrderFamilyCount(family, order, min, max) carries the Order
+# ordinal in args[1], so its bounds are one position to the right; reading
+# args[1] there would compare a min against an Order and silently exempt
+# every widened range on the kind.
+COUNT_BOUND_ARG_INDEX = {
+    "WalkerFamilyCount":        (1, 2),
+    "WeaponFamilyCount":        (1, 2),
+    "WalkerOfTeamAlive":        (1, 2),
+    "EffectFamilyCount":        (1, 2),
+    "WalkerOfOrderFamilyCount": (2, 3),
+}
+
+
 def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
     """Return (is_widened, human-readable predicate signature). Widened
-    iff WalkerFamilyCount/WeaponFamilyCount/WalkerOfTeamAlive with
-    arg1 != arg2 OR WalkerHpRangeAtFinalTick with (arg2-arg1) > 200.
-    Unparseable args short-circuit to "not widened" so the lint never
-    false-fires on a novel call shape."""
-    if kind in ("WalkerFamilyCount", "WeaponFamilyCount", "WalkerOfTeamAlive"):
-        if len(args) < 3:
+    iff WalkerFamilyCount/WeaponFamilyCount/WalkerOfTeamAlive/
+    WalkerOfOrderFamilyCount with min != max OR WalkerHpRangeAtFinalTick
+    with (arg2-arg1) > 200. Unparseable args short-circuit to "not widened"
+    so the lint never false-fires on a novel call shape."""
+    if kind in ("WalkerFamilyCount", "WeaponFamilyCount", "WalkerOfTeamAlive",
+                "WalkerOfOrderFamilyCount"):
+        lo_i, hi_i = COUNT_BOUND_ARG_INDEX[kind]
+        if len(args) <= hi_i:
             return False, kind
-        mn = parse_int_arg(args[1])
-        mx = parse_int_arg(args[2])
+        mn = parse_int_arg(args[lo_i])
+        mx = parse_int_arg(args[hi_i])
         if mn is None or mx is None:
             return False, kind
         if mn == mx:
@@ -639,10 +673,83 @@ def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
     return False, kind
 
 
+# --- anchored citations ------------------------------------------------------
+
+# `src/<path>:<N> `<verbatim fragment of that line>`` — the ANCHORED form of a
+# source citation. The line number alone rots on the next insert above it and
+# nothing notices; the backticked fragment gives the citation an oracle, which
+# is this rule. A citation written WITHOUT a fragment is a bare citation and is
+# outside the rule by construction: the regex needs the backticks to match.
+ANCHORED_CITATION_RX = re.compile(
+    r"(src/[A-Za-z0-9_./-]+\.(?:cpp|h)):(\d+) `([^`]+)`")
+
+
+def check_anchored_citations(parity_dir: Path) -> list[str]:
+    """Resolve every anchored citation in tests/parity/*.h and *.cpp.
+
+    For each `src/<path>:<N> `<fragment>`` occurrence: <path> must exist,
+    1 <= N <= its line count, and line N must CONTAIN <fragment> verbatim.
+    When someone inserts a line above the cited one, the fragment stops
+    matching and the build reds with the stale comment's own location —
+    which is the whole point: a comment fix with no oracle rots again.
+    """
+    errors: list[str] = []
+    sources = sorted(
+        list(parity_dir.glob("*.h")) + list(parity_dir.glob("*.cpp")))
+    cache: dict[str, "list[str] | None"] = {}
+    for src_file in sources:
+        try:
+            text = src_file.read_text(encoding="utf-8")
+        except OSError as exc:  # pragma: no cover - unreadable sibling
+            errors.append(f"{src_file}: cannot read ({exc})")
+            continue
+        try:
+            where = src_file.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            where = src_file.as_posix()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for m in ANCHORED_CITATION_RX.finditer(line):
+                cited_path, target_s, fragment = m.group(1), m.group(2), m.group(3)
+                target = int(target_s)
+                if cited_path not in cache:
+                    cited_file = REPO_ROOT / cited_path
+                    try:
+                        cache[cited_path] = cited_file.read_text(
+                            encoding="utf-8").splitlines()
+                    except OSError:
+                        cache[cited_path] = None
+                cited_lines = cache[cited_path]
+                if cited_lines is None:
+                    errors.append(
+                        f"{where}:{lineno}: anchored citation "
+                        f"{cited_path}:{target} names a file that cannot be "
+                        f"read (the cited file moved — re-point the citation)")
+                    continue
+                if not 1 <= target <= len(cited_lines):
+                    errors.append(
+                        f"{where}:{lineno}: anchored citation "
+                        f"{cited_path}:{target} is outside the file "
+                        f"(1..{len(cited_lines)}) (the cited line moved — "
+                        f"re-point the citation)")
+                    continue
+                if fragment not in cited_lines[target - 1]:
+                    errors.append(
+                        f"{where}:{lineno}: anchored citation "
+                        f"{cited_path}:{target} does not contain "
+                        f"`{fragment}` (the cited line moved — re-point the "
+                        f"citation)")
+    return errors
+
+
 def main() -> int:
     table_env = os.environ.get("LINT_SCENARIO_TABLE")
     table = Path(table_env) if table_env else DEFAULT_TABLE
     text = _load_table(table)
+
+    # Spec-mandated rule (Q12) — anchored_citation. Source citations in the
+    # parity harness rot silently on every insert above the cited line; the
+    # anchored form carries a verbatim fragment so this lint can resolve it.
+    anchored_citation_errors = check_anchored_citations(table.parent)
 
     pred_arrays = parse_predicate_arrays(text)
     pred_calls  = parse_predicate_calls(text)
@@ -740,9 +847,10 @@ def main() -> int:
                     f"use EventKindAtLeast(*, 1) or EventKindExactly(*, n)")
 
     # Phase 04-prep — zero_zero_count_no_negation rule. A
-    # `WalkerFamilyCount(F, 0, 0)`, `WeaponFamilyCount(F, 0, 0)` or
-    # `EffectFamilyCount(F, 0, 0)` predicate is an assertion that the
-    # family is absent. That is
+    # `WalkerFamilyCount(F, 0, 0)`, `WeaponFamilyCount(F, 0, 0)`,
+    # `EffectFamilyCount(F, 0, 0)` or
+    # `WalkerOfOrderFamilyCount(F, order, 0, 0)` predicate is an assertion
+    # that the family is absent. That is
     # only honest as a paired negative assertion (policy P3), so the
     # source row MUST carry an inline `// negative_assertion: <reason>`
     # comment that the lint can grep for. Absent comment -> violation.
@@ -751,13 +859,14 @@ def main() -> int:
         for i, pred in enumerate(preds):
             kind = pred["kind"]
             if kind not in ("WalkerFamilyCount", "WeaponFamilyCount",
-                            "EffectFamilyCount"):
+                            "EffectFamilyCount", "WalkerOfOrderFamilyCount"):
                 continue
             args = pred["args"]
-            if len(args) < 3:
+            lo_i, hi_i = COUNT_BOUND_ARG_INDEX[kind]
+            if len(args) <= hi_i:
                 continue
-            mn = parse_int_arg(args[1])
-            mx = parse_int_arg(args[2])
+            mn = parse_int_arg(args[lo_i])
+            mx = parse_int_arg(args[hi_i])
             if mn != 0 or mx != 0:
                 continue
             trail = pred.get("trail", "")
@@ -876,6 +985,26 @@ def main() -> int:
                         f"AND no kOrderWeapon entry with family-id == {family} "
                         f"paired with a `// scripted_spawn:` predicate-trail "
                         f"comment (policy P6)")
+
+    # Spec-mandated rule (Q10) — orphan_mutation_constant. A kMut_* that
+    # no row names is a pin nothing ever applies: check_mutation_pins keeps
+    # its anchor honest, but no canary run ever asks whether it still has
+    # teeth, and the rationale is free to describe flips that stopped
+    # happening years ago. Branch-internal rows count as references — their
+    # pin is named, even though the Invariant compare cannot flip on it.
+    orphan_mutation_errors: list[str] = []
+    referenced_mutations = {
+        r["mutation_token"]
+        for r in parse_scenarios(text, include_branch_internal=True)
+        if r["mutation_token"]
+    }
+    for mut_name in sorted(mutations):
+        if mut_name in referenced_mutations:
+            continue
+        orphan_mutation_errors.append(
+            f"{mut_name}: orphan mutation constant (referenced by no "
+            f"ScenarioSpec row) — attach it to a row whose facts flip under "
+            f"it, or delete it with a DRIFT_LEDGER 'Removed pins' note")
 
     if not rows:
         sys.stderr.write("lint: no scenario rows parsed\n")
@@ -1002,6 +1131,8 @@ def main() -> int:
         + zero_zero_count_errors
         + family_alias_errors
         + caster_zero_min_errors
+        + orphan_mutation_errors
+        + anchored_citation_errors
     )
 
     if all_errors:

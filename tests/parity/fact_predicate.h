@@ -87,7 +87,56 @@ enum class FactKind : std::uint8_t
     // is satisfied by any ordinary ground walker and only the multi-floor
     // branch-internal scenarios exercise floor > 0.
     WalkerOnFloor,                   // arg0 = family, arg1 = min_floor, arg2 = max_floor
+    // Order-aware analogue of WalkerFamilyCount. arg0 = family id, arg1 =
+    // Order ordinal (kOrderLiving / kOrderTreasure / kOrderGenerator /
+    // kOrderWeapon / kOrderFX), arg2 = min, arg3 = max; counts
+    // dump.walkers[] entries (alive OR dead) whose family renders under
+    // arg1 via family_symbol_by_order — the oblist analogue of
+    // WalkerFamilyCount for FX/treasure entities, which the living-order
+    // kinds cannot name.
+    //
+    // APPEND-ONLY: this enumerator is last so every existing ordinal keeps
+    // its value (the companion header mirror must match ordinal for
+    // ordinal).
+    WalkerOfOrderFamilyCount,        // arg0 = family, arg1 = order, arg2 = min, arg3 = max
 };
+
+// Canonical spelling of a FactKind, shared by every consumer that prints a
+// kind (parity_runner_smoke's --facts output, scenario_facts_dump's
+// generated JSON). ONE switch, so a new enumerator reds exactly one -Wswitch
+// diagnostic instead of drifting between two copies of the same table.
+// Returns "Unknown" for a value no enumerator names.
+const char* fact_kind_name(FactKind k);
+
+// EventKind ordinal -> the canonical symbol a dump's events[] carries for
+// that kind. ONE table, shared by every consumer that has to turn a
+// scenario row's `EventKindAtLeast(/*ordinal=*/3, ...)` back into a name
+// (the evaluator's event counter, scenario_facts_dump's generated JSON,
+// the coverage gate).
+//
+// The ordinals are FROZEN: scenario_table.h writes them as bare integer
+// literals in hundreds of predicate rows, so the sequence is APPEND-ONLY and
+// must never be reordered — renumbering silently repoints every existing row
+// at a different event kind. They are NOT the EventKind enumerator's numeric
+// value (that enum is sparse: 0, 4, 8, 11..19) and they do NOT depend on the
+// case order in tests/parity/state_dump.cpp::event_kind_symbol. The only
+// coupling to that renderer is the NAMES, which must match the strings it
+// returns, because the evaluator compares them against the symbols in the
+// dump; FactPredicate.every_ordinal_names_a_symbol_the_renderer_emits pins
+// exactly that.
+//
+// Returns "" (never nullptr) for an ordinal outside
+// [0, kEventKindOrdinalCount).
+const char* event_kind_symbol_of_ordinal(std::int32_t ordinal);
+
+// How many ordinals the table above names. A new event kind appends one.
+inline constexpr std::int32_t kEventKindOrdinalCount = 11;
+
+// Inverse lookup: the frozen ordinal a scenario row must pass to
+// pred::EventKindAtLeast / pred::EventKindExactly to name `symbol`.
+// std::nullopt when no ordinal carries that name (e.g. "damage_number",
+// which the sim never emits into SimEventLog).
+std::optional<std::int32_t> event_kind_ordinal_of_symbol(std::string_view symbol);
 
 // behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
 // (100 * pixel distance).
@@ -295,6 +344,19 @@ inline constexpr FactPredicate EffectNetTravel(std::int32_t family, std::int32_t
                                                std::string_view label = {}) noexcept
 {
     return {FactKind::EffectNetTravel, family, behavior_flag, threshold_centi, 0, 0, label};
+}
+// How many dump.walkers[] entries render as `family` under `order` — alive
+// OR dead, exactly like WalkerFamilyCount, but resolved in the requested
+// Order namespace instead of always Living. This is the only tool that can
+// name an FX or Treasure entity that the sim parked in oblist (an expired
+// FAMILY_FLASH, a consumed gem): WalkerFamilyCount would render arg0 through
+// the Living table and count the wrong symbol, and EffectFamilyCount reads
+// dump.effects[], which oblist residents never reach.
+inline constexpr FactPredicate WalkerOfOrderFamilyCount(std::int32_t family, std::int32_t order,
+                                                        std::int32_t mn, std::int32_t mx,
+                                                        std::string_view label = {}) noexcept
+{
+    return {FactKind::WalkerOfOrderFamilyCount, family, order, mn, mx, 0, label};
 }
 // At least one ALIVE walker of `family` is on a stacked floor in
 // [min_floor, max_floor]. Has teeth: fails if no such walker exists (e.g. a

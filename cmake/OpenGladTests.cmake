@@ -192,6 +192,8 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_fact_predicate.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_state_dump_symbols.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_switch_guard_tripwire.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_lineup_ui.cpp
@@ -657,6 +659,8 @@ og_add_test_group(og_test_parity FILES
     test_parity_scenarios.cpp
     test_parity_coverage_gate.cpp
     test_fact_predicate.cpp
+    test_state_dump_symbols.cpp
+    test_switch_guard_tripwire.cpp
     test_golden_compare.cpp
     golden_compare.cpp
     parity_runner.cpp
@@ -694,7 +698,8 @@ target_compile_definitions(og_test_parity PRIVATE
 )
 
 # Phase 01 (semantic-parity): pre-build tool that emits the
-# single-source-of-truth JSON for scripts/parity/evaluate_facts.py.
+# single source of truth consumed by scripts/parity/run_mutation_canary.sh
+# (scenario enumeration) and scripts/parity/lint_scenario_facts.py.
 # Runs automatically as a dependency of og_test_parity so the
 # generated file is always up to date with scenario_table.h.
 add_executable(scenario_facts_dump

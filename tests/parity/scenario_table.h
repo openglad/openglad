@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift (sim_input_handler.cpp:316 reads is_held(Shift) to set shifter_down)
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:435 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -166,11 +166,11 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // `default_weapon` / `current_weapon` are zero-meaning-skip.
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
-// raises walker level so cycle/fire gates accept later special slots
-// (cycling gate sim_input_handler.cpp:218 requires (N-1)*3+1 <=
-// stats.level(); firing gate living.cpp:532-533 requires
-// magicpoints >= special_cost(current_special)). Zero defaults preserve
-// byte-mirror layout; scenario_runtime applies them only when non-zero.
+// raises walker level so cycle/fire gates accept later special slots.
+// Cycling gate: src/gameplay/sim_input_handler.cpp:310 `(control->current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Firing gate: src/gameplay/living.cpp:601 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
+// Zero defaults preserve byte-mirror layout; scenario_runtime applies
+// them only when non-zero.
 struct SpawnSpec
 {
     std::int32_t  family;
@@ -680,7 +680,7 @@ inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
 //   11 THIEF, 12 GHOST, 13 DRUID, 14 ORC, 15 BIG_ORC, 16 BARBARIAN,
 //   17 ARCHMAGE, 18 GOLEM, 19 GIANT_SKELETON, 20 TOWER1.
 //
-// EventKind ordinals (matches state_dump.cpp::event_kind_symbol):
+// EventKind ordinals (fact_predicate.h event_kind_symbol_of_ordinal — frozen, append-only):
 //   0 none, 1 play_sound, 2 notification, 3 set_palette, 4 request_redraw,
 //   5 end_game, 6 set_end, 7 request_exit_confirmation,
 //   8 withdraw_to_level, 9 score_change, 10 damage_tile.
@@ -1186,13 +1186,6 @@ inline constexpr Mutation kMut_effect_lifetime = {
     "Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates."
 };
 
-inline constexpr Mutation kMut_save_corrupt = {
-    "src/resources/save_data.cpp", 132,
-    "std::uint8_t temp_version = 9;",
-    "std::uint8_t temp_version = 0;",
-    "Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2)."
-};
-
 inline constexpr Mutation kMut_exit_neuter = {
     "src/gameplay/walker_movement.cpp", 173,
     "returnvalue = walk(x * stepsize(), y * stepsize());",
@@ -1289,119 +1282,195 @@ inline constexpr Mutation kMut_family_soldier_init = {
     "packs/core/families/living-00-soldier.lua", 145,
     "hp = 120",
     "hp = 12000",
-    "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER)."
-};
-
-inline constexpr Mutation kMut_family_elf_init = {
-    "packs/core/families/living-01-elf.lua", 69,
-    "hp = 75",
-    "hp = 7500",
-    "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF)."
+    "Cranks SOLDIER descriptor HP x100 "
+    "(packs/core/families/living-00-soldier.lua:145). "
+    "family_soldier_scen99's WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, "
+    "11900, 12100) leaves its window (golden 12000 cents -> mutated "
+    "1200000 cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
     "packs/core/families/living-02-archer.lua", 96,
     "hp = 90",
     "hp = 9000",
-    "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER)."
+    "Cranks ARCHER descriptor HP x100 "
+    "(packs/core/families/living-02-archer.lua:96). "
+    "family_archer_scen99's WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 8900, "
+    "9100) leaves its window (golden 9000 cents -> mutated 900000 cents); "
+    "measured 2026-09-15 by staging the pin into build/ci-test/packs, it "
+    "is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
     "packs/core/families/living-03-mage.lua", 285,
     "hp = 90",
     "hp = 9000",
-    "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE)."
+    "Cranks MAGE descriptor HP x100 "
+    "(packs/core/families/living-03-mage.lua:285). family_mage_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8900, 9100) leaves its window "
+    "(golden 9000 cents -> mutated 900000 cents); measured 2026-09-15 by "
+    "staging the pin into build/ci-test/packs, it is the only fact of the "
+    "row that flips."
 };
 
 inline constexpr Mutation kMut_family_skeleton_init = {
     "packs/core/families/living-04-skeleton.lua", 43,
     "hp = 60",
     "hp = 6000",
-    "Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON)."
+    "Cranks SKELETON descriptor HP x100 "
+    "(packs/core/families/living-04-skeleton.lua:43). "
+    "family_skeleton_scen99's WalkerHpRangeAtFinalTick(FAMILY_SKELETON, "
+    "5900, 6100) leaves its window (golden 6000 cents -> mutated 600000 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
     "packs/core/families/living-05-cleric.lua", 309,
     "hp = 120",
     "hp = 12000",
-    "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC)."
+    "Cranks CLERIC descriptor HP x100 "
+    "(packs/core/families/living-05-cleric.lua:309). "
+    "family_cleric_scen99's WalkerHpRangeAtFinalTick(FAMILY_CLERIC, "
+    "11900, 12100) leaves its window (golden 12000 cents -> mutated "
+    "1200000 cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
     "packs/core/families/living-06-elemental.lua", 80,
     "hp = 100",
     "hp = 10000",
-    "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL)."
+    "Cranks FIREELEMENTAL descriptor HP x100 "
+    "(packs/core/families/living-06-elemental.lua:80). "
+    "family_fireelemental_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 9900, 10100) leaves "
+    "its window (golden 10000 cents -> mutated 1000000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_faerie_init = {
     "packs/core/families/living-07-faerie.lua", 15,
     "hp = 75",
     "hp = 7500",
-    "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE)."
+    "Cranks FAERIE descriptor HP x100 "
+    "(packs/core/families/living-07-faerie.lua:15). "
+    "family_faerie_scen99's WalkerHpRangeAtFinalTick(FAMILY_FAERIE, 7400, "
+    "7600) leaves its window (golden 7500 cents -> mutated 750000 cents); "
+    "measured 2026-09-15 by staging the pin into build/ci-test/packs, it "
+    "is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_slime_init = {
     "packs/core/families/living-08-slime.lua", 170,
     "hp = 150",
     "hp = 1",
-    "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops SLIME descriptor HP to 1 "
+    "(packs/core/families/living-08-slime.lua:170). family_slime_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_SLIME, 14900, 15100) leaves its "
+    "window (golden 15000 cents -> mutated 100 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_small_slime_init = {
     "packs/core/families/living-08-slime.lua", 218,
     "hp = 80",
     "hp = 8000",
-    "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME)."
+    "Cranks SMALL_SLIME descriptor HP x100 "
+    "(packs/core/families/living-08-slime.lua:218). "
+    "family_small_slime_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_SMALL_SLIME, 7900, 8100) leaves its "
+    "window (golden 8000 cents -> mutated 800000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_medium_slime_init = {
     "packs/core/families/living-08-slime.lua", 262,
     "hp = 110",
     "hp = 11000",
-    "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME)."
+    "Cranks MEDIUM_SLIME descriptor HP x100 "
+    "(packs/core/families/living-08-slime.lua:262). "
+    "family_medium_slime_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 10900, 11100) leaves "
+    "its window (golden 11000 cents -> mutated 1100000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
     "packs/core/families/living-11-thief.lua", 201,
     "hp = 75",
     "hp = 7500",
-    "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF)."
+    "Cranks THIEF descriptor HP x100 "
+    "(packs/core/families/living-11-thief.lua:201). family_thief_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600) leaves its window "
+    "(golden 7500 cents -> mutated 750000 cents); measured 2026-09-15 by "
+    "staging the pin into build/ci-test/packs, it is the only fact of the "
+    "row that flips."
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
     "packs/core/families/living-13-druid.lua", 159,
     "hp = 110",
     "hp = 11000",
-    "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID)."
+    "Cranks DRUID descriptor HP x100 "
+    "(packs/core/families/living-13-druid.lua:159). family_druid_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_DRUID, 10900, 11100) leaves its "
+    "window (golden 11000 cents -> mutated 1100000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
     "packs/core/families/living-14-orc.lua", 104,
     "hp = 140",
     "hp = 14000",
-    "Cranks ORC HP; flips WalkerDiedByFinal(ORC)."
+    "Cranks ORC descriptor HP x100 "
+    "(packs/core/families/living-14-orc.lua:104). family_orc_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_ORC, 13900, 14100) leaves its window "
+    "(golden 14000 cents -> mutated 1400000 cents); measured 2026-09-15 "
+    "by staging the pin into build/ci-test/packs, it is the only fact of "
+    "the row that flips."
 };
 
 inline constexpr Mutation kMut_family_big_orc_init = {
     "packs/core/families/living-15-orc_captain.lua", 16,
     "hp = 180",
     "hp = 1",
-    "BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops BIG_ORC descriptor HP to 1 "
+    "(packs/core/families/living-15-orc_captain.lua:16). "
+    "family_big_orc_scen99's WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, "
+    "17900, 18100) leaves its window (golden 18000 cents -> mutated 100 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
     "packs/core/families/living-16-barbarian.lua", 79,
     "hp = 150",
     "hp = 1",
-    "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops BARBARIAN descriptor HP to 1 "
+    "(packs/core/families/living-16-barbarian.lua:79). "
+    "family_barbarian_scen99's WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, "
+    "14900, 15100) leaves its window (golden 15000 cents -> mutated 100 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
     "packs/core/families/living-17-archmage.lua", 536,
     "hp = 150",
     "hp = 1",
-    "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1)."
+    "Drops ARCHMAGE descriptor HP to 1 "
+    "(packs/core/families/living-17-archmage.lua:536). "
+    "family_archmage_scen99's WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, "
+    "14900, 15100) leaves its window (golden 15000 cents -> mutated 100 "
+    "cents); measured 2026-09-15 by staging the pin into "
+    "build/ci-test/packs, it is the only fact of the row that flips."
 };
 
 inline constexpr Mutation kMut_family_golem_init = {
@@ -1411,18 +1480,16 @@ inline constexpr Mutation kMut_family_golem_init = {
     "GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
-inline constexpr Mutation kMut_family_giant_skeleton_init = {
-    "packs/core/families/living-19-beast.lua", 17,
-    "hp = 300",
-    "hp = 1",
-    "GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1)."
-};
-
 inline constexpr Mutation kMut_family_tower1_init = {
     "packs/core/families/living-20-beast.lua", 23,
     "hp = 130",
     "hp = 13000",
-    "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1)."
+    "Cranks TOWER1 descriptor HP x100 "
+    "(packs/core/families/living-20-beast.lua:23). family_tower1_scen99's "
+    "WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12900, 13100) leaves its "
+    "window (golden 13000 cents -> mutated 1300000 cents); measured "
+    "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
+    "only fact of the row that flips."
 };
 
 // --- Phase 04 — per-entity behavioural scenarios (Phase 04 redo) -----------
@@ -1643,13 +1710,25 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_STAIN, kOrderTreasure),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    // TEETH (the row's discriminator). The three predicates above survive
+    // kMut_treasure_stain_pickup untouched -- the faerie is alive at the final
+    // tick either way, the off-path literal stain keeps the Order-aware
+    // removal check `indeterminate` on both arms, and the melee still emits
+    // sounds -- so this exact HP pin is what the pin actually flips. The
+    // golden's faerie ends the 150-tick window at 17.00 hp (1700 cents) with
+    // max_hp 75; under the pin (living-07-faerie.lua:15, hp 75 -> 75000) the
+    // same melee exchange leaves 74942.00 hp (7494200 cents). Exact, not a
+    // band: the sim is deterministic and the golden is byte-identical to the
+    // branch dump.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_FAERIE, 1700, 1700,
+        "consequence: the soldier's melee window leaves the faerie at exactly 1700 cents in the golden; kMut_treasure_stain_pickup (packs/core/families/living-07-faerie.lua:15, hp 75 -> 75000) makes it unkillable in that window and it ends at 7494200 cents, outside this exact pin"),
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
     "packs/core/families/living-07-faerie.lua", 15,
     "hp = 75",
     "hp = 75000",
-    "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP bonus from 75 to 75000 (the new value keeps the anchor as a prefix, so the pin check still passes on the mutated tree) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot -- flipping WalkerDiedByFinal(FAMILY_FAERIE) from pass (no alive faerie remains) to fail (the faerie is still alive at the final tick)."
+    "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP bonus from 75 to 75000 (the new value keeps the anchor as a prefix, so the pin check still passes on the mutated tree) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot. MEASURED flip: WalkerHpRangeAtFinalTick(FAMILY_FAERIE, 1700, 1700) fails at 7494200 cents. (This rationale used to claim a WalkerDiedByFinal(FAMILY_FAERIE) flip; the row has never carried that predicate, and the faerie is ALIVE at the final tick on both arms -- the golden leaves it at 17 hp, wounded but breathing.)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_pickup[] = {
@@ -1867,6 +1946,21 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
     pred::EventKindExactly(/*score_change=*/9, 0),
+    // TEETH (the row's discriminator). Everything above holds under
+    // kMut_treasure_life_gem_pickup: the eater walks the same path, ends at
+    // full 12000 cents either way, emits no score_change either way, and the
+    // Order-aware removal check reads `indeterminate` (a non-failing
+    // observation) when the un-eaten gem is still alive. What the pin really
+    // removes is the telflash: life_gem_on_eat add_ob(Order::FX,
+    // FAMILY_FLASH)es it, and although the FLASH expires within ~9 ticks
+    // (series_8) its DEAD entry stays in oblist and is in the tick-150 dump
+    // at (94,118) -- exactly one of them. Neutering on_eat spawns none, so
+    // the count goes 1 -> 0. WalkerOfOrderFamilyCount is the only kind that
+    // can name it: WalkerFamilyCount would resolve family id 4 through the
+    // Living table (FAMILY_SKELETON) and EffectFamilyCount reads fxlist,
+    // which an add_ob FX never reaches.
+    pred::WalkerOfOrderFamilyCount(FAMILY_FLASH, kOrderFX, 1, 1,
+        "consequence: life_gem_on_eat emits exactly one FAMILY_FLASH telflash into oblist, whose expired (dead) entry is still in the tick-150 golden at (94,118); kMut_treasure_life_gem_pickup neuters the hook so no FLASH is ever added and the count falls to 0"),
 };
 
 inline constexpr Mutation kMut_treasure_life_gem_pickup = {
@@ -2833,7 +2927,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
     // ONLY EffectFamilyCount(FAMILY_EXPLOSION, ...) binding in the table, so
     // it must stay for behavioural_coverage_gate_effects. FX spawned via
     // add_ob(Order::FX) land in oblist (dump.walkers[]), never fxlist
-    // (dump.effects[]) — see scenario_table.h:3832-3840 — so the family's
+    // (dump.effects[]) — see the FX-order note on the EffectFamilyCount anchor in kFacts_effect_boomerang_emission_scen99 — so the family's
     // dump.effects[] count is 0 on both arms; the source qualifier requires
     // a FAMILY_SOLDIER walker, which the spawn list provides.
     pred::EffectFamilyCount(FAMILY_EXPLOSION, 0, 0, /*source=FAMILY_SOLDIER*/0),
@@ -2857,12 +2951,17 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
     // life_gem_on_eat in packs/core/lib/treasure_valuables.lua is the
     // FAMILY_FLASH emitter under test: on a same-team pickup it add_ob(Order::FX,
     // FAMILY_FLASH)s the telflash effect AND set_dead(1)s the gem. The
-    // FLASH itself lands in oblist and expires within ~9 ticks (series_8),
-    // so it is not directly countable at tick 150 under schema-v1; its
-    // observable proxy is the gem's removal from oblist plus the
-    // ScoreChange event that award_score emits unconditionally in the same
-    // hook. Neutering the hook (kMut_effect_flash_emission) suppresses the
-    // FLASH emission AND the ScoreChange together.
+    // FLASH itself lands in oblist and expires within ~9 ticks (series_8) --
+    // but expiring does not remove it: its DEAD entry stays in oblist and is
+    // in the tick-150 dump at (94,118), so it IS directly countable, by the
+    // Order-aware WalkerOfOrderFamilyCount below. (This comment used to say
+    // "not directly countable at tick 150 under schema-v1" and offered the
+    // gem's removal plus the ScoreChange as proxies; the golden carries the
+    // FLASH itself, and both proxies turned out to be inert under the pin --
+    // the un-eaten gem leaves the removal check `indeterminate`, and the
+    // golden's score_change count is 0 on both arms.) Neutering the hook
+    // (kMut_effect_flash_emission) suppresses the FLASH emission AND the
+    // ScoreChange together.
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
     pred::EventKindExactly(/*score_change*/9, 0),
     // Structural coverage anchor: binds FAMILY_FLASH to EffectFamilyCount for
@@ -2874,6 +2973,12 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
     // a FAMILY_SOLDIER walker, which the eater provides.
     pred::EffectFamilyCount(FAMILY_FLASH, 0, 0, /*source=FAMILY_SOLDIER*/0),
     // negative_assertion: FLASH is emitted through oblist and expires before the final fxlist snapshot.
+    // TEETH (the row's discriminator): the positive half of the anchor above.
+    // fxlist holds no FAMILY_FLASH on either arm, but OBLIST holds exactly
+    // one -- the expired telflash, dead at (94,118) in the golden. The pin
+    // removes the add_ob entirely, so the count goes 1 -> 0.
+    pred::WalkerOfOrderFamilyCount(FAMILY_FLASH, kOrderFX, 1, 1,
+        "consequence: life_gem_on_eat emits exactly one FAMILY_FLASH telflash into oblist; its expired entry is still counted in the tick-150 golden at (94,118). kMut_effect_flash_emission neuters the hook, no FLASH is ever added, and the count falls to 0"),
 };
 
 inline constexpr Mutation kMut_effect_flash_emission = {
@@ -2897,6 +3002,18 @@ inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
     // negative_assertion: MAGIC_SHIELD is represented as a team walker in oblist, not as a final fxlist effect.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // TEETH (the row's discriminator). Everything above is true with or
+    // without the orbit: the neutered shield stays ALIVE on team 0 (it just
+    // stops moving), so the cleric, the team-2 count and the sounds all hold.
+    // What the pin destroys is the PATH. magic_shield_on_act re-centres the
+    // shield on its owner every tick, which traces an orbit: the golden's
+    // seq-0 FAMILY_MAGIC_SHIELD track has 25 samples, pathlen 22380 centi-px
+    // and net displacement 4754 -- a RETURNS path (net < 0.5 * pathlen).
+    // Neutered, the shield is parked at (124,122) for all 25 samples:
+    // pathlen 0, net 0, and the 10000-centi pathlen floor fails. Threshold
+    // margin: golden 22380 vs floor 10000 (2.2x), mutated 0.
+    pred::EffectNetTravel(FAMILY_MAGIC_SHIELD, kWeaponPathReturns, 10000,
+        "consequence: magic_shield_on_act orbits the shield around its owner, tracing 22380 centi-px of path with only 4754 net displacement over the golden's 25 samples; kMut_effect_magic_shield_emission neuters the hook and the shield sits still (pathlen 0), below the 10000-centi RETURNS floor"),
 };
 
 inline constexpr Mutation kMut_effect_magic_shield_emission = {
@@ -2921,6 +3038,14 @@ inline constexpr FactPredicate kFacts_effect_knife_back_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::ScoreDelta(/*team*/0, 0, 0),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // TEETH (the row's discriminator). The play_sound FLOOR of 1 is inert
+    // here -- the mutated run still makes noise (8 sounds) -- so the count
+    // has to be exact. knife_back.on_act homes the returning blade back to
+    // its thrower; the golden's 150-tick window emits exactly 9 play_sound
+    // events. Neutered, the blade never returns, the soldier chases it off
+    // to (208,0), and the window emits 8.
+    pred::EventKindExactly(/*play_sound*/1, 9,
+        "consequence: the homing knife_back cycle emits exactly 9 play_sound events over the golden's 150 ticks; kMut_effect_knife_back_emission neuters knife_back.on_act, the blade never homes back, and the count drops to 8"),
 };
 
 inline constexpr Mutation kMut_effect_knife_back_emission = {
@@ -2945,20 +3070,20 @@ inline constexpr SpawnSpec kFamilySpawns_boomerang_arena[] = {
 inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
     pred::TickReached(45),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
-    // TEETH: the slot-2 special summons a FAMILY_BOOMERANG FX walker onto
-    // the caster's team (team 0) via summon_entity(Order::FX) -> oblist, so
-    // at tick 45 team 0 holds caster+boomerang = 2. boomerang_on_act in
-    // packs/core/lib/effect_shield.lua orbits the caster and keeps the FX alive
-    // for its lifetime (30 + level*12 = 78 ticks). Under
-    // kMut_effect_boomerang_emission the `on_act = boomerang_on_act` binding
-    // (packs/core/lib/effect_shield.lua:109) becomes `function() return
-    // false end` — "not handled", the no-registered-hook path — so effect::act
-    // (effect.cpp:79-94)
-    // runs no orbit, animates one cycle, then set_dead/death within ~2 ticks
-    // -> team 0 collapses to the lone caster = 1 and this lower bound fails.
+    // STRUCTURAL, not teeth. The slot-2 special summons a FAMILY_BOOMERANG FX
+    // walker onto the caster's team (team 0) via summon_entity(Order::FX) ->
+    // oblist, so at tick 45 team 0 holds caster + boomerang + the returning
+    // KNIFE_BACK = 3 -- and it holds 3 under the pin too. The comment that
+    // used to sit here claimed the unhandled FX "animates one cycle, then
+    // set_dead/death within ~2 ticks -> team 0 collapses to the lone caster =
+    // 1": MEASURED, it does not. effect::act's no-hook path still runs the
+    // boomerang's own lifetime (30 + level*12 = 78 ticks), which outlives the
+    // 45-tick budget, so the FX is alive at the final tick on BOTH arms --
+    // parked at (123,123) instead of orbiting at (128,136). This predicate
+    // does NOT flip; the EffectNetTravel below is the discriminator.
     pred::WalkerOfTeamAlive(0, 2, 3,
-        "consequence: BOOMERANG slot 2 summons FAMILY_BOOMERANG FX walkers onto the caster team (team 0); boomerang_on_act keeps them orbiting/alive across the 45-tick window so team 0 holds caster+boomerang(s)=3 on both branch and master. kMut_effect_boomerang_emission neuters boomerang_on_act in packs/core/lib/effect_shield.lua (false = \"not handled\", the no-registered-hook path) so the FX runs no on_act, dies after one animation cycle, and team 0 collapses to the lone caster=1, below the floor of 2"),
-    // rng_drift: two or three boomerang FX may be live while the mutation leaves only the caster; commit 244d4bcf
+        "consequence: BOOMERANG slot 2 summons a FAMILY_BOOMERANG FX walker onto the caster team (team 0), which holds caster+boomerang+returning KNIFE_BACK=3 at tick 45. Structural only: the FX outlives the 45-tick budget with or without its on_act hook, so kMut_effect_boomerang_emission leaves this count at 3"),
+    // rng_drift: the returning KNIFE_BACK may or may not still be in flight at tick 45, so the team-0 body count spans 2..3; commit 244d4bcf
     // Structural coverage anchor: binds FAMILY_BOOMERANG to EffectFamilyCount
     // (behavioural_coverage_gate_effects). Genuinely 0 on BOTH sides because
     // the boomerang is an Order::FX object routed into oblist (add_ob), never
@@ -2967,6 +3092,16 @@ inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
     // negative_assertion: BOOMERANG rides oblist as a team walker; final fxlist should stay empty for that family.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // TEETH (the row's discriminator). Since the unhandled FX survives the
+    // budget, existence proves nothing and only the PATH separates the arms.
+    // boomerang_on_act flies the arc and returns: the golden's seq-0
+    // FAMILY_BOOMERANG track has 25 samples, pathlen 8227 centi-px and net
+    // displacement 1709 -- a RETURNS path (net < 0.5 * pathlen). Neutered,
+    // the FX sits at (123,123) for all 25 samples: pathlen 0, net 0, and the
+    // 4000-centi pathlen floor fails. Threshold margin: golden 8227 vs floor
+    // 4000 (2.1x), mutated 0.
+    pred::EffectNetTravel(FAMILY_BOOMERANG, kWeaponPathReturns, 4000,
+        "consequence: boomerang_on_act flies the orbit and returns, tracing 8227 centi-px of path with only 1709 net displacement over the golden's 25 samples; kMut_effect_boomerang_emission neuters the hook and the FX never moves (pathlen 0), below the 4000-centi RETURNS floor"),
 };
 
 inline constexpr Mutation kMut_effect_boomerang_emission = {
@@ -3640,13 +3775,22 @@ inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 12000),
     // rng_drift: bone-shield combat may leave the soldier anywhere in this broad high-HP band; commit 244d4bcf
     pred::WalkerDiedByFinal(FAMILY_SKELETON),
+    // TEETH (the row's discriminator). kMut_special_skeleton_1_scen99 makes
+    // TUNNEL believe it is already mid-teleport, so the skeleton never hops
+    // -- but it still DIES inside the budget, so the two skeleton predicates
+    // above hold either way, and the soldier still ends at full 12000 cents
+    // inside the wide band. The play_sound FLOOR of 6 is inert in the same
+    // direction: standing and fighting is LOUDER than teleporting away (13
+    // events vs the golden's 6), so only an exact count separates the arms.
+    pred::EventKindExactly(/*play_sound*/1, 6,
+        "consequence: the golden's TUNNEL hop plus the short melee that follows emit exactly 6 play_sound events in the 150-tick window; kMut_special_skeleton_1_scen99 closes the teleport, the skeleton stands and trades blows instead, and the count rises to 13"),
 };
 
 inline constexpr Mutation kMut_special_skeleton_1_scen99 = {
     "packs/core/families/living-04-skeleton.lua", 28,
     "if lc.mid_teleport(self) then",
     "if true then",
-    "Makes TUNNEL believe it is already mid-teleport, so do_special returns false without setting ANI_TELE_OUT and handle_teleport never runs its teleport_ranged hop. The skeleton stays put and survives: WalkerFamilyCount(FAMILY_SKELETON, 0, 0) and WalkerDiedByFinal(FAMILY_SKELETON) both fail."
+    "Makes TUNNEL believe it is already mid-teleport, so do_special returns false without setting ANI_TELE_OUT and handle_teleport never runs its teleport_ranged hop. MEASURED flip: EventKindExactly(play_sound, 6) fails at 13, because the skeleton stands and trades blows instead of hopping away. (This rationale used to claim WalkerFamilyCount(FAMILY_SKELETON, 0, 0) and WalkerDiedByFinal(FAMILY_SKELETON) both fail: measured, the skeleton dies inside the budget either way and both still pass.)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_cleric_2_scen99[] = {
@@ -4032,8 +4176,18 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 5000, 12000,
-        "consequence: EXPLODING_BOULDER combat exchange damages barbarian; golden 8900 cents"),
+        "consequence: EXPLODING_BOULDER combat exchange damages barbarian; golden 8300 cents"),
     // rng_drift: exploding-boulder timing spans this barbarian-HP band while the init mutation exits it; commit 244d4bcf
+    // TEETH (the row's discriminator). The band above is wide enough to hold
+    // both arms (its label read "golden 8900 cents" until this wave measured
+    // 8300), the barbarian count is 1 either way, and the mutated run is not
+    // quieter -- 15 play_sound events on both sides, so that floor is inert
+    // too. Dropping the slot-2 EXPLODING sentinel changes the boulder's
+    // flight, and the return exchange lands one extra point of damage on the
+    // thrower: 83.00 hp -> 82.00. Exact, one hp apart, which is the whole
+    // reason the wide band could not see it.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 8300, 8300,
+        "consequence: the golden's barbarian ends the 150-tick window at exactly 8300 cents; kMut_special_barbarian_2_scen99 drops the slot-2 EXPLODING sentinel, the boulder exchange plays out differently, and the thrower ends at 8200"),
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
@@ -4375,17 +4529,36 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::EventKindExactly(/*score_change*/9, 0),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    // STRUCTURAL, not teeth. Both trajectory predicates hold on BOTH arms:
+    // measured on the golden, the seq-0 FAMILY_ROCK track has 10 samples,
+    // max consecutive-tick step 671 centi-px/tick, pathlen 5727 and net
+    // 5725; under kMut_weapon_rock_slot2_emit_scen99 the same track measures
+    // max step 781, pathlen 6669, net 6661. 781 sits inside [650,900], so
+    // the speed band does NOT flip -- the old label's claim that the mutation
+    // "doubles the rock's x-step to ~1404 centi-px/tick (1404 > 900)" was
+    // never measured and is wrong (the pin multiplies one component of an
+    // already-spread lastx, and the rock's speed is re-normalised on the way
+    // out). STRAIGHT likewise holds at both 5725 and 6661 net. The
+    // WalkerPositionMoved below is the discriminator.
     pred::WeaponSpeed(FAMILY_ROCK, 650, 900,
-        "trajectory: ELF slot-2 BOUNCING ROCKS first projectile (seq 0) steps toward the enemy soldier at max consecutive-tick speed 707 centi-px/tick on branch and 800 centi-px/tick on the recaptured master golden (the branch next_spread_multiplier spread rounds the x-step differently than master's elf fire path, so the two arms diverge by one pixel); bracket [650,900] brackets BOTH arms and flips when the kMut doubles the rock's x-step to ~1404 centi-px/tick (1404 > 900)"),
+        "trajectory: ELF slot-2 BOUNCING ROCKS first projectile (seq 0) steps toward the enemy soldier at max consecutive-tick speed 671 centi-px/tick in the golden and 781 under the pin; bracket [650,900] holds BOTH, so this predicate is structural cover for the flight, not the row's discriminator"),
     pred::WeaponNetTravel(FAMILY_ROCK, /*kWeaponPathStraight*/0, 1000,
-        "trajectory: the first rock flies a STRAIGHT path in open-field scen1.fss (net=pathlen=1414, net>=0.7*pathlen, no wall struck within budget so rock_on_death never bounces); threshold 1000 centi clears the observed 1414 net displacement"),
+        "trajectory: the first rock flies a STRAIGHT path in open-field scen1.fss (golden net 5725 of pathlen 5727, net >= 0.7*pathlen, no wall struck within budget so rock_on_death never bounces); threshold 1000 centi clears it on both arms (6661 under the pin), so this too is structural cover"),
+    // TEETH (the row's discriminator). The enemy soldier walks west toward
+    // the elf while the rocks fly at it. Where it stands at tick 30 is the
+    // one field the mutation moves that a predicate can name: the golden
+    // holds it at exactly (156,120); the doubled x-step changes the volley's
+    // interference with its approach and it reaches (152,120). The pin reads
+    // "no further west than the golden's 156", so 152 fails it.
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 156, 120,
+        "consequence: the advancing enemy soldier stands at exactly (156,120) at tick 30 in the golden; kMut_weapon_rock_slot2_emit_scen99 doubles the first rock's x-step, the approach plays out differently and the soldier ends four pixels further west at (152,120), below this xpos floor"),
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
     "packs/core/families/living-01-elf.lua", 51,
     "      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))",
     "      rock:set_lastx(og.fmul(og.fmul(rock:lastx(), next_spread_multiplier()), 2.0))",
-    "Doubles the BOUNCING ROCKS first projectile's x-step while preserving the spread RNG draw. Its speed rises to about 1404 centipixels, above WeaponSpeed's 900 ceiling; lineofsight still yields enough samples for a determinate result."
+    "Doubles the BOUNCING ROCKS first projectile's x-step while preserving the spread RNG draw. MEASURED flip: WalkerPositionMoved(FAMILY_SOLDIER, 156, 120) fails because the advancing enemy ends at (152,120) instead of the golden's (156,120). (This rationale used to claim the rock's speed rises to ~1404 centi-px/tick, above WeaponSpeed's 900 ceiling: measured, the seq-0 max step goes 671 -> 781 and stays inside the band.)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_boomerang_return_scen99[] = {
@@ -8180,7 +8353,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_soldier, std::size(kFamilySpawns_complete_soldier), 0, false, true,
       Exercises::None,
       kFacts_family_soldier_scen99, std::size(kFacts_family_soldier_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_soldier_init,
       "05a family_spawns[]=FAMILY_SOLDIER expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_elf_scen99",             "scen/scen1.fss", 0x00000042u,
@@ -8196,7 +8369,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_archer, std::size(kFamilySpawns_complete_archer), 0, false, true,
       Exercises::None,
       kFacts_family_archer_scen99, std::size(kFacts_family_archer_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_archer_init,
       "05a family_spawns[]=FAMILY_ARCHER expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_mage_scen99",            "scen/scen1.fss", 0x00000042u,
@@ -8204,7 +8377,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_mage, std::size(kFamilySpawns_complete_mage), 0, false, true,
       Exercises::None,
       kFacts_family_mage_scen99, std::size(kFacts_family_mage_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_mage_init,
       "05a family_spawns[]=FAMILY_MAGE expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_skeleton_scen99",        "scen/scen1.fss", 0x00000042u,
@@ -8212,7 +8385,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_skeleton, std::size(kFamilySpawns_complete_skeleton), 0, false, true,
       Exercises::None,
       kFacts_family_skeleton_scen99, std::size(kFacts_family_skeleton_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_skeleton_init,
       "05a family_spawns[]=FAMILY_SKELETON expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_cleric_scen99",          "scen/scen1.fss", 0x00000042u,
@@ -8220,7 +8393,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_cleric, std::size(kFamilySpawns_complete_cleric), 0, false, true,
       Exercises::None,
       kFacts_family_cleric_scen99, std::size(kFacts_family_cleric_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_cleric_init,
       "05a family_spawns[]=FAMILY_CLERIC expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_fireelemental_scen99",   "scen/scen1.fss", 0x00000042u,
@@ -8228,14 +8401,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_fireelemental, std::size(kFamilySpawns_complete_fireelemental), 0, false, true,
       Exercises::None,
       kFacts_family_fireelemental_scen99, std::size(kFacts_family_fireelemental_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_fireelemental_init,
       "05a family_spawns[]=FAMILY_FIREELEMENTAL expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_faerie_scen99",          "scen/scen1.fss", 0x00000042u,
       kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
       kFamilySpawns_complete_faerie, std::size(kFamilySpawns_complete_faerie), 0, false, true, Exercises::None,
       kFacts_family_faerie_scen99, std::size(kFacts_family_faerie_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_faerie_init,
       "05a family_spawns[]=FAMILY_FAERIE expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_slime_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8243,7 +8416,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_slime, std::size(kFamilySpawns_complete_slime), 0, false, true,
       Exercises::None,
       kFacts_family_slime_scen99, std::size(kFacts_family_slime_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_slime_init,
       "05a family_spawns[]=FAMILY_SLIME expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_small_slime_scen99",     "scen/scen1.fss", 0x00000042u,
@@ -8251,7 +8424,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_small_slime, std::size(kFamilySpawns_complete_small_slime), 0, false, true,
       Exercises::None,
       kFacts_family_small_slime_scen99, std::size(kFacts_family_small_slime_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_small_slime_init,
       "05a family_spawns[]=FAMILY_SMALL_SLIME expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_medium_slime_scen99",    "scen/scen1.fss", 0x00000042u,
@@ -8259,7 +8432,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_medium_slime, std::size(kFamilySpawns_complete_medium_slime), 0, false, true,
       Exercises::None,
       kFacts_family_medium_slime_scen99, std::size(kFacts_family_medium_slime_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_medium_slime_init,
       "05a family_spawns[]=FAMILY_MEDIUM_SLIME expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_thief_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8267,7 +8440,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_thief, std::size(kFamilySpawns_complete_thief), 0, false, true,
       Exercises::None,
       kFacts_family_thief_scen99, std::size(kFacts_family_thief_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_thief_init,
       "05a family_spawns[]=FAMILY_THIEF expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_ghost_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8283,7 +8456,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_druid, std::size(kFamilySpawns_complete_druid), 0, false, true,
       Exercises::None,
       kFacts_family_druid_scen99, std::size(kFacts_family_druid_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_druid_init,
       "05a family_spawns[]=FAMILY_DRUID expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_orc_scen99",             "scen/scen1.fss", 0x00000042u,
@@ -8291,14 +8464,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_orc, std::size(kFamilySpawns_complete_orc), 0, false, true,
       Exercises::None,
       kFacts_family_orc_scen99, std::size(kFacts_family_orc_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_orc_init,
       "05a family_spawns[]=FAMILY_ORC expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_big_orc_scen99",         "scen/scen1.fss", 0x00000042u,
       kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
       kFamilySpawns_complete_big_orc, std::size(kFamilySpawns_complete_big_orc), 0, false, true, Exercises::None,
       kFacts_family_big_orc_scen99, std::size(kFacts_family_big_orc_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_big_orc_init,
       "05a family_spawns[]=FAMILY_BIG_ORC expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_barbarian_scen99",       "scen/scen1.fss", 0x00000042u,
@@ -8306,7 +8479,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_barbarian, std::size(kFamilySpawns_complete_barbarian), 0, false, true,
       Exercises::None,
       kFacts_family_barbarian_scen99, std::size(kFacts_family_barbarian_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_barbarian_init,
       "05a family_spawns[]=FAMILY_BARBARIAN expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_archmage_scen99",        "scen/scen1.fss", 0x00000042u,
@@ -8314,7 +8487,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_archmage, std::size(kFamilySpawns_complete_archmage), 0, false, true,
       Exercises::None,
       kFacts_family_archmage_scen99, std::size(kFacts_family_archmage_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_archmage_init,
       "05a family_spawns[]=FAMILY_ARCHMAGE expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     { "family_golem_scen99",           "scen/scen1.fss", 0x00000042u,
@@ -8353,7 +8526,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
       kFamilySpawns_complete_tower1, std::size(kFamilySpawns_complete_tower1), 0, false, true, Exercises::None,
       kFacts_family_tower1_scen99, std::size(kFacts_family_tower1_scen99),
-      kMut_family_spawn_identity,
+      kMut_family_tower1_init,
       "05a family_spawns[]=FAMILY_TOWER1 expected_facts[]=WalkerFamilyCount,WalkerOfTeamAlive,WalkerPositionMoved,WalkerHpRangeAtFinalTick,EventKindAtLeast" },
 
     // Phase 04a — treasure pickup scenarios. Every row spawns a lone

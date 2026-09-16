@@ -447,27 +447,23 @@ TEST(Parity, behavioural_coverage_gate_event_kinds)
 {
     // Each kRequiredEventKinds entry must appear (by ordinal) as arg0
     // of EventKindAtLeast OR EventKindExactly in some scenario's
-    // expected_facts. The ordinals match the event_kind_symbol table
-    // in state_dump.cpp.
-    static constexpr std::pair<std::string_view, std::int32_t> kKindOrdinals[] = {
-        {"play_sound",                1},
-        {"notification",              2},
-        {"set_palette",               3},
-        {"request_redraw",            4},
-        {"end_game",                  5},
-        {"set_end",                   6},
-        {"request_exit_confirmation", 7},
-        {"withdraw_to_level",         8},
-        {"score_change",              9},
-        {"damage_tile",               10},
-    };
+    // expected_facts. The ordinal for a name is NOT spelled out here: it
+    // comes from og::parity::event_kind_ordinal_of_symbol, the one frozen
+    // table the evaluator itself counts events with. A local copy of that
+    // mapping could drift from the evaluator and leave this gate asking
+    // about the wrong ordinal while still passing.
     std::vector<std::string> missing;
-    for (const auto& [name, ordinal] : kKindOrdinals)
+    for (const auto& kind : og::parity::kRequiredEventKinds)
     {
-        if (!any_predicate_binds(og::parity::FactKind::EventKindAtLeast, ordinal) &&
-            !any_predicate_binds(og::parity::FactKind::EventKindExactly, ordinal))
+        const auto ordinal = og::parity::event_kind_ordinal_of_symbol(kind);
+        ASSERT_TRUE(ordinal.has_value())
+            << "required event kind \"" << kind << "\" has no ordinal in "
+               "og::parity::event_kind_symbol_of_ordinal — no scenario row "
+               "can bind it at all";
+        if (!any_predicate_binds(og::parity::FactKind::EventKindAtLeast, *ordinal) &&
+            !any_predicate_binds(og::parity::FactKind::EventKindExactly, *ordinal))
         {
-            missing.emplace_back(name);
+            missing.emplace_back(kind);
         }
     }
     EXPECT_TRUE(missing.empty())
@@ -527,25 +523,22 @@ TEST(Parity, behavioural_coverage_gate)
                   std::size(og::parity::kRequiredGeneratorFamilies),
                   og::parity::FactKind::WalkerFamilyCount, Order::Generator);
 
-    static constexpr std::pair<std::string_view, std::int32_t> kKindOrdinals[] = {
-        {"play_sound",                1},
-        {"notification",              2},
-        {"set_palette",               3},
-        {"request_redraw",            4},
-        {"end_game",                  5},
-        {"set_end",                   6},
-        {"request_exit_confirmation", 7},
-        {"withdraw_to_level",         8},
-        {"score_change",              9},
-        {"damage_tile",               10},
-    };
-    for (const auto& [name, ordinal] : kKindOrdinals)
+    // Ordinals from the one frozen table (see the per-kind gate above).
+    for (const auto& kind : og::parity::kRequiredEventKinds)
     {
-        if (!any_predicate_binds(og::parity::FactKind::EventKindAtLeast, ordinal) &&
-            !any_predicate_binds(og::parity::FactKind::EventKindExactly, ordinal))
+        const auto ordinal = og::parity::event_kind_ordinal_of_symbol(kind);
+        if (!ordinal.has_value())
         {
             std::ostringstream os;
-            os << "event_kind: " << name;
+            os << "event_kind (no ordinal names it): " << kind;
+            missing.push_back(os.str());
+            continue;
+        }
+        if (!any_predicate_binds(og::parity::FactKind::EventKindAtLeast, *ordinal) &&
+            !any_predicate_binds(og::parity::FactKind::EventKindExactly, *ordinal))
+        {
+            std::ostringstream os;
+            os << "event_kind: " << kind;
             missing.push_back(os.str());
         }
     }
@@ -936,6 +929,11 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
         {
             const auto& p = spec.expected_facts[i];
             bool bad = false;
+            // Which pair of args the reported range comes from. Every kind
+            // below bounds arg1/arg2 except WalkerOfOrderFamilyCount, whose
+            // arg1 is the Order ordinal.
+            std::int32_t range_lo = p.arg1;
+            std::int32_t range_hi = p.arg2;
 
             switch (p.kind) {
             case FK::WalkerHpRangeAtFinalTick:
@@ -945,6 +943,15 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
             case FK::WalkerFamilyCount:
             case FK::WeaponFamilyCount:
                 if (p.arg2 > p.arg1 + 5 && !label_exempted(p.label))
+                    bad = true;
+                break;
+            // Same span rule as WalkerFamilyCount, one arg to the right:
+            // this kind carries the Order in arg1, so its [min,max] is
+            // arg2/arg3.
+            case FK::WalkerOfOrderFamilyCount:
+                range_lo = p.arg2;
+                range_hi = p.arg3;
+                if (p.arg3 > p.arg2 + 5 && !label_exempted(p.label))
                     bad = true;
                 break;
             case FK::WalkerOfTeamAlive:
@@ -973,7 +980,7 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
                 os << spec.id << "[#" << i << "] kind="
                    << static_cast<unsigned>(p.kind)
                    << " arg0=" << p.arg0
-                   << " range=[" << p.arg1 << "," << p.arg2 << "]"
+                   << " range=[" << range_lo << "," << range_hi << "]"
                    << " label=\"" << p.label << "\"";
                 violations.push_back(os.str());
             }

@@ -53,37 +53,9 @@ void print_usage(std::FILE* out)
         "       parity_runner_smoke --list\n");
 }
 
-const char* fact_kind_name(og::parity::FactKind k)
-{
-    using og::parity::FactKind;
-    switch (k)
-    {
-        case FactKind::TickReached:                     return "TickReached";
-        case FactKind::LevelDoneEquals:                 return "LevelDoneEquals";
-        case FactKind::ScoreDelta:                      return "ScoreDelta";
-        case FactKind::WalkerFamilyCount:               return "WalkerFamilyCount";
-        case FactKind::WalkerOfTeamAlive:               return "WalkerOfTeamAlive";
-        case FactKind::WalkerHpRangeAtFinalTick:        return "WalkerHpRangeAtFinalTick";
-        case FactKind::WalkerKeysApplied:               return "WalkerKeysApplied";
-        case FactKind::WalkerPositionMoved:             return "WalkerPositionMoved";
-        case FactKind::WalkerDiedByFinal:               return "WalkerDiedByFinal";
-        case FactKind::WalkerAliveAtFinal:              return "WalkerAliveAtFinal";
-        case FactKind::TreasureFamilyRemovedFromOblist: return "TreasureFamilyRemovedFromOblist";
-        case FactKind::StatDeltaOnPickup:               return "StatDeltaOnPickup";
-        case FactKind::EffectFamilyCount:               return "EffectFamilyCount";
-        case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
-        case FactKind::EventKindExactly:                return "EventKindExactly";
-        case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
-        case FactKind::WeaponFamilyCount:               return "WeaponFamilyCount";
-        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
-            return "TreasureFamilyOfOrderRemovedFromOblist";
-        case FactKind::WeaponSpeed:                     return "WeaponSpeed";
-        case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
-        case FactKind::EffectNetTravel:                 return "EffectNetTravel";
-        case FactKind::WalkerOnFloor:                   return "WalkerOnFloor";
-    }
-    return "Unknown";
-}
+// Kind spelling comes from og::parity::fact_kind_name (fact_predicate.cpp).
+// This file used to carry a second copy of that switch; two copies of one
+// table drift, and only one of them reds under -Wswitch when a kind is added.
 
 void append_json_escaped(std::string& out, std::string_view s)
 {
@@ -132,7 +104,7 @@ std::string serialize_fact_evaluation(const og::parity::ScenarioSpec& spec,
         std::snprintf(buf, sizeof(buf), "%zu", i);
         out.append(buf);
         out.append(", \"kind\": ");
-        append_json_escaped(out, fact_kind_name(p.kind));
+        append_json_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"ok\": ");
         out.append(r.ok ? "true" : "false");
         out.append(", \"indeterminate\": ");
