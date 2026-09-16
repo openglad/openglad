@@ -882,7 +882,6 @@ TEST(LevelDataCoverage, level_data_round5_find_helpers_contiguous_block_paths)
 
     blood->setxy(68, 64);
 
-    FixedRandom rng_zero(0);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) != nullptr) << "find_far_foe should return nearest visible living/generator foe";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_blood(actor) == blood) << "find_nearest_blood should return stain target";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_player(actor) == nullptr) << "find_nearest_player should return null when no controlled walkers exist";
@@ -1476,7 +1475,6 @@ TEST(LevelDataCoverage, level_data_round13_find_helpers_selection_and_filters)
     player_near->setxy(78, 64);
     player_far->setxy(200, 64);
 
-    FixedRandom rng_zero(0);
     foe_far->set_invisibility_left(0);
     foe_near->set_invisibility_left(0);
 
