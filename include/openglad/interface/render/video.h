@@ -149,10 +149,6 @@ public:
     virtual void putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                                std::span<const unsigned char> sourcedata, unsigned char alpha) = 0;
     virtual void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-                             std::span<const unsigned char> sourcedata) = 0;
-    virtual void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-                         std::span<const unsigned char> sourcedata, unsigned char color) = 0;
-    virtual void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                              std::span<const unsigned char> sourcedata, unsigned char color) = 0;
 
     virtual void putbuffer(Sint32 tilestartx, Sint32 tilestarty,

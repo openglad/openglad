@@ -1038,6 +1038,20 @@ TEST(WalkerCombat, walker_fire_check_all_dirs)
     world.create_new_grid();
     world.delete_objects();
 
+    // Pin the SIM stream before anything is built. The probe below and the
+    // fire_check under test each draw the knife's waver inside
+    // walker::set_weapon_heading (src/gameplay/walker.cpp:709) from
+    // GameWorld::rng_. Left unpinned those are two ADJACENT LCG outputs, the
+    // asserted shot leaves the probe's line whenever
+    // waver_ray - waver_probe <= -2 (3 of the 16 possible pairs), and the foe
+    // parked on the probe's ray is missed: 6 of 40 repeats and 7 of 40 shuffle
+    // seeds were red before this pin.
+    // The knife's stepsize is 7.07, so the waver base is trunc(7.07/2) = 3 and
+    // a scripted next(4) == 1 yields waver = 1 - 3/2 = 0: the shot flies dead
+    // straight, and this test claims the geometry of a straight shot.
+    SequenceRandomCombat straight({1});
+    ScopedSimRandom sim(&straight);
+
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_NE(nullptr, w) << "walker created";
     w->setxy(96, 96);
@@ -1075,7 +1089,12 @@ TEST(WalkerCombat, walker_fire_check_all_dirs)
     const short step_x = static_cast<short>(probe->lastx());
     const short step_y = static_cast<short>(probe->lasty());
     world.remove_ob(probe);
-    ASSERT_TRUE(step_x != 0 || step_y != 0) << "probe step should be non-zero";
+    EXPECT_EQ(7, step_x)
+        << "the knife's stepsize (base 5 scaled by 362/256 = 7.07) is the"
+           " per-tick x step on a cardinal facing, truncated to short here";
+    ASSERT_EQ(0, step_y)
+        << "the scripted next(4) == 1 makes the knife's waver 1 - 3/2 = 0; a"
+           " non-zero step_y means the waver formula or the draw order moved";
     // Full-size foe: obmap's collide() shrinks both boxes by 2, so a 1x1
     // target (the trick the intermediate-step sibling uses to make the foe
     // NOT block) can never be hit by the ray.
@@ -1110,6 +1129,15 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
+    // The same pin as walker_fire_check_all_dirs: the probe's
+    // set_weapon_heading and the fire_check under test each draw the arrow's
+    // waver from GameWorld::rng_, and unpinned they are adjacent LCG outputs.
+    // The arrow's stepsize is 11.3125, so the waver base is
+    // trunc(11.3125/2) = 5 and a scripted next(6) == 2 yields
+    // waver = 2 - 5/2 = 0: a straight shot whose ray is the probe's ray.
+    SequenceRandomCombat straight({2});
+    ScopedSimRandom sim(&straight);
+
     walker* shooter = make_guy(FAMILY_ARCHER, 0);
     walker* foe = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(shooter != nullptr && foe != nullptr) << "fixtures created";
@@ -1126,8 +1154,6 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
     shooter->stats()->set_magicpoints(9999.0f);
     shooter->stats()->set_weapon_cost(0.0f);
 
-    SequenceRandomCombat rng({0});
-
     walker* probe = shooter->create_weapon();
     ASSERT_TRUE(probe != nullptr) << "probe weapon created";
     shooter->set_weapon_heading(probe);
@@ -1138,9 +1164,19 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
     const short step_y = static_cast<short>(probe->lasty());
     og::runtime::current_session->myscreen_->world().remove_ob(probe);
 
-    ASSERT_TRUE(step_x != 0 || step_y != 0) << "probe step should be non-zero";
+    EXPECT_EQ(11, step_x)
+        << "the arrow's stepsize (11.3125) is the per-tick x step on a cardinal"
+           " facing, truncated to short here";
+    ASSERT_EQ(0, step_y)
+        << "the scripted next(6) == 2 makes the arrow's waver 2 - 5/2 = 0; a"
+           " non-zero step_y means the waver formula or the draw order moved";
 
-    // Block the second linear probe step and place the foe at the third.
+    // Wall the tile that holds the ray's third position, and park the foe
+    // there. fire_check's loop moves the weapon CUMULATIVELY
+    // (setxy(pos + i*step)), so the ray visits start + 0, 1, 3, 6 ... steps;
+    // the 7-px-wide arrow box at start + 1*step (x 124..131 here) already
+    // reaches into the 16-px tile that contains start + 2*step, the tile
+    // walled below. The shot dies on terrain before it can reach the foe.
     set_world_tile(static_cast<short>(start_x + 2 * step_x),
                    static_cast<short>(start_y + 2 * step_y),
                    PIX_H_WALL1);
@@ -1149,7 +1185,16 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
     foe->set_sizex(1);
     foe->set_sizey(1);
 
-    ASSERT_TRUE(!shooter->fire_check(1, 0)) << "fire_check should fail when an intermediate tile on the shot path is blocked";
+    walker::FireCheckDenial why = walker::FireCheckDenial::None;
+    EXPECT_FALSE(shooter->fire_check(1, 0, &why))
+        << "fire_check must fail when a tile on the shot ray is blocked";
+    EXPECT_EQ(walker::FireCheckDenial::WallBlocked, why)
+        << "a wall on the ray's second position denies with WallBlocked;"
+           " RayMiss would mean the ray walked past the wall";
+
+    delete shooter;
+    delete foe;
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
 
@@ -1770,7 +1815,10 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
     walker* weapon = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(owner && target && weapon) << "owner/target/weapon created";
 
-    SequenceRandomCombat fixed_rng({0});
+    // Zero draws on the GAMEPLAY stream make compute_base_damage() exact.
+    SequenceRandomCombat zero({0});
+    ScopedCombatRandom combat_rng(&zero);
+
     weapon->set_owner(owner);
     weapon->set_team_num(owner->team_num());
     weapon->set_damage(16.0f);
@@ -1791,7 +1839,9 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
     ASSERT_TRUE(weapon->attack(target)) << "weapon attack should succeed";
 
     const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints());
-    ASSERT_TRUE(dealt > 0) << "weapon attack should deal positive damage";
+    ASSERT_EQ(14, (int)dealt)
+        << "compute_base_damage(16, rng -> 0) = 16 - sqrt(16)/2 + 0 = 14, armor"
+           " 0 reduces nothing, and damage_to_hit_points(14.0) = 14";
     ASSERT_TRUE(target->stats()->hitpoints() > 0) << "weapon reward regression should use non-lethal hit";
 
     const std::int32_t level_diff = weapon->stats()->level() - target->stats()->level();
@@ -1832,7 +1882,6 @@ TEST(WalkerCombat, attack_ignores_out_of_range_team_score_index)
     walker* target = make_guy(FAMILY_ORC, 1);
     ASSERT_TRUE(attacker && target) << "attacker/target created";
 
-    SequenceRandomCombat fixed_rng({0});
     attacker->set_team_num(250); // invalid score index from corrupted scenario data
     attacker->set_damage(12.0f);
     target->set_team_num(1);

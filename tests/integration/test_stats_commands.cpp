@@ -9,6 +9,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/core/irandom.h>
+#include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include "test_sim_random_scope.h"
 #include <memory>
@@ -42,10 +43,26 @@ struct ScopedArena
     ScopedArena& operator=(const ScopedArena&) = delete;
 };
 
-// stats.cpp's rng() draws from current_game->world->rng_ (SimRandom), NOT
-// from GameContext::rng, so the sim-random override is the only way to pin
-// hit_response's `!rng(3)` special roll, fire()'s waver draw and
-// direct_walk's add_command(COMMAND_ATTACK, 30 + rng(25)).
+// stats.cpp's rng() -- and every fire_check/attack path it reaches -- draws
+// from current_game->world->rng_ (SimRandom), NOT from GameContext::rng, so
+// ScopedSimRandom is the only way to script those draws. Every guard in this
+// file names the draw it pins:
+//   * fire_check draws the weapon's waver inside set_weapon_heading on EVERY
+//     arm, the denied ones included: walker::fire_check builds the probe with
+//     create_weapon() + set_weapon_heading() before any gate runs.
+//   * attack() rolls its damage through combat_rng(), which falls back to the
+//     sim stream when no gameplay override is installed, and the victim's
+//     hit_response then reaches check_special()'s next(2) and the `!rng(3)`
+//     special gate.
+//   * fire() draws the waver it writes into the spawned weapon's heading.
+// The two remaining sim draws in stats.cpp are pinned elsewhere, once each (no
+// rule twins): COMMAND_ATTACK's force_command(COMMAND_FIRE, rng(5), ...) in
+// tests/integration/test_stats_extended.cpp (FixedRandom(3), commandcount 2),
+// and walk_to_foe's 30 + rng(25) in tests/integration/test_stats_more_paths.cpp
+// (commandcount 31). direct_walk's own 30 + rng(25) has NO pin in this suite:
+// reaching it needs a faced foe whose fire_check passes, which is a new
+// scenario rather than this file's.
+//
 // xpos/ypos are the truncated snapshot of the authoritative float world
 // position and stepsize is fractional (a level-3 soldier walks 4.33px), so
 // every movement expectation is computed the way the sim computes it.
@@ -122,6 +139,9 @@ TEST(StatsCommands, stats_do_command_walk_steps_once_and_counts_down)
 TEST(StatsCommands, stats_do_command_fire_denied_without_foe_and_spends_busy_when_allowed)
 {
     ScopedArena arena;
+    // fire_check draws the knife's waver (set_weapon_heading) on BOTH the
+    // denied and the allowed arm below; pinned so the ray geometry here is
+    // independent of how many draws earlier tests in this binary made.
     FixedRandom rng_source(1);
     ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
@@ -244,6 +264,10 @@ TEST(StatsCommands, stats_do_command_search_without_a_live_foe_abandons_the_orde
 TEST(StatsCommands, stats_do_command_rush_takes_three_steps_and_shoves_the_collider)
 {
     ScopedArena arena;
+    // COMMAND_RUSH -> attack() rolls damage through combat_rng(), which falls
+    // back to this stream, and the victim's hit_response then draws
+    // check_special()'s next(2) and the `!rng(3)` gate; rng(3)==1 keeps the
+    // gate shut so the shove below is never pre-empted by a special.
     FixedRandom rng_source(1);
     ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
@@ -298,6 +322,8 @@ TEST(StatsCommands, stats_do_command_rush_takes_three_steps_and_shoves_the_colli
 TEST(StatsCommands, stats_do_command_quick_fire_walks_and_fires_in_one_tick)
 {
     ScopedArena arena;
+    // fire() draws the arrow's waver from the sim stream: next(6) == 1, which
+    // the arrow heading assertions at the bottom of this test spell out.
     FixedRandom rng_source(1);
     ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_ARCHER);
@@ -330,6 +356,15 @@ TEST(StatsCommands, stats_do_command_quick_fire_walks_and_fires_in_one_tick)
     EXPECT_EQ(w.get(), arrow->owner()) << "the arrow belongs to the archer that fired it";
     EXPECT_EQ(static_cast<int>(w->current_weapon()), static_cast<int>(arrow->family()))
         << "fire() spawns the current weapon family";
+    // The arrow's heading is what the pinned draw buys. configure_weapon_
+    // profile_base multiplies the arrow's base stepsize 8 by 362/256 on a
+    // cardinal facing (walker.cpp), giving 11.3125 -- the archer's own
+    // set_stepsize(4) above never reaches the weapon.
+    EXPECT_FLOAT_EQ(arrow->stepsize(), arrow->lastx())
+        << "FACE_RIGHT: the arrow's forward heading is one weapon stepsize";
+    EXPECT_FLOAT_EQ(-1.0f, arrow->lasty())
+        << "waver = draw - base/2 with base = trunc(11.3125/2) = 5 and "
+           "next(6) == 1 under FixedRandom(1): 1 - 2 = -1";
     EXPECT_FALSE(w->stats()->has_commands()) << "one iteration: the tail pops the command";
 }
 
@@ -337,6 +372,9 @@ TEST(StatsCommands, stats_do_command_quick_fire_walks_and_fires_in_one_tick)
 TEST(StatsCommands, stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot)
 {
     ScopedArena arena;
+    // Both fire_checks below draw the weapon's waver even on the arm that
+    // denies with Facing (create_weapon + set_weapon_heading run before the
+    // gate), so the stream is pinned to keep the denial deterministic.
     FixedRandom rng_source(1);
     ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
@@ -395,6 +433,8 @@ TEST(StatsCommands, stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_
 TEST(StatsCommands, stats_do_command_right_walk_distance_gate_picks_the_walker)
 {
     ScopedArena arena;
+    // direct_walk's fire_check draws the weapon's waver on its denied arm too;
+    // pinned so the right_walk branch below is reached deterministically.
     FixedRandom rng_source(1);
     ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
@@ -664,7 +704,8 @@ TEST(StatsCommands, stats_blocked_helpers_probe_the_exact_cell_for_every_facing)
 TEST(StatsCommands, stats_hit_response_all_families)
 {
     ScopedArena arena;
-    // rng(3) != 0 keeps hit_response out of the check_special() special roll.
+    // next(2) -> shifter_down 1 and rng(3) == 1 keeps the `!rng(3)` gate shut
+    // (a family whose check_special_ai hook declines never reaches the roll).
     FixedRandom rng_source(1);
     ScopedSimRandom rng(&rng_source);
 
@@ -690,6 +731,7 @@ TEST(StatsCommands, stats_hit_response_all_families)
         target->stats()->commands.clear();
         ASSERT_EQ(nullptr, target->foe()) << "target starts without a foe";
 
+        trace_clear();
         target->stats()->hit_response(attacker.get());
 
         // Every family answers a new attacker by taking it as its foe.
@@ -712,6 +754,8 @@ TEST(StatsCommands, stats_hit_response_all_families)
             EXPECT_EQ(-1, flee.com1) << "the attacker is east, so the archer flees west";
             EXPECT_EQ(0, flee.com2) << "same row, so no vertical flee";
             EXPECT_TRUE(flee.forced) << "the backpedal enters through force_command";
+            EXPECT_EQ(0, target->shifter_down())
+                << "the Lua hook returns before check_special(): no next(2) reaches shifter_down";
         }
         else if (families[i] == FAMILY_MAGE)
         {
@@ -722,6 +766,8 @@ TEST(StatsCommands, stats_hit_response_all_families)
                 << "the mage hook resets last_distance to 15000";
             EXPECT_EQ(15000, target->stats()->current_distance())
                 << "the mage hook resets current_distance to 15000";
+            EXPECT_EQ(0, target->shifter_down())
+                << "the Lua hook returns before check_special(): no next(2) reaches shifter_down";
         }
         else
         {
@@ -732,8 +778,90 @@ TEST(StatsCommands, stats_hit_response_all_families)
                 << "the default hit_response resets last_distance to 32000";
             EXPECT_EQ(32000, target->stats()->current_distance())
                 << "the default hit_response resets current_distance to 32000";
+            EXPECT_EQ(1, target->shifter_down())
+                << "check_special() draws next(2) from the sim stream into "
+                   "shifter_down before the special gate; FixedRandom(1) answers 1";
+            EXPECT_FALSE(trace_contains("walker", "special: family="))
+                << "rng(3) == 1 keeps the `!rng(3)` gate shut: walker::special() "
+                   "is never entered";
         }
     }
+}
+
+
+// The gate the test above holds SHUT, opened. FAMILY_ELF registers no
+// check_special_ai hook (packs/core/families/living-01-elf.lua), so
+// living::check_special() falls through to its "Default: always allow" and the
+// `!rng(3)` roll in statistics::hit_response is actually reached -- the hooked
+// families (soldier foe_in_window, orc/archer/elemental/ghost foe_within)
+// answer false with no foe, because walkers owned by a test are outside the
+// oblist that find_near_foe scans.
+TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_is_zero)
+{
+    ScopedArena arena;
+
+    struct Pair
+    {
+        std::unique_ptr<walker> target;
+        std::unique_ptr<walker> attacker;
+    };
+
+    auto make_pair = [](Pair& pair) {
+        pair.target = make_walker(FAMILY_ELF);
+        pair.attacker = make_walker(FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, pair.target) << "elf target created";
+        ASSERT_NE(nullptr, pair.attacker) << "attacker created";
+        pair.attacker->set_team_num(1);
+        pair.target->set_team_num(0);
+        ASSERT_TRUE(pair.target->setxy(static_cast<std::int32_t>(GRID_SIZE * 10),
+                                       static_cast<std::int32_t>(GRID_SIZE * 10)))
+            << "target placed";
+        ASSERT_TRUE(pair.attacker->setxy(static_cast<std::int32_t>(pair.target->xpos() + 5),
+                                         static_cast<std::int32_t>(pair.target->ypos())))
+            << "attacker 5px east";
+        pair.target->stats()->set_last_distance(0);
+        pair.target->stats()->set_current_distance(0);
+        pair.target->stats()->commands.clear();
+        ASSERT_EQ(nullptr, pair.target->foe()) << "target starts without a foe";
+    };
+
+    // Leg A: rng(3) == 1 -> the gate stays shut (the contrast leg).
+    {
+        Pair shut;
+        make_pair(shut);
+        ASSERT_FALSE(testing::Test::HasFatalFailure()) << "leg A fixture built";
+        FixedRandom one(1);
+        ScopedSimRandom sim(&one);
+        trace_clear();
+        shut.target->stats()->hit_response(shut.attacker.get());
+        EXPECT_EQ(1, shut.target->shifter_down())
+            << "check_special()'s next(2) answers 1 under FixedRandom(1)";
+        EXPECT_FALSE(trace_contains("walker", "special: family="))
+            << "rng(3) == 1 keeps the `!rng(3)` gate shut";
+        EXPECT_EQ(shut.attacker.get(), shut.target->foe())
+            << "the retarget block runs whether or not the special fires";
+    }
+
+    // Leg B: rng(3) == 0 -> the gate opens and hit_response enters special().
+    {
+        Pair open;
+        make_pair(open);
+        ASSERT_FALSE(testing::Test::HasFatalFailure()) << "leg B fixture built";
+        FixedRandom zero(0);
+        ScopedSimRandom sim(&zero);
+        trace_clear();
+        open.target->stats()->hit_response(open.attacker.get());
+        EXPECT_EQ(0, open.target->shifter_down())
+            << "check_special()'s next(2) answers 0 under FixedRandom(0)";
+        EXPECT_TRUE(trace_contains("walker", "special: family="))
+            << "rng(3) == 0 opens the `!rng(3)` gate: hit_response enters "
+               "walker::special() (the TRACE fires before the MP check and the "
+               "Lua dispatch, so this pins 'entered', not 'succeeded')";
+        EXPECT_EQ(open.attacker.get(), open.target->foe())
+            << "the retarget block still runs after the special";
+    }
+    // ScopedArena's delete_objects() sweeps whatever the elf's ROCKS special
+    // spawned into the world lists.
 }
 
 
@@ -875,8 +1003,6 @@ TEST(StatsCommands, stats_walk_to_foe_no_foe_resets_distances)
 TEST(StatsCommands, stats_yell_for_help_flees_and_recruits_friends)
 {
     ScopedArena arena;
-    FixedRandom rng_source(1);
-    ScopedSimRandom rng(&rng_source);
     auto w = make_walker(FAMILY_SOLDIER);
     auto enemy = make_walker(FAMILY_ORC);
     ASSERT_NE(nullptr, w) << "walker created";
@@ -900,7 +1026,23 @@ TEST(StatsCommands, stats_yell_for_help_flees_and_recruits_friends)
     ally->stats()->set_last_distance(0);
     ally->stats()->set_current_distance(0);
 
+    // yell_for_help is the one path in this file that draws NOTHING, so it is
+    // pinned by the LCG standing still instead of by a scripted stream. While
+    // any override is installed SimRandom::next never touches state_
+    // (game_world.h), which would make the pin below pass for the wrong
+    // reason -- hence the override check, which also polices guard leaks out
+    // of the neighbouring tests.
+    ASSERT_EQ(nullptr, og::sim::sim_random_override())
+        << "no sim override may be installed here: with one the LCG never steps "
+           "and the no-draw pin below is vacuous";
+    const std::uint32_t lcg_before = current_game->world->rng_.state_;
+
     w->stats()->yell_for_help(enemy.get());
+
+    EXPECT_EQ(lcg_before, current_game->world->rng_.state_)
+        << "yell_for_help draws nothing (stats.cpp: set_yo_delay, "
+           "find_friends_in_range, force_command, push_notification): the sim "
+           "LCG must not step -- the day it does, this test needs a guard again";
 
     EXPECT_EQ(80, static_cast<int>(w->yo_delay())) << "yelling adds 80 to yo_delay";
     ASSERT_FALSE(w->stats()->commands.empty()) << "yelling forces a run-away walk";

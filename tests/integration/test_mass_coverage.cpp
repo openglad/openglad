@@ -1679,53 +1679,6 @@ TEST(MassCoverage, video_putdata_alpha_honours_both_ends_of_its_alpha) {
         << "alpha 0 must leave the destination exactly as it was";
 }
 
-// putdatatext(x,y,w,h,pixels) fills one surface rect per non-zero source index
-// and skips index 0 (src/platform/sdl/video_sdl.cpp putdatatext).
-TEST(MassCoverage, video_putdatatext_blits_opaquely_with_index_zero_transparent) {
-    screen* s = og::runtime::current_session->myscreen_;
-    auto px = sample_pixels(70);
-    px[0] = 0;
-    s->clearbuffer();
-    s->draw_rect_filled(10, 10, 8, 8, WHITE, 255);
-    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10)) << "setup: the backdrop must land";
-
-    s->putdatatext(10, 10, 8, 8, px);
-
-    ASSERT_EQ(pal_readback_index(WHITE), px_index(10, 10))
-        << "a zero source index must leave the backdrop showing";
-    ASSERT_EQ(pal_readback_index(71), px_index(11, 10))
-        << "source[1] paints its own index over the backdrop";
-    ASSERT_EQ(pal_readback_index(70), px_index(10, 11))
-        << "source[8] starts the second row back at column x";
-    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(18, 10))
-        << "the block is only w wide";
-}
-
-// putdata(x,y,w,h,pixels,color): source indices ABOVE 247 are replaced by
-// `color`; anything 1..247 keeps its own index
-// (src/platform/sdl/video_sdl.cpp putdata with the colour override).
-TEST(MassCoverage, video_putdata_color_overrides_only_indices_above_247) {
-    screen* s = og::runtime::current_session->myscreen_;
-
-    auto high = sample_pixels(248);  // 248..255, all above the 247 threshold
-    s->clearbuffer();
-    s->putdata(10, 10, 8, 8, high, DARK_GREEN);
-    ASSERT_EQ(pal_readback_index(DARK_GREEN), px_index(10, 10))
-        << "a 248 source index takes the override colour";
-    ASSERT_EQ(pal_readback_index(DARK_GREEN), px_index(12, 12))
-        << "every index above 247 takes the override colour";
-    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(9, 10))
-        << "the override blit stays inside its block";
-
-    auto low = sample_pixels(50);  // 50..57, all at or below 247
-    s->clearbuffer();
-    s->putdata(10, 10, 8, 8, low, DARK_GREEN);
-    ASSERT_EQ(pal_readback_index(50), px_index(10, 10))
-        << "an index at or below 247 must keep its own colour, not the override";
-    ASSERT_EQ(pal_readback_index(57), px_index(17, 10))
-        << "the whole low-index row keeps its own colours";
-}
-
 // putdatatext(x,y,w,h,pixels,color): index 0 is transparent, source indices
 // ABOVE 247 are replaced by `color`, and 1..247 keep their own index
 // (src/platform/sdl/video_sdl.cpp putdatatext with the colour override).
@@ -2544,7 +2497,6 @@ inline constexpr int kWordInkYvcRamp = 8;             // "yvc", viewscreen ramp
 inline constexpr int kWordInkYvRamp = 4;              // "yv", viewscreen ramp
 inline constexpr int kGlyphInkQRamp = 2;              // 'Q', to_buffer ramp
 inline constexpr int kGlyphInkRRamp = 3;              // 'R', to_buffer ramp
-inline constexpr int kGlyphInkRRaw = 12;              // 'R', uncoloured (raw indices)
 
 // The shared font pixies are freed by text_shutdown(), and screen::text_normal
 // caches the glyph box it was constructed with. ensure_font_loaded() puts the
@@ -2993,9 +2945,9 @@ TEST(MassCoverage, text_write_char_xy_tobuffer_blits_the_requested_glyph) {
         << "'R' must paint its own index-255 ink in DEFAULT_TEXT_COLOR";
     ASSERT_NE(q, r) << "the blit must follow the letter it was given";
 
-    // to_buffer=0 hands off to the COLOURED flat overload -- DEFAULT_TEXT_COLOR
+    // to_buffer=0 hands off to the coloured flat overload -- DEFAULT_TEXT_COLOR
     // through putdatatext, which flattens the whole 251..255 ramp onto that one
-    // colour -- not to the uncoloured write_char_xy(x,y,c).
+    // colour.
     s->clearbuffer();
     ASSERT_EQ(1, t.write_char_xy(15, 106, 'R', static_cast<short>(0)))
         << "a blitted glyph reports 1";
@@ -3004,75 +2956,6 @@ TEST(MassCoverage, text_write_char_xy_tobuffer_blits_the_requested_glyph) {
     t.write_char_xy(15, 106, 'R', static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
     ASSERT_EQ(snapshot_indices(15, 106, sx, sy), flat)
         << "to_buffer=0 must be the flat DEFAULT_TEXT_COLOR blit";
-    s->clearbuffer();
-    t.write_char_xy(15, 106, 'R');
-    ASSERT_NE(snapshot_indices(15, 106, sx, sy), flat)
-        << "to_buffer=0 must NOT be the uncoloured raw-index blit";
-}
-
-// write_char_xy(x,y,c) -- the overload with NO colour -- goes to
-// putdatatext(...) without a colour, so the glyph paints its RAW palette
-// indices (the 251..255 font ramp), not DEFAULT_TEXT_COLOR
-// (src/interface/render/text.cpp).
-TEST(MassCoverage, text_write_char_xy_default_paints_the_raw_glyph_indices) {
-    screen* s = og::runtime::current_session->myscreen_;
-    text& t = synced_text();
-    const int sx = t.sizex;
-    const int sy = t.sizey;
-
-    s->clearbuffer();
-    ASSERT_EQ(1, t.write_char_xy(15, 106, 'R')) << "a blitted glyph reports 1";
-    const std::vector<int> raw = snapshot_indices(15, 106, sx, sy);
-    ASSERT_EQ(kGlyphInkRRaw,
-              static_cast<int>(std::count_if(raw.begin(), raw.end(),
-                                             [&](int i) {
-                                                 return i != pal_readback_index(PURE_BLACK);
-                                             })))
-        << "'R' must paint its whole ink";
-    std::vector<int> present = raw;
-    std::sort(present.begin(), present.end());
-    present.erase(std::unique(present.begin(), present.end()), present.end());
-    ASSERT_EQ((std::vector<int>{0, 251, 252, 253, 254, 255}), present)
-        << "the uncoloured overload must paint the font's raw 251..255 ramp";
-    ASSERT_EQ(pal_readback_index(PURE_BLACK), px_index(14, 106))
-        << "the glyph must start at x, not left of it";
-
-    s->clearbuffer();
-    t.write_char_xy(15, 106, 'R', static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
-    ASSERT_NE(snapshot_indices(15, 106, sx, sy), raw)
-        << "the uncoloured overload must not be the DEFAULT_TEXT_COLOR blit";
-}
-
-// write_char_xy(x,y,c,view) blits at the view origin + (x,y) in
-// DEFAULT_TEXT_COLOR; a null view is the flat, uncoloured blit
-// (src/interface/render/text.cpp).
-TEST(MassCoverage, text_write_char_xy_view_blits_at_the_view_origin) {
-    screen* s = og::runtime::current_session->myscreen_;
-    text& t = synced_text();
-    const int sx = t.sizex;
-    const int sy = t.sizey;
-    viewscreen* v = s->viewob[0].get();
-    ASSERT_NE(nullptr, v) << "setup: view 0 must exist";
-
-    {
-        ScopedViewOffset offset(v, 20, 30);
-        s->clearbuffer();
-        ASSERT_EQ(1, t.write_char_xy(25, 106, 'S', v)) << "a blitted glyph reports 1";
-        ASSERT_EQ(3, count_index_in(45, 136, sx, sy, DEFAULT_TEXT_COLOR))
-            << "'S' must land at (view->xloc + x, view->yloc + y) in DEFAULT_TEXT_COLOR";
-        ASSERT_EQ(0, count_index_in(25, 106, sx, sy, DEFAULT_TEXT_COLOR))
-            << "the view offset must not be ignored";
-    }
-
-    // A null view is the flat, UNCOLOURED blit.
-    s->clearbuffer();
-    ASSERT_EQ(1, t.write_char_xy(25, 106, 'S', static_cast<viewscreen*>(nullptr)))
-        << "a blitted glyph reports 1";
-    const std::vector<int> flat = snapshot_indices(25, 106, sx, sy);
-    s->clearbuffer();
-    t.write_char_xy(25, 106, 'S');
-    ASSERT_EQ(snapshot_indices(25, 106, sx, sy), flat)
-        << "a null view must be the flat, uncoloured write_char_xy blit";
 }
 
 // obmap_debug_draw(map,scr) runs two passes: a YELLOW hollow OBRES box per
