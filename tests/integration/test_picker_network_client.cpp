@@ -173,6 +173,14 @@ struct PickerSaveStateGuard
     short keep_fallen_heroes = 0;
     short cross_control = 0;
     short infinite_gold = 0;
+    // The progress ledgers ride the staged setup message: a test that
+    // inflates completed_levels to push the host stage over the wire cap
+    // (host_go_on_a_failed_stage_is_denied_stage_failed_and_says_so and its
+    // entry-gate sibling) would otherwise leave every later host stage in
+    // Failed -- og_test_picker_network --gtest_shuffle --gtest_random_seed=7
+    // reds two unrelated tests without this restore.
+    std::map<std::string, std::set<int> > completed_levels;
+    std::map<std::string, int> current_levels;
     std::unique_ptr<guy> team_list[MAX_TEAM_SIZE];
 
     explicit PickerSaveStateGuard(SaveData& save_in)
@@ -189,6 +197,8 @@ struct PickerSaveStateGuard
         , keep_fallen_heroes(save.keep_fallen_heroes)
         , cross_control(save.cross_control)
         , infinite_gold(save.infinite_gold)
+        , completed_levels(save.completed_levels)
+        , current_levels(save.current_levels)
     {
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             team_list[i] = std::move(save.team_list[static_cast<std::size_t>(i)]);
@@ -208,6 +218,8 @@ struct PickerSaveStateGuard
         save.keep_fallen_heroes = keep_fallen_heroes;
         save.cross_control = cross_control;
         save.infinite_gold = infinite_gold;
+        save.completed_levels = completed_levels;
+        save.current_levels = current_levels;
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             save.team_list[static_cast<std::size_t>(i)] = std::move(team_list[i]);
     }
