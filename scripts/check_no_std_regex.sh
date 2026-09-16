@@ -19,13 +19,41 @@
 # Wired into the build as a dependency of og_game_test (CMakeLists.txt,
 # beside check_injector_settles), so a reintroduced include fails the test
 # build rather than waiting for someone to run this by hand.
+#
+# A missing scan root or a failed grep exits 2; 1 is reserved for a violation;
+# an optional first argument overrides the repo root (the self-test uses it).
 set -euo pipefail
 
-if grep -rnE --include='*.cpp' --include='*.h' --include='*.hpp' --include='*.inc' \
-    '^[[:space:]]*#[[:space:]]*include[[:space:]]*<regex>' src include tests tools; then
-    echo "ERROR: <regex> is banned (libstdc++ <regex> + GCC 15 + -O2 + sanitizers" >&2
-    echo "       breaks the ci-asan build). Match by hand; see the files above." >&2
-    exit 1
-fi
+ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+for d in src include tests tools; do
+    if [[ ! -d "${ROOT}/${d}" ]]; then
+        echo "ERROR: cannot find ${ROOT}/${d} — refusing to pass vacuously" >&2
+        exit 2
+    fi
+done
+cd "${ROOT}"
+
+# grep's status is captured, never consumed by an `if`: GNU grep returns 2 when
+# a scan root is missing EVEN IF it also printed a match, so an `if grep ...`
+# gate prints the violation and then declares the tree clean.
+set +e
+grep -rnE --include='*.cpp' --include='*.h' --include='*.hpp' --include='*.inc' \
+    '^[[:space:]]*#[[:space:]]*include[[:space:]]*<regex>' src include tests tools
+rc=$?
+set -e
+
+case "${rc}" in
+    0)
+        echo "ERROR: <regex> is banned (libstdc++ <regex> + GCC 15 + -O2 + sanitizers" >&2
+        echo "       breaks the ci-asan build). Match by hand; see the files above." >&2
+        exit 1
+        ;;
+    1)
+        ;;
+    *)
+        echo "ERROR: grep failed (rc=${rc}); cannot certify the tree" >&2
+        exit 2
+        ;;
+esac
 
 echo "check_no_std_regex: no TU includes <regex>"

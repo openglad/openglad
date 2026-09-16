@@ -1569,36 +1569,8 @@ TEST(CursesNetwork, benched_member_never_enters_the_level)
 // exactly the whole pot on the (process-shared) save0 file.
 TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
 {
-    namespace fs = std::filesystem;
     ASSERT_EQ("save0", og::data::active_company_slot())
         << "the suite listener must have restored the default slot";
-
-    // save0 hygiene (the test_curses_game_runtime precedent): preserve any
-    // prior slot file and restore it on exit so this test cannot leak state
-    // into later tests under --gtest_shuffle.
-    const fs::path save0_path =
-        fs::path(get_user_path()) / "save" / "save0.gtl";
-    std::error_code ec;
-    fs::create_directories(save0_path.parent_path(), ec);
-    const bool had_save0 = fs::exists(save0_path, ec);
-    if (had_save0)
-        fs::copy_file(save0_path, save0_path.string() + ".netwinbak",
-                      fs::copy_options::overwrite_existing, ec);
-    struct RestoreGuard {
-        fs::path save0_path;
-        bool had_save0;
-        ~RestoreGuard()
-        {
-            std::error_code ec2;
-            if (had_save0) {
-                fs::copy_file(save0_path.string() + ".netwinbak", save0_path,
-                              fs::copy_options::overwrite_existing, ec2);
-                fs::remove(save0_path.string() + ".netwinbak", ec2);
-            } else {
-                fs::remove(save0_path, ec2);
-            }
-        }
-    } restore{save0_path, had_save0};
 
     SaveData host_save;
     SaveData join_save;
@@ -1823,32 +1795,7 @@ TEST(CursesNetwork, host_history_completed_unarmed_landing_purges_for_the_table)
 // mask a host that follows the walked exit).
 TEST(CursesNetwork, host_history_replay_restores_census_and_cursor_home)
 {
-    namespace fs = std::filesystem;
     ASSERT_EQ("save0", og::data::active_company_slot());
-
-    const fs::path save0_path =
-        fs::path(get_user_path()) / "save" / "save0.gtl";
-    std::error_code ec;
-    fs::create_directories(save0_path.parent_path(), ec);
-    const bool had_save0 = fs::exists(save0_path, ec);
-    if (had_save0)
-        fs::copy_file(save0_path, save0_path.string() + ".replaybak",
-                      fs::copy_options::overwrite_existing, ec);
-    struct RestoreGuard {
-        fs::path save0_path;
-        bool had_save0;
-        ~RestoreGuard()
-        {
-            std::error_code ec2;
-            if (had_save0) {
-                fs::copy_file(save0_path.string() + ".replaybak", save0_path,
-                              fs::copy_options::overwrite_existing, ec2);
-                fs::remove(save0_path.string() + ".replaybak", ec2);
-            } else {
-                fs::remove(save0_path, ec2);
-            }
-        }
-    } restore{save0_path, had_save0};
 
     // The shared on-disk company: level 1 beaten, campaign position at 3.
     // The host machine persists into it AND the joiner seeds from it.

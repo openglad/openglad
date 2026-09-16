@@ -272,16 +272,18 @@ int main(int argc, char** argv)
     // valid dump — an empty arena serialises just as happily as a real one —
     // so a broken bootstrap used to exit 0 with a plausible-looking file that
     // disagreed with every golden. Refuse to publish anything instead: the
-    // callers that matter (scripts/parity/run_mutation_canary.sh and
-    // run_mutation_canary_runtime.py) already abort on a nonzero exit, and
-    // aborting loudly beats a corpus-wide phantom drift.
+    // caller that matters (scripts/parity/run_mutation_canary.sh) already
+    // aborts on a nonzero exit, and aborting loudly beats a corpus-wide
+    // phantom drift.
     //
     // Exempt from the load half are the rows that build their own arena from
     // the header-only stub fixture, exactly as in test_parity_scenarios: the
     // three Z-axis scen9301 rows (snapshot_dirty_bits_scen9301 now loads the
     // real scen1.fss and is no longer among them).
-    // run_mutation_canary_runtime.py --all walks those rows, so failing them
-    // here would break a driver over a stub that is by design. Every other
+    // Those rows are branch-internal, so the mutation canary never walks them
+    // (canary_plan.py excludes branch-internal rows exactly as
+    // lint.parse_scenarios does); failing them here would break the suites
+    // that DO run them over a stub that is by design. Every other
     // row — branch-internal ones included, since
     // treasure_exit_open_prompt_scen99 loads the real scen1.fss — must load.
     // A failed bootstrap still refuses for every row: that is the signal that

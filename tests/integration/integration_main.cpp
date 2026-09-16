@@ -49,6 +49,8 @@ extern "C" void __gcov_dump(void);
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 
+#include "company_litter_reap.h"
+
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 // Main-thread task queue, declared for injectors in tests/test_interact.h and
@@ -97,19 +99,27 @@ void reset_integration_ui_state()
     // which is exactly the argument [LOBBY-R1] below makes: a per-test guard
     // cannot be the rule — this is.
     //
-    // The rule: every save/*.gtl and every save/backups/*.gtl whose slot is
-    // not in the PROCESS BASELINE is deleted between tests.
+    // The rule (implemented once, in tests/company_litter_reap.h, because
+    // tests/curses/curses_test_main.cpp runs the same rule): every save/
+    // artifact whose name carries ".gtl" and every save/backups/*.gtl whose
+    // slot is not in the PROCESS BASELINE is deleted between tests.
     //  - The baseline is snapshotted in main() right after
     //    seed_stray_company_slots_from_env(), so the [SAVE-R5](c) stray-slot
     //    diagnostic survives every reset (that tool exists to stay in the
     //    list for the whole run) while nothing a test writes does.
+    //  - The staging suffixes are reaped too. An atomic save and a backup
+    //    restore leave "<slot>.tmp.gtl", "<slot>.gtl.tmp",
+    //    "<slot>.gtl.restoretmp" and "<slot>.gtl.restoretmp.tmp" behind when
+    //    they are interrupted, and the slot is the name up to the FIRST dot,
+    //    so all five names fold onto one slot.
     //  - save0 IS reaped. integration_main.cpp writes no save0 (only the
     //    slot reset above), so in a fresh per-PID config dir save0 does not
     //    exist at the first OnTestStart; any save0 present at a test end is
     //    that test's litter. The "save0 is the shared fixture" exemption was
     //    a per-test-cleanup concept and has no meaning under a baseline.
-    //  - netsession.gtl is NOT reaped: [SAVE-R8]'s slot setter already
-    //    isolates it structurally and no leak of it is on file.
+    //  - The "netsession" SLOT is NOT reaped (every one of its staging names
+    //    included): [SAVE-R8]'s slot setter already isolates it structurally
+    //    and no leak of it is on file.
     // Ordering: the reap runs before the current_session early return, so it
     // also protects the handful of tests that run with no session.
     reap_non_baseline_companies();
@@ -506,40 +516,16 @@ void seed_stray_company_slots(const std::string& csv)
     }
 }
 
-// [SAVE-R9] Delete every company file and company backup whose slot is not in
-// the process baseline. See the rule block in reset_integration_ui_state().
+// [SAVE-R9] Delete every company artifact and company backup whose slot is
+// not in the process baseline. See the rule block in
+// reset_integration_ui_state(). The rule itself lives in ONE place,
+// tests/company_litter_reap.h, because the curses harness runs it too; this
+// wrapper binds it to this binary's baseline and keeps the name the pin
+// (tests/integration/test_company_litter_guard.cpp) and
+// tests/test_company_cleanup.h call.
 void reap_non_baseline_companies()
 {
-    const std::set<std::string>& baseline = integration_company_baseline();
-    for (const std::string& name : list_files("save"))
-    {
-        if (!name.ends_with(".gtl") || name == "netsession.gtl")
-            continue;
-        // Slot is the basename up to the FIRST dot, which folds the
-        // "<slot>.tmp.gtl" atomic-write staging files onto their own slot.
-        const std::string slot = name.substr(0, name.find('.'));
-        if (baseline.count(slot) != 0)
-            continue;
-        (void)remove_user_file("save/" + name);
-    }
-    for (const std::string& name : list_files("save/backups"))
-    {
-        if (!name.ends_with(".gtl"))
-            continue;
-        // Backup grammar (src/resources/company.cpp, parse_backup_seq):
-        // "<slot>.<SEQ>.gtl", so the slot is the name minus the last two
-        // dot-tokens and may itself contain dots.
-        const std::size_t gtl_dot = name.rfind('.');
-        if (gtl_dot == std::string::npos || gtl_dot == 0)
-            continue;
-        const std::size_t seq_dot = name.rfind('.', gtl_dot - 1);
-        if (seq_dot == std::string::npos)
-            continue;
-        const std::string slot = name.substr(0, seq_dot);
-        if (baseline.count(slot) != 0)
-            continue;
-        (void)remove_user_file("save/backups/" + name);
-    }
+    og_test::reap_companies_outside_baseline(integration_company_baseline());
 }
 
 std::mutex& get_allbuttons_mutex()

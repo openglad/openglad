@@ -1152,6 +1152,7 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_hosted_pack_sync.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_mount_guard.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_company_litter_guard.cpp
         ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
         ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
         ${OG_CURSES_LIB_SOURCES}
@@ -1601,6 +1602,44 @@ add_test(NAME parity_runner_smoke_cli
 set_tests_properties(parity_runner_smoke_cli PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 120
+)
+
+# The mutation canary's PLAN half: selection, pin grouping, the staged-packs
+# precondition and the fixture preflight. Nothing here mutates a source file or
+# builds anything — `--plan` is exactly "say what a run would do" — but it does
+# briefly hide temp/scen/scen99.fss to prove the preflight names it, which is
+# the same source-tree fixture og_test_level produces and og_test_parity
+# consumes. So it joins that pair's lock and ordering rather than racing them.
+add_test(NAME mutation_canary_plan_cli
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_mutation_canary_plan.sh
+        $<TARGET_FILE:og_test_parity>
+        $<TARGET_FILE:parity_runner_smoke>
+)
+set_tests_properties(mutation_canary_plan_cli PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    RESOURCE_LOCK source_scenario_fixtures
+    DEPENDS og_test_level
+    TIMEOUT 120
+)
+
+# The two build-gate scripts that scan whole directory roots
+# (check_no_std_regex, check_vendor_leaks) are themselves only as good as the
+# roots they find: GNU grep returns 2 for a missing root even when it printed a
+# match, so an `if grep ...` verdict certified trees it never read. The self-test
+# drives both gates over temp trees and pins all three exit codes — 0 clean,
+# 1 violation (named), 2 cannot run. Unconditional: bash and the scripts are all
+# it needs, and both gates are og_game_test dependencies (see :300), so a
+# silently-blind gate is a silently-blind test build.
+add_test(NAME check_script_roots_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_script_roots.sh
+)
+set_tests_properties(check_script_roots_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
 )
 
 add_test(NAME openglad_text_picker_interactive

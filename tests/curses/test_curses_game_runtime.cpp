@@ -834,42 +834,25 @@ TEST(CursesGameRuntimeLocal, harder_difficulty_scales_enemy_hp_in_the_mirror)
 // floor resumable (infinite retries) with every fold-layer unit test green.
 TEST(CursesGameRuntimeLocal, tower_loss_resets_disk_cursor_via_run_end_hook)
 {
-    namespace fs = std::filesystem;
-    const fs::path save0 = fs::path(get_user_path()) / "save" / "save0.gtl";
-
-    // Mount/save hygiene (tower spec §1.10): preserve save0 and the mount,
-    // prune generated floors, and restore everything on every exit path.
-    std::error_code ec;
-    const bool had_save0 = fs::exists(save0, ec);
-    if (had_save0)
-        fs::copy_file(save0, save0.string() + ".towerbak",
-                      fs::copy_options::overwrite_existing, ec);
+    // Mount/floor hygiene (tower spec §1.10): prune the generated floors and
+    // put the campaign mount back on every exit path. The save0 company file
+    // this test writes is NOT this test's business: the harness reaps every
+    // company artifact between tests ([SAVE-R9],
+    // tests/curses/curses_test_main.cpp, pinned by
+    // tests/curses/test_curses_company_litter_guard.cpp).
     const std::string mounted_before = get_mounted_campaign();
     struct Restore
     {
-        fs::path save0;
-        bool had_save0;
         std::string remount;
         ~Restore()
         {
             for (int id = og::kTowerFirstFloorLevel; id <= 760; ++id)
                 (void)og::data::delete_tower_floor_files(id);
-            std::error_code ec2;
-            if (had_save0)
-            {
-                fs::copy_file(save0.string() + ".towerbak", save0,
-                              fs::copy_options::overwrite_existing, ec2);
-                fs::remove(save0.string() + ".towerbak", ec2);
-            }
-            else
-            {
-                fs::remove(save0, ec2);
-            }
             (void)unmount_campaign_package_with_error(get_mounted_campaign());
             (void)mount_campaign_package_with_error(
                 remount.empty() ? "gladiator" : remount);
         }
-    } restore{save0, had_save0, mounted_before};
+    } restore{mounted_before};
 
     (void)unmount_campaign_package_with_error(mounted_before);
     ASSERT_EQ(CampaignPackageIoError::None,
