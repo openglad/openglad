@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_escape_tail.h"
 #include "test_interact.h"
 #include "test_click_ladder.h"
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -36,11 +37,10 @@ namespace {
 // Poll ticks, not settles. Every screen transition in this file settles on
 // wait_for_menu_frames(2) — all four screens the flow visits are
 // run_menu_screen-hosted (menu_screen_specs.cpp) — and every click is proven
-// consumed by the value it writes. These two are the tick of a wait-on-
-// condition loop, which is why they are spelled with "poll"
+// consumed by the value it writes. This is the tick of a wait-on-
+// condition loop, which is why it is spelled with "poll"
 // (scripts/check_injector_settles.sh, tier 2).
 constexpr Uint32 kHirePollMs = 20;
-constexpr Uint32 kEscapePollMs = 100;
 // Cancellation ceilings for a pump that has stopped, never budgets. Do not
 // raise them to buy time on an instrumented lane: a lane that needs more than
 // these has stopped pumping, and the escape tail below is what turns that
@@ -52,6 +52,17 @@ constexpr int kGameFinishTimeoutMs = 90000;
 // battle so the victory oracle exercises one reproducible fight instead of a
 // random_device/clock-selected trajectory.
 constexpr std::uint32_t kBattleSeed = 0x0F00A90Eu;
+
+// The founding flow's doors, in PRECEDENCE order: the team screen publishes
+// both `hire_me` and `go`, so `hire_me` must be tried first or a tail on the
+// team screen would take the other arm's `back` and land somewhere neither
+// names.
+constexpr EscapeDoor kFoundingFlowEscapeDoors[] = {
+    {"hire_me", "back"},
+    {"go", "back"},
+    {"company_name_accept", "company_name_accept"},
+    {"begin_new_game", "begin_new_game"},
+};
 
 class ScopedMatchSeed final
 {
@@ -256,28 +267,16 @@ static int op_injector(void* data)
     // ladder's acknowledge post — is driven by one exit rule, not two.
     const auto escape = [state](int leg, const std::string& why) {
         if (leg != 0) {
-            fprintf(stderr, "  [test] ERROR: leg %d: %s\n", leg, why.c_str());
             state->failure_detail = why;
             state->failure_message = state->failure_detail.c_str();
         }
         set_game_speed(state->original_speed);
         g_test_remove_exits = false;
-        while (!state->test_finished.load()) {
-            if (g_test_in_game.load(std::memory_order_acquire)) {
-                SDL_Delay(kEscapePollMs);
-                continue;
-            }
-            if (has_interactable("hire_me"))
-                (void)interact("back");
-            else if (has_interactable("go"))
-                (void)interact("back");
-            else if (has_interactable("company_name_accept"))
-                (void)interact("company_name_accept");
-            else if (has_interactable("begin_new_game"))
-                (void)interact("begin_new_game");
-            SDL_Delay(kEscapePollMs);
-        }
-        return leg;
+        return escape_to_the_main_thread(
+            state->test_finished, leg,
+            leg != 0 ? state->failure_detail.c_str() : "",
+            kFoundingFlowEscapeDoors,
+            [] { return g_test_in_game.load(std::memory_order_acquire); });
     };
 
     // -- Leg 1: Main Menu --
@@ -518,8 +517,7 @@ TEST(OverpoweredTeam, overpowered_team) {
     SDL_WaitThread(thread, &thread_result);
     // The tail's last click may have been pushed after picker_main returned
     // under it; a stray mouse event must not ride into the next test's menu.
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
@@ -568,8 +566,7 @@ TEST(OverpoweredTeam, a_leg_that_gives_up_frees_the_main_thread) {
     state.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(thread, &injector_result);
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;

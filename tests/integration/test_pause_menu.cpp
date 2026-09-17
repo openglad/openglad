@@ -43,6 +43,7 @@
 #include <openglad/resources/save_data.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -2167,6 +2168,30 @@ int pause_scripted_poll(SDL_Event* out)
     return SDL_PollEvent(out);
 }
 
+// Escape tail for every pause-menu injector in this file, through the shared
+// implementation in tests/test_escape_tail.h.
+// This flow drives a BLOCKING menu from the main thread: nothing but a
+// click lets it return, so an injector that gives up mid-flow leaves the
+// whole binary hung instead of failing. Keep closing whatever screen is
+// open until the main thread says it is out of the menu for good, then
+// report the leg that gave up.
+//
+// No wall-clock bound on the loop: the main thread cannot leave the menu
+// on its own, so a tail that stopped trying early would GUARANTEE the
+// wedge it exists to prevent. The player sub-screen publishes BACK and no
+// RESUME, so a leg that dies in there needs both clicks.
+constexpr EscapeDoor kPauseEscapeDoors[] = {
+    {"pause_resume", "pause_resume"},
+    {"pause_player_back", "pause_player_back"},
+};
+
+int escape_the_pause_menu(std::atomic<bool>& test_finished, int leg,
+                          const char* why)
+{
+    return escape_to_the_main_thread(test_finished, leg, why,
+                                     kPauseEscapeDoors);
+}
+
 // Flow control shared by the three real-menu injectors below, in the shape
 // AddCycleFlow already carries: `sabotage_first_leg` points leg 1 at an id the
 // menu never publishes (so the give-up path itself is testable), and
@@ -2189,45 +2214,29 @@ int pause_menu_flow_injector(void* data)
     auto* const flow = static_cast<PauseFlowScript*>(data);
     og::runtime::ensure_thread_session();
 
-    // Escape tail, in the shape add_cycle_input_injector already carries.
-    // This flow drives a BLOCKING menu from the main thread: nothing but a
-    // click lets it return, so an injector that gives up mid-flow leaves the
-    // whole binary hung instead of failing. Keep closing whatever screen is
-    // open until the main thread says it is out of the menu for good, then
-    // report the leg that gave up.
-    //
-    // No wall-clock bound on the loop: the main thread cannot leave the menu
-    // on its own, so a tail that stopped trying early would GUARANTEE the
-    // wedge it exists to prevent. The player sub-screen publishes BACK and no
-    // RESUME, so a leg that dies in there needs both clicks.
-    const auto escape = [flow](int leg) {
-        while (!flow->test_finished.load()) {
-            if (has_interactable("pause_resume"))
-                interact("pause_resume");
-            else if (has_interactable("pause_player_back"))
-                interact("pause_player_back");
-            SDL_Delay(100);
-        }
-        return leg;
-    };
-
     // Leg 1: RESUME closes the menu.
     const char* const resume_id =
         flow->sabotage_first_leg ? "pause_never_published" : "pause_resume";
     if (!wait_for_pause_interactable(resume_id, 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(1);
+        return escape_the_pause_menu(
+            flow->test_finished, 1,
+            "the PAUSED screen never published RESUME (or never composed)");
     interact("pause_resume");
 
     // Leg 2: ADD PLAYER creates a real second seat mid-game; its player row
     // appears in place.
     if (!wait_for_pause_interactable("pause_add_player", 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(2);
+        return escape_the_pause_menu(
+            flow->test_finished, 2,
+            "ADD PLAYER never published after RESUME");
     interact("pause_add_player");
     if (!wait_for_pause_interactable("pause_player_1", 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(3);
+        return escape_the_pause_menu(
+            flow->test_finished, 3,
+            "the new seat's row never appeared");
 
     // Leg 3: the new seat's row opens the player screen; REMOVE PLAYER
     // (NO-first confirm answered from the queue) drops the seat and pops
@@ -2235,14 +2244,18 @@ int pause_menu_flow_injector(void* data)
     interact("pause_player_1");
     if (!wait_for_pause_interactable("pause_remove", 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(4);
+        return escape_the_pause_menu(
+            flow->test_finished, 4,
+            "the player screen never published REMOVE");
     picker_testing_yes_or_no_queue_push(true);
     interact("pause_remove");
 
     // Leg 4: back on the PAUSED screen, QUIT ends the mission.
     if (!wait_for_pause_interactable("pause_quit", 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(5);
+        return escape_the_pause_menu(
+            flow->test_finished, 5,
+            "the PAUSED screen never came back with QUIT");
     picker_testing_yes_or_no_queue_push(true);
     interact("pause_quit");
     return 0;
@@ -2340,6 +2353,7 @@ TEST(PauseMenuFlow, real_menu_resume_add_remove_player_and_quit_via_interact)
     flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
     EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
                                   << " timed out";
 
@@ -2426,8 +2440,7 @@ TEST(PauseMenuFlow,
     SDL_WaitThread(injector, &injector_result);
     // The tail's last click may have been pushed after the menu closed under
     // it; a stray mouse event must not ride into the next test's menu.
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
 
     EXPECT_EQ(1, injector_result)
         << "the sabotaged leg must be reported by number, not swallowed";
@@ -2468,32 +2481,12 @@ int pause_yield_injector(void* data)
     auto* const flow = static_cast<PauseFlowScript*>(data);
     og::runtime::ensure_thread_session();
 
-    // Escape tail, in the shape add_cycle_input_injector already carries.
-    // This flow drives a BLOCKING menu from the main thread: nothing but a
-    // click lets it return, so an injector that gives up mid-flow leaves the
-    // whole binary hung instead of failing. Keep closing whatever screen is
-    // open until the main thread says it is out of the menu for good, then
-    // report the leg that gave up.
-    //
-    // No wall-clock bound on the loop: the main thread cannot leave the menu
-    // on its own, so a tail that stopped trying early would GUARANTEE the
-    // wedge it exists to prevent. The player sub-screen publishes BACK and no
-    // RESUME, so a leg that dies in there needs both clicks.
-    const auto escape = [flow](int leg) {
-        while (!flow->test_finished.load()) {
-            if (has_interactable("pause_resume"))
-                interact("pause_resume");
-            else if (has_interactable("pause_player_back"))
-                interact("pause_player_back");
-            SDL_Delay(100);
-        }
-        return leg;
-    };
-
     const char* const resume_id =
         flow->sabotage_first_leg ? "pause_never_published" : "pause_resume";
     if (!wait_for_pause_interactable(resume_id, 10'000))
-        return escape(1);
+        return escape_the_pause_menu(
+            flow->test_finished, 1,
+            "the PAUSED screen never published RESUME");
     // Hold the menu open for a COUNTED number of completed frames instead of
     // a flat 400 ms. run_menu_screen posts each completion and then calls
     // og::input_native::sleep_ms(10) once per iteration
@@ -2504,7 +2497,9 @@ int pause_yield_injector(void* data)
     const std::uint64_t frames_before =
         og::ui::menu_screen_testing_completed_frames();
     if (!wait_for_completed_pause_menu_frames(kYieldWindowFrames, 10'000))
-        return escape(2);
+        return escape_the_pause_menu(
+            flow->test_finished, 2,
+            "the counted frame window never closed");
     flow->frames_observed.store(
         og::ui::menu_screen_testing_completed_frames() - frames_before);
     interact("pause_resume");
@@ -2581,6 +2576,7 @@ TEST(PauseMenuFlow, blocking_menu_yields_to_the_browser_each_iteration)
     flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
     EXPECT_EQ(0, injector_result) << "injector timed out";
 
     og::ui::pause_menu_testing_set_force_real(false);
@@ -2640,8 +2636,7 @@ TEST(PauseMenuFlow,
     flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
 
     EXPECT_EQ(1, injector_result)
         << "the sabotaged leg must be reported by number, not swallowed";
@@ -2673,33 +2668,13 @@ int pause_view_team_return_injector(void* data)
     auto* const flow = static_cast<PauseFlowScript*>(data);
     og::runtime::ensure_thread_session();
 
-    // Escape tail, in the shape add_cycle_input_injector already carries.
-    // This flow drives a BLOCKING menu from the main thread: nothing but a
-    // click lets it return, so an injector that gives up mid-flow leaves the
-    // whole binary hung instead of failing. Keep closing whatever screen is
-    // open until the main thread says it is out of the menu for good, then
-    // report the leg that gave up.
-    //
-    // No wall-clock bound on the loop: the main thread cannot leave the menu
-    // on its own, so a tail that stopped trying early would GUARANTEE the
-    // wedge it exists to prevent. The player sub-screen publishes BACK and no
-    // RESUME, so a leg that dies in there needs both clicks.
-    const auto escape = [flow](int leg) {
-        while (!flow->test_finished.load()) {
-            if (has_interactable("pause_resume"))
-                interact("pause_resume");
-            else if (has_interactable("pause_player_back"))
-                interact("pause_player_back");
-            SDL_Delay(100);
-        }
-        return leg;
-    };
-
     const char* const view_team_id =
         flow->sabotage_first_leg ? "pause_never_published" : "pause_view_team";
     if (!wait_for_pause_interactable(view_team_id, 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(1);
+        return escape_the_pause_menu(
+            flow->test_finished, 1,
+            "the PAUSED screen never published VIEW TEAM");
     interact("pause_view_team");
     SDL_Delay(300);
     // VIEW TEAM's own screen is not a run_menu_screen frame producer, so no
@@ -2707,7 +2682,9 @@ int pause_view_team_return_injector(void* data)
     // clock, and this leg leans on the stall backstop until the pause menu is
     // back.
     if (!wait_for_pause_interactable("pause_resume", 10'000))
-        return escape(2);
+        return escape_the_pause_menu(
+            flow->test_finished, 2,
+            "the PAUSED screen never came back after VIEW TEAM");
     interact("pause_resume");
     return 0;
 }
@@ -2778,6 +2755,7 @@ TEST(PauseMenuFlow, view_team_return_redraws_the_split_world_canvas)
     flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
     og::ui::pause_menu_testing_set_force_real(false);
     EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
                                   << " timed out";
@@ -2837,8 +2815,7 @@ TEST(PauseMenuFlow,
     flow.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
     og::ui::pause_menu_testing_set_force_real(false);
 
     EXPECT_EQ(1, injector_result)
@@ -3408,38 +3385,20 @@ int add_cycle_input_injector(void* data)
     auto* const flow = static_cast<AddCycleFlow*>(data);
     og::runtime::ensure_thread_session();
 
-    // Escape tail, in the shape pause_hostile_pad_injector already carries.
-    // This flow drives a BLOCKING menu from the main thread: nothing but a
-    // click lets game_frame_with_result return, so an injector that gives up
-    // mid-flow leaves the whole binary hung instead of failing. Keep closing
-    // whatever screen is open until the main thread says it is out of the menu
-    // for good, then report the leg that gave up.
-    //
-    // No wall-clock bound on the loop: the main thread cannot leave the menu
-    // on its own, so a tail that stopped trying early would GUARANTEE the
-    // wedge it exists to prevent. The player sub-screen publishes BACK and no
-    // RESUME, so a leg that dies in there needs both clicks.
-    const auto escape = [flow](int leg) {
-        while (!flow->test_finished.load()) {
-            if (has_interactable("pause_resume"))
-                interact("pause_resume");
-            else if (has_interactable("pause_player_back"))
-                interact("pause_player_back");
-            SDL_Delay(100);
-        }
-        return leg;
-    };
-
     // Menu 1: ADD PLAYER (P2 row appears in place), then RESUME.
     const char* const add_player_id =
         flow->sabotage_first_leg ? "pause_never_published" : "pause_add_player";
     if (!wait_for_pause_interactable(add_player_id, 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(1);
+        return escape_the_pause_menu(
+            flow->test_finished, 1,
+            "the PAUSED screen never published ADD PLAYER");
     interact("pause_add_player");
     if (!wait_for_pause_interactable("pause_player_1", 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(2);
+        return escape_the_pause_menu(
+            flow->test_finished, 2,
+            "the new seat's row never appeared");
     interact("pause_resume");
 
     // Menu 2 (the main thread plays real frames, then sends Esc again):
@@ -3447,11 +3406,15 @@ int add_cycle_input_injector(void* data)
     // reporter's crash step — then BACK and RESUME.
     if (!wait_for_pause_interactable("pause_player_1", 15'000) ||
         !wait_for_completed_pause_menu_frames(2, 15'000))
-        return escape(3);
+        return escape_the_pause_menu(
+            flow->test_finished, 3,
+            "the second menu never published the added seat's row");
     interact("pause_player_1");
     if (!wait_for_pause_interactable("pause_input", 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(4);
+        return escape_the_pause_menu(
+            flow->test_finished, 4,
+            "the player screen never published INPUT");
     interact("pause_input");
     SDL_Delay(200);
     interact("pause_input");
@@ -3459,7 +3422,9 @@ int add_cycle_input_injector(void* data)
     interact("pause_player_back");
     if (!wait_for_pause_interactable("pause_resume", 10'000) ||
         !wait_for_completed_pause_menu_frames(2, 10'000))
-        return escape(5);
+        return escape_the_pause_menu(
+            flow->test_finished, 5,
+            "the PAUSED screen never came back after BACK");
     interact("pause_resume");
     return 0;
 }
@@ -3566,6 +3531,7 @@ TEST(PauseMenuFlow, real_menu_add_player_cycle_input_then_play_survives)
     int injector_result = -1;
     flow.test_finished.store(true);
     SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
     EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
                                   << " timed out";
 
@@ -3649,8 +3615,7 @@ TEST(PauseMenuFlow, add_player_injector_escapes_a_failed_leg_instead_of_wedging)
     SDL_WaitThread(injector, &injector_result);
     // The tail's last click may have been pushed after the menu closed under
     // it; a stray mouse event must not ride into the next test's menu.
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
 
     EXPECT_EQ(1, injector_result)
         << "the sabotaged leg must be reported by number, not swallowed";
@@ -3704,6 +3669,9 @@ struct HostilePadFlow
 {
     SDL_Joystick* pad = nullptr;
     std::atomic<bool> menu_returned{false};
+    // The per-cycle give-up reasons are built at the arm; the shared tail
+    // prints the pointer after the arm's scope is gone, so it lives here.
+    std::string why_detail;
 };
 
 int pause_hostile_pad_injector(void* data)
@@ -3716,20 +3684,36 @@ int pause_hostile_pad_injector(void* data)
     // run_pause_menu blocked on the main thread with nothing left to click it
     // out (the wedge the other injectors' escape tails exist to prevent).
     int failure = 0;
+    const char* why = "";
     if (!wait_for_pause_interactable("pause_player_0", 10'000))
+    {
         failure = 1;
+        why = "the solo seat's player row never published (or never composed)";
+    }
     if (failure == 0 && !wait_for_completed_pause_menu_frames(2, 10'000))
+    {
         failure = 1;
+        why = "the solo seat's player row never published (or never composed)";
+    }
     if (failure == 0)
     {
         interact("pause_player_0");
         if (!wait_for_pause_interactable("pause_input", 10'000))
+        {
             failure = 2;
+            why = "the player screen never published INPUT";
+        }
         else if (!wait_for_pause_interactable_label(
                      "pause_input", "INPUT: WASD", 5'000))
+        {
             failure = 3;
+            why = "INPUT did not read WASD";
+        }
         else if (!wait_for_completed_pause_menu_frames())
+        {
             failure = 4;
+            why = "the INPUT frame never completed";
+        }
     }
 
     // WASD -> ARROWS -> IJKL -> TFGH -> JOY1: the fourth cycle assigns the
@@ -3745,9 +3729,19 @@ int pause_hostile_pad_injector(void* data)
         interact("pause_input");
         if (!wait_for_pause_interactable_label(
                 "pause_input", expected_input_labels[i], 5'000))
+        {
             failure = 10 + static_cast<int>(i);
+            flow->why_detail = "INPUT cycle " + std::to_string(i) +
+                               " never read " + expected_input_labels[i];
+            why = flow->why_detail.c_str();
+        }
         else if (!wait_for_completed_pause_menu_frames())
+        {
             failure = 20 + static_cast<int>(i);
+            flow->why_detail =
+                "INPUT cycle " + std::to_string(i) + " frame never completed";
+            why = flow->why_detail.c_str();
+        }
     }
 
     // The reported hang struck on the frame after the assignment. A live
@@ -3767,9 +3761,13 @@ int pause_hostile_pad_injector(void* data)
                 SDL_Delay(50);
             }
             failure = 31;
+            why = "RESUME was consumed but run_pause_menu did not return";
         }
         else
+        {
             failure = 30;
+            why = "BACK never re-materialized the PAUSED screen";
+        }
     }
 
     // Wedged (the pre-fix behavior). Neutralize the resting axis so the
@@ -3784,18 +3782,8 @@ int pause_hostile_pad_injector(void* data)
     }
     // No wall-clock bound: run_pause_menu only returns when something clicks
     // its way out, so a tail that stopped trying would leave the main thread
-    // blocked forever — the hang this tail exists to prevent. The player
-    // sub-screen publishes BACK and no RESUME, so a leg that dies in there
-    // needs both clicks.
-    while (!flow->menu_returned.load())
-    {
-        if (has_interactable("pause_resume"))
-            interact("pause_resume");
-        else if (has_interactable("pause_player_back"))
-            interact("pause_player_back");
-        SDL_Delay(250);
-    }
-    return failure != 0 ? failure : 7;
+    // blocked forever — the hang this tail exists to prevent.
+    return escape_the_pause_menu(flow->menu_returned, failure, why);
 }
 
 } // namespace
@@ -3842,6 +3830,7 @@ TEST(PauseMenuFlow, input_cycler_onto_hostile_resting_pad_does_not_hang_menu)
 
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
     og::ui::pause_menu_testing_set_force_real(false);
 
     EXPECT_EQ(0, injector_result)

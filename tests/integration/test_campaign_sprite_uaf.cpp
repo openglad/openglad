@@ -26,6 +26,7 @@
 
 #include "campaign_sprite_fixture.h"
 #include "test_campaign_picker_drive.h"
+#include "test_escape_tail.h"
 #include "test_interact.h"
 #include "test_input_helpers.h"
 #include "test_save_state_guard.h"
@@ -66,8 +67,6 @@ namespace {
 
 constexpr const char* kFixtureId = "org.test.sprite162.sdl";
 
-// Poll ticks, not settles (scripts/check_injector_settles.sh, tier 2).
-constexpr Uint32 kEscapePollMs = 100;
 // Cancellation ceilings for a pump that has stopped, never budgets.
 constexpr int kScenarioDoorWaitMs = 8000;
 // SET CAMPAIGN mounts a package and reloads every sprite; the reload trace is
@@ -76,8 +75,12 @@ constexpr int kReloadTraceWaitMs = 10000;
 // The sabotaged leg waits for an id nothing publishes. Nothing is coming, and
 // the point of that run is the tail, so its window is short on purpose.
 constexpr int kSabotageWaitMs = 500;
-// One BACK press per confirmation window, not one per tick.
-constexpr int kEscapeConfirmTicks = 20;
+
+// BACK stays published in allbuttons even while the browser owns the main
+// thread, so there is no "the button went away" edge to watch here: watch the
+// main thread instead, and press again only if it is still blocked when the
+// window closes.
+constexpr EscapeDoor kScenarioEscapeDoors[] = {{"back", "back"}};
 
 
 inline PickerState& pks()
@@ -230,51 +233,6 @@ struct SpriteFlowState
     int sabotage_leg = 0;
 };
 
-// Keep closing whatever is currently blocking the main thread until that
-// thread says it is out for good, then report the leg that gave up. No
-// wall-clock bound, on purpose: nothing else can end create_scenario_menu.
-//
-// Two doors, and they are not interchangeable. While pick_campaign owns the
-// main thread its buttons are its own local array -- allbuttons still holds
-// the SCENARIO screen's, so a click aimed at "back" would land inside the
-// browser at whatever sits under those coordinates. The browser's abort flag
-// is its only legitimate door, and it is one-shot (consumed at the loop top),
-// so it is raised at most ONCE per browser entry this tail has not already
-// seen, and BACK is clicked only when no unseen entry is outstanding.
-int escape_from_the_campaign_flow(SpriteFlowState& state,
-                                  std::uint64_t& seen_entries, int leg,
-                                  const char* why)
-{
-    if (leg != 0)
-        fprintf(stderr, "  [test] ERROR: leg %d: %s\n", leg, why);
-    while (!state.test_finished.load())
-    {
-        const std::uint64_t entered = campaign_picker_testing_entered_count();
-        if (entered > seen_entries)
-        {
-            campaign_picker_testing_abort();
-            seen_entries = entered;
-            SDL_Delay(kEscapePollMs);
-            continue;
-        }
-        if (!has_interactable("back") || !interact("back"))
-        {
-            SDL_Delay(kEscapePollMs);
-            continue;
-        }
-        // BACK stays published in allbuttons even while the browser owns the
-        // main thread, so there is no "the button went away" edge to watch
-        // here: watch the main thread instead, and press again only if it is
-        // still blocked when the window closes.
-        for (int tick = 0;
-             tick < kEscapeConfirmTicks && !state.test_finished.load(); ++tick)
-        {
-            SDL_Delay(kEscapePollMs);
-        }
-    }
-    return leg;
-}
-
 int set_campaign_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -284,8 +242,31 @@ int set_campaign_flow_injector(void* data)
     // The tail must start from the entry count the flow started with, so an
     // entry it has not seen is exactly "the browser this flow opened".
     std::uint64_t seen_entries = campaign_picker_testing_entered_count();
+    // Keep closing whatever is currently blocking the main thread until that
+    // thread says it is out for good, then report the leg that gave up. No
+    // wall-clock bound, on purpose: nothing else can end create_scenario_menu.
+    //
+    // Two doors, and they are not interchangeable. While pick_campaign owns the
+    // main thread its buttons are its own local array -- allbuttons still holds
+    // the SCENARIO screen's, so a click aimed at "back" would land inside the
+    // browser at whatever sits under those coordinates. The browser's abort flag
+    // is its only legitimate door, and it is one-shot (consumed at the loop top),
+    // so it is raised at most ONCE per browser entry this tail has not already
+    // seen, and BACK is clicked only when no unseen entry is outstanding.
     const auto escape = [state, &seen_entries](int leg, const char* why) {
-        return escape_from_the_campaign_flow(*state, seen_entries, leg, why);
+        return escape_to_the_main_thread(
+            state->test_finished, leg, why, kScenarioEscapeDoors,
+            [&seen_entries] {
+                const std::uint64_t entered =
+                    campaign_picker_testing_entered_count();
+                if (entered > seen_entries)
+                {
+                    campaign_picker_testing_abort();
+                    seen_entries = entered;
+                    return true;
+                }
+                return false;
+            });
     };
 
     // -- Leg 1: the SCENARIO screen is up AND has composed a frame --
@@ -415,15 +396,7 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
     state.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(thread, &injector_result);
-    // The tail's last press may have been HALF consumed (the menu returned
-    // between its DOWN and its UP). Poll that release through the engine --
-    // reset_mouse_click_tracking consumes the queued events before it
-    // re-baselines -- instead of flushing it: a FLUSHED release leaves
-    // mouse_state.left stuck true, and the next flow's first press then makes
-    // no up->down edge and evaporates.
-    reset_mouse_click_tracking();
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
 
     EXPECT_TRUE(state.started) << "the injector thread never ran";
@@ -504,9 +477,7 @@ TEST(CampaignSpriteUaf, a_leg_that_gives_up_frees_the_main_thread)
     state.test_finished.store(true);
     int injector_result = -1;
     SDL_WaitThread(thread, &injector_result);
-    reset_mouse_click_tracking();
-    SDL_PumpEvents();
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
 
     EXPECT_TRUE(state.started) << "the injector thread never ran";
