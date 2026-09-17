@@ -933,6 +933,7 @@ void screen::darken_screen()
     video_impl_->darken_screen();
 }
 
+//buffers: like buffer_to_screen but automaticaly swaps the entire screen
 void screen::swap()
 {
     // Presents only through the platform bridge: every platform root installs

@@ -1172,6 +1172,7 @@ void sdl_video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 			//buffers: PORT: targ = (curx + (cury*VIDEO_WIDTH));
 			//buffers: PORT: if (targ>0 && targ<VIDEO_SIZE)
 			//buffers: PORT: videoptr[targ] = curcolor;
+			// (videoptr was the DOS build's VGA linear framebuffer at 0xA0000; the port only ever faked that pointer, and PR #292 deleted the last stand-in.)
 			point(curx,cury,curcolor);//buffers: PORT: draw the point
 		}
 }

@@ -1018,6 +1018,7 @@ short new_score_panel(screen* s, short /*do_it*/)
             }
 
             // Currently-select special
+            // Alternate special name (if not "NONE")
             if (control->shifter_down() &&
                 s->alternate_name[fam][spc] != "NONE")
                 message = std::format("SPC: {}", s->alternate_name[fam][spc]);
