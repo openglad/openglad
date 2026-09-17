@@ -217,11 +217,45 @@ GO / SET LEVEL / SET CAMPAIGN.
   `tests/test_escape_tail.h` (`escape_to_the_main_thread` — one press per
   screen, watch the screen you acted on go away before pressing again, a
   numbered leg for every give-up). Call it; do not re-type it.
-  `tests/integration/test_pause_menu.cpp` is the next consumer to convert;
-  `tests/integration/test_overpowered_team.cpp`,
-  `test_campaign_sprite_uaf.cpp` and `test_campaign_zone_ui.cpp` still carry
-  their own `while (!test_finished)` exit loops (other binaries, same
-  shape) — all filed as debt on PR #292. Convert, do not add a fifth.
+  Binding a new consumer to it is two decisions and one line at the join:
+  - Doors. Give it an `EscapeDoor` table — `{watched id, id to press}` — in
+    PRECEDENCE order, listing every screen the flow can be blocked in. The
+    picker's `kPickerEscapeDoors` is the default and needs no argument;
+    `test_pause_menu.cpp` binds RESUME and then the player screen's BACK
+    (that sub-screen publishes no RESUME); `test_overpowered_team.cpp` binds
+    the founding flow's four doors with `hire_me` before `go`, because the
+    team screen publishes both and the wrong arm walks the flow somewhere
+    neither door names. The tail presses only the FIRST door whose watched
+    id is up.
+  - `hold_lap`. A predicate for a lap that must not press at all, called
+    once per lap before any door is consulted. A real match is running and
+    a click would land in the game (`g_test_in_game`); or a screen that is
+    NOT `run_menu_screen`-hosted owns the main thread, so its buttons are
+    its own local array and a click aimed at an `allbuttons` id lands at
+    whatever sits under those coordinates — there the predicate is what
+    closes the screen, by its own door (`campaign_picker_testing_abort()`
+    in `test_campaign_sprite_uaf.cpp`), and returns true while it waits.
+  - The join, on the main thread: store the flag → `SDL_WaitThread` →
+    `escape_tail_join_hygiene()` → `EXPECT_EQ(0, thread_result)`. The
+    hygiene call is not optional decoration: a flushed half-consumed
+    release leaves `mouse_state.left` stuck true and the next flow's first
+    press silently evaporates.
+  Every give-up returns through the tail, and so does the happy path — with
+  one exception: the pause-menu flows return 0 directly, because their main
+  thread consumes the injector's last click (RESUME / QUIT) as a specific
+  action and then plays on, and a tail pressing "whatever is up" in that
+  window would race the frame that consumes it. Their give-ups still route
+  through the tail.
+  No hand-rolled copy is left in the tree, and
+  `scripts/check_escape_tail_twins.py` (a dependency of `og_game_test`,
+  self-tested by the ctest entry `check_escape_tail_twins_selftest`) fails
+  the test build on a new one: a loop that spins on nothing but a flag and
+  presses its way out. The settle census is a DIFFERENT rule with a
+  different script: `test_pause_menu.cpp` is on tier 1 only, because its
+  RESTART and QUIT-fade injectors still carry clock-bounded GO ladders that
+  belong to the click-ladder conversion rather than to the tail, and
+  `test_campaign_zone_ui.cpp` and `test_lineup_ui.cpp` are still on
+  `scripts/check_injector_settles.sh`'s pending list.
 - The id `back` is shared by several screens: disambiguate with
   `wait_for_interactable_at("back", x, y)` using each screen's unique
   geometry.

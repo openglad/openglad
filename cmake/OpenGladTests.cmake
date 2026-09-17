@@ -300,7 +300,7 @@ target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps
 if(NOT EMSCRIPTEN)
     target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
 endif()
-add_dependencies(og_game_test check_vendor_leaks check_injector_settles check_no_std_regex)
+add_dependencies(og_game_test check_vendor_leaks check_injector_settles check_no_std_regex check_escape_tail_twins)
 
 enable_testing()
 
@@ -1639,6 +1639,25 @@ add_test(NAME check_script_roots_selftest
         ${CMAKE_SOURCE_DIR}/scripts/test_check_script_roots.sh
 )
 set_tests_properties(check_script_roots_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# Same duty for the escape-tail gate, whose verdicts are a parse rather than a
+# grep: the eight synthetic cases pin all three exit codes (0 clean, 1 twin
+# named by path:line and the id it presses, 2 cannot run) and, just as
+# importantly, pin the two shapes that must NOT be called twins -- a bounded
+# wait with no press, and the clock-bounded click ladder that belongs to
+# tests/test_click_ladder.h. A gate that flagged those would be reverted
+# within a week and the rule would go unenforced again. Unconditional: Python
+# is a FATAL_ERROR requirement at configure (CMakeLists.txt), and
+# check_escape_tail_twins is an og_game_test dependency, so a gate gone blind
+# is a test build gone blind.
+add_test(NAME check_escape_tail_twins_selftest
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/scripts/check_escape_tail_twins.py --self-test
+)
+set_tests_properties(check_escape_tail_twins_selftest PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 60
 )

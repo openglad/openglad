@@ -516,6 +516,19 @@ function(og_add_python_check_target name comment)
     endif()
 endfunction()
 
+# The injector escape tail has ONE implementation, tests/test_escape_tail.h
+# (escape_to_the_main_thread, its EscapeDoor table, its hold_lap predicate): a
+# re-typed copy drifts in whichever file nobody edits, and an escape tail that
+# drifts wedges a whole test binary at its CTest ceiling. This gate fails the
+# test build on a loop that spins on nothing but a completion flag and presses
+# its way out by hand. It is the Python sibling of check_injector_settles (a
+# different rule, so a different script) and lives here rather than beside it
+# because og_add_python_check_target is only defined above.
+og_add_python_check_target(check_escape_tail_twins
+    "Checking the injector escape tail has one implementation"
+    ${CMAKE_SOURCE_DIR}/scripts/check_escape_tail_twins.py
+)
+
 # Mutation-canary pins name a file, a LINE and the exact text to replace. Any
 # insertion earlier in a pinned file silently shifts them off their anchor, and
 # a pin that no longer matches mutates nothing — the canary then reports a
