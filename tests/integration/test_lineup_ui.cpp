@@ -35,6 +35,7 @@
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -506,49 +507,9 @@ void injector_unwind_from_scenario()
     }
 }
 
-// --- the escape tail -------------------------------------------------------
-//
-// A blocking menu driven from the MAIN thread (create_team_menu, picker_main)
-// returns only when a click walks it out. An injector that presses BACK once
-// and then returns therefore hands the process a permanent hang the moment
-// that one press evaporates on a starved frame: the injector thread is gone,
-// nobody presses again, SDL_WaitThread has already been satisfied, and the
-// main thread sits in the menu loop until the group's ctest cap kills the
-// binary. og_test_lineup did exactly that once, reaching the 900 s cap inside
-// basecamp_chip_cycles_own_row_networked_and_resyncs with the log ending on
-// "[interact] clicking 'back' at game(30,187)".
-//
-// The tail must NOT be bounded by a clock: a wall-clock ceiling only relocates
-// the hang (the tail stops clicking, the menu never leaves). It presses until
-// the MAIN thread signals that the menu call returned, which the caller does
-// between the menu call and SDL_WaitThread -- exactly the window this loop
-// covers. Counted, never clocked.
-std::atomic<int> g_escape_back_presses{0};
-// TESTING-only fault injection: make the next N escape presses evaporate the
-// way a starved frame does. This is the fault the tail exists for, so the
-// teeth test arms it rather than waiting for the box to supply it.
-int g_escape_back_drops = 0;
-
-void click_back_until_menu_returns(const std::atomic<bool>& menu_returned)
-{
-    while (!menu_returned.load(std::memory_order_acquire)) {
-        if (g_escape_back_drops > 0) {
-            --g_escape_back_drops;
-            fprintf(stderr,
-                    "  [lineup] dropping the escape BACK press (injected)\n");
-        } else {
-            g_escape_back_presses.fetch_add(1, std::memory_order_release);
-            (void)interact("back");
-        }
-        for (int waited = 0;
-             waited < 500 &&
-             !menu_returned.load(std::memory_order_acquire);
-             waited += 50)
-        {
-            SDL_Delay(50);
-        }
-    }
-}
+// create_team_menu publishes BACK and keeps it published until it returns, so
+// the watch window ends on the main thread's flag, not on the button vanishing.
+constexpr EscapeDoor kTeamMenuEscapeDoors[] = {{"back", "back"}};
 
 // --- fake networked lobby (test_uxshots_probe.cpp pattern) ------------------
 
@@ -1251,25 +1212,28 @@ int basecamp_chip_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<BasecampChipFlowState*>(data);
-    if (wait_for_team_menu()) {
-        SDL_Delay(1000);
-        state->own_chip_visible = wait_for_interactable("roster_team_0", 10000);
-        // Display rows 4..5 are the foreign machine's replicated slots:
-        // their chip ordinals stay hidden (inert) on every frame.
-        state->foreign_chip_inert =
-            !interactable_visible("roster_team_4") &&
-            !interactable_visible("roster_team_5");
-        SDL_Delay(300);
-        state->captures += capture_frame("basecamp_networked_chip");
-        SDL_Delay(300);
-        interact("roster_team_0");
-        state->chip_cycled =
-            wait_for_trace("basecamp", "team slot=0 team=1", 5000);
-        SDL_Delay(300);
-        click_back_until_menu_returns(state->menu_returned);
-    }
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->menu_returned, leg, why,
+                                         kTeamMenuEscapeDoors);
+    };
+    if (!wait_for_team_menu())
+        return escape(1, "the team menu never published");
+    SDL_Delay(1000);
+    state->own_chip_visible = wait_for_interactable("roster_team_0", 10000);
+    // Display rows 4..5 are the foreign machine's replicated slots:
+    // their chip ordinals stay hidden (inert) on every frame.
+    state->foreign_chip_inert =
+        !interactable_visible("roster_team_4") &&
+        !interactable_visible("roster_team_5");
+    SDL_Delay(300);
+    state->captures += capture_frame("basecamp_networked_chip");
+    SDL_Delay(300);
+    interact("roster_team_0");
+    state->chip_cycled =
+        wait_for_trace("basecamp", "team slot=0 team=1", 5000);
+    SDL_Delay(300);
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -1299,7 +1263,9 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     const int syncs_before = client.roster_syncs;
     create_team_menu(0);
     state.menu_returned.store(true, std::memory_order_release);
-    SDL_WaitThread(thread, nullptr);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     restore_gladiator_mount();
 
@@ -1316,40 +1282,109 @@ TEST(LineupUi, basecamp_chip_cycles_own_row_networked_and_resyncs)
     EXPECT_GT(client.roster_syncs, syncs_before)
         << "the mutation tail re-syncs the lobby roster (B6)";
     EXPECT_EQ(1, state.captures);
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
 }
+
+namespace {
+
+// A door for the shared tail to find with no menu on the main thread: the
+// tail only presses when a door's watched id is PUBLISHED, so the teeth test
+// has to publish one. Same shape as test_picker_uncovered.cpp:117-131's
+// OwnedButtonReplacementGuard (and test_picker_funcs.cpp:961-965), kept
+// file-local like both of those: a twelve-line fixture is not a rule. The
+// vbutton constructor's string is the LABEL; the id is the public member
+// (include/openglad/interface/button.h:102).
+struct FakeDoorGuard
+{
+    int slot;
+    vbutton* saved = nullptr;
+
+    FakeDoorGuard(int slot_, const char* door_id) : slot(slot_)
+    {
+        AllButtonsLock lock;
+        saved = og::runtime::current_session
+                    ->allbuttons_[static_cast<std::size_t>(slot)];
+        auto* door = new vbutton(0, 0, 10, 10,
+                                 button_action_id(ButtonAction::NullMenu), 0,
+                                 "BACK", KEYSTATE_UNKNOWN);
+        door->id = door_id;
+        og::runtime::current_session
+            ->allbuttons_[static_cast<std::size_t>(slot)] = door;
+    }
+
+    ~FakeDoorGuard()
+    {
+        AllButtonsLock lock;
+        delete og::runtime::current_session
+            ->allbuttons_[static_cast<std::size_t>(slot)];
+        og::runtime::current_session
+            ->allbuttons_[static_cast<std::size_t>(slot)] = saved;
+    }
+};
+
+struct DroppedPressWatch
+{
+    std::atomic<bool>* menu_returned;
+    std::atomic<bool>* flipped_on_press;
+};
+
+} // namespace
 
 // Teeth for that escape tail. The tail exists for the press that evaporates,
 // and a tail that gives up after one press looks exactly like a working one
 // until the day a press is dropped -- so the drop is INJECTED here instead of
-// waited for. Two dropped presses must cost two more laps of the tail, not the
+// waited for. A dropped press must cost one more lap of the tail, not the
 // binary: the stand-in for "the main thread left the menu" flips only once a
-// real press has been sent, which the two drops delay by exactly two laps.
+// real press has been sent, which the drop delays by exactly one lap.
 // Counted, never clocked.
-TEST(LineupUi, escape_tail_outlives_a_dropped_back_press)
+TEST(LineupUi, escape_tail_outlives_a_dropped_press)
 {
+    FakeDoorGuard door(0, "back");
     std::atomic<bool> menu_returned{false};
-    g_escape_back_drops = 2;
-    g_escape_back_presses.store(0, std::memory_order_release);
+    std::atomic<bool> flipped_on_press{false};
+    g_escape_tail_drops.store(1);
+    g_escape_tail_presses.store(0);
 
+    DroppedPressWatch watch{&menu_returned, &flipped_on_press};
     SDL_Thread* watcher = SDL_CreateThread(
         [](void* data) -> int {
-            auto* left = static_cast<std::atomic<bool>*>(data);
-            while (g_escape_back_presses.load(std::memory_order_acquire) < 1)
+            auto* w = static_cast<DroppedPressWatch*>(data);
+            // A CANCELLATION ceiling, not a settle: this stand-in for the
+            // main thread must release even when the tail stops pressing --
+            // the anti-rule -- so that break reds on the assertions below
+            // instead of wedging og_test_lineup at the group ceiling.
+            constexpr int kWatchCeilingMs = 10000;
+            for (int polled = 0; polled < kWatchCeilingMs; polled += 10) {
+                if (g_escape_tail_presses.load() >= 1) {
+                    w->flipped_on_press->store(true,
+                                               std::memory_order_release);
+                    break;
+                }
                 SDL_Delay(10);
-            left->store(true, std::memory_order_release);
+            }
+            w->menu_returned->store(true, std::memory_order_release);
             return 0;
         },
-        "escape_tail_menu", &menu_returned);
+        "escape_tail_menu", &watch);
     ASSERT_NE(nullptr, watcher);
 
-    click_back_until_menu_returns(menu_returned);
+    const int leg =
+        escape_to_the_main_thread(menu_returned, 0, "", kTeamMenuEscapeDoors);
     SDL_WaitThread(watcher, nullptr);
+    escape_tail_join_hygiene();
 
-    EXPECT_EQ(0, g_escape_back_drops)
-        << "the tail consumed both injected drops instead of giving up";
-    EXPECT_EQ(1, g_escape_back_presses.load(std::memory_order_acquire))
+    EXPECT_EQ(0, leg) << "the happy-path tail reports leg 0";
+    EXPECT_TRUE(flipped_on_press.load(std::memory_order_acquire))
+        << "the tail must press again after a dropped press; the stand-in "
+           "main thread never saw a press";
+    EXPECT_EQ(0, g_escape_tail_drops.load())
+        << "the tail consumed the injected drop instead of giving up";
+    EXPECT_EQ(1, g_escape_tail_presses.load())
         << "the tail presses again after a dropped press and stops on the "
            "main thread's signal, never on a clock";
+    g_escape_tail_drops.store(0);
+    g_escape_tail_presses.store(0);
 }
 
 namespace {
