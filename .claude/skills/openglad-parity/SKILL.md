@@ -197,6 +197,11 @@ still BITE. Facts:
   feeds `--touched` a changed-file list instead of `git diff --name-only`.
   Selection and grouping live in `scripts/parity/canary_plan.py`
   (`--self-test`), not in the shell.
+- The table lint (`scripts/parity/lint_scenario_facts.py`) has its own
+  `--self-test`, which runs every rule over synthetic tables and pins each
+  verdict exactly; it is wired as the ctest entry
+  `lint_scenario_facts_selftest`. Add a case there for any rule you add
+  before you trust that rule on the real table.
 - Rows are GROUPED BY PIN, not by row: the group key is the pin's whole
   tuple (file, line, from, to, context_before), so 63 C++ rows sharing 32
   pins pay 32 mutations instead of 63, while two sibling pins that sit on

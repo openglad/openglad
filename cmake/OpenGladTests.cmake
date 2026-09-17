@@ -1643,6 +1643,40 @@ set_tests_properties(check_script_roots_selftest PROPERTIES
     TIMEOUT 60
 )
 
+# The parity table lint runs eleven rules, nine of them inline loops inside
+# run_lint(), and its own OK line cannot tell you one of them stopped running:
+# a rule dropped from the concatenation at the end of run_lint() leaves the
+# lint saying OK on the real table just as loudly as before. `--self-test`
+# drives every rule over synthetic tables in a temp repo root and pins the
+# exact (rc, stdout, stderr) of each verdict, plus the 0/1/2 exit contract --
+# exact, because an "at least one error" expectation stays green while a
+# broken rule says nothing and a neighbour speaks for it. Guarded on the
+# interpreter rather than registered unconditionally: the script is executable
+# with a python3 shebang, so an empty ${Python3_EXECUTABLE} would silently
+# fall back to whatever python3 is on PATH, and the else branch fails naming
+# the interpreter it could not find instead of vanishing quietly.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME lint_scenario_facts_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/parity/lint_scenario_facts.py
+            --self-test
+    )
+else()
+    add_test(NAME lint_scenario_facts_selftest
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "lint_scenario_facts_selftest: this self-test needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+    )
+    set_tests_properties(lint_scenario_facts_selftest PROPERTIES
+        FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+    )
+endif()
+set_tests_properties(lint_scenario_facts_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 # The counter box's wave row was renamed in PR #292 (0464c673) and the prose
 # that named it by the old label was left pointing at a row that no longer
 # exists -- in campaign READMEs, mapgen comments and test comments, three of
