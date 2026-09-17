@@ -16,6 +16,7 @@
 #include <SDL3/SDL.h>
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -28,6 +29,7 @@
 #include <openglad/platform/video_sdl.h>
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -126,6 +128,10 @@ int fades_after(const std::vector<TraceEntry>& entries, const char* category,
 struct FlowState {
     bool started = false;
     bool finished = false;
+    // The stage whose wait this run points at an id nothing publishes, so the
+    // escape tail is the only thing that can free the main thread. 0 = the
+    // real flow.
+    int sabotage_stage = 0;
     bool saw_name_entry = false;
     bool saw_base_camp = false;
     // Published by the test body the instant picker_main returns, read by the
@@ -160,47 +166,22 @@ bool wait_for_team_menu(int timeout_ms)
 // with rc=124 that names no test (B1). The tail says which stage died, then
 // clicks its way out — BACK when the live screen publishes one, else QUIT —
 // until the test body publishes main_left, with no wall-clock bound
-// (openglad-test-integrity "Tests that hang" §1; G2's tail in
-// tests/integration/test_company_list.cpp is the shape).
+// (openglad-test-integrity "Tests that hang" §1; the one implementation is
+// tests/test_escape_tail.h).
 //
 // The exit id is a list: the main menu's QUIT, and the BACK that name entry
-// and Base Camp both carry. A tail that finds none of them says so in the log
-// every ~5 s, naming the live button ids, instead of spinning silently — the
-// failure mode that cost a 900 s hang while this package was being proven
-// (the sibling flow in test_seat_chip.cpp met a screen whose door is
-// "seat_settings_back").
-constexpr const char* kExitIds[] = {"back", "quit"};
+// and Base Camp both carry. QUIT is bound HERE and not in the shared header's
+// default table because this flow runs under a main-menu cap of 1, where the
+// default's forward route (CONTINUE -> Base Camp -> BACK) would cycle past a
+// cap that is never reached.
+constexpr EscapeDoor kNewGameEscapeDoors[] = {{"back", "back"},
+                                              {"quit", "quit"}};
 
 int abort_flow(FlowState* state, int stage)
 {
-    fprintf(stderr,
-            "  [test] FLOW ABORT at stage %d — unwinding so picker_main can "
-            "return\n",
-            stage);
-    int spins = 0;
-    while (!state->main_left.load())
-    {
-        for (const char* exit_id : kExitIds)
-        {
-            if (has_interactable(exit_id))
-            {
-                interact(exit_id);
-                break;
-            }
-        }
-        (void)wait_for_menu_frames(1, 250);
-        if (++spins % 20 == 0)
-        {
-            std::string ids;
-            for (const std::string& id : get_button_ids())
-                ids += id + " ";
-            fprintf(stderr,
-                    "  [test] escape tail still spinning after %d frames; "
-                    "live ids: %s\n",
-                    spins, ids.c_str());
-        }
-    }
-    return stage;
+    return escape_to_the_main_thread(
+        state->main_left, stage, "a wait died; the stage ids above name it",
+        kNewGameEscapeDoors);
 }
 
 // The exit click has nobody left to notice it, so it is a condition too:
@@ -208,24 +189,10 @@ int abort_flow(FlowState* state, int stage)
 // main_left, every re-send logged.
 int finish_flow(FlowState* state, const char* exit_id)
 {
-    interact(exit_id);
-    int attempts = 1;
-    while (!state->main_left.load())
-    {
-        (void)wait_for_menu_frames(1, 250);
-        if (state->main_left.load())
-            break;
-        if (!has_interactable(exit_id))
-            continue;  // the screen took it; picker_main is unwinding
-        ++attempts;
-        fprintf(stderr,
-                "  [test] exit click '%s' not consumed — re-sending "
-                "(attempt %d)\n",
-                exit_id, attempts);
-        interact(exit_id);
-    }
+    const EscapeDoor door[] = {{exit_id, exit_id}};
+    const int leg = escape_to_the_main_thread(state->main_left, 0, "", door);
     state->finished = true;
-    return 0;
+    return leg;
 }
 
 int count_fade_between_traces()
@@ -246,7 +213,14 @@ int new_game_full_flow_injector(void* data)
     // immediately after these settles, and a completed frame proves the
     // incoming screen composed, where the flat 750 ms sleep it replaced was
     // waiting out a fadeblack animation a TESTING build never runs.
-    if (!wait_for_interactable("begin_new_game", 5000))
+    //
+    // The sabotaged run points this wait at an id nothing publishes: the main
+    // menu stays up with nobody left to click it, which is exactly the shape
+    // the tail exists for.
+    const bool sabotage_stage_one = state->sabotage_stage == 1;
+    if (!wait_for_interactable(
+            sabotage_stage_one ? "never_published_door" : "begin_new_game",
+            sabotage_stage_one ? 500 : 5000))
         return abort_flow(state, 1);
     if (!wait_for_menu_frames(2))
         return abort_flow(state, 4);
@@ -303,6 +277,7 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
 
     int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
@@ -366,4 +341,56 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
         << (og::video_testing::fade_violation_messages().empty()
                 ? std::string()
                 : og::video_testing::fade_violation_messages().front());
+}
+
+// The other half of the same pin, and the reason abort_flow exists: a wait
+// that dies leaves picker_main blocked on the main menu with nobody left to
+// click it, which before the tail was the 420 s group TIMEOUT with rc=124
+// that names no test (B1). Stage 1's wait is pointed at an id nothing
+// publishes, so the ONLY thing that can end this test is the tail walking the
+// main menu out through QUIT.
+TEST(FadeOwnership, a_stalled_wait_escapes_the_main_menu)
+{
+    trace_clear();
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    const auto started = std::chrono::steady_clock::now();
+    FlowState state;
+    state.sabotage_stage = 1;
+    SDL_Thread* thread = SDL_CreateThread(new_game_full_flow_injector,
+                                          "new_game_stalled", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.main_left.store(true);
+
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    const long long elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started)
+            .count();
+
+    ASSERT_EQ(1, thread_result)
+        << "a stalled injector must return the stage id of the wait that "
+           "died, not the happy path's 0";
+    EXPECT_FALSE(state.saw_name_entry)
+        << "the flow gave up before BEGIN NEW GAME, so name entry never ran";
+    EXPECT_FALSE(state.saw_base_camp)
+        << "nothing downstream of the dead wait may have been measured";
+    EXPECT_EQ(-1, state.fades_added_by_name_entry)
+        << "leg 1 was never read, so its pin must stay at the never-reached "
+           "sentinel instead of counting 0 fades";
+    ASSERT_LT(elapsed_ms, 30000)
+        << "the stalled flow must unwind in seconds (it took " << elapsed_ms
+        << " ms); without the tail this shape ran to the 420 s group timeout";
 }

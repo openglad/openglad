@@ -30,6 +30,7 @@
 #include <openglad/resources/save_data.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -230,11 +231,11 @@ int count_fade_between_traces()
 // says which wait died and then clicks its way out — BACK when the live
 // screen publishes one, else QUIT — until run_company_list_flow's main_left
 // flag says picker_main has returned. The loop carries NO wall-clock bound on
-// purpose (openglad-test-integrity "Tests that hang" §1; the precedent is the
-// tail at tests/integration/test_pause_menu.cpp:3790): a tail that gave up
-// would leave the main thread blocked forever, which is the hang it exists to
-// prevent. Every flow test asserts ASSERT_EQ(0, rc), so a stranded flow is a
-// NAMED failure carrying the stage that stalled instead of a group timeout.
+// purpose (openglad-test-integrity "Tests that hang" §1; the rule lives in
+// tests/test_escape_tail.h): a tail that gave up would leave the main thread
+// blocked forever, which is the hang it exists to prevent. Every flow test
+// asserts ASSERT_EQ(0, rc), so a stranded flow is a NAMED failure carrying
+// the stage that stalled instead of a group timeout.
 //
 // Stage ids are <injector ordinal>*100 + <wait ordinal>: unique across the
 // file, so the number in the message says which wait of which flow died.
@@ -333,22 +334,21 @@ constexpr int kStageContinueCorruptRowSettle = 1104;
 constexpr int kStageContinueCorruptMainMenu = 1105;
 constexpr int kStageContinueCorruptMainMenuSettle = 1106;
 
+// QUIT is a door of THIS file's table and not of the shared default: these
+// flows run under a main-menu cap of 1 or 2, so the default's forward route
+// (CONTINUE -> Base Camp -> BACK) would cycle past a cap that is never
+// reached, and corrupt_backup_injector must quit a re-entered main menu.
+constexpr EscapeDoor kCompanyListEscapeDoors[] = {{"back", "back"},
+                                                  {"quit", "quit"}};
+
 int abort_flow(FlowState* state, int stage)
 {
     state->stage = stage;
-    fprintf(stderr,
-            "  [test] FLOW ABORT at stage %d — unwinding so picker_main can "
-            "return\n",
-            stage);
-    while (!state->main_left.load()) {
-        if (has_interactable("back"))
-            interact("back");
-        else if (has_interactable("quit"))
-            interact("quit");
-        (void)wait_for_menu_frames(1, 250);
-    }
+    const int leg = escape_to_the_main_thread(
+        state->main_left, stage, "a wait died; the stage legend above names it",
+        kCompanyListEscapeDoors);
     state->finished = true;
-    return stage;
+    return leg;
 }
 
 // --- the exit click ---------------------------------------------------------
@@ -370,23 +370,10 @@ int abort_flow(FlowState* state, int stage)
 // evidence instead of a mystery.
 int finish_flow(FlowState* state, const char* exit_id)
 {
-    interact(exit_id);
-    int attempts = 1;
-    while (!state->main_left.load()) {
-        (void)wait_for_menu_frames(1, 250);
-        if (state->main_left.load())
-            break;
-        if (!has_interactable(exit_id))
-            continue;  // the screen took it; picker_main is unwinding
-        ++attempts;
-        fprintf(stderr,
-                "  [test] exit click '%s' not consumed — re-sending "
-                "(attempt %d)\n",
-                exit_id, attempts);
-        interact(exit_id);
-    }
+    const EscapeDoor door[] = {{exit_id, exit_id}};
+    const int leg = escape_to_the_main_thread(state->main_left, 0, "", door);
     state->finished = true;
-    return 0;
+    return leg;
 }
 
 // --- settles and handshakes -------------------------------------------------
@@ -926,6 +913,7 @@ int run_company_list_flow(int (*injector)(void*), FlowState& state,
     state.main_left.store(true);
     int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
     return thread_result;

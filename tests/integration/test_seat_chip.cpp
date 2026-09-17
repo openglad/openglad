@@ -18,10 +18,12 @@
 #include <openglad/resources/save_data.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
 #include <atomic>
+#include <chrono>
 #include <string>
 
 // Forward declarations from picker.cpp.
@@ -105,6 +107,10 @@ bool click_seat_card_chip(const std::string& id)
 struct SeatChipFlowState {
     bool started = false;
     bool finished = false;
+    // The stage whose wait this run points at an id nothing publishes, so the
+    // escape tail is the only thing that can free the main thread. 0 = the
+    // real flow.
+    int sabotage_stage = 0;
     bool saw_base_camp = false;
     bool saw_first_cycle = false;
     bool saw_second_cycle = false;
@@ -148,47 +154,29 @@ constexpr int kStageEditorReturnSettle = 114;
 // rc=124, naming no test (B1). The tail says which wait died, then clicks its
 // way out of whatever screen is up, until the test body publishes main_left.
 // No wall-clock bound on purpose (openglad-test-integrity "Tests that hang"
-// §1; the precedent is tests/integration/test_pause_menu.cpp and G2's tail in
-// tests/integration/test_company_list.cpp): a tail that gave up would strand
-// the thread it exists to release.
+// §1; the one implementation is tests/test_escape_tail.h): a tail that gave
+// up would strand the thread it exists to release.
 //
 // Which is why the exit id is a LIST, most specific first. The seat editor's
 // door is "seat_settings_back", NOT "back" — proven, not theorised: the
 // chip-zone planted break that proves this test's teeth opens the editor on
 // the chip click, and the first draft of this tail, which knew only "back",
 // spun there for the full 900 s.
-constexpr const char* kExitIds[] = {"back", "seat_settings_back", "quit"};
+//
+// QUIT is bound HERE and not in the shared header's default table: this flow
+// runs under a main-menu cap of 1, where the default's forward route
+// (CONTINUE -> Base Camp -> BACK) would cycle past a cap that is never
+// reached.
+constexpr EscapeDoor kSeatChipEscapeDoors[] = {
+    {"back", "back"},
+    {"seat_settings_back", "seat_settings_back"},
+    {"quit", "quit"}};
 
 int abort_flow(SeatChipFlowState* state, int stage)
 {
-    fprintf(stderr,
-            "  [test] FLOW ABORT at stage %d — unwinding so picker_main can "
-            "return\n",
-            stage);
-    int spins = 0;
-    while (!state->main_left.load()) {
-        for (const char* exit_id : kExitIds) {
-            if (has_interactable(exit_id)) {
-                interact(exit_id);
-                break;
-            }
-        }
-        (void)wait_for_menu_frames(1, 250);
-        // A screen with no exit this tail knows would otherwise be a silent
-        // spin. Every ~5 s, name what IS on screen, so the log says which
-        // screen stranded the flow instead of going quiet until the group
-        // timeout.
-        if (++spins % 20 == 0) {
-            std::string ids;
-            for (const std::string& id : get_button_ids())
-                ids += id + " ";
-            fprintf(stderr,
-                    "  [test] escape tail still spinning after %d frames; "
-                    "live ids: %s\n",
-                    spins, ids.c_str());
-        }
-    }
-    return stage;
+    return escape_to_the_main_thread(
+        state->main_left, stage, "a wait died; the stage ids above name it",
+        kSeatChipEscapeDoors);
 }
 
 // The exit click has nobody left to notice it, so it is a condition too:
@@ -197,23 +185,10 @@ int abort_flow(SeatChipFlowState* state, int stage)
 // group timeout arriving through the happy path.
 int finish_flow(SeatChipFlowState* state, const char* exit_id)
 {
-    interact(exit_id);
-    int attempts = 1;
-    while (!state->main_left.load()) {
-        (void)wait_for_menu_frames(1, 250);
-        if (state->main_left.load())
-            break;
-        if (!has_interactable(exit_id))
-            continue;  // the screen took it; picker_main is unwinding
-        ++attempts;
-        fprintf(stderr,
-                "  [test] exit click '%s' not consumed — re-sending "
-                "(attempt %d)\n",
-                exit_id, attempts);
-        interact(exit_id);
-    }
+    const EscapeDoor door[] = {{exit_id, exit_id}};
+    const int leg = escape_to_the_main_thread(state->main_left, 0, "", door);
     state->finished = true;
-    return 0;
+    return leg;
 }
 
 int seat_chip_injector(void* data)
@@ -228,7 +203,14 @@ int seat_chip_injector(void* data)
     // replaced were waiting for a fadeblack animation that a TESTING build
     // never runs (FadeBetween is a single SDL_BlitSurface — the #ifdef TESTING
     // branch of src/platform/sdl/video_sdl.cpp).
-    if (!wait_for_interactable("begin_new_game", 5000))
+    //
+    // The sabotaged run points this wait at an id nothing publishes: the main
+    // menu stays up with nobody left to click it, which is exactly the shape
+    // the tail exists for.
+    const bool sabotage_main_menu = state->sabotage_stage == kStageMainMenu;
+    if (!wait_for_interactable(
+            sabotage_main_menu ? "never_published_door" : "begin_new_game",
+            sabotage_main_menu ? 500 : 5000))
         return abort_flow(state, kStageMainMenu);
     if (!wait_for_menu_frames(2))
         return abort_flow(state, kStageMainMenuSettle);
@@ -315,6 +297,7 @@ TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
     state.main_left.store(true);
     int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
@@ -343,4 +326,50 @@ TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
         << "BEGIN NEW GAME must repoint the active company to the slug it "
            "derived from the generated name, not leave it on the default "
            "save0";
+}
+
+// The tail itself, pinned: a wait that dies leaves picker_main blocked on the
+// main menu with nobody left to click it — before the tail, the 420 s group
+// TIMEOUT with rc=124 that names no test (B1). The kStageMainMenu wait is
+// pointed at an id nothing publishes, so the only thing that can end this
+// test is the tail walking the main menu out through QUIT.
+TEST(SeatChip, a_stalled_wait_escapes_the_main_menu)
+{
+    trace_clear();
+
+    const auto started = std::chrono::steady_clock::now();
+    SeatChipFlowState state;
+    state.sabotage_stage = kStageMainMenu;
+    SDL_Thread* thread =
+        SDL_CreateThread(seat_chip_injector, "seat_chip_stalled", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.main_left.store(true);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    const long long elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started)
+            .count();
+
+    ASSERT_EQ(kStageMainMenu, thread_result)
+        << "a stalled injector must return the stage id of the wait that "
+           "died, not the happy path's 0";
+    ASSERT_TRUE(state.started);
+    EXPECT_FALSE(state.saw_base_camp)
+        << "the flow gave up on the main menu, so Base Camp never opened";
+    EXPECT_FALSE(trace_contains("basecamp", "seat_team player=1 team=2"))
+        << "no chip was ever clicked, so no seat may have cycled";
+    EXPECT_FALSE(trace_contains("basecamp", "seat_team player=1 team=3"))
+        << "no chip was ever clicked, so no seat may have cycled";
+    ASSERT_LT(elapsed_ms, 30000)
+        << "the stalled flow must unwind in seconds (it took " << elapsed_ms
+        << " ms); without the tail this shape ran to the 420 s group timeout";
 }
