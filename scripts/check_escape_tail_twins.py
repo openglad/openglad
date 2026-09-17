@@ -23,6 +23,9 @@ loop whose ENTIRE condition is one negated atomic load,
 
 with nothing else in the condition -- no deadline, no elapsed, no second
 predicate -- whose body presses: interact(, interact_framed( or inject_click(.
+Redundant parentheses around the load are ignored, so `while (!(x.load()))`
+and `while (!((x.load(std::memory_order_acquire))))` are the same sole negated
+load as the line above; a bracket is spelling, not a bound.
 A loop matching both halves is doing the shared header's job by hand.
 
 WHY THE BODY SCAN IS BRACE-MATCHED, not a window of N lines after the loop:
@@ -162,6 +165,14 @@ def is_sole_negated_load(cond):
     if not cond.startswith("!"):
         return False
     rest = cond[1:].strip()
+    # `!(x.load())` and `!((x.load(std::memory_order_acquire)))` say exactly
+    # what `!x.load()` says; redundant parentheses around the load are stripped
+    # the same way the condition's own outer parentheses are, so a twin cannot
+    # be hidden behind a pair of brackets. Only BALANCED parentheses wrapping
+    # the whole of `rest` come off, so `!(a && b.load())` keeps its operator
+    # and is still rejected below.
+    while rest.startswith("(") and match_delim(rest, 0, "(", ")") == len(rest) - 1:
+        rest = rest[1:-1].strip()
     marker = rest.find(".load")
     if marker < 0:
         return False
@@ -374,6 +385,15 @@ static void escape_raw(std::atomic<bool>& x) {
 }
 """
 
+TWIN_PAREN = """
+static void escape_paren(std::atomic<bool>& x) {
+    while (!(x.load())) {
+        interact("back");
+        SDL_Delay(50);
+    }
+}
+"""
+
 
 def _write(root, rel, text):
     path = pathlib.Path(root) / rel
@@ -457,6 +477,13 @@ def self_test():
         root8 = os.path.join(tmp, "case8")
         _write(root8, "tests/integration/twin_raw.cpp", TWIN_INJECT_CLICK)
         ok &= _case(8, root8, 1, "presses '?'")
+
+        # 9: a twin whose load wears redundant parentheses. `!(x.load())` is
+        # the same unbounded spin as `!x.load()`, so a bracket must not buy an
+        # exemption.
+        root9 = os.path.join(tmp, "case9")
+        _write(root9, "tests/integration/twin_paren.cpp", TWIN_PAREN)
+        ok &= _case(9, root9, 1, "presses 'back'")
     if not ok:
         return 1
     print("check_escape_tail_twins --self-test: all cases PASS")
