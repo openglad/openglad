@@ -761,8 +761,10 @@ modes schedule through `og.respawn_schedule` (eligibility is Lua's) and repositi
 `on_respawn`; corpses persist in `oblist` so control bindings and per-player save merging
 survive, and team wipes never end an undecided scripted match.
 
-`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v11,
-protocol v15, replay v17), so mirrors, late joiners, replays, and the curses/text HUDs need no
+`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (introduced at
+snapshot v11 / protocol v15 / replay v17; the live triple is `kSnapshotFormatVersion`,
+`kNetworkProtocolVersion` and `kReplayFormatVersion` in include/openglad/gameplay/), so
+mirrors, late joiners, replays, and the curses/text HUDs need no
 extra wire messages — a mid-join keyframe restore carries a running match. Match settings
 (`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops`, and the
 match clock `time_limit` in sim ticks — the storage names keep their historical prefix; Lua
