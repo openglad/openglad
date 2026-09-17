@@ -3189,7 +3189,7 @@ TEST(WorldSnapshot, install_seed_apply_keeps_dormant_walkers_out_of_the_obmap)
     EXPECT_EQ(nullptr, world.find_far_foe(rehero))
         << "a dormant walker must not be targetable";
 
-    // NEXT WAVE HUD inputs are untouched by intangibility: the walker is
+    // WAVE HUD inputs are untouched by intangibility: the walker is
     // still oblist-resident, dormant, with its authored delay (that is all
     // pending_hostile_wave_counts reads).
     EXPECT_EQ(2u, static_cast<unsigned>(survivor->spawn_delay()));

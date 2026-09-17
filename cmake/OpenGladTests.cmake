@@ -1643,6 +1643,37 @@ set_tests_properties(check_script_roots_selftest PROPERTIES
     TIMEOUT 60
 )
 
+# The counter box's wave row was renamed in PR #292 (0464c673) and the prose
+# that named it by the old label was left pointing at a row that no longer
+# exists -- in campaign READMEs, mapgen comments and test comments, three of
+# them with the label wrapped across a line break where no grep could see it.
+# check_retired_hud_labels keeps the old label retired; its self-test drives
+# the gate over temp trees and pins the wrap-aware match, the allowlist's
+# count arms and all three exit codes (0 clean, 1 violation named by
+# path:line, 2 cannot run). A ctest entry rather than a build dependency:
+# READMEs and skills are not build inputs, so there is nothing to hang them
+# off, and check_script_roots_selftest above is the precedent for a bash-only
+# entry. Unconditional -- bash and the scripts are all either one needs.
+add_test(NAME check_retired_hud_labels
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/check_retired_hud_labels.sh
+)
+set_tests_properties(check_retired_hud_labels PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+add_test(NAME check_retired_hud_labels_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_retired_hud_labels.sh
+)
+set_tests_properties(check_retired_hud_labels_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 # Same duty for the escape-tail gate, whose verdicts are a parse rather than a
 # grep: the synthetic cases pin all three exit codes (0 clean, 1 twin
 # named by path:line and the id it presses, 2 cannot run) and, just as

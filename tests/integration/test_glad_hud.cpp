@@ -1621,7 +1621,7 @@ TEST_F(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
         << "one awake foe, one pending wave, 49 ticks -> 5 s at 12 Hz";
 
     // Once the wave wakes there is nothing pending: classic FOES readout,
-    // no NEXT WAVE line.
+    // no WAVE line.
     wavep->set_dormant(false);
     trace_clear();
     s->clearbuffer();
@@ -1682,7 +1682,7 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
         << "a foe awaiting its respawn timer is a pending wave, not FOES: 0";
 
     // The end-of-level flush clears the queue (every end shape does): the
-    // classic FOES readout returns with no NEXT WAVE line.
+    // classic FOES readout returns with no WAVE line.
     world.respawn.respawn_queue.clear();
     trace_clear();
     s->clearbuffer();

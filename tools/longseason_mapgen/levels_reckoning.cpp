@@ -585,7 +585,7 @@ void build_settlement_day(const LevelDataHooks& hooks)
     place_living(w, FAMILY_ORC, 2, 0, 20, 7, 3, true);
     place_living(w, FAMILY_ORC, 2, 0, 24, 7, 3, true);
     // The marsh gives one more push at dusk (tick 300 — the HUD's last
-    // NEXT WAVE is the year's smallest fight).
+    // WAVE countdown is the year's smallest fight).
     static constexpr int dusk_push[4][2] = {
         {14, 26}, {22, 26}, {30, 26}, {38, 25}};
     for (const auto& d : dusk_push)

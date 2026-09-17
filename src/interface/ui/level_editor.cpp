@@ -1252,8 +1252,8 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     else if(button == &delayButton)
     {
         // Wave authoring: how many sim ticks past level start this object
-        // stays asleep. The sim runs 12 ticks/second, matching the "NEXT
-        // WAVE: Ns" HUD countdown. Ticks (not seconds) are the unit here so a
+        // stays asleep. The sim runs 12 ticks/second, matching the "WAVE:
+        // Ns" HUD countdown. Ticks (not seconds) are the unit here so a
         // mapgen-authored value round-trips exactly through a re-save.
         //
         // In Object mode the prompt edits the brush (every object placed

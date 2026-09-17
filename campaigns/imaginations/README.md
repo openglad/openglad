@@ -122,7 +122,7 @@ foes + 3 generators + 2 timed waves, sea-mist sight cap, level-2 Sea
 Wizard): PASS — the 8-mixed gate roster cleared all foes on every seed
 between ticks 870 and 996 with 7-8 of 8 alive. The isle stays a gentle
 opener despite its size: the drama lives in the staged assault —
-causeway sentries, the bailey, the keep, the throne, and the NEXT-WAVE
+causeway sentries, the bailey, the keep, the throne, and the delayed-spawn
 reliefs at ticks 500/800 — not in attrition. (Design history: a
 mid-court garrison variant wiped the 4-soldier stand-in — staggered
 posts fixed it; walkable reef islets let teleporting foes strand the

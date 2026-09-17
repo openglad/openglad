@@ -58,7 +58,7 @@ void marsh_over_grass(PixieData& g, int tx0, int ty0, int tx1, int ty1)
 // grain) to keep. Dike wolves rush the yard immediately; the crew walks the
 // dike and pokes out three dead-end slime spurs; the granary rats are a
 // held door-fight; at tick 400 two lvl-2 big slimes wake at the north pool
-// — the NEXT WAVE HUD's first appearance. Gentle opener: the Wave-F
+// — the WAVE HUD's first appearance. Gentle opener: the Wave-F
 // contract starts a FRESH team here (gates at crew 1). Kill-all, then walk
 // the east road out.
 void build_mud_pay(const LevelDataHooks& hooks)

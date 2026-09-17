@@ -1116,7 +1116,7 @@ static int editor_spawn_delay_injector(void* data)
 } // namespace
 
 // The delayed-spawn field (.fss v10 spawn_delay) already drives the sim and
-// the "NEXT WAVE" HUD; this pins the editor control that authors it.
+// the "WAVE: Ns" HUD row; this pins the editor control that authors it.
 TEST(LevelEditorInteractions, level_editor_delay_button_authors_spawn_delay)
 {
     og::runtime::current_session->myscreen_->world().end = 0;

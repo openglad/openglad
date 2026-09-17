@@ -30,7 +30,7 @@ namespace {
 // across two hedged field strips and a stream ford, ending at the russet
 // palisade. Three spaced fights west-to-east, a short guard fight at the
 // gate, and a tick-500 reserve that wakes BEHIND the line of advance — the
-// summer act's NEXT WAVE lesson. Kill-all, then walk the russet muster
+// summer act's WAVE HUD lesson. Kill-all, then walk the russet muster
 // road on. Curve: crew 3 (the summer step up).
 void build_two_banners(const LevelDataHooks& hooks)
 {

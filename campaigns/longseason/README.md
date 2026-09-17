@@ -242,8 +242,8 @@ winnability.
 - Structural sweeps everywhere: no sides that never engage, no generator
   flooding (trickle levels only — the F4 obmap-fix lesson: a lvl-5+
   generator outbreeds a curve crew), no waves landing after the battle
-  is decided, delayed spawns hold level_done open and show in the NEXT
-  WAVE HUD.
+  is decided, delayed spawns hold level_done open and show in the WAVE
+  HUD.
 
 A cheap CI test pins this table (crew-power column + gate type per
 level), westlands-style; the longseason_mapgen ExpectedLevel rows and the
@@ -438,7 +438,7 @@ Cast: The Sergeant (player-facing narrator voice in briefings, never placed),
 "The Reeve" (15, SAVE_ALL), the Foundry Master (18, named enemy archmage).
 
 Uses everything we built: marsh/snow/lava/ash tiles, Snow weather, decor
-set-dressing per season, guards, delayed waves + NEXT WAVE UI, multifloor,
+set-dressing per season, guards, delayed waves + WAVE HUD, multifloor,
 SAVE_ALL, CAN_EXIT runs, hub branches, withdraw-as-declining-work.
 Calibration: Wave F method from day one — fresh team beats 1-2 at L1.
 
@@ -592,7 +592,7 @@ the later warm coin will be measured against.
 - Battle shape: 4 dike wolves rush the yard immediately; the crew then
   walks the dike and pokes out the three slime spurs (dead-end pocket
   clears, no flank risk); granary rats are a held door-fight; at tick
-  400 the two lvl-2 big slimes wake at the pool — the NEXT WAVE HUD's
+  400 the two lvl-2 big slimes wake at the pool — the WAVE HUD's
   first appearance, and the level's only "twist".
 - Gate (kill-all, curve crew 1, Wave-F method): 8-mixed roster clears
   (level_done==1) within 6000 ticks on >=2/3 seeds @crew 1 AND 3/3
@@ -1305,7 +1305,7 @@ is the summer step up). Battle shape: three spaced fights west-to-east
 (pickets -> ford mercs -> strip B + archer hedge), then a short guard fight
 at the gate (sergeant + 2 archers never leave their posts, so the whole map
 never piles on). The tick-500 reserve wakes behind the crew's line of
-advance and holds level_done open — the NEXT WAVE HUD teaches waves here.
+advance and holds level_done open — the WAVE HUD teaches waves here.
 
 Calibration gate (kill-all, curve 3): 8-mixed roster reaches level_done==1
 within 6000 ticks on >=2/3 seeds at crew 3 AND 3/3 at crew 4; crew 2 may
@@ -2136,7 +2136,7 @@ Named enemy (place_living + the L8 "Long Tom" place_named_foe helper):
 Totals: 33 team-2 livings (28 placed + 4 night shift + The Miller) +
 1 team-0 ally = 34 livings; 0 generators (finite kill-all set-piece, per
 the flood lesson); 4 delayed spawns hold level_done open and show in the
-NEXT WAVE HUD.
+WAVE HUD.
 MAXOBS ledger: 34 livings + 0 gens + 10 markers + 16 treasures + 2 exits
 = 62 objects; huge headroom under 150.
 
@@ -2309,7 +2309,7 @@ Generators:
 | the seams wake (dormant, posted) | GHOST | 2 | 6 | YES | (40,12),(36,32) | 700 |
 
 Totals: f1 15 + f0 24 = 39 team-2 livings + 1 BONES generator (lvl 3);
-0 team-0; 4 delayed spawns (NEXT WAVE HUD at tick 700).
+0 team-0; 4 delayed spawns (WAVE HUD at tick 700).
 MAXOBS ledger: 39 livings + 1 gen + 10 markers + 21 treasures + 3 exits
 = 74 objects; ~76 headroom covers the generator's trickle.
 
@@ -2484,7 +2484,7 @@ north gate ward (22,13) do not overlap (cols 22-25 vs 27-30); the Count
 (29-32) and the honor guard (24-27) share the rotunda without collision.
 
 Totals: 33 team-2 livings (18 SKELETON + 8 GHOST + 7 GIANT_SKELETON);
-0 team-0; 0 generators; 4 delayed spawns (tick 800, NEXT WAVE HUD).
+0 team-0; 0 generators; 4 delayed spawns (tick 800, WAVE HUD).
 MAXOBS ledger: 33 livings + 0 gens + 9 markers + ~40 treasures (~16
 rotunda bars + 8 corner + 6 gallery + 6 drumsticks + 3 potions + 1
 invulnerable) + 2 exits = ~84 objects; comfortable under 150.
@@ -2683,7 +2683,7 @@ Generators:
 | TENT | 2 | 3 | (36,37) — 3x3 (36-38, 37-39), the terrace-3 bandit camp | CAN_EXIT means the trickle pressures but can never block the win; lvl 3 per the flood lesson |
 
 Totals: 37 team-2 livings + 4 team-0 = 41 livings + 1 generator;
-10 delayed spawns (NEXT WAVE HUD ticks 400/800 — the pursuit is on a
+10 delayed spawns (WAVE HUD ticks 400/800 — the pursuit is on a
 visible clock behind the convoy).
 MAXOBS ledger: 41 + 1 gen + 10 markers + 11 treasures + 2 exits = 65;
 plenty of headroom for the tent's trickle.
@@ -2894,7 +2894,7 @@ Generators:
 | BONES (ghosts — the frozen watch rises) | 2 | 3 | (9,7) gully pocket | LOW level: the post-obmap-fix rule (a lvl-5+ generator outbreeds a curve crew); destroying it is the kill-all's last errand |
 
 Totals: team 0 = 6 livings; team 2 = 35 livings + 1 generator.
-Delayed spawns: 27 (waves at 300/700/1200/1800 — dormant, NEXT WAVE HUD,
+Delayed spawns: 27 (waves at 300/700/1200/1800 — dormant, WAVE HUD,
 they hold level_done open so the hold cannot end early). MAXOBS ledger:
 41 livings + 1 gen + 10 markers + 2 exits + 6 treasures = 60 objects;
 authored livings 41 << 120 budget, generator output has ample headroom.
@@ -3108,7 +3108,7 @@ every pack here is BOUNDED, and wave 4 "empties" the den for good.
 
 Totals: team 0 = 7 livings (1 named); team 2 = 32 livings; 0 generators.
 Delayed spawns: 24 across four dusk waves (400/900/1500/2200 — dormant,
-NEXT WAVE HUD counts the packs down, level_done held open until the den
+WAVE HUD counts the packs down, level_done held open until the den
 empties). MAXOBS ledger: 39 livings + 10 markers + 2 exits + 8 treasures
 = 59 objects; far under budget.
 
@@ -3166,7 +3166,7 @@ old man alive till he says it.    (30)
 
 Lines 3-5 are the act's warm-coin thread AND the skeleton's beat: the
 Reeve knows the mint's ledgers. The dusk-wave mechanic is deliberately
-NOT in the briefing (the NEXT WAVE HUD teaches it); the ledger cares
+NOT in the briefing (the WAVE HUD teaches it); the ledger cares
 about the pay and the client.
 
 #### BALANCE NOTES / CALIBRATION GATE (curve position: crew 7)
@@ -3330,7 +3330,7 @@ lane, so the footing audit passes and every living is A*-reachable from
 the lead marker; self-check reachability allowlist EMPTY.
 
 Totals: team 2 = 26 livings; 0 generators; team 0 places nothing.
-Delayed spawns: 10 (350/700/1000 — dormant, NEXT WAVE HUD reads as the
+Delayed spawns: 10 (350/700/1000 — dormant, WAVE HUD reads as the
 ice groaning behind). MAXOBS ledger: 26 livings + 10 markers + 2 exits +
 7 treasures = 45 objects; huge headroom (a run level stays light).
 
@@ -3913,7 +3913,7 @@ the war, a punishment but not a death), and the rim duel: two lvl-9
 elementals, two crucible ghosts, then The Founder at the book. Wave
 beats: the furnace dead (t2, 400) wake as the crew crosses the casting
 floor; the second creditor push (t1, 600) forces the doors behind them —
-the NEXT WAVE HUD carries the finale's dread.
+the WAVE HUD carries the finale's dread.
 
 Calibration gates (exit type, curve 8; brackets {7,8,9} x 3 seeds x 2
 rosters):
@@ -3937,7 +3937,7 @@ rosters):
 - All 9 upstairs guards (4+2 golems... precisely: heap golems 4, clerks
   2, rim elementals 2, The Founder 1) alive at 300.
 - Delayed round-trip: 12 dormant at 300 (6 t2 @400, 6 t1 @600), holding
-  level_done open; NEXT WAVE HUD shows the t2 wave first.
+  level_done open; WAVE HUD shows the t2 wave first.
 - Static pins: floors=3, grid 64x44, 10 markers, t0 livings 1, t1
   livings 28 (±3), t2 livings 33 (±3), 1 generator, exits dests {19,17},
   aligned stair pairs at (57,21) and (9,21), footing audit clean (the
@@ -4088,7 +4088,7 @@ curve table pins it as such). Level type: **kill-all**.
 
 Battle shape: a victory lap with a pulse. Six lvl-2/3 dike vermin meet
 the crew on the embankment; four marsh slimes ooze up from the south;
-at tick 300 four more wake at the marsh edge (a token NEXT WAVE beat so
+at tick 300 four more wake at the marsh edge (a token WAVE countdown beat so
 the HUD's last use is the year's smallest fight). The two granary orcs
 are ACT_GUARD door-squatters — the last "boss" of the campaign is two
 rats in the grain, on purpose.

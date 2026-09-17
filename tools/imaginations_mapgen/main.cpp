@@ -206,7 +206,7 @@ void save_level_files(GameWorld& world, int id, const char* title,
 //                    carpet dais at 30..33 where the Sea Wizard waits
 //                    between his bodyguards
 // Reinforcement waves sleep in the bailey and the court (spawn_delay)
-// and wake mid-assault with the NEXT WAVE flash. A flight potion near
+// and wake mid-assault with the WAVE HUD flash. A flight potion near
 // the south landing offers the "very magical" alternative — fly the
 // moat and the wall face straight into the court — and the reef islets
 // hold flight-gated treasure for whoever keeps wings long enough.
@@ -350,7 +350,7 @@ void build_raspberry_isle()
         boss->stats()->name = "Sea Wizard"; // 10 chars: fits the 11-char field
     og::mapgen::place_living(w, FAMILY_ORC, 1, 0, 30, 32, 1, true);
     og::mapgen::place_living(w, FAMILY_ELF, 1, 0, 33, 31, 1, true);
-    // Reinforcement waves, dormant behind the walls (NEXT WAVE HUD):
+    // Reinforcement waves, dormant behind the walls (WAVE HUD):
     // the bailey relief at tick 500, the throne guard at tick 800. They
     // wake mid-assault, inside the fight the crew is already carrying.
     // Sized for a garrison that FIGHTS: six wave units were budgeted
