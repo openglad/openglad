@@ -65,10 +65,13 @@ sign-off, quoted.
 1. Nostalgic comments: original Gladiator-era comments (signed initials,
    dated notes, jokes, "this is a hack because…") are load-bearing
    heritage. When code moves, is rewritten, or is ported (including
-   C++ → Lua), the comment moves with it verbatim. Run the blame audit
-   from the openglad-heritage-comments skill — eyeballing the deleted
-   lines is proven insufficient (PR #201's review waved through sixteen
-   2013 comments that only blame caught). BEFORE the merge, not after.
+   C++ → Lua), the comment moves with it verbatim. Run
+   `python3 scripts/heritage_audit.py --base <merge-base>` and work its
+   gone rows; the openglad-heritage-comments skill explains the columns
+   and where a restored line goes. Eyeballing the deleted lines is proven
+   insufficient (PR #201's review waved through sixteen 2013 comments
+   that only blame caught), and so is blame on its own (PR #292: blame
+   found 19 of 36). BEFORE the merge, not after.
 2. Doc litter: agent-facing artifacts (plans, phase reports, audit
    summaries, handoff notes) never live in the tree — scratchpad only.
    Check `git diff --stat master...HEAD -- '*.md'`; anything named

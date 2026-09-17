@@ -1643,6 +1643,42 @@ set_tests_properties(check_script_roots_selftest PROPERTIES
     TIMEOUT 60
 )
 
+# The heritage-comment audit (scripts/heritage_audit.py, run before every merge
+# per the openglad-heritage-comments skill) reports which pre-2020 comment lines
+# a branch deleted, and a silently degraded pass makes it under-report rather
+# than fail: on PR #292 `git blame -C -C -C` alone found 19 of the 36 pre-2020
+# lines, and the recipe that preceded this script filed every hunk of a DELETED
+# file under the previous file. The self-test drives the whole pipeline over a
+# synthetic four-commit repository with one row per failure class -- deleted
+# file, a `|` inside the comment, a 2026 reflow that took the blame, a
+# delete-and-restore that is in no pre-cutoff tree -- and pins the exact
+# four-row ledger, so a pass that stops running is a red test and not a shorter
+# report. Needs no history depth of its own (CI clones are shallow) and runs in
+# about two seconds. Guarded on the interpreter like lint_scenario_facts_selftest
+# below: the else branch fails naming the interpreter it could not find instead
+# of vanishing quietly.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME heritage_audit_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/heritage_audit.py
+            --self-test
+    )
+else()
+    add_test(NAME heritage_audit_selftest
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "heritage_audit_selftest: this self-test needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+    )
+    set_tests_properties(heritage_audit_selftest PROPERTIES
+        FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+    )
+endif()
+set_tests_properties(heritage_audit_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 # The parity table lint runs eleven rules, nine of them inline loops inside
 # run_lint(), and its own OK line cannot tell you one of them stopped running:
 # a rule dropped from the concatenation at the end of run_lint() leaves the
