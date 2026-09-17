@@ -28,6 +28,7 @@
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
+#include "test_escape_tail.h"
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -2741,12 +2742,16 @@ struct UxrBigRosterState {
     // it out, so a tail that stopped trying early would guarantee the wedge
     // it exists to prevent.
     std::atomic<bool> test_finished{false};
+    // Point one leg at an id the flow never publishes, so the give-up path
+    // itself is testable.
+    int sabotage_leg = 0;
 };
 
-// Poll ticks, never settles: the trace edge below is a wait-on-condition and
-// the escape tail is a wait-on-the-main-thread.
+// Poll tick, never a settle: the trace edge below is a wait-on-condition.
 constexpr int kUxrTracePollMs = 50;
-constexpr int kUxrEscapePollMs = 100;
+// The sabotaged leg waits for an id nothing publishes; nothing is coming, and
+// the point of that run is the tail.
+constexpr int kUxrSabotageWaitMs = 500;
 
 // The newest "basecamp"/"page ..." trace message, "" when the pager has not
 // spoken. The pager cluster's rows are drawn as bare arrows with no label to
@@ -2770,8 +2775,16 @@ int uxr_big_roster_injector(void* data)
     og::runtime::ensure_thread_session();
     UxrBigRosterState* state = static_cast<UxrBigRosterState*>(data);
 
-    (void)wait_for_interactable("continue_game", 5000);
-    (void)wait_for_menu_frames(2);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why);
+    };
+
+    // -- Leg 1: the main menu is up --
+    if (!wait_for_interactable(
+            state->sabotage_leg == 1 ? "never_published_door" : "continue_game",
+            state->sabotage_leg == 1 ? kUxrSabotageWaitMs : 5000) ||
+        !wait_for_menu_frames(2))
+        return escape(1, "the main menu never published continue_game");
     // The composed Page-kind face: the book's word plus the door grammar the
     // row text appends (two spaces, then '>' —
     // campaign_picker_row_text in src/interface/ui/campaign_picker_session.cpp,
@@ -2785,6 +2798,9 @@ int uxr_big_roster_injector(void* data)
                                                wait_ms);
         },
         nullptr, 3, 10000);
+    if (!state->stores_seen)
+        return escape(
+            2, "CONTINUE never composed the scripted camp's STORES door");
     (void)wait_for_menu_frames(2);
     capture_presented_frame("uxr_big_roster_p1", std::getenv("UXSHOTS_DIR"));
 
@@ -2816,21 +2832,65 @@ int uxr_big_roster_injector(void* data)
     capture_presented_frame("uxr_big_roster_p2", std::getenv("UXSHOTS_DIR"));
 
     state->finished = wait_for_interactable("go", 10000);
+    if (!state->finished)
+        return escape(
+            3, "the camp's command strip never came back after the pager");
     (void)wait_for_menu_frames(2);
 
     // The exit, and the only loop with no bound: picker_main blocks on the
     // main thread and only a click makes it return, so the final `back` is
     // driven from here rather than through the ladder — after picker_main
     // returns there is no pump left to service an acknowledge post.
-    while (!state->test_finished.load(std::memory_order_acquire)) {
-        if (has_interactable("go"))
-            (void)interact("back");
-        SDL_Delay(static_cast<Uint32>(kUxrEscapePollMs));
-    }
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
+
+// The give-up half of the same injector, and the reason every leg above
+// routes through the shared tail: picker_main blocks on the MAIN thread and
+// only a click makes it return. Replace `return escape(1, ...)` with a bare
+// `return 1` and this test hangs until the CTest ceiling instead of failing.
+//
+// No synthetic zone script is installed here -- the sabotaged leg never gets
+// past the main menu, so the tail walks the stock campaign's
+// CONTINUE -> base camp -> BACK and nothing downstream of leg 1 runs.
+TEST(CampaignZoneUi, a_leg_that_gives_up_frees_the_main_thread)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    // Base camp needs a company to open, so the tail has a door to press.
+    uxr_write_save0_with_many("gladiator", 1);
+
+    UxrBigRosterState state;
+    state.sabotage_leg = 1;
+    SDL_Thread* thread =
+        SDL_CreateThread(uxr_big_roster_injector, "uxr_big_escape", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(1, thread_result)
+        << "the sabotaged leg must be reported by number, not swallowed";
+    EXPECT_FALSE(state.stores_seen)
+        << "a flow that gave up at leg 1 never reached the STORES door";
+    EXPECT_FALSE(state.pager_enabled)
+        << "a flow that gave up at leg 1 never reached the roster pager";
+    EXPECT_FALSE(state.page_flipped)
+        << "a flow that gave up at leg 1 never pressed the pager's '>'";
+    EXPECT_EQ("", state.page_indicator)
+        << "a flow that gave up at leg 1 never heard the pager speak";
+    EXPECT_FALSE(state.finished)
+        << "a flow that gave up at leg 1 never reached the camp's strip";
+}
 
 TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
 {
@@ -2850,13 +2910,16 @@ TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
     state.test_finished.store(true, std::memory_order_release);
-    SDL_WaitThread(thread, nullptr);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
     // The escape tail clicks into a queue nobody reads once picker_main is
     // out; leave nothing behind for the next test's first frame.
-    SDL_FlushEvents(SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_WHEEL);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.stores_seen)
         << "the scripted camp composes its STORES page door as 'STORES  >'";
     EXPECT_TRUE(state.pager_enabled)
