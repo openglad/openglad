@@ -83,6 +83,22 @@ sign-off, quoted.
    classes, ordered-reverted changes) before pushing — agents don't
    know them and generic "make tests pass" prompts point straight at
    previously-rejected changes.
+5. Stale statements: a PR that changes a fact a document states — an
+   exit code, a pin, a label, a CI lane, a version — corrects every
+   statement of it in the SAME PR. A living doc or skill is rewritten
+   in place, no note. A dated design snapshot keeps its text verbatim
+   and gets a `**Update (YYYY-MM-DD, PR #N):** …` note in the same
+   paragraph, list item or table cell (precedents:
+   docs/camp-controls-design.md's `**[SUPERSEDED — issue #241.]**`
+   paragraph, docs/game-modes.md's `**Superseded (` blockquote) —
+   rewriting a snapshot destroys the record of what was designed.
+   `scripts/check_retired_phrases.sh` (ctest `check_retired_phrases`)
+   fails on any row of `scripts/retired_phrases.txt` that appears in
+   prose whose block carries no such note; when your PR retires a
+   phrase, add its row (regex, sample, reason) there. A retired
+   on-screen NAME is the sibling gate's business instead:
+   `scripts/check_retired_hud_labels.sh` plus
+   `scripts/retired_hud_label_sites.txt`.
 
 ## GitHub mechanics (each of these burned a session)
 

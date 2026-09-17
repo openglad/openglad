@@ -1708,6 +1708,44 @@ set_tests_properties(check_retired_hud_labels_selftest PROPERTIES
     TIMEOUT 60
 )
 
+# The other prose gate, and deliberately a second script rather than more rows
+# in the one above: check_retired_hud_labels asks "is this retired NAME still
+# spelled anywhere", while check_retired_phrases asks "does this sentence still
+# state a fact PR #292 made false". The rules differ in what excuses a hit --
+# the label gate carries a per-path count allowlist for historical mentions;
+# this one accepts a hit only where the block also carries a dated
+# `**Update (YYYY-MM-DD, PR #N):**`, `[SUPERSEDED` or `**Superseded (` note, so
+# a dated design snapshot keeps its text and a living doc gets rewritten. Their
+# tables are disjoint (scripts/retired_phrases.txt does not carry the wave-row
+# label; that gate owns it), which is what keeps the two from being twins.
+# A ctest entry, not an og_interface dependency: prose is not a build input,
+# and a gate that rescans every campaign README on each configure of a library
+# would be paid for on every build. .github/workflows/test.yml runs on
+# pull_request with no paths filter, so a docs-only PR still runs both entries.
+add_test(NAME check_retired_phrases
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/check_retired_phrases.sh
+)
+set_tests_properties(check_retired_phrases PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The self-test is what keeps the table honest: it plants every row's own
+# sample in a temp tree and demands a hit for each, so a regex that rots (or
+# that mawk cannot compile) reds here instead of leaving the gate quietly
+# toothless on a clean tree.
+add_test(NAME check_retired_phrases_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_retired_phrases.sh
+)
+set_tests_properties(check_retired_phrases_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 # Same duty for the escape-tail gate, whose verdicts are a parse rather than a
 # grep: the synthetic cases pin all three exit codes (0 clean, 1 twin
 # named by path:line and the id it presses, 2 cannot run) and, just as
