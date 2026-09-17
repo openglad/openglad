@@ -1644,7 +1644,7 @@ set_tests_properties(check_script_roots_selftest PROPERTIES
 )
 
 # Same duty for the escape-tail gate, whose verdicts are a parse rather than a
-# grep: the eight synthetic cases pin all three exit codes (0 clean, 1 twin
+# grep: the synthetic cases pin all three exit codes (0 clean, 1 twin
 # named by path:line and the id it presses, 2 cannot run) and, just as
 # importantly, pin the two shapes that must NOT be called twins -- a bounded
 # wait with no press, and the clock-bounded click ladder that belongs to
