@@ -19,9 +19,6 @@
 // Definition of EFFECT class
 
 #include <openglad/gameplay/walker.h>
-// Pure helper functions extracted from effect logic
-void orbit_offset(int drawcycle, float &xd, float &yd);
-std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
 
 class effect : public walker
 {

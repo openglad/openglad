@@ -232,6 +232,9 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state = nullptr)
 // run the screen's frame tick; waiting on it avoids timing guesses about
 // synchronous autosaves.
 std::uint64_t menu_screen_testing_completed_frames();
+// Mirror of the live loop's highlighted-button index, published just before
+// each completed-frame bump; -1 when no engine screen is running.
+int menu_screen_testing_highlighted_button();
 #endif
 
 // #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
@@ -433,20 +436,14 @@ const MenuScreenSpec& view_scenario_menu_screen_spec();
 // LEVEL idiom); show_general_help() is the blocking wrapper.
 const MenuScreenSpec& help_menu_screen_spec();
 
-// The MP and no-MP main-menu specs share the same geometry.
-// DISABLE_MULTIPLAYER selects the compiled variant (including the
-// USE_TOUCH_INPUT mapping). The web/native fork inside each main spec is the
-// build-gated enabled/disabled QUIT row; HELP is present in both. Both specs
-// exist on every build so uncompiled shapes remain unit-testable.
-const MenuScreenSpec& main_menu_screen_spec();       // the compiled selection
-const MenuScreenSpec& main_menu_screen_spec_mp();
-const MenuScreenSpec& main_menu_screen_spec_nomp();
+// One main-menu spec, one table. The only fork inside it is the web/native
+// build gate on the QUIT row (native activates, web is visibly disabled);
+// HELP is present on both.
+const MenuScreenSpec& main_menu_screen_spec();
 
 // LOCAL SEAT SETTINGS: an owned Base Camp seat's team and persistent local
-// controller profile. The no-MP shape omits removal while retaining controls.
+// controller profile.
 const MenuScreenSpec& seat_settings_menu_screen_spec();
-const MenuScreenSpec& seat_settings_menu_screen_spec_mp();
-const MenuScreenSpec& seat_settings_menu_screen_spec_nomp();
 
 // §2.1 Company & Base Camp: the CONTINUE/LOAD gate reads a cached view of the
 // company set, refreshed once per mainmenu() entry (never per frame —

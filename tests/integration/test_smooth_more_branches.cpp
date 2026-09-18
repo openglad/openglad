@@ -82,11 +82,19 @@ TEST(SmoothMoreBranches, smooth_dark_grass_rubble_and_corner_branches)
 }
 
 
-TEST(SmoothMoreBranches, smooth_dark_grass_to_around_rng_switch_cases)
+// A fully surrounded dark-grass tile picks grass_dark_variants[rng(4)]. The
+// draw IS the index under FixedRandom, so each pass must land on its own
+// variant: a next_random that always answered 0, or a reordered variant table,
+// has to show up here.
+TEST(SmoothMoreBranches, smooth_dark_grass_to_around_picks_the_rng_indexed_variant)
 {
-    // Cover each rng(4) case in TYPE_GRASS_DARK + around==TO_AROUND.
+    static constexpr unsigned char kDarkVariants[4] = {
+        PIX_GRASS_DARK_1, PIX_GRASS_DARK_2, PIX_GRASS_DARK_3, PIX_GRASS_DARK_4
+    };
+
     for (int fixed = 0; fixed < 4; fixed++)
     {
+        SCOPED_TRACE(fixed);
         FixedRandom rng(static_cast<std::uint32_t>(fixed));
         GameContext c;
         c.rng = &rng;
@@ -98,10 +106,10 @@ TEST(SmoothMoreBranches, smooth_dark_grass_to_around_rng_switch_cases)
 
         // Center is dark grass, all neighbors dark grass => around == TO_AROUND.
         at(grid, 1, 1) = PIX_GRASS_DARK_1;
-        (void)s.smooth(1, 1);
+        ASSERT_EQ(1, s.smooth(1, 1)) << "smooth() reports it wrote a tile";
 
-        const int v = (int)at(grid, 1, 1);
-        ASSERT_TRUE(v == PIX_GRASS_DARK_1 || v == PIX_GRASS_DARK_2 || v == PIX_GRASS_DARK_3 || v == PIX_GRASS_DARK_4) << "dark grass TO_AROUND should select a dark grass variant";
+        ASSERT_EQ((int)kDarkVariants[fixed], (int)at(grid, 1, 1))
+            << "rng " << fixed << " must select grass_dark_variants[" << fixed << "]";
     }
 }
 
@@ -188,12 +196,16 @@ TEST(SmoothMoreBranches, smooth_wall_water_tree_unknown_and_setxy_guard_paths)
     (void)s.smooth(2, 2);
     ASSERT_EQ((int)PIX_WALLSIDE_C, (int)at(grid, 2, 2)) << "wall around==1 should map to WALLSIDE_C";
 
+    // Left neighbour only => around == 8, which no case in the wall switch
+    // names: the default arm re-writes herepix, leaving the tile alone.
     at(grid, 3, 3) = PIX_H_WALL1;
     at(grid, 3, 2) = PIX_GRASS1;
     at(grid, 4, 3) = PIX_GRASS1;
     at(grid, 3, 4) = PIX_GRASS1;
-    at(grid, 2, 3) = PIX_H_WALL1; // left only -> around==8, plus up+down? keep simple for side
-    (void)s.smooth(3, 3);
+    at(grid, 2, 3) = PIX_H_WALL1;
+    ASSERT_EQ(1, s.smooth(3, 3)) << "smooth() reports it wrote a tile";
+    ASSERT_EQ((int)PIX_H_WALL1, (int)at(grid, 3, 3))
+        << "wall around==8 has no case, so the default arm must keep herepix";
 
     at(grid, 4, 2) = PIX_H_WALL1;
     at(grid, 4, 1) = PIX_H_WALL1;
@@ -209,16 +221,18 @@ TEST(SmoothMoreBranches, smooth_wall_water_tree_unknown_and_setxy_guard_paths)
     at(grid, 2, 3) = PIX_GRASS1;
     at(grid, 3, 4) = PIX_GRASS1;
     at(grid, 2, 5) = PIX_GRASS1;
-    (void)s.smooth(2, 4);
-    ASSERT_TRUE(at(grid, 2, 4) == PIX_WATERGRASS_UR || at(grid, 2, 4) == PIX_WATERGRASS_LR) << "water around==TO_LEFT should choose UR or LR";
+    ASSERT_EQ(1, s.smooth(2, 4)) << "smooth() reports it wrote a tile";
+    ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)at(grid, 2, 4))
+        << "water around==TO_LEFT must take watergrass_left[0] under rng 0";
 
     at(grid, 3, 4) = PIX_WATER1;
     at(grid, 2, 4) = PIX_GRASS1;
     at(grid, 4, 4) = PIX_WATER1;
     at(grid, 3, 3) = PIX_GRASS1;
     at(grid, 3, 5) = PIX_GRASS1;
-    (void)s.smooth(3, 4);
-    ASSERT_TRUE(at(grid, 3, 4) == PIX_WATERGRASS_UL || at(grid, 3, 4) == PIX_WATERGRASS_LL) << "water around==TO_RIGHT should choose UL or LL";
+    ASSERT_EQ(1, s.smooth(3, 4)) << "smooth() reports it wrote a tile";
+    ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)at(grid, 3, 4))
+        << "water around==TO_RIGHT must take watergrass_right[0] under rng 0";
 
     // Trees around==TO_DOWN|TO_UP branch.
     at(grid, 1, 3) = PIX_TREE_M1;
@@ -226,13 +240,71 @@ TEST(SmoothMoreBranches, smooth_wall_water_tree_unknown_and_setxy_guard_paths)
     at(grid, 1, 4) = PIX_TREE_M1;
     at(grid, 0, 3) = PIX_GRASS1;
     at(grid, 2, 3) = PIX_GRASS1;
-    (void)s.smooth(1, 3);
+    ASSERT_EQ(1, s.smooth(1, 3)) << "smooth() reports it wrote a tile";
     ASSERT_EQ((int)PIX_TREE_MT, (int)at(grid, 1, 3)) << "trees vertical branch should map to MT";
 
-    // set_x_y no-grid guard.
+    // set_x_y's write guards. The write path must mirror query_x_y's bounds
+    // check: in range it stores, out of range it stores nothing at all (issue
+    // #12 -- an unguarded store lands in whatever was allocated after the
+    // grid).  Note the mygrid_span_.empty() early return above them is
+    // subsumed by the maxx/maxy test (reset() zeroes both), so the observable
+    // rule is the bounds guard.
     ExposedSmoother ex;
+    PixieData guard_grid = make_grid(3, 3, PIX_GRASS1);
+    ex.set_target(guard_grid);
+
+    ex.set_x_y(1, 1, PIX_WATER1);
+    ASSERT_EQ((int)PIX_WATER1, (int)at(guard_grid, 1, 1))
+        << "an in-range set_x_y must store the tile";
+
+    const unsigned char before[9] = {
+        at(guard_grid, 0, 0), at(guard_grid, 1, 0), at(guard_grid, 2, 0),
+        at(guard_grid, 0, 1), at(guard_grid, 1, 1), at(guard_grid, 2, 1),
+        at(guard_grid, 0, 2), at(guard_grid, 1, 2), at(guard_grid, 2, 2),
+    };
+    ex.set_x_y(-1, 1, PIX_TREE_M1);
+    ex.set_x_y(1, -1, PIX_TREE_M1);
+    ex.set_x_y(3, 1, PIX_TREE_M1);
+    ex.set_x_y(1, 3, PIX_TREE_M1);
+    for (int i = 0; i < 9; i++)
+        ASSERT_EQ((int)before[i], (int)guard_grid.data[static_cast<std::size_t>(i)])
+            << "out-of-range set_x_y must not touch cell " << i;
+
+    // With no target the same store is a no-op too.
     ex.reset();
-    ex.set_x_y(0, 0, PIX_WATER1);
+    ex.set_x_y(1, 1, PIX_COBBLE_1);
+    ASSERT_EQ((int)PIX_WATER1, (int)at(guard_grid, 1, 1))
+        << "set_x_y without a target must not write through the stale span";
+}
+
+
+// The two watergrass_* pairs are chosen by rng, so one rng value cannot tell a
+// pair apart from a constant. Take the second entry of each under rng 1.
+// (push_test_context/pop_test_context do not nest, hence a separate test.)
+TEST(SmoothMoreBranches, water_shoreline_pairs_take_their_second_entry_under_rng_1)
+{
+    FixedRandom rng1(1);
+    GameContext c;
+    c.rng = &rng1;
+    GlobalContextGuard guard(&c);
+
+    smoother s;
+
+    PixieData left_grid = make_grid(6, 6, PIX_GRASS1);
+    s.set_target(left_grid);
+    at(left_grid, 2, 4) = PIX_WATER1;
+    at(left_grid, 1, 4) = PIX_WATER1; // left only -> around == TO_LEFT
+    ASSERT_EQ(1, s.smooth(2, 4)) << "smooth() reports it wrote a tile";
+    ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)at(left_grid, 2, 4))
+        << "water around==TO_LEFT must take watergrass_left[1] under rng 1";
+
+    PixieData right_grid = make_grid(6, 6, PIX_GRASS1);
+    s.set_target(right_grid);
+    at(right_grid, 3, 4) = PIX_WATER1;
+    at(right_grid, 4, 4) = PIX_WATER1; // right only -> around == TO_RIGHT
+    ASSERT_EQ(1, s.smooth(3, 4)) << "smooth() reports it wrote a tile";
+    ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)at(right_grid, 3, 4))
+        << "water around==TO_RIGHT must take watergrass_right[1] under rng 1";
 }
 
 
@@ -335,7 +407,7 @@ TEST(SmoothMoreBranches, smooth_tree_dirt_dark_dirt_mask_ladders)
 }
 
 
-TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
+TEST(SmoothMoreBranches, dark_grass_and_wall_clusters_select_their_exact_piece)
 {
     FixedRandom rng1(1);
     GameContext c;
@@ -418,6 +490,9 @@ TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
         (void)s.smooth(3, 3);
         ASSERT_EQ((int)PIX_WALL_ARROW_FLOOR, (int)at(wall, 3, 3)) << "arrow slit over floor should map to floor arrow wall";
 
+        // surrounds() weights up=1, right=2, down=4, left=8, so "up + right
+        // walls" is around == 3 -- the lower-left base case, whatever sits two
+        // rows down. Pinning the genre let every PIX_WALL* through; pin the piece.
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
         at(wall, 3, 3) = PIX_H_WALL1;
@@ -425,7 +500,8 @@ TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
         at(wall, 4, 3) = PIX_H_WALL1;
         at(wall, 3, 5) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3)) << "wall around==12 with lower continuation should stay in wall genre";
+        ASSERT_EQ((int)PIX_WALLSIDE_L, (int)at(wall, 3, 3))
+            << "wall around==3 is the lower-left base piece even with a wall at y+2";
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -433,8 +509,32 @@ TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
         at(wall, 3, 2) = PIX_H_WALL1;
         at(wall, 4, 3) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3)) << "wall around==12 without lower continuation should stay in wall genre";
+        ASSERT_EQ((int)PIX_WALLSIDE_L, (int)at(wall, 3, 3))
+            << "wall around==3 is the lower-left base piece with nothing at y+2";
 
+        // The real around==12 arm (down + left walls): WALL3 when the run
+        // continues two rows down, the plain horizontal face otherwise.
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 4) = PIX_H_WALL1;
+        at(wall, 2, 3) = PIX_H_WALL1;
+        at(wall, 3, 5) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        ASSERT_EQ((int)PIX_WALL3, (int)at(wall, 3, 3))
+            << "wall around==12 with a wall at y+2 must be WALL3";
+
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 4) = PIX_H_WALL1;
+        at(wall, 2, 3) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        ASSERT_EQ((int)PIX_H_WALL1, (int)at(wall, 3, 3))
+            << "wall around==12 without a wall at y+2 must be the horizontal face";
+
+        // around==15: the sub-selection is (wall at y+2?) x (wall at x-1,y+1?).
+        // All four corners of that pair must land on a different piece.
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
         at(wall, 3, 3) = PIX_H_WALL1;
@@ -445,7 +545,8 @@ TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
         at(wall, 3, 5) = PIX_H_WALL1;
         at(wall, 2, 4) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3)) << "wall around==15 with left-lower continuation should stay in wall genre";
+        ASSERT_EQ((int)PIX_WALL3, (int)at(wall, 3, 3))
+            << "around==15 with y+2 and x-1,y+1 walls must be WALL3";
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -456,7 +557,8 @@ TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
         at(wall, 2, 3) = PIX_H_WALL1;
         at(wall, 3, 5) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3)) << "wall around==15 with lower continuation only should stay in wall genre";
+        ASSERT_EQ((int)PIX_WALL2, (int)at(wall, 3, 3))
+            << "around==15 with only the y+2 wall must be WALL2";
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -467,7 +569,8 @@ TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
         at(wall, 2, 3) = PIX_H_WALL1;
         at(wall, 2, 4) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3)) << "wall around==15 with side continuation only should stay in wall genre";
+        ASSERT_EQ((int)PIX_H_WALL1, (int)at(wall, 3, 3))
+            << "around==15 with only the x-1,y+1 wall must be the horizontal face";
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -477,7 +580,8 @@ TEST(SmoothMoreBranches, smooth_round8_dark_grass_and_wall_branch_clusters)
         at(wall, 3, 4) = PIX_H_WALL1;
         at(wall, 2, 3) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3)) << "wall around==15 with no continuations should stay in wall genre";
+        ASSERT_EQ((int)PIX_WALL_LL, (int)at(wall, 3, 3))
+            << "around==15 with neither continuation must be WALL_LL";
     }
 }
 

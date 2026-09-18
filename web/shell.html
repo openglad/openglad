@@ -1315,6 +1315,7 @@
                     currentOctant = octant;
                 }
 
+                // Touch movement feedback
                 function positionBase() {
                     // CSS uses a smaller base in portrait. Read the live
                     // rendered diameter so the visual stays centered on the
@@ -1371,6 +1372,7 @@
                     }
                 }
 
+                // Only move with the lower left corner of the screen (and offset for other buttons)
                 stickZone.addEventListener('pointerdown', function(e) {
                     if (pointerId !== null) {
                         return;
@@ -1546,6 +1548,7 @@
                 };
             }
 
+            // Touch buttons
             bindHeldButton(document.getElementById('tc-fire'), keySetter(KEY.FIRE));
             bindHeldButton(document.getElementById('tc-special'), keySetter(KEY.SPECIAL));
             bindHeldButton(document.getElementById('tc-cycle'), keySetter(KEY.SPECIAL_SWITCH));
@@ -1916,6 +1919,12 @@
                     input.addEventListener(type, function(e) {
                         // SDL must never double-see keys meant for the field.
                         e.stopPropagation();
+                        // FIXME: SDL does not have keyboard customization, so we can't make newlines with RETURN.
+                        // I need to either modify SDL or add click/touch text navigation.
+                        // Some soft keyboards might disappear anyhow if you press return...
+                        // (Jonathan Dearborn, 2013, on the retired touch RETURN arm; this DOM
+                        // input is the touch text entry it asked for. Enter pushes RETURN to the
+                        // engine and blurs the field, so the soft keyboard goes away either way.)
                         if (type === 'keydown' &&
                             (e.key === 'Enter' || e.keyCode === 13)) {
                             e.preventDefault();

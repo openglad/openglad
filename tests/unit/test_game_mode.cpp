@@ -56,13 +56,17 @@ TEST(GameModeDispatch, every_kind_returns_a_usable_instance)
     EXPECT_EQ(&classic, &og::mode::progression_for_kind(ProgressionKind::Classic));
     EXPECT_EQ(ProgressionKind::Classic, classic.kind());
 
-    // Tower resolves to a live instance for every kind in the enum. Until
-    // TowerProgression lands (WP-5) it falls back to the Classic instance;
-    // afterwards it must self-report Tower. Either satisfies the dispatch
-    // contract pinned here: no kind may dangle.
+    // Tower maps to THE tower singleton — a different object from Classic's,
+    // self-reporting Tower. (The old oracle accepted either kind, which with
+    // a two-enumerator enum was a tautology: a Tower case that handed back
+    // the Classic instance passed.)
     IProgression& tower = og::mode::progression_for_kind(ProgressionKind::Tower);
-    EXPECT_TRUE(tower.kind() == ProgressionKind::Classic ||
-                tower.kind() == ProgressionKind::Tower);
+    EXPECT_EQ(ProgressionKind::Tower, tower.kind())
+        << "the Tower case must return the Tower progression, not Classic's";
+    EXPECT_EQ(&tower, &og::mode::progression_for_kind(ProgressionKind::Tower))
+        << "dispatch hands back a static, stateless instance";
+    EXPECT_NE(&classic, &tower)
+        << "the two kinds must not share one instance";
 }
 
 // ---------------------------------------------------------------------------

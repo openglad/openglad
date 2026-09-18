@@ -6,6 +6,7 @@
 // in-test: TYPE_SCRIPTED + direct ModeState field writes (the og.* bindings
 // are the production writers; every renderer here reads the same fields).
 
+#include <cstdint>
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
@@ -42,6 +43,10 @@
 
 short new_score_panel(screen* s, short do_it);
 void show_ending_popup(int ending, int nextlevel);
+// score_panel.cpp's counter sources, declared the way test_glad_hud.cpp
+// declares them (they are non-static for exactly this).
+short remaining_foes(screen* s, walker* myguy);
+short remaining_team(screen* s, char myteam);
 
 namespace {
 
@@ -219,7 +224,12 @@ struct ModeRowWindow
     int budget = 0;
 };
 
-ModeRowWindow mode_row_window(viewscreen* v)
+// 57 is the classic counter-box inset: the box spans rm-57 .. rm-2, and the
+// mode row stops 3 px short of its left edge.  Callers that pass no box_left
+// get that classic box, i.e. the historical rm-60 right edge.
+inline constexpr int kClassicCounterBoxInset = 57;
+
+ModeRowWindow mode_row_window(viewscreen* v, int box_left = -1)
 {
     walker* const control = v->control;
     const bool classic_hud =
@@ -238,7 +248,12 @@ ModeRowWindow mode_row_window(viewscreen* v)
             v->xloc + 3 + 6 * static_cast<int>(caption.size()) + 4;
         w.left = std::max(v->xloc + 66, caption_end);
         if (v->prefs[PREF_FOES] == PREF_FOES_ON)
-            w.right = v->endx - 60;
+        {
+            const int left_edge = box_left >= 0
+                ? box_left
+                : v->endx - kClassicCounterBoxInset;
+            w.right = left_edge - 3;
+        }
     }
     w.budget = (w.right - w.left) / 6;
     return w;
@@ -445,6 +460,98 @@ TEST(ModeUi, score_panel_composes_one_row_from_the_hud_slots)
         << "an all-empty ModeState paints no row";
 
     v->control = old_control;
+}
+
+// Q2: the mode row's right edge is the counter box's LEFT edge, not a
+// constant.  The box's width is derived from its widest row (a pending wave
+// prints "WAVE: 5462s", 11 glyphs, and grows the box to rm-70), so a row
+// budgeted against the classic rm-60 would run its last glyphs under the box.
+// RED BY DESIGN on the phase-3 base tree, where draw_mode_panel hardcodes
+// `right = rm - 60` whatever the box does.
+TEST(ModeUi, mode_row_stops_short_of_a_widened_counter_box)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(0, static_cast<int>(v->mynum)) << "pane 0 of the layout";
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "the full-pane geometry below assumes the single-view layout";
+    walker* const old_control = v->control;
+    struct Restore {
+        viewscreen* view; walker* control;
+        char foes, overlay, life, score, view_pref;
+        ~Restore()
+        {
+            view->control = control;
+            view->prefs[PREF_FOES] = foes;
+            view->prefs[PREF_OVERLAY] = overlay;
+            view->prefs[PREF_LIFE] = life;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_VIEW] = view_pref;
+            view->resize(view_pref);
+        }
+    } restore{v, old_control, v->prefs[PREF_FOES], v->prefs[PREF_OVERLAY],
+              v->prefs[PREF_LIFE], v->prefs[PREF_SCORE], v->prefs[PREF_VIEW]};
+
+    v->control = control.get();
+    silence_hud_prefs(v);
+    // score_panel draws inside a ScopedGameplayUiViewLayout, which recomputes
+    // the pane from prefs[PREF_VIEW]: the pref and the geometry move together
+    // or the lm/rm read here is not the one the row was budgeted against.
+    v->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+    v->resize(static_cast<char>(PREF_VIEW_FULL));
+    // The counter box is what this case is about, so it stays on.
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    mode.set_hud(0, "RED 5", 0);
+    mode.set_hud(1, "BLUE 3", 2);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+
+    // One dormant hostile at the maximum spawn delay: it wakes at tick 65536,
+    // i.e. (65536 + 11) / 12 = 5462 s, so the WAVE row is "WAVE: 5462s" -- 11
+    // glyphs, and the widest row whatever level 1's foe count is (the FOES row
+    // "FOES: {awake}+1" reaches 11 glyphs only at four-digit counts).
+    GameWorld& world = s->world();
+    const std::uint32_t saved_ltc = world.level_tick_count();
+    struct TickRestore {
+        GameWorld& world; std::uint32_t saved;
+        ~TickRestore() { world.set_level_tick_count(saved); }
+    } tick_restore{world, saved_ltc};
+
+    walker* const hostile = mode.spawn_living(140, 140, 1);
+    ASSERT_NE(nullptr, hostile);
+    hostile->set_spawn_delay(65535);
+    hostile->set_dormant(true);
+    world.set_level_tick_count(0);
+    ASSERT_LT(static_cast<int>(remaining_foes(s, control.get())), 1000)
+        << "a four-digit FOES row would out-widen the WAVE row";
+    ASSERT_LT(static_cast<int>(remaining_team(s, static_cast<char>(0))), 1000)
+        << "a four-digit TEAM row would out-widen the WAVE row";
+
+    const int tm = v->yloc;
+    // Widest row 11 glyphs -> box left = rm - 4 - 6*11 = rm - 70, and the
+    // mode row stops 3 px short of it.
+    const int box_left = v->endx - 70;
+    const ModeRowWindow win = mode_row_window(v, box_left);
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake="))
+        << "the dormant hostile must actually register as a pending wave";
+    const std::string row_trace = std::format(
+        "row y={} x={} budget={} text=5 - 3", tm + 4, win.left, win.budget);
+    EXPECT_TRUE(trace_contains("mode_hud", row_trace.c_str()))
+        << "the row's budget must come from the widened box; expected: "
+        << row_trace;
 }
 
 // An FFA slot carries a fighter band byte (16+c), not a lobby team, and the
@@ -1057,6 +1164,16 @@ TEST(ModeUi, respawn_camera_focus_follows_scripted_entries)
     walker* old_control = v->control;
     v->control = hero;
 
+    // The corpse-only camera first, so the fallback below has an EXACT value
+    // to land on: viewscreen::refresh centres the control's own render
+    // position when classic_respawn_camera_focus yields nothing
+    // (src/interface/render/view.cpp). The hero is dead and stationary at
+    // (64,64), so its interpolated render position is stable.
+    s->redraw();
+    const Sint32 corpse_topx = v->topx;
+    EXPECT_EQ(64 - (v->xview - hero->sizex()) / 2, corpse_topx)
+        << "the corpse camera centres the control's own position";
+
     og::sim::RespawnEntry entry;
     entry.kind = 0;
     entry.team = 0;
@@ -1072,13 +1189,23 @@ TEST(ModeUi, respawn_camera_focus_follows_scripted_entries)
         400 - (v->xview - hero->sizex()) / 2;
     EXPECT_EQ(expected_topx, focused_topx)
         << "scripted-world respawn entries must steer the camera (D14)";
+    EXPECT_NE(corpse_topx, focused_topx)
+        << "the fixture must actually move the camera off the corpse";
 
-    // An entry without a recorded destination keeps the corpse focus.
-    s->world().respawn.respawn_queue[0].x = -1;
-    s->world().respawn.respawn_queue[0].y = -1;
-    s->redraw();
-    EXPECT_NE(focused_topx, v->topx)
-        << "a destination-less entry must fall back to the corpse camera";
+    // An entry without a recorded destination keeps the corpse focus. Pinning
+    // the EXACT corpse camera is what makes this leg bite: a dropped
+    // `entry.x < 0 || entry.y < 0` guard would centre the (-1,-1) sentinel,
+    // which is just as different from 400 as 64 is.
+    const std::int16_t negative_cases[3][2] = {{-1, -1}, {-1, 300}, {400, -1}};
+    for (const auto& negative : negative_cases)
+    {
+        s->world().respawn.respawn_queue[0].x = negative[0];
+        s->world().respawn.respawn_queue[0].y = negative[1];
+        s->redraw();
+        EXPECT_EQ(corpse_topx, v->topx)
+            << "a destination-less entry (" << negative[0] << ","
+            << negative[1] << ") must give back the exact corpse camera";
+    }
 
     s->world().respawn.respawn_queue.clear();
     v->control = old_control;
@@ -1129,7 +1256,6 @@ TEST(ModeUi, radar_landmark_families_blip_without_treasure_sight)
     vs->radarstart = 0;
 
     radar r(vs, test_screen(), 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     trace_clear();
@@ -1199,7 +1325,6 @@ TEST(ModeUi, radar_ping_families_take_the_loud_blip_path)
     vs->radarstart = 0;
 
     radar r(vs, test_screen(), 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     trace_clear();
@@ -1261,7 +1386,6 @@ TEST(ModeUi, radar_draws_beacon_blips_in_beacon_team_color)
     vs->radarstart = 0;
 
     radar r(vs, test_screen(), 0);
-    r.force_lower_position = true;
     r.start(&d);
 
     trace_clear();

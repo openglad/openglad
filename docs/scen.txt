@@ -256,7 +256,7 @@ spawn delay measured in game ticks.  The game runs twelve ticks per
 second, so 360 is half a minute.  A delayed character sleeps out of
 sight until its tick arrives and then flashes into the world; while
 anything is still asleep the level can't be finished, and the players see
-a NEXT WAVE countdown in the status bar.  Enter 0 to clear a delay.
+a WAVE countdown in the status bar.  Enter 0 to clear a delay.
 The same Delay button in object mode presets the delay on the object
 "pen," so an entire wave can be placed already delayed.  Only
 characters and generators carry a delay - treasure and weapons always

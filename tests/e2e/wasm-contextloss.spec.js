@@ -15,7 +15,9 @@
 // WEBGL_lose_context drives both paths deterministically.
 const { test, expect } = require('@playwright/test');
 const {
+  getCanvasGameRegionScreenshot,
   waitForGameLoad,
+  waitForPickerReady,
   waitForRenderedFrames,
 } = require('./wasm_helpers');
 
@@ -23,8 +25,51 @@ const {
 // compress to well under this size, real frames do not.
 const MIN_NON_TRIVIAL_PNG_BYTES = 2_000;
 
+// The CONTINUE half of the main menu's second row on the 320x200 UI reference
+// grid (src/interface/ui/menu_screen_specs.cpp: "continue_game" is 68x20 at
+// 80,79; the mutually exclusive "no_company_note" is the 140-wide
+// "NO COMPANY YET" row at the same y). This one band therefore tells the
+// with-company main menu apart from the fresh-install one.
+const MAIN_MENU_CONTINUE_REGION = { x: 80, y: 75, w: 68, h: 20 };
+
 async function getCanvasScreenshot(page) {
   return await page.locator('#canvas').screenshot();
+}
+
+async function captureRegion(page, region) {
+  return await getCanvasGameRegionScreenshot(
+    page,
+    region.x,
+    region.y,
+    region.w,
+    region.h,
+  );
+}
+
+// Capture a region only once two consecutive captures a few frames apart are
+// byte-identical: the picker redraws every frame from deterministic state, so
+// a settled band is a reliable reference across a page reload.
+async function captureSettledRegion(page, region, description, timeoutMs = 30_000) {
+  let settled = null;
+  await expect
+    .poll(
+      async () => {
+        const first = await captureRegion(page, region);
+        await page.waitForTimeout(250);
+        const second = await captureRegion(page, region);
+        if (first.equals(second)) {
+          settled = first;
+          return true;
+        }
+        return false;
+      },
+      { message: `region should settle: ${description}`, timeout: timeoutMs },
+    )
+    .toBe(true);
+  if (!settled) {
+    throw new Error(`region never settled: ${description}`);
+  }
+  return settled;
 }
 
 // Grab the live drawing context Emscripten created and stash its
@@ -137,17 +182,91 @@ test.describe('WebGL context loss recovery', () => {
 
   test('watchdog reloads into the autosaved state when restore never comes', async ({
     page,
+    browser,
   }) => {
-    // Boots the game twice (initial load + watchdog reload).
-    test.setTimeout(150_000);
+    // Boots the game three times (control context + initial load + reload).
+    test.setTimeout(240_000);
     // Shorten the 10s production watchdog so the fallback path stays inside
     // the test budget. The shell reads this before installing its listeners.
+    //
+    // The company is seeded on the FIRST boot only. window.__opengladSeed*
+    // flags are re-read at every boot (web_runtime_diagnostics.cpp), so
+    // seeding unconditionally would re-found the company after the reload and
+    // hide a build whose saves never reach IndexedDB. sessionStorage survives
+    // window.location.reload() in the same tab, so the reloaded page can only
+    // get its company back out of IDBFS.
     await page.addInitScript(() => {
       /** @type {any} */ (window).__opengladContextRestoreWatchdogMs = 3_000;
+      /** @type {any} */ (window).__opengladSkipIntroForTests = true;
+      if (!window.sessionStorage.getItem('og_seeded_company')) {
+        window.sessionStorage.setItem('og_seeded_company', '1');
+        /** @type {any} */ (window).__opengladSeedSinglePlayerTeam = true;
+      }
     });
+
+    // SaveData::save() -> sync_filesystem() logs this from FS.syncfs(false)'s
+    // success callback (src/resources/platform_io.cpp). It is a SEQUENCING
+    // gate, not a tooth: syncfs reports success for an empty or stubbed IDBFS
+    // mount too, so the line only says the autosave's sync has completed and
+    // the context may be killed. What proves the save actually reached
+    // IndexedDB is the post-reload pixel comparison at the end: the reloaded
+    // picker must come back on the with-company main menu.
+    const idbfsSyncs = [];
+    page.on('console', (msg) => {
+      if (msg.text().includes('IDBFS saved to IndexedDB')) {
+        idbfsSyncs.push(msg.text());
+      }
+    });
+
+    // CONTROL: the same build in a storage-clean context boots the
+    // fresh-install main menu. Capturing it proves this band actually
+    // distinguishes the two main-menu variants, so the post-reload
+    // comparison below is not comparing a screen to itself.
+    // The project's own baseURL, never a second copy of it: playwright.config.js
+    // is the one place the dev server's port is written down.
+    const cleanContext = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+    });
+    let freshMenu;
+    try {
+      const cleanPage = await cleanContext.newPage();
+      await cleanPage.addInitScript(() => {
+        /** @type {any} */ (window).__opengladSkipIntroForTests = true;
+      });
+      await cleanPage.goto('/play.html');
+      await waitForGameLoad(cleanPage);
+      await waitForPickerReady(cleanPage);
+      freshMenu = await captureSettledRegion(
+        cleanPage,
+        MAIN_MENU_CONTINUE_REGION,
+        'fresh-install main menu',
+      );
+    } finally {
+      await cleanContext.close();
+    }
 
     await page.goto('/play.html');
     await waitForGameLoad(page);
+    await waitForPickerReady(page);
+
+    const withCompanyMenu = await captureSettledRegion(
+      page,
+      MAIN_MENU_CONTINUE_REGION,
+      'with-company main menu',
+    );
+    expect(
+      withCompanyMenu.equals(freshMenu),
+      'the seeded company must change the main menu (CONTINUE vs NO COMPANY YET)',
+    ).toBe(false);
+    await expect
+      .poll(() => idbfsSyncs.length > 0, {
+        message:
+          "the company autosave's IDBFS sync must complete before the context "
+          + 'is killed (sequencing gate, not the persistence proof)',
+        timeout: 20_000,
+      })
+      .toBe(true);
+
     expect(await armLoseContextExtension(page)).toBe(true);
 
     const reloaded = page.waitForEvent('load', { timeout: 30_000 });
@@ -162,7 +281,24 @@ test.describe('WebGL context loss recovery', () => {
     // must boot back up from persisted state.
     await reloaded;
     await waitForGameLoad(page);
+    await waitForPickerReady(page);
     expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
+
+    // The "into the autosaved state" half of the promise: the reloaded picker
+    // must come back on the with-company main menu, not the fresh-install one.
+    const reloadedMenu = await captureSettledRegion(
+      page,
+      MAIN_MENU_CONTINUE_REGION,
+      'post-reload main menu',
+    );
+    expect(
+      reloadedMenu.equals(freshMenu),
+      'the watchdog reload must not land on the NO COMPANY YET main menu',
+    ).toBe(false);
+    expect(
+      reloadedMenu.equals(withCompanyMenu),
+      'the watchdog reload must restore the same company main menu from IDBFS',
+    ).toBe(true);
   });
 });
 

@@ -41,6 +41,7 @@
 #include <iostream>
 #include <filesystem>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -269,10 +270,24 @@ TEST(PlatformHeadless, production_platform_globals_preserve_headless_contracts)
     EXPECT_EQ("[Network] Connection lost\n",
               testing::internal::GetCapturedStderr());
 
-    EXPECT_EQ(0u, random(0));
-    EXPECT_EQ(0u, random(1));
-    for (int sample = 0; sample < 128; ++sample)
-        EXPECT_LT(random(17), 17u);
+    EXPECT_EQ(0u, random(0)) << "the zero-bound guard answers 0";
+    EXPECT_EQ(0u, random(1)) << "everything mod 1 is 0";
+
+    // The bound alone is satisfied by a generator that never advances (a
+    // state taken by value returns the same number forever), so pin the
+    // progression too.
+    std::set<std::uint32_t> distinct;
+    for (int sample = 0; sample < 128; ++sample) {
+        const std::uint32_t draw = random(17);
+        EXPECT_LT(draw, 17u);
+        distinct.insert(draw);
+    }
+    EXPECT_GT(distinct.size(), 1u)
+        << "the legacy LCG must advance its static state across calls";
+    // Two consecutive draws at a 1e6 bound out of a 2^32-period LCG cannot
+    // coincide, so this is a stuck-state oracle, not a flake.
+    EXPECT_NE(random(1000000u), random(1000000u))
+        << "consecutive draws must differ: the state assignment is dropped";
 }
 
 TEST(PlatformHeadless, user_and_asset_paths_cover_normalization)
@@ -311,14 +326,44 @@ TEST(PlatformHeadless, hooks_and_entity_services_are_wired)
     ASSERT_NE(nullptr, hooks.wire_world_entity_services);
 
     // Call each warn-stub twice through the table: the std::call_once-backed
-    // warnings must emit only once per process.
+    // warnings must emit AT MOST once per process, so a headless server does
+    // not spam its log from a per-frame draw hook. "At most" (not "exactly")
+    // because both once-flags are process-global and other cases in this
+    // binary may already have spent them — a bare LogWarn regression still
+    // prints twice here whatever the test order.
     hooks.clear_stale_view_controls(nullptr);
     hooks.clear_stale_view_controls(nullptr);
     clear_keyboard();
+
+    const auto count_occurrences = [](const std::string& haystack,
+                                      const std::string& needle) {
+        std::size_t n = 0;
+        for (std::size_t at = haystack.find(needle); at != std::string::npos;
+             at = haystack.find(needle, at + needle.size()))
+            ++n;
+        return n;
+    };
+
+    testing::internal::CaptureStderr();
     hooks.draw(nullptr, nullptr);
     hooks.draw(nullptr, nullptr);
+    const std::string draw_warnings = testing::internal::GetCapturedStderr();
+    EXPECT_LE(count_occurrences(
+                  draw_warnings,
+                  "level_data_draw_impl: not supported in headless mode"),
+              1u)
+        << "call_once must not re-warn on every draw: " << draw_warnings;
+
+    testing::internal::CaptureStderr();
     EXPECT_EQ(nullptr, hooks.create_level_render(nullptr));
     EXPECT_EQ(nullptr, hooks.create_level_render(nullptr));
+    const std::string render_warnings = testing::internal::GetCapturedStderr();
+    EXPECT_LE(count_occurrences(
+                  render_warnings,
+                  "create_level_render not supported in headless mode"),
+              1u)
+        << "call_once must not re-warn on every level render: "
+        << render_warnings;
 
     EntityFactory factory = hooks.create_entity_factory();
     EXPECT_FALSE(static_cast<bool>(factory.attach_render));
@@ -1109,18 +1154,55 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
-    StdoutSilencer stdout_silencer;
+    StdoutCapture stdout_capture;
 
     og::ui::TextPickerConfig config;
     config.team_families = {FAMILY_SOLDIER, FAMILY_MAGE};
     og::ui::TextPickerError error;
     og::ui::run_text_picker(config, &error);
+    const std::string printed = stdout_capture.restore();
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
     EXPECT_EQ("textslot", config.save_name);
     EXPECT_EQ(1, config.level)
         << "the earned-roads gate must refuse the unearned forward jump";
-    ASSERT_GE(config.team_families.size(), 2u);
+    EXPECT_EQ(std::vector<int>({FAMILY_SOLDIER, FAMILY_MAGE, FAMILY_SOLDIER}),
+              config.team_families)
+        << "the two seeded families survive and the hire appended its family";
+
+    // The DIFFICULTY submenu is the only place this binary drives the text
+    // client's six settings rows, so pin the ANSWER each ordinal prints, in
+    // order: every row must perform the same SaveData write the SDL menu
+    // does and report it through the shared picker_common formatter.
+    std::size_t at = 0;
+    const auto expect_in_order = [&](const std::string& needle) {
+        const std::size_t found = printed.find(needle, at);
+        EXPECT_NE(std::string::npos, found)
+            << "DIFFICULTY answer '" << needle << "' missing after offset "
+            << at;
+        if (found != std::string::npos)
+            at = found + needle.size();
+    };
+    // Each needle carries the "Choice: " prompt so it can only match the
+    // ANSWER the row printed, never the submenu's own redrawn rows.
+    expect_in_order("Choice: Difficulty set to Slaughter.\n");  // 1: Battle->Slaughter
+    expect_in_order("Choice: Respawns: Heroes\n");              // 2: Off -> Heroes
+    expect_in_order("Choice: Spawn Delay: Fast\n");             // 3: 0 -> 60 ticks
+    expect_in_order("Choice: Permadeath: Off\n");               // 4: keep_fallen -> 1
+    expect_in_order("Choice: Generators: Calm\n");              // 5: 0 -> 50
+    expect_in_order("Choice: Infinite Gold: On\n");             // 6: off -> on
+    expect_in_order("Choice: Infinite Gold: Off\n");            // 6 again: back off
+
+    // ... and the submenu's own rows end up reading back the same writes.
+    const std::size_t settled = printed.rfind("=== Difficulty ===");
+    ASSERT_NE(std::string::npos, settled);
+    const std::string final_page = printed.substr(settled);
+    EXPECT_NE(std::string::npos, final_page.find("1. Difficulty: Slaughter"));
+    EXPECT_NE(std::string::npos, final_page.find("2. Respawns: Heroes"));
+    EXPECT_NE(std::string::npos, final_page.find("3. Spawn Delay: Fast"));
+    EXPECT_NE(std::string::npos, final_page.find("4. Permadeath: Off"));
+    EXPECT_NE(std::string::npos, final_page.find("5. Generators: Calm"));
+    EXPECT_NE(std::string::npos, final_page.find("6. Infinite Gold: Off"));
 }
 
 // The raw Set Level prompt under the earned-roads gate: a fresh gladiator

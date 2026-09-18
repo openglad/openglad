@@ -2685,21 +2685,23 @@ void Screen::testing_reset_window_state()
 }
 #endif
 
+// Blanks the CPU canvas only — the per-frame background wipe under the options
+// family (menu_screen_specs.cpp options_panel_draw_background, which every
+// options subscreen and DIFFICULTY share), the pause player screen
+// (pause_menu.cpp), the key-remap prompt and the sprite-sheet picker
+// (picker.cpp). It never presents: the single SDL_RenderPresent is
+// Screen::swap, and swap re-uploads `render` and SDL_RenderClears the
+// backbuffer before its own draw, so an upload or an SDL_RenderTexture here
+// could never reach the window — the pair this function used to carry was dead
+// plumbing that read like a present and misled two audits. It also never
+// touches window_is_black_: a wipe that is repainted and presented in the same
+// frame is not a completed fade-out — flagging it would fade the options/pause
+// screens in on EVERY frame (the fade-in branch in menu_screen_runner.cpp) and
+// disarm the entry-violation listener. The 2013 overscan-adjust origin
+// (f42c0c49) drew the same fill.
 void Screen::clear_window()
 {
-    SDL_Surface* source_surface = render;
-    SDL_Texture* dest_texture = render_tex;
-    
-    SDL_FillSurfaceRect(source_surface, nullptr, 0x000000);
-    
-    SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
-    
-	const SDL_FRect dest = renderer_output_rect(
-		renderer, 0.0f, 0.0f,
-		float(int(og::runtime::current_session->window_w_)),
-		float(int(og::runtime::current_session->window_h_)));
-
-    SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
+	SDL_FillSurfaceRect(render, nullptr, 0x000000);
 }
 
 #undef GET_RESULT

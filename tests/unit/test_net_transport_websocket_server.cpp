@@ -593,6 +593,17 @@ TEST(NetTransportWebSocketServer,
     });
 
     fixture.run();
+    // Both oracles below are satisfied by a server that never ticked (no
+    // hash check is ever exchanged, and four tick-0 mirrors match a tick-0
+    // server), so pin the authoritative tick first.
+    ASSERT_EQ(kStressTicks, fixture.server_world().tick_count_)
+        << "the 12hz stress must actually simulate " << kStressTicks
+        << " ticks";
+    for (std::size_t i = 0; i < 4; ++i)
+    {
+        EXPECT_GE(fixture.client(i).last_seen_server_tick(), kStressTicks)
+            << "client " << i << " must catch up to the authoritative tick";
+    }
     EXPECT_EQ(0u, fixture.server().snapshot_hash_mismatch_count());
     fixture.expect_clients_match_server();
 }

@@ -283,8 +283,12 @@ TEST(MenuFlow, main_menu_flow) {
 - Set `g_picker_max_mainmenu_calls` to limit loop iterations
 - Call `cleanup_picker_state()` after the test
 - `scripts/check_injector_settles.sh` fails the build (it is a dependency of
-  `og_game_test`) if a flat `SDL_Delay(750)` reappears in any of the injector
-  files it lists; add your file to that list when you convert it
+  `og_game_test`) on a flat settle, in two tiers: tier 1 (`FILES`) bans a
+  literal `SDL_Delay(750)` in a partially converted file; tier 2
+  (`CONVERTED_FILES`) allows nothing but a poll tick — an integer literal
+  <= 100 or an argument spelled with `poll` — so `SDL_Delay(300)` and a named
+  settle constant such as `SDL_Delay(kUiSettleMs)` fail too. Add your file to
+  tier 1 when you drop its 750s and to tier 2 when its conversion lands
 
 ### `#ifdef TESTING` Guards
 

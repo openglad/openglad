@@ -1880,26 +1880,6 @@ og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
     return message;
 }
 
-bool start_denial_matches_request(
-    const og::sim::LobbyState& state,
-    std::uint32_t pending_request_id) noexcept
-{
-    return pending_request_id != 0 &&
-        state.last_start_request_id == pending_request_id &&
-        state.last_start_denial != og::sim::start_denial_reason_value(
-            og::sim::StartDenialReason::None);
-}
-
-bool start_confirmation_matches_request(
-    const og::sim::LobbyMessage& message,
-    std::uint32_t pending_request_id) noexcept
-{
-    const auto* const start =
-        std::get_if<og::sim::LobbyStartGameMessage>(&message.payload);
-    return start != nullptr &&
-        (pending_request_id == 0 || start->request_id == pending_request_id);
-}
-
 template <typename Poll, typename Accepted>
 bool wait_for_authoritative_lobby_value(
     Poll&& poll,
@@ -2907,6 +2887,13 @@ public:
 
     bool request_start_game() override
     {
+        // Every GO press starts fresh: the previous press's verdict is not
+        // this one's, and a press that never reaches a verdict has none.
+        // This sits ABOVE the entry gate (as it does on the join client) so
+        // the contract holds for a press that is refused before anything is
+        // sent, too -- an earlier attempt's reason must not blip back as this
+        // press's answer.
+        last_start_verdict_ = og::sim::StartDenialReason::None;
         if (start_request_pending_ ||
             !local_client_transport_ || !state_.has_value() ||
             server_ == nullptr)
@@ -2946,6 +2933,16 @@ public:
             // §4.3 denial: the server echoed last_start_denial without locking
             // the lobby. Drop the pending flag so the go_menu poll loop stops
             // spinning to timeout; the reason is read via last_start_denial().
+            // Latch THIS request's verdict before the id is cleared: the echo
+            // counts only when it is recipient-scoped to the id we just sent
+            // (start_denial_matches_request), so a stale reason from an
+            // earlier attempt can never be reported as this press's answer.
+            last_start_verdict_ = state_.has_value() &&
+                    og::sim::start_denial_matches_request(
+                        *state_, pending_start_request_id_)
+                ? og::sim::start_denial_reason_from_wire(
+                      state_->last_start_denial)
+                : og::sim::StartDenialReason::None;
             start_request_pending_ = false;
             pending_start_request_id_ = 0;
         }
@@ -3193,15 +3190,18 @@ public:
         return indices;
     }
 
+    // The correlated verdict of THIS client's most recent start request
+    // (latched in request_start_game through start_denial_matches_request),
+    // never the raw cached echo.
     [[nodiscard]] og::sim::StartDenialReason last_start_denial()
         const noexcept override
     {
-        if (!state_.has_value())
-            return og::sim::StartDenialReason::None;
-        return static_cast<og::sim::StartDenialReason>(
-            state_->last_start_denial);
+        return last_start_verdict_;
     }
 
+    // Constant by contract: this answers "is a NETWORK client installed",
+    // never "is a session running" -- that is session_established() below
+    // (pinned by MenuModel.host_picker_lobby_client_guards_the_port_and_starts_idle).
     [[nodiscard]] bool is_networked_session() const noexcept override
     {
         return true;
@@ -3443,7 +3443,7 @@ private:
                 message.lobby_message->kind() ==
                     og::sim::LobbyMessageKind::StartGame)
             {
-                if (!og::ui::detail::start_confirmation_matches_request(
+                if (!og::sim::start_confirmation_matches_request(
                         *message.lobby_message,
                         start_request_pending_
                             ? pending_start_request_id_
@@ -3603,6 +3603,9 @@ private:
     bool start_request_pending_ = false;
     std::uint32_t next_start_request_id_ = 1;
     std::uint32_t pending_start_request_id_ = 0;
+    // The correlated verdict of the most recent GO (last_start_denial()).
+    og::sim::StartDenialReason last_start_verdict_ =
+        og::sim::StartDenialReason::None;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
     std::string relay_room_code_;
     std::string relay_status_message_;
@@ -4080,12 +4083,22 @@ public:
             std::clamp(local_player_count_, 0, MAX_PLAYERS));
     }
 
+    // Every machine may PRESS start; the SERVER decides. The host rule has
+    // exactly one implementation -- LobbyServer's start_allowed() rule 2 --
+    // and it answers a non-host requester with StartDenialReason::NotHost,
+    // which go_menu renders as "ONLY THE HOST CAN START". A client-side "am
+    // I host NOW" gate here would be a second home for that rule, and it is
+    // what used to leave a non-elected machine's press with no verdict at
+    // all. The GO button's VISIBILITY (host_controls_visible) is
+    // presentation, not the rule: it hides the button from an ordinary
+    // joiner, it does not decide the press.
     bool request_start_game() override
     {
         // Every GO press starts fresh: a previous press's verdict is not
-        // this one's.
+        // this one's, and a press that never dispatches has none at all.
         start_request_outcome_ = og::ui::StartRequestOutcome::None;
-        if (start_request_pending_ || !transport_ || !local_player_is_host() ||
+        last_start_verdict_ = og::sim::StartDenialReason::None;
+        if (start_request_pending_ || !transport_ ||
             pending_game_start_config_.has_value() ||
             g_start_game_requested)
             return false;
@@ -4440,15 +4453,18 @@ public:
         return indices;
     }
 
+    // The correlated verdict of THIS client's most recent start request
+    // (latched where the pending request is released through
+    // start_denial_matches_request), never the raw cached echo.
     [[nodiscard]] og::sim::StartDenialReason last_start_denial()
         const noexcept override
     {
-        if (!state_.has_value())
-            return og::sim::StartDenialReason::None;
-        return static_cast<og::sim::StartDenialReason>(
-            state_->last_start_denial);
+        return last_start_verdict_;
     }
 
+    // Constant by contract: this answers "is a NETWORK client installed",
+    // never "is a session running" -- that is session_established() below
+    // (pinned by MenuModel.host_picker_lobby_client_guards_the_port_and_starts_idle).
     [[nodiscard]] bool is_networked_session() const noexcept override
     {
         return true;
@@ -4817,7 +4833,7 @@ private:
     bool dispatch_start_request()
     {
         if (!transport_ || !state_.has_value() ||
-            !local_player_is_host() || join_confirmation_pending_ ||
+            join_confirmation_pending_ ||
             awaiting_round_ready_reset_ ||
             pending_game_start_config_.has_value() ||
             g_start_game_requested)
@@ -4893,6 +4909,9 @@ private:
         pending_start_request_id_ = 0;
         deferred_start_requested_ = false;
         start_request_outcome_ = reason;
+        // NoAnswer/LinkLost are carried by the outcome, not by a denial
+        // reason: the host never answered, so there is no verdict to report.
+        last_start_verdict_ = og::sim::StartDenialReason::None;
     }
 
     // A host whose uplink went dark (socket open, nobody answering) sends
@@ -4910,11 +4929,19 @@ private:
         abandon_start_request(og::ui::StartRequestOutcome::NoAnswer);
     }
 
+    // The third site of the host rule used to live here: a deferred press
+    // was CANCELLED locally when this machine was not the host, so a GO
+    // queued behind a roster echo produced no verdict at all -- the same
+    // silent exit the two send-site gates produced, one poll later. A
+    // deferred press is the SAME press; it dispatches on the same terms as
+    // an immediate one and LobbyServer::start_allowed() rule 2 answers it
+    // NotHost. Only a link that cannot carry the request (no transport, no
+    // lobby state) cancels it here.
     void maybe_dispatch_deferred_start()
     {
         if (!deferred_start_requested_)
             return;
-        if (!transport_ || !state_.has_value() || !local_player_is_host())
+        if (!transport_ || !state_.has_value())
         {
             deferred_start_requested_ = false;
             start_request_pending_ = false;
@@ -4950,9 +4977,16 @@ private:
                 // an older attempt may already be queued and must not release
                 // a newer pending request.
                 if (start_request_pending_ &&
-                    og::ui::detail::start_denial_matches_request(
+                    og::sim::start_denial_matches_request(
                         *state_, pending_start_request_id_))
                 {
+                    // Latch the verdict of the request being released, before
+                    // its id is cleared: last_start_denial() answers for THIS
+                    // press, and later broadcasts (another machine's denial,
+                    // a roster echo) can no longer rewrite it.
+                    last_start_verdict_ =
+                        og::sim::start_denial_reason_from_wire(
+                            state_->last_start_denial);
                     start_request_pending_ = false;
                     pending_start_request_id_ = 0;
                     deferred_start_requested_ = false;
@@ -5034,7 +5068,7 @@ private:
                 message.lobby_message->kind() ==
                     og::sim::LobbyMessageKind::StartGame)
             {
-                if (!og::ui::detail::start_confirmation_matches_request(
+                if (!og::sim::start_confirmation_matches_request(
                         *message.lobby_message,
                         start_request_pending_
                             ? pending_start_request_id_
@@ -5248,6 +5282,9 @@ private:
     // #278: when the pending request's GO was pressed, and whether the last
     // GO's request expired unanswered (cleared by the next GO).
     std::chrono::steady_clock::time_point start_request_sent_at_{};
+    // The correlated verdict of the most recent GO (last_start_denial()).
+    og::sim::StartDenialReason last_start_verdict_ =
+        og::sim::StartDenialReason::None;
     og::ui::StartRequestOutcome start_request_outcome_ =
         og::ui::StartRequestOutcome::None;
     std::uint32_t next_start_request_id_ = 1;

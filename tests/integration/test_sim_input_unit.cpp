@@ -33,9 +33,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -44,7 +42,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -52,7 +50,6 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -147,13 +144,29 @@ TEST(SimInputUnit, sim_input_switch_special_yell_and_mismatch_paths)
     ASSERT_TRUE(result.notify_text == "RELEASING MEN!");
     ASSERT_TRUE(ally->action() == 0);
 
+    // Seat mismatch: a control owned by ANOTHER seat is returned untouched
+    // before the movement block, so player 0 holding MoveRight may not walk
+    // player 1's walker. Face it east first so the walk would actually step
+    // (walker::walk only turns when curdir != the requested facing).
     control->set_user(1);
+    control->set_ani_type(ANI_WALK);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    control->set_lastx(0.0f);
+    control->set_lasty(0.0f);
+    const float mismatch_x = control->xpos();
     input.clear();
+    input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(result.new_control == control);
+    ASSERT_EQ(control, result.new_control)
+        << "a foreign-owned control is handed straight back";
+    ASSERT_FLOAT_EQ(mismatch_x, control->xpos())
+        << "a seat must not walk a control owned by another player";
+    ASSERT_FLOAT_EQ(0.0f, control->lastx())
+        << "walkstep must never run for a foreign-owned control";
 
     control->set_user(0);
+    input.clear();
     control->stats()->set_frozen_delay(1);
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
@@ -168,9 +181,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -179,7 +190,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -187,7 +198,6 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -213,6 +223,27 @@ void assign_basic_ani(walker* w)
         seqs[static_cast<std::size_t>(i)][1] = -1;
         seqs[static_cast<std::size_t>(i)][2] = -1;
         rows[static_cast<std::size_t>(i)] = seqs[static_cast<std::size_t>(i)].data();
+    }
+    w->ani = rows.data();
+}
+
+// A THREE-frame walk row per facing. assign_basic_ani's 1-frame rows make the
+// BIT_ANIMATE idle step unobservable: set_frame_from_current_walk_animation
+// wraps cycle 1 straight back to 0, so "cycle == 0" passes whether or not the
+// increment ran. With three frames the cycle walks 0 -> 1 -> 2 -> 0.
+void assign_three_frame_ani(walker* w)
+{
+    constexpr int kAniRows = NUM_FACINGS * (ANI_SLIME_SPLIT + 1);
+    static std::array<std::array<signed char, 4>, kAniRows> seqs{};
+    static std::array<signed char*, kAniRows> rows{};
+    for (int i = 0; i < kAniRows; ++i)
+    {
+        const std::size_t r = static_cast<std::size_t>(i);
+        seqs[r][0] = 0;
+        seqs[r][1] = 1;
+        seqs[r][2] = 2;
+        seqs[r][3] = -1;
+        rows[r] = seqs[r].data();
     }
     w->ani = rows.data();
 }
@@ -259,7 +290,9 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control == b || control == c);
+    ASSERT_EQ(b, control)
+        << "forward cycling selects the next eligible walker after current "
+           "in oblist order (a -> b)";
 
     input.clear();
     debounce.changedchar = 0;
@@ -271,7 +304,9 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     c->set_user(-1);
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control == c || control == b);
+    ASSERT_EQ(c, control)
+        << "reverse cycling walks rbegin-wards from current and wraps to the "
+           "tail (a -> c), which is NOT the forward pick";
 }
 
 TEST(SimInputUnit, sim_input_r11_switch_special_yell_and_action_default)
@@ -334,29 +369,61 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(result.new_control == control);
 
-    // movement branch (walkstep)
+    // Movement branch: a held direction walksteps by EXACTLY one stepsize
+    // (1.0f in this fixture) and records the vector in lastx. Face east first
+    // -- walker::walk only turns, never moves, when curdir != the request.
     control->set_ani_type(ANI_WALK);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     const float x_before = control->xpos();
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->xpos() >= x_before);
+    ASSERT_FLOAT_EQ(x_before + control->stepsize(), control->xpos())
+        << "a held direction walksteps by exactly one stepsize";
+    ASSERT_FLOAT_EQ(control->stepsize(), control->lastx())
+        << "walkstep records the movement vector in lastx";
 
-    // BIT_ANIMATE idle animation branch + frame reset path
+    // BIT_ANIMATE idle animation branch: with NO movement vector the handler
+    // advances the walk cycle by one and re-frames from the row; at the
+    // row's -1 sentinel the cycle wraps back to 0.
+    assign_three_frame_ani(control);
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
     control->set_cycle(0);
     input.clear();
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->cycle() == 0);
+    ASSERT_EQ(1, static_cast<int>(control->cycle()))
+        << "BIT_ANIMATE idle must advance the cycle by exactly one";
+    result = sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+    ASSERT_EQ(2, static_cast<int>(control->cycle()));
+    result = sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+    ASSERT_EQ(0, static_cast<int>(control->cycle()))
+        << "the idle cycle wraps at the row's -1 sentinel";
 
-    // held fire path
+    // Held fire: init_fire latches busy for one fire_frequency and swings the
+    // walk animation into ANI_ATTACK (facing already matches, so no turn).
+    control->stats()->set_bit_flags(BIT_ANIMATE, 0);
+    control->set_fire_frequency(4.0f);
+    control->set_busy(0.0f);
+    control->set_ani_type(ANI_WALK);
+    control->set_cycle(0);
+    control->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    control->set_enddir(static_cast<char>(FACE_RIGHT));
+    control->set_lastx(1.0f);
+    control->set_lasty(0.0f);
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_EQ(control, result.new_control);
+    ASSERT_EQ(ANI_ATTACK, static_cast<int>(control->ani_type()))
+        << "held Fire must start the attack animation";
+    ASSERT_FLOAT_EQ(4.0f, control->busy())
+        << "init_fire latches busy for exactly one fire_frequency";
 }
 
 // A1 regression: the SwitchChar cycle must never hand control to a dormant
@@ -446,9 +513,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -457,7 +522,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     GameWorld& world() { return level.world(); }
@@ -471,7 +536,6 @@ walker* add_char(SimInputFixture& fx, unsigned char team, signed char user,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);
@@ -709,9 +773,7 @@ namespace {
 struct SimInputFixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     SimInputFixture()
@@ -720,7 +782,7 @@ struct SimInputFixture {
         level.create_new_grid();
         save.allied_mode = 0;
         level.world().allied_mode = save.allied_mode;
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     GameWorld& world() { return level.world(); }
@@ -731,7 +793,6 @@ walker* add_hero(SimInputFixture& fx, unsigned char team, signed char user,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);

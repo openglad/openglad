@@ -248,11 +248,7 @@ void MatchStage::wire_stage_context()
 {
     GameWorld& staged_world = staged_level_->world();
     stage_rng_ptr_ = &staged_world.rng_;
-    staged_level_->set_sim_context(&staged_save_,
-                                   &staged_world.enemy_freeze,
-                                   &staged_events_,
-                                   stage_rng_ptr_,
-                                   &cfg);
+    staged_level_->set_sim_context(&staged_save_, &staged_events_, &cfg);
     stage_ctx_ = {};
     stage_ctx_.world = &staged_world;
     stage_ctx_.save = &staged_save_;
@@ -632,11 +628,7 @@ void StagedPreviewMirror::wire_mirror_context()
 {
     GameWorld& mirror_world = mirror_level_->world();
     mirror_rng_ptr_ = &mirror_world.rng_;
-    mirror_level_->set_sim_context(&mirror_save_,
-                                   &mirror_world.enemy_freeze,
-                                   &mirror_events_,
-                                   mirror_rng_ptr_,
-                                   &cfg);
+    mirror_level_->set_sim_context(&mirror_save_, &mirror_events_, &cfg);
     mirror_ctx_ = {};
     mirror_ctx_.world = &mirror_world;
     mirror_ctx_.save = &mirror_save_;

@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -27,6 +28,15 @@
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
 #endif
+
+// The TESTING-only per-world Lua instruction-budget override
+// (src/gameplay/script/world_scripts.cpp). It is read when a WorldScripts VM
+// is constructed, so a test that leaves it non-zero silently hands every
+// later world in the binary a reduced budget. Every unit group links
+// og_gameplay, so the census below compiles and links in all of them.
+namespace og::script {
+extern std::int64_t g_test_world_instruction_budget;
+}
 
 namespace {
 
@@ -69,9 +79,12 @@ bool init_unit_filesystem(const std::filesystem::path& test_config_dir, const ch
 // Registry census. The five family registries, the pack script and
 // family-chunk stores and the mounted campaign package are all
 // process-global, so a test that leaves any of them changed hands its
-// --gtest_shuffle neighbour a world it never set up. Fingerprint all four
-// around every test, BEFORE the between-test heal below repairs anything,
-// and fail the binary at the end naming each test that moved one.
+// --gtest_shuffle neighbour a world it never set up. The TESTING-only Lua
+// instruction-budget override is the same class of global: it is read when a
+// WorldScripts VM is constructed, so a leaked reduced budget applies to every
+// later world. Fingerprint all five around every test, BEFORE the between-test
+// heal below repairs anything, and fail the binary at the end naming each test
+// that moved one.
 //
 // Collected in a side list and reported after RUN_ALL_TESTS rather than
 // ADD_FAILURE'd from OnTestEnd — the shape tests/curses/curses_test_main.cpp
@@ -83,6 +96,7 @@ struct RegistryFingerprint
     std::size_t family_chunks = 0;
     std::size_t scripts = 0;
     std::string mounted_campaign;
+    std::int64_t instruction_budget_override = 0;
 };
 
 RegistryFingerprint take_registry_fingerprint()
@@ -92,6 +106,8 @@ RegistryFingerprint take_registry_fingerprint()
     fingerprint.family_chunks = og::script::pack_family_chunks().size();
     fingerprint.scripts = og::script::pack_scripts().size();
     fingerprint.mounted_campaign = get_mounted_campaign();
+    fingerprint.instruction_budget_override =
+        og::script::g_test_world_instruction_budget;
     return fingerprint;
 }
 
@@ -121,6 +137,15 @@ public:
         {
             ADD_FAILURE() << "gameplay context corrupted before test";
             restore_context();
+        }
+        if (og::script::g_test_world_instruction_budget != 0)
+        {
+            ADD_FAILURE()
+                << "world instruction-budget override leaked into this test: "
+                << og::script::g_test_world_instruction_budget
+                << " (an earlier test set it and never restored it; use the "
+                   "BudgetOverride RAII in tests/modes_pack_fixture.h)";
+            og::script::g_test_world_instruction_budget = 0;
         }
         before_ = take_registry_fingerprint();
     }
@@ -173,6 +198,12 @@ private:
             changed += "\n    mounted campaign: \"" +
                        before_.mounted_campaign + "\" -> \"" +
                        after.mounted_campaign + "\"";
+        if (after.instruction_budget_override !=
+            before_.instruction_budget_override)
+            changed += "\n    world instruction-budget override: " +
+                       std::to_string(before_.instruction_budget_override) +
+                       " -> " +
+                       std::to_string(after.instruction_budget_override);
         if (changed.empty())
             return;
         registry_leaks().push_back(std::string(info.test_suite_name()) + "." +
@@ -254,7 +285,8 @@ int main(int argc, char** argv)
     {
         std::fprintf(stderr,
                      "\nREGISTRY LEAK: %zu test(s) left the process family "
-                     "registries, pack stores or campaign mount changed:\n",
+                     "registries, pack stores, campaign mount or world "
+                     "instruction-budget override changed:\n",
                      registry_leaks().size());
         for (const std::string& leak : registry_leaks())
             std::fprintf(stderr, "  %s\n", leak.c_str());

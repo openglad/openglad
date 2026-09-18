@@ -218,7 +218,6 @@ TEST(Issue12EditorWallCrash, wall_box_on_bottom_row_with_hundreds_of_clerics)
     // The editor owns a radar bound to viewob[0]; it starts once on entry and
     // is update()d after every terrain stroke.
     radar myradar(s->viewob[0].get(), s, 0);
-    myradar.force_lower_position = true;
     myradar.start(&s->level_runtime_data());
 
     // "start drawing a wall ... on the bottom row near the middle. Draw a box
@@ -431,7 +430,6 @@ TEST(Issue12EditorWallCrash, radar_update_resyncs_after_map_shrink)
     ASSERT_EQ(60, s->world().grid.h);
 
     radar r(s->viewob[0].get(), s, 0);
-    r.force_lower_position = true;
     r.start(&s->level_runtime_data());
     ASSERT_EQ(40, r.sizex);
     ASSERT_EQ(60, r.sizey);

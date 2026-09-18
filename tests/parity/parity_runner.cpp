@@ -1,5 +1,7 @@
 #include "parity_runner.h"
 
+#include <functional>
+
 #include "scenario_runtime.h"
 
 #include <openglad/core/constants.h>
@@ -420,6 +422,12 @@ void emulate_classic_screen_flow(GameWorld& world,
 
 RunOutcome run_scenario(const ScenarioSpec& spec)
 {
+    return run_scenario(spec, {});
+}
+
+RunOutcome run_scenario(const ScenarioSpec& spec,
+                        const std::function<void(GameWorld&)>& observe_final_world)
+{
     RunOutcome out;
 
     std::srand(spec.rng_seed);
@@ -433,15 +441,14 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         {
             set_gameplay_rng_override(gameplay);
             set_cosmetic_rng_override(cosmetic);
-#ifdef TESTING
+            // Master drew AI cadence and the sim stream from the same libc
+            // rand(); routing both overrides at the same slot is what the
+            // goldens encode.
             og::sim::set_sim_random_override(gameplay);
-#endif
         }
         ~RngOverrideGuard()
         {
-#ifdef TESTING
             og::sim::set_sim_random_override(nullptr);
-#endif
             set_cosmetic_rng_override(nullptr);
             set_gameplay_rng_override(nullptr);
         }
@@ -455,8 +462,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     og::sim::SimEventLog events;
     og::sim::SimEventLog parity_events;
 
-    level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                          &level.world().rng_, &::cfg);
+    level.set_sim_context(&save, &events, &::cfg);
 
     ScopedGameplayContext ctx(level.world(), save, events, ::cfg,
                               classic_fullscreen_view_contains);
@@ -488,6 +494,9 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     auto bag_walker = [](const walker* w, CoverageObservation& obs) {
         if (w == nullptr) return;
         const auto family = static_cast<std::int32_t>(w->family());
+        // [SWITCH-GUARD] no default: arm — see the rationale above evaluate_one
+        // in fact_predicate.cpp; a new Order enumerator must be a compile error
+        // here, not a silently unbagged family.
         switch (w->query_order())
         {
             case Order::Living:    obs.walker_families.insert(family); break;
@@ -495,7 +504,9 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
             case Order::Treasure:  obs.treasure_families.insert(family); break;
             case Order::Generator: obs.generator_families.insert(family); break;
             case Order::FX:        obs.effect_families.insert(family); break;
-            default:               break;
+            case Order::Special:
+            case Order::Button1:
+                break; // unmapped on purpose: no coverage bag for these orders
         }
     };
     auto sample_world = [&]() {
@@ -649,6 +660,11 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     for (const auto& ev : parity_events.events())
         out.coverage.event_kinds.insert(
             event_kind_symbol(static_cast<std::uint32_t>(ev.kind)));
+
+    // Harness-only seam, last of all: `out` is already complete, so an
+    // observer that ticks the world cannot change what this run reports.
+    if (observe_final_world)
+        observe_final_world(world);
 
     return out;
 }

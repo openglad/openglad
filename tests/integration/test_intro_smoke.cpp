@@ -47,18 +47,41 @@ static int push_intro_click_then_key(void*)
     return 0;
 }
 
-TEST(IntroSmoke, intro_main_aborts_on_keypress)
+TEST(IntroSmoke, a_latched_key_aborts_on_page_one_and_a_clean_run_shows_every_page)
 {
-    // intro_main's show() steps abort when query_key_press_event() is true.
-    // Push a key so the intro exits quickly but still executes real code paths.
-    push_any_keypress();
-    intro_main(0, nullptr);
-
-    // Run the full intro path as well to exercise all show()/cleanup branches.
+    // intro_main's show() steps abort when query_key_press_event() is true,
+    // and nothing in intro.cpp clears the latch — so a key pushed BEFORE
+    // intro_main must abort on the very first page. show() traces
+    // "intro_state"/"page ready" once per composed page and, on the abort,
+    // "intro"/"intro aborted by key" (src/interface/ui/intro.cpp).
     clear_events();
     clear_key_press_event();
     clear_keyboard();
+    trace_clear();
+    push_any_keypress();
     intro_main(0, nullptr);
+
+    ASSERT_TRUE(trace_contains("intro", "intro aborted by key"))
+        << "a latched key must abort the intro";
+    ASSERT_EQ(1, trace_count("intro_state"))
+        << "the latched key aborts on the FIRST page, so exactly one page "
+           "composed";
+    ASSERT_EQ(1, trace_count("intro"))
+        << "the abort is the only intro event: no click advance";
+
+    // A clean run composes every page intro_main asks for: the seven show()
+    // calls in intro_main (intro.cpp:154,170,180,194,224,237,278), none of
+    // them aborting.
+    clear_events();
+    clear_key_press_event();
+    clear_keyboard();
+    trace_clear();
+    intro_main(0, nullptr);
+
+    ASSERT_EQ(0, trace_count("intro"))
+        << "an undisturbed intro neither aborts nor advances by click";
+    ASSERT_EQ(7, trace_count("intro_state"))
+        << "every intro page must compose when nothing interrupts";
 }
 
 TEST(IntroSmoke, click_advances_one_page_and_key_still_aborts)

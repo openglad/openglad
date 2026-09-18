@@ -507,7 +507,7 @@ TEST(NpcScenarioFlags, dormant_foe_cell_is_walk_through_until_wake)
         << "attacks must not be able to hit a dormant walker";
     arrow->set_dead(1); // probe done: keep it out of the wake ticks below
 
-    // The walk-through changed nothing the NEXT WAVE HUD reads: still
+    // The walk-through changed nothing the WAVE HUD reads: still
     // oblist-resident, dormant, authored delay intact.
     EXPECT_TRUE(lurker->dormant());
     EXPECT_EQ(2u, static_cast<unsigned>(lurker->spawn_delay()));

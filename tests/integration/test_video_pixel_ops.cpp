@@ -6,9 +6,11 @@
 #include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/pal32.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <memory>
+#include <utility>
 #include <span>
 #include <vector>
 
@@ -18,8 +20,6 @@
 // Defined in src/render/video.cpp (not exposed in a header).
 extern void putpixel(SDL_Surface* surface, int x, int y, Uint32 pixel);
 extern void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha);
-
-// videoptr lives in GameSession — access via current_session->videoptr_.
 
 namespace
 {
@@ -41,55 +41,128 @@ static SurfacePtr make_surface_8bpp(int w, int h)
 }
 } // namespace
 
-TEST(VideoPixelOps, video_putpixel_and_blend_pixel_all_bpp_cases_smoke)
+// putpixel writes the mapped value at the surface's bytes_per_pixel stride;
+// blend_pixel mixes each channel as c + (((target - c) * alpha) >> 8) for
+// 1/2/3/4 bytes per pixel (video_sdl.cpp). Every case below reads the bytes
+// back, so a writer that stored at the wrong stride, or a blender that
+// returned the destination untouched, is red.
+TEST(VideoPixelOps, video_putpixel_and_blend_pixel_write_exact_bytes_for_every_bpp)
 {
-    // 8bpp (palette-indexed) case. SDL3: indexed surfaces no longer come with
-    // a palette automatically — create one so the palette branch of
-    // putpixel/blend_pixel actually executes.
+    // The 32-bpp blender has a second, premultiplied path that only runs while
+    // the gameplay-UI overlay canvas is active; these surfaces exercise the
+    // legacy masked path, so state that from the start.
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(CanvasTarget::GameplayUI, E_Screen->active_canvas())
+        << "these cases pin the legacy masked blend, not the overlay compositor";
+
+    // 8bpp (palette-indexed). SDL3: indexed surfaces no longer come with a
+    // palette automatically -- create one so the palette branch runs.
     SurfacePtr s8 = make_surface_8bpp(8, 8);
-    ASSERT_TRUE(s8 != nullptr) << "8bpp surface created";
-    SDL_Palette* pal = s8 ? SDL_CreateSurfacePalette(s8.get()) : nullptr;
-    if (pal) {
-        std::array<SDL_Color, 256> colors{};
-        for (int i = 0; i < 256; i++) {
-            colors[static_cast<std::size_t>(i)].r = static_cast<Uint8>(i);
-            colors[static_cast<std::size_t>(i)].g = static_cast<Uint8>(255 - i);
-            colors[static_cast<std::size_t>(i)].b = static_cast<Uint8>((i * 3) & 0xFF);
-            colors[static_cast<std::size_t>(i)].a = 255;
-        }
-        SDL_SetPaletteColors(pal, colors.data(), 0, static_cast<int>(colors.size()));
-        putpixel(s8.get(), 1, 1, 3);
-        blend_pixel(s8.get(), 1, 1, 7, 128);
+    ASSERT_NE(nullptr, s8) << "8bpp surface created";
+    SDL_Palette* pal = SDL_CreateSurfacePalette(s8.get());
+    ASSERT_NE(nullptr, pal) << "8bpp palette created";
+    std::array<SDL_Color, 256> colors{};
+    for (int i = 0; i < 256; i++) {
+        colors[static_cast<std::size_t>(i)].r = static_cast<Uint8>(i);
+        colors[static_cast<std::size_t>(i)].g = static_cast<Uint8>(255 - i);
+        colors[static_cast<std::size_t>(i)].b = static_cast<Uint8>((i * 3) & 0xFF);
+        colors[static_cast<std::size_t>(i)].a = 255;
     }
+    ASSERT_TRUE(SDL_SetPaletteColors(pal, colors.data(), 0, static_cast<int>(colors.size())));
+    ASSERT_TRUE(SDL_FillSurfaceRect(s8.get(), nullptr, 0));
+    const Uint8* const bytes8 = static_cast<const Uint8*>(s8->pixels);
+    putpixel(s8.get(), 1, 1, 3);
+    EXPECT_EQ(3, static_cast<int>(bytes8[1 * s8->pitch + 1]))
+        << "1 byte per pixel: the index lands at y*pitch + x";
+    EXPECT_EQ(0, static_cast<int>(bytes8[1 * s8->pitch + 0]))
+        << "the neighbouring index is untouched";
+    // destination palette[3] = (3,252,9), source palette[7] = (7,248,21):
+    // (3 + ((4*128)>>8), 252 + ((-4*128)>>8), 9 + ((12*128)>>8)) = (5,250,15),
+    // which is exactly palette entry 5.
+    blend_pixel(s8.get(), 1, 1, 7, 128);
+    EXPECT_EQ(5, static_cast<int>(bytes8[1 * s8->pitch + 1]))
+        << "the 8bpp blend mixes through the palette and remaps to entry 5";
 
-    // 16bpp case.
+    // 16bpp RGB565.
     SurfacePtr s16 = make_surface_with_format(8, 8, SDL_PIXELFORMAT_RGB565);
-    ASSERT_TRUE(s16 != nullptr) << "16bpp surface created";
-    if (s16) {
-        Uint32 c = SDL_MapSurfaceRGB(s16.get(), 10, 20, 30);
-        putpixel(s16.get(), 2, 2, c);
-        blend_pixel(s16.get(), 2, 2, SDL_MapSurfaceRGB(s16.get(), 200, 10, 10), 200);
-    }
+    ASSERT_NE(nullptr, s16) << "16bpp surface created";
+    ASSERT_TRUE(SDL_FillSurfaceRect(s16.get(), nullptr, 0));
+    const Uint32 dest16 = SDL_MapSurfaceRGB(s16.get(), 10, 20, 30);
+    ASSERT_EQ(2211u, dest16) << "RGB565 packs (10,20,30) as 1:5:3";
+    putpixel(s16.get(), 2, 2, dest16);
+    const Uint16* const words16 = reinterpret_cast<const Uint16*>(
+        static_cast<const Uint8*>(s16->pixels) + 2 * s16->pitch);
+    EXPECT_EQ(2211u, static_cast<unsigned>(words16[2]))
+        << "2 bytes per pixel: the mapped word lands at y*pitch/2 + x";
+    EXPECT_EQ(0u, static_cast<unsigned>(words16[1]))
+        << "the neighbouring word is untouched";
+    // Masked 565 blend of 2211 toward 51265 at alpha 200: red climbs to
+    // 0x9800, and the two channels whose source sits BELOW the destination
+    // wrap through the unsigned subtraction and land on 0x0040 / 0x0001.
+    blend_pixel(s16.get(), 2, 2, SDL_MapSurfaceRGB(s16.get(), 200, 10, 10), 200);
+    EXPECT_EQ(38977u, static_cast<unsigned>(words16[2]))
+        << "the 16bpp blend is masked per channel";
 
-    // 24bpp case.
+    // 24bpp RGB24: the legacy blender indexes destination bytes by shift/8,
+    // so state the format's shifts rather than assume them.
     SurfacePtr s24 = make_surface_with_format(8, 8, SDL_PIXELFORMAT_RGB24);
-    ASSERT_TRUE(s24 != nullptr) << "24bpp surface created";
-    if (s24) {
-        Uint32 c = SDL_MapSurfaceRGB(s24.get(), 1, 2, 3);
-        putpixel(s24.get(), 3, 3, c);
-        blend_pixel(s24.get(), 3, 3, SDL_MapSurfaceRGB(s24.get(), 100, 110, 120), 64);
-    }
+    ASSERT_NE(nullptr, s24) << "24bpp surface created";
+    const SDL_PixelFormatDetails* const d24 =
+        SDL_GetPixelFormatDetails(s24->format);
+    ASSERT_NE(nullptr, d24);
+    ASSERT_EQ(3, d24->bytes_per_pixel);
+    ASSERT_EQ(0, static_cast<int>(d24->Rshift));
+    ASSERT_EQ(8, static_cast<int>(d24->Gshift));
+    ASSERT_EQ(16, static_cast<int>(d24->Bshift));
+    ASSERT_EQ(0u, d24->Amask);
+    ASSERT_TRUE(SDL_FillSurfaceRect(s24.get(), nullptr, 0));
+    const Uint32 c24 = SDL_MapSurfaceRGB(s24.get(), 1, 2, 3);
+    putpixel(s24.get(), 3, 3, c24);
+    const Uint8* const row24 =
+        static_cast<const Uint8*>(s24->pixels) + 3 * s24->pitch;
+    EXPECT_EQ(static_cast<int>(c24 & 0xFFu), static_cast<int>(row24[3 * 3 + 0]));
+    EXPECT_EQ(static_cast<int>((c24 >> 8) & 0xFFu), static_cast<int>(row24[3 * 3 + 1]));
+    EXPECT_EQ(static_cast<int>((c24 >> 16) & 0xFFu), static_cast<int>(row24[3 * 3 + 2]))
+        << "3 bytes per pixel: the mapped value is split little-endian";
+    // Blend a still-black pixel (4,3) toward (100,110,120) at alpha 128: each
+    // channel is 0 + ((s*128)>>8) == s/2, stored at byte index shift/8. The
+    // alpha-less format leaves Ashift at 0, so the blender also recomputes
+    // "alpha" from the red byte and writes it back over byte 0 -- the same
+    // value, which is why this legacy quirk is invisible in practice.
+    blend_pixel(s24.get(), 4, 3, SDL_MapSurfaceRGB(s24.get(), 100, 110, 120), 128);
+    EXPECT_EQ(50, static_cast<int>(row24[4 * 3 + 0]));
+    EXPECT_EQ(55, static_cast<int>(row24[4 * 3 + 1]));
+    EXPECT_EQ(60, static_cast<int>(row24[4 * 3 + 2]))
+        << "the 24bpp blend halves each channel and writes it at shift/8";
 
-    // 32bpp case.
+    // 32bpp ARGB8888.
     SurfacePtr s32 = make_surface_with_format(8, 8, SDL_PIXELFORMAT_ARGB8888);
-    ASSERT_TRUE(s32 != nullptr) << "32bpp surface created";
-    if (s32) {
-        Uint32 c = SDL_MapSurfaceRGBA(s32.get(), 1, 2, 3, 255);
-        putpixel(s32.get(), 4, 4, c);
-        blend_pixel(s32.get(), 4, 4, SDL_MapSurfaceRGBA(s32.get(), 200, 210, 220, 255), 180);
-    }
+    ASSERT_NE(nullptr, s32) << "32bpp surface created";
+    ASSERT_TRUE(SDL_FillSurfaceRect(s32.get(), nullptr, 0));
+    putpixel(s32.get(), 4, 4, SDL_MapSurfaceRGBA(s32.get(), 1, 2, 3, 255));
+    Uint8 r = 0;
+    Uint8 g = 0;
+    Uint8 b = 0;
+    Uint8 a = 0;
+    ASSERT_TRUE(SDL_ReadSurfacePixel(s32.get(), 4, 4, &r, &g, &b, &a));
+    EXPECT_EQ(1, static_cast<int>(r));
+    EXPECT_EQ(2, static_cast<int>(g));
+    EXPECT_EQ(3, static_cast<int>(b));
+    EXPECT_EQ(255, static_cast<int>(a));
+    ASSERT_TRUE(SDL_ReadSurfacePixel(s32.get(), 3, 4, &r, &g, &b, &a));
+    EXPECT_EQ(0, static_cast<int>(r) + static_cast<int>(g) + static_cast<int>(b))
+        << "4 bytes per pixel: the neighbouring pixel is untouched";
+    // (1,2,3) blended toward (200,210,220) at alpha 180, masked per channel:
+    // 1 + ((199*180)>>8) -> 140, 2 + ((208*180)>>8) -> 148,
+    // 3 + ((217*180)>>8) -> 155; destination alpha is preserved.
+    blend_pixel(s32.get(), 4, 4, SDL_MapSurfaceRGBA(s32.get(), 200, 210, 220, 255), 180);
+    ASSERT_TRUE(SDL_ReadSurfacePixel(s32.get(), 4, 4, &r, &g, &b, &a));
+    EXPECT_EQ(140, static_cast<int>(r));
+    EXPECT_EQ(148, static_cast<int>(g));
+    EXPECT_EQ(155, static_cast<int>(b));
+    EXPECT_EQ(255, static_cast<int>(a))
+        << "the 32bpp blend keeps the destination alpha";
 }
-
 TEST(VideoPixelOps, pixel_format_guards_and_alpha_bits_have_exact_results)
 {
     SurfacePtr argb1555 =
@@ -190,24 +263,26 @@ TEST(VideoPixelOps, clipped_and_transparent_blits_pin_visible_pixels)
     sdl_video video(false);
     video.clearbuffer();
 
-    int black = -1;
-    ASSERT_EQ(0, video.get_pixel(0, 0, &black));
+    int probe = -1;
+    ASSERT_EQ(0, video.get_pixel(0, 0, &probe))
+        << "control: a cleared buffer reads back as palette index 0";
+
+    // Pre-paint the cell the transparent source byte covers with an index that
+    // is NOT the cleared background. Without this the "index 0 is transparent"
+    // rule is unobservable here: painting index 0 over a black cell reads back
+    // the same as skipping it.
+    video.pointb(10, 10, 14);
+    ASSERT_EQ(14, video.get_pixel(10, 10, &probe))
+        << "control: the destination cell starts at index 14, not the background";
 
     const std::array<unsigned char, 2> transparent_then_color{0, 42};
     video.putdata_alpha(10, 10, 2, 1, transparent_then_color, 255);
     int first = -1;
     int second = -1;
-    EXPECT_EQ(0, video.get_pixel(10, 10, &first));
-    EXPECT_EQ(42, video.get_pixel(11, 10, &second));
-    EXPECT_EQ(black, first)
+    EXPECT_EQ(14, video.get_pixel(10, 10, &first))
         << "the transparent alpha entry must preserve its destination";
-
-    const std::array<unsigned char, 2> transparent_then_team{0, 250};
-    video.putdata(12, 10, 2, 1, transparent_then_team, 77);
-    EXPECT_EQ(0, video.get_pixel(12, 10, &first));
-    EXPECT_EQ(77, video.get_pixel(13, 10, &second));
-    EXPECT_EQ(black, first)
-        << "the transparent team-color entry must preserve its destination";
+    EXPECT_EQ(42, video.get_pixel(11, 10, &second))
+        << "the non-zero entry lands opaquely at alpha 255";
 
     const std::array<unsigned char, 4> clipped_tile{11, 12, 13, 14};
     video.putbuffer(-1, -1, 2, 2, -1, -1, 1, 1, clipped_tile);
@@ -291,33 +366,77 @@ TEST(VideoPixelOps, null_render_line_guard_is_a_no_op)
 }
 
 
-TEST(VideoPixelOps, video_putblack_uses_overridden_videoptr_buffer)
+
+// darken_screen blends PURE_BLACK over every canvas pixel at alpha 100, and
+// fastbox returns immediately when any of startx/starty/xsize/ysize is
+// negative (video_sdl.cpp).
+TEST(VideoPixelOps, darken_screen_dims_every_pixel_and_negative_fastbox_draws_nothing)
 {
-    // Legacy putblack writes to `videoptr`. In the original DOS codebase this
-    // was linear VGA memory. Override it in tests to ensure it remains safe.
-    unsigned char* saved = og::runtime::current_session->videoptr_;
-    std::array<unsigned char, 64000> buffer{};
-    buffer.fill(42);
-    og::runtime::current_session->videoptr_ = buffer.data();
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_NE(nullptr, E_Screen->render);
+    ASSERT_NE(CanvasTarget::GameplayUI, E_Screen->active_canvas())
+        << "this pins the legacy masked blend, not the overlay compositor";
 
-    og::runtime::current_session->myscreen_->putblack(0, 0, 10, 10);
-    og::runtime::current_session->myscreen_->putblack(-10, -10, 10, 10); // bounds check via curpoint
-    og::runtime::current_session->myscreen_->putblack(319, 199, 5, 5);   // partial bounds
+    // Ground: one flat palette colour over the whole canvas.
+    constexpr unsigned char kGround = 7;
+    s->clearbuffer();
+    s->fastbox(0, 0, s->canvas_w(), s->canvas_h(), kGround, 1);
+    Uint8 r = 0;
+    Uint8 g = 0;
+    Uint8 b = 0;
+    s->get_pixel(160, 100, &r, &g, &b);
+    const int bright_r = static_cast<int>(r);
+    const int bright_g = static_cast<int>(g);
+    const int bright_b = static_cast<int>(b);
+    ASSERT_NE(0, bright_r + bright_g + bright_b) << "the ground must be visible";
 
-    og::runtime::current_session->videoptr_ = saved;
+    // The masked alpha-100 blend toward black (palette entry 0 is 0,0,0)
+    // leaves floor(c * 39936 / 65536) in each 8-bit channel: the blend adds
+    // ((0 - (c<<16)) * 100) >> 8 to c<<16 and then masks the low bits off.
+    const auto darkened = [](int c) {
+        return static_cast<int>((static_cast<unsigned>(c) * 39936u) >> 16) & 0xFF;
+    };
+
+    s->darken_screen();
+    for (const auto& [x, y] : {std::pair<int, int>{0, 0},
+                              std::pair<int, int>{160, 100},
+                              std::pair<int, int>{319, 199}})
+    {
+        s->get_pixel(x, y, &r, &g, &b);
+        EXPECT_EQ(darkened(bright_r), static_cast<int>(r))
+            << "red at (" << x << ", " << y << ')';
+        EXPECT_EQ(darkened(bright_g), static_cast<int>(g))
+            << "green at (" << x << ", " << y << ')';
+        EXPECT_EQ(darkened(bright_b), static_cast<int>(b))
+            << "blue at (" << x << ", " << y << ')';
+    }
+
+    // Every negative argument is an early return, not a clamped box.
+    const std::size_t bytes =
+        static_cast<std::size_t>(E_Screen->render->pitch) *
+        static_cast<std::size_t>(E_Screen->render->h);
+    const std::vector<Uint8> before(
+        static_cast<const Uint8*>(E_Screen->render->pixels),
+        static_cast<const Uint8*>(E_Screen->render->pixels) + bytes);
+    s->fastbox(-1, 0, 10, 10, 1, 1);
+    s->fastbox(0, -1, 10, 10, 1, 1);
+    s->fastbox(0, 0, -10, 10, 1, 1);
+    s->fastbox(0, 0, 10, -10, 1, 1);
+    EXPECT_EQ(0, std::memcmp(before.data(), E_Screen->render->pixels, bytes))
+        << "a fastbox with any negative argument must not touch the canvas";
+
+    // Positive control: the same call with legal arguments does paint.
+    s->fastbox(0, 0, 10, 10, 1, 1);
+    EXPECT_NE(0, std::memcmp(before.data(), E_Screen->render->pixels, bytes))
+        << "the guard above must be the sign check, not a dead fastbox";
+    int index = -1;
+    EXPECT_EQ(1, s->get_pixel(3, 3, &index)) << "the legal box painted colour 1";
+
+    s->clearbuffer();
 }
 
-
-TEST(VideoPixelOps, video_darken_and_fastbox_negative_inputs_smoke)
-{
-    og::runtime::current_session->myscreen_->darken_screen();
-
-    // Exercise fastbox early-return for invalid sizes/coords.
-    og::runtime::current_session->myscreen_->fastbox(-1, 0, 10, 10, 1, 1);
-    og::runtime::current_session->myscreen_->fastbox(0, -1, 10, 10, 1, 1);
-    og::runtime::current_session->myscreen_->fastbox(0, 0, -10, 10, 1, 1);
-    og::runtime::current_session->myscreen_->fastbox(0, 0, 10, -10, 1, 1);
-}
 
 // get_pixel(x, y, &index) answers "which palette entry is this pixel?" for
 // callers that read back what they drew. When the pixel is a colour the game

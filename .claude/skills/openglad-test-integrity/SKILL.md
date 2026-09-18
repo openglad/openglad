@@ -47,6 +47,60 @@ a postcondition, not that the call returned. Every test asserts a
 specific expected value or state transition. Before claiming a coverage
 number, self-audit your new tests against this list.
 
+## Proving a test has teeth (planted breaks)
+
+Every fixed or new test is proven by breaking the product and watching it
+go red:
+
+1. Plant the break in src/ — the most natural one-line break of the rule
+   the test names: an early return, a flipped comparison, a wrong
+   constant. For a source tripwire (a test whose oracle is the source
+   tree) the plant goes in the sources it scans, not in src/.
+2. Batch independent mutations in different functions: one build, one run
+   of the group's binaries, each test red for ITS mutation. Two mutations
+   that could mask each other go in separate batches.
+3. Record per test the mutation (file:line, old → new) and the
+   `[  FAILED  ]` line it produced.
+4. Revert src/, rebuild, rerun: green again. `git status --short src
+   include packs` is empty before you commit — a planted break is never
+   committed.
+
+A test that stays green under its mutation is not fixed: strengthen it,
+or find the observable the rule actually moves.
+
+Plant breaks that compile. The ci-test, ci-asan and ci-tsan presets set
+`OPENGLAD_WARNINGS_AS_ERRORS=ON` (CMakePresets.json; ci-coverage and
+ci-fuzz do not, and the option defaults OFF in CMakeLists.txt) over
+`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow`
+(CMakeLists.txt, `OG_WARNING_FLAGS`), so on those lanes a mutation that
+does not build proves nothing and costs a rebuild. The forms that
+survive -Werror:
+
+- Prepend the early exit and brace it — `if (true) { return v; }` — above
+  the old body rather than replacing it, so the function's parameters and
+  locals stay used.
+- Do not plant into the body of an unbraced `if`/`for`/`while`: the plant
+  becomes that body, orphans the statement under it, and GCC reports
+  `this 'if' clause does not guard... [-Werror=misleading-indentation]`.
+  Bracing the plant does not cure that one — move it into a braced block.
+- Replacing a body wholesale needs `(void)` on every parameter:
+  `(void)x; (void)y; return true;`. The old locals went with the body,
+  so what fires is `error: unused parameter 'x'
+  [-Werror=unused-parameter]`, once per parameter.
+- Substituting a value for a parameter keeps a read of it: `alpha | 0xFF`,
+  not `255`; an out-parameter forced to `nullptr` needs `(void)r;`.
+- Deleting a variable's last READER — the statement that consumed it —
+  leaves it set-but-unused: `error: variable 'name' set but not used
+  [-Werror=unused-but-set-variable]`, or `error: unused variable 'name'
+  [-Werror=unused-variable]` when the declaration was its only write.
+  Add `(void)name;`. Deleting its last WRITER is the other case and
+  `(void)` does not help there: with an initialiser on the declaration
+  it compiles clean, without one it is `error: 'name' is used
+  uninitialized [-Werror=uninitialized]` and the plant needs a value.
+- Constants must match the target type and must not shadow: `return -1;`
+  from an `unsigned char` function is an error under -Wsign-conversion,
+  and a plant that re-declares a live local name is one under -Wshadow.
+
 ## Coverage run mechanics (local)
 
 - Judge a change by the local baseline→change DELTA in a worktree, not
@@ -95,6 +149,24 @@ test after the failure never ran.
   OPENGLAD_TEST_LOBBY_CENSUS=1 to list the tests that end holding one.
   Still don't attribute a shuffle failure to new tests without
   reproducing on a clean tree.
+- [SAVE-R9], the same treatment for company files: between every pair
+  of integration tests the harness deletes every save/*.gtl (save0
+  included) and every save/backups/<slot>.NNN.gtl whose slot is not in
+  the process baseline, un-pins the company clock and zeroes the live
+  save's last_played_unix_s, so company files, the live stamp and the
+  clock pin all return to the process baseline. The baseline is the
+  [SAVE-R5](c) stray-slot seeds, which is why the diagnostic survives
+  the whole run. The a/b pin for it lives in
+  tests/integration/test_company_litter_guard.cpp; a per-test teardown
+  reaper is now a rule twin, not a safety net. CONTINUE opens the MOST
+  RECENT company, so a leaked file re-targets a later flow's whole
+  session and the red lands nowhere near the leaker.
+- A FILTERED `--gtest_shuffle` run preserves the full run's relative
+  order for the same seed AND the same binary (gtest shuffles the whole
+  registered set, then applies the filter), so a cheap filtered census
+  finds a bad order without paying for the full binary. Any change to
+  the registered test set re-deals every seed, so a seed recorded
+  before you added a test proves nothing after.
 - `Difficulty.submenu_door_flow` (og_test_menu_ui) used to be recorded
   here as load-flaky with "a rerun clears it". It was not load: its
   per-click oracle was `wait_for_interactable_label_change`, which
@@ -108,7 +180,8 @@ test after the failure never ran.
 - Never bump a deadline to fix a timing-flaky test: measure the real
   cost, fix it, then convert the flat delay into a wait-on-condition
   with a generous ceiling, and prove the wait can still fail by planting
-  a break. Gate cost regressions with counts (call counts), not clocks.
+  a break (see "Proving a test has teeth"). Gate cost regressions with
+  counts (call counts), not clocks.
 
 ## Tests that hang (the three known traps)
 
@@ -122,7 +195,20 @@ test after the failure never ran.
    its way out, so a tail that stops clicking guarantees the hang it
    exists to prevent. Loop until the main thread signals it left the
    menu, and click BACK as well as RESUME — the player sub-screen
-   publishes no RESUME (`tests/integration/test_pause_menu.cpp`).
+   publishes no RESUME. The rule lives once, in
+   `tests/test_escape_tail.h` (`escape_to_the_main_thread`, with an
+   `EscapeDoor` table for the flow's screens and a `hold_lap` predicate
+   for laps that must not press); every injector in the tree calls it,
+   and `scripts/check_escape_tail_twins.py` fails the test build on a
+   new hand-rolled copy (the openglad-menus skill carries the binding
+   procedure). A capture/scene test never skips on a missing
+   env var — it asserts its oracle always and writes media only when
+   asked:
+   `RenderEffects.damage_number_glyphs_paint_in_the_requested_band`
+   through `fx_capture::dump_frame`, `MenuCapture.zz_capture_*`
+   through the one presented-frame handshake in
+   `tests/test_frame_capture.h` (`capture_presented_frame` /
+   `verify_captured_frames`); do not add another copy of either.
 2. Never feed malformed YAML to gparser as a coverage target; it does
    not return.
 3. Run ctest with stdin PIPED, never under a pty — headless clients

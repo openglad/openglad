@@ -7,7 +7,6 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
-#include "test_company_cleanup.h"
 #include "test_interact.h"
 #include "test_save_state_guard.h"
 #include <openglad/resources/save_data.h>
@@ -96,8 +95,6 @@ static bool interact_match(
 TEST(SaveLoadTeam, save_team_then_load) {
     trace_clear();
 
-    ScopedCompanyFileCleanup cleanup;
-
     // Build a team with specific guys
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
@@ -166,7 +163,6 @@ TEST(SaveLoadTeam, save_team_then_load) {
 // round-trip through the on-disk save format with the upgraded family AND the
 // post-promotion stats intact.
 TEST(SaveLoadTeam, promoted_archmage_round_trips_through_save) {
-    ScopedCompanyFileCleanup cleanup;
     auto& save_data = og::runtime::current_session->myscreen_->save_data;
     save_data.reset();
     save_data.numplayers = 1;

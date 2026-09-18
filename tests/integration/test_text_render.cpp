@@ -6,38 +6,134 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
+namespace
+{
+// How a write arm turns a font byte into a canvas pixel. Transparent source
+// bytes (0) always leave the background and literal palette bytes always keep
+// themselves; the two arms differ only in what they do with the font's
+// recolourable ink range (>247):
+enum class GlyphInk
+{
+    Recolored,  // putdatatext(..., color): the caller's colour exactly
+    TeamShifted // walkputbuffertext: colour + (255 - source), the team ramp
+};
+
+const unsigned char* glyph_bytes(text& font, char letter)
+{
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    return font.letters->data.get() +
+           static_cast<std::size_t>(static_cast<unsigned char>(letter)) * stride;
+}
+
+void expect_glyph_at(screen* out, text& font, Sint32 x, Sint32 y, char letter,
+                     unsigned char ink, int background, GlyphInk mode,
+                     const char* what)
+{
+    const unsigned char* const glyph = glyph_bytes(font, letter);
+    int lit = 0;
+    for (Sint32 row = 0; row < font.sizey; ++row)
+        for (Sint32 col = 0; col < font.sizex; ++col)
+        {
+            const unsigned char source =
+                glyph[static_cast<std::size_t>(row * font.sizex + col)];
+            int expected = background;
+            if (source != 0)
+            {
+                if (source <= 247)
+                    expected = static_cast<int>(source);
+                else if (mode == GlyphInk::Recolored)
+                    expected = static_cast<int>(ink);
+                else
+                    expected = static_cast<int>(
+                        static_cast<unsigned char>(ink + (255 - source)));
+            }
+            int actual = -1;
+            out->get_pixel(x + col, y + row, &actual);
+            ASSERT_EQ(expected, actual)
+                << what << ": glyph '" << letter << "' pixel " << col << ","
+                << row;
+            if (source != 0)
+                lit++;
+        }
+    ASSERT_GT(lit, 0) << what << ": '" << letter << "' has no ink at all";
+}
+
+// The shadowed arms paint the whole glyph in PURE_BLACK+2 one pixel down and
+// left, then the glyph itself in `color` on top. Model both passes over the
+// union box so a missing shadow pass, a shadow drawn at the wrong offset and a
+// glyph that never lands on top are all separately visible.
+void expect_shadowed_glyph_at(screen* out, text& font, Sint32 x, Sint32 y,
+                              char letter, unsigned char ink, int background,
+                              const char* what)
+{
+    const unsigned char* const glyph = glyph_bytes(font, letter);
+    const auto source_at = [&](Sint32 row, Sint32 col) -> unsigned char {
+        if (row < 0 || col < 0 || row >= font.sizey || col >= font.sizex)
+            return 0;
+        return glyph[static_cast<std::size_t>(row * font.sizex + col)];
+    };
+    int shadow_pixels = 0;
+    for (Sint32 py = y; py <= y + font.sizey; ++py)
+        for (Sint32 px = x - 1; px <= x + font.sizex; ++px)
+        {
+            int expected = background;
+            const unsigned char under = source_at(py - (y + 1), px - (x - 1));
+            if (under != 0)
+                expected = under <= 247
+                               ? static_cast<int>(under)
+                               : static_cast<int>(PURE_BLACK + 2);
+            const unsigned char over = source_at(py - y, px - x);
+            if (over != 0)
+                expected = over <= 247 ? static_cast<int>(over)
+                                       : static_cast<int>(ink);
+            int actual = -1;
+            out->get_pixel(px, py, &actual);
+            ASSERT_EQ(expected, actual)
+                << what << ": '" << letter << "' canvas pixel " << px << ","
+                << py;
+            if (under > 247 && over == 0)
+                shadow_pixels++;
+        }
+    ASSERT_GT(shadow_pixels, 0)
+        << what << ": '" << letter << "' left no visible shadow at all";
+}
+} // namespace
+
 // ---------------------------------------------------------------------------
 // text::query_width
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_query_width_empty)
+// The small font is monospaced: every glyph costs sizex+1 pixels. Every
+// centred label, every right-aligned number and every menu caption is laid
+// out from this number, so it is pinned exactly rather than as "positive".
+TEST(TextRender, small_font_query_width_is_one_advance_per_character)
 {
-    Sint32 w = og::runtime::current_session->myscreen_->text_normal.query_width("");
-    ASSERT_EQ(0, (int)w) << "empty string width is 0";
+    text& font = og::runtime::current_session->myscreen_->text_normal;
+    ASSERT_EQ(0, font.query_width("")) << "an empty run measures zero";
+    ASSERT_LT(font.sizex, 9) << "text_normal is the small monospaced font";
+    const Sint32 advance = font.sizex + 1;
+
+    ASSERT_EQ(advance, font.query_width("A"))
+        << "one character costs one advance (sizex + 1)";
+    ASSERT_EQ(2 * advance, font.query_width("Hi"))
+        << "two characters cost two advances";
+    ASSERT_EQ(11 * advance, font.query_width("Hello World"))
+        << "the small font is monospaced: width is (sizex + 1) * length";
 }
 
 
-TEST(TextRender, text_query_width_single)
+// The big font is proportional: 'A'..']' cost sizex, everything else sizex-1.
+TEST(TextRender, big_font_query_width_charges_uppercase_the_wider_advance)
 {
-    Sint32 w = og::runtime::current_session->myscreen_->text_normal.query_width("A");
-    ASSERT_TRUE(w > 0) << "single char has width > 0";
-}
+    text& big = og::runtime::current_session->myscreen_->text_big;
+    ASSERT_EQ(0, big.query_width("")) << "an empty run measures zero";
+    ASSERT_GE(big.sizex, 9) << "text_big takes the proportional branch";
 
-
-TEST(TextRender, text_query_width_long)
-{
-    Sint32 w = og::runtime::current_session->myscreen_->text_normal.query_width("Hello World");
-    ASSERT_TRUE(w > 0) << "long string has positive width";
-
-    Sint32 w2 = og::runtime::current_session->myscreen_->text_normal.query_width("Hi");
-    ASSERT_TRUE(w > w2) << "longer string is wider";
-}
-
-
-TEST(TextRender, text_query_width_big)
-{
-    Sint32 w = og::runtime::current_session->myscreen_->text_big.query_width("Test");
-    ASSERT_TRUE(w > 0) << "big font width > 0";
+    ASSERT_EQ(4 * big.sizex, big.query_width("TEST"))
+        << "uppercase bytes (65..93) each cost sizex";
+    ASSERT_EQ(big.sizex + 3 * (big.sizex - 1), big.query_width("Test"))
+        << "lowercase bytes each cost sizex - 1";
 }
 
 
@@ -45,15 +141,47 @@ TEST(TextRender, text_query_width_big)
 // text::write_xy variations (all to buffer)
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_write_xy_to_buffer)
+// The to_buffer arms go through walkputbuffertext, which ramps the font's
+// recolourable bytes as colour + (255 - source) -- the team ramp the HUD and
+// the in-world labels are drawn with -- and report the pixel width they
+// consumed so callers can lay out the next run.
+TEST(TextRender, buffered_write_xy_ramps_each_glyph_and_returns_the_run_width)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_xy(10, 10, "Buffer text", (short)1);
-}
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_LT(font.sizex, 9) << "text_normal is the small monospaced font";
 
+    constexpr Sint32 x = 10;
+    constexpr int background = 13;
+    const Sint32 advance = font.sizex + 1;
 
-TEST(TextRender, text_write_xy_color_to_buffer)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_xy(10, 20, "Colored buffer", (unsigned char)WHITE, (short)1);
+    // The default-colour overload forwards DEFAULT_TEXT_COLOR.
+    constexpr Sint32 y = 10;
+    out->fastbox(x, y, 3 * advance, font.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(2 * advance, font.write_xy(x, y, "AB", (short)1))
+        << "the buffered arm returns the width it consumed";
+    expect_glyph_at(out, font, x, y, 'A',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted, "write_xy(to_buffer) first");
+    expect_glyph_at(out, font, x + advance, y, 'B',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted, "write_xy(to_buffer) second");
+
+    // The coloured overload ramps from the caller's colour instead.
+    constexpr Sint32 y2 = 20;
+    constexpr unsigned char ink = 64;
+    out->fastbox(x, y2, 3 * advance, font.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(2 * advance, font.write_xy(x, y2, "AB", ink, (short)1))
+        << "the coloured buffered arm returns the same width";
+    expect_glyph_at(out, font, x, y2, 'A', ink, background,
+                    GlyphInk::TeamShifted, "write_xy(colour, to_buffer) first");
+    expect_glyph_at(out, font, x + advance, y2, 'B', ink, background,
+                    GlyphInk::TeamShifted,
+                    "write_xy(colour, to_buffer) second");
 }
 
 
@@ -88,37 +216,51 @@ TEST(TextRender, text_write_xy_flat_recolors_every_opaque_glyph_pixel)
 }
 
 
-TEST(TextRender, text_write_xy_no_color)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_xy(10, 30, "No color text");
-}
-
-
 // ---------------------------------------------------------------------------
 // text::write_y variations
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_write_y_basic)
+// write_y is the centring arm: it starts the run at (320 - len*advance)/2 on
+// the 320-wide UI raster. The buffered overloads are what the in-game
+// message lines use, so the centre must be exact, not merely non-zero.
+TEST(TextRender, buffered_write_y_centres_the_run_on_the_320_raster)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_y(50, "Y text");
-}
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_LT(font.sizex, 9) << "text_normal is the small monospaced font";
 
+    constexpr int background = 13;
+    const Sint32 advance = font.sizex + 1;
+    const Sint32 centered_x = (320 - 2 * advance) / 2;
 
-TEST(TextRender, text_write_y_color)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_y(60, "Y colored", (unsigned char)RED);
-}
+    constexpr Sint32 y = 70;
+    out->fastbox(0, y, 320, font.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(2 * advance, font.write_y(y, "AB", (short)1))
+        << "the buffered centring arm returns the run width";
+    int at_left_margin = -1;
+    out->get_pixel(0, y, &at_left_margin);
+    EXPECT_EQ(background, at_left_margin)
+        << "a centred run must not start at the left margin";
+    expect_glyph_at(out, font, centered_x, y, 'A',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted, "write_y(to_buffer) first");
+    expect_glyph_at(out, font, centered_x + advance, y, 'B',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted, "write_y(to_buffer) second");
 
-
-TEST(TextRender, text_write_y_to_buffer)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_y(70, "Y buffer", (short)1);
-}
-
-
-TEST(TextRender, text_write_y_color_to_buffer)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_y(80, "Y color buf", (unsigned char)DARK_GREEN, (short)1);
+    constexpr Sint32 y2 = 80;
+    constexpr unsigned char ink = 64;
+    out->fastbox(0, y2, 320, font.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(2 * advance, font.write_y(y2, "AB", ink, (short)1))
+        << "the coloured buffered centring arm returns the run width";
+    expect_glyph_at(out, font, centered_x, y2, 'A', ink, background,
+                    GlyphInk::TeamShifted, "write_y(colour, to_buffer) first");
+    expect_glyph_at(out, font, centered_x + advance, y2, 'B', ink, background,
+                    GlyphInk::TeamShifted, "write_y(colour, to_buffer) second");
 }
 
 
@@ -126,15 +268,285 @@ TEST(TextRender, text_write_y_color_to_buffer)
 // text::write_xy_center variations
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_write_xy_center_alpha)
+// The floating damage numbers ride on write_xy_center_alpha: the run is
+// centred on the x it is given (half a run width to the left) and the glyph
+// is blended at the caller's coverage. Alpha 255 must paint the ink outright
+// and alpha 0 must leave the canvas untouched.
+TEST(TextRender, write_xy_center_alpha_centres_the_run_and_honours_alpha)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_xy_center_alpha(160, 100, WHITE, 128, "Alpha center");
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 center_x = 160;
+    const Sint32 advance = font.sizex + 1;
+    const Sint32 x0 = center_x - (2 * advance) / 2;
+
+    // Fully opaque: every lit font byte becomes the ink, transparent bytes
+    // keep the background. walkputbuffertext_alpha applies the text ink rule
+    // -- an ink byte (>247) lands as the caller's colour, a literal palette
+    // byte keeps itself -- and text_normal has no literal bytes, so every lit
+    // pixel of this font comes out as `ink`.
+    constexpr Sint32 y = 100;
+    out->fastbox(x0 - 4, y, 2 * advance + 8, font.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_xy_center_alpha(center_x, y, ink, 255, "AB"))
+        << "the centred arm reports 1";
+    for (int glyph_index = 0; glyph_index < 2; ++glyph_index)
+    {
+        const char letter = static_cast<char>('A' + glyph_index);
+        const unsigned char* const glyph = glyph_bytes(font, letter);
+        const Sint32 gx = x0 + glyph_index * advance;
+        int lit = 0;
+        for (Sint32 row = 0; row < font.sizey; ++row)
+            for (Sint32 col = 0; col < font.sizex; ++col)
+            {
+                const unsigned char source =
+                    glyph[static_cast<std::size_t>(row * font.sizex + col)];
+                int actual = -1;
+                out->get_pixel(gx + col, y + row, &actual);
+                ASSERT_EQ(source == 0 ? background : static_cast<int>(ink),
+                          actual)
+                    << "alpha 255 glyph '" << letter << "' pixel " << col << ","
+                    << row;
+                if (source != 0)
+                    lit++;
+            }
+        ASSERT_GT(lit, 0) << "'" << letter << "' has no ink at all";
+    }
+    int left_of_run = -1;
+    out->get_pixel(x0 - 2, y, &left_of_run);
+    EXPECT_EQ(background, left_of_run)
+        << "the run is centred, so nothing is painted left of its start";
+
+    // Fully transparent: the same call must not change a single pixel.
+    constexpr Sint32 y2 = 110;
+    out->fastbox(x0 - 4, y2, 2 * advance + 8, font.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_xy_center_alpha(center_x, y2, ink, 0, "AB"))
+        << "the centred arm reports 1 even at zero coverage";
+    for (Sint32 row = 0; row < font.sizey; ++row)
+        for (Sint32 col = 0; col < 2 * advance + 8; ++col)
+        {
+            int actual = -1;
+            out->get_pixel(x0 - 4 + col, y2 + row, &actual);
+            ASSERT_EQ(background, actual)
+                << "alpha 0 must leave the canvas untouched at " << col << ","
+                << row;
+        }
 }
 
 
-TEST(TextRender, text_write_xy_center_shadow)
+// The plain formatted centring arm: write_xy_center subtracts half the run
+// width (len * (sizex + 1) / 2) from the x it is given, formats through
+// vsnprintf, paints each glyph with putdatatext and reports 1. Every dialog
+// caption and results-screen heading is placed by this number, so a centring
+// branch that collapsed to the raw x, or a format that dropped its argument,
+// must be visible.
+//
+// (Merged here from TextRendering.text_write_variants_cover_common_paths and
+// TextInputAndWidth.text_write_variants_smoke, which only checked that the
+// return value was 1 / positive -- both constants the arm returns whether or
+// not it painted anything.)
+TEST(TextRender, write_xy_center_centres_the_formatted_run_on_the_given_x)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_xy_center_shadow(160, 110, WHITE, "Center shadow");
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_LT(font.sizex, 9) << "text_normal is the small monospaced font";
+
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 center_x = 160;
+    constexpr Sint32 y = 150;
+    const Sint32 advance = font.sizex + 1;
+    // "A2" -- two characters, so the run starts one advance left of center_x.
+    const Sint32 x0 = center_x - (2 * advance) / 2;
+
+    out->fastbox(x0 - 4, y - 2, 2 * advance + 8, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_xy_center(center_x, y, ink, "%s%d", "A", 2))
+        << "the centred arm reports 1";
+    expect_glyph_at(out, font, x0, y, 'A', ink, background,
+                    GlyphInk::Recolored, "write_xy_center first glyph");
+    expect_glyph_at(out, font, x0 + advance, y, '2', ink, background,
+                    GlyphInk::Recolored,
+                    "write_xy_center second glyph (formatted argument)");
+    int left_of_run = -1;
+    out->get_pixel(x0 - 2, y, &left_of_run);
+    EXPECT_EQ(background, left_of_run)
+        << "nothing is painted left of the centred run's start";
+    out->clearbuffer();
+}
+
+
+// The direct single-glyph alpha arm (the damage/heal numbers draw through
+// write_xy_center_alpha, which delegates to this one per character). It
+// blends through walkputbuffertext_alpha, which applies the text ink rule:
+// every ink byte (>247) lands as the caller's colour and a literal palette
+// byte keeps itself. text_normal has no literal bytes, so at full coverage
+// every lit pixel of this font comes out as `ink`; at zero coverage the canvas
+// is untouched. It reports 1 for the glyph it painted.
+TEST(TextRender, write_char_xy_alpha_blends_one_glyph_at_the_given_coverage)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 x = 70;
+    constexpr Sint32 y = 168;
+    const Sint32 advance = font.sizex + 1;
+
+    const auto expect_alpha_glyph = [&](Sint32 gx, Sint32 gy, char letter,
+                                        int expected_lit, const char* what) {
+        const unsigned char* const glyph = glyph_bytes(font, letter);
+        int lit = 0;
+        for (Sint32 row = 0; row < font.sizey; ++row)
+            for (Sint32 col = 0; col < font.sizex; ++col)
+            {
+                const unsigned char source =
+                    glyph[static_cast<std::size_t>(row * font.sizex + col)];
+                int actual = -1;
+                out->get_pixel(gx + col, gy + row, &actual);
+                ASSERT_EQ(source == 0 ? background : expected_lit, actual)
+                    << what << ": glyph '" << letter << "' pixel " << col
+                    << "," << row;
+                if (source != 0)
+                    lit++;
+            }
+        ASSERT_GT(lit, 0) << what << ": '" << letter << "' has no ink at all";
+    };
+
+    out->fastbox(x - 2, y - 2, advance * 3 + 4, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_char_xy_alpha(x, y, 'E', ink, 255))
+        << "the alpha glyph arm reports the glyph it painted";
+    expect_alpha_glyph(x, y, 'E', static_cast<int>(ink),
+                       "write_char_xy_alpha at full coverage");
+    int right_of_glyph = -1;
+    out->get_pixel(x + advance, y, &right_of_glyph);
+    EXPECT_EQ(background, right_of_glyph)
+        << "one glyph only, landing at the x it was given";
+
+    // Zero coverage must leave every pixel of the same box alone.
+    const Sint32 y2 = y + font.sizey + 4;
+    out->fastbox(x - 2, y2 - 2, advance * 3 + 4, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_char_xy_alpha(x, y2, 'E', ink, 0))
+        << "the arm still reports 1 at zero coverage";
+    for (Sint32 row = 0; row < font.sizey; ++row)
+        for (Sint32 col = 0; col < advance * 3; ++col)
+        {
+            int actual = -1;
+            out->get_pixel(x - 2 + col, y2 + row, &actual);
+            ASSERT_EQ(background, actual)
+                << "alpha 0 must leave the canvas untouched at " << col << ","
+                << row;
+        }
+    out->clearbuffer();
+}
+
+
+// The one rule, two blitters pin: text::write_char_xy paints through
+// putdatatext(..., color) and text::write_char_xy_alpha paints through
+// walkputbuffertext_alpha. Both are text blitters and both must apply the same
+// 2002 ink rule (ink >247 -> the caller's colour, a literal palette byte keeps
+// itself), so at alpha 255 the two paths must produce IDENTICAL pixels for the
+// same glyph on the same background -- for the small font AND the big one.
+// text_big's ink is literal palette bytes, so before the shared text_ink helper
+// the alpha path flattened the whole glyph to the caller's colour while the
+// opaque path kept the font's own colours: this test is the twin that catches
+// the two paths drifting apart.
+TEST(TextRender, alpha_glyphs_share_the_opaque_text_ink_rule)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 y = 40;
+
+    const auto check_font = [&](text& font, const char* what) {
+        ASSERT_NE(nullptr, font.letters) << what << ": font not loaded";
+        ASSERT_TRUE(font.letters->valid()) << what << ": font not loaded";
+        const Sint32 w = font.sizex;
+        const Sint32 h = font.sizey;
+        const Sint32 x_opaque = 20;
+        const Sint32 x_alpha = 20 + w + 8;
+
+        out->fastbox(x_opaque - 2, y - 2, (w + 8) * 2 + 4, h + 4,
+                     static_cast<unsigned char>(background));
+        EXPECT_EQ(1, font.write_char_xy(x_opaque, y, 'E', ink))
+            << what << ": the opaque glyph arm reports the glyph it painted";
+        EXPECT_EQ(1, font.write_char_xy_alpha(x_alpha, y, 'E', ink, 255))
+            << what << ": the alpha glyph arm reports the glyph it painted";
+
+        const unsigned char* const glyph = glyph_bytes(font, 'E');
+        int lit = 0;
+        for (Sint32 row = 0; row < h; ++row)
+            for (Sint32 col = 0; col < w; ++col)
+            {
+                int index_opaque = -1;
+                int index_alpha = -1;
+                out->get_pixel(x_opaque + col, y + row, &index_opaque);
+                out->get_pixel(x_alpha + col, y + row, &index_alpha);
+                ASSERT_EQ(index_opaque, index_alpha)
+                    << what << ": the opaque and alpha text paths disagree at "
+                    << col << "," << row << " (source byte "
+                    << static_cast<int>(
+                           glyph[static_cast<std::size_t>(row * w + col)])
+                    << ")";
+                if (glyph[static_cast<std::size_t>(row * w + col)] != 0)
+                {
+                    ASSERT_NE(background, index_alpha)
+                        << what << ": an inked source byte painted nothing at "
+                        << col << "," << row;
+                    lit++;
+                }
+                else
+                {
+                    ASSERT_EQ(background, index_alpha)
+                        << what << ": a transparent source byte painted at "
+                        << col << "," << row;
+                }
+            }
+        ASSERT_GT(lit, 0) << what << ": 'E' has no ink at all";
+    };
+
+    check_font(out->text_normal, "text_normal");
+    check_font(out->text_big, "text_big");
+    out->clearbuffer();
+}
+
+
+// The shadowed centred arm is what the level banner uses: the glyph is laid
+// down twice, once in near-black one pixel down-left and once in the caller's
+// colour on top.
+TEST(TextRender, write_xy_center_shadow_lays_black_under_the_offset_glyph)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 center_x = 160;
+    constexpr Sint32 y = 130;
+    const Sint32 advance = font.sizex + 1;
+    const Sint32 x0 = center_x - advance / 2;
+
+    out->fastbox(x0 - 4, y - 2, font.sizex + 8, font.sizey + 6,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_xy_center_shadow(center_x, y, ink, "A"))
+        << "the shadowed centred arm reports 1";
+    expect_shadowed_glyph_at(out, font, x0, y, 'A', ink, background,
+                             "write_xy_center_shadow");
 }
 
 
@@ -142,87 +554,34 @@ TEST(TextRender, text_write_xy_center_shadow)
 // text::write_char_xy variations
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_write_char_xy_basic)
+// The single-glyph buffered arm reports 1 for a glyph it painted (0 for an
+// empty span) and ramps it exactly like the string arm.
+TEST(TextRender, buffered_write_char_xy_paints_one_ramped_glyph)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_char_xy(10, 120, 'A');
-}
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
 
+    constexpr int background = 13;
+    constexpr Sint32 y = 120;
+    out->fastbox(30, y, 20, font.sizey,
+                 static_cast<unsigned char>(background));
 
-TEST(TextRender, text_write_char_xy_color)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_char_xy(20, 120, 'B', (unsigned char)RED);
-}
+    EXPECT_EQ(1, font.write_char_xy(30, y, 'C', (short)1))
+        << "the buffered glyph arm reports the glyph it painted";
+    expect_glyph_at(out, font, 30, y, 'C',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted, "write_char_xy(to_buffer)");
 
-
-TEST(TextRender, text_write_char_xy_to_buffer)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_char_xy(30, 120, 'C', (short)1);
-}
-
-
-TEST(TextRender, text_write_char_xy_color_to_buffer)
-{
-    og::runtime::current_session->myscreen_->text_normal.write_char_xy(40, 120, 'D', (unsigned char)DARK_BLUE, (short)1);
-}
-
-
-// ---------------------------------------------------------------------------
-// text::write_y with viewscreen
-// ---------------------------------------------------------------------------
-
-TEST(TextRender, text_write_y_viewscreen)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-    og::runtime::current_session->myscreen_->text_normal.write_y(50, "VS Y text", vs);
-}
-
-
-TEST(TextRender, text_write_y_color_viewscreen)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-    og::runtime::current_session->myscreen_->text_normal.write_y(60, "VS Y color", (unsigned char)RED, vs);
-}
-
-
-// ---------------------------------------------------------------------------
-// text::write_xy with viewscreen
-// ---------------------------------------------------------------------------
-
-TEST(TextRender, text_write_xy_viewscreen)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-    og::runtime::current_session->myscreen_->text_normal.write_xy(10, 50, "VS text", vs);
-}
-
-
-TEST(TextRender, text_write_xy_color_viewscreen)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-    og::runtime::current_session->myscreen_->text_normal.write_xy(10, 60, "VS color", (unsigned char)WHITE, vs);
-}
-
-
-// ---------------------------------------------------------------------------
-// text::write_char_xy with viewscreen
-// ---------------------------------------------------------------------------
-
-TEST(TextRender, text_write_char_xy_viewscreen)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-    og::runtime::current_session->myscreen_->text_normal.write_char_xy(10, 70, 'X', vs);
-}
-
-
-TEST(TextRender, text_write_char_xy_color_viewscreen)
-{
-    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    if (!vs) return;
-    og::runtime::current_session->myscreen_->text_normal.write_char_xy(20, 70, 'Y', (unsigned char)DARK_GREEN, vs);
+    EXPECT_EQ(1, font.write_char_xy(40, y, 'D',
+                                   static_cast<unsigned char>(DARK_BLUE),
+                                   (short)1))
+        << "the coloured buffered glyph arm reports the glyph it painted";
+    expect_glyph_at(out, font, 40, y, 'D',
+                    static_cast<unsigned char>(DARK_BLUE), background,
+                    GlyphInk::TeamShifted,
+                    "write_char_xy(colour, to_buffer)");
 }
 
 
@@ -230,9 +589,38 @@ TEST(TextRender, text_write_char_xy_color_viewscreen)
 // text::write_xy_shadow
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_write_xy_shadow_color)
+// The results screen's headings and every HUD counter drawn over terrain use
+// write_xy_shadow to stay legible: write_formatted lays each glyph down
+// twice, first in PURE_BLACK+2 at (x-1, y+1) and then in the caller's colour
+// at (x, y), and reports len * (sizex + 1) so the caller can append the next
+// run. A dropped shadow pass, a shadow at the wrong offset, a glyph that
+// never lands on top and a wrong advance are each separately visible here.
+TEST(TextRender, write_xy_shadow_lays_black_under_each_glyph_and_reports_the_run_width)
 {
-    og::runtime::current_session->myscreen_->text_normal.write_xy_shadow(50, 50, RED, "Red shadow");
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_LT(font.sizex, 9) << "text_normal is the small monospaced font";
+
+    constexpr Sint32 x = 50;
+    constexpr Sint32 y = 50;
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    const Sint32 advance = font.sizex + 1;
+
+    // "A B" puts the blank space glyph between the two letters, so the two
+    // shadow boxes (each one pixel wider and one taller than the glyph)
+    // cannot overlap and the third glyph's position pins the advance at
+    // pixel level rather than only through the returned width.
+    out->fastbox(x - 4, y - 2, 3 * advance + 8, font.sizey + 6,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(3 * advance, font.write_xy_shadow(x, y, ink, "A B"))
+        << "the shadowed arm reports len * (sizex + 1)";
+    expect_shadowed_glyph_at(out, font, x, y, 'A', ink, background,
+                             "write_xy_shadow first glyph");
+    expect_shadowed_glyph_at(out, font, x + 2 * advance, y, 'B', ink,
+                             background, "write_xy_shadow third glyph");
 }
 
 
@@ -240,69 +628,96 @@ TEST(TextRender, text_write_xy_shadow_color)
 // big text
 // ---------------------------------------------------------------------------
 
-TEST(TextRender, text_big_write_xy_color)
+// The big font is PROPORTIONAL in the buffered write arm: bytes 65..92 cost
+// sizex, every other byte costs sizex - 1, and the arm returns the total it
+// consumed while each glyph lands at the running offset. The PAUSED banner
+// and the results-screen headings are laid out from that number, so a branch
+// that collapsed to one fixed advance would misplace every letter after the
+// first.
+TEST(TextRender, big_font_buffered_write_xy_charges_uppercase_the_wider_advance)
 {
-    og::runtime::current_session->myscreen_->text_big.write_xy(10, 150, "Big colored", (unsigned char)WHITE);
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& big = out->text_big;
+    ASSERT_NE(nullptr, big.letters);
+    ASSERT_TRUE(big.letters->valid());
+    ASSERT_GE(big.sizex, 9) << "text_big takes the proportional branch";
+
+    constexpr Sint32 x = 10;
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    const Sint32 y_upper = 140;
+    const Sint32 y_mixed = y_upper + big.sizey + 3;
+    const Sint32 y_lower = y_mixed + big.sizey + 3;
+    ASSERT_LE(y_lower + big.sizey, out->canvas_h())
+        << "the three test bands must fit on the canvas";
+
+    // Two uppercase bytes: sizex each, so the second glyph starts at x+sizex.
+    out->fastbox(x, y_upper, 4 * big.sizex, big.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(2 * big.sizex, big.write_xy(x, y_upper, "AB", ink, (short)1))
+        << "bytes 65..92 each cost sizex";
+    expect_glyph_at(out, big, x, y_upper, 'A', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy uppercase first");
+    expect_glyph_at(out, big, x + big.sizex, y_upper, 'B', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy uppercase second");
+
+    // Uppercase then lowercase: sizex + (sizex - 1). The lowercase glyph
+    // still starts at the running offset left by the uppercase one, so its
+    // position pins the ORDER of the advance, not just the sum.
+    out->fastbox(x, y_mixed, 4 * big.sizex, big.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(big.sizex + (big.sizex - 1),
+              big.write_xy(x, y_mixed, "Ab", ink, (short)1))
+        << "a lowercase byte costs sizex - 1";
+    expect_glyph_at(out, big, x, y_mixed, 'A', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy mixed first");
+    expect_glyph_at(out, big, x + big.sizex, y_mixed, 'b', ink, background,
+                    GlyphInk::TeamShifted, "big write_xy mixed second");
+
+    // Three lowercase bytes pack at sizex - 1 each. Their glyph boxes overlap
+    // at that pitch, so only the reported width is pinned for this run.
+    out->fastbox(x, y_lower, 4 * big.sizex, big.sizey,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(3 * (big.sizex - 1),
+              big.write_xy(x, y_lower, "abc", ink, (short)1))
+        << "the lowercase advance accumulates once per byte";
 }
 
 
-TEST(TextRender, text_big_write_y)
+// write_y centres on the 320-wide UI raster with the MONOSPACED advance --
+// (320 - len * (sizex + 1)) / 2 -- for every font, the big one included,
+// because it forwards to the direct four-argument write_xy arm. That arm
+// reports 1, not a width. Both halves matter: the dialog headers and the
+// PAUSED banner are centred through here.
+TEST(TextRender, big_font_write_y_centres_with_the_monospaced_advance)
 {
-    og::runtime::current_session->myscreen_->text_big.write_y(160, "Big centered");
-}
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& big = out->text_big;
+    ASSERT_NE(nullptr, big.letters);
+    ASSERT_TRUE(big.letters->valid());
+    ASSERT_GE(big.sizex, 9) << "text_big is the large font";
 
-namespace
-{
-// How a write arm turns a font byte into a canvas pixel. Transparent source
-// bytes (0) always leave the background and literal palette bytes always keep
-// themselves; the three arms differ only in what they do with the font's
-// recolourable ink range (>247):
-enum class GlyphInk
-{
-    Recolored,  // putdatatext(..., color): the caller's colour exactly
-    Raw,        // putdatatext(...) with no colour: the font byte itself
-    TeamShifted // walkputbuffertext: colour + (255 - source), the team ramp
-};
+    constexpr int background = 13;
+    constexpr Sint32 y = 160;
+    const Sint32 advance = big.sizex + 1;
+    const Sint32 centered_x = (320 - 2 * advance) / 2;
+    ASSERT_LE(y + big.sizey, out->canvas_h())
+        << "the test band must fit on the canvas";
 
-void expect_glyph_at(screen* out, text& font, Sint32 x, Sint32 y, char letter,
-                     unsigned char ink, int background, GlyphInk mode,
-                     const char* what)
-{
-    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
-                               static_cast<std::size_t>(font.sizey);
-    const unsigned char* const glyph =
-        font.letters->data.get() +
-        static_cast<std::size_t>(static_cast<unsigned char>(letter)) * stride;
-    int lit = 0;
-    for (Sint32 row = 0; row < font.sizey; ++row)
-        for (Sint32 col = 0; col < font.sizex; ++col)
-        {
-            const unsigned char source =
-                glyph[static_cast<std::size_t>(row * font.sizex + col)];
-            int expected = background;
-            if (source != 0)
-            {
-                if (source <= 247)
-                    expected = static_cast<int>(source);
-                else if (mode == GlyphInk::Recolored)
-                    expected = static_cast<int>(ink);
-                else if (mode == GlyphInk::Raw)
-                    expected = static_cast<int>(source);
-                else
-                    expected = static_cast<int>(
-                        static_cast<unsigned char>(ink + (255 - source)));
-            }
-            int actual = -1;
-            out->get_pixel(x + col, y + row, &actual);
-            ASSERT_EQ(expected, actual)
-                << what << ": glyph '" << letter << "' pixel " << col << ","
-                << row;
-            if (source != 0)
-                lit++;
-        }
-    ASSERT_GT(lit, 0) << what << ": '" << letter << "' has no ink at all";
+    out->fastbox(0, y, 320, big.sizey, static_cast<unsigned char>(background));
+    EXPECT_EQ(1, big.write_y(y, "AB"))
+        << "write_y(y, string) forwards to the direct arm, which reports 1";
+    int at_left_margin = -1;
+    out->get_pixel(0, y + big.sizey / 2, &at_left_margin);
+    EXPECT_EQ(background, at_left_margin)
+        << "a centred run must not start at the left margin";
+    expect_glyph_at(out, big, centered_x, y, 'A',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::Recolored, "big write_y first glyph");
+    expect_glyph_at(out, big, centered_x + advance, y, 'B',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::Recolored, "big write_y second glyph");
 }
-} // namespace
 
 // The write arms that go straight to the canvas (no viewscreen, no buffer
 // flag) must land at the coordinates the caller passed, and advance one
@@ -330,27 +745,48 @@ TEST(TextRender, direct_canvas_write_arms_land_at_absolute_coordinates)
     expect_glyph_at(out, font, x + advance, y, 'B', ink, background,
                     GlyphInk::Recolored, "write_xy second");
 
-    // The single-character arms, with and without an explicit colour.
+    // The single-character arm with an explicit colour.
     const Sint32 y2 = y + font.sizey + 6;
     out->fastbox(x - 2, y2 - 2, advance * 4 + 4, font.sizey + 4,
                  static_cast<unsigned char>(background));
     EXPECT_EQ(1, font.write_char_xy(x, y2, 'C', ink));
     expect_glyph_at(out, font, x, y2, 'C', ink, background,
                     GlyphInk::Recolored, "write_char_xy");
-    EXPECT_EQ(1, font.write_char_xy(x + 2 * advance, y2, 'D'));
-    expect_glyph_at(out, font, x + 2 * advance, y2, 'D', 0, background,
-                    GlyphInk::Raw, "write_char_xy without a colour");
 
     // write_y centres the same run on the 320-wide UI raster.
     const Sint32 y3 = y2 + font.sizey + 6;
     out->fastbox(0, y3 - 2, 320, font.sizey + 4,
                  static_cast<unsigned char>(background));
-    font.write_y(y3, "AB", ink);
+    EXPECT_EQ(1, font.write_y(y3, "AB", ink))
+        << "the direct write_y arm reports 1, not the run width";
     const Sint32 centered_x = (320 - 2 * advance) / 2;
     expect_glyph_at(out, font, centered_x, y3, 'A', ink, background,
                     GlyphInk::Recolored, "write_y first");
     expect_glyph_at(out, font, centered_x + advance, y3, 'B', ink, background,
                     GlyphInk::Recolored, "write_y second");
+
+    // The overloads that take no colour must forward DEFAULT_TEXT_COLOR to
+    // the coloured arm above, not drop the write.
+    const Sint32 y4 = y3 + font.sizey + 6;
+    out->fastbox(x - 2, y4 - 2, advance * 4 + 4, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_xy(x, y4, "A"))
+        << "write_xy(x, y, string) forwards to the coloured arm";
+    expect_glyph_at(out, font, x, y4, 'A',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::Recolored, "write_xy default colour");
+
+    const Sint32 y5 = y4 + font.sizey + 6;
+    out->fastbox(0, y5 - 2, 320, font.sizey + 4,
+                 static_cast<unsigned char>(background));
+    EXPECT_EQ(1, font.write_y(y5, "AB"))
+        << "write_y(y, string) forwards to the coloured centring arm";
+    expect_glyph_at(out, font, centered_x, y5, 'A',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::Recolored, "write_y default colour first");
+    expect_glyph_at(out, font, centered_x + advance, y5, 'B',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::Recolored, "write_y default colour second");
     out->clearbuffer();
 }
 
@@ -381,9 +817,11 @@ TEST(TextRender, viewscreen_write_arms_offset_by_the_pane_origin)
     constexpr int background = 13;
     constexpr unsigned char ink = 64;
     const Sint32 advance = font.sizex + 1;
+    const Sint32 centered_x = (320 - 2 * advance) / 2;
 
     out->clearbuffer();
-    out->fastbox(vs->xloc, vs->yloc, 120, 3 * (font.sizey + 6),
+    // Five rows of pane-relative text, wide enough for the centred runs.
+    out->fastbox(vs->xloc, vs->yloc, 260, 6 * (font.sizey + 6),
                  static_cast<unsigned char>(background));
     EXPECT_EQ(1, font.write_xy(x, y, "AB", ink, vs));
     expect_glyph_at(out, font, vs->xloc + x, vs->yloc + y, 'A', ink,
@@ -402,11 +840,39 @@ TEST(TextRender, viewscreen_write_arms_offset_by_the_pane_origin)
     expect_glyph_at(out, font, vs->xloc + x, vs->yloc + y2, 'C', ink,
                     background, GlyphInk::TeamShifted,
                     "write_char_xy(viewscreen)");
-    EXPECT_EQ(1, font.write_char_xy(x + 2 * advance, y2, 'D', vs));
-    expect_glyph_at(out, font, vs->xloc + x + 2 * advance, vs->yloc + y2, 'D',
+
+    // The pane-relative string arm without a colour, and the centring arms:
+    // write_y centres on the 320 raster first, THEN offsets by the pane.
+    const Sint32 y3 = y2 + font.sizey + 6;
+    EXPECT_EQ(1, font.write_xy(x, y3, "AB", vs))
+        << "write_xy(x, y, string, viewscreen) forwards the default colour";
+    expect_glyph_at(out, font, vs->xloc + x, vs->yloc + y3, 'A',
                     static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
                     GlyphInk::TeamShifted,
-                    "write_char_xy(viewscreen) default colour");
+                    "write_xy(viewscreen) default colour first");
+    expect_glyph_at(out, font, vs->xloc + x + advance, vs->yloc + y3, 'B',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted,
+                    "write_xy(viewscreen) default colour second");
+
+    const Sint32 y4 = y3 + font.sizey + 6;
+    EXPECT_EQ(1, font.write_y(y4, "AB", ink, vs));
+    expect_glyph_at(out, font, vs->xloc + centered_x, vs->yloc + y4, 'A', ink,
+                    background, GlyphInk::TeamShifted,
+                    "write_y(colour, viewscreen) first");
+    expect_glyph_at(out, font, vs->xloc + centered_x + advance,
+                    vs->yloc + y4, 'B', ink, background,
+                    GlyphInk::TeamShifted, "write_y(colour, viewscreen) second");
+
+    const Sint32 y5 = y4 + font.sizey + 6;
+    EXPECT_EQ(1, font.write_y(y5, "AB", vs));
+    expect_glyph_at(out, font, vs->xloc + centered_x, vs->yloc + y5, 'A',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted, "write_y(viewscreen) first");
+    expect_glyph_at(out, font, vs->xloc + centered_x + advance,
+                    vs->yloc + y5, 'B',
+                    static_cast<unsigned char>(DEFAULT_TEXT_COLOR), background,
+                    GlyphInk::TeamShifted, "write_y(viewscreen) second");
 
     vs->xloc = saved_xloc;
     vs->yloc = saved_yloc;

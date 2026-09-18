@@ -387,6 +387,16 @@ TEST(ScriptHostBasics, identical_programs_produce_identical_hosts)
     ASSERT_TRUE(b.run_chunk("p", program));
     EXPECT_EQ(a.log(), b.log());
     EXPECT_EQ(a.memory_used(), b.memory_used());
+    // Host-vs-host agreement alone is satisfied by two hosts that both
+    // computed nothing, so pin the CONTENT on one of them: og.log captures
+    // the lines in order and og.mod is exact integer modulo.
+    ASSERT_EQ(2u, a.log().size()) << "both og.log lines must be captured";
+    // sum over i = 1..1000 of (7i mod 13): 76 whole periods of 78 plus the
+    // 12-value tail, which is another 78.
+    EXPECT_EQ("acc\t6006", a.log()[0]);
+    EXPECT_EQ(0u, a.log()[1].find("s1,s4,s9,s16,"))
+        << "the formatted table must be logged in index order";
+    EXPECT_GT(a.memory_used(), 0u) << "a live VM accounts for its allocation";
 }
 
 TEST(ScriptHostBasics, integer_arithmetic_is_int64_exact)

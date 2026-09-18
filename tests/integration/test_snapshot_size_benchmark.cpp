@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "test_network_fixture.h"
-#include "zlib.h"
+#include "test_zlib_helpers.h"
 
 short load_saved_game(const char* filename, screen* scr);
 
@@ -273,50 +273,8 @@ RecordedBenchmarkReplay record_benchmark_replay(screen& game_screen)
     return replay;
 }
 
-std::vector<std::uint8_t> zlib_compress_for_benchmark(
-    const std::vector<std::uint8_t>& payload)
-{
-    std::vector<std::uint8_t> compressed(
-        compressBound(static_cast<uLong>(payload.size())));
-    uLongf compressed_size = static_cast<uLongf>(compressed.size());
-    const int rc = compress2(compressed.data(),
-                             &compressed_size,
-                             payload.data(),
-                             static_cast<uLong>(payload.size()),
-                             Z_DEFAULT_COMPRESSION);
-    EXPECT_EQ(Z_OK, rc);
-    compressed.resize(static_cast<std::size_t>(compressed_size));
-    return compressed;
-}
-
-std::vector<std::uint8_t> zlib_decompress_for_benchmark(
-    const std::uint8_t* data,
-    std::size_t size)
-{
-    z_stream stream{};
-    stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data));
-    stream.avail_in = static_cast<uInt>(size);
-    EXPECT_EQ(Z_OK, inflateInit(&stream));
-
-    std::vector<std::uint8_t> output;
-    std::array<std::uint8_t, 256> chunk{};
-    int rc = Z_OK;
-    do
-    {
-        stream.next_out = chunk.data();
-        stream.avail_out = static_cast<uInt>(chunk.size());
-        rc = inflate(&stream, Z_NO_FLUSH);
-        if (rc != Z_OK) {
-            EXPECT_EQ(Z_STREAM_END, rc);
-        }
-        output.insert(output.end(),
-                      chunk.begin(),
-                      chunk.begin() + (chunk.size() - stream.avail_out));
-    } while (rc != Z_STREAM_END);
-
-    EXPECT_EQ(Z_OK, inflateEnd(&stream));
-    return output;
-}
+using og::test_zlib::deflate_for_test;
+using og::test_zlib::inflate_for_test;
 
 std::size_t payload_length_from_header(const std::vector<std::uint8_t>& bytes)
 {
@@ -347,7 +305,7 @@ std::vector<std::uint8_t> decode_delta_payload_for_benchmark(
                                          wire_payload + wire_payload_length);
     }
 
-    return zlib_decompress_for_benchmark(wire_payload, wire_payload_length);
+    return inflate_for_test(wire_payload, wire_payload_length);
 }
 
 PayloadSizeReport measure_full_snapshot_payload(const og::sim::WorldSnapshot& snapshot)
@@ -358,9 +316,8 @@ PayloadSizeReport measure_full_snapshot_payload(const og::sim::WorldSnapshot& sn
     const std::size_t payload_length = payload_length_from_header(bytes);
     EXPECT_EQ(bytes.size(), payload_length + og::sim::kTransportHeaderSize);
 
-    const std::vector<std::uint8_t> raw_payload =
-        zlib_decompress_for_benchmark(
-            bytes.data() + og::sim::kTransportHeaderSize, payload_length);
+    const std::vector<std::uint8_t> raw_payload = inflate_for_test(
+        bytes.data() + og::sim::kTransportHeaderSize, payload_length);
 
     PayloadSizeReport report;
     report.raw_payload_bytes = raw_payload.size();
@@ -384,7 +341,7 @@ PayloadSizeReport measure_delta_payload(const og::sim::WorldSnapshot& delta)
     const std::vector<std::uint8_t> raw_payload =
         decode_delta_payload_for_benchmark(bytes);
     const std::vector<std::uint8_t> compressed_payload =
-        zlib_compress_for_benchmark(raw_payload);
+        deflate_for_test(raw_payload);
 
     PayloadSizeReport report;
     report.raw_payload_bytes = raw_payload.size();

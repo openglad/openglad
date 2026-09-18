@@ -74,16 +74,14 @@ struct ControlPolicyFixture
 {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     ControlPolicyFixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 
     GameWorld& world() { return level.world(); }
@@ -102,7 +100,6 @@ struct ControlPolicyFixture
     {
         auto w = std::make_unique<walker>();
         w->set_order_family(Order::Living, FAMILY_SOLDIER);
-        bind_test_entity_sim_context(level, w.get());
         w->setxy(80, 80);
         w->set_sizex(16);
         w->set_sizey(16);
@@ -591,53 +588,15 @@ TEST(SimControlPolicy, owner_locked_follow_when_only_foreign_heroes_remain)
 }
 
 // ---------------------------------------------------------------------------
-// SwitchChar cycle composition (§4.4 site 1 preview): the legacy cycle
-// filter conjoined with control_claim_allowed keeps same-machine cycling and
-// skips foreign heroes; with the policy off the conjunction is the legacy
-// filter exactly.
-
-TEST(SimControlPolicy, cycle_filter_conjunction_skips_foreign_heroes)
-{
-    ControlPolicyFixture fx;
-    walker* const current =
-        fx.add({.team = 0, .user = 0, .hero = true, .owner = 0});
-    walker* const foreign =
-        fx.add({.team = 0, .user = -1, .hero = true, .owner = 2});
-    walker* const same_machine =
-        fx.add({.team = 0, .user = -1, .hero = true, .owner = 1});
-
-    const short my_team = 0;
-    walker* const oldcontrol = current;
-    const auto legacy_filter = [oldcontrol](const walker* w) {
-        return !w->dead() && !w->dormant() &&
-               w->query_order() == Order::Living &&
-               w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-               w->real_team_num() == 255 && w->user() == -1;
-    };
-
-    // Policy off: the conjunction changes nothing — the legacy pick (the
-    // next matching walker in oblist order) survives.
-    const auto conjoined_for = [&](short player) {
-        return [&, player](const walker* w) {
-            return legacy_filter(w) &&
-                   control_claim_allowed(fx.world(), w, player);
-        };
-    };
-    EXPECT_EQ(foreign, sim_cycle_next_character(fx.world().oblist, current,
-                                                false, legacy_filter));
-    EXPECT_EQ(foreign, sim_cycle_next_character(fx.world().oblist, current,
-                                                false, conjoined_for(0)));
-
-    // Owner-locked: the same-machine seat cycles onto its machine's other
-    // hero, skipping the foreign one the legacy filter would have taken.
-    set_control_policy(fx.world(), kControlPolicyOwnerLocked,
-                       canonical_machine_map());
-    EXPECT_EQ(same_machine, sim_cycle_next_character(fx.world().oblist, current,
-                                                     false, conjoined_for(0)));
-    // Reverse cycling honors the same denial.
-    EXPECT_EQ(same_machine, sim_cycle_next_character(fx.world().oblist, current,
-                                                     true, conjoined_for(0)));
-}
+// (Removed: SimControlPolicy.cycle_filter_conjunction_skips_foreign_heroes
+// composed the §4.4 site-1 predicate INSIDE the test — a verbatim copy of the
+// production lambda — so deleting `&& control_claim_allowed(...)` from the
+// real SwitchChar site left it green. The rule is pinned end-to-end, through
+// sim_process_player_input itself, by
+// SimInputUnit.sim_control_owner_locked_switch_char_skips_foreign_hero
+// (tests/integration/test_sim_input_unit.cpp): same three walkers, policy-off
+// then owner-locked, forward and Shift-reverse, with the foreign hero's
+// user() tag pinned at -1.)
 
 // ---------------------------------------------------------------------------
 // The §4.4 site-2 hook: sim_reacquire_apply maps the reacquire verdict onto

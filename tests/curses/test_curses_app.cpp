@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -302,12 +303,21 @@ TEST(CursesPlatformGlobals, popup_dialog_writes_headless_diagnostic)
               testing::internal::GetCapturedStderr());
 }
 
-TEST(CursesPlatformGlobals, random_obeys_zero_and_exclusive_upper_bound)
+TEST(CursesPlatformGlobals, random_stays_in_range_and_advances_its_state)
 {
-    EXPECT_EQ(0u, random(0));
-    EXPECT_EQ(0u, random(1));
-    for (int sample = 0; sample < 128; ++sample)
-        EXPECT_LT(random(17), 17u);
+    EXPECT_EQ(0u, random(0)) << "random(0) has no value to pick and returns 0";
+    EXPECT_EQ(0u, random(1)) << "the only value in [0, 1) is 0";
+    // The static LCG must actually advance: a scratch RNG that returns a
+    // constant is in range for every sample and still worthless.
+    std::set<std::uint32_t> seen;
+    for (int sample = 0; sample < 256; ++sample) {
+        const std::uint32_t value = random(17);
+        EXPECT_LT(value, 17u) << "random(x) must stay inside [0, x)";
+        seen.insert(value);
+    }
+    EXPECT_GT(seen.size(), 4u)
+        << "the scratch LCG must advance its state across calls, not return a "
+           "constant (saw " << seen.size() << " distinct values in 256 draws)";
 }
 
 TEST(CursesAppOptions, parses_every_supported_option)
@@ -386,13 +396,38 @@ TEST(CursesAppOptions, reports_unknown_option)
     ASSERT_FALSE(should_exit);
 }
 
-TEST(CursesClock, now_and_sleep_are_monotonic)
+TEST(CursesClock, now_tracks_steady_clock_and_sleep_ms_blocks)
 {
     og::curses::SteadyClock clock;
+
+    // sleep_ms(0) is the documented no-sleep case (clock.cpp's early return).
+    // The ceiling is deliberately loose: sleep_for(0ms) returns at once too,
+    // so no tooth lives here — only a guard against a catastrophic "sleep_ms(0)
+    // parks the frame" regression. A tight wall-clock bound would buy nothing
+    // and flake on a loaded CI box.
+    const std::uint64_t zero_before = clock.now_ms();
+    clock.sleep_ms(0);
+    EXPECT_LT(clock.now_ms() - zero_before, 500u)
+        << "sleep_ms(0) must return without parking the frame";
+
+    // sleep_ms(n) must really block: this is the pacing the level loop and the
+    // lobby spend their frame budget on.
     const std::uint64_t before = clock.now_ms();
-    clock.sleep_ms(1);
+    clock.sleep_ms(25);
     const std::uint64_t after = clock.now_ms();
-    ASSERT_GE(after, before);
+    EXPECT_GE(after - before, 24u)
+        << "sleep_ms(25) must block for at least 25ms (ms truncation loses <1)";
+    EXPECT_LT(after - before, 5000u) << "sleep_ms(25) must not hang";
+
+    // now_ms() is steady_clock's own epoch in milliseconds, not a counter of
+    // its own: a constant (or invented-epoch) now_ms() fails both bounds.
+    const std::uint64_t reference = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+    EXPECT_GE(reference, after) << "now_ms() must not run ahead of steady_clock";
+    EXPECT_LT(reference - after, 1000u)
+        << "now_ms() must report steady_clock's millisecond epoch";
 }
 
 TEST(CursesAppProcess, picker_runs_in_a_real_terminal_and_quits_cleanly)

@@ -53,37 +53,9 @@ void print_usage(std::FILE* out)
         "       parity_runner_smoke --list\n");
 }
 
-const char* fact_kind_name(og::parity::FactKind k)
-{
-    using og::parity::FactKind;
-    switch (k)
-    {
-        case FactKind::TickReached:                     return "TickReached";
-        case FactKind::LevelDoneEquals:                 return "LevelDoneEquals";
-        case FactKind::ScoreDelta:                      return "ScoreDelta";
-        case FactKind::WalkerFamilyCount:               return "WalkerFamilyCount";
-        case FactKind::WalkerOfTeamAlive:               return "WalkerOfTeamAlive";
-        case FactKind::WalkerHpRangeAtFinalTick:        return "WalkerHpRangeAtFinalTick";
-        case FactKind::WalkerKeysApplied:               return "WalkerKeysApplied";
-        case FactKind::WalkerPositionMoved:             return "WalkerPositionMoved";
-        case FactKind::WalkerDiedByFinal:               return "WalkerDiedByFinal";
-        case FactKind::WalkerAliveAtFinal:              return "WalkerAliveAtFinal";
-        case FactKind::TreasureFamilyRemovedFromOblist: return "TreasureFamilyRemovedFromOblist";
-        case FactKind::StatDeltaOnPickup:               return "StatDeltaOnPickup";
-        case FactKind::EffectFamilyCount:               return "EffectFamilyCount";
-        case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
-        case FactKind::EventKindExactly:                return "EventKindExactly";
-        case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
-        case FactKind::WeaponFamilyCount:               return "WeaponFamilyCount";
-        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
-            return "TreasureFamilyOfOrderRemovedFromOblist";
-        case FactKind::WeaponSpeed:                     return "WeaponSpeed";
-        case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
-        case FactKind::EffectNetTravel:                 return "EffectNetTravel";
-        case FactKind::WalkerOnFloor:                   return "WalkerOnFloor";
-    }
-    return "Unknown";
-}
+// Kind spelling comes from og::parity::fact_kind_name (fact_predicate.cpp).
+// This file used to carry a second copy of that switch; two copies of one
+// table drift, and only one of them reds under -Wswitch when a kind is added.
 
 void append_json_escaped(std::string& out, std::string_view s)
 {
@@ -132,7 +104,7 @@ std::string serialize_fact_evaluation(const og::parity::ScenarioSpec& spec,
         std::snprintf(buf, sizeof(buf), "%zu", i);
         out.append(buf);
         out.append(", \"kind\": ");
-        append_json_escaped(out, fact_kind_name(p.kind));
+        append_json_escaped(out, og::parity::fact_kind_name(p.kind));
         out.append(", \"ok\": ");
         out.append(r.ok ? "true" : "false");
         out.append(", \"indeterminate\": ");
@@ -300,15 +272,18 @@ int main(int argc, char** argv)
     // valid dump — an empty arena serialises just as happily as a real one —
     // so a broken bootstrap used to exit 0 with a plausible-looking file that
     // disagreed with every golden. Refuse to publish anything instead: the
-    // callers that matter (scripts/parity/run_mutation_canary.sh and
-    // run_mutation_canary_runtime.py) already abort on a nonzero exit, and
-    // aborting loudly beats a corpus-wide phantom drift.
+    // caller that matters (scripts/parity/run_mutation_canary.sh) already
+    // aborts on a nonzero exit, and aborting loudly beats a corpus-wide
+    // phantom drift.
     //
     // Exempt from the load half are the rows that build their own arena from
     // the header-only stub fixture, exactly as in test_parity_scenarios: the
-    // four scen9301 rows (snapshot dirty bits, the three Z-axis arenas).
-    // run_mutation_canary_runtime.py --all walks those rows, so failing them
-    // here would break a driver over a stub that is by design. Every other
+    // three Z-axis scen9301 rows (snapshot_dirty_bits_scen9301 now loads the
+    // real scen1.fss and is no longer among them).
+    // Those rows are branch-internal, so the mutation canary never walks them
+    // (canary_plan.py excludes branch-internal rows exactly as
+    // lint.parse_scenarios does); failing them here would break the suites
+    // that DO run them over a stub that is by design. Every other
     // row — branch-internal ones included, since
     // treasure_exit_open_prompt_scen99 loads the real scen1.fss — must load.
     // A failed bootstrap still refuses for every row: that is the signal that

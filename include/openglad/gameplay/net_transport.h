@@ -92,7 +92,10 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // appends a recipient-specific u8 count plus u32 local_seat_ids, providing
 // authoritative ownership without trusting display names. LobbySettings gains
 // an authored CTF-team-mask u8. StartGame carries a u32 request_id echoed by
-// its confirmation or LobbyState's u32 last_start_request_id on denial. Join
+// its confirmation or LobbyState's u32 last_start_request_id on denial; that
+// denial echo is recipient-specific (layout unchanged) — the server fills
+// last_start_denial/last_start_request_id only in the copy sent to the peer
+// whose StartGame produced the verdict. Join
 // likewise carries a u32 request_id plus a resume-after-level flag, and
 // LobbyState appends the recipient's u32 last_join_request_id and host-peer
 // flag after local_seat_ids. The resume flag is the only Join form retained
@@ -175,7 +178,15 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // LobbySettings change — the declaration is authored by host mode Lua and
 // replicates through ModeState like a beacon; docked-vs-inset is resolved per
 // machine by the interface layer and never rides the wire.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 17;
+// v18: floating damage/heal numbers reach the display mirror again (the 2013
+// overlay, dead on every client since #106). og::sim::Event gains a third
+// generic scalar `c`, appended AFTER `text` in the event payload so every
+// existing event byte offset (including the #230 target_player position)
+// stays put, and EventKind gains DamageNumber = 19 — lifted onto the batch by
+// GameServer::broadcast_current_state, never emitted by the sim. Snapshot
+// format moves to v14 (apply_entity_snapshot_fields stops clearing the
+// mirror's list) and replay format to v20. No LobbySettings change.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 18;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

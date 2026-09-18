@@ -11,6 +11,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <gtest/gtest.h>
+#include "test_sim_random_scope.h"
 
 #include <memory>
 #include <vector>
@@ -42,6 +43,29 @@ private:
     GameplayContext* previous_ = nullptr;
 };
 
+// statistics draws every AI coin off current_game->world->rng_ (stats.cpp
+// rng()), NOT GameContext::rng -- a context RNG would leave rng(300),
+// the path-check cadence and the ATTACK duration to whatever the LCG
+// happened to hold. ScopedSimRandom installs one of these over that stream.
+class SequenceRandom final : public IRandom
+{
+public:
+    explicit SequenceRandom(std::initializer_list<std::uint32_t> values)
+        : values_(values) {}
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        if (max_exclusive == 0)
+            return 0;
+        const std::uint32_t raw = (index_ < values_.size()) ? values_[index_++] : values_.back();
+        return raw % max_exclusive;
+    }
+
+private:
+    std::vector<std::uint32_t> values_;
+    std::size_t index_ = 0;
+};
+
 static std::unique_ptr<walker> make_walker(char family)
 {
     guy g(family);
@@ -53,110 +77,171 @@ static std::unique_ptr<walker> make_walker(char family)
 }
 } // namespace
 
-TEST(StatsMorePaths, stats_do_command_follow_branches)
+// COMMAND_FOLLOW is the escort AI. A follower with no foe and no leader
+// adopts the view's controller, normalizes the leader delta (minor axis zeroed
+// at 3:1) to a single unit step and walks it, and lets go of the leader once
+// it is inside 60 pixels so escorts stop shoving the player around.
+TEST(StatsMorePaths, follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px)
 {
-    // Create a leader via viewob[0]->control and a follower that will receive COMMAND_FOLLOW.
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+
     auto leader = make_walker(FAMILY_SOLDIER);
     auto follower = make_walker(FAMILY_ELF);
-    ASSERT_TRUE(leader && follower) << "walkers created";
-    if (!(leader && follower))
-        return;
+    ASSERT_NE(nullptr, leader.get()) << "leader walker created";
+    ASSERT_NE(nullptr, follower.get()) << "follower walker created";
 
     leader->set_team_num(0);
     follower->set_team_num(0);
 
+    const short saved_numviews = og::runtime::current_session->myscreen_->numviews;
+    walker* const saved_control = og::runtime::current_session->myscreen_->viewob[0]->control;
+    // find_follow_leader() hands back viewob[0]->control in the one-view case.
+    og::runtime::current_session->myscreen_->numviews = 1;
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
+
     follower->set_leader(nullptr);
     follower->set_foe(nullptr);
+    // Already facing the way it must walk: walkstep spends a whole call
+    // TURNING when it is not, which would hide the step behind a facing change.
+    follower->set_curdir(static_cast<char>(FACE_RIGHT));
+    follower->set_enddir(static_cast<char>(FACE_RIGHT));
 
-    // Ensure leader is far enough to exercise walkstep and normalization.
-    leader->setxy(static_cast<Sint32>(follower->xpos()) + 200, static_cast<Sint32>(follower->ypos()));
+    ASSERT_TRUE(follower->setxy(GRID_SIZE * 6, GRID_SIZE * 6));
+    ASSERT_TRUE(leader->setxy(static_cast<short>(follower->xpos() + 200), follower->ypos()));
 
+    const std::int32_t x0 = follower->xpos();
+    const std::int32_t y0 = follower->ypos();
+    const std::int32_t step = static_cast<std::int32_t>(follower->stepsize());
+    ASSERT_GT(step, 0) << "a follower with no step size cannot prove a step";
+
+    follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
-    (void)follower->stats()->do_command();
+    ASSERT_EQ(1, follower->stats()->do_command())
+        << "a followable leader 200px away is a completed follow round";
+    EXPECT_EQ(leader.get(), follower->leader())
+        << "a leaderless follower adopts viewob[0]->control, and count 2 keeps it";
+    EXPECT_EQ(x0 + step, follower->xpos())
+        << "the 200px/0px delta normalizes to exactly one step east";
+    EXPECT_EQ(y0, follower->ypos()) << "the zeroed minor axis means no vertical drift";
 
-    // If we're close, leader should be cleared (distance < 60 path).
-    leader->setxy(static_cast<Sint32>(follower->xpos()) + 10, static_cast<Sint32>(follower->ypos()));
+    // Close arm: a leader inside 60px is dropped and no step is taken.
+    ASSERT_TRUE(leader->setxy(static_cast<short>(follower->xpos() + 10), follower->ypos()));
     follower->set_leader(leader.get());
+    const std::int32_t x1 = follower->xpos();
+    const std::int32_t y1 = follower->ypos();
+    follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-    (void)follower->stats()->do_command();
+    ASSERT_EQ(1, follower->stats()->do_command())
+        << "the too-close arm still reports the round done";
+    EXPECT_EQ(nullptr, follower->leader()) << "inside 60px the escort lets go of the leader";
+    EXPECT_EQ(x1, follower->xpos()) << "don't get too close: no step east";
+    EXPECT_EQ(y1, follower->ypos()) << "don't get too close: no step at all";
 
-    og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
+    og::runtime::current_session->myscreen_->viewob[0]->control = saved_control;
+    og::runtime::current_session->myscreen_->numviews = saved_numviews;
 }
 
 
-TEST(StatsMorePaths, stats_do_command_follow_early_exit_when_foe_present)
+// Being hit under half health is the panic rule: the victim yells (a flat 80
+// ticks of yo_delay, which is what stops it yelling every single tick), and a
+// hit from a NEW attacker retargets both bodies at each other, wiping the
+// flee walk the yell just queued.
+TEST(StatsMorePaths, hit_response_yells_once_below_half_hp_and_retargets_both_bodies)
 {
-    auto leader = make_walker(FAMILY_SOLDIER);
-    auto follower = make_walker(FAMILY_ELF);
-    auto foe = make_walker(FAMILY_ORC);
-    ASSERT_TRUE(leader && follower && foe) << "walkers created";
-    if (!(leader && follower && foe))
-        return;
-
-    og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
-    follower->set_foe(foe.get());
-    follower->set_leader(leader.get());
-
-    follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-    (void)follower->stats()->do_command(); // should clear leader + finish command
-
-    og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
-}
-
-
-TEST(StatsMorePaths, stats_do_command_fire_nonliving_logs_and_returns)
-{
-    // Cover COMMAND_FIRE branch for non-living order.
-    walker* weapon = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
-    ASSERT_TRUE(weapon != nullptr) << "weapon created";
-    if (!weapon)
-        return;
-
-    weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
-    (void)weapon->stats()->do_command();
-}
-
-
-TEST(StatsMorePaths, stats_hit_response_triggers_yell_for_help_for_low_hp)
-{
-    auto target = make_walker(FAMILY_SOLDIER);
-    auto attacker = make_walker(FAMILY_ORC);
-    ASSERT_TRUE(target && attacker) << "walkers created";
-    if (!(target && attacker))
-        return;
-
-    target->set_team_num(0);
-    attacker->set_team_num(1);
-    target->set_yo_delay(0);
-    target->stats()->set_hitpoints(1); // below flee threshold
-
-    attacker->setxy(static_cast<Sint32>(target->xpos()) + 5, static_cast<Sint32>(target->ypos()));
-    target->stats()->hit_response(attacker.get());
-}
-
-
-TEST(StatsMorePaths, stats_right_walk_exercises_direction_switch_when_direct_walk_fails)
-{
-    // Exercise the large direction switch in statistics::right_walk() by ensuring:
-    // - right/forward/right-back checks are false (open grid)
-    // - direct_walk() returns false (foe is null)
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
+    auto target = make_walker(FAMILY_SOLDIER);
+    auto attacker = make_walker(FAMILY_ORC);
+    auto healthy = make_walker(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, target.get()) << "target walker created";
+    ASSERT_NE(nullptr, attacker.get()) << "attacker walker created";
+    ASSERT_NE(nullptr, healthy.get()) << "control walker created";
+
+    // Keep the AI special roll out of the picture: with specials disabled
+    // check_special() returns before it draws from the sim rng.
+    target->set_specials_disabled(true);
+    healthy->set_specials_disabled(true);
+
+    target->set_team_num(0);
+    healthy->set_team_num(0);
+    attacker->set_team_num(1);
+
+    ASSERT_TRUE(attacker->setxy(static_cast<short>(target->xpos() + 5), target->ypos()));
+
+    ASSERT_GT(target->stats()->max_hitpoints(), 2.0f) << "a real hp pool to be under half of";
+    target->set_yo_delay(0);
+    target->set_foe(nullptr);
+    target->stats()->set_hitpoints(1.0f); // far under the 5*max/10 player threshold
+
+    target->stats()->hit_response(attacker.get());
+
+    EXPECT_EQ(80, static_cast<int>(target->yo_delay()))
+        << "yell_for_help adds exactly 80 to yo_delay";
+    EXPECT_EQ(attacker.get(), target->foe()) << "a new attacker becomes our foe";
+    EXPECT_EQ(target.get(), attacker->foe()) << "and we become its foe";
+    EXPECT_FALSE(target->stats()->has_commands())
+        << "the new-foe branch clear_command()s, wiping the flee walk the yell queued";
+
+    // Control: the same hit at full health takes the retarget branch but not
+    // the yell, so yo_delay stays where it was.
+    healthy->set_specials_disabled(true);
+    healthy->set_yo_delay(0);
+    healthy->set_foe(nullptr);
+    healthy->stats()->set_hitpoints(healthy->stats()->max_hitpoints());
+    ASSERT_TRUE(healthy->setxy(static_cast<short>(attacker->xpos() + 5), attacker->ypos()));
+
+    healthy->stats()->hit_response(attacker.get());
+
+    EXPECT_EQ(0, static_cast<int>(healthy->yo_delay()))
+        << "a walker at full health never yells for help";
+    EXPECT_EQ(attacker.get(), healthy->foe())
+        << "the retarget branch still runs at full health";
+}
+
+
+// The last arm of right_walk: nothing is blocked and direct_walk() has no foe
+// to walk to, so the unit keeps ambling along its current facing. Which vector
+// that is comes from an eight-case switch, and walkstep records the vector it
+// was handed in lastx/lasty - so every facing gets its own row here. A swapped
+// or dropped case sends the unit off in the wrong direction.
+TEST(StatsMorePaths, right_walk_with_nothing_blocked_steps_the_unit_vector_of_its_facing)
+{
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
+
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w) << "walker created";
 
-    w->setxy(GRID_SIZE * 10, GRID_SIZE * 10);
-    w->set_lastx(1);
-    w->set_lasty(0);
+    ASSERT_TRUE(w->setxy(GRID_SIZE * 10, GRID_SIZE * 10));
     w->set_foe(nullptr); // forces direct_walk() to return 0
+    const float step = w->stepsize();
+    ASSERT_GT(step, 0.0f) << "a zero step size would make every row trivially equal";
 
-    for (int dir = 0; dir < 8; dir++) {
-        w->set_curdir(static_cast<char>(dir));
-        w->set_enddir(static_cast<char>(dir));
-        (void)w->stats()->right_walk();
+    struct Row { int dir; int dx; int dy; const char* name; };
+    const Row rows[] = {
+        {FACE_UP,         0, -1, "FACE_UP"},
+        {FACE_UP_RIGHT,   1, -1, "FACE_UP_RIGHT"},
+        {FACE_RIGHT,      1,  0, "FACE_RIGHT"},
+        {FACE_DOWN_RIGHT, 1,  1, "FACE_DOWN_RIGHT"},
+        {FACE_DOWN,       0,  1, "FACE_DOWN"},
+        {FACE_DOWN_LEFT, -1,  1, "FACE_DOWN_LEFT"},
+        {FACE_LEFT,      -1,  0, "FACE_LEFT"},
+        {FACE_UP_LEFT,   -1, -1, "FACE_UP_LEFT"},
+    };
+
+    for (const auto& r : rows)
+    {
+        SCOPED_TRACE(r.name);
+        w->set_curdir(static_cast<char>(r.dir));
+        w->set_enddir(static_cast<char>(r.dir));
+        w->set_lastx(0.0f);
+        w->set_lasty(0.0f);
+        ASSERT_TRUE(w->stats()->right_walk())
+            << "open ground with no foe: right_walk takes the facing step";
+        EXPECT_FLOAT_EQ(static_cast<float>(r.dx) * step, w->lastx())
+            << "walkstep records the x vector right_walk chose for this facing";
+        EXPECT_FLOAT_EQ(static_cast<float>(r.dy) * step, w->lasty())
+            << "walkstep records the y vector right_walk chose for this facing";
     }
 }
 
@@ -169,9 +254,7 @@ TEST(StatsMorePaths, stats_constructor_null_controller_and_command_die_shortcuts
     ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family()) << "null-controller ctor should set fallback old_family";
 
     auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w.get()) << "walker created";
 
     w->stats()->set_delete_me(0);
     w->stats()->add_command(COMMAND_DIE, 1, 0, 0);
@@ -182,90 +265,61 @@ TEST(StatsMorePaths, stats_constructor_null_controller_and_command_die_shortcuts
 TEST(StatsMorePaths, stats_do_command_set_reset_weapon_and_search_without_foe)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w.get()) << "walker created";
 
     w->set_default_weapon(FAMILY_KNIFE);
     w->set_current_weapon(FAMILY_ARROW);
     w->stats()->commands.clear();
 
     w->stats()->force_command(COMMAND_SET_WEAPON, 1, FAMILY_BOMB, 0);
-    (void)w->stats()->do_command();
+    ASSERT_EQ(1, w->stats()->do_command()) << "the set-weapon round reports done";
     ASSERT_EQ((int)FAMILY_BOMB, (int)w->current_weapon()) << "COMMAND_SET_WEAPON should set current weapon";
+    ASSERT_FALSE(w->stats()->has_commands()) << "the spent set-weapon command is popped";
 
     w->stats()->force_command(COMMAND_RESET_WEAPON, 1, 0, 0);
-    (void)w->stats()->do_command();
+    ASSERT_EQ(1, w->stats()->do_command()) << "the reset-weapon round reports done";
+    ASSERT_EQ((int)FAMILY_KNIFE, (int)w->current_weapon())
+        << "COMMAND_RESET_WEAPON restores the default weapon set above, not the BOMB";
     ASSERT_EQ((int)w->default_weapon(), (int)w->current_weapon()) << "COMMAND_RESET_WEAPON should restore default";
+    ASSERT_FALSE(w->stats()->has_commands()) << "the spent reset-weapon command is popped";
 
+    // COMMAND_SEARCH with no foe zeroes its own commandcount, so the whole
+    // order is dropped rather than merely decremented: a count of 4 makes that
+    // load-bearing.
     w->set_foe(nullptr);
-    w->stats()->force_command(COMMAND_SEARCH, 1, 0, 0);
-    (void)w->stats()->do_command();
+    w->stats()->force_command(COMMAND_SEARCH, 4, 0, 0);
+    ASSERT_EQ(1, w->stats()->do_command()) << "the no-foe search round reports done";
     ASSERT_TRUE(!w->stats()->has_commands()) << "COMMAND_SEARCH with no foe should clear command";
 }
 
 
-TEST(StatsMorePaths, stats_blocked_helpers_default_dir_branches)
-{
-    auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
-
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    w->setxy(128, 128);
-    w->set_curdir(99);
-
-    (void)w->stats()->right_blocked();
-    (void)w->stats()->right_forward_blocked();
-    (void)w->stats()->right_back_blocked();
-    (void)w->stats()->forward_blocked();
-}
-
-
-TEST(StatsMorePaths, stats_forward_and_side_blocked_invalid_direction_defaults)
-{
-    auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
-
-    og::runtime::current_session->myscreen_->world().create_new_grid();
-    w->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
-    w->set_curdir(static_cast<char>(127));
-    w->set_enddir(static_cast<char>(127));
-
-    ASSERT_TRUE(!w->stats()->forward_blocked()) << "invalid curdir should fall back to no forward block";
-    ASSERT_TRUE(!w->stats()->right_forward_blocked()) << "invalid curdir should fall back to no right-forward block";
-    ASSERT_TRUE(!w->stats()->right_back_blocked()) << "invalid curdir should fall back to no right-back block";
-    ASSERT_TRUE(w->stats()->right_walk()) << "invalid direction fallback in right_walk should still return true";
-}
+// The invalid-direction defaults of forward_blocked/right_blocked/
+// right_forward_blocked/right_back_blocked, and what right_walk() does on top
+// of them, now live in ONE place: StatsCommands.stats_blocked_helpers_probe_
+// the_exact_cell_for_every_facing (test_stats_commands.cpp), which pins the
+// probed CELL for every facing instead of just the all-open answers.
 
 
 TEST(StatsMorePaths, stats_add_and_force_command_walk_clamp_and_zero_fallback)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w.get()) << "walker created";
 
     w->stats()->commands.clear();
     w->stats()->add_command(COMMAND_WALK, 2, 7, -9);
-    ASSERT_TRUE(!w->stats()->commands.empty()) << "add_command should enqueue walk command";
-    if (!w->stats()->commands.empty())
+    ASSERT_EQ(1u, w->stats()->commands.size()) << "add_command should enqueue walk command";
     {
         const command& c = w->stats()->commands.back();
-        ASSERT_EQ(1, (int)c.com1) << "add_command should clamp walk com1 to +1";
-        ASSERT_EQ(-1, (int)c.com2) << "add_command should clamp walk com2 to -1";
+        EXPECT_EQ(1, (int)c.com1) << "add_command should clamp walk com1 to +1";
+        EXPECT_EQ(-1, (int)c.com2) << "add_command should clamp walk com2 to -1";
     }
 
     w->stats()->force_command(COMMAND_WALK, 1, 0, 0);
-    ASSERT_TRUE(!w->stats()->commands.empty()) << "force_command should prepend command";
-    if (!w->stats()->commands.empty())
+    ASSERT_EQ(2u, w->stats()->commands.size()) << "force_command should prepend command";
     {
         const command& c = w->stats()->commands.front();
-        ASSERT_EQ(1, (int)c.com1) << "force_command should convert zero walk x to 1";
-        ASSERT_EQ(1, (int)c.com2) << "force_command should convert zero walk y to 1";
+        EXPECT_EQ(1, (int)c.com1) << "force_command should convert zero walk x to 1";
+        EXPECT_EQ(1, (int)c.com2) << "force_command should convert zero walk y to 1";
     }
 }
 
@@ -273,9 +327,7 @@ TEST(StatsMorePaths, stats_add_and_force_command_walk_clamp_and_zero_fallback)
 TEST(StatsMorePaths, stats_do_command_die_and_multido_paths)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr) << "walker created";
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w.get()) << "walker created";
 
     // COMMAND_DIE path in do_command() (distinct from add_command shortcut).
     statistics local_stats_die(w.get());
@@ -298,37 +350,90 @@ TEST(StatsMorePaths, stats_set_command_die_and_hit_response_early_returns)
 {
     auto target = make_walker(FAMILY_SOLDIER);
     auto attacker = make_walker(FAMILY_ORC);
-    ASSERT_TRUE(target && attacker) << "walkers created";
-    if (!(target && attacker))
-        return;
+    ASSERT_NE(nullptr, target.get()) << "walkers created";
+    ASSERT_NE(nullptr, attacker.get()) << "walkers created";
+
+    // !rng(3), so check_special()'s special() never fires and the arms below
+    // observe hit_response alone.
+    SequenceRandom scripted_values({1, 1, 1, 1, 1, 1, 1, 1});
+    ScopedSimRandom scripted(&scripted_values);
 
     // set_command(COMMAND_DIE) logging branch.
     target->stats()->commands.clear();
     target->stats()->set_command(COMMAND_DIE, 1, 0, 0);
     ASSERT_TRUE(!target->stats()->commands.empty()) << "set_command COMMAND_DIE should still enqueue a command";
 
+    // Every early return is observed the same way: hit_response's only job is
+    // to adopt the attacker as our foe and wipe our standing orders on the way
+    // (stats.cpp, the `controller_->foe() != foe` block). So an arm that
+    // returned early leaves a null foe and its queued order intact; the
+    // positive control at the end proves both oracles can actually move.
+    const auto arm_victim = [&](walker* victim) {
+        victim->set_foe(nullptr);
+        attacker->set_foe(nullptr);
+        victim->stats()->clear_command();
+        victim->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+    };
+    const auto arm = [&]() { arm_victim(target.get()); };
+    const auto expect_untouched_victim = [&](walker* victim, const char* why) {
+        EXPECT_EQ(nullptr, victim->foe()) << why << ": the attacker must not be adopted as our foe";
+        ASSERT_EQ(1u, victim->stats()->commands.size()) << why << ": our orders must survive";
+        EXPECT_EQ(static_cast<int>(COMMAND_SEARCH),
+                  static_cast<int>(victim->stats()->commands.front().commandtype))
+            << why << ": our orders must survive";
+    };
+    const auto expect_untouched = [&](const char* why) {
+        expect_untouched_victim(target.get(), why);
+    };
+
     // hit_response early return: null attacker.
+    arm();
     target->stats()->hit_response(nullptr);
+    expect_untouched("a null attacker");
 
     // hit_response early return: dead attacker.
+    arm();
     attacker->set_dead(1);
     target->stats()->hit_response(attacker.get());
     attacker->set_dead(0);
+    expect_untouched("a dead attacker");
 
     // hit_response early return: dead controller.
+    arm();
     target->set_dead(1);
     target->stats()->hit_response(attacker.get());
     target->set_dead(0);
+    expect_untouched("a dead victim");
 
-    // hit_response early return: ACT_CONTROL.
+    // hit_response early return: ACT_CONTROL (a player's own body answers to
+    // its controller, never to the AI retarget).
+    arm();
     target->set_act_type(ACT_CONTROL);
     target->stats()->hit_response(attacker.get());
     target->set_act_type(ACT_RANDOM);
+    expect_untouched("a player-controlled victim");
 
-    // hit_response early return: non-living order.
-    target->set_order_family(Order::Weapon, FAMILY_ARROW);
+    // hit_response early return: non-living order. It takes a REAL weapon body
+    // to reach this guard -- living::query_order() hardwires Order::Living, so
+    // set_order_family(Order::Weapon, ...) on a living walker changes the
+    // family byte and nothing the guard reads (the arm this test used to run
+    // fell through into the full retarget, unnoticed).
+    walker* arrow = og::runtime::current_session->myscreen_->world().add_ob(
+        Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow) << "a weapon body is needed for the non-living arm";
+    ASSERT_NE(static_cast<int>(Order::Living), static_cast<int>(arrow->query_order()))
+        << "setup: the weapon body must actually read as non-living";
+    arm_victim(arrow);
+    arrow->stats()->hit_response(attacker.get());
+    expect_untouched_victim(arrow, "a non-living victim");
+
+    // Positive control: with every guard satisfied the same call adopts the
+    // attacker on both sides and clears the victim's orders.
+    arm();
     target->stats()->hit_response(attacker.get());
-    target->set_order_family(Order::Living, FAMILY_SOLDIER);
+    EXPECT_EQ(attacker.get(), target->foe()) << "a live hit retargets us onto our attacker";
+    EXPECT_EQ(target.get(), attacker->foe()) << "...and points the attacker back at us";
+    EXPECT_FALSE(target->stats()->has_commands()) << "the retarget clears our standing orders";
 }
 
 
@@ -344,9 +449,8 @@ TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
 
     walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(actor != nullptr && foe != nullptr) << "walkers created";
-    if (!(actor && foe))
-        return;
+    ASSERT_NE(nullptr, actor) << "walkers created";
+    ASSERT_NE(nullptr, foe) << "walkers created";
 
     actor->set_team_num(0);
     foe->set_team_num(1);
@@ -400,24 +504,27 @@ TEST(StatsMorePaths, stats_right_walk_round7_right_back_and_forward_direction_ma
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr) << "actor created";
-    if (!actor)
-        return;
+    ASSERT_NE(nullptr, actor) << "actor created";
 
-    actor->setxy(GRID_SIZE * 10, GRID_SIZE * 10);
+    // Geometry, same as the round8 sibling: the body's bottom edge sitting on
+    // the map edge leaves right-back (x+1, y+1) as the ONLY blocked probe for a
+    // FACE_UP walker, which is what selects right_walk's turn-right arm. (The
+    // orc blocker this test used to park at (x+1, y+1) overlapped the actor's
+    // own body and blocked right/right-forward/forward too, so the loop below
+    // never ran the arm it names -- it ran the walk-forward arm instead.)
+    ASSERT_TRUE(actor->setxy(static_cast<short>(GRID_SIZE * 6),
+        static_cast<short>(og::runtime::current_session->myscreen_->world().pixmaxy
+                           - actor->sizey() - 1)));
     actor->set_curdir(FACE_UP);
     actor->set_lastx(0);
     actor->set_lasty(-1);
     actor->stats()->commands.clear();
 
-    // Force only right_back_blocked() to be true for FACE_UP.
-    walker* blocker = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(blocker != nullptr) << "blocker created";
-    if (!blocker)
-        return;
-    blocker->set_team_num(1);
-    blocker->setxy(static_cast<short>(actor->xpos() + 1),
-                   static_cast<short>(actor->ypos() + 1));
+    ASSERT_FALSE(actor->stats()->right_blocked()) << "geometry: our right is open";
+    ASSERT_FALSE(actor->stats()->right_forward_blocked()) << "geometry: right-forward is open";
+    ASSERT_FALSE(actor->stats()->forward_blocked()) << "geometry: forward is open";
+    ASSERT_TRUE(actor->stats()->right_back_blocked())
+        << "geometry: the map edge blocks right-back, selecting the turn-right arm";
 
     struct ExpectedDir {
         char target_dir;
@@ -435,33 +542,52 @@ TEST(StatsMorePaths, stats_right_walk_round7_right_back_and_forward_direction_ma
         {FACE_UP_LEFT, -1, -1},
     };
 
+    // The turn-right arm has exactly ONE outcome per heading: enddir moves two
+    // notches clockwise, the mapped unit step is QUEUED (add_command), and the
+    // body does not move this round -- nothing in this arm calls walkstep.
     for (const auto& e : expected)
     {
         actor->set_enddir(static_cast<char>((e.target_dir + 6) % 8)); // +2 in right_walk => target_dir
         actor->stats()->commands.clear();
         const short x_before = actor->xpos();
         const short y_before = actor->ypos();
-        const char enddir_before = actor->enddir();
         ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk should succeed in right_back_blocked branch";
-        ASSERT_TRUE(!actor->stats()->commands.empty() || actor->xpos() != x_before || actor->ypos() != y_before
-                        || actor->enddir() != enddir_before) << "right_walk should queue, move, or update heading";
-        if (!actor->stats()->commands.empty())
-        {
-            const command& c = actor->stats()->commands.back();
-            ASSERT_EQ((int)COMMAND_WALK, (int)c.commandtype) << "queued command should be COMMAND_WALK";
-            ASSERT_EQ(e.dx, (int)c.com1) << "mapped walk x should match direction";
-            ASSERT_EQ(e.dy, (int)c.com2) << "mapped walk y should match direction";
-        }
+        ASSERT_EQ(1u, actor->stats()->commands.size())
+            << "the turn-right arm queues exactly one walk for heading " << (int)e.target_dir;
+        const command& c = actor->stats()->commands.front();
+        EXPECT_EQ((int)COMMAND_WALK, (int)c.commandtype) << "queued command should be COMMAND_WALK";
+        EXPECT_EQ(1, (int)c.commandcount) << "the queued step is for one round";
+        EXPECT_EQ(e.dx, (int)c.com1) << "mapped walk x should match direction";
+        EXPECT_EQ(e.dy, (int)c.com2) << "mapped walk y should match direction";
+        EXPECT_EQ((int)e.target_dir, (int)actor->enddir())
+            << "right_walk turns the heading two notches clockwise";
+        EXPECT_EQ((int)FACE_UP, (int)actor->curdir())
+            << "the turn-right arm changes the heading, never the current facing";
+        EXPECT_EQ(x_before, actor->xpos()) << "the turn-right arm queues a step, it does not take one";
+        EXPECT_EQ(y_before, actor->ypos()) << "the turn-right arm queues a step, it does not take one";
     }
 
-    // Remove blocker and force the direct_walk()==false fallback switch for FACE_UP.
-    og::runtime::current_session->myscreen_->world().remove_ob(blocker);
+    // Step away from the map edge so nothing is blocked, and force the
+    // direct_walk()==false fallback switch for FACE_UP: with no foe
+    // direct_walk() returns 0 immediately, so the curdir switch takes the step
+    // itself -- one stepsize due north, nothing queued.
+    ASSERT_TRUE(actor->setxy(GRID_SIZE * 10, GRID_SIZE * 10));
     actor->set_foe(nullptr);
     actor->set_curdir(FACE_UP);
     actor->set_enddir(FACE_UP);
+    actor->stats()->commands.clear();
     const short y_before = actor->ypos();
+    const short x_before = actor->xpos();
+    const int step = static_cast<int>(actor->stepsize());
+    ASSERT_GT(step, 0) << "a zero step size cannot prove a step";
+    ASSERT_FALSE(actor->stats()->right_blocked()) << "geometry: our right is open";
+    ASSERT_FALSE(actor->stats()->right_back_blocked())
+        << "geometry: off the map edge, right-back is open again";
     ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk direct-walk fallback should return true";
-    ASSERT_TRUE(actor->ypos() <= y_before) << "FACE_UP fallback should walk in negative y direction";
+    EXPECT_EQ(y_before - step, actor->ypos()) << "the FACE_UP fallback walks one step due north";
+    EXPECT_EQ(x_before, actor->xpos()) << "the FACE_UP fallback walks straight, not diagonally";
+    EXPECT_FALSE(actor->stats()->has_commands())
+        << "the fallback steps directly; it queues nothing";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -471,19 +597,43 @@ TEST(StatsMorePaths, stats_right_walk_round8_negative_enddir_default_switch_path
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     auto actor = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr) << "actor created";
-    if (!actor)
-        return;
+    ASSERT_NE(nullptr, actor.get()) << "actor created";
 
     // Geometry setup:
     // - right/right-forward/forward are passable
     // - right-back is blocked by bottom boundary
-    actor->setxy(GRID_SIZE * 6, static_cast<std::int32_t>(og::runtime::current_session->myscreen_->world().pixmaxy - 1));
+    // One pixel of southward travel puts the body's bottom edge off the map:
+    // query_passable rejects a footprint whose y+sizey reaches pixmaxy.
+    ASSERT_TRUE(actor->setxy(static_cast<short>(GRID_SIZE * 6),
+        static_cast<short>(og::runtime::current_session->myscreen_->world().pixmaxy
+                           - actor->sizey() - 1)));
     actor->set_curdir(FACE_UP);
     actor->set_enddir(static_cast<char>(-127));
     actor->stats()->commands.clear();
 
+    ASSERT_FALSE(actor->stats()->right_blocked()) << "geometry: our right is open";
+    ASSERT_FALSE(actor->stats()->right_forward_blocked()) << "geometry: our right-forward is open";
+    ASSERT_FALSE(actor->stats()->forward_blocked()) << "geometry: forward is open";
+    ASSERT_TRUE(actor->stats()->right_back_blocked()) << "geometry: the map edge blocks our right-back";
+
     ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk should return true for negative-enddir fallback path";
+
+    // The turn-right arm adds 2 to enddir with a C++ remainder, which stays
+    // negative for a negative heading: no case in the direction switch matches
+    // it, so the default arm hands add_command a (0,0) walk - and add_command
+    // rewrites a zero walk to (1,1).
+    EXPECT_EQ((-127 + 2) % 8, static_cast<int>(actor->enddir()))
+        << "right_walk turns right without normalizing a negative enddir";
+    ASSERT_EQ(1u, actor->stats()->commands.size())
+        << "the default arm still queues exactly one walk";
+    const command& queued = actor->stats()->commands.front();
+    EXPECT_EQ(static_cast<int>(COMMAND_WALK), static_cast<int>(queued.commandtype))
+        << "the queued command is a walk";
+    EXPECT_EQ(1, static_cast<int>(queued.commandcount)) << "queued for one round";
+    EXPECT_EQ(1, static_cast<int>(queued.com1))
+        << "the switch default is (0,0), which add_command rewrites to (1,1)";
+    EXPECT_EQ(1, static_cast<int>(queued.com2))
+        << "the switch default is (0,0), which add_command rewrites to (1,1)";
 }
 
 
@@ -495,50 +645,121 @@ TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_bra
     auto leader = make_walker(FAMILY_SOLDIER);
     auto follower = make_walker(FAMILY_ELF);
     auto foe = make_walker(FAMILY_ORC);
-    ASSERT_TRUE(leader && follower && foe) << "fixtures created";
-    if (!(leader && follower && foe))
-        return;
+    ASSERT_NE(nullptr, leader.get()) << "fixtures created";
+    ASSERT_NE(nullptr, follower.get()) << "fixtures created";
+    ASSERT_NE(nullptr, foe.get()) << "fixtures created";
 
     // force_command WALK clamp path (stats.cpp:152-163).
     follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_WALK, 3, 9, -9);
-    ASSERT_TRUE(!follower->stats()->commands.empty()) << "force_command should enqueue walk";
-    if (!follower->stats()->commands.empty())
+    ASSERT_EQ(1u, follower->stats()->commands.size()) << "force_command should enqueue walk";
     {
         const command& c = follower->stats()->commands.front();
-        ASSERT_EQ(1, (int)c.com1) << "force_command should clamp com1 to +1";
-        ASSERT_EQ(-1, (int)c.com2) << "force_command should clamp com2 to -1";
+        EXPECT_EQ(1, (int)c.com1) << "force_command should clamp com1 to +1";
+        EXPECT_EQ(-1, (int)c.com2) << "force_command should clamp com2 to -1";
     }
 
-    // COMMAND_FOLLOW no-leader-found branch (stats.cpp:285-287).
+    // COMMAND_FOLLOW no-leader-found branch (stats.cpp:285-287): with no
+    // leader and nothing for find_follow_leader() to hand back, the arm zeroes
+    // its own commandcount and reports the round UNDONE -- so a four-round
+    // FOLLOW is dropped whole, not retried next tick.
     og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
     follower->set_foe(nullptr);
     follower->set_leader(nullptr);
-    follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-    (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->leader() == nullptr) << "follow without leader should stay leaderless";
+    follower->stats()->commands.clear();
+    follower->stats()->force_command(COMMAND_FOLLOW, 4, 0, 0);
+    EXPECT_EQ(0, follower->stats()->do_command())
+        << "a follow with no leader to find reports the round undone";
+    EXPECT_EQ(nullptr, follower->leader()) << "follow without leader should stay leaderless";
+    EXPECT_FALSE(follower->stats()->has_commands())
+        << "the no-leader arm zeroes commandcount, so the whole FOLLOW is dropped";
 
-    // COMMAND_FOLLOW axis-normalization branch (stats.cpp:303-310).
+    // COMMAND_FOLLOW axis-normalization branch (stats.cpp:303-310): a 300px/40px
+    // delta is past the 3:1 ratio, so the minor axis is zeroed and the escort
+    // walks due east - exactly one step, not the raw delta.
+    const short saved_numviews = og::runtime::current_session->myscreen_->numviews;
+    og::runtime::current_session->myscreen_->numviews = 1;
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
-    leader->setxy(static_cast<Sint32>(follower->xpos()) + 300, static_cast<Sint32>(follower->ypos()) + 40);
+    // Everything make_walker builds starts on the same tile; park the orc out
+    // of the way or it simply blocks the follower's step.
+    ASSERT_TRUE(foe->setxy(static_cast<short>(GRID_SIZE * 30), static_cast<short>(GRID_SIZE * 30)));
+    ASSERT_TRUE(follower->setxy(GRID_SIZE * 6, GRID_SIZE * 6));
+    ASSERT_TRUE(leader->setxy(static_cast<short>(follower->xpos() + 300),
+                              static_cast<short>(follower->ypos() + 40)));
     follower->set_leader(nullptr);
     follower->set_foe(nullptr);
-    const short before_y = follower->ypos();
+    // Facing the way it will walk, so walkstep steps instead of turning.
+    follower->set_curdir(static_cast<char>(FACE_RIGHT));
+    follower->set_enddir(static_cast<char>(FACE_RIGHT));
+    const std::int32_t follow_x = follower->xpos();
+    const std::int32_t follow_y = follower->ypos();
+    const std::int32_t step = static_cast<std::int32_t>(follower->stepsize());
+    ASSERT_GT(step, 0) << "a zero step size cannot prove a step";
+    follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
-    (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->ypos() == before_y || std::abs((int)follower->ypos() - (int)before_y) <= 1) << "follow axis-normalization should heavily favor x-axis movement";
+    ASSERT_EQ(1, follower->stats()->do_command()) << "the follow round completes";
+    EXPECT_EQ(follow_x + step, follower->xpos())
+        << "follow axis-normalization walks one unit step along the major axis";
+    EXPECT_EQ(follow_y, follower->ypos())
+        << "the 3:1 test zeroes the minor axis, so y must not move at all";
 
-    // COMMAND_RIGHT_WALK distance gate branches (stats.cpp:360-368).
+    // COMMAND_RIGHT_WALK distance gate (stats.cpp:360-368): right_walk() is used
+    // ONLY when 120 < distance < 240; otherwise direct_walk() goes first and
+    // right_walk is the fallback. Geometry: the body's bottom edge sitting on
+    // the map edge, facing UP, leaves right-back (x+1,y+1) as the only blocked
+    // probe, so right_walk() takes its turn-right arm - it queues a
+    // COMMAND_WALK and leaves curdir alone. direct_walk() does the opposite:
+    // it queues nothing here and living::walk spends the call turning curdir
+    // one notch toward the foe. So the pair (queued command, curdir) says
+    // which of the two ran.
+    const short bottom =
+        static_cast<short>(og::runtime::current_session->myscreen_->world().pixmaxy
+                           - follower->sizey() - 1);
+    ASSERT_TRUE(follower->setxy(static_cast<short>(GRID_SIZE * 6), bottom));
+    follower->set_curdir(static_cast<char>(FACE_UP));
+    follower->set_enddir(static_cast<char>(FACE_UP));
     follower->set_foe(foe.get());
-    foe->setxy(static_cast<Sint32>(follower->xpos()) + 150, static_cast<Sint32>(follower->ypos())); // distance in (120,240)
+    ASSERT_TRUE(foe->setxy(static_cast<short>(follower->xpos() + 150), bottom));
+    ASSERT_EQ(150, follower->distance_to_ob(foe.get())) << "in the (120,240) band";
+    ASSERT_FALSE(follower->stats()->right_blocked()) << "geometry: our right is open";
+    ASSERT_FALSE(follower->stats()->right_forward_blocked()) << "geometry: right-forward is open";
+    ASSERT_FALSE(follower->stats()->forward_blocked()) << "geometry: forward is open";
+    ASSERT_TRUE(follower->stats()->right_back_blocked()) << "geometry: the map edge blocks right-back";
+    follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_RIGHT_WALK, 1, 0, 0);
-    (void)follower->stats()->do_command();
+    ASSERT_EQ(1, follower->stats()->do_command()) << "the right-walk round completes";
+    ASSERT_EQ(1u, follower->stats()->commands.size())
+        << "in band: right_walk ran and queued its turn-right step";
+    EXPECT_EQ(static_cast<int>(COMMAND_WALK),
+              static_cast<int>(follower->stats()->commands.front().commandtype))
+        << "in band: right_walk queues a walk";
+    EXPECT_EQ(1, static_cast<int>(follower->stats()->commands.front().com1))
+        << "in band: the new heading FACE_RIGHT maps to (+1, 0)";
+    EXPECT_EQ(0, static_cast<int>(follower->stats()->commands.front().com2))
+        << "in band: the new heading FACE_RIGHT maps to (+1, 0)";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(follower->enddir()))
+        << "in band: right_walk turned the heading right from FACE_UP";
+    EXPECT_EQ(FACE_UP, static_cast<int>(follower->curdir()))
+        << "in band: right_walk changes the heading, never the current facing";
 
-    foe->setxy(static_cast<Sint32>(follower->xpos()) + 20, static_cast<Sint32>(follower->ypos())); // distance outside (120,240)
+    // Out of band (20px): direct_walk() runs first and succeeds, so right_walk
+    // never gets its turn - nothing is queued and curdir has rotated one notch
+    // toward the foe instead.
+    ASSERT_TRUE(follower->setxy(static_cast<short>(GRID_SIZE * 6), bottom));
+    follower->set_curdir(static_cast<char>(FACE_UP));
+    follower->set_enddir(static_cast<char>(FACE_UP));
+    ASSERT_TRUE(foe->setxy(static_cast<short>(follower->xpos() + 20), bottom));
+    ASSERT_EQ(20, follower->distance_to_ob(foe.get())) << "below the 120 floor of the band";
+    follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_RIGHT_WALK, 1, 0, 0);
-    (void)follower->stats()->do_command();
+    ASSERT_EQ(1, follower->stats()->do_command()) << "the right-walk round completes";
+    EXPECT_TRUE(follower->stats()->commands.empty())
+        << "out of band: direct_walk handled it, so right_walk queued nothing";
+    EXPECT_EQ(FACE_UP_RIGHT, static_cast<int>(follower->curdir()))
+        << "out of band: direct_walk's walkstep turned us one notch toward the foe";
 
     og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
+    og::runtime::current_session->myscreen_->numviews = saved_numviews;
 }
 
 
@@ -550,45 +771,52 @@ TEST(StatsMorePaths, stats_round12_add_command_walk_clamps_and_follow_shortcuts)
     auto follower = make_walker(FAMILY_ELF);
     auto foe = make_walker(FAMILY_ORC);
     auto leader = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(follower && foe && leader) << "fixtures created";
-    if (!(follower && foe && leader))
-        return;
+    ASSERT_NE(nullptr, follower.get()) << "fixtures created";
+    ASSERT_NE(nullptr, foe.get()) << "fixtures created";
+    ASSERT_NE(nullptr, leader.get()) << "fixtures created";
 
     follower->stats()->commands.clear();
 
     // add_command(COMMAND_WALK) clamp/default branches (stats.cpp:128-140).
     follower->stats()->add_command(COMMAND_WALK, 2, 0, 0);
-    ASSERT_TRUE(!follower->stats()->commands.empty()) << "add_command walk should enqueue";
-    if (!follower->stats()->commands.empty())
+    ASSERT_EQ(1u, follower->stats()->commands.size()) << "add_command walk should enqueue";
     {
         const command& c = follower->stats()->commands.back();
-        ASSERT_EQ(1, (int)c.com1) << "zero walk x should default to +1";
-        ASSERT_EQ(1, (int)c.com2) << "zero walk y should default to +1";
+        EXPECT_EQ(1, (int)c.com1) << "zero walk x should default to +1";
+        EXPECT_EQ(1, (int)c.com2) << "zero walk y should default to +1";
     }
 
     follower->stats()->add_command(COMMAND_WALK, 2, 7, -7);
-    ASSERT_TRUE(!follower->stats()->commands.empty()) << "second walk command enqueued";
-    if (!follower->stats()->commands.empty())
+    ASSERT_EQ(2u, follower->stats()->commands.size())
+        << "add_command appends behind the first walk rather than replacing it";
     {
         const command& c = follower->stats()->commands.back();
-        ASSERT_EQ(1, (int)c.com1) << "walk x should clamp high value to +1";
-        ASSERT_EQ(-1, (int)c.com2) << "walk y should clamp low value to -1";
+        EXPECT_EQ(1, (int)c.com1) << "walk x should clamp high value to +1";
+        EXPECT_EQ(-1, (int)c.com2) << "walk y should clamp low value to -1";
     }
 
-    // COMMAND_FOLLOW early exit when foe exists (stats.cpp:273-278).
+    // COMMAND_FOLLOW early exit when foe exists (stats.cpp:273-278). A count of
+    // 4 makes the branch's `commandcount = 0` load-bearing: the whole FOLLOW is
+    // dropped, not merely this round.
     follower->set_foe(foe.get());
     follower->set_leader(leader.get());
-    follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-    (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->leader() == nullptr) << "follow should clear leader when foe is present";
+    follower->stats()->commands.clear();
+    follower->stats()->force_command(COMMAND_FOLLOW, 4, 0, 0);
+    EXPECT_EQ(0, follower->stats()->do_command())
+        << "a follower with a foe abandons the follow round and reports it undone";
+    EXPECT_EQ(nullptr, follower->leader()) << "follow should clear leader when foe is present";
+    EXPECT_FALSE(follower->stats()->has_commands())
+        << "the foe branch zeroes commandcount, so the whole FOLLOW is dropped";
 
     // COMMAND_FOLLOW close-distance branch (stats.cpp:295-300).
     follower->set_foe(nullptr);
     follower->set_leader(leader.get());
     leader->setxy(static_cast<Sint32>(follower->xpos()) + 10, static_cast<Sint32>(follower->ypos()) + 10);
+    follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
-    (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->leader() == nullptr) << "follow should drop leader when already close";
+    EXPECT_EQ(1, follower->stats()->do_command())
+        << "the too-close arm reports the round done";
+    EXPECT_EQ(nullptr, follower->leader()) << "follow should drop leader when already close";
 }
 
 
@@ -599,78 +827,169 @@ TEST(StatsMorePaths, stats_round13_die_and_non_living_fire_command_branches)
 
     auto living = make_walker(FAMILY_SOLDIER);
     walker* weapon = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_ARROW);
-    ASSERT_TRUE(living && weapon) << "fixtures created";
-    if (!(living && weapon))
-        return;
+    ASSERT_NE(nullptr, living.get()) << "fixtures created";
+    ASSERT_NE(nullptr, weapon) << "fixtures created";
 
     // COMMAND_DIE branch (stats.cpp:266-271).
     living->set_dead(1);
     living->stats()->set_delete_me(0);
     living->stats()->force_command(COMMAND_DIE, 1, 0, 0);
-    (void)living->stats()->do_command();
+    ASSERT_EQ(1, living->stats()->do_command()) << "the die round reports done";
     ASSERT_EQ(1, (int)living->stats()->delete_me()) << "COMMAND_DIE should set delete_me when count is low";
 
     // COMMAND_FIRE on non-living controller path (stats.cpp:253-257).
     weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
     const short fire_result = weapon->stats()->do_command();
     ASSERT_EQ(1, (int)fire_result)
-        << "COMMAND_FIRE on non-living should take the guarded no-op branch";
-    ASSERT_FALSE(weapon->stats()->has_commands());
+        << "COMMAND_FIRE on non-living should take the guarded no-op branch: the "
+           "guard breaks with result 1, while a fire_check denial would report 0";
+    ASSERT_FALSE(weapon->stats()->has_commands())
+        << "the guarded branch still decrements and pops the spent command";
 }
 
 
-TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback)
+TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto actor = make_walker(FAMILY_SOLDIER);
     auto foe = make_walker(FAMILY_ORC);
-    ASSERT_TRUE(actor && foe) << "fixtures created";
-    if (!(actor && foe))
-        return;
+    ASSERT_NE(nullptr, actor.get()) << "fixtures created";
+    ASSERT_NE(nullptr, foe.get()) << "fixtures created";
 
-    // COMMAND_QUICK_FIRE and COMMAND_MULTIDO branches.
+    auto& world = og::runtime::current_session->myscreen_->world();
+
+    // COMMAND_QUICK_FIRE: step first, then loose a weapon - both halves.
+    ASSERT_TRUE(actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8));
+    actor->set_curdir(static_cast<char>(FACE_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_RIGHT));
+    actor->set_foe(nullptr);
+    actor->stats()->set_magicpoints(actor->stats()->max_magicpoints());
+    const std::int32_t step = static_cast<std::int32_t>(actor->stepsize());
+    ASSERT_GT(step, 0) << "a zero step size cannot prove a step";
+    const std::int32_t quickfire_x = actor->xpos();
+    const std::size_t weapons_before = world.weaplist.size();
     actor->stats()->commands.clear();
     actor->stats()->force_command(COMMAND_QUICK_FIRE, 1, 1, 0);
-    (void)actor->stats()->do_command();
+    ASSERT_EQ(1, actor->stats()->do_command()) << "the quick-fire round completes";
+    EXPECT_EQ(quickfire_x + step, actor->xpos())
+        << "QUICK_FIRE walksteps before it fires";
+    EXPECT_EQ(weapons_before + 1u, world.weaplist.size())
+        << "QUICK_FIRE looses exactly one weapon";
+    EXPECT_FALSE(actor->stats()->has_commands()) << "the spent quick-fire is popped";
+
+    // COMMAND_MULTIDO consumes itself first (otherwise do_command would recurse
+    // on its own front entry forever). With nothing queued behind it, that self
+    // consumption is the whole observable.
+    actor->stats()->commands.clear();
     actor->stats()->force_command(COMMAND_MULTIDO, 1, 2, 0);
-    (void)actor->stats()->do_command();
+    ASSERT_EQ(1, actor->stats()->do_command()) << "MULTIDO always reports the round done";
+    EXPECT_FALSE(actor->stats()->has_commands())
+        << "MULTIDO pops itself even when there is nothing behind it to run";
 
-    // COMMAND_RUSH with collide_ob target.
-    walker* rush_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_TRUE(rush_target != nullptr) << "rush target created";
-    if (rush_target)
-    {
-        actor->set_collide_ob(rush_target);
-        actor->stats()->force_command(COMMAND_RUSH, 1, 1, 0);
-        (void)actor->stats()->do_command();
-    }
+    // COMMAND_RUSH is the fighter's charge: three steps in one round, and a
+    // body in the way gets attacked, has its orders wiped and is shoved.
+    walker* rush_target = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, rush_target) << "rush target created";
+    // Hostile, so the charge's attack() is not short-circuited as friendly
+    // fire, and fat enough to survive it - a target that dies is unlinked and
+    // there is nothing left to inspect.
+    rush_target->set_team_num(1);
+    rush_target->stats()->set_max_hitpoints(10000.0f);
+    rush_target->stats()->set_hitpoints(10000.0f);
 
-    // walk_to_foe firstfoe fallback branch (stats.cpp:994-995).
-    class SeqRandom final : public IRandom {
-    public:
-        explicit SeqRandom(std::initializer_list<std::uint32_t> v) : values(v) {}
-        std::uint32_t next(std::uint32_t max_exclusive) override
-        {
-            if (max_exclusive == 0) return 0;
-            const std::uint32_t raw = (idx < values.size()) ? values[idx++] : values.back();
-            return raw % max_exclusive;
-        }
-        std::vector<std::uint32_t> values;
-        std::size_t idx = 0;
-    };
+    // Arm 1: open ground, nobody in reach - three steps, nobody shoved.
+    ASSERT_TRUE(rush_target->setxy(GRID_SIZE * 30, GRID_SIZE * 30));
+    ASSERT_TRUE(actor->setxy(GRID_SIZE * 8, GRID_SIZE * 20));
+    actor->set_curdir(static_cast<char>(FACE_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_RIGHT));
+    actor->set_collide_ob(nullptr);
+    rush_target->stats()->commands.clear();
+    const std::int32_t rush_x = actor->xpos();
+    actor->stats()->commands.clear();
+    actor->stats()->force_command(COMMAND_RUSH, 1, 1, 0);
+    ASSERT_EQ(1, actor->stats()->do_command()) << "the rush round completes";
+    EXPECT_EQ(rush_x + 3 * step, actor->xpos())
+        << "RUSH covers three steps in the one round";
+    EXPECT_TRUE(rush_target->stats()->commands.empty())
+        << "nobody was hit, so nobody is shoved";
 
-    actor->setxy(100, 100);
-    foe->setxy(120, 100); // short-circuit distance path
-    actor->set_foe(foe.get());
-    actor->set_path_check_counter(0);
-    actor->stats()->set_last_distance(99999);
-    foe->set_invisibility_left(64); // allows near-foe scan to skip via rng
-    SeqRandom rng({1, 1, 1, 1, 1});
-    const bool walked = actor->stats()->walk_to_foe();
-    ASSERT_TRUE(walked) << "walk_to_foe should still succeed when using firstfoe fallback path";
-    ASSERT_TRUE(actor->foe() != nullptr) << "walk_to_foe should restore foe from firstfoe fallback";
+    // Arm 2: charge into a body. Standing on the top row means the blocked-NPC
+    // fallback inside walkstep bails on the map edge instead of probing a fresh
+    // cell, so the collision recorded by the charge survives to the shove.
+    ASSERT_TRUE(actor->setxy(static_cast<short>(GRID_SIZE * 8), static_cast<short>(0)));
+    actor->set_curdir(static_cast<char>(FACE_RIGHT));
+    actor->set_enddir(static_cast<char>(FACE_RIGHT));
+    ASSERT_TRUE(rush_target->setxy(static_cast<short>(actor->xpos() + actor->sizex()),
+                                   static_cast<short>(0)));
+    rush_target->stats()->commands.clear();
+    rush_target->stats()->add_command(COMMAND_SEARCH, 9, 0, 0); // orders the shove must wipe
+    actor->set_collide_ob(nullptr);
+    actor->stats()->commands.clear();
+    const float target_hp_before = rush_target->stats()->hitpoints();
+    actor->stats()->force_command(COMMAND_RUSH, 1, 1, 0);
+    ASSERT_EQ(1, actor->stats()->do_command()) << "the rush round completes";
+    EXPECT_LT(rush_target->stats()->hitpoints(), target_hp_before)
+        << "the charge attacks the body it ran into";
+    ASSERT_EQ(1u, rush_target->stats()->commands.size())
+        << "the shove replaces the target's orders rather than queueing behind them";
+    const command& shove = rush_target->stats()->commands.front();
+    EXPECT_EQ(static_cast<int>(COMMAND_WALK), static_cast<int>(shove.commandtype))
+        << "the shove is a walk";
+    EXPECT_EQ(4, static_cast<int>(shove.commandcount)) << "a four-round shove";
+    EXPECT_EQ(1, static_cast<int>(shove.com1)) << "shoved along the rush direction";
+    EXPECT_EQ(0, static_cast<int>(shove.com2)) << "shoved along the rush direction";
+    EXPECT_TRUE(shove.forced) << "the shove is an externally forced walk";
+
+    // walk_to_foe's melee short circuit (stats.cpp, the
+    // `tempdistance < PATHING_MIN_DISTANCE` arm): a foe already within reach is
+    // never pathed to. The arm wipes our standing orders, turns toward the
+    // foe, queues an ATTACK for 30 + rng(25) rounds and reports the round
+    // handled. The `!controller_->foe() && firstfoe` fallback below it
+    // cannot be reached from here: find_near_foe()'s return value is discarded
+    // at that call site, so our foe is still the one we arrived with -- which
+    // is what this pins (an assignment there would show up as a changed foe).
+    //
+    // find_foes_in_range scans world.oblist, so the pair has to LIVE in the
+    // world; make_walker's owned walkers are invisible to it.
+    SequenceRandom scripted_values({1, 1, 1, 1, 1, 1, 1, 1});
+    ScopedSimRandom scripted(&scripted_values);
+    walker* melee = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* prey = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, melee) << "melee fixtures created";
+    ASSERT_NE(nullptr, prey) << "melee fixtures created";
+    melee->set_team_num(0);
+    prey->set_team_num(1);
+    ASSERT_TRUE(melee->setxy(GRID_SIZE * 8, GRID_SIZE * 12));
+    ASSERT_TRUE(prey->setxy(static_cast<short>(melee->xpos() + 16),
+                            static_cast<short>(melee->ypos())));
+    ASSERT_EQ(16, melee->distance_to_ob(prey)) << "inside PATHING_MIN_DISTANCE";
+    // Facing north with a heading already set east, so the two turns the arm
+    // performs are visible and distinguishable (see the curdir pin below).
+    melee->set_curdir(static_cast<char>(FACE_UP));
+    melee->set_enddir(static_cast<char>(FACE_RIGHT));
+    melee->set_foe(prey);
+    melee->set_path_check_counter(0);
+    melee->stats()->clear_command();
+    melee->stats()->add_command(COMMAND_SEARCH, 9, 0, 0); // orders the arm must wipe
+
+    ASSERT_TRUE(melee->stats()->walk_to_foe()) << "a foe in reach is handled by the melee arm";
+    ASSERT_EQ(1u, melee->stats()->commands.size())
+        << "the melee arm clears the queue and leaves exactly its own ATTACK on it";
+    const command& attack = melee->stats()->commands.front();
+    EXPECT_EQ(static_cast<int>(COMMAND_ATTACK), static_cast<int>(attack.commandtype))
+        << "the melee arm queues an attack, not a walk";
+    EXPECT_EQ(31, static_cast<int>(attack.commandcount))
+        << "the attack window is 30 + rng(25), and the script draws 1";
+    // Two notches: the arm's own turn(facing(+16,0)) takes FACE_UP ->
+    // FACE_UP_RIGHT, and the init_fire() that closes the arm turns the rest of
+    // the way onto the standing FACE_RIGHT heading. Without the arm's turn the
+    // walker would stop at FACE_UP_RIGHT.
+    EXPECT_EQ(static_cast<int>(FACE_RIGHT), static_cast<int>(melee->curdir()))
+        << "the melee arm turns us onto the eastward foe";
+    EXPECT_EQ(prey, melee->foe())
+        << "the melee arm keeps the foe it arrived with: find_near_foe's result is discarded";
 }
 
 // A GOTO order that has already arrived must issue no step. The engine calls
@@ -685,9 +1004,7 @@ TEST(StatsMorePaths, direct_walk_to_point_at_the_destination_issues_no_step)
     ScopedGameplayWorld gameplay_world(world);
 
     walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr);
-    if (actor == nullptr)
-        return;
+    ASSERT_NE(nullptr, actor);
     actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
     // Already facing the way it will walk: walkstep spends a call TURNING
     // when it does not, which would hide the step under a facing change.
@@ -725,9 +1042,7 @@ TEST(StatsMorePaths, multido_runs_the_next_two_queued_commands_in_one_round)
     ScopedGameplayWorld gameplay_world(world);
 
     walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_TRUE(actor != nullptr);
-    if (actor == nullptr)
-        return;
+    ASSERT_NE(nullptr, actor);
     actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
     actor->set_curdir(static_cast<char>(FACE_RIGHT));
     actor->set_enddir(static_cast<char>(FACE_RIGHT));
@@ -765,9 +1080,7 @@ TEST(StatsMorePaths, multido_runs_the_next_two_queued_commands_in_one_round)
 TEST(StatsMorePaths, force_fright_clamps_a_merged_direction_to_the_unit_square)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    ASSERT_TRUE(w != nullptr);
-    if (!w)
-        return;
+    ASSERT_NE(nullptr, w.get());
 
     // A far south-west scare source: dx -7, dy +9.
     w->stats()->clear_command();
@@ -794,3 +1107,4 @@ TEST(StatsMorePaths, force_fright_clamps_a_merged_direction_to_the_unit_square)
     EXPECT_EQ(1, static_cast<int>(fresh.com1));
     EXPECT_EQ(-1, static_cast<int>(fresh.com2));
 }
+

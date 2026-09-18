@@ -280,7 +280,7 @@ void build_wolf_winter(const LevelDataHooks& hooks)
         place_living(w, FAMILY_ORC, 2, 0, p[0], p[1], 2);
     // ...then the dusk waves: north treeline, south treeline, down the west
     // road with dire leaders, and last the winter-king's den wave — the
-    // final count on the NEXT WAVE HUD, and the kill-all's final errand.
+    // final count on the WAVE HUD, and the kill-all's final errand.
     static constexpr int dusk1[6][2] = {{22, 8}, {26, 8}, {32, 8},
                                         {36, 8}, {24, 9}, {34, 9}};
     for (const auto& p : dusk1)

@@ -18,6 +18,7 @@
 #include <memory>
 #include "test_gameplay_context_scope.h"
 #include "test_family_hook_dispatch.h"
+#include "test_sim_random_scope.h"
 
 // --- From test_family_thief_coverage_push.cpp ---
 
@@ -74,13 +75,20 @@ TEST(FamilyThief, do_special_busy_and_cloak_paths)
     // a default-constructed living is family 0 and would read SOLDIER's
     // tuning map, which has no cloak keys.
     self.set_order_family(Order::Living, FAMILY_THIEF);
+    // cloak: gain = cloak_base + og.rand(cloak_roll_span) * level = 20 + 7 * 3
+    // (packs/core/families/living-11-thief.lua:73-77). og_rand draws from
+    // current_game->world->rng_, the SIM stream, which unit_main's session
+    // provides -- so the scripted source has to be installed there, not handed
+    // to a GameContext.
     FixedRandom rng(7);
+    ScopedSimRandom sim(&rng);
     self.stats()->set_level(3);
 
     self.set_current_special(2); // cloak
     self.set_invisibility_left(0);
     ASSERT_TRUE(og::test::do_special(desc, &self));
-    ASSERT_TRUE(self.invisibility_left() > 0);
+    EXPECT_EQ(41, self.invisibility_left())
+        << "cloak_total(0, 20 + 7*3) = 41, under the 350 cap";
 
     self.set_current_special(3); // taunt/charm
     self.set_busy(1);
@@ -99,16 +107,14 @@ namespace {
 struct ThiefR12Fixture {
     LevelRuntimeData level{1, true};
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
-    FixedRandom rng{0};
     ScopedGameplayContext gameplay;
 
     ThiefR12Fixture()
         : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
     }
 };
 
@@ -116,7 +122,6 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->set_sizex(16);
     w->set_sizey(16);

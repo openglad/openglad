@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <set>
 #include <string_view>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -66,11 +67,17 @@ TEST(GameContext, sdl_service_install_is_state_preserving_compatibility_hook)
     }
 }
 
+// sound/bow.wav as shipped in the runtime assets.
+static constexpr Uint32 kBowSampleBytes = 5270u;
+
 TEST(GameContext, default_sdl_sound_initializes_loaded_audio)
 {
+    // The shipped sample is a fixed asset: pin its exact decoded length, so a
+    // loader that silently truncates (or hands back a 1-byte stub) fails here.
     sdl_soundob sound;
     EXPECT_EQ(0, sound.silence);
-    EXPECT_GT(sound.sound[SOUND_BOW].len, 0u);
+    EXPECT_EQ(kBowSampleBytes, sound.sound[SOUND_BOW].len)
+        << "the loaded bow sample keeps its full decoded length";
     EXPECT_NE(nullptr, sound.sound[SOUND_BOW].buf);
 }
 
@@ -128,13 +135,23 @@ TEST(GameContext, push_test_context_overrides_rng)
 // IRandom implementations
 // ---------------------------------------------------------------------------
 
-TEST(GameContext, production_rng_stays_in_bounds)
+TEST(GameContext, production_rng_stays_in_bounds_and_actually_varies)
 {
     ProductionRandom rng;
+    std::set<Uint32> seen;
     for (int i = 0; i < 100; i++) {
         Uint32 val = rng.next(10);
         ASSERT_TRUE(val < 10) << "ProductionRandom::next(10) should return [0,9]";
+        seen.insert(val);
     }
+    // A `next` that always returns 0 satisfies the bound, and a `next` that
+    // alternates between two values satisfies "at least 2 distinct". 100 draws
+    // over 10 buckets miss more than five buckets only with probability far
+    // below any flake budget, so a real generator clears this and a degenerate
+    // one (constant, toggling, stuck low bit) does not.
+    ASSERT_GE(seen.size(), 5u)
+        << "ProductionRandom::next(10) must spread across 100 draws, not "
+           "return a constant or cycle a couple of values";
     ASSERT_EQ(0, static_cast<int>(rng.next(0))) << "ProductionRandom::next(0) should return 0";
 }
 
@@ -250,14 +267,32 @@ TEST(GameContext, player_input_move_directions)
 }
 
 
-TEST(GameContext, input_state_from_sdl_captures_held)
+TEST(GameContext, input_state_from_sdl_overwrites_every_held_bit_from_sdl)
 {
-    // This test verifies input_state_from_sdl() populates from the
-    // actual SDL keyboard state. Since no keys are pressed in the test
-    // environment, all should be false.
+    // The sampler OWNS the held array: it writes every bit from
+    // isPlayerHoldingKey and resets timer_wait_request, so stale bits from the
+    // previous frame cannot survive. Pre-dirty the state first -- asserting
+    // "everything is false" on a fresh InputState is also satisfied by a
+    // sampler with an empty body.
     InputState state;
+    state.players[0].held[static_cast<int>(InputKey::Fire)] = true;
+    state.players[1].held[static_cast<int>(InputKey::Left)] = true;
+    state.players[MAX_PLAYERS - 1].held[static_cast<int>(InputKey::Up)] = true;
+    state.timer_wait_request = 4;
+
     input_state_from_sdl(state);
 
+    ASSERT_EQ(kNoTimerWaitRequest, state.timer_wait_request)
+        << "the sampler must reset the timer_wait request every frame";
+    ASSERT_FALSE(state.players[0].held[static_cast<int>(InputKey::Fire)])
+        << "a stale held bit must be overwritten by the SDL sample";
+    ASSERT_FALSE(state.players[1].held[static_cast<int>(InputKey::Left)])
+        << "a stale held bit must be overwritten by the SDL sample";
+    ASSERT_FALSE(state.players[MAX_PLAYERS - 1].held[static_cast<int>(InputKey::Up)])
+        << "a stale held bit must be overwritten by the SDL sample";
+
+    // No keys are pressed in the test environment, so the whole sample is
+    // false once it has actually been taken.
     for (int p = 0; p < MAX_PLAYERS; p++) {
         for (int k = 0; k < NUM_INPUT_KEYS; k++) {
             ASSERT_TRUE(!state.players[p].held[k]) << "no keys should be held in test environment";
@@ -317,6 +352,16 @@ TEST(GameContext, deterministic_rng_via_game_context)
     }
 }
 
+// The exact A* answers on an empty grid: GRID_SIZE is 32, so (32,32)->(64,64)
+// is two diagonal cell steps and (32,32)->(80,32) three orthogonal ones.
+// og::pathfinding::AStar over GameplayPathfindingState prices an orthogonal
+// step at 1 and a diagonal at sqrt(2), and solve() reports the start cell plus
+// every cell stepped onto.
+static constexpr std::size_t kDiagonalRouteNodes = 3u;
+static constexpr float kDiagonalRouteCost = 2.8284271f;  // 2 * sqrt(2)
+static constexpr std::size_t kStraightRouteNodes = 4u;
+static constexpr float kStraightRouteCost = 3.0f;
+
 TEST(GameContext, pathfinding_state_supports_move_construction_and_assignment)
 {
     GameWorld world(0u);
@@ -350,14 +395,26 @@ TEST(GameContext, pathfinding_state_supports_move_construction_and_assignment)
             ((y / GRID_SIZE) * MAP_WIDTH) + (x / GRID_SIZE)));
     };
 
+    // On an empty grid every route below is a straight run of whole cells, so
+    // the node count and the cost are exactly knowable: A* answers start plus
+    // one node per cell stepped, and each step costs 1. "at least 2 nodes,
+    // cost above zero" accepted a solver that wandered or priced the route
+    // wrongly, which is the whole output of this class.
     GameplayPathfindingState source;
     std::vector<void*> path;
     float total_cost = 0.0f;
     source.solve_for_point(actor, 64, 64, make_state(32, 32),
                            make_state(64, 64), path, total_cost);
-    ASSERT_GE(path.size(), 2u);
-    EXPECT_GT(total_cost, 0.0f);
+    ASSERT_EQ(kDiagonalRouteNodes, path.size())
+        << "(32,32) -> (64,64) is two diagonal steps: start + 2 nodes";
+    EXPECT_FLOAT_EQ(kDiagonalRouteCost, total_cost)
+        << "two diagonal steps cost exactly 2 * sqrt(2)";
+    EXPECT_EQ(make_state(32, 32), path.front())
+        << "the path opens on the start cell";
+    EXPECT_EQ(make_state(64, 64), path.back())
+        << "the path closes on the goal cell";
 
+    // A moved-from solver keeps no search state: it answers an EMPTY path.
     GameplayPathfindingState moved(std::move(source));
     path.assign(1, reinterpret_cast<void*>(1));
     total_cost = 99.0f;
@@ -366,15 +423,24 @@ TEST(GameContext, pathfinding_state_supports_move_construction_and_assignment)
     EXPECT_TRUE(path.empty());
     EXPECT_FLOAT_EQ(0.0f, total_cost);
 
+    // ... and the move TARGET answers exactly what the original would have.
     moved.solve_for_point(actor, 80, 32, make_state(32, 32),
                           make_state(80, 32), path, total_cost);
-    ASSERT_GE(path.size(), 2u);
-    EXPECT_GT(total_cost, 0.0f);
+    ASSERT_EQ(kStraightRouteNodes, path.size())
+        << "(32,32) -> (80,32) is three cells east: start + 3 nodes";
+    EXPECT_FLOAT_EQ(kStraightRouteCost, total_cost)
+        << "three orthogonal steps cost exactly " << kStraightRouteCost;
+    EXPECT_EQ(make_state(80, 32), path.back())
+        << "the moved-to solver closes on the goal cell";
 
     GameplayPathfindingState assigned;
     assigned = std::move(moved);
     assigned.solve_for_point(actor, 32, 80, make_state(32, 32),
                              make_state(32, 80), path, total_cost);
-    ASSERT_GE(path.size(), 2u);
-    EXPECT_GT(total_cost, 0.0f);
+    ASSERT_EQ(kStraightRouteNodes, path.size())
+        << "(32,32) -> (32,80) is three cells south: start + 3 nodes";
+    EXPECT_FLOAT_EQ(kStraightRouteCost, total_cost)
+        << "three orthogonal steps cost exactly " << kStraightRouteCost;
+    EXPECT_EQ(make_state(32, 80), path.back())
+        << "the move-assigned solver closes on the goal cell";
 }

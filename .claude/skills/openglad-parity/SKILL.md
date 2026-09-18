@@ -80,7 +80,18 @@ PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
   `bomb_l10_vs_cleric_l9_scen99` row, after which `--list` prints **222**,
   and `3f6e3cbd` for the review pass's fact retunes (five control captures
   identical before and after; facts and comments never reach the dumper).
-  The branch table compiles in the companion unchanged.
+  The tables are byte-identical again at companion `da657414`
+  (2026-09-15, PR #292 area H: 17 orphan family pins attached, three pin
+  definitions deleted, nine fact retunes, anchored source citations, and
+  the new `FactKind::WalkerOfOrderFamilyCount` enumerator + `pred::`
+  constructor mirrored into `tools/fact_predicate.h`) — `--list` still
+  prints **222** and three control captures are `diff -rq`-identical
+  before and after. The branch table compiles in the companion unchanged.
+  The companion header's FactKind ordinals sit one behind the branch's
+  from `WalkerOnFloor` onward (a branch-only multi-floor kind the
+  companion has no concept for and no table row names); that is harmless
+  because the companion never evaluates a FactKind — it only declares the
+  ones the shared table constructs.
 - `pkg-config` is not on the bare PATH here: run the companion build
   inside `nix develop /home/yans/code/openglad -c bash -c '...'` with the
   SDL2 `PKG_CONFIG_PATH` exported inside that shell, or the script exits
@@ -133,8 +144,25 @@ hostile TOWER1 to hold `level_done=0`).
 ## The mutation canary (teeth oracle)
 
 `scripts/parity/run_mutation_canary.sh` applies a scenario's `kMut_*`
-from/to swap to real source, rebuilds, and requires ≥1 predicate flip.
-It is NOT in CI — CI only validates that pin files/lines exist. Facts:
+from/to swap to real source (or to the staged pack copy, which needs no
+compiler), re-evaluates every row that names that pin, and requires that
+at least one PREDICATE of the row flips.
+
+**It runs in CI**: `.github/workflows/parity-canary.yml`. On a pull
+request the job runs `--touched <merge-base>` — the whole Lua arm (free,
+no rebuild), every C++ pin whose file the PR changed, and every row whose
+parsed spec differs from the base table — escalating to `--all` when the
+PR touches the machinery itself (`scripts/parity/`, `tests/parity`
+sources, `cmake/OpenGladTests.cmake`, or the workflow), because a change
+there can detooth a pin without editing one. Nightly at 03:30 UTC and on
+`workflow_dispatch` it runs `--all`. Red is any nonzero exit of the
+script: a `0 flips` row, a PREDICATE-TOOTHLESS row, an environment abort,
+a staged-mirror mismatch or a dirty tree, with one `::error::` line per
+offending row and the tallies in the step summary. There is no
+`continue-on-error`, no narrowing filter and no retry.
+`check_mutation_pins.py` still validates anchors at build time; the two
+gates ask different questions — does the pin still APPLY, and does it
+still BITE. Facts:
 
 - Predicate flips and the gtest verdict are counted SEPARATELY, and the
   predicates are the oracle. Since #283 the SemanticParity gtest
@@ -145,18 +173,70 @@ It is NOT in CI — CI only validates that pin files/lines exist. Facts:
   ZERO flips of any kind (`0 flips`, which must be 0, always) and rows
   with zero PREDICATE flips (`PREDICATE-TOOTHLESS`, carried by the byte
   compare only). Both fail the run.
-- `--all` exits 1 today on the nine PREDICATE-TOOTHLESS rows measured on
-  2026-09-08 and listed in `tests/parity/golden/DRIFT_LEDGER.md`
-  ("Predicate teeth after the byte compare") — open debt, and that list
-  may only shrink. Every row flips something, `smoke_empty_scen99`
-  included (its `TickReached(1)` is evaluated inside the Invariant arm's
-  gtest as well as by `--evaluate-facts`).
+- The nine PREDICATE-TOOTHLESS rows measured on 2026-09-08 were retuned
+  on 2026-09-15: each now carries one exact fact that flips under its own
+  pin, recorded as a table in `tests/parity/golden/DRIFT_LEDGER.md`
+  ("The remaining nine, retuned"). That list may only shrink — a row that
+  reds only the byte compare is debt, never a pass. Every row flips
+  something, `smoke_empty_scen99` included (its `TickReached(1)` is
+  evaluated inside the Invariant arm's gtest as well as by
+  `--evaluate-facts`).
+- `--all` exits 0 as of `ed0076cb` — the first full re-measure since those
+  retunes, and the run this CI lane was accepted on: `rows=222 groups=197
+  rebuilds=64 zero_flips=0 predicate_toothless=0`, 19 minutes of wall
+  clock at `CMAKE_BUILD_PARALLEL_LEVEL=2` (ledger:
+  "The full `--all` re-measure"). `rebuilds` is exactly 2 × the 32
+  rebuild-cpp groups; another number means a group mutated without
+  restoring, or restored without rebuilding. The two tallies that must
+  stay 0 are unchanged.
+- Modes, all mutually exclusive: `--scenario <id>`, `--filter <glob>`,
+  `--all`, `--touched <ref>`. On any of them, `--plan` prints the plan and
+  runs the preflight while mutating NOTHING (the cheap "could this run at
+  all?"), and `--report <path>` writes the per-row verdicts and the
+  tallies as JSON. `--changed-files-from <file>` is a test seam that
+  feeds `--touched` a changed-file list instead of `git diff --name-only`.
+  Selection and grouping live in `scripts/parity/canary_plan.py`
+  (`--self-test`), not in the shell.
+- The table lint (`scripts/parity/lint_scenario_facts.py`) has its own
+  `--self-test`, which runs every rule over synthetic tables and pins each
+  verdict exactly; it is wired as the ctest entry
+  `lint_scenario_facts_selftest`. Add a case there for any rule you add
+  before you trust that rule on the real table.
+- Rows are GROUPED BY PIN, not by row: the group key is the pin's whole
+  tuple (file, line, from, to, context_before), so 63 C++ rows sharing 32
+  pins pay 32 mutations instead of 63, while two sibling pins that sit on
+  one line stay separate groups.
+- A Lua pin needs NO rebuild, and the script exploits that itself:
+  `build/ci-test/packs` is a byte mirror of `packs/` written by
+  `stage_runtime_assets`, and every binary resolves assets exe-adjacent,
+  so the staged copy is what the run mutates. The precondition is that
+  the mirror IS a mirror — `diff -rq packs build/ci-test/packs` must be
+  clean before the run and the restore must `cmp` equal after it (exit 9
+  either way) — and no build may run while a staged mutation is in
+  flight, since a build re-mirrors the directory and would silently
+  un-apply it. That is why the plan orders the whole staged arm ahead of
+  the rebuilding one. Driving a single pin by hand follows the same
+  recipe: copy aside → `_apply_mutation.py` on the STAGED path →
+  `parity_runner_smoke --evaluate-facts` → restore → `cmp`.
+- Branch-internal rows are excluded from every canary mode BY DESIGN
+  (as they are in `lint.parse_scenarios` and the companion's
+  `list_scenarios`): an Invariant row compares two dumps of the SAME
+  mutated binary, so no mutation can flip its compare. Their pins
+  (`kMut_snapshot_dirty`, `kMut_treasure_exit_open_prompt`) are anchored
+  and checked, never canaried.
+- Exit codes: 0 every selected row flipped a predicate of its own;
+  1 teeth failure (a zero-flip row, or a PREDICATE-TOOTHLESS row);
+  2 usage error or a dirty worktree; 3 the selection is empty;
+  7 environment abort (a missing binary, fixture or measurement —
+  nothing was measured, so nothing is reported as guarded);
+  9 staged-packs mirror mismatch, before or after the run.
 - The canary restores files via `git checkout --` and will DESTROY
   uncommitted changes in mutated files. On a dirty tree, drive mutations
   by hand: back up bytes → `_apply_mutation.py` → rebuild → gtest filter
   → restore the backup bytes.
 - C++ canary runs leave the MUTATED binary in build/ci-test — rebuild
-  before running anything else from that tree.
+  before running anything else from that tree. (The staged arm never
+  rebuilds, so it cannot leave mutated objects.)
 - Run the FULL suite under a mutation, not a single filter: collateral
   flips (a mutation that kills a whole Lua chunk reds many rows) are only
   measurable that way, and named-control greenness is the honesty check.
@@ -232,11 +312,33 @@ rebuild before trusting the in-suite gate.
 
 ## Sim-determinism test idioms (unit groups)
 
-`og::sim::set_sim_random_override` only works in TUs compiled with
-`-DTESTING`; `SimRandom::next()` is inline, so og_gameplay's copies ignore
-the override and an installed spy silently records NOTHING — assertions
-on it go vacuous. Instead set `world.rng_.state_ = <constant>` and assert
-observable outcomes. `next(0)` returns early WITHOUT advancing state, so
-"state unchanged across the call" proves no draw happened. Walker
-construction draws from `walker_rng()`, which fixtures redirect, so
-construction never perturbs the world stream.
+Two independent streams, and a test has to say which one it means. The
+GAMEPLAY stream (walker construction via `walker_rng()`, combat rolls,
+autotiling) is installed by handing a `GameContext` to
+`push_test_context`, which every fixture does. The SIM stream is
+`GameWorld::rng_` — `living::act`, `act_random`, `act_guard`,
+`walker::death`, `statistics::try_command` — and `push_test_context` does
+not touch it.
+
+`og::sim::set_sim_random_override` is the hook for the sim stream. It is
+an UNCONDITIONAL gameplay hook (no `#ifdef TESTING` on the declarations or
+on the check inside the inline `SimRandom::next`), so there is exactly one
+body of that function in the tree and an installed override steers draws
+made inside og_gameplay-compiled code in every binary — headless unit
+groups included, where og_gameplay is built without `-DTESTING`. Install
+it through the one shared guard, `ScopedSimRandom`
+(tests/test_sim_random_scope.h); guards nest and restore the ref they
+replaced. (It was TESTING-only until PR #292; a spy installed from a unit
+group then recorded NOTHING and every assertion on it went vacuous. If
+you meet a test comment that still says so, it is stale.)
+
+The state-pin idiom stays the right tool when you want the REAL LCG at a
+known point: set `world.rng_.state_ = <constant>` and assert observable
+outcomes. `next(0)` returns early WITHOUT advancing state — and before it
+consults the override — so "state unchanged across the call" proves no
+draw happened. Conversely, while an override is installed the LCG never
+steps at all, so an unchanged `state_` also proves the override answered.
+
+The parity runner points the sim override and the gameplay override at
+the SAME slot (parity_runner.cpp `RngOverrideGuard`): master drew both
+from libc `rand()`, and that routing is what the goldens encode.

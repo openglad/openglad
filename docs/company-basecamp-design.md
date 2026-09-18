@@ -247,7 +247,19 @@ ready without supplying a hero. A machine with no active seat remains
 connected as a spectator, has no **READY** action, and does not consume player
 capacity or a gameplay binding; any **ADD PLAYER** slot reactivates its dormant
 stable seat token. Start validation checks participating machines and returns a specific
-denial when the roster cannot satisfy the requested local views.
+denial when the roster cannot satisfy the requested local views. Every start
+request is answered, and the denial is echoed to the requesting machine only
+(never to the rest of the lobby), so a machine can only ever read the verdict
+for its own request; a start request from a machine that is not the host is
+denied `NotHost`. Every client renders the verdict of its own request — the SDL
+client as a GO popup, the curses client on the lobby band — including
+`StageFailed` and the no-verdict case, from a single reason-to-text mapping
+(`describe_start_denial`), so no refused GO is ever silent.
+
+No client gates the press itself on host-ness. Every machine may press start;
+the server's rule is the only implementation of "only the host can start", and
+it answers a non-host requester `NotHost` on every client. The GO control's
+visibility on a joiner is presentation, not the rule.
 
 ### 4.4 Ownership and controls
 

@@ -750,7 +750,12 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
             }
 
             if (view_buf->control == &w)
+            {
+                TRACE("damage_numbers", "draw owner=%u value=%.0f color=%u",
+                      w.entity_id(), static_cast<double>(e->value),
+                      static_cast<unsigned>(e->color));
                 draw_damage_number(*e, view_buf);
+            }
             if (render_state != nullptr)
                 snapshot_damage_number_state(*render_state, *e);
             ++e;

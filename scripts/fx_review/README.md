@@ -14,9 +14,12 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
 
 ## How it works
 
-1. **Env-gated capture tests** render P6 PPM frame sequences into
-   `$OG_FX_CAPTURE_DIR/<scene>/NNN.ppm`. Without the env var they
-   `GTEST_SKIP`, so normal ctest runs are untouched.
+1. **Capture tests** render P6 PPM frame sequences into
+   `$OG_FX_CAPTURE_DIR/<scene>/NNN.ppm`. The rendering and gameplay scenes
+   are env-gated; the three MENU scenes are not — they run their oracles on
+   every ctest lane and only the camera holds, the settings laps and the
+   frame dump are behind `OG_FX_CAPTURE_DIR`, which is why a wedged menu
+   flow is now a red test rather than a disk filling up in the dark.
    - `RenderEffects.zz_capture_effect_scenes` (`tests/integration/test_render_effects.cpp`)
      — scripted close-ups: one per effect, plus the floor-glide legs and the
      depth-mode comparison set.
@@ -31,21 +34,28 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
      (2) and the Dead Marshes (19) as real gameplay; then the Long Season
      scenes (2 The Ferry Right, 14 The Long Toll, 17 Ashfall Gate, 18 The
      Warm Mint). `OG_FX_CAPTURE_ONLY=<level id>` records a single scene.
-   - `OptionsMenu.zz_capture_menu_tour` / `zz_capture_menu_effects` /
+   - `MenuCapture.zz_capture_menu_tour` / `zz_capture_menu_effects` /
      `zz_capture_menu_difficulty`
-     (`tests/integration/test_options_menu.cpp`) — injector-driven menu
+     (`tests/integration/test_menu_capture.cpp`) — injector-driven menu
      walkthroughs. The difficulty walkthrough enters through Base Camp: the
      DIFFICULTY door is on the command strip, not the main menu
-     (docs/camp-controls-design.md).
+     (docs/camp-controls-design.md). The menu tour goes main menu → GAME
+     SETTINGS → DISPLAY, where it steps BRIGHTNESS up and back.
 2. **TESTING hooks** make the blocking menu flows filmable:
    - `screen::buffer_to_screen` dumps every 3rd presented frame when
      `OG_DUMP_DIR` is set (`src/interface/screen.cpp`).
    - `g_test_menu_nav_key` drives one keyboard-nav step per pulse
      (`src/interface/ui/picker_input.cpp`) so captures show the highlight
      box moving; real key events get eaten by the hold-and-release loops.
-   Both hooks are pinned by always-run tests
+   - `og::ui::menu_screen_testing_highlighted_button()` mirrors the menu
+     loop's own highlight index (`src/interface/ui/menu_screen_runner.cpp`;
+     -1 whenever no engine screen is running). It is the nav oracle the
+     menu scenes assert after every step: the self-clearing nav key proves
+     only that the pulse was eaten, never which button the walk landed on.
+   All three hooks are pinned by always-run tests
    (`RenderEffects.capture_dump_hook_writes_ppm_frames`,
-   `PickerMenuNav.capture_nav_hook_drives_one_step_and_self_clears`).
+   `PickerMenuNav.capture_nav_hook_drives_one_step_and_self_clears`,
+   `MenuScreenHighlightMirror.publishes_the_live_highlight_and_clears_on_exit`).
 3. **`make_site.py`** encodes each scene directory into a 2x-upscaled APNG
    (pure Python, zlib only) and writes the card page. Missing scenes are
    skipped, so partial captures still produce a reviewable site.

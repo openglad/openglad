@@ -165,8 +165,7 @@ struct LoadedModesLevel
         , gameplay(level, save, events, cfg)
     {
         level.world().rng_.state_ = seed;
-        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                              &level.world().rng_, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &level.world().rng_;
         push_test_context(&gc);
         loaded = level.load();
@@ -526,6 +525,31 @@ Census take_census(GameWorld& world)
     return c;
 }
 
+// The generated manifest (lib/mode_levels.lua) evaluated as data: wrap the
+// member text in a closure that returns M, then append the expression under
+// test. Several tests read the manifest this way; the prefix is built once
+// here so they cannot drift apart.
+std::string manifest_expr_prefix()
+{
+    const std::vector<std::uint8_t> member = og::resources::read_file(
+        "packs/modes.core/lib/mode_levels.lua");
+    EXPECT_FALSE(member.empty()) << "manifest member missing from the .glad";
+    const std::string member_text(member.begin(), member.end());
+    const std::size_t body = member_text.find("local M = {}");
+    EXPECT_NE(std::string::npos, body)
+        << "the manifest no longer opens with 'local M = {}': the wrapper "
+           "this suite evaluates it through has to be regenerated too";
+    if (member.empty() || body == std::string::npos)
+    {
+        // A caller must not reach substr(npos) and die by exception. Hand
+        // back a prefix that cannot parse: every caller already asserts its
+        // eval_* returned a value, so each one fails on its own line.
+        return std::string();
+    }
+    return "(function() local M = (function() " + member_text.substr(body) +
+           " end)() return ";
+}
+
 // ---------------------------------------------------------------------------
 
 using ModesLevels = ModesCampaignTest;
@@ -775,8 +799,28 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
     // ground shadow — plus one hoop sprite per authored hoop, the peak
     // activation, D29/D32) stays <= 190 so A* never short-circuits
     // mid-match. 303 and 305 are the documented arenas-heritage waivers.
+    //
+    // The ground-load inputs (gens/flags/cps/treasures/doors/livings) are
+    // proven against the LOADED world by entity_inventories_match, so this
+    // ledger may read them from the pin row. The spawn caps have no such
+    // cross-check — nothing else in the file reads pool sums — so the row's
+    // caps_total is measured off the manifest here before it is spent.
+    const std::string expr_prefix = manifest_expr_prefix();
+    og::script::ScriptHost host;
+
     for (const ShippedModeLevel& pin : shipped_levels())
     {
+        const auto manifest_caps = host.eval_integer(
+            expr_prefix +
+            std::format("(function() local t = M.levels[{}].spawn_caps or {{}} "
+                        "local s = 0 for i = 0, 7 do s = s + (t[i] or 0) end "
+                        "return s end)() end)()",
+                        pin.id));
+        ASSERT_TRUE(manifest_caps.has_value()) << "scen" << pin.id;
+        ASSERT_EQ(pin.caps_total, static_cast<int>(*manifest_caps))
+            << "scen" << pin.id
+            << ": caps_total drifted from the manifest's spawn_caps";
+
         int gens = 0;
         for (const int g : pin.gens)
             gens += g;
@@ -798,7 +842,8 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
         }
         int flags = pin.flags;
         const int ledger = gens + pin.treasures + flags + pin.cps +
-                           pin.doors + pin.livings + pin.caps_total + 16 +
+                           pin.doors + pin.livings +
+                           static_cast<int>(*manifest_caps) + 16 +
                            20 + 25 + ball;
         if (pin.a_star_waived)
             EXPECT_GT(ledger, 190)
@@ -866,14 +911,7 @@ TEST_F(ModesLevels, soccer_goals_and_perimeters_match_the_manifest)
 
 TEST_F(ModesLevels, basketball_courts_match_the_manifest)
 {
-    const std::vector<std::uint8_t> member = og::resources::read_file(
-        "packs/modes.core/lib/mode_levels.lua");
-    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
-    const std::string member_text(member.begin(), member.end());
-    const std::string expr_prefix =
-        "(function() local M = (function() " +
-        member_text.substr(member_text.find("local M = {}")) +
-        " end)() return ";
+    const std::string expr_prefix = manifest_expr_prefix();
     og::script::ScriptHost host;
 
     for (const BasketballPins& pin : basketball_pins())
@@ -1202,12 +1240,15 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
     const std::vector<std::uint8_t> member = og::resources::read_file(
         "packs/modes.core/lib/mode_levels.lua");
     ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
-    std::ifstream committed_in(
-        "campaigns/modes/packs/modes.core/lib/"
-        "mode_levels.lua",
-        std::ios::binary);
+    // Resolved from the configured campaigns root, never from the process
+    // cwd: this case used to pass only when it was launched from the repo
+    // root (ctest's working directory) and failed under any other runner.
+    const std::filesystem::path committed_path =
+        std::filesystem::path(OG_CAMPAIGNS_SOURCE_DIR) / "modes" / "packs" /
+        "modes.core" / "lib" / "mode_levels.lua";
+    std::ifstream committed_in(committed_path, std::ios::binary);
     ASSERT_TRUE(committed_in.good())
-        << "committed manifest missing from the repo";
+        << "committed manifest missing from the repo: " << committed_path;
     std::ostringstream committed_buf;
     committed_buf << committed_in.rdbuf();
     const std::string committed = committed_buf.str();
@@ -1225,10 +1266,7 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
     // Spot-check the data through the sandbox (same env key: the module's
     // global M is not visible — re-run returning fields instead).
     og::script::ScriptHost probe_host;
-    const std::string expr_prefix =
-        "(function() local M = (function() " +
-        member_text.substr(member_text.find("local M = {}")) +
-        " end)() return ";
+    const std::string expr_prefix = manifest_expr_prefix();
     const auto teams =
         probe_host.eval_integer(expr_prefix + "M.levels[822].teams end)()");
     ASSERT_TRUE(teams.has_value());
@@ -1264,14 +1302,7 @@ TEST_F(ModesLevels, manifest_module_matches_package_and_executes)
 // Soccer and basketball were OFF too until the #225 playtest.
 TEST_F(ModesLevels, item_pads_mirror_the_world_and_the_off_modes_stay_off)
 {
-    const std::vector<std::uint8_t> member = og::resources::read_file(
-        "packs/modes.core/lib/mode_levels.lua");
-    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
-    const std::string member_text(member.begin(), member.end());
-    const std::string expr_prefix =
-        "(function() local M = (function() " +
-        member_text.substr(member_text.find("local M = {}")) +
-        " end)() return ";
+    const std::string expr_prefix = manifest_expr_prefix();
     og::script::ScriptHost host;
     const std::map<std::string, int> family_index = {
         {"drumstick", 0},
@@ -1356,14 +1387,7 @@ TEST_F(ModesLevels, item_pads_mirror_the_world_and_the_off_modes_stay_off)
 // field arrived, so it is pinned in both directions.
 TEST_F(ModesLevels, manifest_fighters_covers_the_roster_modes_only)
 {
-    const std::vector<std::uint8_t> member = og::resources::read_file(
-        "packs/modes.core/lib/mode_levels.lua");
-    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
-    const std::string member_text(member.begin(), member.end());
-    const std::string expr_prefix =
-        "(function() local M = (function() " +
-        member_text.substr(member_text.find("local M = {}")) +
-        " end)() return ";
+    const std::string expr_prefix = manifest_expr_prefix();
     og::script::ScriptHost host;
 
     for (const ShippedModeLevel& pin : shipped_levels())
@@ -1391,14 +1415,7 @@ TEST_F(ModesLevels, manifest_fighters_covers_the_roster_modes_only)
 // sixteen-way brawl).
 TEST_F(ModesLevels, ffa_arena_rows_post_the_deathmatch_tuning)
 {
-    const std::vector<std::uint8_t> member = og::resources::read_file(
-        "packs/modes.core/lib/mode_levels.lua");
-    ASSERT_FALSE(member.empty()) << "manifest member missing from the .glad";
-    const std::string member_text(member.begin(), member.end());
-    const std::string expr_prefix =
-        "(function() local M = (function() " +
-        member_text.substr(member_text.find("local M = {}")) +
-        " end)() return ";
+    const std::string expr_prefix = manifest_expr_prefix();
     og::script::ScriptHost host;
 
     int ffa_rows = 0;
@@ -1530,16 +1547,31 @@ TEST_F(ModesLevels, embedded_pack_rides_the_mount_cycle)
               mount_campaign_package_with_error("modes"));
 }
 
-TEST_F(ModesLevels, scripted_levels_tick_clean_without_mode_lua)
+TEST_F(ModesLevels, scripted_levels_tick_clean_under_their_mode_scripts)
 {
-    // One level per mode: a full sim context, 30 real ticks. With no mode
-    // scripts landed yet the scripted fork must be a clean no-op — no
-    // script errors, no spurious level end. (The per-mode dispatch smokes
-    // arrive with the Lua-mode waves.)
-    for (const int id : {300, 500, 800, 820, 824, 840, 850})
+    // One level per mode: a full sim context, 30 real ticks. Each level's
+    // registration script (scripts/mode_*.lua) binds its manifest rows, so
+    // on_mode_init runs and writes mode_core SLOT.MODE_ID (vars[0]) with the
+    // mode's own MODE value LAST, as the activation latch (lib/mode_core.lua).
+    // "Clean" therefore means: the mode came up, it is still running after 30
+    // ticks, and neither the script host nor a hook dispatch recorded a
+    // failure.
+    struct ScriptedLevel
     {
-        LoadedModesLevel loaded(id, 7u);
-        ASSERT_TRUE(loaded.loaded) << "scen" << id;
+        int id;
+        const char* mode;
+        std::int32_t mode_id; // lib/mode_core.lua MODE
+    };
+    const ScriptedLevel rows[] = {
+        {300, "tdm", 1},   {500, "ctf", 2},        {800, "onslaught", 3},
+        {820, "soccer", 4}, {824, "basketball", 6}, {840, "mutant", 5},
+        {850, "ffa", 7},
+    };
+
+    for (const ScriptedLevel& row : rows)
+    {
+        LoadedModesLevel loaded(row.id, 7u);
+        ASSERT_TRUE(loaded.loaded) << "scen" << row.id;
         // E5: the shipped maps' empty sides field bots only under a
         // turned wheel — under the all-NONE default the flag/band folds
         // refuse (their error() IS the refusal record), so the clean-tick
@@ -1547,10 +1579,26 @@ TEST_F(ModesLevels, scripted_levels_tick_clean_without_mode_lua)
         // meant.
         for (auto& knob : loaded.world().ctf_requested_fill)
             knob = og::sim::kFillFair;
+        og::script::hooks::reset_hook_failures();
         for (int i = 0; i < 30; ++i)
             loaded.world().tick();
+
         EXPECT_TRUE(loaded.world().scripts().host().errors().empty())
-            << "scen" << id << " recorded script errors";
+            << "scen" << row.id << " (" << row.mode
+            << ") recorded script errors";
+        EXPECT_TRUE(loaded.world().mode.active)
+            << "scen" << row.id << " (" << row.mode
+            << "): on_mode_init never activated the mode";
+        EXPECT_EQ(row.mode_id, loaded.world().mode.vars[0])
+            << "scen" << row.id << " (" << row.mode
+            << "): SLOT.MODE_ID is the activation latch and must carry this "
+               "mode's own MODE value";
+        EXPECT_FALSE(loaded.world().game_ended)
+            << "scen" << row.id << " (" << row.mode
+            << "): 30 ticks must not end the level";
+        EXPECT_EQ(std::uint64_t{0}, og::script::hooks::hook_failures().count)
+            << "scen" << row.id << " (" << row.mode
+            << "): a hook dispatch failed";
     }
 }
 

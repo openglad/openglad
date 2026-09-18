@@ -9,6 +9,7 @@ find_package(GTest REQUIRED)
 
 set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_trace_buffer.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_company_litter_guard.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_startup.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_combat_math.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_loader_and_walker.cpp
@@ -30,6 +31,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_view_team.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_player_hud_zoom.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_options_menu.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_capture.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_networking_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_networking_uxshots.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_menu_layout.cpp
@@ -50,7 +52,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_render_effects.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_decor_render.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stair_overlay.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_text_rendering.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_and_level_picker.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_sprite_uaf.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_intro_smoke.cpp
@@ -125,7 +126,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_buffers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_pixel_ops.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_video_modes_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_external_physfs_archivers.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_editor_interactions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input_more.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_help_parsing.cpp
@@ -158,7 +158,6 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_data_load_versions.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_effect_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_core_more.cpp
-    ${CMAKE_SOURCE_DIR}/tests/integration/test_view_input_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_more_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_text_input_ex_value.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_picker_detail_menu_driven.cpp
@@ -192,6 +191,9 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_golden_compare.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_fact_predicate.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_state_dump_symbols.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_switch_guard_tripwire.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_lineup_ui.cpp
@@ -298,7 +300,7 @@ target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps
 if(NOT EMSCRIPTEN)
     target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
 endif()
-add_dependencies(og_game_test check_vendor_leaks check_injector_settles)
+add_dependencies(og_game_test check_vendor_leaks check_injector_settles check_no_std_regex check_escape_tail_twins)
 
 enable_testing()
 
@@ -487,7 +489,6 @@ og_add_test_group(og_test_view FILES
     test_glad_hud.cpp
     test_sai2x_scaler.cpp
     test_view_input_paths.cpp
-    test_view_input_more_paths.cpp
     test_view_input_smoke.cpp
     test_view_input_prefs_and_redraw.cpp
     test_view_team.cpp
@@ -509,7 +510,6 @@ og_add_test_group(og_test_rendering FILES
     test_video_pixel_ops.cpp
     test_video_primitives.cpp
     test_text_render.cpp
-    test_text_rendering.cpp
     test_text_input_and_width.cpp
     test_text_input_ex_value.cpp
 )
@@ -535,6 +535,7 @@ og_add_test_group(og_test_picker_network FILES
 
 og_add_test_group(og_test_menu_ui FILES
     test_back_to_mainmenu.cpp
+    test_menu_capture.cpp
     test_menu_frame_wait.cpp
     test_cloud_ui.cpp
     test_menu.cpp
@@ -570,6 +571,7 @@ og_add_test_group(og_test_menu_engine FILES
 # picker_main injector flows for the §2.2-§2.5 feature screens live
 # here, never in og_test_menu_ui (~130s vs the 180s timeout).
 og_add_test_group(og_test_basecamp FILES
+    test_company_litter_guard.cpp
     test_company_list.cpp
     test_uxshots_probe.cpp
     test_networking_uxshots.cpp
@@ -633,7 +635,6 @@ og_add_test_group(og_test_smooth FILES
 og_add_test_group(og_test_external FILES
     test_external_libzip.cpp
     test_external_physfs_api_edges.cpp
-    test_external_physfs_archivers.cpp
     test_external_physfs_byteorder.cpp
     test_external_physfs_ops.cpp
     test_external_physfs_unicode.cpp
@@ -657,6 +658,9 @@ og_add_test_group(og_test_mass_coverage FILES
 og_add_test_group(og_test_parity FILES
     test_parity_scenarios.cpp
     test_parity_coverage_gate.cpp
+    test_fact_predicate.cpp
+    test_state_dump_symbols.cpp
+    test_switch_guard_tripwire.cpp
     test_golden_compare.cpp
     golden_compare.cpp
     parity_runner.cpp
@@ -694,7 +698,8 @@ target_compile_definitions(og_test_parity PRIVATE
 )
 
 # Phase 01 (semantic-parity): pre-build tool that emits the
-# single-source-of-truth JSON for scripts/parity/evaluate_facts.py.
+# single source of truth consumed by scripts/parity/run_mutation_canary.sh
+# (scenario enumeration) and scripts/parity/lint_scenario_facts.py.
 # Runs automatically as a dependency of og_test_parity so the
 # generated file is always up to date with scenario_table.h.
 add_executable(scenario_facts_dump
@@ -779,6 +784,7 @@ og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_version.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_hud_counter_box.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scale_mode.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_display_state.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
@@ -801,6 +807,7 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_damage_number_events.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_link_loss_window.cpp
@@ -1146,6 +1153,7 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_hosted_pack_sync.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_mount_guard.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_company_litter_guard.cpp
         ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
         ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
         ${OG_CURSES_LIB_SOURCES}
@@ -1595,6 +1603,202 @@ add_test(NAME parity_runner_smoke_cli
 set_tests_properties(parity_runner_smoke_cli PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 120
+)
+
+# The mutation canary's PLAN half: selection, pin grouping, the staged-packs
+# precondition and the fixture preflight. Nothing here mutates a source file or
+# builds anything — `--plan` is exactly "say what a run would do" — but it does
+# briefly hide temp/scen/scen99.fss to prove the preflight names it, which is
+# the same source-tree fixture og_test_level produces and og_test_parity
+# consumes. So it joins that pair's lock and ordering rather than racing them.
+add_test(NAME mutation_canary_plan_cli
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_mutation_canary_plan.sh
+        $<TARGET_FILE:og_test_parity>
+        $<TARGET_FILE:parity_runner_smoke>
+)
+set_tests_properties(mutation_canary_plan_cli PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    RESOURCE_LOCK source_scenario_fixtures
+    DEPENDS og_test_level
+    TIMEOUT 120
+)
+
+# The two build-gate scripts that scan whole directory roots
+# (check_no_std_regex, check_vendor_leaks) are themselves only as good as the
+# roots they find: GNU grep returns 2 for a missing root even when it printed a
+# match, so an `if grep ...` verdict certified trees it never read. The self-test
+# drives both gates over temp trees and pins all three exit codes — 0 clean,
+# 1 violation (named), 2 cannot run. Unconditional: bash and the scripts are all
+# it needs, and both gates are og_game_test dependencies (see :300), so a
+# silently-blind gate is a silently-blind test build.
+add_test(NAME check_script_roots_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_script_roots.sh
+)
+set_tests_properties(check_script_roots_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The heritage-comment audit (scripts/heritage_audit.py, run before every merge
+# per the openglad-heritage-comments skill) reports which pre-2020 comment lines
+# a branch deleted, and a silently degraded pass makes it under-report rather
+# than fail: on PR #292 `git blame -C -C -C` alone found 19 of the 36 pre-2020
+# lines, and the recipe that preceded this script filed every hunk of a DELETED
+# file under the previous file. The self-test drives the whole pipeline over a
+# synthetic four-commit repository with one row per failure class -- deleted
+# file, a `|` inside the comment, a 2026 reflow that took the blame, a
+# delete-and-restore that is in no pre-cutoff tree -- and pins the exact
+# four-row ledger, so a pass that stops running is a red test and not a shorter
+# report. Needs no history depth of its own (CI clones are shallow) and runs in
+# about two seconds. Guarded on the interpreter like lint_scenario_facts_selftest
+# below: the else branch fails naming the interpreter it could not find instead
+# of vanishing quietly.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME heritage_audit_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/heritage_audit.py
+            --self-test
+    )
+else()
+    add_test(NAME heritage_audit_selftest
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "heritage_audit_selftest: this self-test needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+    )
+    set_tests_properties(heritage_audit_selftest PROPERTIES
+        FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+    )
+endif()
+set_tests_properties(heritage_audit_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The parity table lint runs eleven rules, nine of them inline loops inside
+# run_lint(), and its own OK line cannot tell you one of them stopped running:
+# a rule dropped from the concatenation at the end of run_lint() leaves the
+# lint saying OK on the real table just as loudly as before. `--self-test`
+# drives every rule over synthetic tables in a temp repo root and pins the
+# exact (rc, stdout, stderr) of each verdict, plus the 0/1/2 exit contract --
+# exact, because an "at least one error" expectation stays green while a
+# broken rule says nothing and a neighbour speaks for it. Guarded on the
+# interpreter rather than registered unconditionally: the script is executable
+# with a python3 shebang, so an empty ${Python3_EXECUTABLE} would silently
+# fall back to whatever python3 is on PATH, and the else branch fails naming
+# the interpreter it could not find instead of vanishing quietly.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME lint_scenario_facts_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/parity/lint_scenario_facts.py
+            --self-test
+    )
+else()
+    add_test(NAME lint_scenario_facts_selftest
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "lint_scenario_facts_selftest: this self-test needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+    )
+    set_tests_properties(lint_scenario_facts_selftest PROPERTIES
+        FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+    )
+endif()
+set_tests_properties(lint_scenario_facts_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The counter box's wave row was renamed in PR #292 (0464c673) and the prose
+# that named it by the old label was left pointing at a row that no longer
+# exists -- in campaign READMEs, mapgen comments and test comments, three of
+# them with the label wrapped across a line break where no grep could see it.
+# check_retired_hud_labels keeps the old label retired; its self-test drives
+# the gate over temp trees and pins the wrap-aware match, the allowlist's
+# count arms and all three exit codes (0 clean, 1 violation named by
+# path:line, 2 cannot run). A ctest entry rather than a build dependency:
+# READMEs and skills are not build inputs, so there is nothing to hang them
+# off, and check_script_roots_selftest above is the precedent for a bash-only
+# entry. Unconditional -- bash and the scripts are all either one needs.
+add_test(NAME check_retired_hud_labels
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/check_retired_hud_labels.sh
+)
+set_tests_properties(check_retired_hud_labels PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+add_test(NAME check_retired_hud_labels_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_retired_hud_labels.sh
+)
+set_tests_properties(check_retired_hud_labels_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The other prose gate, and deliberately a second script rather than more rows
+# in the one above: check_retired_hud_labels asks "is this retired NAME still
+# spelled anywhere", while check_retired_phrases asks "does this sentence still
+# state a fact PR #292 made false". The rules differ in what excuses a hit --
+# the label gate carries a per-path count allowlist for historical mentions;
+# this one accepts a hit only where the block also carries a dated
+# `**Update (YYYY-MM-DD, PR #N):**`, `[SUPERSEDED` or `**Superseded (` note, so
+# a dated design snapshot keeps its text and a living doc gets rewritten. Their
+# tables are disjoint (scripts/retired_phrases.txt does not carry the wave-row
+# label; that gate owns it), which is what keeps the two from being twins.
+# A ctest entry, not an og_interface dependency: prose is not a build input,
+# and a gate that rescans every campaign README on each configure of a library
+# would be paid for on every build. .github/workflows/test.yml runs on
+# pull_request with no paths filter, so a docs-only PR still runs both entries.
+add_test(NAME check_retired_phrases
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/check_retired_phrases.sh
+)
+set_tests_properties(check_retired_phrases PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The self-test is what keeps the table honest: it plants every row's own
+# sample in a temp tree and demands a hit for each, so a regex that rots (or
+# that mawk cannot compile) reds here instead of leaving the gate quietly
+# toothless on a clean tree.
+add_test(NAME check_retired_phrases_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_retired_phrases.sh
+)
+set_tests_properties(check_retired_phrases_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# Same duty for the escape-tail gate, whose verdicts are a parse rather than a
+# grep: the synthetic cases pin all three exit codes (0 clean, 1 twin
+# named by path:line and the id it presses, 2 cannot run) and, just as
+# importantly, pin the two shapes that must NOT be called twins -- a bounded
+# wait with no press, and the clock-bounded click ladder that belongs to
+# tests/test_click_ladder.h. A gate that flagged those would be reverted
+# within a week and the rule would go unenforced again. Unconditional: Python
+# is a FATAL_ERROR requirement at configure (CMakeLists.txt), and
+# check_escape_tail_twins is an og_game_test dependency, so a gate gone blind
+# is a test build gone blind.
+add_test(NAME check_escape_tail_twins_selftest
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/scripts/check_escape_tail_twins.py --self-test
+)
+set_tests_properties(check_escape_tail_twins_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
 )
 
 add_test(NAME openglad_text_picker_interactive

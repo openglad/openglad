@@ -21,6 +21,7 @@
 #include "test_input_helpers.h"
 #include "test_company_cleanup.h"
 #include "test_interact.h"
+#include "test_escape_tail.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/interface/ui/picker_common.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -189,7 +190,24 @@ struct OptionsState {
     // save/restore pair, leave the display screen on cleared cfg values), so
     // the whole flow is only meaningful while this stays true.
     bool main_thread_tasks_all_ran = true;
+    // Point one leg at an id the flow never publishes, so the give-up path
+    // itself is exercised by a committed test rather than by a defect.
+    int sabotage_leg = 0;
 };
+
+// The sabotaged leg waits for an id nothing ever publishes. Its window is
+// short on purpose: nothing is coming, and the point of that run is the tail.
+static constexpr int kSabotageWaitMs = 500;
+
+static const char* leg_id(const OptionsState* state, int leg, const char* id)
+{
+    return state->sabotage_leg == leg ? "never_published_row" : id;
+}
+
+static int leg_wait(const OptionsState* state, int leg, int wait_ms)
+{
+    return state->sabotage_leg == leg ? kSabotageWaitMs : wait_ms;
+}
 
 // blood.png is solid palette index 40 (the red); blood_friendly.png is drawn
 // from the grey/white indices instead. Whether the loader's live BLOOD sprite
@@ -585,11 +603,26 @@ static int options_injector(void* data)
     OptionsState* state = static_cast<OptionsState*>(data);
     state->started = true;
 
+    // Every give-up goes through the shared escape tail
+    // (tests/test_escape_tail.h) with a numbered leg. A bare `return 0` here
+    // leaves the MAIN thread blocked inside picker_main with nothing left to
+    // click it free, and the binary rides to the 420 s CTest ceiling instead
+    // of naming the leg that quit -- and `state->finished = true` on an arm
+    // that reached nothing is the banned shape besides: a wholly failed flow
+    // satisfied the caller's completion oracle.
+    // OptionsMenu.a_leg_that_gives_up_frees_the_main_thread is the regression.
+    //
+    // picker_returned IS the tail's flag: the MAIN thread stores it right
+    // after picker_main returns (TEST(OptionsMenu, options_menu) below), so
+    // it means exactly what escape_to_the_main_thread asks of it.
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->picker_returned, leg, why);
+    };
+
     // Wait for the main menu, then enter the shared settings family.
-    if (!wait_for_interactable("options", 5000)) {
-        state->finished = true;
-        return 0;
-    }
+    if (!wait_for_interactable(leg_id(state, 1, "options"),
+                               leg_wait(state, 1, 5000)))
+        return escape(1, "the main menu never published options");
     wait_for_menu_frames(2);
 
     fprintf(stderr, "  [test] clicking options\n");
@@ -886,27 +919,20 @@ static int options_injector(void* data)
         }
     }
 
-    // Ensure mainmenu() returns so picker_main() can complete. Coverage builds
-    // can redraw the main menu slowly after leaving options, so use Escape to
-    // unwind whichever menu is currently active. A successful BACK already
-    // returned picker_main under this test's one-call cap and needs no input.
-    if (!state->used_options_back) {
-        const Uint64 quit_deadline = SDL_GetTicks() + 3000;
-        while (SDL_GetTicks() < quit_deadline) {
-            if (has_interactable("quit")) {
-                SDL_Delay(80);
-                fprintf(stderr, "  [test] clicking quit\n");
-                interact("quit");
-                break;
-            }
-
-            inject_key_press(SDLK_ESCAPE, 20);
-            SDL_Delay(150);
-        }
-    }
-
     state->finished = true;
-    return 0;
+    // Ensure mainmenu() returns so picker_main() can complete. A successful
+    // BACK already returned picker_main under this test's one-call cap, and
+    // then this is a no-op that observes picker_returned and leaves. When
+    // BACK did NOT land, this is the only way out.
+    //
+    // What used to stand here was a 3000 ms clock that pushed SDLK_ESCAPE at
+    // whatever screen was up. Both halves were wrong: a PUSHED key is not a
+    // keystate (tests/test_input_helpers.h), so the engine screens -- which
+    // read keystates_[hotkey] -- never saw it, and when the clock ran out the
+    // injector returned anyway and left the main thread blocked. The shared
+    // tail goes FORWARD through the main menu instead (CONTINUE -> Base Camp
+    // -> BACK), which is what actually reaches the iteration cap.
+    return escape(0, "");
 }
 
 // Direct coverage of the display-settings apply: all three mode branches and
@@ -1168,8 +1194,6 @@ TEST(OptionsMenu, options_menu) {
     // company another test founded would take the session over silently.
     // Seed through the autosave choke point that stamps, and check after the
     // flow which company it actually got.
-    ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -1195,9 +1219,13 @@ TEST(OptionsMenu, options_menu) {
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
 
     // NO active-company oracle here, deliberately. Measured: this flow goes
     // straight from the main menu into SETTINGS and never clicks CONTINUE,
@@ -1206,8 +1234,9 @@ TEST(OptionsMenu, options_menu) {
     // check an empty result also satisfies. The seeded save0 above still
     // earns its place: it is what the main menu's company view reads.
     // (Under a planted stray this test passes either way, which is the
-    // proof; OptionsMenu.zz_capture_* below DO click CONTINUE and do carry
-    // the oracle.)
+    // proof; the MenuCapture.zz_capture_* scenes in
+    // tests/integration/test_menu_capture.cpp DO click CONTINUE and do
+    // carry the oracle.)
 
     // Leave this integration process with the same default controls it began
     // with; the assertions below use the injector's captured results.
@@ -1331,230 +1360,26 @@ TEST(OptionsMenu, options_menu) {
 }
 
 
-TEST(OptionsMenu, edit_player_keymap_exercises_four_and_eight_direction_prompts)
-{
-    constexpr Sint32 kMenuRedraw = 2;
-    reset_default_player_controls();
-    const int original_fire = og::runtime::current_session->player_keys_[0][KEY_FIRE];
-
-    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0))
-        << "four-direction remap should complete without changing ESC-kept keys";
-    ASSERT_EQ(original_fire, og::runtime::current_session->player_keys_[0][KEY_FIRE])
-        << "fake ESC key should preserve the existing binding";
-
-    ASSERT_EQ(kMenuRedraw, toggle_player_control_mode(0));
-    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0))
-        << "eight-direction remap should also complete under TESTING";
-
-    ASSERT_EQ(kMenuRedraw, edit_player_keymap(-1))
-        << "invalid player index should be ignored safely";
-    ASSERT_EQ(kMenuRedraw, edit_player_keymap(4))
-        << "out-of-range player index should be ignored safely";
-}
-
-// ---------------------------------------------------------------------------
-// FX-capture: menu tours for the visual review site (scripts/fx_review).
-// Skipped unless OG_FX_CAPTURE_DIR is set. Frames are produced by the
-// TESTING dump hook in screen::buffer_to_screen (OG_DUMP_DIR, every 3rd
-// present); keyboard-highlight steps are driven through the TESTING nav
-// hook in handle_menu_nav (g_test_menu_nav_key) because real key events
-// can't be injected from another thread mid-press.
-// Run standalone with OG_FX_CAPTURE_DIR=<dir>:
-//   ./build/ci-test/og_test_menu_ui --gtest_filter='OptionsMenu.zz_capture_*'
-// ---------------------------------------------------------------------------
-#include <cstdlib>
-#include <filesystem>
-
-extern int g_test_menu_nav_key;
-
-namespace menu_capture {
-
-struct CaptureState {
-    bool started;
-    bool finished;
-    bool saw_options;
-    bool entered_display;
-    bool exited_display;
-    bool toured_fx;
-    bool used_options_back;
-    bool clicked_quit;
-};
-
-// Click a toggle, dwell so the color flip is on-camera for several frames.
-void capture_toggle(const char* button_id)
-{
-    interact(button_id);
-    SDL_Delay(380);
-}
-
-void capture_quit_main_menu(CaptureState* state)
-{
-    const Uint64 quit_deadline = SDL_GetTicks() + 5000;
-    while (SDL_GetTicks() < quit_deadline) {
-        if (has_interactable("quit")) {
-            SDL_Delay(600); // dwell on the main menu before leaving
-            interact("quit");
-            state->clicked_quit = true;
-            break;
-        }
-        inject_key_press(SDLK_ESCAPE, 20);
-        SDL_Delay(150);
-    }
-}
-
-// menu_tour: main menu highlight walk -> GAME SETTINGS -> DISPLAY (step
-// brightness up and back) -> back -> back -> quit.
-int menu_tour_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    CaptureState* state = static_cast<CaptureState*>(data);
-    state->started = true;
-
-    if (!wait_for_interactable("options", 10000)) {
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(1000);
-
-    // Keyboard-nav highlight walk on the main menu.
-    for (int i = 0; i < 3; i++) {
-        g_test_menu_nav_key = KEY_DOWN;
-        SDL_Delay(480);
-    }
-    g_test_menu_nav_key = KEY_UP;
-    SDL_Delay(480);
-
-    bool in_options = click_until_interactable(
-        "options", "display_settings", 10000);
-    SDL_Delay(900);
-    if (in_options || wait_for_interactable("display_settings", 10000)) {
-        state->saw_options = true;
-
-        // Two nav steps inside GAME SETTINGS so the highlight is seen moving.
-        g_test_menu_nav_key = KEY_DOWN;
-        SDL_Delay(480);
-        g_test_menu_nav_key = KEY_RIGHT;
-        SDL_Delay(480);
-
-        bool in_display = click_until_interactable(
-            "display_settings", "brightness_plus", 5000);
-        SDL_Delay(900);
-        if (in_display || wait_for_interactable("brightness_plus", 5000)) {
-            state->entered_display = true;
-            g_test_menu_nav_key = KEY_DOWN;
-            SDL_Delay(480);
-            capture_toggle("brightness_plus"); // the palette visibly lifts
-            capture_toggle("brightness_minus"); // back: settings unchanged
-            state->exited_display =
-                click_until_interactable(
-                    "display_back", "display_settings", 5000);
-            wait_for_interactable("display_settings", 10000);
-            SDL_Delay(700);
-        }
-
-        if (wait_for_interactable("options_back", 5000)) {
-            SDL_Delay(300);
-            interact("options_back");
-            state->used_options_back = true;
-            SDL_Delay(700);
-        }
-    }
-
-    capture_quit_main_menu(state);
-    state->finished = true;
-    return 0;
-}
-
-// menu_effects: SETTINGS -> GAMEPLAY FX -> UI FX -> GRAPHICS FX, flipping
-// each showcased toggle TWICE (visible red/green flip, settings unchanged),
-// then back out and quit.
-int menu_effects_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    CaptureState* state = static_cast<CaptureState*>(data);
-    state->started = true;
-
-    if (!wait_for_interactable("options", 10000)) {
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(1000);
-
-    bool in_options = click_until_interactable("options", "gameplay_fx", 10000);
-    SDL_Delay(900);
-    if (in_options || wait_for_interactable("gameplay_fx", 10000)) {
-        state->saw_options = true;
-        bool all_screens = true;
-
-        struct ScreenPlan {
-            const char* opener;
-            const char* back;
-            const char* toggles[4];
-            int toggle_count;
-        };
-        static const ScreenPlan kPlan[3] = {
-            {"gameplay_fx", "gameplay_fx_back",
-                {"toggle_hit_recoil", "toggle_attack_lunge"}, 2},
-            {"ui_fx", "ui_fx_back",
-                {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers"}, 3},
-            {"graphics_fx", "graphics_fx_back",
-                {"toggle_weather", "toggle_shadows", "toggle_fire_glow", "toggle_screen_shake"}, 4},
-        };
-
-        for (const ScreenPlan& plan : kPlan) {
-            bool in_screen = click_until_interactable(plan.opener, plan.toggles[0], 5000);
-            wait_for_menu_frames(2);
-            if (!in_screen && !wait_for_interactable(plan.toggles[0], 5000)) {
-                all_screens = false;
-                continue;
-            }
-            SDL_Delay(300);
-            for (int t = 0; t < plan.toggle_count; ++t) {
-                capture_toggle(plan.toggles[t]); // flip (color changes)
-                capture_toggle(plan.toggles[t]); // flip back (restored)
-            }
-            if (!click_until_interactable(plan.back, plan.opener, 5000))
-                all_screens = false;
-            wait_for_interactable(plan.opener, 10000);
-            SDL_Delay(400);
-        }
-        state->toured_fx = all_screens;
-
-        if (wait_for_interactable("options_back", 5000)) {
-            SDL_Delay(300);
-            interact("options_back");
-            state->used_options_back = true;
-            SDL_Delay(700);
-        }
-    }
-
-    capture_quit_main_menu(state);
-    state->finished = true;
-    return 0;
-}
-
-// The cfg keys menu_effects flips; snapshot them around the flow to prove
-// the flip-twice discipline left settings untouched.
-const std::array<std::pair<const char*, const char*>, 9> kEffectsCfgKeys = {{
-    {"effects", "hit_recoil"}, {"effects", "attack_lunge"},
-    {"effects", "mini_hp_bar"}, {"effects", "damage_numbers"},
-    {"effects", "heal_numbers"}, {"effects", "weather"},
-    {"effects", "shadows"}, {"effects", "fire_glow"},
-    {"effects", "screen_shake"},
-}};
-
-void run_capture_flow(const char* scene, int (*injector)(void*),
-                      CaptureState& state)
+// The regression for the wedge itself, and the reason the give-up above is
+// spelled `return escape(1, ...)`.
+//
+// Leg 1 is pointed at an id the main menu never publishes, so the injector
+// quits with the MAIN thread blocked in the very first mainmenu() call. The
+// escape tail then has to walk CONTINUE -> Base Camp -> BACK until the
+// iteration cap makes present_menu answer Quit; only then does picker_main
+// return and SDL_WaitThread join.
+//
+// Restore the `state->finished = true; return 0;` this arm carried before
+// PR #292 and this test hangs to the 420 s CTest ceiling instead of naming
+// the leg -- and the caller's `finished` oracle reads green on a flow that
+// reached nothing.
+TEST(OptionsMenu, a_leg_that_gives_up_frees_the_main_thread)
 {
     trace_clear();
 
-    // CONTINUE opens the MOST RECENT company on disk, not the one this test
-    // wrote: a bare SaveData::save() never stamps last_played_unix_s, so a
-    // company another test founded would take the session over silently.
-    // Seed through the autosave choke point that stamps, and check after the
-    // flow which company it actually got.
-    ScopedCompanyFileCleanup founded_cleanup;
-    CompanyClockRestore clock_restore;
+    // The tail's way out is CONTINUE -> Base Camp -> BACK, so the flow needs
+    // a company for CONTINUE to open, seeded through the stamping choke
+    // point like every other flow in this binary.
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
 
@@ -1565,181 +1390,98 @@ void run_capture_flow(const char* scene, int (*injector)(void*),
     ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
         << "save0 must be seeded as the most recent company on disk";
 
-    char scene_dir[512];
-    snprintf(scene_dir, sizeof(scene_dir), "%s/%s",
-             getenv("OG_FX_CAPTURE_DIR"), scene);
-    std::filesystem::create_directories(scene_dir);
-    setenv("OG_DUMP_DIR", scene_dir, 1);
-
-    SDL_Thread* thread = SDL_CreateThread(injector, "capture_injector", &state);
-    ASSERT_TRUE(thread != nullptr);
+    OptionsState state = {};
+    state.sabotage_leg = 1;
+    state.initial_control_mode = get_player_control_mode(0);
+    SDL_Thread* thread =
+        SDL_CreateThread(options_injector, "options_escape_test", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 2; // the SETTINGS click exits mainmenu() once
+    // One capped pass: the tail's CONTINUE spends it, and its BACK then meets
+    // the cap.
+    g_picker_max_mainmenu_calls = 1;
 
     picker_main(0, nullptr);
+    state.picker_returned.store(true, std::memory_order_release);
 
-    int thread_result;
+    int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
-    unsetenv("OG_DUMP_DIR");
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    ASSERT_EQ("save0", og::data::active_company_slot())
-        << "the flow must have run on the company this test seeded";
+    EXPECT_TRUE(state.started) << "the injector thread never ran";
+    EXPECT_EQ(1, thread_result)
+        << "the sabotaged leg must be reported by number, not swallowed";
+    EXPECT_FALSE(state.saw_options)
+        << "leg 1 gave up before it ever saw the settings screen";
+    EXPECT_FALSE(state.finished)
+        << "a flow that gave up at leg 1 never completed";
+    EXPECT_FALSE(state.used_options_back)
+        << "leg 1 never reached the BACK it exists to prove";
 }
 
-// menu_difficulty: main menu -> CONTINUE -> Base Camp -> the DIFFICULTY door
-// on the command strip -> cycle every setting through a FULL loop (3-value
-// cycles get 3 clicks, permadeath 2) so each row visibly changes and every
-// setting ends exactly where it started, then back and quit.
-int menu_difficulty_injector(void* data)
+// Every prompt the remap wizard draws consumes exactly one key event, and
+// under TESTING each consumption traces the fake ESC that keeps the existing
+// binding (input.cpp) — so counting those lines counts prompts walked.
+static int count_fake_esc_traces()
 {
-    og::runtime::ensure_thread_session();
-    CaptureState* state = static_cast<CaptureState*>(data);
-    state->started = true;
-
-    if (!wait_for_interactable("continue_game", 10000)) {
-        state->finished = true;
-        return 0;
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int consumed = 0;
+    for (const TraceEntry& entry : g_trace_buffer) {
+        if (entry.category == "input" &&
+            entry.message.find("returning fake ESC") != std::string::npos)
+            ++consumed;
     }
-    SDL_Delay(1000);
-    interact("continue_game");
-    SDL_Delay(500);
-    if (!wait_for_interactable("difficulty", 10000)) {
-        state->finished = true;
-        return 0;
-    }
-    SDL_Delay(1000);
-
-    // Highlight walk along the Base Camp strip before opening the door: the
-    // roster is the default highlight, so DOWN reaches the strip and RIGHT
-    // steps BACK -> DIFFICULTY.
-    g_test_menu_nav_key = KEY_DOWN;
-    SDL_Delay(480);
-    g_test_menu_nav_key = KEY_RIGHT;
-    SDL_Delay(480);
-
-    bool in_menu = click_until_interactable("difficulty", "difficulty_back", 10000);
-    SDL_Delay(900);
-    if (in_menu || wait_for_interactable("difficulty_back", 10000)) {
-        state->saw_options = true;
-
-        struct RowPlan { const char* id; int clicks; };
-        static const RowPlan kRows[6] = {
-            {"difficulty", 3},     // Battle -> Slaughter -> Skirmish -> Battle
-            {"respawn_mode", 4},   // Off -> Heroes -> Everyone -> Team 1 -> Off
-            {"respawn_delay", 3},  // Normal -> Fast -> Slow -> Normal
-            {"permadeath", 2},     // On -> Off -> On
-            {"generator_rate", 3}, // Normal -> Calm -> Frenzy -> Normal
-            {"infinite_gold", 2},  // Off -> On -> Off
-        };
-        bool all_rows = true;
-        for (const RowPlan& row : kRows) {
-            if (!wait_for_interactable(row.id, 5000)) {
-                all_rows = false;
-                continue;
-            }
-            g_test_menu_nav_key = KEY_DOWN; // walk the highlight row to row
-            SDL_Delay(420);
-            for (int c = 0; c < row.clicks; ++c)
-                capture_toggle(row.id);
-        }
-        state->toured_fx = all_rows;
-
-        if (wait_for_interactable("difficulty_back", 5000)) {
-            SDL_Delay(400);
-            interact("difficulty_back");
-            state->used_options_back = true;
-            // Dwell on the Base Camp the nested BACK returns to.
-            wait_for_interactable("go", 5000);
-            SDL_Delay(700);
-        }
-    }
-
-    capture_quit_main_menu(state);
-    state->finished = true;
-    return 0;
+    return consumed;
 }
 
-} // namespace menu_capture
-
-TEST(OptionsMenu, zz_capture_menu_difficulty)
+// remap_player_keys (picker.cpp) walks 11 prompts in four-direction mode and
+// 15 in eight-direction, consuming one key per prompt, and draws nothing at
+// all for a player index outside [0, 4).
+TEST(OptionsMenu, edit_player_keymap_walks_eleven_then_fifteen_prompts)
 {
-    if (!getenv("OG_FX_CAPTURE_DIR"))
-        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
-    // Session difficulty + save-backed settings must end where they started
-    // (full-cycle discipline).
-    const int diff_before = og::runtime::current_session->current_difficulty_;
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    const short respawn_before = save.respawn_mode;
-    const short delay_before = save.ctf_respawn_ticks;
-    const short keep_before = save.keep_fallen_heroes;
-    const short rate_before = save.generator_rate;
-    const short gold_before = save.infinite_gold;
+    constexpr Sint32 kMenuRedraw = 2;
+    reset_default_player_controls();
+    const int original_fire = og::runtime::current_session->player_keys_[0][KEY_FIRE];
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::FourDirection),
+              get_player_control_mode(0))
+        << "the default control mode is four-direction";
 
-    menu_capture::CaptureState state = {};
-    menu_capture::run_capture_flow("menu_difficulty",
-                                   menu_capture::menu_difficulty_injector,
-                                   state);
+    trace_clear();
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0));
+    EXPECT_EQ(11, count_fake_esc_traces())
+        << "four-direction remap prompts for exactly the 11 four-way keys";
+    EXPECT_EQ(original_fire, og::runtime::current_session->player_keys_[0][KEY_FIRE])
+        << "an ESC answer keeps the existing binding";
 
-    ASSERT_TRUE(state.started);
-    ASSERT_TRUE(state.finished);
-    ASSERT_TRUE(state.saw_options) << "should have entered the difficulty menu";
-    ASSERT_TRUE(state.toured_fx) << "should have cycled every settings row";
-    ASSERT_TRUE(state.used_options_back) << "should have exited via difficulty_back";
+    ASSERT_EQ(kMenuRedraw, toggle_player_control_mode(0));
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::EightDirection),
+              get_player_control_mode(0))
+        << "the toggle must actually flip the player's control mode";
 
-    EXPECT_EQ(diff_before, og::runtime::current_session->current_difficulty_);
-    SaveData& after = og::runtime::current_session->myscreen_->save_data;
-    EXPECT_EQ(respawn_before, after.respawn_mode);
-    EXPECT_EQ(delay_before, after.ctf_respawn_ticks);
-    EXPECT_EQ(keep_before, after.keep_fallen_heroes);
-    EXPECT_EQ(rate_before, after.generator_rate);
-    EXPECT_EQ(gold_before, after.infinite_gold);
-}
+    trace_clear();
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0));
+    EXPECT_EQ(15, count_fake_esc_traces())
+        << "eight-direction remap adds the four diagonals to the same wizard";
+    EXPECT_EQ(original_fire, og::runtime::current_session->player_keys_[0][KEY_FIRE])
+        << "an ESC answer keeps the existing binding in eight-direction too";
 
-TEST(OptionsMenu, zz_capture_menu_tour)
-{
-    if (!getenv("OG_FX_CAPTURE_DIR"))
-        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
-    menu_capture::CaptureState state = {};
-    menu_capture::run_capture_flow("menu_tour",
-                                   menu_capture::menu_tour_injector, state);
+    trace_clear();
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(-1))
+        << "an invalid player index still returns MENU_REDRAW";
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(4))
+        << "an out-of-range player index still returns MENU_REDRAW";
+    EXPECT_EQ(0, count_fake_esc_traces())
+        << "an index outside [0, 4) must draw no prompt and consume no key";
 
-    ASSERT_TRUE(state.started);
-    ASSERT_TRUE(state.finished);
-    ASSERT_TRUE(state.saw_options) << "should have entered Game Settings";
-    ASSERT_TRUE(state.entered_display) << "should have entered DISPLAY";
-    ASSERT_TRUE(state.exited_display) << "should have returned from DISPLAY";
-    ASSERT_TRUE(state.used_options_back) << "should have exited settings";
-}
-
-TEST(OptionsMenu, zz_capture_menu_effects)
-{
-    if (!getenv("OG_FX_CAPTURE_DIR"))
-        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
-    std::array<bool, menu_capture::kEffectsCfgKeys.size()> before{};
-    for (size_t i = 0; i < menu_capture::kEffectsCfgKeys.size(); ++i)
-        before[i] = cfg.is_on(menu_capture::kEffectsCfgKeys[i].first,
-                              menu_capture::kEffectsCfgKeys[i].second);
-
-    menu_capture::CaptureState state = {};
-    menu_capture::run_capture_flow("menu_effects",
-                                   menu_capture::menu_effects_injector, state);
-
-    ASSERT_TRUE(state.started);
-    ASSERT_TRUE(state.finished);
-    ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
-    ASSERT_TRUE(state.toured_fx) << "should have toured all three FX subscreens";
-    ASSERT_TRUE(state.used_options_back) << "should have exited settings";
-
-    for (size_t i = 0; i < menu_capture::kEffectsCfgKeys.size(); ++i)
-        EXPECT_EQ(before[i], cfg.is_on(menu_capture::kEffectsCfgKeys[i].first,
-                                       menu_capture::kEffectsCfgKeys[i].second))
-            << menu_capture::kEffectsCfgKeys[i].first << "/"
-            << menu_capture::kEffectsCfgKeys[i].second
-            << " must end unchanged (flip-twice discipline)";
+    ASSERT_EQ(kMenuRedraw, toggle_player_control_mode(0));
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::FourDirection),
+              get_player_control_mode(0))
+        << "the toggle flips back, restoring the process default";
+    reset_default_player_controls();
 }
 
 // The cost gate for the lap helpers, in COUNTS rather than clocks (a clock

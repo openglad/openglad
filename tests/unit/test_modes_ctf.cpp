@@ -75,10 +75,6 @@ inline constexpr int kModesWaypointFamily = 14;
 
 using namespace og::modes_test;
 
-namespace og::script {
-extern std::int64_t g_test_world_instruction_budget;
-}
-
 namespace {
 
 inline constexpr int kAiCadence = 15;
@@ -175,6 +171,26 @@ void align_before_cadence(GameWorld& world)
     const std::uint32_t next =
         ((world.tick_count_ / kAiCadence) + 1) * kAiCadence;
     world.tick_count_ = next - 1;
+}
+
+// Walker pointers do not survive a tick: re-find a subject by its stable
+// entity id instead. dead_list is searched too, because the scenario strip
+// MOVES its victims there and GameWorld::find_by_id deliberately does not
+// index corpses -- looking only in oblist would report a stripped troop as
+// "gone" and a kept one as found by accident.
+walker* refind(GameWorld& world, std::uint32_t id)
+{
+    if (id == 0)
+        return nullptr;
+    for (GameWorld::EntityList* list : {&world.oblist, &world.dead_list})
+    {
+        for (const auto& uptr : *list)
+        {
+            if (uptr != nullptr && uptr->entity_id() == id)
+                return uptr.get();
+        }
+    }
+    return nullptr;
 }
 
 int alive_on_team(GameWorld& world, int team)
@@ -408,7 +424,8 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_flag(flag_family_, 3, 480, 160);
         fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
-        walker* stripped = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
+        const std::uint32_t stripped_id =
+            fx.spawn_living(FAMILY_ORC, 3, 500, 200)->entity_id();
         fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
         fx.world().ctf_requested_map_units[3] = og::sim::kMapUnitsOff;
         fx.tick(1);
@@ -416,6 +433,12 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         ASSERT_TRUE(fx.ctf_active());
         EXPECT_EQ(5, fx.var(kSlotTeamMask)) << "active mask is {0, 2}";
         EXPECT_EQ(2, fx.var(kSlotTeamCount));
+        // Walker pointers do not survive a tick, so the strip's victim is
+        // re-found by its stable id: that CTF leaves the stripped corpse in
+        // oblist is the mode's own business, not a lifetime guarantee.
+        walker* const stripped = refind(fx.world(), stripped_id);
+        ASSERT_NE(nullptr, stripped)
+            << "the stripped troop is marked dead, never destroyed";
         EXPECT_TRUE(stripped->dead());
     }
     {
@@ -425,8 +448,10 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         fx.spawn_flag(flag_family_, 3, 480, 160);
         fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
         fx.spawn_living(FAMILY_SOLDIER, 2, 400, 700);
-        walker* troop = fx.spawn_living(FAMILY_ORC, 3, 500, 200);
-        walker* kept_hero = fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7);
+        const std::uint32_t troop_id =
+            fx.spawn_living(FAMILY_ORC, 3, 500, 200)->entity_id();
+        const std::uint32_t kept_hero_id =
+            fx.spawn_hero(FAMILY_SOLDIER, 3, 520, 200, 7)->entity_id();
         fx.world().ctf_requested_fill[3] = og::sim::kFillNone;
         fx.tick(1);
 
@@ -434,7 +459,11 @@ TEST_F(ModesCtf, sparse_flag_teams_activate_minus_off)
         EXPECT_EQ(1 + 4 + 8, fx.var(kSlotTeamMask))
             << "a deployed fighter keeps an OFF team on";
         EXPECT_EQ(3, fx.var(kSlotTeamCount));
+        walker* const kept_hero = refind(fx.world(), kept_hero_id);
+        ASSERT_NE(nullptr, kept_hero) << "roster walkers are never stripped";
         EXPECT_FALSE(kept_hero->dead()) << "roster walkers are never stripped";
+        walker* const troop = refind(fx.world(), troop_id);
+        ASSERT_NE(nullptr, troop) << "an on team keeps its troops";
         EXPECT_FALSE(troop->dead()) << "an on team keeps its troops";
     }
 }
@@ -497,6 +526,40 @@ StripScenarioActors build_strip_scenario(ModesCtfWorld& fx, int flag_family)
     actors.enemy_gen->setxy(448, 832);
     actors.enemy_gen->set_team_num(1);
     return actors;
+}
+
+struct StripScenarioIds
+{
+    std::uint32_t hero = 0;
+    std::uint32_t authored_friend = 0;
+    std::uint32_t friendly_gen = 0;
+    std::uint32_t authored_enemy = 0;
+    std::uint32_t enemy_gen = 0;
+};
+
+StripScenarioIds ids_of(const StripScenarioActors& actors)
+{
+    StripScenarioIds ids;
+    ids.hero = actors.hero->entity_id();
+    ids.authored_friend = actors.authored_friend->entity_id();
+    ids.friendly_gen = actors.friendly_gen->entity_id();
+    ids.authored_enemy = actors.authored_enemy->entity_id();
+    ids.enemy_gen = actors.enemy_gen->entity_id();
+    return ids;
+}
+
+// Re-find a subject after a tick and require it alive. A vanished entity
+// fails just as loudly as a dead one instead of dereferencing a stale
+// pointer.
+void expect_alive_by_id(GameWorld& world, std::uint32_t id, const char* what)
+{
+    walker* const w = refind(world, id);
+    if (w == nullptr)
+    {
+        ADD_FAILURE() << what << ": entity " << id << " left the world";
+        return;
+    }
+    EXPECT_FALSE(w->dead()) << what;
 }
 
 }  // namespace
@@ -597,14 +660,33 @@ std::string run_strip_scenario_match(int flag_family, bool boxes_off,
 
 }  // namespace
 
-TEST_F(ModesCtf, map_units_on_matches_control_run)
+TEST_F(ModesCtf, map_units_on_fields_the_authored_cast)
 {
-    // The default boxes (all on) are byte-identical to a world that never
-    // touched them.
-    const std::string on = run_strip_scenario_match(flag_family_, false, 50);
-    const std::string control =
-        run_strip_scenario_match(flag_family_, false, 50);
-    ASSERT_EQ(on, control);
+    // kMapUnitsOn IS the stored default, so an explicit ON write can never
+    // be told from a control run by digest. What the box actually decides is
+    // lineup.map_units_fielded (packs/core/lib/lineup.lua), which gates
+    // strip_authored_troops: under ON the map's authored cast survives
+    // activation, and the resulting world differs from the OFF run.
+    ModesCtfWorld fx(kCtfLevelB);
+    const StripScenarioIds ids =
+        ids_of(build_strip_scenario(fx, flag_family_));
+    fx.tick(50);
+
+    ASSERT_TRUE(fx.ctf_active());
+    // 50 ticks: the actor pointers from build_strip_scenario are stale, so
+    // every subject is re-found by its stable entity id.
+    expect_alive_by_id(fx.world(), ids.hero, "the roster hero");
+    expect_alive_by_id(fx.world(), ids.authored_friend,
+                       "MAP UNITS ON fields the authored troop");
+    expect_alive_by_id(fx.world(), ids.authored_enemy,
+                       "and the opposing side's authored troop too");
+    expect_alive_by_id(fx.world(), ids.friendly_gen, "the friendly generator");
+    expect_alive_by_id(fx.world(), ids.enemy_gen, "the enemy generator");
+
+    const std::string on = digest_world(fx.world());
+    EXPECT_NE(on, run_strip_scenario_match(flag_family_, true, 50))
+        << "the OFF box must change the world it is compared against";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 TEST_F(ModesCtf, map_units_off_run_is_deterministic)
@@ -1917,15 +1999,29 @@ TEST_F(ModesCtf, generator_owned_spawns_stay_out_of_the_respawn_queue)
     fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
     walker* owned = fx.spawn_living(FAMILY_ORC, 0, 260, 200);
     owned->set_owner(keeper);
+    // The positive control: an UNOWNED bot on the same team, killed in the
+    // same tick. The scan must queue it — an empty queue would otherwise
+    // pass this test no matter why the owned corpse was skipped.
+    walker* sibling = fx.spawn_living(FAMILY_ORC, 0, 292, 200);
+    ASSERT_NE(nullptr, sibling);
     fx.world().ctf_requested_respawn_ticks = 10;
     fx.tick(1);
     ASSERT_TRUE(fx.ctf_active());
 
+    const std::uint32_t owned_id = owned->entity_id();
+    const std::uint32_t sibling_id = sibling->entity_id();
     owned->set_dead(1);
+    sibling->set_dead(1);
     fx.tick(1);
+    ASSERT_EQ(1u, fx.world().respawn.respawn_queue.size())
+        << "the unowned corpse alone is queued";
+    EXPECT_EQ(sibling_id,
+              fx.world().respawn.respawn_queue.front().walker_entity_id);
+    EXPECT_EQ(1, fx.world().respawn.respawn_queue.front().kind)
+        << "a non-roster corpse queues as an AI replacement";
     for (const auto& entry : fx.world().respawn.respawn_queue)
     {
-        EXPECT_NE(entry.walker_entity_id, owned->entity_id())
+        EXPECT_NE(entry.walker_entity_id, owned_id)
             << "an owned spawn is the generator's business, not the scan's";
     }
 }
@@ -2428,11 +2524,23 @@ TEST_F(ModesCtf, classic_world_never_sees_director_or_goto_and_rng_is_stable)
 
 TEST_F(ModesCtf, classic_world_emits_no_ctf_events)
 {
-    ModesCtfWorld fx(1);
+    // The negative only means something on a world that WOULD activate if
+    // the TYPE_SCRIPTED gate leaked: a CTF-bound level, two authored flags,
+    // a living on each side. `type = 0` is the only thing keeping the mode
+    // Lua out (the identical world with TYPE_SCRIPTED announces
+    // "CAPTURE THE FLAG! TO 3" — pinned by lazy_init_activates_two_team_map).
+    ModesCtfWorld fx(kCtfLevelA);
     fx.world().type = 0;
-    fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
-    fx.spawn_living(FAMILY_ORC, 1, 480, 800);
+    fx.spawn_flag(flag_family_, 0, 96, 96);
+    fx.spawn_flag(flag_family_, 1, 544, 800);
+    fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
     fx.tick(50);
+    EXPECT_FALSE(fx.world().mode.init_attempted)
+        << "a classic world must not even attempt mode init";
+    EXPECT_FALSE(fx.world().mode.active);
+    EXPECT_EQ(0, fx.var(kSlotTeamMask)) << "no mode vars were written";
+    EXPECT_FALSE(fx.ctf_active());
     EXPECT_FALSE(has_notification(fx.events, "CAPTURE THE FLAG"));
     EXPECT_FALSE(has_notification(fx.events, "FLAG"));
 }
@@ -2579,30 +2687,27 @@ TEST_F(ModesCtf, ctf_bot_match_is_deterministic_across_runs)
 // budget (500k vs the 5M production budget).
 TEST_F(ModesCtf, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
 {
-    og::script::g_test_world_instruction_budget = 500000;
-    {
-        ModesCtfWorld fx;
-        fx.spawn_flag(flag_family_, 0, 160, 128);
-        fx.spawn_flag(flag_family_, 1, 160, 800);
-        fx.spawn_point(point_family_, 320, 320);
-        fx.spawn_point(point_family_, 320, 480);
-        fx.spawn_point(point_family_, 160, 480);
-        fx.spawn_point(point_family_, 480, 480);
-        fx.spawn_anchor(0, 96, 96);
-        fx.spawn_anchor(0, 224, 96);
-        fx.spawn_anchor(1, 96, 832);
-        fx.spawn_anchor(1, 224, 832);
-        fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
-        fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
-        fx.world().ctf_requested_respawn_ticks = 30;
-        fx.tick(1);  // init (the priciest single dispatch) under the budget
-        ASSERT_TRUE(fx.ctf_active());
-        fx.tick(45);  // 3 director cadences + all per-tick phases
-        EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
-            << "a 10x-reduced budget must never trip";
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
-    }
-    og::script::g_test_world_instruction_budget = 0;
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx;
+    fx.spawn_flag(flag_family_, 0, 160, 128);
+    fx.spawn_flag(flag_family_, 1, 160, 800);
+    fx.spawn_point(point_family_, 320, 320);
+    fx.spawn_point(point_family_, 320, 480);
+    fx.spawn_point(point_family_, 160, 480);
+    fx.spawn_point(point_family_, 480, 480);
+    fx.spawn_anchor(0, 96, 96);
+    fx.spawn_anchor(0, 224, 96);
+    fx.spawn_anchor(1, 96, 832);
+    fx.spawn_anchor(1, 224, 832);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5
+    fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
+    fx.world().ctf_requested_respawn_ticks = 30;
+    fx.tick(1);  // init (the priciest single dispatch) under the budget
+    ASSERT_TRUE(fx.ctf_active());
+    fx.tick(45);  // 3 director cadences + all per-tick phases
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
@@ -2718,8 +2823,7 @@ struct LoadedRealLevel
         : level(id, true, &modes_test_level_hooks())
         , gameplay(level, save, events, cfg)
     {
-        level.set_sim_context(&save, &level.world().enemy_freeze, &events,
-                              &rng, &cfg);
+        level.set_sim_context(&save, &events, &cfg);
         gc.rng = &rng;
         push_test_context(&gc);
         loaded = level.load();

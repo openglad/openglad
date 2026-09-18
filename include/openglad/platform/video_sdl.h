@@ -137,8 +137,6 @@ public:
     void clearbuffer(int x, int y, int w, int h) override;
     void clear_window() override;
 
-    std::span<unsigned char> getbuffer() override;
-    void putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize) override;
     void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) override;
     void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag) override;
     void fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) override;
@@ -158,10 +156,6 @@ public:
                  std::span<const unsigned char> sourcedata) override;
     void putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                        std::span<const unsigned char> sourcedata, unsigned char alpha) override;
-    void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-                     std::span<const unsigned char> sourcedata) override;
-    void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-                 std::span<const unsigned char> sourcedata, unsigned char color) override;
     void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
                      std::span<const unsigned char> sourcedata, unsigned char color) override;
 
@@ -271,8 +265,6 @@ public:
 
     void darken_screen() override;
 
-    void swap() override;
-
     // Canvas routing: delegated to the Screen (E_Screen) two-canvas split.
     int canvas_w() const override;
     int canvas_h() const override;
@@ -327,7 +319,6 @@ public:
     std::array<unsigned char, 768>& redpalette_ref() override { return redpalette; }
     std::array<unsigned char, 768>& bluepalette_ref() override { return bluepalette; }
     std::array<unsigned char, 768>& dospalette_ref() override { return dospalette; }
-    std::vector<unsigned char>& videobuffer_ref() override { return videobuffer; }
     short& cyclemode_ref() override { return cyclemode; }
     text& text_normal_ref() override { return text_normal; }
     text& text_big_ref() override { return text_big; }
@@ -341,11 +332,6 @@ public:
     std::array<unsigned char, 768> bluepalette{};
     std::array<unsigned char, 768> dospalette{};
 
-    // Legacy scratch sized to the canvas area (kUiCanvasW*kUiCanvasH).
-    std::vector<unsigned char> videobuffer =
-        std::vector<unsigned char>(static_cast<std::size_t>(kUiCanvasW) *
-                                       static_cast<std::size_t>(kUiCanvasH),
-                                   0);
     // color cycling on or off
     short cyclemode = 0;
 

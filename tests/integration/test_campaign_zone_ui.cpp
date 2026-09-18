@@ -28,6 +28,8 @@
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
+#include "test_escape_tail.h"
+#include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -54,9 +56,8 @@ void picker_testing_set_force_real_dialogs(bool enabled);
 void picker_main(Sint32 argc, char** argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
-// Presenter pause handshake (TESTING; the uxshots capture seam).
-extern std::atomic_bool g_test_present_pause_requested;
-extern std::atomic_bool g_test_present_paused;
+// The presenter pause handshake these flows capture through is declared in
+// tests/test_frame_capture.h.
 
 namespace {
 
@@ -219,126 +220,11 @@ private:
     std::vector<og::script::PackScript> saved_;
 };
 
-// One capture's outcome. Recorded on the INJECTOR thread and asserted on
-// the main thread by verify_zone_shots: a gtest failure raised from an
-// injector that then dies mid-flow takes its own message with it, and the
-// capture flows already report their observations this way.
-struct ZoneShotResult {
-    std::string name;
-    std::string path;       // "" = no UXSHOTS_DIR, nothing to write
-    bool captured = false;  // the presenter handshake froze a real frame
-    bool written = false;   // the PPM exists on disk afterwards
-    std::size_t nonblack = 0;
-};
-
-std::mutex g_zone_shot_mutex;
-std::vector<ZoneShotResult> g_zone_shots;
-
-// The nonblank bar the uxshots probe uses (test_uxshots_probe.cpp): a
-// settled 320x200 menu frame inks far more than this, a black or
-// half-cleared one far less.
-constexpr std::size_t kZoneShotMinNonblackPixels = 1000;
-
-// Visual-verification capture (the uxshots PresentedFramePause handshake,
-// minimal form): freeze the settled 320x200 frame, count its ink, and dump
-// it as a PPM when UXSHOTS_DIR is set. The frame is read back either way —
-// "the capture produced a blank screen" is a real failure whether or not
-// anyone asked for the file. Runs on the injector thread.
-void capture_zone_frame(const char* name)
-{
-    ZoneShotResult result;
-    result.name = name;
-    const char* output_dir = std::getenv("UXSHOTS_DIR");
-    const bool want_file = output_dir != nullptr && output_dir[0] != '\0';
-    if (want_file) {
-        std::error_code error;
-        std::filesystem::create_directories(output_dir, error);
-        if (!error)
-            result.path = std::string(output_dir) + "/" + name + ".ppm";
-    }
-
-    auto record = [&result] {
-        const std::lock_guard<std::mutex> lock(g_zone_shot_mutex);
-        g_zone_shots.push_back(std::move(result));
-    };
-
-    bool expected = false;
-    if (!g_test_present_pause_requested.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel)) {
-        record();
-        return;
-    }
-    const Uint64 deadline = SDL_GetTicks() + 30000;
-    while (!g_test_present_paused.load(std::memory_order_acquire)) {
-        if (SDL_GetTicks() >= deadline) {
-            g_test_present_pause_requested.store(false,
-                                                 std::memory_order_release);
-            record();
-            return;
-        }
-        SDL_Delay(1);
-    }
-
-    std::vector<Uint8> rgb;
-    rgb.reserve(320 * 200 * 3);
-    screen* scr = test_screen();
-    for (int y = 0; y < 200; ++y) {
-        for (int x = 0; x < 320; ++x) {
-            Uint8 r = 0, g = 0, b = 0;
-            scr->get_pixel(x, y, &r, &g, &b);
-            if (r != 0 || g != 0 || b != 0)
-                ++result.nonblack;
-            rgb.push_back(r);
-            rgb.push_back(g);
-            rgb.push_back(b);
-        }
-    }
-    g_test_present_pause_requested.store(false, std::memory_order_release);
-    result.captured = true;
-
-    if (!result.path.empty()) {
-        FILE* f = fopen(result.path.c_str(), "wb");
-        if (f != nullptr) {
-            fprintf(f, "P6\n320 200\n255\n");
-            fwrite(rgb.data(), sizeof(Uint8), rgb.size(), f);
-            fclose(f);
-            std::error_code exists_error;
-            result.written =
-                std::filesystem::exists(result.path, exists_error) &&
-                !exists_error;
-            fprintf(stderr, "  [uxshot] wrote %s\n", result.path.c_str());
-        }
-    }
-    record();
-}
-
-// Main-thread verification of every shot the finished flow recorded, and
-// the reason the capture seam has teeth: a re-capture run that quietly
-// stopped producing stills (or started producing black ones) now fails the
-// test instead of leaving the media script nothing to convert. Clears the
-// ledger, so each flow only ever answers for its own captures.
-void verify_zone_shots(const char* flow, std::size_t expected_shots)
-{
-    std::vector<ZoneShotResult> shots;
-    {
-        const std::lock_guard<std::mutex> lock(g_zone_shot_mutex);
-        shots.swap(g_zone_shots);
-    }
-    EXPECT_EQ(expected_shots, shots.size())
-        << flow << ": the flow did not reach every capture point";
-    for (const ZoneShotResult& shot : shots) {
-        EXPECT_TRUE(shot.captured)
-            << flow << ": " << shot.name << " never froze a presented frame";
-        EXPECT_GE(shot.nonblack, kZoneShotMinNonblackPixels)
-            << flow << ": " << shot.name << " is blank (" << shot.nonblack
-            << " nonblack pixels)";
-        if (shot.path.empty())
-            continue;
-        EXPECT_TRUE(shot.written)
-            << flow << ": " << shot.name << " produced no file at "
-            << shot.path;
-    }
-}
+// The capture handshake, the ledger, the nonblank bar and the main-thread
+// verification moved VERBATIM to tests/test_frame_capture.h when the
+// menu-capture scenes needed the same rules: one implementation, not five
+// (PR #245). Every call site below resolves this suite's own output
+// directory (UXSHOTS_DIR) and hands it to the shared capture.
 
 void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
                                    const std::vector<int>& completed = {})
@@ -533,7 +419,7 @@ int zone_flow_injector(void* data)
         wait_for_interactable_label("zone_action_0", "STORES  >", 10000) &&
         wait_for_interactable_label("zone_action_1", "FIELD KIT  60g", 5000);
     SDL_Delay(500);
-    capture_zone_frame("zone_scripted_camp");
+    capture_presented_frame("zone_scripted_camp", std::getenv("UXSHOTS_DIR"));
 
     // Deploy-lock refusal: Alpha starts DEPLOYED, so bench first (allowed —
     // locks gate the toggle-ON only), then the re-deploy refuses with the
@@ -541,12 +427,12 @@ int zone_flow_injector(void* data)
     state->cycler_edges_acknowledged &=
         click_and_acknowledge_trace("roster_dep_0", "basecamp",
                                     "deploy slot=0 off");
-    capture_zone_frame("uxr_after_bench");
+    capture_presented_frame("uxr_after_bench", std::getenv("UXSHOTS_DIR"));
     state->cycler_edges_acknowledged &= click_and_acknowledge_trace(
         "roster_dep_0", "zone", "deploy_locked slot=0",
         /*waits_for_autosave=*/false);
     SDL_Delay(150);
-    capture_zone_frame("uxr_lock_toast");
+    capture_presented_frame("uxr_lock_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // The assign chip: unset -> WAR (undeployed cycle rides the autosave
@@ -555,13 +441,13 @@ int zone_flow_injector(void* data)
         click_and_acknowledge_trace("roster_team_0", "zone",
                                     "assign slot=0 tag=1");
     SDL_Delay(150);
-    capture_zone_frame("uxr_assign_war");
+    capture_presented_frame("uxr_assign_war", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
     state->cycler_edges_acknowledged &=
         click_and_acknowledge_trace("roster_team_0", "zone",
                                     "assign slot=0 tag=2");
     SDL_Delay(150);
-    capture_zone_frame("uxr_assign_burden");
+    capture_presented_frame("uxr_assign_burden", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Assigned heroes clear the unset-lock: the deploy sticks now.
@@ -576,7 +462,7 @@ int zone_flow_injector(void* data)
     SDL_Delay(300);
     interact("zone_action_2");
     SDL_Delay(200);
-    capture_zone_frame("uxr_level_fail_toast");
+    capture_presented_frame("uxr_level_fail_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     // The costed action: debit + state write-through + refetch retire (the
@@ -585,14 +471,14 @@ int zone_flow_injector(void* data)
     state->kit_label_flipped =
         wait_for_interactable_label("zone_action_1", "FIELD KIT  [DONE]",
                                     5000);
-    capture_zone_frame("uxr_kit_toast");
+    capture_presented_frame("uxr_kit_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Clicking a retired purchase refuses in the campaign's voice instead
     // of charging again.
     interact("zone_action_1");
     SDL_Delay(200);
-    capture_zone_frame("uxr_kit_done_toast");
+    capture_presented_frame("uxr_kit_done_toast", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     // The level row: the load-with-rollback set tail commits scen_num and
@@ -612,7 +498,7 @@ int zone_flow_injector(void* data)
         }
         return false;
     }();
-    capture_zone_frame("uxr_level_current");
+    capture_presented_frame("uxr_level_current", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Clicking the road you are already on answers instead of going quiet
@@ -631,12 +517,12 @@ int zone_flow_injector(void* data)
     state->submenu_row_seen =
         wait_for_interactable_label("zone_row_0", "BREAD  10g", 10000);
     SDL_Delay(500);
-    capture_zone_frame("zone_submenu_stores");
+    capture_presented_frame("zone_submenu_stores", std::getenv("UXSHOTS_DIR"));
     // The purchase confirms exactly as it does at the root: a non-modal
     // message-line toast, no OK button to dismiss.
     interact("zone_row_0");
     SDL_Delay(400);
-    capture_zone_frame("uxr_submenu_after_buy");
+    capture_presented_frame("uxr_submenu_after_buy", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     // A page row INSIDE the submenu pushes a second page; BACK there pops
@@ -654,7 +540,7 @@ int zone_flow_injector(void* data)
     // load-with-rollback arm (a modal dialog, trace-only under TESTING).
     interact("zone_row_2");
     SDL_Delay(200);
-    capture_zone_frame("uxr_submenu_level_fail");
+    capture_presented_frame("uxr_submenu_level_fail", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(600);
 
     interact("back");
@@ -663,7 +549,7 @@ int zone_flow_injector(void* data)
     state->cycler_edges_acknowledged &=
         run_on_main_thread([] { reset_mouse_click_tracking(); });
     SDL_Delay(150);
-    capture_zone_frame("uxr_back_at_root");
+    capture_presented_frame("uxr_back_at_root", std::getenv("UXSHOTS_DIR"));
     SDL_Delay(300);
 
     // Cycling a DEPLOYED hero first un-deploys through the full roster
@@ -713,7 +599,7 @@ TEST(CampaignZoneUi, scripted_zone_flow_locks_assigns_acts_and_sets_level)
     g_picker_max_mainmenu_calls = 0;
 
     // The 13 unconditional capture points of the flow above.
-    verify_zone_shots("scripted_zone_flow", 13);
+    verify_captured_frames("scripted_zone_flow", 13);
 
     SaveData& save = test_screen()->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
@@ -853,7 +739,7 @@ int default_zone_injector(void* data)
     // The default composition: roster + HIRE, no zone action rows.
     state->hire_seen = wait_for_interactable("hire_troops", 10000);
     SDL_Delay(500);
-    capture_zone_frame("zone_default_camp");
+    capture_presented_frame("zone_default_camp", std::getenv("UXSHOTS_DIR"));
 
     // Deploy toggle by id (the classic flow).
     state->deploy_edges_acknowledged &=
@@ -915,7 +801,7 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("default_zone_flow", 1);
+    verify_captured_frames("default_zone_flow", 1);
 
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.hire_seen)
@@ -961,7 +847,7 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
     // The injector this shares with default_zone_keeps_the_classic_roster_flows
     // records a capture, and the shot ledger is process-wide: answer for it
     // here or the next verifying flow inherits it.
-    verify_zone_shots("default_zone_drop", 1);
+    verify_captured_frames("default_zone_drop", 1);
 
     EXPECT_EQ(0, g_click_ladder_click_drops) << "the injected drop must be consumed";
     EXPECT_TRUE(state.deploy_edges_acknowledged)
@@ -1009,7 +895,7 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
 
     // Shared injector, process-wide shot ledger: answer for the capture here
     // or the next verifying flow inherits it.
-    verify_zone_shots("default_zone_ack_drop", 1);
+    verify_captured_frames("default_zone_ack_drop", 1);
 
     EXPECT_EQ(0, g_click_ladder_ack_drops)
         << "the injected cancellation must be consumed";
@@ -2549,13 +2435,13 @@ int paged_docket_injector(void* data)
         !has_interactable("zone_action_2");
     state->pager_shown = wait_for_interactable("zone_pager_next_0", 5000);
     SDL_Delay(400);
-    capture_zone_frame("uxr_docket_pager_page1");
+    capture_presented_frame("uxr_docket_pager_page1", std::getenv("UXSHOTS_DIR"));
 
     interact("zone_pager_next_0");
     state->second_window =
         wait_for_interactable_label("zone_action_0", "ROW THREE", 10000);
     SDL_Delay(400);
-    capture_zone_frame("uxr_docket_pager_page2");
+    capture_presented_frame("uxr_docket_pager_page2", std::getenv("UXSHOTS_DIR"));
 
     interact("zone_pager_prev_0");
     state->wrapped_home =
@@ -2591,7 +2477,7 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("docket_pager", 2);
+    verify_captured_frames("docket_pager", 2);
 
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.first_window) << "the band renders its first window";
@@ -2602,6 +2488,38 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     EXPECT_TRUE(state.second_window)
         << "the pager pages the docket IN PLACE, never onto a new screen";
     EXPECT_TRUE(state.wrapped_home) << "and back again";
+
+    // ...and COUNTS itself. state.pager_shown only proves the two arrows
+    // exist; the gutter strip under them prints
+    // ActionsLayout::page.indicator() for every multi-page band of 2+ units
+    // (src/interface/ui/menu_screen_specs.cpp, the docket-pager gutter
+    // loop). Compose the same docket the flow just paged and pin the count
+    // that strip has to ink -- without this, deleting the strip (the very
+    // thing the comment above kPagedDocketScript says two bare arrows cannot
+    // replace) left every expectation above green.
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    og::ui::CampaignZoneSession::ActionsLayout band = zone.actions()[0];
+    EXPECT_EQ(2, band.units) << "weight 2 buys a two-row band";
+    EXPECT_EQ(5u, band.rows.size()) << "all five authored rows are carried";
+    ASSERT_TRUE(band.page.multi_page())
+        << "five rows in a two-row window overflow";
+    EXPECT_EQ(3, band.page.page_count())
+        << "five rows across a two-row window is three pages";
+    EXPECT_EQ(std::string("1/3"), band.page.indicator())
+        << "the gutter must open on page one of three";
+    ASSERT_TRUE(band.page.step(1));
+    EXPECT_EQ(std::string("2/3"), band.page.indicator())
+        << "one NEXT moves the printed count with the window";
+    ASSERT_TRUE(band.page.step(1));
+    EXPECT_EQ(std::string("3/3"), band.page.indicator());
+    EXPECT_FALSE(band.page.step(1))
+        << "the count saturates on the last page instead of wrapping";
 }
 
 namespace {
@@ -2676,7 +2594,7 @@ int default_tour_injector(void* data)
         wait_for_interactable_label("zone_action_0",
                                     state->expect_first_row_label, 5000);
     SDL_Delay(500);
-    capture_zone_frame(state->shot);
+    capture_presented_frame(state->shot, std::getenv("UXSHOTS_DIR"));
 
     state->go_seen = wait_for_interactable("go", 10000);
     SDL_Delay(300);
@@ -2738,7 +2656,7 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         cleanup_picker_state();
         g_picker_max_mainmenu_calls = 0;
 
-        verify_zone_shots(tour.campaign, 1);
+        verify_captured_frames(tour.campaign, 1);
 
         EXPECT_TRUE(tour.continue_seen) << tour.campaign << ": main menu";
         EXPECT_TRUE(tour.camp_seen)
@@ -2768,7 +2686,15 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
               mount_campaign_package_with_error("gladiator"));
 }
 
-// --- TEMPORARY UX-REVIEW CAPTURE (not for commit) -------------------------
+// --- ZONE_SHOTS: the big-roster pager stills -------------------------------
+//
+// Not a temporary UX-review scratch, whatever the fence here used to say:
+// uxr_big_roster_p1 and uxr_big_roster_p2 are two of the ZONE_SHOTS
+// scripts/media/capture_campaign_scripting.sh lists (:118-119) and it
+// "refuses to finish with any of them missing". This flow is the only place
+// the roster pager is driven with a company big enough to need it, so the
+// two stills — page 1 and page 2 of a 14-hero band — come from here or from
+// nowhere.
 namespace {
 
 void uxr_write_save0_with_many(const std::string& campaign, short scen_num)
@@ -2802,29 +2728,169 @@ void uxr_write_save0_with_many(const std::string& campaign, short scen_num)
     ASSERT_TRUE(save.save("save0"));
 }
 
+// Everything the flow observed, read back on the main thread: an EXPECT
+// raised from an injector that then dies mid-flow takes its message with it,
+// so this file's capture flows all report this way.
+struct UxrBigRosterState {
+    bool stores_seen = false;      // the camp composed its STORES door
+    bool pager_enabled = false;    // the roster pager is live, not inert
+    bool page_flipped = false;     // the '>' press moved the window
+    std::string page_indicator;    // the newest "page p/N" the pager spoke
+    bool finished = false;         // the flow came back to the camp strip
+    // Set by the MAIN thread after picker_main returns. The escape tail has
+    // no wall-clock bound on purpose: picker_main blocks until a click takes
+    // it out, so a tail that stopped trying early would guarantee the wedge
+    // it exists to prevent.
+    std::atomic<bool> test_finished{false};
+    // Point one leg at an id the flow never publishes, so the give-up path
+    // itself is testable.
+    int sabotage_leg = 0;
+};
+
+// Poll tick, never a settle: the trace edge below is a wait-on-condition.
+constexpr int kUxrTracePollMs = 50;
+// The sabotaged leg waits for an id nothing publishes; nothing is coming, and
+// the point of that run is the tail.
+constexpr int kUxrSabotageWaitMs = 500;
+
+// The newest "basecamp"/"page ..." trace message, "" when the pager has not
+// spoken. The pager cluster's rows are drawn as bare arrows with no label to
+// wait on (menu_screen_specs.cpp:2839-2851), so the ONLY witness a page flip
+// publishes is TRACE("basecamp", "page %s", indicator) at :5284 — and the
+// indicator is "{page+1}/{page_count}".
+std::string newest_basecamp_page_trace()
+{
+    const std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (auto entry = g_trace_buffer.rbegin(); entry != g_trace_buffer.rend();
+         ++entry) {
+        if (entry->category == "basecamp" &&
+            entry->message.find("page ") != std::string::npos)
+            return entry->message;
+    }
+    return std::string();
+}
+
 int uxr_big_roster_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
-    wait_for_interactable_label("zone_action_0", "STORES", 10000);
-    SDL_Delay(600);
-    capture_zone_frame("uxr_big_roster_p1");
+    UxrBigRosterState* state = static_cast<UxrBigRosterState*>(data);
+
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why);
+    };
+
+    // -- Leg 1: the main menu is up --
+    if (!wait_for_interactable(
+            state->sabotage_leg == 1 ? "never_published_door" : "continue_game",
+            state->sabotage_leg == 1 ? kUxrSabotageWaitMs : 5000) ||
+        !wait_for_menu_frames(2))
+        return escape(1, "the main menu never published continue_game");
+    // The composed Page-kind face: the book's word plus the door grammar the
+    // row text appends (two spaces, then '>' —
+    // campaign_picker_row_text in src/interface/ui/campaign_picker_session.cpp,
+    // pinned at tests/unit/test_campaign_picker_session.cpp:562-564). The bare
+    // "STORES" this wait used to ask for never arrives: the wait burned its
+    // whole 10 s ceiling on every green run and the result was thrown away.
+    state->stores_seen = click_until_edge(
+        "continue_game",
+        [](int wait_ms) {
+            return wait_for_interactable_label("zone_action_0", "STORES  >",
+                                               wait_ms);
+        },
+        nullptr, 3, 10000);
+    if (!state->stores_seen)
+        return escape(
+            2, "CONTINUE never composed the scripted camp's STORES door");
+    (void)wait_for_menu_frames(2);
+    capture_presented_frame("uxr_big_roster_p1", std::getenv("UXSHOTS_DIR"));
+
     // 14 heroes over the scripted zone's 3-row roster band: the pager is not
-    // optional here, and a fixture that stopped paging would silently drop
-    // the second still.
-    *static_cast<bool*>(data) = has_interactable("roster_page_next");
-    interact("roster_page_next");
-    SDL_Delay(500);
-    capture_zone_frame("uxr_big_roster_p2");
-    wait_for_interactable("go", 10000);
-    SDL_Delay(300);
-    interact("back");
-    return 0;
+    // optional here. The row itself is ALWAYS published — an inert
+    // placeholder, because base_camp_page_row_state
+    // (menu_screen_specs.cpp:2310) answers Disabled rather than Hidden for a
+    // single-page roster so HIRE keeps its home — so only the ENABLED
+    // question can tell a paging fixture from one that quietly stopped
+    // paging and would drop the second still.
+    state->pager_enabled = has_enabled_interactable("roster_page_next");
+
+    const int pages_before = count_trace_containing("basecamp", "page ");
+    state->page_flipped = click_until_edge(
+        "roster_page_next",
+        [pages_before](int wait_ms) {
+            int elapsed = 0;
+            while (elapsed < wait_ms) {
+                if (count_trace_containing("basecamp", "page ") > pages_before)
+                    return true;
+                SDL_Delay(static_cast<Uint32>(kUxrTracePollMs));
+                elapsed += kUxrTracePollMs;
+            }
+            return false;
+        },
+        nullptr, 3, 10000);
+    state->page_indicator = newest_basecamp_page_trace();
+    (void)wait_for_menu_frames(2);
+    capture_presented_frame("uxr_big_roster_p2", std::getenv("UXSHOTS_DIR"));
+
+    state->finished = wait_for_interactable("go", 10000);
+    if (!state->finished)
+        return escape(
+            3, "the camp's command strip never came back after the pager");
+    (void)wait_for_menu_frames(2);
+
+    // The exit, and the only loop with no bound: picker_main blocks on the
+    // main thread and only a click makes it return, so the final `back` is
+    // driven from here rather than through the ladder — after picker_main
+    // returns there is no pump left to service an acknowledge post.
+    return escape(0, "");
 }
 
 } // namespace
+
+// The give-up half of the same injector, and the reason every leg above
+// routes through the shared tail: picker_main blocks on the MAIN thread and
+// only a click makes it return. Replace `return escape(1, ...)` with a bare
+// `return 1` and this test hangs until the CTest ceiling instead of failing.
+//
+// No synthetic zone script is installed here -- the sabotaged leg never gets
+// past the main menu, so the tail walks the stock campaign's
+// CONTINUE -> base camp -> BACK and nothing downstream of leg 1 runs.
+TEST(CampaignZoneUi, a_leg_that_gives_up_frees_the_main_thread)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    // Base camp needs a company to open, so the tail has a door to press.
+    uxr_write_save0_with_many("gladiator", 1);
+
+    UxrBigRosterState state;
+    state.sabotage_leg = 1;
+    SDL_Thread* thread =
+        SDL_CreateThread(uxr_big_roster_injector, "uxr_big_escape", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(1, thread_result)
+        << "the sabotaged leg must be reported by number, not swallowed";
+    EXPECT_FALSE(state.stores_seen)
+        << "a flow that gave up at leg 1 never reached the STORES door";
+    EXPECT_FALSE(state.pager_enabled)
+        << "a flow that gave up at leg 1 never reached the roster pager";
+    EXPECT_FALSE(state.page_flipped)
+        << "a flow that gave up at leg 1 never pressed the pager's '>'";
+    EXPECT_EQ("", state.page_indicator)
+        << "a flow that gave up at leg 1 never heard the pager speak";
+    EXPECT_FALSE(state.finished)
+        << "a flow that gave up at leg 1 never reached the camp's strip";
+}
 
 TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
 {
@@ -2836,20 +2902,39 @@ TEST(CampaignZoneUi, zzz_uxr_capture_scripted_zone_with_full_roster)
     SyntheticCampaignScriptGuard::install(kZoneScript);
     uxr_write_save0_with_many("gladiator", 1);
 
-    bool roster_pages = false;
+    UxrBigRosterState state;
     SDL_Thread* thread =
-        SDL_CreateThread(uxr_big_roster_injector, "uxr_big", &roster_pages);
+        SDL_CreateThread(uxr_big_roster_injector, "uxr_big", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.test_finished.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    // The escape tail clicks into a queue nobody reads once picker_main is
+    // out; leave nothing behind for the next test's first frame.
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    EXPECT_TRUE(roster_pages)
-        << "14 heroes over a 3-row band must show the roster pager";
-    verify_zone_shots("uxr_full_roster", 2);
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_TRUE(state.stores_seen)
+        << "the scripted camp composes its STORES page door as 'STORES  >'";
+    EXPECT_TRUE(state.pager_enabled)
+        << "14 heroes over a 3-row band must ENABLE the roster pager";
+    EXPECT_TRUE(state.page_flipped)
+        << "the '>' press must move the roster window";
+    // 14 heroes over the scripted zone's 3-row band (the roster takes the 8
+    // unit budget's remainder after the hoisted readout, the one text line
+    // and the three action rows, less its own header) is ceil(14/3) = 5
+    // pages, and one '>' press lands on the second of them.
+    EXPECT_EQ("page 2/5", state.page_indicator)
+        << "one pager click steps the 14-hero roster exactly one page";
+    EXPECT_TRUE(state.finished)
+        << "the flow must come back to the camp's command strip";
+    verify_captured_frames("uxr_full_roster", 2);
 }
 
 namespace {
@@ -2938,7 +3023,7 @@ int match_setup_injector(void* data)
     state->time_row_read_map = wait_for_interactable_label_containing(
         "zone_row_3", "TIME LIMIT: MAP", 10000);
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("zone_submenu_match_setup");
+    capture_presented_frame("zone_submenu_match_setup", std::getenv("UXSHOTS_DIR"));
 
     // The macros move: one TEAMS click wraps the four-side deal back to
     // two — the lowest opponent keeps FAIR, the other two turn NONE (both
@@ -2961,7 +3046,7 @@ int match_setup_injector(void* data)
             },
             "acted_autosave");
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_match_setup_macros");
+    capture_presented_frame("uxr_match_setup_macros", std::getenv("UXSHOTS_DIR"));
 
     // One click walks the score cycle one stop (map -> 1) and speaks it.
     state->score_row_stepped_to_one =
@@ -2973,7 +3058,7 @@ int match_setup_injector(void* data)
             },
             "acted_autosave");
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_match_setup_cycled");
+    capture_presented_frame("uxr_match_setup_cycled", std::getenv("UXSHOTS_DIR"));
 
     // The clock: a fresh match wears MAP — the limit the level's own
     // manifest authored — and one click hands the host the shortest
@@ -2987,7 +3072,7 @@ int match_setup_injector(void* data)
             },
             "acted_autosave");
     (void)wait_for_menu_frames(2);
-    capture_zone_frame("uxr_match_setup_time");
+    capture_presented_frame("uxr_match_setup_time", std::getenv("UXSHOTS_DIR"));
 
     (void)click_until_edge("back", [](int wait_ms) {
         return wait_for_interactable("go", wait_ms);
@@ -3018,7 +3103,7 @@ TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    verify_zone_shots("match_setup", 4);
+    verify_captured_frames("match_setup", 4);
 
     EXPECT_TRUE(state.camp_seen) << "main menu";
     EXPECT_TRUE(state.setup_row_seen)
@@ -3208,6 +3293,10 @@ int match_setup_wrong_id_injector(void* data)
 
 struct BlindCyclerState
 {
+    // false: the press names its landing with a trace ("acted_autosave").
+    // true: the same press with NO witness at all — the ladder then has only
+    // its re-check-before-re-press to keep the wheel from overshooting.
+    bool witnessless = false;
     bool opened = false;
     bool stepped = false;
     bool wheel_still_on_two = false;
@@ -3247,7 +3336,7 @@ int match_setup_blind_cycler_injector(void* data)
                 return wait_for_interactable_label_containing(
                     "zone_row_0", "TEAMS: 2", wait_ms);
             },
-            "acted_autosave");
+            state->witnessless ? nullptr : "acted_autosave");
         // Where the wheel actually stands once the ladder is done: one
         // press, one stop. An overshoot reads 3 or 4 here and this stays
         // false however the ladder reported.
@@ -3373,6 +3462,58 @@ TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
         << "exactly one attempt waited on a press that had already landed";
     EXPECT_EQ(0, g_click_ladder_click_retries)
         << "a landed press is never charged as a re-press";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The SAME rule for a row that publishes NO landing witness. Not every cycler
+// can name its landing — this one is asked to prove it without trying — and
+// for those the ladder's guard is the re-check it runs immediately before
+// every RE-press: the edge that arrived after the wait gave up is found
+// there, and the press is cancelled instead of sent.
+//
+// Without that re-check this flow presses a second time on a wheel that has
+// already moved, and TEAMS walks 4 -> 2 -> 3 (then 4) while the flow waits
+// for a face the row has gone by.
+TEST(CampaignZoneUi, match_setup_click_helper_recheck_saves_a_witnessless_cycler)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_edge_waits = 0;
+    g_click_ladder_edge_blinds = 0;
+
+    BlindCyclerState state;
+    state.witnessless = true;  // no landed_trace on the cycler press
+    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
+                                          "zone_recheck_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_EQ(0, g_click_ladder_edge_blinds)
+        << "the injected blind must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "the re-check must report the late edge as an arrival";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "a witnessless cycler must not be pressed again either: the "
+           "re-check found TEAMS: 2 before the re-press went out";
+    EXPECT_EQ(1, g_click_ladder_click_retries)
+        << "exactly one attempt expired with no witness and no edge";
+    EXPECT_EQ(1, g_click_ladder_edge_waits)
+        << "the second attempt waited instead of pressing, because the "
+           "re-check found the edge already there";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

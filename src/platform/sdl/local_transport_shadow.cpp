@@ -122,10 +122,13 @@ struct LocalTransportRuntime {
     // InitialSetup by multiple websocket frames. Keep polling while the old
     // display world has end=1 so split delivery cannot strand the client.
     bool awaiting_level_transition = false;
-    // §4.5 follow camera: per-view watched-target state (networked sessions
-    // only; local shadows never engage). Runtime-owned so the per-snapshot
-    // control re-sync cannot stomp the player's choice. Reset on level
-    // transitions along with the rebuilt views.
+    // §4.5 follow camera: per-view watched-target state, live on ANY
+    // installed shadow. A seated view disengages (its seat maps to a live
+    // walker); a seatless / null-seat view engages — a networked spectator,
+    // a 0-deploy or all-dead seat, and a local spectator/autoplay session
+    // alike. Runtime-owned so the per-snapshot control re-sync cannot stomp
+    // the player's choice. Reset on level transitions along with the rebuilt
+    // views.
     std::array<DisplayFollowState, MAX_PLAYERS> view_follow = {};
     // §2.8 follow caption: company display names keyed by GLOBAL player
     // index, stamped from the lobby state after a networked install.
@@ -1190,9 +1193,11 @@ std::string follow_company_for_control(
 }
 
 // View i follows seats[i] (a networked machine's local seat list). An empty
-// NETWORK seat list is a real zero-seat spectator and therefore has no player
-// binding at all. Only the legacy local-shadow path treats an empty list as
-// split-screen, where the in-process peers are bound 1:1 in view order.
+// seat list is a real zero-seat display -- a networked spectator, and equally
+// a LOCAL spectator/autoplay session, whose install binds no seat either --
+// and therefore has no player binding at all. Only a SEATED local shadow
+// treats an empty list as split-screen, where the in-process peers are bound
+// 1:1 in view order.
 void sync_display_controls(
     screen& gameplay_screen,
     std::span<const std::uint32_t> controlled_entity_ids,
@@ -1217,7 +1222,9 @@ void sync_display_controls(
                 ? std::optional<std::size_t>(display_seats[index].player_index)
                 : std::nullopt;
         }
-        else if (runtime == nullptr || !runtime->networked)
+        else if (runtime == nullptr ||
+                 (!runtime->networked &&
+                  !og::ui::is_spectator_mode(gameplay_screen.save_data)))
         {
             player_index = index;
         }
@@ -1225,11 +1232,14 @@ void sync_display_controls(
             ? static_cast<short>(*player_index)
             : static_cast<short>(-1);
 
-        // §4.5: only genuine networked sessions engage the follow camera —
-        // local shadows (splitscreen, demo spectator) keep today's paths.
+        // §4.5: every installed shadow carries the follow state, networked
+        // or not. It is the seat that decides, not the transport: a view
+        // with a live mapped walker disengages on the first line of
+        // update_display_view_follow, so seated local play (single player,
+        // split screen) is untouched, while a seatless view — a networked
+        // spectator or a LOCAL spectator/autoplay session — engages.
         og::runtime::DisplayFollowState* follow = nullptr;
-        if (runtime != nullptr && runtime->networked &&
-            index < runtime->view_follow.size())
+        if (runtime != nullptr && index < runtime->view_follow.size())
         {
             follow = &runtime->view_follow[index];
             og::runtime::detail::update_display_view_follow(
@@ -1697,7 +1707,7 @@ bool display_follow_cycle_target(SessionState& session, int view_index,
         return false;
     GameSession& game_session = static_cast<GameSession&>(session);
     const auto runtime = game_session.local_transport_runtime_;
-    if (runtime == nullptr || !runtime->networked || view_index < 0 ||
+    if (runtime == nullptr || view_index < 0 ||
         static_cast<std::size_t>(view_index) >= runtime->view_follow.size())
     {
         return false;
@@ -2321,6 +2331,13 @@ void reset_local_transport_shadow(GameSession& session,
     runtime->networked = session.networked_session_;
     runtime->isolated_company = session.isolated_company_session_;
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
+    // A local spectator/autoplay session (save_data.numplayers == 0:
+    // openglad_demo, and the lobby's 0-player start) is a true zero-seat
+    // display, the same shape as a networked spectator peer (see
+    // register_lobby_peer below): no bind, so no claim, so every hero keeps
+    // its AI, and the view engages the §4.5 follow camera.
+    const bool spectator_autoplay =
+        og::ui::is_spectator_mode(gameplay_screen.save_data);
     std::array<std::uint32_t, MAX_PLAYERS> control_entity_ids = {};
     std::array<short, MAX_PLAYERS> player_teams = {};
     for (std::size_t index = 0; index < player_count; ++index)
@@ -2473,7 +2490,11 @@ void reset_local_transport_shadow(GameSession& session,
             // Display-entity ids exist only in a display-seeded world; a
             // stage-built world claims controls through the null bind below,
             // like the dedicated server.
-            server_screen->viewob[index]->control = adopt_stage
+            // A spectator display owns no seat, so the authoritative view
+            // gets no pre-seeded control either: nothing on the server may
+            // point at a walker as though a player were driving it.
+            server_screen->viewob[index]->control =
+                (adopt_stage || spectator_autoplay)
                 ? nullptr
                 : resolve_control_from_entity_id(
                       server_screen->world(), control_entity_ids[index]);
@@ -2563,20 +2584,33 @@ void reset_local_transport_shadow(GameSession& session,
         client.drives_display = (index == 0);
 
         const og::sim::PeerId peer_id = client.server_peer_id;
-        runtime->server->connect_client(peer_id);
-        // Staged adoption binds null (the dedicated-server shape): the
-        // display's provisional entity ids do not exist in a stage-built
-        // world, so bind_player's own claim scan resolves each seat.
-        walker* const initial_control = adopt_stage
-            ? nullptr
-            : resolve_control_from_entity_id(
-                  server_screen->world(), control_entity_ids[index]);
-        runtime->server->bind_player(
-            peer_id,
-            index,
-            player_teams[index],
-            initial_control,
-            static_cast<std::uint8_t>(index));
+        if (spectator_autoplay)
+        {
+            // Zero-seat: admitted as a spectator (connect_client alone would
+            // never receive an InitialSetup or a snapshot -- game_server.cpp
+            // gates both on has_player_binding() || spectator_admitted) and
+            // bound to nothing. The input slot and drives_display stay as
+            // they are; local_transport_shadow_send_input already blanks a
+            // spectator's player slots.
+            runtime->server->connect_spectator(peer_id);
+        }
+        else
+        {
+            runtime->server->connect_client(peer_id);
+            // Staged adoption binds null (the dedicated-server shape): the
+            // display's provisional entity ids do not exist in a stage-built
+            // world, so bind_player's own claim scan resolves each seat.
+            walker* const initial_control = adopt_stage
+                ? nullptr
+                : resolve_control_from_entity_id(
+                      server_screen->world(), control_entity_ids[index]);
+            runtime->server->bind_player(
+                peer_id,
+                index,
+                player_teams[index],
+                initial_control,
+                static_cast<std::uint8_t>(index));
+        }
         client.input_slots = {index};
         client.game_client = std::make_unique<og::sim::GameClient>(
             *client.transport,

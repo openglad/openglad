@@ -131,78 +131,6 @@ TEST(ViewInputPaths, view_input_switch_control_forward_and_reverse)
 }
 
 
-// A1 regression (spectator variant): the spectator camera cycle must skip
-// dormant (delayed-spawn) walkers — they are invisible and absent from
-// snapshots, so a camera pinned to one shows nothing.
-TEST(ViewInputPaths, view_input_spectator_switch_skips_dormant)
-{
-    TeamListSwap swap;
-    disablePlayerJoystick(0);
-
-    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
-    KeyStateGuard ks;
-
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(v != nullptr) << "view should exist";
-    v->mynum = 0;
-    v->my_team = 0;
-
-    // Spectator mode = numplayers == 0 (og::ui::is_spectator_mode).
-    // RAII restore so an ASSERT failure cannot leak spectator mode into
-    // later tests in this binary.
-    struct SpectatorModeGuard
-    {
-        SaveData& save;
-        unsigned char saved;
-        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
-        {
-            save.numplayers = 0;
-        }
-        ~SpectatorModeGuard() { save.numplayers = saved; }
-    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
-
-    auto w1 = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    auto w2 = make_living(FAMILY_ELF, 0, 40, 20);
-    auto w3 = make_living(FAMILY_ARCHER, 0, 60, 20);
-    ASSERT_TRUE(w1 && w2 && w3) << "walkers should be created";
-
-    walker* w1p = w1.get();
-    walker* w2p = w2.get();
-    walker* w3p = w3.get();
-
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w1));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w2));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w3));
-    v->control = w1p;
-    w2p->set_dormant(true);
-
-    // Clear any SwitchChar debounce left behind by an earlier test in this
-    // binary (a frame with no press resets it).
-    InputState empty = {};
-    v->process_input(empty);
-    v->control = w1p;
-
-    InputState input = {};
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
-    v->process_input(input);
-    ASSERT_TRUE(v->control == w3p)
-        << "spectator camera cycle must skip the dormant walker";
-
-    // Cycle again over the wrap: dormant walker stays excluded.
-    v->process_input(empty);
-    v->process_input(input);
-    ASSERT_TRUE(v->control == w1p)
-        << "spectator camera wrap must land on the awake walker, not the dormant one";
-
-    // Release the SwitchChar debounce (the last frame above was a press):
-    // otherwise the next test's first switch press is silently swallowed
-    // under --gtest_shuffle.
-    v->process_input(empty);
-    w2p->set_dormant(false);
-}
-
-
 TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
 {
     TeamListSwap swap;
@@ -255,6 +183,84 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
 }
 
 
+// viewscreen::process_input routes SwitchSpecial to the sim handler, which
+// steps current_special by one on the press edge, holds it for as long as the
+// key stays down (the changedspec debounce), and wraps back to 1 when the next
+// slot is not a real special for this family/level. Folded in from the retired
+// ViewInputMorePaths file, which pressed the raw TAB keycode through input()
+// where nothing dispatches it.
+TEST(ViewInputPaths, view_input_special_switch_cycles_the_current_special)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+    KeyStateGuard ks;
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v) << "view should exist";
+    v->mynum = 0;
+    v->my_team = 0;
+
+    auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    ASSERT_TRUE(control != nullptr) << "walker should be created";
+    walker* const controlp = control.get();
+    controlp->set_act_type(ACT_CONTROL);
+    controlp->set_user(0);
+    controlp->stats()->set_level(30); // every slot unlocked by level
+    controlp->set_current_special(1);
+    s->world().oblist.push_back(std::move(control));
+    v->control = controlp;
+
+    // Slot 2 is a real special, slot 3 is not: the wrap is then observable.
+    struct SpecialNameGuard
+    {
+        screen& s;
+        std::string saved2, saved3;
+        explicit SpecialNameGuard(screen& scr)
+            : s(scr), saved2(scr.special_name[FAMILY_SOLDIER][2]),
+              saved3(scr.special_name[FAMILY_SOLDIER][3])
+        {
+            s.special_name[FAMILY_SOLDIER][2] = "TEST SPECIAL";
+            s.special_name[FAMILY_SOLDIER][3] = "NONE";
+        }
+        ~SpecialNameGuard()
+        {
+            s.special_name[FAMILY_SOLDIER][2] = saved2;
+            s.special_name[FAMILY_SOLDIER][3] = saved3;
+        }
+    } special_guard(*s);
+
+    InputState released = {};
+    InputState pressed = {};
+    pressed.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
+    pressed.players[0].held[static_cast<int>(InputAction::SwitchSpecial)] = true;
+
+    // Release first: an earlier test in this binary may have left the
+    // changedspec latch set.
+    v->process_input(released);
+    ASSERT_EQ(1, (int)controlp->current_special()) << "starting slot";
+
+    v->process_input(pressed);
+    EXPECT_EQ(2, (int)controlp->current_special())
+        << "the press edge steps to the next special";
+
+    // Held, not re-pressed: the debounce holds the choice.
+    v->process_input(pressed);
+    EXPECT_EQ(2, (int)controlp->current_special())
+        << "a held SwitchSpecial must not keep cycling";
+
+    // Release, press again: slot 3 is "NONE", so it wraps to 1.
+    v->process_input(released);
+    v->process_input(pressed);
+    EXPECT_EQ(1, (int)controlp->current_special())
+        << "a slot with no special behind it wraps back to 1";
+
+    // Leave the latch released for the next test in this binary.
+    v->process_input(released);
+    v->control = nullptr;
+}
+
+
 TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
 {
     TeamListSwap swap;
@@ -276,6 +282,7 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     ASSERT_TRUE(control && teammate && enemy) << "walkers should be created";
 
     walker* controlp = control.get();
+    walker* teammatep = teammate.get();
     walker* enemyp = enemy.get();
 
     controlp->set_user(0);
@@ -287,50 +294,115 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
     v->control = controlp;
 
+    // The cheat team-hop moves save_data AND the world; put both back however
+    // the assertions below land.
+    struct TeamStateGuard
+    {
+        screen& s;
+        short saved_save_team;
+        short saved_world_team;
+        explicit TeamStateGuard(screen& scr)
+            : s(scr), saved_save_team(scr.save_data.my_team),
+              saved_world_team(scr.world().my_team)
+        {
+        }
+        ~TeamStateGuard()
+        {
+            s.save_data.my_team = saved_save_team;
+            s.world().my_team = saved_world_team;
+        }
+    } team_guard(*og::runtime::current_session->myscreen_);
+
     // Hold cheat key so cheat branch executes.
     // input() now reads from ctx().input, so populate it.
     ks.set(SDLK_C, true);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
-    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
     e.key.repeat = false;
 
-    // Cheat+switch: rotate to next team that has a living unit.
+    // Clear any Cheat+Switch debounce an earlier test in this binary left
+    // latched (a frame with SwitchChar released is what releases it).
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
+    e.key.key = SDLK_UNKNOWN;
+    v->input(e);
+
+    // Cheat+switch: rotate to the next team that has a living unit. The only
+    // other team here is the ORC's team 1, and the hop must commit BOTH the
+    // save slot and the world (a half-committed hop used to park the seat on
+    // a team it never reached).
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     e.key.key = SDLK_TAB;
     v->input(e);
-    ASSERT_TRUE(v->control != nullptr) << "control should remain valid after cheat-switch";
+    EXPECT_EQ(1, (int)og::runtime::current_session->myscreen_->save_data.my_team)
+        << "cheat+switch must hop the seat to the only other living team";
+    EXPECT_EQ(1, (int)og::runtime::current_session->myscreen_->world().my_team)
+        << "the world's team must move with the save slot";
+    EXPECT_EQ(ACT_CONTROL, (int)enemyp->act_type())
+        << "the landed-on walker becomes the seat's controlled fighter";
+    EXPECT_EQ(0, (int)enemyp->user())
+        << "the landed-on walker is claimed by this player";
 
     // Reset switch press for subsequent calls
     ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
 
-    // Cheat+F12: eliminate enemy living units.
+    // Cheat+F12: eliminate every living unit the control is not friendly to.
     enemyp->stats()->set_hitpoints(25);
     e.key.key = SDLK_F12;
     v->input(e);
-    ASSERT_TRUE(v->control != nullptr) << "cheat F12 path should keep control valid";
+    EXPECT_NE(0, (int)enemyp->death_called())
+        << "cheat+F12 must kill the enemy living unit";
+    EXPECT_LE(enemyp->stats()->hitpoints(), 0.0f)
+        << "the killed unit's hitpoints are driven to zero or below";
+    EXPECT_EQ(0, (int)teammatep->death_called())
+        << "cheat+F12 must spare friendly living units";
 
-    // Cheat level tuning keys.
+    // Cheat level tuning keys: ']' raises the level by exactly one, '[' lowers
+    // it by exactly one.
     const int level_before = v->control->stats()->level();
     e.key.key = SDLK_RIGHTBRACKET;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->level() >= level_before) << "right bracket should not lower level";
+    EXPECT_EQ(level_before + 1, v->control->stats()->level())
+        << "']' must raise the control's level by one";
 
     e.key.key = SDLK_LEFTBRACKET;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->level() >= 1) << "left bracket should keep level >= 1";
+    EXPECT_EQ(level_before, v->control->stats()->level())
+        << "'[' must lower the control's level by one";
+
+    // And the floor: '[' at level 1 leaves it at 1.
+    v->control->stats()->set_level(1);
+    e.key.key = SDLK_LEFTBRACKET;
+    v->input(e);
+    EXPECT_EQ(1, v->control->stats()->level())
+        << "'[' must never take the control below level 1";
+    v->control->stats()->set_level(static_cast<short>(level_before));
 
     // Extra cheat keys for additional input branches.
     const int freeze_before = og::runtime::current_session->myscreen_->world().enemy_freeze;
     e.key.key = SDLK_F1;
     v->input(e);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().enemy_freeze >= freeze_before + 50) << "F1 should increase enemy freeze time";
+    EXPECT_EQ(freeze_before + 50,
+              og::runtime::current_session->myscreen_->world().enemy_freeze)
+        << "cheat+F1 adds exactly 50 to the enemy freeze timer";
 
+    // F2 spawns exactly one magic-shield FX, owned by the control, on the
+    // control's team, with a 200-tick lifetime (cheat_handler.cpp).
     const size_t ob_count_before = og::runtime::current_session->myscreen_->world().oblist.size();
     e.key.key = SDLK_F2;
     v->input(e);
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().oblist.size() >= ob_count_before) << "F2 should keep oblist valid";
+    GameWorld& cheat_world = og::runtime::current_session->myscreen_->world();
+    ASSERT_EQ(ob_count_before + 1, cheat_world.oblist.size())
+        << "F2 must add exactly one object";
+    walker* const shield = cheat_world.oblist.back().get();
+    ASSERT_NE(nullptr, shield);
+    EXPECT_EQ(FAMILY_MAGIC_SHIELD, (int)shield->family())
+        << "F2 spawns the magic shield";
+    EXPECT_EQ(v->control, shield->owner()) << "the shield is owned by the control";
+    EXPECT_EQ((int)v->control->team_num(), (int)shield->team_num())
+        << "the shield joins the control's team";
+    EXPECT_EQ(200, (int)shield->lifetime()) << "the shield lives 200 ticks";
 
     const bool flying_before = v->control->stats()->query_bit_flags(BIT_FLYING) != 0;
     e.key.key = SDLK_F;
@@ -340,7 +412,8 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     const float hp_before = v->control->stats()->hitpoints();
     e.key.key = SDLK_H;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->hitpoints() >= hp_before + 100.0f) << "h key should increase hitpoints";
+    EXPECT_FLOAT_EQ(hp_before + 100.0f, v->control->stats()->hitpoints())
+        << "cheat+'h' adds exactly 100 hitpoints to the control";
 
     const bool inv_before = v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0;
     e.key.key = SDLK_I;
@@ -350,12 +423,16 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     const float mp_before = v->control->stats()->magicpoints();
     e.key.key = SDLK_M;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->magicpoints() >= mp_before + 150.0f) << "m key should increase magicpoints";
+    EXPECT_FLOAT_EQ(mp_before + 150.0f, v->control->stats()->magicpoints())
+        << "cheat+'m' adds exactly 150 magicpoints to the control";
 
     const int speed_bonus_before = v->control->speed_bonus_left();
     e.key.key = SDLK_S;
     v->input(e);
-    ASSERT_TRUE(v->control->speed_bonus_left() >= speed_bonus_before + 20) << "s key should increase speed bonus";
+    EXPECT_EQ(speed_bonus_before + 20, v->control->speed_bonus_left())
+        << "cheat+'s' adds exactly 20 to the control's speed bonus";
+    EXPECT_FLOAT_EQ(v->control->normal_stepsize(), v->control->speed_bonus())
+        << "cheat+'s' also sets the bonus step to the normal stepsize";
 
     ks.set(SDLK_C, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
@@ -446,121 +523,16 @@ TEST(ViewInputPaths, view_input_cheat_switch_with_no_other_team_says_so)
     v->clear_text();
 }
 
-// #223 path 3: a spectator camera with nobody else on the watched team used
-// to eat the key in silence. The refusal is written to THIS view, and the
-// camera stays where it was.
-TEST(ViewInputPaths, view_input_spectator_switch_with_no_target_says_so)
-{
-    TeamListSwap swap;
-    disablePlayerJoystick(0);
-
-    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
-    KeyStateGuard ks;
-
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_TRUE(v != nullptr) << "view should exist";
-    v->mynum = 0;
-    v->my_team = 0;
-
-    struct SpectatorModeGuard
-    {
-        SaveData& save;
-        unsigned char saved;
-        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
-        {
-            save.numplayers = 0;
-        }
-        ~SpectatorModeGuard() { save.numplayers = saved; }
-    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
-
-    auto only = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    ASSERT_TRUE(only != nullptr) << "walker should be created";
-    walker* onlyp = only.get();
-    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(only));
-
-    InputState empty = {};
-    v->process_input(empty);
-    v->control = onlyp;
-    v->clear_text();
-
-    InputState input = {};
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
-    v->process_input(input);
-    ASSERT_TRUE(v->control == onlyp) << "the camera must stay on its target";
-    bool said = false;
-    for (const std::string& line : v->textlist)
-        said = said || (line == "NO ONE TO WATCH");
-    ASSERT_TRUE(said) << "a refused spectator cycle must say so";
-
-    // Release the debounce for the next test in this binary.
-    v->process_input(empty);
-    v->clear_text();
-}
-
-// A spectator who has no camera target yet (the previous target died and the
-// view was cleared) must ACQUIRE one on the next SwitchChar rather than being
-// stuck on a black pane forever. That first press only acquires — it must not
-// also cycle past the walker it just picked up.
-TEST(ViewInputPaths, view_input_spectator_switch_acquires_a_target_from_none)
-{
-    TeamListSwap swap;
-    disablePlayerJoystick(0);
-
-    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
-    KeyStateGuard ks;
-
-    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    ASSERT_NE(nullptr, v);
-    v->mynum = 0;
-    v->my_team = 0;
-
-    struct SpectatorModeGuard
-    {
-        SaveData& save;
-        unsigned char saved;
-        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
-        {
-            save.numplayers = 0;
-        }
-        ~SpectatorModeGuard() { save.numplayers = saved; }
-    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
-
-    auto first = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    auto second = make_living(FAMILY_ELF, 0, 40, 20);
-    ASSERT_TRUE(first && second);
-    walker* const firstp = first.get();
-    walker* const secondp = second.get();
-    og::runtime::current_session->myscreen_->world().oblist.push_back(
-        std::move(first));
-    og::runtime::current_session->myscreen_->world().oblist.push_back(
-        std::move(second));
-
-    InputState empty = {};
-    v->process_input(empty);
-    v->control = nullptr;
-    v->clear_text();
-
-    InputState input = {};
-    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
-    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
-    v->process_input(input);
-    EXPECT_EQ(firstp, v->control)
-        << "an empty spectator camera acquires the first live target";
-    for (const std::string& line : v->textlist)
-        EXPECT_NE("NO ONE TO WATCH", line)
-            << "acquiring is not a refused cycle";
-
-    // Control: with a target already held, the same press cycles instead.
-    v->process_input(empty);
-    v->process_input(input);
-    EXPECT_EQ(secondp, v->control)
-        << "a held camera cycles to the next live target";
-
-    v->process_input(empty);
-    v->control = nullptr;
-    v->clear_text();
-}
+// The three ViewInputPaths spectator cases that used to sit here
+// (view_input_spectator_switch_skips_dormant, ..._with_no_target_says_so,
+// ..._acquires_a_target_from_none) drove viewscreen::process_input's own
+// spectator SwitchChar cycle. That cycle is gone: a spectator session binds
+// no seat now, so the §4.5 follow camera owns the key and the display-side
+// cycle it used to race was deleted (view.cpp [NET-F1]). Their three rules —
+// skip dormant walkers, voice a refused cycle, auto-advance rather than
+// blank — are pinned on the product path that replaced them, by
+// GameLoop.local_spectator_shadow_is_seatless_and_follow_survives_every_resync
+// (og_test_game_core).
 
 // F3 posts the running frame rate into the pressing seat's message line. The
 // number is total frames over elapsed seconds, so a wrong divisor (or a

@@ -1729,6 +1729,14 @@ only. Rulings I1–I5 supersede E3 there and nowhere else.
   left `Parity.save_roundtrip_scen99` green. The pin is toothless on
   master too; giving it teeth (a row that round-trips a `.gtl`, plus a
   companion capture) is parity-harness work this amendment does not do.
+  **Update (2026-09-17, PR #292):** the pin was not given teeth; it was
+  deleted. `kMut_save_corrupt` was one of three orphan pins removed on
+  2026-09-15 (tests/parity/golden/DRIFT_LEDGER.md, "Removed pins
+  (2026-09-15)"): no parity scenario reaches save serialisation at all, so
+  no row could carry the pin honestly, and `lint_scenario_facts.py`'s
+  `orphan_mutation_constant` rule now refuses the whole class.
+  `save_data.cpp` carries no canary pin; the live map is
+  `grep -n '"src/' tests/parity/scenario_table.h`.
 - `docs/mp-game-modes.md`'s "Match setup" section, which still described
   the pre-Amendment-4 auto-fill and the retired TROOPS control, is
   rewritten to the LINEUP/FILL vocabulary and this default.

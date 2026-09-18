@@ -171,14 +171,6 @@ void handle_key_event(const void* native_event)
     {
     // Key pressed or released:
     case SDL_EVENT_KEY_DOWN:
-        #ifdef USE_TOUCH_INPUT
-        // Back button faking Escape key
-        if(event.key.scancode == SDL_SCANCODE_AC_BACK)
-        {
-            sendFakeKeyDownEvent(SDLK_ESCAPE);
-            break;
-        }
-        #endif
         // Event-layer feed for the direction resolver: repeats included on
         // purpose — a repeat=true keydown is the only visible signal of a
         // physical re-press of a key whose keyup the browser swallowed (the
@@ -219,75 +211,6 @@ void handle_key_event(const void* native_event)
         }
         break;
     case SDL_EVENT_KEY_UP:
-        #ifdef USE_TOUCH_INPUT
-        // Back button faking Escape key
-        if(event.key.scancode == SDL_SCANCODE_AC_BACK)
-        {
-            sendFakeKeyUpEvent(SDLK_ESCAPE);
-            break;
-        }
-        #endif
         break;
     }
 }
-
-#ifdef USE_TOUCH_INPUT
-#include <openglad/gameplay/obmap.h>
-#include <openglad/interface/render/view.h>
-#include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/walker.h>
-
-void draw_touch_controls(screen* vob)
-{
-    walker* control = vob->viewob[0]->control;
-    if(control == nullptr || control->dead())
-        return;
-
-    const TouchControlLayout layout = touch_control_layout(
-        vob->canvas_w(), vob->canvas_h());
-    const auto draw_control = [&](const TouchControlRect& rect,
-                                  unsigned char color) {
-        vob->fastbox(rect.x, rect.y, rect.w, rect.h, color);
-    };
-
-    auto& hw = *og::runtime::current_session->input_hw_;
-    if(hw.moving)
-    {
-        // Touch movement feedback
-        vob->fastbox(hw.moving_touch_x - layout.movement_area_offset_x,
-                     hw.moving_touch_y - layout.movement_area_offset_y,
-                     layout.movement_area_w, layout.movement_area_h, 17);
-        vob->fastbox(hw.moving_touch_x - layout.movement_center_offset_x,
-                     hw.moving_touch_y - layout.movement_center_offset_y,
-                     layout.movement_center_w, layout.movement_center_h, 16);
-        vob->fastbox(hw.moving_touch_target_x - layout.movement_target_offset_x,
-                     hw.moving_touch_target_y - layout.movement_target_offset_y,
-                     layout.movement_target_w, layout.movement_target_h, 15);
-    }
-
-    // Touch buttons
-    draw_control(layout.fire, 25);
-
-    if(vob->special_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())] != "NONE")
-        draw_control(layout.special, 26);
-
-    if(control->current_special() != 1
-                || (control->current_special() + 1 <= NUM_SPECIALS && control->current_special()*3+1 <= control->stats()->level()
-                     && vob->special_name[static_cast<int>(control->family())][static_cast<int>(control->current_special()) + 1] != "NONE"))
-        draw_control(layout.next_special, 27);
-
-    if(vob->alternate_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())] != "NONE")
-        draw_control(layout.alternate_special, 28);
-}
-
-bool input_touch_has_alternate()
-{
-    screen* s = active_screen();
-    if(s != nullptr
-        && s->viewob[0] != nullptr
-        && s->viewob[0]->control != nullptr
-        && s->alternate_name[static_cast<int>(s->viewob[0]->control->family())][static_cast<int>(s->viewob[0]->control->current_special())] != "NONE")
-        return true;
-    return false;
-}
-#endif

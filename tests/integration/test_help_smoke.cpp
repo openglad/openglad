@@ -441,14 +441,21 @@ TEST(HelpSmoke, help_read_scenario_scroll_view_exits_on_input)
 
 TEST(HelpSmoke, help_internal_paths_cover_loading_tabs_and_scroll)
 {
-    EXPECT_EQ(0, help_testing_exercise_internal_paths());
+    // The exerciser returns the number of checks it RAN (negated failing
+    // index on failure), so pinning the count catches a helper that bailed
+    // out early as well as one that failed a check. The literal moves only
+    // when a check is deliberately added or removed.
+    EXPECT_EQ(21, help_testing_exercise_internal_paths())
+        << "all 21 loader/tab/bounds checks must run and pass";
 }
 
 // #168: the engine-hook exerciser — the null-state (bare-sweep) shape, tab
 // dispatch, pager clamping, and wheel paging, checked step by step.
 TEST(HelpSmoke, help_menu_hooks_cover_dispatch_paging_and_null_state)
 {
-    EXPECT_EQ(0, help_testing_exercise_menu_hooks());
+    // Same contract as above: the count proves the exerciser ran to the end.
+    EXPECT_EQ(31, help_testing_exercise_menu_hooks())
+        << "all 31 null-state/dispatch/paging/wheel checks must run and pass";
 }
 
 // #168: the full-screen frame flows text to the 50-char budget

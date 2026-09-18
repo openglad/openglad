@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
+#include <list>
 #include <filesystem>
 #include <string>
 
@@ -104,8 +105,14 @@ TEST(IoCoverage, campaign_yaml_reports_output_device_write_failure)
 
 TEST(IoCoverage, io_platform_helpers_explode_and_archive_bool_wrappers)
 {
-    std::list<std::string> parts = explode("a::b::", ':');
-    ASSERT_TRUE(!parts.empty()) << "explode should return at least one token";
+    // explode() pushes one token per delimiter found plus an unconditional
+    // final substr, so consecutive and trailing delimiters each mint an
+    // EMPTY token: "a::b::" is five tokens, not two.
+    const std::list<std::string> parts = explode("a::b::", ':');
+    ASSERT_EQ(5u, parts.size())
+        << "consecutive and trailing delimiters each mint an empty token";
+    EXPECT_EQ((std::list<std::string>{"a", "", "b", "", ""}), parts)
+        << "explode must keep the empty tokens in position";
 
     const bool unzip_ok = unzip_into_with_error("temp/no_such_archive.zip", "temp/no_such_archive_out") == ArchiveIoError::None;
     ASSERT_TRUE(!unzip_ok) << "unzip should return error for missing archive";

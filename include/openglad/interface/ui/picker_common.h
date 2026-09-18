@@ -826,6 +826,26 @@ ReadyGoPresentation format_ready_go_button(bool networked,
 std::string format_go_blockers(
     const std::vector<og::sim::LobbyPlayer>& players);
 
+// The ONE reason->text mapping for a refused GO. `title`/`body` are the SDL
+// popup_dialog arguments (body lines <= 19 chars so the 46-char dialog never
+// wraps); `line` is the single-row form the curses lobby band prints. Every
+// client renders the verdict of its own start request from here, so the two
+// front ends can never drift apart or leave a reason silent.
+//
+// The switch inside is exhaustive BY DESIGN: it has no `default:` arm, so
+// -Wswitch (an error on the ci-test/ci-asan/ci-tsan lanes) is the tripwire
+// that makes a sixth StartDenialReason a build failure instead of a silent
+// swallow. MachinesNotReady consults `players` for the blocker roster; the
+// other reasons ignore it.
+struct StartDenialNotice {
+    std::string title;
+    std::string body;
+    std::string line;
+};
+StartDenialNotice describe_start_denial(
+    og::sim::StartDenialReason reason,
+    const std::vector<og::sim::LobbyPlayer>& players);
+
 // §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
 // controls its characters) / "CTRL: ALL" (players may control others'
 // characters in-level). Shared by the SDL DIFFICULTY row and the curses
@@ -958,7 +978,6 @@ inline constexpr int kSeatRailGlobalSeatCap = 16;
 // now? Kept as data so the rail's chrome and the button's row state can never
 // disagree about the answer.
 struct SeatClaimability {
-    bool multiplayer_enabled = true;  // false in a DISABLE_MULTIPLAYER build
     int local_count = 0;              // seats this machine already owns
     int local_seat_cap = MAX_PLAYERS; // og::input::local_seat_cap()
     int global_count = 0;             // seats across the whole lobby
@@ -966,14 +985,13 @@ struct SeatClaimability {
 };
 
 // Seats this machine may still claim: the smaller headroom of the two caps,
-// never negative, and zero when the build has no multiplayer at all.
+// never negative.
 int seats_still_claimable(const SeatClaimability& claim);
 
 // Slots the rail shows at all. What limits the rail is the DEVICE, never the
 // lobby: a phone with no pad shows exactly one slot (#249 — an offer the
 // hardware cannot accept is worse than no offer), a phone with two pads
-// three, a desktop four. A build with no multiplayer has one seat and no
-// door to a second.
+// three, a desktop four.
 int base_camp_seat_rail_slot_cap(const SeatClaimability& claim);
 
 // Bare slots after this machine's own seats: every remaining slot inside the
@@ -1155,6 +1173,14 @@ void set_player_count(SaveData& save, int count);
 
 // Returns true when numplayers == 0 (spectator / autoplay mode).
 bool is_spectator_mode(const SaveData& save);
+
+// How many viewscreens the battle opens for this save. Spectator mode still
+// needs ONE view for the camera to look through, so numplayers == 0 answers 1;
+// every other count answers itself. The single owner of that rule: both the
+// load path (src/platform/sdl/game.cpp) and Base Camp's ready_for_battle
+// (src/interface/ui/picker_team_build.cpp) call this instead of repeating the
+// conditional.
+short spectator_view_count(const SaveData& save);
 
 // --- Label formatting ---
 

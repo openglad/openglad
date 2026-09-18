@@ -227,6 +227,13 @@ files, in the existing bounds style.
   either way. The two GTL layout comment blocks gain the v15 description
   in lockstep. The seven version-literal pins and the raw-offset pins in
   `test_save_data_versions.cpp` are updated/re-asserted.
+  **Update (2026-09-17, PR #292):** the anchor is gone — `kMut_save_corrupt`
+  was deleted as an orphan pin (tests/parity/golden/DRIFT_LEDGER.md,
+  "Removed pins (2026-09-15)") and `save_data.cpp` carries no canary pin at
+  all, so the "below line 124" constraint no longer binds. The pre-commit
+  check for the files that DO carry pins is unchanged: the live map is
+  `grep -n '"src/' tests/parity/scenario_table.h`, then
+  `scripts/parity/check_mutation_pins.py`.
 - **Networked semantics (documented)**: campaign state is per-machine,
   like the campaign cursor. The host's picker drives the shared session
   (its choices reach peers as `scenario_id`); each company file keeps its

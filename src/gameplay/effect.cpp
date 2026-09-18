@@ -51,19 +51,6 @@ effect::~effect()
 	// Zardus: PORT: that parent object problem again:  walker::~walker();
 }
 
-void orbit_offset(int drawcycle, float &xd, float &yd)
-{
-    static constexpr float orbit_table[16][2] = {
-        {  0, -24}, { -9, -22}, {-17, -17}, {-22,  -9},
-        {-24,   0}, {-22,   9}, {-17,  17}, { -9,  22},
-        {  0,  24}, {  9,  22}, { 17,  17}, { 22,   9},
-        { 24,   0}, { 22,  -9}, { 17, -17}, {  9, -22},
-    };
-    int idx = drawcycle % 16;
-    xd = orbit_table[idx][0];
-    yd = orbit_table[idx][1];
-}
-
 bool effect::act()
 {
 	// Make sure everyone we're pointing to is valid
@@ -156,18 +143,6 @@ bool effect::animate()
 	}
 
 	return 1;
-}
-
-std::int32_t compute_explosion_range(std::int32_t level, short skip_exit)
-{
-    std::int32_t range = level * 4;
-    if (skip_exit > 0)
-        range = 0;
-    if (range > 96)
-        range = 96;
-    if (range < 16)
-        range = 16;
-    return range;
 }
 
 // death is called when an object dies (or weapon destructed, etc.)

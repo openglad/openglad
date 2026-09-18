@@ -1,0 +1,42 @@
+# Phrases PR #292 (and its successors) made FALSE, and may not reappear in
+# prose as a current statement.
+#
+# A row is `regex<TAB>sample<TAB>reason`:
+#   regex   an ERE, case-sensitive, matched by scripts/check_retired_phrases.sh
+#           against every prose line AND against every line joined with the
+#           next one (a phrase re-wrapped at column 74 is still a phrase).
+#   sample  one line of text the regex must flag.  The self-test plants it in
+#           a temp tree and fails if the gate does not report it, so a regex
+#           that rots -- or that this repo's awk cannot compile -- reds
+#           scripts/test_check_retired_phrases.sh instead of going quietly
+#           toothless on the real tree.
+#   reason  printed beside every hit.  Say what is TRUE now and where the
+#           record is, not just that the old text is wrong.
+#
+# Adding a row is the job of the PR that retires the phrase; a row is never
+# removed while the phrase is still wrong, only when the fact it names comes
+# back (then the statements were right all along).
+#
+# Two constraints on the regex column:
+#   - No interval expressions ({2}, {1,3}).  CI's awk is mawk.
+#   - No `\`` escape.  GNU grep reads it as the start-of-buffer anchor, so an
+#     escaped backtick can never match; write the backtick plainly.
+#
+# The retired wave-row LABEL is deliberately not a row here (and is not spelled
+# in this file, which the label gate also reads): scripts/check_retired_hud_labels.sh
+# is its one implementation -- it scans src/, tests/ and cmake/ too, and carries
+# the count allowlist those historical mentions need.  Two gates for one rule
+# would be a rule twin.
+#
+# The rule these rows enforce -- rewrite a living doc, annotate a dated design
+# snapshot -- lives in .claude/skills/openglad-pr-workflow/SKILL.md, "Pre-merge
+# sweep", item 5.
+exits 1 by design	run_mutation_canary.sh --all still exits 1 by design	the canary --all exits 0 on a healthy tree since ed0076cb (PR #292); 1 is a real teeth failure
+manual, not CI	Mutation canary (manual, not CI): clean worktree	the canary runs in CI: .github/workflows/parity-canary.yml (PR #292)
+manual canary run	full ctest; manual canary run; fall-depth audit	the canary runs in CI: .github/workflows/parity-canary.yml (PR #292)
+exempt Invariant rows	mutation-less exempt Invariant rows go 4 -> 5	branch-internal rows are excluded from every canary mode, so no run tallies them; the tallies that must stay 0 are zero_flips and predicate_toothless (PR #292)
+kMut_save_corrupt	the kMut_save_corrupt canary anchor	kMut_save_corrupt was deleted as an orphan pin on 2026-09-15 (tests/parity/golden/DRIFT_LEDGER.md, "Removed pins"); save_data.cpp carries no canary pin at all (PR #292)
+save_data\.cpp` canary pin	`save_data.cpp` canary pin is line **118**	kMut_save_corrupt was deleted as an orphan pin on 2026-09-15 (tests/parity/golden/DRIFT_LEDGER.md, "Removed pins"); save_data.cpp carries no canary pin at all (PR #292)
+save_data\.cpp[ :]118	all edits below the save_data.cpp:118 pin	kMut_save_corrupt was deleted as an orphan pin on 2026-09-15 (tests/parity/golden/DRIFT_LEDGER.md, "Removed pins"); save_data.cpp carries no canary pin at all (PR #292)
+OptionsMenu\.zz_capture	OptionsMenu.zz_capture_menu_tour is env-gated	the capture scenes are MenuCapture.zz_capture_* and run their oracles on every lane; OG_FX_CAPTURE_DIR gates only the film (PR #292)
+max\(lm, ?rm ?- ?2 ?- ?6 ?\* ?len\)	right-aligned with max(lm, rm - 2 - 6*len)	the per-row right-align idiom was replaced by one fit rule in include/openglad/interface/hud_counter_box.h (PR #292)

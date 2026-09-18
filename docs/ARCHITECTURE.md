@@ -301,19 +301,17 @@ GameSession
 
 The `og::sim` module defines typed events for decoupling game logic from rendering/audio. Entity code emits events during simulation ticks via `SimEventLog`; the runtime layer drains and dispatches them after each tick.
 
-```cpp
-enum class EventKind : uint32_t {
-    None = 0,
-    PlaySound = 4,     // Request sound: a=sound_id, b=0
-    Notification = 8,  // Text notification: message in text field
-    SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
-    RequestRedraw = 12 // Force full screen redraw
-};
+The enumerators live in `include/openglad/gameplay/event.h` — that enum is the
+only list; a copy here rots. `DamageNumber` is the one kind the sim never
+emits: `GameServer` lifts it from the authoritative walkers.
 
+```cpp
 struct Event {
     uint32_t tick;
     EventKind kind;
     uint32_t a, b;       // event-specific payload
+    uint32_t c;          // third scalar; only DamageNumber uses it today
+    int32_t target_player; // -1 broadcasts; 0..15 is a GLOBAL player index
     std::string text;    // optional text payload for Notification events
 };
 ```
@@ -422,17 +420,27 @@ Every knob is opt-in: unset, the demo takes its production path.
 | `OPENGLAD_DEMO_COMPOSITE_DUMP` | BMP path for the final presented composite, written when the run ends via `OPENGLAD_DEMO_MAX_FRAMES` |
 | `OPENGLAD_DEMO_CAPTURE_DIR` | Enables showcase frame capture into this directory (indexed BMPs) |
 | `OPENGLAD_DEMO_CAPTURE_SESSION` | Cell index to capture, or `-1` for the whole grid at native cell resolution |
-| `OPENGLAD_DEMO_CAPTURE_FOCUS` | Capture camera: `player`, `boss` or `center`. `boss` follows the named hostile living (strongest first), falling back to the strongest unnamed hostile when the level names nobody |
+| `OPENGLAD_DEMO_CAPTURE_FOCUS` | Capture camera: `player`, `boss`, `center` or `cell:<x>,<y>`. `boss` follows the named hostile living (strongest first), falling back to the strongest unnamed hostile when the level names nobody. `cell:<x>,<y>` is the free camera aimed at a map cell (the cell lands at the viewport's top-left, clamped to the level), which is how a media recipe frames a named terrain artefact |
 | `OPENGLAD_DEMO_CAPTURE_EVERY` / `_START` / `_LIMIT` | Capture frame stride, first frame, and frame count cap |
 
 ### Spectator Mode (0-Player)
 
 Setting `save_data.numplayers = 0` enables spectator mode:
 
-- Uses 1 viewscreen (camera only, no player control)
-- Skips all player input processing (movement, fire, special, yell)
-- Only `InputAction::SwitchChar` works (cycles camera target)
-- All characters remain AI-controlled
+- Uses 1 viewscreen with no seat bound at all — a true spectator peer, the
+  same shape as a networked spectator (the local transport shadow admits its
+  display client with `connect_spectator` and calls no `bind_player`)
+- The §4.5 follow camera engages on the first preferred walker; the view
+  renders the `FOLLOWING <name>` caption and no classic HUD/radar
+- `InputAction::SwitchChar` (Shift+ = backwards) cycles the watched target
+  through the runtime's `DisplayFollowState`, so the choice survives every
+  snapshot re-sync and auto-advances when the target dies; a cycle with
+  nowhere to go refuses and says `NO ONE TO FOLLOW`
+- Skips all other player input processing (movement, fire, special, yell)
+- All characters remain AI-controlled: no seat is bound, so no hero is
+  claimed (`user() == -1`, never `ACT_CONTROL`)
+- A spectator level ends on a win, the 36000-tick safety timeout, or QUIT
+  from the pause menu — never by its own team being wiped out
 
 In a network lobby, removing the machine's final owned seat through Base
 Camp's **SPECTATE** action leaves that client connected without a gameplay
@@ -753,8 +761,10 @@ modes schedule through `og.respawn_schedule` (eligibility is Lua's) and repositi
 `on_respawn`; corpses persist in `oblist` so control bindings and per-player save merging
 survive, and team wipes never end an undecided scripted match.
 
-`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (snapshot v11,
-protocol v15, replay v17), so mirrors, late joiners, replays, and the curses/text HUDs need no
+`RespawnState` and `ModeState` replicate as their own `WorldSnapshot` blocks (introduced at
+snapshot v11 / protocol v15 / replay v17; the live triple is `kSnapshotFormatVersion`,
+`kNetworkProtocolVersion` and `kReplayFormatVersion` in include/openglad/gameplay/), so
+mirrors, late joiners, replays, and the curses/text HUDs need no
 extra wire messages — a mid-join keyframe restore carries a running match. Match settings
 (`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops`, and the
 match clock `time_limit` in sim ticks — the storage names keep their historical prefix; Lua
@@ -1016,10 +1026,18 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 1. **test** — Build all test binaries and run `ctest --parallel`
 2. **build** — Native release build (`openglad`, `openscen`)
 3. **headless-server** — SDL-free `openglad_text` / `openglad_server` build and test
-4. **asan** — ASan + UBSan build and test
-5. **tsan** — ThreadSanitizer build and test
+4. **campaign-drift** — Reruns every `tools/<x>_mapgen` generator against the
+   checkout and fails when a committed campaign tree drifts from its generator
+   (generated content under `campaigns/<id>/` is committed like a lockfile)
+5. **asan** — ASan + UBSan build and test
+6. **tsan** — ThreadSanitizer build and test
 
 Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
+`parity-canary.yml` (the parity mutation canary — the teeth oracle for
+`tests/parity`: on a pull request it mutates every pin whose file the PR
+touched plus the whole free Lua arm, nightly and on `workflow_dispatch` it
+mutates all of them, and it is red when a scenario's own predicates fail to
+notice their pin's mutation; see `.claude/skills/openglad-parity/SKILL.md`),
 `release.yml` (one versioned GitHub release per master commit, triggered by
 `workflow_run` when that commit's `wasm-e2e.yml` finishes successfully; on pull
 requests it only validates the three-platform build matrix), and `wasm-e2e.yml`

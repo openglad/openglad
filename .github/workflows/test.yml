@@ -67,9 +67,17 @@ jobs:
         # this checkout, so a checkout that ever loses its full history (a
         # shallow clone stamps the "unknown history" version 2.0) fails here
         # instead of shipping a build whose menu lies about which commit it is.
+        # OG_EXPECT_GIT_HASH arms Version.git_hash_matches_checkout: the stamp
+        # must equal this checkout's short hash exactly, so a broken hash probe
+        # (nogit) or a stale build tree fails here instead of shipping a menu
+        # stamp that names the wrong commit. Both variables are computed with
+        # the same git commands cmake/OpenGladVersion.cmake runs, on the same
+        # checkout, so the refs/pull/N/merge commit is what both sides see.
         run: |
           OG_EXPECT_VERSION_MINOR="$(git rev-list --count HEAD)"
           export OG_EXPECT_VERSION_MINOR
+          OG_EXPECT_GIT_HASH="$(git rev-parse --short=8 HEAD)"
+          export OG_EXPECT_GIT_HASH
           ctest --test-dir build/ci-test --parallel "$(nproc)" --output-on-failure --timeout 420 --repeat until-pass:3
 
       - name: Verify ncurses client built and its tests ran
@@ -244,7 +252,19 @@ jobs:
       - name: Run tests
         # Sanitizer failures must stay visible. In particular, do not retry a
         # relay-shutdown regression after its test-local watchdog fails fast.
-        run: ctest --test-dir build/ci-asan --parallel "$(nproc)" --output-on-failure --timeout 420 --no-tests=error
+        #
+        # og_unit_core's version teeth were dormant here (unarmed = skipped):
+        # this lane builds and runs the group but exported neither variable, so
+        # Version.minor_matches_history, git_hash_is_a_real_sha_when_the_tree_has_history
+        # and git_hash_matches_checkout all skipped. Both are computed with the
+        # same git commands cmake/OpenGladVersion.cmake runs, on the same
+        # checkout.
+        run: |
+          OG_EXPECT_VERSION_MINOR="$(git rev-list --count HEAD)"
+          export OG_EXPECT_VERSION_MINOR
+          OG_EXPECT_GIT_HASH="$(git rev-parse --short=8 HEAD)"
+          export OG_EXPECT_GIT_HASH
+          ctest --test-dir build/ci-asan --parallel "$(nproc)" --output-on-failure --timeout 420 --no-tests=error
 
   tsan:
     name: TSan

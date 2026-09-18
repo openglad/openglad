@@ -392,12 +392,23 @@ add_custom_target(check_vendor_leaks
     VERBATIM
 )
 
-# Injector settles must be conditions, not clocks: no flat SDL_Delay(750)
-# "fade settle" in a converted menu-injector test. See the script header.
+# Injector settles must be conditions, not clocks: no flat "fade settle" in a
+# converted menu-injector test (tier 1 bans a literal SDL_Delay(750); tier 2,
+# the fully converted files, allows only a poll tick). See the script header.
 add_custom_target(check_injector_settles
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_injector_settles.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Checking menu injector settles are conditions, not clocks"
+    VERBATIM
+)
+
+# <regex> is banned: libstdc++'s under GCC 15 with the nix cc-wrapper's
+# injected -O2 plus the ci-asan sanitizers trips -Werror=maybe-uninitialized
+# in bits/std_function.h. See the script header.
+add_custom_target(check_no_std_regex
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_no_std_regex.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking no TU includes <regex>"
     VERBATIM
 )
 
@@ -407,6 +418,17 @@ add_custom_target(check_render_no_sim_writes
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_render_no_sim_writes.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Checking render layer does not write synced entity state"
+    VERBATIM
+)
+
+# The four Code::Blocks-era touch/multiplayer build macros stay retired: no
+# CMake build ever defined them and PR #292 deleted their arms. The script
+# names them and explains why each one is gone; naming them here too would
+# trip the check itself, which is the point.
+add_custom_target(check_retired_build_macros
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_retired_build_macros.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking retired build macros have not reappeared"
     VERBATIM
 )
 
@@ -493,6 +515,19 @@ function(og_add_python_check_target name comment)
         )
     endif()
 endfunction()
+
+# The injector escape tail has ONE implementation, tests/test_escape_tail.h
+# (escape_to_the_main_thread, its EscapeDoor table, its hold_lap predicate): a
+# re-typed copy drifts in whichever file nobody edits, and an escape tail that
+# drifts wedges a whole test binary at its CTest ceiling. This gate fails the
+# test build on a loop that spins on nothing but a completion flag and presses
+# its way out by hand. It is the Python sibling of check_injector_settles (a
+# different rule, so a different script) and lives here rather than beside it
+# because og_add_python_check_target is only defined above.
+og_add_python_check_target(check_escape_tail_twins
+    "Checking the injector escape tail has one implementation"
+    ${CMAKE_SOURCE_DIR}/scripts/check_escape_tail_twins.py
+)
 
 # Mutation-canary pins name a file, a LINE and the exact text to replace. Any
 # insertion earlier in a pinned file silently shifts them off their anchor, and
@@ -751,7 +786,8 @@ if(NOT EMSCRIPTEN)
     # on synced entity state (the drawcycle-class guard).
     # The fade call sites straddle src/interface/ui/ and src/platform/sdl/, so
     # the allowlist guard hangs off both components.
-    add_dependencies(og_interface check_render_no_sim_writes check_fadeblack_sites)
+    add_dependencies(og_interface check_render_no_sim_writes check_fadeblack_sites
+        check_retired_build_macros)
     target_link_libraries(og_interface PUBLIC
         og_core
         og_gameplay

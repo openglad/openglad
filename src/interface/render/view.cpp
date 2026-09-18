@@ -448,12 +448,6 @@ std::unique_ptr<viewscreen> viewscreen::make_camera(screen* screenp)
 // Destruct the viewscreen and its variables
 viewscreen::~viewscreen() = default;
 
-void viewscreen::clear()
-{
-	auto& vb = active_screen()->videobuffer;
-	vb.assign(vb.size(), 0);
-}
-
 // Fractional camera height at render frame i of n (i in 1..n-1; t = 1 is
 // never evaluated — the final frame takes the untouched integer path, so
 // endpoint exactness is structural, not numeric).
@@ -1437,22 +1431,25 @@ void viewscreen::process_input(const InputState& input_state)
 {
 	const PlayerInput& pi = input_state.players[mynum];
 
-	// §4.5 networked follow camera. When the networked transport shadow is
-	// installed, a follow-engaged view (0-deploy, all-dead, spectator — the
-	// shadow stamps following_ on every control re-sync) owns the SwitchChar
-	// edge and cycles its watched target through the runtime's follow state,
-	// which survives the per-snapshot control re-sync. [NET-F1]: the legacy
-	// spectator block below is gated OFF for networked sessions — it would
-	// consume the edge, claim a camera target directly on the mirror, and
-	// RETURN before the shadow guard, only for the next snapshot sync to
-	// stomp the choice within the frame. It remains for non-networked
-	// spectators (demo/local) unchanged. The same key still rides the
-	// InputMessage; the server ignores it for null seats.
-	const bool networked_shadow =
+	// §4.5 follow camera. When a transport shadow is installed — every SDL
+	// session has one — a follow-engaged view (0-deploy, all-dead, networked
+	// spectator, local spectator/autoplay; the shadow stamps following_ on
+	// every control re-sync) owns the SwitchChar edge and cycles its watched
+	// target through the runtime's follow state, which survives the
+	// per-snapshot control re-sync. [NET-F1]: this is the ONLY implementation
+	// of "cycle the watched target". The display-side spectator cycle that
+	// used to live here was deleted with the local seat that made it
+	// necessary: it wrote view->control directly on the mirror and returned,
+	// and the very next snapshot sync stomped the choice within the frame, so
+	// a local spectator could never move its camera at all. A seated view is
+	// never follow-engaged (update_display_view_follow disengages on a live
+	// mapped walker), so single player and split screen fall straight through
+	// to the paths below. The same key still rides the InputMessage; the
+	// server ignores it for null seats.
+	const bool follow_shadow =
 	    og::runtime::current_session != nullptr &&
-	    og::runtime::current_session->networked_session_ &&
 	    og::runtime::local_transport_active(*og::runtime::current_session);
-	if (networked_shadow)
+	if (follow_shadow)
 	{
 		if (!pi.was_pressed(InputAction::SwitchChar))
 			g_viewscreen_debounce[mynum].changedchar = 0;
@@ -1468,48 +1465,10 @@ void viewscreen::process_input(const InputState& input_state)
 				refresh_display_text("NO ONE TO FOLLOW", STANDARD_TEXT_TIME);
 		}
 	}
-	// --- Spectator mode: only allow switching the camera target ---
-	else if (og::ui::is_spectator_mode(active_screen()->save_data))
-	{
-		// SwitchChar cycles the camera target (no ACT_CONTROL claim)
-		if (!pi.was_pressed(InputAction::SwitchChar))
-			g_viewscreen_debounce[mynum].changedchar = 0;
-		else if (!g_viewscreen_debounce[mynum].changedchar)
-		{
-			g_viewscreen_debounce[mynum].changedchar = 1;
-			walker* oldcontrol = control;
-			if (!oldcontrol)
-			{
-				control = find_next_control();
-				return;
-			}
-
-			bool reverse = pi.is_held(InputAction::Shift);
-			short team = my_team;
-			auto filter = [team](const walker* w) {
-				// Skip dormant (delayed-spawn) walkers: they are invisible
-				// and absent from snapshots, so a camera pinned to one shows
-				// nothing (bug A1, spectator variant).
-				return !w->dead() && !w->dormant()
-				       && w->query_order() == Order::Living
-				       && w->team_num() == team;
-			};
-			walker* found = sim_cycle_next_character(
-				active_screen()->world().oblist, oldcontrol, reverse, filter);
-			if (found)
-				control = found;
-			else
-				// #223: nobody else on the watched team is alive. Keep the
-				// camera where it is and tell this view why it did not move.
-				refresh_display_text("NO ONE TO WATCH", STANDARD_TEXT_TIME);
-			if (control && control->dead())
-				control = find_next_control();
-		}
-		// If the current control died or was never set, re-acquire
-		if (!control || control->dead())
-			control = find_next_control();
-		return; // No further input processing in spectator mode
-	}
+	// A spectator watches; it never plays. The follow branch above is a
+	// spectator view's only input, so nothing below may run for one.
+	if (og::ui::is_spectator_mode(active_screen()->save_data))
+		return;
 
 	// InputAction::OpenPrefs (slot 14) dispatched the retired per-player
 	// options menu here. The slot stays reserved for the wire format

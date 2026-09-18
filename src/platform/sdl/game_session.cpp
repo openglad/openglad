@@ -173,11 +173,6 @@ GameSession::GameSession(const Config& session_cfg)
     // Set prefs before creating the screen; viewscreen construction reads it.
     theprefs_ = prefs_owner_.get();
 
-    // Legacy videoptr_ stays at its in-class nullptr default. It formerly held a
-    // fabricated DOS-era VGA linear address (0xA0000); that pointer was never
-    // written through in production (only putblack uses it, and only tests call
-    // putblack, after pointing videoptr_ at a real buffer).
-
     // Share SDL's keyboard state array. SDL_GetKeyboardState returns a pointer
     // to SDL's internal array — it's the same for all sessions.
     keystates_ = SDL_GetKeyboardState(nullptr);
@@ -235,12 +230,9 @@ GameSession::GameSession(const Config& session_cfg)
         myscreen_->set_render_interpolation_speed_factor(
             g_game_speed_factor_);
         game_.save = &myscreen_->save_data;
-        myscreen_->level_runtime_data().set_sim_context(
-            &myscreen_->save_data,
-            &myscreen_->world().enemy_freeze,
-            ctx_.sim_events.get(),
-            ctx_.rng,
-            &cfg);
+        myscreen_->level_runtime_data().set_sim_context(&myscreen_->save_data,
+                                                        ctx_.sim_events.get(),
+                                                        &cfg);
 
         // Ensure this session's curpal_ matches the screen's palette.
         // video_init_palettes() populates video::ourpalette per-instance,

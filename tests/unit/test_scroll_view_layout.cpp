@@ -83,13 +83,18 @@ TEST(ScrollViewLayout, gladiator_scen1_gets_the_gutter)
     EXPECT_EQ(320, l.blit_w) << "full-screen blit stays full-screen";
 }
 
-TEST(ScrollViewLayout, long_intro_widens_its_blit_but_stays_on_screen)
+TEST(ScrollViewLayout, long_intro_blit_widens_to_exactly_the_widened_frame)
 {
+    // The widen arm is `blit_w = frame_x2 + 1 - blit_x` and NOTHING else: the
+    // campaign intro's 244x119 rect at (36,28) becomes exactly 263 wide, not
+    // "at least wide enough" and not "out to the screen edge" (284).
     const ScrollViewLayout l = intro_layout(34);
     EXPECT_TRUE(l.scrollable);
-    EXPECT_EQ(298, l.frame_x2);
-    EXPECT_GE(l.blit_w, 298 + 1 - 36) << "blit must cover the gutter";
-    EXPECT_LE(l.blit_x + l.blit_w, 320);
+    EXPECT_EQ(298, l.frame_x2) << "240px box + the 18px gutter";
+    EXPECT_EQ(36, l.blit_x) << "the widen arm never moves the blit origin";
+    EXPECT_EQ(263, l.blit_w) << "frame_x2 + 1 - blit_x, exactly";
+    EXPECT_EQ(28, l.blit_y) << "the caller's y is untouched";
+    EXPECT_EQ(119, l.blit_h) << "the caller's height is untouched";
 }
 
 TEST(ScrollViewLayout, controls_sit_inside_the_widened_frame_and_are_disjoint)
@@ -140,11 +145,20 @@ TEST(ScrollViewLayout, thumb_never_leaves_the_track)
     }
 }
 
-TEST(ScrollViewLayout, thumb_keeps_a_grabbable_minimum_height)
+TEST(ScrollViewLayout, thumb_height_is_proportional_and_floors_at_six)
 {
+    // thumb_h = track.h * 14 / num_lines, floored at the 6px grab minimum.
+    // 200 lines computes 64*14/200 = 4 and the floor lifts it to exactly 6 --
+    // not to the track height, and not to some other minimum.
     const ScrollViewLayout l = scenario_layout(200);
     EXPECT_TRUE(l.scrollable);
-    EXPECT_GE(l.thumb.h, 6);
+    EXPECT_EQ(6, l.thumb.h) << "a 200-line briefing gets exactly the 6px floor";
+    EXPECT_EQ(64, l.track.h) << "the track the thumb is measured against";
+
+    // 28 lines sits above the floor, so the proportional rule itself is pinned
+    // on the same case: 64*14/28 = 32.
+    EXPECT_EQ(32, scenario_layout(28).thumb.h)
+        << "track.h * 14 / num_lines when it clears the 6px floor";
 }
 
 TEST(ScrollViewLayout, out_of_range_linesdown_is_clamped)
@@ -168,19 +182,39 @@ TEST(ScrollViewLayout, widened_blit_is_clamped_to_the_screen)
     EXPECT_EQ(320, l.blit_x + l.blit_w);
 }
 
-TEST(ScrollViewLayout, inconsistent_inputs_stay_inside_the_track)
+TEST(ScrollViewLayout, inconsistent_inputs_pin_the_clamped_thumb_exactly)
 {
-    // Defensive: a num_lines that disagrees with bottomrow (or is zero)
-    // must still produce a thumb inside the track.
+    // Defensive arms: a num_lines that disagrees with bottomrow, and a zero
+    // num_lines. Both land on a KNOWN geometry, so they are pinned by value —
+    // "inside the track" is equally true of a 1px thumb parked at the top.
+
+    // 5 lines against a 16px bottomrow computes 64 * 14 / 5 = 179, and the
+    // `thumb_h > track.h` cap pulls it back to exactly the 64px track.
     const ScrollViewLayout tiny =
         compute_scroll_view_layout(5, 200, 0, 16, 0, 0, 320, 200);
-    EXPECT_TRUE(tiny.scrollable);
-    EXPECT_LE(tiny.thumb.h, tiny.track.h);
+    ASSERT_TRUE(tiny.scrollable) << "bottomrow > 0 is the whole scrollable rule";
+    EXPECT_EQ(242, tiny.track.x) << "the gutter column is at 40 + 200 + 2";
+    EXPECT_EQ(56, tiny.track.y);
+    EXPECT_EQ(14, tiny.track.w);
+    EXPECT_EQ(64, tiny.track.h);
+    EXPECT_EQ(244, tiny.thumb.x) << "thumb.x = track.x + 2";
+    EXPECT_EQ(10, tiny.thumb.w) << "thumb.w = track.w - 4";
+    EXPECT_EQ(64, tiny.thumb.h)
+        << "179 is capped at the track height, not left to overflow it";
+    EXPECT_EQ(56, tiny.thumb.y) << "linesdown 0 sits the thumb on track.y";
+
+    // num_lines == 0 takes the divide-by-zero guard, whose fallback is the
+    // FULL track height (not the 6px grab floor); a full-height thumb has no
+    // travel, so even a mid-scroll linesdown maps back onto track.y exactly.
     const ScrollViewLayout zero =
         compute_scroll_view_layout(0, 200, 8, 16, 0, 0, 320, 200);
-    EXPECT_TRUE(zero.scrollable);
-    EXPECT_LE(zero.thumb.h, zero.track.h);
-    EXPECT_GE(zero.thumb.y, zero.track.y);
+    ASSERT_TRUE(zero.scrollable);
+    EXPECT_EQ(64, zero.thumb.h)
+        << "num_lines == 0 falls back to the whole track height";
+    EXPECT_EQ(244, zero.thumb.x);
+    EXPECT_EQ(10, zero.thumb.w);
+    EXPECT_EQ(56, zero.thumb.y)
+        << "(track.h - thumb.h) == 0, so linesdown 8 still lands on track.y";
 }
 
 TEST(ScrollViewLayout, contains_is_left_inclusive_right_exclusive)

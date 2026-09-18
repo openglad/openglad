@@ -83,6 +83,44 @@ constexpr std::uint8_t start_denial_reason_value(StartDenialReason reason) noexc
     return static_cast<std::uint8_t>(reason);
 }
 
+// The ONE decode of the u8 last_start_denial echo back into the enum, the
+// inverse of start_denial_reason_value above. A byte outside 0..4 (a newer
+// build's sixth reason, or a crafted peer) decodes to None -- "no reason
+// this build understands" -- so no consumer ever switches on an enumerator
+// that does not exist here. LobbyState keeps the RAW byte either way, so the
+// wire round-trip is untouched; start_denial_matches_request still drops a
+// pending request on any non-zero byte, which then renders as the generic
+// "could not start" notice.
+[[nodiscard]] StartDenialReason start_denial_reason_from_wire(
+    std::uint8_t value) noexcept;
+
+struct LobbyState;
+struct LobbyMessage;
+
+// The two correlation rules every lobby client applies to a StartGame reply,
+// in ONE implementation (SDL, curses and the in-process picker client each
+// used to carry their own encoding of them).
+//
+// start_denial_matches_request: the recipient-scoped denial echo in `state`
+// resolves the caller's pending request only when the caller HAS one
+// (pending_request_id != 0), the echoed id is exactly that request, and the
+// echoed reason is not None. A denial from an older attempt, or a state with
+// no verdict in it, leaves the pending request outstanding.
+//
+// start_confirmation_matches_request: an accepted StartGame broadcast in
+// `message` resolves the caller's pending request when the ids match — and,
+// when the caller holds NO pending request (pending_request_id == 0), it is
+// accepted unconditionally. That second half is the FOLLOWER rule: a joiner
+// that never asked to start must still enter the level the host's accepted
+// request opened. A message that is not a StartGame never matches.
+[[nodiscard]] bool start_denial_matches_request(
+    const LobbyState& state,
+    std::uint32_t pending_request_id) noexcept;
+
+[[nodiscard]] bool start_confirmation_matches_request(
+    const LobbyMessage& message,
+    std::uint32_t pending_request_id) noexcept;
+
 // The lobby wire's copy of a roster character. It is deliberately a SUBSET of
 // `guy`: fields absent here (the `deployed` flag, the GTL v16 `campaign_tag`)
 // do not travel, so every consumer that rebuilds a roster from this struct
@@ -450,13 +488,18 @@ inline std::int16_t lobby_next_selectable_team(
 struct LobbyState {
     LobbySettings settings;
     std::uint8_t host_player_id = 0xff;
-    // Echo of the most recent StartGame denial (protocol v8, [NET-R3]):
-    // 0 = none, else a StartDenialReason value. Recorded by the LobbyServer
-    // so every peer (including a remote host elected on a dedicated server)
-    // can render the precise reason instead of a poll timeout.
+    // Recipient-specific echo of the most recent StartGame verdict for the
+    // peer receiving this state (protocol v8, [NET-R3]): 0 = none, else a
+    // StartDenialReason value. Like last_join_request_id this is filled in
+    // per recipient — the LobbyServer records the verdict in the REQUESTER's
+    // peer state and echoes it to that peer alone, so another machine's
+    // denial can never appear to answer this peer's request. The canonical
+    // server state keeps this zero. A remote host elected on a dedicated
+    // server reads its own reason here instead of waiting for a poll timeout.
     std::uint8_t last_start_denial = 0;
-    // Correlates that echo with the host's latest StartGame request (protocol
-    // v9). Zero means no correlated request has been processed.
+    // Correlates that echo with the recipient's own latest StartGame request
+    // (protocol v9). Zero means no correlated request has been processed for
+    // this peer; the canonical server state keeps it zero.
     std::uint32_t last_start_request_id = 0;
     std::vector<LobbyPlayer> players;
     // Recipient-specific ownership proof (protocol v9). The server fills this

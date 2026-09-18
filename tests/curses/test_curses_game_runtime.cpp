@@ -318,7 +318,10 @@ TEST(CursesGameRuntimeLocal, advancing_progresses_the_simulation)
     EXPECT_GT(session->next_input_tick(), start_tick) << "server tick should advance";
 }
 
-TEST(CursesGameRuntimeLocal, movement_input_moves_the_avatar)
+// A held direction reaches the in-process server and moves the followed avatar
+// ALONG THAT AXIS in the mirror world -- and the avatar is still there under
+// the same entity id afterwards (a vanished avatar used to read as "moved").
+TEST(CursesGameRuntimeLocal, movement_input_moves_the_avatar_along_the_pressed_axis)
 {
     SaveData save;
     init_test_save(save);
@@ -328,31 +331,60 @@ TEST(CursesGameRuntimeLocal, movement_input_moves_the_avatar)
 
     const std::uint32_t id = session->followed_entity_id();
     ASSERT_NE(id, 0u);
-    auto pos = [&]() {
-        const walker* w = session->mirror_world().find_by_id(id);
-        return w ? std::pair<int, int>{w->xpos(), w->ypos()} : std::pair<int, int>{-1, -1};
-    };
 
     // Try each cardinal direction for a stretch of frames; the avatar should be
     // able to move somewhere (open ground exists around the spawn).
     const InputAction dirs[] = {InputAction::MoveRight, InputAction::MoveDown,
                                 InputAction::MoveLeft, InputAction::MoveUp};
     bool moved = false;
+    InputAction moved_dir = InputAction::MoveRight;
+    std::pair<int, int> dir_start{0, 0};
+    std::pair<int, int> after{0, 0};
     for (InputAction dir : dirs) {
-        const std::pair<int, int> dir_start = pos();
+        {
+            const walker* w = session->mirror_world().find_by_id(id);
+            ASSERT_NE(nullptr, w) << "the avatar left the mirror world";
+            dir_start = {w->xpos(), w->ypos()};
+        }
         for (int i = 0; i < 40 && !moved; ++i) {
             InputState st;
             st.players[0].held[held(dir)] = true;
             st.players[0].pressed[held(dir)] = (i == 0);
             session->send_input(st);
             session->advance();
-            if (pos() != dir_start)
+            const walker* w = session->mirror_world().find_by_id(id);
+            ASSERT_NE(nullptr, w)
+                << "the avatar left the mirror world at frame " << i;
+            const std::pair<int, int> now{w->xpos(), w->ypos()};
+            if (now != dir_start) {
                 moved = true;
+                moved_dir = dir;
+                after = now;
+            }
         }
         if (moved)
             break;
     }
-    EXPECT_TRUE(moved) << "movement input should change the avatar's position";
+    ASSERT_TRUE(moved) << "movement input should change the avatar's position";
+
+    // PlayerInput::move_x/move_y: Right is +x, Left is -x, Down is +y, Up is
+    // -y. The orthogonal axis stays unpinned (terrain may slide the avatar).
+    switch (moved_dir) {
+    case InputAction::MoveRight:
+        EXPECT_GT(after.first, dir_start.first) << "MoveRight must increase x";
+        break;
+    case InputAction::MoveLeft:
+        EXPECT_LT(after.first, dir_start.first) << "MoveLeft must decrease x";
+        break;
+    case InputAction::MoveDown:
+        EXPECT_GT(after.second, dir_start.second) << "MoveDown must increase y";
+        break;
+    case InputAction::MoveUp:
+        EXPECT_LT(after.second, dir_start.second) << "MoveUp must decrease y";
+        break;
+    default:
+        FAIL() << "unexpected direction";
+    }
 }
 
 TEST(CursesGameRuntimeLocal, run_level_loop_renders_avatar_and_respects_frame_cap)
@@ -379,7 +411,20 @@ TEST(CursesGameRuntimeLocal, run_level_loop_renders_avatar_and_respects_frame_ca
     EXPECT_FALSE(result.ended);
     // The player's avatar ('@') was drawn at least once.
     EXPECT_GT(term.count_char(U'@'), 0) << "the followed avatar should render as '@'";
-    EXPECT_GE(term.present_count(), 1);
+    // CursesRenderer::draw ends in term.present(), so a rendered loop presents
+    // exactly once per advanced frame and stops at opt.max_frames -- an
+    // off-by-one cap (>= -> >) or a loop that stops drawing is red here.
+    EXPECT_EQ(opt.max_frames, term.present_count())
+        << "one present per rendered frame, capped at max_frames";
+
+    // ...and opt.render = false draws nothing at all.
+    HeadlessTerminal quiet_term(30, 80);
+    LevelLoopOptions quiet = opt;
+    quiet.render = false;
+    run_level_loop(*session, quiet_term, clock, input, renderer, quiet);
+    EXPECT_EQ(0, quiet_term.present_count())
+        << "an unrendered loop must never touch the terminal";
+    EXPECT_EQ(0, quiet_term.count_char(U'@'));
 }
 
 // Regression lock at the loop level: 'q' is a player key, NOT a quit/withdraw —
@@ -488,8 +533,10 @@ TEST(CursesGameRuntimeLocal, exit_prompt_renders_and_ignores_non_press_events)
     FakeClock clock;
     CursesInput input;
     CursesRenderer renderer;
-    term.push_char_release(U'y');
-    term.push_key(Key::character(U'y', KeyEvent::Repeat));
+    // The non-press events carry the OPPOSITE answer: only the genuine press
+    // may answer the prompt, so dropping the press filter flips the result.
+    term.push_char_release(U'n');
+    term.push_key(Key::character(U'n', KeyEvent::Repeat));
     term.push_char(U'y');
 
     run_level_loop(session, term, clock, input, renderer,
@@ -497,9 +544,10 @@ TEST(CursesGameRuntimeLocal, exit_prompt_renders_and_ignores_non_press_events)
                                     .no_pacing = true,
                                     .render = true});
 
-    EXPECT_TRUE(session.responded_);
-    EXPECT_TRUE(session.last_response_);
-    EXPECT_GE(term.present_count(), 3)
+    EXPECT_TRUE(session.responded_) << "the player must be asked";
+    EXPECT_TRUE(session.last_response_)
+        << "only the press answers; the release/repeat 'n' must be skipped";
+    EXPECT_EQ(3, term.present_count())
         << "the world, overlaid prompt, and resumed frame are presented";
 }
 
@@ -786,42 +834,25 @@ TEST(CursesGameRuntimeLocal, harder_difficulty_scales_enemy_hp_in_the_mirror)
 // floor resumable (infinite retries) with every fold-layer unit test green.
 TEST(CursesGameRuntimeLocal, tower_loss_resets_disk_cursor_via_run_end_hook)
 {
-    namespace fs = std::filesystem;
-    const fs::path save0 = fs::path(get_user_path()) / "save" / "save0.gtl";
-
-    // Mount/save hygiene (tower spec §1.10): preserve save0 and the mount,
-    // prune generated floors, and restore everything on every exit path.
-    std::error_code ec;
-    const bool had_save0 = fs::exists(save0, ec);
-    if (had_save0)
-        fs::copy_file(save0, save0.string() + ".towerbak",
-                      fs::copy_options::overwrite_existing, ec);
+    // Mount/floor hygiene (tower spec §1.10): prune the generated floors and
+    // put the campaign mount back on every exit path. The save0 company file
+    // this test writes is NOT this test's business: the harness reaps every
+    // company artifact between tests ([SAVE-R9],
+    // tests/curses/curses_test_main.cpp, pinned by
+    // tests/curses/test_curses_company_litter_guard.cpp).
     const std::string mounted_before = get_mounted_campaign();
     struct Restore
     {
-        fs::path save0;
-        bool had_save0;
         std::string remount;
         ~Restore()
         {
             for (int id = og::kTowerFirstFloorLevel; id <= 760; ++id)
                 (void)og::data::delete_tower_floor_files(id);
-            std::error_code ec2;
-            if (had_save0)
-            {
-                fs::copy_file(save0.string() + ".towerbak", save0,
-                              fs::copy_options::overwrite_existing, ec2);
-                fs::remove(save0.string() + ".towerbak", ec2);
-            }
-            else
-            {
-                fs::remove(save0, ec2);
-            }
             (void)unmount_campaign_package_with_error(get_mounted_campaign());
             (void)mount_campaign_package_with_error(
                 remount.empty() ? "gladiator" : remount);
         }
-    } restore{save0, had_save0, mounted_before};
+    } restore{mounted_before};
 
     (void)unmount_campaign_package_with_error(mounted_before);
     ASSERT_EQ(CampaignPackageIoError::None,

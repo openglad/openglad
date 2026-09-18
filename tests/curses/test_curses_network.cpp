@@ -41,6 +41,7 @@
 #include <openglad/resources/save_data.h>
 
 #include "curses_mount_restore.h"
+#include "transcript_capture.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -525,10 +526,20 @@ TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
     FakeClock clock;
     lobby->poll(term, clock);
 
-    // The host registered itself; status reflects at least the host player.
-    const std::vector<std::string> lines = lobby->status_lines();
-    ASSERT_FALSE(lines.empty());
-    EXPECT_GT(term.present_count(), 0) << "poll() renders the lobby";
+    // The host registered itself on its own LobbyServer: exactly one player,
+    // flagged host, and the status band carries the roster it produced.
+    ASSERT_EQ(1u, lobby->players().size())
+        << "the host must register itself on its own LobbyServer";
+    EXPECT_TRUE(lobby->players().front().is_host)
+        << "the sole registered player is the host";
+    EXPECT_TRUE(status_contains(*lobby, "Players: 1"))
+        << "the status band reports the roster census";
+    EXPECT_TRUE(status_contains(*lobby, "[host]"))
+        << "the host's own row is marked [host]";
+    EXPECT_TRUE(status_contains(*lobby, "[you]"))
+        << "the host's own row is marked [you]";
+    EXPECT_EQ(1, term.present_count())
+        << "one poll composes and presents the lobby exactly once";
 }
 
 TEST(CursesNetwork, internal_helpers_cover_message_and_session_paths)
@@ -1074,9 +1085,20 @@ TEST(CursesNetwork, cancel_tears_down_cleanly)
     HeadlessTerminal term(24, 80);
     FakeClock clock;
     lobby->poll(term, clock);
+    ASSERT_TRUE(status_contains(*lobby, "Players: 1"))
+        << "the lobby must hold a roster BEFORE the cancel, or the teardown "
+           "pins below prove nothing";
 
-    // Cancel should not crash, and a subsequent poll reports no start.
+    // cancel() sets cancelled_ AND runs teardown(): the roster is dropped and
+    // the band falls back to the pre-roster line.
     lobby->cancel();
+    EXPECT_TRUE(lobby->cancelled()) << "cancel() marks the lobby cancelled";
+    EXPECT_TRUE(lobby->players().empty())
+        << "teardown drops the lobby state";
+    EXPECT_FALSE(status_contains(*lobby, "Players:"))
+        << "the torn-down lobby no longer reports a roster";
+    EXPECT_TRUE(status_contains(*lobby, "Waiting for players..."))
+        << "a torn-down host lobby falls back to the pre-roster band";
     EXPECT_FALSE(lobby->poll(term, clock))
         << "a cancelled lobby never negotiates a start";
     // No session can be taken after cancel.
@@ -1097,8 +1119,22 @@ TEST(CursesNetwork, esc_key_cancels_lobby)
 
     HeadlessTerminal term(24, 80);
     FakeClock clock;
+    lobby->poll(term, clock);
+    ASSERT_TRUE(status_contains(*lobby, "Players: 1"))
+        << "the lobby must hold a roster before Esc, or the teardown pins "
+           "below prove nothing";
+
     term.push_special(KeyCode::Escape);
     EXPECT_FALSE(lobby->poll(term, clock)) << "Esc cancels and returns false";
+    // Escape is 'q''s twin in the key switch: cancel() -> cancelled_ + teardown().
+    EXPECT_TRUE(lobby->cancelled()) << "Esc must cancel the lobby";
+    EXPECT_EQ(lobby->take_session(), nullptr)
+        << "no session can be taken from a cancelled lobby";
+    EXPECT_TRUE(lobby->players().empty()) << "Esc tears the lobby state down";
+    EXPECT_FALSE(status_contains(*lobby, "Players:"))
+        << "the torn-down lobby no longer reports a roster";
+    EXPECT_TRUE(status_contains(*lobby, "Waiting for players..."))
+        << "a torn-down host lobby falls back to the pre-roster band";
 }
 
 TEST(CursesNetwork, run_curses_lobby_returns_default_result_when_cancelled)
@@ -1123,29 +1159,84 @@ TEST(CursesNetwork, run_curses_lobby_returns_default_result_when_cancelled)
     EXPECT_TRUE(lobby->cancelled());
 }
 
+// Key RELEASES take no part in the lobby: CursesLobbyImpl::poll skips every
+// released key before any action arm is reached (src/platform/curses/
+// curses_network.cpp, `if (key.is_release()) continue;`).
+//
+// Polling ONCE after the releases could never have proved the 's'/Enter arms
+// dead: a start needs a server round trip, so a single poll answers "no start"
+// whether or not releases are filtered. This drives the whole start machinery
+// instead — a ready joiner and the same 200-poll budget the sibling press test
+// uses — and then presses 's' on the SAME lobby as a positive control, so
+// "nothing happened" cannot be blamed on a lobby that could never have started.
 TEST(CursesNetwork, key_releases_do_not_start_or_cancel_lobby)
 {
-    SaveData save;
-    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
     auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
 
-    auto lobby = make_host_lobby_over_transport_for_testing(save, 1, server, host_client);
-    ASSERT_NE(lobby, nullptr);
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_NE(host_lobby, nullptr);
+    ASSERT_NE(join_lobby, nullptr);
 
-    HeadlessTerminal term(24, 80);
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
     FakeClock clock;
-    term.push_char_release(U's');
-    term.push_char_release(U'q');
-    term.push_special_release(KeyCode::Enter);
-    EXPECT_FALSE(lobby->poll(term, clock));
-    EXPECT_FALSE(lobby->cancelled());
-    EXPECT_EQ(lobby->take_session(), nullptr);
+
+    for (int i = 0; i < 200; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+
+    // The negative arm: every key that acts on a PRESS, delivered as a release.
+    host_term.push_char_release(U's');
+    host_term.push_char_release(U'q');
+    host_term.push_special_release(KeyCode::Enter);
+    host_term.push_char_release(U'd');
+    host_term.push_special_release(KeyCode::Escape);
+
+    bool started_on_releases = false;
+    for (int i = 0; i < 200; ++i) {
+        started_on_releases =
+            host_lobby->poll(host_term, clock) || started_on_releases;
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_FALSE(started_on_releases)
+        << "a released 's'/Enter must not negotiate a start";
+    EXPECT_FALSE(host_lobby->cancelled())
+        << "a released 'q'/Esc/'d' must not cancel the lobby";
+    EXPECT_EQ(host_lobby->take_session(), nullptr)
+        << "no session is handed out on key releases";
+    EXPECT_EQ(join_lobby->take_session(), nullptr)
+        << "the joiner sees no start either";
+
+    // The paired positive control: the identical lobby, one PRESS of 's'.
+    host_term.push_char(U's');
+    bool host_started = false;
+    bool join_started = false;
+    for (int i = 0; i < 200 && !(host_started && join_started); ++i) {
+        host_started = host_lobby->poll(host_term, clock) || host_started;
+        join_started = join_lobby->poll(join_term, clock) || join_started;
+    }
+    EXPECT_TRUE(host_started)
+        << "control: a PRESSED 's' on this very lobby does start the game, so "
+           "the release arms above were pressing a live key";
+    EXPECT_TRUE(join_started) << "control: the joiner observes the start";
+    EXPECT_NE(host_lobby->take_session(), nullptr)
+        << "control: the started host hands out its session";
 }
 
-TEST(CursesNetwork, joiner_start_request_is_noop)
+TEST(CursesNetwork, joiner_start_request_is_denied_as_not_host)
 {
     SaveData host_save;
     SaveData join_save;
@@ -1172,16 +1263,70 @@ TEST(CursesNetwork, joiner_start_request_is_noop)
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
     }
+    ASSERT_TRUE(status_contains(*host_lobby, "Players: 2"))
+        << "liveness control: both machines really shared this lobby";
 
-    join_lobby->request_start();
+    // PR #292 P8, the contract this test exists for: the host rule has ONE
+    // implementation, LobbyServer's start_allowed(). The terminal client no
+    // longer gates the key, so a joiner's 's' really goes on the wire, the
+    // server answers THAT peer with StartDenialReason::NotHost, and the band
+    // says why. The press is the whole exercise -- no direct request_start()
+    // call -- because the key gate is half of what P8 removed.
+    join_term.push_char(U's');
     bool host_started = false;
     bool join_started = false;
     for (int i = 0; i < 50; ++i) {
         host_started = host_lobby->poll(host_term, clock) || host_started;
         join_started = join_lobby->poll(join_term, clock) || join_started;
     }
-    EXPECT_FALSE(host_started);
+    EXPECT_TRUE(status_contains(*join_lobby, "Only the host can start"))
+        << "the joiner's own press must be ANSWERED on the joiner's band, "
+           "not silently dropped:\n"
+        << join_term.dump();
+    EXPECT_FALSE(status_contains(*host_lobby, "Only the host can start"))
+        << "and the verdict for the joiner's request must not land on the "
+           "host's band:\n"
+        << host_term.dump();
+    EXPECT_FALSE(host_started) << "a denied request starts nothing";
     EXPECT_FALSE(join_started);
+    EXPECT_EQ(host_lobby->take_session(), nullptr);
+    EXPECT_EQ(join_lobby->take_session(), nullptr);
+
+    // The host's OWN request now draws a different verdict (the joiner is
+    // unready), and the two bands must stay apart: the echo is scoped to its
+    // requester, so neither machine ever renders the other's reason.
+    //
+    // Honest note on the teeth: after F1 the joiner's NotHost answer arrives
+    // in the same poll that sent it, so the joiner's pending id is already
+    // released when the host's denial goes out -- the mis-correlation this
+    // test used to chase cannot be staged from here any more. The requester
+    // SCOPING itself is pinned where it is decided:
+    // LobbyServer.denial_echo_is_scoped_to_its_requester (tests/unit) on the
+    // wire, and PickerNetworkClient.dedicated_server_guest_start_is_denied_
+    // not_host_without_touching_the_hosts_echo over real sockets. What this
+    // test pins is the CURSES end: the key reaches the wire, and the band
+    // renders this machine's own verdict.
+    host_lobby->request_start();  // request id 1, denied: the joiner is unready
+    for (int i = 0; i < 100; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    // PR #292 P8 media: both bands at the moment the host's denial has
+    // settled -- the frame the before/after transcripts compare. Inert unless
+    // OG_FX_CAPTURE_DIR is set (tests/curses/transcript_capture.h), so this
+    // adds nothing to a normal run and asserts nothing here.
+    const std::string p8_phase = transcript_phase();
+    capture_transcript(host_term, "p8-curses-host-" + p8_phase);
+    capture_transcript(join_term, "p8-curses-join-" + p8_phase);
+
+    EXPECT_TRUE(status_contains(*host_lobby, "Waiting for other machines"))
+        << "control: the host's own denial is correlated to the host:\n"
+        << host_term.dump();
+    EXPECT_FALSE(status_contains(*join_lobby, "Waiting for other machines"))
+        << "the host's denial must not be mis-correlated onto the joiner";
+    EXPECT_TRUE(status_contains(*join_lobby, "Only the host can start"))
+        << "and the joiner's band still carries its OWN verdict:\n"
+        << join_term.dump();
     EXPECT_EQ(host_lobby->take_session(), nullptr);
     EXPECT_EQ(join_lobby->take_session(), nullptr);
 }
@@ -1424,36 +1569,8 @@ TEST(CursesNetwork, benched_member_never_enters_the_level)
 // exactly the whole pot on the (process-shared) save0 file.
 TEST(CursesNetwork, networked_win_persists_deploy_share_to_company_save)
 {
-    namespace fs = std::filesystem;
     ASSERT_EQ("save0", og::data::active_company_slot())
         << "the suite listener must have restored the default slot";
-
-    // save0 hygiene (the test_curses_game_runtime precedent): preserve any
-    // prior slot file and restore it on exit so this test cannot leak state
-    // into later tests under --gtest_shuffle.
-    const fs::path save0_path =
-        fs::path(get_user_path()) / "save" / "save0.gtl";
-    std::error_code ec;
-    fs::create_directories(save0_path.parent_path(), ec);
-    const bool had_save0 = fs::exists(save0_path, ec);
-    if (had_save0)
-        fs::copy_file(save0_path, save0_path.string() + ".netwinbak",
-                      fs::copy_options::overwrite_existing, ec);
-    struct RestoreGuard {
-        fs::path save0_path;
-        bool had_save0;
-        ~RestoreGuard()
-        {
-            std::error_code ec2;
-            if (had_save0) {
-                fs::copy_file(save0_path.string() + ".netwinbak", save0_path,
-                              fs::copy_options::overwrite_existing, ec2);
-                fs::remove(save0_path.string() + ".netwinbak", ec2);
-            } else {
-                fs::remove(save0_path, ec2);
-            }
-        }
-    } restore{save0_path, had_save0};
 
     SaveData host_save;
     SaveData join_save;
@@ -1678,32 +1795,7 @@ TEST(CursesNetwork, host_history_completed_unarmed_landing_purges_for_the_table)
 // mask a host that follows the walked exit).
 TEST(CursesNetwork, host_history_replay_restores_census_and_cursor_home)
 {
-    namespace fs = std::filesystem;
     ASSERT_EQ("save0", og::data::active_company_slot());
-
-    const fs::path save0_path =
-        fs::path(get_user_path()) / "save" / "save0.gtl";
-    std::error_code ec;
-    fs::create_directories(save0_path.parent_path(), ec);
-    const bool had_save0 = fs::exists(save0_path, ec);
-    if (had_save0)
-        fs::copy_file(save0_path, save0_path.string() + ".replaybak",
-                      fs::copy_options::overwrite_existing, ec);
-    struct RestoreGuard {
-        fs::path save0_path;
-        bool had_save0;
-        ~RestoreGuard()
-        {
-            std::error_code ec2;
-            if (had_save0) {
-                fs::copy_file(save0_path.string() + ".replaybak", save0_path,
-                              fs::copy_options::overwrite_existing, ec2);
-                fs::remove(save0_path.string() + ".replaybak", ec2);
-            } else {
-                fs::remove(save0_path, ec2);
-            }
-        }
-    } restore{save0_path, had_save0};
 
     // The shared on-disk company: level 1 beaten, campaign position at 3.
     // The host machine persists into it AND the joiner seeds from it.
@@ -2092,21 +2184,29 @@ TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)
     const std::uint32_t host_avatar = game.host_session->followed_entity_id();
     ASSERT_NE(host_avatar, 0u);
 
-    auto joiner_view_of_host = [&]() -> std::pair<int, int> {
-        const walker* w = game.join_session->mirror_world().find_by_id(host_avatar);
-        return w ? std::pair<int, int>{w->xpos(), w->ypos()}
-                 : std::pair<int, int>{-1, -1};
-    };
-    const std::pair<int, int> before = joiner_view_of_host();
-    ASSERT_NE(before.first, -1) << "the joiner must see the host's avatar";
+    {
+        const walker* w =
+            game.join_session->mirror_world().find_by_id(host_avatar);
+        ASSERT_NE(nullptr, w) << "the joiner must see the host's avatar";
+    }
 
     // The host drives its avatar; try several directions until the joiner's
-    // mirror reflects movement (open ground exists around the spawn).
+    // mirror reflects movement (open ground exists around the spawn). The
+    // avatar must STILL BE THERE under the same id at every sample -- a
+    // replication break that drops it used to read as "moved".
     const InputAction dirs[] = {InputAction::MoveRight, InputAction::MoveDown,
                                 InputAction::MoveLeft, InputAction::MoveUp};
     bool moved = false;
+    InputAction moved_dir = InputAction::MoveRight;
+    std::pair<int, int> dir_start{0, 0};
+    std::pair<int, int> after{0, 0};
     for (InputAction dir : dirs) {
-        const std::pair<int, int> dir_start = joiner_view_of_host();
+        {
+            const walker* w =
+                game.join_session->mirror_world().find_by_id(host_avatar);
+            ASSERT_NE(nullptr, w) << "the host avatar left the joiner's mirror";
+            dir_start = {w->xpos(), w->ypos()};
+        }
         for (int i = 0; i < 40 && !moved; ++i) {
             InputState host_in;
             host_in.players[0].held[static_cast<int>(dir)] = true;
@@ -2116,14 +2216,41 @@ TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)
             game.join_session->send_input(idle);
             game.host_session->advance();
             game.join_session->advance();
-            if (joiner_view_of_host() != dir_start)
+            const walker* w =
+                game.join_session->mirror_world().find_by_id(host_avatar);
+            ASSERT_NE(nullptr, w)
+                << "the host avatar left the joiner's mirror at frame " << i;
+            const std::pair<int, int> now{w->xpos(), w->ypos()};
+            if (now != dir_start) {
                 moved = true;
+                moved_dir = dir;
+                after = now;
+            }
         }
         if (moved)
             break;
     }
-    EXPECT_TRUE(moved)
+    ASSERT_TRUE(moved)
         << "the host's movement should propagate to the joiner's mirror world";
+
+    // ...and it propagates along the PRESSED axis (PlayerInput::move_x/move_y:
+    // Right +x, Left -x, Down +y, Up -y). The orthogonal axis stays unpinned.
+    switch (moved_dir) {
+    case InputAction::MoveRight:
+        EXPECT_GT(after.first, dir_start.first) << "MoveRight must increase x";
+        break;
+    case InputAction::MoveLeft:
+        EXPECT_LT(after.first, dir_start.first) << "MoveLeft must decrease x";
+        break;
+    case InputAction::MoveDown:
+        EXPECT_GT(after.second, dir_start.second) << "MoveDown must increase y";
+        break;
+    case InputAction::MoveUp:
+        EXPECT_LT(after.second, dir_start.second) << "MoveUp must decrease y";
+        break;
+    default:
+        FAIL() << "unexpected direction";
+    }
 }
 
 TEST(CursesNetwork, take_session_is_idempotent)
@@ -2928,10 +3055,16 @@ TEST(CursesNetwork, host_kick_key_removes_the_peer_and_tells_it_why)
     EXPECT_FALSE(status_contains(*join_lobby, "Connecting..."))
         << "a kicked client is not connecting to anything";
     // 80 columns is the floor: the hint must not lose its tail now that it
-    // carries two more keys.
-    EXPECT_LE(std::string("[s] start [</>] seat [t] team [r] ready [c] ctrl "
-                          "[k] kick [d] leave [q] quit").size(),
-              80u);
+    // carries two more keys. Read the RENDERED bottom row -- HeadlessTerminal
+    // drops out-of-bounds cells, so a hint grown past column 79 loses its tail
+    // here and nowhere else.
+    const std::string hint_row = host_term.text_row(host_term.rows() - 1);
+    EXPECT_NE(std::string::npos, hint_row.find("[s] start"))
+        << "hint row: " << hint_row;
+    EXPECT_NE(std::string::npos, hint_row.find("[k] kick"))
+        << "hint row: " << hint_row;
+    EXPECT_NE(std::string::npos, hint_row.find("[q] quit"))
+        << "the hint's tail was clipped at 80 columns; hint row: " << hint_row;
     EXPECT_TRUE(status_contains(*host_lobby, "Kicked M"))
         << "the host names the machine it removed, in the shared row label";
     EXPECT_FALSE(host_lobby->connection_alert().has_value())
@@ -3088,12 +3221,18 @@ TEST(CursesNetwork, elected_host_start_key_works_on_a_dedicated_lobby)
             break;
     }
 
-    // The guest's own 's' is not a start: the server drops a non-host
-    // request, and nothing here pretends otherwise.
+    // The guest's own 's' is not a start: the server answers that peer with
+    // NotHost (PR #292 P8 -- it used to drop the request silently), so the
+    // match stays unstarted and the guest is TOLD why on its own band.
     guest_term.push_char(U's');
     pump(30);
     EXPECT_FALSE(elected_started) << "a guest cannot start the match";
     EXPECT_FALSE(guest_started);
+    EXPECT_TRUE(status_contains(*guest_lobby, "Only the host can start"))
+        << "the dedicated lobby's guest must get the reason, not silence:\n"
+        << guest_term.dump();
+    EXPECT_FALSE(status_contains(*elected_lobby, "Only the host can start"))
+        << "and the elected host must not render the guest's verdict";
 
     elected_term.push_char(U's');
     for (int i = 0; i < 400 && !(elected_started && guest_started); ++i)
@@ -3446,4 +3585,105 @@ TEST(CursesNetwork, host_start_denial_names_an_empty_muster)
     EXPECT_FALSE(started);
     EXPECT_TRUE(status_contains(*lobby, "No one is deployed"));
     EXPECT_EQ(lobby->take_session(), nullptr);
+}
+
+// Q1 (§4.3), the curses twin of the SDL go_menu verdict: a host whose
+// MatchStage is FAILED and who presses GO is told so, on its own band, in the
+// words every client shares (og::ui::describe_start_denial). This is the arm
+// the band's old local switch swallowed through `default:` — team_status_ kept
+// whatever the PREVIOUS action had written, so a refused GO either said
+// nothing or read as the answer to an earlier press. Both halves are pinned
+// here: the stale line must be gone AND the verdict must be there. The
+// recovery arm is the control — when the stage restages clean, the very same
+// GO starts the game.
+TEST(CursesNetwork, host_start_on_a_failed_stage_names_the_stage)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+    ASSERT_NE(save.team_list[0], nullptr);
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client, kPinnedCursesMatchSeed);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 200; ++i)
+        lobby->poll(term, clock);
+    ASSERT_EQ(std::string{}, lobby->stage_failure_line())
+        << "the lobby must stage cleanly before the ledger is inflated:\n"
+        << term.dump();
+
+    // The restage debounce (og::server::kStageDebounceMs) runs off the REAL
+    // steady clock the stage owner reads, not this test's FakeClock, so
+    // "poll until the stage has settled" is a bounded WALL-CLOCK wait that
+    // returns the instant the predicate holds — never a fixed iteration
+    // count (which the debounce would outrun) and never a flat sleep.
+    const auto poll_until = [&](auto&& predicate) {
+        const auto deadline = std::chrono::steady_clock::now() + 20s;
+        while (std::chrono::steady_clock::now() < deadline) {
+            lobby->poll(term, clock);
+            if (predicate())
+                return true;
+        }
+        return false;
+    };
+
+    // Inflate the host company's completed-levels ledger: the host-save
+    // digest moves, the restaged InitialSetup overruns the wire message cap,
+    // and the stage lands Failed. Same real-path lever the SDL side pulls in
+    // PickerNetworkClient.host_stage_failure_reports_honest_preview_health —
+    // no TESTING seam, no injected failure.
+    std::set<int>& ledger = save.completed_levels[save.current_campaign];
+    for (int level = 100'000; level < 117'000; ++level)
+        ledger.insert(level);
+    ASSERT_TRUE(poll_until([&] {
+        return lobby->stage_failure_line() == "STAGING FAILED";
+    })) << "the oversize restage never landed as Failed, so the GO below "
+           "would prove nothing:\n"
+        << term.dump();
+
+    // Leave a stale message on the band: 'k' over this machine's own seat
+    // writes one and changes nothing else. The denial has to REPLACE it.
+    term.push_char(U'k');
+    ASSERT_TRUE(poll_until([&] {
+        return status_contains(*lobby, "That is your own machine");
+    })) << "the kick refusal never reached the band:\n"
+        << term.dump();
+
+    lobby->request_start();
+    bool started = false;
+    for (int i = 0; i < 100; ++i)
+        started = lobby->poll(term, clock) || started;
+    EXPECT_FALSE(started) << "a stage that cannot be built must not launch";
+    EXPECT_TRUE(status_contains(
+        *lobby, "Staging failed: change the level or roster"))
+        << "the StageFailed verdict must reach the band in the shared "
+           "words:\n"
+        << term.dump();
+    EXPECT_FALSE(status_contains(*lobby, "That is your own machine"))
+        << "and it must REPLACE the previous message — a denied GO answered "
+           "with a stale line is the defect this arm exists for:\n"
+        << term.dump();
+    EXPECT_EQ(lobby->take_session(), nullptr)
+        << "a denied start yields no session";
+
+    // Control: the ledger shrinks, the digest moves back, the stage restages
+    // clean — and the SAME GO on the SAME lobby is accepted.
+    ledger.clear();
+    ASSERT_TRUE(poll_until([&] {
+        return lobby->stage_failure_line().empty();
+    })) << "the stage never recovered after the ledger shrank:\n"
+        << term.dump();
+    lobby->request_start();
+    bool restarted = false;
+    for (int i = 0; i < 200 && !restarted; ++i)
+        restarted = lobby->poll(term, clock) || restarted;
+    EXPECT_TRUE(restarted)
+        << "a recovered stage must accept the same GO the failed one denied:\n"
+        << term.dump();
+    EXPECT_NE(nullptr, lobby->take_session())
+        << "and the accepted start must yield the session";
 }

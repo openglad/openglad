@@ -62,6 +62,7 @@
 #include <cstdlib>
 #include <format>
 #include <initializer_list>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -2455,6 +2456,31 @@ TEST_F(ClassicLineupTest, blocked_anchor_falls_back_to_the_teleport_draw)
 
     EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
         << "the teleport fallback still fields the squad";
+    // WHERE they landed is the rule: place_member discards classic_place's
+    // return value, so a dead teleport tail would leave the five stacked on
+    // the blocked anchor and the count alone would never notice. Every
+    // member must be off the blocked ball, on passable ground, and on its
+    // own tile.
+    std::set<std::pair<int, int>> cells;
+    for (const auto& entry : fx.world().oblist)
+    {
+        walker* const w = entry.get();
+        if (w == nullptr || w->dead() ||
+            w->query_order() != Order::Living || w->myguy != nullptr)
+            continue;
+        if (w->team_num() != 1)
+            continue;
+        const int tile_distance = std::abs(w->xpos() - 320) / 16 +
+                                  std::abs(w->ypos() - 480) / 16;
+        EXPECT_GT(tile_distance, 3)
+            << "a FILL member must escape the blocked ball, not stack on it "
+               "(landed at " << w->xpos() << ", " << w->ypos() << ")";
+        EXPECT_TRUE(fx.world().query_grid_passable(
+            static_cast<float>(w->xpos()), static_cast<float>(w->ypos()), w))
+            << "the teleport draw lands on legal ground";
+        cells.emplace(w->xpos() / 16, w->ypos() / 16);
+    }
+    EXPECT_EQ(5u, cells.size()) << "the squad did not stack";
     EXPECT_TRUE(fx.world().scripts().host().errors().empty());
 }
 

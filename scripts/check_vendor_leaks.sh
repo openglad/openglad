@@ -2,7 +2,22 @@
 # Verify no external dependency headers leak into public or internal headers.
 # Only resources IO implementation files and the SDL PhysFS RWops adapter may
 # include filesystem/archive dependency headers directly.
+#
+# A missing scan root exits 2; 1 is reserved for a leak actually found; an
+# optional first argument overrides the repo root (the self-test uses it).
 set -euo pipefail
+
+ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+for d in include/openglad src \
+         src/gameplay src/resources src/interface src/platform \
+         include/openglad/gameplay include/openglad/resources \
+         include/openglad/interface include/openglad/platform; do
+    if [[ ! -d "${ROOT}/${d}" ]]; then
+        echo "ERROR: cannot find ${ROOT}/${d} — refusing to pass vacuously" >&2
+        exit 2
+    fi
+done
+cd "${ROOT}"
 
 VENDOR_PATTERNS='(physfs\.h|physfsrwops\.h|physfs_internal\.h|zip\.h|zipint\.h|zipconf\.h|yaml\.h|zlib\.h|zconf\.h|lua\.h|lauxlib\.h|lualib\.h|lua\.hpp|luaconf\.h)'
 VENDOR_INCLUDE_REGEX="#include[[:space:]]*[<\"]([^\">]*/)?${VENDOR_PATTERNS}[>\"]"
@@ -10,7 +25,7 @@ VENDOR_INCLUDE_REGEX="#include[[:space:]]*[<\"]([^\">]*/)?${VENDOR_PATTERNS}[>\"
 status=0
 
 # 1. Public headers must never include external dependency headers
-if grep -rn --include='*.h' -E "${VENDOR_INCLUDE_REGEX}" include/openglad/ 2>/dev/null; then
+if grep -rn --include='*.h' -E "${VENDOR_INCLUDE_REGEX}" include/openglad/; then
     echo "ERROR: external dependency headers found in include/openglad/ (public headers)" >&2
     status=1
 fi
@@ -19,7 +34,7 @@ fi
 LUA_VENDOR='(lua\.h|lauxlib\.h|lualib\.h|lua\.hpp|luaconf\.h)'
 LUA_INCLUDE_REGEX="#include[[:space:]]*[<\"]([^\">]*/)?${LUA_VENDOR}[>\"]"
 if grep -rn --include='*.cpp' --include='*.h' -E "${LUA_INCLUDE_REGEX}" src/ \
-    | grep -v 'src/gameplay/script/' 2>/dev/null; then
+    | grep -v 'src/gameplay/script/'; then
     echo "ERROR: Lua headers found outside src/gameplay/script/" >&2
     status=1
 fi
@@ -32,7 +47,7 @@ if grep -rn --include='*.cpp' --include='*.h' -E "${FS_VENDOR_INCLUDE_REGEX}" sr
     | grep -v 'src/resources/campaign_yaml.cpp' \
     | grep -v 'src/resources/gparser.cpp' \
     | grep -v 'src/resources/platform_io.cpp' \
-    | grep -v 'src/platform/sdl/physfs_rwops_bridge.cpp' 2>/dev/null; then
+    | grep -v 'src/platform/sdl/physfs_rwops_bridge.cpp'; then
     echo "ERROR: filesystem/archive dependency headers found outside src/resources/io/" >&2
     status=1
 fi
@@ -132,7 +147,7 @@ while IFS= read -r file; do
     done < <(grep -nE '^[[:space:]]*#include[[:space:]]*<openglad/[^>]+>' "${file}" || true)
 done < <(find src/gameplay src/resources src/interface src/platform \
                include/openglad/gameplay include/openglad/resources include/openglad/interface include/openglad/platform \
-               -type f \( -name '*.cpp' -o -name '*.h' \) 2>/dev/null)
+               -type f \( -name '*.cpp' -o -name '*.h' \))
 
 if [ $status -eq 0 ]; then
     echo "External dependency header check: OK"

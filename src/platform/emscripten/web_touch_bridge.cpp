@@ -113,6 +113,7 @@ EMSCRIPTEN_KEEPALIVE int openglad_web_set_single_seat_device(int on)
     return 1;
 }
 
+// Back button faking Escape key
 // Touch BACK is two-tier like the movement seam: a pushed Backspace key pair
 // serves the edge-driven consumers (game_loop pause/abort, raw_key_,
 // text-prompt handling), while the virtual held flag serves keystate-driven

@@ -79,14 +79,9 @@ local function heal_or_mace(self)
         -- its mp argument is the C++ (int) cast of the float pool.
         local amount, cost =
           og.heal_amount(og.trunc(self.magicpoints), self.level)
-        if self.magicpoints < cost then
-          -- the C++ (int32)-casts the unchanged mp twice; one value serves
-          local mp_i = og.trunc(self.magicpoints)
-          amount = amount - mp_i
-          cost = cost - mp_i
-        end
+        -- mp_cost is a heal's floor; cost prices only the pool-scaled part, so cost 0 lands base + level*5.
         -- Didn't heal any for this guy
-        if amount <= 0 or cost <= 0 then
+        if amount <= 0 then
           break
         end
         -- hp and magicpoints are C++ floats: per-op rounding

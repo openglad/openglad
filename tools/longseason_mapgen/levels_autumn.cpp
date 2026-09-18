@@ -159,8 +159,8 @@ void build_ledger_debt(const LevelDataHooks& hooks)
                                             {36, 32}};
     for (const auto& c : loft_crew)
         place_living(w, FAMILY_THIEF, 2, 1, c[0], c[1], 1);
-    // The night shift returns at tick 500, at the yard edges — the NEXT
-    // WAVE HUD keeps a slow crew honest after the yard is clear.
+    // The night shift returns at tick 500, at the yard edges — the WAVE
+    // HUD keeps a slow crew honest after the yard is clear.
     static constexpr int night_shift[4][2] = {{2, 12}, {4, 14}, {54, 10},
                                               {56, 12}};
     for (const auto& c : night_shift)
@@ -316,7 +316,7 @@ void build_cold_seams(const LevelDataHooks& hooks)
     // Floor 0 — the deep seams.
     // (F4: the deep works in SHIFTS — half the miners, riders and nests
     // wake on delays. All-at-once roamers converged and wiped the curve
-    // crew at 900; all-guard posts parked the kill-all. The NEXT WAVE HUD
+    // crew at 900; all-guard posts parked the kill-all. The WAVE HUD
     // carries the second shift.)
     static constexpr int miners[8][2] = {{26, 20}, {34, 22}, {38, 28},
                                          {30, 14}, {44, 10}, {48, 24},
@@ -696,7 +696,7 @@ void build_smelters_road(const LevelDataHooks& hooks)
     place_living(w, FAMILY_BARBARIAN, 2, 0, 28, 54, 6, true);
     place_living(w, FAMILY_THIEF, 2, 0, 14, 48, 5); // lower prowlers
     place_living(w, FAMILY_THIEF, 2, 0, 38, 50, 5);
-    // The PURSUIT, on a visible clock behind the convoy (NEXT WAVE HUD;
+    // The PURSUIT, on a visible clock behind the convoy (WAVE HUD;
     // wave cells sit x<=20 / x>=34, clear of both cart footprints and the
     // backtrack exit).
     static constexpr int wave1[4][2] = {{14, 2}, {17, 2}, {11, 3}, {14, 4}};

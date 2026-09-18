@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 namespace {
 
@@ -82,10 +83,15 @@ TEST(Weather, residue_boundaries_map_to_kinds)
 // here) and check it lands near the designed 50/30/20 split.
 TEST(Weather, roll_distribution_over_first_thousand_seeds_is_pinned)
 {
+    WeatherNonceGuard guard;
+    std::vector<WeatherKind> first;
+    first.reserve(1000u);
     int none = 0, clouds = 0, rain = 0;
     for (std::uint32_t seed = 0; seed < 1000u; ++seed)
     {
-        switch (og::roll_weather_kind(seed))
+        const WeatherKind kind = og::roll_weather_kind(seed);
+        first.push_back(kind);
+        switch (kind)
         {
         case WeatherKind::None:
             ++none;
@@ -105,13 +111,15 @@ TEST(Weather, roll_distribution_over_first_thousand_seeds_is_pinned)
     EXPECT_EQ(308, clouds);
     EXPECT_EQ(215, rain);
     EXPECT_EQ(1000, none + clouds + rain);
-}
 
-TEST(Weather, roll_is_deterministic_per_seed)
-{
-    for (std::uint32_t seed : {0u, 1u, 2u, 7u, 500u, 0xFFFFFFFFu})
-        EXPECT_EQ(og::roll_weather_kind(seed), og::roll_weather_kind(seed))
-            << "seed " << seed;
+    // The roll is a pure function of its argument: the process-wide nonce
+    // and sequence are mixed in by GameWorld::roll_weather, never by the
+    // roll, so moving both must leave all 1000 results untouched.
+    og::set_weather_roll_sequence(17u);
+    og::set_weather_roll_nonce(0xDEADBEEFu);
+    for (std::uint32_t seed = 0; seed < 1000u; ++seed)
+        ASSERT_EQ(first[seed], og::roll_weather_kind(seed))
+            << "the roll must ignore process state (seed " << seed << ")";
 }
 
 TEST(Weather, nonce_defaults_to_zero_and_round_trips)

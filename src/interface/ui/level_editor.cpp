@@ -567,7 +567,6 @@ public:
 	std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > > current_menu;
 	// The mode-specific buttons
 	std::set<SimpleButton*> mode_buttons;
-	std::set<SimpleButton*> pan_buttons;
 	
 	// Menu buttons
 	
@@ -619,9 +618,6 @@ public:
 	SimpleButton delayButton;
 
 	SimpleButton deleteButton;
-	
-	SimpleButton panUpButton, panDownButton, panLeftButton, panRightButton;
-	SimpleButton panUpRightButton, panUpLeftButton, panDownRightButton, panDownLeftButton;
     
     
     LevelEditorData();
@@ -777,14 +773,6 @@ LevelEditorData::LevelEditorData()
     // editor interaction tests).
     , delayButton("Delay", static_cast<int>(static_cast<unsigned int>(aiButton.area.x)+aiButton.area.w), aiButton.area.y, 46, 15)
     , deleteButton("Delete", OVERSCAN_PADDING, static_cast<int>(static_cast<unsigned int>(10+facingButton.area.y)+facingButton.area.h), 40, 15)
-    , panUpButton("U", OVERSCAN_PADDING + 18, 200 - 51, 15, 15)
-    , panDownButton("D", OVERSCAN_PADDING + 18, 200 - 21, 15, 15)
-    , panLeftButton("L", OVERSCAN_PADDING + 3, 200 - 36, 15, 15)
-    , panRightButton("R", OVERSCAN_PADDING + 33, 200 - 36, 15, 15)
-    , panUpRightButton("", OVERSCAN_PADDING + 33, 200 - 51, 15, 15)
-    , panUpLeftButton("", OVERSCAN_PADDING + 3, 200 - 51, 15, 15)
-    , panDownRightButton("", OVERSCAN_PADDING + 33, 200 - 21, 15, 15)
-    , panDownLeftButton("", OVERSCAN_PADDING + 3, 200 - 21, 15, 15)
 {
 	// Top menu
 	menu_buttons.insert(&fileButton);
@@ -795,18 +783,6 @@ LevelEditorData::LevelEditorData()
     gridSnapButton.set_colors_enabled();
     terrainSmoothButton.set_colors_enabled();
     
-    #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
-    pan_buttons.insert(&panUpButton);
-    pan_buttons.insert(&panDownButton);
-    pan_buttons.insert(&panLeftButton);
-    pan_buttons.insert(&panRightButton);
-    pan_buttons.insert(&panUpRightButton);
-    pan_buttons.insert(&panUpLeftButton);
-    pan_buttons.insert(&panDownRightButton);
-    pan_buttons.insert(&panDownLeftButton);
-    #endif
-    
-    myradar.force_lower_position = true;
 }
 
 LevelEditorData::~LevelEditorData()
@@ -936,10 +912,6 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
         if(e->contains(mx, my))
             return true;
     }
-    
-    // Count anything in the area of the pan buttons
-    if(pan_buttons.size() > 0 && Rect(panLeftButton.area.x, panUpButton.area.y, static_cast<unsigned int>(panRightButton.area.x) + panRightButton.area.w - static_cast<unsigned int>(panLeftButton.area.x), static_cast<unsigned int>(panDownButton.area.y) + panDownButton.area.h - static_cast<unsigned int>(panUpButton.area.y)).contains(mx, my))
-        return true;
     
     for(const auto& e : current_menu)
     {
@@ -1280,8 +1252,8 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     else if(button == &delayButton)
     {
         // Wave authoring: how many sim ticks past level start this object
-        // stays asleep. The sim runs 12 ticks/second, matching the "NEXT
-        // WAVE: Ns" HUD countdown. Ticks (not seconds) are the unit here so a
+        // stays asleep. The sim runs 12 ticks/second, matching the "WAVE:
+        // Ns" HUD countdown. Ticks (not seconds) are the unit here so a
         // mapgen-authored value round-trips exactly through a re-save.
         //
         // In Object mode the prompt edits the brush (every object placed
@@ -1596,16 +1568,10 @@ Sint32 LevelEditorData::display_panel(screen* s)
 
     // Draw mode-specific buttons
     for(auto* btn : mode_buttons)
-        btn->draw(s);
-        
-    if(pan_buttons.size() > 0)
     {
-        Rect r(panLeftButton.area.x, panUpButton.area.y, static_cast<unsigned int>(panRightButton.area.x) + panRightButton.area.w - static_cast<unsigned int>(panLeftButton.area.x), static_cast<unsigned int>(panDownButton.area.y) + panDownButton.area.h - static_cast<unsigned int>(panUpButton.area.y));
-        s->fastbox(r.x, r.y, static_cast<Sint32>(r.w), static_cast<Sint32>(r.h), 13);
-        for(auto* btn : pan_buttons)
-            btn->draw(s);
+        btn->draw(s);
     }
-    
+
 	std::string message;
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
@@ -1845,7 +1811,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
         s->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
         
-        #ifndef USE_TOUCH_INPUT
         
         // Draw cursor
         int mx, my;
@@ -1866,7 +1831,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
             int screeny = gridy - level->level_visuals().topy;
             s->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
         }
-        #endif
     }
     else if(mode == Mode::Object)
     {
@@ -1906,7 +1870,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
             }
         }
 
-        #ifndef USE_TOUCH_INPUT
         
         // Draw cursor
         int mx, my;
@@ -1946,7 +1909,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
             // Draw current brush near cursor
             draw_walker(*newob, s->viewob[0].get());
         }
-        #endif
         
         level->remove_ob(newob);
     }
@@ -3625,11 +3587,6 @@ Sint32 level_editor()
 	
     MouseState& mymouse = query_mouse_no_poll();
     
-    #ifdef USE_CONTROLLER_INPUT
-    mymouse.x = 160;
-    mymouse.y = 100;
-    #endif
-    
     eds().mouse_last_x = static_cast<int>(mymouse.x);
     eds().mouse_last_y = static_cast<int>(mymouse.y);
     
@@ -3647,20 +3604,10 @@ Sint32 level_editor()
 	// real first frame, not a stale UI image. Later calls present plainly.
 	// `data` is function-static, so it is named directly rather than
 	// captured (a lambda cannot capture non-automatic storage).
-	const auto compose_and_present = [&mymouse, &entry_fade]() {
+	const auto compose_and_present = [&entry_fade]() {
 	    eds().redraw = 0;
 	    data.draw(og::runtime::current_session->myscreen_);
 
-	    #ifdef USE_CONTROLLER_INPUT
-	    {
-	        ScopedGameplayUiCanvas editor_ui(
-	            *og::runtime::current_session->myscreen_);
-	        og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
-	        og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
-	    }
-	    #else
-	    (void)mymouse;
-	    #endif
 	    entry_fade.present_first(*og::runtime::current_session->myscreen_);
 	};
 
@@ -3699,27 +3646,6 @@ Sint32 level_editor()
             // exercised through handle_basic_editor_event(nullptr).
             (void)og::input_native::decode_event(native_event, event_data);
 
-            #ifdef USE_CONTROLLER_INPUT
-			// Inverse of handle_mouse_event's aspect-fitted mapping.
-			if(didPlayerPressKey(0, KEY_FIRE, native_event))
-			{
-				const auto [window_x, window_y] = active_canvas_to_window(
-					static_cast<float>(mymouse.x), static_cast<float>(mymouse.y));
-				const int event_x = static_cast<int>(window_x);
-				const int event_y = static_cast<int>(window_y);
-                og::input_native::push_mouse_button_event(true, og::input_native::kMouseButtonLeft, event_x, event_y);
-                continue;
-            }
-			if(didPlayerReleaseKey(0, KEY_FIRE, native_event))
-			{
-				const auto [window_x, window_y] = active_canvas_to_window(
-					static_cast<float>(mymouse.x), static_cast<float>(mymouse.y));
-				const int event_x = static_cast<int>(window_x);
-				const int event_y = static_cast<int>(window_y);
-                og::input_native::push_mouse_button_event(false, og::input_native::kMouseButtonLeft, event_x, event_y);
-                continue;
-            }
-            #endif
             switch(handle_basic_editor_event(native_event))
             {
             case EventType::MouseMotion:
@@ -3921,11 +3847,6 @@ Sint32 level_editor()
 		acknowledge_mouse_presses();
 
 		short scroll_delta = get_and_reset_scroll_amount();
-		#if defined(USE_TOUCH_INPUT)
-		// Only scroll the tile selector when touching it and you've already moved a bit
-		if(mymouse.left && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y) && fabs(eds().mouse_last_y - mymouse.y) > 4)
-        {
-		#endif
 		// Slide tile selector down ..
 		if (og::runtime::current_session->keystates_[KEYSTATE_DOWN] || scroll_delta < 0)
 		{
@@ -3959,9 +3880,6 @@ Sint32 level_editor()
 				get_input_events(POLL);
 			}
 		}
-		#if defined(USE_TOUCH_INPUT)
-        }
-		#endif
 
 
 		// Scroll the screen (panning)
@@ -4006,67 +3924,9 @@ Sint32 level_editor()
             // Holding on menu items
             bool mouse_on_menu = data.mouse_on_menus(mx, my);
             bool old_mouse_on_menu = data.mouse_on_menus(eds().mouse_last_x, eds().mouse_last_y);
-            bool on_menu = mouse_on_menu && old_mouse_on_menu;
             bool off_menu = !mouse_on_menu && !old_mouse_on_menu;
-            
-            if(on_menu)
-            {
-                // Panning with mouse (touch)
-                if(data.panUpButton.contains(mx, my) && data.level->level_visuals().topy >= PAN_LIMIT_UP) // top of the screen
-                {
-                    eds().redraw = 1;
-                    data.level->add_draw_pos(0, -SCROLLSIZE);
-                }
-                else if(data.panUpRightButton.contains(mx, my))
-                {
-                    eds().redraw = 1;
-                    if(data.level->level_visuals().topy >= PAN_LIMIT_UP)
-                        data.level->add_draw_pos(0, -SCROLLSIZE);
-                    if(data.level->level_visuals().topx <= PAN_LIMIT_RIGHT)
-                        data.level->add_draw_pos(SCROLLSIZE, 0);
-                }
-                else if(data.panUpLeftButton.contains(mx, my))
-                {
-                    eds().redraw = 1;
-                    if(data.level->level_visuals().topy >= PAN_LIMIT_UP)
-                        data.level->add_draw_pos(0, -SCROLLSIZE);
-                    if(data.level->level_visuals().topx >= PAN_LIMIT_LEFT)
-                        data.level->add_draw_pos(-SCROLLSIZE, 0);
-                }
-                else if(data.panDownButton.contains(mx, my) && data.level->level_visuals().topy <= PAN_LIMIT_DOWN) // scroll down
-                {
-                    eds().redraw = 1;
-                    data.level->add_draw_pos(0, SCROLLSIZE);
-                }
-                else if(data.panDownRightButton.contains(mx, my))
-                {
-                    eds().redraw = 1;
-                    if(data.level->level_visuals().topy <= PAN_LIMIT_DOWN)
-                        data.level->add_draw_pos(0, SCROLLSIZE);
-                    if(data.level->level_visuals().topx <= PAN_LIMIT_RIGHT)
-                        data.level->add_draw_pos(SCROLLSIZE, 0);
-                }
-                else if(data.panDownLeftButton.contains(mx, my))
-                {
-                    eds().redraw = 1;
-                    if(data.level->level_visuals().topy <= PAN_LIMIT_DOWN)
-                        data.level->add_draw_pos(0, SCROLLSIZE);
-                    if(data.level->level_visuals().topx >= PAN_LIMIT_LEFT)
-                        data.level->add_draw_pos(-SCROLLSIZE, 0);
-                }
-                else if(data.panLeftButton.contains(mx, my) && data.level->level_visuals().topx >= PAN_LIMIT_LEFT) // scroll left
-                {
-                    eds().redraw = 1;
-                    data.level->add_draw_pos(-SCROLLSIZE, 0);
-                }
-                else if(data.panRightButton.contains(mx, my) && data.level->level_visuals().topx <= PAN_LIMIT_RIGHT) // scroll right
-                {
-                    eds().redraw = 1;
-                    data.level->add_draw_pos(SCROLLSIZE, 0);
-                }
-                    
-            }
-            else if(off_menu)
+
+            if(off_menu)
             {
                 // Zardus: ADD: can move map by clicking on minimap
                 if ((mode != Mode::Select || (!data.rect_selecting && !data.dragging)) && mx > og::runtime::current_session->myscreen_->viewob[0]->endx - myradar.xview - 4

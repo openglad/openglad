@@ -185,7 +185,6 @@ radar::radar(viewscreen * myview, screen * screen_ctx, short whatnum)
 	screenp = screen_ctx;
 	viewscreenp = myview;
 	mynum = whatnum; //what number viewscreen we are, to get control's position
-    force_lower_position = false;
 }
 
 void radar::start()
@@ -233,8 +232,7 @@ std::pair<int, int> radar_block_extents(int grid_w, int grid_h)
 	return {w, h};
 }
 
-RadarBlock radar_block_for_pane(int pane_yloc, int pane_endx, int pane_endy,
-                                int w, int h, bool force_lower)
+RadarBlock radar_block_for_pane(int pane_endx, int pane_endy, int w, int h)
 {
 	RadarBlock block;
 	block.w = w;
@@ -245,23 +243,8 @@ RadarBlock radar_block_for_pane(int pane_yloc, int pane_endx, int pane_endy,
         block.margin = 4;
         #endif
         block.x = (pane_endx - w) - block.margin;
-        #ifdef USE_TOUCH_INPUT
-        if(force_lower)  // used by level editor to place minimap
-        {
-            // At bottom
-            block.y = (pane_endy - h) - block.margin;
-        }
-        else
-        {
-            // At top
-            block.y = pane_yloc + block.margin;
-        }
-        #else
-            (void)force_lower;
-            (void)pane_yloc;
-            // At bottom
-            block.y = (pane_endy - h) - block.margin;
-        #endif
+        // At bottom
+        block.y = (pane_endy - h) - block.margin;
 	return block;
 }
 
@@ -270,11 +253,9 @@ void radar::sync_position_to_view()
 	if(viewscreenp)
 	{
 		const RadarBlock block = radar_block_for_pane(
-		    static_cast<int>(viewscreenp->yloc),
 		    static_cast<int>(viewscreenp->endx),
 		    static_cast<int>(viewscreenp->endy),
-		    static_cast<int>(xview), static_cast<int>(yview),
-		    force_lower_position);
+		    static_cast<int>(xview), static_cast<int>(yview));
 		xloc = static_cast<short>(block.x);
 		yloc = static_cast<short>(block.y);
 	}

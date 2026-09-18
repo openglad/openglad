@@ -7,6 +7,7 @@
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/damage_number_event.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state_net.h>
@@ -2984,6 +2985,16 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
     if (event_mode == EventDeliveryMode::Drain)
     {
         drained_batch = drain_sim_events(events_);
+        // Lift the tick's floating damage/heal numbers off EVERY
+        // authoritative walker and onto the batch (and drain every walker's
+        // list, closing the headless growth: render is the only eraser).
+        // Seat-bound owners go first under a per-tick budget; which pane
+        // paints which number stays a render rule. Cosmetic-only, so
+        // it rides the drained batch before the ordering/state helpers below
+        // — both filter by specific kinds and ignore this one. Keyframe
+        // resends to late joiners take the other arm and lift nothing.
+        lift_damage_number_events(world_, player_controls_,
+                                  drained_batch->events);
         maybe_resolve_world_events(*drained_batch, snapshot);
         apply_authoritative_event_state(world_, *drained_batch, snapshot);
         if (snapshot.game_ended)

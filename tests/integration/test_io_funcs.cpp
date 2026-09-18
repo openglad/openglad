@@ -1,8 +1,15 @@
 #include <openglad/resources/io.h>
 #include <gtest/gtest.h>
 
+#include "test_save_state_guard.h"
+
+#include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <list>
 #include <string>
+#include <vector>
 
 namespace {
 class ScopedEnvVar {
@@ -63,18 +70,25 @@ TEST(IoFuncs, io_explode_no_delimiter)
 }
 
 
-TEST(IoFuncs, io_explode_empty)
+// explode() pushes the final substring unconditionally, so the empty input is
+// one empty token, never a zero-length list: callers such as
+// campaign.description = explode(metadata.description, '\n') index front().
+TEST(IoFuncs, io_explode_empty_yields_one_empty_token)
 {
-    auto result = explode("", ',');
-    // Should return 1 empty string or empty list
-    (void)result;
+    const std::list<std::string> result = explode("", ',');
+    ASSERT_EQ(1u, result.size()) << "explode always yields the final (possibly empty) token";
+    ASSERT_EQ("", result.front()) << "that token is the empty string";
 }
 
 
 TEST(IoFuncs, io_explode_trailing_delimiter)
 {
-    auto result = explode("a,b,", ',');
-    ASSERT_TRUE(result.size() >= 2) << "at least 2 parts";
+    const std::list<std::string> result = explode("a,b,", ',');
+    ASSERT_EQ(3u, result.size()) << "the trailing delimiter mints an empty final token";
+    auto it = result.begin();
+    ASSERT_EQ("a", *it++) << "first token";
+    ASSERT_EQ("b", *it++) << "second token";
+    ASSERT_EQ("", *it) << "the token after the last delimiter is empty";
 }
 
 
@@ -82,18 +96,30 @@ TEST(IoFuncs, io_explode_trailing_delimiter)
 // get_user_path / get_asset_path
 // ---------------------------------------------------------------------------
 
-TEST(IoFuncs, io_get_user_path)
+// Every caller concatenates a relative name straight onto get_user_path()
+// (platform_io_common.cpp: std::format("{}temp/scen/scen{}.fss", get_user_path(),
+// id)), so the returned directory must always end in exactly one separator --
+// "./" when neither OPENGLAD_CONFIG_DIR nor HOME is set.
+TEST(IoFuncs, io_get_user_path_ends_in_exactly_one_separator)
 {
-    std::string path = get_user_path();
-    ASSERT_TRUE(!path.empty()) << "user path not empty";
-}
+    const std::string path = get_user_path();
+    ASSERT_FALSE(path.empty()) << "user path is never empty";
+    ASSERT_EQ('/', path.back()) << "get_user_path is normalized to a trailing slash";
+    ASSERT_TRUE(path.size() < 2 || path[path.size() - 2] != '/')
+        << "get_user_path is normalized to exactly ONE trailing slash, got: " << path;
 
-
-TEST(IoFuncs, io_get_user_path_nonempty)
-{
-    std::string path = get_user_path();
-    // Should have some characters
-    ASSERT_TRUE(path.size() > 1) << "user path has content";
+    // ... and it names the directory the user's writes actually land in.
+    namespace fs = std::filesystem;
+    const fs::path probe = fs::path(path) / "io_funcs_user_path_probe.bin";
+    std::error_code ec;
+    fs::remove(probe, ec);
+    SDL_IOStream* out = open_write_file("io_funcs_user_path_probe.bin");
+    ASSERT_NE(nullptr, out) << "a bare filename should be writable";
+    SDL_CloseIO(out);
+    ASSERT_TRUE(fs::exists(probe))
+        << "get_user_path names the directory user-dir writes land in, expected: "
+        << probe.string();
+    fs::remove(probe, ec);
 }
 
 
@@ -150,11 +176,16 @@ TEST(IoFuncs, io_get_user_path_normalizes_trailing_slashes)
 // list_files
 // ---------------------------------------------------------------------------
 
-TEST(IoFuncs, io_list_files)
+TEST(IoFuncs, io_list_files_enumerates_bare_names_under_a_mounted_dir)
 {
-    auto files = list_files("cfg/");
-    // May or may not have files depending on mount state
-    (void)files;
+    const std::list<std::string> files = list_files("cfg/");
+    ASSERT_FALSE(files.empty()) << "the mounted asset tree ships a cfg/ directory";
+    ASSERT_NE(files.end(), std::find(files.begin(), files.end(), std::string("openglad.yaml")))
+        << "list_files enumerates bare filenames under the mounted cfg/ dir";
+
+    // Negative control: a directory PhysFS cannot see lists nothing.
+    ASSERT_TRUE(list_files("definitely_missing_dir_io_funcs/").empty())
+        << "an unmounted directory enumerates nothing";
 }
 
 
@@ -162,39 +193,27 @@ TEST(IoFuncs, io_list_files)
 // get_mounted_campaign
 // ---------------------------------------------------------------------------
 
-TEST(IoFuncs, io_get_mounted_campaign)
+TEST(IoFuncs, io_get_mounted_campaign_reports_the_id_a_successful_mount_recorded)
 {
-    std::string campaign = get_mounted_campaign();
-    // May be empty or have a value
-    (void)campaign;
+    // Restore the real MOUNT, not just the id string: writing the id back
+    // would leave gladiator's archive in the PhysFS search path for every
+    // later test in this binary. The guard samples the id it must return to
+    // before the forced reset below.
+    og::test::ScopedCampaignMountState mount_guard;
+#ifdef TESTING
+    // Start from a known state: a stale bogus id left by a sibling would make
+    // the mount below fail in prev's unmount instead of exercising the record.
+    set_mounted_campaign_for_testing("");
+#endif
+    ASSERT_EQ(CampaignPackageIoError::None, mount_campaign_package_with_error("gladiator"))
+        << "the default campaign package should mount";
+    ASSERT_EQ("gladiator", get_mounted_campaign())
+        << "a successful mount records the mounted id";
 }
 
 
-// ---------------------------------------------------------------------------
-// list_campaigns
-// ---------------------------------------------------------------------------
-
-TEST(IoFuncs, io_list_campaigns)
-{
-    auto campaigns = list_campaigns();
-    (void)campaigns;
-}
-
-
-// ---------------------------------------------------------------------------
-// list_levels
-// ---------------------------------------------------------------------------
-
-TEST(IoFuncs, io_list_levels)
-{
-    auto levels = list_levels();
-    (void)levels;
-}
-
-
-TEST(IoFuncs, io_list_levels_v)
-{
-    auto levels = list_levels_v();
-    (void)levels;
-}
+// list_campaigns()/list_levels()/list_levels_v() are pinned with real fixtures
+// and orderings by IoFilesystem.io_list_campaigns_and_levels and
+// IoPlatformCoverage.platform_io_batch3_mount_switch_and_listing_filters (both
+// in this binary); the bodies that only called them here pinned nothing.
 

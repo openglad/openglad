@@ -14,6 +14,7 @@
 
 #include <openglad/interface/base.h>
 #include <openglad/interface/fps_overlay.h>
+#include <openglad/interface/hud_counter_box.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/session_state.h>
@@ -35,6 +36,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -351,14 +353,17 @@ static std::string hud_display_name(const walker* control)
 // normally. The two can never share a scanline.
 //
 // Horizontal window: the classic HUD owns the caption at lm+3 and the
-// TEAM/FOES box from rm-57 on the SAME tm+4 row, so the mode row takes the
+// TEAM/FOES counter box on the SAME tm+4 row, so the mode row takes the
 // channel between them. The left edge clears both the caption's own button
 // box (lm+1..lm+63) and the caption text itself, measured through the
-// shared hud_display_name; the right edge stops at rm-60 while the FOES
-// column is on. With no classic HUD (dead / AI-followed / spectated view)
-// the row takes the whole pane, lm+2..rm-2. Both bounds derive from this
-// pane's own lm/rm, so the R1 clamp holds: the row can never paint into a
-// neighboring viewport.
+// shared hud_display_name; while the FOES column is on, the right edge stops
+// 3 px short of the counter box's LEFT edge (rm-60 for the classic 55-px
+// box; the box grows leftward to fit its widest row, so the box's edge is
+// this row's input, not a second constant — openglad/interface/
+// hud_counter_box.h, and the plan new_score_panel hands in below). With no
+// classic HUD (dead / AI-followed / spectated view) the row takes the whole
+// pane, lm+2..rm-2. Both bounds derive from this pane's own lm/rm, so the R1
+// clamp holds: the row can never paint into a neighboring viewport.
 //
 // Composition: the non-empty slots in index order, each stripped of its
 // leading team color word (the segment is already drawn in that team's ramp
@@ -478,7 +483,7 @@ static Sint32 mode_row_length(const std::vector<ModeRowSegment>& segments)
 }
 
 static void draw_mode_panel(screen* s, viewscreen* view, Sint32 lm, Sint32 tm,
-                            Sint32 rm)
+                            Sint32 rm, Sint32 counter_box_left)
 {
     const og::sim::ModeState& mode = s->world_.mode;
     text& mytext = s->text_normal;
@@ -497,7 +502,7 @@ static void draw_mode_panel(screen* s, viewscreen* view, Sint32 lm, Sint32 tm,
             lm + 3 + 6 * static_cast<Sint32>(caption.size()) + 4;
         left = std::max<Sint32>(lm + 66, caption_end);
         if (view->prefs[PREF_FOES] == PREF_FOES_ON)
-            right = rm - 60;
+            right = counter_box_left - 3;
     }
 
     const Sint32 budget = (right - left) / 6;
@@ -697,7 +702,7 @@ short new_score_panel(screen* s, short /*do_it*/)
     };
 
     // Bottom edge of the top viewport's TEAM/FOES counter box, for the FPS
-    // overlay's dynamic placement (the box grows with the NEXT WAVE and FLR
+    // overlay's dynamic placement (the box grows with the WAVE and FLR
     // rows). Default = the classic FOES-off geometry, so FOES-off frames are
     // byte-identical.
     Sint32 fps_below_y = OVERSCAN_PADDING + 16;
@@ -716,6 +721,84 @@ short new_score_panel(screen* s, short /*do_it*/)
         rm = s->viewob[players]->endx - OVERSCAN_PADDING;
         bm = s->viewob[players]->endy - OVERSCAN_PADDING;
 
+        // The counter box's horizontal plan, computed BEFORE anything on the
+        // tm+4 row is drawn: the mode row's right edge is the box's LEFT edge
+        // (draw_mode_panel just below), and the box itself is drawn last. One
+        // fit rule sizes it to its widest row and fits every row to the
+        // result — openglad/interface/hud_counter_box.h. Absent (and the
+        // classic rm-57 edge stands in for the mode row) whenever this
+        // viewport draws no counter box at all.
+        std::optional<og::hud_counter_box::Layout> counter_box;
+        bool counter_show_wave = false;
+        bool counter_show_floor = false;
+        int counter_awake_foes = 0;
+        int counter_wave_foes = 0;
+        std::uint32_t counter_wave_seconds = 0;
+        std::string counter_floor_label;
+        if (control && !control->dead() && control->user() != -1 &&
+            s->viewob[players]->prefs[PREF_FOES] == PREF_FOES_ON)
+        {
+            // Get current number of foes
+            tempfoes = remaining_foes(s, control);
+            // Get current number of team-members. team_num() arrives on the
+            // same raw-byte snapshot channel as family()/current_special()
+            // below, but it is an *unsigned* byte and remaining_team() takes a
+            // signed char: a mirrored team above 127 narrows to a negative
+            // value that matches no walker, so the HUD would report zero
+            // allies. Clamp to the legal team range first, exactly as the
+            // scenario loader does (sanitize_loaded_team_num). Every team the
+            // game actually produces is 0..MAX_TEAM and passes through
+            // unchanged.
+            int hud_team = static_cast<int>(control->team_num());
+            if (hud_team > MAX_TEAM)
+                hud_team = 0;
+            tempallies = remaining_team(s, static_cast<char>(hud_team));
+
+            // B5: split pending (dormant delayed-spawn) hostiles out of
+            // the foe count and show a countdown to the next wave, so
+            // "FOES: 3" over an empty map reads as "3 foes are coming",
+            // not as a bug. remaining_foes counts dormant hostiles too
+            // (they are alive), so awake = total - pending; foes merely
+            // awaiting a classic respawn are corpses (not in the total),
+            // so they only join the displayed wave count.
+            short pending_foes = 0;
+            short pending_respawn_foes = 0;
+            std::uint32_t next_wake_ticks = 0;
+            pending_hostile_wave_counts(
+                s->world_, control, pending_foes, pending_respawn_foes,
+                next_wake_ticks);
+            counter_awake_foes = std::max(
+                0, static_cast<int>(tempfoes) - static_cast<int>(pending_foes));
+            counter_wave_foes = static_cast<int>(pending_foes) +
+                static_cast<int>(pending_respawn_foes);
+            counter_show_wave = counter_wave_foes > 0;
+            counter_wave_seconds = (next_wake_ticks + 11u) / 12u;
+
+            // Floor row (feature B): drawn only when the shared label is
+            // non-empty, so single-floor frames stay byte-identical. Call
+            // sites key on non-empty, never on floor_count (game modes
+            // re-label inside floor_hud_label).
+            counter_floor_label = floor_hud_label(
+                s->world_, static_cast<int>(control->floor()));
+            counter_show_floor = !counter_floor_label.empty();
+
+            std::array<std::optional<og::hud_counter_box::Row>,
+                       og::hud_counter_box::kMaxRows> rows;
+            rows[0] = og::hud_counter_box::split_row(
+                std::format("TEAM: {}", tempallies));
+            rows[1] = og::hud_counter_box::split_row(
+                counter_show_wave
+                    ? std::format("FOES: {}+{}", counter_awake_foes,
+                                  counter_wave_foes)
+                    : std::format("FOES: {}", tempfoes));
+            if (counter_show_wave)
+                rows[2] = og::hud_counter_box::split_row(
+                    std::format("WAVE: {}s", counter_wave_seconds));
+            if (counter_show_floor)
+                rows[3] = og::hud_counter_box::split_row(counter_floor_label);
+            counter_box = og::hud_counter_box::fit(rows, lm, rm);
+        }
+
         // Scripted-mode (TYPE_SCRIPTED) worlds render the generic ModeState
         // HUD (mode Lua owns the scoreboard text).
         const bool scripted_mode_hud =
@@ -723,7 +806,10 @@ short new_score_panel(screen* s, short /*do_it*/)
             s->world_.mode.active;
         if (scripted_mode_hud)
         {
-            draw_mode_panel(s, s->viewob[players].get(), lm, tm, rm);
+            draw_mode_panel(
+                s, s->viewob[players].get(), lm, tm, rm,
+                counter_box ? static_cast<Sint32>(counter_box->left)
+                            : rm - og::hud_counter_box::kClassicLeftInset);
             draw_mode_beacons(s, s->viewob[players].get(), beacon_proj,
                               lm, tm, rm, bm);
         }
@@ -787,22 +873,6 @@ short new_score_panel(screen* s, short /*do_it*/)
                 text_color = DARK_BLUE;
             else
                 text_color = YELLOW;
-
-            // Get current number of foes
-            tempfoes = remaining_foes(s, control);
-            // Get current number of team-members. team_num() arrives on the
-            // same raw-byte snapshot channel as family()/current_special()
-            // below, but it is an *unsigned* byte and remaining_team() takes a
-            // signed char: a mirrored team above 127 narrows to a negative
-            // value that matches no walker, so the HUD would report zero
-            // allies. Clamp to the legal team range first, exactly as the
-            // scenario loader does (sanitize_loaded_team_num). Every team the
-            // game actually produces is 0..MAX_TEAM and passes through
-            // unchanged.
-            int hud_team = static_cast<int>(control->team_num());
-            if (hud_team > MAX_TEAM)
-                hud_team = 0;
-            tempallies = remaining_team(s, static_cast<char>(hud_team));
 
             // family()/current_special() may be attacker-controlled on a
             // network mirror (set from raw int8 snapshot bytes), so they can be
@@ -876,11 +946,6 @@ short new_score_panel(screen* s, short /*do_it*/)
             // Score, bottom left corner
             int special_offset = -24;
             Sint32 score_bottom = bm;
-#ifdef USE_TOUCH_INPUT
-            // Upper left instead
-            score_bottom = tm + 54;
-            special_offset = 0;
-#endif
 
             int special_y = score_bottom + special_offset;
             // Deliberately keyed on numviews (humans), never on the camera-
@@ -908,14 +973,6 @@ short new_score_panel(screen* s, short /*do_it*/)
                 else
                 {
                     Sint32 special_box_bottom = special_y + 6;
-#ifdef USE_TOUCH_INPUT
-                    if (s->alternate_name[fam][spc] != "NONE")
-                    {
-                        special_box_bottom = std::max(
-                            special_box_bottom,
-                            score_bottom + special_offset + 14);
-                    }
-#endif
                     s->draw_button(lm+1, special_y-2, lm+98,
                                    special_box_bottom, 1, 1);
                 }
@@ -961,6 +1018,7 @@ short new_score_panel(screen* s, short /*do_it*/)
             }
 
             // Currently-select special
+            // Alternate special name (if not "NONE")
             if (control->shifter_down() &&
                 s->alternate_name[fam][spc] != "NONE")
                 message = std::format("SPC: {}", s->alternate_name[fam][spc]);
@@ -981,112 +1039,57 @@ short new_score_panel(screen* s, short /*do_it*/)
             else
                 mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
 
-#ifdef USE_TOUCH_INPUT
-            // Alternate special name (if not "NONE")
-            if (s->alternate_name[fam][spc] != "NONE")
-            {
-                message = std::format("ALT: {}", s->alternate_name[fam][spc]);
-                if (control->specials_disabled())
-                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
-                else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
-                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-                else
-                    mytext.write_xy(lm+2, score_bottom + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
-            }
-#endif
-
             // Number of allies, upper right
-            if (s->viewob[players]->prefs[PREF_FOES] == PREF_FOES_ON)
+            if (counter_box.has_value())
             {
-                // B5: split pending (dormant delayed-spawn) hostiles out of
-                // the foe count and show a countdown to the next wave, so
-                // "FOES: 3" over an empty map reads as "3 foes are coming",
-                // not as a bug. remaining_foes counts dormant hostiles too
-                // (they are alive), so awake = total - pending; foes merely
-                // awaiting a classic respawn are corpses (not in the total),
-                // so they only join the displayed wave count.
-                short pending_foes = 0;
-                short pending_respawn_foes = 0;
-                std::uint32_t next_wake_ticks = 0;
-                pending_hostile_wave_counts(
-                    s->world_, control, pending_foes, pending_respawn_foes,
-                    next_wake_ticks);
-                const int awake_foes = std::max(
-                    0, static_cast<int>(tempfoes) - static_cast<int>(pending_foes));
-                const int wave_foes = static_cast<int>(pending_foes) +
-                    static_cast<int>(pending_respawn_foes);
-                const bool show_wave = wave_foes > 0;
-
-                // Floor row (feature B): drawn only when the shared label is
-                // non-empty, so single-floor frames stay byte-identical. Call
-                // sites key on non-empty, never on floor_count (game modes
-                // re-label inside floor_hud_label).
-                const std::string floor_label = floor_hud_label(
-                    s->world_, static_cast<int>(control->floor()));
-                const bool show_floor = !floor_label.empty();
-
-                Sint32 box_bottom = show_wave ? 24 : 16;
-                if (show_floor)
+                // Every row is drawn from the plan computed at the top of this
+                // viewport's pass: one fit rule sized the box to its widest
+                // row and fitted each row to the result, so all four sit at
+                // the one shared text column instead of being right-aligned
+                // to rm-2 with a per-row expression (hud_counter_box.h).
+                Sint32 box_bottom = counter_show_wave ? 24 : 16;
+                if (counter_show_floor)
                     box_bottom += 8;
                 if (players == 0)
                     fps_below_y = tm + box_bottom;
 
                 if (draw_button)
-                    s->draw_button(rm-57, tm+1, rm-2, tm + box_bottom, 1, 1);
+                    s->draw_button(counter_box->left, tm+1, rm-2,
+                                   tm + box_bottom, 1, 1);
 
-                message = std::format("TEAM: {}", tempallies);
-#ifndef USE_TOUCH_INPUT
-                mytext.write_xy(rm - 55, tm+2, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
+                mytext.write_xy(counter_box->text_x, tm+2,
+                                counter_box->text[0].c_str(),
+                                static_cast<unsigned char>(text_color),
+                                static_cast<short>(1));
 
                 // Number of foes, 2nd upper right
-                if (show_wave)
-                    message = std::format("FOES: {} (+{})",
-                                          awake_foes, wave_foes);
-                else
-                    message = std::format("FOES: {}", tempfoes);
-                // Right-align when the (+m) suffix is shown so it stays
-                // inside the viewport; the classic position is byte-identical
-                // otherwise.
-                const Sint32 foes_x = show_wave
-                    ? std::max<Sint32>(lm, rm - 2 - 6 * static_cast<Sint32>(message.size()))
-                    : rm - 55;
-#ifndef USE_TOUCH_INPUT
-                mytext.write_xy(foes_x, tm+10, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                mytext.write_xy(foes_x, tm+10 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
+                mytext.write_xy(counter_box->text_x, tm+10,
+                                counter_box->text[1].c_str(),
+                                static_cast<unsigned char>(text_color),
+                                static_cast<short>(1));
 
-                if (show_wave)
+                if (counter_show_wave)
                 {
-                    const std::uint32_t wave_seconds = (next_wake_ticks + 11u) / 12u;
-                    message = std::format("NEXT WAVE: {}s", wave_seconds);
-                    const Sint32 wave_x = std::max<Sint32>(
-                        lm, rm - 2 - 6 * static_cast<Sint32>(message.size()));
-#ifndef USE_TOUCH_INPUT
-                    mytext.write_xy(wave_x, tm+18, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                    mytext.write_xy(wave_x, tm+18 + 44 + 8, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
+                    mytext.write_xy(counter_box->text_x, tm+18,
+                                    counter_box->text[2].c_str(),
+                                    static_cast<unsigned char>(text_color),
+                                    static_cast<short>(1));
                     TRACE("hud", "next_wave awake=%d pending=%d secs=%u",
-                          awake_foes,
-                          wave_foes,
-                          static_cast<unsigned>(wave_seconds));
+                          counter_awake_foes,
+                          counter_wave_foes,
+                          static_cast<unsigned>(counter_wave_seconds));
                 }
 
-                if (show_floor)
+                if (counter_show_floor)
                 {
-                    const Sint32 floor_y = tm + (show_wave ? 26 : 18);
-                    const Sint32 floor_x = std::max<Sint32>(
-                        lm, rm - 2 - 6 * static_cast<Sint32>(floor_label.size()));
-#ifndef USE_TOUCH_INPUT
-                    mytext.write_xy(floor_x, floor_y, floor_label.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#else
-                    mytext.write_xy(floor_x, floor_y + 44 + 8, floor_label.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
-#endif
-                    TRACE("hud", "floor %s", floor_label.c_str());
+                    const Sint32 floor_y = tm + (counter_show_wave ? 26 : 18);
+                    mytext.write_xy(counter_box->text_x, floor_y,
+                                    counter_box->text[3].c_str(),
+                                    static_cast<unsigned char>(text_color),
+                                    static_cast<short>(1));
+                    // The SHARED label, never the fitted text: the trace is
+                    // the readout's identity, not its pixels.
+                    TRACE("hud", "floor %s", counter_floor_label.c_str());
                 }
             }
         }

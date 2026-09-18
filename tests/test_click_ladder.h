@@ -10,14 +10,18 @@
 // and click_until_edge's trace CATEGORY (a parameter now, "zone" by default)
 // changed in the move.
 //
-// The three entry points:
+// The four entry points:
 //   acknowledge_press          — post the pointer-handoff reset, bounded.
 //   click_and_acknowledge_trace — press until a NAMED trace arrives.
 //   click_until_edge           — press until a NAMED on-screen edge arrives.
+//   click_until_label*         — press a CYCLER until its face reads what
+//                                the caller asked for (built on the above).
 //
 // The TESTING-only g_click_ladder_* counters are both the fault injectors the
 // teeth tests arm and the counts those tests pin. They are test-local globals;
 // nothing in src/ knows about them.
+
+#include <gtest/gtest.h>
 
 #include <openglad/core/test_trace.h>
 
@@ -211,9 +215,23 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
 // label the edge waits on is republished. Once the witness arrives the
 // ladder stops pressing and spends the rest of its attempts WAITING.
 //
-// Counted, never clocked: `zone_click_retries` is the number of attempts
-// that re-pressed because nothing registered; `zone_edge_waits` is the
-// number that only waited, because the press had already landed.
+// Not every row that can be pressed twice publishes a witness. For those the
+// ladder has a second, cheaper guard: before it RE-presses, it re-checks the
+// edge. A press whose edge arrived after the wait expired is then found at
+// the moment the re-press would have gone out, and the re-press is cancelled.
+// Every edge predicate in this repo is a `while (elapsed < timeout_ms)` poll
+// that tests the condition once and only then sleeps its 50 ms tick, so the
+// re-check costs one evaluation and at most one tick, and only on the path
+// that was about to press again anyway.
+//
+// So the toggle-safety rule, in full: a press is RE-SENT only when there is
+// no witness that it landed AND the edge is still absent at the moment of the
+// re-press.
+//
+// Counted, never clocked: `click_retries` is the number of attempts that
+// re-pressed because nothing registered; `edge_waits` is the number that
+// waited without pressing — both the attempts that saw the landing witness
+// and a late edge found at re-press time.
 inline int g_click_ladder_click_retries = 0;
 inline int g_click_ladder_edge_waits = 0;
 // TESTING-only fault injection for that half, mirroring g_click_ladder_click_drops:
@@ -222,11 +240,17 @@ inline int g_click_ladder_edge_waits = 0;
 // looks from the injector.
 inline int g_click_ladder_edge_blinds = 0;
 
+// The re-check wait, deliberately the smallest one a poll predicate can take:
+// one evaluation, then at most one 50 ms tick. It is a question ("is the edge
+// here NOW?"), never a budget.
+inline constexpr int kEdgeRecheckMs = 1;
+
 inline bool click_until_edge(const std::string& id,
                              const std::function<bool(int)>& edge_reached,
                              const char* landed_trace = nullptr,
                              int attempts = 3, int wait_ms = 2500,
-                             const char* landed_category = "zone")
+                             const char* landed_category = "zone",
+                             bool ack_injectable = false)
 {
     const int landed_before =
         landed_trace ? count_trace_containing(landed_category, landed_trace)
@@ -241,6 +265,20 @@ inline bool click_until_edge(const std::string& id,
         if (!spent) {
             (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
                                      kAckPostCeilingMs);
+            // The witnessless half of the toggle-safety rule: never re-press
+            // a row whose edge has arrived since the wait gave up. A cycler
+            // pressed a second time here walks its wheel one stop past the
+            // face the flow asked for and then waits for a face the row has
+            // already gone by.
+            if (attempt > 0 && edge_reached(kEdgeRecheckMs)) {
+                ++g_click_ladder_edge_waits;
+                fprintf(stderr,
+                        "  [ladder] attempt %d: the previous press on '%s' "
+                        "landed late; not re-pressing\n",
+                        attempt + 1, id.c_str());
+                (void)acknowledge_press(kAckPostCeilingMs, 3, ack_injectable);
+                return true;
+            }
             if (g_click_ladder_click_drops > 0) {
                 --g_click_ladder_click_drops;
                 fprintf(stderr,
@@ -262,7 +300,7 @@ inline bool click_until_edge(const std::string& id,
         if (reached) {
             // Same bounded re-post: a cancelled acknowledgement here leaves
             // the next press to evaporate against a stale baseline.
-            (void)acknowledge_press();
+            (void)acknowledge_press(kAckPostCeilingMs, 3, ack_injectable);
             return true;
         }
         if (has_landed()) {
@@ -279,6 +317,176 @@ inline bool click_until_edge(const std::string& id,
                 attempt + 1, id.c_str());
     }
     return false;
+}
+
+// --- The label ladder: click a CYCLER until its face reads what you asked --
+//
+// The third entry point, and the one with three homes until PR #292: a copy
+// each in test_ctf_ui.cpp, test_lineup_ui.cpp (exact) and test_lineup_ui.cpp
+// again (substring). One implementation of the rule, not three (PR #245).
+//
+// A cycler row is the case the toggle-safety rule exists for: the wheel only
+// moves forward, so a press the ladder sends twice costs a stop the flow can
+// get back only by going all the way round, and the flow then waits for a
+// face the row has already gone by. Two guards carry that here, and a caller
+// should give the ladder whichever it can:
+//
+//   * a LANDING WITNESS (landed_trace / landed_category): a trace the row's
+//     own callback emits synchronously, before the label is republished. The
+//     SCORE row publishes one — TRACE("teams", "ctf_caps_cycled %d") in
+//     change_ctf_caps (src/interface/ui/picker.cpp). With it the ladder can
+//     tell "the press never landed" from "the press landed on a face this
+//     wheel does not carry", and it stops pressing after the first landing
+//     whatever the label does.
+//   * failing that, the RE-CHECK in click_until_edge above, which re-reads
+//     the edge immediately before every re-press. The MATCH SETUP macro rows
+//     are the witnessless case: they DO trace ("fill team=%d value=%d",
+//     picker.cpp; the zone submenu's own "acted_autosave",
+//     menu_screen_specs.cpp), but a caller that has not wired a witness up
+//     still gets the re-check.
+//
+// Waiting for the TARGET face rather than for any change is the stronger
+// oracle the pre-#292 helpers grew into: a label that moved to the wrong stop
+// does not count as an arrival.
+inline bool wait_for_interactable_label_matching(
+    const std::string& id,
+    const std::function<bool(const std::string&)>& matches, int timeout_ms)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (matches(interactable_label(id)))
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr,
+            "  [ladder] TIMEOUT waiting for '%s' to reach the wanted face "
+            "(%d ms; now '%s')\n",
+            id.c_str(), timeout_ms, interactable_label(id).c_str());
+    return false;
+}
+
+inline bool click_until_label_matching(
+    const std::string& id,
+    const std::function<bool(const std::string&)>& matches, int attempts = 3,
+    int wait_ms = 2500, const char* landed_trace = nullptr,
+    const char* landed_category = "zone")
+{
+    // Already there: a press would step the wheel OFF the face asked for.
+    if (matches(interactable_label(id)))
+        return true;
+    return click_until_edge(
+        id,
+        [&](int edge_wait_ms) {
+            return wait_for_interactable_label_matching(id, matches,
+                                                        edge_wait_ms);
+        },
+        landed_trace, attempts, wait_ms, landed_category,
+        // The label ladder owns its acknowledgement: the ctf teeth test
+        // arms g_click_ladder_ack_drops for THIS click, and the door
+        // ladders on the way in must not eat it.
+        /*ack_injectable=*/true);
+}
+
+// Exact face.
+inline bool click_until_label(const std::string& id, const std::string& want,
+                              int attempts = 3, int wait_ms = 2500,
+                              const char* landed_trace = nullptr,
+                              const char* landed_category = "zone")
+{
+    return click_until_label_matching(
+        id, [&want](const std::string& label) { return label == want; },
+        attempts, wait_ms, landed_trace, landed_category);
+}
+
+// Substring, for the rows that compose "FACE - note" onto one button label
+// (the zone submenu's TEAMS and FILL wheels).
+inline bool click_until_label_containing(const std::string& id,
+                                         const std::string& want,
+                                         int attempts = 3, int wait_ms = 2500,
+                                         const char* landed_trace = nullptr,
+                                         const char* landed_category = "zone")
+{
+    return click_until_label_matching(
+        id,
+        [&want](const std::string& label) {
+            return label.find(want) != std::string::npos;
+        },
+        attempts, wait_ms, landed_trace, landed_category);
+}
+
+// --- The value ladder: click a row until the value it STORES moves ---------
+//
+// The fourth entry point, hoisted VERBATIM from
+// tests/integration/test_difficulty.cpp (interact_times) when the menu
+// capture scenes needed the same drive: one implementation of the rule, not
+// three (PR #245). Only the name and the linkage changed in the move; the
+// ruling text below travels with the code.
+//
+// It asserts and FAILs, so it stays a void helper -- gtest's ASSERT_* returns
+// from the enclosing void function, which is exactly the give-up this drive
+// wants.
+
+// Click `id` `times` times, proving each click was CONSUMED before queueing
+// the next.
+//
+// The oracle is the value the row STORES, read on the menu thread — not the
+// row's label. wait_for_interactable_label_change returns true for any label
+// that differs from the snapshot, including one produced by a neighbouring
+// per-frame re-derive, so it certified clicks the row never saw: under
+// ci-asan this flow lost one cycle step in roughly two runs out of three, and
+// the lap assertion sixty lines below then read one short with no complaint
+// from the injector at all.
+//
+// Same shape as test_options_menu.cpp's click_cycle_step, which drives 70
+// clicks per run through this engine and has never lost one: read the value,
+// click, poll for it to MOVE, re-click on the documented 300 ms spacing, and
+// fail by name on the deadline. The 5000 ms deadline is unchanged; the happy
+// path now exits on the first frame that lands the change instead of paying a
+// flat settle.
+inline void click_until_value_moves(const std::string& id, int times,
+                                    const std::function<int()>& read_value)
+{
+    for (int i = 0; i < times; ++i) {
+        fprintf(stderr, "  [test] clicking %s (%d/%d)\n", id.c_str(), i + 1, times);
+        int before = 0;
+        ASSERT_TRUE(run_on_main_thread([&] { before = read_value(); }))
+            << id << ": the menu loop never read the value before click "
+            << (i + 1);
+        ASSERT_TRUE(interact(id))
+            << id << " disappeared before click " << (i + 1);
+
+        const Uint64 deadline = SDL_GetTicks() + 5000;
+        Uint64 last_click = SDL_GetTicks();
+        for (;;) {
+            int now = before;
+            ASSERT_TRUE(run_on_main_thread([&] { now = read_value(); }))
+                << id << ": the menu loop never read the value after click "
+                << (i + 1);
+            if (now != before)
+                break;
+            if (SDL_GetTicks() >= deadline)
+                FAIL() << id << " never consumed click " << (i + 1)
+                       << " (value stuck at " << before << ")";
+            // 300 ms is the minimum RE-CLICK spacing: a shorter gap can land
+            // the next press while this one is still held, and it is dropped.
+            // It is not a poll interval.
+            if (SDL_GetTicks() - last_click >= 300) {
+                ASSERT_TRUE(interact(id))
+                    << id << " disappeared before a re-click of click "
+                    << (i + 1);
+                last_click = SDL_GetTicks();
+            }
+            SDL_Delay(20);
+        }
+
+        // The value changes on the press edge. Establish the next frame's
+        // pointer baseline on the menu thread so its event poll consumes the
+        // already-queued release before this injector sends another press.
+        ASSERT_TRUE(run_on_main_thread([] { reset_mouse_click_tracking(); }))
+            << id << " did not acknowledge click " << (i + 1);
+    }
 }
 
 #endif  // _TEST_CLICK_LADDER_H__

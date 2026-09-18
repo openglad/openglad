@@ -109,7 +109,6 @@ extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 extern std::atomic<int> g_test_game_frame_ticks;
-namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 namespace og::ui {
 void picker_testing_draw_menu_highlight(const MenuScreenSpec& spec,
                                         const button* buttons,
@@ -413,6 +412,7 @@ struct ViewState {
     bool started;
     bool finished;
     bool saw_view_menu;
+    bool clicked_back;
 };
 
 static int view_team_injector(void* data)
@@ -431,7 +431,7 @@ static int view_team_injector(void* data)
     if (wait_for_base_camp_roster(kViewMenuTransitionTimeoutMs)) {
         state->saw_view_menu = true;
         fprintf(stderr, "  [test] clicking back from the base camp\n");
-        interact_match("back", is_strip_back);
+        state->clicked_back = interact_match("back", is_strip_back);
     }
 
     // Always try to unwind so picker_main cannot deadlock on failed interactions.
@@ -461,7 +461,7 @@ TEST(ViewTeam, view_team) {
 
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    ViewState state = { false, false, false };
+    ViewState state = { false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(view_team_injector, "view_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -477,6 +477,21 @@ TEST(ViewTeam, view_team) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_view_menu)
+        << "CONTINUE must open the base-camp roster (roster rows + GO/BACK strip)";
+    ASSERT_TRUE(state.clicked_back)
+        << "the base camp's command strip must offer a BACK control to click";
+    // The base camp really ran its entry composition (create_team_menu's
+    // zone fetch), so the roster the injector saw was this screen's, not a
+    // stale button table left behind by an earlier screen.
+    ASSERT_TRUE(trace_contains("zone", "entry_fetch"))
+        << "CONTINUE must enter the base-camp screen, not merely redraw";
+    // NOTE: with g_picker_max_mainmenu_calls == 1 the main menu does NOT
+    // reappear after the back-out (picker_main leaves for good), so the
+    // main-menu door cannot be this test's BACK oracle. The
+    // CONTINUE -> BACK -> main menu round trip is pinned by
+    // BackToMainmenu.continue_then_back_returns_to_mainmenu, which runs the
+    // loop twice on purpose.
 }
 
 
@@ -2337,9 +2352,6 @@ int lobby_full_slot_injector(void* data)
 // the door is the same one the retired [+] opened.
 TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "this build seats one local player";
-#else
     trace_clear();
     FactoryMappingGuard mapping_guard;
 
@@ -2380,7 +2392,6 @@ TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
         << "the slot runs the add path itself, gates included";
     EXPECT_EQ(2, static_cast<int>(save.numplayers));
     save.reset();
-#endif
 }
 
 // LOBBY FULL. Sixteen seats in the lobby and one of them this machine's: the
@@ -2388,9 +2399,6 @@ TEST(ViewTeam, base_camp_add_player_slot_claims_a_seat_through_a_real_click)
 // is eaten by the engine's Disabled gate — no add, no popup, no seat.
 TEST(ViewTeam, base_camp_lobby_full_slot_is_inert_under_a_real_click)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "this build seats one local player";
-#else
     trace_clear();
     FactoryMappingGuard mapping_guard;
 
@@ -2438,7 +2446,6 @@ TEST(ViewTeam, base_camp_lobby_full_slot_is_inert_under_a_real_click)
         << "a dimmed slot must never reach the add path";
     EXPECT_FALSE(trace_contains("basecamp", "seat_add"));
     save.reset();
-#endif
 }
 
 TEST(ViewTeam, stable_seat_token_rejects_reindexed_display_handle)
@@ -2727,7 +2734,7 @@ TEST(ViewTeam, base_camp_seat_rail_shows_only_this_machines_seats)
     };
     og::ui::install_seat_settings_state_for_screen(&editor_state);
     const og::ui::MenuScreenSpec& editor_spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, editor_spec.on_spec_row);
     ASSERT_NE(nullptr, editor_spec.nav.rewire);
 
@@ -3456,7 +3463,7 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, spec.draw_content);
     ASSERT_NE(nullptr, spec.nav.rewire);
 
@@ -3536,10 +3543,10 @@ TEST(ViewTeam, seat_settings_draws_selected_identity_and_direction_mode)
         seat_view0->prefs[PREF_LIFE] = PREF_LIFE_TEXT;  // legacy => ON
         seat_view0->view_zoom_step_ = 2;
         spec.nav.rewire(buttons, count, highlighted);
-        EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRowMP].label);
-        EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRowMP].label)
+        EXPECT_EQ("RADAR: OFF", buttons[kSeatSettingsHudRadarRow].label);
+        EXPECT_EQ("HP: ON", buttons[kSeatSettingsHudLifeRow].label)
             << "legacy TEXT displays as ON";
-        EXPECT_EQ("ZOOM: 0.8X", buttons[kSeatSettingsZoomRowMP].label);
+        EXPECT_EQ("ZOOM: 0.8X", buttons[kSeatSettingsZoomRow].label);
         seat_view0->prefs[PREF_RADAR] = old_radar;
         seat_view0->prefs[PREF_LIFE] = old_life;
         seat_view0->view_zoom_step_ = old_zoom;
@@ -3649,7 +3656,7 @@ TEST(ViewTeam, seat_settings_offline_p1_uses_profile1_when_roster_is_out_of_orde
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     button* buttons = spec.buttons_accessor();
     const int count = spec.count_accessor();
     int highlighted = kSeatSettingsModeIndex;
@@ -3681,9 +3688,6 @@ TEST(ViewTeam, seat_settings_offline_p1_uses_profile1_when_roster_is_out_of_orde
 
 TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
-#else
     InputHardwareSnapshotGuard input_guard;
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
@@ -3717,7 +3721,7 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     og::ui::install_seat_settings_state_for_screen(&state);
 
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, spec.on_spec_row);
     ASSERT_NE(nullptr, spec.frame_tick);
     button* buttons = spec.buttons_accessor();
@@ -3855,7 +3859,6 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
     og::ui::install_seat_settings_state_for_screen(nullptr);
-#endif
 }
 
 // Offline, the LAST seat cannot leave: there is nobody left to hand the
@@ -3865,9 +3868,6 @@ TEST(ViewTeam, seat_settings_remove_uses_exact_token_and_compacts_profiles)
 // the last local seat there means spectating, which is a real thing to do.)
 TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
 {
-#if defined(DISABLE_MULTIPLAYER) || defined(USE_TOUCH_INPUT)
-    GTEST_SKIP() << "remove/spectate is not compiled into single-seat builds";
-#else
     InputHardwareSnapshotGuard input_guard;
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
@@ -3887,7 +3887,7 @@ TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
     };
     og::ui::install_seat_settings_state_for_screen(&state);
     const og::ui::MenuScreenSpec& spec =
-        og::ui::seat_settings_menu_screen_spec_mp();
+        og::ui::seat_settings_menu_screen_spec();
     ASSERT_NE(nullptr, spec.on_spec_row);
 
     // A YES is queued: if the row asked, it would remove the seat.
@@ -3916,7 +3916,6 @@ TEST(ViewTeam, seat_settings_remove_never_asks_the_last_offline_seat)
     picker_testing_yes_or_no_queue_clear();
     reset_default_player_controls();
     og::ui::install_seat_settings_state_for_screen(nullptr);
-#endif
 }
 
 TEST(ViewTeam, base_camp_zero_seat_state_activates_through_the_first_slot)
@@ -4141,8 +4140,14 @@ TEST(ViewTeam, base_camp_single_seat_device_names_screen_and_closes_the_rail)
 // ---------------------------------------------------------------------------
 // Empty-state treatment: the fixed View Team-style grey roster panel remains
 // visible with zero rows and the content pass centers the ORANGE line inside
-// it. The null install renders the empty shape on both hooks; smoke + coverage
-// (the panel itself is verified by capture).
+// it.
+//
+// The panel is draw_button(8,28,311,160,2,1) — a two-ring bevel (top 15,
+// left 14, right 12, bottom 11) around a flat face of 13 — and the empty
+// line is write_xy_center(160, 92, ORANGE_START, "NO SOLDIERS - HIRE YOUR
+// FIRST"), which the 6px advance centers starting at x=73. Both are read back
+// off the canvas here, and the null install and an installed-but-empty state
+// are required to paint the panel band IDENTICALLY.
 // ---------------------------------------------------------------------------
 TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
 {
@@ -4153,17 +4158,88 @@ TEST(ViewTeam, base_camp_empty_state_draws_framed_panel)
     ASSERT_NE(nullptr, spec.draw_background);
     ASSERT_NE(nullptr, spec.draw_content);
 
+    screen* const output = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, output);
+
     // Null state == zero visible rows == the empty-roster shape.
     og::ui::install_base_camp_state_for_screen(nullptr);
+    output->fastbox(0, 0, 320, 200, PURE_BLACK);
     spec.draw_background(nullptr);
+
+    // The panel's own chrome, drawn regardless of state.
+    const auto pixel = [&](int x, int y) {
+        int index = -1;
+        output->get_pixel(x, y, &index);
+        return index;
+    };
+    EXPECT_EQ(15, pixel(9, 28)) << "panel top bevel";
+    EXPECT_EQ(14, pixel(8, 29)) << "panel left bevel";
+    EXPECT_EQ(12, pixel(311, 29)) << "panel right bevel";
+    EXPECT_EQ(11, pixel(9, 160)) << "panel bottom bevel";
+    EXPECT_EQ(13, pixel(160, 140)) << "panel grey face";
+    EXPECT_EQ(13, pixel(20, 50)) << "panel grey face";
+
     spec.draw_content(nullptr);
+
+    text& font = output->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    ASSERT_TRUE(font.letters->valid());
+    ASSERT_EQ(5, (int)font.sizex) << "the 5x5 text font sets the 6px advance";
+    const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                               static_cast<std::size_t>(font.sizey);
+    const auto expect_empty_state_glyph = [&](char letter, int x, int y) {
+        const unsigned char* const glyph =
+            font.letters->data.get() +
+            static_cast<std::size_t>(static_cast<unsigned char>(letter)) *
+                stride;
+        int opaque = 0;
+        for (Sint32 row = 0; row < font.sizey; ++row)
+            for (Sint32 col = 0; col < font.sizex; ++col)
+            {
+                if (glyph[static_cast<std::size_t>(row * font.sizex + col)] == 0)
+                    continue;
+                ++opaque;
+                EXPECT_EQ(static_cast<int>(ORANGE_START), pixel(x + col, y + row))
+                    << "empty-state '" << letter << "' pixel " << col << ","
+                    << row;
+            }
+        EXPECT_GT(opaque, 0) << "glyph has ink to check";
+    };
+    // "NO SOLDIERS - HIRE YOUR FIRST" is 29 characters on a 6px advance, so
+    // centering on x=160 starts it at 73 and ends the last glyph at 241.
+    constexpr int kEmptyLineY = 92;
+    constexpr int kEmptyLineX = 73;
+    expect_empty_state_glyph('N', kEmptyLineX, kEmptyLineY);
+    expect_empty_state_glyph('T', kEmptyLineX + 28 * 6, kEmptyLineY);
+
+    // No roster row is inked: the first row's name cell is bare face.
+    for (Sint32 row = 0; row < font.sizey; ++row)
+        for (Sint32 col = 0; col < font.sizex; ++col)
+            EXPECT_EQ(13, pixel(88 + col, 47 + row))
+                << "an empty roster must not ink a row name (" << col << ","
+                << row << ")";
+
+    // Capture the whole panel band for the identity comparison below.
+    const auto capture_panel = [&] {
+        std::vector<int> band;
+        band.reserve(304 * 133);
+        for (int y = 28; y <= 160; ++y)
+            for (int x = 8; x <= 311; ++x)
+                band.push_back(pixel(x, y));
+        return band;
+    };
+    const std::vector<int> null_band = capture_panel();
 
     // An installed-but-empty state windows zero rows and draws the same
     // shape (the page model clamps to an empty slot list).
     og::ui::BaseCampScreenState empty_state;
     og::ui::install_base_camp_state_for_screen(&empty_state);
+    output->fastbox(0, 0, 320, 200, PURE_BLACK);
     spec.draw_background(&empty_state);
     spec.draw_content(&empty_state);
+    EXPECT_EQ(null_band, capture_panel())
+        << "an installed-but-empty state must paint the same empty panel as "
+           "the null install";
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
 

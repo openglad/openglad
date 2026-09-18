@@ -198,6 +198,9 @@ std::string family_symbol_by_order(std::int32_t order, std::int32_t family_id)
 {
     const std::string_view* table = nullptr;
     std::size_t             size  = 0;
+    // [SWITCH-GUARD] no default: arm — see the rationale above evaluate_one in
+    // fact_predicate.cpp; the post-switch return is the runtime guard for a raw
+    // value no enumerator names.
     switch (static_cast<Order>(order))
     {
         case Order::Living:
@@ -220,7 +223,9 @@ std::string family_symbol_by_order(std::int32_t order, std::int32_t family_id)
             table = kEffectFamilies;
             size  = sizeof(kEffectFamilies) / sizeof(kEffectFamilies[0]);
             break;
-        default: break;
+        case Order::Special:
+        case Order::Button1:
+            break; // unmapped on purpose: no family table for these orders
     }
     if (table != nullptr && family_id >= 0 &&
         static_cast<std::size_t>(family_id) < size)
@@ -233,6 +238,9 @@ std::string family_symbol_by_order(std::int32_t order, std::int32_t family_id)
 std::string event_kind_symbol(std::uint32_t kind_raw)
 {
     using og::sim::EventKind;
+    // [SWITCH-GUARD] no default: arm — see the rationale above evaluate_one in
+    // fact_predicate.cpp; the post-switch return is the runtime guard for a raw
+    // value no enumerator names.
     switch (static_cast<EventKind>(kind_raw))
     {
         case EventKind::None:                     return "none";
@@ -246,13 +254,11 @@ std::string event_kind_symbol(std::uint32_t kind_raw)
         case EventKind::RequestExitConfirmation:  return "request_exit_confirmation";
         case EventKind::WithdrawToLevel:          return "withdraw_to_level";
         case EventKind::ScoreChange:              return "score_change";
-        default:
-        {
-            char buf[40];
-            std::snprintf(buf, sizeof(buf), "kind_%u", kind_raw);
-            return std::string(buf);
-        }
+        case EventKind::DamageNumber:             return "damage_number";
     }
+    char buf[40];
+    std::snprintf(buf, sizeof(buf), "kind_%u", kind_raw);
+    return std::string(buf);
 }
 
 namespace {

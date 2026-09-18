@@ -1426,12 +1426,12 @@ int level_editor_test_exercise_internal_helpers()
         data.mode = Mode::Terrain;
         data.reset_mode_buttons();
         data.update_menu_buttons();
-        data.pan_buttons.insert(&data.panLeftButton);
-        data.pan_buttons.insert(&data.panRightButton);
-        data.pan_buttons.insert(&data.panUpButton);
-        data.pan_buttons.insert(&data.panDownButton);
         check(data.mouse_on_menus(data.terrainSmoothButton.area.x + 1, data.terrainSmoothButton.area.y + 1));
-        check(data.mouse_on_menus(data.panLeftButton.area.x + 1, data.panUpButton.area.y + 1));
+        // The bottom-left strip the retired touch pan buttons used to claim
+        // (x 9..54, y 149..194 -- PR #292 deleted the feature) is plain world:
+        // mouse_on_menus must NOT swallow a click there, or every terrain
+        // stroke in that corner would be eaten by a phantom menu.
+        check(!data.mouse_on_menus(10, 160));
         check(!data.mouse_on_menus(200, 170));
 
         data.current_menu.clear();
@@ -1823,16 +1823,6 @@ int level_editor_test_exercise_internal_helpers()
         check(scr != nullptr && scr->viewob[0] != nullptr);
         if (scr != nullptr && scr->viewob[0] != nullptr)
         {
-            struct FramebufferGuard
-            {
-                screen& scr;
-                std::vector<unsigned char> saved;
-
-                explicit FramebufferGuard(screen& scr_)
-                    : scr(scr_), saved(scr_.videobuffer) {}
-
-                ~FramebufferGuard() { scr.videobuffer = std::move(saved); }
-            } framebuffer_guard(*scr);
             const auto capture_framebuffer = [&] {
                 const int width = scr->canvas_w();
                 const int height = scr->canvas_h();
@@ -1904,10 +1894,6 @@ int level_editor_test_exercise_internal_helpers()
             data.reset_mode_buttons();
             const auto gore_overrides_before = cfg.overrides;
             cfg.apply_override("effects", "gore", "on");
-            data.pan_buttons.insert(&data.panLeftButton);
-            data.pan_buttons.insert(&data.panRightButton);
-            data.pan_buttons.insert(&data.panUpButton);
-            data.pan_buttons.insert(&data.panDownButton);
             MouseState& panel_mouse = query_mouse_no_poll();
             panel_mouse.left = false;
             panel_mouse.right = false;
@@ -2091,15 +2077,6 @@ int level_editor_test_nameless_selection_panel_rows()
     eds().current_floor = 0;
     eds().decor_mode = false;
 
-    struct FramebufferGuard
-    {
-        screen& scr;
-        std::vector<unsigned char> saved;
-
-        explicit FramebufferGuard(screen& scr_) : scr(scr_), saved(scr_.videobuffer) {}
-        ~FramebufferGuard() { scr.videobuffer = std::move(saved); }
-    } framebuffer_guard(*scr);
-
     // One 8-pixel text row of the info box, sampled strictly INSIDE the box
     // the panel draws at draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2): x1=241,
     // x2=315, so 245..314 never touches a border column.
@@ -2211,4 +2188,78 @@ int level_editor_testing_object_brush_worldz()
 int level_editor_testing_default_maxrows()
 {
     return static_cast<int>(kDefaultBackgrounds.size() / 4);
+}
+
+// Scalar editor state the injector may poll while the loop is running. Same
+// discipline as level_editor_testing_terrain_smoothing() above: each of these
+// is a single scalar the editor writes ONLY in response to a click or key the
+// injector itself sent, so an injector that waits for its own edit to land is
+// not racing a concurrent writer. Never poll the level's strings or containers
+// this way -- read those after level_editor() has returned.
+int level_editor_testing_level_type()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->level->world().type);
+}
+
+int level_editor_testing_level_par_value()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->level->world().par_value);
+}
+
+// 0 = Terrain, 1 = Object, 2 = Select (the Mode enumerator order).
+int level_editor_testing_mode()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->mode);
+}
+
+int level_editor_testing_terrain_brush()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->terrain_brush.terrain;
+}
+
+int level_editor_testing_object_brush_order()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return static_cast<int>(g_level_editor_testing_data->object_brush.order);
+}
+
+int level_editor_testing_object_brush_family()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.family;
+}
+
+int level_editor_testing_object_brush_team()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.team;
+}
+
+// The object brush's authored level (']' raises, '[' lowers, never below 1)
+// and its grid-snap flag ('g' toggles it in Object/Select mode). Same read
+// discipline as level_editor_testing_object_brush_team() above: each is a
+// single scalar the editor writes only from the key handler, so the injector
+// that sent the key may poll for its own edit to land.
+int level_editor_testing_object_brush_level()
+{
+    if (g_level_editor_testing_data == nullptr)
+        return -1;
+    return g_level_editor_testing_data->object_brush.level;
+}
+
+bool level_editor_testing_object_brush_snap_to_grid()
+{
+    return g_level_editor_testing_data != nullptr &&
+           g_level_editor_testing_data->object_brush.snap_to_grid;
 }

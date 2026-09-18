@@ -10,9 +10,11 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -31,6 +33,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
@@ -224,6 +227,28 @@ bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs) {
   return false;
 }
 
+// "The injector never reached this read" — distinct from every legitimate
+// observation, so a flow that died early fails its EXPECT instead of
+// silently agreeing with it.
+constexpr int kUnread = -9;
+
+// do_outline is a vbutton field, not part of Interactable. The Company List
+// stamps it on the ACTIVE company's row (company_list_rewire), which is where
+// list_companies' newest-first ORDER becomes visible on screen. -1 = no such
+// visible button.
+int interactable_outline(const std::string &id) {
+  og::runtime::ensure_thread_session();
+  AllButtonsLock lock;
+  for (int i = 0; i < MAX_BUTTONS; i++) {
+    vbutton *const live =
+        og::runtime::current_session->allbuttons_[static_cast<std::size_t>(i)];
+    if (live == nullptr || live->id != id || live->hidden)
+      continue;
+    return static_cast<int>(live->do_outline);
+  }
+  return -1;
+}
+
 // One keyboard-nav step, applied through the engine's testing hook (real key
 // events can't be driven from an injector thread — the blocking
 // hold-and-release loops in handle_menu_nav eat them mid-press).
@@ -288,18 +313,6 @@ std::vector<RosterSeed> playtest_roster() {
   };
 }
 
-struct CompanySlotCleanup {
-  std::vector<std::string> slots;
-  ~CompanySlotCleanup() {
-    for (const std::string &slot : slots) {
-      for (const og::data::CompanyBackupInfo &backup :
-           og::data::list_company_backups(slot))
-        (void)og::data::delete_company_backup(slot, backup.seq);
-      (void)remove_user_file("save/" + slot + ".gtl");
-    }
-  }
-};
-
 // Remove every company file so the no-company main-menu variant shows.
 void reap_all_companies() {
   for (const og::data::CompanyInfo &info : og::data::list_companies()) {
@@ -316,6 +329,33 @@ struct ShotState {
   // #237 derivation pin, for the flows that drive a real door: the fades a
   // door added, or -1 when the injector never reached the read.
   int fades_added_by_nested_door = -1;
+
+  // --- row-shape observations -----------------------------------------------
+  // Read from the live button table on the injector thread in the same
+  // settled frame the shot is filmed, then EXPECTed on the test thread. A
+  // screenshot's own oracle is "nonblank", which every variant of a screen
+  // satisfies; these are what say WHICH variant was filmed.
+  //
+  // Main menu (§2.1): the company gate.
+  int saw_load_company = kUnread;
+  int saw_continue_game = kUnread;
+  int saw_no_company_note = kUnread;
+  // Company List (§2.3): the row window pins the row COUNT, the red
+  // active-company outline pins the ORDER.
+  int saw_company_row_3 = kUnread;
+  int saw_company_row_4 = kUnread;
+  int outline_company_row_0 = kUnread;
+  int outline_company_row_3 = kUnread;
+  // Any paged list: the page-flip trace (the click's consumption proof) plus
+  // the row window on either side of it.
+  int page2_reached = kUnread;
+  int saw_page1_last_row = kUnread;
+  int saw_page2_row_a = kUnread;
+  int saw_page2_row_b = kUnread;
+  // Backups (§2.4): one row per snapshot, same row-window shape as the
+  // company list (company_backups_rewire's `visible`).
+  int saw_backup_row_2 = kUnread;
+  int saw_backup_row_3 = kUnread;
 };
 
 // Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
@@ -351,6 +391,12 @@ int mainmenu_no_company_injector(void *data) {
   ShotState *state = static_cast<ShotState *>(data);
   wait_for_interactable("begin_new_game", 5000);
   SDL_Delay(1500); // menu-entry settle
+  // §2.1: which main-menu VARIANT is on screen. Both variants film well over
+  // a thousand nonblack pixels, so the shot alone cannot tell them apart —
+  // the company gate can.
+  state->saw_load_company = has_interactable("load_company") ? 1 : 0;
+  state->saw_continue_game = has_interactable("continue_game") ? 1 : 0;
+  state->saw_no_company_note = has_interactable("no_company_note") ? 1 : 0;
   state->captures += capture_frame("mainmenu_no_company");
   interact("quit");
   state->finished = true;
@@ -372,6 +418,14 @@ TEST(UxShots, a_mainmenu_no_company) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  EXPECT_EQ(0, state.saw_load_company)
+      << "§2.1: with no company on disk the main_menu_company_present gate "
+         "hides LOAD";
+  EXPECT_EQ(0, state.saw_continue_game)
+      << "§2.1: CONTINUE gates together with LOAD — a company-less menu "
+         "offers the new-game door only";
+  EXPECT_EQ(1, state.saw_no_company_note)
+      << "§9.2: and the inert NO COMPANY YET note stands in their row";
 }
 
 // --- 2. main menu, companies present ---------------------------------------
@@ -381,6 +435,9 @@ int mainmenu_with_company_injector(void *data) {
   ShotState *state = static_cast<ShotState *>(data);
   wait_for_interactable("load_company", 5000);
   SDL_Delay(1500);
+  state->saw_load_company = has_interactable("load_company") ? 1 : 0;
+  state->saw_continue_game = has_interactable("continue_game") ? 1 : 0;
+  state->saw_no_company_note = has_interactable("no_company_note") ? 1 : 0;
   state->captures += capture_frame("mainmenu_with_company");
   interact("quit");
   state->finished = true;
@@ -389,7 +446,6 @@ int mainmenu_with_company_injector(void *data) {
 
 TEST(UxShots, b_mainmenu_with_company) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"uxmm1", "uxmm2"}};
   ASSERT_TRUE(seed_company_with_roster("uxmm1", "GREY WOLF COMPANY", 1000,
                                        playtest_roster()));
   ASSERT_TRUE(seed_company_with_roster("uxmm2", "IRON KETTLE BAND", 2000,
@@ -406,6 +462,13 @@ TEST(UxShots, b_mainmenu_with_company) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  EXPECT_EQ(1, state.saw_load_company)
+      << "§2.1: with companies on disk the gate opens LOAD";
+  EXPECT_EQ(1, state.saw_continue_game)
+      << "§2.1: CONTINUE gates together with LOAD";
+  EXPECT_EQ(0, state.saw_no_company_note)
+      << "§9.2: and the NO COMPANY YET note is hidden — the two shapes are "
+         "mutually exclusive";
 }
 
 // --- 2a. game settings ------------------------------------------------------
@@ -517,7 +580,6 @@ int seat_settings_injector(void *data) {
 
 TEST(UxShots, b2_seat_settings) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -584,6 +646,14 @@ int company_list_injector(void *data) {
   interact("load_company");
   if (wait_for_interactable("company_row_0", 5000)) {
     SDL_Delay(1500); // menu-entry settle
+    // One row per saved company (company_list_rewire's `visible` window)...
+    state->saw_company_row_3 = has_interactable("company_row_3") ? 1 : 0;
+    state->saw_company_row_4 = has_interactable("company_row_4") ? 1 : 0;
+    // ...in list_companies' newest-played-first order, which the screen
+    // shows by stamping the red active-company outline on the row that
+    // carries the active slot.
+    state->outline_company_row_0 = interactable_outline("company_row_0");
+    state->outline_company_row_3 = interactable_outline("company_row_3");
     state->captures += capture_frame("company_list");
     interact("back");
   }
@@ -597,7 +667,9 @@ int company_list_injector(void *data) {
 
 TEST(UxShots, d_company_list) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"uxcl1", "uxcl2", "uxcl3", "uxcl4"}};
+  // Exactly four companies exist while this shot is filmed, so the row
+  // window below is a count and not an inequality.
+  reap_all_companies();
   ASSERT_TRUE(seed_company_with_roster("uxcl1", "GREY WOLF COMPANY", 1700000000,
                                        playtest_roster()));
   ASSERT_TRUE(seed_company("uxcl2", "THE COPPER SHIELDS", 1700086400));
@@ -618,6 +690,26 @@ TEST(UxShots, d_company_list) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  EXPECT_EQ(1, state.saw_company_row_3)
+      << "§2.3: four saved companies fill rows 0..3";
+  EXPECT_EQ(0, state.saw_company_row_4)
+      << "§2.3: and the list offers no fifth row";
+  // uxcl4 carries the newest last_played stamp AND is the active slot, so
+  // newest-first ordering puts it — and its red outline — on row 0. Reverse
+  // the sort and the outline lands on row 3 instead.
+  EXPECT_EQ(1, state.outline_company_row_0)
+      << "§2.3 U4: list_companies orders newest-played first, so the active "
+         "uxcl4 is row 0 and wears the active-company outline";
+  EXPECT_EQ(0, state.outline_company_row_3)
+      << "§2.3 U4: the oldest company is not the active one";
+  std::vector<std::string> listed;
+  for (const og::data::CompanyInfo &info : og::data::list_companies()) {
+    if (info.slot.rfind("uxcl", 0) == 0)
+      listed.push_back(info.slot);
+  }
+  EXPECT_EQ(std::vector<std::string>({"uxcl4", "uxcl3", "uxcl2", "uxcl1"}),
+            listed)
+      << "list_companies sorts by last_played_unix_s, newest first";
 }
 
 // --- 5. company list, paged -------------------------------------------------
@@ -630,10 +722,22 @@ int company_list_paged_injector(void *data) {
   interact("load_company");
   if (wait_for_interactable("company_page_next", 5000)) {
     SDL_Delay(1500);
+    state->saw_page1_last_row = has_interactable("company_row_7") ? 1 : 0;
     state->captures += capture_frame("company_list_paged_p1");
     interact("company_page_next");
-    SDL_Delay(600);
-    state->captures += capture_frame("company_list_paged_p2");
+    // The click's CONSUMPTION, not a guess at how long it takes: the pager
+    // traces the page it actually landed on (company_list_on_spec_row). A
+    // dropped press leaves the trace absent, the second capture untaken and
+    // the captures==2 assertion below red — where the old flat delay filmed
+    // page 1 twice and still counted two.
+    state->page2_reached =
+        wait_for_trace("company_list", "page 2/2", 5000) ? 1 : 0;
+    if (state->page2_reached == 1) {
+      wait_for_menu_frames(2);
+      state->saw_page2_row_a = has_interactable("company_row_2") ? 1 : 0;
+      state->saw_page2_row_b = has_interactable("company_row_3") ? 1 : 0;
+      state->captures += capture_frame("company_list_paged_p2");
+    }
     SDL_Delay(200);
     interact("back");
   }
@@ -647,10 +751,11 @@ int company_list_paged_injector(void *data) {
 
 TEST(UxShots, e_company_list_paged) {
   trace_clear();
+  // Exactly eleven companies: 8 on page 1, 3 on page 2.
+  reap_all_companies();
   std::vector<std::string> slots;
   for (int i = 0; i < 11; ++i)
     slots.push_back("uxpg" + std::to_string(i));
-  CompanySlotCleanup cleanup{slots};
   const char *names[11] = {
       "GREY WOLF COMPANY", "THE COPPER SHIELDS", "RED LANTERN CREW",
       "OAKEN VANGUARD",    "SILVER FANG PACT",   "THE BLACK BANNERS",
@@ -671,6 +776,14 @@ TEST(UxShots, e_company_list_paged) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(2, state.captures);
+  EXPECT_EQ(1, state.page2_reached)
+      << "§2.3: company_page_next must advance the list to page 2 of 2";
+  EXPECT_EQ(1, state.saw_page1_last_row)
+      << "§2.3: eleven companies fill all eight rows of page 1";
+  EXPECT_EQ(1, state.saw_page2_row_a)
+      << "§2.3: page 2 holds the remaining three companies";
+  EXPECT_EQ(0, state.saw_page2_row_b)
+      << "§2.3: and offers no fourth row";
 }
 
 // --- 6. backups sub-view ----------------------------------------------------
@@ -686,6 +799,11 @@ int backups_injector(void *data) {
     interact("company_bak_0");
     if (wait_for_interactable("backup_row_0", 5000)) {
       SDL_Delay(1500);
+      // One row per snapshot, read off the live button table in the same
+      // settled frame the shot is filmed: three backups fill rows 0..2 and
+      // the view offers no fourth row.
+      state->saw_backup_row_2 = has_interactable("backup_row_2") ? 1 : 0;
+      state->saw_backup_row_3 = has_interactable("backup_row_3") ? 1 : 0;
       state->captures += capture_frame("backups");
       interact("back");
     }
@@ -704,7 +822,14 @@ int backups_injector(void *data) {
 
 TEST(UxShots, f_backups) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"uxbk1"}};
+  // Start from no snapshots so the sequence numbers below are the ones this
+  // test made (a crashed earlier run could otherwise leave uxbk1 backups
+  // behind and shift every seq).
+  for (const og::data::CompanyBackupInfo &stale :
+       og::data::list_company_backups("uxbk1"))
+    (void)og::data::delete_company_backup("uxbk1", stale.seq);
+  ASSERT_TRUE(og::data::list_company_backups("uxbk1").empty())
+      << "the backups view is filmed over a known snapshot set";
   // Three snapshots at different levels/timestamps.
   for (int i = 0; i < 3; ++i) {
     SaveData sd;
@@ -737,6 +862,22 @@ TEST(UxShots, f_backups) {
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
+  EXPECT_EQ(1, state.saw_backup_row_2)
+      << "§2.4: three snapshots fill backup rows 0..2";
+  EXPECT_EQ(0, state.saw_backup_row_3)
+      << "§2.4: and the view offers no fourth row";
+  // The ORDER the rows carry, which the filmed pixels cannot say: the view
+  // draws st->backups straight through, and list_company_backups hands it
+  // back newest seq first. Snapshot i was taken at level 1+2i, so
+  // newest-first means seq 3/2/1 carrying scen_num 5/3/1 — reverse the sort
+  // and every one of these three rows moves.
+  std::vector<std::pair<int, int>> listed;
+  for (const og::data::CompanyBackupInfo &info :
+       og::data::list_company_backups("uxbk1")) {
+    listed.push_back({info.seq, static_cast<int>(info.header.scen_num)});
+  }
+  EXPECT_EQ((std::vector<std::pair<int, int>>{{3, 5}, {2, 3}, {1, 1}}), listed)
+      << "list_company_backups orders the rows newest seq first";
 }
 
 // --- 7-9. base camp: populated / empty / paged ------------------------------
@@ -747,7 +888,28 @@ struct NamedShot {
   // Optional pixel oracle run on the captured frame; a failed check does not
   // count the capture, so the caller's ASSERT_EQ on `captures` is its verdict.
   FrameCheck check = nullptr;
+  // The Base Camp shape filmed, read from the live button table on the
+  // injector thread immediately before the shot. A rail with no cards, a
+  // roster with no rows and a joiner's READY all film the same pixel count;
+  // these say which one was on screen.
+  std::string seat_label[4];
+  int seat_present[4] = {kUnread, kUnread, kUnread, kUnread};
+  int saw_roster_row_0 = kUnread;
+  int saw_go = kUnread;
+  int saw_ready = kUnread;
 };
+
+// The rail/roster/command-strip shape the shot is about to film.
+void record_basecamp_shape(NamedShot *shot) {
+  for (int slot = 0; slot < 4; ++slot) {
+    const std::string id = "seat_card_" + std::to_string(slot);
+    shot->seat_present[slot] = has_interactable(id) ? 1 : 0;
+    shot->seat_label[slot] = interactable_label(id);
+  }
+  shot->saw_roster_row_0 = has_interactable("roster_row_0") ? 1 : 0;
+  shot->saw_go = has_interactable("go") ? 1 : 0;
+  shot->saw_ready = has_interactable("ready") ? 1 : 0;
+}
 
 // The machine's seat declaration is LIVE SESSION state: it survives CONTINUE
 // on purpose (docs §2.5), which means it also survives from one shot in this
@@ -771,6 +933,7 @@ int basecamp_shot_injector(void *data) {
               (int)scr->save_data.team_size, scr->save_data.save_name.c_str(),
               (int)scr->save_data.scen_num);
     }
+    record_basecamp_shape(shot);
     shot->state.captures += capture_frame(shot->name);
     SDL_Delay(200);
     interact("back");
@@ -810,11 +973,24 @@ int basecamp_paged_injector(void *data) {
                   static_cast<int>(p.character_slots.size()), p.company.c_str());
       });
     }
+    shot->state.saw_page1_last_row = has_interactable("roster_row_7") ? 1 : 0;
     shot->state.captures += capture_frame("basecamp_paged_p1");
     if (has_interactable("roster_page_next")) {
       interact("roster_page_next");
-      SDL_Delay(1500);
-      shot->state.captures += capture_frame("basecamp_paged_p2");
+      // The click's CONSUMPTION: base_camp_on_spec_row traces the page it
+      // actually landed on. A dropped press used to leave two identical
+      // frames behind — the very duplicate this shot's comment says it
+      // removed — while captures still read 2.
+      shot->state.page2_reached =
+          wait_for_trace("basecamp", "page 2/", 5000) ? 1 : 0;
+      if (shot->state.page2_reached == 1) {
+        wait_for_menu_frames(2);
+        shot->state.saw_page2_row_a =
+            has_interactable("roster_row_5") ? 1 : 0;
+        shot->state.saw_page2_row_b =
+            has_interactable("roster_row_6") ? 1 : 0;
+        shot->state.captures += capture_frame("basecamp_paged_p2");
+      }
     }
     SDL_Delay(200);
     interact("back");
@@ -880,10 +1056,16 @@ void run_basecamp_seat_growth_shot(SeatGrowthShot &shot) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(shot.state.finished);
-  ASSERT_GE(shot.state.captures, 1);
+  // Exactly one frame: this injector films once, after the rail finished
+  // growing. An inequality would accept a duplicated shot silently.
+  ASSERT_EQ(1, shot.state.captures);
 }
 
-void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
+// `expected_captures` is the number of frames THIS injector films: one for
+// every single-shot flow, two for the pager. An inequality here would let a
+// flow that never reached its second screen pass.
+void run_basecamp_shot(NamedShot &shot, int (*injector)(void *),
+                       int expected_captures = 1) {
   declare_local_seats(1);
   SDL_Thread *thread = SDL_CreateThread(injector, "ux_bc", &shot);
   ASSERT_TRUE(thread != nullptr);
@@ -894,18 +1076,32 @@ void run_basecamp_shot(NamedShot &shot, int (*injector)(void *)) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(shot.state.finished);
-  ASSERT_GE(shot.state.captures, 1);
+  ASSERT_EQ(expected_captures, shot.state.captures);
 }
 
 TEST(UxShots, g_basecamp_solo) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
   NamedShot shot;
   shot.name = "basecamp_solo";
   run_basecamp_shot(shot, &basecamp_shot_injector);
+  // §2.5: this machine's ONE seat holds slot 0 and wears its P# card; the
+  // three slots past it are ADD PLAYER doors. base_camp_seat_label composes
+  // "P1 " + the seat's input mapping, so the prefix is the card's identity.
+  EXPECT_EQ(1, shot.seat_present[0]) << "slot 0 is this machine's seat card";
+  EXPECT_TRUE(shot.seat_label[0].starts_with("P1 "))
+      << "slot 0 must name player 1, not offer a placeholder; it read '"
+      << shot.seat_label[0] << "'";
+  for (int slot = 1; slot < 4; ++slot) {
+    EXPECT_EQ(1, shot.seat_present[slot])
+        << "a desktop rail offers slot " << slot;
+    EXPECT_EQ("ADD PLAYER", shot.seat_label[slot])
+        << "slot " << slot << " is an ADD PLAYER placeholder";
+  }
+  EXPECT_EQ(1, shot.saw_roster_row_0)
+      << "the nine-member roster fills roster_row_0";
 }
 
 // #249: the phone shape — a single-seat device has ONE slot, so the rail is
@@ -919,6 +1115,7 @@ int basecamp_phone_shot_injector(void *data) {
   interact("continue_game");
   if (wait_for_interactable("hire_troops", kTeamMenuTimeoutMs)) {
     SDL_Delay(1500);
+    record_basecamp_shape(shot);
     shot->state.captures += capture_frame(shot->name);
     SDL_Delay(200);
     interact("back");
@@ -939,7 +1136,6 @@ struct SingleSeatDeviceGuard {
 
 TEST(UxShots, g2_basecamp_phone_single_seat) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -947,16 +1143,35 @@ TEST(UxShots, g2_basecamp_phone_single_seat) {
   NamedShot shot;
   shot.name = "basecamp_phone_single_seat";
   run_basecamp_shot(shot, &basecamp_phone_shot_injector);
+  // #249: base_camp_seat_slot_kind returns Hidden past the device's seat cap
+  // (local_seat_cap() == 1 here), and Hidden rows are dropped from the live
+  // table — so the phone rail is ONE card and no placeholder at all.
+  EXPECT_EQ(1, shot.seat_present[0]) << "#249: the lone seat card stands";
+  EXPECT_EQ(0, shot.seat_present[1])
+      << "#249: a single-seat device hides slot 1 — an offer the hardware "
+         "cannot accept is worse than none";
+  EXPECT_EQ(0, shot.seat_present[2]) << "#249: slot 2 is hidden too";
+  EXPECT_EQ(0, shot.seat_present[3]) << "#249: and slot 3";
 }
 
 TEST(UxShots, h_basecamp_empty) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company("save0", "IRON KETTLE BAND", 1700259200));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
   NamedShot shot;
   shot.name = "basecamp_empty";
   run_basecamp_shot(shot, &basecamp_shot_injector);
+  // The point of THIS shot, as opposed to g_basecamp_solo: team_size 0 means
+  // the roster band offers no rows at all, while the seat rail is untouched
+  // by an empty roster.
+  EXPECT_EQ(0, shot.saw_roster_row_0)
+      << "a company with an empty roster offers no roster rows";
+  EXPECT_EQ(1, shot.seat_present[0]) << "the rail is unchanged";
+  EXPECT_TRUE(shot.seat_label[0].starts_with("P1 "))
+      << "slot 0 still holds this machine's seat card; it read '"
+      << shot.seat_label[0] << "'";
+  EXPECT_EQ("ADD PLAYER", shot.seat_label[1])
+      << "and slot 1 is still an ADD PLAYER placeholder";
 }
 
 // The rail's three interesting local shapes. basecamp_solo already shows
@@ -965,7 +1180,6 @@ TEST(UxShots, h_basecamp_empty) {
 // on the panel's right rail.
 TEST(UxShots, i_basecamp_two_local_seats) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -977,7 +1191,6 @@ TEST(UxShots, i_basecamp_two_local_seats) {
 
 TEST(UxShots, i_basecamp_three_local_seats) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -989,7 +1202,6 @@ TEST(UxShots, i_basecamp_three_local_seats) {
 
 TEST(UxShots, i_basecamp_four_local_seats) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -1106,7 +1318,6 @@ int basecamp_placeholder_focus_injector(void *data) {
 
 TEST(UxShots, g3_basecamp_placeholder_focus) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
@@ -1209,11 +1420,82 @@ og::sim::LobbyPlayer make_probe_seat(std::uint8_t index, const char *name,
   return player;
 }
 
+// Line B's band. strip_text backs the y=17 text with a rect at y=16..23 and
+// the 8px glyphs run y=17..24; the band starts on the panel's left line and
+// stops short of the HIRE command at x=220.
+constexpr int kLineBTopY = 15;
+constexpr int kLineBBottomY = 25;
+constexpr int kLineBLeftX = 8;
+constexpr int kLineBRightX = 215;
+
+// Pixels in the line-B band drawn from a palette ramp. Glyph bytes above 247
+// land on teamcolor + (255 - byte) (video_sdl walkputbuffertext), so a text
+// color inks its base entry and up to seven shades above it; the composed
+// frame's RGB is the palette entry times four (palette_color_lut).
+std::size_t count_line_b_ramp_pixels(const FramePixels &rgb,
+                                     unsigned char ramp_start, int shades) {
+  std::size_t hits = 0;
+  for (int shade = 0; shade < shades; ++shade) {
+    int pr = 0, pg = 0, pb = 0;
+    query_palette_reg(static_cast<unsigned char>(ramp_start + shade), &pr, &pg,
+                      &pb);
+    const Uint8 want_r = static_cast<Uint8>(pr * 4);
+    const Uint8 want_g = static_cast<Uint8>(pg * 4);
+    const Uint8 want_b = static_cast<Uint8>(pb * 4);
+    for (int y = kLineBTopY; y <= kLineBBottomY; ++y) {
+      for (int x = kLineBLeftX; x <= kLineBRightX; ++x) {
+        const std::size_t i =
+            (static_cast<std::size_t>(y) * 320 + static_cast<std::size_t>(x)) *
+            3;
+        if (rgb[i] == want_r && rgb[i + 1] == want_g && rgb[i + 2] == want_b)
+          ++hits;
+      }
+    }
+  }
+  return hits;
+}
+
+constexpr int kOrangeShades = 8;
+// "Status: connection lost" is 23 glyphs; even the thinnest of them inks
+// several pixels. Forty is a floor, not a measurement.
+constexpr std::size_t kLineBAlertInkFloor = 40;
+
+// §9.12: a degraded-link alert outranks the healthy session status in the
+// line-B slot AND takes the ORANGE color with it (compose_base_camp_line_b ->
+// line_b_color = ORANGE_START). The healthy arms ink WHITE there, so the
+// paired checks are a real separation: alert => orange ink, healthy => none.
+bool check_line_b_alert(const FramePixels &rgb) {
+  const std::size_t orange =
+      count_line_b_ramp_pixels(rgb, ORANGE_START, kOrangeShades);
+  if (orange < kLineBAlertInkFloor) {
+    fprintf(stderr,
+            "  [uxshot] line B: %zu orange pixels — the connection alert "
+            "never reached the screen\n",
+            orange);
+    return false;
+  }
+  return true;
+}
+
+bool check_line_b_healthy(const FramePixels &rgb) {
+  const std::size_t orange =
+      count_line_b_ramp_pixels(rgb, ORANGE_START, kOrangeShades);
+  if (orange != 0) {
+    fprintf(stderr,
+            "  [uxshot] line B: %zu orange pixels with no alert pending — "
+            "the alert color is not exclusive to the alert\n",
+            orange);
+    return false;
+  }
+  return true;
+}
+
 int basecamp_net_injector(void *data) {
   og::runtime::ensure_thread_session();
   NamedShot *shot = static_cast<NamedShot *>(data);
   if (wait_for_team_menu()) {
     SDL_Delay(1500);
+    record_basecamp_shape(shot);
     shot->state.captures += capture_frame(shot->name, shot->check);
     SDL_Delay(200);
     interact("back");
@@ -1256,6 +1538,7 @@ std::vector<RosterSeed> foreign_roster() {
 void run_basecamp_net_shot(const char *name, bool host_view,
                            std::optional<std::string> alert) {
   trace_clear();
+  const bool alert_pending = alert.has_value();
   seed_session_save_for_net();
   FakeNetLobbyClient client;
   client.host_view = host_view;
@@ -1284,6 +1567,7 @@ void run_basecamp_net_shot(const char *name, bool host_view,
   ActiveLobbyGuard guard(&client);
   NamedShot shot;
   shot.name = name;
+  shot.check = alert_pending ? &check_line_b_alert : &check_line_b_healthy;
   SDL_Thread *thread = SDL_CreateThread(basecamp_net_injector, "ux_net", &shot);
   ASSERT_TRUE(thread != nullptr);
   // The local shapes reach Base Camp through picker_main, which loads the
@@ -1297,6 +1581,14 @@ void run_basecamp_net_shot(const char *name, bool host_view,
   cleanup_picker_state();
   ASSERT_TRUE(shot.state.finished);
   ASSERT_EQ(1, shot.state.captures);
+  // §2.6: the GO/READY pair shares one rect and exactly one of them is
+  // offered — GO for the host, READY for a joiner. host_view is the ONLY
+  // thing separating the host and joiner shots, and the frame alone cannot
+  // see it.
+  EXPECT_EQ(host_view ? 1 : 0, shot.saw_go)
+      << "§2.6: a networked host keeps GO in the shared slot";
+  EXPECT_EQ(host_view ? 0 : 1, shot.saw_ready)
+      << "§2.6: a networked joiner gets READY in that same slot";
 }
 
 TEST(UxShots, j_basecamp_net_host) {
@@ -1310,6 +1602,16 @@ TEST(UxShots, k_basecamp_net_join) {
 TEST(UxShots, l_basecamp_net_alert) {
   run_basecamp_net_shot("basecamp_net_alert", false,
                         std::optional<std::string>("Status: connection lost"));
+  // The composition rule behind the orange ink the shot's FrameCheck just
+  // demanded: the alert takes the line-B slot away from the healthy session
+  // status, and says so.
+  const og::ui::BaseCampLineB header = og::ui::compose_base_camp_line_b(
+      std::optional<std::string>("Status: connection lost"), false, "GLAD-7Q2F",
+      {}, og::ui::kBaseCampLineBCharsHireHidden);
+  EXPECT_TRUE(header.alert)
+      << "§9.12: connection_alert outranks the healthy status on line B";
+  EXPECT_EQ("Status: connection lost", header.text)
+      << "§9.12: and the alert prose is what line B shows";
 }
 
 // Wait until a (visible) interactable `id` exists at game coords (x, y) —
@@ -1890,7 +2192,6 @@ TEST(UxShots, n_view_level_staged) {
   g_view_level_first_frame.clear();
   g_menu_before_viewer_frame.clear();
   g_view_level_pan_phase_collided = false;
-  CompanySlotCleanup cleanup{{"save0"}};
   {
     SaveData sd;
     sd.reset();
@@ -2278,7 +2579,6 @@ TEST(UxShots, n_help_screen) {
 
 TEST(UxShots, i_basecamp_paged) {
   trace_clear();
-  CompanySlotCleanup cleanup{{"save0"}};
   std::vector<RosterSeed> roster = playtest_roster();
   roster.push_back({"WREN", FAMILY_ARCHER, 2, true});
   roster.push_back({"DUNCAN", FAMILY_SOLDIER, 1, true});
@@ -2290,11 +2590,21 @@ TEST(UxShots, i_basecamp_paged) {
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
   NamedShot shot;
   shot.name = "basecamp_paged_p1";
-  run_basecamp_shot(shot, &basecamp_paged_injector);
-  // Page 1 and page 2 — two states, two frames. The third capture this used
-  // to take was page 2 again, 120ms later: a byte-identical duplicate that
-  // proved nothing and cost a reviewer a comparison.
-  ASSERT_EQ(2, shot.state.captures);
+  run_basecamp_shot(shot, &basecamp_paged_injector, 2);
+  // Page 1 and page 2 — two states, two frames (the `2` handed to
+  // run_basecamp_shot above). The third capture this used to take was page 2
+  // again, 120ms later: a byte-identical duplicate that proved nothing and
+  // cost a reviewer a comparison. The second frame is now taken only after
+  // the pager TRACED the page it landed on, so two captures means two pages
+  // and not one page filmed twice.
+  EXPECT_EQ(1, shot.state.page2_reached)
+      << "roster_page_next must advance the Base Camp roster to page 2";
+  EXPECT_EQ(1, shot.state.saw_page1_last_row)
+      << "a fourteen-member roster fills all eight rows of page 1";
+  EXPECT_EQ(1, shot.state.saw_page2_row_a)
+      << "page 2 holds the remaining six members";
+  EXPECT_EQ(0, shot.state.saw_page2_row_b)
+      << "and offers no seventh row";
 }
 
 } // namespace

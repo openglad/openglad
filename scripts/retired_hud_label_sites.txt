@@ -1,0 +1,21 @@
+# Files allowed to spell a retired counter-box row label, one per line, with
+# how many times that file spells it and why. Checked by
+# scripts/check_retired_hud_labels.sh -- read that script's header for the
+# procedure (which labels are retired, how to retire the next one, and why the
+# match is case-sensitive and wrap-aware).
+#
+# A key is "<path>=<number of hits in that file>", never a line number, so
+# edits elsewhere in the file do not rot this list. The count is what makes the
+# allowlist an allowlist instead of an amnesty: a NEW stale mention added
+# beside a historical one changes the count and fails, and a row whose file
+# stops mentioning the label at all fails too (delete the row).
+#
+# The bar for a row here is narrow. A mention earns one only when the retired
+# spelling is the SUBJECT of the sentence -- a test or capture comment
+# describing what the pre-rename tree used to paint, which becomes wrong if it
+# is "fixed". Prose that merely names the row for today's reader does not
+# qualify; it gets renamed instead. (This file is itself scanned, which is why
+# the reasons below say "its retired spelling" rather than quoting it.)
+
+tests/integration/test_glad_hud.cpp=2   # the Q2 fit-rule header and the pending-wave band comment describe the BASE tree's right-aligned rows by their retired spelling, and the pixel bands they compute are the numbers those retired rows produced
+scripts/media/capture_pr292.sh=1        # the q2 capture scene's before-half names the rows the base tree paints, which is what the screenshot shows

@@ -1982,6 +1982,53 @@ std::string format_go_blockers(
     return body;
 }
 
+StartDenialNotice describe_start_denial(
+    og::sim::StartDenialReason reason,
+    const std::vector<og::sim::LobbyPlayer>& players)
+{
+    // No `default:` arm, and none may be added: -Wswitch under -Werror is the
+    // tripwire that turns a sixth StartDenialReason into a build error here
+    // instead of a GO that refuses in silence. The notice is declared up front
+    // and assigned per case so the switch needs no post-switch fallback.
+    StartDenialNotice notice;
+    switch (reason) {
+    case og::sim::StartDenialReason::None:
+        // The press produced no verdict at all: the client never sent the
+        // request (link not established, a lingering start config, a double
+        // press). Honest and generic — never a stale prior reason.
+        notice.title = "COULD NOT START";
+        notice.body = "The start request\nwas not sent.\nTry GO again";
+        notice.line = "Could not start";
+        break;
+    case og::sim::StartDenialReason::NotHost:
+        notice.title = "ONLY THE HOST CAN START";
+        notice.body = "Only the host\ncan start\nthe game";
+        notice.line = "Only the host can start";
+        break;
+    case og::sim::StartDenialReason::MachinesNotReady:
+        notice.title = "WAITING FOR:";
+        notice.body = format_go_blockers(players);
+        if (notice.body.empty())
+            notice.body = "Waiting for other\nmachines to ready";
+        notice.line = "Waiting for other machines";
+        break;
+    case og::sim::StartDenialReason::NoDeployedCharacters:
+        notice.title = "NO ONE IS DEPLOYED";
+        notice.body = "Deploy at least\none character\nbefore starting";
+        notice.line = "No one is deployed";
+        break;
+    case og::sim::StartDenialReason::StageFailed:
+        // "STAGING FAILED" is the established vocabulary (the VIEW LEVEL band
+        // and the scenario report say the same words about the same state).
+        notice.title = "STAGING FAILED";
+        notice.body = "The level could\nnot be staged.\nChange the level\n"
+                      "or roster, then\ntry GO again";
+        notice.line = "Staging failed: change the level or roster";
+        break;
+    }
+    return notice;
+}
+
 std::string format_cross_control_label(bool cross_control_enabled)
 {
     return cross_control_enabled ? "CTRL: ALL" : "CTRL: OWN";
@@ -2133,6 +2180,11 @@ void set_player_count(SaveData& save, int count)
 bool is_spectator_mode(const SaveData& save)
 {
     return save.numplayers == 0;
+}
+
+short spectator_view_count(const SaveData& save)
+{
+    return is_spectator_mode(save) ? 1 : static_cast<short>(save.numplayers);
 }
 
 // --- Label formatting ---
@@ -3018,8 +3070,6 @@ void TrainSession::clamp_working_stats()
 
 int seats_still_claimable(const SeatClaimability& claim)
 {
-    if (!claim.multiplayer_enabled)
-        return 0;
     const int local_room = claim.local_seat_cap - claim.local_count;
     const int global_room = claim.global_cap - claim.global_count;
     return std::max(0, std::min(local_room, global_room));
@@ -3027,8 +3077,6 @@ int seats_still_claimable(const SeatClaimability& claim)
 
 int base_camp_seat_rail_slot_cap(const SeatClaimability& claim)
 {
-    if (!claim.multiplayer_enabled)
-        return 1;
     return std::clamp(claim.local_seat_cap, 1, kSeatRailSlots);
 }
 

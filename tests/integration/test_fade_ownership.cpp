@@ -15,6 +15,8 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -27,6 +29,7 @@
 #include <openglad/platform/video_sdl.h>
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -125,8 +128,15 @@ int fades_after(const std::vector<TraceEntry>& entries, const char* category,
 struct FlowState {
     bool started = false;
     bool finished = false;
+    // The stage whose wait this run points at an id nothing publishes, so the
+    // escape tail is the only thing that can free the main thread. 0 = the
+    // real flow.
+    int sabotage_stage = 0;
     bool saw_name_entry = false;
     bool saw_base_camp = false;
+    // Published by the test body the instant picker_main returns, read by the
+    // escape tail on the injector thread — hence atomic.
+    std::atomic<bool> main_left{false};
     // Leg 1, measured live: main menu -> name entry.
     int fades_added_by_name_entry = -1;
     // The trace buffer as of Base Camp settled, before BACK: legs 2-4 are
@@ -149,6 +159,42 @@ bool wait_for_team_menu(int timeout_ms)
     return false;
 }
 
+// --- the escape tail -------------------------------------------------------
+//
+// A wait that dies must not leave the main thread blocked inside picker_main
+// on a screen nobody will ever click out of: that is the 420 s group TIMEOUT
+// with rc=124 that names no test (B1). The tail says which stage died, then
+// clicks its way out — BACK when the live screen publishes one, else QUIT —
+// until the test body publishes main_left, with no wall-clock bound
+// (openglad-test-integrity "Tests that hang" §1; the one implementation is
+// tests/test_escape_tail.h).
+//
+// The exit id is a list: the main menu's QUIT, and the BACK that name entry
+// and Base Camp both carry. QUIT is bound HERE and not in the shared header's
+// default table because this flow runs under a main-menu cap of 1, where the
+// default's forward route (CONTINUE -> Base Camp -> BACK) would cycle past a
+// cap that is never reached.
+constexpr EscapeDoor kNewGameEscapeDoors[] = {{"back", "back"},
+                                              {"quit", "quit"}};
+
+int abort_flow(FlowState* state, int stage)
+{
+    return escape_to_the_main_thread(
+        state->main_left, stage, "a wait died; the stage ids above name it",
+        kNewGameEscapeDoors);
+}
+
+// The exit click has nobody left to notice it, so it is a condition too:
+// re-sent one completed frame at a time until picker_main publishes
+// main_left, every re-send logged.
+int finish_flow(FlowState* state, const char* exit_id)
+{
+    const EscapeDoor door[] = {{exit_id, exit_id}};
+    const int leg = escape_to_the_main_thread(state->main_left, 0, "", door);
+    state->finished = true;
+    return leg;
+}
+
 int count_fade_between_traces()
 {
     std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -161,16 +207,31 @@ int new_game_full_flow_injector(void* data)
     auto* state = static_cast<FlowState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("begin_new_game", 5000))
-        return 1;
-    SDL_Delay(750);
+    // Every settle here is a CONDITION, never a clock: wait_for_menu_frames
+    // returns once run_menu_screen has COMPLETED that many frames. That
+    // matters more here than anywhere — the per-leg fade counts are read
+    // immediately after these settles, and a completed frame proves the
+    // incoming screen composed, where the flat 750 ms sleep it replaced was
+    // waiting out a fadeblack animation a TESTING build never runs.
+    //
+    // The sabotaged run points this wait at an id nothing publishes: the main
+    // menu stays up with nobody left to click it, which is exactly the shape
+    // the tail exists for.
+    const bool sabotage_stage_one = state->sabotage_stage == 1;
+    if (!wait_for_interactable(
+            sabotage_stage_one ? "never_published_door" : "begin_new_game",
+            sabotage_stage_one ? 500 : 5000))
+        return abort_flow(state, 1);
+    if (!wait_for_menu_frames(2))
+        return abort_flow(state, 4);
     state->fades_at_new_game_click = count_fade_between_traces();
     interact("begin_new_game");
 
     if (!wait_for_interactable("company_name_accept", 5000))
-        return 2;
+        return abort_flow(state, 2);
     state->saw_name_entry = true;
-    SDL_Delay(750); // menu-entry settle
+    if (!wait_for_menu_frames(2)) // menu-entry settle
+        return abort_flow(state, 5);
     state->fades_added_by_name_entry =
         count_fade_between_traces() - state->fades_at_new_game_click;
     interact("company_name_accept");
@@ -178,18 +239,18 @@ int new_game_full_flow_injector(void* data)
     // Campaign select auto-accepts and the intro auto-dismisses, each one
     // presented frame in; Base Camp follows with no further input.
     if (!wait_for_team_menu(20000))
-        return 3;
+        return abort_flow(state, 3);
     state->saw_base_camp = true;
-    SDL_Delay(750); // Base Camp's entry settle
+    if (!wait_for_menu_frames(2)) // Base Camp's entry settle
+        return abort_flow(state, 6);
     {
         std::lock_guard<std::mutex> lock(g_trace_mutex);
         state->traces_at_base_camp = g_trace_buffer;
     }
 
-    SDL_Delay(300);
-    interact("back");
-    state->finished = true;
-    return 0;
+    if (!wait_for_menu_frames(1))
+        return abort_flow(state, 7);
+    return finish_flow(state, "back");
 }
 
 } // namespace
@@ -211,9 +272,12 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
+    // Release the escape tail before joining: it spins until this is set.
+    state.main_left.store(true);
 
     int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
@@ -277,4 +341,56 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
         << (og::video_testing::fade_violation_messages().empty()
                 ? std::string()
                 : og::video_testing::fade_violation_messages().front());
+}
+
+// The other half of the same pin, and the reason abort_flow exists: a wait
+// that dies leaves picker_main blocked on the main menu with nobody left to
+// click it, which before the tail was the 420 s group TIMEOUT with rc=124
+// that names no test (B1). Stage 1's wait is pointed at an id nothing
+// publishes, so the ONLY thing that can end this test is the tail walking the
+// main menu out through QUIT.
+TEST(FadeOwnership, a_stalled_wait_escapes_the_main_menu)
+{
+    trace_clear();
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    const auto started = std::chrono::steady_clock::now();
+    FlowState state;
+    state.sabotage_stage = 1;
+    SDL_Thread* thread = SDL_CreateThread(new_game_full_flow_injector,
+                                          "new_game_stalled", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.main_left.store(true);
+
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    const long long elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started)
+            .count();
+
+    ASSERT_EQ(1, thread_result)
+        << "a stalled injector must return the stage id of the wait that "
+           "died, not the happy path's 0";
+    EXPECT_FALSE(state.saw_name_entry)
+        << "the flow gave up before BEGIN NEW GAME, so name entry never ran";
+    EXPECT_FALSE(state.saw_base_camp)
+        << "nothing downstream of the dead wait may have been measured";
+    EXPECT_EQ(-1, state.fades_added_by_name_entry)
+        << "leg 1 was never read, so its pin must stay at the never-reached "
+           "sentinel instead of counting 0 fades";
+    ASSERT_LT(elapsed_ms, 30000)
+        << "the stalled flow must unwind in seconds (it took " << elapsed_ms
+        << " ms); without the tail this shape ran to the 420 s group timeout";
 }

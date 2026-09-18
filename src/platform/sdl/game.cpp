@@ -110,8 +110,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
     ScopedGameplayLoadActivation gameplay_load_active(og::runtime::current_session);
 
 	// Spectator mode (numplayers==0) still needs 1 viewscreen for the camera
-	screenp->numviews = (screenp->save_data.numplayers == 0)
-	    ? 1 : screenp->save_data.numplayers;
+	screenp->numviews = og::ui::spectator_view_count(screenp->save_data);
 
 	screenp->cleanup(screenp->numviews);
 	screenp->initialize_views();

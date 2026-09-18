@@ -23,7 +23,17 @@
  * sweeps and re-calibrate deliberately instead of bumping the number.
  *
  * Measurement mode: set WESTLANDS_CALIBRATION_MEASURE=1 to print the
- * per-seed survivor counts for all three seeds instead of asserting.
+ * per-seed survivor counts for all three seeds instead of asserting, plus
+ * the seed-42 battle line (alive / host / damage taken / damage dealt) the
+ * two-sided pins below are cut from.
+ *
+ * Two-sidedness (2026-09-13): a survival FLOOR alone cannot notice a level
+ * that stopped biting, so every row also carries a hot-side `ceiling` (the
+ * seed-42 measure plus two, capped at 7, on the war/ambush rows whose floor
+ * is 0) and every row pins that the fight actually happened — the level
+ * fields an army, the crew took damage, and the crew dealt damage. A damage
+ * sink that stops landing on the crew, or foes that never engage, reds every
+ * row instead of quietly turning the campaign into a walk.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -48,10 +58,28 @@ struct CurvePin
     int level_id;
     int crew_level; // campaign_meta curve, upper value of ranges
     int floor;      // min 8-mixed-crew survivors at tick 600 across 3 seeds
+    int ceiling;    // max seed-42 survivors (8 = no ceiling); see kCurve
+};
+
+// What the 600 ticks actually DID, beside the survivor count: a floor alone
+// is one-sided, so an engine change that stopped the levels from biting
+// (damage clamped, foes never engaging) would leave every floor green while
+// the campaign turned trivial. These are the two-sided halves.
+struct BattleResult
+{
+    int alive = -1;          // crew members still standing at tick 600
+    float crew_taken = 0.0f; // hit points the crew lost to the level
+    float crew_dealt = 0.0f; // hit points the crew took off the level
+    int host_alive = 0;      // non-crew livings the level fields at deploy
 };
 
 // The difficulty-curve contract (campaign_meta.md) with the F4-measured
-// 600-tick survival floors. 18 is the unused act gap.
+// 600-tick survival floors and (2026-09-13) their hot-side ceilings.
+// 18 is the unused act gap. Ceilings: 8 means "no ceiling" (the row's own
+// floor is high enough to be two-sided already); every 0-floor war row
+// carries min(7, seed-42 measure + 2), measured on the same package as the
+// floors (seed-42 survivors: 7:0 8:0 9:1 10:0 12:0 13:1 14:0 15:3 20:0
+// 22:1).
 // (Measured 2026-07-08 on the F4-calibrated package. Floors of 0 mark the
 // war/ambush levels where placed allies and delayed waves carry the fight
 // and the stand-in crew's own 600-tick survival is not the contract —
@@ -130,20 +158,38 @@ struct CurvePin
 // levels stayed 0. Tower f5 moved 3->0 in the same pass, see
 // test_tower_calibration.cpp.)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 7},  {2, 2, 8},  {3, 2, 6},  {4, 3, 7},  {5, 3, 6},  {6, 4, 3},
-    {7, 4, 0},  {8, 5, 0},  {9, 6, 0},  {10, 5, 0}, {11, 6, 4}, {12, 6, 0},
-    {13, 6, 0}, {14, 7, 0}, {15, 7, 0}, {16, 8, 2}, {17, 8, 2}, {19, 6, 4},
-    {20, 7, 0}, {21, 7, 7}, {22, 8, 0}, {23, 8, 5}, {24, 8, 2}, {25, 9, 5},
-    {26, 9, 8},
+    {1, 1, 7, 8},  {2, 2, 8, 8},  {3, 2, 6, 8},  {4, 3, 7, 8},
+    {5, 3, 6, 8},  {6, 4, 3, 8},  {7, 4, 0, 2},  {8, 5, 0, 2},
+    {9, 6, 0, 3},  {10, 5, 0, 2}, {11, 6, 4, 8}, {12, 6, 0, 2},
+    {13, 6, 0, 3}, {14, 7, 0, 2}, {15, 7, 0, 5}, {16, 8, 2, 8},
+    {17, 8, 2, 8}, {19, 6, 4, 8}, {20, 7, 0, 2}, {21, 7, 7, 8},
+    {22, 8, 0, 3}, {23, 8, 5, 8}, {24, 8, 2, 8}, {25, 9, 5, 8},
+    {26, 9, 8, 8},
 };
 
 constexpr int kCalibrationTicks = 600;
 
-int survivors_at_600(int level_id, int crew_level, std::uint32_t seed)
+// Every living that is not on the crew's team: the garrisons and ambush
+// posts the level fields against it (asleep wave spawns included).
+int host_count(GameWorld& world)
 {
+    int n = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() != 0)
+            ++n;
+    }
+    return n;
+}
+
+BattleResult battle_at_600(int level_id, int crew_level, std::uint32_t seed)
+{
+    BattleResult out;
     LoadedWestlandsLevel fx(level_id, seed);
     if (!fx.loaded)
-        return -1;
+        return out;
     GameWorld& world = fx.world();
     std::vector<walker*> crew = deploy_crew(
         fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
@@ -151,14 +197,29 @@ int survivors_at_600(int level_id, int crew_level, std::uint32_t seed)
                           FAMILY_CLERIC, FAMILY_BARBARIAN},
         crew_level);
     if (crew.size() != 8u)
-        return -1;
+        return out;
+    out.host_alive = host_count(world);
     for (int t = 0; t < kCalibrationTicks; ++t)
         world.tick();
-    int alive = 0;
+    out.alive = 0;
     for (walker* w : crew)
-        if (w != nullptr && !w->dead())
-            ++alive;
-    return alive;
+    {
+        if (w == nullptr)
+            continue;
+        if (!w->dead())
+            ++out.alive;
+        if (w->myguy != nullptr)
+        {
+            out.crew_taken += w->myguy->scen_damage_taken;
+            out.crew_dealt += w->myguy->scen_damage;
+        }
+    }
+    return out;
+}
+
+int survivors_at_600(int level_id, int crew_level, std::uint32_t seed)
+{
+    return battle_at_600(level_id, crew_level, seed).alive;
 }
 
 } // namespace
@@ -204,15 +265,33 @@ TEST_F(WestlandsCampaignTest, curve_crew_survival_floors_at_600_ticks)
             for (std::uint32_t seed : {42u, 1337u, 2025u})
                 std::printf(" %d", survivors_at_600(pin.level_id,
                                                     pin.crew_level, seed));
-            std::printf("\n");
+            // The two-sided halves, on the asserted seed: the ceiling comes
+            // from `alive`, and taken/dealt are what prove the fight happened.
+            const BattleResult m =
+                battle_at_600(pin.level_id, pin.crew_level, 42u);
+            std::printf("  [seed42 alive=%d host=%d taken=%.0f dealt=%.0f]\n",
+                        m.alive, m.host_alive, m.crew_taken, m.crew_dealt);
             std::fflush(stdout);
             continue;
         }
-        const int alive = survivors_at_600(pin.level_id, pin.crew_level, 42u);
-        ASSERT_GE(alive, 0) << "level failed to load or deploy";
-        EXPECT_GE(alive, pin.floor)
+        const BattleResult r = battle_at_600(pin.level_id, pin.crew_level, 42u);
+        ASSERT_GE(r.alive, 0) << "level failed to load or deploy";
+        EXPECT_GE(r.alive, pin.floor)
             << "a curve-level fresh crew fell below its F4 survival floor — "
                "the level got meaningfully hotter; re-run the F4 bracket "
                "sweeps before touching this pin";
+        EXPECT_LE(r.alive, pin.ceiling)
+            << "a curve-level fresh crew walked a hot level with more of the "
+               "eight standing than the band has ever left — the level got "
+               "meaningfully COLDER; re-measure with "
+               "WESTLANDS_CALIBRATION_MEASURE=1 before touching this pin";
+        EXPECT_GT(r.host_alive, 0) << "the level must field an army";
+        EXPECT_GT(r.crew_taken, 0.0f)
+            << "the crew came home untouched: the level stopped biting (a "
+               "damage sink that never lands, foes that never engage) — no "
+               "survival floor can notice that";
+        EXPECT_GT(r.crew_dealt, 0.0f)
+            << "the crew never landed a hit in 600 ticks: it is not fighting "
+               "the level at all";
     }
 }

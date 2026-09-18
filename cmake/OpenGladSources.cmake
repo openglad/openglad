@@ -55,8 +55,10 @@ set(OG_CORE_SOURCES
 set(OG_GAMEPLAY_SIM_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/damage_number_event.cpp
     ${SRC_DIR}/gameplay/game_server.cpp
     ${SRC_DIR}/gameplay/lobby_server.cpp
+    ${SRC_DIR}/gameplay/lobby_state.cpp
     ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/link_loss_window.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
