@@ -787,6 +787,10 @@ struct LineupSeatView {
 };
 LineupSeatView picker_lineup_seat_view();
 
+// The SETUP wizard's materialization shims (docs/match-setup-design.md §2).
+button* picker_match_setup_buttons();
+int picker_match_setup_button_count();
+
 // The FIGHTERS list layout contract retired with amendment B6: the Base
 // Camp roster (its chip networked-editable through
 // lineup_fighter_team_editable) is the one home of the per-fighter team

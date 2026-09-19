@@ -20,6 +20,7 @@
 // menu_binding/terminal_menu_model layer instead.
 
 #include <openglad/interface/button.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
@@ -420,6 +421,10 @@ enum class MenuScreenId : std::uint8_t {
     // overview opened from SCENARIO. Its FIGHTERS list retired with B6 —
     // the Base Camp roster chip is the networked home of the team cycler.
     Lineup,
+    // The SETUP wizard (docs/match-setup-design.md §2): the five-step match
+    // statement a versus campaign's Base Camp opens. Engine-hosted from
+    // birth, so the G5 remote-start and G13 shape sweeps cover it.
+    MatchSetup,
     Count,
 };
 
@@ -715,5 +720,57 @@ void install_lineup_state_for_screen(LineupScreenState* state);
 // Show a toast on the installed LINEUP state (no-op when none installed).
 // TRACEd ("lineup") so tests assert deterministically.
 void lineup_show_toast(std::string text);
+
+// --- SETUP wizard (docs/match-setup-design.md §2) --------------------------
+
+// The wizard's screen state: the SDL-free step machine, the message-line
+// toast (the Base Camp's own mechanics — a modal would strand a networked
+// joiner mid-GO), the cached staged census and the three refresh cursors
+// the blocking-subscreen discipline requires (level reload, settings
+// fingerprint, stage generation). Public so layout tests can drive the
+// per-frame rewire's variants; production state is owned by
+// run_match_setup_screen. The null installed state renders the empty shape
+// (every row, cell, pager and tab hidden; BACK alone).
+struct MatchSetupScreenState {
+    explicit MatchSetupScreenState(SaveData& save) : session(save) {}
+
+    MatchSetupSession session;
+    std::string toast;
+    std::int64_t toast_until_ms = 0;
+    // The staged census the TEAMS lines and the MATCH step read, rebuilt on
+    // the stage-generation cadence (never per frame).
+    ScenarioRosterReport report;
+    bool report_valid = false;
+    std::uint32_t report_generation = 0;
+    bool report_seeded = false;
+    std::uint64_t settings_fingerprint = 0;
+    bool fingerprint_seeded = false;
+    short last_level_id = -1;
+    // The GAME-step highlight is a ONE-SHOT write on the entered-step edge.
+    bool step_seeded = false;
+    MatchSetupSession::Step last_step = MatchSetupSession::Step::Game;
+    // How the screen ended: the row the player pressed, not the loop's
+    // return code (D20 — Base Camp owns the GO click).
+    enum class Exit : std::uint8_t { Closed, Go, RemoteStart } exit =
+        Exit::Closed;
+};
+
+using MatchSetupExit = MatchSetupScreenState::Exit;
+
+// The wizard: a tab strip in the panel's header band, the step's lines and
+// team lines, up to nine 42-glyph rows with their reverse cells, the ARENA
+// window pagers, and BACK | PREV | NEXT in the footer.
+const MenuScreenSpec& match_setup_menu_screen_spec();
+
+// Install the state the per-frame rewire and draw hooks read (the
+// company-list seam pattern; null renders the empty shape).
+void install_match_setup_state_for_screen(MatchSetupScreenState* state);
+
+// Blocking wrapper: open the wizard over the live save, positioned at
+// `entry_page` (a root page id from the versus docket's GAME:/ARENA: rows;
+// "" opens on the GAME step). The answer says what the player pressed —
+// Base Camp turns `Go` into the strip GO's own click (D20) and `RemoteStart`
+// into its MENU_EXIT.
+MatchSetupExit run_match_setup_screen(std::string_view entry_page);
 
 } // namespace og::ui

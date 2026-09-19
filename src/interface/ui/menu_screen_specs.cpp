@@ -7535,6 +7535,331 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
 
+// ---------------------------------------------------------------------------
+// SETUP wizard (docs/match-setup-design.md §2): the five-step match
+// statement — GAME -> ARENA -> TEAMS -> RULES -> MATCH — as a ROOM INSIDE
+// THE CAMP on the zone submenu's chassis. The Base Camp panel and its two
+// header lines are the walls the player walked in through; the tab strip
+// takes the panel's header band, up to nine rows wear the docket's own
+// 42-glyph face, ONE 30px cell column (280..310) holds the reverse cells
+// and the ARENA window pagers, and BACK | PREV | NEXT close the footer.
+//
+// NO RULE LIVES HERE. Every face is og::ui::MatchSetupSession's (SDL-free,
+// shared with both terminal clients); this file windows, inks, navigates
+// and runs the client tails the session is forbidden to run itself — the
+// gated level set, the lobby sync, the autosave, the difficulty write and
+// the two nested doors.
+
+MatchSetupScreenState* g_match_setup_state = nullptr;
+
+using SetupRow = og::ui::MatchSetupSession::Row;
+using SetupStep = og::ui::MatchSetupSession::Step;
+
+// How many rows the live page shows in its window this frame (the session
+// sized the window itself from its own line count).
+int match_setup_visible_rows()
+{
+    const MatchSetupScreenState* const st = g_match_setup_state;
+    if (st == nullptr)
+        return 0;
+    const og::ui::MatchSetupSession::Page& page = st->session.page();
+    return std::clamp(page.page.end_index() - page.page.first_index(), 0,
+                      kSetupRowsMax);
+}
+
+// The windowed row a display slot shows this frame, or null past the end.
+const SetupRow* match_setup_window_row(int slot)
+{
+    const MatchSetupScreenState* const st = g_match_setup_state;
+    if (st == nullptr || slot < 0 || slot >= match_setup_visible_rows())
+        return nullptr;
+    const og::ui::MatchSetupSession::Page& page = st->session.page();
+    const int index = page.page.first_index() + slot;
+    if (index < 0 || index >= static_cast<int>(page.rows.size()))
+        return nullptr;
+    return &page.rows[static_cast<std::size_t>(index)];
+}
+
+// Row visibility and the Disabled grammar in the engine's own terms, so the
+// G5 gate-lattice sweep drives them and a Disabled row gets the runner's
+// dim face, its dead myfun and its TESTING no-op trace for free.
+template <int Slot>
+RowState match_setup_row_state(const MenuLabelContext& /*context*/)
+{
+    const SetupRow* const row = match_setup_window_row(Slot);
+    if (row == nullptr)
+        return RowState::Hidden;
+    return row->state == RowState::Disabled ? RowState::Disabled
+                                            : RowState::Visible;
+}
+
+// A reverse cell exists only where a wheel does: the session emits Cycler
+// rows only for the viewer who may turn them, so the cell follows the row.
+template <int Slot>
+RowState match_setup_rev_state(const MenuLabelContext& context)
+{
+    const SetupRow* const row = match_setup_window_row(Slot);
+    if (row == nullptr || row->extra != SetupRow::Extra::Cycler ||
+        row->state == RowState::Disabled)
+    {
+        return RowState::Hidden;
+    }
+    // The gate pass's own host axis (the runner fills it from the lobby),
+    // so the G5 lattice sweep drives both halves of this cell.
+    return context.is_host ? RowState::Visible : RowState::Hidden;
+}
+
+// The ARENA window pagers: the docket's own pair, on the band's first row.
+RowState match_setup_pager_state(const MenuLabelContext& /*context*/)
+{
+    const MatchSetupScreenState* const st = g_match_setup_state;
+    return st != nullptr && st->session.page().page.multi_page()
+        ? RowState::Visible
+        : RowState::Hidden;
+}
+
+RowState match_setup_prev_state(const MenuLabelContext& /*context*/)
+{
+    const MatchSetupScreenState* const st = g_match_setup_state;
+    return st != nullptr && st->session.page().can_prev ? RowState::Visible
+                                                        : RowState::Hidden;
+}
+
+RowState match_setup_next_state(const MenuLabelContext& /*context*/)
+{
+    const MatchSetupScreenState* const st = g_match_setup_state;
+    return st != nullptr && st->session.page().can_next ? RowState::Visible
+                                                        : RowState::Hidden;
+}
+
+// One tab per PRESENT step (a bookless campaign shows four). The CURRENT
+// tab wears the Disabled face: it is inert, and the dimmed card with its
+// darker right/bottom bevels is this chassis's pressed-in look (D36).
+// Green would say "this launches" and yellow "gated"; both would lie.
+template <int Slot>
+RowState match_setup_tab_state(const MenuLabelContext& /*context*/)
+{
+    const MatchSetupScreenState* const st = g_match_setup_state;
+    if (st == nullptr)
+        return RowState::Hidden;
+    const std::span<const SetupStep> steps = st->session.steps();
+    if (Slot >= static_cast<int>(steps.size()))
+        return RowState::Hidden;
+    return steps[static_cast<std::size_t>(Slot)] == st->session.step()
+        ? RowState::Disabled
+        : RowState::Visible;
+}
+
+// Rows and their reverse cells share a y; the rewire re-bands both under
+// the step's lines, so the table's own y is the no-lines anchor (47).
+#define OG_SETUP_ROW(i)                                                      \
+    {.id = "setup_row_" #i, .label = "",                                     \
+     .x = kSetupRowX, .y = setup_row_y0(0) + kSetupRowPitch * (i),           \
+     .w = kSetupRowW, .h = kSetupRowH,                                       \
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupRowBase + (i),   \
+     .nav = {.up = (i) > 0 ? kMatchSetupRowBase + (i) - 1                    \
+                           : kMatchSetupTabBase,                             \
+             .down = (i) < kSetupRowsMax - 1 ? kMatchSetupRowBase + (i) + 1  \
+                                             : kMatchSetupBackIndex},        \
+     .state_override = &match_setup_row_state<(i)>}
+#define OG_SETUP_REV(i)                                                      \
+    {.id = "setup_rev_" #i, .label = "<",                                    \
+     .x = kSetupRevX, .y = setup_row_y0(0) + kSetupRowPitch * (i),           \
+     .w = kSetupRevW, .h = kSetupRowH,                                       \
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupRevBase + (i),   \
+     .nav = {.left = kMatchSetupRowBase + (i)},                              \
+     .state_override = &match_setup_rev_state<(i)>, .hidden = true}
+#define OG_SETUP_TAB(i)                                                      \
+    {.id = "setup_tab_" #i, .label = "",                                     \
+     .x = setup_tab_x(i), .y = kSetupTabY, .w = kSetupTabW, .h = kSetupTabH, \
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupTabBase + (i),   \
+     .nav = {.down = kMatchSetupRowBase,                                     \
+             .left = (i) > 0 ? kMatchSetupTabBase + (i) - 1 : -1,            \
+             .right = (i) < kSetupTabCount - 1                               \
+                          ? kMatchSetupTabBase + (i) + 1                     \
+                          : -1},                                             \
+     .state_override = &match_setup_tab_state<(i)>}
+
+constexpr MenuButtonSpec kMatchSetupRows[] = {
+    OG_SETUP_ROW(0), OG_SETUP_ROW(1), OG_SETUP_ROW(2), OG_SETUP_ROW(3),
+    OG_SETUP_ROW(4), OG_SETUP_ROW(5), OG_SETUP_ROW(6), OG_SETUP_ROW(7),
+    OG_SETUP_ROW(8),
+    OG_SETUP_REV(0), OG_SETUP_REV(1), OG_SETUP_REV(2), OG_SETUP_REV(3),
+    OG_SETUP_REV(4), OG_SETUP_REV(5), OG_SETUP_REV(6), OG_SETUP_REV(7),
+    OG_SETUP_REV(8),
+    // BACK always CLOSES the wizard (D29): PREV is how a player steps back
+    // through the steps, so BACK keeps the shared cancel meaning it has on
+    // every other screen. Its RECT is the zone submenu's; its ID is not, so
+    // an injector's (10,169) "back" oracle still names exactly one screen.
+    {.id = "setup_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+     .x = kSetupBackX, .y = kSetupFooterY, .w = kSetupBackW,
+     .h = kSetupFooterH,
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupBackIndex,
+     .nav = {.up = kMatchSetupRowBase, .right = kMatchSetupPrevIndex}},
+    {.id = "setup_prev", .label = "PREV",
+     .x = kSetupPrevX, .y = kSetupFooterY, .w = kSetupPrevW,
+     .h = kSetupFooterH,
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupPrevIndex,
+     .nav = {.up = kMatchSetupRowBase, .left = kMatchSetupBackIndex,
+             .right = kMatchSetupNextIndex},
+     .state_override = &match_setup_prev_state, .hidden = true},
+    {.id = "setup_next", .label = "NEXT",
+     .x = kSetupNextX, .y = kSetupFooterY, .w = kSetupNextW,
+     .h = kSetupFooterH,
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupNextIndex,
+     .nav = {.up = kMatchSetupRowBase, .left = kMatchSetupPrevIndex},
+     .state_override = &match_setup_next_state},
+    // The ARENA window's pager pair lives in the SAME cell column the
+    // reverse cells do (D25: one column, 280..310), on the band's first
+    // row — and row 0 is either a cycler (RULES/TEAMS) or a level row on a
+    // paged list (ARENA), never both, so the two never show together. They
+    // are PARKED at a zero-size rect with an empty label like the Base
+    // Camp zone's own pagers, which keeps the static table free of a
+    // declared same-geometry pair (gate-lattice safe); the rewire bands
+    // and labels them at (280/296, row_y0, 14, 10), where the layout test
+    // pins them.
+    {.id = "setup_page_prev", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupPagePrevIndex,
+     .nav = {.left = kMatchSetupRowBase, .right = kMatchSetupPageNextIndex},
+     .state_override = &match_setup_pager_state, .hidden = true},
+    {.id = "setup_page_next", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupPageNextIndex,
+     .nav = {.left = kMatchSetupPagePrevIndex},
+     .state_override = &match_setup_pager_state, .hidden = true},
+    OG_SETUP_TAB(0), OG_SETUP_TAB(1), OG_SETUP_TAB(2), OG_SETUP_TAB(3),
+    OG_SETUP_TAB(4),
+};
+
+#undef OG_SETUP_ROW
+#undef OG_SETUP_REV
+#undef OG_SETUP_TAB
+
+static_assert(static_cast<int>(std::size(kMatchSetupRows)) ==
+                  kMatchSetupButtonCount,
+              "the SETUP wizard's ordinals are its layout contract");
+
+// The staged census the TEAMS lines and the MATCH step read: the call VIEW
+// LEVEL makes, over the owner's stage or the joiner's mirror. Rebuilt on
+// the stage-generation cadence, never per frame.
+void match_setup_rebuild_report(MatchSetupScreenState& state,
+                                const LineupSeatView& seats)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    const SaveData& save = game->save_data;
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    const GameWorld* staged =
+        lobby != nullptr ? lobby->staged_world() : nullptr;
+    og::ui::StagePreviewStatus status = og::ui::StagePreviewStatus::None;
+    if (lobby != nullptr &&
+        lobby->staged_preview_health() ==
+            og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed)
+    {
+        status = og::ui::StagePreviewStatus::Failed;
+    }
+    else if (staged != nullptr)
+    {
+        status = og::ui::StagePreviewStatus::Staged;
+    }
+    // A staged pair for a DIFFERENT level than the save's (a restage racing
+    // the lobby save sync) must not census this level's step.
+    if (staged != nullptr && staged->id != save.scen_num)
+        staged = nullptr;
+    og::ui::ScenarioSeatContext seat_context;
+    seat_context.players = seats.players;
+    seat_context.local_player_indices = seats.local_indices;
+    state.report = og::ui::build_scenario_roster_report(
+        staged, status, save, &game->world(), &seat_context);
+    state.report_valid = true;
+}
+
+// Everything the SDL client knows and the session borrows for one call.
+og::ui::MatchSetupSession::Inputs match_setup_inputs(
+    MatchSetupScreenState& state, const LineupSeatView& seats,
+    const std::array<int, 4>& map_units)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    og::ui::MatchSetupSession::Inputs inputs;
+    inputs.save = &game->save_data;
+    inputs.is_host = picker_lobby_host_controls_visible();
+    inputs.networked = picker_lobby_is_networked();
+    inputs.my_team = og::ui::picker_lobby_my_team(game->save_data);
+    inputs.session_difficulty =
+        og::runtime::current_session->current_difficulty_;
+    inputs.authored_mask = og::ui::ctf_authored_team_mask_for_loaded_level(
+        game->save_data, game->world(), get_mounted_campaign());
+    inputs.players = seats.players;
+    inputs.local_indices = seats.local_indices;
+    inputs.map_unit_counts = map_units;
+    inputs.staged = state.report_valid ? &state.report : nullptr;
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    inputs.staged_health = lobby != nullptr
+        ? lobby->staged_preview_health()
+        : og::ui::IPickerLobbyClient::StagedPreviewHealth::None;
+    return inputs;
+}
+
+// --- The hooks S5 (nav/faces) and S6 (ink/refresh) fill in --------------
+
+// Background: the Base Camp's own frame, exactly as the zone submenu's is.
+// A wizard floating on the title art would read as a different game's menu.
+void match_setup_draw_background(void* /*screen_state*/)
+{
+    picker_backdrop_draw_background(nullptr);
+    og::runtime::current_session->myscreen_->draw_button(8, 28, 311, 160, 2,
+                                                         1);
+}
+
+void match_setup_rewire(button* buttons, int count, int& highlighted_button)
+{
+    // S5 owns the real pass: the per-frame band, the faces and the full
+    // graph. The gate pass above already owns visibility (the
+    // state_override thunks), and the ONE obligation the engine enforces
+    // over it is that no visible row links at a hidden one — MenuNav links
+    // are raw indices and do not skip. Close what the gates just hid.
+    if (buttons == nullptr || count < kMatchSetupButtonCount)
+        return;
+    for (int i = 0; i < count; ++i) {
+        if (buttons[i].hidden)
+            continue;
+        MenuNav& nav = buttons[i].nav;
+        for (int* link : {&nav.up, &nav.down, &nav.left, &nav.right}) {
+            if (*link >= 0 && *link < count && buttons[*link].hidden)
+                *link = -1;
+        }
+    }
+    ensure_highlighted_button_visible(buttons, count, highlighted_button);
+}
+
+void match_setup_draw_content(void* /*screen_state*/)
+{
+    // S6: the header lines, the step's lines and the swatched team lines.
+}
+
+bool match_setup_frame_tick(void* /*screen_state*/, int /*frame*/)
+{
+    // S6: the level-reload guard, the settings fingerprint and the
+    // stage-generation watch.
+    return true;
+}
+
+// S5 owns the full dispatch; the chrome's own BACK is here from birth so
+// the screen can always be left.
+Sint32 match_setup_on_spec_row(int row, void* screen_state)
+{
+    auto* const st = static_cast<MatchSetupScreenState*>(screen_state);
+    if (row == kMatchSetupBackIndex) {
+        TRACE("setup", "closed");
+        if (st != nullptr)
+            st->exit = MatchSetupExit::Closed;
+        return MENU_EXIT;
+    }
+    return 0;
+}
+
 } // namespace
 
 const MenuScreenSpec& lineup_menu_screen_spec()
@@ -7569,6 +7894,74 @@ void install_lineup_state_for_screen(LineupScreenState* state)
     lineup_power_cache_clear();
     g_lineup_state = state;
 }
+
+// The SETUP wizard: a tab strip in the panel's header band, the step's
+// lines and team lines, up to nine 42-glyph rows with their reverse cells,
+// the ARENA window pagers, and BACK | PREV | NEXT in the footer.
+const MenuScreenSpec& match_setup_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "match_setup",
+        .rows = kMatchSetupRows,
+        .row_count = static_cast<int>(std::size(kMatchSetupRows)),
+        .buttons_accessor = &picker_match_setup_buttons,
+        .count_accessor = &picker_match_setup_button_count,
+        // Pattern-b full-graph rewire: five step shapes x host/joiner x
+        // book/no-book x paged/unpaged is far past what static links and a
+        // conditional fix-up can hold.
+        .nav = {.kind = NavProgramKind::Rewire,
+                .rewire = &match_setup_rewire},
+        // A joiner parked in the wizard still follows the host's GO.
+        .remote_start = RemoteStartScope::TeamBuildScope,
+        .remote_start_exit = RemoteStartExit::ReturnMenuExit,
+        .default_highlight = kMatchSetupBackIndex,
+        // D19: a right-click on a cycler row steps its wheel BACK, through
+        // the same session entry the "<" cell uses.
+        .right_click_enabled = true,
+        .polls_lobby = true,
+        .draw_background = &match_setup_draw_background,
+        .draw_content = &match_setup_draw_content,
+        .frame_tick = &match_setup_frame_tick,
+        .on_spec_row = &match_setup_on_spec_row,
+        .exit_value = MENU_EXIT,
+    };
+    return spec;
+}
+
+void install_match_setup_state_for_screen(MatchSetupScreenState* state)
+{
+    g_match_setup_state = state;
+}
+
+// Blocking wrapper: build the step machine over the live save, seed the
+// staged census, and run the screen. The answer says what the player
+// pressed — Base Camp turns Go into the strip GO's own click (D20).
+MatchSetupExit run_match_setup_screen(std::string_view entry_page)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    game->clearbuffer();
+    MatchSetupScreenState state(game->save_data);
+    state.last_level_id = game->save_data.scen_num;
+    const LineupSeatView seats = picker_lineup_seat_view();
+    const std::array<int, 4> map_units = picker_lineup_map_unit_counts();
+    match_setup_rebuild_report(state, seats);
+    state.session.open(match_setup_inputs(state, seats, map_units),
+                       entry_page);
+    TRACE("setup", "opened %s", std::string(entry_page).c_str());
+    install_match_setup_state_for_screen(&state);
+    const Sint32 retvalue =
+        run_menu_screen(match_setup_menu_screen_spec(), &state);
+    install_match_setup_state_for_screen(nullptr);
+    game->clearbuffer();
+    if (state.exit == MatchSetupExit::Go)
+        return MatchSetupExit::Go;
+    // Distinguish a joiner remote start (the host's GO reached a peer
+    // parked in here) from this screen's own structural close.
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+        return MatchSetupExit::RemoteStart;
+    return MatchSetupExit::Closed;
+}
+
 
 void lineup_show_toast(std::string text)
 {
@@ -7652,6 +8045,12 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             // automatically. (Its FIGHTERS list retired with amendment B6.)
             set(MenuScreenId::Lineup,
                 {.kind = Kind::Engine, .spec = &lineup_menu_screen_spec()});
+            // The SETUP wizard (docs/match-setup-design.md §2): engine
+            // hosted from birth, so the G5 remote-start and G13 shape
+            // sweeps cover it without anyone remembering to add it.
+            set(MenuScreenId::MatchSetup,
+                {.kind = Kind::Engine,
+                 .spec = &match_setup_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];
@@ -8047,6 +8446,18 @@ Sint32 run_campaign_zone_submenu(const std::string& page_id, bool* opened)
 }
 
 } // namespace og::ui
+
+button* picker_match_setup_buttons()
+{
+    og::ui::materialize_menu_buttons(og::ui::match_setup_menu_screen_spec(),
+                                     pks().match_setup_buttons);
+    return pks().match_setup_buttons.data();
+}
+
+int picker_match_setup_button_count()
+{
+    return static_cast<int>(pks().match_setup_buttons.size());
+}
 
 button* picker_zone_submenu_buttons()
 {

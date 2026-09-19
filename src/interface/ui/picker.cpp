@@ -2021,6 +2021,7 @@ void picker_cleanup_resources()
     pks().cloud_save_buttons.clear();
     pks().help_buttons.clear();
     pks().zone_submenu_buttons.clear();
+    pks().match_setup_buttons.clear();
 }
 
 void picker_quit()

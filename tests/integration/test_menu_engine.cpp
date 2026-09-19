@@ -2034,12 +2034,12 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     sweep_save.team_size = sweep_old_team_size;
     // Mandatory restore (the shared-sweep contract): (true, "").
     og::ui::set_main_menu_company_view_for_tests(true, "");
-    EXPECT_GE(engine_screens, 16)
+    EXPECT_GE(engine_screens, 17)
         << "difficulty + the FX trio + display + seat settings + main "
            "options + main menu + the team-build cluster (base camp, "
            "SCENARIO) + hire + train + progress + view level + help + the "
-           "zone submenu must be engine-hosted (VIEW TEAM, MATCHUP and the "
-           "slot menus RETIRED)";
+           "zone submenu + the SETUP wizard must be engine-hosted (VIEW "
+           "TEAM, MATCHUP and the slot menus RETIRED)";
 }
 
 // The G13 sweep above materializes Base Camp with NO zone state installed,
@@ -2895,6 +2895,25 @@ TEST(MenuEngine, team_build_cluster_registry_hosts)
               og::ui::menu_screen_host(og::ui::MenuScreenId::Scenario).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::ViewScenario).kind);
+    // The SETUP wizard joins the cluster (docs/match-setup-design.md §2):
+    // a versus campaign's Base Camp opens it, a joiner parked in it follows
+    // the host's GO, and its BACK carries the structural MENU_EXIT the
+    // blocking wrapper folds.
+    const og::ui::MenuScreenHost& setup =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::MatchSetup);
+    EXPECT_EQ(Kind::Engine, setup.kind);
+    ASSERT_NE(nullptr, setup.spec);
+    EXPECT_STREQ("match_setup", setup.spec->name);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              setup.spec->remote_start);
+    EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit,
+              setup.spec->remote_start_exit);
+    EXPECT_EQ(MENU_EXIT, setup.spec->exit_value);
+    EXPECT_TRUE(setup.spec->polls_lobby);
+    EXPECT_TRUE(setup.spec->right_click_enabled)
+        << "D19: a right-click steps a cycler row's wheel back";
+    EXPECT_EQ(og::ui::kMatchSetupBackIndex, setup.spec->default_highlight);
+    EXPECT_NE(nullptr, setup.spec->on_spec_row);
 }
 
 TEST(MenuEngine, base_camp_reload_publishes_authored_teams_after_level_load)
