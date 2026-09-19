@@ -136,7 +136,7 @@ TEST_F(CampaignPickerSessionTest, root_fetch_decorates_rows_from_the_save)
   picker_menu = function(page_id)
     return {
       title = "CHOOSE A GAME",
-      lines = { "The Gamesmaster opens the book." },
+      lines = { "The index opens." },
       entries = {
         { id = "300", label = "THE CIRCLE", kind = "level", level = 300, note = "4 teams" },
         { id = "301", label = "THE PIT", kind = "level", level = 301 },

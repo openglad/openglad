@@ -173,9 +173,24 @@ LEFT/RIGHT stay NAVIGATION everywhere (the `<` cell is how a keyboard or pad
 steps a wheel back: → then FIRE). Pinned by a BFS over {host, joiner} ×
 {5 steps} × {book, no-book} × {paged, unpaged} × {2-side, 4-side arena}.
 
-On entry to a step the rewire moves the keyboard highlight onto a LIVE row —
-on GAME, the row whose id is `match_knobs.arena_page` (the current game).
-The `rewire(buttons, count, int& highlighted_button)` signature is what makes
+On entry to a step the rewire moves the keyboard highlight onto a LIVE row.
+A step entered by clicking its own tab would otherwise leave the highlight ON
+that tab, and the current tab is inert by design (D36), so Enter did nothing
+until the player arrowed away. One rule, one table
+(`match_setup_entry_highlight`):
+
+| Step | Where the keyboard lands on entry |
+|--|--|
+| GAME | the row whose id is `match_knobs.arena_page` (the current game) |
+| ARENA | the `[CURRENT]` arena row, when the window holds it |
+| TEAMS | the first live row |
+| RULES | the first live row |
+| MATCH | GO while it is live, else VIEW LEVEL (the row that still does something when GO is gated) |
+
+Every arm falls back to the first live row, and a step with NO live row (a
+non-networked joiner's RULES, where every fact is a line) hands the keyboard
+to the footer's own way forward — never to the inert tab. The
+`rewire(buttons, count, int& highlighted_button)` signature is what makes
 that a one-shot write on the entered-step edge, pinned through
 `menu_screen_testing_highlighted_button()`, with
 `ensure_highlighted_button_visible` after.
@@ -361,8 +376,11 @@ value × its note.
 `match_knobs` hides SCORE (`score=false`) and TIME LIMIT (`time=false`)
 where the game ignores them (onslaught: `score_limit=0` IS elimination).
 Every visible row is a cycler, so every visible row has its `<` cell.
-Joiner: the shared caption plus `format_match_rules_lines`; the
-`CROSS CONTROL` row stays a visible read-only row without a `<` cell.
+Joiner: the shared caption plus `format_match_rules_lines`, composed
+WITHOUT the `CROSS CONTROL` cell when that fact is already the read-only row
+below — a fact on the step as a ROW is never also a LINE. The
+`CROSS CONTROL` row stays a visible read-only row without a `<` cell; the
+MATCH step, which has no rows at all, keeps all five lines.
 
 ### 2.6 SETUP: MATCH (reads the staged world)
 
@@ -859,8 +877,10 @@ body states it rather than hiding it.
 
 ## 8. Documented rulings this PR reverses, and where each is annotated
 
-Each of these is a dated design snapshot: the text stays verbatim and
-carries a note in its own block. **[SUPERSEDED — issues #304, #305, #306.]**
+Each dated snapshot below keeps its text verbatim and carries a note in its
+own block; the two living/code items (`docs/mp-game-modes.md` and
+`picker_sdl_defs.h`) are rewritten in place instead.
+**[SUPERSEDED — issues #304, #305, #306.]**
 - `docs/lineup-design.md` §2 "gets no new door" → the SETUP door is an
   appended twin ordinal (73), ceiling 74 (§3.7).
 - `docs/camp-controls-design.md` §3 (the random-draw row's deck vocabulary),

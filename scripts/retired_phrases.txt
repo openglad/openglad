@@ -42,14 +42,14 @@ OptionsMenu\.zz_capture	OptionsMenu.zz_capture_menu_tour is env-gated	the captur
 max\(lm, ?rm ?- ?2 ?- ?6 ?\* ?len\)	right-aligned with max(lm, rm - 2 - 6*len)	the per-row right-align idiom was replaced by one fit rule in include/openglad/interface/hud_counter_box.h (PR #292)
 Gamesmaster	the Gamesmaster's fourth row	the modes campaign is unthemed (PR #N): no narrator; the camp rows are GAME / ARENA / RANDOM ARENA and setup is the SETUP wizard (docs/match-setup-design.md)
 MATCH SETUP	the camp's MATCH SETUP page	the MATCH SETUP page retired into the SETUP wizard (og::ui::MatchSetupSession, PR #N); the macros live in picker_common
-Multiplayer Game Modes	the campaign ("Multiplayer Game Modes"), 40 scenarios	the campaign's display title is Multiplayer Arenas (PR #N); the id stays modes
+Multiplayer Game Modes	("Multiplayer Game Modes"), 40 scenarios	the campaign's display title is Multiplayer Arenas (PR #N); the id stays modes
 stamp vocabulary	per-game stamp tallies -- stamp vocabulary everywhere	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #N)
 fully stamped page	a fully stamped page says	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #N)
-is stamped\.	Every arena here is stamped.	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #N); a finished page says Every arena here is cleared.
-[0-9]+/[0-9]+ stamped	the GAME row's note reads 3/40 stamped	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #N)
+is stamped\.	Every field here is stamped.	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #N); a finished page says Every arena here is cleared.
+[0-9]+/[0-9]+ stamped	3/40 stamped	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #N)
 RANDOM SCENARIO	the camp's RANDOM SCENARIO row	the roll row is RANDOM ARENA, note any game, any arena (PR #N)
 TARGET SCORE	TARGET SCORE is the map's authored limit	the score knob has one home, the SETUP wizard's RULES step SCORE: row (PR #N); the SCENARIO copy is parked
 SIGN THE BOOK	SIGN THE BOOK lives on the index page	the signature retired with the untheme (PR #N); a full tally reads Cleared: 40 of 40.
 Squad size follows the roster	Squad size follows the roster: a solo fighter faces one opponent	#305: soccer and basketball buy fighters above FAIR and deal STRONG (docs/mp-game-modes.md "Matched squads", docs/lineup-design.md Amendment 8, PR #N)
 Only levels move	Only levels move, and only between 1 and 9.	#305: soccer and basketball buy fighters above FAIR and deal STRONG (docs/mp-game-modes.md "Matched squads", docs/lineup-design.md Amendment 8, PR #N)
-legacy versus packs	the SCENARIO screen keeps its own copies for legacy versus packs	the SCENARIO SCORE row is parked and the SETUP wizard serves every versus pack (PR #N)
+legacy versus packs	keeps its own copies for legacy versus packs	the SCENARIO SCORE row is parked and the SETUP wizard serves every versus pack (PR #N)

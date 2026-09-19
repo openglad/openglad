@@ -1668,6 +1668,11 @@ its face spells `5 MIN` … `20 MIN` (docs/match-setup-design.md §2.5, §3.4).
   LINEUP tweak to WEAK reads back `FILL: MIXED` with the sides count
   kept); the `zzz_uxr_capture_modes_match_setup_page` capture regenerated
   with the macro rows at rest and stepped.
+  **Update (2026-09-19, PR #N):** the page matrix moved with the macros to
+  `tests/unit/test_match_setup_session.cpp`; the round trip is
+  `LineupUi.setup_wizard_macros_round_trip_with_lineup`; the
+  `zzz_uxr_capture_modes_match_setup_page` scene was retired for the
+  wizard's per-step capture points (docs/match-setup-design.md §8).
 
 ## Amendment 6 — the FILL macro deals the local band too (maintainer, 2026-08-28)
 

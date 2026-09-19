@@ -23,9 +23,10 @@
 // ROOT page is the GAMES index the wizard's GAME step hosts, and the seven
 // arena pages are what its ARENA step shows; match_knobs tells the wizard
 // which knobs this game uses, which root row lists the cursor's arena, and
-// what a fresh arena deals to its authored teams (#305). MATCH SETUP, the
-// TEAMS/FILL macros and the signature are gone: the rules have one home in
-// picker_common now (tests/unit/test_match_setup_session.cpp).
+// what a fresh arena deals to its authored teams (#305). The retired camp
+// setup page, its TEAMS/FILL macros and the signature are gone: the rules
+// have one home in picker_common now
+// (tests/unit/test_match_setup_session.cpp).
 
 #include <gtest/gtest.h>
 
@@ -532,7 +533,7 @@ TEST_F(ModesBookTest, unknown_and_retired_pages_are_guarded)
     EXPECT_TRUE(hooks::campaign_picker_page("", page))
         << "the root is the GAMES index the wizard hosts";
     EXPECT_FALSE(hooks::campaign_picker_page("setup", page))
-        << "MATCH SETUP retired into the wizard";
+        << "the camp setup page retired into the wizard";
     EXPECT_FALSE(hooks::campaign_picker_page("card", page))
         << "the v1 card page stays retired (the deck itself retired with "
            "D3's RANDOM ARENA roll)";
@@ -623,7 +624,7 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_TRUE(roll.affordable);
 
     for (const CampaignZoneSession::Row& row : rows)
-        EXPECT_NE("setup", row.id) << "MATCH SETUP left for the wizard";
+        EXPECT_NE("setup", row.id) << "the camp setup page left for the wizard";
 
     // The roster keeps every capability and no oath column: this campaign
     // has no story reason for locks or assignment.
@@ -855,7 +856,7 @@ TEST_F(ModesBookTest, joiner_camp_is_the_two_shortcut_rows)
     {
         EXPECT_NE("random_scenario", row.id)
             << "a joiner cannot play the roll — cut at fetch";
-        EXPECT_NE("setup", row.id) << "MATCH SETUP left for the wizard";
+        EXPECT_NE("setup", row.id) << "the camp setup page left for the wizard";
     }
     EXPECT_EQ(expected_cleared_note(book.bands.at(book.tag_of.at(save_.scen_num)),
                                   save_),

@@ -231,11 +231,17 @@ for (( i = 0; i < ${#SAMPLES[@]}; i++ )); do
     printf 'prose that still spells %s today.\n' "${SAMPLES[i]}" \
         > "${tmp}/c10/docs/row$((i + 1)).md"
 done
+# The joined-pair path, on the one row whose prefilter used to be two words:
+# grep -rIl runs BEFORE the awk, so a prefilter of 'BOOK OF' never handed this
+# file over and the wrap passed silently.  A single-word prefilter does.
+printf 'THE %s\nOF STARS in the old cover.\n' "${HALF_BOOK}" \
+    > "${tmp}/c10/docs/row_wrapped.md"
 run_check "${tmp}/c10"
 expect_rc 10 1
 for (( i = 0; i < ${#SAMPLES[@]}; i++ )); do
     expect_stderr 10 "docs/row$((i + 1)).md:1:"
 done
+expect_stderr 10 'docs/row_wrapped.md:1-2:'
 expect_no_stdout 10 "${OK_LINE}"
 pass
 

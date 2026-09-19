@@ -105,7 +105,7 @@ RETIRED_RE=('NEXT[-[:space:]]*WAVE'
             'FIELD: [A-Z]')
 RETIRED_PREFILTER=('NEXT'
                    'SEVEN'
-                   'BOOK OF'
+                   'BOOK'
                    'FIELD:')
 RETIRED_SHIPPED=('WAVE: {s}s  (src/interface/score_panel.cpp)'
                  'GAMES  (campaign_picker.lua)'
@@ -143,6 +143,9 @@ trap 'rm -f "${HITS_FILE}" "${FOUND_COUNTS_FILE}" "${ALLOWED_COUNTS_FILE}"' EXIT
 for (( ri = 0; ri < ${#RETIRED_RE[@]}; ri++ )); do
     # -I skips the binary level data under campaigns/*/scen; the prefilter is a
     # plain fixed word so the expensive awk runs over a handful of candidates.
+    # ONE word, always: this grep runs BEFORE the awk that joins wrapped line
+    # pairs, so a two-word prefilter ('BOOK OF') would hide exactly the
+    # wrapped and double-spaced spellings the regex was written to catch.
     while IFS= read -r file; do
         [[ -n "${file}" ]] || continue
         awk -v rel="${file}" -v re="${RETIRED_RE[ri]}" "${SCAN_AWK}" "${file}" \
