@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Multiplayer Game Modes pack sprites.
+"""Generate the Multiplayer Arenas pack sprites.
 
 Writes sprites/{flag.png,flag.json,ctfpoint.png,
 ball.png,ball.json,bball.png,bball.json,bshadow.png,bshadow.json,

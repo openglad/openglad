@@ -740,7 +740,7 @@ live in the shared configuration, outside company storage.
 
 Campaigns can be distributed as ZIP archives. The `zip_api` module handles creation and extraction. PhysFS mounts campaign directories as virtual filesystems, allowing the game to load assets from ZIP files transparently.
 
-### Multiplayer Game Modes (scripted levels)
+### Multiplayer Arenas (scripted levels)
 
 The seven competitive modes (player guide: [docs/mp-game-modes.md](mp-game-modes.md)) are
 level-driven Lua: a level whose type byte carries `GameWorld::TYPE_SCRIPTED` (0x20) hands its

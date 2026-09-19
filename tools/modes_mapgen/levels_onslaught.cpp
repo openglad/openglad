@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — Onslaught (800-803).
+/* Multiplayer Arenas campaign generator — Onslaught (800-803).
  *
  * New maps for the generator-warfare mode: per-class generators in
  * defensible positions, waypoint posts (treasure family 14) for the
@@ -585,15 +585,14 @@ std::vector<ExpectedLevel> onslaught_expectations()
         800, "Onslaught: FOUNDRY LINE", 8, 50, 35, 2, 1, 4, 16, 0,
         {{0, 24}, {1, 24}},
         {
-            "THE FOUNDRY GAME, CONTENDERS.",
+            "THE FOUNDRY GAME.",
             "YOUR ENGINES POUR OUT SOLDIERS;",
             "BREAK AN ENEMY ENGINE AND IT",
             "JOINS YOUR LINE, STILL WARM.",
-            "LOSE YOUR LAST AND THE BOOK",
-            "CLOSES ON YOU. GUARD THE ROWS.",
+            "LOSE YOUR LAST ENGINE AND YOU",
+            "ARE OUT. GUARD THE ROWS.",
             "THE YARD POST QUICKENS YOUR",
             "REINFORCEMENTS.",
-            "-- THE GAMESMASTER",
         });
     foundry.generators_per_team[0] = 4;
     foundry.generators_per_team[1] = 4;
@@ -610,8 +609,7 @@ std::vector<ExpectedLevel> onslaught_expectations()
             "THEIRS AND THE SPOILS ENLIST.",
             "THE BRIDGE POSTS QUICKEN YOUR",
             "LINES. LOSE EVERY ENGINE AND",
-            "THE BOOK CLOSES ON YOU.",
-            "-- THE GAMESMASTER",
+            "YOU ARE OUT OF THE MATCH.",
         });
     spires.generators_per_team[0] = 6;
     spires.generators_per_team[1] = 6;
@@ -627,9 +625,8 @@ std::vector<ExpectedLevel> onslaught_expectations()
             "BORDER COUNTRY. THE FORDS ARE",
             "FEW AND THE HILL POST WATCHES",
             "THEM ALL. GANG THE LEADER,",
-            "CONTENDERS - THE MARCHES",
+            "TOGETHER - THE MARCHES",
             "FORGIVE NO CROWNS.",
-            "-- THE GAMESMASTER",
         });
     marches.generators_per_team[0] = 4;
     marches.generators_per_team[1] = 4;
@@ -641,15 +638,14 @@ std::vector<ExpectedLevel> onslaught_expectations()
         803, "Onslaught: LAST BASTION", 12, 70, 70, 2, 2, 8, 20, 0,
         {{0, 18}, {1, 18}, {7, 8}},
         {
-            "THE LAST BASTION, CONTENDERS.",
+            "THE LAST BASTION.",
             "YOUR ESTATES RING THE WALLS;",
             "THE BAILEY HOLDS TWO HAUNTED",
             "ENGINES POURING GHOSTS ON ALL.",
             "BREAK ITS DOORS, FLIP THE",
             "BONES, AND THE CENTER FIGHTS",
             "FOR YOU. LAST LINE STANDING",
-            "TAKES THE PURSE.",
-            "-- THE GAMESMASTER",
+            "WINS THE MATCH.",
         });
     bastion.generators_per_team[0] = 5;
     bastion.generators_per_team[1] = 5;

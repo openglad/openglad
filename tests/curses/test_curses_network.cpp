@@ -2512,7 +2512,7 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
     FakeClock clock;
     lobby->poll(term, clock);
 
-    EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Game Modes"));
+    EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Arenas"));
     EXPECT_TRUE(status_contains(*lobby, "Level: 1"));
     // The guarded hazard: gladiator's scen1 title must never label a modes
     // lobby's level number.

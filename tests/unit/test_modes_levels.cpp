@@ -1,4 +1,4 @@
-// Shipped "Multiplayer Game Modes" campaign validation
+// Shipped "Multiplayer Arenas" campaign validation
 // (builtin/modes.glad, authored by tools/modes_mapgen).
 //
 // The 40-scenario seven-mode campaign (TDM 300-305 absorbing the arenas
@@ -6,11 +6,11 @@
 // Soccer 820-823, Basketball 824-829, Mutant 840-843, Free For All
 // 850-855) is loaded through the production campaign-mount path and
 // pinned against the authoring invariants the generator promises: every
-// level SCEN_TYPE_SCRIPTED with no exit treasures, Gamesmaster briefings
-// inside the 33-char budget with the exact sign-off, per-mode entity
-// inventories (markers, flags, waypoints, per-team generators,
-// treasures, doors), the migrated decor-cell pins (arenas + CTF values
-// carried over from test_migrated_campaigns), the kept CTF
+// level SCEN_TYPE_SCRIPTED with no exit treasures, briefings inside the
+// 33-char budget, upper case, no sign-off (the generator's theme lint),
+// per-mode entity inventories (markers, flags, waypoints, per-team
+// generators, treasures, doors), the migrated decor-cell pins (arenas +
+// CTF values carried over from test_migrated_campaigns), the kept CTF
 // door/key/capture-limit content, the §2.3 obmap ledger with its
 // documented 303/305 A* waivers, closed
 // soccer perimeters whose painted goal strips match the generated
@@ -24,6 +24,10 @@
 // the same tables) and update the pins here in the same change.
 
 #include <gtest/gtest.h>
+
+// The generator's briefing theme lint, header-only and engine-free so the
+// pins below run the same code the tool fails the build with.
+#include "../../tools/modes_mapgen/briefing_lint.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
@@ -580,7 +584,7 @@ TEST_F(ModesLevels, roster_structure_round_trips)
     }
 }
 
-TEST_F(ModesLevels, briefings_fit_budget_and_carry_the_signoff)
+TEST_F(ModesLevels, briefings_fit_budget_and_speak_plainly)
 {
     for (const ShippedModeLevel& pin : shipped_levels())
     {
@@ -591,10 +595,57 @@ TEST_F(ModesLevels, briefings_fit_budget_and_carry_the_signoff)
         for (const std::string& line : lines)
             EXPECT_LE(line.size(), 33u)
                 << "scen" << pin.id << ": briefing line '" << line << "'";
-        EXPECT_EQ("-- THE GAMESMASTER", lines.back())
-            << "scen" << pin.id
-            << ": every briefing ends with the Gamesmaster sign-off";
+        // The generator's own theme lint, run against the SHIPPED bytes: no
+        // line leads with the retired sign-off, names a retired word or
+        // holds a lower-case letter. (The loaded description is a list; the
+        // lint takes the generator's vector.)
+        const std::vector<std::string> briefing(lines.begin(), lines.end());
+        EXPECT_EQ("", modes_mapgen::briefing_theme_violation(briefing))
+            << "scen" << pin.id;
     }
+}
+
+// The lint itself, against fixtures: a lint that always answered "" would
+// pass the sweep above on any briefing, so every violating fixture must be
+// refused AND the answer must name the cause.
+TEST(ModesBriefingLint, refuses_the_retired_theme_lower_case_and_the_sign_off)
+{
+    struct Case
+    {
+        std::vector<std::string> lines;
+        const char* names; // the substring the violation must name
+    };
+    const std::vector<Case> refused = {
+        {{"THE FOREST GAME, CONTENDERS."}, "CONTENDERS"},
+        {{"WATCH YOUR compass."}, "lower-case"},
+        {{"TONIGHT, ALL OF THEM HUNTING."}, "TONIGHT"},
+        {{"A SPECIAL PAGE OF THE BOOK."}, "PAGE OF"},
+        {{"KILLS ALONE FILL THE LEDGER."}, "LEDGER"},
+        {{"TAKES THE PURSE."}, "PURSE"},
+        {{"FIRST BAND TO THE TALLY WINS."}, "TALLY"},
+        {{"FIRST BAND TO THE SCORE WINS.", "-- THE GAMESMASTER"}, "begins '-- '"},
+        {{}, "empty"},
+    };
+    for (const Case& c : refused)
+    {
+        const std::string v = modes_mapgen::briefing_theme_violation(c.lines);
+        const std::string first = c.lines.empty() ? std::string("<empty>")
+                                                  : c.lines.front();
+        EXPECT_NE("", v) << "the lint accepted '" << first << "'";
+        EXPECT_NE(std::string::npos, v.find(c.names))
+            << "'" << v << "' does not name " << c.names;
+    }
+
+    // Clean briefings: an apostrophe, a digit and plain upper case are not
+    // violations, so the lint cannot pass by always failing.
+    const std::vector<std::vector<std::string>> clean = {
+        {"KILLS ALONE COUNT."},
+        {"SOMEBODY ELSE'S SCORE."},
+        {"FIRST TO 5 WINS."},
+    };
+    for (const std::vector<std::string>& lines : clean)
+        EXPECT_EQ("", modes_mapgen::briefing_theme_violation(lines))
+            << "the lint refused '" << lines.front() << "'";
 }
 
 TEST_F(ModesLevels, entity_inventories_match)

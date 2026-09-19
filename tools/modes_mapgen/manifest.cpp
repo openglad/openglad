@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — the generated level manifest.
+/* Multiplayer Arenas campaign generator — the generated level manifest.
  *
  * Emits lib/mode_levels.lua under kPackSourceDir (the campaign's embedded
  * pack), the og.use("mode_levels")

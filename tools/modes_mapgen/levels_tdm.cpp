@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — Team Deathmatch (300-305).
+/* Multiplayer Arenas campaign generator — Team Deathmatch (300-305).
  *
  * The six arenas grids, byte-copied from the vendored art
  * (data/arenas/pix), with the entity layer re-authored for TDM: exits and
@@ -263,13 +263,12 @@ std::vector<ExpectedLevel> tdm_expectations()
     circle.decor_cells = 1;
     circle.briefing = {
         "THE OLD PROVING GROUND. EVERY",
-        "CHAMPION IN THE BOOK BLED HERE",
+        "CHAMPION OF THE ARENAS BLED HERE",
         "FIRST. NO WALLS, NO TRICKS,",
         "NO PLACE TO HIDE.",
-        "KILLS ALONE FILL THE LEDGER.",
-        "FIRST BAND TO THE POSTED TALLY",
-        "TAKES THE PURSE.",
-        "-- THE GAMESMASTER",
+        "KILLS ALONE COUNT.",
+        "FIRST BAND TO THE POSTED SCORE",
+        "WINS THE MATCH.",
     };
     out.push_back(std::move(circle));
 
@@ -370,13 +369,12 @@ std::vector<ExpectedLevel> tdm_expectations()
     glade.score_limit = 20;
     glade.decor_cells = 1;
     glade.briefing = {
-        "THE FOREST GAME, CONTENDERS.",
+        "THE FOREST GAME.",
         "THE GLADE HIDES BLADES WELL",
         "AND FEEDS YOU BETTER. EAT,",
         "STALK, STRIKE FROM THE GREEN.",
-        "EVERY KILL GOES IN THE BOOK.",
-        "FIRST BAND TO THE TALLY WINS.",
-        "-- THE GAMESMASTER",
+        "EVERY KILL COUNTS.",
+        "FIRST BAND TO THE SCORE WINS.",
     };
     out.push_back(std::move(glade));
 
@@ -447,14 +445,13 @@ std::vector<ExpectedLevel> tdm_expectations()
     isles.score_limit = 20;
     isles.decor_cells = 26;
     isles.briefing = {
-        "ISLANDS AND FORDS, CONTENDERS.",
+        "ISLANDS AND FORDS.",
         "THE CROSSINGS ARE THE KILLING",
         "FIELDS. OLD TENTS ON THE SHOALS",
         "POUR OUT BONES THAT COUNT FOR",
-        "NOTHING - ONLY CONTENDERS FILL",
-        "THE LEDGER. TAKE FLIGHT IF YOU",
+        "NOTHING - ONLY FIGHTER KILLS",
+        "COUNT. TAKE FLIGHT IF YOU",
         "DARE THE DEEP WATER.",
-        "-- THE GAMESMASTER",
     };
     out.push_back(std::move(isles));
 
@@ -569,10 +566,9 @@ std::vector<ExpectedLevel> tdm_expectations()
         "THE VAULT GAME. DOORS AND KEYS",
         "GUARD A GLUT OF GOLD, AND THE",
         "NARROW HALLS MAKE MURDER EASY.",
-        "LOOT IF YOU MUST; THE BOOK",
+        "LOOT IF YOU MUST; THE SCORE",
         "COUNTS ONLY KILLS. MIND THE",
         "WARDENS' TENTS IN THE DEEP.",
-        "-- THE GAMESMASTER",
     };
     out.push_back(std::move(gates));
 
@@ -693,13 +689,12 @@ std::vector<ExpectedLevel> tdm_expectations()
         "at tile (44, 46)", // quadrant food/potion caches
     };
     castle.briefing = {
-        "THE CASTLE GAME, CONTENDERS.",
+        "THE CASTLE GAME.",
         "TWELVE PADS BLINK YOU ACROSS",
         "THE COURTS - AMBUSH IS THE",
         "HOUSE STYLE. THE OLD TOWERS",
         "STILL RAISE THEIR OWN GUARDS.",
-        "KILLS ALONE FILL THE LEDGER.",
-        "-- THE GAMESMASTER",
+        "KILLS ALONE COUNT.",
     };
     out.push_back(std::move(castle));
 
@@ -817,13 +812,12 @@ std::vector<ExpectedLevel> tdm_expectations()
     rings.a_star_waived = true;
     rings.decor_cells = 24;
     rings.briefing = {
-        "THE RINGS, CONTENDERS. EVERY",
+        "THE RINGS. EVERY",
         "BAND GETS A TENT OF ITS OWN,",
         "POURING BONES INTO THE FRAY.",
         "SPEND THEM AS SHIELDS OR SPEND",
         "THEM AS SPEARS. THE CENTER IS",
-        "DEATH AND THE BOOK LOVES IT.",
-        "-- THE GAMESMASTER",
+        "DEATH, AND DEATH IS THE SCORE.",
     };
     out.push_back(std::move(rings));
 
