@@ -707,6 +707,52 @@ bool CampaignZoneSession::settings_fingerprint_changed()
 
 // --- Terminal campaign surfaces (openglad_text + openglad_curses) ----------
 
+// The SET LEVEL gate every terminal surface runs before it moves the cursor
+// (the three blocks that used to spell it inline; the SETUP wizard's driver
+// is the fourth caller). Each arm's reason is on the declaration.
+TerminalLevelSetGate terminal_level_set_gate(const TerminalCampaignPickerIo& io,
+                                             const SaveData& save, int level,
+                                             bool closed, bool current,
+                                             bool replay)
+{
+    // Every refusal below is decided by facts the CALLER read off its own
+    // decorated row; `save` rides the signature so each of the four callers
+    // hands the gate the same four facts about the same company file, and a
+    // reader can see whose cursor is being moved.
+    (void)save;
+    // Host gate first (the SET LEVEL predicate) — the session stays
+    // policy-free.
+    if (!io.is_host())
+    {
+        io.notice(std::string(kCampaignPickerHostGuardMessage));
+        return TerminalLevelSetGate::DeniedHost;
+    }
+    if (closed)
+    {
+        // The campaign's own voice, never the loader's. The terminal tail
+        // only moves the cursor, so a road that is not in the campaign has
+        // to be refused HERE — the SDL surface's load-with-rollback would
+        // have caught it at the click, and a row that already reads
+        // [CLOSED] must never answer "Level set to".
+        io.notice(std::string(kCampaignLevelClosedMessage));
+        return TerminalLevelSetGate::Closed;
+    }
+    if (current && !replay)
+    {
+        // The row the cursor is already parked on. The SDL surfaces refuse
+        // this click rather than reload the level under the player; a
+        // terminal that answered "Level set to ..." instead would be
+        // telling one player two stories about one click. A replay row is
+        // exempt (#207): arming is a real state change even on the current
+        // level — the one-level dream log's only replay row IS the current
+        // row.
+        io.notice(std::string(kCampaignLevelUnchangedMessage));
+        return TerminalLevelSetGate::Unchanged;
+    }
+    io.apply_level(level, replay);
+    return TerminalLevelSetGate::Applied;
+}
+
 namespace {
 
 // The §3.8 autosave tail's networked-lobby flag for BOTH terminal clients.
@@ -805,44 +851,29 @@ void terminal_route_acted_level(SaveData& save,
                                 const std::string& toast,
                                 const std::function<void()>& refetch)
 {
-    bool applied = false;
-    if (!io.is_host())
+    // The terminal tail only moves the cursor (no load-with-rollback here),
+    // so the closed-road answer mirrors the level-row decoration exactly: a
+    // real scenario file AND the earned-roads gate. D3 levels carry no
+    // replay mark — an Acted-answered level is always a plain set (#207:
+    // only level ROWS can arm).
+    std::string title;
+    const bool file_ok =
+        og::data::load_scenario_title_with_error(
+            ("scen" + std::to_string(level)).c_str(), title) ==
+        og::data::LevelFileIoError::None;
+    const TerminalLevelSetGate gate = terminal_level_set_gate(
+        io, save, level, !file_ok || !og::data::level_selection_allowed(save, level),
+        static_cast<int>(save.scen_num) == level, false);
+    if (gate == TerminalLevelSetGate::Applied)
     {
-        io.notice(std::string(kCampaignPickerHostGuardMessage));
+        refetch();  // CURRENT markers re-derive (fetch-per-action)
+        // The save-side label fill (decorate_campaign_entries): an empty
+        // title still names the road it set.
+        io.notice(campaign_level_set_message(
+            title.empty() ? std::format("SCEN {}", level) : title));
+        return;
     }
-    else
-    {
-        // The terminal tail only moves the cursor (no load-with-rollback
-        // here), so the closed-road refusal mirrors the level-row
-        // decoration exactly: a real scenario file AND the earned-roads
-        // gate.
-        std::string title;
-        const bool file_ok =
-            og::data::load_scenario_title_with_error(
-                ("scen" + std::to_string(level)).c_str(), title) ==
-            og::data::LevelFileIoError::None;
-        if (!file_ok || !og::data::level_selection_allowed(save, level))
-        {
-            io.notice(std::string(kCampaignLevelClosedMessage));
-        }
-        else if (static_cast<int>(save.scen_num) == level)
-        {
-            io.notice(std::string(kCampaignLevelUnchangedMessage));
-        }
-        else
-        {
-            // D3 levels carry no replay mark — an Acted-answered level is
-            // always a plain set (#207: only level ROWS can arm).
-            io.apply_level(level, false);
-            refetch();  // CURRENT markers re-derive (fetch-per-action)
-            // The save-side label fill (decorate_campaign_entries): an
-            // empty title still names the road it set.
-            io.notice(campaign_level_set_message(
-                title.empty() ? std::format("SCEN {}", level) : title));
-            applied = true;
-        }
-    }
-    if (!applied && !toast.empty())
+    if (!toast.empty())
         io.notice(toast);
 }
 
@@ -891,38 +922,15 @@ void run_terminal_campaign_page_loop(CampaignPickerSession& session,
             case Outcome::None:        // unreachable behind the range check
                 break;
             case Outcome::SetLevel:
-                // Host gate first (the SET LEVEL predicate) — the session
-                // stays policy-free.
-                if (!io.is_host())
+                // The same refusal the camp's docket gives, one click
+                // deeper — through the one gate.
+                if (terminal_level_set_gate(io, save, outcome.level,
+                                            chosen_closed, chosen_current,
+                                            chosen_replay) !=
+                    TerminalLevelSetGate::Applied)
                 {
-                    io.notice(std::string(kCampaignPickerHostGuardMessage));
                     break;
                 }
-                if (chosen_closed)
-                {
-                    // The same refusal the camp's docket gives, one click
-                    // deeper: the terminal tail only moves the cursor, so a
-                    // road the campaign does not carry has to be refused
-                    // HERE — the SDL surface's load-with-rollback would have
-                    // caught it at the click, and a row that already reads
-                    // [CLOSED] must never answer "Level set to".
-                    io.notice(std::string(kCampaignLevelClosedMessage));
-                    break;
-                }
-                if (chosen_current && !chosen_replay)
-                {
-                    // The row the cursor is already parked on. The SDL
-                    // surfaces refuse this click rather than reload the
-                    // level under the player; a terminal that answered
-                    // "Level set to ..." instead would be telling one
-                    // player two stories about one click. A replay row is
-                    // exempt (#207): arming is a real state change even on
-                    // the current level — the one-level dream log's only
-                    // replay row IS the current row.
-                    io.notice(std::string(kCampaignLevelUnchangedMessage));
-                    break;
-                }
-                io.apply_level(outcome.level, chosen_replay);
                 // CURRENT markers re-derive from the new cursor
                 // (fetch-per-action, never per frame).
                 session.refresh();
@@ -1491,33 +1499,15 @@ void run_terminal_campaign_camp(SaveData& save,
                 zone.refetch();
                 break;
             case CampaignPickerSession::Kind::Level:
-                // Host gate first (the SET LEVEL predicate) — the session
-                // stays policy-free.
-                if (!io.is_host())
+                // Same click, same answer as the SDL camp — through the one
+                // gate.
+                if (terminal_level_set_gate(io, save, row.level,
+                                            !row.available, row.current,
+                                            row.replay_arms()) !=
+                    TerminalLevelSetGate::Applied)
                 {
-                    io.notice(std::string(kCampaignPickerHostGuardMessage));
                     break;
                 }
-                if (!row.available)
-                {
-                    // The campaign's own voice, never the loader's. The
-                    // terminal tail only moves the cursor, so a road that is
-                    // not in the campaign has to be refused HERE — the SDL
-                    // load-with-rollback would have caught it at the click.
-                    io.notice(std::string(kCampaignLevelClosedMessage));
-                    break;
-                }
-                if (row.current && !row.replay_arms())
-                {
-                    // Same click, same answer as the SDL camp: the cursor
-                    // is already here, so nothing is set and the row says
-                    // so instead of confirming a move that never happened.
-                    // A replay row is exempt (#207): arming is a real
-                    // state change even on the current level.
-                    io.notice(std::string(kCampaignLevelUnchangedMessage));
-                    break;
-                }
-                io.apply_level(row.level, row.replay_arms());
                 zone.refetch();  // CURRENT markers re-derive
                 io.notice(row.replay_arms()
                               ? campaign_replay_set_message(row.label)

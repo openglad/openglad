@@ -531,6 +531,44 @@ struct TerminalCampaignPickerIo {
     std::function<void(int, bool replay_arm)> apply_level;
 };
 
+// The SET LEVEL gate every terminal surface runs before it moves the
+// cursor, hoisted out of the three inline copies (the camp's level row, the
+// book loop's SetLevel arm, and D3's acted-level route) so a fourth surface
+// — the SETUP wizard — cannot skip a check or word one differently.
+//
+// The arms, in order, are the three refusals those blocks spoke verbatim:
+//
+//   DeniedHost  the SET LEVEL host gate: level rows publish scenario_id and
+//               are host-only; pages and actions are open to every machine.
+//               The session stays policy-free, so the gate asks here.
+//   Closed      the campaign's own voice, never the loader's. The terminal
+//               tail only moves the cursor, so a road that is not in the
+//               campaign has to be refused HERE — the SDL surface's
+//               load-with-rollback would have caught it at the click, and a
+//               row that already reads [CLOSED] must never answer "Level
+//               set to".
+//   Unchanged   the row the cursor is already parked on. The SDL surfaces
+//               refuse this click rather than reload the level under the
+//               player; a terminal that answered "Level set to ..." instead
+//               would be telling one player two stories about one click. A
+//               replay row is exempt (#207): arming is a real state change
+//               even on the current level — the one-level dream log's only
+//               replay row IS the current row.
+//   Applied     io.apply_level(level, replay) has run.
+//
+// The CALLER prints its own confirmation on Applied (the label differs per
+// surface) and refetches its own session.
+enum class TerminalLevelSetGate : std::uint8_t {
+    DeniedHost,
+    Closed,
+    Unchanged,
+    Applied,
+};
+TerminalLevelSetGate terminal_level_set_gate(const TerminalCampaignPickerIo& io,
+                                             const SaveData& save, int level,
+                                             bool closed, bool current,
+                                             bool replay);
+
 // Drive the whole BOOK flow over `save` rooted at `page_id` — a camp page
 // row's door, and the only way into a book on a terminal ("" is the book's
 // root page, the door the transitional book-door composition opens). Back at

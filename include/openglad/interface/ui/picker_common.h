@@ -500,6 +500,14 @@ void cycle_generator_rate(SaveData& save);
 // purchases). SESSION-ONLY, so no company autosave follows a toggle.
 void toggle_infinite_gold(SaveData& save);
 
+// Toggle cross control: cross_control 0 (own seats) <-> 1 (all seats).
+// The pure save write behind change_cross_control()'s popup/sync tail, so
+// the SETUP wizard's RULES row and the DIFFICULTY panel's row step the same
+// field by the same rule. SESSION-ONLY (never in the GTL file), so no
+// company autosave follows — the infinite-gold precedent. Any stored junk
+// counts as ON and lands on 0, exactly as the SDL callback sanitizes it.
+void toggle_cross_control(SaveData& save);
+
 // True when hire/train purchases are free for this session.
 [[nodiscard]] bool gold_is_infinite(const SaveData& save) noexcept;
 

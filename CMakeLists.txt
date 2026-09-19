@@ -939,6 +939,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/campaign_picker_session.cpp
+        ${SRC_DIR}/interface/ui/match_setup_session.cpp
         ${SRC_DIR}/interface/ui/cloud_save_client.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
         # core
@@ -1289,6 +1290,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/campaign_picker_session.cpp
+        ${SRC_DIR}/interface/ui/match_setup_session.cpp
         ${SRC_DIR}/interface/ui/cloud_save_client.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
     )

@@ -49,7 +49,7 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
 // positional drivers (the headless drives, the interactive script, the
 // curses route tests).
 // The flat CTF trio then LEFT (docs/camp-controls-design.md): teams, target
-// score and troops are the modes camp's MATCH SETUP page now, one place that
+// score and troops are the SETUP wizard's RULES step now, one place that
 // speaks them in plain words on every client. DIFFICULTY arrived in their
 // place, appended so nothing above it moved. It is past the digit-jump
 // budget, like Scenario before it — the arrow keys reach it, and unlike a
@@ -59,7 +59,12 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
 // 1-based position consumers keep every ordinal they already pin and only
 // gain one. It sits past the digit-jump budget for the same reason
 // difficulty does — a match-composition page is not a per-round retune.
-constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
+// SETUP (#304, docs/match-setup-design.md §2.7) is appended after LINEUP by
+// that same growth rule: every 1-based ordinal 1..12 keeps its meaning and
+// each positional consumer gains exactly one leg. It is past the digit-jump
+// budget like difficulty and lineup, which is right for a door a player
+// opens to CHANGE the match rather than every round.
+constexpr std::array<PickerMenuItem, 13> kTeamBuildItems = {{
     {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -80,6 +85,10 @@ constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
     // The LINEUP door (kTeamBuildItems' growth rule above).
     {"lineup", "Lineup", PickerMenuCommand::Lineup},
+    // The SETUP wizard door, versus campaigns only (the gate is
+    // terminal_item_gate's, so the row is LISTED on every campaign and
+    // refuses in words — the terminal listing contract).
+    {"setup", "Setup", PickerMenuCommand::MatchSetup},
 }};
 
 // The SCENARIO submenu: everything that chooses or inspects the scenario.

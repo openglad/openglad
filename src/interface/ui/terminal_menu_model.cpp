@@ -18,6 +18,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
@@ -56,11 +57,16 @@ std::vector<std::string> team_build_context_lines(const SaveData& save)
 }
 
 // Terminal guard: the §2.5 READY item outside a networked lobby
-// (solo/local sessions have no ready machinery — §2.6 state 1). The match
-// knobs are the camp's MATCH SETUP page now (docs/camp-controls-design.md),
-// so no terminal menu carries them or their old versus guard. Scenario
+// (solo/local sessions have no ready machinery — §2.6 state 1). Scenario
 // troops stays ungated on the SCENARIO screen: "strip everything authored"
 // is meaningful on classic campaigns too.
+//
+// The match rules have ONE door per campaign kind on every client
+// (docs/match-setup-design.md §2.7): the SETUP wizard's RULES step (item 13
+// `setup`, versus campaigns) and the DIFFICULTY submenu (item 11, classic
+// campaigns). Each is `Custom`-gated to its campaign kind and points at the
+// other in its guard line, so a prompt never hides a door in silence — the
+// terminal face of the SDL strip's SETUP/DIFFICULTY twin.
 constexpr std::string_view kReadyGuardMessage =
     "Ready applies to networked lobbies only.";
 
@@ -70,6 +76,20 @@ GateBinding terminal_item_gate(PickerMenuCommand command)
     case PickerMenuCommand::ToggleReady:
         return GateBinding{MenuGate::NetworkedOnly, nullptr,
                            kReadyGuardMessage};
+    case PickerMenuCommand::MatchSetup:
+        return GateBinding{MenuGate::Custom,
+                           [](const MenuLabelContext& context) {
+                               return context.save != nullptr &&
+                                      is_versus_campaign(*context.save);
+                           },
+                           kSetupClassicGuardMessage};
+    case PickerMenuCommand::OpenDifficultyMenu:
+        return GateBinding{MenuGate::Custom,
+                           [](const MenuLabelContext& context) {
+                               return context.save == nullptr ||
+                                      !is_versus_campaign(*context.save);
+                           },
+                           kSetupDifficultyVersusGuardMessage};
     default:
         return GateBinding{};
     }
@@ -108,13 +128,29 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
 
 // --- LINEUP (docs/lineup-design.md §8) ----------------------------------
 
-bool census_staged_lineup_map_units(og::server::MatchStage& stage,
-                                    const SaveData& save, int difficulty,
-                                    std::uint32_t match_seed,
-                                    std::array<int, 4>& out)
+IPickerLobbyClient::StagedPreviewHealth census_staged_match_report(
+    og::server::MatchStage& stage, const SaveData& save, int difficulty,
+    std::uint32_t match_seed, std::array<int, 4>& out_counts,
+    ScenarioRosterReport& out_report)
 {
+    using Health = IPickerLobbyClient::StagedPreviewHealth;
+
+    // Both pages census the SAME world through the SAME seat context they
+    // stage with, so the LINEUP bands, the wizard's team lines and the VIEW
+    // LEVEL report can never describe two different worlds.
+    ScenarioSeatContext seats;
+    seats.players = synthesize_local_lobby_players(save);
+    for (const og::sim::LobbyPlayer& player : seats.players)
+        seats.local_player_indices.push_back(player.player_index);
+
+    const auto unavailable = [&]() {
+        out_report = build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::None, save, nullptr, &seats);
+        return Health::Unavailable;
+    };
+
     if (get_mounted_campaign() != save.current_campaign)
-        return false;
+        return unavailable();
 
     og::server::MatchStageInputs inputs;
     inputs.equivalent = og::server::build_local_save_equivalent(save);
@@ -128,14 +164,109 @@ bool census_staged_lineup_map_units(og::server::MatchStage& stage,
     // rendered last turn's world would be exactly the disagreement this
     // census exists to end — so force the restage the way GO does.
     stage.ensure_current(now);
+    if (stage.status() == og::server::StageStatus::Failed) {
+        out_report = build_scenario_roster_report(
+            nullptr, og::ui::StagePreviewStatus::Failed, save, nullptr,
+            &seats);
+        return Health::Failed;
+    }
     if (stage.status() != og::server::StageStatus::Staged)
-        return false;
+        return unavailable();
     const GameWorld* world = stage.world();
+    // A stage that fell back must not masquerade as this level's census
+    // (the mirror applies the same rule).
     if (world == nullptr || world->id != save.scen_num)
-        return false;
+        return unavailable();
 
-    out = census_lineup_map_units(*world);
+    out_counts = census_lineup_map_units(*world);
+    out_report = build_scenario_roster_report(
+        world, og::ui::StagePreviewStatus::Staged, save, nullptr, &seats);
+    return Health::Staged;
+}
+
+bool census_staged_lineup_map_units(og::server::MatchStage& stage,
+                                    const SaveData& save, int difficulty,
+                                    std::uint32_t match_seed,
+                                    std::array<int, 4>& out)
+{
+    // One implementation: the MAP UNITS answer is the report census's
+    // Staged arm, and `out` is left untouched on every other arm exactly as
+    // this function has always promised.
+    ScenarioRosterReport scratch;
+    std::array<int, 4> counts{};
+    if (census_staged_match_report(stage, save, difficulty, match_seed, counts,
+                                   scratch) !=
+        IPickerLobbyClient::StagedPreviewHealth::Staged) {
+        return false;
+    }
+    out = counts;
     return true;
+}
+
+TerminalMatchSetupModel build_terminal_match_setup_model(
+    const MatchSetupSession& session, const MatchSetupSession::Inputs& inputs)
+{
+    (void)inputs;
+    const MatchSetupSession::Page& page = session.page();
+    TerminalMatchSetupModel model;
+    model.title = page.title;
+
+    const std::size_t at =
+        std::min(page.team_lines_at, page.lines.size());
+    for (std::size_t i = 0; i < at; ++i)
+        model.lines.push_back(page.lines[i]);
+    for (const MatchSetupSession::TeamLine& line : page.team_lines) {
+        // A MATCH team line IS the report line; it carries no cells, so it
+        // prints alone. A TEAMS team line spells the colour word where the
+        // pixel surfaces ink a swatch — the LINEUP header's own grammar.
+        if (line.seats.empty() && line.census.empty()) {
+            model.lines.push_back(line.label);
+            continue;
+        }
+        std::string text = std::format("{} {}", line.label,
+                                       og::sim::team_color_name(line.team));
+        if (!line.seats.empty()) {
+            text += "  ";
+            text += line.seats;
+        }
+        if (!line.census.empty()) {
+            text += "  ";
+            text += line.census;
+        }
+        model.lines.push_back(std::move(text));
+    }
+    for (std::size_t i = at; i < page.lines.size(); ++i)
+        model.lines.push_back(page.lines[i]);
+
+    for (std::size_t i = 0; i < page.rows.size(); ++i) {
+        const MatchSetupSession::Row& row = page.rows[i];
+        model.items.push_back(TerminalMatchSetupItem{
+            TerminalMatchSetupItem::Kind::Row, i,
+            campaign_picker_row_text(row.base, kCampaignPickerTerminalRowBudget,
+                                     true),
+            row.extra == MatchSetupSession::Row::Extra::Cycler &&
+                row.state == RowState::Visible});
+    }
+    // The two steppers ARE the tab strip's projection. They name the step
+    // the session's own next_step()/prev_step() land on, so an item can
+    // never promise a step the stepper does not go to.
+    if (page.can_next) {
+        model.items.push_back(TerminalMatchSetupItem{
+            TerminalMatchSetupItem::Kind::Next, 0,
+            std::format("Next: {}",
+                        MatchSetupSession::step_word(session.next_step())),
+            false});
+    }
+    if (page.can_prev) {
+        model.items.push_back(TerminalMatchSetupItem{
+            TerminalMatchSetupItem::Kind::Prev, 0,
+            std::format("Prev: {}",
+                        MatchSetupSession::step_word(session.prev_step())),
+            false});
+    }
+    model.items.push_back(TerminalMatchSetupItem{
+        TerminalMatchSetupItem::Kind::Back, 0, "Back", false});
+    return model;
 }
 
 TerminalLineupModel build_terminal_lineup_model(
