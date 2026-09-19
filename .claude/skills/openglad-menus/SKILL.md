@@ -111,6 +111,36 @@ on reorders: `scripts/test_text_picker_interactive.sh` and the scripted drive
 in `tests/unit/test_platform_headless.cpp`. Grep both whenever
 `kTeamBuildItems` (or any menu's item list) changes shape.
 
+## The SETUP wizard (the second screen on the camp chassis)
+
+On a `matchup: versus` campaign the Base Camp strip's (58,178,68,18) slot
+reads **SETUP** instead of **DIFFICULTY** — one rect, two ordinals, the
+GO/READY twin shape, the new one appended at ordinal 73 (ceiling 74). It
+opens `MenuScreenId::MatchSetup`, a five-step wizard (GAME → ARENA → TEAMS →
+RULES → MATCH) that is a room inside the camp panel and reuses the zone
+submenu's constants. Working on it, know these five things:
+
+- **The grid is declared, and it has ONE right edge, 310.** Tabs, the 30 px
+  cell column (280..310) and the ARENA pagers all end there; rows are the
+  docket's 264-wide 42-glyph face. The vertical/rhythm names live in
+  `include/openglad/interface/ui/match_setup_session.h` (the session is
+  SDL-free and needs them); every x/w/tab/cell/footer/ordinal name lives in
+  `picker_sdl_defs.h`, which includes that header and `static_assert`s the
+  two against the zone constants. Do not add a third home.
+- **Every cycler row has a `<` reverse cell**, and the same
+  `session.choose(row, -1)` is reached three ways: the cell, a mouse
+  right-click (the `menu_spec_row_reverse` stash, docs/menu-engine.md) and
+  the terminal `N-` item. LEFT/RIGHT stay NAVIGATION on this screen as on
+  every other.
+- **The escape-door table** the injector flows bind starts with
+  `{"setup_back", "setup_back"}` — BACK/Escape closes the wizard from any
+  step; PREV/NEXT walk it; a tab jumps to it.
+- **Team Build has 13 items now**, and two of them are `Custom`-gated on
+  campaign kind: item 13 `Setup` on versus campaigns, item 11 `Difficulty`
+  on classic ones. Both index consumers below apply.
+- The design record, with the button table, the per-row budgets and the
+  decisions, is `docs/match-setup-design.md`.
+
 ## Keyboard navigation rules
 
 - `MenuNav` links are raw indices and do NOT skip hidden buttons. A link into
