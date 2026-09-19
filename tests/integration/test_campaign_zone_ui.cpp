@@ -26,6 +26,7 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include "test_camp_save_fixture.h"
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
 #include "test_escape_tail.h"
@@ -226,47 +227,10 @@ private:
 // (PR #245). Every call site below resolves this suite's own output
 // directory (UXSHOTS_DIR) and hands it to the shared capture.
 
-void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
-                                   const std::vector<int>& completed = {})
-{
-    SaveData& save = test_screen()->save_data;
-    for (auto& slot : save.team_list)
-        slot.reset();
-    save.team_size = 0;
-    const char* names[] = {"Alpha", "Beta"};
-    for (std::size_t i = 0; i < 2; ++i)
-    {
-        save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
-        save.team_list[i]->name = names[i];
-        save.team_list[i]->teamnum = 0;
-        save.team_list[i]->deployed = true;
-        save.team_list[i]->campaign_tag = 0;
-    }
-    save.team_size = 2;
-    save.my_team = 0;
-    save.numplayers = 1;
-    save.allied_mode = 0;
-    // A defined resting state includes the match knobs: in binary order an
-    // earlier flow's fill/map_units would otherwise leak into this save and
-    // the amendment-5 macro faces (derived from fill[]) would not be at
-    // rest (caught by the ordered og_test_matchup run, invisible alone).
-    save.fill = {};
-    save.map_units = {};
-    // ...and the arena deal memo (amendment 7): a memo left by an earlier
-    // flow on the same cursor would mark the fresh bands as already dealt.
-    save.arena_lineup_dealt_campaign.clear();
-    save.arena_lineup_dealt_scen = 0;
-    save.scen_num = scen_num;
-    save.current_campaign = campaign;
-    save.current_levels.clear();
-    save.current_levels[campaign] = scen_num;
-    save.m_totalcash[0] = 5000;
-    save.campaign_state.clear();
-    save.completed_levels.clear();
-    for (int level : completed)
-        save.add_level_completed(campaign, level);
-    ASSERT_TRUE(save.save("save0"));
-}
+// write_save0_with_two_soldiers moved VERBATIM to
+// tests/test_camp_save_fixture.h when the SETUP wizard's flows in this same
+// binary wanted the same starting company: one fixture, not a twin that
+// drifts the day one copy gains a field.
 
 // The synthetic zone: all four widget kinds. Readout (coin + kit — hoisted
 // into the panel's header band, so it costs no row unit), one text line, an

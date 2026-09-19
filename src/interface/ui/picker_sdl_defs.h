@@ -520,10 +520,12 @@ inline constexpr int kScenarioMenuTroopsIndex = 6;
 // rect, empty label, hidden, no nav — so kScenarioMenuCtfCapsIndex and the
 // count keep their values (growth is append-only, retirement is a park).
 inline constexpr int kScenarioMenuSpareIndex = 7;
-// Score limit, re-homed from MATCHUP (#218), relabelled SCORE (A5): the
-// only occupant of the y=140 knob row since TROOPS retired (B5). Versus
-// campaigns only; joiners get the read-only label (visible,
-// host-actionable).
+// The retired SCORE cycler's ordinal (#304: the match's target has ONE
+// surface now, the SETUP wizard's RULES step — this screen and the wizard
+// spelling it both is the complaint that PR closes). Parked exactly like
+// the two spares above it — zero-size rect, empty label, hidden, no nav —
+// so the count keeps its value. The name is kept so the ordinal stays
+// traceable to what vacated it.
 inline constexpr int kScenarioMenuCtfCapsIndex = 8;
 inline constexpr int kScenarioMenuButtonCount = 9;
 
@@ -814,20 +816,17 @@ std::array<int, 4> picker_lineup_map_unit_counts();
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
-// installed BaseCampScreenState); the SCENARIO subscreen has two visibility
-// axes: SET CAMPAIGN / SET LEVEL gate on the host axis, and the
-// re-homed TEAMS / LIMIT rows (#218) gate on the versus-campaign axis
-// (match_settings_visible) — visible to joiners too, read-only there.
+// installed BaseCampScreenState); the SCENARIO subscreen has ONE visibility
+// axis left, the host one: SET CAMPAIGN / SET LEVEL. Its versus axis went
+// with the SCORE cycler, which is the SETUP wizard's RULES row now (#304).
 void picker_wire_scenario_menu_nav(button* buttons, int count,
-                                   bool host_controls_visible,
-                                   bool match_settings_visible);
+                                   bool host_controls_visible);
 
 // The SCENARIO screen's per-frame visibility/label/nav sync (the spec's
-// Rewire program): host-gates SET CAMPAIGN / SET LEVEL,
-// versus-gates TEAMS / LIMIT (visible read-only for joiners), re-derives
-// the three settings labels from the save on both surfaces (LINEUP stays
-// visible for everyone), and rewires the graph through
-// picker_wire_scenario_menu_nav.
+// Rewire program): host-gates SET CAMPAIGN / SET LEVEL, re-parks the three
+// retired cells (TEAMS, TROOPS and now SCORE), and rewires the graph
+// through picker_wire_scenario_menu_nav. LINEUP stays visible for
+// everyone.
 void sync_scenario_menu_host_control_visibility(button* buttons,
                                                 int num_buttons,
                                                 int& highlighted_button);

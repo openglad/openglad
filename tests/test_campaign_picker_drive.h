@@ -23,6 +23,8 @@
 // has stopped pumping, never a budget — do not raise it to buy time on an
 // instrumented lane.
 
+#include <gtest/gtest.h>
+
 #include <SDL3/SDL.h>
 
 #include <cstdint>
@@ -164,3 +166,59 @@ inline bool click_campaign_picker_action(int x, int y)
             SDL_EVENT_MOUSE_BUTTON_UP);
     return acknowledged && released;
 }
+
+// The browser's input hygiene, on both edges. It owns the main thread and
+// its own pointer handoff, so a mouse-button event left in the queue by the
+// screen BEFORE it is a click it will consume as its own, and one left
+// behind by it is a click the next screen will. Every driver of the browser
+// brackets its visit with this.
+struct CampaignPickerInputGuard
+{
+    CampaignPickerInputGuard()
+    {
+        campaign_picker_testing_input_reset();
+        if (SDL_HasEvents(
+                SDL_EVENT_MOUSE_BUTTON_DOWN,
+                SDL_EVENT_MOUSE_BUTTON_UP))
+        {
+            ADD_FAILURE()
+                << "campaign picker inherited stale mouse-button events";
+        }
+    }
+
+    ~CampaignPickerInputGuard()
+    {
+        campaign_picker_testing_input_reset();
+        SDL_FlushEvents(
+            SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+    }
+
+    void reset()
+    {
+        if (SDL_HasEvents(
+                SDL_EVENT_MOUSE_BUTTON_DOWN,
+                SDL_EVENT_MOUSE_BUTTON_UP))
+        {
+            ADD_FAILURE()
+                << "previous campaign picker left mouse-button events queued";
+        }
+        campaign_picker_testing_input_reset();
+    }
+};
+
+// Auto-accept is the suite's default: a browser that is only passed
+// THROUGH takes the first frame's entry and returns. A driver that wants
+// to LOOK at the browser turns it off for the visit and aborts the loop
+// itself on the way out — pick_campaign blocks the main thread, so only
+// the loop can end it.
+struct CampaignPickerAutoAcceptOff
+{
+    CampaignPickerAutoAcceptOff()
+    {
+        campaign_picker_testing_set_auto_accept(false);
+    }
+    ~CampaignPickerAutoAcceptOff()
+    {
+        campaign_picker_testing_set_auto_accept(true);
+    }
+};

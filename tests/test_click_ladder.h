@@ -334,9 +334,10 @@ inline bool click_until_edge(const std::string& id,
 //   * a LANDING WITNESS (landed_trace / landed_category): a trace the row's
 //     own callback emits synchronously, before the label is republished.
 //     The SETUP wizard's cycler rows publish one — TRACE("setup", "turned
-//     %d") in match_setup_dispatch (src/interface/ui/menu_screen_specs.cpp)
-//     — so a SCORE or TIME LIMIT step is acknowledged by the write, not by
-//     the face. With it the ladder can tell "the press never landed" from
+//     %d %d") in match_setup_dispatch (src/interface/ui/menu_screen_specs.cpp),
+//     the knob and the value it wrote — so a SCORE or TIME LIMIT step is
+//     acknowledged by the write, and by ONE stop of it, not by the face.
+//     With it the ladder can tell "the press never landed" from
 //     "the press landed on a face this wheel does not carry", and it stops
 //     pressing after the first landing whatever the label does.
 //   * failing that, the RE-CHECK in click_until_edge above, which re-reads

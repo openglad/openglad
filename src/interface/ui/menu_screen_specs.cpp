@@ -1237,7 +1237,7 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 30, .y = 170, .w = 60, .h = 20,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 8}},
+     .nav = {.up = 3}},
     {.id = "set_campaign", .label = "SET CAMPAIGN",
      .x = 30, .y = 40, .w = 80, .h = 15,
      .action = ButtonAction::DoPickCampaign, .arg = -1,
@@ -1249,22 +1249,22 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
     {.id = "view_scenario", .label = "VIEW LEVEL",
      .x = 30, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::ViewScenario, .arg = -1,
-     .nav = {.up = 2, .down = 8, .right = 5}},
+     .nav = {.up = 2, .down = 0, .right = 5}},
     // The ordinal the MATCHUP door vacated (#218), reclaimed by the LINEUP
     // door (docs/lineup-design.md §2): the y=100 row reads VIEW LEVEL |
     // PROGRESS | LINEUP on the declared 30/120/210 grid, above the y=140
     // knob row where composition already lives. Deliberately NOT
-    // host-gated — joiners open the page read-only (§2.3). Its cell below,
-    // (210,140), is free since TEAMS retired (A5), so DOWN lands on SCORE.
+    // host-gated — joiners open the page read-only (§2.3). The y=140 row
+    // below it is empty since SCORE retired (#304), so DOWN lands on BACK.
     {.id = "lineup", .label = "LINEUP",
      .x = 210, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::OpenLineup, .arg = -1,
-     .nav = {.up = 2, .down = 8, .left = 5}},
+     .nav = {.up = 2, .down = 0, .left = 5}},
     // PROGRESS left-packs into the middle cell of that row.
     {.id = "progress", .label = "PROGRESS",
      .x = 120, .y = 100, .w = 80, .h = 15,
      .action = ButtonAction::CreateProgressMenu, .arg = -1,
-     .nav = {.up = 2, .down = 8, .left = 3, .right = 4}},
+     .nav = {.up = 2, .down = 0, .left = 3, .right = 4}},
     // The retired TROOPS cycler's ordinal (amendment B5: whether the map's
     // own authored cast fights is a per-team MAP UNITS box on the LINEUP
     // band now). Parked like the TEAMS spare below it — zero-size rect,
@@ -1283,19 +1283,17 @@ constexpr MenuButtonSpec kScenarioMenuRows[] = {
      .x = 0, .y = 0, .w = 0, .h = 0,
      .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuSpareIndex,
      .hidden = true},
-    // Score limit, re-homed from MATCHUP (#218) and relabelled SCORE (A5:
-    // captures, goals, kills; MAP = the level's own target): match rules
-    // belong on the scenario axis (the TEAMS -> TROOPS migration
-    // precedent), and this keeps third-party versus packs' access (docs/
-    // camp-controls-design.md). Versus campaigns only; joiners see the
-    // read-only label (the lobby-synced save feeds the per-frame re-derive)
-    // while the host acts. The static label is the formatter's default.
-    // B5 re-grid: SCORE is ALONE on the y=140 knob row since TROOPS
-    // retired, so it takes the x=30 column under VIEW LEVEL.
-    {.id = "ctf_caps", .label = "SCORE: MAP",
-     .x = 30, .y = 140, .w = 80, .h = 15,
-     .action = ButtonAction::CycleCtfCaptureLimit, .arg = -1,
-     .nav = {.up = 3, .down = 0}},
+    // The retired SCORE cycler's ordinal (#304: SCORE has ONE home, the
+    // SETUP wizard's RULES step — a versus campaign that spelled the
+    // target twice, here and in the wizard, is the complaint that PR
+    // closed). Parked like the TROOPS and TEAMS spares above it — zero-size
+    // rect, empty label, hidden, no nav — so kScenarioMenuButtonCount
+    // stays 9 and no pin below it shifted. The y=140 knob row is empty
+    // now, and the y=100 row drops straight onto BACK.
+    {.id = "scenario_score_spare", .label = "",
+     .x = 0, .y = 0, .w = 0, .h = 0,
+     .action = ButtonAction::MenuSpecRow, .arg = kScenarioMenuCtfCapsIndex,
+     .hidden = true},
 };
 
 // The campaign-name / level-title strips sit beside the buttons that change
@@ -1626,6 +1624,42 @@ void zone_submenu_draw_background(void* /*screen_state*/)
                                                          1);
 }
 
+// The camp header's line A, drawn once for every ROOM in the camp: the
+// zone submenu, the Base Camp itself and the SETUP wizard. Grey "COMPANY:"
+// label + WHITE name (the 40-byte save_name clipped to 26) on ONE shared
+// backing strip — two strip_text calls would leave a raw-backdrop seam
+// between label and name — plus the gold block. Both strips share the
+// panel's outside-to-outside lines: left edge 8, GOLD strip right edge 311
+// at its 11-char clip. Budget: 8 label chars + space + 26-char name clip =
+// ink ending x<=219, 23px clear of the GOLD strip at x=242. One spelling:
+// three copies of it drifted the moment one room clipped differently.
+void camp_strip_text(int x, int y, const std::string& value,
+                     unsigned char color)
+{
+    if (value.empty())
+        return;
+    screen* const game = og::runtime::current_session->myscreen_;
+    const int width = static_cast<int>(value.size()) * 6;
+    game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4), 8,
+                           PURE_BLACK, 150);
+    game->text_normal.write_xy(x, y, color, "%s", value.c_str());
+}
+
+void draw_camp_line_a(const SaveData& save)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    text& mytext = game->text_normal;
+    std::string company = save.save_name;
+    if (company.size() > 26)
+        company.resize(26);
+    const int width = (9 + static_cast<int>(company.size())) * 6;
+    game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8,
+                           PURE_BLACK, 150);
+    mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
+    mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
+    camp_strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
+}
+
 // Content pass: the shared header (COMPANY + GOLD — the purse stays on
 // screen while you shop) with the page title / toast on the status line,
 // then the page's narrative lines and the "p/N" indicator inside the panel.
@@ -1650,17 +1684,7 @@ void zone_submenu_draw_content(void* screen_state)
 
     // Header line A, byte-for-byte the Base Camp's: COMPANY + the gold
     // block. Prices with no purse on screen are unreadable.
-    std::string company = save.save_name;
-    if (company.size() > 26)
-        company.resize(26);
-    {
-        const int width = (9 + static_cast<int>(company.size())) * 6;
-        game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8,
-                               PURE_BLACK, 150);
-        mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
-        mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
-    }
-    strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
+    draw_camp_line_a(save);
 
     const og::ui::CampaignPickerSession* session =
         st != nullptr ? st->session : nullptr;
@@ -1779,6 +1803,10 @@ struct ScriptedLevelSetAnswer {
 ScriptedLevelSetAnswer scripted_level_set_answer(ScriptedLevelSet outcome,
                                                  int level)
 {
+    // The level rides the TRACEs below, which compile out of a production
+    // build; the parameter stays so both tails hand the switch the same
+    // arguments whatever the build says.
+    (void)level;
     switch (outcome) {
     case ScriptedLevelSet::DeniedHost:
         TRACE("zone", "level_denied_nonhost %d", level);
@@ -4623,23 +4651,9 @@ void base_camp_draw_content(void* screen_state)
         game->text_normal.write_xy(x, y, color, "%s", value.c_str());
     };
 
-    // Line A (§9.10.3, G3): grey "COMPANY:" label + WHITE name (the 40-byte
-    // save_name) on ONE shared backing strip — two strip_text calls would
-    // leave a raw-backdrop seam between label and name — plus the gold
-    // block. Both strips share the panel's outside-to-outside lines: left
-    // edge 8, GOLD strip right edge 311 at its 11-char clip. Budget: 8 label
-    // chars + space + 26-char name clip = ink ending x<=219, 23px clear of
-    // the GOLD strip at x=242.
-    std::string company = save.save_name;
-    if (company.size() > 26)
-        company.resize(26);
-    {
-        const int width = (9 + static_cast<int>(company.size())) * 6;
-        game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
-        mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
-        mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
-    }
-    strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
+    // Line A (§9.10.3, G3): one spelling for the whole camp — see
+    // draw_camp_line_a above for the budget it holds to.
+    draw_camp_line_a(save);
 
     // Line B: solo scenario/deploy header, or the §9.12 (G5) networked
     // session status — role + room code + player/machine census, players
@@ -5138,13 +5152,13 @@ bool base_camp_frame_tick(void* screen_state, int /*frame*/)
     // answers Go, and the dispatch that opened it cannot press the strip
     // button itself — the nested screen owned allbuttons_ while it ran, so
     // the real GO ordinal was null there. The reset that follows the
-    // dispatch's MENU_REDRAW rebuilds Base Camp's own live buttons, and
-    // this tick (the SAME loop iteration, right after that reset) presses
-    // the real one: the TeamBuild intercept selects StartGame and answers
-    // MENU_EXIT, exactly as a click on the strip does, and the loop ends on
-    // the same value the strip's own break returns.
-    if (state->pending_setup_go) {
-        state->pending_setup_go = false;
+    // dispatch's MENU_REDRAW rebuilds Base Camp's own live buttons; the
+    // tick right after that reset arms, the NEXT one presses (a loop that
+    // ends before it has drawn would fade out a frame the window never
+    // showed). The TeamBuild intercept then selects StartGame and answers
+    // MENU_EXIT, exactly as a click on the strip does, and the loop ends
+    // on the same value the strip's own break returns.
+    if (state->pending_setup_go > 0 && --state->pending_setup_go == 0) {
         vbutton* const go = og::runtime::current_session
             ->allbuttons_[static_cast<std::size_t>(kCreateMenuGoIndex)];
         if (go != nullptr) {
@@ -5178,7 +5192,11 @@ Sint32 base_camp_open_match_setup(BaseCampScreenState& st,
 {
     switch (og::ui::run_match_setup_screen(entry_page)) {
     case og::ui::MatchSetupExit::Go:
-        st.pending_setup_go = true;
+        // Two ticks: the first lets Base Camp compose and PRESENT itself
+        // over the closed wizard, the second presses the strip GO. The
+        // loop ends on that press without drawing, so the frame it fades
+        // out has to be one the window actually showed.
+        st.pending_setup_go = 2;
         return MENU_REDRAW;
     case og::ui::MatchSetupExit::RemoteStart:
         if (team_build_start_selected())
@@ -7379,6 +7397,40 @@ void lineup_draw_background(void* /*screen_state*/)
         kLineupPanelX1, kLineupPanelY1, kLineupPanelX2, kLineupPanelY2, 2, 1);
 }
 
+// The staged census both the wizard's TEAMS line and LINEUP's census
+// column answer. ONE builder: two screens that census the same world from
+// two readings will disagree the day one of them is edited alone.
+og::ui::ScenarioRosterReport build_camp_staged_report(
+    const LineupSeatView& seats)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    const SaveData& save = game->save_data;
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    const GameWorld* staged =
+        lobby != nullptr ? lobby->staged_world() : nullptr;
+    og::ui::StagePreviewStatus status = og::ui::StagePreviewStatus::None;
+    if (lobby != nullptr &&
+        lobby->staged_preview_health() ==
+            og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed)
+    {
+        status = og::ui::StagePreviewStatus::Failed;
+    }
+    else if (staged != nullptr)
+    {
+        status = og::ui::StagePreviewStatus::Staged;
+    }
+    // A staged pair for a DIFFERENT level than the save's (a restage racing
+    // the lobby save sync) must not census this level's step.
+    if (staged != nullptr && staged->id != save.scen_num)
+        staged = nullptr;
+    og::ui::ScenarioSeatContext seat_context;
+    seat_context.players = seats.players;
+    seat_context.local_player_indices = seats.local_indices;
+    return og::ui::build_scenario_roster_report(
+        staged, status, save, &game->world(), &seat_context);
+}
+
 std::int64_t lineup_now_ms()
 {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -7388,8 +7440,8 @@ std::int64_t lineup_now_ms()
 
 void lineup_draw_content(void* screen_state)
 {
-    const LineupScreenState* st =
-        static_cast<const LineupScreenState*>(screen_state);
+    LineupScreenState* const st =
+        static_cast<LineupScreenState*>(screen_state);
     screen* game = og::runtime::current_session->myscreen_;
     text& mytext = game->text_normal;
     const SaveData& save = game->save_data;
@@ -7503,24 +7555,40 @@ void lineup_draw_content(void* screen_state)
                                  1);
         }
 
-        // Census / diagnostics at (190, y+19), 21-char budget. Diagnostics
-        // keep their slot in every mode (they mirror GO's refusal); a team
-        // the map ships no units for says NO MAP UNITS (B4: why its box is
-        // inert), and every other band counts deployed fighters. The old
-        // classic-campaign MAP RULES census retired with the dim (C5).
-        std::string census;
-        unsigned char census_color = BLACK;
-        if (band.diag != LineupTeamBand::Diag::None) {
-            census = format_lineup_census(band);
-            census_color = kBenchedTextShade;
-        } else if (!format_lineup_map_units_census(band).empty()) {
-            census = format_lineup_map_units_census(band);
-            census_color = kBenchedTextShade;
-        } else {
-            census = format_lineup_census(band);
-        }
+        // Census / diagnostics at (190, y+19), 21-char budget. The cell is
+        // the SETUP wizard's TEAMS-line cell, composed by the SAME call
+        // (compose_setup_team_line): the picture the launch would ADOPT,
+        // with a band diagnostic outranking it in the benched shade
+        // because that mirrors GO's refusal. Two screens one door apart
+        // censusing one world must not answer different questions — this
+        // column used to read the band's own roster and said "NO MAP
+        // UNITS" on a fresh soccer arena where the wizard said "2 BOTS".
+        // B4's "why is this box inert" signal is the dimmed MAP UNITS
+        // caption beside the box, drawn above; it does not need the census
+        // slot as well. The old classic-campaign MAP RULES census retired
+        // with the dim (C5).
+        const og::ui::ScenarioRosterReport* const report =
+            st != nullptr && st->report_valid ? &st->report : nullptr;
+        const og::ui::SetupTeamLineCells cells =
+            og::ui::compose_setup_team_line(band, report, t,
+                                            kLineupSeatRunChars,
+                                            kLineupCensusChars);
+        std::string census = cells.census;
+        const unsigned char census_color =
+            cells.diag ? kBenchedTextShade
+                       : static_cast<unsigned char>(BLACK);
         if (census.size() > static_cast<std::size_t>(kLineupCensusChars))
             census.resize(static_cast<std::size_t>(kLineupCensusChars));
+        // The cell's own witness, published when it CHANGES (never once a
+        // frame): this column and the SETUP wizard's TEAMS line answer the
+        // same question about the same world, and a flow has to be able to
+        // read what each of them said.
+        if (st != nullptr &&
+            st->last_census[static_cast<std::size_t>(t)] != census)
+        {
+            st->last_census[static_cast<std::size_t>(t)] = census;
+            TRACE("lineup", "census %d %s", t, census.c_str());
+        }
         mytext.write_xy_flat(kLineupCensusX, y + kLineupCensusDy,
                              census.c_str(), census_color, 1);
     }
@@ -7532,6 +7600,7 @@ bool lineup_frame_tick(void* screen_state, int /*frame*/)
         return true;
     auto* const st = static_cast<LineupScreenState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
+    bool restage = false;
     if (st->last_level_id != myscreen->save_data.scen_num || st->was_reset)
     {
         st->was_reset = false;
@@ -7540,6 +7609,22 @@ bool lineup_frame_tick(void* screen_state, int /*frame*/)
         // A reload can bring a different campaign registration with it, and
         // the memoized prices key on the FIGHTER, not the hook (§4).
         lineup_power_cache_clear();
+        restage = true;
+    }
+    // The census column's report, on the OWNER's restage cadence — never
+    // per frame. The same cursor the SETUP wizard keeps (§3.8.4): a bumped
+    // stage generation, a level change, or the first tick after entry.
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    const std::uint32_t generation =
+        lobby != nullptr ? lobby->stage_generation() : 0;
+    if (!st->report_seeded || generation != st->report_generation ||
+        restage)
+    {
+        st->report_seeded = true;
+        st->report_generation = generation;
+        st->report = build_camp_staged_report(picker_lineup_seat_view());
+        st->report_valid = true;
     }
     return true;
 }
@@ -7853,32 +7938,7 @@ static_assert(static_cast<int>(std::size(kMatchSetupRows)) ==
 void match_setup_rebuild_report(MatchSetupScreenState& state,
                                 const LineupSeatView& seats)
 {
-    screen* const game = og::runtime::current_session->myscreen_;
-    const SaveData& save = game->save_data;
-    og::ui::IPickerLobbyClient* const lobby =
-        og::ui::active_picker_lobby_client();
-    const GameWorld* staged =
-        lobby != nullptr ? lobby->staged_world() : nullptr;
-    og::ui::StagePreviewStatus status = og::ui::StagePreviewStatus::None;
-    if (lobby != nullptr &&
-        lobby->staged_preview_health() ==
-            og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed)
-    {
-        status = og::ui::StagePreviewStatus::Failed;
-    }
-    else if (staged != nullptr)
-    {
-        status = og::ui::StagePreviewStatus::Staged;
-    }
-    // A staged pair for a DIFFERENT level than the save's (a restage racing
-    // the lobby save sync) must not census this level's step.
-    if (staged != nullptr && staged->id != save.scen_num)
-        staged = nullptr;
-    og::ui::ScenarioSeatContext seat_context;
-    seat_context.players = seats.players;
-    seat_context.local_player_indices = seats.local_indices;
-    state.report = og::ui::build_scenario_roster_report(
-        staged, status, save, &game->world(), &seat_context);
+    state.report = build_camp_staged_report(seats);
     state.report_valid = true;
 }
 
@@ -7900,6 +7960,18 @@ og::ui::MatchSetupSession::Inputs match_setup_inputs(
     inputs.players = seats.players;
     inputs.local_indices = seats.local_indices;
     inputs.map_unit_counts = map_units;
+    // The seat cell names the CONTROLLER, not the company: the very words
+    // LINEUP's band header writes ("P1 WASD"). Without this the wizard
+    // clipped the company name to three glyphs and the two screens
+    // disagreed on the same world.
+    inputs.seat_short_name = [locals = seats.local_indices](
+                                 std::uint8_t player_index) {
+        const auto it = std::find(locals.begin(), locals.end(), player_index);
+        if (it == locals.end())
+            return std::string();
+        return local_seat_owner_short_name(
+            static_cast<int>(std::distance(locals.begin(), it)));
+    };
     inputs.staged = state.report_valid ? &state.report : nullptr;
     og::ui::IPickerLobbyClient* const lobby =
         og::ui::active_picker_lobby_client();
@@ -7908,6 +7980,33 @@ og::ui::MatchSetupSession::Inputs match_setup_inputs(
         : og::ui::IPickerLobbyClient::StagedPreviewHealth::None;
     return inputs;
 }
+
+// The same picture, re-read from the client AFTER a write. A dispatch that
+// changed the world (a level reload, a difficulty write) must not refetch
+// with the Inputs it was handed — those describe the world before the
+// click, and the step would compose the face the player just replaced.
+// Inputs' spans point INTO the seat view and the unit counts, so the
+// holder owns both and is never copied — a move would dangle them.
+struct MatchSetupFreshInputs
+{
+    explicit MatchSetupFreshInputs(MatchSetupScreenState& state)
+        : seats(picker_lineup_seat_view()),
+          map_units(picker_lineup_map_unit_counts()),
+          inputs(match_setup_inputs(state, seats, map_units))
+    {
+    }
+    MatchSetupFreshInputs(const MatchSetupFreshInputs&) = delete;
+    MatchSetupFreshInputs& operator=(const MatchSetupFreshInputs&) = delete;
+
+    operator const og::ui::MatchSetupSession::Inputs&() const
+    {
+        return inputs;
+    }
+
+    LineupSeatView seats;
+    std::array<int, 4> map_units{};
+    og::ui::MatchSetupSession::Inputs inputs;
+};
 
 // --- The hooks S5 (nav/faces) and S6 (ink/refresh) fill in --------------
 
@@ -8139,19 +8238,10 @@ void match_setup_draw_content(void* screen_state)
         game->text_normal.write_xy(x, y, color, "%s", value.c_str());
     };
 
-    // Header line A, byte-for-byte the Base Camp's: COMPANY + the gold
-    // block. The purse stays on screen while the match is set up.
-    std::string company = save.save_name;
-    if (company.size() > 26)
-        company.resize(26);
-    {
-        const int width = (9 + static_cast<int>(company.size())) * 6;
-        game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8,
-                               PURE_BLACK, 150);
-        mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
-        mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
-    }
-    strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
+    // Header line A, byte-for-byte the Base Camp's (draw_camp_line_a is
+    // the one spelling): COMPANY + the gold block. The purse stays on
+    // screen while the match is set up.
+    draw_camp_line_a(save);
 
     // Line B is UNTOUCHED (D32): the camp's own SCEN readout or its
     // networked census, or this screen's standing toast.
@@ -8233,9 +8323,21 @@ void match_setup_draw_content(void* screen_state)
     if (page.team_lines_at >= page.lines.size())
         draw_team_lines();
 
-    // The ARENA window's "p/N", in the docket's own indicator slot.
-    if (page.page.multi_page())
-        strip_text(140, 176, page.page.indicator(), WHITE);
+    // The ARENA window's "p/N" sits UNDER the pager pair it belongs to
+    // (SPEC §2.3), not in the footer: a window indicator one band away
+    // from its own arrows reads as a page count for the whole screen.
+    // Right-aligned on the cell column so it ends where the ">" does.
+    if (page.page.multi_page()) {
+        const std::string indicator = page.page.indicator();
+        const int lines = static_cast<int>(page.lines.size() +
+                                           page.team_lines.size());
+        const int x = kSetupRightEdge -
+                      static_cast<int>(indicator.size()) * 6;
+        mytext.write_xy_flat(x,
+                             setup_row_y0(std::min(lines, kSetupLinesMax)) +
+                                 kSetupRowPitch + 1,
+                             indicator.c_str(), PURE_BLACK, 1);
+    }
 }
 
 // The blocking-subscreen refresh discipline, three cursors: the host may
@@ -8318,8 +8420,7 @@ void match_setup_show_toast(MatchSetupScreenState& state, std::string text)
 // surface's reload, toast and return code around it. A refusal NEVER
 // advances the step (§2.3) — only a landed set does.
 Sint32 match_setup_level_tail(MatchSetupScreenState& st, int level,
-                              bool replay_arm,
-                              const og::ui::MatchSetupSession::Inputs& inputs)
+                              bool replay_arm)
 {
     ScriptedLevelSetAnswer answer = scripted_level_set_answer(
         apply_scripted_level_set(level, replay_arm), level);
@@ -8337,9 +8438,57 @@ Sint32 match_setup_level_tail(MatchSetupScreenState& st, int level,
         st, answer.replay
                 ? og::ui::campaign_replay_set_message(game->world().title)
                 : og::ui::campaign_level_set_message(game->world().title));
-    // The session refetches its book and its match_knobs and steps on.
-    st.session.level_applied(inputs);
+    // The report belongs to the OLD arena until it is rebuilt, and the
+    // Inputs this dispatch was handed carry the old authored_mask with it:
+    // handing those to level_applied composes the PREVIOUS arena's team
+    // lines (822 -> 820 drew four lines on a two-side pitch) until the
+    // next fingerprint or generation refetch healed it a frame or two
+    // later. Re-read the client first, then tell the session.
+    match_setup_rebuild_report(st, picker_lineup_seat_view());
+    st.session.level_applied(MatchSetupFreshInputs(st));
     return MENU_REDRAW;
+}
+
+// The VALUE a turned knob left behind, for the second number of the
+// "turned" trace: a ladder that has to stop on ONE face acknowledges the
+// write, not just the movement. This reads the save's raw fields and
+// derives nothing — the FACE's rules live in picker_common, and a second
+// reading of them here would be the twin that ruling says must not exist.
+// The three wheels that write the whole fill array report it packed, one
+// digit per team, because the array is the value they wrote.
+[[maybe_unused]] int match_setup_knob_value(
+    const SaveData& save, og::ui::MatchSetupSession::Row::Knob knob)
+{
+    using Knob = og::ui::MatchSetupSession::Row::Knob;
+    switch (knob) {
+    case Knob::Sides:
+    case Knob::Fill:
+    case Knob::BandFill:
+        return static_cast<int>(save.fill[0]) +
+               static_cast<int>(save.fill[1]) * 10 +
+               static_cast<int>(save.fill[2]) * 100 +
+               static_cast<int>(save.fill[3]) * 1000;
+    case Knob::Score:
+        return static_cast<int>(save.ctf_capture_limit);
+    case Knob::Time:
+        return static_cast<int>(save.time_limit);
+    case Knob::Respawns:
+        return static_cast<int>(save.respawn_mode);
+    case Knob::SpawnDelay:
+        return static_cast<int>(save.ctf_respawn_ticks);
+    case Knob::Permadeath:
+        return static_cast<int>(save.keep_fallen_heroes);
+    case Knob::Generators:
+        return static_cast<int>(save.generator_rate);
+    case Knob::InfiniteGold:
+        return static_cast<int>(save.infinite_gold);
+    case Knob::CrossControl:
+        return static_cast<int>(save.cross_control);
+    case Knob::Difficulty:
+    case Knob::None:
+        break;
+    }
+    return 0;
 }
 
 Sint32 match_setup_dispatch(MatchSetupScreenState& st,
@@ -8367,13 +8516,13 @@ Sint32 match_setup_dispatch(MatchSetupScreenState& st,
         st.exit = MatchSetupExit::Closed;
         return MENU_EXIT;
     case Kind::SetLevel:
-        return match_setup_level_tail(st, outcome.level, outcome.replay_arm,
-                                      inputs);
+        return match_setup_level_tail(st, outcome.level, outcome.replay_arm);
     case Kind::Turned:
         // The write already landed in the save (the session owns the
         // cycler); this is the client's post-write tail — the very one the
         // zone action rows run.
-        TRACE("setup", "turned %d", static_cast<int>(outcome.knob));
+        TRACE("setup", "turned %d %d", static_cast<int>(outcome.knob),
+              match_setup_knob_value(game->save_data, outcome.knob));
         picker_lobby_sync_settings_from_save();
         (void)company_autosave_after_mutation(game->save_data,
                                               picker_lobby_is_networked());
@@ -8388,7 +8537,11 @@ Sint32 match_setup_dispatch(MatchSetupScreenState& st,
         // calls with cycle_difficulty(current).
         TRACE("setup", "difficulty %d", outcome.difficulty);
         apply_difficulty_value(outcome.difficulty);
-        st.session.refetch(inputs);
+        // The write landed in the SESSION, not in the save, so the Inputs
+        // this call was handed still carry the OLD session_difficulty: a
+        // refetch with them re-composes the face the click just replaced,
+        // and only the next restage would heal it. Ask the client again.
+        st.session.refetch(MatchSetupFreshInputs(st));
         return MENU_REDRAW;
     case Kind::OpenLineup:
         (void)create_lineup_menu(-1);
@@ -8436,7 +8589,14 @@ Sint32 match_setup_on_spec_row(int row, void* screen_state)
     // One click, one answer (the Base Camp rule).
     st->toast.clear();
     st->toast_until_ms = 0;
+    // Read AND clear: this dispatch may open a nested screen (the LINEUP
+    // and VIEW LEVEL doors), and a nested run_menu_screen's first frame
+    // would otherwise inherit a flag that belongs to THIS click — under
+    // TESTING the runner's own "reverse stash survived a frame" invariant
+    // fires on it, and in production the nested screen's first row press
+    // would step its wheel backwards (D19).
     const bool reverse = og::ui::menu_spec_row_reverse();
+    og::ui::set_menu_spec_row_reverse(false);
     const LineupSeatView seats = picker_lineup_seat_view();
     const std::array<int, 4> map_units = picker_lineup_map_unit_counts();
     const og::ui::MatchSetupSession::Inputs inputs =

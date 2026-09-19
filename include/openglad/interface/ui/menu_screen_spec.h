@@ -25,6 +25,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -488,7 +489,13 @@ struct BaseCampScreenState {
     // frame tick presses the REAL strip GO once the reset has rebuilt this
     // screen's live buttons — the nested wizard owned allbuttons_ while it
     // ran, so the dispatch that opened it could not reach the ordinal.
-    bool pending_setup_go = false;
+    // Two frames, not one: the tick that presses GO ends the loop, and a
+    // loop that ends before it has DRAWN leaves the screen fading out a
+    // render buffer that no longer matches the last frame the window was
+    // shown (the engine's own fade invariant catches it). Arming counts
+    // down, so Base Camp composes and presents itself once — which is
+    // exactly what a real click on the strip GO does — before the press.
+    int pending_setup_go = 0;
     // The gameplay-zone composition (docs/basecamp-zones-design.md): owned
     // by create_team_menu beside this state; null renders the default
     // composition through the same widget path (tests that install a bare
@@ -710,6 +717,18 @@ struct LineupScreenState {
     bool was_reset = false;
     std::string toast;
     std::int64_t toast_until_ms = 0;
+    // The staged census the band's census column answers (§3.8.4), cached
+    // on the OWNER's restage cadence — the same report the SETUP wizard's
+    // TEAMS line reads, so the two screens can never say different things
+    // about one world.
+    ScenarioRosterReport report;
+    bool report_valid = false;
+    bool report_seeded = false;
+    std::uint32_t report_generation = 0;
+    // Last census text published per band, so the content pass can TRACE a
+    // cell the moment it CHANGES rather than once per frame (a per-frame
+    // trace would flood the ring and prove nothing about the change).
+    std::array<std::string, 4> last_census;
 };
 
 // LINEUP: title band, four team bands of equal pitch (header chip/POWER/

@@ -182,39 +182,9 @@ static int hold_q_key_for_picker(void* data)
     return 0;
 }
 
-struct CampaignPickerInputGuard
-{
-    CampaignPickerInputGuard()
-    {
-        campaign_picker_testing_input_reset();
-        if (SDL_HasEvents(
-                SDL_EVENT_MOUSE_BUTTON_DOWN,
-                SDL_EVENT_MOUSE_BUTTON_UP))
-        {
-            ADD_FAILURE()
-                << "campaign picker inherited stale mouse-button events";
-        }
-    }
-
-    ~CampaignPickerInputGuard()
-    {
-        campaign_picker_testing_input_reset();
-        SDL_FlushEvents(
-            SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
-    }
-
-    void reset()
-    {
-        if (SDL_HasEvents(
-                SDL_EVENT_MOUSE_BUTTON_DOWN,
-                SDL_EVENT_MOUSE_BUTTON_UP))
-        {
-            ADD_FAILURE()
-                << "previous campaign picker left mouse-button events queued";
-        }
-        campaign_picker_testing_input_reset();
-    }
-};
+// CampaignPickerInputGuard moved to tests/test_campaign_picker_drive.h
+// when the uxshot probe grew a visit of its own: the browser's input
+// hygiene is one rule, and it belongs beside the waiters it brackets.
 
 struct ViewportGuard
 {

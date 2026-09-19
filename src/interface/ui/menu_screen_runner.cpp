@@ -633,6 +633,11 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     // overrides the derivation in either direction for the doors the depth
     // alone cannot classify.
     const MenuDepthScope depth_scope;
+    // A NESTED screen starts from a clean reverse stash. The outer screen's
+    // dispatch reads the flag and opens this one from inside on_spec_row,
+    // so the outer runner has not reached its own clear yet; without this
+    // the nested loop's first frame trips the invariant below (D19).
+    set_menu_spec_row_reverse(false);
     const std::optional<MenuEntryFade> override_fade = consume_menu_entry_fade();
     // Two decisions, deliberately separate. owns_transition: this screen is
     // a boundary surface (a depth-1 Screen, or a nested main-menu door) and

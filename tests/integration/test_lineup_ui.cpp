@@ -36,6 +36,7 @@
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
 #include "test_escape_tail.h"
+#include "test_launched_census.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
@@ -63,14 +64,9 @@ extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 extern std::atomic_bool g_test_present_pause_requested;
 extern std::atomic_bool g_test_present_paused;
-// The launch observables (picker.cpp): the D4 outcome flows ride these to
-// tell the world GO adopted from the page that composed it.
-extern std::atomic<bool> g_test_in_game;
-extern std::atomic<int> g_test_game_epoch;
-extern std::atomic<int> g_test_game_frame_ticks;
-// One-shot main-thread window inside gameplay (picker.cpp): the only seam
-// where an injector can read the launched world with the sim between ticks.
-void picker_testing_observe_next_game_frame(std::function<void()> observer);
+// The launch observables and the one-shot main-thread window inside
+// gameplay are declared beside the census oracle that rides them
+// (tests/test_launched_census.h).
 
 namespace {
 
@@ -207,22 +203,9 @@ bool capture_frame(const char* name)
 
 // --- interact helpers (test_ctf_ui.cpp idioms) ------------------------------
 
-bool wait_for_interactable_label(const std::string& id,
-                                 const std::string& want, int timeout_ms)
-{
-    int elapsed = 0;
-    while (elapsed < timeout_ms) {
-        for (const Interactable& item : get_interactables()) {
-            if (item.id == id && !item.hidden && item.label == want)
-                return true;
-        }
-        SDL_Delay(50);
-        elapsed += 50;
-    }
-    fprintf(stderr, "  [lineup] TIMEOUT waiting for '%s' label '%s'\n",
-            id.c_str(), want.c_str());
-    return false;
-}
+// wait_for_interactable_label went with this file's last exact-face wait:
+// the SCORE cell it watched is parked (#304) and every remaining wait here
+// is a ladder's (tests/test_click_ladder.h).
 
 bool wait_for_trace(const char* category, const char* substring,
                     int timeout_ms);
@@ -739,17 +722,23 @@ bool wait_for_staged_lineup(std::size_t team, short fill, short map_units,
     return false;
 }
 
-std::string first_picker_trace_line_containing(const char* needle)
+std::string first_trace_line_containing(const char* category,
+                                        const char* needle)
 {
     std::lock_guard<std::mutex> lock(g_trace_mutex);
     for (const TraceEntry& entry : g_trace_buffer) {
-        if (entry.category == "picker" &&
+        if (entry.category == category &&
             entry.message.find(needle) != std::string::npos)
         {
             return entry.message;
         }
     }
     return std::string();
+}
+
+std::string first_picker_trace_line_containing(const char* needle)
+{
+    return first_trace_line_containing("picker", needle);
 }
 
 int lineup_fill_flow_injector(void* data)
@@ -761,12 +750,14 @@ int lineup_fill_flow_injector(void* data)
         return 0;
     }
     state->door_seen = true;
-    // The re-gridded knob row (B5): SCORE alone at (30,140), reading MAP.
+    // The knob row is EMPTY since SCORE retired into the SETUP wizard's
+    // RULES step (#304): the SCENARIO screen is doors and a viewer, and
+    // the parked cell must not answer at its old rect.
     state->score_cell_seen =
-        wait_for_interactable_at("ctf_caps", 30, 140, 5000) &&
-        wait_for_interactable_label("ctf_caps", "SCORE: MAP", 5000);
+        !has_interactable("ctf_caps") &&
+        !has_interactable("scenario_score_spare");
     SDL_Delay(750);
-    state->captures += capture_frame("scenario_score_only");
+    state->captures += capture_frame("scenario_no_knob_row");
     SDL_Delay(200);
 
     // VIEW LEVEL first: with every knob as the arena dealt it (amendment
@@ -909,7 +900,8 @@ TEST(LineupUi, fill_wheel_map_units_box_and_staged_labels_end_to_end)
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.door_seen) << "SCENARIO should carry the LINEUP door";
     EXPECT_TRUE(state.score_cell_seen)
-        << "SCORE: MAP alone at (30,140) (B5)";
+        << "SCENARIO's y=140 knob row is empty (#304: SCORE is the SETUP "
+           "wizard's RULES row)";
     EXPECT_TRUE(state.viewer_opened_before);
     EXPECT_TRUE(state.troops_line_before)
         << "with MAP UNITS on, RED fields its five authored units beside "
@@ -2877,16 +2869,9 @@ TEST(LineupUi, fill_cycle_never_rebuilds_the_live_buttons)
 
 namespace {
 
-constexpr int kOutcomeStartTimeoutMs = 30000;
-constexpr int kOutcomeAbortTimeoutMs = 20000;
-
-// The solved squad is separable from the map's own elves by LEVEL alone:
-// gladiator scen 1 ships its twelve at L1/L2, and the D22 solver's answer
-// against a level-50 hero never lands under L5 (WEAK solves L5, BRUTAL
-// L6+2). Every assertion that uses the split also pins the member count at
-// five, so a mis-split fails loudly as a count rather than quietly as an
-// f-sum.
-constexpr int kSolvedSquadLevelFloor = 3;
+// kOutcomeStartTimeoutMs, kOutcomeAbortTimeoutMs and the squad LEVEL floor
+// travel with the census oracle in tests/test_launched_census.h. The two
+// counts below are this file's own.
 constexpr int kSolvedSquadSize = 5;
 constexpr int kGladiatorElfCount = 12;
 
@@ -2897,186 +2882,11 @@ constexpr int kGladiatorElfCount = 12;
 // rather than pinning a number the tuple tables own.
 constexpr long long kSolverTolerancePercent = 12;
 
-// f(w): the §4.1 power metric, the test's own oracle. Deliberately a
-// re-derivation of packs/core/lib/lineup.lua stat_power over measured_base
-// and NOT a call into the pack seam — a squad solved against a broken metric
-// must not be able to agree with itself. og.div truncates toward zero
-// (og_div, script_host.cpp) and every stat getter is a float the model
-// truncates at the boundary.
-long long walker_f(const walker& w)
-{
-    const statistics* const st = w.stats();
-    if (st == nullptr)
-        return 0;
-    const long long hp =
-        static_cast<long long>(std::trunc(st->max_hitpoints()));
-    const long long mp =
-        static_cast<long long>(std::trunc(st->max_magicpoints()));
-    const long long armor = static_cast<long long>(std::trunc(st->armor()));
-    const long long dmg = static_cast<long long>(std::trunc(w.damage()));
-    const long long sp = static_cast<long long>(std::trunc(w.stepsize()));
-    const long long ff = std::max<long long>(
-        1, static_cast<long long>(std::trunc(w.fire_frequency())));
-    const long long level = static_cast<long long>(st->level());
-    const long long ed = dmg * (level + 3) / 4;
-    const long long rate = 120 / ff;
-    const long long off = ed * rate + 5 * sp;
-    const long long ehp = hp + 4 * armor + mp / 2;
-    return ehp * (off + 60) / 60;
-}
-
-struct LaunchedTeamCensus
-{
-    int livings = 0;   // live Livings wearing this team's colour
-    int guys = 0;      // ... carrying a roster character (the company)
-    int bots = 0;      // ... carrying none (map troops and solved squads)
-    int squad = 0;     // ... bots the solver levelled (see the floor above)
-    long long guy_f = 0;
-    long long squad_f = 0;
-};
-
-struct LaunchedCensus
-{
-    bool captured = false;
-    std::array<LaunchedTeamCensus, 4> teams{};
-    long long reference = 0;  // the weakest human team's f-sum (B3)
-    int foes_of_hero = 0;
-    int frame_ticks = 0;
-};
-
-// Shared-owned so the armed observer and the injector's disarm can never
-// race over a dead stack frame (see go_and_census).
-struct CensusHandoff
-{
-    LaunchedCensus census;
-    std::atomic<bool> done{false};
-};
-
-// Walk the launched world on the GAME thread, between two ticks. The
-// presenter handshake the menu captures use has nothing to freeze here (the
-// game loop's redraw is compiled out under TESTING) and the main-thread task
-// queue only pumps under a menu, so the read rides
-// picker_testing_observe_next_game_frame instead: the sim is not mutating
-// oblist while this runs, which a poll from the injector thread could never
-// promise.
-void census_launched_world_here(LaunchedCensus& out)
-{
-    screen* const scr = og::runtime::current_session->myscreen_;
-    if (scr == nullptr)
-        return;
-    walker* hero = nullptr;
-    {
-        for (const auto& uptr : scr->world().oblist) {
-            walker* const w = uptr.get();
-            if (w == nullptr || w->dead() ||
-                w->query_order() != Order::Living)
-            {
-                continue;
-            }
-            const int team = static_cast<int>(w->team_num());
-            if (team < 0 || team >= 4)
-                continue;
-            LaunchedTeamCensus& tc =
-                out.teams[static_cast<std::size_t>(team)];
-            ++tc.livings;
-            if (w->myguy != nullptr) {
-                ++tc.guys;
-                tc.guy_f += walker_f(*w);
-                if (hero == nullptr && team == 0)
-                    hero = w;
-            } else {
-                ++tc.bots;
-                if (w->stats() != nullptr &&
-                    w->stats()->level() >= kSolvedSquadLevelFloor)
-                {
-                    ++tc.squad;
-                    tc.squad_f += walker_f(*w);
-                }
-            }
-        }
-        for (const LaunchedTeamCensus& tc : out.teams) {
-            if (tc.guy_f > 0 && (out.reference == 0 ||
-                                 tc.guy_f < out.reference))
-            {
-                out.reference = tc.guy_f;
-            }
-        }
-        if (hero != nullptr)
-            out.foes_of_hero = scr->world().remaining_foes(hero);
-    }
-    out.captured = hero != nullptr;
-}
-
-// One Esc opens the PAUSED menu; the queued Quit outcome stands in for
-// clicking QUIT MISSION and confirming it (the fairy-death idiom).
-void quit_the_mission()
-{
-    if (!g_test_in_game.load(std::memory_order_acquire))
-        return;
-    og::ui::pause_menu_testing_clear_queue();
-    og::ui::pause_menu_testing_queue_outcome(og::ui::PauseMenuResult::Quit,
-                                             /*release_pause=*/false);
-    inject_key_press(SDLK_ESCAPE);
-    for (int waited = 0; waited < kOutcomeAbortTimeoutMs &&
-                         g_test_in_game.load(std::memory_order_acquire);
-         waited += 50)
-    {
-        SDL_Delay(50);
-    }
-    og::ui::pause_menu_testing_clear_queue();
-}
-
-// GO from the team menu, census the world it adopted at its opening tick,
-// then abort back out. The census rides the FIRST frame so the count is the
-// staged shape and not whatever the first exchange of blows left behind.
-bool go_and_census(LaunchedCensus& out)
-{
-    const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
-    interact("go");
-    for (int waited = 0; waited < kOutcomeStartTimeoutMs; waited += 25) {
-        if (g_test_game_epoch.load(std::memory_order_acquire) != epoch_before)
-            break;
-        SDL_Delay(25);
-    }
-    if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before) {
-        fprintf(stderr, "  [lineup] GO never launched a level\n");
-        return false;
-    }
-    // The census must land on the world the launch ADOPTED, before the first
-    // blows: the observer fires on the very next completed frame, so the
-    // shape it counts is the staged one. The handoff is shared-owned, not a
-    // reference to this stack frame — a level that ends before its first
-    // frame leaves the lambda armed until the disarm below, and the two can
-    // race for the same instant.
-    auto handoff = std::make_shared<CensusHandoff>();
-    picker_testing_observe_next_game_frame([handoff] {
-        census_launched_world_here(handoff->census);
-        handoff->census.frame_ticks =
-            g_test_game_frame_ticks.load(std::memory_order_acquire);
-        handoff->done.store(true, std::memory_order_release);
-    });
-    for (int waited = 0; waited < kOutcomeStartTimeoutMs; waited += 5) {
-        if (handoff->done.load(std::memory_order_acquire))
-            break;
-        if (!g_test_in_game.load(std::memory_order_acquire))
-            break;
-        SDL_Delay(5);
-    }
-    picker_testing_observe_next_game_frame(nullptr);
-    if (handoff->done.load(std::memory_order_acquire))
-        out = handoff->census;
-    const bool ok = handoff->done.load(std::memory_order_acquire) &&
-                    out.captured;
-    fprintf(stderr,
-            "  [lineup] launched census at tick %d: t0 %d/%d t1 %d(+%d squad)"
-            " t2 %d(+%d squad) ref=%lld t1_squad_f=%lld t2_squad_f=%lld\n",
-            out.frame_ticks, out.teams[0].guys, out.teams[0].bots,
-            out.teams[1].livings, out.teams[1].squad, out.teams[2].livings,
-            out.teams[2].squad, out.reference, out.teams[1].squad_f,
-            out.teams[2].squad_f);
-    quit_the_mission();
-    return ok;
-}
+// walker_f, LaunchedCensus, census_launched_world_here, quit_the_mission
+// and go_and_census moved VERBATIM to tests/test_launched_census.h when the
+// SETUP wizard's GO story needed the same oracle in another binary: WHERE
+// and WHEN the launched world may be counted is one rule with one
+// implementation.
 
 struct LineupOutcomeState
 {
@@ -3806,4 +3616,95 @@ TEST(LineupUi, a_long_toast_clips_to_the_title_band)
         << "the trace carries the clipped text, not the raw one";
 
     og::ui::install_lineup_state_for_screen(nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// One world, one answer (#304's product-smell rule). LINEUP's census column
+// and the SETUP wizard's TEAMS line describe the SAME thing: the picture the
+// launch would ADOPT. They used to answer different questions — the column
+// read the band's own roster (format_lineup_census) while the wizard read
+// the staged report — so on a fresh solo save on THE PITCH the wizard said
+// "2 BOTS" and this screen, one door away, said "NO FIGHTERS" about the
+// same GREEN. Both call og::ui::format_match_preview now.
+//
+// #305 is what makes the number interesting: a ball arena deals STRONG and
+// STRONG buys a BODY above FAIR, so the solo player is outnumbered two to
+// one with no knob touched.
+//
+// This flow also carries SPEC §8's lineup_820_fresh capture point.
+
+namespace {
+
+struct LineupCensusState
+{
+    std::atomic<bool> test_finished{false};
+    bool page_opened = false;
+    std::string own_band;
+    std::string opponent_band;
+    int captures = 0;
+    bool finished = false;
+};
+
+int lineup_census_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<LineupCensusState*>(data);
+    if (!injector_open_lineup()) {
+        state->finished = true;
+        return 0;
+    }
+    interact("lineup");
+    state->page_opened = wait_for_interactable("lineup_unite", 10000);
+    if (state->page_opened) {
+        (void)wait_for_menu_frames(2);
+        // The cells publish themselves when they change, which includes
+        // the first time they are composed.
+        (void)wait_for_trace("lineup", "census 1 ", 10000);
+        state->own_band = first_trace_line_containing("lineup", "census 0 ");
+        state->opponent_band =
+            first_trace_line_containing("lineup", "census 1 ");
+        state->captures += capture_frame("lineup_820_fresh");
+        SDL_Delay(50);
+        interact("back");
+        SDL_Delay(50);
+        (void)wait_for_interactable("progress", 10000);
+    }
+    injector_unwind_from_scenario();
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(LineupUi, strong_on_a_soccer_arena_reads_two_bots_on_the_band)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // THE PITCH (820): a soccer arena, so the campaign's match_knobs deals
+    // STRONG. One deployed fighter, nobody else.
+    write_save0_with_fighters("modes", 820, 1, {{"Solo", 3, true, 0}});
+
+    LineupCensusState state;
+    SDL_Thread* thread = SDL_CreateThread(lineup_census_injector,
+                                          "lineup_census", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.finished);
+    ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
+    EXPECT_EQ("census 0 1 FIGHTER", state.own_band)
+        << "the company's own band censuses its deployed fighter";
+    EXPECT_EQ("census 1 2 BOTS", state.opponent_band)
+        << "GREEN censuses the picture the launch would ADOPT — the dealt "
+           "STRONG squad, the same two bots the SETUP wizard's TEAMS line "
+           "reads on this world. Before both screens shared "
+           "format_match_preview this column said NO FIGHTERS.";
+    EXPECT_EQ(1, state.captures);
+
+    restore_gladiator_mount();
 }

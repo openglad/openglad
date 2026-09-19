@@ -195,7 +195,8 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 // change_ctf_teams retired with the TEAMS cycler (docs/lineup-design.md
 // A1/A3): deactivating an authored team is LINEUP's BOTS: OFF now.
-Sint32 change_ctf_caps();
+// change_ctf_caps retired with #304: SCORE has one surface, the SETUP
+// wizard's RULES row.
 // change_ctf_troops retired with the TROOPS cycler (amendment B5): whether
 // the map's own authored cast fights is the LINEUP band's per-team MAP UNITS
 // box now.
@@ -329,6 +330,9 @@ enum class ButtonAction : Sint32
     // docs/lineup-design.md amendment A1/A3 (its one power, deactivating an
     // authored team, is LINEUP's BOTS: OFF; the field is inert). Value
     // retired, do not reuse.
+    // 61 was CycleCtfCaptureLimit — SCENARIO's SCORE cycler. Retired with
+    // #304 (the match's target is the SETUP wizard's RULES row, one
+    // surface on every client). Value retired, do not reuse.
     CycleCtfCaptureLimit = 61,
     // 62 was CreateTeamsMenu — the SCENARIO door to the MATCHUP subscreen.
     // The screen retired with #218 (its seat/team overview is VIEW LEVEL's
