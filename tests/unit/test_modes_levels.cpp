@@ -596,9 +596,9 @@ TEST_F(ModesLevels, briefings_fit_budget_and_speak_plainly)
             EXPECT_LE(line.size(), 33u)
                 << "scen" << pin.id << ": briefing line '" << line << "'";
         // The generator's own theme lint, run against the SHIPPED bytes: no
-        // line leads with the retired sign-off, names a retired word or
-        // holds a lower-case letter. (The loaded description is a list; the
-        // lint takes the generator's vector.)
+        // line is blank, leads with the retired sign-off, names a retired
+        // word or holds a lower-case letter. (The loaded description is a
+        // list; the lint takes the generator's vector.)
         const std::vector<std::string> briefing(lines.begin(), lines.end());
         EXPECT_EQ("", modes_mapgen::briefing_theme_violation(briefing))
             << "scen" << pin.id;
@@ -613,18 +613,27 @@ TEST(ModesBriefingLint, refuses_the_retired_theme_lower_case_and_the_sign_off)
     struct Case
     {
         std::vector<std::string> lines;
-        const char* names; // the substring the violation must name
+        // The lint's OWN clause, not a word the fixture already holds: the
+        // violation sentence echoes the offending line, so asserting on the
+        // bare word would be satisfied by the echo and a lint that refused
+        // every line for the wrong reason would still pass.
+        const char* clause;
     };
     const std::vector<Case> refused = {
-        {{"THE FOREST GAME, CONTENDERS."}, "CONTENDERS"},
-        {{"WATCH YOUR compass."}, "lower-case"},
-        {{"TONIGHT, ALL OF THEM HUNTING."}, "TONIGHT"},
-        {{"A SPECIAL PAGE OF THE BOOK."}, "PAGE OF"},
-        {{"KILLS ALONE FILL THE LEDGER."}, "LEDGER"},
-        {{"TAKES THE PURSE."}, "PURSE"},
-        {{"FIRST BAND TO THE TALLY WINS."}, "TALLY"},
-        {{"FIRST BAND TO THE SCORE WINS.", "-- THE GAMESMASTER"}, "begins '-- '"},
-        {{}, "empty"},
+        {{"THE FOREST GAME, CONTENDERS."}, "retired word 'CONTENDERS'"},
+        {{"WATCH YOUR compass."}, "lower-case letter"},
+        {{"TONIGHT, ALL OF THEM HUNTING."}, "retired word 'TONIGHT'"},
+        // Two retired words on one line: the list order decides, and THE
+        // BOOK is listed first.
+        {{"A SPECIAL PAGE OF THE BOOK."}, "retired word 'THE BOOK'"},
+        {{"YOUR PAGE OF HONOR."}, "retired word 'PAGE OF'"},
+        {{"KILLS ALONE FILL THE LEDGER."}, "retired word 'LEDGER'"},
+        {{"TAKES THE PURSE."}, "retired word 'PURSE'"},
+        {{"FIRST BAND TO THE TALLY WINS."}, "retired word 'TALLY'"},
+        {{"FIRST BAND TO THE SCORE WINS.", "-- THE GAMESMASTER"},
+         "begins '-- '"},
+        {{"FIRST BAND TO THE SCORE WINS.", ""}, "blank line"},
+        {{}, "is empty"},
     };
     for (const Case& c : refused)
     {
@@ -632,8 +641,8 @@ TEST(ModesBriefingLint, refuses_the_retired_theme_lower_case_and_the_sign_off)
         const std::string first = c.lines.empty() ? std::string("<empty>")
                                                   : c.lines.front();
         EXPECT_NE("", v) << "the lint accepted '" << first << "'";
-        EXPECT_NE(std::string::npos, v.find(c.names))
-            << "'" << v << "' does not name " << c.names;
+        EXPECT_NE(std::string::npos, v.find(c.clause))
+            << "'" << v << "' does not say " << c.clause;
     }
 
     // Clean briefings: an apostrophe, a digit and plain upper case are not

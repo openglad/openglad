@@ -327,7 +327,7 @@ void self_check_level(const ExpectedLevel& row)
         fail(std::format("{}: grid {}x{} != {}x{}", where, world.grid.w,
                          world.grid.h, row.grid_w, row.grid_h));
 
-    // Briefing: exact text, budget, sign-off.
+    // Briefing: exact text, budget, theme lint.
     const std::vector<std::string> description(level.description.begin(),
                                                level.description.end());
     if (description != row.briefing)
