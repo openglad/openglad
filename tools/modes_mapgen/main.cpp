@@ -253,12 +253,19 @@ void copy_pack_tree(const std::string& staging_root)
 // against its ExpectedLevel row.
 // ---------------------------------------------------------------------------
 
+// The FILL squad a ball GAME's team can field (#305): the size of
+// packs/core/lib/lineup.lua's BOT_SQUAD — the seam's hard ceiling
+// (squad_prefix never exceeds #families), not a restatement of the Lua
+// body rule.
+constexpr int kFillSquadCeiling = 5;
+
 // Obmap peak ledger (§2.3 model): authored ground load + capped spawns +
 // 16 heroes + 20 corpse/stain transients + 25 projectiles (+ the soccer
 // ball; + basketball's ball AND its shadow fx, D11, AND one hoop sprite
 // per authored hoop, D29/D32 — the peak activation, even when a 2/3-team
-// game on a 4-hoop court spawns fewer). Must stay <= 190 unless the row
-// carries the documented waiver.
+// game on a 4-hoop court spawns fewer; + a full FILL squad per team on
+// those same two ball games). Must stay <= 190 unless the row carries the
+// documented waiver.
 int obmap_ledger(const ExpectedLevel& row)
 {
     int gens = 0;
@@ -268,12 +275,18 @@ int obmap_ledger(const ExpectedLevel& row)
     for (const SpawnCap& cap : row.spawn_caps)
         caps += cap.cap;
     int ball = 0;
+    int fill_bodies = 0;
     if (row.mode == ModeKind::Soccer)
         ball = 1;
     else if (row.mode == ModeKind::Basketball)
         ball = 2 + static_cast<int>(row.hoops.size()); // ball + shadow + rims
+    // Only the ball games buy bodies above FAIR (#305), so only they
+    // carry the term. A brawl arena's FILL squads stay inside the +16
+    // heroes assumption above, which this rule leaves alone.
+    if (row.mode == ModeKind::Soccer || row.mode == ModeKind::Basketball)
+        fill_bodies = row.team_count * kFillSquadCeiling;
     return gens + row.treasures + row.flags + row.control_points + row.doors +
-           row.authored_livings + caps + 16 + 20 + 25 + ball;
+           row.authored_livings + caps + 16 + 20 + 25 + ball + fill_bodies;
 }
 
 // A 2x2-tile clearance probe: some 2x2 tile block containing the tile is
