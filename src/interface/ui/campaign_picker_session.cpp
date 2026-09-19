@@ -689,27 +689,10 @@ std::string CampaignZoneSession::assign_header_text(
 
 bool CampaignZoneSession::settings_fingerprint_changed()
 {
-    // The lobby-synced knobs an applied settings change rewrites under the
-    // open screen (recon: apply_state_to_save / the networked apply path).
-    // scen_num is deliberately EXCLUDED: level changes already refetch
-    // through the frame-tick reload guard, and double-triggering would hide
-    // a broken guard from the tests.
-    std::string composed = std::format(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
-        save_.current_campaign, save_.allied_mode, save_.ctf_team_count,
-        save_.ctf_capture_limit, save_.ctf_respawn_ticks,
-        save_.ctf_strip_scenario_troops, save_.respawn_mode,
-        save_.generator_rate, save_.keep_fallen_heroes, save_.cross_control,
-        save_.infinite_gold, save_.time_limit);
-    // The eight per-team bot knobs (LINEUP §3.1) are lobby-synced like the
-    // rest: a host cycling a squad preset must refresh the missions surface.
-    for (std::size_t team = 0; team < save_.fill.size(); ++team)
-    {
-        composed += std::format("|{}|{}", save_.fill[team],
-                                save_.map_units[team]);
-    }
-    const std::uint64_t fingerprint =
-        static_cast<std::uint64_t>(std::hash<std::string>{}(composed));
+    // WHICH knobs count is og::ui::match_settings_fingerprint's rule (the
+    // field list exists once, and the SETUP wizard watches the same hash);
+    // this screen keeps only its own seeded/last bookkeeping over it.
+    const std::uint64_t fingerprint = og::ui::match_settings_fingerprint(save_);
     if (!fingerprint_seeded_)
     {
         fingerprint_seeded_ = true;

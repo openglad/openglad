@@ -34,6 +34,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include "../test_save_state_guard.h"
@@ -1398,6 +1399,16 @@ TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
     save.ctf_capture_limit = 42;
     og::ui::cycle_ctf_capture_limit(save);
     ASSERT_EQ(0, (int)save.ctf_capture_limit);
+
+    // The reverse step (the SETUP wizard's "<" cell, the terminal "N-"
+    // item and a right-click): the same wheel walked the other way.
+    // MatchSetupRules.score_wheel_reverses_and_speaks pins it with the
+    // toast beside it.
+    for (const int step : {10, 5, 3, 1, 0})
+    {
+        og::ui::cycle_ctf_capture_limit(save, -1);
+        ASSERT_EQ(step, (int)save.ctf_capture_limit);
+    }
 }
 
 TEST(PickerCommon, format_ctf_labels)
@@ -1510,6 +1521,28 @@ TEST(PickerCommon, deal_arena_lineup_fill_lifts_none_on_authored_teams_once)
     EXPECT_EQ(851, save.arena_lineup_dealt_scen)
         << "the cursor is dealt even when no band had to move";
 
+    // The code the deal lifts to is an ARGUMENT now: a campaign that wants
+    // a harder opening deals STRONG through the same memo, once.
+    save.current_campaign = "modes";
+    save.scen_num = 852;
+    save.fill = {};
+    ASSERT_TRUE(og::ui::arena_lineup_deal_pending(save));
+    EXPECT_TRUE(og::ui::deal_arena_lineup_fill(save, 0b0011,
+                                               og::sim::kFillStrong));
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillStrong,
+                                    og::sim::kFillStrong, 0, 0}),
+              save.fill);
+    EXPECT_EQ(852, save.arena_lineup_dealt_scen);
+    save.fill = {};
+    EXPECT_FALSE(og::ui::deal_arena_lineup_fill(save, 0b0011))
+        << "the stamped cursor refuses a second deal whatever the code";
+    EXPECT_EQ((std::array<short, 4>{0, 0, 0, 0}), save.fill);
+
+    // What the readers fetch until WP5 wires the campaign hook: FAIR, with
+    // one home for the literal.
+    EXPECT_EQ(og::sim::kFillFair, og::ui::arena_deal_fill_code(save))
+        << "WP5 flips this to campaign_match_knobs().deal_fill";
+
     // A classic campaign never pends: the C3 all-default byte no-op stands.
     save.current_campaign = "gladiator";
     save.scen_num = 1;
@@ -1521,6 +1554,10 @@ TEST(PickerCommon, deal_arena_lineup_fill_lifts_none_on_authored_teams_once)
         << "a classic cursor leaves the memo alone";
 }
 
+// The two readers fetch arena_deal_fill_code(save) as the deal's code, so
+// the arena still deals FAIR here: the stub answers FAIR until WP5 wires
+// og::script::hooks::campaign_match_knobs().deal_fill, which is when this
+// test's 820/824 expectations move.
 TEST(PickerCommon, deal_arena_lineup_for_cursor_reads_the_mounted_arena)
 {
     og::test::ScopedCampaignMountState mount_restore;
@@ -3542,6 +3579,10 @@ TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
         save.infinite_gold = gold;
         labels.push_back(og::ui::format_infinite_gold_label(save));
     }
+    // The cross-control row shares this panel and this budget: the full
+    // word is 18 of the 23 glyphs.
+    labels.push_back(og::ui::format_cross_control_label(false));
+    labels.push_back(og::ui::format_cross_control_label(true));
     for (int difficulty : {0, 1, 2})
         labels.push_back(og::ui::format_difficulty_label(difficulty));
 
@@ -5352,8 +5393,8 @@ TEST(ReadyGoSlot, go_blockers_clips_and_caps_the_popup)
 
 TEST(ReadyGoSlot, cross_control_label_states)
 {
-    EXPECT_EQ("CTRL: OWN", og::ui::format_cross_control_label(false));
-    EXPECT_EQ("CTRL: ALL", og::ui::format_cross_control_label(true));
+    EXPECT_EQ("CROSS CONTROL: OWN", og::ui::format_cross_control_label(false));
+    EXPECT_EQ("CROSS CONTROL: ALL", og::ui::format_cross_control_label(true));
 }
 
 // --- Campaign browser (SET CAMPAIGN) layout pins ---
@@ -5362,7 +5403,7 @@ TEST(ReadyGoSlot, cross_control_label_states)
 // title row and the top control row share pixels (title y = 13 height 8,
 // controls y = 10 height 10), and the centered title reached x = 208 — the
 // old ENTER ID left edge — at 17 characters. Both shipped offenders
-// ("MULTIPLAYER GAME MODES", 22; "CONCEPT PLAYGROUND", 18) cleared that.
+// ("MULTIPLAYER ARENAS", 18; "CONCEPT PLAYGROUND", 18) cleared that.
 // ENTER ID now stacks under DELETE/RESET and the title is fitted, so the
 // pins below assert the property for EVERY title length, not just the ones
 // that ship.
@@ -5608,7 +5649,7 @@ TEST(CampaignPickerLayout, fit_campaign_title_budget)
     for (const char* shipped : {"Gladiator", "The Long Season",
                                 "Concept Playground", "The Endless Tower",
                                 "War of the Westlands",
-                                "Multiplayer Game Modes",
+                                "Multiplayer Arenas",
                                 "The Tryxian Chronicles"})
     {
         EXPECT_EQ(std::string(shipped), og::ui::fit_campaign_title(shipped))
@@ -6380,4 +6421,194 @@ TEST(PickerCommon, open_most_recent_company_reports_an_empty_shelf)
 
     std::error_code ec;
     std::filesystem::remove(shelf.save_dir / "wp5damaged.gtl", ec);
+}
+
+// --- SETUP wizard rules hoisted into picker_common (#304/#305) ---------
+
+// The seat run LINEUP and the SETUP wizard's TEAMS line both draw. Tier 1
+// is every whole label; tier 2 drops the owners but keeps every SEAT
+// visible, which is what the column is read for; tier 3 is the old
+// "+n" shape, now reached only in budgets no shipped surface uses.
+TEST(PickerCommon, format_lineup_seat_run_three_tiers)
+{
+    const std::vector<std::string> two = {"P1 WASD", "P2 ARROWS"};
+    const std::vector<std::string> three = {"P1 WASD", "P2 ARROWS", "P3 IJKL"};
+    const std::vector<std::string> four = {"P1 WASD", "P2 ARROWS", "P3 IJKL",
+                                           "P4 TFGH"};
+    const std::vector<std::string> remote = {"P10 A", "P11 B", "P12 C",
+                                             "P13 D"};
+
+    // Tier 1 at exactly the budget.
+    EXPECT_EQ("P1 WASD  P2 ARROWS",
+              og::ui::format_lineup_seat_run(two, 2, 18));
+    EXPECT_EQ(18u, og::ui::format_lineup_seat_run(two, 2, 18).size());
+
+    // Tier 2: the three-label run is 27, one over the LINEUP column, and
+    // one glyph over is the whole reason this helper exists.
+    EXPECT_EQ("P1 WASD  P2 ARROWS  P3 IJKL",
+              og::ui::format_lineup_seat_run(three, 3, 27));
+    EXPECT_EQ("P1 P2 P3", og::ui::format_lineup_seat_run(three, 3, 26));
+    EXPECT_EQ("P1 P2 P3", og::ui::format_lineup_seat_run(three, 3, 18));
+    EXPECT_EQ("P1 P2 P3 P4", og::ui::format_lineup_seat_run(four, 4, 26));
+    EXPECT_EQ("P10 P11 P12 P13",
+              og::ui::format_lineup_seat_run(remote, 4, 18))
+        << "two-digit remote seats still fit the wizard's 18";
+
+    // Tier 3 needs a budget no shipped surface has: even four two-digit
+    // seats reach tier 2 at 18.
+    for (int first = 1; first <= 13; ++first)
+    {
+        std::vector<std::string> seats;
+        for (int i = 0; i < 4; ++i)
+        {
+            seats.push_back("P" + std::to_string(first + i) + " OWNER" +
+                            std::to_string(i));
+        }
+        const std::string run = og::ui::format_lineup_seat_run(seats, 4, 18);
+        EXPECT_EQ(std::string::npos, run.find('+'))
+            << "four seats at 18 never reach tier 3: " << run;
+        EXPECT_LE(run.size(), 18u) << run;
+    }
+
+    // Tier 3 is only reached where even the bare tokens do not fit, which
+    // for two seats means a budget under five glyphs: the count alone is
+    // then the honest answer, because a cut label names nobody.
+    EXPECT_EQ("P1 P2", og::ui::format_lineup_seat_run(two, 2, 5));
+    EXPECT_EQ("+2", og::ui::format_lineup_seat_run(two, 2, 4));
+    EXPECT_EQ("+2", og::ui::format_lineup_seat_run(two, 2, 3));
+
+    // The other door into tier 3: MORE seats than labels (a lobby
+    // mid-replication). Tiers 1 and 2 would silently drop the unlabelled
+    // seats, so the "+k" shape answers for them whatever the budget.
+    const std::span<const std::string> one =
+        std::span<const std::string>(two).first(1);
+    EXPECT_EQ("P1 WASD +2", og::ui::format_lineup_seat_run(one, 3, 26));
+    EXPECT_EQ("P1 WASD +2", og::ui::format_lineup_seat_run(one, 3, 10));
+    EXPECT_EQ("+3", og::ui::format_lineup_seat_run(one, 3, 9))
+        << "'P1 WASD +2' is 10: at 9 only the count fits";
+
+    EXPECT_EQ("", og::ui::format_lineup_seat_run(two, 0, 18))
+        << "no seat, no run: each caller spells its own NO SEAT";
+}
+
+// The field list exists once. Every knob an applied settings change
+// rewrites moves the hash; scen_num does not, because the level change
+// already refetches through the frame-tick reload guard.
+TEST(PickerCommon, match_settings_fingerprint_moves_on_every_synced_knob_and_not_scen_num)
+{
+    SaveData save;
+    save.current_campaign = "modes";
+    const std::uint64_t seed = og::ui::match_settings_fingerprint(save);
+    EXPECT_EQ(seed, og::ui::match_settings_fingerprint(save))
+        << "the fingerprint is a pure function of the save";
+
+    // Every knob, turned and turned back: the hash moves and returns.
+    const auto moves = [&](const char* what, auto& field, auto value) {
+        const auto original = field;
+        ASSERT_NE(original, value) << what << ": the probe changes nothing";
+        field = static_cast<std::remove_reference_t<decltype(field)>>(value);
+        EXPECT_NE(seed, og::ui::match_settings_fingerprint(save)) << what;
+        field = original;
+        EXPECT_EQ(seed, og::ui::match_settings_fingerprint(save))
+            << what << " (restored)";
+    };
+    moves("current_campaign", save.current_campaign, std::string("gladiator"));
+    moves("allied_mode", save.allied_mode, save.allied_mode + 1);
+    moves("ctf_team_count", save.ctf_team_count, save.ctf_team_count + 3);
+    moves("ctf_capture_limit", save.ctf_capture_limit,
+          save.ctf_capture_limit + 5);
+    moves("ctf_respawn_ticks", save.ctf_respawn_ticks,
+          save.ctf_respawn_ticks + 60);
+    moves("ctf_strip_scenario_troops", save.ctf_strip_scenario_troops,
+          save.ctf_strip_scenario_troops + 1);
+    moves("respawn_mode", save.respawn_mode, save.respawn_mode + 2);
+    moves("generator_rate", save.generator_rate, save.generator_rate + 200);
+    moves("keep_fallen_heroes", save.keep_fallen_heroes,
+          save.keep_fallen_heroes + 1);
+    moves("cross_control", save.cross_control, save.cross_control + 1);
+    moves("infinite_gold", save.infinite_gold, save.infinite_gold + 1);
+    moves("time_limit", save.time_limit, save.time_limit + 3600);
+    for (std::size_t team = 0; team < 4; ++team)
+    {
+        moves("fill[team]", save.fill[team],
+              save.fill[team] + og::sim::kFillStrong);
+        moves("map_units[team]", save.map_units[team],
+              save.map_units[team] + 1);
+    }
+
+    save.scen_num = static_cast<short>(save.scen_num + 822);
+    EXPECT_EQ(seed, og::ui::match_settings_fingerprint(save))
+        << "scen_num is deliberately excluded: the reload guard owns it, "
+           "and double-triggering would hide a broken guard";
+}
+
+// The MATCH step inks a swatch beside each of the report's team lines, so
+// it needs the line PER TEAM. The formatter's own loop calls the same
+// helper: the composition has one home and the bytes cannot drift.
+TEST(PickerCommon, format_scenario_report_team_line_is_the_loops_line)
+{
+    og::ui::ScenarioRosterReport report;
+    report.is_versus = true;
+    report.staged = true;
+    report.mode_census = true;
+    report.mode_name = "SOCCER";
+    report.team_active = {true, true, false, false};
+    report.team_fill = {og::ui::ScenarioFill::Company,
+                        og::ui::ScenarioFill::Matched,
+                        og::ui::ScenarioFill::Empty,
+                        og::ui::ScenarioFill::Empty};
+    report.team_fill_count = {2, 2, 0, 0};
+    report.team_squad_fill = {-1, og::sim::kFillStrong, -1, -1};
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    ASSERT_EQ(3u, lines.size());
+    EXPECT_EQ("MATCH: SOCCER - 2 TEAMS ACTIVE", lines[0]);
+    EXPECT_EQ(lines[1], og::ui::format_scenario_report_team_line(report, 0));
+    EXPECT_EQ(lines[2], og::ui::format_scenario_report_team_line(report, 1));
+    EXPECT_EQ("  RED TEAM  ACTIVE - COMPANY (2)", lines[1]);
+    EXPECT_EQ("  GREEN TEAM  ACTIVE - MATCHED BOTS (2) STRONG", lines[2]);
+    EXPECT_EQ("", og::ui::format_scenario_report_team_line(report, 2))
+        << "an inactive team has no line";
+    EXPECT_EQ("", og::ui::format_scenario_report_team_line(report, 3));
+    EXPECT_EQ("", og::ui::format_scenario_report_team_line(report, 4))
+        << "a team index off the board reads past nothing";
+    EXPECT_EQ("", og::ui::format_scenario_report_team_line(report, -1));
+
+    // The 49-glyph case the budget comment describes: the separator space
+    // is the first thing spent, so the fill WORD is glued to the count
+    // rather than losing a letter. A clipped word is a different word.
+    og::ui::ScenarioRosterReport glue;
+    glue.is_versus = true;
+    glue.staged = true;
+    glue.mode_census = true;
+    glue.mode_name = "ONSLAUGHT";
+    glue.team_active = {false, false, false, true};
+    glue.team_fill = {og::ui::ScenarioFill::Empty, og::ui::ScenarioFill::Empty,
+                      og::ui::ScenarioFill::Empty,
+                      og::ui::ScenarioFill::Company};
+    glue.team_fill_count = {0, 0, 0, 3};
+    glue.team_squad_count = {0, 0, 0, 2};
+    glue.team_squad_fill = {-1, -1, -1, og::sim::kFillBrutal};
+    const std::string glued = og::ui::format_scenario_report_team_line(glue, 3);
+    EXPECT_EQ("  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2)BRUTAL", glued);
+    EXPECT_EQ(48u, glued.size());
+    EXPECT_EQ(glued, og::ui::format_scenario_report_lines(glue).back());
+}
+
+// The SDL my_team provider, hoisted out of sdl_campaign_my_team so the
+// rule is SDL-free and testable. With no lobby open the save-derived seat
+// answers, which is the whole rule on a headless client.
+TEST(PickerCommon, picker_lobby_my_team_falls_back_to_the_first_local_seat)
+{
+    SaveData save;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    auto first = std::make_unique<guy>(FAMILY_SOLDIER);
+    first->teamnum = 2;
+    first->deployed = true;
+    save.team_list[0] = std::move(first);
+    EXPECT_EQ(og::ui::first_local_seat_team(save),
+              og::ui::picker_lobby_my_team(save))
+        << "no lobby is open in a headless unit binary: the save answers";
 }

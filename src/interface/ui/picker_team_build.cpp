@@ -482,7 +482,7 @@ std::string difficulty_panel_caption()
 {
     if (picker_lobby_host_controls_visible())
         return std::string();
-    return std::string("The host sets these for everyone.");
+    return std::string(og::ui::kHostSetsForEveryoneCaption);
 }
 
 // Per-session picker message buffer: access via current_session->message_.
@@ -2641,35 +2641,17 @@ Sint32 go_menu(Sint32 arg1)
         return MENU_REDRAW;
     }
 
-    if (!picker_lobby_is_networked() &&
-        og::runtime::current_session->myscreen_->save_data.numplayers > 0)
+    // The M4 question — do this machine's seats each have a deployed hero
+    // to drive? — lives in og::ui::local_seats_deployed_for_go, so the
+    // SETUP wizard's GO row can dim itself on the same answer. The popup
+    // stays here: a host GO refusal strands nobody.
+    if (!og::ui::local_seats_deployed_for_go(
+            og::runtime::current_session->myscreen_->save_data,
+            picker_lobby_players(), picker_lobby_is_networked()))
     {
-        const SaveData& save =
-            og::runtime::current_session->myscreen_->save_data;
-        std::vector<og::sim::LobbyPlayer> lobby_players =
-            picker_lobby_players();
-        std::sort(lobby_players.begin(), lobby_players.end(),
-                  [](const og::sim::LobbyPlayer& lhs,
-                     const og::sim::LobbyPlayer& rhs) {
-                      return lhs.player_index < rhs.player_index;
-                  });
-        std::vector<short> seat_teams;
-        seat_teams.reserve(lobby_players.size());
-        for (const og::sim::LobbyPlayer& player : lobby_players)
-            seat_teams.push_back(player.team);
-        if (seat_teams.size() != save.numplayers)
-        {
-            // A not-yet-initialized lobby has no explicit state. Legacy save
-            // fields are only the seed for that narrow fallback; once the
-            // local lobby exists, its per-seat choices are authoritative.
-            seat_teams = og::ui::derive_local_gameplay_seat_teams(save);
-        }
-        if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
-        {
-            popup_dialog("DEPLOY FOR EVERY PLAYER",
-                         "Each player needs\na deployed hero on\ntheir playing team");
-            return MENU_REDRAW;
-        }
+        popup_dialog(std::string(og::ui::kDeployForEveryPlayerTitle).c_str(),
+                     "Each player needs\na deployed hero on\ntheir playing team");
+        return MENU_REDRAW;
     }
 
     // Tier-B progression hook (tower-triple §5.9): the mounted mode

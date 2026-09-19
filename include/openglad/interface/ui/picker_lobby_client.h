@@ -11,6 +11,7 @@
 #include <vector>
 
 class GameWorld;
+class SaveData;
 
 namespace og::server {
 class MatchStage;
@@ -441,6 +442,18 @@ std::optional<std::uint8_t> picker_lobby_authoritative_team_mask();
 std::vector<std::uint8_t> picker_lobby_local_player_indices();
 bool picker_lobby_is_networked();
 bool picker_lobby_session_established();
+
+namespace og::ui {
+// og.campaign_my_team's answer wherever a lobby can exist (docs/
+// lineup-design.md Amendment 5 G4): the FIRST LOCAL SEAT's team, taken
+// from the lobby's own seat view so a joiner's book reads the joiner's
+// team and not the host's. The lobby is authoritative once it exists —
+// its per-seat choices outlive the legacy save fields, the same rule the
+// GO gate applies — and before one is open the save-derived seat answers
+// (og::ui::first_local_seat_team, which the terminals install on its own).
+int picker_lobby_my_team(const SaveData& save);
+} // namespace og::ui
+
 inline bool picker_lobby_save_slot_editable(int slot_index)
 {
     if (slot_index < 0)

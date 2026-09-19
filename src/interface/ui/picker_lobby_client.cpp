@@ -1445,6 +1445,25 @@ bool picker_lobby_is_networked()
     return false;
 }
 
+namespace og::ui {
+
+int picker_lobby_my_team(const SaveData& save)
+{
+    const std::vector<std::uint8_t> local =
+        ::picker_lobby_local_player_indices();
+    if (!local.empty()) {
+        const std::uint8_t first =
+            *std::min_element(local.begin(), local.end());
+        for (const og::sim::LobbyPlayer& player : ::picker_lobby_players()) {
+            if (player.player_index == first)
+                return player.team;
+        }
+    }
+    return first_local_seat_team(save);
+}
+
+} // namespace og::ui
+
 bool picker_lobby_session_established()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
