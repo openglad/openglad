@@ -2319,12 +2319,9 @@ static_assert(kBaseCampRowPitch ==
 // the per-row '^' lives INSIDE the panel and ends on the inner face
 // (kBaseCampPanelInnerRightX).
 constexpr int kBaseCampGlyphAdvance = 6;  // small font pen advance
-// Panel OUTER right edge (EXCLUSIVE): the bevel's last column (311) + 1 ==
-// the GO/READY right edge (262 + 50) — outside-to-outside alignment.
-constexpr int kBaseCampPanelRightX = 312;
-// Panel inner-face right edge (EXCLUSIVE): the outer edge minus the 2px
-// bevel. In-panel controls (the per-row '^') end here.
-constexpr int kBaseCampPanelInnerRightX = kBaseCampPanelRightX - 2;
+// kBaseCampPanelRightX / kBaseCampPanelInnerRightX moved to
+// picker_sdl_defs.h with the docket's row and pager geometry: the SETUP
+// wizard derives from the same edges (shared layouts share constants).
 constexpr int kBaseCampDeployColumnX = 23;
 constexpr int kBaseCampDeployColumnWidth = 14;
 // button.cpp centers a one-glyph label at (xloc+xend)/2 - (1*6 - 1)/2. The
@@ -2431,16 +2428,9 @@ static_assert(kBaseCampStripGoX + kBaseCampStripGoWidth ==
                   kBaseCampPanelRightX,
               "the command strip closes on the panel's right rail");
 
-// Zone actions band geometry (docs/basecamp-zones-design.md "Bounds
-// arithmetic"): full-width row faces inside the panel's inner face with the
-// widget's pager pair closing the right rail on the band's first row.
-constexpr int kBaseCampZoneActionRowX = 12;
-constexpr int kBaseCampZoneActionRowWidth = 264;  // face ends x=276
-constexpr int kBaseCampZonePagerWidth = 14;
-constexpr int kBaseCampZonePagerNextX =
-    kBaseCampPanelInnerRightX - kBaseCampZonePagerWidth;          // 296..310
-constexpr int kBaseCampZonePagerPrevX =
-    kBaseCampZonePagerNextX - 2 - kBaseCampZonePagerWidth;        // 280..294
+// The zone actions band geometry moved to picker_sdl_defs.h with the panel
+// edges: the SETUP wizard's rows ARE the docket's 42-glyph face and its
+// cell column IS this pager pair widened (docs/match-setup-design.md D25).
 constexpr int kBaseCampFamilySwatchGap = 1;
 constexpr int kBaseCampFamilySwatchRampWidth = 8;
 constexpr int kBaseCampFamilySwatchWidth = kBaseCampFamilySwatchRampWidth + 2;
@@ -2690,7 +2680,8 @@ og::ui::SeatClaimability base_camp_rail_claimability()
 // label, the layout and the click dispatch can never hold four opinions
 // about the same slot.
 enum class BaseCampSlotKind {
-    Card,        // one of this machine's seats
+    Seat,        // one of this machine's seats (#306: was Card — the
+                 // reporter's word left the vocabulary with TONIGHT'S CARD)
     Hidden,      // past what the device can seat (#249)
     LobbyFull,   // a real slot the lobby has no room to fill
     AddPlayer,   // a real slot, and the door to claiming it
@@ -2703,7 +2694,7 @@ BaseCampSlotKind base_camp_seat_slot_kind(const og::ui::SeatClaimability& claim,
     // card, whatever the caps now say (a pad unplugged under a live seat
     // must not erase the player sitting in it).
     if (slot < claim.local_count)
-        return BaseCampSlotKind::Card;
+        return BaseCampSlotKind::Seat;
     if (slot >= og::ui::base_camp_seat_rail_slot_cap(claim))
     {
         // A device-capped rail HIDES the slot (matching the pause menu's
@@ -2724,7 +2715,7 @@ RowState base_camp_slot_row_state(BaseCampSlotKind kind)
         return RowState::Hidden;
     case BaseCampSlotKind::LobbyFull:
         return RowState::Disabled;
-    case BaseCampSlotKind::Card:
+    case BaseCampSlotKind::Seat:
     case BaseCampSlotKind::AddPlayer:
         break;
     }
@@ -3831,7 +3822,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             base_camp_seat_slot_kind(slot_claim, slot);
         slot_button.hidden = slot >= seat_visible ||
             kind == BaseCampSlotKind::Hidden;
-        if (kind == BaseCampSlotKind::Card &&
+        if (kind == BaseCampSlotKind::Seat &&
             rail_seats.seat[static_cast<std::size_t>(slot)] != nullptr)
         {
             slot_button.label = base_camp_seat_label(
