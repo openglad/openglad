@@ -463,6 +463,22 @@
 ---@class og.CampaignLineup
 ---@field power? fun(row: og.LineupPowerRow): integer
 
+-- The match_knobs hook's answer: which knobs the SETUP
+-- wizard shows for this game, the campaign's own lines on
+-- the TEAMS step, the ROOT ROW whose page lists the
+-- cursor's arena, and the FILL word a fresh arena deals to
+-- its authored teams. Defaults: everything on, no lines, no
+-- arena page, FAIR. A malformed answer falls back to those
+-- defaults with a script error naming the key.
+---@class og.CampaignMatchKnobs
+---@field teams? boolean
+---@field fill? "macro"|"band"|false
+---@field score? boolean
+---@field time? boolean
+---@field lines? string[]
+---@field arena_page? string
+---@field deal? "none"|"weak"|"fair"|"strong"|"brutal"
+
 -- Hook table for og.register_campaign_hooks. `vars` names
 -- the campaign state keys (max 64, each 1-32 chars of
 -- [a-z0-9_]) that level scripts may read via
@@ -472,6 +488,7 @@
 ---@field vars? string[]
 ---@field base_camp? fun(): og.CampaignZone?
 ---@field lineup? og.CampaignLineup
+---@field match_knobs? fun(): og.CampaignMatchKnobs?
 ---@field picker_action? fun(entry_id: string): og.CampaignActionResult?
 ---@field picker_menu? fun(page_id: string): og.CampaignPage?
 
@@ -717,7 +734,7 @@
 ---@field query_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
 ---@field rand fun(n: integer): integer # og.rand(n) → deterministic sim RNG (world-owned).
 ---@field rand0 fun(n: integer): integer # og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0 contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing the generator (Si...
----@field register_campaign_hooks fun(hooks: og.CampaignHooks) # og.register_campaign_hooks({ vars = {...}, picker_menu = fn, picker_action = fn, base_camp = fn }) — load-time only, one campaign book per VM (docs/campaign-...
+---@field register_campaign_hooks fun(hooks: og.CampaignHooks) # og.register_campaign_hooks({ vars = {...}, picker_menu = fn, picker_action = fn, base_camp = fn, match_knobs = fn, lineup = { power = fn } }) — load-time onl...
 ---@field register_default_lineup fun(hooks: og.CampaignLineup) # og.register_default_lineup({ power = fn }) — the DEFAULT lineup pricing a shipped pack registers for every campaign that names none of its own (docs/lineup-d...
 ---@field register_hooks fun(order_str: og.OrderName, family_str: string, hooks: og.FxHooks|og.GeneratorHooks|og.LivingHooks|og.TreasureHooks|og.WeaponHooks)
 ---@field register_level_hooks fun(level_id: integer, hooks: og.LevelHooks) # og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=, on_entity_spawn= }).

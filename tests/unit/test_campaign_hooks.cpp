@@ -234,7 +234,7 @@ TEST_F(CampaignHooksTest, neither_hook_function_is_a_load_error)
     EXPECT_FALSE(hooks::campaign_picker_registered());
     EXPECT_TRUE(errors_contain(
         "register at least one of 'picker_menu' / 'picker_action' / "
-        "'base_camp'"));
+        "'base_camp' / 'match_knobs' / 'lineup'"));
 }
 
 TEST_F(CampaignHooksTest, base_camp_alone_is_a_legal_registration)
@@ -2114,8 +2114,8 @@ TEST_F(CampaignHooksTest, the_registrar_refuses_mis_shaped_books_by_name)
 }))LUA");
     EXPECT_FALSE(hooks::campaign_picker_registered());
     EXPECT_TRUE(errors_contain(
-        "keys are 'vars', 'picker_menu', 'picker_action', 'base_camp' and "
-        "'lineup' (got a number key)"));
+        "keys are 'vars', 'picker_menu', 'picker_action', 'base_camp', "
+        "'match_knobs' and 'lineup' (got a number key)"));
 
     // A hook key that is not a function. 'picker_action' has its own message
     // so the author is not sent looking at 'picker_menu'.
@@ -2144,9 +2144,11 @@ TEST_F(CampaignHooksTest, the_registrar_refuses_mis_shaped_books_by_name)
     register_script(R"LUA(og.register_campaign_hooks({
   picker_menu = function(page_id) return { title = "X" } end,
   picker_action = function(entry_id) return nil end,
+  match_knobs = function() return {} end,
   lineup = { power = function(row) return 1 end },
 }))LUA");
     EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_match_knobs_registered());
     EXPECT_TRUE(hooks::campaign_lineup_registered());
     EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
 }
@@ -2308,4 +2310,341 @@ TEST_F(CampaignHooksTest, a_match_value_past_int32_never_reaches_the_provider)
     ASSERT_EQ(1u, writes.size()) << "the wide write reached the provider";
     EXPECT_EQ("score_limit", writes[0].first);
     EXPECT_EQ(7, writes[0].second);
+}
+
+// ---------------------------------------------------------------------------
+// The match_knobs hook (docs/match-setup-design.md): which knobs the SETUP
+// wizard shows, the campaign's own TEAMS lines, the root row that lists the
+// cursor's arena, and the FILL word a fresh arena deals.
+// ---------------------------------------------------------------------------
+
+TEST_F(CampaignHooksTest, match_knobs_alone_is_a_legal_registration)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    return {
+      teams = false,
+      fill = "band",
+      score = true,
+      time = false,
+      lines = { "FILL sets how strong the bots are." },
+      arena_page = "ffa",
+      deal = "strong",
+    }
+  end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_match_knobs_registered());
+    // The other hooks stay unregistered: one key, one slot.
+    EXPECT_FALSE(hooks::campaign_zone_registered());
+
+    hooks::CampaignMatchKnobs knobs;
+    ASSERT_TRUE(hooks::campaign_match_knobs(knobs));
+    EXPECT_FALSE(knobs.teams);
+    EXPECT_EQ(hooks::CampaignFillKnob::Band, knobs.fill);
+    EXPECT_TRUE(knobs.score);
+    EXPECT_FALSE(knobs.time);
+    ASSERT_EQ(1u, knobs.lines.size());
+    EXPECT_EQ("FILL sets how strong the bots are.", knobs.lines[0]);
+    EXPECT_EQ(34u, knobs.lines[0].size());
+    EXPECT_EQ("ffa", knobs.arena_page);
+    EXPECT_EQ(og::sim::kFillStrong, knobs.deal_fill);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, match_knobs_absent_answers_defaults_and_false)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "BOOK" }
+  end,
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_FALSE(hooks::campaign_match_knobs_registered());
+
+    // Pre-dirtied, the way a session that keeps one struct across
+    // navigations holds it: the dispatcher resets BEFORE it bows out, so
+    // nobody reads the previous campaign's knobs back.
+    hooks::CampaignMatchKnobs knobs;
+    knobs.teams = false;
+    knobs.fill = hooks::CampaignFillKnob::Off;
+    knobs.score = false;
+    knobs.time = false;
+    knobs.lines = {"stale one", "stale two"};
+    knobs.arena_page = "stale";
+    knobs.deal_fill = og::sim::kFillBrutal;
+    EXPECT_FALSE(hooks::campaign_match_knobs(knobs));
+    EXPECT_TRUE(knobs.teams);
+    EXPECT_EQ(hooks::CampaignFillKnob::Macro, knobs.fill);
+    EXPECT_TRUE(knobs.score);
+    EXPECT_TRUE(knobs.time);
+    EXPECT_TRUE(knobs.lines.empty());
+    EXPECT_TRUE(knobs.arena_page.empty());
+    EXPECT_EQ(og::sim::kFillFair, knobs.deal_fill);
+
+    // And with no pack scripts at all (no VM): still the defaults.
+    clear_pack_scripts();
+    knobs.teams = false;
+    knobs.deal_fill = og::sim::kFillNone;
+    EXPECT_FALSE(hooks::campaign_match_knobs_registered());
+    EXPECT_FALSE(hooks::campaign_match_knobs(knobs));
+    EXPECT_TRUE(knobs.teams);
+    EXPECT_EQ(og::sim::kFillFair, knobs.deal_fill);
+}
+
+TEST_F(CampaignHooksTest, match_knobs_empty_table_answers_every_default)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    return {}
+  end,
+}))LUA");
+    hooks::CampaignMatchKnobs knobs;
+    ASSERT_TRUE(hooks::campaign_match_knobs(knobs));
+    EXPECT_TRUE(knobs.teams);
+    EXPECT_TRUE(knobs.score);
+    EXPECT_TRUE(knobs.time);
+    EXPECT_EQ(hooks::CampaignFillKnob::Macro, knobs.fill);
+    EXPECT_TRUE(knobs.lines.empty());
+    EXPECT_TRUE(knobs.arena_page.empty());
+    EXPECT_EQ(og::sim::kFillFair, knobs.deal_fill);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, match_knobs_accepts_every_wheel_word_and_fill_spelling)
+{
+    const std::vector<std::pair<std::string, std::int16_t>> wheel = {
+        {"none", og::sim::kFillNone},     {"weak", og::sim::kFillWeak},
+        {"fair", og::sim::kFillFair},     {"strong", og::sim::kFillStrong},
+        {"brutal", og::sim::kFillBrutal},
+    };
+    for (const auto& [word, code] : wheel) {
+        clear_pack_scripts();
+        register_script("og.register_campaign_hooks({\n"
+                        "  match_knobs = function()\n"
+                        "    return { deal = \"" + word + "\" }\n"
+                        "  end,\n"
+                        "})");
+        hooks::CampaignMatchKnobs knobs;
+        ASSERT_TRUE(hooks::campaign_match_knobs(knobs)) << word;
+        EXPECT_EQ(code, knobs.deal_fill) << word;
+        EXPECT_TRUE(vm_errors().empty()) << word;
+    }
+
+    // The three FILL spellings, including the boolean one.
+    const std::vector<std::pair<std::string, hooks::CampaignFillKnob>> fills = {
+        {"\"macro\"", hooks::CampaignFillKnob::Macro},
+        {"\"band\"", hooks::CampaignFillKnob::Band},
+        {"false", hooks::CampaignFillKnob::Off},
+    };
+    for (const auto& [spelling, knob] : fills) {
+        clear_pack_scripts();
+        register_script("og.register_campaign_hooks({\n"
+                        "  match_knobs = function()\n"
+                        "    return { fill = " + spelling + " }\n"
+                        "  end,\n"
+                        "})");
+        hooks::CampaignMatchKnobs knobs;
+        ASSERT_TRUE(hooks::campaign_match_knobs(knobs)) << spelling;
+        EXPECT_EQ(knob, knobs.fill) << spelling;
+        EXPECT_TRUE(vm_errors().empty()) << spelling;
+    }
+
+    // Two lines at the budget, and an empty arena_page, are legal.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    return {
+      lines = { "12345678901234567890123456789012345678", "second" },
+      arena_page = "",
+    }
+  end,
+}))LUA");
+    hooks::CampaignMatchKnobs knobs;
+    ASSERT_TRUE(hooks::campaign_match_knobs(knobs));
+    ASSERT_EQ(2u, knobs.lines.size());
+    EXPECT_EQ(38u, knobs.lines[0].size());
+    EXPECT_EQ("second", knobs.lines[1]);
+    EXPECT_TRUE(knobs.arena_page.empty()) << "\"\" is 'no arena page'";
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, match_knobs_refuses_mis_shaped_answers_by_name)
+{
+    // Every refusal names the key the author mistyped, and every one of
+    // them leaves the caller holding the DEFAULTS — a wizard that silently
+    // clipped a line or snapped a deal to FAIR would be a shape nobody
+    // wrote.
+    const auto refuses = [](const std::string& body,
+                            const std::string& needle) {
+        clear_pack_scripts();
+        register_script("og.register_campaign_hooks({\n"
+                        "  match_knobs = function()\n    " + body +
+                        "\n  end,\n})");
+        hooks::CampaignMatchKnobs knobs;
+        knobs.teams = false;
+        knobs.deal_fill = og::sim::kFillBrutal;
+        EXPECT_FALSE(hooks::campaign_match_knobs(knobs)) << needle;
+        EXPECT_TRUE(errors_contain(needle)) << needle;
+        EXPECT_TRUE(knobs.teams) << needle;
+        EXPECT_EQ(hooks::CampaignFillKnob::Macro, knobs.fill) << needle;
+        EXPECT_TRUE(knobs.lines.empty()) << needle;
+        EXPECT_TRUE(knobs.arena_page.empty()) << needle;
+        EXPECT_EQ(og::sim::kFillFair, knobs.deal_fill) << needle;
+    };
+
+    refuses("return { tems = true }", "unknown key 'tems'");
+    refuses("return { tems = true }", "did you mean 'teams'");
+    refuses("return { [1] = true }", "got a number key");
+    refuses("return { deal = \"huge\" }",
+            "'deal' is not a wheel word (none, weak, fair, strong, brutal)");
+    refuses("return { arena_page = 7 }", "'arena_page' is not a string");
+    refuses("return { fill = \"wheel\" }",
+            "'fill' is not \"macro\", \"band\" or false");
+    refuses("return { fill = true }",
+            "'fill' is not \"macro\", \"band\" or false");
+    refuses("return { teams = 1 }", "'teams' is not a boolean");
+    refuses("return { score = 1 }", "'score' is not a boolean");
+    refuses("return { time = \"yes\" }", "'time' is not a boolean");
+    refuses("return { lines = \"x\" }", "'lines' is not an array of strings");
+    refuses("return { lines = { 5 } }", "'lines' is not an array of strings");
+    refuses("return { lines = { late = \"x\" } }",
+            "'lines' is not an array of strings");
+    refuses("return { lines = { \"a\", \"b\", \"c\" } }",
+            "'lines' names 3 lines (max 2)");
+    refuses("return { lines = { \"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABC\" } }",
+            "lines[1] is empty or longer than 38 glyphs");
+    refuses("return { lines = { \"\" } }",
+            "lines[1] is empty or longer than 38 glyphs");
+    refuses("return nil", "returned a nil");
+    refuses("return 5", "returned a number");
+
+    // Every one of those is recorded as a match_knobs error, never as a
+    // base_camp or picker one.
+    EXPECT_TRUE(errors_contain("campaign match_knobs returned a malformed "
+                               "answer: "));
+
+    // A hook that RAISES is the same answer as a malformed one: the
+    // caller keeps the defaults and the error carries the Lua message.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    error("knobs blew up")
+  end,
+}))LUA");
+    hooks::CampaignMatchKnobs blown;
+    blown.teams = false;
+    EXPECT_FALSE(hooks::campaign_match_knobs(blown));
+    EXPECT_TRUE(blown.teams);
+    EXPECT_TRUE(errors_contain("knobs blew up"));
+
+    // The control: the same book spelled right registers and serves.
+    clear_pack_scripts();
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    return { teams = true, deal = "fair", arena_page = "soccer" }
+  end,
+}))LUA");
+    hooks::CampaignMatchKnobs knobs;
+    ASSERT_TRUE(hooks::campaign_match_knobs(knobs));
+    EXPECT_EQ("soccer", knobs.arena_page);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+TEST_F(CampaignHooksTest, non_function_match_knobs_is_a_load_error)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knobs = "x",
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_FALSE(hooks::campaign_match_knobs_registered());
+    EXPECT_TRUE(errors_contain("'match_knobs' must be a function"));
+}
+
+TEST_F(CampaignHooksTest, match_knobs_key_typo_gets_did_you_mean)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knob = function()
+    return {}
+  end,
+}))LUA");
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(errors_contain("unknown key 'match_knob'"));
+    EXPECT_TRUE(errors_contain("did you mean 'match_knobs'"));
+}
+
+TEST_F(CampaignHooksTest, match_knobs_dispatch_is_fenced_and_brackets_cleanly)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    local ok, err = pcall(og.rand, 3)
+    if ok then
+      og.log("NOFENCE rand")
+    elseif string.find(err, "campaign hooks", 1, true) == nil then
+      og.log("WRONGMSG rand: " .. err)
+    end
+    local ok2 = pcall(og.register_campaign_hooks, {})
+    if ok2 then
+      og.log("NOFENCE register")
+    end
+    return { arena_page = "soccer", deal = "strong" }
+  end,
+  picker_menu = function(page_id)
+    return { title = "AFTER" }
+  end,
+}))LUA");
+    hooks::CampaignMatchKnobs knobs;
+    ASSERT_TRUE(hooks::campaign_match_knobs(knobs));
+    EXPECT_EQ("soccer", knobs.arena_page);
+    for (const std::string& line : vm_log()) {
+        EXPECT_EQ(std::string::npos, line.find("NOFENCE")) << line;
+        EXPECT_EQ(std::string::npos, line.find("WRONGMSG")) << line;
+    }
+    // The fence disarmed on exit: a follow-up picker dispatch (its own
+    // bracket) and a second knobs dispatch both serve.
+    hooks::CampaignPage page;
+    ASSERT_TRUE(hooks::campaign_picker_page("", page));
+    EXPECT_EQ("AFTER", page.title);
+    ASSERT_TRUE(hooks::campaign_match_knobs(knobs));
+    EXPECT_EQ(og::sim::kFillStrong, knobs.deal_fill);
+}
+
+TEST_F(CampaignHooksTest, match_knobs_and_lineup_coexist_at_their_slots)
+{
+    // match_knobs sits at registry slot 5 and pushed `lineup` down to
+    // abs index 6 in the registrar: the pricer must still answer.
+    register_script(R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return { title = "BOOK" }
+  end,
+  match_knobs = function()
+    return { arena_page = "tdm", fill = "band" }
+  end,
+  lineup = {
+    power = function(row)
+      return row.hp * 2 + row.level
+    end,
+  },
+}))LUA");
+    EXPECT_TRUE(hooks::campaign_picker_registered());
+    EXPECT_TRUE(hooks::campaign_match_knobs_registered());
+    EXPECT_TRUE(hooks::campaign_lineup_registered());
+
+    hooks::CampaignMatchKnobs knobs;
+    ASSERT_TRUE(hooks::campaign_match_knobs(knobs));
+    EXPECT_EQ("tdm", knobs.arena_page);
+    EXPECT_EQ(hooks::CampaignFillKnob::Band, knobs.fill);
+
+    hooks::LineupPowerRow row;
+    row.family = "SOLDIER";
+    row.level = 7;
+    row.hp = 30;
+    long long power = -1;
+    ASSERT_TRUE(hooks::campaign_fighter_power(row, power));
+    EXPECT_EQ(67, power);
+
+    hooks::CampaignPage page;
+    ASSERT_TRUE(hooks::campaign_picker_page("", page));
+    EXPECT_EQ("BOOK", page.title);
+    EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
 }

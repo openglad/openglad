@@ -13,7 +13,8 @@
 // ever see plain structs — the Lua boundary crossing lives in
 // src/gameplay/script/.
 //
-// og.register_campaign_hooks stores a campaign's picker hooks per VM;
+// og.register_campaign_hooks stores a campaign's five picker hooks per VM
+// (picker_menu, picker_action, base_camp, match_knobs and lineup);
 // the dispatchers below run them under the campaign-dispatch fence (the
 // world API, og.rand and the three registrars all error while a campaign
 // hook is on the stack), so a menu script can never perturb the sim's RNG
@@ -170,6 +171,34 @@ struct CampaignZone {
     std::vector<CampaignZoneWidget> widgets;
 };
 
+// The match_knobs hook's answer (docs/match-setup-design.md): which
+// knobs the current game uses on the SETUP wizard, the campaign's own
+// lines on the TEAMS step, the root row whose page lists the cursor's arena,
+// and the FILL word a fresh arena deals to its authored teams. Defaults =
+// everything on, no lines, no arena page, FAIR — so a campaign without the
+// hook, and every bookless pack, is unaffected.
+enum class CampaignFillKnob : std::uint8_t {
+    Macro,  // the 4-band macro row
+    Band,   // team 1's wheel alone
+    Off,    // no FILL row at all
+};
+inline constexpr int kCampaignMatchKnobsMaxLines = 2;
+// Glyphs per line: the TEAMS step's line budget.
+inline constexpr int kCampaignMatchKnobsLineMax = 38;
+struct CampaignMatchKnobs {
+    bool teams = true;  // the SIDES row + the per-team lines
+    CampaignFillKnob fill = CampaignFillKnob::Macro;
+    bool score = true;  // SCORE row + rules-line cell
+    bool time = true;   // TIME LIMIT row + rules-line cell
+    // <= kCampaignMatchKnobsMaxLines, each <= kCampaignMatchKnobsLineMax
+    // glyphs.
+    std::vector<std::string> lines;
+    // Root row id; "" = none (the ARENA tab shows the manifest).
+    std::string arena_page;
+    // The wheel code a fresh arena deals to its authored teams.
+    std::int16_t deal_fill = og::sim::kFillFair;
+};
+
 // Roster row of og.campaign_team — values, not handles.
 struct CampaignRosterEntry {
     std::string name, family;
@@ -302,6 +331,18 @@ bool campaign_zone_registered();
 // script error naming the field; every bound is a hard rejection, never a
 // clip).
 bool campaign_zone(CampaignZone& out);
+
+// True when the active registration carries a match_knobs hook. Same
+// conflict/scriptless rules as campaign_picker_registered.
+bool campaign_match_knobs_registered();
+
+// Dispatches match_knobs() under the fence and parses the table into `out`.
+// `out` is RESET TO DEFAULTS first on every call. False — the caller keeps
+// the defaults — when no hook is registered, the hook errors, or the answer
+// is malformed (recorded as a script error naming the key; every bound is a
+// hard rejection, never a clip). Fetched per navigation and per deal, never
+// per frame.
+bool campaign_match_knobs(CampaignMatchKnobs& out);
 
 // The `vars` names of the active registration, in declared order — the
 // list the level-load sync copies from the save into
