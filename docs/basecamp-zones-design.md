@@ -225,7 +225,12 @@ One TeamBuild item ("Camp") opens the zone through the mission-book
 prompt driver grown to render the readout as one line, text blocks
 clipped to their bands, the numbered docket, lock reasons, and an assign
 interaction (the oath row opens a numbered own roster; a row number
-cycles the tag with the same full-word toasts). Named honestly: for v1
+cycles the tag with the same full-word toasts).
+**Update (2026-09-19, PR #N):** Team Build also gained `Setup` (item 13,
+gated to versus campaigns — the terminal face of the SETUP wizard) and now
+gates `Difficulty` on CLASSIC campaigns, so the fight's rules have one door
+per campaign kind on every client (docs/match-setup-design.md §2.7).
+Named honestly: for v1
 this is a door, not the terminal camp face — the bounded-churn
 compromise; the path forward is the zone becoming the terminal TeamBuild
 face. The item re-pins the three positional drivers (headless drives,
@@ -329,6 +334,16 @@ behind a hover or a spent face:
   cleared field replayable. Every camp row is budgeted against the
   42-char panel face carrying the campaign's longest arena name, which
   is why CTF's clock reads "20m".
+  **Update (2026-09-19, PR #N):** #306 unthemed the whole bullet. The camp
+  is now a three-row docket — GAME, ARENA, RANDOM ARENA — of which the first
+  two are shortcuts INTO the SETUP wizard's GAME and ARENA steps; the
+  readout reads `CLEARED n/40`; there is no signature row, no setup row (the
+  strip door is SETUP, ordinal 73), and the joiner sees the two shortcut
+  rows with no text line at all. The tally words are `n/m cleared` and
+  `Every arena here is cleared.` The same note records that the TROOPS
+  sentence had already gone stale (lineup-design B5 retired TROOPS, and the
+  fourth knob has been TIME LIMIT since #241). Full record:
+  docs/match-setup-design.md §2.1, §3.9.
 - **Westlands — the company fire.** Text: camp stanza + Bearer line.
   Roster: full capabilities; at the Falls, `assign` (WAR/BURDEN) with
   the taught-glyph toasts; after the swearing freezes (any road level
