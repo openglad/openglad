@@ -1445,6 +1445,66 @@ ZoneSubmenuRowBand zone_submenu_row_band(const ZoneSubmenuScreenState* state)
         session != nullptr ? session->page().lines.size() : 0);
 }
 
+// --- The two scripted-row hoists (docs/match-setup-design.md §3.4) --------
+//
+// A scripted row's FACE, composed ONCE for every chassis that draws one:
+// the zone submenu's rows, the Base Camp docket's, and the SETUP wizard's.
+// The row's face says what the click costs you. A level row starts a
+// battle, so it wears the GO button's green — the one material on these
+// screens that already means "this launches". Spent purchases and closed
+// roads wear the dimmed face. Everything else is a plain row. Level rows
+// are host-gated at ACTIVATION, so a non-host's copy carries the " (HOST)"
+// marker inside the same budget (there is no per-face dim ink for that).
+struct ScriptedRowFace {
+    std::string label;
+    enum class Face : std::uint8_t { Plain, Dim, Go } face = Face::Plain;
+};
+
+ScriptedRowFace compose_scripted_row_face(
+    const og::ui::CampaignPickerSession::Row& row, std::size_t budget,
+    bool level_rows_actionable)
+{
+    constexpr std::size_t kHostMarkerChars = 7;  // " (HOST)"
+    ScriptedRowFace out;
+    if (row.is_level() && !level_rows_actionable) {
+        out.label =
+            campaign_picker_row_text(row, budget - kHostMarkerChars) +
+            " (HOST)";
+    } else {
+        out.label = campaign_picker_row_text(row, budget);
+    }
+    if (row.is_inert() ||
+        (row.kind == og::ui::CampaignPickerSession::Kind::Action &&
+         !row.affordable))
+    {
+        out.face = ScriptedRowFace::Face::Dim;
+    } else if (row.is_level() && level_rows_actionable) {
+        out.face = ScriptedRowFace::Face::Go;
+    }
+    return out;
+}
+
+// The ink half, so no caller re-decides what a face means. One rule for
+// every dim face: GREY collides with the shadow shade, so a dimmed row
+// steps its right/bottom bevels darker and stays a whole card. The gate
+// pass clears the flag on every non-dim row each frame.
+void apply_scripted_row_face_ink(vbutton* live, ScriptedRowFace::Face face)
+{
+    if (live == nullptr)
+        return;
+    switch (face) {
+    case ScriptedRowFace::Face::Plain:
+        break;
+    case ScriptedRowFace::Face::Dim:
+        live->color = GREY;
+        live->dimmed = true;
+        break;
+    case ScriptedRowFace::Face::Go:
+        live->color = og::ui::kReadyGoFaceGo;
+        break;
+    }
+}
+
 // The submenu's message line: the SAME 2.5s header-strip toast the Base
 // Camp uses. Purchases, refusals and level sets confirm identically at
 // every depth of the book.
@@ -1499,7 +1559,6 @@ void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
     // the refusal is never a surprise (there is no per-face dim ink, so the
     // marker rides the composed label).
     const bool level_rows_actionable = picker_lobby_host_controls_visible();
-    constexpr std::size_t kHostMarkerChars = 7;  // " (HOST)"
 
     const ZoneSubmenuRowBand band = zone_submenu_row_band(st);
     for (int r = 0; r < kZoneSubmenuRowsPerPage; ++r) {
@@ -1516,15 +1575,12 @@ void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
             buttons[r].sizex = kZoneSubmenuRowWidth;
             const og::ui::CampaignPickerSession::Row& row =
                 session->page().rows[static_cast<std::size_t>(first + r)];
-            if (row.is_level() && !level_rows_actionable) {
-                buttons[r].label =
-                    campaign_picker_row_text(
-                        row, kZoneSubmenuRowLabelChars - kHostMarkerChars)
-                    + " (HOST)";
-            } else {
-                buttons[r].label = campaign_picker_row_text(
-                    row, kZoneSubmenuRowLabelChars);
-            }
+            // The same three-way row grammar the Base Camp zone uses:
+            // green launches, grey is spent or closed, plain acts — one
+            // composer for all three chassis.
+            const ScriptedRowFace face = compose_scripted_row_face(
+                row, kZoneSubmenuRowLabelChars, level_rows_actionable);
+            buttons[r].label = face.label;
             vbutton* live = og::runtime::current_session
                                 ->allbuttons_[static_cast<std::size_t>(r)];
             if (live != nullptr) {
@@ -1534,22 +1590,7 @@ void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
                 live->width = buttons[r].sizex;
                 live->xend = buttons[r].x + buttons[r].sizex;
                 live->yend = buttons[r].y + buttons[r].sizey;
-                // The same three-way row grammar the Base Camp zone uses:
-                // green launches, grey is spent or closed, plain acts.
-                if (row.is_inert() ||
-                    (row.kind ==
-                         og::ui::CampaignPickerSession::Kind::Action &&
-                     !row.affordable))
-                {
-                    live->color = GREY;
-                    // One rule for every dim face: GREY collides with the
-                    // shadow shade, so a dimmed row steps its right/bottom
-                    // bevels darker and stays a whole card. The gate pass
-                    // clears the flag on every non-dim row each frame.
-                    live->dimmed = true;
-                } else if (row.is_level() && level_rows_actionable) {
-                    live->color = og::ui::kReadyGoFaceGo;
-                }
+                apply_scripted_row_face_ink(live, face.face);
             }
         }
     }
@@ -1723,6 +1764,52 @@ ScriptedLevelSet apply_scripted_level_set(int level, bool replay_arm = false)
     return ScriptedLevelSet::Set;
 }
 
+// The enum -> answer switch, ONE home (docs/match-setup-design.md §3.4):
+// the refusal string and the TRACE for every arm of a scripted level set.
+// The three surfaces that run a gated set — the Base Camp docket, the zone
+// submenu and the SETUP wizard's ARENA step — keep only their own refetch,
+// toast and return code around one call, so they can never speak different
+// refusals for the same enum arm.
+struct ScriptedLevelSetAnswer {
+    std::string refusal;   // empty exactly when the set landed
+    bool advanced = false; // Set or SetReplay
+    bool replay = false;   // SetReplay
+};
+
+ScriptedLevelSetAnswer scripted_level_set_answer(ScriptedLevelSet outcome,
+                                                 int level)
+{
+    switch (outcome) {
+    case ScriptedLevelSet::DeniedHost:
+        TRACE("zone", "level_denied_nonhost %d", level);
+        return {std::string(og::ui::kCampaignPickerHostGuardMessage), false,
+                false};
+    case ScriptedLevelSet::DeniedGate:
+        TRACE("zone", "level_denied_gate %d", level);
+        return {std::string(og::ui::kCampaignLevelClosedMessage), false,
+                false};
+    case ScriptedLevelSet::Unchanged:
+        TRACE("zone", "level_unchanged %d", level);
+        return {std::string(og::ui::kCampaignLevelUnchangedMessage), false,
+                false};
+    case ScriptedLevelSet::LoadFailed:
+        // The campaign's own voice, never the loader's: a road that will
+        // not load is a road the campaign has not opened.
+        return {std::string(og::ui::kCampaignLevelClosedMessage), false,
+                false};
+    case ScriptedLevelSet::Set:
+        TRACE("zone", "level_set %d", level);
+        return {std::string(), true, false};
+    case ScriptedLevelSet::SetReplay:
+        // #207: the armed click's own answer — a replay is not a plain
+        // set, and it can land on the CURRENT level (the dream log's
+        // loop-home row), so the reload guard may see no cursor change.
+        TRACE("zone", "level_replay_armed %d", level);
+        return {std::string(), true, true};
+    }
+    return {};
+}
+
 // One refused set, ONE line. The toast is a single slot with a single
 // timer, so a refusal followed by the action's own message was not two
 // notices — the second overwrote the first in the same frame and the player
@@ -1753,48 +1840,24 @@ Sint32 zone_submenu_level_set_tail(ZoneSubmenuScreenState& st,
                                    int level, const std::string& lua_toast,
                                    bool replay_arm = false)
 {
-    std::string refusal;
-    switch (apply_scripted_level_set(level, replay_arm)) {
-    case ScriptedLevelSet::DeniedHost:
-        TRACE("zone", "level_denied_nonhost %d", level);
-        refusal = og::ui::kCampaignPickerHostGuardMessage;
-        break;
-    case ScriptedLevelSet::DeniedGate:
-        TRACE("zone", "level_denied_gate %d", level);
-        refusal = og::ui::kCampaignLevelClosedMessage;
-        break;
-    case ScriptedLevelSet::Unchanged:
-        TRACE("zone", "level_unchanged %d", level);
-        refusal = og::ui::kCampaignLevelUnchangedMessage;
-        break;
-    case ScriptedLevelSet::LoadFailed:
-        // The campaign's own voice, never the loader's.
-        refusal = og::ui::kCampaignLevelClosedMessage;
-        break;
-    case ScriptedLevelSet::Set:
+    ScriptedLevelSetAnswer answer = scripted_level_set_answer(
+        apply_scripted_level_set(level, replay_arm), level);
+    if (answer.advanced) {
         // CURRENT markers re-derive from the new cursor (fetch-per-action,
         // never per frame).
         session.refresh();
         zone_submenu_reset_page(st, true);
-        TRACE("zone", "level_set %d", level);
+        const std::string& title =
+            og::runtime::current_session->myscreen_->world().title;
         zone_submenu_show_toast(
-            st, og::ui::campaign_level_set_message(
-                    og::runtime::current_session->myscreen_->world().title));
-        return MENU_REDRAW;
-    case ScriptedLevelSet::SetReplay:
-        // #207: the armed click's own answer — a replay is not a plain set.
-        session.refresh();
-        zone_submenu_reset_page(st, true);
-        TRACE("zone", "level_replay_armed %d", level);
-        zone_submenu_show_toast(
-            st, og::ui::campaign_replay_set_message(
-                    og::runtime::current_session->myscreen_->world().title));
+            st, answer.replay ? og::ui::campaign_replay_set_message(title)
+                              : og::ui::campaign_level_set_message(title));
         return MENU_REDRAW;
     }
     zone_submenu_show_toast(
         st,
         refusal_with_lua_message(
-            std::move(refusal), lua_toast,
+            std::move(answer.refusal), lua_toast,
             static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden)));
     return MENU_REDRAW;
 }
@@ -3959,7 +4022,6 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     const bool level_rows_actionable = picker_lobby_host_controls_visible();
     constexpr std::size_t kZoneRowLabelChars =
         static_cast<std::size_t>((kBaseCampZoneActionRowWidth - 8) / 6);
-    constexpr std::size_t kZoneHostMarkerChars = 7;  // " (HOST)"
     const int actions_widgets = zone != nullptr
         ? static_cast<int>(zone->actions().size())
         : 0;
@@ -3985,42 +4047,28 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             const bool on = r < band_visible;
             face.hidden = !on;
             face.nav = {};
+            // The row's FACE says what the click costs you — one composer
+            // for every scripted chassis (the zone submenu and the SETUP
+            // wizard draw through the same one).
+            ScriptedRowFace composed;
             if (on) {
                 face.x = kBaseCampZoneActionRowX;
                 face.y = band_y + kBaseCampRowPitch * r;
                 face.sizex = kBaseCampZoneActionRowWidth;
                 face.sizey = 10;
-                const og::ui::CampaignZoneSession::Row& row =
-                    actions->rows[static_cast<std::size_t>(band_first + r)];
-                if (row.is_level() && !level_rows_actionable) {
-                    face.label = campaign_picker_row_text(
-                                     row,
-                                     kZoneRowLabelChars - kZoneHostMarkerChars)
-                        + " (HOST)";
-                } else {
-                    face.label =
-                        campaign_picker_row_text(row, kZoneRowLabelChars);
-                }
+                composed = compose_scripted_row_face(
+                    actions->rows[static_cast<std::size_t>(band_first + r)],
+                    kZoneRowLabelChars, level_rows_actionable);
+                face.label = composed.label;
             } else {
                 face.label.clear();
             }
             sync_live_rect(ordinal);
             if (on) {
-                // The row's FACE says what the click costs you. A level row
-                // starts a battle, so it wears the GO button's green — the
-                // one material on this screen that already means "this
-                // launches". Spent purchases and closed roads wear the
-                // dimmed face. Everything else is a plain row.
-                const og::ui::CampaignZoneSession::Row& row =
-                    actions->rows[static_cast<std::size_t>(band_first + r)];
-                if (row.is_inert() ||
-                    (row.kind == og::ui::CampaignPickerSession::Kind::Action &&
-                     !row.affordable))
-                {
-                    set_live_face(ordinal, GREY);
-                } else if (row.is_level() && level_rows_actionable) {
-                    set_live_face(ordinal, og::ui::kReadyGoFaceGo);
-                }
+                apply_scripted_row_face_ink(
+                    og::runtime::current_session
+                        ->allbuttons_[static_cast<std::size_t>(ordinal)],
+                    composed.face);
             }
         }
         const int prev_ordinal = kBaseCampZonePagerBase + 2 * w;
@@ -4987,28 +5035,10 @@ Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
                                 const std::string& lua_toast,
                                 bool replay_arm = false)
 {
-    Sint32 ret = MENU_OK;
-    std::string refusal;
-    switch (apply_scripted_level_set(level, replay_arm)) {
-    case ScriptedLevelSet::DeniedHost:
-        TRACE("zone", "level_denied_nonhost %d", level);
-        refusal = og::ui::kCampaignPickerHostGuardMessage;
-        break;
-    case ScriptedLevelSet::DeniedGate:
-        TRACE("zone", "level_denied_gate %d", level);
-        refusal = og::ui::kCampaignLevelClosedMessage;
-        break;
-    case ScriptedLevelSet::Unchanged:
-        TRACE("zone", "level_unchanged %d", level);
-        refusal = og::ui::kCampaignLevelUnchangedMessage;
-        break;
-    case ScriptedLevelSet::LoadFailed:
-        // The campaign's own voice, never the loader's: a road that will
-        // not load is a road the campaign has not opened.
-        refusal = og::ui::kCampaignLevelClosedMessage;
-        ret = MENU_REDRAW;
-        break;
-    case ScriptedLevelSet::Set: {
+    const ScriptedLevelSet outcome =
+        apply_scripted_level_set(level, replay_arm);
+    ScriptedLevelSetAnswer answer = scripted_level_set_answer(outcome, level);
+    if (answer.advanced) {
         screen* const game = og::runtime::current_session->myscreen_;
         // The frame-tick reload guard sees the committed cursor and
         // refetches (trigger 3); refetch now too so THIS frame's labels
@@ -5016,31 +5046,22 @@ Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
         st.last_level_id = game->save_data.scen_num;
         base_camp_refetch_zone(st);
         base_camp_refresh_rows(st);
-        TRACE("zone", "level_set %d", level);
         // A successful choice SAYS so. Silence here is what let the
         // previous action's toast be read as this one's answer.
         base_camp_show_toast(
-            st, og::ui::campaign_level_set_message(game->world().title));
+            st, answer.replay
+                    ? og::ui::campaign_replay_set_message(game->world().title)
+                    : og::ui::campaign_level_set_message(game->world().title));
         return MENU_REDRAW;
     }
-    case ScriptedLevelSet::SetReplay: {
-        // #207: the armed click's own answer — a replay is not a plain
-        // set, and it can land on the CURRENT level (the dream log's
-        // loop-home row), so the reload guard may see no cursor change.
-        screen* const game = og::runtime::current_session->myscreen_;
-        st.last_level_id = game->save_data.scen_num;
-        base_camp_refetch_zone(st);
-        base_camp_refresh_rows(st);
-        TRACE("zone", "level_replay_armed %d", level);
-        base_camp_show_toast(
-            st, og::ui::campaign_replay_set_message(game->world().title));
-        return MENU_REDRAW;
-    }
-    }
+    // A rollback redraws (the panel lost its level under it); every other
+    // refusal keeps the panel as-is.
+    const Sint32 ret =
+        outcome == ScriptedLevelSet::LoadFailed ? MENU_REDRAW : MENU_OK;
     base_camp_show_toast(
         st,
         refusal_with_lua_message(
-            std::move(refusal), lua_toast,
+            std::move(answer.refusal), lua_toast,
             static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireVisible)));
     return ret;
 }
