@@ -942,23 +942,43 @@ private:
             // page (B1/B6: one FILL wheel, one MAP UNITS box, no FIGHTERS).
             lineup_screen();
             break;
+        case PickerMenuCommand::MatchSetup:
+            // #304: the SETUP wizard. The classic-campaign refusal and the
+            // versus DIFFICULTY refusal are both terminal_item_gate's, so
+            // the guard print above has already answered — there is no
+            // client-side text here, on either client.
+            setup_screen();
+            break;
         default:
             break;
         }
+    }
+
+    // Lead ruling 2: ONE value-taking difficulty tail, TWO callers. The
+    // DIFFICULTY submenu's row calls it with cycle_difficulty(current); the
+    // SETUP wizard's RULES row calls it with the value the session already
+    // computed, which is what makes the terminal's `N-` step BACKWARD
+    // instead of taking another lap. A cycle-once handler would have thrown
+    // the session's answer away.
+    void apply_difficulty_value(int value)
+    {
+        og::runtime::current_session->current_difficulty_ = value;
+        if (og::runtime::current_session->game_.world != nullptr) {
+            og::runtime::current_session->game_.world->difficulty =
+                static_cast<short>(difficulty_percent(
+                    og::runtime::current_session->current_difficulty_));
+        }
+        std::printf("Difficulty set to %s.\n",
+            kDifficultyNames[og::runtime::current_session->current_difficulty_]);
+        autosave_company_after_mutation(); // §3.8 settings tail
     }
 
     void handle_difficulty_menu_item(const PickerMenuItem& item)
     {
         switch (item.command) {
         case PickerMenuCommand::SetDifficulty:
-            og::runtime::current_session->current_difficulty_ = cycle_difficulty(og::runtime::current_session->current_difficulty_);
-            if (og::runtime::current_session->game_.world != nullptr) {
-                og::runtime::current_session->game_.world->difficulty =
-                    static_cast<short>(difficulty_percent(og::runtime::current_session->current_difficulty_));
-            }
-            std::printf("Difficulty set to %s.\n",
-                kDifficultyNames[og::runtime::current_session->current_difficulty_]);
-            autosave_company_after_mutation(); // §3.8 settings tail
+            apply_difficulty_value(cycle_difficulty(
+                og::runtime::current_session->current_difficulty_));
             break;
         case PickerMenuCommand::CycleRespawnMode:
             cycle_respawn_mode(save_data_);
@@ -1137,7 +1157,8 @@ private:
 
     TerminalLineupInputs lineup_inputs(
         const std::vector<og::sim::LobbyPlayer>& seats,
-        std::span<const int> map_unit_counts) const
+        std::span<const int> map_unit_counts,
+        const og::ui::ScenarioRosterReport* report = nullptr) const
     {
         TerminalLineupInputs inputs;
         inputs.save = &save_data_;
@@ -1152,6 +1173,10 @@ private:
         // as on the SDL band. Empty when nothing could be staged — the
         // documented silence, not an invented census.
         inputs.map_unit_counts = map_unit_counts;
+        // §3.8.4: the census column is the shared preview formatter over
+        // this same staged world. nullptr where nothing staged, and the
+        // column falls back to the band's own fighter census.
+        inputs.report = report;
         return inputs;
     }
 
@@ -1184,18 +1209,26 @@ private:
             .host_company_save = &save_data_,
         });
         std::array<int, 4> map_unit_counts{};
+        og::ui::ScenarioRosterReport report;
 
         for (;;) {
-            const bool censused = census_staged_lineup_map_units(
-                stage, save_data_,
-                og::runtime::current_session->current_difficulty_,
-                config_.seed, map_unit_counts);
+            // §3.8.4: ONE census answers both questions — the MAP UNITS
+            // counts the hint reads and the staged report the census column
+            // reads. Staged is the only arm whose numbers describe THIS
+            // level, so the report is offered to the model only then.
+            const bool censused =
+                census_staged_match_report(
+                    stage, save_data_,
+                    og::runtime::current_session->current_difficulty_,
+                    config_.seed, map_unit_counts, report) ==
+                og::ui::IPickerLobbyClient::StagedPreviewHealth::Staged;
             const std::vector<og::sim::LobbyPlayer> seats =
                 synthesize_local_lobby_players(save_data_);
             const TerminalLineupModel model = build_terminal_lineup_model(
                 lineup_inputs(seats,
                               censused ? std::span<const int>(map_unit_counts)
-                                       : std::span<const int>()));
+                                       : std::span<const int>(),
+                              censused ? &report : nullptr));
 
             std::printf("\n--- Lineup ---\n");
             for (const std::string& line : model.lines)
@@ -1576,11 +1609,29 @@ private:
         }
     }
 
-    // #206 CAMP, text projection: the shared terminal driver over this
-    // client's save — the printf banner and the read_line prompt are the
-    // only client-specific parts (every camp line, docket ordinal and roster
-    // row is composed by the driver, byte-identical with curses).
-    void campaign_camp_flow()
+    // The text "Set level" tail: session config + save cursor. The replay
+    // arm (#207) re-checks cleared at the write choke — the row decoration
+    // is fetch-time state. A plain write abandons any excursion in flight
+    // (a stale arm must never skip a purge). ONE tail: the camp flow and
+    // the SETUP wizard's ARENA step both bind it, so a level set from
+    // either door writes exactly the same three fields.
+    void apply_level_tail(int level, bool replay_arm)
+    {
+        config_.level = level;
+        if (replay_arm && save_data_.is_level_completed(level))
+            save_data_.arm_replay(static_cast<short>(level));
+        else
+        {
+            save_data_.clear_replay_arm();
+            save_data_.scen_num = static_cast<short>(level);
+        }
+    }
+
+    // The four callbacks every terminal driver in this client shares: the
+    // banner+prompt, the notice line, the host predicate and the level
+    // tail. Written once so the camp and the wizard cannot answer
+    // differently (the SETUP wizard's io is this one plus its own knobs).
+    TerminalCampaignPickerIo make_camp_io()
     {
         TerminalCampaignPickerIo io;
         io.prompt = [this](const std::string& title,
@@ -1605,20 +1656,55 @@ private:
         // always answers host here.
         io.is_host = [this] { return label_context().is_host; };
         io.apply_level = [this](int level, bool replay_arm) {
-            // The text "Set level" tail: session config + save cursor. The
-            // replay arm (#207) re-checks cleared at the write choke — the
-            // row decoration is fetch-time state. A plain write abandons any
-            // excursion in flight (a stale arm must never skip a purge).
-            config_.level = level;
-            if (replay_arm && save_data_.is_level_completed(level))
-                save_data_.arm_replay(static_cast<short>(level));
-            else
-            {
-                save_data_.clear_replay_arm();
-                save_data_.scen_num = static_cast<short>(level);
-            }
+            apply_level_tail(level, replay_arm);
         };
-        run_terminal_campaign_camp(save_data_, io);
+        return io;
+    }
+
+    // #206 CAMP, text projection: the shared terminal driver over this
+    // client's save — the printf banner and the read_line prompt are the
+    // only client-specific parts (every camp line, docket ordinal and roster
+    // row is composed by the driver, byte-identical with curses).
+    void campaign_camp_flow()
+    {
+        run_terminal_campaign_camp(save_data_, make_camp_io());
+    }
+
+    // #304: the SETUP wizard's terminal face. Every line, row, guard and
+    // dispatch arm belongs to the shared driver (og::ui::run_terminal_match_setup)
+    // — this function only says which tails are the text client's.
+    void setup_screen()
+    {
+        // W7-G: ONE stage for the whole wizard, on the same three inputs
+        // lineup_screen() and view_scenario() stage with, so the TEAMS
+        // lines, the MATCH report and VIEW LEVEL can never split.
+        og::server::MatchStage stage({
+            .networked = false,
+            .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+            .host_company_save = &save_data_,
+        });
+
+        og::ui::TerminalMatchSetupIo io;
+        io.base = make_camp_io();
+        io.level_hooks = []() -> const LevelDataHooks& {
+            return headless_level_data_hooks();
+        };
+        io.autosave = [this] { autosave_company_after_mutation(); };
+        // Lead ruling 2: the wizard hands over the VALUE the session
+        // computed; the DIFFICULTY submenu's own row hands over
+        // cycle_difficulty(current). One tail, two callers.
+        io.set_difficulty = [this](int value) { apply_difficulty_value(value); };
+        io.difficulty = [] {
+            return og::runtime::current_session->current_difficulty_;
+        };
+        io.census = [this, &stage](std::array<int, 4>& counts,
+                                   og::ui::ScenarioRosterReport& report) {
+            return og::ui::census_staged_match_report(
+                stage, save_data_,
+                og::runtime::current_session->current_difficulty_,
+                config_.seed, counts, report);
+        };
+        og::ui::run_terminal_match_setup(save_data_, io);
     }
 
     void set_level()
