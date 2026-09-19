@@ -7813,24 +7813,204 @@ void match_setup_draw_background(void* /*screen_state*/)
                                                          1);
 }
 
+// Per-frame band, faces and full-graph nav (pattern b). Visibility is the
+// gate pass's (the state_override thunks above); this pass re-bands the
+// rows under the step's lines, writes every composed face to BOTH label
+// surfaces, and rewires every link over what the gates left standing.
 void match_setup_rewire(button* buttons, int count, int& highlighted_button)
 {
-    // S5 owns the real pass: the per-frame band, the faces and the full
-    // graph. The gate pass above already owns visibility (the
-    // state_override thunks), and the ONE obligation the engine enforces
-    // over it is that no visible row links at a hidden one — MenuNav links
-    // are raw indices and do not skip. Close what the gates just hid.
     if (buttons == nullptr || count < kMatchSetupButtonCount)
         return;
-    for (int i = 0; i < count; ++i) {
-        if (buttons[i].hidden)
+    MatchSetupScreenState* const st = g_match_setup_state;
+    const bool host = picker_lobby_host_controls_visible();
+
+    const auto live = [](int index) {
+        return og::runtime::current_session
+            ->allbuttons_[static_cast<std::size_t>(index)];
+    };
+    const auto place = [buttons, &live](int index, int x, int y, int w,
+                                        int h) {
+        buttons[index].x = x;
+        buttons[index].y = y;
+        buttons[index].sizex = w;
+        buttons[index].sizey = h;
+        vbutton* const face = live(index);
+        if (face != nullptr) {
+            face->xloc = x;
+            face->yloc = y;
+            face->width = w;
+            face->xend = x + w;
+            face->yend = y + h;
+        }
+    };
+    const auto write_label = [buttons, &live](int index, std::string label) {
+        buttons[index].label = label;
+        vbutton* const face = live(index);
+        if (face != nullptr)
+            face->label = std::move(label);
+    };
+
+    int lines = 0;
+    const int visible = match_setup_visible_rows();
+    if (st != nullptr) {
+        const og::ui::MatchSetupSession::Page& page = st->session.page();
+        lines = static_cast<int>(page.lines.size() + page.team_lines.size());
+    }
+    const int row_top = setup_row_y0(std::min(lines, kSetupLinesMax));
+
+    // The rows and their cells, re-banded under the lines and re-faced.
+    for (int r = 0; r < kSetupRowsMax; ++r) {
+        const int ordinal = kMatchSetupRowBase + r;
+        const int rev = kMatchSetupRevBase + r;
+        const int y = row_top + kSetupRowPitch * r;
+        place(ordinal, kSetupRowX, y, kSetupRowW, kSetupRowH);
+        place(rev, kSetupRevX, y, kSetupRevW, kSetupRowH);
+        buttons[ordinal].nav = {};
+        buttons[rev].nav = {};
+        const SetupRow* const row = match_setup_window_row(r);
+        if (row == nullptr) {
+            write_label(ordinal, std::string());
             continue;
-        MenuNav& nav = buttons[i].nav;
-        for (int* link : {&nav.up, &nav.down, &nav.left, &nav.right}) {
-            if (*link >= 0 && *link < count && buttons[*link].hidden)
-                *link = -1;
+        }
+        ScriptedRowFace face =
+            compose_scripted_row_face(row->base, kSetupRowLabelChars, host);
+        // The wizard's one addition to the shared grammar: GO is not a
+        // level row, but it launches, so it wears the launch green.
+        if (row->extra == SetupRow::Extra::Go)
+            face.face = ScriptedRowFace::Face::Go;
+        write_label(ordinal, face.label);
+        // A Disabled row already wears the engine's dim (the gate pass);
+        // re-inking it here would undo the bevel fix.
+        if (row->state != RowState::Disabled)
+            apply_scripted_row_face_ink(live(ordinal), face.face);
+        write_label(rev, "<");
+    }
+    // The pagers un-park into the cell column's first row (they ship at a
+    // zero-size rect with no label, the Base Camp zone pagers' idiom).
+    place(kMatchSetupPagePrevIndex, kSetupPagerPrevX, row_top, kSetupPagerW,
+          kSetupRowH);
+    place(kMatchSetupPageNextIndex, kSetupPagerNextX, row_top, kSetupPagerW,
+          kSetupRowH);
+    write_label(kMatchSetupPagePrevIndex, "<");
+    write_label(kMatchSetupPageNextIndex, ">");
+
+    // The tab strip: one tab per PRESENT step, re-banded left-to-right from
+    // x=12 so a four-step campaign shows four tabs on the same pitch.
+    int tab_count = 0;
+    int current_tab = -1;
+    if (st != nullptr) {
+        const std::span<const SetupStep> steps = st->session.steps();
+        tab_count = std::min(static_cast<int>(steps.size()), kSetupTabCount);
+        for (int k = 0; k < tab_count; ++k) {
+            const int ordinal = kMatchSetupTabBase + k;
+            place(ordinal, setup_tab_x(k), kSetupTabY, kSetupTabW,
+                  kSetupTabH);
+            const std::string word{og::ui::MatchSetupSession::step_word(
+                steps[static_cast<std::size_t>(k)])};
+            const bool is_current =
+                steps[static_cast<std::size_t>(k)] == st->session.step();
+            if (is_current)
+                current_tab = ordinal;
+            write_label(ordinal, is_current ? "[" + word + "]" : word);
         }
     }
+    for (int k = 0; k < kSetupTabCount; ++k)
+        buttons[kMatchSetupTabBase + k].nav = {};
+
+    // --- the full graph, over exactly what the gates left visible --------
+    const auto shown = [buttons](int index) { return !buttons[index].hidden; };
+    const int first_row = visible > 0 ? kMatchSetupRowBase : -1;
+    const int last_row = visible > 0 ? kMatchSetupRowBase + visible - 1 : -1;
+    const int tab_anchor = current_tab >= 0 ? current_tab : -1;
+    const bool pagers = shown(kMatchSetupPagePrevIndex);
+
+    for (int k = 0; k < tab_count; ++k) {
+        const int ordinal = kMatchSetupTabBase + k;
+        buttons[ordinal].nav = {
+            .up = -1,
+            .down = first_row >= 0 ? first_row : kMatchSetupBackIndex,
+            .left = k > 0 ? kMatchSetupTabBase + k - 1 : -1,
+            .right = k + 1 < tab_count ? kMatchSetupTabBase + k + 1 : -1};
+    }
+
+    // The reverse cells chain among THEMSELVES (skipping rows with no
+    // wheel) and step LEFT back onto their own row.
+    const auto scan_rev = [&shown, visible](int from, int step) {
+        for (int r = from; r >= 0 && r < visible; r += step) {
+            if (shown(kMatchSetupRevBase + r))
+                return kMatchSetupRevBase + r;
+        }
+        return -1;
+    };
+    for (int r = 0; r < visible; ++r) {
+        const int ordinal = kMatchSetupRowBase + r;
+        const int rev = kMatchSetupRevBase + r;
+        const bool has_cell = shown(rev);
+        buttons[ordinal].nav = {
+            .up = r > 0 ? kMatchSetupRowBase + r - 1 : tab_anchor,
+            .down = r + 1 < visible ? kMatchSetupRowBase + r + 1
+                                    : kMatchSetupBackIndex,
+            .left = -1,
+            .right = has_cell
+                ? rev
+                : (r == 0 && pagers ? kMatchSetupPagePrevIndex : -1)};
+        if (!has_cell)
+            continue;
+        buttons[rev].nav = {.up = scan_rev(r - 1, -1),
+                            .down = scan_rev(r + 1, +1),
+                            .left = ordinal,
+                            .right = -1};
+    }
+    if (pagers) {
+        buttons[kMatchSetupPagePrevIndex].nav = {
+            .up = -1, .down = -1,
+            .left = first_row >= 0 ? first_row : -1,
+            .right = kMatchSetupPageNextIndex};
+        buttons[kMatchSetupPageNextIndex].nav = {
+            .up = -1, .down = -1,
+            .left = kMatchSetupPagePrevIndex, .right = -1};
+    }
+
+    // The footer chain, absent members skipped.
+    const bool prev_shown = shown(kMatchSetupPrevIndex);
+    const bool next_shown = shown(kMatchSetupNextIndex);
+    const int footer_up = last_row >= 0 ? last_row : tab_anchor;
+    buttons[kMatchSetupBackIndex].nav = {
+        .up = footer_up, .down = -1, .left = -1,
+        .right = prev_shown ? kMatchSetupPrevIndex
+                            : (next_shown ? kMatchSetupNextIndex : -1)};
+    buttons[kMatchSetupPrevIndex].nav = {
+        .up = footer_up, .down = -1, .left = kMatchSetupBackIndex,
+        .right = next_shown ? kMatchSetupNextIndex : -1};
+    buttons[kMatchSetupNextIndex].nav = {
+        .up = footer_up, .down = -1,
+        .left = prev_shown ? kMatchSetupPrevIndex : kMatchSetupBackIndex,
+        .right = -1};
+
+    // On the entered-GAME edge the highlight lands on the CURRENT game's
+    // row — the row whose id is the campaign's own match_knobs.arena_page.
+    // A one-shot write on the step edge, which is exactly what the
+    // rewire(buttons, count, int& highlighted) signature exists for.
+    if (st != nullptr) {
+        const SetupStep step = st->session.step();
+        const bool entered = !st->step_seeded || step != st->last_step;
+        st->step_seeded = true;
+        st->last_step = step;
+        if (entered && step == SetupStep::Game) {
+            const std::string& want = st->session.knobs().arena_page;
+            for (int r = 0; !want.empty() && r < visible; ++r) {
+                const SetupRow* const row = match_setup_window_row(r);
+                if (row == nullptr || row->base.id != want)
+                    continue;
+                highlighted_button = kMatchSetupRowBase + r;
+                TRACE("setup", "game_highlight %s", want.c_str());
+                break;
+            }
+        }
+    }
+
+    for (int i = 0; i < count; ++i)
+        sync_button_hidden_state(buttons, i);
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
 
@@ -7846,16 +8026,197 @@ bool match_setup_frame_tick(void* /*screen_state*/, int /*frame*/)
     return true;
 }
 
-// S5 owns the full dispatch; the chrome's own BACK is here from birth so
-// the screen can always be left.
+// The wizard's message line: the SAME 2.5s header-strip toast the Base Camp
+// and the zone submenu use. A refusal, a level set and a said-line confirm
+// identically at every depth of the camp.
+void match_setup_show_toast(MatchSetupScreenState& state, std::string text)
+{
+    if (text.size() >
+        static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden))
+    {
+        text.resize(
+            static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
+    }
+    TRACE("setup", "toast %s", text.c_str());
+    state.toast = std::move(text);
+    state.toast_until_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count() +
+        2500;
+}
+
+// The wizard's gated level-set tail: the SAME shared set and the SAME
+// answer switch the Base Camp docket and the zone submenu run, with this
+// surface's reload, toast and return code around it. A refusal NEVER
+// advances the step (§2.3) — only a landed set does.
+Sint32 match_setup_level_tail(MatchSetupScreenState& st, int level,
+                              bool replay_arm,
+                              const og::ui::MatchSetupSession::Inputs& inputs)
+{
+    ScriptedLevelSetAnswer answer = scripted_level_set_answer(
+        apply_scripted_level_set(level, replay_arm), level);
+    if (!answer.advanced) {
+        match_setup_show_toast(st, std::move(answer.refusal));
+        return MENU_REDRAW;
+    }
+    screen* const game = og::runtime::current_session->myscreen_;
+    // The arena the host just set must be LOADED before the step that
+    // censuses it composes; the frame tick's reload guard would only see
+    // the new cursor next frame, and TEAMS is one call away.
+    st.last_level_id = game->save_data.scen_num;
+    reload_picker_level_and_sync_settings(*game, st.last_level_id);
+    match_setup_show_toast(
+        st, answer.replay
+                ? og::ui::campaign_replay_set_message(game->world().title)
+                : og::ui::campaign_level_set_message(game->world().title));
+    // The session refetches its book and its match_knobs and steps on.
+    st.session.level_applied(inputs);
+    return MENU_REDRAW;
+}
+
+Sint32 match_setup_dispatch(MatchSetupScreenState& st,
+                            const og::ui::MatchSetupSession::Outcome& outcome,
+                            const og::ui::MatchSetupSession::Inputs& inputs)
+{
+    using Kind = og::ui::MatchSetupSession::OutcomeKind;
+    screen* const game = og::runtime::current_session->myscreen_;
+    switch (outcome.kind) {
+    case Kind::Stayed:
+        if (!outcome.message.empty())
+            match_setup_show_toast(st, outcome.message);
+        return MENU_REDRAW;
+    case Kind::Advanced:
+        TRACE("setup", "step %s",
+              std::string(og::ui::MatchSetupSession::step_word(
+                              st.session.step()))
+                  .c_str());
+        return MENU_REDRAW;
+    case Kind::Refused:
+        TRACE("setup", "refused %s", outcome.message.c_str());
+        match_setup_show_toast(st, outcome.message);
+        return MENU_REDRAW;
+    case Kind::Closed:
+        st.exit = MatchSetupExit::Closed;
+        return MENU_EXIT;
+    case Kind::SetLevel:
+        return match_setup_level_tail(st, outcome.level, outcome.replay_arm,
+                                      inputs);
+    case Kind::Turned:
+        // The write already landed in the save (the session owns the
+        // cycler); this is the client's post-write tail — the very one the
+        // zone action rows run.
+        TRACE("setup", "turned %d", static_cast<int>(outcome.knob));
+        picker_lobby_sync_settings_from_save();
+        (void)company_autosave_after_mutation(game->save_data,
+                                              picker_lobby_is_networked());
+        if (!outcome.message.empty())
+            match_setup_show_toast(st, outcome.message);
+        st.session.refetch(inputs);
+        return MENU_REDRAW;
+    case Kind::SetDifficulty:
+        // Ruling 2: the SESSION computed the value (so the "<" cell and a
+        // right-click step it back); the client's ONE value-taking tail
+        // writes it — the same tail the DIFFICULTY row's cycling case
+        // calls with cycle_difficulty(current).
+        TRACE("setup", "difficulty %d", outcome.difficulty);
+        apply_difficulty_value(outcome.difficulty);
+        st.session.refetch(inputs);
+        return MENU_REDRAW;
+    case Kind::OpenLineup:
+        (void)create_lineup_menu(-1);
+        st.session.refetch(inputs);
+        return MENU_REDRAW;
+    case Kind::OpenViewLevel:
+        (void)create_view_scenario_menu(-1);
+        st.session.refetch(inputs);
+        return MENU_REDRAW;
+    case Kind::Go:
+        // D20: the wizard's GO IS the strip GO's click, and Base Camp owns
+        // that button — it dispatches ButtonAction::GoMenu on the real
+        // ordinal the moment its own live buttons are back. Nothing here
+        // is a copy of go_menu.
+        TRACE("setup", "go");
+        st.exit = MatchSetupExit::Go;
+        return MENU_EXIT;
+    }
+    return 0;
+}
+
+Sint32 match_setup_choose(MatchSetupScreenState& st, int slot, int dir,
+                          const og::ui::MatchSetupSession::Inputs& inputs)
+{
+    const og::ui::MatchSetupSession::Page& page = st.session.page();
+    const int index = page.page.first_index() + slot;
+    if (slot < 0 || slot >= match_setup_visible_rows() || index < 0 ||
+        index >= static_cast<int>(page.rows.size()))
+    {
+        return 0;  // a stale click on a row this frame does not show
+    }
+    return match_setup_dispatch(
+        st, st.session.choose(static_cast<std::size_t>(index), dir, inputs),
+        inputs);
+}
+
+// Row dispatch: the C++-owned chrome first (BACK, the footer, the pagers,
+// the tab strip), then the session's own rows. Every tail the session may
+// not run lives on this side of the call.
 Sint32 match_setup_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<MatchSetupScreenState*>(screen_state);
+    if (st == nullptr)
+        return row == kMatchSetupBackIndex ? MENU_EXIT : 0;
+    // One click, one answer (the Base Camp rule).
+    st->toast.clear();
+    st->toast_until_ms = 0;
+    const bool reverse = og::ui::menu_spec_row_reverse();
+    const LineupSeatView seats = picker_lineup_seat_view();
+    const std::array<int, 4> map_units = picker_lineup_map_unit_counts();
+    const og::ui::MatchSetupSession::Inputs inputs =
+        match_setup_inputs(*st, seats, map_units);
+
     if (row == kMatchSetupBackIndex) {
         TRACE("setup", "closed");
-        if (st != nullptr)
-            st->exit = MatchSetupExit::Closed;
+        st->exit = MatchSetupExit::Closed;
         return MENU_EXIT;
+    }
+    if (row == kMatchSetupPrevIndex || row == kMatchSetupNextIndex) {
+        return match_setup_dispatch(*st,
+                                    row == kMatchSetupPrevIndex
+                                        ? st->session.prev(inputs)
+                                        : st->session.next(inputs),
+                                    inputs);
+    }
+    if (row == kMatchSetupPagePrevIndex || row == kMatchSetupPageNextIndex) {
+        st->session.page_step(row == kMatchSetupPagePrevIndex ? -1 : 1);
+        TRACE("setup", "page %s",
+              st->session.page().page.indicator().c_str());
+        return MENU_OK;
+    }
+    if (row >= kMatchSetupTabBase && row < kMatchSetupTabBase + kSetupTabCount)
+    {
+        const int k = row - kMatchSetupTabBase;
+        const std::span<const SetupStep> steps = st->session.steps();
+        if (k >= static_cast<int>(steps.size()))
+            return 0;
+        const SetupStep target = steps[static_cast<std::size_t>(k)];
+        if (target == st->session.step()) {
+            // The pressed-in tab is inert: the engine dims it and eats the
+            // click, so this arm only answers a dispatch that raced the
+            // gate — with the refetch a no-op tab press means.
+            TRACE("setup", "tab_current");
+            st->session.refetch(inputs);
+            return MENU_OK;
+        }
+        return match_setup_dispatch(*st, st->session.goto_step(target, inputs),
+                                    inputs);
+    }
+    if (row >= kMatchSetupRevBase && row < kMatchSetupRevBase + kSetupRowsMax)
+        return match_setup_choose(*st, row - kMatchSetupRevBase, -1, inputs);
+    if (row >= kMatchSetupRowBase && row < kMatchSetupRowBase + kSetupRowsMax)
+    {
+        return match_setup_choose(*st, row - kMatchSetupRowBase,
+                                  reverse ? -1 : +1, inputs);
     }
     return 0;
 }

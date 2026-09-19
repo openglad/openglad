@@ -181,6 +181,11 @@ Sint32 do_set_scen_level(Sint32 arg1);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_pick_spritesheet(Sint32 arg);
 Sint32 set_difficulty();
+// The value half of SetDifficulty (docs/match-setup-design.md ruling 2):
+// set_difficulty() cycles and calls this; the SETUP wizard's RULES row
+// calls it with the value the session already computed, so a reverse step
+// is one call and not a second copy of the write/sync/autosave tail.
+void apply_difficulty_value(int value);
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();

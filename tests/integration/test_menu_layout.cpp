@@ -6,6 +6,10 @@
 #include <openglad/interface/device_seats.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/match_setup_session.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/resources/campaign_state_providers.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -422,6 +426,458 @@ TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
 // #206 zone submenu: static table pins, the empty (null-state) shape,
 // and the pattern-b rewire's visibility variants — a partial page and a
 // full 24-entry page whose PageModel window shows the pagers.
+// ---------------------------------------------------------------------------
+// The SETUP wizard (docs/match-setup-design.md §2.0): the chassis grid, the
+// five step shapes, and the pattern-b rewire's full graph.
+//
+// Every assertion below is a RELATION, not a coordinate: an exact-table pin
+// (test_menu_pins) proves self-consistency and would happily pin a crooked
+// screen. What must hold is that the tabs, the cell column and the pagers
+// share ONE right edge, that the rows share one left edge and one pitch,
+// that the rows never leave the panel whatever the step's line count, and
+// that the footer's two step buttons sit on one gutter.
+namespace
+{
+
+constexpr const char* kSetupLayoutPack = "test.setuplayout";
+
+// The synthetic book: a GAMES root of seven page rows, a four-arena SOCCER
+// page (unpaged) and a TEN-arena CTF page (the paged case). The same shape
+// tests/unit/test_match_setup_session.cpp drives the session over.
+const char* setup_layout_book_script()
+{
+    return R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    if page_id == "" then
+      return { title = "GAMES", lines = { "Cleared: 0 of 40." }, entries = {
+        { id = "tdm",        label = "TEAM DEATHMATCH",  note = "0/6 cleared",  kind = "page" },
+        { id = "ctf",        label = "CAPTURE THE FLAG", note = "0/10 cleared", kind = "page" },
+        { id = "onslaught",  label = "ONSLAUGHT",        note = "0/4 cleared",  kind = "page" },
+        { id = "mutant",     label = "MUTANT",           note = "0/4 cleared",  kind = "page" },
+        { id = "soccer",     label = "SOCCER",           note = "0/4 cleared",  kind = "page" },
+        { id = "basketball", label = "BASKETBALL",       note = "0/6 cleared",  kind = "page" },
+        { id = "ffa",        label = "FREE FOR ALL",     note = "0/6 cleared",  kind = "page" },
+      } }
+    end
+    if page_id == "soccer" then
+      return { title = "SOCCER",
+               lines = { "Kick the ball into their goal.", "Next uncleared: THE PITCH." },
+               entries = {
+        { id = "820", label = "THE PITCH",    note = "2 sides, 3 goals", kind = "level", level = 820 },
+        { id = "821", label = "THE MUDBOWL",  note = "2 sides, 3 goals", kind = "level", level = 821 },
+        { id = "822", label = "FOURSQUARE",   note = "4 sides, 3 goals", kind = "level", level = 822 },
+        { id = "823", label = "BONEYARD CUP", note = "2 sides, 3 goals", kind = "level", level = 823 },
+      } }
+    end
+    if page_id == "ctf" then
+      local rows = {}
+      for i = 0, 9 do
+        rows[#rows + 1] = { id = tostring(500 + i), label = "FIELD " .. i,
+                            note = "4 sides, 20 min", kind = "level", level = 500 + i }
+      end
+      return { title = "CAPTURE THE FLAG",
+               lines = { "Take their flag home.", "Next uncleared: FIELD 0." },
+               entries = rows }
+    end
+    return nil
+  end,
+  match_knobs = function()
+    return { arena_page = "soccer", deal = "strong",
+             lines = { "STRONG adds a fighter, BRUTAL two." } }
+  end,
+}))LUA";
+}
+
+// A versus campaign with NO book: match_knobs alone is a legal
+// registration, so the wizard shows four tabs over the mount's manifest.
+const char* setup_layout_knobs_only_script()
+{
+    return R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    return { arena_page = "soccer" }
+  end,
+}))LUA";
+}
+
+struct SetupLayoutDriver
+{
+    button* buttons = nullptr;
+    int count = 0;
+    int highlighted = og::ui::kMatchSetupBackIndex;
+    std::vector<og::ui::RowState> states;
+
+    // The runner's own two passes, in the runner's own order: the generic
+    // gate pass (state_override) and then the screen's rewire.
+    void frame(bool is_host)
+    {
+        const og::ui::MenuScreenSpec& spec =
+            og::ui::match_setup_menu_screen_spec();
+        buttons = spec.buttons_accessor();
+        count = spec.count_accessor();
+        const std::vector<const og::ui::MenuButtonSpec*> rows =
+            og::ui::materialized_spec_rows(spec);
+        states.assign(static_cast<std::size_t>(count),
+                      og::ui::RowState::Visible);
+        og::ui::MenuLabelContext context;
+        context.save = &og::runtime::current_session->myscreen_->save_data;
+        context.is_host = is_host;
+        for (int i = 0; i < count; ++i)
+        {
+            const og::ui::MenuButtonSpec& row =
+                *rows[static_cast<std::size_t>(i)];
+            const og::ui::RowState state = row.state_override != nullptr
+                ? row.state_override(context)
+                : og::ui::gate_state(row.gate, context);
+            states[static_cast<std::size_t>(i)] = state;
+            buttons[i].hidden = (state == og::ui::RowState::Hidden);
+        }
+        ASSERT_NE(nullptr, spec.nav.rewire);
+        spec.nav.rewire(buttons, count, highlighted);
+    }
+};
+
+// Every relation the grid promises, over whatever the step left visible.
+void check_setup_grid(const SetupLayoutDriver& driver, const char* variant)
+{
+    button* const b = driver.buttons;
+    const int count = driver.count;
+    ASSERT_EQ(og::ui::kMatchSetupButtonCount, count) << variant;
+
+    // Rows: one left edge, one width, one pitch, inside the panel.
+    int previous_row_y = -1;
+    int visible_rows = 0;
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        const button& row = b[og::ui::kMatchSetupRowBase + r];
+        if (row.hidden)
+            continue;
+        ++visible_rows;
+        EXPECT_EQ(og::ui::kSetupRowX, row.x) << variant << " row " << r;
+        EXPECT_EQ(og::ui::kSetupRowW, row.sizex) << variant << " row " << r;
+        EXPECT_EQ(og::ui::kSetupRowH, row.sizey) << variant << " row " << r;
+        EXPECT_EQ(og::ui::kSetupCellX - og::ui::kSetupLineToRowGap,
+                  row.x + row.sizex)
+            << variant << ": the row face must end 4px before the cell "
+                          "column (276)";
+        EXPECT_GE(row.y, og::ui::kSetupContentY0) << variant << " row " << r;
+        EXPECT_LE(row.y + row.sizey, og::ui::kSetupPanelBottomY)
+            << variant << ": row " << r << " spills out of the panel";
+        if (previous_row_y >= 0)
+        {
+            EXPECT_EQ(og::ui::kSetupRowPitch, row.y - previous_row_y)
+                << variant << ": rows must keep one pitch";
+        }
+        previous_row_y = row.y;
+
+        // The reverse cell rides its row and closes the right edge.
+        const button& cell = b[og::ui::kMatchSetupRevBase + r];
+        if (cell.hidden)
+            continue;
+        EXPECT_EQ(og::ui::kSetupRevX, cell.x) << variant << " cell " << r;
+        EXPECT_EQ(og::ui::kSetupRevW, cell.sizex) << variant << " cell " << r;
+        EXPECT_EQ(og::ui::kSetupRightEdge, cell.x + cell.sizex)
+            << variant << ": the cell column has ONE right edge";
+        EXPECT_EQ(row.y, cell.y) << variant << ": the cell rides its row";
+        EXPECT_EQ("<", cell.label) << variant;
+    }
+
+    // The pagers share that edge and that first-row band.
+    const button& page_prev = b[og::ui::kMatchSetupPagePrevIndex];
+    const button& page_next = b[og::ui::kMatchSetupPageNextIndex];
+    if (!page_prev.hidden)
+    {
+        EXPECT_FALSE(page_next.hidden) << variant << ": the pagers are a pair";
+        EXPECT_EQ(og::ui::kSetupPagerPrevX, page_prev.x) << variant;
+        EXPECT_EQ(og::ui::kSetupPagerNextX, page_next.x) << variant;
+        EXPECT_EQ(og::ui::kSetupRightEdge, page_next.x + page_next.sizex)
+            << variant << ": the pager pair closes the one right edge";
+        EXPECT_EQ(b[og::ui::kMatchSetupRowBase].y, page_prev.y)
+            << variant << ": the pagers sit beside the row they page";
+        EXPECT_TRUE(b[og::ui::kMatchSetupRevBase].hidden)
+            << variant << ": a reverse cell and a pager in the same slot of "
+                          "the same column would overlap";
+    }
+
+    // The tab strip: one band, one pitch, closing on the right edge when
+    // the campaign has all five steps.
+    int tabs = 0;
+    int first_tab_x = -1;
+    int previous_tab_x = -1;
+    int last_tab_right = -1;
+    for (int k = 0; k < og::ui::kSetupTabCount; ++k)
+    {
+        const button& tab = b[og::ui::kMatchSetupTabBase + k];
+        if (tab.hidden)
+            continue;
+        ++tabs;
+        EXPECT_EQ(og::ui::kSetupTabY, tab.y) << variant << " tab " << k;
+        EXPECT_EQ(og::ui::kSetupTabH, tab.sizey) << variant << " tab " << k;
+        EXPECT_EQ(og::ui::kSetupTabW, tab.sizex) << variant << " tab " << k;
+        if (first_tab_x < 0)
+            first_tab_x = tab.x;
+        if (previous_tab_x >= 0)
+        {
+            EXPECT_EQ(og::ui::kSetupTabW + og::ui::kSetupTabGap,
+                      tab.x - previous_tab_x)
+                << variant << ": the tab pitch is 61";
+        }
+        previous_tab_x = tab.x;
+        last_tab_right = tab.x + tab.sizex;
+        EXPECT_LE(tab.y + tab.sizey + og::ui::kSetupLineToRowGap,
+                  og::ui::kSetupContentY0)
+            << variant << ": the tab -> content gap is the line -> row gap";
+    }
+    if (tabs > 0)
+    {
+        EXPECT_EQ(og::ui::kSetupLeftX, first_tab_x)
+            << variant << ": the strip re-bands from the one left edge";
+    }
+    if (tabs == og::ui::kSetupTabCount)
+    {
+        EXPECT_EQ(og::ui::kSetupRightEdge, last_tab_right)
+            << variant << ": five tabs close on the one right edge";
+    }
+
+    // The footer's two step buttons share a band on one gutter.
+    const button& prev = b[og::ui::kMatchSetupPrevIndex];
+    const button& next = b[og::ui::kMatchSetupNextIndex];
+    EXPECT_EQ(prev.y, next.y) << variant;
+    EXPECT_EQ(prev.sizex, next.sizex) << variant;
+    EXPECT_EQ(prev.sizey, next.sizey) << variant;
+    EXPECT_EQ(46, next.x - prev.x)
+        << variant << ": PREV mirrors NEXT across the 6px footer gutter";
+    EXPECT_FALSE(b[og::ui::kMatchSetupBackIndex].hidden)
+        << variant << ": BACK always closes the wizard";
+
+    // No two VISIBLE rows overlap, and no link points at a hidden one.
+    for (int i = 0; i < count; ++i)
+    {
+        if (b[i].hidden)
+            continue;
+        for (int j = i + 1; j < count; ++j)
+        {
+            if (b[j].hidden)
+                continue;
+            const bool overlap = b[i].x < b[j].x + b[j].sizex &&
+                b[j].x < b[i].x + b[i].sizex &&
+                b[i].y < b[j].y + b[j].sizey &&
+                b[j].y < b[i].y + b[i].sizey;
+            EXPECT_FALSE(overlap) << variant << ": " << b[i].id
+                                  << " overlaps " << b[j].id;
+        }
+    }
+    check_nav_closed_and_reachable(b, count, og::ui::kMatchSetupBackIndex,
+                                   variant);
+    (void)visible_rows;
+}
+
+} // namespace
+
+TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
+{
+    // The STATIC table first: the grid's own arithmetic, before any state.
+    button* buttons = picker_match_setup_buttons();
+    const int count = picker_match_setup_button_count();
+    ASSERT_EQ(og::ui::kMatchSetupButtonCount, count);
+    check_bounds(buttons, count, "match_setup");
+    EXPECT_EQ(47, og::ui::kSetupContentY0);
+    EXPECT_EQ(og::ui::kSetupRightEdge,
+              og::ui::setup_tab_x(og::ui::kSetupTabCount - 1) +
+                  og::ui::kSetupTabW);
+    EXPECT_EQ(276, og::ui::kSetupRowX + og::ui::kSetupRowW);
+    EXPECT_EQ(og::ui::kSetupRightEdge,
+              og::ui::kSetupCellX + og::ui::kSetupCellW);
+    // The TEAMS/MATCH line columns (the LINEUP band grammar), and the
+    // census cell's right edge on the text line's own.
+    EXPECT_EQ(12, og::ui::kSetupSwatchX);
+    EXPECT_EQ(26, og::ui::kSetupTeamLabelX);
+    EXPECT_EQ(70, og::ui::kSetupTeamSeatX);
+    EXPECT_EQ(188, og::ui::kSetupTeamCensusX);
+    EXPECT_EQ(308, og::ui::kSetupTeamCensusX +
+                       6 * og::ui::kSetupTeamCensusChars);
+
+    // The empty shape: no state installed, BACK alone.
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    {
+        SetupLayoutDriver driver;
+        driver.frame(/*is_host=*/true);
+        for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+        {
+            EXPECT_TRUE(driver.buttons[og::ui::kMatchSetupRowBase + r].hidden)
+                << "null state hides row " << r;
+        }
+        for (int k = 0; k < og::ui::kSetupTabCount; ++k)
+            EXPECT_TRUE(driver.buttons[og::ui::kMatchSetupTabBase + k].hidden);
+        check_nav_closed_and_reachable(driver.buttons, driver.count,
+                                       og::ui::kMatchSetupBackIndex,
+                                       "setup_empty");
+    }
+
+    // The live shapes, over a synthetic versus book.
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string previous_campaign = save.current_campaign;
+    const short previous_scen = save.scen_num;
+    const std::string previous_mount = get_mounted_campaign();
+    const std::vector<og::script::PackScript> saved_scripts =
+        og::script::pack_scripts();
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    og::script::unregister_pack_scripts("modes.core");
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    og::script::hooks::install_campaign_providers(
+        og::data::make_campaign_providers(save));
+
+    using Step = og::ui::MatchSetupSession::Step;
+    struct StepVariant {
+        Step step;
+        const char* name;
+    };
+    constexpr StepVariant kSteps[] = {
+        {Step::Game, "game"},   {Step::Arena, "arena"},
+        {Step::Teams, "teams"}, {Step::Rules, "rules"},
+        {Step::Match, "match"},
+    };
+
+    // {book, no-book} x {host, joiner} x {820 two-side, 822 four-side}
+    // x every present step. The paged case (the CTF page's ten arenas)
+    // rides the book axis below.
+    for (const bool book : {true, false})
+    {
+        og::script::clear_pack_scripts();
+        og::script::register_pack_script(
+            {kSetupLayoutPack, "setuplayout/scripts/book.lua",
+             book ? setup_layout_book_script()
+                  : setup_layout_knobs_only_script()});
+        for (const bool host : {true, false})
+        {
+            for (const std::uint8_t mask :
+                 {std::uint8_t{0b0011}, std::uint8_t{0b1111}})
+            {
+                og::ui::MatchSetupScreenState state(save);
+                og::ui::MatchSetupSession::Inputs in;
+                in.save = &save;
+                in.is_host = host;
+                in.my_team = 0;
+                in.authored_mask = mask;
+                ASSERT_TRUE(state.session.open(in))
+                    << "the wizard must open on a versus campaign";
+                EXPECT_EQ(book ? 5u : 4u, state.session.steps().size())
+                    << "a bookless campaign drops the GAME step";
+                og::ui::install_match_setup_state_for_screen(&state);
+
+                for (const StepVariant& variant : kSteps)
+                {
+                    if (!book && variant.step == Step::Game)
+                        continue;
+                    (void)state.session.goto_step(variant.step, in);
+                    const std::string name = std::format(
+                        "setup_{}_{}_{}_{}", variant.name,
+                        book ? "book" : "nobook", host ? "host" : "joiner",
+                        mask == 0b0011 ? "2side" : "4side");
+                    SetupLayoutDriver driver;
+                    driver.frame(host);
+                    ASSERT_NO_FATAL_FAILURE(
+                        check_setup_grid(driver, name.c_str()));
+
+                    // The CURRENT tab is the pressed-in one: Disabled, and
+                    // its neighbours plainly Visible (D36).
+                    int current_tabs = 0;
+                    for (int k = 0; k < og::ui::kSetupTabCount; ++k)
+                    {
+                        const int ordinal = og::ui::kMatchSetupTabBase + k;
+                        if (driver.states[static_cast<std::size_t>(ordinal)]
+                            == og::ui::RowState::Disabled)
+                        {
+                            ++current_tabs;
+                            EXPECT_EQ("[" + std::string(
+                                          og::ui::MatchSetupSession::step_word(
+                                              variant.step)) + "]",
+                                      driver.buttons[ordinal].label)
+                                << name;
+                        }
+                        else if (!driver.buttons[ordinal].hidden)
+                        {
+                            EXPECT_EQ(og::ui::RowState::Visible,
+                                      driver.states[static_cast<std::size_t>(
+                                          ordinal)])
+                                << name << ": a neighbour tab is live";
+                        }
+                    }
+                    EXPECT_EQ(1, current_tabs)
+                        << name << ": exactly one tab wears the pressed-in "
+                                   "face";
+                }
+                og::ui::install_match_setup_state_for_screen(nullptr);
+            }
+        }
+    }
+
+    // The PAGED shape: the CTF page's ten arenas over a window of seven.
+    {
+        og::script::clear_pack_scripts();
+        og::script::register_pack_script(
+            {kSetupLayoutPack, "setuplayout/scripts/book.lua",
+             setup_layout_book_script()});
+        og::ui::MatchSetupScreenState state(save);
+        og::ui::MatchSetupSession::Inputs in;
+        in.save = &save;
+        in.is_host = true;
+        in.authored_mask = 0b1111;
+        ASSERT_TRUE(state.session.open(in, "ctf"));
+        EXPECT_EQ(Step::Arena, state.session.step());
+        ASSERT_TRUE(state.session.page().page.multi_page())
+            << "ten arenas over a seven-row window must page";
+        og::ui::install_match_setup_state_for_screen(&state);
+        SetupLayoutDriver driver;
+        driver.frame(/*is_host=*/true);
+        EXPECT_FALSE(driver.buttons[og::ui::kMatchSetupPagePrevIndex].hidden)
+            << "a multi-window page shows its pagers";
+        ASSERT_NO_FATAL_FAILURE(check_setup_grid(driver, "setup_arena_paged"));
+        og::ui::install_match_setup_state_for_screen(nullptr);
+    }
+
+    // The GAME-entry highlight: on entering GAME the keyboard lands on the
+    // row the campaign named in match_knobs.arena_page — the game the
+    // cursor's arena belongs to, not row 0.
+    {
+        og::ui::MatchSetupScreenState state(save);
+        og::ui::MatchSetupSession::Inputs in;
+        in.save = &save;
+        in.is_host = true;
+        in.authored_mask = 0b0011;
+        ASSERT_TRUE(state.session.open(in));
+        ASSERT_EQ(Step::Game, state.session.step());
+        og::ui::install_match_setup_state_for_screen(&state);
+        SetupLayoutDriver driver;
+        driver.frame(/*is_host=*/true);
+        int soccer_row = -1;
+        for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+        {
+            if (driver.buttons[og::ui::kMatchSetupRowBase + r].label.starts_with(
+                    "SOCCER"))
+            {
+                soccer_row = r;
+                break;
+            }
+        }
+        ASSERT_GE(soccer_row, 0) << "the synthetic book lists SOCCER";
+        EXPECT_EQ(og::ui::kMatchSetupRowBase + soccer_row, driver.highlighted)
+            << "entering GAME must highlight the CURRENT game's row";
+        og::ui::install_match_setup_state_for_screen(nullptr);
+    }
+
+    og::script::hooks::clear_campaign_providers();
+    og::script::clear_pack_scripts();
+    for (const og::script::PackScript& script : saved_scripts)
+        og::script::register_pack_script(script);
+    save.current_campaign = previous_campaign;
+    save.scen_num = previous_scen;
+    if (!previous_mount.empty() && previous_mount != "modes")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
 TEST(MenuLayout, zone_submenu_screen_layout_states_and_nav)
 {
     button* buttons = picker_zone_submenu_buttons();

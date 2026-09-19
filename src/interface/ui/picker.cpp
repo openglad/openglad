@@ -3362,9 +3362,14 @@ static void refresh_difficulty_menu_button_label(int button_index,
        pks().difficulty_menu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
-Sint32 set_difficulty()
+// The value-taking tail (docs/match-setup-design.md ruling 2): the SESSION
+// computes the value, so the wizard's "<" cell and a right-click can step
+// the wheel BACK, and the DIFFICULTY row's own cycling case below calls
+// this with cycle_difficulty(current). ONE tail, two callers — never a twin
+// of the world write, the label refresh, the lobby sync and the autosave.
+void apply_difficulty_value(int value)
 {
-   og::runtime::current_session->current_difficulty_ = og::ui::cycle_difficulty(og::runtime::current_session->current_difficulty_);
+   og::runtime::current_session->current_difficulty_ = value;
    const auto percent =
        static_cast<short>(og::ui::difficulty_percent(og::runtime::current_session->current_difficulty_));
    if (og::runtime::current_session->game_.world != nullptr)
@@ -3380,7 +3385,12 @@ Sint32 set_difficulty()
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
+}
 
+Sint32 set_difficulty()
+{
+   apply_difficulty_value(
+       og::ui::cycle_difficulty(og::runtime::current_session->current_difficulty_));
    return MENU_OK;
 }
 
