@@ -1487,11 +1487,27 @@ TEST_F(MatchSetupSessionTest, joiner_steps_cut_rows_and_print_lines)
     ASSERT_FALSE(joiner.page().lines.empty());
     EXPECT_EQ(std::string(og::ui::kHostSetsForEveryoneCaption),
               joiner.page().lines[0]);
-    const og::ui::MatchRulesInputs rules{&save_, true, true, difficulty_, true};
-    const std::vector<std::string> recap = og::ui::format_match_rules_lines(rules);
+    // A fact this step carries as a ROW is never ALSO a line on the same
+    // step (the lead's read-back of the wave-3 shots: the joiner's RULES
+    // printed `CROSS CONTROL: OWN` as a line AND as the row right under
+    // it). So the recap is the four PACKED lines the shared formatter
+    // answers for the set that is NOT on a row.
+    const og::ui::MatchRulesInputs packed{&save_, true, true, difficulty_,
+                                          false};
+    const std::vector<std::string> recap =
+        og::ui::format_match_rules_lines(packed);
+    ASSERT_EQ(4u, recap.size())
+        << "score/time, respawns/delay, permadeath/generators, "
+           "difficulty/gold — and no fifth line for the row";
     ASSERT_EQ(recap.size() + 1, joiner.page().lines.size());
     for (std::size_t i = 0; i < recap.size(); ++i)
         EXPECT_EQ(recap[i], joiner.page().lines[i + 1]);
+    for (const std::string& line : joiner.page().lines)
+    {
+        EXPECT_EQ(std::string::npos, line.find("CROSS CONTROL"))
+            << "CROSS CONTROL is a ROW on this step, so it is not a line "
+               "too: '" << line << "'";
+    }
     ASSERT_EQ(1u, joiner.page().rows.size());
     EXPECT_EQ("cross_control", joiner.page().rows[0].base.id);
     EXPECT_EQ(Extra::None, joiner.page().rows[0].extra);
@@ -1501,13 +1517,25 @@ TEST_F(MatchSetupSessionTest, joiner_steps_cut_rows_and_print_lines)
     EXPECT_EQ(Kind::Refused, refused.kind);
     EXPECT_EQ(joiner.page().rows[0].base.label, refused.message);
 
-    // Outside a networked lobby the read-only row is not there either.
+    // Outside a networked lobby the read-only row is not there either —
+    // and the lines do not grow one back: CROSS CONTROL is a networked
+    // fact, so off the lobby it is neither row nor line.
     networked_ = false;
     joiner.refetch(inputs(false));
     EXPECT_TRUE(joiner.page().rows.empty());
+    EXPECT_EQ(recap.size() + 1, joiner.page().lines.size());
 
     networked_ = true;
     ASSERT_EQ(Kind::Advanced, joiner.goto_step(Step::Match, inputs(false)).kind);
+    // The MATCH step carries NO rules rows, so it keeps all five lines —
+    // the rule is "not twice on one step", not "never printed".
+    EXPECT_TRUE(std::any_of(joiner.page().lines.begin(),
+                            joiner.page().lines.end(),
+                            [](const std::string& line) {
+                                return line.find("CROSS CONTROL") !=
+                                       std::string::npos;
+                            }))
+        << "MATCH has no rows to duplicate, so the recap is whole there";
     EXPECT_EQ((std::vector<std::string>{"view_level", "ready_pointer"}),
               row_ids(joiner));
     EXPECT_EQ(std::string(og::ui::kSetupJoinerReadyRow),

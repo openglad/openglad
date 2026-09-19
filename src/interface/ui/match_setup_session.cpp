@@ -586,9 +586,16 @@ void MatchSetupSession::compose_rules(const Inputs& inputs)
                                  inputs.session_difficulty, inputs.networked};
     if (!inputs.is_host)
     {
-        // Cut the row, print the line (the established joiner grammar).
+        // Cut the row, print the line (the established joiner grammar) —
+        // but a fact this step carries as a ROW is never ALSO a line on the
+        // same step. Networked, CROSS CONTROL stays a read-only row below,
+        // so the lines are composed without it: the same one formatter,
+        // asked for the set that is not already on screen. (The MATCH step
+        // has no rows at all and keeps all five lines.)
+        MatchRulesInputs line_rules = rules;
+        line_rules.networked = false;
         page_.lines.emplace_back(kHostSetsForEveryoneCaption);
-        for (std::string& line : format_match_rules_lines(rules))
+        for (std::string& line : format_match_rules_lines(line_rules))
             page_.lines.push_back(std::move(line));
         if (inputs.networked)
         {
