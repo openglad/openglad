@@ -2381,6 +2381,13 @@ TEST(CampaignZoneUi, book_without_a_zone_opens_through_the_camp_door)
     // the default roster plus one row).
     EXPECT_TRUE(trace_contains("zone", "page_row "))
         << "the door dispatches as a page-kind zone row";
+    // D28's classic half, pinned beside its versus twin
+    // (versus_docket_page_rows_open_the_wizard_not_the_submenu): a page
+    // row on a CLASSIC campaign keeps the chassis it has always had. The
+    // wizard is the versus campaigns' alone, and its shortcut trace must
+    // be nowhere near this flow.
+    EXPECT_FALSE(trace_contains("setup", "docket_shortcut"))
+        << "the SETUP wizard must not answer a classic campaign's book";
 }
 
 namespace {
@@ -3174,6 +3181,104 @@ int camp_entry_order_injector(void* data)
 }
 
 } // namespace
+
+namespace {
+
+// D28: on a VERSUS campaign the docket's page rows are shortcuts INTO the
+// SETUP wizard, positioned at the page they name. On every other campaign
+// they still open the zone submenu over the book. The two chassis are told
+// apart by what comes up, not by what the click looked like.
+struct DocketShortcutState
+{
+    std::atomic<bool> test_finished{false};
+    bool camp_seen = false;
+    bool row_seen = false;
+    bool wizard_opened = false;
+    bool submenu_opened = false;
+    bool finished = false;
+};
+
+int versus_docket_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DocketShortcutState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        static constexpr EscapeDoor kSetupDoors[] = {
+            {"setup_back", "setup_back"},
+            {"back", "back"},
+            {"go", "back"},
+            {"continue_game", "continue_game"},
+        };
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupDoors);
+    };
+
+    state->camp_seen = wait_for_interactable("continue_game", 10000);
+    if (!state->camp_seen)
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+
+    state->row_seen = wait_for_interactable("zone_action_0", 15000);
+    if (!state->row_seen)
+        return escape(2, "the versus docket never composed its GAME: row");
+    trace_clear();
+    state->wizard_opened = click_until_edge(
+        "zone_action_0",
+        [](int wait_ms) {
+            return wait_for_interactable("setup_tab_0", wait_ms);
+        },
+        "docket_shortcut", 3, 10000, "setup");
+    if (!state->wizard_opened)
+        return escape(3, "the GAME: row did not open the wizard");
+    state->submenu_opened = trace_contains("zone", "submenu_opened");
+
+    (void)click_until_edge("setup_back", [](int wait_ms) {
+        return wait_for_interactable("go", wait_ms);
+    });
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(CampaignZoneUi, versus_docket_page_rows_open_the_wizard_not_the_submenu)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 820);
+
+    DocketShortcutState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(versus_docket_injector, "versus_docket", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_TRUE(state.finished);
+    EXPECT_TRUE(state.wizard_opened)
+        << "the versus docket's GAME: row must land on the wizard's GAME "
+           "step — two doors from one screen into the same pages on two "
+           "chassis is the clutter #304 names";
+    EXPECT_FALSE(state.submenu_opened)
+        << "the zone submenu must not open on a versus campaign's page row";
+    EXPECT_TRUE(trace_contains("setup", "docket_shortcut games"))
+        << "the shortcut names the page it carries";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
 
 // The camp's ENTRY composition must read a save the arena deal has already
 // dealt (amendment 7, #276).

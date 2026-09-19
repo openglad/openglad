@@ -3005,6 +3005,20 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
      .nav = {.up = 7, .left = kCreateMenuBackIndex,
              .right = kCreateMenuScenarioIndex}},
+    // The SETUP door, appended at 73 (docs/match-setup-design.md §2.1) as
+    // DIFFICULTY's TWIN on the SAME rect — the GO/READY shape. On a versus
+    // campaign the fight's rules are the wizard's RULES step, so the strip
+    // shows SETUP there and DIFFICULTY everywhere else; base_camp_rewire
+    // shows exactly one of the pair and routes BACK/SCENARIO onto it.
+    // Statically hidden like READY (the overlap pin reads the materialized
+    // table).
+    {.id = "setup", .label = "SETUP",
+     .x = kBaseCampStripDifficultyX, .y = kBaseCampStripY,
+     .w = kBaseCampStripDifficultyWidth, .h = kBaseCampStripHeight,
+     .action = ButtonAction::MenuSpecRow, .arg = kCreateMenuSetupIndex,
+     .nav = {.up = 7, .left = kCreateMenuBackIndex,
+             .right = kCreateMenuScenarioIndex},
+     .hidden = true},
 };
 
 #undef OG_BASE_CAMP_DEP
@@ -4392,8 +4406,17 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     // keyboard route down from the rail.) The rail's LEFT end climbs into
     // the roster's left column and the rest into its body column — the split
     // the retired '+' used to make at exactly this x.
-    constexpr std::array<int, kBaseCampSeatCardsPerPage> card_down{
-        kCreateMenuDifficultyIndex,
+    // §2.1: exactly one of {DIFFICULTY, SETUP} is up. A versus campaign's
+    // rules live on the wizard's RULES step, so its strip carries SETUP;
+    // every other campaign keeps the DIFFICULTY door. Both wear the same
+    // rect, so the strip's geometry never moves.
+    const bool versus_strip = og::ui::is_versus_campaign(save);
+    buttons[kCreateMenuDifficultyIndex].hidden = versus_strip;
+    buttons[kCreateMenuSetupIndex].hidden = !versus_strip;
+    const int strip_second =
+        versus_strip ? kCreateMenuSetupIndex : kCreateMenuDifficultyIndex;
+    const std::array<int, kBaseCampSeatCardsPerPage> card_down{
+        strip_second,
         kCreateMenuScenarioIndex,
         kCreateMenuNetworkingIndex,
         kCreateMenuGoIndex};
@@ -4423,8 +4446,8 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     };
     buttons[kCreateMenuBackIndex].nav = {
         .up = rail_first, .down = -1, .left = -1,
-        .right = kCreateMenuDifficultyIndex};
-    buttons[kCreateMenuDifficultyIndex].nav = {
+        .right = strip_second};
+    buttons[strip_second].nav = {
         .up = visible_card_or_rail(0), .down = -1,
         .left = kCreateMenuBackIndex,
         .right = kCreateMenuScenarioIndex};
@@ -4432,7 +4455,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
         .up = networked
             ? visible_card_or_rail(1)
             : kBaseCampScenarioLineIndex,
-        .down = -1, .left = kCreateMenuDifficultyIndex,
+        .down = -1, .left = strip_second,
         .right = kCreateMenuNetworkingIndex};
     buttons[kCreateMenuNetworkingIndex].nav = {
         .up = visible_card_or_rail(2), .down = -1,
@@ -5111,6 +5134,26 @@ bool base_camp_frame_tick(void* screen_state, int /*frame*/)
         base_camp_refetch_zone(*state);
     }
     base_camp_refresh_rows(*state);
+    // D20: the wizard's GO IS the strip GO's click. run_match_setup_screen
+    // answers Go, and the dispatch that opened it cannot press the strip
+    // button itself — the nested screen owned allbuttons_ while it ran, so
+    // the real GO ordinal was null there. The reset that follows the
+    // dispatch's MENU_REDRAW rebuilds Base Camp's own live buttons, and
+    // this tick (the SAME loop iteration, right after that reset) presses
+    // the real one: the TeamBuild intercept selects StartGame and answers
+    // MENU_EXIT, exactly as a click on the strip does, and the loop ends on
+    // the same value the strip's own break returns.
+    if (state->pending_setup_go) {
+        state->pending_setup_go = false;
+        vbutton* const go = og::runtime::current_session
+            ->allbuttons_[static_cast<std::size_t>(kCreateMenuGoIndex)];
+        if (go != nullptr) {
+            (void)go->do_call(button_action_id(ButtonAction::GoMenu), -1);
+            TRACE("setup", "go_dispatched");
+        }
+        if (team_build_start_selected())
+            return false;
+    }
     return true;
 }
 
@@ -5125,6 +5168,30 @@ void base_camp_on_reset(void* screen_state)
     // (§3.3) and refetch the composition (fetch trigger 2 — own mutation).
     base_camp_refetch_zone(*state);
     base_camp_refresh_rows(*state);
+}
+
+// The one fold behind both doors into the SETUP wizard — the strip's own
+// SETUP and a versus docket page row (§2.1). Go is deferred to the frame
+// tick, which is the first moment Base Camp's live GO button exists again.
+Sint32 base_camp_open_match_setup(BaseCampScreenState& st,
+                                  const std::string& entry_page)
+{
+    switch (og::ui::run_match_setup_screen(entry_page)) {
+    case og::ui::MatchSetupExit::Go:
+        st.pending_setup_go = true;
+        return MENU_REDRAW;
+    case og::ui::MatchSetupExit::RemoteStart:
+        if (team_build_start_selected())
+            return MENU_EXIT;
+        return MENU_REDRAW;
+    case og::ui::MatchSetupExit::Closed:
+        break;
+    }
+    // Own navigation counts as a mutation trigger: the wizard may have set
+    // the level, turned a knob or run the book's own action.
+    base_camp_refetch_zone(st);
+    base_camp_refresh_rows(st);
+    return MENU_REDRAW;
 }
 
 // G3 row dispatch: deploy toggles, team-color cyclers, roster move-up
@@ -5143,6 +5210,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             TRACE("basecamp", "page %s", st->page.indicator().c_str());
         return MENU_OK;
     }
+
+    if (row == kCreateMenuSetupIndex)
+        return base_camp_open_match_setup(*st, std::string());
 
     if (row >= kBaseCampSeatCardBase &&
         row < kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage)
@@ -5299,6 +5369,19 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         using EntryKind = og::ui::CampaignPickerSession::Kind;
         switch (entry.kind) {
         case EntryKind::Page: {
+            // D28: on a VERSUS campaign the docket's page rows are
+            // shortcuts INTO the wizard, positioned at the page they name
+            // — GAME: lands on the GAME step, ARENA: on the ARENA step. Two
+            // doors from one screen into the same pages on two different
+            // chassis, with a NEXT that meant two different things, was
+            // exactly the clutter #304 names. The zone submenu keeps
+            // serving every classic campaign's book unchanged.
+            if (og::ui::is_versus_campaign(
+                    og::runtime::current_session->myscreen_->save_data))
+            {
+                TRACE("setup", "docket_shortcut %s", entry.id.c_str());
+                return base_camp_open_match_setup(*st, entry.id);
+            }
             // The zone submenu door: block on the chassis rooted at the
             // row's own page, then refetch (own navigation counts as a
             // mutation trigger — the book may have acted on entry).

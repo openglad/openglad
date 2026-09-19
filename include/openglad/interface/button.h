@@ -133,9 +133,13 @@ class vbutton
 // DIFFICULTY moved off the main menu into the Base Camp command strip
 // (docs/camp-controls-design.md): the three parked spares are a documented
 // reserve for scripted compositions, so the strip door was appended instead
-// of carved out of them. Mirrored by GameSession::kMaxButtons
+// of carved out of them. Raised again 73 -> 74 when the SETUP wizard's door
+// took DIFFICULTY's rect as its twin on versus campaigns
+// (docs/match-setup-design.md §3.7): append, never carve — the strip's
+// geometry and the wasm coordinate contracts are untouched, and the three
+// parked spares stay a reserve. Mirrored by GameSession::kMaxButtons
 // (session_state.h) — a static_assert in button.cpp ties the two literals.
-inline constexpr int MAX_BUTTONS = 73;
+inline constexpr int MAX_BUTTONS = 74;
 // allbuttons lives in GameSession — access via current_session->allbuttons_.
 void clear_allbuttons();
 

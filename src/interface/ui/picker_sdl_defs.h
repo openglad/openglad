@@ -359,7 +359,15 @@ inline constexpr int kBaseCampZoneSpareCount = 3;
 // the y=178 strip with the other doors — the ordinal ordering is the table's
 // growth history, not the reading order.
 inline constexpr int kCreateMenuDifficultyIndex = 72;
-inline constexpr int kCreateMenuButtonCount = 73;
+// The SETUP wizard's strip door (docs/match-setup-design.md §2.1):
+// DIFFICULTY's TWIN on ONE rect, the GO/READY shape — exactly one of the
+// pair is visible per frame, SETUP on a versus campaign and DIFFICULTY on
+// every other. Appended at the table's end like DIFFICULTY before it, so
+// no established ordinal moved; statically hidden like READY, so
+// createmenu_buttons_no_overlap holds on the materialized table with no
+// exemption.
+inline constexpr int kCreateMenuSetupIndex = 73;
+inline constexpr int kCreateMenuButtonCount = 74;
 
 // The panel's two right edges and the docket's row/pager geometry. These
 // were file-static in menu_screen_specs.cpp until the SETUP wizard

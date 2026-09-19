@@ -484,6 +484,11 @@ struct BaseCampScreenState {
     // Cursor used by the team-build family's level-reload frame hook.
     short last_level_id = -1;
     bool was_reset = false;
+    // The SETUP wizard answered Go (docs/match-setup-design.md D20). The
+    // frame tick presses the REAL strip GO once the reset has rebuilt this
+    // screen's live buttons — the nested wizard owned allbuttons_ while it
+    // ran, so the dispatch that opened it could not reach the ordinal.
+    bool pending_setup_go = false;
     // The gameplay-zone composition (docs/basecamp-zones-design.md): owned
     // by create_team_menu beside this state; null renders the default
     // composition through the same widget path (tests that install a bare

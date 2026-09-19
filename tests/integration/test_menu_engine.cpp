@@ -1815,17 +1815,26 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // session is the degenerate legacy shape; production non-hosts are
     // always networked — that variant drives the Base Camp READY twin and
     // the DIFFICULTY cross-control row.
+    //
+    // The third axis is the CAMPAIGN KIND (docs/match-setup-design.md
+    // §2.1): the Base Camp strip's second door is SETUP on a versus
+    // campaign and DIFFICULTY on every other, one visible per frame on one
+    // rect. Without this axis the allowance below could never be
+    // exercised, and a rewire that simply never showed SETUP would sail
+    // through.
     struct SweepVariant {
         bool host;
         bool networked;
+        bool versus;
         const char* name;
     };
     constexpr SweepVariant kVariants[] = {
-        {true, false, "host-local"},
-        {false, false, "nonhost-degenerate"},
-        {true, true, "host-networked"},
-        {false, true, "joiner-networked"},
+        {true, false, false, "host-local"},
+        {false, false, true, "nonhost-degenerate-versus"},
+        {true, true, true, "host-networked-versus"},
+        {false, true, false, "joiner-networked"},
     };
+    const std::string sweep_old_campaign = sweep_save.current_campaign;
 
     // §1.2 G13 / design §2.6: two rows may share geometry ONLY with
     // mutually exclusive gates. Any statically-overlapping pair must be
@@ -1838,7 +1847,10 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     const std::set<std::pair<std::string, std::string>> kSameGeometryAllowed =
         {{"go", "ready"},
          {"continue_game", "no_company_note"},
-         {"load_company", "no_company_note"}};
+         {"load_company", "no_company_note"},
+         // §2.1: the strip's second door is SETUP on a versus campaign and
+         // DIFFICULTY everywhere else — the GO/READY shape, one rect.
+         {"difficulty", "setup"}};
 
     int engine_screens = 0;
     for (int s = 0; s < static_cast<int>(og::ui::MenuScreenId::Count); ++s) {
@@ -1882,6 +1894,8 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
         for (const SweepVariant& sweep_variant : kVariants) {
             lobby.host = sweep_variant.host;
             lobby.networked = sweep_variant.networked;
+            sweep_save.current_campaign =
+                sweep_variant.versus ? "modes" : "gladiator";
             // §9.2 company-presence axis, ridden on the host flag (only the
             // main-menu gates read it): host variants sweep the with-company
             // shape (CONTINUE|LOAD visible, note Hidden), non-host variants
@@ -2032,6 +2046,7 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         sweep_save.team_list[static_cast<std::size_t>(i)] = std::move(sweep_saved_team[static_cast<std::size_t>(i)]);
     sweep_save.team_size = sweep_old_team_size;
+    sweep_save.current_campaign = sweep_old_campaign;
     // Mandatory restore (the shared-sweep contract): (true, "").
     og::ui::set_main_menu_company_view_for_tests(true, "");
     EXPECT_GE(engine_screens, 17)
