@@ -4532,6 +4532,51 @@ void base_camp_draw_background(void* screen_state)
 // The §2.5 content pass (after draw_buttons): header lines A/B, the page
 // indicator, the column headers, the roster row text/team chips, and the
 // empty state.
+// The camp header's line-B slot, composed once for every ROOM in the camp:
+// the Base Camp itself and the SETUP wizard, which keeps the line untouched
+// (docs/match-setup-design.md D32 — the census is what a host configuring a
+// 2v2 with a remote joiner watches, on every step). The message-line toast
+// borrows the slot until its stamp expires; a degraded-link alert still
+// outranks it, in the alert colour.
+struct CampLineBSlot {
+    std::string text;
+    unsigned char color = WHITE;
+};
+
+CampLineBSlot compose_camp_line_b_slot(const std::string& toast,
+                                       std::int64_t toast_until_ms,
+                                       std::size_t budget)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    const std::int64_t now_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    const bool toast_active = !toast.empty() && now_ms < toast_until_ms;
+    CampLineBSlot slot;
+    if (picker_lobby_is_networked()) {
+        const BaseCampLineB header = compose_base_camp_line_b(
+            picker_lobby_connection_alert(),
+            picker_lobby_host_controls_visible(),
+            picker_lobby_session_room_code(), picker_lobby_players(),
+            static_cast<int>(budget));
+        slot.text = header.text;
+        if (header.alert)
+            slot.color = static_cast<unsigned char>(ORANGE_START);
+        else if (toast_active) {
+            slot.text = toast;
+            slot.color = YELLOW;
+        }
+    } else if (toast_active) {
+        slot.text = toast;
+        slot.color = YELLOW;
+    } else {
+        slot.text = format_base_camp_scen_line(game->save_data,
+                                               game->world().title);
+    }
+    return slot;
+}
+
 void base_camp_draw_content(void* screen_state)
 {
     const BaseCampScreenState* st =
@@ -4594,37 +4639,16 @@ void base_camp_draw_content(void* screen_state)
     const std::size_t line_b_budget = static_cast<std::size_t>(
         hire_visible ? og::ui::kBaseCampLineBCharsHireVisible
                      : og::ui::kBaseCampLineBCharsHireHidden);
-    std::string line_b;
-    unsigned char line_b_color = WHITE;
     // The message-line toast (zone refusals/toasts — never a modal, a
     // modal strands a networked joiner mid-GO) borrows the line-B slot
     // until its stamp expires; a degraded-link alert still outranks it.
-    const std::int64_t now_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
-            .count();
-    const bool toast_active = st != nullptr && !st->toast.empty() &&
-        now_ms < st->toast_until_ms;
-    if (networked) {
-        const BaseCampLineB header = compose_base_camp_line_b(
-            picker_lobby_connection_alert(),
-            picker_lobby_host_controls_visible(),
-            picker_lobby_session_room_code(),
-            picker_lobby_players(),
-            static_cast<int>(line_b_budget));
-        line_b = header.text;
-        if (header.alert)
-            line_b_color = static_cast<unsigned char>(ORANGE_START);
-        else if (toast_active) {
-            line_b = st->toast;
-            line_b_color = YELLOW;
-        }
-    } else if (toast_active) {
-        line_b = st->toast;
-        line_b_color = YELLOW;
-    } else {
-        line_b = format_base_camp_scen_line(save, game->world().title);
-    }
+    // One composition for every room in the camp (the SETUP wizard draws
+    // the same slot, D32).
+    const CampLineBSlot line_b_slot = compose_camp_line_b_slot(
+        st != nullptr ? st->toast : std::string(),
+        st != nullptr ? st->toast_until_ms : 0, line_b_budget);
+    const std::string& line_b = line_b_slot.text;
+    const unsigned char line_b_color = line_b_slot.color;
     // §9.10.2 (G2): line B sits at y=17 — 14px below line A's y=3 baseline
     // (round 1 had 10px) — with the pager cluster beside it at y=15. Its
     // backing strip starts on the panel's left line (strip_text backs the
@@ -8014,15 +8038,175 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
 
-void match_setup_draw_content(void* /*screen_state*/)
+void match_setup_draw_content(void* screen_state)
 {
-    // S6: the header lines, the step's lines and the swatched team lines.
+    const MatchSetupScreenState* const st =
+        static_cast<const MatchSetupScreenState*>(screen_state);
+    screen* const game = og::runtime::current_session->myscreen_;
+    text& mytext = game->text_normal;
+    const SaveData& save = game->save_data;
+
+    const auto strip_text = [game](int x, int y, const std::string& value,
+                                   unsigned char color) {
+        if (value.empty())
+            return;
+        const int width = static_cast<int>(value.size()) * 6;
+        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
+                               8, PURE_BLACK, 150);
+        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
+    };
+
+    // Header line A, byte-for-byte the Base Camp's: COMPANY + the gold
+    // block. The purse stays on screen while the match is set up.
+    std::string company = save.save_name;
+    if (company.size() > 26)
+        company.resize(26);
+    {
+        const int width = (9 + static_cast<int>(company.size())) * 6;
+        game->draw_rect_filled(8, 2, static_cast<Uint32>(width + 4), 8,
+                               PURE_BLACK, 150);
+        mytext.write_xy(10, 3, "COMPANY:", GREY, 1);
+        mytext.write_xy(64, 3, company.c_str(), WHITE, 1);
+    }
+    strip_text(244, 3, format_base_camp_gold_label(save), YELLOW);
+
+    // Line B is UNTOUCHED (D32): the camp's own SCEN readout or its
+    // networked census, or this screen's standing toast.
+    {
+        const CampLineBSlot slot = compose_camp_line_b_slot(
+            st != nullptr ? st->toast : std::string(),
+            st != nullptr ? st->toast_until_ms : 0,
+            static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
+        strip_text(10, 17, slot.text, slot.color);
+    }
+
+    if (st == nullptr)
+        return;
+    const og::ui::MatchSetupSession::Page& page = st->session.page();
+
+    // The step's lines and team lines, inked on the panel's own face like
+    // the zone's text widget (no backing strips inside the panel — the
+    // one-screen rule). The SESSION says where the team lines go; nothing
+    // here reorders them.
+    int y = kSetupContentY0;
+    const auto draw_team_lines = [&] {
+        for (const og::ui::MatchSetupSession::TeamLine& line :
+             page.team_lines)
+        {
+            // The team's colour is the identity every screen of the game
+            // already uses for it: the roster chip, LINEUP's chip, VIEW
+            // LEVEL's colour word.
+            game->fastbox(kSetupSwatchX, y, kSetupSwatchSize,
+                          kSetupSwatchSize,
+                          static_cast<unsigned char>(line.team * 16 + 40));
+            if (line.seats.empty() && line.census.empty()) {
+                // The MATCH step's shape: the report's own line rides the
+                // label cell whole, and the swatch inks its two-space
+                // indent (D31 — VIEW LEVEL's line is never re-spelled).
+                mytext.write_xy_flat(
+                    kSetupLeftX, y,
+                    og::ui::clip_with_ellipsis(
+                        line.label,
+                        static_cast<std::size_t>(kSetupLineChars))
+                        .c_str(),
+                    PURE_BLACK, 1);
+            } else {
+                mytext.write_xy_flat(kSetupTeamLabelX, y, line.label.c_str(),
+                                     PURE_BLACK, 1);
+                mytext.write_xy_flat(
+                    kSetupTeamSeatX, y,
+                    og::ui::clip_with_ellipsis(
+                        line.seats,
+                        static_cast<std::size_t>(kSetupTeamSeatChars))
+                        .c_str(),
+                    BLACK, 1);
+                // A diagnostic takes the benched shade LINEUP gives it:
+                // the cell mirrors GO's refusal, not a count.
+                mytext.write_xy_flat(
+                    kSetupTeamCensusX, y,
+                    og::ui::clip_with_ellipsis(
+                        line.census,
+                        static_cast<std::size_t>(kSetupTeamCensusChars))
+                        .c_str(),
+                    line.diag ? kBenchedTextShade
+                              : static_cast<unsigned char>(BLACK),
+                    1);
+            }
+            y += kSetupLinePitch;
+        }
+    };
+
+    for (std::size_t i = 0; i < page.lines.size(); ++i) {
+        if (i == page.team_lines_at)
+            draw_team_lines();
+        mytext.write_xy_flat(
+            kSetupLeftX, y,
+            og::ui::clip_with_ellipsis(
+                page.lines[i], static_cast<std::size_t>(kSetupLineChars))
+                .c_str(),
+            PURE_BLACK, 1);
+        y += kSetupLinePitch;
+    }
+    if (page.team_lines_at >= page.lines.size())
+        draw_team_lines();
+
+    // The ARENA window's "p/N", in the docket's own indicator slot.
+    if (page.page.multi_page())
+        strip_text(140, 176, page.page.indicator(), WHITE);
 }
 
-bool match_setup_frame_tick(void* /*screen_state*/, int /*frame*/)
+// The blocking-subscreen refresh discipline, three cursors: the host may
+// SET LEVEL while a joiner is parked in here, the lobby may land new
+// settings in the save under the open screen, and the owner's debounced
+// restage bumps the preview generation. Each one refetches the step; none
+// of them runs per frame.
+bool match_setup_frame_tick(void* screen_state, int /*frame*/)
 {
-    // S6: the level-reload guard, the settings fingerprint and the
-    // stage-generation watch.
+    auto* const st = static_cast<MatchSetupScreenState*>(screen_state);
+    if (st == nullptr)
+        return true;
+    screen* const game = og::runtime::current_session->myscreen_;
+    const SaveData& save = game->save_data;
+    const LineupSeatView seats = picker_lineup_seat_view();
+    const std::array<int, 4> map_units = picker_lineup_map_unit_counts();
+    bool refetch = false;
+
+    if (st->last_level_id != save.scen_num) {
+        st->last_level_id = save.scen_num;
+        reload_picker_level_and_sync_settings(*game, st->last_level_id);
+        match_setup_rebuild_report(*st, seats);
+        TRACE("setup", "level_reload %d", static_cast<int>(save.scen_num));
+        refetch = true;
+    }
+
+    const std::uint64_t fingerprint = og::ui::match_settings_fingerprint(save);
+    if (!st->fingerprint_seeded || fingerprint != st->settings_fingerprint) {
+        const bool moved = st->fingerprint_seeded;
+        st->fingerprint_seeded = true;
+        st->settings_fingerprint = fingerprint;
+        if (moved) {
+            TRACE("setup", "settings_changed");
+            refetch = true;
+        }
+    }
+
+    og::ui::IPickerLobbyClient* const lobby =
+        og::ui::active_picker_lobby_client();
+    const std::uint32_t generation =
+        lobby != nullptr ? lobby->stage_generation() : 0;
+    if (!st->report_seeded || generation != st->report_generation) {
+        const bool moved = st->report_seeded;
+        st->report_seeded = true;
+        st->report_generation = generation;
+        if (moved) {
+            match_setup_rebuild_report(*st, seats);
+            TRACE("setup", "staged %u", static_cast<unsigned>(generation));
+            refetch = true;
+        }
+    }
+
+    if (refetch)
+        st->session.refetch(match_setup_inputs(*st, seats, map_units));
     return true;
 }
 
