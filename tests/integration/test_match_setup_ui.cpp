@@ -27,6 +27,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/io_common.h>
@@ -122,8 +123,13 @@ void write_versus_save(const std::string& campaign, short scen_num)
     save.time_limit = 0;
     save.scen_num = scen_num;
     save.current_campaign = campaign;
+    save.current_levels.clear();
+    save.current_levels[campaign] = scen_num;
+    save.m_totalcash[0] = 5000;
+    save.campaign_state.clear();
+    save.completed_levels.clear();
     save.save_name = "IRON KETTLE";
-    (void)save.save();
+    ASSERT_TRUE(save.save("save0"));
 }
 
 void restore_gladiator_mount()
@@ -440,9 +446,20 @@ int reverse_injector(void* data)
         "setup_row_0", "SCORE: 1", 3, 10000, "turned", "setup");
 
     // The "<" cell steps the SAME wheel back: 1 -> MAP. Every pointer and
-    // every pad can reach it, which the right-click alone could not.
-    state->cell_stepped_back = click_until_label_containing(
-        "setup_rev_0", "SCORE: MAP", 3, 10000, "turned", "setup");
+    // every pad can reach it, which the right-click alone could not. The
+    // cell's OWN face never moves (it is the glyph "<"), so the edge this
+    // ladder watches is the ROW's face — press one id, watch another.
+    state->cell_stepped_back = click_until_edge(
+        "setup_rev_0",
+        [](int wait_ms) {
+            return wait_for_interactable_label_matching(
+                "setup_row_0",
+                [](const std::string& label) {
+                    return label.find("SCORE: MAP") != std::string::npos;
+                },
+                wait_ms);
+        },
+        "turned", 3, 10000, "setup");
 
     // And a right-click on the row itself is the third way in. It is not a
     // ladder (interact_right sends one press), so prove it by the face.
@@ -553,7 +570,7 @@ int bodies_injector(void* data)
     state->reached_match = open_setup_step(4, "MATCH", 15000);
     if (state->reached_match) {
         (void)wait_for_menu_frames(2);
-        capture_presented_frame("setup_go_gated", uxshots_dir());
+        capture_presented_frame("setup_match_ball", uxshots_dir());
         ++state->captures;
     }
 
@@ -600,5 +617,112 @@ TEST(MatchSetupUi, fresh_ball_arena_deals_strong_on_the_teams_step)
         << state.fill_row << "'";
     EXPECT_TRUE(state.reached_match);
     verify_captured_frames("setup_bodies", 2);
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// 5. GO says WHY it will not launch (D33). The MATCH step's GO is gated by
+//    the strip GO's OWN predicate — one home for the M4 refusal — and the
+//    face IS the reason, because a GO that ejects the player onto Base Camp
+//    to read a modal the wizard could have shown breaks the step's one
+//    promise.
+
+namespace
+{
+struct GoGateState
+{
+    std::atomic<bool> test_finished{false};
+    bool reached_match = false;
+    std::string sides_row;
+    std::string go_face;
+    bool finished = false;
+    int captures = 0;
+};
+
+int go_gate_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<GoGateState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupEscapeDoors);
+    };
+
+    if (!wait_for_interactable("continue_game", 10000))
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    if (!wait_for_interactable("setup", 15000))
+        return escape(2, "the versus strip never showed SETUP");
+
+    // FOUR authored sides: the SIDES wheel is a wheel here (D30), and the
+    // step prints one swatched line per authored team.
+    if (!open_setup_step(2, "TEAMS", 15000))
+        return escape(3, "the TEAMS step never came up");
+    (void)wait_for_menu_frames(2);
+    state->sides_row = interactable_label("setup_row_0");
+    capture_presented_frame("setup_step_teams_four_sides", uxshots_dir());
+    ++state->captures;
+
+    state->reached_match = open_setup_step(4, "MATCH", 15000);
+    if (!state->reached_match)
+        return escape(4, "the MATCH step never came up");
+    (void)wait_for_menu_frames(2);
+    state->go_face = interactable_label("setup_row_1");
+    capture_presented_frame("setup_go_gated", uxshots_dir());
+    ++state->captures;
+
+    if (!click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        }))
+    {
+        return escape(5, "BACK did not close the wizard");
+    }
+    state->finished = true;
+    return escape(0, "");
+}
+} // namespace
+
+TEST(MatchSetupUi, go_says_why_it_will_not_launch)
+{
+    trace_clear();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_versus_save("modes", 822);
+    // TWO seats, and only the first one's team has a deployed fighter: the
+    // second player has nobody to play. That is exactly the case the strip
+    // GO pops kDeployForEveryPlayerTitle for, and the wizard's GO wears it.
+    {
+        SaveData& save = test_screen()->save_data;
+        save.numplayers = 2;
+        save.team_list[1]->teamnum = 1;
+        save.team_list[1]->deployed = false;
+        ASSERT_TRUE(save.save("save0"));
+    }
+
+    GoGateState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(go_gate_injector, "setup_go_gate", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.reached_match);
+    EXPECT_NE(std::string::npos, state.sides_row.find("SIDES:"))
+        << "D30: a FOUR-side arena has a real sides wheel, and it leads "
+           "the step: '" << state.sides_row << "'";
+    EXPECT_EQ(std::string(og::ui::kSetupGoDeployFace), state.go_face)
+        << "the GO row's FACE is the refusal, not a modal one screen away: '"
+        << state.go_face << "'";
+    verify_captured_frames("setup_go_gate", 2);
     restore_gladiator_mount();
 }

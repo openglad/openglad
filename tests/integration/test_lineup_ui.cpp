@@ -2108,38 +2108,34 @@ TEST(LineupUi, arena_rest_deals_fair_and_an_explicit_none_still_refuses)
 }
 
 // ---------------------------------------------------------------------------
-// Amendment 5 (G5): the MATCH SETUP macros round-trip with LINEUP. The
-// camp page's TEAMS/FILL rows are macros over the ONE per-team fill array
-// (G1), so what a macro deals must read back band by band on the LINEUP
-// page, and a band tweaked there must read back on the camp face as
-// MIXED. Since amendment 7 the arena's rest is already a two-side deal
-// (RED and GREEN, the authored teams, FAIR — the same rest
-// arena_rest_deals_fair_and_an_explicit_none_still_refuses pins from the
-// LINEUP side), so the macro's first click deals the THIRD side: the
-// TEAMS wheel counts opponents in ascending order and knows nothing about
-// authorship (G2), which is exactly why it stays a macro and the deal
-// stays a default.
+// Amendment 5 (G5), through the SETUP wizard: the TEAMS step's FILL macro
+// round-trips with LINEUP. FILL is a macro over the ONE per-team fill
+// array (G1), so what it deals must read back band by band on the LINEUP
+// page, and a band tweaked there must read back on the wizard's face as
+// MIXED.
+//
+// The flow used to walk the TEAMS wheel 2 -> 3 -> 4 on this arena. It
+// cannot any more, and that is the point of D30: SIDES is CLAMPED to the
+// arena's authored side count, and CTF: FIRST BLOOD (scen 500) authors
+// RED and GREEN — two. One legal value is not a wheel, so the row is not
+// there at all, and the step opens on FILL. A wheel that turned to 3 on a
+// two-marker map wrote a knob the map ignores while the line under it
+// said EMPTY: a lie on the step's first row.
 
 namespace {
 
 struct MacroRoundTripState
 {
+    std::atomic<bool> test_finished{false};
     bool finished = false;
-    bool page_opened = false;
-    std::string rest_teams_label;
+    bool wizard_opened = false;
+    bool sides_row_absent = false;
     std::string rest_fill_label;
-    bool teams_three = false;
-    bool viewer_opened_after_three = false;
-    bool refusal_after_three = true;
-    std::string green_line_after_three;
-    bool second_page_opened = false;
-    bool teams_four = false;
     bool fill_strong = false;
     bool lineup_opened = false;
     std::array<std::string, 4> band_labels;
     bool band_two_weak = false;
-    bool third_page_opened = false;
-    std::string mixed_teams_label;
+    bool reopened = false;
     std::string mixed_fill_label;
     int captures = 0;
 };
@@ -2147,21 +2143,21 @@ struct MacroRoundTripState
 // The acknowledged click, as a bounded ladder over a NAMED screen edge, is
 // tests/test_click_ladder.h's click_until_edge — this file used to carry a
 // third copy of the rule beside test_campaign_zone_ui.cpp's and
-// test_ctf_ui.cpp's, and its two label ladders went the same way in PR #292.
-// The header's click_until_label_containing covers a row whose own
-// label moves; a door that opens another screen has no label change to wait
-// on, so it gets the same treatment against the edge that identifies the
-// destination. A press that evaporated on a starved frame then costs one
-// attempt instead of the whole flow — and, because every injector below bails
-// out when a door does not open, instead of leaving picker_main spinning until
-// the group's budget expires. Counted, never clocked, in
+// test_ctf_ui.cpp's, and its two label ladders went the same way in PR
+// #292. The header's click_until_label_containing covers a row whose own
+// label moves; a door that opens another screen has no label change to
+// wait on, so it gets the same treatment against the edge that identifies
+// the destination. A press that evaporated on a starved frame then costs
+// one attempt instead of the whole flow — and, because every injector
+// below leaves through the escape tail, instead of leaving picker_main
+// spinning until the group's budget expires. Counted, never clocked, in
 // g_click_ladder_click_retries.
 //
-// That count is a diagnostic, deliberately not an assertion: how many presses
-// a loaded box drops is load, and pinning a number would pin the load. The
-// ladder's SHAPE is pinned instead, once, by the matchup group's teeth —
-// CampaignZoneUi.match_setup_click_helper_retries_a_dropped_press,
-// .match_setup_click_helper_reports_a_ladder_that_never_lands and
+// That count is a diagnostic, deliberately not an assertion: how many
+// presses a loaded box drops is load, and pinning a number would pin the
+// load. The ladder's SHAPE is pinned instead, once, by the matchup group's
+// teeth — CampaignZoneUi.setup_click_helper_retries_a_dropped_press,
+// .setup_click_helper_reports_a_ladder_that_never_lands and
 // .deploy_toggle_survives_a_cancelled_acknowledge — which inject the fault
 // rather than wait for the box to supply it.
 
@@ -2169,140 +2165,92 @@ int macro_round_trip_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<MacroRoundTripState*>(data);
+    // The wizard's own door table FIRST: inside the nested wizard the Base
+    // Camp's `go` is not live, and the default table would spin against
+    // the group's ctest cap instead of pressing the one door that is up.
+    // That is exactly how this flow used to reach the 420 s timeout.
+    static constexpr EscapeDoor kSetupDoors[] = {
+        {"setup_back", "setup_back"},
+        {"lineup_unite", "back"},
+        {"back", "back"},
+        {"go", "back"},
+        {"continue_game", "continue_game"},
+    };
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupDoors);
+    };
 
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);  // fadeblack eats events: one of the two settles that stay
-    interact("continue_game");
-
-    // (a) The camp's MATCH SETUP door: the macro rows at rest.
-    if (!wait_for_interactable_label_containing("zone_action_3",
-                                                "MATCH SETUP", 15000))
-    {
-        state->finished = true;
-        return 0;
-    }
-    state->page_opened = click_until_edge("zone_action_3", [](int wait_ms) {
-        return wait_for_interactable_at("back", 10, 169, wait_ms);
-    });
-    if (!state->page_opened) {
-        state->finished = true;
-        return 0;
-    }
+    if (!wait_for_interactable("continue_game", 10000))
+        return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
-    state->rest_teams_label = interactable_label("zone_row_0");
-    state->rest_fill_label = interactable_label("zone_row_1");
+    (void)interact("continue_game");
+    if (!wait_for_interactable("setup", 15000))
+        return escape(2, "the versus strip never showed SETUP");
 
-    // (b) TEAMS: 3 — one click on from the dealt two-side rest — then out
-    // to VIEW LEVEL: a three-side match, no refusal anywhere.
-    state->teams_three =
-        click_until_label_containing("zone_row_0", "TEAMS: 3");
-    (void)click_until_edge("back",  // zone submenu -> Base Camp
-                           [](int wait_ms) { return wait_for_team_menu(wait_ms); });
-    if (click_until_edge("scenario", [](int wait_ms) {
-            return wait_for_interactable("view_scenario", wait_ms);
-        })) {
-        SDL_Delay(750);  // the other one: the viewer's own fadeblack
-        trace_clear();
-        state->viewer_opened_after_three =
-            click_until_edge("view_scenario", [](int wait_ms) {
-                return wait_for_interactable_at("back", 10, 170, wait_ms);
-            });
-        if (state->viewer_opened_after_three) {
-            (void)wait_for_trace(
-                "picker", "view_scenario line   GREEN TEAM  ACTIVE", 10000);
-            (void)wait_for_trace("picker", "view_scenario lines=", 5000);
-            state->refusal_after_three =
-                trace_contains("picker", "FEWER THAN 2 TEAMS");
-            state->green_line_after_three =
-                first_picker_trace_line_containing("GREEN TEAM  ACTIVE");
-            (void)click_until_edge("back", [](int wait_ms) {
-                return wait_for_interactable("progress", wait_ms);
-            });
-        }
-    }
-    if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        (void)click_until_edge(
-            "back",  // SCENARIO -> Base Camp
-            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
+    // (a) TEAMS at rest: no SIDES row on a two-side arena, FILL dealt FAIR.
+    state->wizard_opened = open_setup_step(2, "TEAMS", 15000);
+    if (!state->wizard_opened)
+        return escape(3, "the TEAMS step never came up");
+    (void)wait_for_menu_frames(2);
+    state->rest_fill_label = interactable_label("setup_row_0");
+    state->sides_row_absent =
+        state->rest_fill_label.find("SIDES:") == std::string::npos;
+
+    // (b) one FILL click steps the dealt FAIR to STRONG on every side.
+    state->fill_strong = click_until_label_containing(
+        "setup_row_0", "FILL: STRONG", 3, 10000, "turned", "setup");
+    if (!click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        }))
+    {
+        return escape(4, "BACK did not close the wizard");
     }
 
-    // (c) Back at the page: TEAMS persisted, one more click deals the
-    // fourth side, and one FILL click steps the FAIR face to STRONG.
-    state->second_page_opened =
-        click_until_edge("zone_action_3", [](int wait_ms) {
-            return wait_for_interactable_at("back", 10, 169, wait_ms);
-        });
-    if (state->second_page_opened) {
-        (void)wait_for_interactable_label_containing("zone_row_0",
-                                                     "TEAMS: 3", 10000);
-        state->teams_four =
-            click_until_label_containing("zone_row_0", "TEAMS: 4");
-        state->fill_strong =
-            click_until_label_containing("zone_row_1", "FILL: STRONG");
-        (void)click_until_edge("back",  // zone submenu -> Base Camp
-                               [](int wait_ms) { return wait_for_team_menu(wait_ms); });
-    }
-
-    // (d) LINEUP reads the same array band by band: STRONG on the human
-    // team's own band too (H1) and STRONG on all three sides. Then the
-    // tweak that diverges them: TEAM 2's wheel walked on to WEAK.
+    // (c) LINEUP reads the same array band by band: STRONG on the human
+    // team's own band too (H1). Then the tweak that diverges them: TEAM
+    // 2's wheel walked on to WEAK.
     if (!click_until_edge("scenario", [](int wait_ms) {
             return wait_for_interactable("lineup", wait_ms);
-        })) {
-        state->finished = true;
-        return 0;
+        }))
+    {
+        return escape(5, "SCENARIO never opened");
     }
     state->lineup_opened = click_until_edge("lineup", [](int wait_ms) {
         return wait_for_interactable_at("back", 8, 176, wait_ms);
     });
-    if (state->lineup_opened) {
-        (void)wait_for_menu_frames(2);
-        for (int t = 0; t < 4; ++t) {
-            state->band_labels[static_cast<std::size_t>(t)] =
-                interactable_label("lineup_fill_" + std::to_string(t));
-        }
-        state->captures += capture_frame("lineup_after_macro");
-        state->band_two_weak = click_through_labels(
-            "lineup_fill_1",
-            {"FILL: BRUTAL", "FILL: NONE", "FILL: WEAK"});
-        (void)click_until_edge("back",  // LINEUP -> SCENARIO
-                               [](int wait_ms) {
-            return wait_for_interactable_at("back", 30, 170, wait_ms);
-        });
+    if (!state->lineup_opened)
+        return escape(6, "LINEUP never opened");
+    (void)wait_for_menu_frames(2);
+    for (int t = 0; t < 4; ++t) {
+        state->band_labels[static_cast<std::size_t>(t)] =
+            interactable_label("lineup_fill_" + std::to_string(t));
     }
+    state->captures += capture_frame("lineup_after_macro");
+    state->band_two_weak = click_through_labels(
+        "lineup_fill_1", {"FILL: BRUTAL", "FILL: NONE", "FILL: WEAK"});
+    (void)click_until_edge("back", [](int wait_ms) {
+        return wait_for_interactable_at("back", 30, 170, wait_ms);
+    });
     if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        (void)click_until_edge(
-            "back",  // SCENARIO -> Base Camp
-            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
-    }
-
-    // (e) The camp face answers the divergence: FILL: MIXED, sides kept.
-    state->third_page_opened =
-        click_until_edge("zone_action_3", [](int wait_ms) {
-            return wait_for_interactable_at("back", 10, 169, wait_ms);
+        (void)click_until_edge("back", [](int wait_ms) {
+            return wait_for_team_menu(wait_ms);
         });
-    if (state->third_page_opened) {
-        (void)wait_for_interactable_label_containing("zone_row_1",
-                                                     "FILL: MIXED", 10000);
-        state->mixed_teams_label = interactable_label("zone_row_0");
-        state->mixed_fill_label = interactable_label("zone_row_1");
-        (void)click_until_edge(
-            "back",  // zone submenu -> Base Camp
-            [](int wait_ms) { return wait_for_team_menu(wait_ms); });
     }
 
-    if (wait_for_team_menu(5000)) {
-        // Base Camp -> out. No ladder here: with the main-menu call budget
-        // spent, picker_main RETURNS on this click instead of painting
-        // another screen, so there is no edge left to wait on.
-        (void)interact("back");
+    // (d) the wizard's face answers the divergence: FILL: MIXED.
+    state->reopened = open_setup_step(2, "TEAMS", 15000);
+    if (state->reopened) {
+        (void)wait_for_interactable_label_containing("setup_row_0",
+                                                     "FILL: MIXED", 10000);
+        state->mixed_fill_label = interactable_label("setup_row_0");
+        (void)click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
     }
-    if (g_picker_max_mainmenu_calls == 0 &&
-        wait_for_interactable("begin_new_game", 10000)) {
-        interact("quit");
-    }
+
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -2341,7 +2289,7 @@ TEST(LineupUi, acknowledged_click_gives_up_within_its_own_wait)
     og::runtime::current_session->localbuttons_ = nullptr;
 }
 
-TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
+TEST(LineupUi, setup_wizard_macros_round_trip_with_lineup)
 {
     trace_clear();
     SavedPickerSave save_guard;
@@ -2357,52 +2305,41 @@ TEST(LineupUi, match_setup_macros_round_trip_with_lineup)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.finished);
-    ASSERT_TRUE(state.page_opened) << "the MATCH SETUP submenu should open";
-    EXPECT_NE(std::string::npos, state.rest_teams_label.find("TEAMS: 2"))
-        << "amendment 7: the arena's rest is the dealt two-side match: '"
-        << state.rest_teams_label << "'";
+    ASSERT_TRUE(state.wizard_opened) << "the TEAMS step should open";
+    EXPECT_TRUE(state.sides_row_absent)
+        << "D30: a two-marker arena has one legal side count, so the SIDES "
+           "wheel is not on the step at all: '"
+        << state.rest_fill_label << "'";
     EXPECT_NE(std::string::npos, state.rest_fill_label.find("FILL: FAIR"))
         << "both dealt bands hold FAIR, so the face reads it: "
         << state.rest_fill_label;
-    EXPECT_TRUE(state.teams_three) << "one click deals the third side";
-    EXPECT_TRUE(state.viewer_opened_after_three);
-    EXPECT_FALSE(state.refusal_after_three)
-        << "three sides stand; nothing refuses";
-    EXPECT_TRUE(state.green_line_after_three.ends_with("FAIR"))
-        << "the dealt side censuses at the effective FAIR (G2): '"
-        << state.green_line_after_three << "'";
-    EXPECT_TRUE(state.second_page_opened);
-    EXPECT_TRUE(state.teams_four);
     EXPECT_TRUE(state.fill_strong)
         << "one FILL click steps the FAIR face to STRONG on every side";
     ASSERT_TRUE(state.lineup_opened) << "the LINEUP page should open";
     EXPECT_EQ("FILL: STRONG", state.band_labels[0])
         << "the FILL macro deals the human team's own band too (H1)";
     EXPECT_EQ("FILL: STRONG", state.band_labels[1]);
-    EXPECT_EQ("FILL: STRONG", state.band_labels[2]);
-    EXPECT_EQ("FILL: STRONG", state.band_labels[3])
-        << "TEAMS: 4 dealt the fourth side, and FILL stepped it with the rest";
     EXPECT_TRUE(state.band_two_weak)
         << "LINEUP keeps per-team authority over the same array";
-    EXPECT_TRUE(state.third_page_opened);
-    EXPECT_NE(std::string::npos, state.mixed_teams_label.find("TEAMS: 4"))
-        << "the sides count survives the divergence: '"
-        << state.mixed_teams_label << "'";
+    EXPECT_TRUE(state.reopened);
     EXPECT_NE(std::string::npos, state.mixed_fill_label.find("FILL: MIXED"))
-        << "a diverged pair reads MIXED, never a value of the camp's own "
+        << "a diverged pair reads MIXED, never a value of the wizard's own "
            "invention: '"
         << state.mixed_fill_label << "'";
     EXPECT_EQ(og::sim::kFillStrong, save.fill[0])
         << "the own band keeps the macro's STRONG through the LINEUP tweak";
     EXPECT_EQ(og::sim::kFillWeak, save.fill[1]);
-    EXPECT_EQ(og::sim::kFillStrong, save.fill[2]);
-    EXPECT_EQ(og::sim::kFillStrong, save.fill[3]);
     EXPECT_EQ(1, state.captures) << "the LINEUP-after-macro capture lands";
 
     restore_gladiator_mount();
