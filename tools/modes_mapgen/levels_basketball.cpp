@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — Basketball (824-829).
+/* Multiplayer Arenas campaign generator — Basketball (824-829).
  *
  * Court grammar (all six, docs/basketball-design.md §6.0): a CLOSED
  * impassable perimeter, a hardwood PIX_FLOOR1 court, dashed carpet-runner
@@ -481,14 +481,13 @@ std::vector<ExpectedLevel> basketball_expectations()
         },
         {{3, 12}, {41, 12}}, 160, {22, 12},
         {
-            "A NEW GAME, CONTENDERS.",
+            "A NEW GAME.",
             "CARRY THE BALL TO THE HOOP AND",
             "STEP IN: TWO POINTS. OR THROW",
             "IT HIGH - TWO INSIDE THE ARC,",
             "THREE BEYOND. BLEED AND YOU",
             "DROP IT. FIRST TO 21 TAKES",
             "THE COURT.",
-            "-- THE GAMESMASTER",
         });
     center_court.decor_cells = 4;
     out.push_back(std::move(center_court));
@@ -512,7 +511,6 @@ std::vector<ExpectedLevel> basketball_expectations()
             "IS A SHOOTING SPOT AND EVERY",
             "DRIVE IS A BRAWL. SHORT ARC,",
             "SHORT TEMPERS. FIRST TO 11.",
-            "-- THE GAMESMASTER",
         });
     playground.score_limit = 11;
     playground.time_limit = 5400;
@@ -544,7 +542,6 @@ std::vector<ExpectedLevel> basketball_expectations()
             "SCORE ON ANY RIVAL'S. EVERY",
             "REBOUND HAS FOUR CLAIMANTS.",
             "FIRST TO 21 TAKES THE CIRCUS.",
-            "-- THE GAMESMASTER",
         });
     four_hoops.decor_cells = 8;
     out.push_back(std::move(four_hoops));
@@ -572,7 +569,6 @@ std::vector<ExpectedLevel> basketball_expectations()
             "STRAIGHT PASS DIES, A CLEVER",
             "BANK LIVES. PLAY THE ANGLES.",
             "FIRST TO 21.",
-            "-- THE GAMESMASTER",
         });
     bankhouse.decor_cells = 4;
     out.push_back(std::move(bankhouse));
@@ -600,7 +596,6 @@ std::vector<ExpectedLevel> basketball_expectations()
             "WHO NEVER TIRE AND NEVER",
             "FLINCH. DEEP BENCHES, CHEAP",
             "FOULS. FIRST TO 21.",
-            "-- THE GAMESMASTER",
         });
     benchwarmers.generators_per_team[0] = 1;
     benchwarmers.generators_per_team[1] = 1;
@@ -632,7 +627,6 @@ std::vector<ExpectedLevel> basketball_expectations()
             "BALL CAN FLY STRAIGHT OVER.",
             "LAND IT WET AND IT BOGS DOWN.",
             "SHOOT IT LOOSE. FIRST TO 21.",
-            "-- THE GAMESMASTER",
         });
     causeway.decor_cells = 4;
     causeway.water_cells = 352;

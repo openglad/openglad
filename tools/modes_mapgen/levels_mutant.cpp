@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — Mutant (840-843).
+/* Multiplayer Arenas campaign generator — Mutant (840-843).
  *
  * Four 4-team FFA hunting grounds sized for the beacon chase: occlusion
  * over sightlines, ZERO teleporter pads (the mode's own teleport clamp
@@ -356,14 +356,13 @@ std::vector<ExpectedLevel> mutant_expectations()
                                  {FAMILY_DRUMSTICK, {20, 20}},
                              },
                              {
-                                 "A SPECIAL PAGE OF THE BOOK.",
+                                 "A GAME WITH ONE RULE.",
                                  "FIRST BLOOD MAKES A MUTANT:",
                                  "SWIFT, UNSEEN, AND ROTTING.",
                                  "ONLY THE MUTANT MAY BE HARMED;",
                                  "ONLY KILLING KEEPS IT ALIVE.",
                                  "SLAY IT AND WEAR THE CURSE.",
-                                 "WATCH YOUR COMPASS, CONTENDERS.",
-                                 "-- THE GAMESMASTER",
+                                 "WATCH YOUR COMPASS.",
                              }));
 
     out.push_back(mutant_row(841, "Mutant: CATACOMBS", 8, 50, 50, 66,
@@ -388,7 +387,6 @@ std::vector<ExpectedLevel> mutant_expectations()
                                  "THE ONLY HONEST GUIDE. FIRST",
                                  "BLOOD MAKES THE MUTANT; ONLY",
                                  "KILLING KEEPS IT FED.",
-                                 "-- THE GAMESMASTER",
                              }));
 
     out.push_back(mutant_row(842, "Mutant: MOONCOURT", 8, 40, 40, 48,
@@ -407,13 +405,12 @@ std::vector<ExpectedLevel> mutant_expectations()
                                  {FAMILY_SPEED_POTION, {19, 22}},
                              },
                              {
-                                 "THE MOONLIT COURT, CONTENDERS.",
+                                 "THE MOONLIT COURT.",
                                  "COLUMNS CARVE THE PLAZA INTO",
                                  "LANES AND EVERY LANE IS A",
                                  "DARE. THE MUTANT RUNS SWIFT",
                                  "AND ROTTING - DODGE, HUNT,",
                                  "AND WEAR THE CURSE IN TURN.",
-                                 "-- THE GAMESMASTER",
                              }));
 
     out.push_back(mutant_row(843, "Mutant: BROKEN CROWN", 10, 45, 45, 20,
@@ -436,7 +433,6 @@ std::vector<ExpectedLevel> mutant_expectations()
                                  "KILLS. WATCH THE RUBBLE GAPS,",
                                  "WATCH YOUR COMPASS, AND TAKE",
                                  "THE CURSE WHEN IT IS RIPE.",
-                                 "-- THE GAMESMASTER",
                              }));
 
     return out;

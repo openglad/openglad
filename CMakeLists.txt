@@ -1091,7 +1091,7 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(imaginations_mapgen)
 
-    # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
+    # --- modes_mapgen ("Multiplayer Arenas" campaign generator) ---
     # SDL-free authoring tool that writes campaigns/modes/
     # (the six-mode campaign absorbing arenas + ctf; the archive is composed
     # from that tree — packs/ subtree included — by og_builtin_campaigns)

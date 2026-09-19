@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator.
+/* Multiplayer Arenas campaign generator.
  *
  * Produces campaigns/modes/ (the source tree the build
  * composes into builtin/modes.glad): the 40-scenario seven-mode
@@ -129,7 +129,7 @@ void write_campaign_yaml(const std::string& path)
     // accessors key on (unknown keys are ignored by older readers).
     std::ofstream out(path);
     out << "format_version:  1\n"
-        << "title:           Multiplayer Game Modes\n"
+        << "title:           Multiplayer Arenas\n"
         << "version:         1\n"
         << "first_level:     300\n"
         << "suggested_power: 60\n"
@@ -138,22 +138,22 @@ void write_campaign_yaml(const std::string& path)
         << "contributors:    Forgotten Sages (arena grids)\n"
         << "\n"
         << "description:     |\n"
-        << "    One arena, seven games, one\n"
-        << "    book. The Gamesmaster calls\n"
-        << "    team deathmatch, capture the\n"
-        << "    flag, onslaught, mutant,\n"
-        << "    soccer, basketball, and free\n"
-        << "    for all across forty fields\n"
-        << "    old and new. The bots know\n"
-        << "    the rules. Respawns honor your\n"
-        << "    difficulty. First to the\n"
-        << "    target score takes the purse.\n";
+        << "    Seven games, forty arenas:\n"
+        << "    team deathmatch, capture\n"
+        << "    the flag, onslaught,\n"
+        << "    mutant, soccer, basketball\n"
+        << "    and free for all. Pick a\n"
+        << "    game and an arena, set the\n"
+        << "    teams and the rules, then\n"
+        << "    GO. Bots fill the empty\n"
+        << "    sides. Find SETUP on the\n"
+        << "    Base Camp strip.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
 }
 
 // The quartered games shield: four team-color quadrants under a gray
-// shield border, the Gamesmaster's gold coin as the boss.
+// shield border, the campaign's gold coin as the boss.
 void write_icon(const std::string& path)
 {
     constexpr int kSize = 32;
@@ -327,7 +327,7 @@ void self_check_level(const ExpectedLevel& row)
         fail(std::format("{}: grid {}x{} != {}x{}", where, world.grid.w,
                          world.grid.h, row.grid_w, row.grid_h));
 
-    // Briefing: exact text, budget, sign-off.
+    // Briefing: exact text, budget, theme lint.
     const std::vector<std::string> description(level.description.begin(),
                                                level.description.end());
     if (description != row.briefing)
@@ -337,9 +337,10 @@ void self_check_level(const ExpectedLevel& row)
         if (line.size() > 33)
             fail(std::format("{}: briefing line '{}' overflows 33", where,
                              line));
-    if (description.empty() || description.back() != "-- THE GAMESMASTER")
-        fail(std::format("{}: briefing must end '-- THE GAMESMASTER'",
-                         where));
+    if (const std::string violation =
+            modes_mapgen::briefing_theme_violation(description);
+        !violation.empty())
+        fail(std::format("{}: {}", where, violation));
 
     // Decor plane: well-formed ids/dims, never over air/stair/void, and
     // the exact nonzero-cell pin.

@@ -1534,7 +1534,7 @@ TEST(CursesPickerClient, progress_level_title_requires_matching_mount)
     f.client.handle_menu_item(PickerMenuId::Scenario, *item);
 
     const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("Campaign: Multiplayer Game Modes"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Campaign: Multiplayer Arenas"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Level: 4"), std::string::npos) << dump;
     EXPECT_EQ(dump.find("Level: 4."), std::string::npos)
         << "a mismatched mount must not show another campaign's title";

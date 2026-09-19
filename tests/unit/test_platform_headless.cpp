@@ -1934,7 +1934,7 @@ TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
               out.find("Set level (current 1. SOUTH OF TALWOOD (BEGINNING)): "));
     EXPECT_NE(std::string::npos, out.find("  1. Gladiator\n"))
         << "campaign select must list titles, default campaign first";
-    EXPECT_NE(std::string::npos, out.find("Multiplayer Game Modes"))
+    EXPECT_NE(std::string::npos, out.find("Multiplayer Arenas"))
         << "campaign select must list every package by title";
     EXPECT_EQ(std::string::npos, out.find("org.openglad."))
         << "raw campaign ids must never reach the display";

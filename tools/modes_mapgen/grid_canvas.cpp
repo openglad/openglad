@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — grid canvas.
+/* Multiplayer Arenas campaign generator — grid canvas.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
