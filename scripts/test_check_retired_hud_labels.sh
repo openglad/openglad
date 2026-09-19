@@ -72,6 +72,11 @@ HYPHENATED="${HALF_A}-${HALF_B}"
 
 OK_LINE='Retired HUD label check: OK'
 
+# The three #306 labels, likewise never written whole in this file.
+HALF_GAMES='GAMES'
+HALF_BOOK='BOOK'
+HALF_FIELD='FIELD'
+
 make_tree() {  # every root the gate scans, plus the two allowlisted fixtures
     local root="$1"
     mkdir -p "${root}/src" "${root}/include" "${root}/tests/integration" \
@@ -197,6 +202,35 @@ run_check "${tmp}/c9"
 expect_rc 9 2
 expect_stderr 9 'cannot find'
 expect_no_stdout 9 "${OK_LINE}"
+pass
+
+# --- every RETIRED_RE row has teeth on its own sample -----------------------
+# The phrases gate's self-test case 12 in one sentence: a regex that rots --
+# or that this system's awk cannot compile -- must red HERE, not go quietly
+# toothless on a clean tree.  The sample column is assembled from halves for
+# the same reason the label above is.
+cp -a "${tmp}/c1" "${tmp}/c10"
+SAMPLES=("${LBL}" "SEVEN ${HALF_GAMES}" "THE ${HALF_BOOK} OF STARS" \
+         "${HALF_FIELD}: DUNGEON")
+DECLARED_ROWS="$(sed -n '/^RETIRED_RE=(/,/)$/p' \
+    "${SCRIPTS_DIR}/check_retired_hud_labels.sh" | tr -cd "'" | wc -c)"
+DECLARED_ROWS=$((DECLARED_ROWS / 2))
+[[ "${DECLARED_ROWS}" -eq "${#SAMPLES[@]}" ]] || {
+    echo "FAIL case 10: the gate declares ${DECLARED_ROWS} retired labels," >&2
+    echo "  and this case plants ${#SAMPLES[@]} samples -- a row was added or" >&2
+    echo "  deleted; add (or drop) its sample here in the same commit." >&2
+    exit 1
+}
+for (( i = 0; i < ${#SAMPLES[@]}; i++ )); do
+    printf 'prose that still spells %s today.\n' "${SAMPLES[i]}" \
+        > "${tmp}/c10/docs/row$((i + 1)).md"
+done
+run_check "${tmp}/c10"
+expect_rc 10 1
+for (( i = 0; i < ${#SAMPLES[@]}; i++ )); do
+    expect_stderr 10 "docs/row$((i + 1)).md:1:"
+done
+expect_no_stdout 10 "${OK_LINE}"
 pass
 
 echo "test_check_retired_hud_labels: ${CASES}/${CASES} PASS"
