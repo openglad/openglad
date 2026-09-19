@@ -1682,6 +1682,12 @@ TEST(PickerCommon, deal_arena_lineup_for_cursor_reads_the_mounted_arena)
             SaveData fresh;
             fresh.current_campaign = "modes";
             fresh.scen_num = static_cast<short>(level);
+            // match_knobs asks the engine which arena the cursor is on
+            // (og.campaign_current_level), so the providers must be the
+            // ones the real pickers install, bound to THIS save. Without
+            // them the hook errors and every arena falls back to FAIR.
+            og::script::hooks::install_campaign_providers(
+                og::data::make_campaign_providers(fresh));
             ASSERT_TRUE(og::ui::deal_arena_lineup_for_cursor(
                 fresh, headless_level_data_hooks()))
                 << "scen " << level;
@@ -1695,6 +1701,7 @@ TEST(PickerCommon, deal_arena_lineup_for_cursor_reads_the_mounted_arena)
                     << "scen " << level << " team " << team;
             }
         }
+        og::script::hooks::clear_campaign_providers();
         (void)og::resources::refresh_pack_scripts();
         current_game = previous_game;
     }

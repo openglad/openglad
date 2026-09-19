@@ -3412,12 +3412,16 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_at_rest_fields_the_match)
         int opponents;  // live opponents on GREEN at tick 3, pinned exactly
     };
     // The D34 headcount rule sizes a solo roster's opponent squad to the
-    // roster headcount: one fighter, one opponent, on every map.
+    // roster headcount: one fighter, one opponent. The ball games are the
+    // exception (#305): their match_knobs deals STRONG, not FAIR, and the
+    // ball-game FILL wheel buys a BODY above FAIR -- so a solo game on THE
+    // PITCH fields two bots with no knob touched, which is the whole point
+    // of the shipped default.
     const Arena arenas[] = {
-        {500, 1},  // CTF
-        {300, 1},  // TDM
-        {820, 1},  // Soccer
-        {824, 1},  // Basketball
+        {500, 1},  // CTF       -- dealt FAIR
+        {300, 1},  // TDM       -- dealt FAIR
+        {820, 2},  // Soccer    -- dealt STRONG: FAIR's body plus one
+        {824, 2},  // Basketball-- dealt STRONG: FAIR's body plus one
     };
     for (const Arena& arena : arenas) {
         ASSERT_TRUE(seed_arena_company("arenad", arena.scen));
@@ -3484,7 +3488,7 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_at_rest_fields_the_match)
             << "scen " << arena.scen << ": the solo fighter on RED";
         EXPECT_EQ(arena.opponents, state_livings_on_team(state_line, 1))
             << "scen " << arena.scen
-            << ": GREEN's dealt FAIR squad stands on the field";
+            << ": GREEN's dealt squad stands on the arena floor";
     }
 
     ASSERT_EQ(CampaignPackageIoError::None,
