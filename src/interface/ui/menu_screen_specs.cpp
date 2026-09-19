@@ -7358,31 +7358,14 @@ void lineup_draw_content(void* screen_state)
                              format_lineup_power(band.power).c_str(), BLACK,
                              1);
 
-        // Seat run x=150..306 (26-char budget): the seats on this team,
-        // whole labels only, then "+n" for what did not fit; NO SEAT when
-        // the team has none.
-        std::string run;
-        int shown = 0;
-        for (const std::string& label : band.seat_labels) {
-            const std::string candidate =
-                run.empty() ? label : run + "  " + label;
-            if (static_cast<int>(candidate.size()) > kLineupSeatRunChars)
-                break;
-            run = candidate;
-            ++shown;
-        }
+        // Seat run x=150..306 (26-char budget): the three-tier rule the
+        // SETUP wizard's TEAMS line draws too (og::ui::format_lineup_seat_run
+        // — one composition, two columns). NO SEAT is this screen's own
+        // word for an empty run.
+        std::string run = og::ui::format_lineup_seat_run(
+            band.seat_labels, band.seat_count, kLineupSeatRunChars);
         if (band.seat_count == 0) {
             run = "NO SEAT";
-        } else if (shown < band.seat_count) {
-            std::string more =
-                std::format(" +{}", band.seat_count - shown);
-            if (static_cast<int>(run.size() + more.size()) >
-                kLineupSeatRunChars)
-            {
-                run.resize(static_cast<std::size_t>(
-                    kLineupSeatRunChars - static_cast<int>(more.size())));
-            }
-            run += more;
         }
         mytext.write_xy_flat(kLineupSeatRunX, header_y + 2, run.c_str(),
                              BLACK, 1);

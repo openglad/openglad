@@ -17,6 +17,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
@@ -164,14 +165,13 @@ TerminalLineupModel build_terminal_lineup_model(
             inputs.save->map_units[static_cast<std::size_t>(team)]);
 
         // Header line: the colour the SDL band paints as a chip, the price,
-        // then every seat on the team (the SDL "+n" overflow is a pixel
-        // budget; a terminal line has the room to name them all).
-        std::string seats;
-        for (const std::string& seat_label : band.seat_labels) {
-            if (!seats.empty())
-                seats += "  ";
-            seats += seat_label;
-        }
+        // then the seats through the ONE seat-run composition every surface
+        // shares. A terminal row has room for all four whole labels, so
+        // tier 1 always wins here — the tiers below it exist for the pixel
+        // columns and for a sixteen-seat lobby.
+        std::string seats = format_lineup_seat_run(
+            band.seat_labels, band.seat_count,
+            static_cast<int>(kCampaignPickerTerminalRowBudget));
         if (seats.empty())
             seats = "NO SEAT";
         model.lines.push_back(std::format(

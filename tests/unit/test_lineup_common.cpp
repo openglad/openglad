@@ -884,3 +884,105 @@ TEST(LineupCommon, machine_rows_without_a_machine_id_stay_separate)
         players, std::vector<std::uint8_t>{}, 39);
     EXPECT_EQ(2u, rows.size());
 }
+
+// The census CELL both LINEUP and the SETUP wizard's TEAMS line draw
+// (docs/match-setup-design.md §2.4, §3.8.4). A band diagnostic outranks
+// the picture; a staged report paints the picture the launch would adopt;
+// with no usable report the band's own census answers, so the column
+// never goes blank.
+TEST(LineupCommon, format_match_preview_arms_plurals_and_budget)
+{
+    LineupTeamBand band;  // no diagnostic, no fighters
+    og::ui::ScenarioRosterReport report;
+    report.is_versus = true;
+    report.staged = true;
+    report.mode_census = true;
+    report.team_active = {true, true, true, true};
+
+    const auto cell = [&](og::ui::ScenarioFill kind, int count, int squad) {
+        report.team_fill[0] = kind;
+        report.team_fill_count[0] = count;
+        report.team_squad_count[0] = squad;
+        return og::ui::format_match_preview(band, &report, 0);
+    };
+
+    EXPECT_EQ("1 FIGHTER", cell(og::ui::ScenarioFill::Company, 1, 0));
+    EXPECT_EQ("2 FIGHTERS", cell(og::ui::ScenarioFill::Company, 2, 0));
+    EXPECT_EQ("1 MAP UNIT", cell(og::ui::ScenarioFill::Troops, 1, 0));
+    EXPECT_EQ("12 MAP UNITS", cell(og::ui::ScenarioFill::Troops, 12, 0));
+    EXPECT_EQ("1 BOT", cell(og::ui::ScenarioFill::Bots, 1, 0));
+    EXPECT_EQ("2 BOTS", cell(og::ui::ScenarioFill::Matched, 2, 0));
+    EXPECT_EQ("1 GENERATOR", cell(og::ui::ScenarioFill::Generators, 1, 0));
+    EXPECT_EQ("3 GENERATORS", cell(og::ui::ScenarioFill::Generators, 3, 0));
+    EXPECT_EQ("EMPTY", cell(og::ui::ScenarioFill::Empty, 0, 0));
+
+    // A squad fielded BESIDE the occupants: both halves walk onto the
+    // floor, so both are counted.
+    EXPECT_EQ("1 MAP UNIT +1 BOT", cell(og::ui::ScenarioFill::Troops, 1, 1));
+    EXPECT_EQ("2 FIGHTERS +3 BOTS",
+              cell(og::ui::ScenarioFill::Company, 2, 3));
+    EXPECT_EQ("4 BOTS", cell(og::ui::ScenarioFill::Bots, 4, 2))
+        << "a bot squad's own count already IS its bots";
+
+    // An inactive team reads EMPTY whatever the fill column says.
+    report.team_fill[0] = og::ui::ScenarioFill::Company;
+    report.team_fill_count[0] = 2;
+    report.team_squad_count[0] = 0;
+    report.team_active[0] = false;
+    EXPECT_EQ("EMPTY", og::ui::format_match_preview(band, &report, 0));
+    report.team_active[0] = true;
+
+    // The diagnostic outranks the picture, because it mirrors GO's refusal.
+    band.seat_count = 3;
+    band.fighter_count = 2;
+    band.diag = LineupTeamBand::Diag::NeedsFighters;
+    band.needs = 1;
+    EXPECT_EQ("NEEDS 1 FIGHTER", og::ui::format_match_preview(band, &report, 0));
+    band.diag = LineupTeamBand::Diag::NoSeatAi;
+    EXPECT_EQ("NO SEAT: AI", og::ui::format_match_preview(band, &report, 0));
+    band.diag = LineupTeamBand::Diag::None;
+
+    // No usable report: the band's own census, so the cell never blanks.
+    LineupTeamBand plain;
+    EXPECT_EQ("NO FIGHTERS", og::ui::format_match_preview(plain, nullptr, 0));
+    plain.fighter_count = 1;
+    EXPECT_EQ("1 FIGHTER", og::ui::format_match_preview(plain, nullptr, 0));
+    for (const auto broken : {&og::ui::ScenarioRosterReport::stage_failed,
+                              &og::ui::ScenarioRosterReport::unavailable})
+    {
+        og::ui::ScenarioRosterReport bad = report;
+        bad.*broken = true;
+        EXPECT_EQ("1 FIGHTER", og::ui::format_match_preview(plain, &bad, 0))
+            << "numbers from a world the launch would not adopt are a lie";
+    }
+    {
+        og::ui::ScenarioRosterReport unstaged = report;
+        unstaged.staged = false;
+        EXPECT_EQ("1 FIGHTER",
+                  og::ui::format_match_preview(plain, &unstaged, 0));
+        og::ui::ScenarioRosterReport uncensused = report;
+        uncensused.mode_census = false;
+        EXPECT_EQ("1 FIGHTER",
+                  og::ui::format_match_preview(plain, &uncensused, 0));
+    }
+
+    // Every arm, every count the column can hold, against its 20 glyphs.
+    EXPECT_EQ("12 MAP UNITS +5 BOTS",
+              cell(og::ui::ScenarioFill::Troops, 12, 5))
+        << "the widest census the column can print";
+    std::string widest;
+    for (const auto kind :
+         {og::ui::ScenarioFill::Company, og::ui::ScenarioFill::Troops,
+          og::ui::ScenarioFill::Bots, og::ui::ScenarioFill::Matched,
+          og::ui::ScenarioFill::Generators, og::ui::ScenarioFill::Empty})
+    for (int count = 0; count <= 12; ++count)
+    for (int squad = 0; squad <= 5; ++squad)
+    {
+        const std::string text = cell(kind, count, squad);
+        EXPECT_LE(text.size(), 20u) << text;
+        if (text.size() > widest.size())
+            widest = text;
+    }
+    EXPECT_EQ(20u, widest.size())
+        << "nothing the column can print exceeds its 20 glyphs: " << widest;
+}
