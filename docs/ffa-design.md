@@ -311,7 +311,7 @@ version triple). Instead:
   spawn caps, drumstick + speed-potion pads (`item_interval 180`), briefings
   ending `-- THE GAMESMASTER` with a "FREE FOR ALL — team choice does not
   restrict targets" line.
-  **Update (2026-09-19, PR #N):** the sign-off is gone — #306 deleted all 40
+  **Update (2026-09-19, PR #307):** the sign-off is gone — #306 deleted all 40
   of them and the generator lints the narrator's vocabulary out of briefings
   instead; the FFA briefings now end on their last rule line
   (docs/match-setup-design.md §3.9).

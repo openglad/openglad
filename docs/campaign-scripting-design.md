@@ -126,7 +126,7 @@ renderable by three different clients. The C++ session fetches a page
 picker_menu = function(page_id)      -- "" = root page
   return {
     title = "CHOOSE A GAME",
-    -- Update (2026-09-19, PR #N): an illustrative fixture line; the
+    -- Update (2026-09-19, PR #307): an illustrative fixture line; the
     -- shipped modes index speaks plainly (docs/match-setup-design.md).
     lines = { "The Gamesmaster opens the book." },
     entries = {
@@ -346,7 +346,7 @@ Menu-time twins of the sim's read-only `og.match_setting`:
   sync-settings-from-save tail so joiners follow. Campaign content: the
   Gamesmaster's Book gains a MATCH SETUP page of one-action presets.
   This *advances* #212 (a per-slot roster editor is future work).
-  **Update (2026-09-19, PR #N):** that page is retired. The contract grew
+  **Update (2026-09-19, PR #307):** that page is retired. The contract grew
   two additive items instead: a versus campaign's `picker_menu("")` root is
   hosted by the SETUP wizard's GAME step, and the optional `match_knobs`
   hook (one table, seven keys: `teams`, `fill`, `score`, `time`, `lines`,

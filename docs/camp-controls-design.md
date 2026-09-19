@@ -176,7 +176,7 @@ lobby could not touch. The two summaries — `rules_line()` and the camp's
 `rules_digest()` — deliberately stayed at three knobs: the digest's 20-char
 note budget has no room for a fourth term, and the row itself is where the
 value is turned and read.
-**Update (2026-09-19, PR #N):** the row is the SETUP wizard's RULES step
+**Update (2026-09-19, PR #307):** the row is the SETUP wizard's RULES step
 `TIME LIMIT:` (`og::ui::cycle_time_limit`, faces `5 MIN` … `20 MIN`, spelled
 by `og::ui::format_time_limit_label`); the camp's `rules_digest()` went with
 the page, and the MATCH step's `format_match_rules_lines` is the one summary

@@ -1,4 +1,4 @@
-# The SETUP wizard, the untheme and bodies above FAIR (#304, #305, #306) — 2026-09-19, PR #N
+# The SETUP wizard, the untheme and bodies above FAIR (#304, #305, #306) — 2026-09-19, PR #307
 
 A dated design snapshot of what this PR shipped, written against the branch
 tip and not revised afterwards. **Its section numbers are the numbers the

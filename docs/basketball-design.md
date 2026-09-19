@@ -54,7 +54,7 @@ Later sections cite decisions by id.
 | D5 | Rules depth | **M's state machine adopted wholesale**: FREE/CARRIED/SHOT/PASS/REBOUND, timer-based shot resolution, pass targeting with catch/intercept, grace bars, goaltending awards the basket, rebound rim-plane crossings score tip-ins/banks with soccer's LAST_TOUCH1/2 attribution ladder. S's simplifications (block-only rule, "attribution-trivial" no-ladder §1.5) rejected — the approved concept names goaltending explicitly, and the crossing rule IS the bank-shot mechanism the BANKHOUSE arena is built on. |
 | D6 | Slot map | **M's map** (slots 8-58) — it fits precisely because D2 dropped KEY_POS/KEY_SIZE. Slot 39 renamed JUMP_POS to match the manifest field. The red-team fixes claim the former spares: 59 GRACE_ENTITY (D24), 60 THROW_WATERMARK (D19), 61 POSSESS_SINCE (D21), 62 DUNK_OK (D23); 63 was the LAST spare (R4 escalated) until #225 spent it on ITEM_LAST. Full map in §2.2. |
 | D7 | Shot clock | **420 ticks (35 s)**, red-team amended from S's 288 (M's 120 stays rejected). Sizing: the worst defensive-stop advance is 828 — hoops 640 px apart, shot range 224, a rebound behind the own rim needs ~430+ px of BALL advance; at the 1 px/tick slow-family floor, 288 forced structural turnovers on every stop, while 420 clears it with one completed upcourt pass (chest 8 px/tick) in the chain. Clock lifecycle (the anti-launder rule, D25): the deadline is cleared ONLY by SHOT release, the turnover itself, and center resets; it PERSISTS across every loose-ball transition and every same-team regain — an uncaught own pass, a fumble scoop or a rolled-dead flat throw never refreshes it, and any clock-team regain at `now >= CLOCK_UNTIL` is an immediate turnover at the gain point. A possession gain by a DIFFERENT team re-arms fresh. HUD countdown suffix at <= 120 remaining, one-shot "SHOT CLOCK!" announce at exactly 36 remaining. |
-| D8 | Spawns | **`markers_per_team = 5`** (A) over S's 12 — five-a-side, and `anchors.spawn_bot_squad`'s 5-family squad maps one bot per anchor exactly. **Update (2026-09-19, PR #N):** the five anchors still seat one bot each and the ceiling is unchanged; what changed is that the FILL wheel above FAIR now fills the court TOWARD five instead of stopping at the roster (#305), and the courts deal STRONG (docs/lineup-design.md Amendment 8). |
+| D8 | Spawns | **`markers_per_team = 5`** (A) over S's 12 — five-a-side, and `anchors.spawn_bot_squad`'s 5-family squad maps one bot per anchor exactly. **Update (2026-09-19, PR #307):** the five anchors still seat one bot each and the ceiling is unchanged; what changed is that the FILL wheel above FAIR now fills the court TOWARD five instead of stopping at the roster (#305), and the courts deal STRONG (docs/lineup-design.md Amendment 8). |
 | D9 | Score values | `score_limit = 21` default (825 plays to 11), **`point_score = 100`** (M) — `og.award_score` deltas 200/2pt, 300/3pt — over S's 150. |
 | D10 | Time limits | **7200 ticks (10 min) default, 5400 on 825** (A) over M's 10800. |
 | D11 | Sprites & families | `bball.png` 12x12x8 + **`bshadow.png` 12x12x4** (S's uniform 12x12 frame box and painters; M's 12x6 shadow rejected). Families `fx-bball.lua` (auto effect id 22) and `fx-bshadow.lua` (auto 23) — both sort after `fx-ball.lua` (I5). The shadow family declares **no** `on_act` (fx-list entities never act; a hook there would be a permanently uncovered function under the function=100 gate). |
@@ -111,7 +111,7 @@ Later sections cite decisions by id.
   function = 100 on ALL new pack Lua — design nothing untestable, every function
   must be executable from headless unit tests; `og.award_score` never receives a
   negative (it is unsigned: `bindings_entity.cpp:1701-1703`).
-  **Update (2026-09-19, PR #N):** the sign-off invariant is gone — #306
+  **Update (2026-09-19, PR #307):** the sign-off invariant is gone — #306
   deleted all 40 sign-offs and the generator now LINTS the narrator's
   vocabulary out instead, and the ledger gained a `team_count * 5` term on
   the ball arenas, docs/match-setup-design.md §3.8.6 and §3.9.
@@ -1061,7 +1061,7 @@ shared by all six: `flags = 0`, `control_points = 0`, `doors = 0`,
 `other_weapons = 0`, `authored_livings = 0`, `score_limit = 21` (825: 11),
 `time_limit = 7200` (825: 5400). Titles carry the `"Basketball: "` prefix,
 <= 30 bytes; briefings <= 33 chars/line ending `-- THE GAMESMASTER`.
-**Update (2026-09-19, PR #N):** #306 deleted every sign-off line; the
+**Update (2026-09-19, PR #307):** #306 deleted every sign-off line; the
 briefing listings in §6 below are kept verbatim as the as-designed record,
 and each shipped briefing now ends on its last rule line
 (docs/match-setup-design.md §3.9).
@@ -1069,7 +1069,7 @@ and each shipped briefing now ends on its last rule line
 Obmap ledger formula per row: `gens + treasures + flags + cps + doors +
 livings + caps_total + 16 + 20 + 25 + 2(ball+shadow) + hoops` (one hoop fx
 per authored hoop, D29-D32; 826: 4, others 2).
-**Update (2026-09-19, PR #N):** the shipped expression gained one more term,
+**Update (2026-09-19, PR #307):** the shipped expression gained one more term,
 `+ team_count * 5` (the `#BOT_SQUAD` ceiling), on SOCCER and BASKETBALL rows
 only — those are the two games whose FILL wheel buys bodies (#305); a brawl
 arena's squads stay inside the `+16` heroes assumption, which this rule
