@@ -863,9 +863,15 @@ bool arena_lineup_deal_pending(const SaveData& save)
 
 std::int16_t arena_deal_fill_code(const SaveData&)
 {
-    // TODO(arena-setup WP5): og::script::hooks::campaign_match_knobs().deal_fill
-    // once WP4's hook exists
-    return og::sim::kFillFair;
+    // The campaign's own word for what a fresh arena deals (match_knobs.deal,
+    // docs/match-setup-design.md §3.4). Both readers evaluate this only
+    // AFTER their arena_lineup_deal_pending guard, so the Lua call costs one
+    // dispatch per cursor change and never one per frame. No hook, or a hook
+    // that errors: the knobs keep their defaults and FAIR is the answer,
+    // which is what every campaign but the ball arenas wants.
+    og::script::hooks::CampaignMatchKnobs knobs;
+    return og::script::hooks::campaign_match_knobs(knobs) ? knobs.deal_fill
+                                                          : og::sim::kFillFair;
 }
 
 bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask,
@@ -970,6 +976,15 @@ void cycle_generator_rate(SaveData& save)
 void toggle_infinite_gold(SaveData& save)
 {
     save.infinite_gold = static_cast<short>(save.infinite_gold != 0 ? 0 : 1);
+}
+
+void toggle_cross_control(SaveData& save)
+{
+    // Sanitized on toggle ({0,1}; any junk counts as ON and lands on 0) —
+    // the rule change_cross_control() has always applied, hoisted so the
+    // wizard's RULES row and the DIFFICULTY panel's row cannot disagree.
+    save.cross_control =
+        static_cast<short>(save.cross_control != 0 ? 0 : 1);
 }
 
 bool gold_is_infinite(const SaveData& save) noexcept

@@ -101,6 +101,13 @@ enum class PickerMenuCommand : std::int32_t
     // SCENARIO subscreen's free grid cell instead; terminals append the row
     // here so no 1-based position moves.
     Lineup,
+    // The SETUP wizard door (#304, docs/match-setup-design.md §2.7): the
+    // five-step GAME/ARENA/TEAMS/RULES/MATCH page a versus campaign sets its
+    // match up on. Versus campaigns only — terminal_item_gate prints
+    // "This campaign has no arena setup." elsewhere, and gates item 11
+    // (Difficulty) the other way, so the match rules have exactly one door
+    // per campaign kind on every client.
+    MatchSetup,
 };
 
 struct PickerMenuItem

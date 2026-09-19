@@ -8,18 +8,23 @@
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/filesystem.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/packs.h>
 #include <openglad/interface/level_runtime_data.h>
 #include "test_game_world_fixture.h"
 #include <array>
@@ -38,6 +43,8 @@
 #include <utility>
 #include <vector>
 #include "../test_save_state_guard.h"
+
+std::string get_asset_path();
 
 namespace {
 
@@ -1538,10 +1545,10 @@ TEST(PickerCommon, deal_arena_lineup_fill_lifts_none_on_authored_teams_once)
         << "the stamped cursor refuses a second deal whatever the code";
     EXPECT_EQ((std::array<short, 4>{0, 0, 0, 0}), save.fill);
 
-    // What the readers fetch until WP5 wires the campaign hook: FAIR, with
-    // one home for the literal.
+    // What the readers fetch is the CAMPAIGN's word — pinned in its own
+    // test below, over a book that answers one.
     EXPECT_EQ(og::sim::kFillFair, og::ui::arena_deal_fill_code(save))
-        << "WP5 flips this to campaign_match_knobs().deal_fill";
+        << "a campaign with no match_knobs hook keeps the FAIR default";
 
     // A classic campaign never pends: the C3 all-default byte no-op stands.
     save.current_campaign = "gladiator";
@@ -1554,10 +1561,46 @@ TEST(PickerCommon, deal_arena_lineup_fill_lifts_none_on_authored_teams_once)
         << "a classic cursor leaves the memo alone";
 }
 
+// The deal's code is the campaign's own word (match_knobs.deal): one
+// override point for the FAIR literal, read once per pending deal.
+TEST(PickerCommon, arena_deal_fill_code_reads_the_campaign_word)
+{
+    GameplayContext* previous_game = current_game;
+    current_game = nullptr;  // dispatch resolves the shared UI VM
+    og::script::clear_pack_scripts();
+
+    SaveData save;
+    save.current_campaign = "modes";
+
+    // No book at all (every classic campaign, every bookless pack).
+    EXPECT_EQ(og::sim::kFillFair, og::ui::arena_deal_fill_code(save))
+        << "no hook, no override: one home for the FAIR literal";
+
+    // A campaign that names its word.
+    og::script::register_pack_script(
+        {"test.dealcode", "dealcode/scripts/deal.lua",
+         R"LUA(og.register_campaign_hooks({
+  match_knobs = function() return { deal = "strong" } end,
+}))LUA"});
+    EXPECT_EQ(og::sim::kFillStrong, og::ui::arena_deal_fill_code(save));
+
+    // A book with a match_knobs hook that says nothing about the deal.
+    og::script::clear_pack_scripts();
+    og::script::register_pack_script(
+        {"test.dealcode", "dealcode/scripts/deal.lua",
+         R"LUA(og.register_campaign_hooks({
+  match_knobs = function() return {} end,
+}))LUA"});
+    EXPECT_EQ(og::sim::kFillFair, og::ui::arena_deal_fill_code(save));
+
+    og::script::clear_pack_scripts();
+    (void)og::resources::refresh_pack_scripts();
+    current_game = previous_game;
+}
+
 // The two readers fetch arena_deal_fill_code(save) as the deal's code, so
-// the arena still deals FAIR here: the stub answers FAIR until WP5 wires
-// og::script::hooks::campaign_match_knobs().deal_fill, which is when this
-// test's 820/824 expectations move.
+// the arena deals what the MOUNTED campaign says: STRONG on the ball arenas
+// (820 soccer, 824 basketball) and FAIR everywhere else.
 TEST(PickerCommon, deal_arena_lineup_for_cursor_reads_the_mounted_arena)
 {
     og::test::ScopedCampaignMountState mount_restore;
@@ -1618,6 +1661,42 @@ TEST(PickerCommon, deal_arena_lineup_for_cursor_reads_the_mounted_arena)
         EXPECT_EQ((std::array<short, 4>{og::sim::kFillFair,
                                         og::sim::kFillFair, 0, 0}),
                   save.fill);
+    }
+
+    // The campaign's own word, through the mounted book's match_knobs hook:
+    // a BALL arena deals STRONG (#305 — the reporter's solo game on THE
+    // PITCH fields two bots without a knob being touched), every brawl
+    // arena keeps FAIR byte-identically.
+    {
+        GameplayContext* previous_game = current_game;
+        current_game = nullptr;  // dispatch resolves the shared UI VM
+        (void)og::resources::mount((get_asset_path() + "packs/").c_str(),
+                                   "packs/", 1);
+        (void)og::resources::refresh_pack_scripts();
+        for (const auto& [level, code] :
+             std::vector<std::pair<int, short>>{
+                 {820, og::sim::kFillStrong},
+                 {824, og::sim::kFillStrong},
+                 {300, og::sim::kFillFair},
+                 {500, og::sim::kFillFair}}) {
+            SaveData fresh;
+            fresh.current_campaign = "modes";
+            fresh.scen_num = static_cast<short>(level);
+            ASSERT_TRUE(og::ui::deal_arena_lineup_for_cursor(
+                fresh, headless_level_data_hooks()))
+                << "scen " << level;
+            const std::uint8_t mask = og::ui::ctf_authored_team_mask_for_save(
+                fresh, headless_level_data_hooks());
+            ASSERT_NE(0u, static_cast<unsigned>(mask)) << "scen " << level;
+            for (int team = 0; team < 4; ++team) {
+                if ((mask & (1u << team)) == 0)
+                    continue;
+                EXPECT_EQ(code, fresh.fill[static_cast<std::size_t>(team)])
+                    << "scen " << level << " team " << team;
+            }
+        }
+        (void)og::resources::refresh_pack_scripts();
+        current_game = previous_game;
     }
 
     // The mount guard: a save naming a campaign that is not mounted deals

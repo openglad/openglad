@@ -541,14 +541,14 @@ TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
     // stamp, because a clip that eats those turns a door into a dead label
     // and hides the state the row exists to state.
     CampaignPickerSession::Row wide;
-    wide.label = "FIELD: DUNGEON OF STARS";
+    wide.label = "ARENA: DUNGEON OF STARS";
     wide.note = "4 sides, 20 min";
     wide.kind = CampaignPickerSession::Kind::Page;
-    EXPECT_EQ("FIELD: DUNGEON OF STARS - 4 sides,..  >",
+    EXPECT_EQ("ARENA: DUNGEON OF STARS - 4 sides,..  >",
               og::ui::campaign_picker_row_text(wide, 39));
     wide.kind = CampaignPickerSession::Kind::Level;
     wide.current = true;
-    EXPECT_EQ("FIELD: DUNGEON OF..  [CURRENT]",
+    EXPECT_EQ("ARENA: DUNGEON OF..  [CURRENT]",
               og::ui::campaign_picker_row_text(wide, 30));
 
     // A retired purchase stops quoting its price and says so.
@@ -1499,6 +1499,85 @@ TEST_F(CampaignPickerSessionTest, replay_reentry_restore_shapes)
     // Unarmed: nothing to do.
     EXPECT_FALSE(og::ui::replay_reentry_restore(save_));
     EXPECT_EQ(6, save_.scen_num);
+}
+
+// The hoisted SET LEVEL gate (docs/match-setup-design.md §3.4): four arms,
+// one notice each, and io.apply_level on Applied alone. The three terminal
+// blocks that used to spell this inline — and the SETUP wizard's driver —
+// all run THIS, so a fourth surface cannot skip a check.
+TEST_F(CampaignPickerSessionTest, terminal_level_set_gate_prints_each_arm_once)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save_.current_campaign = "gladiator";
+    save_.scen_num = 1;
+
+    // DeniedHost: the host gate is first, so nothing else is even asked.
+    ScriptedTerminalIo joiner;
+    joiner.save = &save_;
+    joiner.host = false;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::DeniedHost,
+              og::ui::terminal_level_set_gate(joiner.io(), save_, 2, true, true,
+                                              false));
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kCampaignPickerHostGuardMessage)}),
+              joiner.notices);
+    EXPECT_EQ(-1, joiner.applied_level);
+
+    // Closed: the campaign's own voice, never the loader's.
+    ScriptedTerminalIo closed;
+    closed.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Closed,
+              og::ui::terminal_level_set_gate(closed.io(), save_, 2, true,
+                                              false, false));
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kCampaignLevelClosedMessage)}),
+              closed.notices);
+    EXPECT_EQ(-1, closed.applied_level);
+
+    // Unchanged: the cursor is already parked here.
+    ScriptedTerminalIo here;
+    here.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Unchanged,
+              og::ui::terminal_level_set_gate(here.io(), save_, 1, false, true,
+                                              false));
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kCampaignLevelUnchangedMessage)}),
+              here.notices);
+    EXPECT_EQ(-1, here.applied_level);
+
+    // Applied: the tail runs and the gate says nothing — the CALLER owns
+    // the confirmation, because the label differs per surface.
+    ScriptedTerminalIo applied;
+    applied.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Applied,
+              og::ui::terminal_level_set_gate(applied.io(), save_, 2, false,
+                                              false, false));
+    EXPECT_TRUE(applied.notices.empty());
+    EXPECT_EQ(2, applied.applied_level);
+    EXPECT_FALSE(applied.applied_replay_arm);
+
+    // A replay row is exempt from Unchanged (#207): arming is a real state
+    // change even on the current level.
+    save_.scen_num = 2;
+    save_.add_level_completed("gladiator", 2);
+    ScriptedTerminalIo replay;
+    replay.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Applied,
+              og::ui::terminal_level_set_gate(replay.io(), save_, 2, false,
+                                              true, true));
+    EXPECT_TRUE(replay.notices.empty());
+    EXPECT_EQ(2, replay.applied_level);
+    EXPECT_TRUE(replay.applied_replay_arm);
+
+    if (previous_mount != "gladiator")
+    {
+        (void)unmount_campaign_package_with_error("gladiator");
+        if (!previous_mount.empty())
+            (void)mount_campaign_package_with_error(previous_mount);
+    }
 }
 
 // A versus campaign is exempt: an arena picker's whole point is free field

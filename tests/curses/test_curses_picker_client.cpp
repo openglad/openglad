@@ -491,7 +491,7 @@ TEST(CursesPickerClient, level_edit_notice_renders)
 }
 
 // The flat match-rule rows (match teams, target score) left Team Build for
-// the camp's MATCH SETUP page (docs/camp-controls-design.md): one place, in
+// the SETUP wizard's RULES step (docs/match-setup-design.md): one place, in
 // plain words, on every client. Nothing in the curses surface carries them
 // any more — see team_build_lists_the_appended_doors_last below for the
 // list. The third of that trio, TROOPS, retired outright with amendment B5,
@@ -499,9 +499,9 @@ TEST(CursesPickerClient, level_edit_notice_renders)
 // guard-rendering branch stays covered by the READY row's networked-only
 // guard.
 
-// The Team Build list renders the two appended doors — DIFFICULTY and then
-// LINEUP (docs/lineup-design.md §8) — with their fixed labels, past the digit
-// ceiling and reachable by the arrow walk.
+// The Team Build list renders the three appended doors — DIFFICULTY, then
+// LINEUP (docs/lineup-design.md §8), then SETUP (#304) — with their fixed
+// labels, past the digit ceiling and reachable by the arrow walk.
 TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
 {
     PickerFixture f;
@@ -510,10 +510,13 @@ TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
     const int difficulty_idx =
         team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
     const int lineup_idx = team_build_item_index(PickerMenuCommand::Lineup);
-    ASSERT_EQ(items - 2, difficulty_idx)
-        << "LINEUP appended BELOW difficulty, so difficulty kept its ordinal";
-    ASSERT_EQ(items - 1, lineup_idx)
-        << "lineup is appended last, so nothing above it moved";
+    const int setup_idx = team_build_item_index(PickerMenuCommand::MatchSetup);
+    ASSERT_EQ(items - 3, difficulty_idx)
+        << "LINEUP and SETUP appended BELOW difficulty, which kept its ordinal";
+    ASSERT_EQ(items - 2, lineup_idx)
+        << "SETUP appended BELOW lineup, which kept its ordinal";
+    ASSERT_EQ(items - 1, setup_idx)
+        << "setup is appended last, so nothing above it moved";
 
     f.t().push_special(KeyCode::Escape);
     (void)f.client.present_menu(PickerMenuId::TeamBuild);
@@ -539,10 +542,12 @@ TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
         << "expected the key-hint footer as the last line:\n" << dump;
     rows.pop_back();
     ASSERT_FALSE(rows.empty()) << dump;
-    EXPECT_EQ("  Lineup", rows.back())
+    EXPECT_EQ("  Setup", rows.back())
         << "the last appended door must be the last rendered row:\n" << dump;
-    ASSERT_GE(rows.size(), 2u) << dump;
-    EXPECT_EQ("  Difficulty", rows[rows.size() - 2])
+    ASSERT_GE(rows.size(), 3u) << dump;
+    EXPECT_EQ("  Lineup", rows[rows.size() - 2])
+        << "lineup sits directly above the SETUP door:\n" << dump;
+    EXPECT_EQ("  Difficulty", rows[rows.size() - 3])
         << "difficulty sits directly above the LINEUP door:\n" << dump;
     EXPECT_EQ(dump.find("Match Teams"), std::string::npos)
         << "the flat match-rule rows are gone from Team Build:\n" << dump;

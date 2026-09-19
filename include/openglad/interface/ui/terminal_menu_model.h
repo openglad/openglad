@@ -16,6 +16,7 @@
 // rendering; only the content is shared.
 
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -128,6 +129,46 @@ struct TerminalLineupInputs {
 
 TerminalLineupModel build_terminal_lineup_model(
     const TerminalLineupInputs& inputs);
+
+// --- The SETUP wizard, the terminal projection (§2.7) --------------------
+//
+// A prompt has no tab strip, so the two steppers ARE the tab strip: the page
+// rows come first as numbered items, then `Next: <STEP>`, `Prev: <STEP>` and
+// `Back`. `N-` at the prompt is the `<` cell's projection, so only a live
+// cycler row is `reversible`.
+struct TerminalMatchSetupItem {
+    enum class Kind : std::uint8_t { Row, Next, Prev, Back };
+    Kind kind = Kind::Back;
+    std::size_t row = 0;    // Kind::Row: the index into page().rows
+    std::string label;
+    bool reversible = false;
+};
+
+struct TerminalMatchSetupModel {
+    std::string title;
+    std::vector<std::string> lines;
+    std::vector<TerminalMatchSetupItem> items;
+};
+
+// Project one composed page. The team lines are spelled with the colour
+// WORD where the pixel surfaces ink a swatch — the terminal LINEUP header's
+// own grammar ("TEAM 1 BLUE  ...") — and they render at the page's
+// team_lines_at, so nothing reorders.
+TerminalMatchSetupModel build_terminal_match_setup_model(
+    const MatchSetupSession& session, const MatchSetupSession::Inputs& inputs);
+
+// The wizard's and LINEUP's shared staged census: the MAP UNITS counts AND
+// the roster report, from ONE synchronous ensure_current() over the world
+// the launch would adopt. Staged = the world censused (`out_counts` is
+// meaningful); Failed = the owner's stage failed; Unavailable = there is no
+// world to census at all (unmounted campaign, or a stage that fell back to
+// another level — a fallback world must not masquerade as this level's
+// census, exactly as VIEW LEVEL refuses it). `out_report` is written on
+// EVERY arm, so a degraded preview still says so in the report's own words.
+IPickerLobbyClient::StagedPreviewHealth census_staged_match_report(
+    og::server::MatchStage& stage, const SaveData& save, int difficulty,
+    std::uint32_t match_seed, std::array<int, 4>& out_counts,
+    ScenarioRosterReport& out_report);
 
 // F3/W7-G: the terminals' MAP UNITS census, taken over the world the launch
 // would adopt — the SAME MatchStage both clients' VIEW LEVEL already stages
