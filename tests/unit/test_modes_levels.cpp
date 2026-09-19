@@ -857,7 +857,8 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
     // 20 corpse/stain transients + 25 projectiles (+ the mode's own fx
     // entities: soccer spawns 1 ball; basketball 2 — the ball plus its
     // ground shadow — plus one hoop sprite per authored hoop, the peak
-    // activation, D29/D32) stays <= 190 so A* never short-circuits
+    // activation, D29/D32; + on the ball GAMES only, the #305 FILL
+    // bodies, 5 per team) stays <= 190 so A* never short-circuits
     // mid-match. 303 and 305 are the documented arenas-heritage waivers.
     //
     // The ground-load inputs (gens/flags/cps/treasures/doors/livings) are
@@ -865,6 +866,27 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
     // ledger may read them from the pin row. The spawn caps have no such
     // cross-check — nothing else in the file reads pool sums — so the row's
     // caps_total is measured off the manifest here before it is spent.
+    //
+    // Every row's ledger VALUE is pinned below as well as its <= 190 fit:
+    // the worst non-waived row sits at 183 and the ball arenas well under
+    // 100, so no input drift — and no change to the fill-squad term — can
+    // red the cap on its own. A value pin reds instead of silently eating
+    // the headroom.
+    static const std::map<int, int> expected_ledger = {
+        {300, 131}, {301, 171}, {302, 171}, {303, 222}, {304, 183},
+        {305, 201}, {500, 71},  {501, 99},  {502, 80},  {503, 121},
+        {504, 71},  {505, 72},  {506, 119}, {507, 145}, {508, 83},
+        {509, 75},  {800, 138}, {801, 139}, {802, 140}, {803, 147},
+        // The ten ball arenas carry the #305 fill-squad term
+        // (teams * 5): 820-823 soccer, 824-829 basketball.
+        {820, 84},  {821, 86},  {822, 94},  {823, 98},  {824, 85},
+        {825, 81},  {826, 99},  {827, 85},  {828, 95},  {829, 85},
+        {840, 69},  {841, 73},  {842, 73},  {843, 71},  {850, 71},
+        {851, 71},  {852, 71},  {853, 71},  {854, 71},  {855, 71},
+    };
+    ASSERT_EQ(shipped_levels().size(), expected_ledger.size())
+        << "every shipped row carries a pinned ledger value";
+
     const std::string expr_prefix = manifest_expr_prefix();
     og::script::ScriptHost host;
 
@@ -901,10 +923,21 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
             ball = 2 + hoops;
         }
         int flags = pin.flags;
+        // The #305 FILL bodies (ball GAMES only), mirroring the tool's
+        // kFillSquadCeiling: 5 per team, the size of
+        // packs/core/lib/lineup.lua's BOT_SQUAD — the seam's hard ceiling
+        // (squad_prefix never exceeds #families), not a restatement of the
+        // Lua body rule. Brawl arenas take no such term: their FILL squads
+        // stay inside the +16 heroes assumption above, which this rule
+        // leaves alone.
+        constexpr int kFillSquadCeiling = 5;
+        const int fill_bodies = (mode == "soccer" || mode == "basketball")
+                                    ? pin.teams * kFillSquadCeiling
+                                    : 0;
         const int ledger = gens + pin.treasures + flags + pin.cps +
                            pin.doors + pin.livings +
                            static_cast<int>(*manifest_caps) + 16 +
-                           20 + 25 + ball;
+                           20 + 25 + ball + fill_bodies;
         if (pin.a_star_waived)
             EXPECT_GT(ledger, 190)
                 << "scen" << pin.id
@@ -915,6 +948,12 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
         EXPECT_TRUE(pin.a_star_waived == (pin.id == 303 || pin.id == 305))
             << "scen" << pin.id
             << ": only the two arenas-heritage maps carry the waiver";
+
+        const auto pinned = expected_ledger.find(pin.id);
+        ASSERT_NE(expected_ledger.end(), pinned)
+            << "scen" << pin.id << ": row missing from the ledger value pin";
+        EXPECT_EQ(pinned->second, ledger)
+            << "scen" << pin.id << ": obmap ledger value drifted";
     }
 }
 
