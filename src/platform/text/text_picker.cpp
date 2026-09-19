@@ -1697,6 +1697,14 @@ private:
         io.difficulty = [] {
             return og::runtime::current_session->current_difficulty_;
         };
+        // The TEAMS seat cell names the seat's CONTROLLER, the way LINEUP's
+        // band header does. Every seat the text client synthesizes is
+        // local, so the seat index IS the local slot — and the shared
+        // answer falls back to the company here, because this client
+        // builds no input hardware and has no controls to name.
+        io.seat_short_name = [](std::uint8_t player_index) {
+            return og::ui::terminal_seat_short_name(player_index);
+        };
         io.census = [this, &stage](std::array<int, 4>& counts,
                                    og::ui::ScenarioRosterReport& report) {
             return og::ui::census_staged_match_report(

@@ -2303,6 +2303,12 @@ TEST(CursesPickerClient, setup_flow_level_row_rides_apply_level_then_level_appli
     EXPECT_NE(dump.find("FILL: STRONG - none to brutal"), std::string::npos)
         << "the deal ran at the top of THIS prompt (#305):\n" << dump;
     EXPECT_NE(dump.find("TEAM 2 GREEN"), std::string::npos) << dump;
+    // The seat cell names the seat's CONTROLLER, exactly as the SDL
+    // wizard and LINEUP's band header do. This client HAS input hardware,
+    // so the answer is its own mapping — not the company abbreviation
+    // ("P1 SET") the cell fell back to while the callback was unfilled.
+    EXPECT_NE(dump.find("TEAM 1 RED  P1 WASD"), std::string::npos)
+        << "the TEAMS seat cell names the controller:\n" << dump;
     EXPECT_NE(dump.find("2 BOTS"), std::string::npos)
         << "and the team line reads the staged census of that deal:\n"
         << dump;

@@ -19,6 +19,8 @@
 
 #include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
+#include <openglad/interface/input_mappings.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
@@ -586,9 +588,16 @@ void MatchSetupSession::compose_rules(const Inputs& inputs)
                                  inputs.session_difficulty, inputs.networked};
     if (!inputs.is_host)
     {
-        // Cut the row, print the line (the established joiner grammar).
+        // Cut the row, print the line (the established joiner grammar) —
+        // but a fact this step carries as a ROW is never ALSO a line on the
+        // same step. Networked, CROSS CONTROL stays a read-only row below,
+        // so the lines are composed without it: the same one formatter,
+        // asked for the set that is not already on screen. (The MATCH step
+        // has no rows at all and keeps all five lines.)
+        MatchRulesInputs line_rules = rules;
+        line_rules.networked = false;
         page_.lines.emplace_back(kHostSetsForEveryoneCaption);
-        for (std::string& line : format_match_rules_lines(rules))
+        for (std::string& line : format_match_rules_lines(line_rules))
             page_.lines.push_back(std::move(line));
         if (inputs.networked)
         {
@@ -919,6 +928,20 @@ MatchSetupSession::Outcome MatchSetupSession::choose(std::size_t row, int dir,
 
 // --- The shared terminal driver -----------------------------------------
 
+std::string terminal_seat_short_name(std::uint8_t player_index)
+{
+    const int slot = static_cast<int>(player_index);
+    if (slot < 0 || slot >= MAX_PLAYERS)
+        return {};
+    if (og::runtime::current_session == nullptr ||
+        og::runtime::current_session->input_hw_ == nullptr)
+    {
+        return {};
+    }
+    return og::input::mapping_short_name(
+        og::input::current_mapping_name(slot));
+}
+
 void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
 {
     MatchSetupSession session(save);
@@ -960,6 +983,9 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         inputs.players = players;
         inputs.local_indices = local_indices;
         inputs.map_unit_counts = counts;
+        // The seat cell names the CONTROLLER (the client's own seat
+        // source), never the company clipped to three glyphs.
+        inputs.seat_short_name = io.seat_short_name;
         // The census writes `report` on EVERY arm, so the page always reads
         // it: a degraded preview still says so in the report's own words
         // (STAGING FAILED / PREVIEW UNAVAILABLE lead the MATCH step, and the
