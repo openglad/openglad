@@ -311,7 +311,15 @@ TerminalLineupModel build_terminal_lineup_model(
         // C5: MAP RULES is gone from the middle of this precedence — the
         // knobs are live on every campaign now, so a diagnostic or the plain
         // census is the whole cell, exactly as on a versus campaign.
-        const std::string census = format_lineup_census(band);
+        //
+        // §3.8.4: the column is the SHARED preview formatter, so LINEUP, the
+        // wizard's TEAMS line and the SDL band all read one report. With no
+        // report (nullptr) format_match_preview answers the band's own
+        // fighter census, which is byte-identical to what this column
+        // printed before — a terminal that staged nothing says exactly what
+        // it always said.
+        const std::string census =
+            format_match_preview(band, inputs.report, team);
         // B4's hint rides BESIDE the census, never instead of it: the SDL
         // band dims the box and keeps the fighter count, and the shared
         // formatter is deliberately not folded into format_lineup_census.

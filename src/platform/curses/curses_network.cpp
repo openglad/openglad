@@ -1693,14 +1693,14 @@ public:
                 // host-only actionable; a toggle is a SETTINGS change, so
                 // the server clears every non-host machine's ready (§4.5)
                 // and the echoed settings drive the status line below.
-                // Sanitize on toggle ({0,1}; junk counts as ON, lands 0).
-                // Host-only means "is host NOW" here too: the server accepts
-                // a SettingsChange from the host PEER, which on a dedicated
-                // lobby is the elected host's JOIN client.
+                // Sanitize on toggle ({0,1}; junk counts as ON, lands 0) —
+                // the ONE implementation of that rule is
+                // og::ui::toggle_cross_control, which the wizard's RULES row
+                // and the DIFFICULTY panel also turn (lead ruling 14: this
+                // was the terminals' inline twin).
                 og::sim::ITransport* const ctrl_link = server_link();
                 if (local_player_is_host() && ctrl_link != nullptr) {
-                    save_.cross_control = static_cast<std::int16_t>(
-                        save_.cross_control != 0 ? 0 : 1);
+                    og::ui::toggle_cross_control(save_);
                     send_lobby_message(
                         *ctrl_link, server_link_peer(),
                         make_settings_message(save_, difficulty_));

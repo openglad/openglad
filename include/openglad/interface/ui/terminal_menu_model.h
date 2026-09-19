@@ -70,8 +70,9 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
 // no grid, so the bands become CONTEXT LINES above a numbered item list — the
 // campaign-camp shape (lines + rows + a numeric prompt), which both terminal
 // clients already drive. Every string here comes from the shared §2.1/§4
-// formatters (format_lineup_fill_label / _map_units_label / _census /
-// _power), so the three clients cannot drift apart on a label.
+// formatters (format_lineup_fill_label / _map_units_label / _power and
+// format_match_preview for the census column), so the three clients cannot
+// drift apart on a label.
 
 // One selectable LINEUP row. `team` is meaningful for the two knob kinds only.
 struct TerminalLineupItem {
@@ -118,11 +119,19 @@ struct TerminalLineupInputs {
     // printed NO MAP UNITS off an absent census would be inventing a rule.
     //
     // F3: both live terminal clients FILL this span from the staged world
-    // their VIEW LEVEL shows (census_staged_lineup_map_units below), and
-    // refuse the MAP UNITS toggle with the hint where the count is 0 — the
-    // SDL box's dim and click belt, in the band's own words. The empty-span
-    // fallback survives for the no-world shapes.
+    // their VIEW LEVEL shows (census_staged_match_report below, which hands
+    // back `report` from the very same ensure_current()), and refuse the
+    // MAP UNITS toggle with the hint where the count is 0 — the SDL box's
+    // dim and click belt, in the band's own words. The empty-span fallback
+    // survives for the no-world shapes.
     std::span<const int> map_unit_counts;
+    // §3.8.4: the staged roster report the census column reads, from the
+    // SAME census_staged_match_report() call that filled `map_unit_counts`.
+    // nullptr = nothing staged, and format_match_preview then falls back to
+    // the band's own fighter census — so the column never goes blank and a
+    // terminal never invents a picture it could not see. A pointer (not a
+    // value) keeps every existing call site compiling unchanged.
+    const ScenarioRosterReport* report = nullptr;
     bool networked = false;
     bool is_host = true;
 };

@@ -32,6 +32,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -1068,21 +1069,24 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
-    // Team Build is 11 items (§2.5 in-place substitution: 1=roster,
+    // Team Build is 13 items (§2.5 in-place substitution: 1=roster,
     // 4=deploy, 5=ready, 6=GO!; #206 inserted 7=camp before Back, shifting
     // 8=back, 9=networking, 10=Scenario; the flat CTF trio left for the
-    // camp's MATCH SETUP page and 11=difficulty was appended in its place —
-    // docs/camp-controls-design.md); the scenario-shaped commands nest
-    // under the Scenario submenu (1=set_campaign, 2=set_level,
+    // SETUP wizard's RULES step and 11=difficulty was appended in its
+    // place — docs/camp-controls-design.md); the scenario-shaped commands
+    // nest under the Scenario submenu (1=set_campaign, 2=set_level,
     // 3=view_scenario, 4=matchup, 5=progress, 6=replay level (#207),
     // 7=back — the missions door retired into the camp, and amendment B5
     // retired TROOPS, which is the one row this branch REMOVED rather than
     // appended: replay level and back each moved up one). Team
-    // Build 11=difficulty opens the DIFFICULTY submenu, and 12=lineup the
+    // Build 11=difficulty opens the DIFFICULTY submenu, 12=lineup the
     // LINEUP page (§8 — appended below difficulty, so nothing above moved)
     // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
-    // 5=generators, 6=infinite gold, 7=back). Main is 8 items now:
-    // 1=begin, 2=continue, 3=level edit, 4=options, 5=help, 6=quit,
+    // 5=generators, 6=infinite gold, 7=back), and 13=setup the SETUP
+    // wizard (#304, docs/match-setup-design.md §2.7 — appended below
+    // lineup by the same rule, so every 1-based ordinal 1..12 above keeps
+    // its meaning and this drive gains exactly one leg). Main is 8 items
+    // now: 1=begin, 2=continue, 3=level edit, 4=options, 5=help, 6=quit,
     // 7=load company, 8=cloud.
     const std::string input =
         "bad\r\n"   // main: invalid choice; terminal CR is trimmed
@@ -1146,6 +1150,11 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "2\n"       // lineup: TEAM 1 MAP UNITS (classic: refused)
         "99\n"      // lineup: out of range -> refused, page reprints
         "12\n"      // lineup: back -> team build
+        // #304: the SETUP door on a CLASSIC campaign. terminal_item_gate
+        // refuses it in words and Team Build re-presents WITHOUT consuming
+        // another line — the 7=camp precedent, which is why the next
+        // ordinal below is read by Team Build and not by a wizard prompt.
+        "13\n"      // team build: setup (gladiator -> the versus guard)
         "9\n"       // team build: networking (unavailable)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
@@ -1169,6 +1178,16 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     EXPECT_EQ(std::vector<int>({FAMILY_SOLDIER, FAMILY_MAGE, FAMILY_SOLDIER}),
               config.team_families)
         << "the two seeded families survive and the hire appended its family";
+
+    // #304 leg 13: the classic-campaign guard answered, and the wizard
+    // never opened. Pinning the absence matters as much as the line — a
+    // guard that printed AND opened would eat the next ordinal and silently
+    // desync every leg below it.
+    EXPECT_NE(std::string::npos,
+              printed.find(std::string(og::ui::kSetupClassicGuardMessage)))
+        << "Team Build item 13 on a classic campaign must refuse in words";
+    EXPECT_EQ(std::string::npos, printed.find("--- SETUP: "))
+        << "the guard path must never compose a wizard step";
 
     // The DIFFICULTY submenu is the only place this binary drives the text
     // client's six settings rows, so pin the ANSWER each ordinal prints, in
@@ -2772,18 +2791,33 @@ TEST(PlatformHeadless, text_picker_lineup_map_units_refuses_where_the_map_ships_
 
     const std::string out = stdout_capture.restore();
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
-    // The hint rides beside the census on the unauthored band...
+    // The hint rides beside the census on the unauthored band. §3.8.4 moved
+    // that census column onto format_match_preview, so the cell is now the
+    // STAGED picture: a band the staged world fields nobody on reads EMPTY
+    // where it used to read the band's own NO FIGHTERS. The hint's rule is
+    // unchanged -- it still rides BESIDE the census, never instead of it.
     EXPECT_NE(std::string::npos,
               out.find("TEAM 4 YELLOW  POWER --   NO SEAT\n"
-                       "  [FILL: NONE] [MAP UNITS: ON]  NO FIGHTERS  "
+                       "  [FILL: NONE] [MAP UNITS: ON]  EMPTY  "
                        "NO MAP UNITS"))
         << "B4: a censused page says NO MAP UNITS where the map ships "
            "none:\n" << out;
-    // ...and never on the elves' band.
-    EXPECT_EQ(std::string::npos,
-              out.find("[FILL: FAIR] [MAP UNITS: ON]  NO FIGHTERS  "
+    // ...and never on the elves' band, whose census is now the map's own
+    // twelve -- the number the launch would field, not a fighter count the
+    // page derived for itself.
+    EXPECT_NE(std::string::npos,
+              out.find("TEAM 2 GREEN  POWER --   NO SEAT\n"
+                       "  [FILL: NONE] [MAP UNITS: ON]  12 MAP UNITS\n"))
+        << "the authored team keeps a live box and a staged census:\n"
+        << out;
+    // ...and the census FOLLOWS the box: switching the elves off empties
+    // the band in the preview, which is the whole point of reading the
+    // staged report instead of the save.
+    EXPECT_NE(std::string::npos,
+              out.find("TEAM 2 GREEN  POWER --   NO SEAT\n"
+                       "  [FILL: NONE] [MAP UNITS: OFF]  EMPTY  "
                        "NO MAP UNITS"))
-        << "the authored team keeps a live box:\n" << out;
+        << "the preview must restage behind the knob:\n" << out;
     EXPECT_NE(std::string::npos, out.find("MAP UNITS: OFF"))
         << "the elves' box flips:\n" << out;
 
@@ -3490,6 +3524,395 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_at_rest_fields_the_match)
             << "scen " << arena.scen
             << ": GREEN's dealt squad stands on the arena floor";
     }
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// --- #304: the SETUP wizard through the real text client -----------------
+//
+// The shared driver's every Outcome arm is reachable from a terminal, and
+// this drive walks them in one sitting: the five steps and their banners,
+// Next/Prev/Back, a level row's Unchanged AND Applied arms, a cycler
+// forward and the same cycler's `N-` backward, SetDifficulty through the
+// client's value-taking tail, the two pointer notices, GO's pointer notice
+// and an unparsable row. The wizard is Team Build item 13, which is why
+// this file's positional ledger gained exactly one leg.
+TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("setupw", 820));
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n"    // main: load company -> the company list
+            "1\n"    //   list: open company...
+            "1\n"    //     #1 = setupw -> team build
+            "13\n"   // team build: SETUP -> "--- SETUP: GAME ---"
+            // GAME is the games index: 7 game rows, then Next, then Back.
+            // NEXT on GAME means "keep the arena that is set" and lands on
+            // TEAMS (§2.2), so the ARENA step is reached by PREV from
+            // there — which is exactly the pair this leg proves.
+            "8\n"    // GAME: Next: TEAMS
+            "4\n"    // TEAMS: Prev: ARENA
+            "1\n"    // ARENA: THE PITCH is [CURRENT] -> Unchanged, NO advance
+            "2\n"    // ARENA: THE MUDBOWL -> Applied -> advance to TEAMS
+            "3\n"    // TEAMS: Next: RULES
+            "2\n"    // RULES: TIME LIMIT forward
+            "2-\n"   // RULES: the SAME row backward -- the `<` cell's
+                     //   projection; a cycle-once handler would lap instead
+            "7\n"    // RULES: DIFFICULTY -> SetDifficulty -> the client tail
+            "9\n"    // RULES: Next: MATCH
+            "2\n"    // MATCH: GO -> the terminal pointer notice
+            "1\n"    // MATCH: VIEW LEVEL -> the terminal pointer notice
+            "99\n"   // MATCH: out of range -> the invalid-row notice
+            "3\n"    // MATCH: Prev: RULES
+            "3\n"    // RULES: RESPAWNS (OFF -> HEROES) -- the LAST mutation
+                     //   of the drive, so the company on disk below can
+                     //   only have been written by this turn's autosave
+            "0\n"    // wizard: back out
+            "8\n"    // team build: back -> main
+            "6\n");  // main: quit
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+
+    // Every banner and every answer, IN ORDER: a set of substrings would
+    // pass on a wizard that printed the right words in the wrong places.
+    std::size_t at = 0;
+    const auto expect_in_order = [&](const std::string& needle) {
+        const std::size_t found = printed.find(needle, at);
+        EXPECT_NE(std::string::npos, found)
+            << "SETUP answer '" << needle << "' missing after offset " << at;
+        if (found != std::string::npos)
+            at = found + needle.size();
+    };
+    expect_in_order("--- SETUP: GAME ---");
+    expect_in_order("SOCCER - 0/4 cleared");
+    expect_in_order("Next: TEAMS");
+    expect_in_order("--- SETUP: TEAMS ---");
+    // The deal already ran at the top of this prompt, so the step reads the
+    // campaign's word and the census that follows from it (#305). The team
+    // LINES come first and the rows after them, which is the order asserted
+    // here: a set of substrings would pass on a page that printed them the
+    // other way round.
+    expect_in_order("TEAM 2 GREEN  2 BOTS");
+    expect_in_order("FILL: STRONG - none to brutal");
+    expect_in_order("Prev: ARENA");
+    expect_in_order("--- SETUP: ARENA ---");
+    expect_in_order("THE PITCH - 2 sides, 3 goals  [CURRENT]");
+    expect_in_order(std::string(og::ui::kCampaignLevelUnchangedMessage));
+    // ...and the refusal did NOT advance: the ARENA banner prints again.
+    expect_in_order("--- SETUP: ARENA ---");
+    expect_in_order("Level set to THE MUDBOWL.");
+    expect_in_order("--- SETUP: TEAMS ---");
+    expect_in_order("--- SETUP: RULES ---");
+    expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
+    expect_in_order("Clock: 5 minutes.");
+    expect_in_order("TIME LIMIT: 5 MIN - map, 5 to 20 min");
+    expect_in_order("Clock: the map's own.");
+    expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
+    // DIFFICULTY is SESSION state, not save state, and every test in this
+    // binary shares one session — so the word the wheel lands on depends on
+    // what ran before. The pin is therefore the AGREEMENT, not a literal:
+    // the tail's line and the row it redraws must name the same difficulty,
+    // upper-cased by the session exactly as §2.5 says.
+    expect_in_order("Difficulty set to ");
+    std::string difficulty_word;
+    {
+        const std::size_t stop = printed.find('.', at);
+        if (stop != std::string::npos)
+            difficulty_word = printed.substr(at, stop - at);
+    }
+    ASSERT_FALSE(difficulty_word.empty())
+        << "the value-taking difficulty tail must name the value it wrote";
+    std::string upper = difficulty_word;
+    for (char& ch : upper)
+        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    expect_in_order("DIFFICULTY: " + upper + " - up to slaughter");
+    expect_in_order("--- SETUP: MATCH ---");
+    expect_in_order("SOCCER: THE MUDBOWL");
+    expect_in_order("ACTIVE - MATCHED BOTS (2) STRONG");
+    expect_in_order("DIFFICULTY: " + upper);
+    expect_in_order(std::string(og::ui::kSetupTerminalGoNotice));
+    expect_in_order(std::string(og::ui::kSetupTerminalViewLevelNotice));
+    expect_in_order(std::string(og::ui::kSetupInvalidRowNotice));
+    expect_in_order("--- SETUP: RULES ---");
+    // RESPAWNS carries no said-line, so the row's own redrawn face IS the
+    // acknowledgement -- read back off the save, upper-cased by the session
+    // (§2.5), never remembered from the press.
+    expect_in_order("RESPAWNS: HEROES - off to team 1");
+
+    // The ARENA row wrote through the client's own level tail, not a bare
+    // scen_num poke: the session config moved with the save.
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("setupw"));
+    EXPECT_EQ(821, static_cast<int>(reloaded.scen_num))
+        << "the ARENA row's Applied arm ran apply_level_tail";
+    EXPECT_EQ(0, static_cast<int>(reloaded.time_limit))
+        << "`2-` stepped the SAME wheel back, so the clock ends where it "
+           "started -- a cycle-once handler would have left it on 2 MIN";
+    EXPECT_NE(0, static_cast<int>(reloaded.respawn_mode))
+        << "the Turned arm's autosave tail put the last knob on disk";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The Refused arm the happy path cannot reach: GO's row is DISABLED while
+// a seat has nobody to drive, and the wizard answers with the row's own
+// face -- the same words the strip GO pops (kDeployForEveryPlayerTitle).
+// This is also the wizard's half of the M4 agreement.
+TEST(PlatformHeadless, text_picker_setup_wizard_refuses_an_undeployed_go)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "BENCHED";
+        sd.current_campaign = "modes";
+        sd.current_levels.clear();
+        sd.current_levels["modes"] = 820;
+        sd.scen_num = 820;
+        sd.my_team = 0;
+        // The seat count is SESSION state -- the GTL file carries only the
+        // legacy compatibility byte (save_data.cpp:357-361), so a text
+        // company can never load two seats. The same predicate refuses the
+        // other way round: one seat whose team has nobody DEPLOYED to
+        // drive. available[team] is 0, so local_seats_deployed_for_go says
+        // no exactly as it does for an unmanned second seat.
+        sd.numplayers = 1;
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "Benched";
+        sd.team_list[0]->teamnum = 0;
+        sd.team_list[0]->deployed = false;
+        sd.team_size = 1;
+        sd.fill = {};
+        sd.map_units = {};
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("gogate"));
+    }
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+            "13\n"   // team build: SETUP -> GAME
+            "8\n"    // GAME: Next: TEAMS
+            "3\n"    // TEAMS: Next: RULES
+            "9\n"    // RULES: Next: MATCH
+            "2\n"    // MATCH: GO -> Disabled -> Refused
+            "0\n" "8\n" "6\n");
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    EXPECT_NE(std::string::npos,
+              printed.find(std::string(og::ui::kSetupGoDeployFace)))
+        << "the disabled GO row wears its refusal as its face";
+    // The refusal is the WHOLE answer: the wizard never handed the pointer
+    // notice out beside it.
+    EXPECT_EQ(std::string::npos,
+              printed.find(std::string(og::ui::kSetupTerminalGoNotice)))
+        << "a refused GO must not also point at Team Build item 6";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// #305 end to end, through the wizard's own FILL wheel: the ball arenas
+// deal STRONG, `N-` walks the wheel back to FAIR and the match fields ONE
+// bot, `N` twice walks it to BRUTAL and the match fields THREE -- while the
+// brawl arenas answer 1 at every word, because their FILL buys no body.
+// The at-rest twin above pins the untouched default; this pins the knob.
+TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_count)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+
+    struct Walk
+    {
+        short scen;
+        const char* wheel;    // the wizard rows that walk FILL off STRONG
+        const char* word;     // the face the TEAMS row must then read
+        int opponents;        // live opponents on GREEN at tick 3
+    };
+    // The deal is STRONG on 820/824 and FAIR on 300/500 (#305, SPEC
+    // §3.8.7), so "one step back" and "one step forward" land on different
+    // words per arena -- the wheel is walked by the FACE it writes, never
+    // by counting presses.
+    const Walk walks[] = {
+        {820, "1-\n",     "FILL: FAIR - none to brutal",   1},
+        {820, "1\n",      "FILL: BRUTAL - none to brutal", 3},
+        {824, "1-\n",     "FILL: FAIR - none to brutal",   1},
+        {824, "1\n",      "FILL: BRUTAL - none to brutal", 3},
+        {300, "1-\n1\n",  "FILL: FAIR - none to brutal",   1},
+        {500, "1-\n1\n",  "FILL: FAIR - none to brutal",   1},
+    };
+    for (const Walk& walk : walks) {
+        ASSERT_TRUE(seed_arena_company("arenaw", walk.scen));
+        std::string text;
+        std::string menus;
+        og::ui::TextPickerError error;
+        {
+            StdinRedirect input(
+                std::string(
+                    "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+                    "13\n"   // team build: SETUP -> GAME
+                    "8\n")   // GAME: Next: TEAMS (keeps the arena that is set)
+                + walk.wheel +   // TEAMS: the FILL wheel, one row, N / N-
+                "0\n"    // wizard: back out to team build
+                "6\n"    // team build: GO! -> the staged protocol session
+                "tick 3\n"
+                "state\n"
+                "quit\n"
+                "8\n"    // team build: back -> main
+                "6\n");  // main: quit
+            CoutRedirect json;
+            StdoutCapture capture;
+
+            og::ui::TextPickerConfig config;
+            config.campaign = "modes";
+            config.team_families = {FAMILY_SOLDIER};
+            config.seed = 42;
+            og::ui::run_text_picker(config, &error);
+            menus = capture.restore();
+            text = json.str();
+        }
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code)
+            << "scen " << walk.scen << ": " << error.detail;
+        EXPECT_NE(std::string::npos, menus.find(walk.word))
+            << "scen " << walk.scen
+            << ": the TEAMS row must read the word the wheel landed on";
+
+        std::string state_line;
+        {
+            std::size_t pos = text.find("\"cmd\":\"state\"");
+            if (pos != std::string::npos) {
+                const std::size_t start = text.rfind('\n', pos);
+                const std::size_t stop = text.find('\n', pos);
+                state_line = text.substr(
+                    start == std::string::npos ? 0 : start + 1,
+                    stop == std::string::npos ? std::string::npos
+                                              : stop - start - 1);
+            }
+        }
+        ASSERT_FALSE(state_line.empty())
+            << "scen " << walk.scen << ": no state line";
+        EXPECT_EQ(1, state_livings_on_team(state_line, 0))
+            << "scen " << walk.scen << ": the solo fighter on RED";
+        EXPECT_EQ(walk.opponents, state_livings_on_team(state_line, 1))
+            << "scen " << walk.scen << " at " << walk.word
+            << ": the wheel the wizard turned is the squad on the floor";
+    }
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// §3.8.4: the LINEUP page's census column is the SAME shared preview
+// formatter the wizard's TEAMS line uses, over the SAME staged report from
+// the SAME census call -- so a fresh ball arena reads the squad the deal
+// bought (2 BOTS at STRONG) on both pages instead of a fighter count LINEUP
+// derived for itself. Before this the column answered NO FIGHTERS there,
+// which described no world anyone was about to play.
+TEST(PlatformHeadless, text_picker_lineup_census_reads_the_staged_squad)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("lineupc", 820));
+
+    std::string out;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+            "12\n"   // team build: LINEUP
+            "\n"     //   lineup: blank exits
+            "8\n" "6\n");
+        CoutRedirect json;
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        out = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    EXPECT_NE(std::string::npos,
+              out.find("  [FILL: STRONG] [MAP UNITS: ON]  2 BOTS"))
+        << "the dealt squad is what the page previews (#305):\n" << out;
+    EXPECT_EQ(std::string::npos, out.find("TEAM 2 GREEN  POWER --   NO SEAT\n"
+                                          "  [FILL: STRONG] [MAP UNITS: ON]  "
+                                          "NO FIGHTERS"))
+        << "the retired self-derived census must not survive:\n" << out;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// D9, the terminal half: the match rules have ONE door per campaign kind on
+// every client. On a VERSUS campaign the DIFFICULTY door (item 11) refuses
+// and points at the wizard; the classic twin -- item 13 refusing and
+// pointing back -- is the leg the positional drive above carries.
+TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_campaign)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("versusd", 820));
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+            "11\n"   // team build: DIFFICULTY on a versus campaign
+            "8\n" "6\n");
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    EXPECT_NE(std::string::npos,
+              printed.find(
+                  std::string(og::ui::kSetupDifficultyVersusGuardMessage)))
+        << "item 11 on a versus campaign must point at SETUP: RULES";
+    EXPECT_EQ(std::string::npos, printed.find("=== Difficulty ==="))
+        << "the guard path must never open the DIFFICULTY submenu";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
