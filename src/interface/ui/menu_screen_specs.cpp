@@ -8019,6 +8019,78 @@ void match_setup_draw_background(void* /*screen_state*/)
                                                          1);
 }
 
+// WHERE a freshly entered step puts the keyboard. SPEC §2.0 wrote the rule
+// for the GAME step ("the rewire moves the keyboard highlight onto the
+// current game's row"); the lead's read-back of the wave-3 shots extended
+// it to all five, because a step entered by clicking its tab left the
+// highlight ON that tab — and the current tab is inert by design (D36), so
+// Enter did nothing at all until the player arrowed away. One rule, one
+// table:
+//   GAME  -> the row the campaign named in match_knobs.arena_page;
+//   ARENA -> the [CURRENT] arena when the window holds it;
+//   MATCH -> GO while it is live, else VIEW LEVEL (the row that still does
+//            something when GO is gated);
+//   TEAMS
+//   RULES -> the first live row: the first cycler or door.
+// Every arm falls back to the first live row, and a step with NO live row
+// (a non-networked joiner's RULES, where every fact is a line) hands the
+// keyboard to the footer's own way forward instead of to the tab.
+int match_setup_entry_highlight(const MatchSetupScreenState& st,
+                                const button* buttons, int visible)
+{
+    const auto find_row = [visible](auto&& want) {
+        for (int r = 0; r < visible; ++r) {
+            const SetupRow* const row = match_setup_window_row(r);
+            if (row != nullptr && want(*row))
+                return kMatchSetupRowBase + r;
+        }
+        return -1;
+    };
+    const auto first_live_row = [&find_row] {
+        return find_row([](const SetupRow& row) {
+            return row.state != RowState::Disabled;
+        });
+    };
+
+    int landing = -1;
+    switch (st.session.step()) {
+    case SetupStep::Game: {
+        const std::string& want = st.session.knobs().arena_page;
+        if (!want.empty()) {
+            landing = find_row([&want](const SetupRow& row) {
+                return row.base.id == want;
+            });
+        }
+        break;
+    }
+    case SetupStep::Arena:
+        landing = find_row(
+            [](const SetupRow& row) { return row.base.current; });
+        break;
+    case SetupStep::Match:
+        landing = find_row([](const SetupRow& row) {
+            return row.extra == SetupRow::Extra::Go &&
+                   row.state != RowState::Disabled;
+        });
+        if (landing < 0) {
+            landing = find_row([](const SetupRow& row) {
+                return row.base.id == og::ui::kSetupRowViewLevel;
+            });
+        }
+        break;
+    case SetupStep::Teams:
+    case SetupStep::Rules:
+        break;
+    }
+    if (landing < 0)
+        landing = first_live_row();
+    if (landing >= 0)
+        return landing;
+    if (buttons != nullptr && !buttons[kMatchSetupNextIndex].hidden)
+        return kMatchSetupNextIndex;
+    return kMatchSetupBackIndex;
+}
+
 // Per-frame band, faces and full-graph nav (pattern b). Visibility is the
 // gate pass's (the state_override thunks above); this pass re-bands the
 // rows under the step's lines, writes every composed face to BOTH label
@@ -8193,24 +8265,27 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
         .left = prev_shown ? kMatchSetupPrevIndex : kMatchSetupBackIndex,
         .right = -1};
 
-    // On the entered-GAME edge the highlight lands on the CURRENT game's
-    // row — the row whose id is the campaign's own match_knobs.arena_page.
-    // A one-shot write on the step edge, which is exactly what the
-    // rewire(buttons, count, int& highlighted) signature exists for.
+    // The entered-step edge: the keyboard lands on a LIVE row, never on the
+    // pressed-in tab the click that brought us here left it on. A player
+    // who tabs to RULES and presses Enter must turn the first knob, not
+    // re-press an inert tab (the whole wizard is rows, and every step has a
+    // first thing to do). One home for the rule, one one-shot write, which
+    // is exactly what the rewire(buttons, count, int& highlighted)
+    // signature exists for.
     if (st != nullptr) {
         const SetupStep step = st->session.step();
         const bool entered = !st->step_seeded || step != st->last_step;
         st->step_seeded = true;
         st->last_step = step;
-        if (entered && step == SetupStep::Game) {
-            const std::string& want = st->session.knobs().arena_page;
-            for (int r = 0; !want.empty() && r < visible; ++r) {
-                const SetupRow* const row = match_setup_window_row(r);
-                if (row == nullptr || row->base.id != want)
-                    continue;
-                highlighted_button = kMatchSetupRowBase + r;
-                TRACE("setup", "game_highlight %s", want.c_str());
-                break;
+        if (entered) {
+            const int landing =
+                match_setup_entry_highlight(*st, buttons, visible);
+            if (landing >= 0) {
+                highlighted_button = landing;
+                TRACE("setup", "entry_highlight %s %s",
+                      std::string(og::ui::MatchSetupSession::step_word(step))
+                          .c_str(),
+                      buttons[landing].id.c_str());
             }
         }
     }

@@ -671,6 +671,109 @@ void check_setup_grid(const SetupLayoutDriver& driver, const char* variant)
     (void)visible_rows;
 }
 
+// The entered-step landing. SPEC §2.0 wrote the rule for GAME; the lead's
+// read-back of the wave-3 captures extended it to every step, because a
+// step reached by clicking its tab left the keyboard ON that tab — and the
+// current tab is inert by design (D36), so Enter did nothing at all. This
+// is the rule seen from OUTSIDE the rewire: whatever the step, the landing
+// is a live row (or, where a step has none, the footer's way on), never a
+// tab.
+void check_setup_entry_highlight(const SetupLayoutDriver& driver,
+                                 og::ui::MatchSetupSession::Step step,
+                                 const char* variant)
+{
+    using Step = og::ui::MatchSetupSession::Step;
+    const int h = driver.highlighted;
+    ASSERT_GE(h, 0) << variant << ": no highlight at all";
+    ASSERT_LT(h, driver.count) << variant;
+    EXPECT_FALSE(driver.buttons[h].hidden)
+        << variant << ": the landing is a hidden button";
+    EXPECT_LT(h, og::ui::kMatchSetupTabBase)
+        << variant << ": the current tab is inert (D36) — a landing there "
+                      "means Enter does nothing until the player arrows away";
+
+    int live_rows = 0;
+    int first_live = -1;
+    int current_row = -1;
+    int live_go = -1;
+    int view_level = -1;
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        const int ordinal = og::ui::kMatchSetupRowBase + r;
+        const std::string& label = driver.buttons[ordinal].label;
+        if (driver.buttons[ordinal].hidden)
+            continue;
+        if (label.find("[CURRENT]") != std::string::npos && current_row < 0)
+            current_row = ordinal;
+        if (label.starts_with("VIEW LEVEL") && view_level < 0)
+            view_level = ordinal;
+        if (driver.states[static_cast<std::size_t>(ordinal)] ==
+            og::ui::RowState::Disabled)
+        {
+            continue;
+        }
+        ++live_rows;
+        if (first_live < 0)
+            first_live = ordinal;
+        if (label.starts_with("GO") && live_go < 0)
+            live_go = ordinal;
+    }
+
+    if (live_rows == 0)
+    {
+        EXPECT_TRUE(h == og::ui::kMatchSetupNextIndex ||
+                    h == og::ui::kMatchSetupBackIndex)
+            << variant << ": a step with no live row at all hands the "
+                          "keyboard to the footer, not to the tab";
+        return;
+    }
+
+    EXPECT_LT(h, og::ui::kMatchSetupRowBase + og::ui::kSetupRowsMax)
+        << variant << ": a step WITH live rows lands on one";
+    const std::string& landed = driver.buttons[h].label;
+    switch (step)
+    {
+    case Step::Game:
+        // The synthetic book's match_knobs names the SOCCER page.
+        EXPECT_TRUE(landed.starts_with("SOCCER"))
+            << variant << ": GAME lands on match_knobs.arena_page, not on "
+                          "row 0 — '" << landed << "'";
+        break;
+    case Step::Arena:
+        if (current_row >= 0)
+        {
+            EXPECT_EQ(current_row, h)
+                << variant << ": ARENA lands on the [CURRENT] arena — '"
+                << landed << "'";
+        }
+        else
+        {
+            EXPECT_EQ(first_live, h) << variant;
+        }
+        break;
+    case Step::Match:
+        if (live_go >= 0)
+        {
+            EXPECT_EQ(live_go, h)
+                << variant << ": a live GO is what MATCH is for";
+        }
+        else
+        {
+            EXPECT_EQ(view_level, h)
+                << variant << ": a gated GO hands MATCH to VIEW LEVEL, the "
+                              "row that still does something — '"
+                << landed << "'";
+        }
+        break;
+    case Step::Teams:
+    case Step::Rules:
+        EXPECT_EQ(first_live, h)
+            << variant << ": the first cycler or door — '" << landed << "'";
+        break;
+    }
+}
+
+
 } // namespace
 
 TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
@@ -780,6 +883,8 @@ TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
                     driver.frame(host);
                     ASSERT_NO_FATAL_FAILURE(
                         check_setup_grid(driver, name.c_str()));
+                    ASSERT_NO_FATAL_FAILURE(check_setup_entry_highlight(
+                        driver, variant.step, name.c_str()));
 
                     // The CURRENT tab is the pressed-in one: Disabled, and
                     // its neighbours plainly Visible (D36).

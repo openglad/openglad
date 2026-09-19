@@ -25,6 +25,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/match_setup_session.h>
@@ -52,6 +53,13 @@
 #include <vector>
 
 void picker_main(Sint32 argc, char** argv);
+// The FX-capture nav hook (picker_input.cpp): an injector thread cannot
+// send a real key — the blocking hold-and-release loops eat it.
+extern int g_test_menu_nav_key;
+extern bool g_start_game_requested;
+// picker_team_build.cpp's answer to "did the remote start pick START GAME":
+// the same declaration menu_screen_specs.cpp makes for the fold.
+bool team_build_start_selected();
 Sint32 create_team_menu(Sint32 arg1);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
@@ -121,6 +129,79 @@ const char* uxshots_dir()
     return std::getenv("UXSHOTS_DIR");
 }
 
+// --- The keyboard landing, and how a CAPTURE can show it ------------------
+//
+// The runner keeps its highlight in a local and publishes
+// menu_screen_testing_highlighted_button() next to each completed frame;
+// that mirror is the oracle every assertion below reads. The pulsing RING,
+// though, is only drawn once the player has actually used the keyboard
+// (picker_input.cpp's menu_nav_enabled), which is why the wave-3 GAME
+// capture showed no highlight at all while the mirror was already on the
+// SOCCER row. A shot that has to SHOW the landing therefore wakes the ring
+// first, with one nav step in a direction the landing has no link for — a
+// row's LEFT is never wired (the "<" cell is on the RIGHT), and the footer
+// NEXT's RIGHT is the end of its chain — and reads the id back to prove
+// the wake moved nothing.
+std::string highlighted_id()
+{
+    std::string id = "<unread>";
+    if (!run_on_main_thread([&id] {
+            AllButtonsLock lock;
+            const int index =
+                og::ui::menu_screen_testing_highlighted_button();
+            id = "<no button at index " + std::to_string(index) + ">";
+            if (index >= 0 && index < MAX_BUTTONS) {
+                const vbutton* const row =
+                    og::runtime::current_session
+                        ->allbuttons_[static_cast<std::size_t>(index)];
+                if (row != nullptr)
+                    id = row->id;
+            }
+        }))
+    {
+        return "<the menu loop never read the highlight mirror>";
+    }
+    return id;
+}
+
+bool wake_nav_highlight(int key, int timeout_ms = 10000)
+{
+    const std::uint64_t target =
+        og::ui::menu_screen_testing_completed_frames() + 1;
+    if (!run_on_main_thread([key] { g_test_menu_nav_key = key; }))
+        return false;
+    const Uint64 deadline =
+        SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    for (;;) {
+        int hook = key;
+        if (!run_on_main_thread([&hook] { hook = g_test_menu_nav_key; }))
+            return false;
+        if (hook == -1 &&
+            og::ui::menu_screen_testing_completed_frames() >= target)
+        {
+            return true;
+        }
+        if (SDL_GetTicks() > deadline)
+            return false;
+        (void)wait_for_menu_frames(1);
+    }
+}
+
+// The landing, as the flow wants to talk about it: which button, and what
+// that button says.
+struct Landing {
+    std::string id;
+    std::string label;
+};
+
+Landing read_landing()
+{
+    Landing landing;
+    landing.id = highlighted_id();
+    landing.label = interactable_label(landing.id);
+    return landing;
+}
+
 // One flow's observations, recorded on the injector thread and asserted on
 // the main thread (a gtest failure raised from a thread that then dies
 // mid-flow takes its message with it).
@@ -149,6 +230,12 @@ struct SetupFlowState
     bool difficulty_hidden = false;
     bool setup_visible = false;
     int captures = 0;
+    // The keyboard landing per step (P1): where the highlight IS when the
+    // step is entered, read off the runner's own mirror.
+    Landing game_landing, arena_landing, teams_landing, rules_landing,
+        match_landing;
+    std::string match_go_label, match_view_label;
+    bool nav_woke = true;
 };
 
 // The shared opening: main menu -> Base Camp -> the strip's SETUP door.
@@ -196,6 +283,8 @@ int door_twin_injector(void* data)
         return failed;
 
     (void)wait_for_menu_frames(2);
+    state->game_landing = read_landing();
+    state->nav_woke = wake_nav_highlight(KEY_LEFT);
     capture_presented_frame("setup_step_game", uxshots_dir());
     ++state->captures;
     state->game_row = interactable_label("setup_row_0");
@@ -242,6 +331,16 @@ TEST(MatchSetupUi, door_twin_visibility_and_strip_nav)
     EXPECT_NE(std::string::npos, state.game_row.find("TEAM DEATHMATCH"))
         << "the GAME step is the campaign's own book root: '"
         << state.game_row << "'";
+    // P1: entering GAME puts the keyboard on the CURRENT game's row — the
+    // one match_knobs.arena_page names — and not on row 0, and never on
+    // the inert current tab.
+    EXPECT_TRUE(state.game_landing.id.starts_with("setup_row_"))
+        << "the landing is a row: '" << state.game_landing.id << "'";
+    EXPECT_NE(std::string::npos, state.game_landing.label.find("SOCCER"))
+        << "the save's cursor is on 820, so GAME lands on SOCCER: '"
+        << state.game_landing.label << "' (" << state.game_landing.id << ")";
+    EXPECT_TRUE(state.nav_woke)
+        << "the capture wakes the highlight ring with one no-op nav step";
     verify_captured_frames("setup_door", 1);
     restore_gladiator_mount();
 }
@@ -275,6 +374,8 @@ int step_walk_injector(void* data)
     state->arena_row = interactable_label("setup_row_0");
     state->arena_on_current_window =
         state->arena_row.find("[CURRENT]") != std::string::npos;
+    state->arena_landing = read_landing();
+    state->nav_woke = state->nav_woke && wake_nav_highlight(KEY_LEFT);
     capture_presented_frame("setup_step_arena", uxshots_dir());
     ++state->captures;
 
@@ -285,6 +386,8 @@ int step_walk_injector(void* data)
         return escape(5, "the TEAMS tab never came up");
     (void)wait_for_menu_frames(2);
     state->teams_fill_row = interactable_label("setup_row_0");
+    state->teams_landing = read_landing();
+    state->nav_woke = state->nav_woke && wake_nav_highlight(KEY_LEFT);
     capture_presented_frame("setup_step_teams", uxshots_dir());
     ++state->captures;
 
@@ -295,6 +398,8 @@ int step_walk_injector(void* data)
     (void)wait_for_menu_frames(2);
     state->rules_row_0 = interactable_label("setup_row_0");
     state->rules_row_1 = interactable_label("setup_row_1");
+    state->rules_landing = read_landing();
+    state->nav_woke = state->nav_woke && wake_nav_highlight(KEY_LEFT);
     capture_presented_frame("setup_step_rules", uxshots_dir());
     ++state->captures;
 
@@ -304,6 +409,10 @@ int step_walk_injector(void* data)
         return escape(7, "the MATCH tab never came up");
     (void)wait_for_menu_frames(2);
     state->go_row = interactable_label("setup_row_1");
+    state->match_landing = read_landing();
+    state->match_go_label = state->go_row;
+    state->match_view_label = interactable_label("setup_row_0");
+    state->nav_woke = state->nav_woke && wake_nav_highlight(KEY_LEFT);
     capture_presented_frame("setup_step_match", uxshots_dir());
     ++state->captures;
 
@@ -370,6 +479,32 @@ TEST(MatchSetupUi, tab_walk_through_every_step)
         << "the MATCH step ends on GO: '" << state.go_row << "'";
     EXPECT_TRUE(state.walked_back)
         << "the tabs jump back down the strip";
+
+    // P1, the whole walk: every step entered leaves the keyboard on a LIVE
+    // row of that step — never on the tab the click landed on, which the
+    // engine dims and eats (D36), and never nowhere.
+    EXPECT_TRUE(state.arena_landing.id.starts_with("setup_row_"))
+        << "ARENA landing: '" << state.arena_landing.id << "'";
+    EXPECT_NE(std::string::npos, state.arena_landing.label.find("[CURRENT]"))
+        << "ARENA lands on the arena the cursor is on: '"
+        << state.arena_landing.label << "'";
+    EXPECT_EQ("setup_row_0", state.teams_landing.id)
+        << "TEAMS lands on its first row (the FILL wheel here): '"
+        << state.teams_landing.label << "'";
+    EXPECT_EQ("setup_row_0", state.rules_landing.id)
+        << "RULES lands on its first cycler: '" << state.rules_landing.label
+        << "'";
+    if (state.match_go_label == "GO") {
+        EXPECT_EQ("setup_row_1", state.match_landing.id)
+            << "a LIVE GO is what the MATCH step is for";
+    } else {
+        EXPECT_EQ("setup_row_0", state.match_landing.id)
+            << "a gated GO ('" << state.match_go_label
+            << "') hands MATCH to VIEW LEVEL — the row that still does "
+               "something: '" << state.match_view_label << "'";
+    }
+    EXPECT_TRUE(state.nav_woke)
+        << "every capture in this walk wakes the ring with a no-op nav step";
     verify_captured_frames("setup_walk", 4);
     restore_gladiator_mount();
 }
@@ -1343,6 +1478,8 @@ struct JoinerState
     std::string match_last_row;
     bool finished = false;
     int captures = 0;
+    Landing rules_landing, arena_landing, match_landing;
+    bool nav_woke = true;
 };
 
 int joiner_injector(void* data)
@@ -1365,6 +1502,12 @@ int joiner_injector(void* data)
     // half of the wheel, and a joiner has no wheel.
     state->no_reverse_cells = !has_interactable("setup_rev_0") &&
         !has_interactable("setup_rev_1");
+    // P1 on a step with no live row at all: every rule is a LINE here and
+    // the single CROSS CONTROL row is read-only, so the keyboard takes the
+    // footer's way on rather than the inert tab. NEXT's RIGHT is the end
+    // of the footer chain, so that is this shot's no-op wake.
+    state->rules_landing = read_landing();
+    state->nav_woke = wake_nav_highlight(KEY_RIGHT);
     capture_presented_frame("setup_joiner_rules", uxshots_dir());
     ++state->captures;
 
@@ -1379,11 +1522,13 @@ int joiner_injector(void* data)
     (void)wait_for_menu_frames(2);
     state->arena_refused = trace_contains("zone", "level_denied_nonhost");
     state->still_on_arena = interactable_label("setup_tab_1") == "[ARENA]";
+    state->arena_landing = read_landing();
 
     if (!open_setup_step(4, "MATCH", 15000))
         return escape(4, "the MATCH step never came up");
     (void)wait_for_menu_frames(2);
     state->match_last_row = interactable_label("setup_row_1");
+    state->match_landing = read_landing();
 
     // A joiner's strip wears READY where the host's wears GO, so the
     // camp's own door is the edge that says the wizard closed.
@@ -1433,6 +1578,19 @@ TEST(MatchSetupUi, joiner_read_only_walk_and_ready_row)
         "setup", std::string(og::ui::kCampaignPickerHostGuardMessage).c_str()))
         << "and the refusal is the engine's one sentence for it";
     EXPECT_TRUE(state.still_on_arena) << "a refusal never advances";
+    // P1 for the read-only viewer, step by step.
+    EXPECT_EQ("setup_next", state.rules_landing.id)
+        << "the joiner's RULES step carries ONE read-only row, so the "
+           "keyboard takes the footer's way on, not the pressed-in tab — "
+           "landed on '" << state.rules_landing.id << "'";
+    EXPECT_TRUE(state.nav_woke)
+        << "the joiner capture wakes the ring with a no-op nav step";
+    EXPECT_NE(std::string::npos, state.arena_landing.label.find("[CURRENT]"))
+        << "a joiner's ARENA lands on the arena the host has set: '"
+        << state.arena_landing.label << "'";
+    EXPECT_EQ("setup_row_0", state.match_landing.id)
+        << "the joiner's GO slot is the Disabled READY pointer, so MATCH "
+           "lands on VIEW LEVEL — the one row a joiner can press";
     EXPECT_EQ(std::string(og::ui::kSetupJoinerReadyRow),
               state.match_last_row)
         << "the joiner's GO slot holds the pointer row: READY is the Base "
