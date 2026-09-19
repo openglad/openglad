@@ -1171,7 +1171,8 @@ int og_set_entity_hooks(lua_State* L)
 // one non-hook key). Parsed by scripts/modding/gen_api_stubs.py — keep the
 // spelling and location.
 constexpr const char* kCampaignHookNames[] = {"picker_menu", "picker_action",
-                                              "base_camp", "lineup"};
+                                              "base_camp", "match_knobs",
+                                              "lineup"};
 
 // Slots of the campaign_hooks_ref registry table.
 constexpr lua_Integer kCampaignMenuSlot = 1;
@@ -1182,6 +1183,8 @@ constexpr lua_Integer kCampaignZoneSlot = 3;
 // to the VmState at registration, so the menus can read them without
 // entering Lua at all (docs/lineup-design.md §3.3).
 constexpr lua_Integer kCampaignLineupPowerSlot = 4;
+// The match_knobs answer: which knobs the SETUP wizard shows for this game.
+constexpr lua_Integer kCampaignMatchKnobsSlot = 5;
 
 // "chunkname:line" of the caller, for the duplicate-registration record.
 std::string campaign_caller_source(lua_State* L)
@@ -1196,7 +1199,8 @@ std::string campaign_caller_source(lua_State* L)
 }
 
 // og.register_campaign_hooks({ vars = {...}, picker_menu = fn,
-// picker_action = fn, base_camp = fn }) — load-time only, one campaign
+// picker_action = fn, base_camp = fn, match_knobs = fn,
+// lineup = { power = fn } }) — load-time only, one campaign
 // book per VM (docs/campaign-scripting-design.md;
 // docs/basecamp-zones-design.md for the base_camp zone hook).
 int og_register_campaign_hooks(lua_State* L)
@@ -1226,8 +1230,8 @@ int og_register_campaign_hooks(lua_State* L)
             if (lua_type(L, -1) != LUA_TSTRING)
                 return luaL_error(
                     L, "og.register_campaign_hooks: keys are 'vars', "
-                       "'picker_menu', 'picker_action', 'base_camp' and "
-                       "'lineup' (got a %s key)",
+                       "'picker_menu', 'picker_action', 'base_camp', "
+                       "'match_knobs' and 'lineup' (got a %s key)",
                     luaL_typename(L, -1));
             const std::string key = lua_tostring(L, -1);
             bool known = false;
@@ -1256,9 +1260,14 @@ int og_register_campaign_hooks(lua_State* L)
     if (has_zone && !lua_isfunction(L, 4))
         return luaL_error(L, "og.register_campaign_hooks: 'base_camp' "
                              "must be a function");
-    lua_getfield(L, 1, "lineup");         // abs index 5
-    const bool has_lineup = !lua_isnil(L, 5);
-    if (has_lineup && !lua_istable(L, 5))
+    lua_getfield(L, 1, "match_knobs");    // abs index 5
+    const bool has_knobs = !lua_isnil(L, 5);
+    if (has_knobs && !lua_isfunction(L, 5))
+        return luaL_error(L, "og.register_campaign_hooks: 'match_knobs' "
+                             "must be a function");
+    lua_getfield(L, 1, "lineup");         // abs index 6
+    const bool has_lineup = !lua_isnil(L, 6);
+    if (has_lineup && !lua_istable(L, 6))
         return luaL_error(L, "og.register_campaign_hooks: 'lineup' must "
                              "be a table of { power }");
     bool has_lineup_power = false;
@@ -1271,7 +1280,7 @@ int og_register_campaign_hooks(lua_State* L)
         // registering a hook nothing calls.
         static const char* const kLineupKeys[] = {"power"};
         lua_pushnil(L);
-        while (lua_next(L, 5) != 0) {
+        while (lua_next(L, 6) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next iteration
             if (lua_type(L, -1) != LUA_TSTRING)
                 return luaL_error(
@@ -1292,7 +1301,7 @@ int og_register_campaign_hooks(lua_State* L)
                     key.c_str(), hint.c_str());
             }
         }
-        lua_getfield(L, 5, "power");
+        lua_getfield(L, 6, "power");
         has_lineup_power = !lua_isnil(L, -1);
         if (has_lineup_power && !lua_isfunction(L, -1))
             return luaL_error(L, "og.register_campaign_hooks: "
@@ -1302,10 +1311,10 @@ int og_register_campaign_hooks(lua_State* L)
             return luaL_error(L, "og.register_campaign_hooks: 'lineup' "
                                  "carries no 'power'");
     }
-    if (!has_menu && !has_action && !has_zone && !has_lineup)
+    if (!has_menu && !has_action && !has_zone && !has_knobs && !has_lineup)
         return luaL_error(L, "og.register_campaign_hooks: register at least "
                              "one of 'picker_menu' / 'picker_action' / "
-                             "'base_camp' / 'lineup'");
+                             "'base_camp' / 'match_knobs' / 'lineup'");
 
     std::vector<std::string> vars;
     lua_getfield(L, 1, "vars");
@@ -1390,8 +1399,14 @@ int og_register_campaign_hooks(lua_State* L)
             coverage_declare_hook(L, "campaign/base_camp");
         lua_rawseti(L, -2, kCampaignZoneSlot);
     }
+    if (has_knobs) {
+        lua_pushvalue(L, 5);
+        if (coverage::enabled())
+            coverage_declare_hook(L, "campaign/match_knobs");
+        lua_rawseti(L, -2, kCampaignMatchKnobsSlot);
+    }
     if (has_lineup_power) {
-        lua_getfield(L, 5, "power");
+        lua_getfield(L, 6, "power");
         if (coverage::enabled())
             coverage_declare_hook(L, "campaign/lineup_power");
         lua_rawseti(L, -2, kCampaignLineupPowerSlot);
@@ -3505,6 +3520,221 @@ bool parse_campaign_zone(lua_State* L, ScriptHost::Impl& impl,
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// match_knobs parse (docs/match-setup-design.md; the SETUP wizard's shape)
+// ---------------------------------------------------------------------------
+
+bool malformed_knobs(ScriptHost::Impl& impl, const std::string& what)
+{
+    const std::string message =
+        "campaign match_knobs returned a malformed answer: " + what;
+    LogError("class pack: {}\n", message);
+    impl.record_error("campaign:match_knobs", message.c_str());
+    return false;
+}
+
+// The FILL wheel spelled as the campaign spells it. One word, one code:
+// the engine never invents a sixth rung.
+bool parse_fill_word(const std::string& word, std::int16_t& out)
+{
+    if (word == "none") {
+        out = og::sim::kFillNone;
+        return true;
+    }
+    if (word == "weak") {
+        out = og::sim::kFillWeak;
+        return true;
+    }
+    if (word == "fair") {
+        out = og::sim::kFillFair;
+        return true;
+    }
+    if (word == "strong") {
+        out = og::sim::kFillStrong;
+        return true;
+    }
+    if (word == "brutal") {
+        out = og::sim::kFillBrutal;
+        return true;
+    }
+    return false;
+}
+
+// `lines` is an ARRAY of short strings, with the `vars` discipline: a
+// hash-keyed table has rawlen 0 and would silently answer no lines at all.
+bool parse_knobs_lines(lua_State* L, ScriptHost::Impl& impl,
+                       CampaignMatchKnobs& out)
+{
+    const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
+    if (count > kCampaignMatchKnobsMaxLines) {
+        return malformed_knobs(
+            impl, "'lines' names " + std::to_string(count) + " lines (max " +
+                      std::to_string(kCampaignMatchKnobsMaxLines) + ")");
+    }
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(L, -1, i);
+        if (lua_type(L, -1) != LUA_TSTRING) {
+            lua_pop(L, 1);
+            return malformed_knobs(impl,
+                                   "'lines' is not an array of strings");
+        }
+        std::size_t len = 0;
+        const char* text = lua_tolstring(L, -1, &len);
+        if (len == 0 ||
+            len > static_cast<std::size_t>(kCampaignMatchKnobsLineMax)) {
+            lua_pop(L, 1);
+            return malformed_knobs(
+                impl, "lines[" + std::to_string(i) +
+                          "] is empty or longer than " +
+                          std::to_string(kCampaignMatchKnobsLineMax) +
+                          " glyphs");
+        }
+        out.lines.emplace_back(text, len);
+        lua_pop(L, 1);
+    }
+    lua_pushnil(L);
+    while (lua_next(L, -2) != 0) {
+        lua_pop(L, 1);  // value; the key stays for the next iteration
+        lua_Integer index = 0;
+        if (lua_type(L, -1) == LUA_TNUMBER && lua_isinteger(L, -1))
+            index = lua_tointeger(L, -1);
+        if (index < 1 || index > count) {
+            lua_pop(L, 1);  // the key
+            return malformed_knobs(impl,
+                                   "'lines' is not an array of strings");
+        }
+    }
+    return true;
+}
+
+// Parses the knobs table at the top of the stack into `out` (stack left
+// unchanged). Like the zone parse, every bound is a HARD rejection: a
+// clipped line or a snapped-to-FAIR deal would quietly re-shape a wizard
+// the campaign author counted on, and the caller's fallback (the defaults)
+// is a page that still works.
+bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
+                                CampaignMatchKnobs& out)
+{
+    if (!lua_istable(L, -1))
+        return malformed_knobs(impl, std::string("returned a ") +
+                                         luaL_typename(L, -1));
+    static const char* const kKnobKeys[] = {"teams", "fill",  "score",
+                                            "time",  "lines", "arena_page",
+                                            "deal"};
+    lua_pushnil(L);
+    while (lua_next(L, -2) != 0) {
+        lua_pop(L, 1);  // value; the key stays for the next iteration
+        if (lua_type(L, -1) != LUA_TSTRING) {
+            const std::string what =
+                std::string("got a ") + luaL_typename(L, -1) + " key";
+            lua_pop(L, 1);
+            return malformed_knobs(impl, what);
+        }
+        const std::string key = lua_tostring(L, -1);
+        bool known = false;
+        for (const char* n : kKnobKeys)
+            known = known || key == n;
+        if (!known) {
+            const std::vector<const char*> names(std::begin(kKnobKeys),
+                                                 std::end(kKnobKeys));
+            const std::string hint = did_you_mean(key, names);
+            lua_pop(L, 1);
+            return malformed_knobs(impl, "unknown key '" + key + "'" + hint);
+        }
+    }
+
+    const struct {
+        const char* key;
+        bool* field;
+    } flags[] = {{"teams", &out.teams},
+                 {"score", &out.score},
+                 {"time", &out.time}};
+    for (const auto& flag : flags) {
+        lua_pushstring(L, flag.key);
+        lua_rawget(L, -2);
+        if (!lua_isnil(L, -1)) {
+            if (!lua_isboolean(L, -1)) {
+                lua_pop(L, 1);
+                return malformed_knobs(impl, std::string("'") + flag.key +
+                                                 "' is not a boolean");
+            }
+            *flag.field = lua_toboolean(L, -1) != 0;
+        }
+        lua_pop(L, 1);
+    }
+
+    lua_pushstring(L, "fill");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        bool understood = false;
+        if (lua_type(L, -1) == LUA_TSTRING) {
+            const std::string word = lua_tostring(L, -1);
+            if (word == "macro") {
+                out.fill = CampaignFillKnob::Macro;
+                understood = true;
+            } else if (word == "band") {
+                out.fill = CampaignFillKnob::Band;
+                understood = true;
+            }
+        } else if (lua_isboolean(L, -1) && lua_toboolean(L, -1) == 0) {
+            // `fill = false` is the whole row gone; `fill = true` is not a
+            // spelling of anything, so it is refused with the strings.
+            out.fill = CampaignFillKnob::Off;
+            understood = true;
+        }
+        if (!understood) {
+            lua_pop(L, 1);
+            return malformed_knobs(
+                impl, "'fill' is not \"macro\", \"band\" or false");
+        }
+    }
+    lua_pop(L, 1);
+
+    lua_pushstring(L, "lines");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            return malformed_knobs(impl,
+                                   "'lines' is not an array of strings");
+        }
+        if (!parse_knobs_lines(L, impl, out)) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+    lua_pop(L, 1);
+
+    lua_pushstring(L, "arena_page");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        if (lua_type(L, -1) != LUA_TSTRING) {
+            lua_pop(L, 1);
+            return malformed_knobs(impl, "'arena_page' is not a string");
+        }
+        std::size_t len = 0;
+        const char* text = lua_tolstring(L, -1, &len);
+        out.arena_page.assign(text, len);
+    }
+    lua_pop(L, 1);
+
+    lua_pushstring(L, "deal");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+        std::int16_t code = og::sim::kFillFair;
+        const bool word = lua_type(L, -1) == LUA_TSTRING &&
+                          parse_fill_word(lua_tostring(L, -1), code);
+        if (!word) {
+            lua_pop(L, 1);
+            return malformed_knobs(impl, "'deal' is not a wheel word (none, "
+                                         "weak, fair, strong, brutal)");
+        }
+        out.deal_fill = code;
+    }
+    lua_pop(L, 1);
+    return true;
+}
+
 }  // namespace
 
 bool campaign_picker_registered()
@@ -3731,6 +3961,49 @@ bool campaign_zone(CampaignZone& out)
     if (ok) {
         out = CampaignZone{};
         ok = parse_campaign_zone(L, impl, out);
+        lua_pop(L, 1);
+    }
+    pop_dispatch_gen(L, gen);
+    return ok;
+}
+
+bool campaign_match_knobs_registered()
+{
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignMatchKnobsSlot))
+        return false;
+    lua_pop(L, 1);
+    return true;
+}
+
+bool campaign_match_knobs(CampaignMatchKnobs& out)
+{
+    // The defaults are the answer on every refusal below, so they land
+    // BEFORE the first early return: a caller that keeps one struct across
+    // navigations must never read the previous campaign's knobs back.
+    out = CampaignMatchKnobs{};
+    VmState* st = campaign_vm_state();
+    if (st == nullptr)
+        return false;
+    ScriptHost::Impl& impl = st->owner->host().impl();
+    lua_State* L = impl.L;
+    if (!push_campaign_hook_fn(L, st, kCampaignMatchKnobsSlot))
+        return false;
+    CampaignDispatchScope scope(*st, impl);
+    if (!scope.armed()) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const std::uint64_t gen = push_dispatch_gen(L);
+    bool ok = impl.protected_call("campaign:match_knobs", 0, 1);
+    if (ok) {
+        ok = parse_campaign_match_knobs(L, impl, out);
+        if (!ok)
+            out = CampaignMatchKnobs{};
         lua_pop(L, 1);
     }
     pop_dispatch_gen(L, gen);
