@@ -82,6 +82,7 @@ FILES=(
     tests/integration/test_campaign_and_level_picker.cpp
     tests/integration/test_pause_menu.cpp
     tests/integration/test_ctf_ui.cpp
+    tests/integration/test_match_setup_ui.cpp
     tests/integration/test_cloud_ui.cpp
     tests/integration/test_level_editor_interactions.cpp
     tests/integration/test_picker_detail_menu_driven.cpp
@@ -106,6 +107,10 @@ CONVERTED_FILES=(
     tests/integration/test_back_to_mainmenu.cpp
     tests/integration/test_campaign_sprite_uaf.cpp
     tests/integration/test_menu_capture.cpp
+    # The SETUP wizard's flows are tier 2 FROM BIRTH (#304): every wait in
+    # them is a ladder or an edge, and every give-up goes through the
+    # escape tail with the wizard's own door table.
+    tests/integration/test_match_setup_ui.cpp
 )
 
 status=0

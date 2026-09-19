@@ -4630,13 +4630,15 @@ TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
 }
 
 // ---------------------------------------------------------------------------
-// The score limit at its re-homed SCENARIO row (#218): visible to a
-// networked joiner as a read-only label on versus campaigns, with the §2.7
-// denial in the callback — a joiner click popups and cycles nothing, a
-// host click cycles and syncs. (TROOPS retired with amendment B5; its
-// ordinal is a parked spare like the TEAMS cell before it.)
+// SCENARIO carries no knob any more. TEAMS retired with A1/A3, TROOPS with
+// B5, and SCORE with #304 — the match's target has ONE surface now, the
+// SETUP wizard's RULES row, host-gated by the session rather than by a
+// per-callback popup. All three ordinals are parked spares on EVERY frame,
+// for host and joiner, versus campaign and classic alike: that invariance
+// is what this case pins, because a park that only holds on one axis is a
+// row waiting to come back.
 // ---------------------------------------------------------------------------
-TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
+TEST(ViewTeam, scenario_carries_no_knob_for_host_or_joiner)
 {
     trace_clear();
 
@@ -4659,47 +4661,45 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
     int highlighted = kScenarioMenuBackIndex;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
 
-    // Joiner + versus: SCORE visible read-only; the host-gated SET CAMPAIGN
-    // / SET LEVEL hide; the label is the formatter's (A5: SCORE, MAP = the
-    // level's own target). Both retired cyclers' cells (TEAMS A3, TROOPS
-    // B5) are parked spares on every frame.
+    // Joiner + versus: three parked cells, no label on any of them, and
+    // the host-gated SET CAMPAIGN / SET LEVEL hidden.
     EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
-    EXPECT_FALSE(buttons[kScenarioMenuCtfCapsIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetCampaignIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetLevelIndex].hidden);
     EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
         << "the LINEUP door is never gated (docs/lineup-design.md §2.3)";
-    EXPECT_EQ("SCORE: MAP", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ("", buttons[kScenarioMenuCtfCapsIndex].label)
+        << "a parked cell carries no face";
 
-    // Joiner click: §2.7 denial — popup, TRACE, no cycle, no sync.
-    trace_clear();
-    EXPECT_EQ(MENU_OK, change_ctf_caps());
-    EXPECT_TRUE(trace_contains("teams", "ctf_caps_denied"));
-    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
-    EXPECT_EQ(0, (int)save.ctf_capture_limit);
-    EXPECT_EQ(0, lobby.settings_syncs);
-
-    // A host's lobby-synced turn reaches the joiner's read-only label
-    // through the same per-frame re-derive TROOPS uses.
+    // A value in the save can no longer wake the cell: the read-only
+    // re-derive that used to write "SCORE: 5" here went with the row, so
+    // nothing this screen draws depends on the match's target.
     save.ctf_capture_limit = 5;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
-    EXPECT_EQ("SCORE: 5", buttons[kScenarioMenuCtfCapsIndex].label);
-    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
+    EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden)
         << "the spare never wakes, whatever the save holds";
+    EXPECT_EQ("", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ(0, lobby.settings_syncs)
+        << "and nothing on this screen syncs a match setting any more";
 
-    // Host click: cycle + sync + both-surface refresh.
+    // The HOST axis does not wake it either.
     lobby.host = true;
     save.ctf_capture_limit = 0;
-    EXPECT_EQ(MENU_OK, change_ctf_caps());
-    EXPECT_EQ(1, (int)save.ctf_capture_limit);
-    EXPECT_EQ(1, lobby.settings_syncs);
-    EXPECT_EQ("SCORE: 1",
-              pks().scenariomenu_buttons[kScenarioMenuCtfCapsIndex].label);
+    sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
+    EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden);
     EXPECT_EQ(0, (int)save.ctf_team_count) << "inert since A3";
+    // Nav closes over the gap: the y=100 row drops onto BACK and BACK
+    // climbs into VIEW LEVEL, with no link left pointing at the spare.
+    EXPECT_EQ(kScenarioMenuBackIndex,
+              buttons[kScenarioMenuViewScenarioIndex].nav.down);
+    EXPECT_EQ(kScenarioMenuBackIndex,
+              buttons[kScenarioMenuLineupIndex].nav.down);
+    EXPECT_EQ(kScenarioMenuViewScenarioIndex,
+              buttons[kScenarioMenuBackIndex].nav.up);
 
-    // Non-versus campaign: SCORE hides for host and joiner alike, and the
-    // parked TROOPS spare stays parked (B5) whatever the frame says.
+    // ...nor the campaign axis, which is the one that used to gate it.
     save.current_campaign = "gladiator";
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
     EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);

@@ -324,14 +324,12 @@ void ensure_highlighted_button_visible(const button* buttons,
 // so no variant inherits a stale one.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
-                                   bool host_controls_visible,
-                                   bool match_settings_visible)
+                                   bool host_controls_visible)
 {
     if (buttons == nullptr || count < kScenarioMenuButtonCount)
         return;
 
     const bool host = host_controls_visible;
-    const bool match = match_settings_visible;
 
     // Host column: SET CAMPAIGN over SET LEVEL over VIEW LEVEL.
     buttons[kScenarioMenuSetCampaignIndex].nav =
@@ -340,42 +338,36 @@ void picker_wire_scenario_menu_nav(button* buttons,
         {.up = kScenarioMenuSetCampaignIndex,
          .down = kScenarioMenuViewScenarioIndex};
 
-    // y=140 knob row: SCORE alone at (30,140) since TROOPS retired
-    // (amendment B5), versus-gated. What DOWN from the y=100 row lands on
-    // is SCORE when it is visible, else BACK.
-    const int score_or = match ? kScenarioMenuCtfCapsIndex : -1;
-    const int under_left = score_or >= 0 ? score_or : kScenarioMenuBackIndex;
-    const int under_right = under_left;
+    // The y=140 knob row is EMPTY since SCORE retired into the SETUP
+    // wizard's RULES step (#304), so the y=100 row drops straight onto
+    // BACK on every campaign — there is no versus axis on this screen any
+    // more.
+    const int under = kScenarioMenuBackIndex;
 
     // y=100 row: VIEW LEVEL <-> PROGRESS <-> LINEUP; up-links close for
     // joiners.
     const int row_up = host ? kScenarioMenuSetLevelIndex : -1;
     buttons[kScenarioMenuViewScenarioIndex].nav =
         {.up = row_up,
-         .down = under_left,
+         .down = under,
          .right = kScenarioMenuProgressIndex};
     buttons[kScenarioMenuProgressIndex].nav =
         {.up = row_up,
-         .down = under_right,
+         .down = under,
          .left = kScenarioMenuViewScenarioIndex,
          .right = kScenarioMenuLineupIndex};
     buttons[kScenarioMenuLineupIndex].nav =
         {.up = row_up,
-         .down = under_right,
+         .down = under,
          .left = kScenarioMenuProgressIndex};
 
-    // SCORE sits in the x=30 column now: it climbs into VIEW LEVEL above
-    // it and drops onto BACK below it.
-    buttons[kScenarioMenuCtfCapsIndex].nav =
-        {.up = kScenarioMenuViewScenarioIndex,
-         .down = kScenarioMenuBackIndex};
+    buttons[kScenarioMenuCtfCapsIndex].nav = {};
     buttons[kScenarioMenuTroopsIndex].nav = {};
     buttons[kScenarioMenuSpareIndex].nav = {};
 
-    // BACK climbs into the nearest visible member above it: SCORE, else
-    // VIEW LEVEL.
+    // BACK climbs into the y=100 row's left member.
     buttons[kScenarioMenuBackIndex].nav =
-        {.up = score_or >= 0 ? score_or : kScenarioMenuViewScenarioIndex};
+        {.up = kScenarioMenuViewScenarioIndex};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -388,42 +380,25 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     // SET CAMPAIGN / SET LEVEL keep their host-only visibility inside the
     // subscreen; VIEW LEVEL / PROGRESS stay visible for everyone.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
-    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
     sync_button_hidden_state(buttons, kScenarioMenuSetCampaignIndex);
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
-    // SCORE (#218, re-homed from MATCHUP; A5): versus campaigns only, and —
-    // unlike the host-gated pair — visible to JOINERS as a read-only label (the host's
-    // turns land in the lobby-synced save and the same re-derive shows
-    // them; change_ctf_caps popups for a non-host).
-    const bool match_settings_visible = og::ui::is_versus_campaign(save);
-    {
-        const int index = kScenarioMenuCtfCapsIndex;
-        buttons[index].hidden = !match_settings_visible;
-        buttons[index].label = og::ui::format_ctf_score_label(save);
-        sync_button_hidden_state(buttons, index);
-        if (og::runtime::current_session
-                ->allbuttons_[static_cast<std::size_t>(index)] != nullptr)
-        {
-            og::runtime::current_session
-                ->allbuttons_[static_cast<std::size_t>(index)]
-                ->label = buttons[index].label;
-        }
-    }
-    // The retired TEAMS (A3) and TROOPS (B5) cells stay parked whatever
-    // the frame says — the engine's gate pass re-derives visibility per
-    // frame, so a park must be re-asserted here, not only in the static
-    // table.
+    // The retired TEAMS (A3), TROOPS (B5) and SCORE (#304) cells stay
+    // parked whatever the frame says — the engine's gate pass re-derives
+    // visibility per frame, so a park must be re-asserted here, not only
+    // in the static table. SCORE is the SETUP wizard's RULES row now: one
+    // surface for the match's target, on every client.
     buttons[kScenarioMenuSpareIndex].hidden = true;
     sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
     buttons[kScenarioMenuTroopsIndex].hidden = true;
     sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
+    buttons[kScenarioMenuCtfCapsIndex].hidden = true;
+    sync_button_hidden_state(buttons, kScenarioMenuCtfCapsIndex);
     // LINEUP (the ordinal the MATCHUP door vacated) is never gated: a
     // joiner opens the page read-only (docs/lineup-design.md §2.3).
     picker_wire_scenario_menu_nav(buttons, num_buttons,
-                                  host_controls_visible,
-                                  match_settings_visible);
+                                  host_controls_visible);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }

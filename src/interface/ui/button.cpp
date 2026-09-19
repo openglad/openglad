@@ -747,8 +747,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_hire_teamnum(arg);
     case ButtonAction::AlliedMode:
         return change_allied();
-    case ButtonAction::CycleCtfCaptureLimit:
-        return change_ctf_caps();
     // LINEUP (docs/lineup-design.md §2): door, the two per-team band knobs
     // (the button's arg carries the team 0..3), and the three SPLIT
     // actions. (The FIGHTERS list door retired with amendment B6.)
@@ -974,6 +972,18 @@ Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 call_arg)
 {
     switch (static_cast<ButtonAction>(whatfunc))
     {
+    case ButtonAction::MenuSpecRow:
+        // The reverse half of the one-session-entry rule
+        // (docs/match-setup-design.md D19): a right-click on a spec row
+        // stashes the SAME row do_call stashes and raises the reverse flag,
+        // so the screen's on_spec_row steps its cycler backward through
+        // choose(row, -1). Every other action keeps answering 4, so nothing
+        // leaks into the legacy Networking loop (which has no MenuSpecRow
+        // rows at all — audited, and pinned by
+        // MenuEngine.networking_right_click_never_sees_a_spec_row_stash).
+        pks().menu_spec_clicked_row = call_arg;
+        og::ui::set_menu_spec_row_reverse(true);
+        return whatfunc;
     case ButtonAction::DecreaseStat:
         return decrease_stat(call_arg, 5);
     case ButtonAction::IncreaseStat:

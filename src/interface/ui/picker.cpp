@@ -2021,6 +2021,7 @@ void picker_cleanup_resources()
     pks().cloud_save_buttons.clear();
     pks().help_buttons.clear();
     pks().zone_submenu_buttons.clear();
+    pks().match_setup_buttons.clear();
 }
 
 void picker_quit()
@@ -3361,9 +3362,14 @@ static void refresh_difficulty_menu_button_label(int button_index,
        pks().difficulty_menu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
-Sint32 set_difficulty()
+// The value-taking tail (docs/match-setup-design.md ruling 2): the SESSION
+// computes the value, so the wizard's "<" cell and a right-click can step
+// the wheel BACK, and the DIFFICULTY row's own cycling case below calls
+// this with cycle_difficulty(current). ONE tail, two callers — never a twin
+// of the world write, the label refresh, the lobby sync and the autosave.
+void apply_difficulty_value(int value)
 {
-   og::runtime::current_session->current_difficulty_ = og::ui::cycle_difficulty(og::runtime::current_session->current_difficulty_);
+   og::runtime::current_session->current_difficulty_ = value;
    const auto percent =
        static_cast<short>(og::ui::difficulty_percent(og::runtime::current_session->current_difficulty_));
    if (og::runtime::current_session->game_.world != nullptr)
@@ -3379,7 +3385,12 @@ Sint32 set_difficulty()
 
    picker_lobby_sync_settings_from_save();
    picker_settings_autosave();
+}
 
+Sint32 set_difficulty()
+{
+   apply_difficulty_value(
+       og::ui::cycle_difficulty(og::runtime::current_session->current_difficulty_));
    return MENU_OK;
 }
 
@@ -3478,51 +3489,12 @@ Sint32 change_allied()
    return MENU_OK;
 }
 
-// Refresh a SCENARIO settings button's label in both surfaces: the live
-// vbutton array and the mutable descriptor row that backs later redraws.
-static void refresh_scenariomenu_button_label(int button_index,
-                                              const std::string& label)
-{
-   if (og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)] != nullptr)
-       og::runtime::current_session->allbuttons_[static_cast<std::size_t>(button_index)]->label = label;
-   if (static_cast<int>(pks().scenariomenu_buttons.size()) > button_index)
-       pks().scenariomenu_buttons[static_cast<std::size_t>(button_index)].label = label;
-}
-
-// The score limit lives on the SCENARIO screen now (#218, re-homed from
-// MATCHUP; the TEAMS cycler beside it retired into LINEUP's BOTS: OFF —
-// docs/lineup-design.md A1/A3). Its row stays VISIBLE to networked joiners
-// as a read-only label — so unlike the old hidden-for-joiners MATCHUP rows,
-// the callback carries the §2.7 host gate itself (popup + TRACE, no local
-// cycle: a joiner-side cycle would show a lie until the next settings
-// broadcast).
-Sint32 change_ctf_caps()
-{
-   SaveData& save = og::runtime::current_session->myscreen_->save_data;
-   if (!picker_lobby_host_controls_visible())
-   {
-       TRACE("teams", "ctf_caps_denied");
-       popup_dialog("HOST CONTROLS THIS SETTING",
-                    "Only the host may\nchange the score limit");
-       return MENU_OK;
-   }
-   og::ui::cycle_ctf_capture_limit(save);
-   // The landing witness for the injector ladders (tests/test_click_ladder.h):
-   // emitted synchronously inside the callback, BEFORE the label refresh and
-   // the autosave below, so a test can tell "the press never landed" from
-   // "the press landed on a face this wheel does not carry". Named
-   // ctf_caps_cycled rather than "ctf_caps %d" because the trace lookup is a
-   // substring match and the denial above already says "ctf_caps_denied".
-   TRACE("teams", "ctf_caps_cycled %d", static_cast<int>(save.ctf_capture_limit));
-
-   refresh_scenariomenu_button_label(kScenarioMenuCtfCapsIndex,
-                                     og::ui::format_ctf_score_label(save));
-
-   picker_lobby_sync_settings_from_save();
-   picker_settings_autosave();
-
-   return MENU_OK;
-}
+// change_ctf_caps retired with #304: the match's target is the SETUP
+// wizard's RULES row, whose one home for the rule is
+// og::ui::cycle_ctf_capture_limit through MatchSetupSession::turn. A
+// second cycler on SCENARIO meant a versus campaign spelled SCORE twice.
+// refresh_scenariomenu_button_label went with it: SCORE was the last
+// dynamic label on that screen, and every other row's face is static.
 
 // The seat picture every LINEUP consumer reads (see picker_sdl_defs.h): the
 // replicated lobby when networked; ALL listed seats local — synthesized
@@ -3842,8 +3814,10 @@ Sint32 change_cross_control()
                     "Only the host may\nchange cross-control");
        return MENU_OK;
    }
-   save.cross_control =
-       static_cast<std::int16_t>(save.cross_control != 0 ? 0 : 1);
+   // One rule, one implementation (ruling 14): the sanitizing toggle lives
+   // in picker_common so this row and the wizard's RULES row cannot
+   // disagree about what "off" means.
+   og::ui::toggle_cross_control(save);
    TRACE("teams", "cross_control %d", static_cast<int>(save.cross_control));
    picker_lobby_sync_settings_from_save();
 

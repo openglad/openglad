@@ -1,4 +1,6 @@
 #pragma once
+#include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/picker_common.h>
 
 #include <array>
@@ -357,7 +359,40 @@ inline constexpr int kBaseCampZoneSpareCount = 3;
 // the y=178 strip with the other doors — the ordinal ordering is the table's
 // growth history, not the reading order.
 inline constexpr int kCreateMenuDifficultyIndex = 72;
-inline constexpr int kCreateMenuButtonCount = 73;
+// The SETUP wizard's strip door (docs/match-setup-design.md §2.1):
+// DIFFICULTY's TWIN on ONE rect, the GO/READY shape — exactly one of the
+// pair is visible per frame, SETUP on a versus campaign and DIFFICULTY on
+// every other. Appended at the table's end like DIFFICULTY before it, so
+// no established ordinal moved; statically hidden like READY, so
+// createmenu_buttons_no_overlap holds on the materialized table with no
+// exemption.
+inline constexpr int kCreateMenuSetupIndex = 73;
+inline constexpr int kCreateMenuButtonCount = 74;
+
+// The panel's two right edges and the docket's row/pager geometry. These
+// were file-static in menu_screen_specs.cpp until the SETUP wizard
+// (docs/match-setup-design.md §2.0) became a SECOND screen deriving from
+// them — shared layouts share constants, or the two drift the moment one is
+// edited alone. The STRIP family (kBaseCampStrip*) stays file-static: its
+// one new consumer, the SETUP twin row, is a row of the same table in the
+// same file.
+//
+// Panel OUTER right edge (EXCLUSIVE): the bevel's last column (311) + 1 ==
+// the GO/READY right edge (262 + 50) — outside-to-outside alignment.
+inline constexpr int kBaseCampPanelRightX = 312;
+// Panel inner-face right edge (EXCLUSIVE): the outer edge minus the 2px
+// bevel. In-panel controls (the per-row '^') end here.
+inline constexpr int kBaseCampPanelInnerRightX = kBaseCampPanelRightX - 2;
+// Zone actions band geometry (docs/basecamp-zones-design.md "Bounds
+// arithmetic"): full-width row faces inside the panel's inner face with the
+// widget's pager pair closing the right rail on the band's first row.
+inline constexpr int kBaseCampZoneActionRowX = 12;
+inline constexpr int kBaseCampZoneActionRowWidth = 264;  // face ends x=276
+inline constexpr int kBaseCampZonePagerWidth = 14;
+inline constexpr int kBaseCampZonePagerNextX =
+    kBaseCampPanelInnerRightX - kBaseCampZonePagerWidth;          // 296..310
+inline constexpr int kBaseCampZonePagerPrevX =
+    kBaseCampZonePagerNextX - 2 - kBaseCampZonePagerWidth;        // 280..294
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
 // A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense
@@ -485,10 +520,12 @@ inline constexpr int kScenarioMenuTroopsIndex = 6;
 // rect, empty label, hidden, no nav — so kScenarioMenuCtfCapsIndex and the
 // count keep their values (growth is append-only, retirement is a park).
 inline constexpr int kScenarioMenuSpareIndex = 7;
-// Score limit, re-homed from MATCHUP (#218), relabelled SCORE (A5): the
-// only occupant of the y=140 knob row since TROOPS retired (B5). Versus
-// campaigns only; joiners get the read-only label (visible,
-// host-actionable).
+// The retired SCORE cycler's ordinal (#304: the match's target has ONE
+// surface now, the SETUP wizard's RULES step — this screen and the wizard
+// spelling it both is the complaint that PR closes). Parked exactly like
+// the two spares above it — zero-size rect, empty label, hidden, no nav —
+// so the count keeps its value. The name is kept so the ordinal stays
+// traceable to what vacated it.
 inline constexpr int kScenarioMenuCtfCapsIndex = 8;
 inline constexpr int kScenarioMenuButtonCount = 9;
 
@@ -498,10 +535,13 @@ inline constexpr int kScenarioMenuButtonCount = 9;
 // ButtonAction id: nothing opens this at the book ROOT). It is a ROOM
 // INSIDE the Base Camp, not a different game's menu: the same header lines
 // (COMPANY + GOLD — you can see your purse while you shop), the same panel
-// at (8,28)-(311,160), the same message-line toasts. Only the footer band at
-// y=169 is its own (title + Escape-hotkeyed BACK + PREV/NEXT), so this
-// screen's "back" shares no other screen's geometry (injector
-// disambiguation rule).
+// at (8,28)-(311,160), the same message-line toasts. The footer band at
+// y=169 (title + Escape-hotkeyed BACK + PREV/NEXT) is now SHARED with the
+// SETUP wizard, which sits on the same chassis (docs/match-setup-design.md
+// D29): the rects are the same, the IDS are not — this screen's BACK is
+// `back` at (10,169) and the wizard's is `setup_back` on the same rect, so
+// an injector disambiguates by id and the (10,169) `back` oracle stays
+// honest.
 inline constexpr int kZoneSubmenuRowsPerPage = 8;
 inline constexpr int kZoneSubmenuBackIndex = 8;
 inline constexpr int kZoneSubmenuPrevIndex = 9;
@@ -611,6 +651,140 @@ static_assert(lineup_band_y(3) + kLineupKnobDy + kLineupKnobH <
                   kLineupPanelY2,
               "the last band's knob row stays inside the panel");
 
+namespace og::ui {
+
+// --- SETUP wizard chassis grid (docs/match-setup-design.md §2.0) -----------
+// The wizard is a ROOM INSIDE THE CAMP, like the zone submenu: the Base
+// Camp panel and header lines A and B are its own and it REUSES the zone
+// constants. Only the new names are new; every one DERIVES from an existing
+// one, and every right-side rect ends on ONE declared edge.
+//
+// The nine vertical/rhythm names (kSetupLinesMax, kSetupContentY0,
+// kSetupLinePitch, kSetupLineToRowGap, kSetupRowPitch, kSetupPanelBottomY,
+// kSetupRowsMax, setup_row_y0, setup_rows_fit) are declared in
+// include/openglad/interface/ui/match_setup_session.h, because the SDL-FREE
+// model windows its own rows and needs rows_fit; this header is the same
+// `namespace og::ui`, so it includes them rather than redefining them (a
+// redefinition would not compile) and static_asserts them against the zone
+// constants below.
+
+// The one left edge (tabs, lines, rows) and the one right edge (tabs,
+// cells, pagers).
+inline constexpr int kSetupLeftX = kZoneSubmenuRowX;               // 12
+inline constexpr int kSetupRightEdge = kBaseCampPanelInnerRightX;  // 310
+
+// The tab strip lives in the panel's header band (the zone submenu's line
+// band anchor). Five 54px tabs on a 7px gutter close exactly on the right
+// edge; the label budget is (54 - 8) / 6 = 7 glyphs, and the longest step
+// word wears brackets: "[ARENA]" is 7.
+inline constexpr int kSetupTabY = kZoneSubmenuLineY0;  // 33
+inline constexpr int kSetupTabH = 10;
+inline constexpr int kSetupTabW = 54;
+inline constexpr int kSetupTabGap = 7;
+inline constexpr int kSetupTabCount = 5;
+[[nodiscard]] constexpr int setup_tab_x(int k)
+{
+    return kSetupLeftX + k * (kSetupTabW + kSetupTabGap);
+}
+static_assert(setup_tab_x(kSetupTabCount - 1) + kSetupTabW == kSetupRightEdge,
+              "the tab strip closes on the panel's one right edge");
+static_assert(kSetupTabCount * kSetupTabW + (kSetupTabCount - 1) * kSetupTabGap
+                  == kSetupRightEdge - kSetupLeftX,
+              "tab pitch spends the whole band");
+
+// The vertical rhythm, tied to the zone chassis it reuses.
+static_assert(kSetupLinePitch == CampaignZoneSession::kTextLinePitch,
+              "the wizard's lines ride the zone's own text pitch");
+static_assert(kSetupRowPitch == kZoneSubmenuRowPitch,
+              "the wizard's rows ride the zone submenu's row pitch");
+static_assert(kSetupPanelBottomY == kZoneSubmenuPanelBottomY,
+              "the wizard's rows stop on the zone submenu's panel floor");
+static_assert(kSetupContentY0 == kSetupTabY + kSetupTabH + kSetupLineToRowGap,
+              "tab -> content gap == line -> row gap (the vertical rhythm)");
+
+// Rows: the docket's own 42-glyph face beside the cell column.
+inline constexpr int kSetupRowX = kSetupLeftX;                       // 12
+inline constexpr int kSetupCellX = kBaseCampZonePagerPrevX;          // 280
+inline constexpr int kSetupCellW = kSetupRightEdge - kSetupCellX;    // 30
+inline constexpr int kSetupRowW =
+    kSetupCellX - kSetupLineToRowGap - kSetupRowX;                   // 264
+inline constexpr int kSetupRowH = 10;
+static_assert(kSetupRowW == kBaseCampZoneActionRowWidth,
+              "the wizard's rows wear the docket's 42-glyph face");
+static_assert(kSetupCellX + kSetupCellW == kSetupRightEdge,
+              "the cell column closes on the one right edge");
+inline constexpr std::size_t kSetupRowLabelChars =
+    static_cast<std::size_t>((kSetupRowW - 8) / 6);  // 42
+
+// The text-line budget. The panel's inner face holds 49 glyphs from x=12;
+// the budget is the 48 the session's own composition contract names, so a
+// line always clears the bevel with a column to spare.
+inline constexpr int kSetupLineChars = 48;
+static_assert(kSetupLeftX + 6 * kSetupLineChars <= kSetupRightEdge - 2,
+              "a full-budget line inks inside the panel face");
+
+// The right cell column: the Base Camp docket's own pager pair on the
+// ARENA step's first row...
+inline constexpr int kSetupPagerPrevX = kBaseCampZonePagerPrevX;  // 280, w 14
+inline constexpr int kSetupPagerNextX = kBaseCampZonePagerNextX;  // 296, w 14
+inline constexpr int kSetupPagerW = kBaseCampZonePagerWidth;      // 14
+static_assert(kSetupPagerNextX + kSetupPagerW == kSetupRightEdge,
+              "the pager pair closes on the one right edge");
+// ...and ONE 30x10 reverse cell on every cycler row (the whole column),
+// label "<" — how a keyboard or a pad steps a wheel back (LEFT/RIGHT stay
+// navigation everywhere).
+inline constexpr int kSetupRevX = kSetupCellX;  // 280
+inline constexpr int kSetupRevW = kSetupCellW;  // 30
+static_assert(kSetupRevX + kSetupRevW == kSetupRightEdge,
+              "the reverse cells close on the one right edge");
+
+// Footer: the zone submenu's BACK and NEXT rects; PREV is NEXT's mirror on
+// the same 6px gap (D29 — every wizard puts "previous step" beside "next",
+// and BACK/Escape keeps meaning "close").
+inline constexpr int kSetupBackX = 10;
+inline constexpr int kSetupBackW = 44;
+inline constexpr int kSetupFooterY = 169;
+inline constexpr int kSetupFooterH = 20;
+inline constexpr int kSetupNextX = 270;
+inline constexpr int kSetupNextW = 40;
+inline constexpr int kSetupPrevW = 40;
+inline constexpr int kSetupFooterGap = 6;
+inline constexpr int kSetupPrevX = kSetupNextX - kSetupFooterGap - kSetupPrevW;
+static_assert(kSetupPrevX == 224, "PREV mirrors NEXT on the footer gutter");
+
+// TEAMS/MATCH line columns (the LINEUP band grammar: swatch, label, seats,
+// census). The census cell ends on the text line's own right edge.
+inline constexpr int kSetupSwatchX = kLineupChipX;        // 12
+inline constexpr int kSetupSwatchSize = 6;                // one glyph cell
+inline constexpr int kSetupTeamLabelX = kLineupTeamTextX; // 26, "TEAM n"
+inline constexpr int kSetupTeamSeatX = 70;
+inline constexpr int kSetupTeamSeatChars = 18;            // ends 178
+inline constexpr int kSetupTeamCensusX = 188;
+inline constexpr int kSetupTeamCensusChars = 20;          // ends 308
+static_assert(kSetupTeamCensusX + 6 * kSetupTeamCensusChars ==
+                  kSetupLeftX + 296,
+              "the census cell ends on the text line's right edge");
+static_assert(kSetupTeamSeatX + 6 * kSetupTeamSeatChars < kSetupTeamCensusX,
+              "the seat cell clears the census column");
+
+// Button-table ordinals (kMatchSetupRows, §2.0's table). Every row is a
+// ButtonAction::MenuSpecRow with arg == ordinal.
+inline constexpr int kMatchSetupRowBase = 0;       // setup_row_0..8
+inline constexpr int kMatchSetupRevBase = 9;       // setup_rev_0..8
+inline constexpr int kMatchSetupBackIndex = 18;
+inline constexpr int kMatchSetupPrevIndex = 19;
+inline constexpr int kMatchSetupNextIndex = 20;
+inline constexpr int kMatchSetupPagePrevIndex = 21;
+inline constexpr int kMatchSetupPageNextIndex = 22;
+inline constexpr int kMatchSetupTabBase = 23;      // setup_tab_0..4
+inline constexpr int kMatchSetupButtonCount = 28;
+static_assert(kMatchSetupRevBase - kMatchSetupRowBase == kSetupRowsMax,
+              "one reverse cell per row slot");
+static_assert(kMatchSetupTabBase + kSetupTabCount == kMatchSetupButtonCount,
+              "the tabs close the table");
+
+} // namespace og::ui
+
 // The lobby's seat picture as LINEUP consumes it. A LOCAL session's lobby
 // owns every seat it lists but reports EMPTY local_player_indices by
 // contract (picker_lobby_client.h), and an uninitialized local lobby lists
@@ -622,6 +796,10 @@ struct LineupSeatView {
     std::vector<std::uint8_t> local_indices;    // THIS machine's seats
 };
 LineupSeatView picker_lineup_seat_view();
+
+// The SETUP wizard's materialization shims (docs/match-setup-design.md §2).
+button* picker_match_setup_buttons();
+int picker_match_setup_button_count();
 
 // The FIGHTERS list layout contract retired with amendment B6: the Base
 // Camp roster (its chip networked-editable through
@@ -638,20 +816,17 @@ std::array<int, 4> picker_lineup_map_unit_counts();
 // Conditional rewiring for the host-gated buttons (same convention: nav
 // never links to a hidden button). The base camp rewires its full roster
 // graph per frame (pattern b — the rewire lives on the spec and reads the
-// installed BaseCampScreenState); the SCENARIO subscreen has two visibility
-// axes: SET CAMPAIGN / SET LEVEL gate on the host axis, and the
-// re-homed TEAMS / LIMIT rows (#218) gate on the versus-campaign axis
-// (match_settings_visible) — visible to joiners too, read-only there.
+// installed BaseCampScreenState); the SCENARIO subscreen has ONE visibility
+// axis left, the host one: SET CAMPAIGN / SET LEVEL. Its versus axis went
+// with the SCORE cycler, which is the SETUP wizard's RULES row now (#304).
 void picker_wire_scenario_menu_nav(button* buttons, int count,
-                                   bool host_controls_visible,
-                                   bool match_settings_visible);
+                                   bool host_controls_visible);
 
 // The SCENARIO screen's per-frame visibility/label/nav sync (the spec's
-// Rewire program): host-gates SET CAMPAIGN / SET LEVEL,
-// versus-gates TEAMS / LIMIT (visible read-only for joiners), re-derives
-// the three settings labels from the save on both surfaces (LINEUP stays
-// visible for everyone), and rewires the graph through
-// picker_wire_scenario_menu_nav.
+// Rewire program): host-gates SET CAMPAIGN / SET LEVEL, re-parks the three
+// retired cells (TEAMS, TROOPS and now SCORE), and rewires the graph
+// through picker_wire_scenario_menu_nav. LINEUP stays visible for
+// everyone.
 void sync_scenario_menu_host_control_visibility(button* buttons,
                                                 int num_buttons,
                                                 int& highlighted_button);

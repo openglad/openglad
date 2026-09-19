@@ -13,6 +13,8 @@
 #include "test_escape_tail.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/packs.h>
+#include <openglad/resources/company.h>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -211,6 +213,100 @@ static int difficulty_injector(void* data)
     // give-up does: picker_main returns under it, and after that return
     // there is no pump left to service a ladder's acknowledge post.
     return escape(0, "");
+}
+
+// ---------------------------------------------------------------------------
+// §2.1, the strip twin: on a VERSUS campaign the fight's rules are the
+// wizard's RULES step, so the strip's second door reads SETUP and the
+// DIFFICULTY door is not there at all. On every other campaign the
+// inverse — which the flow above walks. One door per campaign kind.
+
+namespace {
+
+struct StripTwinState
+{
+    std::atomic<bool> test_finished{false};
+    bool reached_base_camp = false;
+    bool setup_visible = false;
+    bool difficulty_visible = true;
+    bool finished = false;
+};
+
+int strip_twin_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<StripTwinState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        static constexpr EscapeDoor kSetupDoors[] = {
+            {"setup_back", "setup_back"},
+            {"back", "back"},
+            {"go", "back"},
+            {"continue_game", "continue_game"},
+        };
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupDoors);
+    };
+
+    if (!wait_for_interactable("continue_game", 10000))
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    state->reached_base_camp = wait_for_interactable("go", 15000);
+    if (!state->reached_base_camp)
+        return escape(2, "Base Camp never came up");
+    // The twins are a per-frame rewire, so read them on a COMPLETED frame.
+    (void)wait_for_menu_frames(2);
+    state->setup_visible = has_interactable("setup");
+    state->difficulty_visible = has_interactable("difficulty");
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(Difficulty, versus_save_shows_setup_and_hides_difficulty)
+{
+    trace_clear();
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 820;
+    save.numplayers = 1;
+    save.current_campaign = "modes";
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
+
+    StripTwinState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(strip_twin_injector, "strip_twin", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.reached_base_camp);
+    EXPECT_TRUE(state.setup_visible)
+        << "a versus campaign's strip carries the SETUP door";
+    EXPECT_FALSE(state.difficulty_visible)
+        << "and NOT the DIFFICULTY door: the fight's rules have one home "
+           "per campaign kind (D9)";
+
+    // Every other test in this binary expects the gladiator mount.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
 }
 
 TEST(Difficulty, submenu_door_flow) {

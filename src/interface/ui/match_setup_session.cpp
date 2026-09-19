@@ -478,7 +478,8 @@ void MatchSetupSession::compose_teams(const Inputs& inputs)
     const SaveData& save = read(inputs);
     const std::array<LineupTeamBand, 4> bands = build_lineup_bands(
         save, inputs.players, inputs.local_indices, inputs.networked,
-        lineup_power_for_guy, {}, inputs.map_unit_counts);
+        lineup_power_for_guy, inputs.seat_short_name,
+        inputs.map_unit_counts);
 
     if (knobs_.teams)
     {

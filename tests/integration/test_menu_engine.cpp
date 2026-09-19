@@ -1476,6 +1476,123 @@ TEST(MenuEngine, spec_row_retvalue_zero_discipline)
 }
 
 // ---------------------------------------------------------------------------
+// D19, the runner side: a RIGHT-click on a MenuSpecRow row stashes the same
+// row a left click does and raises the reverse flag, so a screen's
+// on_spec_row can step its cycler's wheel BACK through one session entry.
+// The flag belongs to the DISPATCH: it is true inside on_spec_row and gone
+// by the time the next click is minted (the runner's own invariant check
+// aborts the TESTING build if it ever survives a frame — this flow is what
+// drives that check).
+namespace
+{
+
+std::atomic<int> g_reverse_seen_in_dispatch{-1};
+std::atomic<int> g_reverse_after_frame{-1};
+
+Sint32 reverse_on_spec_row(int row, void* /*screen_state*/)
+{
+    ++g_spec_row_hits;
+    g_spec_row_last = row;
+    g_reverse_seen_in_dispatch.store(og::ui::menu_spec_row_reverse() ? 1 : 0);
+    return MENU_OK;
+}
+
+int reverse_stash_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    SpecRowState* state = static_cast<SpecRowState*>(data);
+    state->started = true;
+
+    if (!wait_for_interactable("engine_spec_row", 5000))
+        return 0;
+    (void)wait_for_menu_frames(2);
+    interact_right("engine_spec_row");
+    // Two COMPLETED frames: the dispatch ran inside the first, and the
+    // second proves the flag did not survive it.
+    (void)wait_for_menu_frames(2);
+    g_reverse_after_frame.store(og::ui::menu_spec_row_reverse() ? 1 : 0);
+    state->alive_after_click = !g_run_returned;
+    interact("engine_back");
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(MenuEngine, spec_row_reverse_stash_never_survives_a_frame)
+{
+    static constexpr og::ui::MenuButtonSpec kRows[] = {
+        {.id = "engine_spec_row", .label = "ENGINE ROW",
+         .x = 90, .y = 60, .w = 140, .h = 15,
+         .action = ButtonAction::MenuSpecRow, .arg = 5, .nav = {.down = 1}},
+        {.id = "engine_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
+         .x = 10, .y = 10, .w = 50, .h = 15,
+         .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
+         .nav = {.up = 0}},
+    };
+    EngineTestGuard guard;
+    FakeLobbyClient lobby;
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 2, "synthetic_rev");
+    spec.right_click_enabled = true;
+    spec.on_spec_row = &reverse_on_spec_row;
+    g_synth_spec = &spec;
+    g_spec_row_hits = 0;
+    g_spec_row_last = -1;
+    g_run_returned = false;
+    g_reverse_seen_in_dispatch.store(-1);
+    g_reverse_after_frame.store(-1);
+    og::ui::set_menu_spec_row_reverse(false);
+
+    SpecRowState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(reverse_stash_injector, "reverse_stash", &state);
+    ASSERT_NE(nullptr, thread);
+
+    (void)og::ui::run_menu_screen(spec);
+    g_run_returned = true;
+    SDL_WaitThread(thread, nullptr);
+
+    EXPECT_TRUE(state.finished);
+    EXPECT_EQ(1, g_spec_row_hits)
+        << "a right-click on a MenuSpecRow row must dispatch it once";
+    EXPECT_EQ(5, g_spec_row_last) << "the dispatch carries the row's arg";
+    EXPECT_EQ(1, g_reverse_seen_in_dispatch.load())
+        << "the reverse flag must be readable INSIDE on_spec_row: that is "
+           "how a cycler row knows to step its wheel back";
+    EXPECT_EQ(0, g_reverse_after_frame.load())
+        << "a reverse stash that outlived its dispatch would make the next "
+           "left-click on some other screen step a wheel backward";
+    EXPECT_FALSE(og::ui::menu_spec_row_reverse());
+    EXPECT_EQ(-1, pks().menu_spec_clicked_row) << "stash must be consumed";
+}
+
+// The other half of the same audit: the LEGACY Networking loop calls
+// rightclick() on its own buttons, and do_call_right now stashes a row for
+// ButtonAction::MenuSpecRow. Nothing leaks there because the Networking
+// table has no MenuSpecRow row at all — stated in docs/menu-engine.md's
+// Networking section, and pinned here rather than trusted.
+TEST(MenuEngine, networking_right_click_never_sees_a_spec_row_stash)
+{
+    og::ui::set_menu_spec_row_reverse(false);
+    pks().menu_spec_clicked_row = -1;
+
+    button* buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    ASSERT_GT(count, 0);
+    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
+    for (int i = 0; i < count; ++i) {
+        EXPECT_NE(spec_row, buttons[i].myfun)
+            << "networking row '" << buttons[i].id
+            << "' dispatches MenuSpecRow: its right-click would raise the "
+               "reverse stash in a loop that never consumes it";
+    }
+    EXPECT_FALSE(og::ui::menu_spec_row_reverse());
+    EXPECT_EQ(-1, pks().menu_spec_clicked_row);
+}
+
+// ---------------------------------------------------------------------------
 // Disabled rows: visible (nav counts them, interact() finds them) but inert
 // on activation, with a TRACE when a click lands on one.
 namespace
@@ -1698,17 +1815,26 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // session is the degenerate legacy shape; production non-hosts are
     // always networked — that variant drives the Base Camp READY twin and
     // the DIFFICULTY cross-control row.
+    //
+    // The third axis is the CAMPAIGN KIND (docs/match-setup-design.md
+    // §2.1): the Base Camp strip's second door is SETUP on a versus
+    // campaign and DIFFICULTY on every other, one visible per frame on one
+    // rect. Without this axis the allowance below could never be
+    // exercised, and a rewire that simply never showed SETUP would sail
+    // through.
     struct SweepVariant {
         bool host;
         bool networked;
+        bool versus;
         const char* name;
     };
     constexpr SweepVariant kVariants[] = {
-        {true, false, "host-local"},
-        {false, false, "nonhost-degenerate"},
-        {true, true, "host-networked"},
-        {false, true, "joiner-networked"},
+        {true, false, false, "host-local"},
+        {false, false, true, "nonhost-degenerate-versus"},
+        {true, true, true, "host-networked-versus"},
+        {false, true, false, "joiner-networked"},
     };
+    const std::string sweep_old_campaign = sweep_save.current_campaign;
 
     // §1.2 G13 / design §2.6: two rows may share geometry ONLY with
     // mutually exclusive gates. Any statically-overlapping pair must be
@@ -1721,7 +1847,10 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     const std::set<std::pair<std::string, std::string>> kSameGeometryAllowed =
         {{"go", "ready"},
          {"continue_game", "no_company_note"},
-         {"load_company", "no_company_note"}};
+         {"load_company", "no_company_note"},
+         // §2.1: the strip's second door is SETUP on a versus campaign and
+         // DIFFICULTY everywhere else — the GO/READY shape, one rect.
+         {"difficulty", "setup"}};
 
     int engine_screens = 0;
     for (int s = 0; s < static_cast<int>(og::ui::MenuScreenId::Count); ++s) {
@@ -1765,6 +1894,8 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
         for (const SweepVariant& sweep_variant : kVariants) {
             lobby.host = sweep_variant.host;
             lobby.networked = sweep_variant.networked;
+            sweep_save.current_campaign =
+                sweep_variant.versus ? "modes" : "gladiator";
             // §9.2 company-presence axis, ridden on the host flag (only the
             // main-menu gates read it): host variants sweep the with-company
             // shape (CONTINUE|LOAD visible, note Hidden), non-host variants
@@ -1915,14 +2046,15 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         sweep_save.team_list[static_cast<std::size_t>(i)] = std::move(sweep_saved_team[static_cast<std::size_t>(i)]);
     sweep_save.team_size = sweep_old_team_size;
+    sweep_save.current_campaign = sweep_old_campaign;
     // Mandatory restore (the shared-sweep contract): (true, "").
     og::ui::set_main_menu_company_view_for_tests(true, "");
-    EXPECT_GE(engine_screens, 16)
+    EXPECT_GE(engine_screens, 17)
         << "difficulty + the FX trio + display + seat settings + main "
            "options + main menu + the team-build cluster (base camp, "
            "SCENARIO) + hire + train + progress + view level + help + the "
-           "zone submenu must be engine-hosted (VIEW TEAM, MATCHUP and the "
-           "slot menus RETIRED)";
+           "zone submenu + the SETUP wizard must be engine-hosted (VIEW "
+           "TEAM, MATCHUP and the slot menus RETIRED)";
 }
 
 // The G13 sweep above materializes Base Camp with NO zone state installed,
@@ -2778,6 +2910,25 @@ TEST(MenuEngine, team_build_cluster_registry_hosts)
               og::ui::menu_screen_host(og::ui::MenuScreenId::Scenario).kind);
     EXPECT_EQ(Kind::Engine,
               og::ui::menu_screen_host(og::ui::MenuScreenId::ViewScenario).kind);
+    // The SETUP wizard joins the cluster (docs/match-setup-design.md §2):
+    // a versus campaign's Base Camp opens it, a joiner parked in it follows
+    // the host's GO, and its BACK carries the structural MENU_EXIT the
+    // blocking wrapper folds.
+    const og::ui::MenuScreenHost& setup =
+        og::ui::menu_screen_host(og::ui::MenuScreenId::MatchSetup);
+    EXPECT_EQ(Kind::Engine, setup.kind);
+    ASSERT_NE(nullptr, setup.spec);
+    EXPECT_STREQ("match_setup", setup.spec->name);
+    EXPECT_EQ(og::ui::RemoteStartScope::TeamBuildScope,
+              setup.spec->remote_start);
+    EXPECT_EQ(og::ui::RemoteStartExit::ReturnMenuExit,
+              setup.spec->remote_start_exit);
+    EXPECT_EQ(MENU_EXIT, setup.spec->exit_value);
+    EXPECT_TRUE(setup.spec->polls_lobby);
+    EXPECT_TRUE(setup.spec->right_click_enabled)
+        << "D19: a right-click steps a cycler row's wheel back";
+    EXPECT_EQ(og::ui::kMatchSetupBackIndex, setup.spec->default_highlight);
+    EXPECT_NE(nullptr, setup.spec->on_spec_row);
 }
 
 TEST(MenuEngine, base_camp_reload_publishes_authored_teams_after_level_load)

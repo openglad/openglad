@@ -193,6 +193,12 @@ public:
         std::span<const og::sim::LobbyPlayer> players;
         std::span<const std::uint8_t> local_indices;
         std::span<const int> map_unit_counts;
+        // Names a LOCAL seat's controller for the TEAMS step's seat cell,
+        // exactly as LINEUP's band header names it ("P1 WASD"). Empty (the
+        // default) falls back to the company abbreviation, which is what
+        // the terminals read before they grew the callback — and what made
+        // one screen say "P1 WASD" while the other said "P1 IRO".
+        std::function<std::string(std::uint8_t)> seat_short_name;
         const ScenarioRosterReport* staged = nullptr;  // nullptr = none
         IPickerLobbyClient::StagedPreviewHealth staged_health =
             IPickerLobbyClient::StagedPreviewHealth::None;

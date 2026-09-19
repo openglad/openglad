@@ -20,10 +20,12 @@
 // menu_binding/terminal_menu_model layer instead.
 
 #include <openglad/interface/button.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -237,6 +239,16 @@ std::uint64_t menu_screen_testing_completed_frames();
 int menu_screen_testing_highlighted_button();
 #endif
 
+// The right-click half of the reverse-step rule (docs/match-setup-design.md
+// D19): vbutton::do_call_right stashes a MenuSpecRow activation exactly as
+// do_call does and RAISES this flag, so a screen's on_spec_row can tell a
+// right-click from a left one and step its cycler backward. ONE session
+// entry (choose(row, -1)) reached three ways: the row's "<" cell, the
+// terminal "N-" item and this. The runner resets the flag after every
+// dispatch; under TESTING a stash that survives a frame aborts loudly.
+bool menu_spec_row_reverse();
+void set_menu_spec_row_reverse(bool reverse);
+
 // #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
 //
 // THE RULE: whoever fades a screen IN fades it OUT, at its own exit, while
@@ -410,6 +422,10 @@ enum class MenuScreenId : std::uint8_t {
     // overview opened from SCENARIO. Its FIGHTERS list retired with B6 —
     // the Base Camp roster chip is the networked home of the team cycler.
     Lineup,
+    // The SETUP wizard (docs/match-setup-design.md §2): the five-step match
+    // statement a versus campaign's Base Camp opens. Engine-hosted from
+    // birth, so the G5 remote-start and G13 shape sweeps cover it.
+    MatchSetup,
     Count,
 };
 
@@ -469,6 +485,17 @@ struct BaseCampScreenState {
     // Cursor used by the team-build family's level-reload frame hook.
     short last_level_id = -1;
     bool was_reset = false;
+    // The SETUP wizard answered Go (docs/match-setup-design.md D20). The
+    // frame tick presses the REAL strip GO once the reset has rebuilt this
+    // screen's live buttons — the nested wizard owned allbuttons_ while it
+    // ran, so the dispatch that opened it could not reach the ordinal.
+    // Two frames, not one: the tick that presses GO ends the loop, and a
+    // loop that ends before it has DRAWN leaves the screen fading out a
+    // render buffer that no longer matches the last frame the window was
+    // shown (the engine's own fade invariant catches it). Arming counts
+    // down, so Base Camp composes and presents itself once — which is
+    // exactly what a real click on the strip GO does — before the press.
+    int pending_setup_go = 0;
     // The gameplay-zone composition (docs/basecamp-zones-design.md): owned
     // by create_team_menu beside this state; null renders the default
     // composition through the same widget path (tests that install a bare
@@ -690,6 +717,18 @@ struct LineupScreenState {
     bool was_reset = false;
     std::string toast;
     std::int64_t toast_until_ms = 0;
+    // The staged census the band's census column answers (§3.8.4), cached
+    // on the OWNER's restage cadence — the same report the SETUP wizard's
+    // TEAMS line reads, so the two screens can never say different things
+    // about one world.
+    ScenarioRosterReport report;
+    bool report_valid = false;
+    bool report_seeded = false;
+    std::uint32_t report_generation = 0;
+    // Last census text published per band, so the content pass can TRACE a
+    // cell the moment it CHANGES rather than once per frame (a per-frame
+    // trace would flood the ring and prove nothing about the change).
+    std::array<std::string, 4> last_census;
 };
 
 // LINEUP: title band, four team bands of equal pitch (header chip/POWER/
@@ -705,5 +744,57 @@ void install_lineup_state_for_screen(LineupScreenState* state);
 // Show a toast on the installed LINEUP state (no-op when none installed).
 // TRACEd ("lineup") so tests assert deterministically.
 void lineup_show_toast(std::string text);
+
+// --- SETUP wizard (docs/match-setup-design.md §2) --------------------------
+
+// The wizard's screen state: the SDL-free step machine, the message-line
+// toast (the Base Camp's own mechanics — a modal would strand a networked
+// joiner mid-GO), the cached staged census and the three refresh cursors
+// the blocking-subscreen discipline requires (level reload, settings
+// fingerprint, stage generation). Public so layout tests can drive the
+// per-frame rewire's variants; production state is owned by
+// run_match_setup_screen. The null installed state renders the empty shape
+// (every row, cell, pager and tab hidden; BACK alone).
+struct MatchSetupScreenState {
+    explicit MatchSetupScreenState(SaveData& save) : session(save) {}
+
+    MatchSetupSession session;
+    std::string toast;
+    std::int64_t toast_until_ms = 0;
+    // The staged census the TEAMS lines and the MATCH step read, rebuilt on
+    // the stage-generation cadence (never per frame).
+    ScenarioRosterReport report;
+    bool report_valid = false;
+    std::uint32_t report_generation = 0;
+    bool report_seeded = false;
+    std::uint64_t settings_fingerprint = 0;
+    bool fingerprint_seeded = false;
+    short last_level_id = -1;
+    // The GAME-step highlight is a ONE-SHOT write on the entered-step edge.
+    bool step_seeded = false;
+    MatchSetupSession::Step last_step = MatchSetupSession::Step::Game;
+    // How the screen ended: the row the player pressed, not the loop's
+    // return code (D20 — Base Camp owns the GO click).
+    enum class Exit : std::uint8_t { Closed, Go, RemoteStart } exit =
+        Exit::Closed;
+};
+
+using MatchSetupExit = MatchSetupScreenState::Exit;
+
+// The wizard: a tab strip in the panel's header band, the step's lines and
+// team lines, up to nine 42-glyph rows with their reverse cells, the ARENA
+// window pagers, and BACK | PREV | NEXT in the footer.
+const MenuScreenSpec& match_setup_menu_screen_spec();
+
+// Install the state the per-frame rewire and draw hooks read (the
+// company-list seam pattern; null renders the empty shape).
+void install_match_setup_state_for_screen(MatchSetupScreenState* state);
+
+// Blocking wrapper: open the wizard over the live save, positioned at
+// `entry_page` (a root page id from the versus docket's GAME:/ARENA: rows;
+// "" opens on the GAME step). The answer says what the player pressed —
+// Base Camp turns `Go` into the strip GO's own click (D20) and `RemoteStart`
+// into its MENU_EXIT.
+MatchSetupExit run_match_setup_screen(std::string_view entry_page);
 
 } // namespace og::ui

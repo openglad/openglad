@@ -844,6 +844,13 @@ protected:
         in.players = players_;
         in.local_indices = local_indices_;
         in.map_unit_counts = counts_;
+        // The seat cell names the CONTROLLER, the way LINEUP's band header
+        // does ("P1 WASD"): the SDL client passes
+        // local_seat_owner_short_name and the terminals their own, and
+        // without a callback the cell falls back to the company name
+        // clipped to three glyphs — which is exactly how the wizard came
+        // to say "P1 IRO" where LINEUP said "P1 WASD".
+        in.seat_short_name = seat_short_name_;
         in.staged = staged_;
         in.staged_health = health_;
         return in;
@@ -876,6 +883,7 @@ protected:
     Health health_ = Health::None;
     int difficulty_ = 0;
     bool networked_ = false;
+    std::function<std::string(std::uint8_t)> seat_short_name_;
     std::string previous_mount_;
     GameplayContext* previous_game_ = nullptr;
 };
@@ -1105,6 +1113,41 @@ TEST_F(MatchSetupSessionTest,
 
     // An out-of-range row is a no-op.
     EXPECT_EQ(Kind::Stayed, joiner.choose(99, +1, inputs(false)).kind);
+}
+
+// 8b. The seat cell names the CONTROLLER. Every client hands the session a
+// seat_short_name callback — the SDL one is local_seat_owner_short_name,
+// the very function LINEUP's band header calls — and without it the cell
+// falls back to the band's company abbreviation. That fallback is what put
+// "P1 IRO" on the wizard's TEAMS line while LINEUP, one door away, read
+// "P1 WASD" about the same seat.
+TEST_F(MatchSetupSessionTest, the_seat_cell_names_the_controller_not_the_company)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 820;
+    save_.numplayers = 1;
+    save_.save_name = "IRON KETTLE";
+
+    MatchSetupSession bare(save_);
+    ASSERT_TRUE(bare.open(inputs()));
+    ASSERT_EQ(Kind::Advanced, bare.goto_step(Step::Teams, inputs()).kind);
+    ASSERT_FALSE(bare.page().team_lines.empty());
+    const std::string fallback = bare.page().team_lines[0].seats;
+    EXPECT_NE(std::string::npos, fallback.find("P1"))
+        << "the seat token is always there: '" << fallback << "'";
+
+    seat_short_name_ = [](std::uint8_t index) {
+        return index == 0 ? std::string("WASD") : std::string();
+    };
+    MatchSetupSession named(save_);
+    ASSERT_TRUE(named.open(inputs()));
+    ASSERT_EQ(Kind::Advanced, named.goto_step(Step::Teams, inputs()).kind);
+    ASSERT_FALSE(named.page().team_lines.empty());
+    EXPECT_EQ("P1 WASD", named.page().team_lines[0].seats)
+        << "the callback's word wins, and it is the word LINEUP writes";
+    EXPECT_NE(fallback, named.page().team_lines[0].seats)
+        << "if these two agree the callback is not reaching the bands and "
+           "the pin above has no teeth";
 }
 
 // 9. The TEAMS lines: one per AUTHORED team, cells inside their columns.

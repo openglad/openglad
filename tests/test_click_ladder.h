@@ -332,18 +332,19 @@ inline bool click_until_edge(const std::string& id,
 // should give the ladder whichever it can:
 //
 //   * a LANDING WITNESS (landed_trace / landed_category): a trace the row's
-//     own callback emits synchronously, before the label is republished. The
-//     SCORE row publishes one — TRACE("teams", "ctf_caps_cycled %d") in
-//     change_ctf_caps (src/interface/ui/picker.cpp). With it the ladder can
-//     tell "the press never landed" from "the press landed on a face this
-//     wheel does not carry", and it stops pressing after the first landing
-//     whatever the label does.
+//     own callback emits synchronously, before the label is republished.
+//     The SETUP wizard's cycler rows publish one — TRACE("setup", "turned
+//     %d %d") in match_setup_dispatch (src/interface/ui/menu_screen_specs.cpp),
+//     the knob and the value it wrote — so a SCORE or TIME LIMIT step is
+//     acknowledged by the write, and by ONE stop of it, not by the face.
+//     With it the ladder can tell "the press never landed" from
+//     "the press landed on a face this wheel does not carry", and it stops
+//     pressing after the first landing whatever the label does.
 //   * failing that, the RE-CHECK in click_until_edge above, which re-reads
-//     the edge immediately before every re-press. The MATCH SETUP macro rows
-//     are the witnessless case: they DO trace ("fill team=%d value=%d",
-//     picker.cpp; the zone submenu's own "acted_autosave",
-//     menu_screen_specs.cpp), but a caller that has not wired a witness up
-//     still gets the re-check.
+//     the edge immediately before every re-press. The LINEUP band knobs are
+//     the witnessless case: they DO trace ("fill team=%d value=%d",
+//     picker.cpp), but a caller that has not wired a witness up still gets
+//     the re-check.
 //
 // Waiting for the TARGET face rather than for any change is the stronger
 // oracle the pre-#292 helpers grew into: a label that moved to the wrong stop
@@ -414,6 +415,39 @@ inline bool click_until_label_containing(const std::string& id,
             return label.find(want) != std::string::npos;
         },
         attempts, wait_ms, landed_trace, landed_category);
+}
+
+// --- The SETUP wizard's one door-and-tab walk ------------------------------
+//
+// Every flow that wants a wizard step says WHICH STEP, once, and this walks
+// it: the Base Camp strip's SETUP door if the wizard is not already up,
+// then the step's own tab, each on an acknowledged ladder against the edge
+// that identifies where it landed. A hand-typed walk repeated in a dozen
+// flows is how the pre-#292 ladder copies happened.
+//
+// `word` is the step's own word (GAME / ARENA / TEAMS / RULES / MATCH):
+// the current tab wears it in square brackets, which is the oracle.
+inline bool open_setup_step(int tab_index, const std::string& word,
+                            int timeout_ms = 15000)
+{
+    if (!has_interactable("setup_tab_0")) {
+        // The strip door. Its landing witness is the wizard's own entry
+        // trace, so a press that landed on a slow frame is never re-sent.
+        if (!click_until_edge(
+                "setup",
+                [](int wait_ms) {
+                    return wait_for_interactable("setup_tab_0", wait_ms);
+                },
+                "opened", 3, timeout_ms, "setup"))
+        {
+            return false;
+        }
+    }
+    // Already on the step: the tab is the pressed-in one and a click would
+    // be a no-op the engine eats anyway.
+    return click_until_label("setup_tab_" + std::to_string(tab_index),
+                             "[" + word + "]", 3, timeout_ms, "step",
+                             "setup");
 }
 
 // --- The value ladder: click a row until the value it STORES moves ---------

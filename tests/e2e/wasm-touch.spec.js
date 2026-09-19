@@ -1121,7 +1121,7 @@ test.describe('Touch gameplay controls', () => {
 
     // Browser gameplay unwinds through the outer rAF state machine. Require
     // the exact NETWORKING button face captured from team build before the
-    // game. A result-dialog tap at (160,140) overlaps SCENARIO on team build,
+    // game. A result-dialog tap at (160,140) lands in the zone band on team build,
     // so this assertion also catches input leaking across the handoff.
     await waitForRegionToMatch(
       page,

@@ -265,22 +265,25 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
         EXPECT_EQ("view_scenario",
                   scenario[kScenarioMenuViewScenarioIndex].id) << campaign;
         // The TEAMS cycler retired into LINEUP's BOTS: OFF (amendment
-        // A1/A3); its ordinal is a parked spare, SCORE keeps its index.
+        // A1/A3) and SCORE retired into the SETUP wizard's RULES step
+        // (#304); both ordinals are parked spares and the count is
+        // unchanged.
         EXPECT_EQ("scenario_spare", scenario[kScenarioMenuSpareIndex].id)
             << campaign;
         EXPECT_TRUE(scenario[kScenarioMenuSpareIndex].hidden) << campaign;
-        EXPECT_EQ("ctf_caps", scenario[kScenarioMenuCtfCapsIndex].id)
-            << campaign;
+        EXPECT_EQ("scenario_score_spare",
+                  scenario[kScenarioMenuCtfCapsIndex].id) << campaign;
+        EXPECT_TRUE(scenario[kScenarioMenuCtfCapsIndex].hidden) << campaign;
         EXPECT_FALSE(scenario[kScenarioMenuViewScenarioIndex].hidden)
             << campaign;
     }
 
-    // The score limit is a SCENARIO row now (#218, re-homed from MATCHUP;
-    // SCORE since A5): its handler cycles the save field and refreshes the
-    // SCENARIO descriptor label. TEAMS (A3) and TROOPS (B5) are both
-    // retired: no handler, parked cells, and the fields they wrote are
-    // inert — whether the map's own cast fights is the LINEUP band's
-    // per-team MAP UNITS box now.
+    // The SCENARIO screen has NO cyclers left. TEAMS (A3), TROOPS (B5) and
+    // SCORE (#304) all retired: no handler, parked cells, empty labels. The
+    // score limit's one surface is the SETUP wizard's RULES row, which
+    // MatchSetupUi.reverse_cell_and_right_click_step_a_rules_cycler_back
+    // drives end to end; its rule is og::ui::cycle_ctf_capture_limit, the
+    // same call the retired handler made.
     save.current_campaign = "modes";
     save.ctf_team_count = 0;
     save.ctf_capture_limit = 0;
@@ -291,14 +294,12 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
               scenario_rows[kScenarioMenuTroopsIndex].id);
     EXPECT_TRUE(scenario_rows[kScenarioMenuTroopsIndex].hidden);
 
-    (void)change_ctf_caps();
-    EXPECT_EQ(1, (int)save.ctf_capture_limit);
-
     const auto& live_scenario =
         og::runtime::current_session->picker_->scenariomenu_buttons;
     ASSERT_EQ(static_cast<std::size_t>(kScenarioMenuButtonCount),
               live_scenario.size());
-    EXPECT_EQ("SCORE: 1", live_scenario[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ("", live_scenario[kScenarioMenuCtfCapsIndex].label)
+        << "the parked SCORE cell carries no label";
     EXPECT_EQ("", live_scenario[kScenarioMenuSpareIndex].label);
     EXPECT_EQ("", live_scenario[kScenarioMenuTroopsIndex].label)
         << "the parked TROOPS cell carries no label";
@@ -345,23 +346,10 @@ void cleanup_picker_state()
     picker_state().main_title_logo_data.free();
 }
 
-// Wait until the (visible) interactable `id` shows label `want`.
-bool wait_for_interactable_label(const std::string& id, const std::string& want,
-                                 int timeout_ms)
-{
-    int elapsed = 0;
-    while (elapsed < timeout_ms) {
-        for (const Interactable& item : get_interactables()) {
-            if (item.id == id && !item.hidden && item.label == want)
-                return true;
-        }
-        SDL_Delay(50);
-        elapsed += 50;
-    }
-    fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' label '%s'\n",
-            id.c_str(), want.c_str());
-    return false;
-}
+// wait_for_interactable_label went with this file's last exact-face wait:
+// the SCORE cell it watched retired into the SETUP wizard's RULES row
+// (#304), whose faces carry a value and are read through the ladders'
+// wait_for_interactable_label_matching instead.
 
 // Wait until a (visible) interactable `id` exists at game coords (x, y) —
 // disambiguates the per-screen "back" buttons by their geometry.
@@ -568,12 +556,13 @@ int teams_local_flow_injector(void* data)
         return wait_for_interactable_at("back", 30, 170, wait_ms);
     }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
-    // Classic campaign: the versus-only SCORE row stays hidden — the
-    // re-homed row keeps MATCHUP's classic-campaign gate — and neither
-    // retired cycler (TEAMS A3, TROOPS B5) ever shows.
+    // Classic campaign: none of the three retired cyclers ever shows —
+    // TEAMS (A3), TROOPS (B5) and SCORE, which is the SETUP wizard's RULES
+    // row since #304 and a parked cell here on EVERY campaign.
     state->subscreen_opened = wait_for_interactable("progress", 10000);
     SDL_Delay(300);
     state->ctf_buttons_hidden = !has_interactable("scenario_spare") &&
+        !has_interactable("scenario_score_spare") &&
         !has_interactable("ctf_caps");
     state->troops_row_gone = !has_interactable("troops") &&
         !has_interactable("scenario_troops_spare");
@@ -617,33 +606,40 @@ int teams_ctf_settings_flow_injector(void* data)
         return wait_for_interactable("scenario", wait_ms);
     }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
-    // Team build -> SCENARIO submenu, where the knob row lives now (#218,
-    // A5/B5): SCORE alone at y=140 (TEAMS and TROOPS both retired into
-    // the LINEUP band).
+    // The knob's home moved AGAIN with #304, and this time out of the
+    // SCENARIO screen entirely: SCORE is the SETUP wizard's RULES row, one
+    // surface on every client. The strip door opens it.
     SDL_Delay(500);
+    state->subscreen_opened = open_setup_step(3, "RULES", 15000);
+    if (state->subscreen_opened) {
+        state->score_map_seen = wait_for_interactable_label_matching(
+            "setup_row_0",
+            [](const std::string& label) {
+                return label.find("SCORE: MAP") != std::string::npos;
+            },
+            10000);
+        // Each label can flip while the previous click's press is still
+        // held; the ladder's own acknowledgement carries that, with the
+        // wizard's "turned" witness (knob and written value).
+        state->score_relabelled = click_until_label_containing(
+            "setup_row_0", "SCORE: 1", 3, 10000, "turned", "setup");
+        (void)click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("scenario", wait_ms);
+        }, nullptr, kCtfDoorAttempts, 10000);
+    }
+
+    // Team build -> SCENARIO submenu. Every cycler it ever carried is
+    // retired now: TEAMS (A3), TROOPS (B5) and SCORE (#304). The screen is
+    // doors and a viewer.
     wait_for_interactable("scenario", 10000);
     wait_for_menu_frames(2);
     (void)click_until_edge("scenario", [](int wait_ms) {
         return wait_for_interactable_at("back", 30, 170, wait_ms);
     }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
-
-    // CTF campaign + local host: the versus-gated SCORE row shows, reading
-    // the map's own target; the retired TEAMS cell never does.
-    state->subscreen_opened = wait_for_interactable("ctf_caps", 10000);
-    SDL_Delay(300);
-    state->score_map_seen =
-        wait_for_interactable_label("ctf_caps", "SCORE: MAP", 5000);
+    wait_for_interactable("progress", 10000);
     state->teams_cell_gone = !has_interactable("scenario_spare") &&
-        !has_interactable("ctf_teams");
-
-    // Each label can flip while the previous click's press is still held;
-    // settle after every wait so the next down-transition isn't swallowed.
-    state->score_relabelled = click_until_label(
-        "ctf_caps", "SCORE: 1", 3, 2500, "ctf_caps_cycled", "teams");
-    SDL_Delay(300);
-
-    // TROOPS retired (B5): its cell is a parked spare on the versus
-    // campaign too — SCORE is alone on the knob row.
+        !has_interactable("ctf_teams") &&
+        !has_interactable("scenario_score_spare");
     state->troops_row_gone = !has_interactable("troops") &&
         !has_interactable("scenario_troops_spare");
     SDL_Delay(300);
@@ -756,7 +752,7 @@ struct NeverLandsState
 // The SCORE ladder pointed at a face the wheel does not carry. It must spend
 // its attempts and REPORT — never hang against the group's budget, and never
 // claim a cycle that did not happen. With the row's landing witness
-// ("ctf_caps_cycled", src/interface/ui/picker.cpp) the ladder can also tell
+// ("turned <knob> <value>", the SETUP wizard's RULES row) the ladder can tell
 // the two failures apart: the ONE press it sends lands, so every remaining
 // attempt only waits and the wheel is left exactly one stop on.
 int ctf_never_lands_injector(void* data)
@@ -770,27 +766,24 @@ int ctf_never_lands_injector(void* data)
         return wait_for_interactable("scenario", wait_ms);
     }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
 
-    wait_for_interactable("scenario", 10000);
-    wait_for_menu_frames(2);
-    (void)click_until_edge("scenario", [](int wait_ms) {
-        return wait_for_interactable_at("back", 30, 170, wait_ms);
-    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
-
-    state->subscreen_opened = wait_for_interactable("ctf_caps", 10000);
+    state->subscreen_opened = open_setup_step(3, "RULES", 15000);
     if (state->subscreen_opened) {
         const int retries_before = g_click_ladder_click_retries;
         const int waits_before = g_click_ladder_edge_waits;
+        // The ceiling here is deliberately SHORT: the target face does not
+        // exist, so every attempt is meant to expire. This is the one
+        // shape where a long ceiling buys nothing but wall clock.
         state->ladder_reported_false =
-            !click_until_label("ctf_caps", "SCORE: NOT A FACE", 3,
-                               2500, "ctf_caps_cycled", "teams");
+            !click_until_label("setup_row_0", "SCORE: NOT A FACE", 3,
+                               2500, "turned", "setup");
         state->score_click_retries =
             g_click_ladder_click_retries - retries_before;
         state->score_edge_waits = g_click_ladder_edge_waits - waits_before;
     }
 
-    (void)click_until_edge("back", [](int wait_ms) {
-        return back_left_its_screen("go", 30, 170, wait_ms);
-    }, nullptr, kCtfDoorAttempts, kCtfDoorWaitMs);
+    (void)click_until_edge("setup_back", [](int wait_ms) {
+        return wait_for_interactable("go", wait_ms);
+    }, nullptr, kCtfDoorAttempts, 10000);
     wait_for_interactable("go", 10000);
     wait_for_menu_frames(2);
     interact("back");
@@ -935,7 +928,7 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
     EXPECT_TRUE(state.subscreen_opened)
         << "SCENARIO should open for the host";
     EXPECT_TRUE(state.ctf_buttons_hidden)
-        << "classic campaigns hide the versus-only SCORE row";
+        << "the SCORE cell is parked on every campaign (#304)";
     EXPECT_TRUE(state.troops_row_gone)
         << "the retired TROOPS cell never shows (B5)";
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
@@ -960,10 +953,11 @@ TEST(CtfUi, scenario_classic_hides_match_settings_and_viewer_flow)
         << "the viewer should trace its report";
 }
 
-// The CTF settings flow at the knobs' new home (#218 — transformed from
-// the retired MATCHUP flow; A5 relabelled LIMIT to SCORE and retired
-// TEAMS, B5 retired TROOPS): a versus campaign + host shows SCORE alone on
-// SCENARIO's knob row and the cycler relabels live.
+// The CTF settings flow at the knob's new home (#304 — transformed again,
+// from SCENARIO's y=140 row into the SETUP wizard's RULES step): a versus
+// campaign + host opens the wizard from the strip, reads SCORE: MAP off
+// the map's own target and cycles it live, and the SCENARIO screen it then
+// visits carries no cycler at all.
 TEST(CtfUi, scenario_ctf_settings_flow)
 {
     trace_clear();
@@ -986,9 +980,11 @@ TEST(CtfUi, scenario_ctf_settings_flow)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.subscreen_opened)
-        << "CTF campaign + host shows SCORE on SCENARIO";
+        << "a versus campaign's strip opens the SETUP wizard on RULES";
     EXPECT_TRUE(state.score_map_seen) << "SCORE reads MAP for the map's own";
-    EXPECT_TRUE(state.teams_cell_gone) << "the TEAMS cell is retired (A3)";
+    EXPECT_TRUE(state.teams_cell_gone)
+        << "SCENARIO's three retired cells (TEAMS A3, TROOPS B5, SCORE "
+           "#304) are parked";
     EXPECT_TRUE(state.score_relabelled) << "SCORE cycle should relabel";
     EXPECT_TRUE(state.troops_row_gone)
         << "the retired TROOPS cell never shows (B5)";
@@ -1089,7 +1085,7 @@ TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.subscreen_opened)
-        << "CTF campaign + host shows SCORE on SCENARIO";
+        << "a versus campaign's strip opens the SETUP wizard on RULES";
     EXPECT_TRUE(state.ladder_reported_false)
         << "a face the wheel never shows must be reported, not claimed";
     EXPECT_EQ(3, state.score_edge_waits)
@@ -1828,7 +1824,7 @@ TEST(CtfUi, view_scenario_staged_pane_shows_the_staged_census)
 // The resting contract the pane test above depends on, pinned without an
 // injector. `deal_arena_lineup_fill` only writes FAIR onto a band that is
 // still kFillNone — an explicit choice is never re-dealt (picker_common.cpp)
-// — so a fill array left STRONG by an earlier MATCH SETUP macro survives the
+// — so a fill array left STRONG by an earlier SETUP wizard FILL turn survives the
 // re-deal and the resting census reads STRONG where this suite pins FAIR.
 // The fixture therefore owes fill/map_units a defined resting state, exactly
 // as the campaign-zone fixture already documents for itself.
@@ -1837,7 +1833,7 @@ TEST(CtfUi, staged_pane_rest_is_fair_even_after_a_prior_fill_macro)
     SavedPickerSave save_guard;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
-    // Exactly what a MATCH SETUP FILL macro leaves behind: two bands set
+    // Exactly what a SETUP wizard FILL turn leaves behind: two bands set
     // STRONG, and the lobby stamped with them. (The stamp's own apply can
     // remount, so the arena package is mounted after it, not before.)
     save.fill = {og::sim::kFillStrong, og::sim::kFillStrong,

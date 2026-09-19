@@ -60,6 +60,44 @@ inline void inject_click(int x, int y, int delay_ms = 50)
     inject_mouse_up(x, y);
 }
 
+// The RIGHT button, the same shape. leftmouse() answers 2 on its transition
+// edge (or on the collapsed-tap queue), which is what a right_click_enabled
+// screen dispatches through vbutton::rightclick() — the reverse step on a
+// cycler row (docs/match-setup-design.md D19) and the hire/train screens'
+// reverse candidate cycling.
+inline void inject_right_mouse_down(int x, int y)
+{
+    SDL_Event event;
+    memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    event.button.button = SDL_BUTTON_RIGHT;
+    event.button.down = true;
+    event.button.clicks = 1;
+    event.button.x = static_cast<float>(x);
+    event.button.y = static_cast<float>(y);
+    SDL_PushEvent(&event);
+}
+
+inline void inject_right_mouse_up(int x, int y)
+{
+    SDL_Event event;
+    memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.button = SDL_BUTTON_RIGHT;
+    event.button.down = false;
+    event.button.clicks = 1;
+    event.button.x = static_cast<float>(x);
+    event.button.y = static_cast<float>(y);
+    SDL_PushEvent(&event);
+}
+
+inline void inject_right_click(int x, int y, int delay_ms = 50)
+{
+    inject_right_mouse_down(x, y);
+    SDL_Delay(static_cast<Uint32>(delay_ms));
+    inject_right_mouse_up(x, y);
+}
+
 // Push a fake key down event (uses SDL_PushEvent, thread-safe).
 //
 // A pushed key event is NOT a keystate. SDL_PushEvent does not run
