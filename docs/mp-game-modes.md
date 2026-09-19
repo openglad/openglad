@@ -88,13 +88,13 @@ the wizard's GAME and ARENA steps, and `RANDOM ARENA` rolls a scenario out of
 the whole manifest. The terminal clients reach the same five steps through
 Team Build → `Setup`.
 
-- **LINEUP** (Base Camp → SCENARIO → LINEUP, or the TEAMS step's door) — one
-  band per team, each
-  with a **FILL** wheel (`NONE`, `WEAK`, `FAIR`, `STRONG`, `BRUTAL`) and a
-  **MAP UNITS** box. FILL fields a bot squad on that team, sized against
-  the human companies at the table (see "Matched squads" below); NONE
-  fields nothing. MAP UNITS decides whether the fighters the map itself
-  ships on that team take the field.
+**LINEUP** is the per-team page behind the TEAMS step's door (and still
+reachable at Base Camp → SCENARIO → LINEUP): one band per team, each with a
+**FILL** wheel (`NONE`, `WEAK`, `FAIR`, `STRONG`, `BRUTAL`) and a **MAP
+UNITS** box. FILL fields a bot squad on that team, sized against the human
+companies at the table (see "Matched squads" below); NONE fields nothing.
+MAP UNITS decides whether the fighters the map itself ships on that team
+take the field.
 
 ### The arena default
 
