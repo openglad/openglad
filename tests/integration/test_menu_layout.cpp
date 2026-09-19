@@ -3278,7 +3278,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         {"permadeath", "Permadeath: On", 90, 104},
         {"generator_rate", "Generators: Normal", 90, 127},
         {"infinite_gold", "Infinite Gold: Off", 90, 150},
-        {"cross_control", "CTRL: OWN", 90, 173},
+        {"cross_control", "CROSS CONTROL: OWN", 90, 173},
     };
     button* buttons = picker_difficulty_menu_buttons();
     const int count = picker_difficulty_menu_button_count();

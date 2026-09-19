@@ -2031,7 +2031,11 @@ StartDenialNotice describe_start_denial(
 
 std::string format_cross_control_label(bool cross_control_enabled)
 {
-    return cross_control_enabled ? "CTRL: ALL" : "CTRL: OWN";
+    // The word is spelled out: "CTRL" read as the key, and the two 140px
+    // faces this label wears (the DIFFICULTY row, the SETUP wizard's RULES
+    // row) hold 23 glyphs, so 18 costs nothing. The curses lobby status
+    // line prints it bare — the noun is in the label now.
+    return cross_control_enabled ? "CROSS CONTROL: ALL" : "CROSS CONTROL: OWN";
 }
 
 BaseCampNetRowText format_base_camp_net_row(std::string_view name,

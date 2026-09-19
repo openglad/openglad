@@ -4575,7 +4575,7 @@ TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
     EXPECT_EQ(173, buttons[kDifficultyMenuCrossControlIndex].y);
     EXPECT_EQ(140, buttons[kDifficultyMenuCrossControlIndex].sizex);
     EXPECT_EQ(15, buttons[kDifficultyMenuCrossControlIndex].sizey);
-    EXPECT_EQ("CTRL: OWN", buttons[kDifficultyMenuCrossControlIndex].label);
+    EXPECT_EQ("CROSS CONTROL: OWN", buttons[kDifficultyMenuCrossControlIndex].label);
     EXPECT_EQ(kDifficultyMenuCrossControlIndex,
               buttons[kDifficultyMenuBackIndex].nav.up);
     EXPECT_EQ(kDifficultyMenuBackIndex,
@@ -4599,13 +4599,13 @@ TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
     EXPECT_EQ(1, lobby.settings_syncs);
     ASSERT_GT(static_cast<int>(pks().difficulty_menu_buttons.size()),
               kDifficultyMenuCrossControlIndex);
-    EXPECT_EQ("CTRL: ALL",
+    EXPECT_EQ("CROSS CONTROL: ALL",
               pks().difficulty_menu_buttons[kDifficultyMenuCrossControlIndex]
                   .label);
 
     EXPECT_EQ(MENU_OK, change_cross_control());
     EXPECT_EQ(0, save.cross_control);
-    EXPECT_EQ("CTRL: OWN",
+    EXPECT_EQ("CROSS CONTROL: OWN",
               pks().difficulty_menu_buttons[kDifficultyMenuCrossControlIndex]
                   .label);
 

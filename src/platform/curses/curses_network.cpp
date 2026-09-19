@@ -1901,9 +1901,8 @@ public:
                 og::ui::kBaseCampLineBCharsHireHidden));
             // §2.7: every peer sees the mode that changes its own rights
             // (the SDL DIFFICULTY row's shared label formatter).
-            lines.push_back(
-                "Control: " + og::ui::format_cross_control_label(
-                                  state_->settings.cross_control != 0));
+            lines.push_back(og::ui::format_cross_control_label(
+                state_->settings.cross_control != 0));
         } else if (!kicked_) {
             // A kicked client is not connecting to anything; the alert above
             // is the whole story, and "Connecting..." under it would be the

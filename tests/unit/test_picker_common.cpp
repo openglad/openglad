@@ -3542,6 +3542,10 @@ TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
         save.infinite_gold = gold;
         labels.push_back(og::ui::format_infinite_gold_label(save));
     }
+    // The cross-control row shares this panel and this budget: the full
+    // word is 18 of the 23 glyphs.
+    labels.push_back(og::ui::format_cross_control_label(false));
+    labels.push_back(og::ui::format_cross_control_label(true));
     for (int difficulty : {0, 1, 2})
         labels.push_back(og::ui::format_difficulty_label(difficulty));
 
@@ -5352,8 +5356,8 @@ TEST(ReadyGoSlot, go_blockers_clips_and_caps_the_popup)
 
 TEST(ReadyGoSlot, cross_control_label_states)
 {
-    EXPECT_EQ("CTRL: OWN", og::ui::format_cross_control_label(false));
-    EXPECT_EQ("CTRL: ALL", og::ui::format_cross_control_label(true));
+    EXPECT_EQ("CROSS CONTROL: OWN", og::ui::format_cross_control_label(false));
+    EXPECT_EQ("CROSS CONTROL: ALL", og::ui::format_cross_control_label(true));
 }
 
 // --- Campaign browser (SET CAMPAIGN) layout pins ---

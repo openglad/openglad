@@ -258,7 +258,7 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
     // keeps sight of the mode that changes their rights (the gate hides it
     // only in local sessions), while change_cross_control() popups for a
     // non-host click. Session-only value — never in the .gtl.
-    {.id = "cross_control", .label = "CTRL: OWN",
+    {.id = "cross_control", .label = "CROSS CONTROL: OWN",
      .x = 90, .y = 173, .w = 140, .h = 15,
      .action = ButtonAction::ToggleCrossControl, .arg = -1,
      .nav = {.up = 6, .down = 0},

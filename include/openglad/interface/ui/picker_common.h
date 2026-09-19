@@ -846,10 +846,11 @@ StartDenialNotice describe_start_denial(
     og::sim::StartDenialReason reason,
     const std::vector<og::sim::LobbyPlayer>& players);
 
-// §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
-// controls its characters) / "CTRL: ALL" (players may control others'
-// characters in-level). Shared by the SDL DIFFICULTY row and the curses
-// lobby status line.
+// §2.7 cross-control toggle label: "CROSS CONTROL: OWN" (only the owner
+// machine controls its characters) / "CROSS CONTROL: ALL" (players may
+// control others' characters in-level). Shared by the SDL DIFFICULTY row,
+// the SETUP wizard's RULES row and the curses lobby status line, which
+// prints it bare: the noun belongs to the label, not to each caller.
 std::string format_cross_control_label(bool cross_control_enabled);
 
 // One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
