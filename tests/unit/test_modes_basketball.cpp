@@ -284,6 +284,43 @@ int live_weapons_owned_by(GameWorld& world, const walker* owner)
     return count;
 }
 
+// The modes.core bot provenance tag (mode_caps.lua BOT_MARK_BIT): a
+// squad member carries it, an authored or roster walker never does.
+int marked_bots_on(GameWorld& world, int team)
+{
+    int count = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->stats() == nullptr)
+            continue;
+        if ((w->stats()->bit_flags() & 65536) != 0)
+            ++count;
+    }
+    return count;
+}
+
+// A team's live marked squad members, in oblist (spawn) order.
+std::vector<walker*> marked_bots_in_order(GameWorld& world, int team)
+{
+    std::vector<walker*> bots;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->stats() == nullptr)
+            continue;
+        if ((w->stats()->bit_flags() & 65536) != 0)
+            bots.push_back(w);
+    }
+    return bots;
+}
+
 int alive_on_team(GameWorld& world, int team)
 {
     int count = 0;
@@ -425,14 +462,24 @@ struct BballCourt : ModesCtfWorld
     walker* red = nullptr;
     walker* green = nullptr;
 
-    explicit BballCourt(int level_id = kBballLevelA) : ModesCtfWorld(level_id)
+    // park_green = false leaves the green side EMPTY (the arm a FILL
+    // wheel fills); red_is_roster makes red a has_guy L1 roster fighter so
+    // the census reads a headcount H = 1 instead of no human power at all.
+    // Both defaults keep every staged court that came before untouched.
+    explicit BballCourt(int level_id = kBballLevelA, bool park_green = true,
+                        bool red_is_roster = false)
+        : ModesCtfWorld(level_id)
     {
         spawn_anchor(0, 128, 448);
         spawn_anchor(0, 128, 512);
         spawn_anchor(1, 512, 448);
         spawn_anchor(1, 512, 512);
-        red = spawn_living(FAMILY_SOLDIER, 0, 128, 96);
-        green = spawn_living(FAMILY_SOLDIER, 1, 512, 96);
+        if (red_is_roster)
+            red = spawn_leveled_hero(FAMILY_SOLDIER, 0, 128, 96, 1, 1);
+        else
+            red = spawn_living(FAMILY_SOLDIER, 0, 128, 96);
+        if (park_green)
+            green = spawn_living(FAMILY_SOLDIER, 1, 512, 96);
     }
 
     bool basketball_active() const
@@ -2622,6 +2669,49 @@ TEST_F(ModesBasketball, director_roles)
         << "the second brawler is pulled into the HELP fan";
 }
 
+// #305 on the court: a solo roster fighter used to meet ONE bot, so the
+// rim went unguarded. STRONG buys a body on the ball games, so the same
+// solo now meets a pair — and the pair resolves into the two roles
+// director_roles pins for this exact carrier spot and hoop.
+TEST_F(ModesBasketball, strong_solo_fighter_meets_on_ball_and_rim_protector)
+{
+    BballCourt fx(kBballLevelA, false, true);  // empty green, roster red
+    fx.world().ctf_requested_fill[1] = og::sim::kFillStrong;
+    fx.tick(1);
+    ASSERT_TRUE(fx.basketball_active());
+    ASSERT_EQ(1, fx.var(kSlotMatchedSize)) << "the solo roster sets H = 1";
+
+    const std::vector<walker*> bots = marked_bots_in_order(fx.world(), 1);
+    ASSERT_EQ(2u, bots.size())
+        << "STRONG on a court fields H + 1 = two bots, not the lone chaser";
+
+    fx.give_ball(fx.red, 450, 480);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    // The same numbers director_roles pins for a carrier at (450, 480)
+    // against the (576, 480) hoop: the on-ball defender drives onto the
+    // carrier centre, the other posts in the dunk lane.
+    int on_ball = 0;
+    int rim = 0;
+    for (walker* w : bots)
+    {
+        if (front_command_is(w, COMMAND_GOTO, 442, 472))
+        {
+            ++on_ball;
+            EXPECT_EQ(fx.red, w->foe()) << "the steal: foe on the carrier";
+        }
+        else if (front_command_is(w, COMMAND_GOTO, 536, 472))
+        {
+            ++rim;
+        }
+    }
+    EXPECT_EQ(1, on_ball) << "one bot pressures the carrier";
+    EXPECT_EQ(1, rim) << "the second holds the rim — the lane the 1v1 left "
+                         "wide open";
+}
+
 // §4.4: a NON-threatened defending team sends one vulture and keeps the
 // rest HOME — the HELP fan centered on its own hoop, not the carrier
 // midpoint.
@@ -3059,6 +3149,33 @@ TEST_F(ModesBasketball, instruction_budget_headroom)
     fx.tick(45);  // 3 director cadences + the toss + flight + HUD
     EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
         << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// R17 MEASURED, not assumed: the #305 body rule's worst shipped court is
+// FOUR HOOPS at BRUTAL — three solved squads of three (H = 1 + 2, still
+// inside the five-a-side cap) in one init, then the director every
+// cadence.
+TEST_F(ModesBasketball, instruction_budget_headroom_at_brutal_on_four_hoops)
+{
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx(kBballLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+    for (int team = 1; team < 4; ++team)
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            og::sim::kFillBrutal;
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 300, 700, 1, 1);
+    fx.tick(1);  // init (three three-bot squads + ball + shadow)
+    ASSERT_TRUE(fx.world().mode.active);
+    for (int team = 1; team < 4; ++team)
+    {
+        ASSERT_EQ(3, marked_bots_on(fx.world(), team))
+            << "BRUTAL fields H + 2 per empty side, team " << team;
+    }
+    fx.tick(45);  // 3 director cadences + the toss + flight + HUD
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip at BRUTAL either";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

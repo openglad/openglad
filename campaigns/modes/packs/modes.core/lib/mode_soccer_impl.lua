@@ -8,6 +8,7 @@ local anchors = og.use("mode_anchors")
 local caps = og.use("mode_caps")
 local items = og.use("mode_items")
 local match = og.use("mode_match")
+local shape = og.use("mode_shape")
 local strip = og.use("mode_strip")
 local surface = og.use("mode_ball_surface")
 
@@ -69,6 +70,10 @@ local T = {
   spin_cycle = 2048,
   spin_divisor = 8,
   ai_cadence = 15,
+  -- The pitch has no hard shape (D15: a cap would shrink its allies room
+  -- below FAIR), but it DOES buy bodies with the wheel above FAIR (#305)
+  -- — both facts from the one mode_shape table the picker reads too.
+  squad_shape = shape.of("soccer"),
   -- Respawning pickups (lib/mode_items): fallback interval when the
   -- manifest row carries none. mode_items refills ONE pad per interval
   -- whatever the pad count, so the interval tracks mouths fed, not pads:
@@ -166,7 +171,7 @@ local function kickoff_reset(ball)
   ball:set_frame(0)
   ball:set_team_num(C.SCORE_TEAM_COUNT)
   place_ball(ball, core.pos_x(pos), core.pos_y(pos))
-  match.revive_wiped_teams(anchors, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS), S.ANCHOR_CURSOR)
+  match.revive_wiped_teams(anchors, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS), S.ANCHOR_CURSOR, T.squad_shape)
 end
 
 -- L1-normalized impulse: |vx| + |vy| always sums to the commanded speed,
@@ -901,6 +906,9 @@ local function decide(level, inputs, row)
   local teams, seeded, lineup_mask = match.fills(inputs, mask, {
     matched = matched,
     matched_size = matched_size,
+    -- The same shape rides the decision and every spawn call below, so
+    -- the preview's count IS the spawned count (#305).
+    squad_shape = T.squad_shape,
   })
   -- The NONE knob can empty a backfilled team outright (lineup §3.2):
   -- the fills' narrowed mask is the decision's, and starts recounts it.
@@ -1015,7 +1023,7 @@ local function on_mode_init(level, row)
   -- plus any company row with an allies gap — amendment B2/B3).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if match.wants_squad(decision.teams[team + 1]) then
-      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR)
+      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR, T.squad_shape)
     end
   end
 
