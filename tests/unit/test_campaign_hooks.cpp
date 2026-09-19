@@ -864,7 +864,7 @@ constexpr const char* kParsePages = R"LUA(og.register_campaign_hooks({
     if page_id == "" then
       return {
         title = "CHOOSE A GAME",
-        lines = { "The Gamesmaster opens the book.", "Choose." },
+        lines = { "The index opens.", "Choose." },
         entries = {
           { id = "tdm", label = "TEAM DEATHMATCH", kind = "page", note = "6 arenas" },
           { id = "300", label = "THE CIRCLE", kind = "level", level = 300, note = "4 teams", replay = true },
@@ -945,7 +945,7 @@ TEST_F(CampaignHooksTest, page_parse_happy_path)
     ASSERT_TRUE(hooks::campaign_picker_page("", page));
     EXPECT_EQ("CHOOSE A GAME", page.title);
     ASSERT_EQ(2u, page.lines.size());
-    EXPECT_EQ("The Gamesmaster opens the book.", page.lines[0]);
+    EXPECT_EQ("The index opens.", page.lines[0]);
     ASSERT_EQ(4u, page.entries.size());
     EXPECT_EQ("tdm", page.entries[0].id);
     EXPECT_EQ("TEAM DEATHMATCH", page.entries[0].label);

@@ -93,10 +93,24 @@ fi
 cd "${ROOT}"
 
 # The retired labels, one row each (parallel arrays, awk-ERE | prefilter | what
-# ships instead).  One row today; a future rename adds a row, not a script.
-RETIRED_RE=('NEXT[-[:space:]]*WAVE')
-RETIRED_PREFILTER=('NEXT')
-RETIRED_SHIPPED=('WAVE: {s}s  (src/interface/score_panel.cpp)')
+# ships instead).  Four rows today; a future rename adds a row, not a script.
+# Rows 2-4 are the #306 untheme of the Multiplayer Arenas campaign: the index
+# page's title lost its game count and its per-campaign cover, and a level is
+# an ARENA, not a field.  Every residual mention of the three was rewritten in
+# that PR -- none of them is allowlisted, and none of them may be spelled in
+# scripts/retired_phrases.txt either, which this gate also scans.
+RETIRED_RE=('NEXT[-[:space:]]*WAVE'
+            'SEVEN[[:space:]]+GAMES'
+            'THE[[:space:]]+BOOK[[:space:]]+OF[[:space:]]+[A-Z]'
+            'FIELD: [A-Z]')
+RETIRED_PREFILTER=('NEXT'
+                   'SEVEN'
+                   'BOOK'
+                   'FIELD:')
+RETIRED_SHIPPED=('WAVE: {s}s  (src/interface/score_panel.cpp)'
+                 'GAMES  (campaign_picker.lua)'
+                 'GAMES'
+                 'ARENA: <arena>  (campaign_picker.lua)')
 
 # mawk-safe: no 3-argument match(), no interval braces, no gensub.  Lines are
 # stored first so the joined-pair test can look ahead.  A pair is only joined
@@ -129,6 +143,9 @@ trap 'rm -f "${HITS_FILE}" "${FOUND_COUNTS_FILE}" "${ALLOWED_COUNTS_FILE}"' EXIT
 for (( ri = 0; ri < ${#RETIRED_RE[@]}; ri++ )); do
     # -I skips the binary level data under campaigns/*/scen; the prefilter is a
     # plain fixed word so the expensive awk runs over a handful of candidates.
+    # ONE word, always: this grep runs BEFORE the awk that joins wrapped line
+    # pairs, so a two-word prefilter ('BOOK OF') would hide exactly the
+    # wrapped and double-spaced spellings the regex was written to catch.
     while IFS= read -r file; do
         [[ -n "${file}" ]] || continue
         awk -v rel="${file}" -v re="${RETIRED_RE[ri]}" "${SCAN_AWK}" "${file}" \

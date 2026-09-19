@@ -17,6 +17,7 @@ legacy, or retired.
 | Base Camp, Hire, Train, Progress, View Level, Scenario | Runtime |
 | Lineup (docs/lineup-design.md §2) | Runtime |
 | Campaign zone submenu (the Base Camp book pages) | Runtime |
+| Match setup (the SETUP wizard, docs/match-setup-design.md) | Runtime |
 | Company List, Backups, company name entry | Runtime |
 | Networking | Legacy `SdlPickerClient` loop |
 | View Team, Matchup, Fighters list (amendment B6), manual Save/Load slots, global Controls | Retired |
@@ -73,6 +74,15 @@ The numeric action value overlaps the legacy return-bit space, so the runtime
 must replace the temporary action value with the callback's real return value
 before testing the loop condition. Test builds fail if the row stash survives
 a frame.
+
+A right-click on a `MenuSpecRow` button stashes the same row a second time,
+with `og::ui::set_menu_spec_row_reverse(true)`, and `do_call_right` still
+returns the callback's real value. A screen that wants a reverse step reads
+`og::ui::menu_spec_row_reverse()` inside its `on_spec_row` and passes the
+direction down; the runner clears the flag after dispatch, and — like the
+row stash — a reverse stash that survives a frame fails under TESTING. Every
+other `ButtonAction` keeps `do_call_right`'s default answer, so nothing
+leaks out of the runtime.
 
 ## Frame contract
 
@@ -325,6 +335,10 @@ controller:
 Moving it into the runtime would require a pre-input phase and stable ID-based
 navigation. Until those facilities have another consumer, its focused race
 tests are the safer contract.
+
+The loop contains no `MenuSpecRow` rows, so the row stash and its reverse
+flag are inert there. That is audited rather than assumed:
+`MenuEngine.networking_right_click_never_sees_a_spec_row_stash` pins it.
 
 ## Maintenance
 

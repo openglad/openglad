@@ -311,6 +311,10 @@ version triple). Instead:
   spawn caps, drumstick + speed-potion pads (`item_interval 180`), briefings
   ending `-- THE GAMESMASTER` with a "FREE FOR ALL — team choice does not
   restrict targets" line.
+  **Update (2026-09-19, PR #N):** the sign-off is gone — #306 deleted all 40
+  of them and the generator lints the narrator's vocabulary out of briefings
+  instead; the FFA briefings now end on their last rule line
+  (docs/match-setup-design.md §3.9).
 - Manifest rows: `mode='ffa'`, `fighters=8..16` per arena (new row field),
   `time_limit=7200`, `score_limit=15`, `spawn_caps`, `item_pads`. Mutant rows
   840–843 gain `fighters=4` (keeps current feel, allows growth).

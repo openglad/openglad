@@ -1,7 +1,7 @@
-# Multiplayer Game Modes
+# Multiplayer Arenas
 
 OpenGlad ships seven competitive game modes in one built-in campaign:
-**`modes`** ("Multiplayer Game Modes"), 40 scenarios. Pick it
+**`modes`** ("Multiplayer Arenas"), 40 scenarios. Pick it
 from SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 Every scenario title is prefixed with its mode:
 
@@ -53,22 +53,48 @@ clients, the dedicated server, and the web build.
 
 ## Match setup
 
-Match rules live on two pages, both host-only in networked play (a joiner
-sees the current values as read-only labels) and both synchronized to
-every client by the lobby:
+Match rules live behind one door, **SETUP**, on the Base Camp command strip
+of this campaign (where a classic campaign shows DIFFICULTY). It is
+host-only in networked play — a joiner browses the same steps and reads the
+values as text — and every value is synchronized to every client by the
+lobby.
 
-- **MATCH SETUP** (Base Camp → the Gamesmaster's fourth row, on the modes
-  campaign) — four rows: **TEAMS** and **FILL** are macros over the
-  per-team LINEUP bands below, **TARGET SCORE** is the map's authored
-  limit or a forced 1/3/5/10 (each mode reads it as its own win threshold:
-  captures, frags, goals), and **TIME LIMIT** is the map's own clock or a
-  forced 5–20 minutes.
-- **LINEUP** (Base Camp → SCENARIO → LINEUP) — one band per team, each
-  with a **FILL** wheel (`NONE`, `WEAK`, `FAIR`, `STRONG`, `BRUTAL`) and a
-  **MAP UNITS** box. FILL fields a bot squad on that team, sized against
-  the human companies at the table (see "Matched squads" below); NONE
-  fields nothing. MAP UNITS decides whether the fighters the map itself
-  ships on that team take the field.
+SETUP is a five-step wizard with a tab strip across the top. PREV and NEXT
+walk the sequence, BACK (or Escape) closes it from any step, a tab jumps
+straight to a step, and every value opens preselected from your save:
+
+- **GAME** — the seven games with their cleared tallies.
+- **ARENA** — the arenas of the game you are on, the current one marked
+  `[CURRENT]` and the ones you have finished `[CLEARED]`.
+- **TEAMS** — one line per team the arena authors (its colour, the seats on
+  it, and what will stand on it), the **SIDES** wheel (how many sides the
+  bots fill, clamped to the sides the arena actually authors and hidden when
+  it authors two), the **FILL** wheel over every fielded band at once, and a
+  door to LINEUP.
+- **RULES** — **SCORE** (the map's authored limit or a forced 1/3/5/10, read
+  by each game as its own win threshold: captures, frags, goals), **TIME
+  LIMIT** (the map's own clock or a forced 5–20 minutes), RESPAWNS, SPAWN
+  DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and, networked,
+  CROSS CONTROL. A click cycles a row forward; the `<` cell at its right
+  edge — or a right-click, or `N-` at a terminal prompt — steps it back.
+- **MATCH** — the whole match on one screen: the arena, every team that will
+  stand with what it fields, the rules two per line, a door to VIEW LEVEL,
+  and GO. GO is live exactly when the Base Camp GO would launch and says why
+  on its own face when it would not (`GO - DEPLOY FOR EVERY PLAYER`,
+  `GO - STAGING`).
+
+The Base Camp docket's `GAME:` and `ARENA:` rows are shortcuts straight into
+the wizard's GAME and ARENA steps, and `RANDOM ARENA` rolls a scenario out of
+the whole manifest. The terminal clients reach the same five steps through
+Team Build → `Setup`.
+
+**LINEUP** is the per-team page behind the TEAMS step's door (and still
+reachable at Base Camp → SCENARIO → LINEUP): one band per team, each with a
+**FILL** wheel (`NONE`, `WEAK`, `FAIR`, `STRONG`, `BRUTAL`) and a **MAP
+UNITS** box. FILL fields a bot squad on that team, sized against the human
+companies at the table (see "Matched squads" below); NONE fields nothing.
+MAP UNITS decides whether the fighters the map itself ships on that team
+take the field.
 
 ### The arena default
 
@@ -81,17 +107,22 @@ the other side; on a four-team deathmatch arena three squads take the
 field. The deal happens once per scenario selection, and it never lifts a
 choice: turn a defined team's band to NONE and it stays NONE through VIEW
 LEVEL, GO, the return to Base Camp and a restart. Picking a scenario again
-(SET LEVEL, the camp's RANDOM SCENARIO, SET CAMPAIGN into the modes
+(SET LEVEL, the camp's RANDOM ARENA roll, SET CAMPAIGN into the modes
 campaign, or the advance after a match) deals FAIR back onto any defined
 team that is sitting at NONE. Classic campaigns never deal anything: a
 gladiator level at its defaults is exactly the level as authored.
 
-The macros read the same bands: after the deal MATCH SETUP shows `TEAMS:
-2` / `FILL: FAIR` on a two-team map and `TEAMS: 4` / `FILL: FAIR` on a
-four-team one. One TEAMS click steps the side count along its 2 → 3 → 4
-wheel (dealing the lowest opponents in team order, whatever the map
-authors); one FILL click steps every fielded band, your own included, one
-stop along the wheel.
+**Soccer and basketball arenas deal STRONG instead**, because at FAIR a solo
+player faces exactly one opponent there and that is the game the reporter
+called too easy: opening THE PITCH fields two bots without a knob being
+touched. One `<` tap on the FILL row puts it back to the FAIR 1v1, and the
+choice sticks through every re-entry like any other.
+
+The wizard's TEAMS step reads the same bands: after the deal it shows
+`SIDES: 2` / `FILL: FAIR` on a two-team map and `SIDES: 4` / `FILL: FAIR` on
+a four-team one. One SIDES click steps the bot-side count along the wheel the
+arena authors (dealing the lowest opponents in team order); one FILL click
+steps every fielded band, your own included, one stop along the wheel.
 
 VIEW LEVEL previews the result: the staged census lists every team that
 will stand, with its company, its map units and its bot squad, each squad
@@ -100,7 +131,7 @@ standing says `MATCH WILL NOT START: FEWER THAN 2 TEAMS` instead.
 
 Assign player teams with the seat rail in Base Camp. The rail is this
 machine's four seats: tap a slot reading **ADD PLAYER** to claim one, then
-open its **P#** card and choose **TEAM** in the editor. Put several seats on
+open its **P#** seat and choose **TEAM** in the editor. Put several seats on
 one team for co-op, or spread them across teams for a versus or mixed-team
 match. Other machines' seats are not in the rail — the header line counts them
 and **VIEW LEVEL** lists them with their teams.
@@ -130,8 +161,14 @@ of to the difficulty formula:
   half. Each squad is fielded at whichever level lands closest, with the
   first few of its members promoted one level further to fine-tune the
   fit.
-- Squad size follows the roster: a solo fighter faces one opponent, a
-  full company a full squad. Only levels move, and only between 1 and 9.
+- In the brawls (deathmatch, capture the flag) squad size follows your
+  roster: a solo fighter faces one opponent, a full company a full squad,
+  and only the bots' LEVEL moves, between 1 and 9. In soccer and basketball
+  the wheel buys fighters above FAIR: STRONG fields one more than your
+  headcount and BRUTAL two, each at about one fighter's strength, up to the
+  five the game shape holds — and the band fills the court toward five. A
+  step the shape cannot seat falls back to the level bump, and a fresh ball
+  arena deals STRONG.
 - A band on a team that already holds a human company is the allies knob:
   it fields the gap up to the strongest other human team, so an
   outnumbered host can ask for help; at a solo table the gap is nothing
@@ -141,8 +178,9 @@ of to the difficulty formula:
 - DIFFICULTY still applies on top, and it bites harder than it looks: it
   scales health and damage together, so Easy leaves a matched squad far
   under your strength and Hard far over it. Normal is the fair fight.
-- Onslaught's armies come out of generators rather than squads, so a band
-  there adds a squad beside the generators' output.
+- Onslaught's armies come out of generators rather than squads, and no
+  band adds fighters there: whatever the wheel reads, the generators'
+  output is the whole opposition.
 
 With several human teams the weakest is the reference, so an even match for
 one side can still be a hard one for a stronger ally.

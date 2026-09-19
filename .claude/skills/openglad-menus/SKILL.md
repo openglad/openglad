@@ -99,17 +99,47 @@ code, and the layout tests in the same change.
 Base Camp has exactly one page window: the eight roster rows. The seat rail
 below it is not paged — it is this machine's four fixed slots (ordinals
 35..38), and remote seats never appear there. A slot holding one of this
-machine's seats draws a card; a bare slot is the ADD PLAYER door on the same
-ordinal (LOBBY FULL and dimmed when the lobby has no room, hidden outright
-past what the device can seat). Ordinals 33, 34, 39 and 40 are parked spares
-— the retired `[+]` and the two seat pagers — re-parked every frame. The
-header's line B carries the players/machines census that the rail no longer
-shows.
+machine's seats draws that seat (`BaseCampSlotKind::Seat`); a bare slot is
+the ADD PLAYER door on the same ordinal (LOBBY FULL and dimmed when the
+lobby has no room, hidden outright past what the device can seat).
+Ordinals 33, 34, 39 and 40 are parked spares — the retired `[+]` and the
+two seat pagers — re-parked every frame. The header's line B carries the
+players/machines census that the rail no longer shows.
 
 Two consumers select TEXT menu items by 1-based position and break silently
 on reorders: `scripts/test_text_picker_interactive.sh` and the scripted drive
 in `tests/unit/test_platform_headless.cpp`. Grep both whenever
 `kTeamBuildItems` (or any menu's item list) changes shape.
+
+## The SETUP wizard (the second screen on the camp chassis)
+
+On a `matchup: versus` campaign the Base Camp strip's (58,178,68,18) slot
+reads **SETUP** instead of **DIFFICULTY** — one rect, two ordinals, the
+GO/READY twin shape, the new one appended at ordinal 73 (ceiling 74). It
+opens `MenuScreenId::MatchSetup`, a five-step wizard (GAME → ARENA → TEAMS →
+RULES → MATCH) that is a room inside the camp panel and reuses the zone
+submenu's constants. Working on it, know these five things:
+
+- **The grid is declared, and it has ONE right edge, 310.** Tabs, the 30 px
+  cell column (280..310) and the ARENA pagers all end there; rows are the
+  docket's 264-wide 42-glyph face. The vertical/rhythm names live in
+  `include/openglad/interface/ui/match_setup_session.h` (the session is
+  SDL-free and needs them); every x/w/tab/cell/footer/ordinal name lives in
+  `picker_sdl_defs.h`, which includes that header and `static_assert`s the
+  two against the zone constants. Do not add a third home.
+- **Every cycler row has a `<` reverse cell**, and the same
+  `session.choose(row, -1)` is reached three ways: the cell, a mouse
+  right-click (the `menu_spec_row_reverse` stash, docs/menu-engine.md) and
+  the terminal `N-` item. LEFT/RIGHT stay NAVIGATION on this screen as on
+  every other.
+- **The escape-door table** the injector flows bind starts with
+  `{"setup_back", "setup_back"}` — BACK/Escape closes the wizard from any
+  step; PREV/NEXT walk it; a tab jumps to it.
+- **Team Build has 13 items now**, and two of them are `Custom`-gated on
+  campaign kind: item 13 `Setup` on versus campaigns, item 11 `Difficulty`
+  on classic ones. Both index consumers below apply.
+- The design record, with the button table, the per-row budgets and the
+  decisions, is `docs/match-setup-design.md`.
 
 ## Keyboard navigation rules
 
