@@ -185,7 +185,9 @@ int expected_fact(int fill)
 // standing harness trap).
 
 // Parameter slots: 25..28 the four MAP UNITS boxes, 30..33 the four FILL
-// knobs, 34 the hard-shape cap (0 = none), 38..41 the per-team human
+// knobs, 34 the hard-shape cap (0 = none), 35 the shape's BODIES flag
+// (1 = the #305 ball-game rule buys a body per wheel step above FAIR),
+// 38..41 the per-team human
 // f-sums (fills decides the allies gap and the weakest reference from the
 // inputs alone — the magnitudes only matter through comparisons, so the
 // matrix hands in placeholder sums shaped like the fixture rosters),
@@ -218,6 +220,7 @@ constexpr const char* kRuleProbeLua =
     "    if squad_cap == 0 then\n"
     "      squad_cap = nil\n"
     "    end\n"
+    "    local fill_bodies = og.mode_get(35) == 1\n"
     "    local mask, starts, matched, matched_size =\n"
     "        match.activation(inputs, og.mode_get(58), og.mode_get(59))\n"
     "    local packed = mask\n"
@@ -232,7 +235,7 @@ constexpr const char* kRuleProbeLua =
     "      no_bots = og.mode_get(62) == 1,\n"
     "      matched = matched,\n"
     "      matched_size = matched_size,\n"
-    "      squad_cap = squad_cap,\n"
+    "      squad_shape = { cap = squad_cap, bodies = fill_bodies },\n"
     "    })\n"
     "    local codes = {\n"
     "      empty = 0,\n"
@@ -248,6 +251,9 @@ constexpr const char* kRuleProbeLua =
     "    local sbase = 1\n"
     "    for t = 1, 4 do\n"
     "      local row = rows[t]\n"
+    "      if row.count >= 12 then\n"
+    "        error(\"count overflows the base-100 packing\")\n"
+    "      end\n"
     "      fills_packed = fills_packed + (codes[row.fill] + row.count * 8) * base\n"
     "      base = base * 100\n"
     "      squads_packed = squads_packed + (row.squad or 0) * sbase\n"
@@ -289,11 +295,12 @@ struct RuleAnswer
 // (0 NONE / 1 WEAK / 2 FAIR / 3 STRONG / 4 BRUTAL — the engine scale),
 // map_units the four boxes (0 on / 1 off), power the per-team human
 // f-sums, squad_cap the caller's hard shape (0 = none) — all default
-// zero, the all-NONE-boxes-on default state (E1).
+// zero, the all-NONE-boxes-on default state (E1). bodies is the shape's
+// #305 flag (the ball games alone).
 RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
                       unsigned authored, int auto_default, bool no_bots,
                       const std::array<int, 4>& fill = {},
-                      int squad_cap = 0,
+                      int squad_cap = 0, bool bodies = false,
                       const std::array<int, 4>& map_units = {},
                       const std::array<int, 4>& power = {})
 {
@@ -311,6 +318,7 @@ RuleAnswer eval_rules(const std::array<std::array<int, 4>, 4>& teams,
         w.mode.vars[38 + t] = power[t];
     }
     w.mode.vars[34] = squad_cap;
+    w.mode.vars[35] = bodies ? 1 : 0;
     w.mode.vars[58] = static_cast<std::int32_t>(authored);
     w.mode.vars[59] = auto_default;
     w.mode.vars[62] = no_bots ? 1 : 0;
@@ -358,8 +366,8 @@ int activation_mask(unsigned authored, unsigned roster,
             power[static_cast<std::size_t>(t)] = 100;
         }
     }
-    return eval_rules(teams, authored, auto_default, false, {}, 0, {},
-                      power)
+    return eval_rules(teams, authored, auto_default, false, {}, 0, false,
+                      {}, power)
         .mask;
 }
 
@@ -422,7 +430,7 @@ TEST_F(StagedRules, activation_precedence_sweep)
             teams[static_cast<std::size_t>(t)][0] = 1;
         teams[2][2] = 2;  // npcs on team 2, beyond the default of 2
         EXPECT_EQ(0b0111, eval_rules(teams, 0b0111, 2, false).mask);
-        EXPECT_EQ(0b0011, eval_rules(teams, 0b0111, 2, false, {}, 0,
+        EXPECT_EQ(0b0011, eval_rules(teams, 0b0111, 2, false, {}, 0, false,
                                      {0, 0, kBoxOff, 0})
                               .mask)
             << "the box off takes the units-activation back";
@@ -465,8 +473,8 @@ TEST_F(StagedRules, activation_matched_size_is_the_min_roster_headcount)
     {
         std::array<std::array<int, 4>, 4> solo = teams;
         solo[0][1] = 3;
-        const RuleAnswer a = eval_rules(solo, 0b0111, 0, false, {}, 0, {},
-                                        {300, 0, 0, 0});
+        const RuleAnswer a = eval_rules(solo, 0b0111, 0, false, {}, 0,
+                                        false, {}, {300, 0, 0, 0});
         EXPECT_TRUE(a.matched);
         EXPECT_EQ(3, a.matched_size) << "one roster team = its count";
     }
@@ -474,8 +482,8 @@ TEST_F(StagedRules, activation_matched_size_is_the_min_roster_headcount)
         std::array<std::array<int, 4>, 4> two = teams;
         two[0][1] = 3;
         two[2][1] = 5;
-        const RuleAnswer a = eval_rules(two, 0b0111, 0, false, {}, 0, {},
-                                        {300, 0, 500, 0});
+        const RuleAnswer a = eval_rules(two, 0b0111, 0, false, {}, 0,
+                                        false, {}, {300, 0, 500, 0});
         EXPECT_TRUE(a.matched);
         EXPECT_EQ(3, a.matched_size) << "several roster teams = the MIN";
     }
@@ -1404,7 +1412,7 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
         std::array<std::array<int, 4>, 4> manned = teams;
         manned[0][1] = 2;
         const RuleAnswer a = eval_rules(manned, 0b0111, 0, false,
-                                        {0, kKnobFair, 0, 0}, 0, {},
+                                        {0, kKnobFair, 0, 0}, 0, false, {},
                                         {200, 0, 0, 0});
         ASSERT_TRUE(a.matched);
         EXPECT_EQ(2, a.matched_size);
@@ -1422,14 +1430,14 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
             << "fielded map units are the fill";
         EXPECT_EQ(0, (on.squads_packed / 10) % 10) << "no squad beside them";
         const RuleAnswer off = eval_rules(npc_teams, 0b0111, 0, false,
-                                          {0, kKnobFair, 0, 0}, 0,
+                                          {0, kKnobFair, 0, 0}, 0, false,
                                           {0, kBoxOff, 0, 0});
         EXPECT_EQ(3 + 5 * 8,
                   static_cast<int>((off.fills_packed / 100) % 100))
             << "the box off trades the troops for the squad";
         const RuleAnswer off_none =
             eval_rules(npc_teams, 0b0111, 0, false,
-                       {kKnobFair, kKnobNone, kKnobFair, 0}, 0,
+                       {kKnobFair, kKnobNone, kKnobFair, 0}, 0, false,
                        {0, kBoxOff, 0, 0});
         EXPECT_EQ(0b0101, off_none.lineup_mask)
             << "box off under the stored NONE drops the team (E1)";
@@ -1444,7 +1452,7 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
         npc_teams[0][1] = 3;  // three humans: the reference and headcount
         npc_teams[1][2] = 4;
         const RuleAnswer a = eval_rules(npc_teams, 0b0111, 0, false,
-                                        {0, kKnobBrutal, 0, 0}, 0, {},
+                                        {0, kKnobBrutal, 0, 0}, 0, false, {},
                                         {200, 0, 0, 0});
         EXPECT_EQ(3, a.matched_size);
         EXPECT_EQ(2 + 7 * 8, static_cast<int>((a.fills_packed / 100) % 100))
@@ -1452,8 +1460,8 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
         EXPECT_EQ(kKnobBrutal, (a.squads_packed / 10) % 10)
             << "the squad digit is the applied wheel code";
         const RuleAnswer capped = eval_rules(npc_teams, 0b0111, 0, false,
-                                             {0, kKnobBrutal, 0, 0}, 5, {},
-                                             {200, 0, 0, 0});
+                                             {0, kKnobBrutal, 0, 0}, 5, false,
+                                             {}, {200, 0, 0, 0});
         EXPECT_EQ(2 + 5 * 8,
                   static_cast<int>((capped.fills_packed / 100) % 100))
             << "cap 5 beside four npcs leaves room for one";
@@ -1466,8 +1474,8 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
         two[0][1] = 2;
         two[2][1] = 3;
         const RuleAnswer a = eval_rules(two, 0b0111, 0, false,
-                                        {kKnobFair, 0, kKnobFair, 0}, 0, {},
-                                        {200, 0, 900, 0});
+                                        {kKnobFair, 0, kKnobFair, 0}, 0, false,
+                                        {}, {200, 0, 900, 0});
         EXPECT_EQ(2, a.matched_size);
         EXPECT_EQ(1 + 4 * 8, static_cast<int>(a.fills_packed % 100))
             << "company 2 + 2 allies (headcount rule)";
@@ -1476,8 +1484,8 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
                   static_cast<int>((a.fills_packed / 10000) % 100))
             << "the stronger company rides alone";
         EXPECT_EQ(0, (a.squads_packed / 100) % 10);
-        const RuleAnswer none = eval_rules(two, 0b0111, 0, false, {}, 0, {},
-                                           {200, 0, 900, 0});
+        const RuleAnswer none = eval_rules(two, 0b0111, 0, false, {}, 0,
+                                           false, {}, {200, 0, 900, 0});
         EXPECT_EQ(1 + 2 * 8, static_cast<int>(none.fills_packed % 100))
             << "the stored NONE fields no allies for the weaker company";
         EXPECT_EQ(0, none.squads_packed);
@@ -1499,7 +1507,7 @@ TEST_F(StagedRules, rule_rows_none_box_allies_and_cap)
             gen_teams[static_cast<std::size_t>(t)][3] = 1;
         gen_teams[1][2] = 1;
         const RuleAnswer a = eval_rules(gen_teams, 0b0111, 3, true, {}, 0,
-                                        {0, kBoxOff, 0, 0});
+                                        false, {0, kBoxOff, 0, 0});
         EXPECT_EQ(0b0101, a.lineup_mask)
             << "box off under no_bots drops the team";
         EXPECT_EQ(0, a.squads_packed);
@@ -1712,6 +1720,9 @@ struct MatrixMode
     int auto_default;   // manifest row.teams (0 = the CTF/TDM raw arm)
     bool no_bots;
     int squad_cap = 0;  // the mode's hard shape (basketball's 5v5)
+    // The #305 body rule: above FAIR, a ball game's EMPTY-team arm
+    // buys one more body per wheel step (mode_shape.lua bodies).
+    bool bodies = false;
 };
 
 // The shared matrix world: the mode's authored domain on teams 0-2, one
@@ -1790,7 +1801,7 @@ void run_staged_case(const MatrixMode& mode, int flag_family, int none_team,
 
     const RuleAnswer expected =
         eval_rules(teams, 0b0111, mode.auto_default, mode.no_bots, fill,
-                   mode.squad_cap, map_units, power);
+                   mode.squad_cap, mode.bodies, map_units, power);
     ASSERT_GE(expected.mask, 0);
     ASSERT_GE(expected.fills_packed, 0);
     const int expected_mask = expected.lineup_mask;
@@ -1931,20 +1942,29 @@ void run_staged_matrix(const MatrixMode& mode, int flag_family)
         run_staged_case(mode, flag_family, -1, box_team, solo, kKnobNone);
     run_staged_case(mode, flag_family, -1, -1, none, kKnobNone);
     run_staged_case(mode, flag_family, -1, -1, two, kKnobNone);
+    // The #305 rows (WP3): above FAIR the ball games' empty arm buys
+    // bodies, so the decision and the apply must still agree body for
+    // body — on the brawl modes these rows are today's numbers.
+    run_staged_case(mode, flag_family, -1, -1, solo, kKnobStrong);
+    run_staged_case(mode, flag_family, -1, -1, solo, kKnobBrutal);
+    run_staged_case(mode, flag_family, -1, -1, two, kKnobStrong);
+    run_staged_case(mode, flag_family, -1, -1, two, kKnobBrutal);
 }
 
 }  // namespace
 
 TEST_F(StagedRules, staged_world_matrix_soccer)
 {
-    run_staged_matrix({"soccer", kSoccerLevelB, kSoccerSlots, 4, false},
-                      flag_family_);
+    run_staged_matrix(
+        {"soccer", kSoccerLevelB, kSoccerSlots, 4, false, 0, true},
+        flag_family_);
 }
 
 TEST_F(StagedRules, staged_world_matrix_basketball)
 {
-    run_staged_matrix({"basketball", kBballLevelB, kBballSlots, 4, false, 5},
-                      flag_family_);
+    run_staged_matrix(
+        {"basketball", kBballLevelB, kBballSlots, 4, false, 5, true},
+        flag_family_);
 }
 
 TEST_F(StagedRules, staged_world_matrix_ctf)
@@ -1963,6 +1983,327 @@ TEST_F(StagedRules, staged_world_matrix_onslaught)
 {
     run_staged_matrix({"onslaught", kOnsLevelB, kOnsSlots, 3, true},
                       flag_family_);
+}
+
+// ===========================================================================
+// 3b. #305: above FAIR, a BALL game's empty-team arm buys BODIES
+// ===========================================================================
+
+// The teeth for the rule itself, staged in the real world: one L1 hero on
+// team 0 (H = 1) with STRONG on every wheel fields TWO marked bots per
+// empty side on soccer and basketball, and exactly ONE on TDM — the brawl
+// control that pins the rule as ball-game-only.
+TEST_F(StagedRules, staged_world_strong_fields_h_plus_one_on_ball_modes)
+{
+    struct Row
+    {
+        int level_id;
+        int expected;
+        const char* what;
+    };
+    const Row rows[] = {
+        {kSoccerLevelB, 2, "soccer: H + 1"},
+        {kBballLevelB, 2, "basketball: H + 1"},
+        {kTdmLevelA, 1, "tdm: the brawl control, still H"},
+    };
+    for (const Row& row : rows)
+    {
+        SCOPED_TRACE(row.what);
+        ModesCtfWorld fx(row.level_id);
+        for (int team = 0; team < 4; ++team)
+            fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 96);
+        for (auto& knob : fx.world().ctf_requested_fill)
+            knob = static_cast<short>(kKnobStrong);
+        fx.spawn_hero(FAMILY_SOLDIER, 0, 96, 700, 1);
+
+        stage_init(fx);
+        ASSERT_TRUE(fx.world().mode.active);
+        EXPECT_EQ(1, fx.var(kSlotMatchedSize))
+            << "one L1 roster hero: the headcount H is 1";
+        for (int team = 1; team < 4; ++team)
+        {
+            EXPECT_EQ(row.expected, marked_bots_on(fx.world(), team))
+                << "empty team " << team;
+            EXPECT_EQ(row.expected, live_livings_on(fx.world(), team));
+        }
+    }
+}
+
+namespace {
+
+// The §3.8 table, spelled from the DESIGN rather than ported from the Lua:
+// today's count is min(H, F) bounded by the shape's room; a ball game's
+// empty arm above FAIR fields one body per step instead, and every body it
+// absorbs costs one wheel step of POWER, read off the wheel's own spacing.
+// room < 0 stands for the Lua nil (no hard shape).
+struct ShapeAnswer
+{
+    int count = 0;
+    int pct = 0;
+    int base = 0;
+};
+
+ShapeAnswer squad_shape_oracle(int knob, int headcount, int room,
+                               int table_size, bool fielded_is_empty,
+                               bool bodies_allowed)
+{
+    // The engine's wheel percents (lobby_state.h kFill*), spelled here so
+    // this oracle never reads the table it is checking.
+    const int wheel[5] = {0, 75, 100, 125, 150};
+    int base = table_size;
+    if (headcount > 0)
+        base = std::min(headcount, table_size);
+    if (room >= 0)
+        base = std::min(base, room);
+    int count = base;
+    const int steps = knob - kKnobFair;
+    if (bodies_allowed && fielded_is_empty && headcount > 0 && steps > 0)
+    {
+        count = std::min(headcount + steps, table_size);
+        if (room >= 0)
+            count = std::min(count, room);
+    }
+    int pct = wheel[knob];
+    const int absorbed = count - base;
+    if (absorbed > 0)
+        pct -= (wheel[knob] - wheel[knob - 1]) * absorbed;
+    return {count, pct, base};
+}
+
+// One log line per (H, room, bodies, fielded) cell, carrying the four
+// wheel codes' (count, pct, base) triples: 112 lines x 12 numbers is the
+// whole 448-row grid inside the host's 512-line log bound.
+constexpr int kShapeProbeLevel = 9094;
+constexpr const char* kShapeProbeLua =
+    "local lineup = og.use(\"core:lineup\")\n"
+    "og.register_level_hooks(9094, {\n"
+    "  on_load = function(level)\n"
+    "    local rooms = { -1, 5, 2, 0 }\n"
+    "    for h = 0, 6 do\n"
+    "      for r = 1, #rooms do\n"
+    "        local room = rooms[r]\n"
+    "        if room < 0 then\n"
+    "          room = nil\n"
+    "        end\n"
+    "        for b = 0, 1 do\n"
+    "          for e = 0, 1 do\n"
+    "            local out = {}\n"
+    "            for knob = 1, 4 do\n"
+    "              local c, p, base = lineup.squad_shape(knob, h, room, 5,\n"
+    "                                                    e == 1, b == 1)\n"
+    "              out[#out + 1] = c\n"
+    "              out[#out + 1] = p\n"
+    "              out[#out + 1] = base\n"
+    "            end\n"
+    "            og.log(\"shape\", h, rooms[r], b, e, out[1], out[2],\n"
+    "                   out[3], out[4], out[5], out[6], out[7], out[8],\n"
+    "                   out[9], out[10], out[11], out[12])\n"
+    "          end\n"
+    "        end\n"
+    "      end\n"
+    "    end\n"
+    "  end,\n"
+    "})\n";
+
+struct ShapeProbeScript
+{
+    ShapeProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_shape_probe.lua", kShapeProbeLua});
+    }
+    ~ShapeProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_shape_probe.lua", ""});
+    }
+};
+
+std::vector<std::string> split_tab_fields(const std::string& line)
+{
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (true)
+    {
+        const std::size_t tab = line.find('\t', start);
+        if (tab == std::string::npos)
+        {
+            out.push_back(line.substr(start));
+            return out;
+        }
+        out.push_back(line.substr(start, tab - start));
+        start = tab + 1;
+    }
+}
+
+}  // namespace
+
+// The whole §3.8 shape table, row by row, against an independently
+// spelled C++ oracle: headcount 0..6 x the four wheel codes x room
+// {nil, 5, 2, 0} x bodies {off, on} x fielded {empty, occupied} = 448
+// rows. Code 0 (NONE) is NOT in the grid: every caller gates on squad_off
+// first, so FILL_PERCENT[0] is nil by contract and the refusal itself is
+// pinned by ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns.
+TEST_F(StagedRules, lineup_squad_shape_table)
+{
+    ShapeProbeScript probe;
+    ModesCtfWorld fx(kShapeProbeLevel);
+    fx.world().run_pending_level_on_load();
+    ASSERT_TRUE(fx.world().scripts().host().errors().empty())
+        << "shape probe raised: "
+        << (fx.world().scripts().host().errors().empty()
+                ? std::string()
+                : fx.world().scripts().host().errors().back().message);
+
+    std::vector<std::vector<std::string>> rows;
+    for (const std::string& line : fx.world().scripts().host().log())
+    {
+        if (line.rfind("shape\t", 0) == 0)
+            rows.push_back(split_tab_fields(line));
+    }
+    ASSERT_EQ(112u, rows.size()) << "7 headcounts x 4 rooms x 2 x 2 cells";
+
+    int compared = 0;
+    for (const std::vector<std::string>& fields : rows)
+    {
+        ASSERT_EQ(17u, fields.size());
+        const int h = std::stoi(fields[1]);
+        const int room = std::stoi(fields[2]);
+        const bool bodies = std::stoi(fields[3]) == 1;
+        const bool empty = std::stoi(fields[4]) == 1;
+        for (int knob = 1; knob <= 4; ++knob)
+        {
+            SCOPED_TRACE(::testing::Message()
+                         << "H=" << h << " room=" << room << " bodies="
+                         << bodies << " empty=" << empty
+                         << " knob=" << knob);
+            const std::size_t at =
+                5u + 3u * static_cast<std::size_t>(knob - 1);
+            const ShapeAnswer want =
+                squad_shape_oracle(knob, h, room, 5, empty, bodies);
+            EXPECT_EQ(want.count, std::stoi(fields[at])) << "count";
+            EXPECT_EQ(want.pct, std::stoi(fields[at + 1])) << "pct";
+            EXPECT_EQ(want.base, std::stoi(fields[at + 2])) << "base";
+            ++compared;
+        }
+    }
+    EXPECT_EQ(448, compared) << "the whole grid was walked";
+
+    // The headline rows of the §3.8 table, spelled out so a silent oracle
+    // change cannot make the sweep vacuous.
+    const ShapeAnswer solo_strong =
+        squad_shape_oracle(kKnobStrong, 1, -1, 5, true, true);
+    EXPECT_EQ(2, solo_strong.count);
+    EXPECT_EQ(100, solo_strong.pct) << "two bots at one human each";
+    EXPECT_EQ(1, solo_strong.base);
+    const ShapeAnswer solo_brutal =
+        squad_shape_oracle(kKnobBrutal, 1, -1, 5, true, true);
+    EXPECT_EQ(3, solo_brutal.count);
+    EXPECT_EQ(100, solo_brutal.pct);
+    const ShapeAnswer four_brutal =
+        squad_shape_oracle(kKnobBrutal, 4, -1, 5, true, true);
+    EXPECT_EQ(5, four_brutal.count) << "the fifth body absorbs one step";
+    EXPECT_EQ(125, four_brutal.pct) << "the second step falls to power";
+    EXPECT_EQ(4, four_brutal.base);
+    const ShapeAnswer full_brutal =
+        squad_shape_oracle(kKnobBrutal, 5, -1, 5, true, true);
+    EXPECT_EQ(5, full_brutal.count) << "a full roster is byte-identical";
+    EXPECT_EQ(150, full_brutal.pct);
+}
+
+namespace {
+
+// The §3.8.2 agreement probe: which games buy bodies is ONE table
+// (lib/mode_shape.lua), and each ball mode's T must carry that table
+// itself — not a copy of its fields.
+constexpr int kAgreeProbeLevel = 9097;
+constexpr const char* kAgreeProbeLua =
+    "local shape = og.use(\"mode_shape\")\n"
+    "local soccer = og.use(\"mode_soccer_impl\")\n"
+    "local bball = og.use(\"mode_basketball_impl\")\n"
+    "local lineup = og.use(\"core:lineup\")\n"
+    "local function flag(v)\n"
+    "  if v then\n"
+    "    return 1\n"
+    "  end\n"
+    "  return 0\n"
+    "end\n"
+    "local function num(v)\n"
+    "  if v == nil then\n"
+    "    return -1\n"
+    "  end\n"
+    "  return v\n"
+    "end\n"
+    "og.register_level_hooks(9097, {\n"
+    "  on_load = function(level)\n"
+    "    local s = shape.of(\"soccer\")\n"
+    "    local b = shape.of(\"basketball\")\n"
+    "    og.log(\"agree\", flag(soccer.T.squad_shape == s),\n"
+    "           flag(bball.T.squad_shape == b), num(s.cap), num(b.cap),\n"
+    "           flag(s.bodies == true), flag(b.bodies == true),\n"
+    "           flag(shape.of(\"tdm\") == nil), #lineup.BOT_SQUAD)\n"
+    "  end,\n"
+    "})\n";
+
+struct AgreeProbeScript
+{
+    AgreeProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_agree_probe.lua", kAgreeProbeLua});
+    }
+    ~AgreeProbeScript()
+    {
+        og::script::register_pack_script(
+            {kRulesPackId, "zz_agree_probe.lua", ""});
+    }
+};
+
+}  // namespace
+
+// §3.8.2: soccer's and basketball's T carry the mode_shape entry ITSELF,
+// so the "which games buy bodies" table cannot be edited in one place and
+// read in another; a brawl mode has no entry at all; and no shape's hard
+// cap can exceed the squad table the seam draws from.
+//
+// (The brief placed this pin in test_modes_levels.cpp. It lives here
+// instead: that file's wave-1 boundary forbids touching its include
+// block, and this probe needs og::script::register_pack_script. The
+// source-to-archive half of the chain stays pinned by
+// BuiltinArchives.every_member_matches_its_committed_source.)
+TEST_F(StagedRules, squad_shape_agrees_with_mode_shape)
+{
+    AgreeProbeScript probe;
+    ModesCtfWorld fx(kAgreeProbeLevel);
+    fx.world().run_pending_level_on_load();
+    ASSERT_TRUE(fx.world().scripts().host().errors().empty())
+        << "agreement probe raised: "
+        << (fx.world().scripts().host().errors().empty()
+                ? std::string()
+                : fx.world().scripts().host().errors().back().message);
+
+    std::vector<std::string> fields;
+    for (const std::string& line : fx.world().scripts().host().log())
+    {
+        if (line.rfind("agree\t", 0) == 0)
+            fields = split_tab_fields(line);
+    }
+    ASSERT_EQ(9u, fields.size()) << "the agreement probe never answered";
+    EXPECT_EQ(1, std::stoi(fields[1]))
+        << "soccer's T.squad_shape IS mode_shape.of(\"soccer\")";
+    EXPECT_EQ(1, std::stoi(fields[2]))
+        << "basketball's T.squad_shape IS mode_shape.of(\"basketball\")";
+    EXPECT_EQ(-1, std::stoi(fields[3]))
+        << "soccer is UNCAPPED (D15): a cap would shrink its allies room";
+    EXPECT_EQ(5, std::stoi(fields[4])) << "the court is five on five";
+    EXPECT_EQ(1, std::stoi(fields[5])) << "soccer buys bodies";
+    EXPECT_EQ(1, std::stoi(fields[6])) << "basketball buys bodies";
+    EXPECT_EQ(1, std::stoi(fields[7]))
+        << "a brawl mode has no entry, so its wheel stays power-only";
+    const int squad_len = std::stoi(fields[8]);
+    EXPECT_EQ(5, squad_len) << "BOT_SQUAD is the seam's hard ceiling";
+    EXPECT_LE(std::stoi(fields[4]), squad_len)
+        << "no hard shape may exceed the squad table";
 }
 
 // ===========================================================================
