@@ -1249,6 +1249,12 @@ void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         apply_options_difficulty(menu, options, save, value);
     };
     io.difficulty = [&options] { return options.difficulty; };
+    // The TEAMS seat cell names the seat's CONTROLLER, the way LINEUP's
+    // band header does. Every seat this client synthesizes is local, so the
+    // seat index IS the local slot.
+    io.seat_short_name = [](std::uint8_t player_index) {
+        return og::ui::terminal_seat_short_name(player_index);
+    };
     io.census = [&](std::array<int, 4>& counts,
                     og::ui::ScenarioRosterReport& report) {
         return og::ui::census_staged_match_report(

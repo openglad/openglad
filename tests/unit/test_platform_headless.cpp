@@ -3619,6 +3619,14 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     // LINES come first and the rows after them, which is the order asserted
     // here: a set of substrings would pass on a page that printed them the
     // other way round.
+    // The seat cell names the seat's CONTROLLER wherever the client HAS
+    // one (the curses wizard prints "P1 WASD", like SDL). This client
+    // builds no InputHardwareState and says so itself — "Player-seat
+    // assignments are unavailable in the text simulator" — so the shared
+    // answer is empty here and the cell keeps the company abbreviation.
+    // Reading bindings that do not exist was a null dereference, not a
+    // label: this line is also the crash pin.
+    expect_in_order("TEAM 1 RED  P1 ARE");
     expect_in_order("TEAM 2 GREEN  2 BOTS");
     expect_in_order("FILL: STRONG - none to brutal");
     expect_in_order("Prev: ARENA");

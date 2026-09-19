@@ -320,6 +320,12 @@ struct TerminalMatchSetupIo {
     std::function<void(int)> set_difficulty;
     // The session difficulty the RULES page reads.
     std::function<int()> difficulty;
+    // Names a LOCAL seat's controller for the TEAMS step's seat cell, the
+    // way LINEUP's band header names it ("P1 WASD"). Both terminal clients
+    // pass og::ui::terminal_seat_short_name; a client that passes nothing
+    // falls back to the company abbreviation, which is the "P1 IRO" the
+    // terminals printed while the SDL wizard already said "P1 WASD".
+    std::function<std::string(std::uint8_t)> seat_short_name;
     // The staged census: fills `counts` (map units per team) and `report`,
     // and answers how healthy the preview is.
     std::function<IPickerLobbyClient::StagedPreviewHealth(
@@ -342,6 +348,21 @@ inline constexpr std::string_view kSetupTerminalViewLevelNotice =
     "VIEW SCENARIO is on the Scenario menu.";
 inline constexpr std::string_view kSetupTerminalGoNotice =
     "GO is Team Build item 6.";
+
+// The terminals' own answer to "who controls this seat", for the TEAMS
+// step's seat cell — their half of the rule the SDL rail card spells in
+// local_seat_owner_short_name (menu_screen_specs.cpp). A terminal seat is
+// KEYS: there is no joystick to hold and no touchscreen to name, so the
+// answer is the seat's own mapping through the two shared input helpers,
+// and both clients pass THIS function instead of each deriving one.
+//
+// EMPTY (the company abbreviation, which is what the cell falls back to)
+// for an out-of-range seat and for a client with NO input hardware at all:
+// the text simulator says so itself ("Player-seat assignments are
+// unavailable in the text simulator"), and it never builds an
+// InputHardwareState, so there are no bindings to read — naming keys there
+// would be an invention, and reading them would be a null dereference.
+std::string terminal_seat_short_name(std::uint8_t player_index);
 
 void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io);
 
