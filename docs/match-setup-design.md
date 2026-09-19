@@ -97,7 +97,8 @@ kSetupRowPitch         = kZoneSubmenuRowPitch                    // 12
 kSetupPanelBottomY     = kZoneSubmenuPanelBottomY                // 158
 setup_rows_fit(lines)  = (158 - setup_row_y0(lines)) / 12
 kSetupRowsMax          = 9                                       // setup_row_0..8 (RULES is exactly 9)
-kSetupLineChars        = 48                                      // (310 - 2 - 12)/6
+kSetupLineChars        = 48                                      // the face holds 49; the 48 budget
+                                                                 // clears the bevel by a column
 // the right cell column: the docket's pager pair on the ARENA step's first row …
 kSetupPagerPrevX       = kBaseCampZonePagerPrevX                 // 280, w 14
 kSetupPagerNextX       = kBaseCampZonePagerNextX                 // 296, w 14 — ends 310
@@ -663,8 +664,9 @@ ledger gains `+ row.team_count * kFillSquadCeiling` with
 `kFillSquadCeiling = 5`, **on the ball arenas only** (lead ruling 8 of this
 PR's execution plan): #305 adds bots on soccer and basketball alone, and a
 brawl arena's FILL squads stay inside the pre-existing `+16 heroes`
-assumption, which this rule leaves alone. Cap 190 stays; the worst rows
-become 94 (822) and 99 (826). The pin in `test_modes_levels.cpp` mirrors the
+assumption, which this rule leaves alone. Cap 190 stays; every ball row
+lands under 100 (worst 823 = 98 on soccer, 826 = 99 on basketball; the whole
+map is `expected_ledger` in `test_modes_levels.cpp`). The pin mirrors the
 expression; output bytes are unchanged.
 
 **3.8.7 The deal: what a fresh ball arena fields.** Amendment 7 deals
@@ -779,11 +781,20 @@ This PR adds thirteen rows to `scripts/retired_phrases.txt` and three to the
 label gate's parallel arrays (the seven-games index title, the
 per-campaign book-of title, and the `FIELD:` arena prefix — the three names
 whose every residual was a test fixture, a test pin or the Lua this PR
-rewrote; they are deliberately NOT spelled here, because the label gate
-reads this file too). `scripts/retired_hud_label_sites.txt`
-gains NO row: a hit is rewritten at its site, never allowlisted. Neither
-gate scans `src/` or `tests/` for the phrase rows, so the comments there
-that name a retired page were rewritten by hand in the same PR.
+rewrote; here and in §3.9 they are named only behind a `<placeholder>` or a
+lower-case tail, which the upper-case tails of those three regexes never
+match — keep it that way, or this file reds the gate it documents).
+`scripts/retired_hud_label_sites.txt` gains NO row: a hit is rewritten at
+its site, never allowlisted. Neither gate scans `src/` or `tests/` for the
+phrase rows, so the comments there that name a retired page were rewritten
+by hand in the same PR.
+
+Until this PR has a number, every dated note it adds spells one with the
+`#N` placeholder, and the PR author seds them in one pass. Two occurrences
+of that placeholder are TEMPLATES of the annotation rule rather than notes
+to fill, and the sed must skip both: the rule's statement in
+`.claude/skills/openglad-pr-workflow/SKILL.md` (~:93) and the hint
+`scripts/check_retired_phrases.sh` (~:254) prints beside every hit.
 
 ---
 

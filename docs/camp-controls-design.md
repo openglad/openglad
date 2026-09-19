@@ -222,6 +222,9 @@ prints "The host sets these for everyone." where the rows would have been,
 the way the modes book says "The host calls the rules."; a host or solo
 player gets no caption, because six rows that answer to them explain
 themselves.
+**[SUPERSEDED in part — issue #306.]** The modes book no longer says it; the
+one caption is `kHostSetsForEveryoneCaption`, shared by DIFFICULTY and the
+SETUP wizard (docs/match-setup-design.md §3.4).
 
 **The main menu.** The difficulty row is gone and the narrow `GAME | CLOUD`
 pair it sat under becomes two full-width rows that say what they are:

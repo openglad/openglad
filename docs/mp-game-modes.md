@@ -161,14 +161,14 @@ of to the difficulty formula:
   half. Each squad is fielded at whichever level lands closest, with the
   first few of its members promoted one level further to fine-tune the
   fit.
-- In the brawls (deathmatch, capture the flag, onslaught) squad size
-  follows your roster: a solo fighter faces one opponent, a full company a
-  full squad, and only the bots' LEVEL moves, between 1 and 9. In soccer and
-  basketball the wheel buys fighters above FAIR: STRONG fields one more than
-  your headcount and BRUTAL two, each at about one fighter's strength, up to
-  the five the game shape holds — and the band fills the court toward five.
-  A step the shape cannot seat falls back to the level bump, and a fresh
-  ball arena deals STRONG.
+- In the brawls (deathmatch, capture the flag) squad size follows your
+  roster: a solo fighter faces one opponent, a full company a full squad,
+  and only the bots' LEVEL moves, between 1 and 9. In soccer and basketball
+  the wheel buys fighters above FAIR: STRONG fields one more than your
+  headcount and BRUTAL two, each at about one fighter's strength, up to the
+  five the game shape holds — and the band fills the court toward five. A
+  step the shape cannot seat falls back to the level bump, and a fresh ball
+  arena deals STRONG.
 - A band on a team that already holds a human company is the allies knob:
   it fields the gap up to the strongest other human team, so an
   outnumbered host can ask for help; at a solo table the gap is nothing
@@ -178,8 +178,9 @@ of to the difficulty formula:
 - DIFFICULTY still applies on top, and it bites harder than it looks: it
   scales health and damage together, so Easy leaves a matched squad far
   under your strength and Hard far over it. Normal is the fair fight.
-- Onslaught's armies come out of generators rather than squads, so a band
-  there adds a squad beside the generators' output.
+- Onslaught's armies come out of generators rather than squads, and no
+  band adds fighters there: whatever the wheel reads, the generators'
+  output is the whole opposition.
 
 With several human teams the weakest is the reference, so an even match for
 one side can still be a hard one for a stronger ally.

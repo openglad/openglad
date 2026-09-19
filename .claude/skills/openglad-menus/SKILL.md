@@ -99,12 +99,12 @@ code, and the layout tests in the same change.
 Base Camp has exactly one page window: the eight roster rows. The seat rail
 below it is not paged — it is this machine's four fixed slots (ordinals
 35..38), and remote seats never appear there. A slot holding one of this
-machine's seats draws a card; a bare slot is the ADD PLAYER door on the same
-ordinal (LOBBY FULL and dimmed when the lobby has no room, hidden outright
-past what the device can seat). Ordinals 33, 34, 39 and 40 are parked spares
-— the retired `[+]` and the two seat pagers — re-parked every frame. The
-header's line B carries the players/machines census that the rail no longer
-shows.
+machine's seats draws that seat (`BaseCampSlotKind::Seat`); a bare slot is
+the ADD PLAYER door on the same ordinal (LOBBY FULL and dimmed when the
+lobby has no room, hidden outright past what the device can seat).
+Ordinals 33, 34, 39 and 40 are parked spares — the retired `[+]` and the
+two seat pagers — re-parked every frame. The header's line B carries the
+players/machines census that the rail no longer shows.
 
 Two consumers select TEXT menu items by 1-based position and break silently
 on reorders: `scripts/test_text_picker_interactive.sh` and the scripted drive

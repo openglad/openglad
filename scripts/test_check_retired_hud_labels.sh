@@ -212,9 +212,15 @@ pass
 cp -a "${tmp}/c1" "${tmp}/c10"
 SAMPLES=("${LBL}" "SEVEN ${HALF_GAMES}" "THE ${HALF_BOOK} OF STARS" \
          "${HALF_FIELD}: DUNGEON")
-DECLARED_ROWS="$(sed -n '/^RETIRED_RE=(/,/)$/p' \
-    "${SCRIPTS_DIR}/check_retired_hud_labels.sh" | tr -cd "'" | wc -c)"
-DECLARED_ROWS=$((DECLARED_ROWS / 2))
+# Counted with awk over the array block, not by halving every quote in a sed
+# range: a range ending at /)$/ runs past an array collapsed onto ONE line,
+# into the next )-terminated line, and silently doubles the count.  \047 is
+# the single quote, which no awk program written in single quotes can spell.
+DECLARED_ROWS="$(awk '
+    /^RETIRED_RE=\(/            { inside = 1 }
+    inside                      { n += gsub(/\047[^\047]*\047/, "") }
+    inside && /\)[[:space:]]*$/ { print n; exit }
+' "${SCRIPTS_DIR}/check_retired_hud_labels.sh")"
 [[ "${DECLARED_ROWS}" -eq "${#SAMPLES[@]}" ]] || {
     echo "FAIL case 10: the gate declares ${DECLARED_ROWS} retired labels," >&2
     echo "  and this case plants ${#SAMPLES[@]} samples -- a row was added or" >&2

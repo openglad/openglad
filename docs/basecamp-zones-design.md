@@ -225,16 +225,15 @@ One TeamBuild item ("Camp") opens the zone through the mission-book
 prompt driver grown to render the readout as one line, text blocks
 clipped to their bands, the numbered docket, lock reasons, and an assign
 interaction (the oath row opens a numbered own roster; a row number
-cycles the tag with the same full-word toasts).
-**Update (2026-09-19, PR #N):** Team Build also gained `Setup` (item 13,
-gated to versus campaigns — the terminal face of the SETUP wizard) and now
-gates `Difficulty` on CLASSIC campaigns, so the fight's rules have one door
-per campaign kind on every client (docs/match-setup-design.md §2.7).
-Named honestly: for v1
+cycles the tag with the same full-word toasts). Named honestly: for v1
 this is a door, not the terminal camp face — the bounded-churn
 compromise; the path forward is the zone becoming the terminal TeamBuild
 face. The item re-pins the three positional drivers (headless drives,
 interactive script, curses route tests) once.
+**Update (2026-09-19, PR #N):** Team Build also gained `Setup` (item 13,
+gated to versus campaigns — the terminal face of the SETUP wizard) and now
+gates `Difficulty` on CLASSIC campaigns, so the fight's rules have one door
+per campaign kind on every client (docs/match-setup-design.md §2.7).
 
 Eight v1 rules the terminals settle, since a prompt cannot hide a control
 behind a hover or a spent face:

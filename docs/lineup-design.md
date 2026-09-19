@@ -812,12 +812,12 @@ re-derives them from the code:
   plan.
 - **`matched` means "a reference exists"**: activation reports it for any
   deployed roster (the strip-sentinel gate died with TROOPS), and
-  `matched_size` is always the D34 min-roster rule (**Update (2026-09-19,
-  PR #N):** still true, and the ball games derive their BODY COUNT from it
-  above FAIR — Amendment 8). Consequence: the
+  `matched_size` is always the D34 min-roster rule. Consequence: the
   DEFAULT world with rosters is the matched world — the old TROOPS: FAIR
   behaviour — and the all-zero byte-identity is gone by design (the
   staged-rules suite pins the new default rows instead, and says so).
+  **Update (2026-09-19, PR #N):** still true, and the ball games derive
+  their BODY COUNT from it above FAIR — Amendment 8.
 - **`TEAMS MATCHED` announces for any solved squad**, allies included,
   through the unchanged R3 one-shot latch (`announce_matched` gates on
   init and fires once); the legacy arm and the band modes never announce.
@@ -973,15 +973,15 @@ so nobody re-derives them:
   (`census_power`, the core half of `census_inputs`), the D22 solver and
   the packed plan, the FILL/MAP UNITS knob reads, `squad_room` /
   `fill_target`, squad sizing (`matched_families` — MATCHED.SIZE — and the
-  hard-shape cap; **Update (2026-09-19, PR #N):** that helper and
-  `squad_families` collapsed into `squad_shape` + the pure `squad_prefix`
-  when the ball games started buying bodies — Amendment 8), the
-  anchor-rotation placer + `ring_offset`, the one
+  hard-shape cap), the anchor-rotation placer + `ring_offset`, the one
   squad seam (`spawn_bots` / `spawn_matched_bots` / `add_squad_member`),
   the bot mark (`BOT_MARK_BIT` / `mark_bot`), the stock `BOT_SQUAD`, the
   per-team strip (`strip_authored_troops`) and the fact banking
   (`bank_lineup_facts`, `bank_match_target`) — is one module, bound as
-  `og.use("core:lineup")`.
+  `og.use("core:lineup")`. **Update (2026-09-19, PR #N):**
+  `matched_families` and `squad_families` collapsed into `squad_shape` +
+  the pure `squad_prefix` when the ball games started buying bodies —
+  Amendment 8.
 - **`mode_match` is the modes' FACADE over it, not a copy.** The
   mode-specific rules stay there in full (activation, `fills`, the mask
   helpers' consumers, `consume_markers`, `strip_inactive_teams`, the
@@ -1592,7 +1592,7 @@ is clamped to the arena's authored side count (hidden on a two-side arena).
 | G2 | **`TEAMS: n`** (wheel 2 → 3 → 4 → 2) = field n teams total: the local seat's team plus n−1 opponents, chosen by ascending team index skipping the local team; the chosen opponents get the FILL row's effective value (FAIR when the current common value is NONE or MIXED), the rest go NONE. Face: `TEAMS: 1 + count(opponents with fill ≠ NONE)` (reads `TEAMS: 1` in the all-NONE resting state; explicit fills on unauthored teams are legal per D2). |
 | G3 | **`FILL: x`** (wheel NONE → WEAK → FAIR → STRONG → BRUTAL) writes x to every opponent team currently on; with none on it turns on the lowest opponent at x (the `TEAMS: 2` shape). Face: the common value of the on opponents, `MIXED` when LINEUP diverged them, `NONE` at rest. |
 | G4 | **The local team comes from a new campaign binding `og.campaign_my_team()`** (the first local seat's team; falls back to `save.my_team`) — the one C++ hook this needs. Campaign fence rules as for the other `og.campaign_*` reads. |
-| G5 | **Pins**: the modes book page pins (row labels, faces, said-lines), a macro↔LINEUP round-trip test (set TEAMS/FILL on the page, read the bands; tweak one band in LINEUP, the page face reads MIXED), the zone-UI capture regenerated. Writes ride the existing match-settings dirty → sync → restage tail, so preview == launch needs no new plumbing. |
+| G5 | **Pins**: the modes book page pins (row labels, faces, said-lines), a macro↔LINEUP round-trip test (set TEAMS/FILL on the page, read the bands; tweak one band in LINEUP, the page face reads MIXED), the zone-UI capture regenerated. Writes ride the existing match-settings dirty → sync → restage tail, so preview == launch needs no new plumbing. **Update (2026-09-19, PR #N):** the page pins moved with the macros to `tests/unit/test_match_setup_session.cpp`; the round trip is `LineupUi.setup_wizard_macros_round_trip_with_lineup` (docs/match-setup-design.md §8). |
 
 ## G4 as built: `og.campaign_my_team()`
 

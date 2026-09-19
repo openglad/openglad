@@ -107,14 +107,14 @@ Later sections cite decisions by id.
   byte-stable (run the generator twice, then prove `git status --porcelain --
   campaigns/` empty a third time); `test_modes_levels` invariants hold for the
   six rows (33-char briefing lines, `-- THE GAMESMASTER` sign-off, obmap
-  ledger <= 190, closed perimeter, reachability;
-  **Update (2026-09-19, PR #N):** the sign-off invariant is gone — #306
-  deleted all 40 sign-offs and the generator now LINTS the narrator's
-  vocabulary out instead, and the ledger gained a `team_count * 5` term on
-  the ball arenas, docs/match-setup-design.md §3.8.6 and §3.9); Lua coverage line >= 95 /
+  ledger <= 190, closed perimeter, reachability); Lua coverage line >= 95 /
   function = 100 on ALL new pack Lua — design nothing untestable, every function
   must be executable from headless unit tests; `og.award_score` never receives a
   negative (it is unsigned: `bindings_entity.cpp:1701-1703`).
+  **Update (2026-09-19, PR #N):** the sign-off invariant is gone — #306
+  deleted all 40 sign-offs and the generator now LINTS the narrator's
+  vocabulary out instead, and the ledger gained a `team_count * 5` term on
+  the ball arenas, docs/match-setup-design.md §3.8.6 and §3.9.
 - **I4 — mirror correctness.** The ball and shadow render only through
   replicated entity fields (`setxy`/`set_frame`); nothing render-side re-derives
   sim state. Mirrors never run `act()`/`animate()`; the authority writes the
