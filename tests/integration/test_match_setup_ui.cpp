@@ -1398,7 +1398,7 @@ namespace
 // A networked lobby this machine is a GUEST in: two seats, ours is the
 // second. lobby_players() rebuilds per call, so the menu thread and the
 // injector never share mutable vector storage.
-class JoinerLobbyClient final : public og::ui::IPickerLobbyClient
+class JoinerLobbyClient : public og::ui::IPickerLobbyClient
 {
 public:
     void initialize_from_save() override {}
@@ -1812,5 +1812,358 @@ TEST(MatchSetupUi, difficulty_row_answers_on_the_very_next_frame)
         << "and the value the session holds is the one the row wrote";
 
     og::runtime::current_session->current_difficulty_ = saved_difficulty;
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// 13. BACK closes the wizard from EVERY step (SPEC §4.1). The footer's BACK
+//     carries Escape's hotkey (pinned statically in test_menu_layout), and
+//     it is the ONE way out of all five steps: a wizard a player can walk
+//     into and not out of is the hang this flow exists to forbid.
+
+namespace
+{
+struct EscapeEveryStepState
+{
+    std::atomic<bool> test_finished{false};
+    bool camp_seen = false;
+    bool door_seen = false;
+    int steps_opened = 0;
+    int steps_closed = 0;
+    std::string stuck_on;
+    bool finished = false;
+};
+
+int escape_every_step_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<EscapeEveryStepState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupEscapeDoors);
+    };
+
+    state->camp_seen = wait_for_interactable("continue_game", 10000);
+    if (!state->camp_seen)
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    state->door_seen = wait_for_interactable("setup", 15000);
+    if (!state->door_seen)
+        return escape(2, "the versus strip never showed SETUP");
+
+    static constexpr const char* kWords[] = {"GAME", "ARENA", "TEAMS",
+                                             "RULES", "MATCH"};
+    for (int step = 0; step < 5; ++step) {
+        // open_setup_step re-opens the wizard through the strip door when
+        // the tabs are gone, so each lap is a fresh entry and the close is
+        // the thing under test.
+        if (!open_setup_step(step, kWords[step], 15000)) {
+            state->stuck_on = kWords[step];
+            return escape(3 + step, "a step never came up");
+        }
+        ++state->steps_opened;
+        (void)wait_for_menu_frames(2);
+        // The camp's own GO is the edge that says the wizard is gone: it
+        // is not live anywhere inside it.
+        if (!click_until_edge("setup_back", [](int wait_ms) {
+                return wait_for_interactable("go", wait_ms);
+            }))
+        {
+            state->stuck_on = kWords[step];
+            return escape(8 + step, "BACK did not close the wizard");
+        }
+        ++state->steps_closed;
+    }
+    state->finished = true;
+    return escape(0, "");
+}
+} // namespace
+
+TEST(MatchSetupUi, escape_closes_from_every_step)
+{
+    trace_clear();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_versus_save("modes", 820);
+
+    EscapeEveryStepState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(escape_every_step_injector, "setup_escape", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result << " (on "
+        << (state.stuck_on.empty() ? std::string("<no step>")
+                                   : state.stuck_on)
+        << ")";
+    EXPECT_EQ(5, state.steps_opened) << "every step must be reachable";
+    EXPECT_EQ(5, state.steps_closed)
+        << "and BACK closes the wizard from each of them";
+    EXPECT_TRUE(state.finished);
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// 14. A host SET LEVEL while a joiner is parked in the wizard (SPEC §1.3's
+//     last paragraph): the level-reload guard in the frame tick refetches
+//     the step the joiner is standing on, so the arena rows re-decorate
+//     under them instead of describing a match nobody is in any more.
+
+namespace
+{
+struct ParkedJoinerState
+{
+    std::atomic<bool> test_finished{false};
+    bool opened_arena = false;
+    std::string before_row;
+    std::string after_row;
+    bool refetched = false;
+    bool level_set = false;
+    bool finished = false;
+};
+
+int parked_joiner_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<ParkedJoinerState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupEscapeDoors);
+    };
+
+    if (!wait_for_interactable("setup", 15000))
+        return escape(1, "the versus strip never showed SETUP");
+    state->opened_arena = open_setup_step(1, "ARENA", 15000);
+    if (!state->opened_arena)
+        return escape(2, "the ARENA step never came up");
+    (void)wait_for_menu_frames(2);
+    // Row 0 is THE PITCH (820) and wears [CURRENT] while the host's cursor
+    // is there.
+    state->before_row = interactable_label("setup_row_0");
+
+    // The host sets 821. On a joiner that arrives as a save write under
+    // the open screen (the lobby's settings sync), which is exactly the
+    // cursor the frame tick's level-reload guard watches.
+    if (!run_on_main_thread([] {
+            og::runtime::current_session->myscreen_->save_data.scen_num = 821;
+        }))
+    {
+        return escape(3, "the level change never reached the menu thread");
+    }
+    state->level_set = true;
+
+    // The oracle is the DECORATION moving to the new arena's row — proof
+    // the parked step recomposed, not just that the save changed.
+    state->refetched = wait_for_interactable_label_matching(
+        "setup_row_1",
+        [](const std::string& label) {
+            return label.find("[CURRENT]") != std::string::npos;
+        },
+        15000);
+    state->after_row = interactable_label("setup_row_1");
+
+    if (!click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("setup", wait_ms);
+        }))
+    {
+        return escape(4, "BACK did not close the wizard");
+    }
+    state->finished = true;
+    return escape(0, "");
+}
+} // namespace
+
+TEST(MatchSetupUi, host_level_change_refetches_a_parked_joiner)
+{
+    trace_clear();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_versus_save("modes", 820);
+
+    JoinerLobbyClient lobby;
+    ActiveLobbyGuard lobby_guard(&lobby);
+
+    ParkedJoinerState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(parked_joiner_injector, "setup_parked", &state);
+    ASSERT_NE(nullptr, thread);
+    picker_load_menu_backdrops();
+    create_team_menu(0);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.opened_arena);
+    ASSERT_TRUE(state.level_set);
+    EXPECT_NE(std::string::npos, state.before_row.find("[CURRENT]"))
+        << "the joiner arrives on the host's arena: '" << state.before_row
+        << "'";
+    EXPECT_TRUE(state.refetched)
+        << "a host level change must refetch the step the joiner is parked "
+           "on — row 1 still reads '" << state.after_row << "'";
+    EXPECT_TRUE(trace_contains("setup", "level_reload"))
+        << "and it goes through the frame tick's level-reload guard";
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// 15. The host's GO reaches a joiner parked ANYWHERE in the wizard (SPEC
+//     §1.3: `remote_start = RemoteStartScope::TeamBuildScope`, like every
+//     Base Camp child). The runner preempts the screen, the blocking
+//     wrapper maps that MENU_EXIT to RemoteStart, and Base Camp folds it
+//     into its own exit so the launch runs.
+
+namespace
+{
+// The smallest honest stub: a joiner whose lobby HAS an accepted start
+// config, which is the one thing team_build_remote_start_requested asks
+// about beyond the request flag.
+class RemoteStartLobbyClient final : public JoinerLobbyClient
+{
+public:
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        og::ui::PickerLobbyGameStartConfig config;
+        config.is_networked = true;
+        config.local_player_index = 1;
+        config.local_player_indices = {1};
+        config.local_seat_teams = {1};
+        return config;
+    }
+};
+
+struct RemoteStartState
+{
+    std::atomic<bool> test_finished{false};
+    int step = 0;
+    // The leg that enters through Base Camp's own SETUP door instead of
+    // opening the screen directly (the fold leg).
+    bool from_camp = false;
+    bool reached_step = false;
+    bool armed = false;
+};
+
+int remote_start_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<RemoteStartState*>(data);
+    // Once the start is armed there is nothing for the tail to CLOSE: the
+    // remote start is what ends the screen, and a BACK press racing it
+    // would close the wizard on its own and prove nothing.
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(
+            state->test_finished, leg, why, kSetupEscapeDoors,
+            [state] { return state->armed; });
+    };
+
+    static constexpr const char* kWords[] = {"GAME", "ARENA", "TEAMS",
+                                             "RULES", "MATCH"};
+    if (!wait_for_interactable(state->from_camp ? "setup" : "setup_tab_0",
+                               15000))
+    {
+        return escape(1, "the wizard's way in never came up");
+    }
+    state->reached_step = open_setup_step(state->step, kWords[state->step],
+                                          15000);
+    if (!state->reached_step)
+        return escape(2, "the step never came up");
+    (void)wait_for_menu_frames(2);
+
+    if (!run_on_main_thread([] { g_start_game_requested = true; }))
+        return escape(3, "the start request never reached the menu thread");
+    state->armed = true;
+    return escape(0, "");
+}
+} // namespace
+
+TEST(MatchSetupUi, remote_start_from_every_step)
+{
+    trace_clear();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_versus_save("modes", 820);
+
+    RemoteStartLobbyClient lobby;
+    ActiveLobbyGuard lobby_guard(&lobby);
+    picker_load_menu_backdrops();
+
+    static constexpr const char* kWords[] = {"GAME", "ARENA", "TEAMS",
+                                             "RULES", "MATCH"};
+    for (int step = 0; step < 5; ++step) {
+        g_start_game_requested = false;
+        pks().selected_menu_item = nullptr;
+
+        RemoteStartState state;
+        state.step = step;
+        SDL_Thread* thread =
+            SDL_CreateThread(remote_start_injector, "setup_remote", &state);
+        ASSERT_NE(nullptr, thread);
+        const og::ui::MatchSetupExit exit =
+            og::ui::run_match_setup_screen(std::string_view());
+        state.test_finished.store(true);
+        int thread_result = 0;
+        SDL_WaitThread(thread, &thread_result);
+        escape_tail_join_hygiene();
+
+        EXPECT_EQ(0, thread_result)
+            << kWords[step] << ": the injector gave up at leg "
+            << thread_result;
+        EXPECT_TRUE(state.reached_step) << kWords[step];
+        EXPECT_EQ(og::ui::MatchSetupExit::RemoteStart, exit)
+            << kWords[step]
+            << ": a host GO reaching a joiner parked on this step is a "
+               "REMOTE START, never this screen's own close";
+        EXPECT_TRUE(team_build_start_selected())
+            << kWords[step] << ": and the unwind target is START GAME";
+    }
+
+    // And Base Camp folds that answer into its own exit, which is what
+    // actually launches the joiner (base_camp_open_match_setup).
+    {
+        g_start_game_requested = false;
+        pks().selected_menu_item = nullptr;
+        RemoteStartState state;
+        state.step = 4;
+        // The camp's own door, not the wizard's: this leg enters through
+        // Base Camp so the fold is the thing under test.
+        state.from_camp = true;
+        SDL_Thread* thread =
+            SDL_CreateThread(remote_start_injector, "setup_remote_fold",
+                             &state);
+        ASSERT_NE(nullptr, thread);
+        create_team_menu(0);
+        state.test_finished.store(true);
+        int thread_result = 0;
+        SDL_WaitThread(thread, &thread_result);
+        escape_tail_join_hygiene();
+        EXPECT_EQ(0, thread_result)
+            << "the fold leg gave up at leg " << thread_result;
+        EXPECT_TRUE(team_build_start_selected())
+            << "Base Camp exits with START GAME selected, so the launch "
+               "runs for the parked joiner";
+    }
+
+    g_start_game_requested = false;
+    pks().selected_menu_item = nullptr;
+    cleanup_picker_state();
     restore_gladiator_mount();
 }

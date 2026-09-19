@@ -8815,14 +8815,24 @@ MatchSetupExit run_match_setup_screen(std::string_view entry_page)
     const Sint32 retvalue =
         run_menu_screen(match_setup_menu_screen_spec(), &state);
     install_match_setup_state_for_screen(nullptr);
-    game->clearbuffer();
-    if (state.exit == MatchSetupExit::Go)
-        return MatchSetupExit::Go;
     // Distinguish a joiner remote start (the host's GO reached a peer
     // parked in here) from this screen's own structural close.
-    if ((retvalue & MENU_EXIT) && team_build_start_selected())
-        return MatchSetupExit::RemoteStart;
-    return MatchSetupExit::Closed;
+    const MatchSetupExit answer = state.exit == MatchSetupExit::Go
+        ? MatchSetupExit::Go
+        : ((retvalue & MENU_EXIT) && team_build_start_selected()
+               ? MatchSetupExit::RemoteStart
+               : MatchSetupExit::Closed);
+    // The buffer is cleared for the two answers that leave Base Camp
+    // DRAWING again (a close redraws the camp; a Go presses the strip GO
+    // two ticks later, both of which compose a fresh frame over it). A
+    // remote start does neither: Base Camp folds it straight into its own
+    // MENU_EXIT, so the next thing to touch the buffer is the camp's
+    // fade-OUT — and clearing it here made that fade run from a frame the
+    // window never presented (the engine's fade invariant, and a visible
+    // flicker on the one transition a joiner cannot avoid).
+    if (answer != MatchSetupExit::RemoteStart)
+        game->clearbuffer();
+    return answer;
 }
 
 
