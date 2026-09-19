@@ -959,9 +959,12 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         inputs.players = players;
         inputs.local_indices = local_indices;
         inputs.map_unit_counts = counts;
-        inputs.staged =
-            health == IPickerLobbyClient::StagedPreviewHealth::Staged ? &report
-                                                                      : nullptr;
+        // The census writes `report` on EVERY arm, so the page always reads
+        // it: a degraded preview still says so in the report's own words
+        // (STAGING FAILED / PREVIEW UNAVAILABLE lead the MATCH step, and the
+        // teams=false TEAMS step prints the report lines). `health` alone
+        // drives the GO face.
+        inputs.staged = &report;
         inputs.staged_health = health;
 
         if (!opened)
@@ -1054,7 +1057,17 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
             }
             case Kind::Turned:
             {
-                io.autosave();
+                // INFINITE GOLD and CROSS CONTROL are session-only (neither
+                // field rides in the GTL file), so no company autosave
+                // follows a turn -- the same policy text_picker.cpp's
+                // ToggleInfiniteGold case has always applied. One knob, one
+                // rule, on every client.
+                using Knob = MatchSetupSession::Row::Knob;
+                if (outcome.knob != Knob::InfiniteGold &&
+                    outcome.knob != Knob::CrossControl)
+                {
+                    io.autosave();
+                }
                 const std::string said = session.take_message();
                 if (!said.empty())
                     io.base.notice(said);

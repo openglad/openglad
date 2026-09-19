@@ -326,11 +326,14 @@ struct TerminalMatchSetupIo {
 // Build item 6, so the wizard's doors say where the page is instead of
 // nesting a second copy of it. Whether WP8 nests the existing pages
 // instead is that brief's call; the words are here so the two clients
-// cannot answer differently in the meantime.
+// cannot answer differently in the meantime. Each notice names the row by
+// the LABEL that menu actually draws: the Scenario submenu's row is
+// "View Scenario" (menu_model.cpp kScenarioItems), so the wizard's VIEW
+// LEVEL door points at VIEW SCENARIO and not at a label nobody can find.
 inline constexpr std::string_view kSetupTerminalLineupNotice =
     "LINEUP is Team Build item 12.";
 inline constexpr std::string_view kSetupTerminalViewLevelNotice =
-    "VIEW LEVEL is on the Scenario menu.";
+    "VIEW SCENARIO is on the Scenario menu.";
 inline constexpr std::string_view kSetupTerminalGoNotice =
     "GO is Team Build item 6.";
 

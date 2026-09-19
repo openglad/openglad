@@ -506,6 +506,10 @@ void toggle_infinite_gold(SaveData& save);
 // field by the same rule. SESSION-ONLY (never in the GTL file), so no
 // company autosave follows — the infinite-gold precedent. Any stored junk
 // counts as ON and lands on 0, exactly as the SDL callback sanitizes it.
+// Wave-3 debt (#304): two inline spellings of this toggle are still out
+// there and must collapse onto this one — picker.cpp's
+// change_cross_control() (WP7's file) and curses_network.cpp's lobby
+// TOGGLE arm (WP8's file). Neither may grow a third rule in the meantime.
 void toggle_cross_control(SaveData& save);
 
 // True when hire/train purchases are free for this session.

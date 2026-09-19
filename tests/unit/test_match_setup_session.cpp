@@ -1663,6 +1663,31 @@ TEST_F(MatchSetupSessionTest, every_composed_string_fits_its_budget_on_every_ste
 
 namespace {
 
+// "@<label>" answers a prompt with the number the prompt ITSELF printed for
+// the item whose label starts with <label>, so a case can walk the wizard
+// without re-deriving how many rows each step carries.
+std::string prompt_item_number(const std::vector<std::string>& lines,
+                               std::string_view label_prefix)
+{
+    for (const std::string& line : lines)
+    {
+        const std::size_t first = line.find_first_not_of(' ');
+        if (first == std::string::npos || line[first] < '0' ||
+            line[first] > '9')
+        {
+            continue;
+        }
+        std::size_t end = first;
+        while (end < line.size() && line[end] >= '0' && line[end] <= '9')
+            ++end;
+        if (end + 2 > line.size() || line[end] != '.' || line[end + 1] != ' ')
+            continue;
+        if (line.compare(end + 2, label_prefix.size(), label_prefix) == 0)
+            return line.substr(first, end - first);
+    }
+    return "no such item";  // the loop refuses it and the case fails loudly
+}
+
 // A scripted TerminalMatchSetupIo: canned prompt answers (EOF after the
 // script runs dry), recorded prompts, notices, autosaves and difficulties.
 // The census is the REAL one, over a MatchStage the fixture owns exactly as
@@ -1697,7 +1722,10 @@ struct ScriptedSetupIo {
             prompts.push_back({title, lines, label});
             if (cursor >= answers.size())
                 return std::nullopt;  // scripted input exhausted = EOF
-            return answers[cursor++];
+            const std::string scripted_answer = answers[cursor++];
+            if (!scripted_answer.empty() && scripted_answer.front() == '@')
+                return prompt_item_number(lines, scripted_answer.substr(1));
+            return scripted_answer;
         };
         out.base.notice = [this](const std::string& line) {
             notices.push_back(line);
@@ -1972,6 +2000,14 @@ TEST_F(MatchSetupSessionTest, census_staged_match_report_answers_health_and_repo
     EXPECT_TRUE(og::ui::census_staged_lineup_map_units(twin, save_, 0, 0u,
                                                        bool_counts));
     EXPECT_EQ(counts, bool_counts);
+
+    // The Failed arm (StageStatus::Failed) has no deterministic fixture:
+    // every refusal a unit test can force -- unmounted campaign, a cursor
+    // the mount cannot name -- is caught by an Unavailable guard first, and
+    // MatchStage only fails on a load exception or the wire size cap. Wave 3
+    // owns the pin (WP8's terminal drives or WP7's SDL flow, which can force
+    // a stage the pipeline refuses); until then the arm is four uncovered
+    // src/ lines, recorded here rather than left silent.
 
     // An unmounted campaign has no world to census and says so in the
     // report's own words, not by going blank.
@@ -2319,13 +2355,87 @@ TEST_F(MatchSetupSessionTest, terminal_driver_doors_point_at_their_pages)
 
     ASSERT_EQ(scripted.answers.size(), scripted.cursor)
         << "the loop must consume every scripted answer";
-    EXPECT_NE(scripted.notices.end(),
-              std::find(scripted.notices.begin(), scripted.notices.end(),
-                        std::string(og::ui::kSetupTerminalLineupNotice)));
-    EXPECT_NE(scripted.notices.end(),
-              std::find(scripted.notices.begin(), scripted.notices.end(),
-                        std::string(og::ui::kSetupTerminalViewLevelNotice)));
-    EXPECT_NE(scripted.notices.end(),
-              std::find(scripted.notices.begin(), scripted.notices.end(),
-                        std::string(og::ui::kSetupTerminalGoNotice)));
+    // The whole notice tail, in walk order: three doors, three pointers and
+    // nothing else (an extra or reordered notice is a change of behaviour).
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kSetupTerminalLineupNotice),
+                  std::string(og::ui::kSetupTerminalViewLevelNotice),
+                  std::string(og::ui::kSetupTerminalGoNotice)}),
+              scripted.notices);
+}
+
+// The two session-only knobs bank nothing. INFINITE GOLD and CROSS CONTROL
+// never ride in the GTL file, so turning one must not autosave the company
+// -- the rule text_picker.cpp's ToggleInfiniteGold case has always applied.
+// The SCORE turn that follows proves the guard is selective, not blanket.
+TEST_F(MatchSetupSessionTest, terminal_driver_skips_the_autosave_for_session_only_knobs)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 820;
+    save_.numplayers = 1;
+    put(save_, 0, 0, true);
+    save_.team_size = 1;
+    save_.arena_lineup_dealt_campaign = "modes";
+    save_.arena_lineup_dealt_scen = 820;  // banked: the deal autosaves nothing
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save_,
+    });
+    ScriptedSetupIo scripted;
+    scripted.save = &save_;
+    scripted.stage = &stage;
+    scripted.answers = {"@Next", "@Next", "@INFINITE GOLD", "@SCORE", "0"};
+    og::ui::run_terminal_match_setup(save_, scripted.io());
+
+    ASSERT_EQ(scripted.answers.size(), scripted.cursor)
+        << "the loop must consume every scripted answer";
+    EXPECT_EQ(1, static_cast<int>(save_.infinite_gold))
+        << "the knob still turns";
+    EXPECT_EQ(1, static_cast<int>(save_.ctf_capture_limit))
+        << "the SCORE wheel still steps";
+    EXPECT_EQ(1, scripted.autosaves)
+        << "one autosave, for SCORE alone: INFINITE GOLD is session-only";
+}
+
+// The degraded preview reaches the prompt. The census writes its report on
+// EVERY arm, so a cursor the mount cannot stage leads the MATCH step with
+// the report's own refusal line and puts the refusal on GO's face -- the
+// driver must hand the session the report, never a null.
+TEST_F(MatchSetupSessionTest, terminal_driver_prints_the_degraded_preview)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 999;  // no such level in the modes mount
+    save_.numplayers = 1;
+    put(save_, 0, 0, true);
+    save_.team_size = 1;
+    save_.arena_lineup_dealt_campaign = "modes";
+    save_.arena_lineup_dealt_scen = 999;  // the deal is already banked
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save_,
+    });
+    ScriptedSetupIo scripted;
+    scripted.save = &save_;
+    scripted.stage = &stage;
+    scripted.answers = {"@Next", "@Next", "@Next", "0"};
+    og::ui::run_terminal_match_setup(save_, scripted.io());
+
+    ASSERT_EQ(scripted.answers.size(), scripted.cursor)
+        << "the loop must consume every scripted answer";
+    ASSERT_EQ(4u, scripted.prompts.size());
+    EXPECT_EQ("SETUP: MATCH", scripted.prompts[3].title);
+
+    // The stage falls back to a level that is not this cursor, so the
+    // census answers Unavailable and the report says so in its own words.
+    const std::string match = scripted.page_text(3);
+    EXPECT_NE(std::string::npos, match.find("SCEN 999\n")) << match;
+    EXPECT_NE(std::string::npos, match.find("PREVIEW UNAVAILABLE\n"))
+        << match;
+    EXPECT_NE(std::string::npos,
+              match.find(std::string(og::ui::kSetupGoStagingFailedFace)))
+        << match;
 }
