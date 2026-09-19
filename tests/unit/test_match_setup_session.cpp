@@ -2510,3 +2510,98 @@ TEST_F(MatchSetupSessionTest, terminal_driver_prints_the_degraded_preview)
               match.find(std::string(og::ui::kSetupGoStagingFailedFace)))
         << match;
 }
+
+// ONE census rule, every surface. The wizard's TEAMS cell, the SDL LINEUP
+// column and the terminal LINEUP column all answer format_match_preview
+// over the SAME staged report (§3.8.4) — a player who walks one door from
+// LINEUP into the wizard must not be told two different things about one
+// world. What is NOT in that cell anywhere is B4's "the map ships this
+// team no units": SDL dims the MAP UNITS caption beside its box, and the
+// terminals, which cannot dim anything, print those words as a cell of
+// their own beside the census. Same rule, two renderings, one column.
+TEST_F(MatchSetupSessionTest, the_census_cell_reads_one_rule_on_every_surface)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 820;
+    save_.fill[0] = kFair;
+    save_.fill[1] = kFair;
+
+    og::ui::ScenarioRosterReport report;
+    report.is_versus = true;
+    report.staged = true;
+    report.mode_census = true;
+    report.mode_name = "SOCCER";
+    for (int t = 0; t < 2; ++t) {
+        report.team_active[static_cast<std::size_t>(t)] = true;
+        report.team_fill[static_cast<std::size_t>(t)] =
+            og::ui::ScenarioFill::Matched;
+        report.team_fill_count[static_cast<std::size_t>(t)] = 2;
+    }
+    staged_ = &report;
+    health_ = Health::Staged;
+    // Team 1 has map units, team 2 has none: the B4 signal is live on
+    // exactly one of the two lines.
+    counts_ = {3, 0, 0, 0};
+
+    MatchSetupSession session(save_);
+    ASSERT_TRUE(session.open(inputs(true, 0b0011)));
+    ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Teams, inputs(true, 0b0011)).kind);
+    const MatchSetupSession::Inputs in = inputs(true, 0b0011);
+    ASSERT_EQ(2u, session.page().team_lines.size());
+
+    // The bands both LINEUP pages build, from the same inputs.
+    const std::array<og::ui::LineupTeamBand, 4> bands =
+        og::ui::build_lineup_bands(save_, in.players, in.local_indices,
+                                   in.networked, og::ui::lineup_power_for_guy,
+                                   in.seat_short_name, in.map_unit_counts);
+
+    og::ui::TerminalLineupInputs lineup;
+    lineup.save = &save_;
+    lineup.players = in.players;
+    lineup.local_player_indices = in.local_indices;
+    lineup.map_unit_counts = in.map_unit_counts;
+    lineup.report = &report;
+    lineup.networked = in.networked;
+    const og::ui::TerminalLineupModel model =
+        og::ui::build_terminal_lineup_model(lineup);
+
+    for (int team = 0; team < 2; ++team) {
+        const og::ui::LineupTeamBand& band =
+            bands[static_cast<std::size_t>(team)];
+        // The SDL LINEUP column and the wizard's TEAMS cell are literally
+        // the same call (menu_screen_specs.cpp draws cells.census).
+        const og::ui::SetupTeamLineCells cells =
+            og::ui::compose_setup_team_line(band, &report, team, 18, 20);
+        const std::string preview =
+            og::ui::format_match_preview(band, &report, team);
+        EXPECT_EQ(preview, cells.census)
+            << "team " << team << ": the wizard cell IS the preview";
+        EXPECT_EQ(cells.census,
+                  session.page()
+                      .team_lines[static_cast<std::size_t>(team)]
+                      .census)
+            << "team " << team;
+        // The terminal LINEUP line for this band carries the same census…
+        const std::string& line =
+            model.lines[static_cast<std::size_t>(team) * 2 + 1];
+        EXPECT_NE(std::string::npos, line.find(preview))
+            << "team " << team << ": the terminal column reads it too: '"
+            << line << "'";
+        // …and NO surface hides the B4 signal inside it.
+        EXPECT_EQ(std::string::npos, cells.census.find("NO MAP UNITS"))
+            << "team " << team
+            << ": the inert-box signal is never the census cell";
+    }
+
+    // The terminal's own rendering of the dim: the words ride BESIDE the
+    // cell, and only for the team whose map ships nothing.
+    EXPECT_EQ(std::string::npos, model.lines[1].find("NO MAP UNITS"))
+        << model.lines[1];
+    EXPECT_NE(std::string::npos, model.lines[3].find("NO MAP UNITS"))
+        << "a terminal cannot dim a caption, so it says the words: '"
+        << model.lines[3] << "'";
+
+    staged_ = nullptr;
+    health_ = Health::None;
+    counts_ = {};
+}
