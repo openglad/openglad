@@ -10,6 +10,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/picker.h>
@@ -1160,6 +1161,16 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n";      // main: quit
 
     restore_default_campaigns(); // order-independent: install the packages
+
+    // Order-independent for the same reason, and it has to be: the client's
+    // difficulty is PROCESS-WIDE session state
+    // (og::runtime::current_session->current_difficulty_), not save state.
+    // Item 1 of the DIFFICULTY submenu below asserts the one cycle step
+    // Battle -> Slaughter, so it reads whatever the last case in the binary
+    // left behind — and the wizard's RULES step (SetDifficulty) now drives
+    // that same value from another case in this file. Pin the start and the
+    // STEP is the assertion; leave it ambient and --gtest_shuffle decides.
+    og::runtime::current_session->current_difficulty_ = 1;  // Battle
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
