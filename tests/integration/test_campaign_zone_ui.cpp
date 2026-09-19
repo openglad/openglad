@@ -2032,7 +2032,8 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
 // name a DIFFERENT campaign. The standalone picker lobby client is a
 // process-wide singleton whose settings are stamped by
 // picker_lobby_sync_settings_from_save() — the tail of every settings
-// cycler (change_ctf_caps, set_difficulty, ...) — and nothing in a test
+// cycler (the SETUP wizard's Turned dispatch, set_difficulty, ...) — and
+// nothing in a test
 // binary ever tears it down. A stamp left behind by an earlier flow reaches
 // this mutation through picker_base_camp_after_roster_mutation's lobby
 // sync, whose apply writes settings.campaign_id back over save.current_campaign
@@ -2045,9 +2046,10 @@ TEST(CampaignZoneUi, roster_mutations_survive_a_stale_lobby_settings_stamp)
     trace_clear();
 
     // Staged BEFORE the fixture, because that is where it comes from: an
-    // EARLIER test's settings cycle. This is the exact shape
-    // src/interface/ui/picker.cpp change_ctf_caps leaves behind — sync the
-    // lobby under a foreign campaign, then restore only the save FIELD.
+    // EARLIER test's settings cycle. This is the exact shape a turned knob
+    // leaves behind (the wizard's Turned tail, menu_screen_specs.cpp) —
+    // sync the lobby under a foreign campaign, then restore only the save
+    // FIELD.
     {
         SaveData& live = test_screen()->save_data;
         const std::string before = live.current_campaign;
