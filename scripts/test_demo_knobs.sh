@@ -141,6 +141,31 @@ expect_status 1 'unparsable team size'
 expect_message "OPENGLAD_DEMO_TEAM_SIZE must be an integer, got 'big'" \
     'unparsable team size'
 
+# --- 4b. OPENGLAD_DEMO_FILL -------------------------------------------------
+# The #305 capture knob: one FILL wheel code onto every team the arena
+# authors, written after the arena deal. Unparsable is fatal like every
+# other integer knob; BRUTAL on a soccer arena is the positive arm (the
+# media recipes film the three-bot side there).
+run_demo fill-bad \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_MAX_FRAMES=1 \
+    OPENGLAD_DEMO_FILL=big
+expect_status 1 'unparsable fill'
+expect_message "OPENGLAD_DEMO_FILL must be an integer, got 'big'" \
+    'unparsable fill'
+
+# The positive arm needs the versus campaign MOUNTED: the authored-team
+# mask comes off a scratch load of the save's own cursor, and on a classic
+# campaign it is empty, so the write loop would never run.
+run_demo fill-brutal \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_CAMPAIGN=modes \
+    OPENGLAD_DEMO_FILL=4 \
+    OPENGLAD_DEMO_SCENARIOS=820 \
+    OPENGLAD_DEMO_MAX_FRAMES=1
+expect_status 0 'BRUTAL on a soccer arena'
+expect_message 'openglad_demo: campaign modes' 'BRUTAL on a soccer arena'
+
 # --- 5. Capture focus 'player' and an unusable capture directory ------------
 # The smoke script exercises the boss and center cameras; 'player' is the
 # third. It is also the positive arm for the directory check below: the same
