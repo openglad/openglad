@@ -34,6 +34,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -3955,6 +3956,110 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_c
             << "scen " << walk.scen << " at " << walk.word
             << ": the wheel the wizard turned is the squad on the floor";
     }
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// R2-2, the text half of the hole that let the FILL bug ship: ONE turn of
+// the wizard's FILL wheel must move EVERY authored side of a four-side
+// arena, and the NONE trap must close behind it.
+//
+// Leg 1 walks a fresh company onto FOURSQUARE (soccer, four sides) and
+// turns FILL once: the dealt STRONG steps to BRUTAL on all four bands, and
+// LINEUP -- which reads the stored codes, not the wizard's memory -- says
+// so four times. Before fix B this walk left teams 3 and 4 stranded.
+//
+// Leg 2 is the trap: LINEUP wheels all four bands to NONE, so no opponent
+// is ON and the wizard's SIDES face reads 1. One FILL turn there must
+// light every AUTHORED opponent again (SIDES back to 4, the wheel entering
+// at its head, WEAK) instead of the lowest one alone.
+TEST(PlatformHeadless, text_picker_setup_fill_moves_every_side_on_a_four_side_arena)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("fourside", 820));
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+            // Leg 1: the camp's SETUP row, SOCCER, FOURSQUARE, one FILL turn
+            "7\n" "1\n"  // team build: Camp -> the SETUP row -> GAME
+            "5\n"         // GAME: SOCCER -> the ARENA page
+            "3\n"         // ARENA: FOURSQUARE -> Applied -> TEAMS
+            "2\n"         // TEAMS: FILL (row 2 -- SIDES is row 1 here)
+            "0\n" "0\n"   // leave the wizard, leave the camp
+            "12\n" "\n"   // LINEUP: read the four stored codes, blank exits
+            // Leg 2: every band to NONE, then one FILL turn re-lights them
+            "12\n"        // team build: LINEUP
+            "1\n" "3\n" "5\n" "7\n"  //   the four FILL wheels: BRUTAL -> NONE
+            "\n"          //   blank exits
+            "7\n" "1\n"   // team build: Camp -> the SETUP row -> GAME
+            "9\n"         // GAME: Next: TEAMS
+            "2\n"         // TEAMS: one FILL turn
+            "0\n" "0\n"
+            "12\n" "\n"   // LINEUP: WEAK on all four
+            "8\n" "6\n");
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+
+    std::size_t at = 0;
+    const auto expect_in_order = [&](const std::string& needle) {
+        const std::size_t found = printed.find(needle, at);
+        EXPECT_NE(std::string::npos, found)
+            << "FILL answer '" << needle << "' missing after offset " << at
+            << ":\n" << printed;
+        if (found != std::string::npos)
+            at = found + needle.size();
+    };
+
+    // Leg 1, before the turn: four authored sides, the arena's dealt word.
+    expect_in_order("--- SETUP: TEAMS ---");
+    expect_in_order("SIDES: 4 - 2, 3, 4");
+    expect_in_order("FILL: STRONG - weak to brutal");
+    // ...and after it, every band moved, bodies included.
+    expect_in_order("--- SETUP: TEAMS ---");
+    expect_in_order("TEAM 2 GREEN  3 BOTS");
+    expect_in_order("TEAM 3 BLUE  3 BOTS");
+    expect_in_order("TEAM 4 YELLOW  3 BOTS");
+    expect_in_order("FILL: BRUTAL - weak to brutal");
+    // LINEUP reads the STORED codes, which is where the bug was visible.
+    expect_in_order("1. TEAM 1  FILL: BRUTAL");
+    expect_in_order("3. TEAM 2  FILL: BRUTAL");
+    expect_in_order("5. TEAM 3  FILL: BRUTAL");
+    expect_in_order("7. TEAM 4  FILL: BRUTAL");
+
+    // Leg 2: the NONE trap. No opponent on, so the arena reads one side.
+    expect_in_order("--- SETUP: TEAMS ---");
+    expect_in_order("SIDES: 1 - 2, 3, 4");
+    expect_in_order("FILL: NONE - weak to brutal");
+    // One turn lights every AUTHORED opponent again, at the wheel's head.
+    expect_in_order("SIDES: 4 - 2, 3, 4");
+    expect_in_order("FILL: WEAK - weak to brutal");
+    expect_in_order("1. TEAM 1  FILL: WEAK");
+    expect_in_order("3. TEAM 2  FILL: WEAK");
+    expect_in_order("5. TEAM 3  FILL: WEAK");
+    expect_in_order("7. TEAM 4  FILL: WEAK");
+
+    // The disk is the last witness: the turn's autosave banked all four.
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("fourside"));
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, og::sim::kFillWeak,
+                                    og::sim::kFillWeak, og::sim::kFillWeak}),
+              reloaded.fill)
+        << "one FILL turn on a four-side arena writes four bands";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
