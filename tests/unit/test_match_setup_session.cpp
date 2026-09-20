@@ -16,9 +16,10 @@
 // halves (WP5), which need a mounted campaign and a Lua book.
 //
 // Ten of the macro tests below are ports of tests/unit/test_modes_book.cpp
-// :1421-1935, which drove the SAME rules through campaign_picker.lua. The
-// said lines, the faces and the fill arrays are the same bytes: that is
-// the point of the port, and the Lua twins do not die until both agree.
+// :1421-1935, which drove the SAME rules through campaign_picker.lua: the
+// faces and the fill arrays are the same bytes, which is the point of the
+// port. The said lines they also carried are GONE (PR #307 round 2, R2-1)
+// and the FILL rule is corrected by fix B (R2-2).
 
 #include <gtest/gtest.h>
 
@@ -101,16 +102,16 @@ std::string fill(const SaveData& save, int my_team,
     return og::ui::match_fill_face(save, my_team, mask);
 }
 
-std::string turn_sides(SaveData& save, int my_team, int dir = +1,
-                       std::uint8_t mask = kFourSides)
+void turn_sides(SaveData& save, int my_team, int dir = +1,
+                std::uint8_t mask = kFourSides)
 {
-    return og::ui::turn_match_sides(save, my_team, mask, dir);
+    og::ui::turn_match_sides(save, my_team, mask, dir);
 }
 
-std::string turn_fill(SaveData& save, int my_team, int dir = +1,
-                      std::uint8_t mask = kFourSides)
+void turn_fill(SaveData& save, int my_team, int dir = +1,
+               std::uint8_t mask = kFourSides)
 {
-    return og::ui::turn_match_fill(save, my_team, mask, dir);
+    og::ui::turn_match_fill(save, my_team, mask, dir);
 }
 
 } // namespace
@@ -127,25 +128,20 @@ TEST(MatchSetupRules, sides_wheel_deals_fair_ascending_and_wraps)
         << "the all-NONE rest: the local side alone";
 
     struct Step {
-        const char* said;
         const char* sides_face;
         const char* fill_face;
         Fills fills;
     };
     const std::vector<Step> steps = {
-        {"Two sides. One squad at FAIR.", "SIDES: 2", "FILL: FAIR",
-         {kNone, kFair, kNone, kNone}},
-        {"Three sides. Two squads at FAIR.", "SIDES: 3", "FILL: FAIR",
-         {kNone, kFair, kFair, kNone}},
-        {"Four sides. Three squads at FAIR.", "SIDES: 4", "FILL: FAIR",
-         {kNone, kFair, kFair, kFair}},
-        {"Two sides. One squad at FAIR.", "SIDES: 2", "FILL: FAIR",
-         {kNone, kFair, kNone, kNone}},
+        {"SIDES: 2", "FILL: FAIR", {kNone, kFair, kNone, kNone}},
+        {"SIDES: 3", "FILL: FAIR", {kNone, kFair, kFair, kNone}},
+        {"SIDES: 4", "FILL: FAIR", {kNone, kFair, kFair, kFair}},
+        {"SIDES: 2", "FILL: FAIR", {kNone, kFair, kNone, kNone}},
     };
     for (const Step& step : steps)
     {
-        EXPECT_EQ(step.said, turn_sides(save, 0)) << step.sides_face;
-        EXPECT_EQ(step.fills, save.fill);
+        turn_sides(save, 0);
+        EXPECT_EQ(step.fills, save.fill) << step.sides_face;
         EXPECT_EQ(step.sides_face, sides(save, 0))
             << "the face derives from the array, never from a second store";
         EXPECT_EQ(step.fill_face, fill(save, 0));
@@ -163,7 +159,8 @@ TEST(MatchSetupRules, sides_copy_the_fill_face_and_fair_on_mixed)
     EXPECT_EQ("SIDES: 2", sides(save, 0));
     EXPECT_EQ("FILL: STRONG", fill(save, 0));
 
-    EXPECT_EQ("Three sides. Two squads at STRONG.", turn_sides(save, 0));
+    turn_sides(save, 0);
+    EXPECT_EQ("SIDES: 3", sides(save, 0));
     EXPECT_EQ((Fills{kNone, kStrong, kStrong, kNone}), save.fill)
         << "the new side copies the face, the standing one keeps it";
 
@@ -173,55 +170,55 @@ TEST(MatchSetupRules, sides_copy_the_fill_face_and_fair_on_mixed)
     save.fill[1] = kWeak;
     EXPECT_EQ("SIDES: 3", sides(save, 0));
     EXPECT_EQ("FILL: MIXED", fill(save, 0));
-    EXPECT_EQ("Four sides. Three squads at FAIR.", turn_sides(save, 0));
+    turn_sides(save, 0);
+    EXPECT_EQ("SIDES: 4", sides(save, 0));
     EXPECT_EQ((Fills{kNone, kFair, kFair, kFair}), save.fill);
 }
 
-// Ported from
-// ModesBookTest::fill_macro_turns_on_the_lowest_opponent_then_every_on_side
-// (test_modes_book.cpp:1723).
-TEST(MatchSetupRules, fill_turns_on_the_lowest_opponent_then_every_on_side)
+// Fix B (PR #307 round 2, R2-2; recon2/fill-bug.md §1.3): with NO opponent
+// on, a FILL turn lights EVERY authored opponent -- never just the lowest,
+// which stranded teams 3 and 4 on a four-side arena the moment the player
+// lapped the wheel. NONE is off the wheel too, so the lap that produced the
+// trap cannot happen either; a deliberate SIDES value is still respected
+// while bands are on.
+TEST(MatchSetupRules, fill_lights_every_authored_opponent_when_none_is_on)
 {
     SaveData save;
     struct Step {
-        const char* said;
         const char* fill_face;
         const char* sides_face;
         Fills fills;
     };
     const std::vector<Step> steps = {
-        {"One squad at WEAK. Yours too.", "FILL: WEAK", "SIDES: 2",
-         {kWeak, kWeak, kNone, kNone}},
-        {"One squad at FAIR. Yours too.", "FILL: FAIR", "SIDES: 2",
-         {kFair, kFair, kNone, kNone}},
-        {"One squad at STRONG. Yours too.", "FILL: STRONG", "SIDES: 2",
-         {kStrong, kStrong, kNone, kNone}},
-        {"One squad at BRUTAL. Yours too.", "FILL: BRUTAL", "SIDES: 2",
-         {kBrutal, kBrutal, kNone, kNone}},
-        {"No squads.", "FILL: NONE", "SIDES: 1",
-         {kNone, kNone, kNone, kNone}},
+        {"FILL: WEAK", "SIDES: 4", {kWeak, kWeak, kWeak, kWeak}},
+        {"FILL: FAIR", "SIDES: 4", {kFair, kFair, kFair, kFair}},
+        {"FILL: STRONG", "SIDES: 4", {kStrong, kStrong, kStrong, kStrong}},
+        {"FILL: BRUTAL", "SIDES: 4", {kBrutal, kBrutal, kBrutal, kBrutal}},
+        {"FILL: WEAK", "SIDES: 4", {kWeak, kWeak, kWeak, kWeak}},
     };
     for (const Step& step : steps)
     {
-        EXPECT_EQ(step.said, turn_fill(save, 0)) << step.fill_face;
-        EXPECT_EQ(step.fills, save.fill);
+        turn_fill(save, 0);
+        EXPECT_EQ(step.fills, save.fill) << step.fill_face;
         EXPECT_EQ(step.fill_face, fill(save, 0));
-        EXPECT_EQ(step.sides_face, sides(save, 0));
+        EXPECT_EQ(step.sides_face, sides(save, 0))
+            << "the wheel never empties the arena, so it never collapses it";
     }
 
     // With sides standing, the step writes every ON opponent and the own
-    // band with them (H1).
+    // band with them (H1) -- and leaves the sides the player chose alone.
     save.fill = {kNone, kFair, kFair, kNone};
-    EXPECT_EQ("Two squads at STRONG. Yours too.", turn_fill(save, 0));
+    turn_fill(save, 0);
     EXPECT_EQ((Fills{kStrong, kStrong, kStrong, kNone}), save.fill);
+    EXPECT_EQ("SIDES: 3", sides(save, 0))
+        << "a deliberate SIDES value is respected while bands are on";
 
-    // A MIXED face is off the wheel and rejoins at NONE, which clears the
-    // own band with the rest.
-    save.fill[2] = kWeak;
+    // A MIXED face is off the wheel and rejoins at the HEAD, WEAK.
+    save.fill = {kStrong, kFair, kWeak, kNone};
     EXPECT_EQ("FILL: MIXED", fill(save, 0));
-    EXPECT_EQ("No squads.", turn_fill(save, 0));
-    EXPECT_EQ((Fills{kNone, kNone, kNone, kNone}), save.fill);
-    EXPECT_EQ("SIDES: 1", sides(save, 0));
+    turn_fill(save, 0);
+    EXPECT_EQ((Fills{kWeak, kWeak, kWeak, kNone}), save.fill);
+    EXPECT_EQ("SIDES: 3", sides(save, 0));
 }
 
 // Ported from ModesBookTest::macros_answer_to_the_local_seats_team
@@ -235,19 +232,26 @@ TEST(MatchSetupRules, macros_answer_to_the_local_seats_team)
         << "the own band is not an opponent, however strong it is";
     EXPECT_EQ("FILL: BRUTAL", fill(save, 2));
 
-    EXPECT_EQ("Two sides. One squad at BRUTAL.", turn_sides(save, 2));
+    turn_sides(save, 2);
     EXPECT_EQ((Fills{kBrutal, kNone, kBrutal, kNone}), save.fill)
         << "team 0 is the lowest opponent of a seat on team 2";
+    EXPECT_EQ("SIDES: 2", sides(save, 2));
 
-    EXPECT_EQ("No squads.", turn_fill(save, 2));
-    EXPECT_EQ((Fills{kNone, kNone, kNone, kNone}), save.fill);
-    EXPECT_EQ("SIDES: 1", sides(save, 2));
-
-    EXPECT_EQ("One squad at WEAK. Yours too.", turn_fill(save, 2));
+    // BRUTAL wraps to WEAK over the ON set {0} plus the own band.
+    turn_fill(save, 2);
     EXPECT_EQ((Fills{kWeak, kNone, kWeak, kNone}), save.fill);
+    EXPECT_EQ("SIDES: 2", sides(save, 2));
 
-    EXPECT_EQ("Three sides. Two squads at WEAK.", turn_sides(save, 2));
-    EXPECT_EQ((Fills{kWeak, kWeak, kWeak, kNone}), save.fill);
+    // Nothing on: every authored opponent of a seat on team 2 lights up.
+    save.fill = {};
+    turn_fill(save, 2);
+    EXPECT_EQ((Fills{kWeak, kWeak, kWeak, kWeak}), save.fill);
+    EXPECT_EQ("SIDES: 4", sides(save, 2));
+
+    turn_sides(save, 2);
+    EXPECT_EQ((Fills{kWeak, kNone, kWeak, kNone}), save.fill)
+        << "the {2, 3, 4} wheel wraps 4 -> 2";
+    EXPECT_EQ("SIDES: 2", sides(save, 2));
 }
 
 // Ported from ModesBookTest::dealt_arena_rest_reads_through_the_macro_faces
@@ -273,52 +277,50 @@ TEST(MatchSetupRules, dealt_arena_rest_reads_through_the_faces)
 TEST(MatchSetupRules, reverse_step_walks_every_wheel_backward)
 {
     SaveData save;
-    EXPECT_EQ("Two sides. One squad at FAIR.", turn_sides(save, 0, -1))
+    turn_sides(save, 0, -1);
+    EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), save.fill)
         << "SIDES: 1 is off the wheel: either direction rejoins at 2";
-    EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), save.fill);
-    EXPECT_EQ("Four sides. Three squads at FAIR.", turn_sides(save, 0, -1))
+    turn_sides(save, 0, -1);
+    EXPECT_EQ((Fills{kNone, kFair, kFair, kFair}), save.fill)
         << "2 steps back to the tail of the 2 -> 3 -> 4 wheel";
-    EXPECT_EQ((Fills{kNone, kFair, kFair, kFair}), save.fill);
 
     SaveData fresh;
-    EXPECT_EQ("One squad at BRUTAL. Yours too.", turn_fill(fresh, 0, -1))
-        << "NONE steps back to the tail of the fill wheel";
-    EXPECT_EQ((Fills{kBrutal, kBrutal, kNone, kNone}), fresh.fill);
+    turn_fill(fresh, 0, -1);
+    EXPECT_EQ((Fills{kWeak, kWeak, kWeak, kWeak}), fresh.fill)
+        << "NONE is off the wheel: either direction rejoins at the head, "
+           "and fix B lights every authored opponent";
 
     SaveData mixed;
     mixed.fill = {kNone, kWeak, kStrong, kNone};
     EXPECT_EQ("FILL: MIXED", fill(mixed, 0));
-    EXPECT_EQ("No squads.", turn_fill(mixed, 0, -1))
-        << "MIXED is off the wheel: either direction rejoins at NONE";
-    EXPECT_EQ((Fills{kNone, kNone, kNone, kNone}), mixed.fill);
+    turn_fill(mixed, 0, -1);
+    EXPECT_EQ((Fills{kWeak, kWeak, kWeak, kNone}), mixed.fill)
+        << "MIXED is off the wheel: either direction rejoins at WEAK";
 }
 
 // --- The TIME LIMIT and SCORE wheels -----------------------------------
 
-TEST(MatchSetupRules, time_limit_wheel_faces_and_toasts)
+TEST(MatchSetupRules, time_limit_wheel_faces)
 {
     SaveData save;
     EXPECT_EQ("TIME LIMIT: MAP", og::ui::format_time_limit_label(save));
-    EXPECT_EQ("Clock: the map's own.", og::ui::format_time_limit_said(save));
 
     struct Step {
         short ticks;
         const char* face;
-        const char* said;
     };
     const std::vector<Step> steps = {
-        {3600, "TIME LIMIT: 5 MIN", "Clock: 5 minutes."},
-        {7200, "TIME LIMIT: 10 MIN", "Clock: 10 minutes."},
-        {10800, "TIME LIMIT: 15 MIN", "Clock: 15 minutes."},
-        {14400, "TIME LIMIT: 20 MIN", "Clock: 20 minutes."},
-        {0, "TIME LIMIT: MAP", "Clock: the map's own."},
+        {3600, "TIME LIMIT: 5 MIN"},
+        {7200, "TIME LIMIT: 10 MIN"},
+        {10800, "TIME LIMIT: 15 MIN"},
+        {14400, "TIME LIMIT: 20 MIN"},
+        {0, "TIME LIMIT: MAP"},
     };
     for (const Step& step : steps)
     {
         og::ui::cycle_time_limit(save, +1);
         EXPECT_EQ(step.ticks, save.time_limit);
         EXPECT_EQ(step.face, og::ui::format_time_limit_label(save));
-        EXPECT_EQ(step.said, og::ui::format_time_limit_said(save));
     }
 
     og::ui::cycle_time_limit(save, -1);
@@ -331,7 +333,6 @@ TEST(MatchSetupRules, time_limit_wheel_faces_and_toasts)
     EXPECT_EQ("TIME LIMIT: 3 MIN", og::ui::format_time_limit_label(save));
     save.time_limit = 5400;
     EXPECT_EQ("TIME LIMIT: 7 MIN", og::ui::format_time_limit_label(save));
-    EXPECT_EQ("Clock: 7 minutes.", og::ui::format_time_limit_said(save));
     og::ui::cycle_time_limit(save, +1);
     EXPECT_EQ(0, save.time_limit);
     save.time_limit = 5400;
@@ -339,22 +340,15 @@ TEST(MatchSetupRules, time_limit_wheel_faces_and_toasts)
     EXPECT_EQ(0, save.time_limit);
 }
 
-TEST(MatchSetupRules, score_wheel_reverses_and_speaks)
+TEST(MatchSetupRules, score_wheel_reverses)
 {
     SaveData save;
-    EXPECT_EQ("Score: the map's own.", og::ui::format_ctf_score_said(save));
-
     const std::vector<short> backward = {10, 5, 3, 1, 0};
     for (const short expected : backward)
     {
         og::ui::cycle_ctf_capture_limit(save, -1);
         EXPECT_EQ(expected, save.ctf_capture_limit);
     }
-
-    save.ctf_capture_limit = 5;
-    EXPECT_EQ("Score to 5.", og::ui::format_ctf_score_said(save));
-    save.ctf_capture_limit = 10;
-    EXPECT_EQ("Score to 10.", og::ui::format_ctf_score_said(save));
 
     // Junk rejoins at the head whichever way it is turned.
     save.ctf_capture_limit = 42;
@@ -386,31 +380,27 @@ TEST(MatchSetupRules, sides_wheel_is_clamped_to_the_authored_sides)
     // A two-side arena has exactly one legal value, so every turn lands on
     // it and team 2 is never dealt anything.
     SaveData two;
-    EXPECT_EQ("Two sides. One squad at FAIR.", turn_sides(two, 0, +1, 0b0011));
+    turn_sides(two, 0, +1, 0b0011);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), two.fill);
-    EXPECT_EQ("Two sides. One squad at FAIR.", turn_sides(two, 0, +1, 0b0011));
+    turn_sides(two, 0, +1, 0b0011);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), two.fill);
     EXPECT_EQ("SIDES: 2", sides(two, 0, 0b0011));
 
     // A three-side arena wheels 2 -> 3 -> 2.
     SaveData three;
-    EXPECT_EQ("Two sides. One squad at FAIR.",
-              turn_sides(three, 0, +1, 0b0111));
+    turn_sides(three, 0, +1, 0b0111);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), three.fill);
-    EXPECT_EQ("Three sides. Two squads at FAIR.",
-              turn_sides(three, 0, +1, 0b0111));
+    turn_sides(three, 0, +1, 0b0111);
     EXPECT_EQ((Fills{kNone, kFair, kFair, kNone}), three.fill);
-    EXPECT_EQ("Two sides. One squad at FAIR.",
-              turn_sides(three, 0, +1, 0b0111));
+    turn_sides(three, 0, +1, 0b0111);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), three.fill);
 
     // A gap in the mask: the opponents of a seat on team 0 are 1 then 3,
     // and team 2 — which the map authors no markers for — is never written.
     SaveData gap;
     gap.fill[2] = kBrutal;  // a stale value the macro must leave alone
-    EXPECT_EQ("Two sides. One squad at FAIR.", turn_sides(gap, 0, +1, 0b1011));
-    EXPECT_EQ("Three sides. Two squads at FAIR.",
-              turn_sides(gap, 0, +1, 0b1011));
+    turn_sides(gap, 0, +1, 0b1011);
+    turn_sides(gap, 0, +1, 0b1011);
     EXPECT_EQ((Fills{kNone, kFair, kBrutal, kFair}), gap.fill);
 
     // A mask of 0 behaves exactly as the four-side one.
@@ -418,8 +408,8 @@ TEST(MatchSetupRules, sides_wheel_is_clamped_to_the_authored_sides)
     SaveData four;
     for (int step = 0; step < 5; ++step)
     {
-        EXPECT_EQ(turn_sides(four, 0, +1, 0b1111),
-                  turn_sides(unknown, 0, +1, 0));
+        turn_sides(four, 0, +1, 0b1111);
+        turn_sides(unknown, 0, +1, 0);
         EXPECT_EQ(four.fill, unknown.fill);
     }
 }
@@ -435,7 +425,11 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
 
     EXPECT_TRUE(og::ui::match_rules_faces({}).empty())
         << "no save, no rules: the composer never invents a face";
-    EXPECT_TRUE(og::ui::format_match_rules_lines({}).empty());
+    EXPECT_TRUE(og::ui::format_match_rules_lines(og::ui::MatchRulesInputs{})
+                    .empty());
+    EXPECT_TRUE(og::ui::format_match_rules_lines(
+                    std::vector<og::ui::MatchRuleFace>{})
+                    .empty());
 
     const std::vector<og::ui::MatchRuleFace> faces =
         og::ui::match_rules_faces(inputs);
@@ -524,6 +518,31 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
     }
     EXPECT_EQ("RESPAWNS: TEAM 1 HEROES  SPAWN DELAY: NORMAL", worst_pair)
         << "the widest pair the RULES recap can print (44)";
+
+    // One packing loop, two entry points: the MatchRulesInputs overload IS
+    // the faces overload asked for match_rules_faces(inputs), and a
+    // caller that has already filtered the faces (the wizard's joiner
+    // RULES) gets the same packer.
+    SaveData plain;
+    og::ui::MatchRulesInputs fresh;
+    fresh.save = &plain;
+    fresh.difficulty = 1;
+    EXPECT_EQ(og::ui::format_match_rules_lines(fresh),
+              og::ui::format_match_rules_lines(
+                  og::ui::match_rules_faces(fresh)));
+
+    std::vector<og::ui::MatchRuleFace> two;
+    for (const og::ui::MatchRuleFace& face : og::ui::match_rules_faces(fresh))
+    {
+        if (face.id == og::ui::kRulesRowScore ||
+            face.id == og::ui::kRulesRowTime)
+        {
+            two.push_back(face);
+        }
+    }
+    ASSERT_EQ(2u, two.size());
+    EXPECT_EQ((std::vector<std::string>{"SCORE: MAP  TIME LIMIT: MAP"}),
+              og::ui::format_match_rules_lines(two));
 }
 
 // --- The TEAMS step's team-line cells (§2.4) ---------------------------
@@ -630,7 +649,10 @@ TEST(MatchSetupRules, local_seats_deployed_for_go_agrees_with_the_lineup_diagnos
               std::string(og::ui::kDeployForEveryPlayerTitle));
     EXPECT_EQ("The host sets these for everyone.",
               std::string(og::ui::kHostSetsForEveryoneCaption));
-    EXPECT_EQ("none to brutal", std::string(og::ui::kMatchFillNote));
+    EXPECT_EQ("weak to brutal", std::string(og::ui::kMatchFillNote))
+        << "the MACRO wheel: NONE left it with the trap it opened";
+    EXPECT_EQ("none to brutal", std::string(og::ui::kLineupFillNote))
+        << "the LINEUP band wheel keeps NONE, and its own note";
 
     int agreed = 0;
     for (int numplayers = 1; numplayers <= 4; ++numplayers)
@@ -716,25 +738,35 @@ std::string setup_book_script(const std::string& knobs)
     std::string source = R"LUA(og.register_campaign_hooks({
   picker_menu = function(page_id)
     if page_id == "" then
-      return { title = "GAMES", lines = { "Cleared: 0 of 40." }, entries = {
-        { id = "tdm",        label = "TEAM DEATHMATCH",  note = "0/6 cleared",  kind = "page" },
-        { id = "ctf",        label = "CAPTURE THE FLAG", note = "0/10 cleared", kind = "page" },
-        { id = "onslaught",  label = "ONSLAUGHT",        note = "0/4 cleared",  kind = "page" },
-        { id = "mutant",     label = "MUTANT",           note = "0/4 cleared",  kind = "page" },
-        { id = "soccer",     label = "SOCCER",           note = "0/4 cleared",  kind = "page" },
-        { id = "basketball", label = "BASKETBALL",       note = "0/6 cleared",  kind = "page" },
-        { id = "ffa",        label = "FREE FOR ALL",     note = "0/6 cleared",  kind = "page" },
-      } }
+      local rows = {
+        { id = "tdm",        label = "TEAM DEATHMATCH",  note = "6 arenas",  kind = "page" },
+        { id = "ctf",        label = "CAPTURE THE FLAG", note = "10 arenas", kind = "page" },
+        { id = "onslaught",  label = "ONSLAUGHT",        note = "4 arenas",  kind = "page" },
+        { id = "mutant",     label = "MUTANT",           note = "4 arenas",  kind = "page" },
+        { id = "soccer",     label = "SOCCER",           note = "4 arenas",  kind = "page" },
+        { id = "basketball", label = "BASKETBALL",       note = "6 arenas",  kind = "page" },
+        { id = "ffa",        label = "FREE FOR ALL",     note = "6 arenas",  kind = "page" },
+      }
+      if og.campaign_is_host() then
+        rows[#rows + 1] = { id = "random", kind = "action", label = "RANDOM",
+                            note = "any game, any arena" }
+      end
+      return { title = "GAMES", lines = {}, entries = rows }
     end
     if page_id == "soccer" then
-      return { title = "SOCCER",
-               lines = { "Kick the ball into their goal.", "Next uncleared: THE PITCH." },
-               entries = {
+      local rows = {
         { id = "820", label = "THE PITCH",    note = "2 sides, 3 goals", kind = "level", level = 820 },
-        { id = "821", label = "THE MUDBOWL",  note = "2 sides, 3 goals", kind = "level", level = 821 },
+        { id = "821", label = "THE MUDBOWL",  note = "2 sides, 3 goals", kind = "level", level = 821, replay = true },
         { id = "822", label = "FOURSQUARE",   note = "4 sides, 3 goals", kind = "level", level = 822 },
         { id = "823", label = "BONEYARD CUP", note = "2 sides, 3 goals", kind = "level", level = 823 },
-      } }
+      }
+      if og.campaign_is_host() then
+        rows[#rows + 1] = { id = "random_soccer", kind = "action",
+                            label = "RANDOM ARENA", note = "any arena of this game" }
+      end
+      return { title = "SOCCER",
+               lines = { "Kick the ball into their goal." },
+               entries = rows }
     end
     if page_id == "ctf" then
       local rows = {}
@@ -743,7 +775,7 @@ std::string setup_book_script(const std::string& knobs)
                             note = "4 sides, 20 min", kind = "level", level = 500 + i }
       end
       return { title = "CAPTURE THE FLAG",
-               lines = { "Take their flag home.", "Next uncleared: FIELD 0." },
+               lines = { "Take their flag home." },
                entries = rows }
     end
     if page_id == "tdm" then
@@ -751,6 +783,14 @@ std::string setup_book_script(const std::string& knobs)
         { id = "300", label = "THE CIRCLE", note = "4 sides, to 20", kind = "level", level = 300 },
       } }
     end
+    return nil
+  end,
+  picker_action = function(id)
+    -- Deterministic by construction: the wizard's RANDOM rows answer a
+    -- LEVEL, and this fixture answers a fixed one so the title the gated
+    -- tail speaks can be pinned byte for byte.
+    if id == "random" then return { level = 822 } end
+    if id == "random_soccer" then return { level = 823 } end
     return nil
   end,
 )LUA";
@@ -948,7 +988,8 @@ TEST_F(MatchSetupSessionTest,
     MatchSetupSession session(save_);
     ASSERT_TRUE(session.open(inputs(), "soccer"));
     EXPECT_EQ(Step::Arena, session.step());
-    ASSERT_EQ(4u, session.page().rows.size());
+    ASSERT_EQ(5u, session.page().rows.size())
+        << "four arenas and the host's RANDOM ARENA row, appended LAST";
     EXPECT_EQ(820, session.page().rows[0].base.level);
     EXPECT_EQ("THE PITCH", session.page().rows[0].base.label);
 }
@@ -966,11 +1007,14 @@ TEST_F(MatchSetupSessionTest,
     ASSERT_EQ(Step::Game, session.step());
     ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Arena, inputs()).kind);
     EXPECT_EQ(Step::Arena, session.step());
-    ASSERT_EQ(4u, session.page().rows.size());
+    ASSERT_EQ(5u, session.page().rows.size())
+        << "four arenas and the host's RANDOM ARENA row, appended LAST";
     EXPECT_TRUE(session.page().rows[0].base.current) << "[CURRENT] on THE PITCH";
     EXPECT_EQ(0, session.page().page.page);
-    EXPECT_EQ(2u, session.page().lines.size());
-    EXPECT_EQ("Kick the ball into their goal.", session.page().lines[0]);
+    EXPECT_EQ((std::vector<std::string>{"Kick the ball into their goal."}),
+              session.page().lines)
+        << "one flavour line: the \"Next uncleared\" line left with the "
+           "progress vocabulary (R2-4)";
 
     // From TEAMS/RULES/MATCH the tab resolves the same way.
     for (const Step from : {Step::Teams, Step::Rules, Step::Match}) {
@@ -990,17 +1034,18 @@ TEST_F(MatchSetupSessionTest,
     ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Arena, inputs()).kind);
     EXPECT_EQ(10u, session.page().rows.size()) << "a no-op refetch";
 
-    // Ten CTF arenas over two lines of text: seven rows fit, and the window
-    // opens on the page that holds the cursor's own arena (507 -> page 1).
+    // Ten CTF arenas over ONE line of text (the "Next uncleared" line left
+    // with the progress vocabulary, R2-4): eight rows fit, and the window
+    // opens on the page that holds the cursor's own arena (508 -> page 1).
     og::script::clear_pack_scripts();
     register_book(R"({ arena_page = "ctf" })");
-    save_.scen_num = 507;
+    save_.scen_num = 508;
     MatchSetupSession ctf(save_);
     ASSERT_TRUE(ctf.open(inputs()));
     ASSERT_EQ(Kind::Advanced, ctf.goto_step(Step::Arena, inputs()).kind);
     ASSERT_EQ(10u, ctf.page().rows.size());
-    EXPECT_EQ(7, og::ui::setup_rows_fit(2));
-    EXPECT_EQ(7, ctf.page().page.rows_per_page);
+    EXPECT_EQ(8, og::ui::setup_rows_fit(1));
+    EXPECT_EQ(8, ctf.page().page.rows_per_page);
     EXPECT_EQ(1, ctf.page().page.page);
     EXPECT_TRUE(ctf.page().page.multi_page());
 }
@@ -1272,7 +1317,9 @@ TEST_F(MatchSetupSessionTest, match_knobs_shape_the_steps)
     EXPECT_EQ((std::vector<std::string>{"fill", "lineup"}), row_ids(band));
     EXPECT_EQ(Knob::BandFill, band.page().rows[0].knob);
     EXPECT_EQ("FILL: NONE", band.page().rows[0].base.label);
-    EXPECT_EQ(std::string(og::ui::kMatchFillNote), band.page().rows[0].base.note);
+    EXPECT_EQ(std::string(og::ui::kLineupFillNote),
+              band.page().rows[0].base.note)
+        << "the BAND row wears the BAND wheel's note";
     ASSERT_FALSE(band.page().lines.empty());
     EXPECT_EQ("FILL sets how strong the bots are.", band.page().lines.back());
     // The band wheel writes team 1's own knob, nothing else.
@@ -1289,22 +1336,53 @@ TEST_F(MatchSetupSessionTest, match_knobs_shape_the_steps)
     ASSERT_TRUE(ons.open(inputs()));
     ASSERT_EQ(Kind::Advanced, ons.goto_step(Step::Teams, inputs()).kind);
     EXPECT_EQ((std::vector<std::string>{"lineup"}), row_ids(ons));
-    // score = false drops the SCORE row and its recap cell.
+    // score = false drops the SCORE row: RULES is the two scenario knobs
+    // (R2-3), so onslaught's RULES is TIME LIMIT alone.
     ASSERT_EQ(Kind::Advanced, ons.goto_step(Step::Rules, inputs()).kind);
     EXPECT_EQ(-1, row_index(ons, "score"));
-    EXPECT_EQ(7u, ons.page().rows.size())
-        << "the nine rules minus SCORE (the campaign hid it) and minus "
-           "CROSS CONTROL (not networked)";
+    EXPECT_EQ((std::vector<std::string>{"time"}), row_ids(ons));
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kSetupRulesPointerLine)}),
+              ons.page().lines);
 
-    // score = false AND time = false: seven rows, and neither cell in the
-    // MATCH recap.
+    // score = false AND time = false: the step STAYS (five steps always),
+    // with no rows, the map line and the pointer line — and neither cell
+    // in the MATCH recap.
     og::script::clear_pack_scripts();
     register_book(R"({ score = false, time = false, arena_page = "soccer" })");
     MatchSetupSession quiet(save_);
     ASSERT_TRUE(quiet.open(inputs()));
+    EXPECT_EQ(5u, quiet.steps().size());
+    EXPECT_NE(quiet.steps().end(),
+              std::find(quiet.steps().begin(), quiet.steps().end(),
+                        Step::Rules));
     ASSERT_EQ(Kind::Advanced, quiet.goto_step(Step::Rules, inputs()).kind);
-    EXPECT_EQ(6u, quiet.page().rows.size())
-        << "SCORE, TIME LIMIT and CROSS CONTROL all absent";
+    EXPECT_TRUE(quiet.page().rows.empty());
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kSetupRulesMapLine),
+                  std::string(og::ui::kSetupRulesPointerLine)}),
+              quiet.page().lines);
+
+    // NEXT and PREV still land on it: the hard-coded stepper never skips a
+    // step, so an empty RULES must be walkable from both sides.
+    ASSERT_EQ(Kind::Advanced, quiet.goto_step(Step::Teams, inputs()).kind);
+    MatchSetupSession::Outcome step = quiet.next(inputs());
+    EXPECT_EQ(Kind::Advanced, step.kind);
+    EXPECT_EQ(Step::Rules, quiet.step());
+    EXPECT_EQ(Kind::Advanced, quiet.next(inputs()).kind);
+    EXPECT_EQ(Step::Match, quiet.step());
+    EXPECT_EQ(Kind::Advanced, quiet.prev(inputs()).kind);
+    EXPECT_EQ(Step::Rules, quiet.step());
+
+    // ...and the terminal item on TEAMS names it.
+    ASSERT_EQ(Kind::Advanced, quiet.goto_step(Step::Teams, inputs()).kind);
+    const og::ui::TerminalMatchSetupModel teams_model =
+        og::ui::build_terminal_match_setup_model(quiet, inputs());
+    EXPECT_TRUE(std::any_of(teams_model.items.begin(), teams_model.items.end(),
+                            [](const og::ui::TerminalMatchSetupItem& item) {
+                                return item.label == "Next: RULES";
+                            }));
+
     ASSERT_EQ(Kind::Advanced, quiet.goto_step(Step::Match, inputs()).kind);
     for (const std::string& line : quiet.page().lines) {
         EXPECT_EQ(std::string::npos, line.find("SCORE:")) << line;
@@ -1321,20 +1399,17 @@ TEST_F(MatchSetupSessionTest, rules_rows_are_the_shared_formatters_upper_cased_w
     MatchSetupSession session(save_);
     ASSERT_TRUE(session.open(inputs()));
     ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Rules, inputs()).kind);
-    EXPECT_EQ((std::vector<std::string>{"score", "time", "respawns",
-                                        "spawn_delay", "permadeath",
-                                        "generators", "difficulty",
-                                        "infinite_gold", "cross_control"}),
-              row_ids(session));
-    EXPECT_EQ(9u, session.page().rows.size());
-    EXPECT_EQ(static_cast<std::size_t>(og::ui::kSetupRowsMax),
-              session.page().rows.size())
-        << "RULES is exactly the step's row ceiling";
+    EXPECT_EQ((std::vector<std::string>{"score", "time"}), row_ids(session));
+    EXPECT_EQ(2u, session.page().rows.size())
+        << "RULES is the two match_knobs rows and nothing else (R2-3)";
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kSetupRulesPointerLine)}),
+              session.page().lines)
+        << "one host pointer line: the other seven knobs are a Base Camp "
+           "door";
 
     const std::vector<std::string> notes = {
-        "map, 1, 3, 5, 10", "map, 5 to 20 min", "off to team 1",
-        "normal, fast, slow", "on, off", "calm to frenzy", "up to slaughter",
-        "gold never runs out", "own, all"};
+        "map, 1, 3, 5, 10", "map, 5 to 20 min"};
     for (std::size_t i = 0; i < notes.size(); ++i) {
         EXPECT_EQ(notes[i], session.page().rows[i].base.note)
             << session.page().rows[i].base.id;
@@ -1342,11 +1417,18 @@ TEST_F(MatchSetupSessionTest, rules_rows_are_the_shared_formatters_upper_cased_w
         EXPECT_NE(Knob::None, session.page().rows[i].knob);
     }
 
-    // The label is byte-for-byte the shared composer's face — the session
-    // never re-cases or re-spells one.
+    // The label is byte-for-byte the shared composer's face, filtered to
+    // the ids kSetupRulesRows names — the session never re-cases or
+    // re-spells one, and never invents a row id of its own.
     const og::ui::MatchRulesInputs rules{&save_, true, true, difficulty_, true};
-    const std::vector<og::ui::MatchRuleFace> faces =
-        og::ui::match_rules_faces(rules);
+    std::vector<og::ui::MatchRuleFace> faces;
+    for (const og::ui::MatchRuleFace& face : og::ui::match_rules_faces(rules)) {
+        if (std::find(og::ui::kSetupRulesRows.begin(),
+                      og::ui::kSetupRulesRows.end(),
+                      face.id) != og::ui::kSetupRulesRows.end()) {
+            faces.push_back(face);
+        }
+    }
     ASSERT_EQ(faces.size(), session.page().rows.size());
     for (std::size_t i = 0; i < faces.size(); ++i) {
         EXPECT_EQ(faces[i].id, session.page().rows[i].base.id);
@@ -1355,8 +1437,6 @@ TEST_F(MatchSetupSessionTest, rules_rows_are_the_shared_formatters_upper_cased_w
 
     // EVERY value of EVERY wheel fits "label - note" in 42 glyphs.
     for (std::size_t r = 0; r < session.page().rows.size(); ++r) {
-        if (session.page().rows[r].knob == Knob::Difficulty)
-            continue;  // the session stores no difficulty; swept below
         for (int step = 0; step < 6; ++step) {
             const MatchSetupSession::Row& row = session.page().rows[r];
             EXPECT_LE(row.base.label.size() + 3 + row.base.note.size(), 42u)
@@ -1364,110 +1444,18 @@ TEST_F(MatchSetupSessionTest, rules_rows_are_the_shared_formatters_upper_cased_w
             ASSERT_EQ(Kind::Turned, session.choose(r, +1, inputs()).kind);
         }
     }
-    for (difficulty_ = 0; difficulty_ < DIFFICULTY_SETTINGS; ++difficulty_) {
-        session.refetch(inputs());
-        const int at = row_index(session, "difficulty");
-        ASSERT_GE(at, 0);
-        const MatchSetupSession::Row& row =
-            session.page().rows[static_cast<std::size_t>(at)];
-        EXPECT_LE(row.base.label.size() + 3 + row.base.note.size(), 42u)
-            << row.base.label;
-    }
-    difficulty_ = 0;
 
-    // CROSS CONTROL is a networked-only row (WP2's predicate, not ours).
+    // CROSS CONTROL is not a wizard row at all any more, networked or not.
     networked_ = false;
     session.refetch(inputs());
     EXPECT_EQ(-1, row_index(session, "cross_control"));
-    EXPECT_EQ(8u, session.page().rows.size());
+    EXPECT_EQ(2u, session.page().rows.size());
 }
 
-// 13. The reverse step: one entry point, choose(row, -1), over every wheel.
-TEST_F(MatchSetupSessionTest, rules_reverse_step_walks_every_wheel_backward)
-{
-    register_book(kSoccerKnobs);
-    networked_ = true;
-    MatchSetupSession session(save_);
-    ASSERT_TRUE(session.open(inputs()));
-    ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Rules, inputs()).kind);
-
-    // Forward then back restores the save field, on every cycler row.
-    for (std::size_t r = 0; r < session.page().rows.size(); ++r) {
-        if (session.page().rows[r].knob == Knob::Difficulty)
-            continue;
-        const std::uint64_t before = og::ui::match_settings_fingerprint(save_);
-        const short gold_before = save_.infinite_gold;
-        const short cross_before = save_.cross_control;
-        ASSERT_EQ(Kind::Turned, session.choose(r, +1, inputs()).kind);
-        ASSERT_EQ(Kind::Turned, session.choose(r, -1, inputs()).kind);
-        EXPECT_EQ(before, og::ui::match_settings_fingerprint(save_))
-            << session.page().rows[r].base.id;
-        EXPECT_EQ(gold_before, save_.infinite_gold);
-        EXPECT_EQ(cross_before, save_.cross_control);
-    }
-
-    // A full backward lap equals the forward lap reversed.
-    const int at = row_index(session, "respawns");
-    ASSERT_GE(at, 0);
-    std::vector<short> forward;
-    for (int i = 0; i < 4; ++i) {
-        ASSERT_EQ(Kind::Turned,
-                  session.choose(static_cast<std::size_t>(at), +1, inputs()).kind);
-        forward.push_back(save_.respawn_mode);
-    }
-    std::vector<short> backward;
-    for (int i = 0; i < 4; ++i) {
-        ASSERT_EQ(Kind::Turned,
-                  session.choose(static_cast<std::size_t>(at), -1, inputs()).kind);
-        backward.push_back(save_.respawn_mode);
-    }
-    std::vector<short> expected(forward.rbegin(), forward.rend());
-    expected.erase(expected.begin());
-    expected.push_back(forward.back());
-    EXPECT_EQ(expected, backward);
-
-    // An off-wheel value never returns, so the bound leaves it exactly where
-    // the forward cycler's own rejoin puts it.
-    save_.respawn_mode = 9;
-    ASSERT_EQ(Kind::Turned,
-              session.choose(static_cast<std::size_t>(at), -1, inputs()).kind);
-    SaveData probe;
-    probe.respawn_mode = 9;
-    og::ui::cycle_respawn_mode(probe);
-    EXPECT_EQ(probe.respawn_mode, save_.respawn_mode);
-}
-
-// 14. DIFFICULTY is SESSION state: the row answers a VALUE and the session
-// stores nothing.
-TEST_F(MatchSetupSessionTest, difficulty_row_answers_set_difficulty_without_touching_the_session)
-{
-    register_book(kSoccerKnobs);
-    difficulty_ = 1;
-    MatchSetupSession session(save_);
-    ASSERT_TRUE(session.open(inputs()));
-    ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Rules, inputs()).kind);
-    const int at = row_index(session, "difficulty");
-    ASSERT_GE(at, 0);
-
-    const std::string before =
-        session.page().rows[static_cast<std::size_t>(at)].base.label;
-    MatchSetupSession::Outcome out =
-        session.choose(static_cast<std::size_t>(at), +1, inputs());
-    EXPECT_EQ(Kind::SetDifficulty, out.kind);
-    EXPECT_EQ(2, out.difficulty);
-    EXPECT_EQ(1, difficulty_) << "the CALLER owns the value";
-    EXPECT_EQ(before, session.page().rows[static_cast<std::size_t>(at)].base.label)
-        << "the face moves only once the caller hands the value back";
-
-    out = session.choose(static_cast<std::size_t>(at), -1, inputs());
-    EXPECT_EQ(Kind::SetDifficulty, out.kind);
-    EXPECT_EQ((1 + DIFFICULTY_SETTINGS - 1) % DIFFICULTY_SETTINGS,
-              out.difficulty);
-
-    difficulty_ = 2;
-    session.refetch(inputs());
-    EXPECT_NE(before, session.page().rows[static_cast<std::size_t>(at)].base.label);
-}
+// 13 and 14 retired with R2-3. The two surviving wheels' reverse step is
+// pinned by MatchSetupRules.time_limit_wheel_faces / score_wheel_reverses
+// and by the SDL cycler ladder; DIFFICULTY is a Base Camp door again, so
+// the session has no difficulty arm to pin.
 
 // 15. The joiner grammar: cut the row, print the line.
 TEST_F(MatchSetupSessionTest, joiner_steps_cut_rows_and_print_lines)
@@ -1483,47 +1471,28 @@ TEST_F(MatchSetupSessionTest, joiner_steps_cut_rows_and_print_lines)
     EXPECT_EQ(std::string(og::ui::kHostSetsForEveryoneCaption),
               joiner.page().lines.back());
 
+    // R2-3 verbatim: the joiner's RULES is the caption and the ONE packed
+    // line the two scenario knobs make, and zero rows. The joiner's sight
+    // of CROSS CONTROL is the Base Camp DIFFICULTY door, read-only.
     ASSERT_EQ(Kind::Advanced, joiner.goto_step(Step::Rules, inputs(false)).kind);
-    ASSERT_FALSE(joiner.page().lines.empty());
-    EXPECT_EQ(std::string(og::ui::kHostSetsForEveryoneCaption),
-              joiner.page().lines[0]);
-    // A fact this step carries as a ROW is never ALSO a line on the same
-    // step (the lead's read-back of the wave-3 shots: the joiner's RULES
-    // printed `CROSS CONTROL: OWN` as a line AND as the row right under
-    // it). So the recap is the four PACKED lines the shared formatter
-    // answers for the set that is NOT on a row.
-    const og::ui::MatchRulesInputs packed{&save_, true, true, difficulty_,
-                                          false};
-    const std::vector<std::string> recap =
-        og::ui::format_match_rules_lines(packed);
-    ASSERT_EQ(4u, recap.size())
-        << "score/time, respawns/delay, permadeath/generators, "
-           "difficulty/gold — and no fifth line for the row";
-    ASSERT_EQ(recap.size() + 1, joiner.page().lines.size());
-    for (std::size_t i = 0; i < recap.size(); ++i)
-        EXPECT_EQ(recap[i], joiner.page().lines[i + 1]);
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kHostSetsForEveryoneCaption),
+                  "SCORE: MAP  TIME LIMIT: MAP"}),
+              joiner.page().lines);
+    EXPECT_TRUE(joiner.page().rows.empty());
     for (const std::string& line : joiner.page().lines)
     {
         EXPECT_EQ(std::string::npos, line.find("CROSS CONTROL"))
-            << "CROSS CONTROL is a ROW on this step, so it is not a line "
-               "too: '" << line << "'";
+            << "CROSS CONTROL left the wizard with the other six "
+               "DIFFICULTY knobs: '" << line << "'";
     }
-    ASSERT_EQ(1u, joiner.page().rows.size());
-    EXPECT_EQ("cross_control", joiner.page().rows[0].base.id);
-    EXPECT_EQ(Extra::None, joiner.page().rows[0].extra);
-    EXPECT_EQ(og::ui::RowState::Disabled, joiner.page().rows[0].state);
-    const MatchSetupSession::Outcome refused =
-        joiner.choose(0, +1, inputs(false));
-    EXPECT_EQ(Kind::Refused, refused.kind);
-    EXPECT_EQ(joiner.page().rows[0].base.label, refused.message);
 
-    // Outside a networked lobby the read-only row is not there either —
-    // and the lines do not grow one back: CROSS CONTROL is a networked
-    // fact, so off the lobby it is neither row nor line.
+    // Outside a networked lobby the step reads exactly the same: the two
+    // scenario knobs are not networked facts.
     networked_ = false;
     joiner.refetch(inputs(false));
     EXPECT_TRUE(joiner.page().rows.empty());
-    EXPECT_EQ(recap.size() + 1, joiner.page().lines.size());
+    EXPECT_EQ(2u, joiner.page().lines.size());
 
     networked_ = true;
     ASSERT_EQ(Kind::Advanced, joiner.goto_step(Step::Match, inputs(false)).kind);
@@ -1760,7 +1729,7 @@ std::string prompt_item_number(const std::vector<std::string>& lines,
 }
 
 // A scripted TerminalMatchSetupIo: canned prompt answers (EOF after the
-// script runs dry), recorded prompts, notices, autosaves and difficulties.
+// script runs dry), recorded prompts, notices and autosaves.
 // The census is the REAL one, over a MatchStage the fixture owns exactly as
 // each terminal client owns one for its page loop.
 struct ScriptedSetupIo {
@@ -1779,7 +1748,6 @@ struct ScriptedSetupIo {
     bool applied_replay_arm = false;
     int autosaves = 0;
     int difficulty = 0;
-    std::vector<int> difficulties;
     SaveData* save = nullptr;
     og::server::MatchStage* stage = nullptr;
 
@@ -1814,10 +1782,6 @@ struct ScriptedSetupIo {
             return headless_level_data_hooks();
         };
         out.autosave = [this] { ++autosaves; };
-        out.set_difficulty = [this](int value) {
-            difficulties.push_back(value);
-            difficulty = value;
-        };
         out.difficulty = [this] { return difficulty; };
         out.census = [this](std::array<int, 4>& counts,
                             og::ui::ScenarioRosterReport& report) {
@@ -1863,10 +1827,9 @@ TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
         "3",    // TEAMS: Next -> RULES
         "1",    // RULES: SCORE forward
         "1-",   // RULES: SCORE back
-        "7",    // RULES: DIFFICULTY -> SetDifficulty
-        "9",    // RULES: Next -> MATCH
+        "3",    // RULES: Next -> MATCH
         "3",    // MATCH: Prev -> RULES
-        "9-",   // a stepper is not a wheel
+        "3-",   // a stepper is not a wheel
         "x",    // not a number at all
         "0",    // back out
     };
@@ -1887,12 +1850,13 @@ TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
     EXPECT_EQ((std::vector<std::string>{
                   "SETUP: GAME", "SETUP: ARENA", "SETUP: TEAMS",
                   "SETUP: RULES", "SETUP: RULES", "SETUP: RULES",
-                  "SETUP: RULES", "SETUP: MATCH", "SETUP: RULES",
-                  "SETUP: RULES", "SETUP: RULES"}),
+                  "SETUP: MATCH", "SETUP: RULES", "SETUP: RULES",
+                  "SETUP: RULES"}),
               titles);
 
     // The prompt label names the range and both ways to leave a wheel.
-    EXPECT_EQ("Setup # [1-9] (0 = back, N- steps a wheel back): ",
+    // GAME: seven game pages, RANDOM, Next: TEAMS, Back.
+    EXPECT_EQ("Setup # [1-10] (0 = back, N- steps a wheel back): ",
               scripted.prompts[0].label);
 
     // The TEAMS prompt's navigation items are the tab strip's projection.
@@ -1901,23 +1865,19 @@ TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
     EXPECT_NE(std::string::npos, teams.find("   4. Prev: ARENA\n")) << teams;
     EXPECT_NE(std::string::npos, teams.find("   5. Back\n")) << teams;
 
-    // The notices, in order: the gated level set, the two SCORE toasts and
-    // the two refusals.
+    // The notices, in order: the gated level set and the two refusals. A
+    // knob turn says NOTHING any more (R2-1): the redrawn face is the
+    // answer.
     EXPECT_EQ((std::vector<std::string>{
-                  "Level set to THE PITCH.", "Score to 1.",
-                  "Score: the map's own.", "Invalid setup row.",
+                  "Level set to THE PITCH.", "Invalid setup row.",
                   "Invalid setup row."}),
               scripted.notices);
     EXPECT_EQ(0, static_cast<int>(save_.ctf_capture_limit))
         << "forward then back leaves the wheel where it started";
 
-    // SetDifficulty hands the CLIENT the value; the session stores nothing.
-    EXPECT_EQ((std::vector<int>{og::ui::cycle_difficulty(0)}),
-              scripted.difficulties);
-
     // The autosave tail: the arena deal at the first prompt (scen 300 has
     // never been dealt) and one per turned knob. The 820 deal that follows
-    // moves no band — the 300 deal already lifted every one of them — so it
+    // moves no band -- the 300 deal already lifted every one of them -- so it
     // banks the memo without an autosave.
     EXPECT_EQ(3, scripted.autosaves);
 }
@@ -1950,7 +1910,7 @@ TEST_F(MatchSetupSessionTest, terminal_driver_deals_the_campaign_word_before_the
     ASSERT_EQ(3u, scripted.prompts.size());
     EXPECT_EQ("SETUP: TEAMS", scripted.prompts[2].title);
     EXPECT_NE(std::string::npos,
-              scripted.page_text(2).find("FILL: STRONG - none to brutal"))
+              scripted.page_text(2).find("FILL: STRONG - weak to brutal"))
         << scripted.page_text(2);
     EXPECT_EQ(og::sim::kFillStrong, save_.fill[1]);
     EXPECT_EQ(1, scripted.autosaves) << "one deal, nothing else";
@@ -1970,7 +1930,7 @@ TEST_F(MatchSetupSessionTest, terminal_driver_deals_the_campaign_word_before_the
     ASSERT_EQ(3u, fair.prompts.size());
     EXPECT_EQ(300, fair.applied_level);
     EXPECT_NE(std::string::npos,
-              fair.page_text(2).find("FILL: FAIR - none to brutal"))
+              fair.page_text(2).find("FILL: FAIR - weak to brutal"))
         << fair.page_text(2);
     EXPECT_EQ(1, fair.autosaves);
 
@@ -2001,10 +1961,10 @@ TEST_F(MatchSetupSessionTest, terminal_driver_joiner_face_and_classic_guard)
     joiner.stage = &stage;
     joiner.host = false;
     joiner.answers = {
-        "5",    // GAME: SOCCER -> ARENA (pages are open to every machine)
-        "1",    // a level row: refused by the host gate, no advance
-        "5",    // Next -> TEAMS (four level rows, then the steppers)
-        "1-",   // the joiner's LINEUP door is not a wheel
+        "5",           // GAME: SOCCER -> ARENA (pages open to every machine)
+        "1",           // a level row: refused by the host gate, no advance
+        "@Next: TEAMS",  // by LABEL: the row count is the book's business
+        "1-",          // the joiner's LINEUP door is not a wheel
         "0",
     };
     og::ui::run_terminal_match_setup(save_, joiner.io());
@@ -2027,7 +1987,12 @@ TEST_F(MatchSetupSessionTest, terminal_driver_joiner_face_and_classic_guard)
                   std::string(og::ui::kHostSetsForEveryoneCaption)))
         << joiner.page_text(3);
 
-    // A classic campaign gets one line and no prompt at all.
+    // A classic campaign never reaches the driver by any player path (the
+    // terminal camp calls the wizard only on a versus campaign), so the
+    // driver's own guard says nothing at all: it only traces. The
+    // `setup open_refused` TRACE cannot be read here for the reason the
+    // manifest test above states -- a headless unit group links og_game,
+    // compiled WITHOUT TESTING -- so what is pinned is the consequence.
     save_.current_campaign = "gladiator";
     ScriptedSetupIo classic;
     classic.save = &save_;
@@ -2035,9 +2000,8 @@ TEST_F(MatchSetupSessionTest, terminal_driver_joiner_face_and_classic_guard)
     classic.answers = {"1"};
     og::ui::run_terminal_match_setup(save_, classic.io());
     EXPECT_TRUE(classic.prompts.empty());
-    EXPECT_EQ((std::vector<std::string>{
-                  std::string(og::ui::kSetupClassicGuardMessage)}),
-              classic.notices);
+    EXPECT_TRUE(classic.notices.empty())
+        << "no prompt, no notice: the refusal is a trace";
 }
 
 // 23. The shared staged census: one ensure_current, two answers.
@@ -2135,7 +2099,7 @@ TEST_F(MatchSetupSessionTest, terminal_model_projects_lines_items_and_reverse_ma
     }
 
     ASSERT_EQ(5u, model.items.size());
-    EXPECT_EQ("FILL: STRONG - none to brutal", model.items[0].label);
+    EXPECT_EQ("FILL: STRONG - weak to brutal", model.items[0].label);
     EXPECT_EQ("LINEUP - fill per team, map units  >", model.items[1].label);
     EXPECT_EQ("Next: RULES", model.items[2].label);
     EXPECT_EQ("Prev: ARENA", model.items[3].label);
@@ -2414,10 +2378,10 @@ TEST_F(MatchSetupSessionTest, terminal_driver_doors_point_at_their_pages)
     scripted.save = &save_;
     scripted.stage = &stage;
     scripted.answers = {
-        "8",  // GAME: seven game pages, then Next: TEAMS
+        "9",  // GAME: seven game pages, RANDOM, then Next: TEAMS
         "2",  // TEAMS: the LINEUP door
         "3",  // TEAMS: Next -> RULES
-        "9",  // RULES: eight rule rows, then Next: MATCH
+        "3",  // RULES: two rule rows, then Next: MATCH
         "1",  // MATCH: the VIEW LEVEL door
         "2",  // MATCH: GO
         "0",
@@ -2435,19 +2399,17 @@ TEST_F(MatchSetupSessionTest, terminal_driver_doors_point_at_their_pages)
               scripted.notices);
 }
 
-// The two session-only knobs bank nothing. INFINITE GOLD and CROSS CONTROL
-// never ride in the GTL file, so turning one must not autosave the company
-// -- the rule text_picker.cpp's ToggleInfiniteGold case has always applied.
-// The SCORE turn that follows proves the guard is selective, not blanket.
-TEST_F(MatchSetupSessionTest, terminal_driver_skips_the_autosave_for_session_only_knobs)
+// Every wizard knob rides the .gtl now (SIDES/FILL/BandFill write fill[],
+// SCORE and TIME LIMIT their own fields), so the driver banks after every
+// turn -- the session-only knobs left with R2-3. A four-side arena, one
+// turn of each of the four wheels.
+TEST_F(MatchSetupSessionTest, terminal_driver_autosaves_after_every_turn)
 {
     register_book(kSoccerKnobs);
-    save_.scen_num = 820;
+    save_.scen_num = 822;
     save_.numplayers = 1;
     put(save_, 0, 0, true);
     save_.team_size = 1;
-    save_.arena_lineup_dealt_campaign = "modes";
-    save_.arena_lineup_dealt_scen = 820;  // banked: the deal autosaves nothing
 
     og::server::MatchStage stage({
         .networked = false,
@@ -2457,17 +2419,20 @@ TEST_F(MatchSetupSessionTest, terminal_driver_skips_the_autosave_for_session_onl
     ScriptedSetupIo scripted;
     scripted.save = &save_;
     scripted.stage = &stage;
-    scripted.answers = {"@Next", "@Next", "@INFINITE GOLD", "@SCORE", "0"};
+    scripted.answers = {"@Next: TEAMS", "@SIDES", "@FILL", "@Next: RULES",
+                        "@SCORE", "@TIME LIMIT", "0"};
     og::ui::run_terminal_match_setup(save_, scripted.io());
 
     ASSERT_EQ(scripted.answers.size(), scripted.cursor)
         << "the loop must consume every scripted answer";
-    EXPECT_EQ(1, static_cast<int>(save_.infinite_gold))
-        << "the knob still turns";
     EXPECT_EQ(1, static_cast<int>(save_.ctf_capture_limit))
         << "the SCORE wheel still steps";
-    EXPECT_EQ(1, scripted.autosaves)
-        << "one autosave, for SCORE alone: INFINITE GOLD is session-only";
+    EXPECT_EQ(3600, static_cast<int>(save_.time_limit))
+        << "the TIME LIMIT wheel still steps";
+    EXPECT_EQ(5, scripted.autosaves)
+        << "the 822 deal plus one per turn";
+    EXPECT_TRUE(scripted.notices.empty())
+        << "a turn says nothing: the redrawn face is the answer";
 }
 
 // The degraded preview reaches the prompt. The census writes its report on
@@ -2604,4 +2569,258 @@ TEST_F(MatchSetupSessionTest, the_census_cell_reads_one_rule_on_every_surface)
     staged_ = nullptr;
     health_ = Health::None;
     counts_ = {};
+}
+
+
+// --- Round 2 (PR #307): fix B, the [CLEARED] seam, the Acted level ------
+
+// A company the previous build collapsed carries the memo, so no re-deal
+// runs and fix B cannot see the trap: SIDES stays at the two bands that are
+// on. That is the stated residual (R2-R5) for a CURRENT-version file; the
+// v19 -> v20 bump is what heals the files that already exist.
+TEST(MatchSetupRules, fill_from_the_r1_collapsed_state_respects_the_stamped_memo)
+{
+    SaveData save;
+    save.current_campaign = "modes";
+    save.scen_num = 822;
+    save.fill = {kWeak, kWeak, kNone, kNone};
+    save.arena_lineup_dealt_campaign = "modes";
+    save.arena_lineup_dealt_scen = 822;
+
+    EXPECT_FALSE(og::ui::deal_arena_lineup_fill(save, kFourSides, kStrong))
+        << "the memo is stamped: this cursor never deals again";
+    EXPECT_EQ("SIDES: 2", sides(save, 0));
+
+    turn_fill(save, 0);
+    EXPECT_EQ((Fills{kFair, kFair, kNone, kNone}), save.fill)
+        << "two bands are on, so the FILL turn writes those two";
+    EXPECT_EQ("SIDES: 2", sides(save, 0));
+
+    // The way out the player has without the format bump.
+    turn_sides(save, 0);
+    EXPECT_EQ((Fills{kFair, kFair, kFair, kNone}), save.fill);
+    EXPECT_EQ("SIDES: 3", sides(save, 0));
+}
+
+// The note names the WHEEL, not the face: an off-wheel face (NONE, MIXED)
+// rejoins at WEAK, so the row keeps saying "weak to brutal" on every face.
+// The LINEUP band wheel keeps its own note, which still includes NONE.
+TEST_F(MatchSetupSessionTest, fill_note_is_the_wheel_not_the_face)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 822;
+    MatchSetupSession session(save_);
+    ASSERT_TRUE(session.open(inputs()));
+    ASSERT_EQ(Kind::Advanced,
+              session.goto_step(Step::Teams, inputs(true, 0b1111)).kind);
+
+    const std::vector<std::pair<std::array<short, 4>, const char*>> faces = {
+        {{og::sim::kFillStrong, og::sim::kFillStrong, og::sim::kFillStrong,
+          og::sim::kFillStrong}, "FILL: STRONG"},
+        {{0, 0, 0, 0}, "FILL: NONE"},
+        {{0, og::sim::kFillWeak, og::sim::kFillStrong, 0}, "FILL: MIXED"},
+    };
+    for (const auto& [fills, face] : faces) {
+        save_.fill = fills;
+        session.refetch(inputs(true, 0b1111));
+        const int at = row_index(session, "fill");
+        ASSERT_GE(at, 0) << face;
+        const MatchSetupSession::Row& row =
+            session.page().rows[static_cast<std::size_t>(at)];
+        EXPECT_EQ(face, row.base.label);
+        EXPECT_EQ(std::string(og::ui::kMatchFillNote), row.base.note)
+            << "the note is the wheel's, whatever the face reads";
+    }
+
+    // A BAND fixture's row is the LINEUP wheel, which keeps NONE.
+    og::script::clear_pack_scripts();
+    register_book(R"({ teams = false, fill = "band", arena_page = "soccer" })");
+    save_.fill = {};
+    MatchSetupSession band(save_);
+    ASSERT_TRUE(band.open(inputs()));
+    ASSERT_EQ(Kind::Advanced, band.goto_step(Step::Teams, inputs()).kind);
+    const int band_at = row_index(band, "fill");
+    ASSERT_GE(band_at, 0);
+    EXPECT_EQ(std::string(og::ui::kLineupFillNote),
+              band.page().rows[static_cast<std::size_t>(band_at)].base.note);
+}
+
+// R2-5 / D3: a book ACTION that answered with a level routes through the
+// surface's existing gated level tail exactly as a level ROW does -- and
+// never arms a replay (#207: only level rows arm).
+TEST_F(MatchSetupSessionTest, acted_row_with_a_level_answers_set_level_and_never_arms_replay)
+{
+    register_book(kSoccerKnobs);
+    MatchSetupSession session(save_);
+    ASSERT_TRUE(session.open(inputs()));
+    ASSERT_EQ(8u, session.page().rows.size())
+        << "seven game pages and the host's RANDOM row, appended LAST";
+    EXPECT_EQ("random", session.page().rows[7].base.id);
+
+    const MatchSetupSession::Outcome out = session.choose(7, +1, inputs());
+    EXPECT_EQ(Kind::SetLevel, out.kind);
+    EXPECT_EQ(822, out.level);
+    EXPECT_FALSE(out.replay_arm);
+    EXPECT_TRUE(out.message.empty())
+        << "the engine's 'Level set to' is the click's one answer";
+    EXPECT_EQ(Step::Game, session.step())
+        << "the surface's level tail advances, not choose()";
+}
+
+// The [CLEARED] seam's second consequence, pinned rather than incidental:
+// `cleared` also feeds Row::replay_arms(), so on a versus campaign no
+// wizard level row can arm a replay -- while the SAME row read through a
+// bare CampaignPickerSession still does.
+TEST_F(MatchSetupSessionTest, versus_level_rows_never_arm_replay_in_the_wizard)
+{
+    register_book(kSoccerKnobs);
+    save_.add_level_completed("modes", 821);
+    save_.scen_num = 820;
+    MatchSetupSession session(save_);
+    ASSERT_TRUE(session.open(inputs(), "soccer"));
+    ASSERT_EQ(Step::Arena, session.step());
+    ASSERT_GE(session.page().rows.size(), 2u);
+    ASSERT_EQ(821, session.page().rows[1].base.level);
+    EXPECT_FALSE(session.page().rows[1].base.cleared);
+    EXPECT_FALSE(session.page().rows[1].base.replay_arms());
+
+    const MatchSetupSession::Outcome out = session.choose(1, +1, inputs());
+    EXPECT_EQ(Kind::SetLevel, out.kind);
+    EXPECT_EQ(821, out.level);
+    EXPECT_FALSE(out.replay_arm);
+
+    // The same book, read raw: the engine's own decoration is untouched.
+    og::ui::CampaignPickerSession raw(save_);
+    ASSERT_TRUE(raw.open_at("soccer"));
+    ASSERT_GE(raw.page().rows.size(), 2u);
+    ASSERT_EQ(821, raw.page().rows[1].level);
+    EXPECT_TRUE(raw.page().rows[1].cleared);
+    EXPECT_TRUE(raw.page().rows[1].replay_arms());
+}
+
+// R2-4: Multiplayer Arenas carries no progress vocabulary, so the wizard
+// blanks the engine's [CLEARED] tail -- and only the wizard's, so every
+// other campaign keeps it.
+TEST_F(MatchSetupSessionTest, cleared_arenas_wear_no_tail_in_the_wizard_but_the_raw_book_does)
+{
+    register_book(kSoccerKnobs);
+    save_.add_level_completed("modes", 821);
+    save_.scen_num = 820;
+    MatchSetupSession session(save_);
+    ASSERT_TRUE(session.open(inputs(), "soccer"));
+    ASSERT_GE(session.page().rows.size(), 2u);
+
+    const std::string cleared_row =
+        og::ui::campaign_picker_row_text(session.page().rows[1].base, 72);
+    EXPECT_EQ(std::string::npos, cleared_row.find("[CLEARED]")) << cleared_row;
+    const std::string current_row =
+        og::ui::campaign_picker_row_text(session.page().rows[0].base, 72);
+    EXPECT_NE(std::string::npos, current_row.find("[CURRENT]"))
+        << "[CURRENT] stays: it is the only mark that says which arena is "
+           "armed -- " << current_row;
+
+    og::ui::CampaignPickerSession raw(save_);
+    ASSERT_TRUE(raw.open_at("soccer"));
+    ASSERT_GE(raw.page().rows.size(), 2u);
+    EXPECT_NE(std::string::npos,
+              og::ui::campaign_picker_row_text(raw.page().rows[1], 72)
+                  .find("[CLEARED]"));
+}
+
+// R2-5 / R2-D15: the terminal driver routes an Acted level through the
+// camp's own convention -- a level ROW speaks its row label, an ACTION
+// speaks the LOADED title.
+TEST_F(MatchSetupSessionTest, terminal_driver_routes_an_acted_level_through_the_gated_tail)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 300;
+    save_.numplayers = 1;
+    put(save_, 0, 0, true);
+    save_.team_size = 1;
+    save_.arena_lineup_dealt_campaign = "modes";
+    save_.arena_lineup_dealt_scen = 300;
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save_,
+    });
+    ScriptedSetupIo scripted;
+    scripted.save = &save_;
+    scripted.stage = &stage;
+    std::vector<int> applied;
+    scripted.answers = {
+        "5",               // GAME: SOCCER -> ARENA
+        "2",               // a level ROW: THE MUDBOWL (821)
+        "@Prev: ARENA",
+        "@RANDOM ARENA",   // an ACTION answering a level: 823
+        "@Prev: ARENA",
+        "@Prev: GAME",
+        "@RANDOM",         // the root's action: 822
+        "0",
+    };
+    og::ui::TerminalMatchSetupIo io = scripted.io();
+    const std::function<void(int, bool)> inner = io.base.apply_level;
+    io.base.apply_level = [&](int level, bool replay_arm) {
+        applied.push_back(level);
+        inner(level, replay_arm);
+    };
+    og::ui::run_terminal_match_setup(save_, io);
+
+    ASSERT_EQ(scripted.answers.size(), scripted.cursor)
+        << "the loop must consume every scripted answer";
+    EXPECT_EQ((std::vector<int>{821, 823, 822}), applied);
+    EXPECT_EQ(822, static_cast<int>(save_.scen_num));
+
+    const auto loaded_title = [](int level) {
+        std::string title;
+        (void)og::data::load_scenario_title_with_error(
+            ("scen" + std::to_string(level)).c_str(), title);
+        return title;
+    };
+    EXPECT_EQ((std::vector<std::string>{
+                  "Level set to THE MUDBOWL.",
+                  og::ui::campaign_level_set_message(loaded_title(823)),
+                  og::ui::campaign_level_set_message(loaded_title(822))}),
+              scripted.notices);
+    EXPECT_NE("Level set to BONEYARD CUP.", scripted.notices[1])
+        << "the action speaks the LOADED title, the row its own label";
+
+    // Every set lands on TEAMS, the way a level row's set does.
+    ASSERT_FALSE(scripted.prompts.empty());
+    EXPECT_EQ("SETUP: TEAMS", scripted.prompts.back().title);
+}
+
+// R2-D12's message half: a no-level Acted row's Lua voice reaches the
+// terminal notice (it used to be dropped -- the Acted arm writes
+// Outcome::message and the driver read the session's own slot).
+TEST_F(MatchSetupSessionTest, terminal_driver_prints_the_books_voice_for_a_no_level_action)
+{
+    og::script::register_pack_script(
+        {kSetupPack, "matchsetup/scripts/actions.lua", kActionBook});
+    save_.scen_num = 820;
+    save_.numplayers = 1;
+    put(save_, 0, 0, true);
+    save_.team_size = 1;
+    save_.arena_lineup_dealt_campaign = "modes";
+    save_.arena_lineup_dealt_scen = 820;
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save_,
+    });
+    ScriptedSetupIo scripted;
+    scripted.save = &save_;
+    scripted.stage = &stage;
+    scripted.answers = {"1", "0"};
+    og::ui::run_terminal_match_setup(save_, scripted.io());
+
+    ASSERT_EQ(scripted.answers.size(), scripted.cursor);
+    EXPECT_EQ((std::vector<std::string>{"The dice land on THE PITCH."}),
+              scripted.notices);
+    EXPECT_EQ(820, static_cast<int>(save_.scen_num)) << "no level was carried";
+    ASSERT_EQ(2u, scripted.prompts.size());
+    EXPECT_EQ("SETUP: GAME", scripted.prompts[0].title);
+    EXPECT_EQ("SETUP: GAME", scripted.prompts[1].title);
 }

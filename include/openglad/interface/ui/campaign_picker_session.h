@@ -569,6 +569,26 @@ TerminalLevelSetGate terminal_level_set_gate(const TerminalCampaignPickerIo& io,
                                              bool closed, bool current,
                                              bool replay);
 
+// D3: an Acted outcome that carries a level (the action answered
+// `{ level = id }`) runs the SAME gated tail as a level-row click — host
+// gate first, then the closed-road check (missing file or the earned-roads
+// gate), then the already-here answer — so a scripted roll can never move
+// the cursor anywhere a click on a level row could not. On success the
+// ENGINE speaks ("Level set to <arena>." — the confirmation names something
+// playable) and the action's own message is dropped; a refused set speaks
+// the refusal first and then the Lua message, which keeps its slot only to
+// explain a roll that changed nothing. A terminal prints the two as two
+// notices because it has the room; the SDL toast is one slot, so its tails
+// compose them into a single line and drop a message that will not fit
+// (menu_screen_specs.cpp refusal_with_lua_message).
+//
+// The SETUP wizard's terminal driver calls it for the same reason the camp
+// does (R2-5): a RANDOM row is an action that answers with a level.
+void terminal_route_acted_level(SaveData& save,
+                                const TerminalCampaignPickerIo& io, int level,
+                                const std::string& toast,
+                                const std::function<void()>& refetch);
+
 // Drive the whole BOOK flow over `save` rooted at `page_id` — a camp page
 // row's door, and the only way into a book on a terminal ("" is the book's
 // root page, the door the transitional book-door composition opens). Back at

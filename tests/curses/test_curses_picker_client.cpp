@@ -2435,7 +2435,7 @@ TEST(CursesPickerClient, setup_flow_classic_guard_and_versus_difficulty_guard)
         f.client.handle_menu_item(PickerMenuId::TeamBuild, *difficulty);
         const std::string dump = f.t().dump();
         EXPECT_NE(
-            dump.find(std::string(og::ui::kSetupDifficultyVersusGuardMessage)),
+            dump.find("The fight's rules are on SETUP: RULES."),
             std::string::npos)
             << "on a versus campaign the rules live on SETUP: RULES:\n"
             << dump;

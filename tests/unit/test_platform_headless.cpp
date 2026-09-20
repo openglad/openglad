@@ -4034,8 +4034,7 @@ TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_c
     }
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
     EXPECT_NE(std::string::npos,
-              printed.find(
-                  std::string(og::ui::kSetupDifficultyVersusGuardMessage)))
+              printed.find("The fight's rules are on SETUP: RULES."))
         << "item 11 on a versus campaign must point at SETUP: RULES";
     EXPECT_EQ(std::string::npos, printed.find("=== Difficulty ==="))
         << "the guard path must never open the DIFFICULTY submenu";

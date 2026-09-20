@@ -34,40 +34,6 @@
 namespace og::ui {
 namespace {
 
-// The wheel bound for the backward walk below. No knob wheel in the game is
-// longer than five values; 16 is the slack that keeps a corrupt save from
-// spinning here forever.
-constexpr int kMaxWheelSteps = 16;
-
-// A wheel with no `dir` parameter still has to step backward, and a second
-// reversed table would be a twin of the forward one. So: walk the FORWARD
-// cycler and keep the value one step before it returns to where it started.
-// A value the wheel has no slot for never returns — the bound then leaves
-// the field on the forward cycler's OWN rejoin, which is exactly where a
-// single forward step would have put it.
-template <typename Value, typename Get, typename Step, typename Set>
-void reverse_by_walking(const Get& get, const Step& step, const Set& set)
-{
-    const Value start = get();
-    Value previous = start;
-    Value rejoin = start;
-    bool returned = false;
-    for (int i = 0; i < kMaxWheelSteps; ++i)
-    {
-        step();
-        const Value now = get();
-        if (i == 0)
-            rejoin = now;
-        if (now == start)
-        {
-            returned = true;
-            break;
-        }
-        previous = now;
-    }
-    set(returned ? previous : rejoin);
-}
-
 std::string upper(std::string text)
 {
     uppercase(text);
@@ -96,20 +62,6 @@ std::string_view rules_note(std::string_view id)
         return kSetupNoteScore;
     if (id == kRulesRowTime)
         return kSetupNoteTime;
-    if (id == kRulesRowRespawns)
-        return kSetupNoteRespawns;
-    if (id == kRulesRowSpawnDelay)
-        return kSetupNoteSpawnDelay;
-    if (id == kRulesRowPermadeath)
-        return kSetupNotePermadeath;
-    if (id == kRulesRowGenerators)
-        return kSetupNoteGenerators;
-    if (id == kRulesRowDifficulty)
-        return kSetupNoteDifficulty;
-    if (id == kRulesRowInfiniteGold)
-        return kSetupNoteInfiniteGold;
-    if (id == kRulesRowCrossControl)
-        return kSetupNoteCrossControl;
     return {};
 }
 
@@ -120,20 +72,6 @@ MatchSetupSession::Row::Knob rules_knob(std::string_view id)
         return Knob::Score;
     if (id == kRulesRowTime)
         return Knob::Time;
-    if (id == kRulesRowRespawns)
-        return Knob::Respawns;
-    if (id == kRulesRowSpawnDelay)
-        return Knob::SpawnDelay;
-    if (id == kRulesRowPermadeath)
-        return Knob::Permadeath;
-    if (id == kRulesRowGenerators)
-        return Knob::Generators;
-    if (id == kRulesRowDifficulty)
-        return Knob::Difficulty;
-    if (id == kRulesRowInfiniteGold)
-        return Knob::InfiniteGold;
-    if (id == kRulesRowCrossControl)
-        return Knob::CrossControl;
     return Knob::None;
 }
 
@@ -173,11 +111,6 @@ std::string_view MatchSetupSession::step_word(Step step)
 const SaveData& MatchSetupSession::read(const Inputs& inputs) const
 {
     return inputs.save != nullptr ? *inputs.save : save_;
-}
-
-std::string MatchSetupSession::take_message()
-{
-    return std::exchange(message_, std::string());
 }
 
 void MatchSetupSession::fetch_knobs()
@@ -445,19 +378,34 @@ void MatchSetupSession::compose(const Inputs& inputs, Window window)
 // wizard. The campaign wrote them; the wizard only frames them.
 void MatchSetupSession::compose_book_page(const Inputs& inputs)
 {
-    (void)inputs;
+    const SaveData& save = read(inputs);
     const CampaignPickerSession::DecoratedPage& book = book_.page();
     page_.lines = book.lines;
     for (const CampaignPickerSession::Row& row : book.rows)
     {
         Row out;
         out.base = row;
+        // The wizard's [CLEARED] seam (R2-4), through the ONE predicate:
+        // Multiplayer Arenas carries no progress vocabulary, and the
+        // MatchSetupSession is versus-only by construction (open() refuses
+        // a classic campaign), so every other campaign's book keeps its
+        // tail. [CURRENT] stays — it is the only mark that says which
+        // arena is armed.
+        //
+        // `cleared` ALSO feeds Row::replay_arms()
+        // (campaign_picker_session.h), read by choose(), so on a versus
+        // campaign no wizard level row ever arms a replay. That is correct
+        // — versus has no earned roads and the campaign sets no `replay` —
+        // and it is PINNED, not incidental.
+        out.base.cleared = progress_marks_shown(save) && out.base.cleared;
         page_.rows.push_back(std::move(out));
     }
 }
 
 // The bookless ARENA list: every level of the mount in id order, with the
-// save's own CLEARED/CURRENT decoration.
+// save's CURRENT decoration, and CLEARED only where progress marks are
+// shown (R2-4 — never on a versus campaign, which is the only kind that
+// reaches this session).
 void MatchSetupSession::compose_manifest(const Inputs& inputs)
 {
     const SaveData& save = read(inputs);
@@ -468,7 +416,8 @@ void MatchSetupSession::compose_manifest(const Inputs& inputs)
         out.base.label = scenario_title_or_number(level);
         out.base.kind = CampaignPickerSession::Kind::Level;
         out.base.level = level;
-        out.base.cleared = save.is_level_completed(level);
+        out.base.cleared =
+            progress_marks_shown(save) && save.is_level_completed(level);
         out.base.current = static_cast<int>(save.scen_num) == level;
         out.base.available = true;
         page_.rows.push_back(std::move(out));
@@ -564,9 +513,11 @@ void MatchSetupSession::compose_teams(const Inputs& inputs)
         {
             // Team 1's own wheel, in the SAME word LINEUP uses for the same
             // knob — renaming it here would be a second vocabulary.
+            // ...and in that wheel's OWN note: the band wheel keeps NONE,
+            // the macro wheel does not (R2-2). One note per wheel.
             Row fill = plain_row(kSetupRowFill,
                                  format_lineup_fill_label(save.fill[0]),
-                                 kMatchFillNote,
+                                 kLineupFillNote,
                                  CampaignPickerSession::Kind::Action);
             fill.extra = Row::Extra::Cycler;
             fill.knob = Row::Knob::BandFill;
@@ -586,40 +537,42 @@ void MatchSetupSession::compose_rules(const Inputs& inputs)
     const SaveData& save = read(inputs);
     const MatchRulesInputs rules{&save, knobs_.score, knobs_.time,
                                  inputs.session_difficulty, inputs.networked};
+    // R2-3: RULES is the two scenario knobs and nothing else. The other
+    // seven faces the shared composer answers belong to the Base Camp
+    // DIFFICULTY door, which is back on the strip for every campaign; the
+    // MATCH step's recap still states all of them, because it states the
+    // whole match.
+    std::vector<MatchRuleFace> faces;
+    for (const MatchRuleFace& face : match_rules_faces(rules))
+    {
+        if (std::find(kSetupRulesRows.begin(), kSetupRulesRows.end(),
+                      face.id) != kSetupRulesRows.end())
+        {
+            faces.push_back(face);
+        }
+    }
+
     if (!inputs.is_host)
     {
-        // Cut the row, print the line (the established joiner grammar) —
-        // but a fact this step carries as a ROW is never ALSO a line on the
-        // same step. Networked, CROSS CONTROL stays a read-only row below,
-        // so the lines are composed without it: the same one formatter,
-        // asked for the set that is not already on screen. (The MATCH step
-        // has no rows at all and keeps all five lines.)
-        MatchRulesInputs line_rules = rules;
-        line_rules.networked = false;
+        // Cut the row, print the line (the established joiner grammar).
+        // The step carries no rows at all now, so there is no fact that
+        // could be a line AND a row on it.
         page_.lines.emplace_back(kHostSetsForEveryoneCaption);
-        for (std::string& line : format_match_rules_lines(line_rules))
+        for (std::string& line : format_match_rules_lines(faces))
             page_.lines.push_back(std::move(line));
-        if (inputs.networked)
-        {
-            // CROSS CONTROL stays a visible read-only row exactly as it is
-            // on the DIFFICULTY panel today.
-            for (const MatchRuleFace& face : match_rules_faces(rules))
-            {
-                if (face.id != kRulesRowCrossControl)
-                    continue;
-                Row row = plain_row(face.id, face.face,
-                                    rules_note(face.id),
-                                    CampaignPickerSession::Kind::Action);
-                row.state = RowState::Disabled;
-                page_.rows.push_back(std::move(row));
-            }
-        }
         return;
     }
 
-    for (const MatchRuleFace& face : match_rules_faces(rules))
+    // A campaign that hides both knobs still gets the step (the stepper is
+    // hard-coded and NEXT/PREV must land somewhere), so it says why it is
+    // empty before it says where the rest of the rules are.
+    if (faces.empty())
+        page_.lines.emplace_back(kSetupRulesMapLine);
+    page_.lines.emplace_back(kSetupRulesPointerLine);
+
+    for (const MatchRuleFace& face : faces)
     {
-        // WP2 upper-cased the shared formatter at its one composer; the
+        // The shared formatter was upper-cased at its one composer; the
         // session never re-spells or re-cases a face.
         Row row = plain_row(face.id, face.face, rules_note(face.id),
                             CampaignPickerSession::Kind::Action);
@@ -736,79 +689,22 @@ MatchSetupSession::Outcome MatchSetupSession::turn(Row::Knob knob, int dir,
     switch (knob)
     {
         case Row::Knob::Sides:
-            out.message = turn_match_sides(save_, inputs.my_team,
-                                           inputs.authored_mask, dir);
+            turn_match_sides(save_, inputs.my_team, inputs.authored_mask,
+                             dir);
             break;
         case Row::Knob::Fill:
-            out.message = turn_match_fill(save_, inputs.my_team,
-                                          inputs.authored_mask, dir);
+            turn_match_fill(save_, inputs.my_team, inputs.authored_mask,
+                            dir);
             break;
         case Row::Knob::BandFill:
             save_.fill[0] = cycle_lineup_fill(save_.fill[0], dir);
             break;
         case Row::Knob::Score:
             cycle_ctf_capture_limit(save_, dir);
-            out.message = format_ctf_score_said(save_);
             break;
         case Row::Knob::Time:
             cycle_time_limit(save_, dir);
-            out.message = format_time_limit_said(save_);
             break;
-        case Row::Knob::Respawns:
-            if (dir >= 0)
-                cycle_respawn_mode(save_);
-            else
-                reverse_by_walking<short>(
-                    [this] { return save_.respawn_mode; },
-                    [this] { cycle_respawn_mode(save_); },
-                    [this](short v) { save_.respawn_mode = v; });
-            break;
-        case Row::Knob::SpawnDelay:
-            if (dir >= 0)
-                cycle_respawn_delay(save_);
-            else
-                reverse_by_walking<short>(
-                    [this] { return save_.ctf_respawn_ticks; },
-                    [this] { cycle_respawn_delay(save_); },
-                    [this](short v) { save_.ctf_respawn_ticks = v; });
-            break;
-        case Row::Knob::Permadeath:
-            if (dir >= 0)
-                toggle_permadeath(save_);
-            else
-                reverse_by_walking<short>(
-                    [this] { return save_.keep_fallen_heroes; },
-                    [this] { toggle_permadeath(save_); },
-                    [this](short v) { save_.keep_fallen_heroes = v; });
-            break;
-        case Row::Knob::Generators:
-            if (dir >= 0)
-                cycle_generator_rate(save_);
-            else
-                reverse_by_walking<short>(
-                    [this] { return save_.generator_rate; },
-                    [this] { cycle_generator_rate(save_); },
-                    [this](short v) { save_.generator_rate = v; });
-            break;
-        case Row::Knob::InfiniteGold:
-            if (dir >= 0)
-                toggle_infinite_gold(save_);
-            else
-                reverse_by_walking<short>(
-                    [this] { return save_.infinite_gold; },
-                    [this] { toggle_infinite_gold(save_); },
-                    [this](short v) { save_.infinite_gold = v; });
-            break;
-        case Row::Knob::CrossControl:
-            if (dir >= 0)
-                toggle_cross_control(save_);
-            else
-                reverse_by_walking<short>(
-                    [this] { return save_.cross_control; },
-                    [this] { toggle_cross_control(save_); },
-                    [this](short v) { save_.cross_control = v; });
-            break;
-        case Row::Knob::Difficulty:
         case Row::Knob::None:
             break;
     }
@@ -855,11 +751,26 @@ MatchSetupSession::Outcome MatchSetupSession::choose(std::size_t row, int dir,
                 return bare(OutcomeKind::Advanced);
             case CampaignPickerSession::OutcomeKind::Acted:
             {
+                if (answer.level >= 0)
+                {
+                    // R2-5 / D3: an action that answered with a level goes
+                    // through the surface's EXISTING gated level tail,
+                    // exactly as a level row does — one gated tail, not a
+                    // second level path. An Acted level never arms a
+                    // replay (#207: only level ROWS arm). No compose()
+                    // here: level_applied() recomposes after the tail. The
+                    // book's message is dropped on a level answer — the
+                    // engine's "Level set to <arena>." is the click's one
+                    // answer.
+                    Outcome out = bare(OutcomeKind::SetLevel);
+                    out.level = answer.level;
+                    out.replay_arm = false;
+                    return out;
+                }
                 // The book acted and refetched itself; its toast is the
                 // campaign's own voice.
                 Outcome out = bare(OutcomeKind::Stayed);
                 out.message = book_.take_message();
-                out.level = answer.level;
                 compose(inputs, Window::Keep);
                 return out;
             }
@@ -893,32 +804,9 @@ MatchSetupSession::Outcome MatchSetupSession::choose(std::size_t row, int dir,
     if (picked.extra == Row::Extra::Go)
         return bare(OutcomeKind::Go);
 
-    if (picked.knob == Row::Knob::Difficulty)
-    {
-        // The value is SESSION state, not save state: the session stores
-        // nothing and the caller hands the new value back next call.
-        Outcome out = bare(OutcomeKind::SetDifficulty);
-        out.knob = Row::Knob::Difficulty;
-        int value = inputs.session_difficulty;
-        if (dir >= 0)
-        {
-            value = cycle_difficulty(value);
-        }
-        else
-        {
-            reverse_by_walking<int>([&value] { return value; },
-                                    [&value] { value = cycle_difficulty(value); },
-                                    [&value](int v) { value = v; });
-        }
-        out.difficulty = value;
-        compose(inputs, Window::Keep);
-        return out;
-    }
-
     if (picked.extra == Row::Extra::Cycler)
     {
         Outcome out = turn(picked.knob, dir, inputs);
-        message_ = out.message;
         compose(inputs, Window::Keep);
         return out;
     }
@@ -998,7 +886,12 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         {
             if (!session.open(inputs))
             {
-                io.base.notice(std::string(kSetupClassicGuardMessage));
+                // Unreachable for a player: the terminal camp's SETUP row
+                // calls the wizard only on a versus campaign. Kept as the
+                // driver's own guard, and silent — the notice it printed
+                // was Team Build item 13's gate line, and that item is
+                // retired.
+                TRACE("setup", "open_refused");
                 return;
             }
             opened = true;
@@ -1069,6 +962,18 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         {
             case Kind::SetLevel:
             {
+                if (picked.base.kind == CampaignPickerSession::Kind::Action)
+                {
+                    // R2-D15: the camp's own two-kind convention — a level
+                    // ROW speaks its row label
+                    // (campaign_picker_session.cpp, the camp's level arm),
+                    // an ACTION answering a level speaks the LOADED title.
+                    // The wizard is not a third spelling.
+                    terminal_route_acted_level(
+                        save, io.base, outcome.level, std::string(),
+                        [&] { session.level_applied(inputs); });
+                    break;
+                }
                 const TerminalLevelSetGate gate = terminal_level_set_gate(
                     io.base, save, outcome.level, !picked.base.available,
                     picked.base.current, outcome.replay_arm);
@@ -1083,25 +988,13 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
                 break;
             }
             case Kind::Turned:
-            {
-                // INFINITE GOLD and CROSS CONTROL are session-only (neither
-                // field rides in the GTL file), so no company autosave
-                // follows a turn -- the same policy text_picker.cpp's
-                // ToggleInfiniteGold case has always applied. One knob, one
-                // rule, on every client.
-                using Knob = MatchSetupSession::Row::Knob;
-                if (outcome.knob != Knob::InfiniteGold &&
-                    outcome.knob != Knob::CrossControl)
-                {
-                    io.autosave();
-                }
-                const std::string said = session.take_message();
-                if (!said.empty())
-                    io.base.notice(said);
-                break;
-            }
-            case Kind::SetDifficulty:
-                io.set_difficulty(outcome.difficulty);
+                // Every wizard knob rides the .gtl now: SIDES, FILL and the
+                // band wheel write fill[], SCORE and TIME LIMIT their own
+                // fields. The session-only knobs (INFINITE GOLD, CROSS
+                // CONTROL) left with R2-3, so the exclusion left with them.
+                // No notice: a turn says nothing, because its redrawn face
+                // is the answer.
+                io.autosave();
                 break;
             case Kind::Refused:
                 io.base.notice(outcome.message);
@@ -1118,12 +1011,12 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
             case Kind::Stayed:
             case Kind::Advanced:
             case Kind::Closed:
-            {
-                const std::string said = session.take_message();
-                if (!said.empty())
-                    io.base.notice(said);
+                // Outcome::message is the ONE channel, read exactly the way
+                // the SDL Stayed arm reads it (menu_screen_specs.cpp): a
+                // book action's Lua voice reaches a terminal now.
+                if (!outcome.message.empty())
+                    io.base.notice(outcome.message);
                 break;
-            }
         }
     }
 }

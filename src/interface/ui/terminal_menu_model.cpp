@@ -83,13 +83,6 @@ GateBinding terminal_item_gate(PickerMenuCommand command)
                                       is_versus_campaign(*context.save);
                            },
                            kSetupClassicGuardMessage};
-    case PickerMenuCommand::OpenDifficultyMenu:
-        return GateBinding{MenuGate::Custom,
-                           [](const MenuLabelContext& context) {
-                               return context.save == nullptr ||
-                                      !is_versus_campaign(*context.save);
-                           },
-                           kSetupDifficultyVersusGuardMessage};
     default:
         return GateBinding{};
     }

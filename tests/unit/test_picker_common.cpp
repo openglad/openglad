@@ -6698,3 +6698,30 @@ TEST(PickerCommon, picker_lobby_my_team_falls_back_to_the_first_local_seat)
               og::ui::picker_lobby_my_team(save))
         << "no lobby is open in a headless unit binary: the save answers";
 }
+
+
+// R2-4's ONE predicate. An arena is set, never earned, so nothing in a
+// versus campaign counts, marks or replays one; every other campaign is
+// untouched. The id form is the primitive because the SET CAMPAIGN card
+// composes a line for EVERY entry, not for the current save.
+TEST(PickerCommon, progress_marks_shown_is_false_only_on_versus_campaigns)
+{
+    EXPECT_TRUE(og::ui::is_versus_campaign("modes"))
+        << "modes must declare matchup: versus for this pin to mean "
+           "anything";
+    EXPECT_FALSE(og::ui::is_versus_campaign("gladiator"));
+
+    EXPECT_FALSE(og::ui::progress_marks_shown("modes"));
+    EXPECT_TRUE(og::ui::progress_marks_shown("gladiator"));
+
+    // The save form is the id form asked of the save's own cursor.
+    SaveData versus;
+    versus.current_campaign = "modes";
+    EXPECT_TRUE(og::ui::is_versus_campaign(versus));
+    EXPECT_FALSE(og::ui::progress_marks_shown(versus));
+
+    SaveData classic;
+    classic.current_campaign = "gladiator";
+    EXPECT_FALSE(og::ui::is_versus_campaign(classic));
+    EXPECT_TRUE(og::ui::progress_marks_shown(classic));
+}

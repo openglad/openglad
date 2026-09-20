@@ -354,8 +354,8 @@ TEST(MenuSpec, terminal_gate_messages_ready_setup_and_difficulty)
     ASSERT_TRUE(og::ui::is_versus_campaign(versus))
         << "modes must declare matchup: versus for this pin to mean anything";
     EXPECT_EQ("", og::ui::terminal_gate_message(*setup, context_for(versus)));
-    EXPECT_EQ("The fight's rules are on SETUP: RULES.",
-              og::ui::terminal_gate_message(*difficulty, context_for(versus)));
+    EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, context_for(versus)))
+        << "item 11 is ungated on every campaign (R2-3)";
 
     // No save at all (the main menu's own context): the wizard has nothing
     // to set up and the DIFFICULTY door stays open.

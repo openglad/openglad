@@ -79,6 +79,15 @@ inline constexpr std::string_view kSetupStepWords[] = {"GAME", "ARENA",
 inline constexpr std::string_view kSetupTitlePrefix = "SETUP: ";
 inline constexpr std::string_view kSetupPointerLine =
     "Deploy and seats: the Base Camp roster and rail.";  // 47 <= 48
+// RULES is SCORE and TIME LIMIT (the two match_knobs) and nothing else
+// (R2-3); the seven DIFFICULTY-family knobs went back to the Base Camp
+// DIFFICULTY door, and this line is how a returning player finds them.
+inline constexpr std::string_view kSetupRulesPointerLine =
+    "Respawns and the rest: the Base Camp DIFFICULTY.";  // 48 <= 48
+// A campaign that hides BOTH knobs (onslaught hides SCORE only; no shipped
+// campaign hides both) still gets the step, and it says why it is empty.
+inline constexpr std::string_view kSetupRulesMapLine =
+    "This game takes its rules from the map.";  // 39
 inline constexpr std::string_view kSetupLineupRowLabel = "LINEUP";
 inline constexpr std::string_view kSetupLineupRowNote = "fill per team, map units";
 inline constexpr std::string_view kSetupViewLevelRowLabel = "VIEW LEVEL";
@@ -103,20 +112,17 @@ inline constexpr std::string_view kSetupJoinerReadyRow =
 // The RULES notes, one per row (§2.5), keyed by the shared kRulesRow* ids.
 inline constexpr std::string_view kSetupNoteScore = "map, 1, 3, 5, 10";
 inline constexpr std::string_view kSetupNoteTime = "map, 5 to 20 min";
-inline constexpr std::string_view kSetupNoteRespawns = "off to team 1";
-inline constexpr std::string_view kSetupNoteSpawnDelay = "normal, fast, slow";
-inline constexpr std::string_view kSetupNotePermadeath = "on, off";
-inline constexpr std::string_view kSetupNoteGenerators = "calm to frenzy";
-inline constexpr std::string_view kSetupNoteDifficulty = "up to slaughter";
-inline constexpr std::string_view kSetupNoteInfiniteGold = "gold never runs out";
-inline constexpr std::string_view kSetupNoteCrossControl = "own, all";
 
-// The two terminal Custom-gate guards (the SDL strip twin's prompt face):
-// one door for the match rules per campaign kind on every client.
+// The ONE statement of which faces are RULES rows (R2-3): the two the
+// campaign's match_knobs can hide, and the only two with no other home.
+// The MATCH step's recap takes EVERY face — it states the whole match.
+inline constexpr std::array<std::string_view, 2> kSetupRulesRows = {
+    kRulesRowScore, kRulesRowTime};
+
+// The terminal Setup item's Custom gate: a campaign with no matchup has no
+// arena to set up, and the prompt says so instead of hiding the item.
 inline constexpr std::string_view kSetupClassicGuardMessage =
     "This campaign has no arena setup.";  // 33
-inline constexpr std::string_view kSetupDifficultyVersusGuardMessage =
-    "The fight's rules are on SETUP: RULES.";  // 38
 // The terminal driver's answer to an unparsable prompt line.
 inline constexpr std::string_view kSetupInvalidRowNotice = "Invalid setup row.";
 // TRACE("setup", ...) when match_knobs.arena_page names no root page row.
@@ -148,8 +154,7 @@ public:
         enum class Extra : std::uint8_t { None, Cycler, Door, Go } extra =
             Extra::None;
         enum class Knob : std::uint8_t {
-            None, Sides, Fill, BandFill, Score, Time, Respawns, SpawnDelay,
-            Permadeath, Generators, Difficulty, InfiniteGold, CrossControl
+            None, Sides, Fill, BandFill, Score, Time
         } knob = Knob::None;
         // Disabled = the gated GO with its reason on its face, the joiner's
         // READY pointer, the joiner's read-only CROSS CONTROL row.
@@ -205,8 +210,8 @@ public:
     };
 
     enum class OutcomeKind : std::uint8_t {
-        Stayed, Advanced, SetLevel, Turned, SetDifficulty, OpenLineup,
-        OpenViewLevel, Go, Refused, Closed
+        Stayed, Advanced, SetLevel, Turned, OpenLineup, OpenViewLevel, Go,
+        Refused, Closed
     };
 
     struct Outcome {
@@ -214,7 +219,10 @@ public:
         int level = -1;
         bool replay_arm = false;
         Row::Knob knob = Row::Knob::None;
-        int difficulty = 0;
+        // The ONE message channel (R2-1): the refusals, the campaign's own
+        // Lua voice, and nothing else — a knob turn says nothing, because
+        // its redrawn face is the answer. The SDL dispatch and the terminal
+        // driver read this same field the same way.
         std::string message;
     };
 
@@ -253,8 +261,6 @@ public:
     // Cadence: entry, own mutation, the level-reload guard, the settings
     // fingerprint, a stage generation bump.
     void refetch(const Inputs& inputs);
-    // The pending toast, cleared by the read.
-    std::string take_message();
 
     [[nodiscard]] static std::string_view step_word(Step step);
 
@@ -294,7 +300,6 @@ private:
     bool arena_manifest_ = false;
     Step step_ = Step::Game;
     Page page_;
-    std::string message_;
     og::script::hooks::CampaignMatchKnobs knobs_;
     std::vector<Step> steps_;
     std::vector<int> manifest_levels_;
@@ -313,12 +318,9 @@ struct TerminalMatchSetupIo {
     std::function<const LevelDataHooks&()> level_hooks;
     // autosave_company_after_mutation.
     std::function<void()> autosave;
-    // The client writes the VALUE and says "Difficulty set to X." — one
-    // value-taking tail per client, called by the wizard with the session's
-    // computed value and by the client's own cycling case with
-    // cycle_difficulty(current). One tail, two callers.
-    std::function<void(int)> set_difficulty;
-    // The session difficulty the RULES page reads.
+    // The session difficulty the MATCH recap reads. There is no writer
+    // here any more: DIFFICULTY is a Base Camp door again (R2-3), so the
+    // wizard only ever states the value.
     std::function<int()> difficulty;
     // Names a LOCAL seat's controller for the TEAMS step's seat cell, the
     // way LINEUP's band header names it ("P1 WASD"). Both terminal clients
