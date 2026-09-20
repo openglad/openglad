@@ -1418,6 +1418,98 @@ TEST_F(CampaignPickerSessionTest, terminal_camp_replay_rows_arm_when_cleared)
         (void)mount_campaign_package_with_error(previous_mount);
 }
 
+// D3 through the CAMP's own action arm — the twin, one surface up, of
+// terminal_driver_routes_acted_levels: a DOCKET action row that answers
+// with a level runs the same gated tail as a level row's click, and the
+// camp's own rows have to re-derive once it lands. zone.act() already
+// refetched, but it did so BEFORE the cursor moved, so only the tail's own
+// refetch can carry [CURRENT] onto the road the action picked; without it
+// the next camp screen keeps pointing at the road the player just left.
+// Reachable on any terminal client that binds no wizard door and any camp
+// whose docket carries a level-answering action.
+TEST_F(CampaignPickerSessionTest, terminal_camp_routes_an_acted_level_and_refetches)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+    og::script::unregister_pack_scripts("westlands.fire");
+    og::script::unregister_pack_lib_modules("westlands.fire");
+    save_.current_campaign = "westlands";
+    save_.completed_levels.clear();
+    save_.scen_num = 1;
+    save_.add_level_completed("westlands", 1);
+    save_.add_level_completed("westlands", 5);
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "1", label = "THE FIRST ROAD", kind = "level", level = 1 },
+          { id = "5", label = "UNDER THE MOUNTAIN", kind = "level", level = 5 },
+          { id = "wheel", label = "SPIN THE WHEEL", kind = "action" },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+  picker_action = function(entry_id)
+    return { level = 5, message = "The wheel settles." }
+  end,
+}))LUA");
+
+    // The Acted arm autosaves the active company slot; isolate and reap.
+    ASSERT_TRUE(og::data::set_active_company_slot("campwheel"));
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {
+        "3",  // SPIN THE WHEEL -> Acted carrying level 5 -> the gated tail
+        "0",  // close the camp; prompt 1 is the docket the tail refetched
+    };
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    std::string scen5_title;
+    ASSERT_EQ(og::data::LevelFileIoError::None,
+              og::data::load_scenario_title_with_error("scen5", scen5_title));
+    const std::vector<std::string> expected_notices = {
+        "Level set to " + scen5_title + ".",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices)
+        << "the engine's set toast is the whole answer: an action's own "
+           "message is dropped behind a landed set";
+    EXPECT_EQ(5, scripted.applied_level);
+    EXPECT_EQ(5, save_.scen_num);
+    EXPECT_TRUE(user_file_exists("save/campwheel.gtl"))
+        << "the routed camp action still runs the 3.8 autosave tail";
+
+    // The teeth: the docket the player reads NEXT. Before the click the
+    // cursor road wears [CURRENT]; after it, the road the action picked
+    // does — and that only happens because the tail refetched the zone
+    // once the cursor had moved.
+    ASSERT_EQ(2u, scripted.prompts.size());
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   1. THE FIRST ROAD  [CURRENT]\n"))
+        << scripted.page_text(0);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find(
+                  "   2. UNDER THE MOUNTAIN  [CLEARED]\n"))
+        << scripted.page_text(0);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(1).find(
+                  "   2. UNDER THE MOUNTAIN  [CURRENT]\n"))
+        << "the tail's refetch must carry [CURRENT] onto the picked road:\n"
+        << scripted.page_text(1);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(1).find("   1. THE FIRST ROAD  [CLEARED]\n"))
+        << "and off the road the player left:\n"
+        << scripted.page_text(1);
+
+    (void)remove_user_file("save/campwheel.gtl");
+    (void)og::data::set_active_company_slot("save0");
+    (void)unmount_campaign_package_with_error("westlands");
+    if (!previous_mount.empty() && previous_mount != "westlands")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
 // #207: the same routing through the BOOK page loop (the other terminal
 // tail), and the Row decoration carries the mark: replay_arms() = mark AND
 // cleared.
