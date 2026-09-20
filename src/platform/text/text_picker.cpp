@@ -942,24 +942,14 @@ private:
             // page (B1/B6: one FILL wheel, one MAP UNITS box, no FIGHTERS).
             lineup_screen();
             break;
-        case PickerMenuCommand::MatchSetup:
-            // #304: the SETUP wizard. The classic-campaign refusal and the
-            // versus DIFFICULTY refusal are both terminal_item_gate's, so
-            // the guard print above has already answered — there is no
-            // client-side text here, on either client.
-            setup_screen();
-            break;
         default:
             break;
         }
     }
 
-    // Lead ruling 2: ONE value-taking difficulty tail, TWO callers. The
-    // DIFFICULTY submenu's row calls it with cycle_difficulty(current); the
-    // SETUP wizard's RULES row calls it with the value the session already
-    // computed, which is what makes the terminal's `N-` step BACKWARD
-    // instead of taking another lap. A cycle-once handler would have thrown
-    // the session's answer away.
+    // The value-taking difficulty tail. Its one caller is the DIFFICULTY
+    // submenu's row, which hands it cycle_difficulty(current); R2-3 took
+    // DIFFICULTY off the wizard's RULES step, so the second caller is gone.
     void apply_difficulty_value(int value)
     {
         og::runtime::current_session->current_difficulty_ = value;
@@ -1676,9 +1666,10 @@ private:
         run_terminal_campaign_camp(save_data_, io);
     }
 
-    // #304: the SETUP wizard's terminal face. Every line, row, guard and
-    // dispatch arm belongs to the shared driver (og::ui::run_terminal_match_setup)
-    // — this function only says which tails are the text client's.
+    // #304: the SETUP wizard's terminal face, reached from the camp's SETUP
+    // row (R2-D11 — the one door). Every line, row, guard and dispatch arm
+    // belongs to the shared driver (og::ui::run_terminal_match_setup); this
+    // function only says which tails are the text client's.
     void setup_screen()
     {
         // W7-G: ONE stage for the whole wizard, on the same three inputs

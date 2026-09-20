@@ -119,10 +119,6 @@ inline constexpr std::string_view kSetupNoteTime = "map, 5 to 20 min";
 inline constexpr std::array<std::string_view, 2> kSetupRulesRows = {
     kRulesRowScore, kRulesRowTime};
 
-// The terminal Setup item's Custom gate: a campaign with no matchup has no
-// arena to set up, and the prompt says so instead of hiding the item.
-inline constexpr std::string_view kSetupClassicGuardMessage =
-    "This campaign has no arena setup.";  // 33
 // The terminal driver's answer to an unparsable prompt line.
 inline constexpr std::string_view kSetupInvalidRowNotice = "Invalid setup row.";
 // TRACE("setup", ...) when match_knobs.arena_page names no root page row.
@@ -231,9 +227,10 @@ public:
     // Open at the book's root (the GAME step). `entry_page` names a root row
     // to descend into (the docket's ARENA: shortcut) — an id that names no
     // root PAGE row (the docket's "games" alias, "") stays on the root.
-    // FALSE only for a classic campaign: the SDL door never opens there and
-    // the terminal gate prints kSetupClassicGuardMessage. A campaign with no
-    // book is not a failure — its ARENA step lists the mount's manifest.
+    // FALSE only for a classic campaign, which no player path reaches: the
+    // SDL door is the versus docket's own row and the terminal door is the
+    // versus camp's, so the refusal is a trace, not a line. A campaign with
+    // no book is not a failure — its ARENA step lists the mount's manifest.
     bool open(const Inputs& inputs, std::string_view entry_page = "");
 
     [[nodiscard]] const Page& page() const { return page_; }

@@ -61,17 +61,15 @@ std::vector<std::string> team_build_context_lines(const SaveData& save)
 // troops stays ungated on the SCENARIO screen: "strip everything authored"
 // is meaningful on classic campaigns too.
 //
-// The match rules have ONE door per campaign kind on every client
-// (docs/match-setup-design.md §2.7): the SETUP wizard's RULES step (item 13
-// `setup`, versus campaigns) and the DIFFICULTY submenu (item 11, classic
-// campaigns). Each is `Custom`-gated to its campaign kind and points at the
-// other in its guard line, so a prompt never hides a door in silence — the
-// terminal face of the SDL strip's SETUP/DIFFICULTY twin.
-//
-// The SCENARIO submenu's `Replay Level` is Custom-gated the other way
+// The one `Custom` gate left is the SCENARIO submenu's `Replay Level`
 // (R2-4): a campaign that carries no progress vocabulary has no cleared
 // level to re-fight, so the row stays LISTED and refuses in words. One gate
 // for both terminal clients — neither replay_level() knows about it.
+//
+// Nothing gates the match rules any more. DIFFICULTY is item 11 on every
+// campaign (R2-3), and the SETUP wizard has no Team Build item at all: its
+// terminal door is the Camp's row 1, the same one door the pixel clients
+// tap (R2-D11).
 constexpr std::string_view kReadyGuardMessage =
     "Ready applies to networked lobbies only.";
 
@@ -81,13 +79,6 @@ GateBinding terminal_item_gate(PickerMenuCommand command)
     case PickerMenuCommand::ToggleReady:
         return GateBinding{MenuGate::NetworkedOnly, nullptr,
                            kReadyGuardMessage};
-    case PickerMenuCommand::MatchSetup:
-        return GateBinding{MenuGate::Custom,
-                           [](const MenuLabelContext& context) {
-                               return context.save != nullptr &&
-                                      is_versus_campaign(*context.save);
-                           },
-                           kSetupClassicGuardMessage};
     case PickerMenuCommand::ReplayLevel:
         return GateBinding{MenuGate::Custom,
                            [](const MenuLabelContext& context) {

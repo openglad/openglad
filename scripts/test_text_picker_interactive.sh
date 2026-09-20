@@ -17,19 +17,22 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
 #     name entry); blank keeps the campaign. Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
-#   Base camp / Team Build (13 items, §2.5 substitution + the #206 Camp door
+#   Base camp / Team Build (12 items, §2.5 substitution + the #206 Camp door
 #     inserted before Back; the flat CTF trio left for the SETUP wizard's
 #     RULES step and 11=Difficulty was appended in its place —
 #     docs/camp-controls-design.md — with 12=Lineup appended below it,
-#     docs/lineup-design.md §8, and 13=Setup below THAT (#304,
-#     docs/match-setup-design.md §2.7), so no ordinal above moved):
-#     3=Hire Troops (n/h/b — the hire AUTOSAVES the company, §3.8),
-#     1=Roster (deploy 2 toggles + blank exits), 4=Deploy (prompt re-deploys
-#     row 2), 7=Camp (gladiator composes no camp, so the guard line prints
-#     and Team Build re-presents without consuming further input),
-#     10=Scenario, 11=Difficulty, 12=Lineup, 13=Setup (gladiator is a
-#     CLASSIC campaign, so the versus gate prints its guard line and Team
-#     Build re-presents — the 7=Camp precedent), 6=GO!, 8=Back.
+#     docs/lineup-design.md §8): 3=Hire Troops (n/h/b — the hire AUTOSAVES
+#     the company, §3.8), 1=Roster (deploy 2 toggles + blank exits),
+#     4=Deploy (prompt re-deploys row 2), 7=Camp (gladiator composes no
+#     camp, so the guard line prints and Team Build re-presents without
+#     consuming further input), 10=Scenario, 11=Difficulty, 12=Lineup,
+#     6=GO!, 8=Back.
+#     There is no Setup item (R2-D11): the SETUP wizard's terminal door is
+#     the CAMP's row 1, and this script runs on GLADIATOR, whose camp
+#     composes nothing at all — so the versus door cannot be exercised
+#     here. It is pinned in C++ instead, by
+#     tests/unit/test_platform_headless.cpp's one-door walk and
+#     tests/curses/test_curses_picker_client.cpp's camp-row flows.
 #   Lineup page (host rows: 1..8 the four teams' FILL/MAP UNITS knobs,
 #     9=Split even, 10=Split fair, 11=Unite, 12=Back — amendment B6 deleted
 #     the FIGHTERS row, so the strip moved up one): 1 steps TEAM 1's FILL
@@ -74,7 +77,6 @@ play 1
 12
 1
 12
-13
 6
 state
 quit
@@ -236,17 +238,11 @@ if any('--- Fighters ---' in l for l in lines):
           file=sys.stderr)
     sys.exit(1)
 
-# #304 SETUP: the gladiator campaign is classic, so Team Build item 13
-# answers with terminal_item_gate's guard line instead of opening the
-# wizard, and the wizard's first banner never prints. (The literal is pinned
-# in C++ by tests/unit/test_platform_headless.cpp; a shell drive cannot
-# reference the exported constant, so this is the second place it is spelled
-# — deliberately, as the end-to-end proof, exactly as the Camp guard above.)
-if not any('This campaign has no arena setup.' in l for l in lines):
-    print('FAIL: expected the Setup door guard line', file=sys.stderr)
-    sys.exit(1)
+# R2-D11: Team Build has no Setup item on any campaign, so nothing this
+# whole drive types can compose a wizard step. The versus door -- the
+# camp's own SETUP row -- is pinned in C++ (see the header note).
 if any('--- SETUP: ' in l for l in lines):
-    print('FAIL: the guard path must never open the wizard', file=sys.stderr)
+    print('FAIL: Team Build has no wizard door left to open', file=sys.stderr)
     sys.exit(1)
 
 # View Scenario: the shared roster report from a scratch headless load.

@@ -1214,12 +1214,9 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
     }
 }
 
-// Lead ruling 2: ONE value-taking difficulty tail, TWO callers. The
-// DIFFICULTY submenu's row calls it with cycle_difficulty(current); the
-// SETUP wizard's RULES row calls it with the value the session already
-// computed, which is what makes the terminal's `N-` step BACKWARD instead
-// of taking another lap. A cycle-once handler would have discarded the
-// session's answer.
+// The value-taking difficulty tail. Its one caller is the DIFFICULTY
+// submenu's row, which hands it cycle_difficulty(current); R2-3 took
+// DIFFICULTY off the wizard's RULES step, so the second caller is gone.
 void apply_options_difficulty(Menu& menu, CursesPickerOptions& options,
                               SaveData& save, int value)
 {
@@ -1622,12 +1619,6 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         // LINEUP §8: teams, seats and the two band controls on one page
         // (B1/B6: one FILL wheel, one MAP UNITS box, no FIGHTERS).
         lineup_flow(menu, save_data_, config_, options_);
-        break;
-    case PickerMenuCommand::MatchSetup:
-        // #304: the SETUP wizard. The classic-campaign refusal and the
-        // versus DIFFICULTY refusal are both terminal_item_gate's, so the
-        // guard print above has already answered — no client-side text.
-        setup_flow(menu, save_data_, config_, options_);
         break;
     default:
         break;

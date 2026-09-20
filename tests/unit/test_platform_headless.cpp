@@ -1072,7 +1072,7 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
-    // Team Build is 13 items (§2.5 in-place substitution: 1=roster,
+    // Team Build is 12 items (§2.5 in-place substitution: 1=roster,
     // 4=deploy, 5=ready, 6=GO!; #206 inserted 7=camp before Back, shifting
     // 8=back, 9=networking, 10=Scenario; the flat CTF trio left for the
     // SETUP wizard's RULES step and 11=difficulty was appended in its
@@ -1153,11 +1153,6 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "2\n"       // lineup: TEAM 1 MAP UNITS (classic: refused)
         "99\n"      // lineup: out of range -> refused, page reprints
         "12\n"      // lineup: back -> team build
-        // #304: the SETUP door on a CLASSIC campaign. terminal_item_gate
-        // refuses it in words and Team Build re-presents WITHOUT consuming
-        // another line — the 7=camp precedent, which is why the next
-        // ordinal below is read by Team Build and not by a wizard prompt.
-        "13\n"      // team build: setup (gladiator -> the versus guard)
         "9\n"       // team build: networking (unavailable)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
@@ -1192,15 +1187,10 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
               config.team_families)
         << "the two seeded families survive and the hire appended its family";
 
-    // #304 leg 13: the classic-campaign guard answered, and the wizard
-    // never opened. Pinning the absence matters as much as the line — a
-    // guard that printed AND opened would eat the next ordinal and silently
-    // desync every leg below it.
-    EXPECT_NE(std::string::npos,
-              printed.find(std::string(og::ui::kSetupClassicGuardMessage)))
-        << "Team Build item 13 on a classic campaign must refuse in words";
+    // R2-D11: Team Build carries no SETUP row on any campaign, so nothing
+    // in this whole classic drive can compose a wizard step.
     EXPECT_EQ(std::string::npos, printed.find("--- SETUP: "))
-        << "the guard path must never compose a wizard step";
+        << "the wizard has no Team Build door left to open";
 
     // The DIFFICULTY submenu is the only place this binary drives the text
     // client's six settings rows, so pin the ANSWER each ordinal prints, in
@@ -3654,10 +3644,11 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_at_rest_fields_the_match)
 // The shared driver's every Outcome arm is reachable from a terminal, and
 // this drive walks them in one sitting: the five steps and their banners,
 // Next/Prev/Back, a level row's Unchanged AND Applied arms, a cycler
-// forward and the same cycler's `N-` backward, SetDifficulty through the
-// client's value-taking tail, the two pointer notices, GO's pointer notice
-// and an unparsable row. The wizard is Team Build item 13, which is why
-// this file's positional ledger gained exactly one leg.
+// forward and the same cycler's `N-` backward, the two pointer notices,
+// GO's pointer notice and an unparsable row. The wizard is reached the one
+// way a player can reach it — Team Build's Camp row (7), then the docket's
+// SETUP row (1) — so this file's positional ledger lost its item-13 leg
+// and gained the camp's.
 TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
 {
     restore_default_campaigns();
@@ -3673,12 +3664,13 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
             "7\n"    // main: load company -> the company list
             "1\n"    //   list: open company...
             "1\n"    //     #1 = setupw -> team build
-            "13\n"   // team build: SETUP -> "--- SETUP: GAME ---"
-            // GAME is the games index: 7 game rows, then Next, then Back.
-            // NEXT on GAME means "keep the arena that is set" and lands on
-            // TEAMS (§2.2), so the ARENA step is reached by PREV from
-            // there — which is exactly the pair this leg proves.
-            "8\n"    // GAME: Next: TEAMS
+            "7\n"    // team build: Camp -> the one-row docket
+            "1\n"    //   camp: the SETUP row -> "--- SETUP: GAME ---"
+            // GAME is the games index: 7 game rows, then the RANDOM roll,
+            // then Next, then Back. NEXT on GAME means "keep the arena that
+            // is set" and lands on TEAMS (§2.2), so the ARENA step is
+            // reached by PREV from there — exactly the pair this leg proves.
+            "9\n"    // GAME: Next: TEAMS
             "4\n"    // TEAMS: Prev: ARENA
             "1\n"    // ARENA: THE PITCH is [CURRENT] -> Unchanged, NO advance
             "2\n"    // ARENA: THE MUDBOWL -> Applied -> advance to TEAMS
@@ -3686,16 +3678,16 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
             "2\n"    // RULES: TIME LIMIT forward
             "2-\n"   // RULES: the SAME row backward -- the `<` cell's
                      //   projection; a cycle-once handler would lap instead
-            "7\n"    // RULES: DIFFICULTY -> SetDifficulty -> the client tail
-            "9\n"    // RULES: Next: MATCH
+            "3\n"    // RULES: Next: MATCH
             "2\n"    // MATCH: GO -> the terminal pointer notice
             "1\n"    // MATCH: VIEW LEVEL -> the terminal pointer notice
             "99\n"   // MATCH: out of range -> the invalid-row notice
             "3\n"    // MATCH: Prev: RULES
-            "3\n"    // RULES: RESPAWNS (OFF -> HEROES) -- the LAST mutation
-                     //   of the drive, so the company on disk below can
-                     //   only have been written by this turn's autosave
-            "0\n"    // wizard: back out
+            "1\n"    // RULES: SCORE (MAP -> 1) -- the LAST mutation of the
+                     //   drive, so the company on disk below can only have
+                     //   been written by this turn's autosave
+            "0\n"    // wizard: back out -> the camp prompt
+            "0\n"    // camp: back out -> team build
             "8\n"    // team build: back -> main
             "6\n");  // main: quit
         StdoutCapture capture;
@@ -3720,7 +3712,8 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
             at = found + needle.size();
     };
     expect_in_order("--- SETUP: GAME ---");
-    expect_in_order("SOCCER - 0/4 cleared");
+    expect_in_order("SOCCER - 4 arenas");
+    expect_in_order("RANDOM - any game, any arena");
     expect_in_order("Next: TEAMS");
     expect_in_order("--- SETUP: TEAMS ---");
     // The deal already ran at the top of this prompt, so the step reads the
@@ -3737,7 +3730,7 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     // label: this line is also the crash pin.
     expect_in_order("TEAM 1 RED  P1 ARE");
     expect_in_order("TEAM 2 GREEN  2 BOTS");
-    expect_in_order("FILL: STRONG - none to brutal");
+    expect_in_order("FILL: STRONG - weak to brutal");
     expect_in_order("Prev: ARENA");
     expect_in_order("--- SETUP: ARENA ---");
     expect_in_order("THE PITCH - 2 sides, 3 goals  [CURRENT]");
@@ -3747,41 +3740,27 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     expect_in_order("Level set to THE MUDBOWL.");
     expect_in_order("--- SETUP: TEAMS ---");
     expect_in_order("--- SETUP: RULES ---");
+    // R2-3: RULES is the two match knobs and a pointer at the rest. The
+    // said-lines went with the toasts (R2-1), so a turn's only answer is
+    // the face the row redraws.
+    expect_in_order("Respawns and the rest: the Base Camp DIFFICULTY.");
     expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
-    expect_in_order("Clock: 5 minutes.");
     expect_in_order("TIME LIMIT: 5 MIN - map, 5 to 20 min");
-    expect_in_order("Clock: the map's own.");
     expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
-    // DIFFICULTY is SESSION state, not save state, and every test in this
-    // binary shares one session — so the word the wheel lands on depends on
-    // what ran before. The pin is therefore the AGREEMENT, not a literal:
-    // the tail's line and the row it redraws must name the same difficulty,
-    // upper-cased by the session exactly as §2.5 says.
-    expect_in_order("Difficulty set to ");
-    std::string difficulty_word;
-    {
-        const std::size_t stop = printed.find('.', at);
-        if (stop != std::string::npos)
-            difficulty_word = printed.substr(at, stop - at);
-    }
-    ASSERT_FALSE(difficulty_word.empty())
-        << "the value-taking difficulty tail must name the value it wrote";
-    std::string upper = difficulty_word;
-    for (char& ch : upper)
-        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-    expect_in_order("DIFFICULTY: " + upper + " - up to slaughter");
     expect_in_order("--- SETUP: MATCH ---");
     expect_in_order("SOCCER: THE MUDBOWL");
     expect_in_order("ACTIVE - MATCHED BOTS (2) STRONG");
-    expect_in_order("DIFFICULTY: " + upper);
+    // The recap still states the WHOLE match, DIFFICULTY included, even
+    // though its knob lives on the Base Camp DIFFICULTY screen now.
+    expect_in_order("DIFFICULTY: ");
     expect_in_order(std::string(og::ui::kSetupTerminalGoNotice));
     expect_in_order(std::string(og::ui::kSetupTerminalViewLevelNotice));
     expect_in_order(std::string(og::ui::kSetupInvalidRowNotice));
     expect_in_order("--- SETUP: RULES ---");
-    // RESPAWNS carries no said-line, so the row's own redrawn face IS the
+    // A turn carries no said-line, so the row's own redrawn face IS the
     // acknowledgement -- read back off the save, upper-cased by the session
     // (§2.5), never remembered from the press.
-    expect_in_order("RESPAWNS: HEROES - off to team 1");
+    expect_in_order("SCORE: 1 - map, 1, 3, 5, 10");
 
     // The ARENA row wrote through the client's own level tail, not a bare
     // scen_num poke: the session config moved with the save.
@@ -3792,7 +3771,7 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     EXPECT_EQ(0, static_cast<int>(reloaded.time_limit))
         << "`2-` stepped the SAME wheel back, so the clock ends where it "
            "started -- a cycle-once handler would have left it on 2 MIN";
-    EXPECT_NE(0, static_cast<int>(reloaded.respawn_mode))
+    EXPECT_EQ(1, static_cast<int>(reloaded.ctf_capture_limit))
         << "the Turned arm's autosave tail put the last knob on disk";
 
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -3840,12 +3819,12 @@ TEST(PlatformHeadless, text_picker_setup_wizard_refuses_an_undeployed_go)
     {
         StdinRedirect input(
             "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
-            "13\n"   // team build: SETUP -> GAME
-            "8\n"    // GAME: Next: TEAMS
+            "7\n" "1\n"  // team build: Camp -> the SETUP row -> GAME
+            "9\n"    // GAME: Next: TEAMS
             "3\n"    // TEAMS: Next: RULES
-            "9\n"    // RULES: Next: MATCH
+            "3\n"    // RULES: Next: MATCH
             "2\n"    // MATCH: GO -> Disabled -> Refused
-            "0\n" "8\n" "6\n");
+            "0\n" "0\n" "8\n" "6\n");
         StdoutCapture capture;
 
         og::ui::TextPickerConfig config;
@@ -3892,13 +3871,16 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_c
     // §3.8.7), so "one step back" and "one step forward" land on different
     // words per arena -- the wheel is walked by the FACE it writes, never
     // by counting presses.
+    // 300 and 500 author FOUR sides, so their TEAMS step leads with SIDES
+    // and the FILL wheel is row 2 (the old `1-`/`1` round-tripped SIDES and
+    // never touched FILL at all -- recon2/fill-bug.md §5).
     const Walk walks[] = {
-        {820, "1-\n",     "FILL: FAIR - none to brutal",   1},
-        {820, "1\n",      "FILL: BRUTAL - none to brutal", 3},
-        {824, "1-\n",     "FILL: FAIR - none to brutal",   1},
-        {824, "1\n",      "FILL: BRUTAL - none to brutal", 3},
-        {300, "1-\n1\n",  "FILL: FAIR - none to brutal",   1},
-        {500, "1-\n1\n",  "FILL: FAIR - none to brutal",   1},
+        {820, "1-\n",     "FILL: FAIR - weak to brutal",   1},
+        {820, "1\n",      "FILL: BRUTAL - weak to brutal", 3},
+        {824, "1-\n",     "FILL: FAIR - weak to brutal",   1},
+        {824, "1\n",      "FILL: BRUTAL - weak to brutal", 3},
+        {300, "2-\n2\n",  "FILL: FAIR - weak to brutal",   1},
+        {500, "2-\n2\n",  "FILL: FAIR - weak to brutal",   1},
     };
     for (const Walk& walk : walks) {
         ASSERT_TRUE(seed_arena_company("arenaw", walk.scen));
@@ -3909,10 +3891,11 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_c
             StdinRedirect input(
                 std::string(
                     "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
-                    "13\n"   // team build: SETUP -> GAME
-                    "8\n")   // GAME: Next: TEAMS (keeps the arena that is set)
+                    "7\n" "1\n"  // team build: Camp -> the SETUP row -> GAME
+                    "9\n")   // GAME: Next: TEAMS (keeps the arena that is set)
                 + walk.wheel +   // TEAMS: the FILL wheel, one row, N / N-
-                "0\n"    // wizard: back out to team build
+                "0\n"    // wizard: back out -> the camp prompt
+                "0\n"    // camp: back out -> team build
                 "6\n"    // team build: GO! -> the staged protocol session
                 "tick 3\n"
                 "state\n"
@@ -4110,11 +4093,11 @@ TEST(PlatformHeadless, text_picker_lineup_census_reads_the_staged_squad)
               mount_campaign_package_with_error("gladiator"));
 }
 
-// D9, the terminal half: the match rules have ONE door per campaign kind on
-// every client. On a VERSUS campaign the DIFFICULTY door (item 11) refuses
-// and points at the wizard; the classic twin -- item 13 refusing and
-// pointing back -- is the leg the positional drive above carries.
-TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_campaign)
+// R2-3, the terminal half: the DIFFICULTY submenu is item 11 on EVERY
+// campaign again. The seven rules the wizard's RULES step briefly held went
+// back behind this one door, so on a versus campaign it opens instead of
+// pointing anywhere.
+TEST(PlatformHeadless, text_picker_difficulty_opens_on_a_versus_campaign)
 {
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -4139,11 +4122,10 @@ TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_c
         printed = capture.restore();
     }
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
-    EXPECT_NE(std::string::npos,
-              printed.find("The fight's rules are on SETUP: RULES."))
-        << "item 11 on a versus campaign must point at SETUP: RULES";
-    EXPECT_EQ(std::string::npos, printed.find("=== Difficulty ==="))
-        << "the guard path must never open the DIFFICULTY submenu";
+    EXPECT_NE(std::string::npos, printed.find("=== Difficulty ==="))
+        << "item 11 must OPEN the DIFFICULTY submenu on a versus campaign";
+    EXPECT_EQ(std::string::npos, printed.find("SETUP: RULES"))
+        << "nothing points at the wizard for the rules any more";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
