@@ -496,7 +496,9 @@ Setup # [1-5] (0 = back, N- steps a wheel back):
 ```
 **Update (2026-09-20, PR #307):** the terminal wizard prints the same two RULES rows,
 the ARENA page's `RANDOM ARENA` and the GAME step's `RANDOM`, and no said
-line. Confirmed ordinals: GAME `8 RANDOM, 9 Next: TEAMS, 10 Back`; a soccer
+line. The mock's FILL row reads `FILL: STRONG - weak to brutal` now: NONE left
+the wizard's wheel (only LINEUP's per-band wheel keeps `none to brutal`).
+Confirmed ordinals: GAME `8 RANDOM, 9 Next: TEAMS, 10 Back`; a soccer
 ARENA page `5 RANDOM ARENA, 6 Next, 7 Prev, 8 Back`; RULES `1 SCORE, 2 TIME
 LIMIT, 3 Next: MATCH, 4 Prev, 5 Back` (§10).
 
@@ -571,6 +573,11 @@ machine, three renderers.
 - `open(Inputs, entry_page)`, `page()`, `step()`, `choose(row, dir, Inputs)`
   (`dir = +1` click, `-1` the `<` cell / right-click / `N-`), `next`, `prev`,
   `goto_step`, `page_step`, `level_applied`, `refetch`, `take_message`.
+- **Update (2026-09-20, PR #307):** three names in the two bullets above are
+  DELETED — `OutcomeKind::SetDifficulty` and `Outcome::difficulty` (the wizard
+  no longer sets difficulty; the row went back to the DIFFICULTY screen) and
+  `MatchSetupSession::take_message` with the `message_` field behind it.
+  `Outcome::message` is the one message channel (§3.3, §10).
 
 Level rows answer `SetLevel` WITHOUT touching the save (the
 `CampaignPickerSession` contract); the renderer runs its client's gated tail
@@ -578,6 +585,10 @@ and calls `level_applied` only on `Set`/`SetReplay`. Knob rows WRITE the save
 through the shared helper and answer `Turned{knob}`; the renderer runs its
 client's post-write tail. `Difficulty` answers `SetDifficulty{value}` because
 the value is session state, not save state.
+**Update (2026-09-20, PR #307):** the last sentence is REVERSED: the wizard has
+no `Difficulty` row any more (R2-3 sent the seven rules back to the Base Camp
+DIFFICULTY door), so `SetDifficulty` and the outcome's difficulty value are
+deleted rather than renamed (§3.3, §10).
 
 **Bookless versus campaign** (`picker_menu("")` fetches nothing) or an
 `arena_page` that names no root row: the ARENA step lists every level of the

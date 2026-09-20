@@ -1658,6 +1658,8 @@ its face spells `5 MIN` … `20 MIN` (docs/match-setup-design.md §2.5, §3.4).
   at WEAK."` for the none-on turn-on, `"No squads."` for the wrap to NONE.
   Non-host clicks answer the knobs' own `"The host calls the rules."`
   backstop, behind rows that are already cut at fetch.
+  **Update (2026-09-20, PR #307):** DELETED — see the note at the foot of this
+  list; the wizard's knobs speak through their faces alone.
 - **The digest is three-valued now**: `"<n>-way, <fill>, <score>"`
   (`"1-way, none, map"` at rest; `mixed` when LINEUP diverged the on
   bands). `-way` and not `sides` because the worst case —
@@ -1684,9 +1686,11 @@ its face spells `5 MIN` … `20 MIN` (docs/match-setup-design.md §2.5, §3.4).
   **Update (2026-09-20, PR #307):** the said-lines are DELETED, and with them
   `"Two squads at STRONG."`, `"One squad at WEAK."` and `"No squads."` — the
   maintainer asked what the toast was for and the answer was nothing, so the
-  wizard's knobs now speak through their faces alone. The macro row's note is
-  `weak to brutal`; `none to brutal` above is still the LINEUP BAND wheel's own
-  note (docs/match-setup-design.md §10).
+  wizard's knobs now speak through their faces alone. And the `none to brutal`
+  in the **Row notes** bullet above is the MACRO row's note, on the camp page
+  this amendment was written against: that note is `weak to brutal` now, because
+  NONE left the macro wheel. `none to brutal` survives only as the LINEUP BAND
+  wheel's own note (docs/match-setup-design.md §10).
 
 ## Amendment 6 — the FILL macro deals the local band too (maintainer, 2026-08-28)
 
