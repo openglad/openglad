@@ -2241,18 +2241,27 @@ protected:
 
 }  // namespace
 
-TEST_F(ModesSetupSessionTest, modes_root_is_the_games_index_with_seven_rows)
+TEST_F(ModesSetupSessionTest, modes_root_is_the_games_index_with_seven_games_and_random_last)
 {
     MatchSetupSession session(save_);
     ASSERT_TRUE(session.open(inputs()));
     EXPECT_EQ(5u, session.steps().size())
         << "picker_menu(\"\") must answer the games index";
     ASSERT_EQ(Step::Game, session.step());
-    EXPECT_EQ(7u, session.page().rows.size());
-    for (const MatchSetupSession::Row& row : session.page().rows) {
-        EXPECT_EQ(og::ui::CampaignPickerSession::Kind::Page, row.base.kind)
-            << row.base.id;
+    ASSERT_EQ(8u, session.page().rows.size())
+        << "the seven games, then the host's RANDOM row";
+    for (std::size_t i = 0; i < 7; i++) {
+        EXPECT_EQ(og::ui::CampaignPickerSession::Kind::Page,
+                  session.page().rows[i].base.kind)
+            << session.page().rows[i].base.id;
     }
+    // The roll is appended LAST, so no game's ordinal moved when it
+    // arrived — and it is an ACTION, invisible to the ARENA tab's
+    // arena_page lookup, which matches PAGE rows only.
+    const MatchSetupSession::Row& random = session.page().rows[7];
+    EXPECT_EQ(og::ui::CampaignPickerSession::Kind::Action, random.base.kind);
+    EXPECT_EQ("random", random.base.id);
+    EXPECT_EQ("RANDOM", random.base.label);
 }
 
 TEST_F(ModesSetupSessionTest, modes_820_arena_tab_shows_soccer_with_current_on_the_pitch)
@@ -2262,23 +2271,40 @@ TEST_F(ModesSetupSessionTest, modes_820_arena_tab_shows_soccer_with_current_on_t
     ASSERT_TRUE(session.open(inputs()));
     EXPECT_EQ("soccer", session.knobs().arena_page);
     ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Arena, inputs()).kind);
-    ASSERT_FALSE(session.page().rows.empty());
+    ASSERT_EQ(5u, session.page().rows.size())
+        << "soccer's four arenas, then RANDOM ARENA";
     EXPECT_EQ(820, session.page().rows[0].base.level);
     EXPECT_TRUE(session.page().rows[0].base.current);
     EXPECT_EQ(0, session.page().page.page);
+    const MatchSetupSession::Row& random = session.page().rows[4];
+    EXPECT_EQ(og::ui::CampaignPickerSession::Kind::Action, random.base.kind);
+    EXPECT_EQ("random_soccer", random.base.id);
+    EXPECT_EQ("RANDOM ARENA", random.base.label);
 }
 
-TEST_F(ModesSetupSessionTest, modes_507_arena_tab_opens_the_ctf_window_holding_current)
+// 508, not 507: with the progress line gone the CTF page carries ONE line
+// (the rule line), so its window holds eight rows and 507 — index 7 — sits
+// on window 1, where "opens on the window holding [CURRENT]" would pass
+// trivially. 508 is index 8, the first row of window 2, which is also the
+// window RANDOM ARENA (row 10 of 11) lands on.
+TEST_F(ModesSetupSessionTest, modes_508_arena_tab_opens_the_ctf_window_holding_current)
 {
-    save_.scen_num = 507;
+    save_.scen_num = 508;
     MatchSetupSession session(save_);
     ASSERT_TRUE(session.open(inputs()));
     EXPECT_EQ("ctf", session.knobs().arena_page);
     ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Arena, inputs()).kind);
-    ASSERT_EQ(10u, session.page().rows.size());
+    ASSERT_EQ(11u, session.page().rows.size())
+        << "ten CTF arenas, then RANDOM ARENA";
+    EXPECT_EQ(8, session.page().page.rows_per_page)
+        << "one line on the page leaves eight rows per window";
     EXPECT_TRUE(session.page().page.multi_page());
     EXPECT_EQ(1, session.page().page.page)
         << "the window opens on the page that holds [CURRENT]";
+    EXPECT_EQ(508, session.page().rows[8].base.level);
+    EXPECT_TRUE(session.page().rows[8].base.current);
+    EXPECT_EQ("random_ctf", session.page().rows[10].base.id)
+        << "the second window holds 508, 509 and the roll";
 }
 
 // ---------------------------------------------------------------------------
