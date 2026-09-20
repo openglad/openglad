@@ -15,6 +15,9 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/packs.h>
 #include <openglad/resources/company.h>
+#include <openglad/gameplay/lobby_state.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
+#include <optional>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +29,7 @@
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
+Sint32 create_team_menu(Sint32 arg1);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
@@ -216,10 +220,14 @@ static int difficulty_injector(void* data)
 }
 
 // ---------------------------------------------------------------------------
-// §2.1, the strip twin: on a VERSUS campaign the fight's rules are the
-// wizard's RULES step, so the strip's second door reads SETUP and the
-// DIFFICULTY door is not there at all. On every other campaign the
-// inverse — which the flow above walks. One door per campaign kind.
+// R2-3, the strip twin REVERSED: the Base Camp strip reads
+// BACK - DIFFICULTY - SCENARIO - NETWORK - GO on EVERY campaign. Round 1
+// swapped the second door for SETUP on a versus campaign because the
+// wizard's RULES step had swallowed respawns, permadeath, generators,
+// difficulty, gold and cross control. RULES is the two match knobs now, so
+// those seven came home to the DIFFICULTY screen and the wizard's one SDL
+// door is the docket's SETUP row inside the panel. No SETUP button on the
+// strip, on any campaign.
 
 namespace {
 
@@ -227,8 +235,10 @@ struct StripTwinState
 {
     std::atomic<bool> test_finished{false};
     bool reached_base_camp = false;
-    bool setup_visible = false;
-    bool difficulty_visible = true;
+    bool setup_visible = true;
+    bool difficulty_visible = false;
+    bool difficulty_screen_opened = false;
+    bool respawn_row_visible = false;
     bool finished = false;
 };
 
@@ -237,14 +247,18 @@ int strip_twin_injector(void* data)
     og::runtime::ensure_thread_session();
     auto* const state = static_cast<StripTwinState*>(data);
     const auto escape = [state](int leg, const char* why) {
-        static constexpr EscapeDoor kSetupDoors[] = {
-            {"setup_back", "setup_back"},
+        // In precedence order: the DIFFICULTY subscreen this flow opens,
+        // then Base Camp's own BACK, then the picker's way forward. The
+        // subscreen publishes `difficulty_back`, NOT the shared `back` —
+        // a table without it leaves the tail pressing nothing at all.
+        static constexpr EscapeDoor kStripDoors[] = {
+            {"difficulty_back", "difficulty_back"},
             {"back", "back"},
             {"go", "back"},
             {"continue_game", "continue_game"},
         };
         return escape_to_the_main_thread(state->test_finished, leg, why,
-                                         kSetupDoors);
+                                         kStripDoors);
     };
 
     if (!wait_for_interactable("continue_game", 10000))
@@ -254,17 +268,29 @@ int strip_twin_injector(void* data)
     state->reached_base_camp = wait_for_interactable("go", 15000);
     if (!state->reached_base_camp)
         return escape(2, "Base Camp never came up");
-    // The twins are a per-frame rewire, so read them on a COMPLETED frame.
+    // The strip is a per-frame rewire, so read it on a COMPLETED frame.
     (void)wait_for_menu_frames(2);
     state->setup_visible = has_interactable("setup");
     state->difficulty_visible = has_interactable("difficulty");
+    // ...and the door is not just drawn: it opens the screen the seven
+    // knobs came home to. RESPAWNS is one of them.
+    state->difficulty_screen_opened =
+        click_until_edge("difficulty", [](int wait_ms) {
+            return wait_for_interactable("respawn_mode", wait_ms);
+        });
+    state->respawn_row_visible = has_interactable("respawn_mode");
+    if (state->difficulty_screen_opened) {
+        (void)click_until_edge("difficulty_back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        });
+    }
     state->finished = true;
     return escape(0, "");
 }
 
 } // namespace
 
-TEST(Difficulty, versus_save_shows_setup_and_hides_difficulty)
+TEST(Difficulty, versus_save_keeps_difficulty_on_the_strip)
 {
     trace_clear();
     og::data::ScopedActiveCompany pin("save0");
@@ -296,11 +322,18 @@ TEST(Difficulty, versus_save_shows_setup_and_hides_difficulty)
     EXPECT_EQ(0, thread_result)
         << "the injector gave up at leg " << thread_result;
     ASSERT_TRUE(state.reached_base_camp);
-    EXPECT_TRUE(state.setup_visible)
-        << "a versus campaign's strip carries the SETUP door";
-    EXPECT_FALSE(state.difficulty_visible)
-        << "and NOT the DIFFICULTY door: the fight's rules have one home "
-           "per campaign kind (D9)";
+    EXPECT_TRUE(state.difficulty_visible)
+        << "R2-3: DIFFICULTY is the strip's second door on EVERY campaign "
+           "— respawns, permadeath, generators, gold and cross control "
+           "live behind it again";
+    EXPECT_FALSE(state.setup_visible)
+        << "and the SETUP strip twin is gone: the wizard's one SDL door is "
+           "the docket's SETUP row inside the panel";
+    EXPECT_TRUE(state.difficulty_screen_opened)
+        << "the door opens the screen, not just a face";
+    EXPECT_TRUE(state.respawn_row_visible)
+        << "RESPAWNS is one of the seven rules that came back from the "
+           "wizard's RULES step";
 
     // Every other test in this binary expects the gladiator mount.
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -488,4 +521,199 @@ TEST(Difficulty, infinite_gold_never_reaches_the_save_file)
     std::error_code ec;
     std::filesystem::remove(off_path, ec);
     std::filesystem::remove(on_path, ec);
+}
+
+// ---------------------------------------------------------------------------
+// R2-D18: where a networked JOINER now sees CROSS CONTROL.
+//
+// Round 1 put a read-only CROSS CONTROL row on the wizard's RULES step.
+// R2-3 shrank RULES to the two match knobs, so that row left with its
+// knob — and the joiner's ONE sight of the mode that decides whether the
+// host can drive their fighters is the Base Camp strip's DIFFICULTY door,
+// which R2-3 also put back on every campaign. The row is deliberately NOT
+// host-gated (kNetworkedOnlyGate) while its six siblings are, and a
+// joiner's click answers with the host guard rather than a silent no-op.
+
+namespace {
+
+// A networked lobby this machine is a GUEST in: two seats, ours is the
+// second. lobby_players() rebuilds per call, so the menu thread and the
+// injector never share mutable vector storage.
+class JoinerLobbyClient : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer>
+    lobby_players() const override
+    {
+        og::sim::LobbyPlayer host;
+        host.player_index = 0;
+        host.name = "net-0000000000000000";
+        host.company = "RED LANTERN";
+        host.team = 0;
+        host.is_host = true;
+        og::sim::LobbyPlayer guest;
+        guest.player_index = 1;
+        guest.name = "net-0000000000000001";
+        guest.company = "IRON KETTLE";
+        guest.team = 1;
+        return {host, guest};
+    }
+    [[nodiscard]] std::vector<std::uint8_t>
+    local_player_indices() const override
+    {
+        return {1};
+    }
+};
+
+struct JoinerLobbyGuard
+{
+    og::ui::IPickerLobbyClient* saved = nullptr;
+    explicit JoinerLobbyGuard(og::ui::IPickerLobbyClient* client)
+        : saved(og::ui::active_picker_lobby_client())
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+    ~JoinerLobbyGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+struct JoinerCrossControlState
+{
+    std::atomic<bool> test_finished{false};
+    bool camp_seen = false;
+    bool screen_opened = false;
+    bool cross_control_visible = false;
+    bool host_rows_hidden = false;
+    std::string hidden_witness;
+    bool clicked = false;
+    bool finished = false;
+};
+
+int joiner_cross_control_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<JoinerCrossControlState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        static constexpr EscapeDoor kJoinerDoors[] = {
+            {"difficulty_back", "difficulty_back"},
+            {"back", "back"},
+            {"ready", "back"},
+        };
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kJoinerDoors);
+    };
+
+    // A joiner's strip wears READY where the host's wears GO.
+    state->camp_seen = wait_for_interactable("ready", 15000);
+    if (!state->camp_seen)
+        return escape(1, "the joiner's Base Camp never came up");
+    (void)wait_for_menu_frames(2);
+
+    state->screen_opened = click_until_edge("difficulty", [](int wait_ms) {
+        return wait_for_interactable("cross_control", wait_ms);
+    });
+    if (!state->screen_opened)
+        return escape(2, "the DIFFICULTY door never opened for a joiner");
+    (void)wait_for_menu_frames(2);
+    state->cross_control_visible = has_interactable("cross_control");
+    state->host_rows_hidden = true;
+    for (const char* row : {"difficulty", "respawn_mode", "respawn_delay",
+                            "permadeath", "generator_rate", "infinite_gold"})
+    {
+        if (has_interactable(row)) {
+            state->host_rows_hidden = false;
+            state->hidden_witness = row;
+        }
+    }
+
+    // The click is a REFUSAL, so nothing it could acknowledge ever moves:
+    // one press, and the guard's own trace is the oracle.
+    state->clicked = interact("cross_control");
+    (void)wait_for_menu_frames(2);
+
+    (void)click_until_edge("difficulty_back", [](int wait_ms) {
+        return wait_for_interactable("ready", wait_ms);
+    });
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(Difficulty, networked_joiner_sees_cross_control_read_only_on_versus)
+{
+    trace_clear();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 820;
+    save.numplayers = 1;
+    save.current_campaign = "modes";
+    save.cross_control = 0;
+    ASSERT_TRUE(save.save("save0"));
+
+    JoinerLobbyClient lobby;
+    JoinerLobbyGuard lobby_guard(&lobby);
+
+    JoinerCrossControlState state;
+    SDL_Thread* thread = SDL_CreateThread(joiner_cross_control_injector,
+                                          "joiner_cross", &state);
+    ASSERT_NE(nullptr, thread);
+    picker_load_menu_backdrops();
+    create_team_menu(0);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.screen_opened)
+        << "a joiner opens the strip's DIFFICULTY door too — reading the "
+           "rules is the point";
+    EXPECT_TRUE(state.cross_control_visible)
+        << "R2-D18: CROSS CONTROL is the joiner's one sight of the mode "
+           "that changes their rights, and it is not host-gated";
+    EXPECT_TRUE(state.host_rows_hidden)
+        << "every other row on this screen IS host-gated — '"
+        << state.hidden_witness << "' must not be up for a joiner";
+    EXPECT_TRUE(state.clicked);
+    EXPECT_TRUE(trace_contains("teams", "cross_control_denied"))
+        << "and the joiner's click answers with the host guard";
+    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"))
+        << "in words, not a silent no-op";
+    EXPECT_EQ(0, static_cast<int>(save.cross_control))
+        << "and it changes nothing";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
 }

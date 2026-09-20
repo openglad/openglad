@@ -1310,9 +1310,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             << "base camp: 24 roster controls + 2 pagers + the SCEN line "
                "hit zone + HIRE + 4 strip buttons + the hidden READY twin + "
                "4 seat slots + 4 parked rail spares + 8 move-up controls + the 23-row "
-               "parked zone band + the appended DIFFICULTY strip door + its "
-               "hidden SETUP twin";
-        ASSERT_EQ(74, count);
+               "parked zone band + the appended DIFFICULTY strip door";
+        ASSERT_EQ(73, count);
         ASSERT_EQ(static_cast<int>(std::size(kExpected)),
                   kBaseCampZoneActionBase)
             << "the exact table covers the classic ordinals 0..48";
@@ -1411,30 +1410,6 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             EXPECT_EQ(kCreateMenuScenarioIndex, diff.nav.right);
             EXPECT_EQ(10, static_cast<int>(diff.label.size()));
 
-            // The SETUP twin at ordinal 73: DIFFICULTY's rect exactly
-            // (docs/match-setup-design.md §2.1, the GO/READY shape), a
-            // MenuSpecRow door, and STATICALLY HIDDEN like READY so
-            // createmenu_buttons_no_overlap holds on the materialized
-            // table with no exemption. base_camp_rewire shows exactly one
-            // of the pair per frame.
-            const button& setup = buttons[kCreateMenuSetupIndex];
-            EXPECT_EQ("setup", setup.id);
-            EXPECT_EQ("SETUP", setup.label);
-            EXPECT_TRUE(setup.hidden);
-            EXPECT_FALSE(setup.no_draw);
-            EXPECT_EQ(diff.x, setup.x);
-            EXPECT_EQ(diff.y, setup.y);
-            EXPECT_EQ(diff.sizex, setup.sizex);
-            EXPECT_EQ(diff.sizey, setup.sizey);
-            EXPECT_EQ(button_action_id(ButtonAction::MenuSpecRow),
-                      setup.myfun);
-            EXPECT_EQ(kCreateMenuSetupIndex, setup.arg1);
-            EXPECT_EQ(7, setup.nav.up);
-            EXPECT_EQ(kCreateMenuBackIndex, setup.nav.left);
-            EXPECT_EQ(kCreateMenuScenarioIndex, setup.nav.right);
-            EXPECT_LE(static_cast<int>(setup.label.size()) * 6,
-                      setup.sizex - 8)
-                << "SETUP inks inside the beveled face";
             EXPECT_LE(static_cast<int>(diff.label.size()),
                       (diff.sizex - 8) / 6)
                 << "the full word must ink inside the bevel";
@@ -1491,9 +1466,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kBaseCampZoneSpareBase, 69);
         EXPECT_EQ(kBaseCampZoneSpareCount, 3);
         EXPECT_EQ(kCreateMenuDifficultyIndex, 72);
-        EXPECT_EQ(kCreateMenuSetupIndex, 73);
-        EXPECT_EQ(kCreateMenuButtonCount, 74);
-        EXPECT_EQ(MAX_BUTTONS, 74);
+        EXPECT_EQ(kCreateMenuButtonCount, 73);
+        EXPECT_EQ(MAX_BUTTONS, 73);
         // §2.6 same-geometry pair: the two rects are IDENTICAL by design
         // (the mutually-exclusive-gate allowance the gate-lattice sweep
         // validates structurally).
@@ -2844,31 +2818,27 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                     "basecamp roster={} page={} {} {}", roster_size, page,
                     host_visible ? "host" : "joiner",
                     og::ui::is_versus_campaign(save) ? "versus" : "classic");
-                // §2.1: exactly ONE of the strip's second-door twins is up,
-                // and every link that pointed at the classic half follows
-                // the visible one. A rewire that showed both would overlap
-                // (the check below); one that showed neither would strand
-                // BACK's right link (the BFS).
+                // R2-3: DIFFICULTY is the strip's SECOND DOOR on every
+                // campaign kind — no twin to choose between any more —
+                // and the three links that pointed at it in round 1's
+                // versus half point at it here too. The campaign axis
+                // stays in the sweep so a rewire that started hiding the
+                // door again on versus saves would strand BACK's right
+                // link (the BFS below) instead of sailing through.
                 {
-                    const bool versus = og::ui::is_versus_campaign(save);
-                    const int twin = versus ? kCreateMenuSetupIndex
-                                            : kCreateMenuDifficultyIndex;
-                    const int other = versus ? kCreateMenuDifficultyIndex
-                                             : kCreateMenuSetupIndex;
-                    EXPECT_FALSE(buttons[twin].hidden)
+                    EXPECT_FALSE(buttons[kCreateMenuDifficultyIndex].hidden)
                         << variant << ": the strip's second door";
-                    EXPECT_TRUE(buttons[other].hidden)
-                        << variant << ": only one twin is ever up";
-                    EXPECT_EQ(twin, buttons[kCreateMenuBackIndex].nav.right)
-                        << variant << ": BACK routes onto the visible twin";
-                    EXPECT_EQ(twin, buttons[kCreateMenuScenarioIndex].nav.left)
-                        << variant
-                        << ": SCENARIO routes back onto the visible twin";
+                    EXPECT_EQ(kCreateMenuDifficultyIndex,
+                              buttons[kCreateMenuBackIndex].nav.right)
+                        << variant << ": BACK routes onto DIFFICULTY";
+                    EXPECT_EQ(kCreateMenuDifficultyIndex,
+                              buttons[kCreateMenuScenarioIndex].nav.left)
+                        << variant << ": SCENARIO routes back onto it";
                     if (!buttons[kBaseCampSeatCardBase].hidden) {
-                        EXPECT_EQ(twin,
+                        EXPECT_EQ(kCreateMenuDifficultyIndex,
                                   buttons[kBaseCampSeatCardBase].nav.down)
                             << variant
-                            << ": seat slot one drops onto the visible twin";
+                            << ": seat slot one drops onto DIFFICULTY";
                     }
                 }
                 check_no_overlaps(buttons, count, variant.c_str());

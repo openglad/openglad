@@ -3033,20 +3033,6 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
      .action = ButtonAction::OpenDifficultyMenu, .arg = -1,
      .nav = {.up = 7, .left = kCreateMenuBackIndex,
              .right = kCreateMenuScenarioIndex}},
-    // The SETUP door, appended at 73 (docs/match-setup-design.md §2.1) as
-    // DIFFICULTY's TWIN on the SAME rect — the GO/READY shape. On a versus
-    // campaign the fight's rules are the wizard's RULES step, so the strip
-    // shows SETUP there and DIFFICULTY everywhere else; base_camp_rewire
-    // shows exactly one of the pair and routes BACK/SCENARIO onto it.
-    // Statically hidden like READY (the overlap pin reads the materialized
-    // table).
-    {.id = "setup", .label = "SETUP",
-     .x = kBaseCampStripDifficultyX, .y = kBaseCampStripY,
-     .w = kBaseCampStripDifficultyWidth, .h = kBaseCampStripHeight,
-     .action = ButtonAction::MenuSpecRow, .arg = kCreateMenuSetupIndex,
-     .nav = {.up = 7, .left = kCreateMenuBackIndex,
-             .right = kCreateMenuScenarioIndex},
-     .hidden = true},
 };
 
 #undef OG_BASE_CAMP_DEP
@@ -4434,15 +4420,14 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
     // keyboard route down from the rail.) The rail's LEFT end climbs into
     // the roster's left column and the rest into its body column — the split
     // the retired '+' used to make at exactly this x.
-    // §2.1: exactly one of {DIFFICULTY, SETUP} is up. A versus campaign's
-    // rules live on the wizard's RULES step, so its strip carries SETUP;
-    // every other campaign keeps the DIFFICULTY door. Both wear the same
-    // rect, so the strip's geometry never moves.
-    const bool versus_strip = og::ui::is_versus_campaign(save);
-    buttons[kCreateMenuDifficultyIndex].hidden = versus_strip;
-    buttons[kCreateMenuSetupIndex].hidden = !versus_strip;
-    const int strip_second =
-        versus_strip ? kCreateMenuSetupIndex : kCreateMenuDifficultyIndex;
+    // R2-3: DIFFICULTY is the strip's second door on EVERY campaign. Round
+    // 1 hid it behind a SETUP twin on versus campaigns because the wizard's
+    // RULES step had swallowed respawns, spawn delay, permadeath,
+    // generators, difficulty, gold and cross control; RULES is the two
+    // match knobs now and those seven came home here, so the strip reads
+    // BACK - DIFFICULTY - SCENARIO - NETWORK - GO everywhere. The wizard's
+    // one SDL door is the docket's SETUP row inside the panel.
+    const int strip_second = kCreateMenuDifficultyIndex;
     const std::array<int, kBaseCampSeatCardsPerPage> card_down{
         strip_second,
         kCreateMenuScenarioIndex,
@@ -5184,9 +5169,9 @@ void base_camp_on_reset(void* screen_state)
     base_camp_refresh_rows(*state);
 }
 
-// The one fold behind both doors into the SETUP wizard — the strip's own
-// SETUP and a versus docket page row (§2.1). Go is deferred to the frame
-// tick, which is the first moment Base Camp's live GO button exists again.
+// The fold behind the docket's SETUP row (§2.1 after round 2), the wizard's
+// ONE door on this client. Go is deferred to the frame tick, which is the
+// first moment Base Camp's live GO button exists again.
 Sint32 base_camp_open_match_setup(BaseCampScreenState& st,
                                   const std::string& entry_page)
 {
@@ -5228,9 +5213,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
             TRACE("basecamp", "page %s", st->page.indicator().c_str());
         return MENU_OK;
     }
-
-    if (row == kCreateMenuSetupIndex)
-        return base_camp_open_match_setup(*st, std::string());
 
     if (row >= kBaseCampSeatCardBase &&
         row < kBaseCampSeatCardBase + kBaseCampSeatCardsPerPage)
@@ -5387,9 +5369,10 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         using EntryKind = og::ui::CampaignPickerSession::Kind;
         switch (entry.kind) {
         case EntryKind::Page: {
-            // D28: on a VERSUS campaign the docket's page rows are
-            // shortcuts INTO the wizard, positioned at the page they name
-            // — GAME: lands on the GAME step, ARENA: on the ARENA step. Two
+            // D28 / R2-5: on a VERSUS campaign the docket's page row IS
+            // the wizard's door. The camp composes exactly one of them
+            // now — "SETUP - <TITLE>", the row id `games`, which names no
+            // root PAGE row and so opens the wizard on its GAME step. Two
             // doors from one screen into the same pages on two different
             // chassis, with a NEXT that meant two different things, was
             // exactly the clutter #304 names. The zone submenu keeps
@@ -8471,7 +8454,7 @@ bool match_setup_frame_tick(void* screen_state, int /*frame*/)
 }
 
 // The wizard's message line: the SAME 2.5s header-strip toast the Base Camp
-// and the zone submenu use. A refusal, a level set and a said-line confirm
+// and the zone submenu use. A refusal and the level tail's line confirm
 // identically at every depth of the camp.
 void match_setup_show_toast(MatchSetupScreenState& state, std::string text)
 {

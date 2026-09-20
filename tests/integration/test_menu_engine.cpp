@@ -1817,11 +1817,12 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     // the DIFFICULTY cross-control row.
     //
     // The third axis is the CAMPAIGN KIND (docs/match-setup-design.md
-    // §2.1): the Base Camp strip's second door is SETUP on a versus
-    // campaign and DIFFICULTY on every other, one visible per frame on one
-    // rect. Without this axis the allowance below could never be
-    // exercised, and a rewire that simply never showed SETUP would sail
-    // through.
+    // §2.1). Round 1 made the Base Camp strip's second door SETUP on a
+    // versus campaign and DIFFICULTY on every other; R2-3 reversed that —
+    // DIFFICULTY is the second door on BOTH kinds now, and the SETUP
+    // wizard's one door is the docket row inside the panel. The axis
+    // stays: a rewire that started hiding DIFFICULTY on versus saves
+    // again would strand the strip here instead of sailing through.
     struct SweepVariant {
         bool host;
         bool networked;
@@ -1847,10 +1848,7 @@ TEST(MenuEngine, engine_screen_gate_lattice_sweep)
     const std::set<std::pair<std::string, std::string>> kSameGeometryAllowed =
         {{"go", "ready"},
          {"continue_game", "no_company_note"},
-         {"load_company", "no_company_note"},
-         // §2.1: the strip's second door is SETUP on a versus campaign and
-         // DIFFICULTY everywhere else — the GO/READY shape, one rect.
-         {"difficulty", "setup"}};
+         {"load_company", "no_company_note"}};
 
     int engine_screens = 0;
     for (int s = 0; s < static_cast<int>(og::ui::MenuScreenId::Count); ++s) {
