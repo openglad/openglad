@@ -151,11 +151,10 @@ end
 
 -- How big a game is, which is all the index row has to say about it. A
 -- count is a fact; the tally it replaced was a score, and this campaign
--- keeps no score.
+-- keeps no score. Branchless on purpose: the smallest band this campaign
+-- ships is four arenas, so a singular arm would be a line no run can reach
+-- and an uncovered line in the Lua coverage denominator.
 local function arenas_note(band)
-  if #band == 1 then
-    return "1 arena"
-  end
   return #band .. " arenas"
 end
 

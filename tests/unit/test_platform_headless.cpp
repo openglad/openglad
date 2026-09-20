@@ -33,6 +33,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -1070,7 +1072,7 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
-    // Team Build is 13 items (§2.5 in-place substitution: 1=roster,
+    // Team Build is 12 items (§2.5 in-place substitution: 1=roster,
     // 4=deploy, 5=ready, 6=GO!; #206 inserted 7=camp before Back, shifting
     // 8=back, 9=networking, 10=Scenario; the flat CTF trio left for the
     // SETUP wizard's RULES step and 11=difficulty was appended in its
@@ -1151,11 +1153,6 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "2\n"       // lineup: TEAM 1 MAP UNITS (classic: refused)
         "99\n"      // lineup: out of range -> refused, page reprints
         "12\n"      // lineup: back -> team build
-        // #304: the SETUP door on a CLASSIC campaign. terminal_item_gate
-        // refuses it in words and Team Build re-presents WITHOUT consuming
-        // another line — the 7=camp precedent, which is why the next
-        // ordinal below is read by Team Build and not by a wizard prompt.
-        "13\n"      // team build: setup (gladiator -> the versus guard)
         "9\n"       // team build: networking (unavailable)
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
@@ -1190,15 +1187,10 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
               config.team_families)
         << "the two seeded families survive and the hire appended its family";
 
-    // #304 leg 13: the classic-campaign guard answered, and the wizard
-    // never opened. Pinning the absence matters as much as the line — a
-    // guard that printed AND opened would eat the next ordinal and silently
-    // desync every leg below it.
-    EXPECT_NE(std::string::npos,
-              printed.find(std::string(og::ui::kSetupClassicGuardMessage)))
-        << "Team Build item 13 on a classic campaign must refuse in words";
+    // R2-D11: Team Build carries no SETUP row on any campaign, so nothing
+    // in this whole classic drive can compose a wizard step.
     EXPECT_EQ(std::string::npos, printed.find("--- SETUP: "))
-        << "the guard path must never compose a wizard step";
+        << "the wizard has no Team Build door left to open";
 
     // The DIFFICULTY submenu is the only place this binary drives the text
     // client's six settings rows, so pin the ANSWER each ordinal prints, in
@@ -3652,10 +3644,11 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_at_rest_fields_the_match)
 // The shared driver's every Outcome arm is reachable from a terminal, and
 // this drive walks them in one sitting: the five steps and their banners,
 // Next/Prev/Back, a level row's Unchanged AND Applied arms, a cycler
-// forward and the same cycler's `N-` backward, SetDifficulty through the
-// client's value-taking tail, the two pointer notices, GO's pointer notice
-// and an unparsable row. The wizard is Team Build item 13, which is why
-// this file's positional ledger gained exactly one leg.
+// forward and the same cycler's `N-` backward, the two pointer notices,
+// GO's pointer notice and an unparsable row. The wizard is reached the one
+// way a player can reach it — Team Build's Camp row (7), then the docket's
+// SETUP row (1) — so this file's positional ledger lost its item-13 leg
+// and gained the camp's.
 TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
 {
     restore_default_campaigns();
@@ -3671,12 +3664,13 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
             "7\n"    // main: load company -> the company list
             "1\n"    //   list: open company...
             "1\n"    //     #1 = setupw -> team build
-            "13\n"   // team build: SETUP -> "--- SETUP: GAME ---"
-            // GAME is the games index: 7 game rows, then Next, then Back.
-            // NEXT on GAME means "keep the arena that is set" and lands on
-            // TEAMS (§2.2), so the ARENA step is reached by PREV from
-            // there — which is exactly the pair this leg proves.
-            "8\n"    // GAME: Next: TEAMS
+            "7\n"    // team build: Camp -> the one-row docket
+            "1\n"    //   camp: the SETUP row -> "--- SETUP: GAME ---"
+            // GAME is the games index: 7 game rows, then the RANDOM roll,
+            // then Next, then Back. NEXT on GAME means "keep the arena that
+            // is set" and lands on TEAMS (§2.2), so the ARENA step is
+            // reached by PREV from there — exactly the pair this leg proves.
+            "9\n"    // GAME: Next: TEAMS
             "4\n"    // TEAMS: Prev: ARENA
             "1\n"    // ARENA: THE PITCH is [CURRENT] -> Unchanged, NO advance
             "2\n"    // ARENA: THE MUDBOWL -> Applied -> advance to TEAMS
@@ -3684,16 +3678,16 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
             "2\n"    // RULES: TIME LIMIT forward
             "2-\n"   // RULES: the SAME row backward -- the `<` cell's
                      //   projection; a cycle-once handler would lap instead
-            "7\n"    // RULES: DIFFICULTY -> SetDifficulty -> the client tail
-            "9\n"    // RULES: Next: MATCH
+            "3\n"    // RULES: Next: MATCH
             "2\n"    // MATCH: GO -> the terminal pointer notice
             "1\n"    // MATCH: VIEW LEVEL -> the terminal pointer notice
             "99\n"   // MATCH: out of range -> the invalid-row notice
             "3\n"    // MATCH: Prev: RULES
-            "3\n"    // RULES: RESPAWNS (OFF -> HEROES) -- the LAST mutation
-                     //   of the drive, so the company on disk below can
-                     //   only have been written by this turn's autosave
-            "0\n"    // wizard: back out
+            "1\n"    // RULES: SCORE (MAP -> 1) -- the LAST mutation of the
+                     //   drive, so the company on disk below can only have
+                     //   been written by this turn's autosave
+            "0\n"    // wizard: back out -> the camp prompt
+            "0\n"    // camp: back out -> team build
             "8\n"    // team build: back -> main
             "6\n");  // main: quit
         StdoutCapture capture;
@@ -3718,7 +3712,8 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
             at = found + needle.size();
     };
     expect_in_order("--- SETUP: GAME ---");
-    expect_in_order("SOCCER - 0/4 cleared");
+    expect_in_order("SOCCER - 4 arenas");
+    expect_in_order("RANDOM - any game, any arena");
     expect_in_order("Next: TEAMS");
     expect_in_order("--- SETUP: TEAMS ---");
     // The deal already ran at the top of this prompt, so the step reads the
@@ -3735,7 +3730,7 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     // label: this line is also the crash pin.
     expect_in_order("TEAM 1 RED  P1 ARE");
     expect_in_order("TEAM 2 GREEN  2 BOTS");
-    expect_in_order("FILL: STRONG - none to brutal");
+    expect_in_order("FILL: STRONG - weak to brutal");
     expect_in_order("Prev: ARENA");
     expect_in_order("--- SETUP: ARENA ---");
     expect_in_order("THE PITCH - 2 sides, 3 goals  [CURRENT]");
@@ -3745,41 +3740,27 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     expect_in_order("Level set to THE MUDBOWL.");
     expect_in_order("--- SETUP: TEAMS ---");
     expect_in_order("--- SETUP: RULES ---");
+    // R2-3: RULES is the two match knobs and a pointer at the rest. The
+    // said-lines went with the toasts (R2-1), so a turn's only answer is
+    // the face the row redraws.
+    expect_in_order("Respawns and the rest: the Base Camp DIFFICULTY.");
     expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
-    expect_in_order("Clock: 5 minutes.");
     expect_in_order("TIME LIMIT: 5 MIN - map, 5 to 20 min");
-    expect_in_order("Clock: the map's own.");
     expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
-    // DIFFICULTY is SESSION state, not save state, and every test in this
-    // binary shares one session — so the word the wheel lands on depends on
-    // what ran before. The pin is therefore the AGREEMENT, not a literal:
-    // the tail's line and the row it redraws must name the same difficulty,
-    // upper-cased by the session exactly as §2.5 says.
-    expect_in_order("Difficulty set to ");
-    std::string difficulty_word;
-    {
-        const std::size_t stop = printed.find('.', at);
-        if (stop != std::string::npos)
-            difficulty_word = printed.substr(at, stop - at);
-    }
-    ASSERT_FALSE(difficulty_word.empty())
-        << "the value-taking difficulty tail must name the value it wrote";
-    std::string upper = difficulty_word;
-    for (char& ch : upper)
-        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-    expect_in_order("DIFFICULTY: " + upper + " - up to slaughter");
     expect_in_order("--- SETUP: MATCH ---");
     expect_in_order("SOCCER: THE MUDBOWL");
     expect_in_order("ACTIVE - MATCHED BOTS (2) STRONG");
-    expect_in_order("DIFFICULTY: " + upper);
+    // The recap still states the WHOLE match, DIFFICULTY included, even
+    // though its knob lives on the Base Camp DIFFICULTY screen now.
+    expect_in_order("DIFFICULTY: ");
     expect_in_order(std::string(og::ui::kSetupTerminalGoNotice));
     expect_in_order(std::string(og::ui::kSetupTerminalViewLevelNotice));
     expect_in_order(std::string(og::ui::kSetupInvalidRowNotice));
     expect_in_order("--- SETUP: RULES ---");
-    // RESPAWNS carries no said-line, so the row's own redrawn face IS the
+    // A turn carries no said-line, so the row's own redrawn face IS the
     // acknowledgement -- read back off the save, upper-cased by the session
     // (§2.5), never remembered from the press.
-    expect_in_order("RESPAWNS: HEROES - off to team 1");
+    expect_in_order("SCORE: 1 - map, 1, 3, 5, 10");
 
     // The ARENA row wrote through the client's own level tail, not a bare
     // scen_num poke: the session config moved with the save.
@@ -3790,7 +3771,7 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     EXPECT_EQ(0, static_cast<int>(reloaded.time_limit))
         << "`2-` stepped the SAME wheel back, so the clock ends where it "
            "started -- a cycle-once handler would have left it on 2 MIN";
-    EXPECT_NE(0, static_cast<int>(reloaded.respawn_mode))
+    EXPECT_EQ(1, static_cast<int>(reloaded.ctf_capture_limit))
         << "the Turned arm's autosave tail put the last knob on disk";
 
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -3838,12 +3819,12 @@ TEST(PlatformHeadless, text_picker_setup_wizard_refuses_an_undeployed_go)
     {
         StdinRedirect input(
             "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
-            "13\n"   // team build: SETUP -> GAME
-            "8\n"    // GAME: Next: TEAMS
+            "7\n" "1\n"  // team build: Camp -> the SETUP row -> GAME
+            "9\n"    // GAME: Next: TEAMS
             "3\n"    // TEAMS: Next: RULES
-            "9\n"    // RULES: Next: MATCH
+            "3\n"    // RULES: Next: MATCH
             "2\n"    // MATCH: GO -> Disabled -> Refused
-            "0\n" "8\n" "6\n");
+            "0\n" "0\n" "8\n" "6\n");
         StdoutCapture capture;
 
         og::ui::TextPickerConfig config;
@@ -3890,13 +3871,16 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_c
     // §3.8.7), so "one step back" and "one step forward" land on different
     // words per arena -- the wheel is walked by the FACE it writes, never
     // by counting presses.
+    // 300 and 500 author FOUR sides, so their TEAMS step leads with SIDES
+    // and the FILL wheel is row 2 (the old `1-`/`1` round-tripped SIDES and
+    // never touched FILL at all -- recon2/fill-bug.md §5).
     const Walk walks[] = {
-        {820, "1-\n",     "FILL: FAIR - none to brutal",   1},
-        {820, "1\n",      "FILL: BRUTAL - none to brutal", 3},
-        {824, "1-\n",     "FILL: FAIR - none to brutal",   1},
-        {824, "1\n",      "FILL: BRUTAL - none to brutal", 3},
-        {300, "1-\n1\n",  "FILL: FAIR - none to brutal",   1},
-        {500, "1-\n1\n",  "FILL: FAIR - none to brutal",   1},
+        {820, "1-\n",     "FILL: FAIR - weak to brutal",   1},
+        {820, "1\n",      "FILL: BRUTAL - weak to brutal", 3},
+        {824, "1-\n",     "FILL: FAIR - weak to brutal",   1},
+        {824, "1\n",      "FILL: BRUTAL - weak to brutal", 3},
+        {300, "2-\n2\n",  "FILL: FAIR - weak to brutal",   1},
+        {500, "2-\n2\n",  "FILL: FAIR - weak to brutal",   1},
     };
     for (const Walk& walk : walks) {
         ASSERT_TRUE(seed_arena_company("arenaw", walk.scen));
@@ -3907,10 +3891,11 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_c
             StdinRedirect input(
                 std::string(
                     "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
-                    "13\n"   // team build: SETUP -> GAME
-                    "8\n")   // GAME: Next: TEAMS (keeps the arena that is set)
+                    "7\n" "1\n"  // team build: Camp -> the SETUP row -> GAME
+                    "9\n")   // GAME: Next: TEAMS (keeps the arena that is set)
                 + walk.wheel +   // TEAMS: the FILL wheel, one row, N / N-
-                "0\n"    // wizard: back out to team build
+                "0\n"    // wizard: back out -> the camp prompt
+                "0\n"    // camp: back out -> team build
                 "6\n"    // team build: GO! -> the staged protocol session
                 "tick 3\n"
                 "state\n"
@@ -3954,6 +3939,110 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_c
             << "scen " << walk.scen << " at " << walk.word
             << ": the wheel the wizard turned is the squad on the floor";
     }
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// R2-2, the text half of the hole that let the FILL bug ship: ONE turn of
+// the wizard's FILL wheel must move EVERY authored side of a four-side
+// arena, and the NONE trap must close behind it.
+//
+// Leg 1 walks a fresh company onto FOURSQUARE (soccer, four sides) and
+// turns FILL once: the dealt STRONG steps to BRUTAL on all four bands, and
+// LINEUP -- which reads the stored codes, not the wizard's memory -- says
+// so four times. Before fix B this walk left teams 3 and 4 stranded.
+//
+// Leg 2 is the trap: LINEUP wheels all four bands to NONE, so no opponent
+// is ON and the wizard's SIDES face reads 1. One FILL turn there must
+// light every AUTHORED opponent again (SIDES back to 4, the wheel entering
+// at its head, WEAK) instead of the lowest one alone.
+TEST(PlatformHeadless, text_picker_setup_fill_moves_every_side_on_a_four_side_arena)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("fourside", 820));
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+            // Leg 1: the camp's SETUP row, SOCCER, FOURSQUARE, one FILL turn
+            "7\n" "1\n"  // team build: Camp -> the SETUP row -> GAME
+            "5\n"         // GAME: SOCCER -> the ARENA page
+            "3\n"         // ARENA: FOURSQUARE -> Applied -> TEAMS
+            "2\n"         // TEAMS: FILL (row 2 -- SIDES is row 1 here)
+            "0\n" "0\n"   // leave the wizard, leave the camp
+            "12\n" "\n"   // LINEUP: read the four stored codes, blank exits
+            // Leg 2: every band to NONE, then one FILL turn re-lights them
+            "12\n"        // team build: LINEUP
+            "1\n" "3\n" "5\n" "7\n"  //   the four FILL wheels: BRUTAL -> NONE
+            "\n"          //   blank exits
+            "7\n" "1\n"   // team build: Camp -> the SETUP row -> GAME
+            "9\n"         // GAME: Next: TEAMS
+            "2\n"         // TEAMS: one FILL turn
+            "0\n" "0\n"
+            "12\n" "\n"   // LINEUP: WEAK on all four
+            "8\n" "6\n");
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+
+    std::size_t at = 0;
+    const auto expect_in_order = [&](const std::string& needle) {
+        const std::size_t found = printed.find(needle, at);
+        EXPECT_NE(std::string::npos, found)
+            << "FILL answer '" << needle << "' missing after offset " << at
+            << ":\n" << printed;
+        if (found != std::string::npos)
+            at = found + needle.size();
+    };
+
+    // Leg 1, before the turn: four authored sides, the arena's dealt word.
+    expect_in_order("--- SETUP: TEAMS ---");
+    expect_in_order("SIDES: 4 - 2, 3, 4");
+    expect_in_order("FILL: STRONG - weak to brutal");
+    // ...and after it, every band moved, bodies included.
+    expect_in_order("--- SETUP: TEAMS ---");
+    expect_in_order("TEAM 2 GREEN  3 BOTS");
+    expect_in_order("TEAM 3 BLUE  3 BOTS");
+    expect_in_order("TEAM 4 YELLOW  3 BOTS");
+    expect_in_order("FILL: BRUTAL - weak to brutal");
+    // LINEUP reads the STORED codes, which is where the bug was visible.
+    expect_in_order("1. TEAM 1  FILL: BRUTAL");
+    expect_in_order("3. TEAM 2  FILL: BRUTAL");
+    expect_in_order("5. TEAM 3  FILL: BRUTAL");
+    expect_in_order("7. TEAM 4  FILL: BRUTAL");
+
+    // Leg 2: the NONE trap. No opponent on, so the arena reads one side.
+    expect_in_order("--- SETUP: TEAMS ---");
+    expect_in_order("SIDES: 1 - 2, 3, 4");
+    expect_in_order("FILL: NONE - weak to brutal");
+    // One turn lights every AUTHORED opponent again, at the wheel's head.
+    expect_in_order("SIDES: 4 - 2, 3, 4");
+    expect_in_order("FILL: WEAK - weak to brutal");
+    expect_in_order("1. TEAM 1  FILL: WEAK");
+    expect_in_order("3. TEAM 2  FILL: WEAK");
+    expect_in_order("5. TEAM 3  FILL: WEAK");
+    expect_in_order("7. TEAM 4  FILL: WEAK");
+
+    // The disk is the last witness: the turn's autosave banked all four.
+    SaveData reloaded;
+    ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("fourside"));
+    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, og::sim::kFillWeak,
+                                    og::sim::kFillWeak, og::sim::kFillWeak}),
+              reloaded.fill)
+        << "one FILL turn on a four-side arena writes four bands";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
@@ -4004,11 +4093,11 @@ TEST(PlatformHeadless, text_picker_lineup_census_reads_the_staged_squad)
               mount_campaign_package_with_error("gladiator"));
 }
 
-// D9, the terminal half: the match rules have ONE door per campaign kind on
-// every client. On a VERSUS campaign the DIFFICULTY door (item 11) refuses
-// and points at the wizard; the classic twin -- item 13 refusing and
-// pointing back -- is the leg the positional drive above carries.
-TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_campaign)
+// R2-3, the terminal half: the DIFFICULTY submenu is item 11 on EVERY
+// campaign again. The seven rules the wizard's RULES step briefly held went
+// back behind this one door, so on a versus campaign it opens instead of
+// pointing anywhere.
+TEST(PlatformHeadless, text_picker_difficulty_opens_on_a_versus_campaign)
 {
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -4033,11 +4122,201 @@ TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_c
         printed = capture.restore();
     }
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    EXPECT_NE(std::string::npos, printed.find("=== Difficulty ==="))
+        << "item 11 must OPEN the DIFFICULTY submenu on a versus campaign";
+    EXPECT_EQ(std::string::npos, printed.find("SETUP: RULES"))
+        << "nothing points at the wizard for the rules any more";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// R2-D11, the whole terminal path to the wizard: the ONE door is the
+// camp's SETUP row. Team Build carries no Setup item, so a player reaches
+// the five steps exactly one way -- Camp (item 7), the docket's row 1 --
+// and `0` walks back out onto the camp prompt, not past it. The GAME step's
+// RANDOM row is the roll the retired docket row used to be: it answers a
+// level through the shared Acted-level tail and advances like any other
+// applied arena.
+TEST(PlatformHeadless, text_picker_modes_camp_row_is_the_one_door)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("onedoor", 820));
+
+    // The arenas this campaign ships, by the title the level tail speaks.
+    std::vector<std::string> manifest;
+    for (const int id : list_levels_v()) {
+        manifest.push_back(og::data::load_scenario_title(
+            ("scen" + std::to_string(id)).c_str()));
+    }
+    ASSERT_EQ(40u, manifest.size()) << "the campaign ships 40 arenas";
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+            "7\n"    // team build: Camp -> the one-row docket
+            "1\n"    //   camp: the SETUP row -> the wizard's GAME step
+            "8\n"    // GAME: RANDOM - any game, any arena
+            "0\n"    // wizard: back out -> the camp prompt again
+            "0\n"    // camp: back out -> team build
+            "8\n"    // team build: back -> main
+            "6\n");  // main: quit
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+
+    std::size_t at = 0;
+    const auto expect_in_order = [&](const std::string& needle) {
+        const std::size_t found = printed.find(needle, at);
+        EXPECT_NE(std::string::npos, found)
+            << "one-door answer '" << needle << "' missing after offset "
+            << at << ":\n" << printed;
+        if (found != std::string::npos)
+            at = found + needle.size();
+    };
+    // The camp is ONE docket row wide, and that row states the match.
+    expect_in_order("   1. SETUP - ");
+    expect_in_order("Camp # [1-1] (0 = back): ");
+    expect_in_order("--- SETUP: GAME ---");
+    expect_in_order("   8. RANDOM - any game, any arena");
+    expect_in_order("Level set to ");
+    std::string rolled;
+    {
+        const std::size_t stop = printed.find(".\n", at);
+        ASSERT_NE(std::string::npos, stop);
+        rolled = printed.substr(at, stop - at);
+    }
+    EXPECT_NE(manifest.end(),
+              std::find(manifest.begin(), manifest.end(), rolled))
+        << "the roll answered '" << rolled
+        << "', which is no arena of this campaign";
+    // ...and an applied level advances the wizard, roll or row alike.
+    expect_in_order("--- SETUP: TEAMS ---");
+    // `0` leaves the wizard onto the CAMP prompt, `0` again onto Team Build.
+    expect_in_order("Camp # [1-1] (0 = back): ");
+    expect_in_order("=== Team Build ===");
+
+    // ...and never the pairing the camp was already set to: a roll that
+    // deals the current arena is a button that changes nothing.
+    EXPECT_NE(og::data::load_scenario_title("scen820"), rolled)
+        << "the roll stepped past the arena the camp already carried";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// R2-4, the SCENARIO door on a versus campaign: no progress vocabulary
+// survives behind it. PROGRESS states the campaign and the arena and never
+// a cleared count, and `Replay Level` refuses BEFORE its prompt -- through
+// terminal_item_gate, the one gate both terminal clients consult, so no
+// second predicate lives inside replay_level(). A classic campaign still
+// prompts, which is the half that proves the gate is campaign-shaped and
+// not a blanket retirement.
+TEST(PlatformHeadless, text_picker_scenario_progress_and_replay_wear_no_cleared_on_versus)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    std::string versus_printed;
+    {
+        HeadlessSaveDirSandbox sandbox;
+        ASSERT_TRUE(seed_arena_company("noreplay", 821));
+        {
+            SaveData sd;
+            ASSERT_EQ(SaveDataIoError::None, sd.load_with_error("noreplay"));
+            sd.add_level_completed("modes", 821);
+            ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("noreplay"));
+        }
+        og::ui::TextPickerError error;
+        {
+            StdinRedirect input(
+                "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+                "10\n"  // team build: Scenario
+                "5\n"   //   scenario: Progress
+                "6\n"   //   scenario: Replay Level -> the gate refuses
+                "7\n"   //   scenario: Back (read by the SUBMENU, which is
+                         //     the proof the refusal consumed no prompt line)
+                "8\n"   // team build: back -> main
+                "6\n");
+            StdoutCapture capture;
+            og::ui::TextPickerConfig config;
+            config.campaign = "modes";
+            config.team_families = {FAMILY_SOLDIER};
+            config.seed = 42;
+            og::ui::run_text_picker(config, &error);
+            versus_printed = capture.restore();
+        }
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    }
+    EXPECT_EQ(std::string::npos, versus_printed.find("CLEARED"))
+        << "no progress vocabulary behind the versus SCENARIO door:\n"
+        << versus_printed;
+    EXPECT_EQ(std::string::npos, versus_printed.find("cleared of"))
+        << versus_printed;
     EXPECT_NE(std::string::npos,
-              printed.find("The fight's rules are on SETUP: RULES."))
-        << "item 11 on a versus campaign must point at SETUP: RULES";
-    EXPECT_EQ(std::string::npos, printed.find("=== Difficulty ==="))
-        << "the guard path must never open the DIFFICULTY submenu";
+              versus_printed.find(
+                  std::string(og::ui::kReplayVersusGuardMessage)))
+        << "the replay row must refuse in words:\n" << versus_printed;
+    EXPECT_EQ(std::string::npos,
+              versus_printed.find("Replay level (must be cleared): "))
+        << "...and refuse BEFORE the prompt:\n" << versus_printed;
+
+    std::string classic_printed;
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("gladiator"));
+        HeadlessSaveDirSandbox sandbox;
+        {
+            SaveData sd;
+            sd.reset();
+            sd.save_name = "ROADS";
+            sd.current_campaign = "gladiator";
+            sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+            sd.team_list[0]->name = "Arthur";
+            sd.team_list[0]->teamnum = 0;
+            sd.team_list[0]->deployed = true;
+            sd.team_size = 1;
+            sd.scen_num = 1;
+            ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("roads"));
+        }
+        og::ui::TextPickerError error;
+        {
+            StdinRedirect input(
+                "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+                "10\n"  // team build: Scenario
+                "6\n"   //   scenario: Replay Level -> the prompt
+                "\n"    //   ...a blank line cancels it
+                "7\n"   //   scenario: Back
+                "8\n" "6\n");
+            StdoutCapture capture;
+            og::ui::TextPickerConfig config;
+            config.team_families = {FAMILY_SOLDIER};
+            og::ui::run_text_picker(config, &error);
+            classic_printed = capture.restore();
+        }
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    }
+    EXPECT_NE(std::string::npos,
+              classic_printed.find("Replay level (must be cleared): "))
+        << "a classic campaign still replays its cleared roads:\n"
+        << classic_printed;
+    EXPECT_EQ(std::string::npos,
+              classic_printed.find(
+                  std::string(og::ui::kReplayVersusGuardMessage)))
+        << classic_printed;
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

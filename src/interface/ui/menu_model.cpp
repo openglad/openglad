@@ -59,12 +59,12 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
 // 1-based position consumers keep every ordinal they already pin and only
 // gain one. It sits past the digit-jump budget for the same reason
 // difficulty does — a match-composition page is not a per-round retune.
-// SETUP (#304, docs/match-setup-design.md §2.7) is appended after LINEUP by
-// that same growth rule: every 1-based ordinal 1..12 keeps its meaning and
-// each positional consumer gains exactly one leg. It is past the digit-jump
-// budget like difficulty and lineup, which is right for a door a player
-// opens to CHANGE the match rather than every round.
-constexpr std::array<PickerMenuItem, 13> kTeamBuildItems = {{
+// The SETUP wizard has NO Team Build item (R2-D11). Its terminal door is
+// the Camp's row 1 — the one-row docket the campaign composes — which is
+// the same single door the SDL and web clients tap. So the list is 12
+// items, DIFFICULTY at 11 and LINEUP at 12, and every 1-based ordinal a
+// positional consumer pins is the one it has always had.
+constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -85,10 +85,6 @@ constexpr std::array<PickerMenuItem, 13> kTeamBuildItems = {{
     {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
     // The LINEUP door (kTeamBuildItems' growth rule above).
     {"lineup", "Lineup", PickerMenuCommand::Lineup},
-    // The SETUP wizard door, versus campaigns only (the gate is
-    // terminal_item_gate's, so the row is LISTED on every campaign and
-    // refuses in words — the terminal listing contract).
-    {"setup", "Setup", PickerMenuCommand::MatchSetup},
 }};
 
 // The SCENARIO submenu: everything that chooses or inspects the scenario.

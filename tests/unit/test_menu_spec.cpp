@@ -311,7 +311,7 @@ TEST(MenuSpec, gate_state_matrix)
               og::ui::gate_state(GateBinding{MenuGate::Custom, nullptr, {}}, local));
 }
 
-TEST(MenuSpec, terminal_gate_messages_ready_setup_and_difficulty)
+TEST(MenuSpec, terminal_gate_messages_ready_difficulty_and_replay)
 {
     restore_default_campaigns();  // the versus predicate reads modes' yaml
     SaveData save;
@@ -334,18 +334,17 @@ TEST(MenuSpec, terminal_gate_messages_ready_setup_and_difficulty)
     EXPECT_EQ("", og::ui::terminal_gate_message(*ready, networked))
         << "inside a networked lobby READY is live and must carry no guard";
 
-    // The match rules have ONE door per campaign kind (#304): the SETUP
-    // wizard on a versus campaign, the DIFFICULTY submenu elsewhere. Each
-    // Custom gate refuses in words and points at the other door.
-    const PickerMenuItem* setup =
-        item_of(PickerMenuId::TeamBuild, PickerMenuCommand::MatchSetup);
-    ASSERT_NE(nullptr, setup) << "the TEAM BUILD menu must carry a SETUP row";
+    // The match rules have ONE door on every campaign now (R2-3): the
+    // DIFFICULTY submenu, item 11, ungated everywhere. The SETUP wizard has
+    // no Team Build row left to gate (R2-D11) — its terminal door is the
+    // Camp's row 1.
+    ASSERT_EQ(nullptr,
+              og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, "setup"))
+        << "the SETUP item retired with its gate";
     const PickerMenuItem* difficulty =
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_NE(nullptr, difficulty);
 
-    EXPECT_EQ("This campaign has no arena setup.",
-              og::ui::terminal_gate_message(*setup, context_for(save)));
     EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, context_for(save)))
         << "a classic campaign keeps the DIFFICULTY door";
 
@@ -353,17 +352,29 @@ TEST(MenuSpec, terminal_gate_messages_ready_setup_and_difficulty)
     versus.current_campaign = "modes";
     ASSERT_TRUE(og::ui::is_versus_campaign(versus))
         << "modes must declare matchup: versus for this pin to mean anything";
-    EXPECT_EQ("", og::ui::terminal_gate_message(*setup, context_for(versus)));
     EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, context_for(versus)))
         << "item 11 is ungated on every campaign (R2-3)";
 
-    // No save at all (the main menu's own context): the wizard has nothing
-    // to set up and the DIFFICULTY door stays open.
+    // No save at all (the main menu's own context): the DIFFICULTY door
+    // stays open there too.
     MenuLabelContext saveless = context_for(save);
     saveless.save = nullptr;
-    EXPECT_EQ("This campaign has no arena setup.",
-              og::ui::terminal_gate_message(*setup, saveless));
     EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, saveless));
+
+    // R2-4: the SCENARIO submenu's `Replay Level` is the one Custom-gated
+    // terminal row left. A campaign that shows progress marks prompts; a
+    // versus campaign refuses in words before the prompt; with no save at
+    // all there is nothing to refuse.
+    const PickerMenuItem* replay =
+        item_of(PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(nullptr, replay) << "the SCENARIO menu must carry a REPLAY row";
+    EXPECT_EQ("", og::ui::terminal_gate_message(*replay, context_for(save)))
+        << "a classic campaign keeps the replay prompt";
+    EXPECT_EQ("Arenas are set, never replayed.",
+              og::ui::terminal_gate_message(*replay, context_for(versus)))
+        << "Multiplayer Arenas carries no progress vocabulary, so there is "
+           "no cleared arena to re-fight";
+    EXPECT_EQ("", og::ui::terminal_gate_message(*replay, saveless));
 
     // Ungated items never produce a message.
     const PickerMenuItem* view_team =

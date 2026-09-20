@@ -104,10 +104,10 @@ TEST(MenuModel, team_build_lookup)
             << retired_id << " never lived in the main menu";
     }
 
-    ASSERT_EQ(13u, def.items.size())
+    ASSERT_EQ(12u, def.items.size())
         << "team build is the core team items + the zone's Camp door + "
            "networking + scenario + the DIFFICULTY door + the LINEUP door "
-           "+ the SETUP door";
+           "(the SETUP wizard's door is the camp's own row, R2-D11)";
 
     const PickerMenuItem* difficulty =
         find_picker_menu_item(PickerMenuId::TeamBuild, "difficulty");
@@ -129,7 +129,7 @@ TEST(MenuModel, team_build_lookup)
         << "lineup should map to the Lineup door command";
     ASSERT_EQ("Lineup", std::string(lineup->label));
     ASSERT_TRUE(&def.items[11] == lineup)
-        << "lineup is at 1-based position 12, with setup appended after it";
+        << "lineup is at 1-based position 12, the last item";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "lineup") == nullptr)
         << "the lineup door belongs to team build only";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "lineup") ==
@@ -140,23 +140,17 @@ TEST(MenuModel, team_build_lookup)
                 nullptr)
         << "the difficulty door left the main menu";
 
-    // SETUP (#304, docs/match-setup-design.md §2.7): appended after LINEUP
-    // by the same growth rule, so every ordinal 1..12 keeps its meaning and
-    // each positional consumer gains exactly one leg.
-    const PickerMenuItem* setup =
-        find_picker_menu_item(PickerMenuId::TeamBuild, "setup");
-    ASSERT_TRUE(setup != nullptr) << "setup id should resolve in team build";
-    ASSERT_TRUE(setup == find_picker_menu_item(PickerMenuId::TeamBuild,
-                                               PickerMenuCommand::MatchSetup))
-        << "setup should resolve by the MatchSetup command too";
-    ASSERT_EQ("Setup", std::string(setup->label));
-    ASSERT_TRUE(&def.items[12] == setup)
-        << "setup is appended last, at 1-based position 13";
+    // SETUP has NO Team Build row (R2-D11): the terminals' one wizard door
+    // is the Camp's row 1, the same single door the pixel clients tap. So
+    // the list is 12 items and LINEUP is the last of them.
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, "setup") ==
+                nullptr)
+        << "the setup row retired; the camp's docket is the door";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "setup") == nullptr)
-        << "the setup door belongs to team build only";
+        << "no client carries a SETUP menu row";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "setup") ==
                 nullptr)
-        << "the SDL surface reaches SETUP from the Base Camp STRIP, never "
+        << "the SDL surface reaches SETUP from the Base Camp DOCKET, never "
            "from a SCENARIO menu row";
 
     const PickerMenuItem* scenario =
@@ -802,13 +796,14 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     // §2.1: load_company remains after the classic items; the #155 cloud
     // door is appended last. Main exposes both stable Help and Quit actions,
     // and lost its difficulty door to Team Build. TeamBuild grew the #206
-    // Camp door, that difficulty door, the LINEUP door (§8) and the #304
-    // SETUP door, and lost the flat CTF trio to the SETUP wizard's RULES
-    // step; Scenario grew the #207 replay-level row, gave the missions door
-    // back, and lost the TROOPS row to amendment B5; Difficulty grew the
-    // appended infinite-gold row.
+    // Camp door, that difficulty door and the LINEUP door (§8), and lost
+    // the flat CTF trio to the SETUP wizard's RULES step; the wizard itself
+    // has no Team Build row (R2-D11 -- its terminal door is the Camp's own
+    // docket row); Scenario grew the #207 replay-level row, gave the
+    // missions door back, and lost the TROOPS row to amendment B5;
+    // Difficulty grew the appended infinite-gold row.
     ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
-    ASSERT_EQ(13u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
+    ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Difficulty).items.size());
 

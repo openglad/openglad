@@ -529,6 +529,10 @@ struct TerminalCampaignPickerIo {
     // instead of the plain cursor write; arm_replay moves scen_num itself
     // so everything downstream of the tail behaves identically.
     std::function<void(int, bool replay_arm)> apply_level;
+    // Optional: opens the SETUP wizard for a versus campaign's docket page
+    // row (the terminals' one wizard door). Unset = the page loop (a
+    // fixture, or a classic camp).
+    std::function<void()> open_match_setup;
 };
 
 // The SET LEVEL gate every terminal surface runs before it moves the

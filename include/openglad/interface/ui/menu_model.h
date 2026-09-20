@@ -101,14 +101,17 @@ enum class PickerMenuCommand : std::int32_t
     // SCENARIO subscreen's free grid cell instead; terminals append the row
     // here so no 1-based position moves.
     Lineup,
-    // The SETUP wizard door (#304, docs/match-setup-design.md §2.7): the
-    // five-step GAME/ARENA/TEAMS/RULES/MATCH page a versus campaign sets its
-    // match up on. Versus campaigns only — terminal_item_gate prints
-    // "This campaign has no arena setup." elsewhere, and gates item 11
-    // (Difficulty) the other way, so the match rules have exactly one door
-    // per campaign kind on every client.
-    MatchSetup,
 };
+
+// The terminal `Replay Level` row's refusal on a campaign that carries no
+// progress vocabulary (R2-4, the #207 row above): Multiplayer Arenas SETS
+// its arenas, it never replays them, so the row stays LISTED and refuses in
+// words instead of prompting for a level id it would always call uncleared.
+// terminal_item_gate owns the predicate, so both terminal clients speak it
+// once; the SDL PROGRESS screen shows GO on every row there instead of
+// REPLAY/VISIT.
+inline constexpr std::string_view kReplayVersusGuardMessage =
+    "Arenas are set, never replayed.";  // 31
 
 struct PickerMenuItem
 {

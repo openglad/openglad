@@ -1486,7 +1486,15 @@ void run_terminal_campaign_camp(SaveData& save,
         switch (row.kind)
         {
             case CampaignPickerSession::Kind::Page:
-                run_terminal_campaign_page(save, io, row.id);
+                // D28 projected onto the terminals (R2-D11): on a versus
+                // campaign the camp's docket row is the SETUP wizard's ONE
+                // door, exactly as the SDL camp opens MatchSetup instead of
+                // descending into the book. An io that binds no door — a
+                // fixture, a classic camp — walks the page as before.
+                if (is_versus_campaign(save) && io.open_match_setup)
+                    io.open_match_setup();
+                else
+                    run_terminal_campaign_page(save, io, row.id);
                 // Own navigation is a fetch trigger: the book may have acted
                 // while the door was open.
                 zone.refetch();

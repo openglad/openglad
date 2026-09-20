@@ -935,8 +935,10 @@ constexpr const char* kSoccerKnobs =
 
 }  // namespace
 
-// 1. The classic guard: the SDL door never opens on a classic campaign and
-// the terminal gate prints kSetupClassicGuardMessage instead.
+// 1. The classic guard: no player path reaches it any more -- the SDL door
+// is the versus docket's own row and the terminal door is the versus
+// camp's (R2-D11) -- so the refusal is the last line of defence, and it is
+// silent (the driver traces it; see the terminal leg below).
 TEST_F(MatchSetupSessionTest, open_refuses_a_classic_campaign)
 {
     register_book(kSoccerKnobs);
