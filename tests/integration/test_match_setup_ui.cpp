@@ -24,6 +24,7 @@
 
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
@@ -42,6 +43,7 @@
 #include "test_input_helpers.h"
 #include "test_launched_census.h"
 #include "test_interact.h"
+#include "test_menu_highlight.h"
 
 #include <SDL3/SDL.h>
 
@@ -53,9 +55,6 @@
 #include <vector>
 
 void picker_main(Sint32 argc, char** argv);
-// The FX-capture nav hook (picker_input.cpp): an injector thread cannot
-// send a real key — the blocking hold-and-release loops eat it.
-extern int g_test_menu_nav_key;
 extern bool g_start_game_requested;
 // picker_team_build.cpp's answer to "did the remote start pick START GAME":
 // the same declaration menu_screen_specs.cpp makes for the fold.
@@ -129,79 +128,6 @@ const char* uxshots_dir()
     return std::getenv("UXSHOTS_DIR");
 }
 
-// --- The keyboard landing, and how a CAPTURE can show it ------------------
-//
-// The runner keeps its highlight in a local and publishes
-// menu_screen_testing_highlighted_button() next to each completed frame;
-// that mirror is the oracle every assertion below reads. The pulsing RING,
-// though, is only drawn once the player has actually used the keyboard
-// (picker_input.cpp's menu_nav_enabled), which is why the wave-3 GAME
-// capture showed no highlight at all while the mirror was already on the
-// SOCCER row. A shot that has to SHOW the landing therefore wakes the ring
-// first, with one nav step in a direction the landing has no link for — a
-// row's LEFT is never wired (the "<" cell is on the RIGHT), and the footer
-// NEXT's RIGHT is the end of its chain — and reads the id back to prove
-// the wake moved nothing.
-std::string highlighted_id()
-{
-    std::string id = "<unread>";
-    if (!run_on_main_thread([&id] {
-            AllButtonsLock lock;
-            const int index =
-                og::ui::menu_screen_testing_highlighted_button();
-            id = "<no button at index " + std::to_string(index) + ">";
-            if (index >= 0 && index < MAX_BUTTONS) {
-                const vbutton* const row =
-                    og::runtime::current_session
-                        ->allbuttons_[static_cast<std::size_t>(index)];
-                if (row != nullptr)
-                    id = row->id;
-            }
-        }))
-    {
-        return "<the menu loop never read the highlight mirror>";
-    }
-    return id;
-}
-
-bool wake_nav_highlight(int key, int timeout_ms = 10000)
-{
-    const std::uint64_t target =
-        og::ui::menu_screen_testing_completed_frames() + 1;
-    if (!run_on_main_thread([key] { g_test_menu_nav_key = key; }))
-        return false;
-    const Uint64 deadline =
-        SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
-    for (;;) {
-        int hook = key;
-        if (!run_on_main_thread([&hook] { hook = g_test_menu_nav_key; }))
-            return false;
-        if (hook == -1 &&
-            og::ui::menu_screen_testing_completed_frames() >= target)
-        {
-            return true;
-        }
-        if (SDL_GetTicks() > deadline)
-            return false;
-        (void)wait_for_menu_frames(1);
-    }
-}
-
-// The landing, as the flow wants to talk about it: which button, and what
-// that button says.
-struct Landing {
-    std::string id;
-    std::string label;
-};
-
-Landing read_landing()
-{
-    Landing landing;
-    landing.id = highlighted_id();
-    landing.label = interactable_label(landing.id);
-    return landing;
-}
-
 // One flow's observations, recorded on the injector thread and asserted on
 // the main thread (a gtest failure raised from a thread that then dies
 // mid-flow takes its message with it).
@@ -226,9 +152,14 @@ struct SetupFlowState
     bool reached_match = false;
     bool walked_back = false;
     bool arena_on_current_window = false;
+    std::string arena_row_1;
+    bool rules_row_2_absent = false;
     bool closed_from_every_step = true;
-    bool difficulty_hidden = false;
-    bool setup_visible = false;
+    // The Base Camp reading enter_wizard takes on its way past: the one
+    // door's face, and which strip doors are up behind it.
+    std::string door_label;
+    bool difficulty_visible = false;
+    bool strip_setup_visible = true;
     int captures = 0;
     // The keyboard landing per step (P1): where the highlight IS when the
     // step is entered, read off the runner's own mirror.
@@ -238,7 +169,7 @@ struct SetupFlowState
     bool nav_woke = true;
 };
 
-// The shared opening: main menu -> Base Camp -> the strip's SETUP door.
+// The shared opening: main menu -> Base Camp -> the docket's SETUP row.
 // Returns 0 on success, or the leg the escape tail gave up on.
 int enter_wizard(SetupFlowState* state, int leg_base,
                  const std::function<int(int, const char*)>& escape)
@@ -249,24 +180,28 @@ int enter_wizard(SetupFlowState* state, int leg_base,
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
 
-    state->door_seen = wait_for_interactable("setup", 15000);
+    state->door_seen = wait_for_interactable("zone_action_0", 15000);
     if (!state->door_seen)
-        return escape(leg_base + 1, "the versus strip never showed SETUP");
-    state->setup_visible = true;
-    state->difficulty_hidden = !has_interactable("difficulty");
+        return escape(leg_base + 1,
+                      "the versus docket never showed its SETUP row");
+    state->door_label = interactable_label("zone_action_0");
+    state->strip_setup_visible = has_interactable("setup");
+    state->difficulty_visible = has_interactable("difficulty");
 
     state->wizard_opened = open_setup_step(0, "GAME", 15000);
     if (!state->wizard_opened)
-        return escape(leg_base + 2, "the SETUP door never opened the wizard");
+        return escape(leg_base + 2, "the SETUP row never opened the wizard");
     return 0;
 }
 
 } // namespace
 
 // ---------------------------------------------------------------------------
-// 1. The door twin, and the strip's nav around it.
-//    On a versus campaign the strip's second door is SETUP and the
-//    DIFFICULTY door is not there at all — one door per campaign kind (D9).
+// 1. The ONE door, and what is still on the strip behind it.
+//    R2-5 collapsed the versus docket to a single row that STATES the
+//    match — "SETUP - <TITLE>  >" — and that row is the wizard's only door
+//    on this client. R2-3 put DIFFICULTY back on the strip on every
+//    campaign, so there is no SETUP button up there any more.
 
 namespace
 {
@@ -300,7 +235,7 @@ int door_twin_injector(void* data)
 }
 } // namespace
 
-TEST(MatchSetupUi, door_twin_visibility_and_strip_nav)
+TEST(MatchSetupUi, docket_row_is_the_one_door_and_difficulty_stays)
 {
     trace_clear();
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -323,10 +258,14 @@ TEST(MatchSetupUi, door_twin_visibility_and_strip_nav)
 
     EXPECT_EQ(0, thread_result)
         << "the injector gave up at leg " << thread_result;
-    EXPECT_TRUE(state.setup_visible)
-        << "a versus campaign's strip carries the SETUP door";
-    EXPECT_TRUE(state.difficulty_hidden)
-        << "and not DIFFICULTY: the fight's rules are the RULES step";
+    EXPECT_TRUE(state.difficulty_visible)
+        << "R2-3: DIFFICULTY is the strip's second door on EVERY campaign";
+    EXPECT_FALSE(state.strip_setup_visible)
+        << "and there is no SETUP twin up there: R2-5 gave the wizard ONE "
+           "door, the docket row inside the panel";
+    EXPECT_TRUE(state.door_label.starts_with("SETUP - "))
+        << "the door STATES the match it opens: '" << state.door_label
+        << "'";
     EXPECT_TRUE(state.wizard_opened);
     EXPECT_NE(std::string::npos, state.game_row.find("TEAM DEATHMATCH"))
         << "the GAME step is the campaign's own book root: '"
@@ -372,6 +311,7 @@ int step_walk_injector(void* data)
         return escape(4, "the ARENA tab never came up");
     (void)wait_for_menu_frames(2);
     state->arena_row = interactable_label("setup_row_0");
+    state->arena_row_1 = interactable_label("setup_row_1");
     state->arena_on_current_window =
         state->arena_row.find("[CURRENT]") != std::string::npos;
     state->arena_landing = read_landing();
@@ -391,13 +331,16 @@ int step_walk_injector(void* data)
     capture_presented_frame("setup_step_teams", uxshots_dir());
     ++state->captures;
 
-    // RULES: nine cycler rows, each with its own "<" cell.
+    // RULES: the TWO match knobs, each with its own "<" cell (R2-3). The
+    // other seven rules went home to the Base Camp DIFFICULTY screen, and
+    // the step's one line points there.
     state->reached_rules = open_setup_step(3, "RULES", 15000);
     if (!state->reached_rules)
         return escape(6, "the RULES tab never came up");
     (void)wait_for_menu_frames(2);
     state->rules_row_0 = interactable_label("setup_row_0");
     state->rules_row_1 = interactable_label("setup_row_1");
+    state->rules_row_2_absent = !has_interactable("setup_row_2");
     state->rules_landing = read_landing();
     state->nav_woke = state->nav_woke && wake_nav_highlight(KEY_LEFT);
     capture_presented_frame("setup_step_rules", uxshots_dir());
@@ -438,7 +381,9 @@ TEST(MatchSetupUi, tab_walk_through_every_step)
     trace_clear();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
-    write_versus_save("modes", 820);
+    // THE MUDBOWL (821) is PLAYED on this company. R2-4: the wizard shows
+    // no sign of it — the arena rows carry [CURRENT] and nothing else.
+    write_save0_with_two_soldiers("modes", 820, {821}, "IRON KETTLE");
 
     SetupFlowState state;
     SDL_Thread* thread =
@@ -463,6 +408,15 @@ TEST(MatchSetupUi, tab_walk_through_every_step)
         << state.arena_row << "'";
     EXPECT_NE(std::string::npos, state.arena_row.find("THE PITCH"))
         << "the cursor is on 820: '" << state.arena_row << "'";
+    EXPECT_NE(std::string::npos, state.arena_row.find("[CURRENT]"))
+        << "[CURRENT] is not progress vocabulary and stays: '"
+        << state.arena_row << "'";
+    EXPECT_NE(std::string::npos, state.arena_row_1.find("THE MUDBOWL"))
+        << "row 1 is 821, the arena this company has played: '"
+        << state.arena_row_1 << "'";
+    EXPECT_EQ(std::string::npos, state.arena_row_1.find("[CLEARED]"))
+        << "R2-4: a played arena wears no mark — '" << state.arena_row_1
+        << "'";
     EXPECT_TRUE(state.reached_teams);
     EXPECT_NE(std::string::npos, state.teams_fill_row.find("FILL:"))
         << "the TEAMS step leads with the FILL wheel on a two-side arena "
@@ -474,6 +428,10 @@ TEST(MatchSetupUi, tab_walk_through_every_step)
     EXPECT_NE(std::string::npos, state.rules_row_1.find("TIME LIMIT:"))
         << "the clock's one home is the RULES step (D7): '"
         << state.rules_row_1 << "'";
+    EXPECT_TRUE(state.rules_row_2_absent)
+        << "R2-3: RULES is SCORE and TIME LIMIT and nothing else — the "
+           "seven rules it had swallowed are back on the Base Camp "
+           "DIFFICULTY screen, which the step's one line points at";
     EXPECT_TRUE(state.reached_match);
     EXPECT_NE(std::string::npos, state.go_row.find("GO"))
         << "the MATCH step ends on GO: '" << state.go_row << "'";
@@ -539,8 +497,8 @@ int reverse_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     state->opened = open_setup_step(3, "RULES", 15000);
     if (!state->opened)
@@ -666,8 +624,8 @@ int bodies_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     state->opened = open_setup_step(2, "TEAMS", 15000);
     if (!state->opened)
@@ -763,8 +721,8 @@ int go_gate_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     // FOUR authored sides: the SIDES wheel is a wheel here (D30), and the
     // step prints one swatched line per authored team.
@@ -884,8 +842,8 @@ int cold_story_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     state->opened = open_setup_step(1, "ARENA", 15000);
     if (!state->opened)
@@ -1043,8 +1001,8 @@ int next_prev_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     state->opened = open_setup_step(0, "GAME", 15000);
     if (!state->opened)
@@ -1192,8 +1150,8 @@ int doors_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     state->opened = open_setup_step(2, "TEAMS", 15000);
     if (!state->opened)
@@ -1313,8 +1271,8 @@ int refusal_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     state->opened = open_setup_step(1, "ARENA", 15000);
     if (!state->opened)
@@ -1475,6 +1433,9 @@ struct JoinerState
     bool no_reverse_cells = false;
     bool arena_refused = false;
     bool still_on_arena = false;
+    bool rules_has_no_rows = false;
+    bool game_has_no_random_row = false;
+    std::string game_last_row;
     std::string match_last_row;
     bool finished = false;
     int captures = 0;
@@ -1491,8 +1452,8 @@ int joiner_injector(void* data)
                                          kSetupEscapeDoors);
     };
 
-    if (!wait_for_interactable("setup", 15000))
-        return escape(1, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(1, "the versus docket never showed its SETUP row");
 
     state->opened_rules = open_setup_step(3, "RULES", 15000);
     if (!state->opened_rules)
@@ -1502,6 +1463,9 @@ int joiner_injector(void* data)
     // half of the wheel, and a joiner has no wheel.
     state->no_reverse_cells = !has_interactable("setup_rev_0") &&
         !has_interactable("setup_rev_1");
+    // R2-3: a joiner's RULES is the caption and the ONE packed line. No
+    // rows at all — not even a read-only one.
+    state->rules_has_no_rows = !has_interactable("setup_row_0");
     // P1 on a step with no live row at all: every rule is a LINE here and
     // the single CROSS CONTROL row is read-only, so the keyboard takes the
     // footer's way on rather than the inert tab. NEXT's RIGHT is the end
@@ -1530,10 +1494,18 @@ int joiner_injector(void* data)
     state->match_last_row = interactable_label("setup_row_1");
     state->match_landing = read_landing();
 
+    // R2-5: the RANDOM rows are host-gated in the book's own fetch, so a
+    // joiner's GAME step ends on the last game and carries no roll.
+    if (open_setup_step(0, "GAME", 15000)) {
+        (void)wait_for_menu_frames(2);
+        state->game_has_no_random_row = !has_interactable("setup_row_7");
+        state->game_last_row = interactable_label("setup_row_6");
+    }
+
     // A joiner's strip wears READY where the host's wears GO, so the
     // camp's own door is the edge that says the wizard closed.
     if (!click_until_edge("setup_back", [](int wait_ms) {
-            return wait_for_interactable("setup", wait_ms);
+            return wait_for_interactable("zone_action_0", wait_ms);
         }))
     {
         return escape(5, "BACK did not close the wizard");
@@ -1571,6 +1543,15 @@ TEST(MatchSetupUi, joiner_read_only_walk_and_ready_row)
         << "a joiner opens the wizard too: reading the match is the point";
     EXPECT_TRUE(state.no_reverse_cells)
         << "a read-only row has no '<' cell";
+    EXPECT_TRUE(state.rules_has_no_rows)
+        << "R2-3: the joiner's RULES step is the caption and ONE packed "
+           "line — no rows, read-only or otherwise";
+    EXPECT_TRUE(state.game_has_no_random_row)
+        << "R2-5: RANDOM is host-gated in the book's fetch, so a joiner's "
+           "GAME step has no eighth row to press";
+    EXPECT_NE(std::string::npos, state.game_last_row.find("FREE FOR ALL"))
+        << "and its last row is the last GAME, not a dead roll: '"
+        << state.game_last_row << "'";
     EXPECT_TRUE(state.arena_refused)
         << "a joiner's level row refuses in WORDS — it is never hidden, "
            "because a joiner has to be able to read which arenas exist";
@@ -1601,11 +1582,13 @@ TEST(MatchSetupUi, joiner_read_only_walk_and_ready_row)
 }
 
 // ---------------------------------------------------------------------------
-// 11. A paged ARENA window. CTF ships ten arenas and the step shows seven,
-//     so the pagers un-park beside the first row and the window can be
-//     stepped. The step opens on the window holding [CURRENT] (D27) — a
-//     host who sees four green rows none of which is theirs cannot tell
-//     what GO would launch.
+// 11. A paged ARENA window. CTF ships ten arenas plus the RANDOM ARENA row
+//     and the step fits eight, so the pagers un-park beside the first row
+//     and the window can be stepped. The step opens on the window holding
+//     [CURRENT] (D27) — a host who sees rows none of which is theirs
+//     cannot tell what GO would launch. The cursor is 508, the FIRST row
+//     of window 2: on a window-1 cursor "opens on the window holding
+//     [CURRENT]" passes without the step having chosen anything.
 
 namespace
 {
@@ -1615,6 +1598,8 @@ struct PagerState
     bool opened = false;
     bool pagers_shown = false;
     bool current_on_entry = false;
+    bool random_row_on_last_window = false;
+    std::string first_window_row_0;
     bool stepped = false;
     bool stepped_back = false;
     bool finished = false;
@@ -1634,8 +1619,8 @@ int pager_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     state->opened = open_setup_step(1, "ARENA", 15000);
     if (!state->opened)
@@ -1647,20 +1632,27 @@ int pager_injector(void* data)
     // (SPEC §2.3): no unpaged step can.
     capture_presented_frame("setup_arena_paged", uxshots_dir());
     ++state->captures;
-    // The window the step opened on holds the cursor's arena.
+    // The window the step opened on holds the cursor's arena — window 2,
+    // whose first row IS the cursor (508). The RANDOM ARENA row is
+    // appended LAST of all, so it rides this window too and no arena
+    // ordinal moved to make room for it (D5).
     for (int r = 0; r < og::ui::kSetupRowsMax; ++r) {
         const std::string label =
             interactable_label("setup_row_" + std::to_string(r));
         if (label.find("[CURRENT]") != std::string::npos)
             state->current_on_entry = true;
+        if (label.find("RANDOM ARENA") != std::string::npos)
+            state->random_row_on_last_window = true;
     }
 
-    // A page step moves a window, not a setting: nothing autosaves.
-    state->stepped = click_and_acknowledge_trace(
-        "setup_page_next", "setup", "page 2/2",
-        /*waits_for_autosave=*/false, 10000);
+    // A page step moves a window, not a setting: nothing autosaves. The
+    // step opened on 2/2, so PREV is the first move and NEXT comes back.
     state->stepped_back = click_and_acknowledge_trace(
         "setup_page_prev", "setup", "page 1/2",
+        /*waits_for_autosave=*/false, 10000);
+    state->first_window_row_0 = interactable_label("setup_row_0");
+    state->stepped = click_and_acknowledge_trace(
+        "setup_page_next", "setup", "page 2/2",
         /*waits_for_autosave=*/false, 10000);
 
     if (!click_until_edge("setup_back", [](int wait_ms) {
@@ -1679,8 +1671,9 @@ TEST(MatchSetupUi, paged_arena_window_steps_and_opens_on_the_cursor)
     trace_clear();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
-    // CTF: ten arenas, 507 sits on the second window.
-    write_versus_save("modes", 507);
+    // CTF: ten arenas and the RANDOM ARENA row over an eight-row floor.
+    // 508 is index 8 — the first row of window 2.
+    write_versus_save("modes", 508);
 
     PagerState state;
     SDL_Thread* thread =
@@ -1700,120 +1693,29 @@ TEST(MatchSetupUi, paged_arena_window_steps_and_opens_on_the_cursor)
         << "the injector gave up at leg " << thread_result;
     ASSERT_TRUE(state.opened);
     EXPECT_TRUE(state.pagers_shown)
-        << "ten arenas over a nine-row floor: the pagers un-park";
+        << "eleven rows over an eight-row floor: the pagers un-park";
     EXPECT_TRUE(state.current_on_entry)
-        << "D27: the step opens on the window that holds [CURRENT]";
-    EXPECT_TRUE(state.stepped) << "'>' steps the window to 2/2";
-    EXPECT_TRUE(state.stepped_back) << "and '<' steps it back";
+        << "D27: the step opens on the window that holds [CURRENT], and "
+           "508 is the FIRST row of window 2 — a window-1 cursor would "
+           "pass this without the step choosing anything";
+    EXPECT_TRUE(state.random_row_on_last_window)
+        << "D5: RANDOM ARENA is appended LAST, so it rides the last "
+           "window and no arena ordinal moved to make room for it";
+    EXPECT_TRUE(state.stepped_back) << "'<' steps the window to 1/2";
+    EXPECT_TRUE(state.stepped) << "and '>' steps it back to 2/2";
+    EXPECT_EQ(std::string::npos,
+              state.first_window_row_0.find("RANDOM"))
+        << "window 1 is arenas only (500 up): '"
+        << state.first_window_row_0 << "'";
     verify_captured_frames("setup_pager", 1);
     restore_gladiator_mount();
 }
 
 // ---------------------------------------------------------------------------
-// 12. DIFFICULTY is a session value, not a save field, and the RULES row
-//     writes it through the SAME value-taking tail the Base Camp's own
-//     DIFFICULTY door calls (ruling 2). The click's answer must be on the
-//     face the NEXT frame composes: refetching with the Inputs the dispatch
-//     was handed re-reads the OLD session difficulty and re-composes the
-//     face the player just replaced, and only the next restage — a quarter
-//     of a second later — heals it.
-
-namespace
-{
-struct DifficultyRowState
-{
-    std::atomic<bool> test_finished{false};
-    bool opened = false;
-    std::string before;
-    std::string after_one_frame;
-    bool finished = false;
-};
-
-int difficulty_row_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    auto* const state = static_cast<DifficultyRowState*>(data);
-    const auto escape = [state](int leg, const char* why) {
-        return escape_to_the_main_thread(state->test_finished, leg, why,
-                                         kSetupEscapeDoors);
-    };
-
-    if (!wait_for_interactable("continue_game", 10000))
-        return escape(1, "the main menu never came up");
-    (void)wait_for_menu_frames(2);
-    (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
-
-    state->opened = open_setup_step(3, "RULES", 15000);
-    if (!state->opened)
-        return escape(3, "the RULES step never came up");
-    (void)wait_for_menu_frames(2);
-    state->before = interactable_label("setup_row_6");
-
-    // One click, acknowledged by the write's own trace, then exactly ONE
-    // completed frame: no settle, because a face that needs a settle is a
-    // face that was wrong when the player let go of the button.
-    if (!click_and_acknowledge_trace("setup_row_6", "setup", "difficulty",
-                                     /*waits_for_autosave=*/false, 10000))
-    {
-        return escape(4, "the DIFFICULTY row never took the click");
-    }
-    (void)wait_for_menu_frames(1);
-    state->after_one_frame = interactable_label("setup_row_6");
-
-    if (!click_until_edge("setup_back", [](int wait_ms) {
-            return wait_for_interactable("go", wait_ms);
-        }))
-    {
-        return escape(5, "BACK did not close the wizard");
-    }
-    state->finished = true;
-    return escape(0, "");
-}
-} // namespace
-
-TEST(MatchSetupUi, difficulty_row_answers_on_the_very_next_frame)
-{
-    trace_clear();
-    ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("modes"));
-    write_versus_save("modes", 820);
-    const int saved_difficulty =
-        og::runtime::current_session->current_difficulty_;
-    og::runtime::current_session->current_difficulty_ = 0;
-
-    DifficultyRowState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(difficulty_row_injector, "setup_difficulty", &state);
-    ASSERT_NE(nullptr, thread);
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    state.test_finished.store(true);
-    int thread_result = 0;
-    SDL_WaitThread(thread, &thread_result);
-    escape_tail_join_hygiene();
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
-
-    EXPECT_EQ(0, thread_result)
-        << "the injector gave up at leg " << thread_result;
-    ASSERT_TRUE(state.opened);
-    // match_upper is picker_common's own (file-static): the faces are
-    // og::ui::format_difficulty_label upper-cased, spelled here so a
-    // relabel of either half fails loudly.
-    EXPECT_EQ("DIFFICULTY: SKIRMISH - up to slaughter", state.before)
-        << "'" << state.before << "'";
-    EXPECT_EQ("DIFFICULTY: BATTLE - up to slaughter", state.after_one_frame)
-        << "the click's answer is on the NEXT frame's face, not a restage "
-           "later: '" << state.after_one_frame << "'";
-    EXPECT_EQ(1, og::runtime::current_session->current_difficulty_)
-        << "and the value the session holds is the one the row wrote";
-
-    og::runtime::current_session->current_difficulty_ = saved_difficulty;
-    restore_gladiator_mount();
-}
+// (Section 12, the wizard's own DIFFICULTY row, is retired with R2-3: the
+//  seven rules the RULES step had swallowed went back to the Base Camp
+//  DIFFICULTY screen, whose value-taking tail has its own ladder in
+//  tests/integration/test_difficulty.cpp.)
 
 // ---------------------------------------------------------------------------
 // 13. BACK closes the wizard from EVERY step (SPEC §4.1). The footer's BACK
@@ -1848,9 +1750,9 @@ int escape_every_step_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    state->door_seen = wait_for_interactable("setup", 15000);
+    state->door_seen = wait_for_interactable("zone_action_0", 15000);
     if (!state->door_seen)
-        return escape(2, "the versus strip never showed SETUP");
+        return escape(2, "the versus docket never showed its SETUP row");
 
     static constexpr const char* kWords[] = {"GAME", "ARENA", "TEAMS",
                                              "RULES", "MATCH"};
@@ -1941,8 +1843,8 @@ int parked_joiner_injector(void* data)
                                          kSetupEscapeDoors);
     };
 
-    if (!wait_for_interactable("setup", 15000))
-        return escape(1, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(1, "the versus docket never showed its SETUP row");
     state->opened_arena = open_setup_step(1, "ARENA", 15000);
     if (!state->opened_arena)
         return escape(2, "the ARENA step never came up");
@@ -1973,7 +1875,7 @@ int parked_joiner_injector(void* data)
     state->after_row = interactable_label("setup_row_1");
 
     if (!click_until_edge("setup_back", [](int wait_ms) {
-            return wait_for_interactable("setup", wait_ms);
+            return wait_for_interactable("zone_action_0", wait_ms);
         }))
     {
         return escape(4, "BACK did not close the wizard");
@@ -2077,8 +1979,8 @@ int remote_start_injector(void* data)
 
     static constexpr const char* kWords[] = {"GAME", "ARENA", "TEAMS",
                                              "RULES", "MATCH"};
-    if (!wait_for_interactable(state->from_camp ? "setup" : "setup_tab_0",
-                               15000))
+    if (!wait_for_interactable(
+            state->from_camp ? "zone_action_0" : "setup_tab_0", 15000))
     {
         return escape(1, "the wizard's way in never came up");
     }
@@ -2165,5 +2067,355 @@ TEST(MatchSetupUi, remote_start_from_every_step)
     g_start_game_requested = false;
     pks().selected_menu_item = nullptr;
     cleanup_picker_state();
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// 17. The GAME step's RANDOM row (R2-5: "Add a RANDOM button to the wizard
+//     for game type and map"). It is an ACTION row that answers a LEVEL, so
+//     it rides the engine's own gated set tail — host gate, load rollback,
+//     the one "Level set to <arena>." line — and lands the wizard on TEAMS
+//     exactly as a level row does. Appended LAST (D5), so it is row 7 under
+//     the seven games and no game's ordinal moved to make room for it.
+
+namespace
+{
+struct RandomRowState
+{
+    std::atomic<bool> test_finished{false};
+    bool opened = false;
+    std::string random_row;
+    bool rolled = false;
+    bool landed_on_teams = false;
+    std::string arena_current_row;
+    int scen_after = 0;
+    bool finished = false;
+};
+
+int random_row_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<RandomRowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupEscapeDoors);
+    };
+
+    if (!wait_for_interactable("continue_game", 10000))
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
+
+    state->opened = open_setup_step(0, "GAME", 15000);
+    if (!state->opened)
+        return escape(3, "the GAME step never came up");
+    (void)wait_for_menu_frames(2);
+    state->random_row = interactable_label("setup_row_7");
+
+    // The roll's landing is the step it advances into: a refusal never
+    // advances, and the toast is the witness that keeps a press that DID
+    // land from being re-sent onto a second roll.
+    state->rolled = click_until_edge(
+        "setup_row_7",
+        [](int wait_ms) {
+            return wait_for_interactable_label_matching(
+                "setup_tab_2",
+                [](const std::string& label) { return label == "[TEAMS]"; },
+                wait_ms);
+        },
+        "toast Level set to", 3, 15000, "setup");
+    if (!state->rolled)
+        return escape(4, "the RANDOM row never set an arena");
+    state->landed_on_teams = true;
+
+    // What it set, read where the engine keeps it.
+    (void)run_on_main_thread([state] {
+        state->scen_after =
+            og::runtime::current_session->myscreen_->save_data.scen_num;
+    });
+
+    // ...and the ARENA step follows the new cursor: its [CURRENT] row is
+    // the arena the roll chose, which is not the one the save came in on.
+    if (open_setup_step(1, "ARENA", 15000)) {
+        (void)wait_for_menu_frames(2);
+        for (int r = 0; r < og::ui::kSetupRowsMax; ++r) {
+            const std::string label =
+                interactable_label("setup_row_" + std::to_string(r));
+            if (label.find("[CURRENT]") != std::string::npos)
+                state->arena_current_row = label;
+        }
+    }
+
+    if (!click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        }))
+    {
+        return escape(5, "BACK did not close the wizard");
+    }
+    state->finished = true;
+    return escape(0, "");
+}
+} // namespace
+
+TEST(MatchSetupUi, random_row_sets_an_arena_and_lands_on_teams)
+{
+    trace_clear();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_versus_save("modes", 820);
+
+    RandomRowState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(random_row_injector, "setup_random", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.opened);
+    EXPECT_EQ("RANDOM - any game, any arena", state.random_row)
+        << "the roll is the GAME step's LAST row: '" << state.random_row
+        << "'";
+    EXPECT_TRUE(state.landed_on_teams)
+        << "an Acted row that answers a level runs the level tail and "
+           "advances, exactly as a level row does";
+    EXPECT_GE(state.scen_after, 300);
+    EXPECT_LE(state.scen_after, 899);
+    EXPECT_NE(820, state.scen_after)
+        << "a roll that lands on the arena the campaign is already set to "
+           "steps one row on: a button that changes nothing is not a roll";
+    EXPECT_FALSE(state.arena_current_row.empty())
+        << "the ARENA step follows the new cursor";
+    EXPECT_EQ(std::string::npos, state.arena_current_row.find("THE PITCH"))
+        << "and [CURRENT] is on the arena the roll chose, not the one the "
+           "save came in on: '" << state.arena_current_row << "'";
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// 18. R2-2, end to end on a FOUR-side arena: "the FILL: selector from the
+//     wizard only changes teams 1 and 2, even for 4-player maps".
+//
+//     Two frames prove the fix, and the second one is the trap the first
+//     could not see. (a) From the arena's own STRONG deal, ONE FILL turn
+//     moves EVERY authored band together — BRUTAL on teams 1..4, SIDES
+//     still 4. (b) With every band wheeled to NONE on the LINEUP page —
+//     the state the shipped bug collapsed companies into, and the state a
+//     v19 save heals to — a FILL turn lights every authored opponent
+//     again, not just the lowest: SIDES back to 4 and WEAK on all four.
+//
+//     The oracle is the save's own fill array, read on the menu thread,
+//     plus the two captures R2-7's media needs.
+
+namespace
+{
+struct FourSideFillState
+{
+    std::atomic<bool> test_finished{false};
+    bool opened = false;
+    std::string rest_sides_row;
+    std::string rest_fill_row;
+    bool turned_to_brutal = false;
+    bool restaged_after_turn = false;
+    bool restaged_after_heal = false;
+    std::array<int, 4> fill_after_turn{};
+    bool lineup_opened = false;
+    bool bands_emptied = false;
+    bool back_on_teams = false;
+    std::string empty_sides_row;
+    std::string empty_fill_row;
+    bool healed = false;
+    std::string healed_sides_row;
+    std::string healed_fill_row;
+    std::array<int, 4> fill_after_heal{};
+    bool finished = false;
+    int captures = 0;
+};
+
+void read_fill(std::array<int, 4>& out)
+{
+    (void)run_on_main_thread([&out] {
+        const SaveData& save = test_screen()->save_data;
+        for (std::size_t t = 0; t < out.size(); ++t)
+            out[t] = static_cast<int>(save.fill[t]);
+    });
+}
+
+int four_side_fill_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<FourSideFillState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupEscapeDoors);
+    };
+
+    if (!wait_for_interactable("continue_game", 10000))
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
+
+    state->opened = open_setup_step(2, "TEAMS", 15000);
+    if (!state->opened)
+        return escape(3, "the TEAMS step never came up");
+    (void)wait_for_menu_frames(2);
+    state->rest_sides_row = interactable_label("setup_row_0");
+    state->rest_fill_row = interactable_label("setup_row_1");
+
+    // (a) ONE turn off the deal. STRONG -> BRUTAL is the frame that shows
+    // every band moving UP together; the next turn would wrap to WEAK and
+    // read as FILL going down, so it is not the shot.
+    //
+    // The team LINES do not answer on the click: their numbers come from a
+    // restage the turn only QUEUES (a trailing-edge debounce), so a frame
+    // taken right after the wheel moved still carries the previous
+    // state's census — a shot of FILL: WEAK over the BRUTAL body count.
+    // Clear the buffer, turn, then wait for the stage to announce itself.
+    trace_clear();
+    state->turned_to_brutal = click_until_label_containing(
+        "setup_row_1", "FILL: BRUTAL", 3, 10000, "turned", "setup");
+    if (!state->turned_to_brutal)
+        return escape(4, "the FILL wheel never reached BRUTAL");
+    state->restaged_after_turn = wait_for_trace("setup", "staged", 15000);
+    (void)wait_for_menu_frames(2);
+    read_fill(state->fill_after_turn);
+    capture_presented_frame("setup_step_teams_four_sides_brutal",
+                            uxshots_dir());
+    ++state->captures;
+
+    // (b) empty every band from the LINEUP page (row 2 is the door on a
+    // four-side arena: SIDES, FILL, LINEUP).
+    state->lineup_opened = click_until_edge("setup_row_2", [](int wait_ms) {
+        return wait_for_interactable("lineup_unite", wait_ms);
+    });
+    if (!state->lineup_opened)
+        return escape(5, "the LINEUP door never opened");
+    (void)wait_for_menu_frames(2);
+    state->bands_emptied = true;
+    for (int t = 0; t < 4; ++t) {
+        // The band wheel keeps NONE (kLineupFillNote, "none to brutal"),
+        // and BRUTAL wraps straight onto it.
+        state->bands_emptied =
+            click_until_label("lineup_fill_" + std::to_string(t),
+                              "FILL: NONE", 3, 10000, "fill team=",
+                              "lineup") &&
+            state->bands_emptied;
+    }
+    state->back_on_teams = click_until_edge("back", [](int wait_ms) {
+        return wait_for_interactable_label_matching(
+            "setup_tab_2",
+            [](const std::string& label) { return label == "[TEAMS]"; },
+            wait_ms);
+    });
+    if (!state->back_on_teams)
+        return escape(6, "LINEUP's BACK did not return to TEAMS");
+    (void)wait_for_menu_frames(2);
+    state->empty_sides_row = interactable_label("setup_row_0");
+    state->empty_fill_row = interactable_label("setup_row_1");
+
+    // ...and ONE turn out of the collapse, settled on the same oracle.
+    trace_clear();
+    state->healed = click_until_label_containing(
+        "setup_row_1", "FILL: WEAK", 3, 10000, "turned", "setup");
+    if (!state->healed)
+        return escape(7, "the FILL wheel never re-lit the bands");
+    state->restaged_after_heal = wait_for_trace("setup", "staged", 15000);
+    (void)wait_for_menu_frames(2);
+    state->healed_sides_row = interactable_label("setup_row_0");
+    state->healed_fill_row = interactable_label("setup_row_1");
+    read_fill(state->fill_after_heal);
+    capture_presented_frame("setup_step_teams_four_sides_healed",
+                            uxshots_dir());
+    ++state->captures;
+
+    if (!click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        }))
+    {
+        return escape(8, "BACK did not close the wizard");
+    }
+    state->finished = true;
+    return escape(0, "");
+}
+} // namespace
+
+TEST(MatchSetupUi, fill_turn_moves_every_side_on_a_four_side_arena)
+{
+    trace_clear();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // FOURSQUARE (822): four authored sides, a ball arena, so the deal is
+    // STRONG on every band before a knob is touched.
+    write_versus_save("modes", 822);
+
+    FourSideFillState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(four_side_fill_injector, "setup_four_fill", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.opened);
+    EXPECT_NE(std::string::npos, state.rest_sides_row.find("SIDES: 4"))
+        << "the arena authors four sides: '" << state.rest_sides_row << "'";
+    EXPECT_NE(std::string::npos, state.rest_fill_row.find("FILL: STRONG"))
+        << "a fresh ball arena is dealt STRONG: '" << state.rest_fill_row
+        << "'";
+    EXPECT_NE(std::string::npos, state.rest_fill_row.find("weak to brutal"))
+        << "R2-2: NONE left the wizard's wheel — in the wizard it only "
+           "ever emptied a versus arena: '" << state.rest_fill_row << "'";
+    ASSERT_TRUE(state.turned_to_brutal);
+    EXPECT_TRUE(state.restaged_after_turn)
+        << "the team lines' numbers come from a restage the turn queues; "
+           "a frame taken before it lands shows the previous census";
+    const std::array<int, 4> kAllBrutal{
+        og::sim::kFillBrutal, og::sim::kFillBrutal, og::sim::kFillBrutal,
+        og::sim::kFillBrutal};
+    EXPECT_EQ(kAllBrutal, state.fill_after_turn)
+        << "one FILL turn moves EVERY authored band, not teams 1 and 2";
+
+    ASSERT_TRUE(state.lineup_opened);
+    EXPECT_TRUE(state.bands_emptied)
+        << "LINEUP keeps per-team NONE, which is how a company collapses "
+           "into the reported state in the first place";
+    ASSERT_TRUE(state.back_on_teams);
+    EXPECT_NE(std::string::npos, state.empty_sides_row.find("SIDES: 1"))
+        << "with no band on, the step honestly says one side: '"
+        << state.empty_sides_row << "'";
+    ASSERT_TRUE(state.healed);
+    EXPECT_TRUE(state.restaged_after_heal)
+        << "same for the healed frame";
+    EXPECT_NE(std::string::npos, state.healed_sides_row.find("SIDES: 4"))
+        << "and ONE turn lights every authored opponent again: '"
+        << state.healed_sides_row << "'";
+    EXPECT_NE(std::string::npos, state.healed_fill_row.find("FILL: WEAK"))
+        << "'" << state.healed_fill_row << "'";
+    const std::array<int, 4> kAllWeak{
+        og::sim::kFillWeak, og::sim::kFillWeak, og::sim::kFillWeak,
+        og::sim::kFillWeak};
+    EXPECT_EQ(kAllWeak, state.fill_after_heal)
+        << "every authored side, not just the lowest (R2-2 fix B)";
+    verify_captured_frames("setup_four_fill", 2);
     restore_gladiator_mount();
 }

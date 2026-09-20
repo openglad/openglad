@@ -7,9 +7,18 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_camp_save_fixture.h"
+#include "test_click_ladder.h"
 #include "test_company_cleanup.h"
+#include "test_escape_tail.h"
+#include "test_frame_capture.h"
 #include "test_interact.h"
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/packs.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
+#include <atomic>
+#include <cstdlib>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -192,4 +201,185 @@ TEST(LevelProgress, menu) {
         << "BACK must have been clicked inside the progress menu";
     ASSERT_TRUE(seq.scenario_reopened)
         << "BACK from progress must land back on the SCENARIO subscreen";
+}
+
+// ---------------------------------------------------------------------------
+// R2-4: no progress vocabulary on a Multiplayer Arenas campaign.
+//
+// The maintainer's question — "why do we care, for multiplayer levels?" —
+// is answered at ONE predicate (og::ui::progress_marks_shown), and the
+// PROGRESS screen one door off the versus Base Camp is the loudest of its
+// readers: a report headed "Level Progress: 1 cleared of 40 discovered"
+// with a green CLEARED column is the same complaint the wizard's readout
+// was. On a versus campaign the header states the roll ("Arenas: 40") and
+// every row wears CURRENT or the blank dashes, never CLEARED, so every row
+// wears GO rather than the REPLAY/VISIT pair an earned road gets.
+//
+// The oracle is the screen's own derivation and composition traces, read on
+// a save that HAS a completed arena (821): without that the pin would pass
+// on a campaign with nothing to mark.
+
+namespace {
+
+struct VersusProgressState
+{
+    std::atomic<bool> test_finished{false};
+    // Each lap names its own frame: two tests share this injector, and a
+    // shared capture name means the second lap silently overwrites the
+    // first one's still (caught in the read-back, not by any assertion).
+    const char* shot = "progress_modes";
+    bool camp_seen = false;
+    bool scenario_open = false;
+    bool progress_open = false;
+    bool finished = false;
+    int captures = 0;
+};
+
+int versus_progress_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<VersusProgressState*>(data);
+    // In precedence order: the PROGRESS report's own BACK (named by its
+    // unique `prev` row), the SCENARIO submenu's (named by VIEW LEVEL),
+    // Base Camp's, then the picker's way forward.
+    const auto escape = [state](int leg, const char* why) {
+        static constexpr EscapeDoor kProgressDoors[] = {
+            {"prev", "back"},
+            {"view_scenario", "back"},
+            {"go", "back"},
+            {"continue_game", "continue_game"},
+        };
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kProgressDoors);
+    };
+
+    state->camp_seen = wait_for_interactable("continue_game", 10000);
+    if (!state->camp_seen)
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    if (!click_until_edge("continue_game", [](int wait_ms) {
+            return wait_for_interactable("scenario", wait_ms);
+        }))
+    {
+        return escape(2, "Base Camp never came up");
+    }
+    state->scenario_open = true;
+    if (!click_until_edge("scenario", [](int wait_ms) {
+            return wait_for_interactable("progress", wait_ms);
+        }))
+    {
+        return escape(3, "the SCENARIO submenu never came up");
+    }
+    // `prev` is the report's own row, so waiting on it names the screen.
+    state->progress_open = click_until_edge("progress", [](int wait_ms) {
+        return wait_for_interactable("prev", wait_ms);
+    });
+    if (!state->progress_open)
+        return escape(4, "the PROGRESS report never came up");
+    (void)wait_for_menu_frames(2);
+    capture_presented_frame(state->shot, std::getenv("UXSHOTS_DIR"));
+    ++state->captures;
+
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(LevelProgress, versus_progress_report_carries_no_progress_word)
+{
+    trace_clear();
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // Cursor on THE PITCH (820) with THE MUDBOWL (821) already played:
+    // the arena the classic rule would paint green.
+    write_save0_with_two_soldiers("modes", 820, {821});
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
+
+    VersusProgressState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(versus_progress_injector, "versus_progress", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.progress_open)
+        << "the PROGRESS report must have opened on the modes company";
+    // The report lists the ACCESSIBLE set, which on this company is the
+    // campaign's entry arena (300), the cursor (820) and the one played
+    // (821) — a pre-existing rule this round does not touch. What R2-4
+    // changes is the vocabulary: the header states the roll it is showing
+    // instead of scoring it.
+    EXPECT_TRUE(trace_contains("progress", "header Arenas: 3"))
+        << "the versus header states the roll, not a score";
+    EXPECT_FALSE(trace_contains("progress", "cleared of"))
+        << "'n cleared of m' is exactly the vocabulary R2-4 removes";
+    EXPECT_TRUE(trace_contains("progress", "row 820 CURRENT"))
+        << "[CURRENT] is not progress vocabulary and stays";
+    EXPECT_TRUE(trace_contains("progress", "row 821 -------"))
+        << "a completed arena wears the blank status on a versus campaign, "
+           "so its row wears GO like every other";
+    EXPECT_FALSE(trace_contains("progress", "CLEARED"))
+        << "no CLEARED cell anywhere in the report";
+    verify_captured_frames("versus_progress", 1);
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+}
+
+// ...and the classic campaign is untouched: the same report on gladiator
+// still counts what the company earned. Without this leg the change above
+// could have deleted the vocabulary outright.
+TEST(LevelProgress, classic_progress_report_still_counts_what_was_cleared)
+{
+    trace_clear();
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    write_save0_with_two_soldiers("gladiator", 1, {1});
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1))
+        << "save0 must be seeded as the most recent company on disk";
+
+    VersusProgressState state;
+    state.shot = "progress_gladiator";
+    SDL_Thread* thread =
+        SDL_CreateThread(versus_progress_injector, "classic_progress", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    ASSERT_TRUE(state.progress_open);
+    EXPECT_TRUE(trace_contains("progress", "header Level Progress:"))
+        << "a classic campaign still reports what the company cleared";
+    EXPECT_TRUE(trace_contains("progress", "cleared of"));
+    EXPECT_TRUE(trace_contains("progress", "row 1 CLEARED"))
+        << "and the cleared level still wears the word";
+    verify_captured_frames("classic_progress", 1);
+    save.scen_num = 1;
 }

@@ -3362,11 +3362,15 @@ static void refresh_difficulty_menu_button_label(int button_index,
        pks().difficulty_menu_buttons[static_cast<std::size_t>(button_index)].label = label;
 }
 
-// The value-taking tail (docs/match-setup-design.md ruling 2): the SESSION
-// computes the value, so the wizard's "<" cell and a right-click can step
-// the wheel BACK, and the DIFFICULTY row's own cycling case below calls
-// this with cycle_difficulty(current). ONE tail, two callers — never a twin
-// of the world write, the label refresh, the lobby sync and the autosave.
+// The value-taking tail (docs/match-setup-design.md ruling 2): a CALLER
+// computes the value and this writes it once — world difficulty, both
+// label surfaces, the lobby sync and the autosave. The SETUP wizard's
+// RULES row was its second caller until R2-3 sent difficulty home to this
+// screen, so on SDL the cycling case below is the only one left; the shape
+// stays because ruling 2 is a rule about all three clients (the text and
+// curses pickers keep their own value-taking tails), and because a caller
+// that computed a value and then re-typed the write is exactly the twin
+// the ruling forbids.
 void apply_difficulty_value(int value)
 {
    og::runtime::current_session->current_difficulty_ = value;
@@ -3815,8 +3819,10 @@ Sint32 change_cross_control()
        return MENU_OK;
    }
    // One rule, one implementation (ruling 14): the sanitizing toggle lives
-   // in picker_common so this row and the wizard's RULES row cannot
-   // disagree about what "off" means.
+   // in picker_common so no client can invent its own meaning for "off".
+   // This row is where a networked joiner READS cross control after R2-3
+   // (the wizard's read-only copy left with the rest of the RULES scope),
+   // and the guard above is what answers their click.
    og::ui::toggle_cross_control(save);
    TRACE("teams", "cross_control %d", static_cast<int>(save.cross_control));
    picker_lobby_sync_settings_from_save();

@@ -19,6 +19,7 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -34,6 +35,7 @@
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include "test_menu_highlight.h"
 
 #include <SDL3/SDL.h>
 
@@ -2750,15 +2752,15 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
     // campaign whose mount left the screen empty must be caught here.
     DefaultTourState tours[] = {
         {"gladiator", "zone_default_gladiator", 1, 0, nullptr, {}},
-        // The arena docket composes GAME: / ARENA: / RANDOM ARENA —
-        // THREE rows on the panel's first face. The fourth left with #304:
-        // the retired page's four knob rows were the camp's only rules
-        // digest,
-        // and the whole match is stated on the wizard's MATCH step now,
-        // one click from the strip. The camp still spends no text line, so
-        // its last row is never parked behind a pager arrow on the screen
-        // a player lives on.
-        {"modes", "zone_default_modes", 300, 3, nullptr, {}},
+        // The arena docket composes ONE row: "SETUP - <TITLE>  >", which
+        // states the match and opens the wizard on its GAME step (R2-5,
+        // "replace all three multiplayer arena buttons in the base camp
+        // with just one button to launch the wizard"). The roster LEADS,
+        // so the panel keeps its classic y=33 heading and the freed docket
+        // units go back to hero rows; the camp still spends no text line,
+        // so its one row is never parked behind a pager arrow on the
+        // screen a player lives on.
+        {"modes", "zone_default_modes", 300, 1, nullptr, {}},
         // The Company Fire composes its camp: at the vale that is the fight
         // at your feet plus the QUARTERMASTER and THE LEDGER doors (the
         // road out is named only on the night it opens).
@@ -3128,8 +3130,8 @@ int camp_entry_order_injector(void* data)
     (void)wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);  // fadeblack eats events; the only settle left here
     (void)interact("continue_game");
-    (void)wait_for_interactable_label_containing("zone_action_1",
-                                                 "ARENA:", 10000);
+    (void)wait_for_interactable_label_containing("zone_action_0",
+                                                 "SETUP - ", 10000);
     (void)wait_for_interactable("go", 10000);
     SDL_Delay(300);
     (void)interact("back");
@@ -3141,10 +3143,11 @@ int camp_entry_order_injector(void* data)
 
 namespace {
 
-// D28: on a VERSUS campaign the docket's page rows are shortcuts INTO the
-// SETUP wizard, positioned at the page they name. On every other campaign
-// they still open the zone submenu over the book. The two chassis are told
-// apart by what comes up, not by what the click looked like.
+// D28 / R2-5: on a VERSUS campaign the docket's ONE page row is the SETUP
+// wizard's door on this client — `games`, which names no root PAGE row, so
+// the wizard opens on GAME. On every other campaign a page row still opens
+// the zone submenu over the book. The two chassis are told apart by what
+// comes up, not by what the click looked like.
 struct DocketShortcutState
 {
     std::atomic<bool> test_finished{false};
@@ -3176,9 +3179,10 @@ int versus_docket_injector(void* data)
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
 
-    state->row_seen = wait_for_interactable("zone_action_0", 15000);
+    state->row_seen = wait_for_interactable_label_containing(
+        "zone_action_0", "SETUP - ", 15000);
     if (!state->row_seen)
-        return escape(2, "the versus docket never composed its GAME: row");
+        return escape(2, "the versus docket never composed its SETUP row");
     trace_clear();
     state->wizard_opened = click_until_edge(
         "zone_action_0",
@@ -3187,7 +3191,7 @@ int versus_docket_injector(void* data)
         },
         "docket_shortcut", 3, 10000, "setup");
     if (!state->wizard_opened)
-        return escape(3, "the GAME: row did not open the wizard");
+        return escape(3, "the SETUP row did not open the wizard");
     state->submenu_opened = trace_contains("zone", "submenu_opened");
 
     (void)click_until_edge("setup_back", [](int wait_ms) {
@@ -3225,7 +3229,7 @@ TEST(CampaignZoneUi, versus_docket_page_rows_open_the_wizard_not_the_submenu)
         << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.wizard_opened)
-        << "the versus docket's GAME: row must land on the wizard's GAME "
+        << "the versus docket's SETUP row must land on the wizard's GAME "
            "step — two doors from one screen into the same pages on two "
            "chassis is the clutter #304 names";
     EXPECT_FALSE(state.submenu_opened)
@@ -3313,10 +3317,10 @@ int setup_retry_injector(void* data)
     (void)wait_for_interactable("continue_game", 5000);
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    (void)wait_for_interactable("setup", 10000);
+    (void)wait_for_interactable("zone_action_0", 10000);
 
     *opened = click_until_edge(
-        "setup",
+        "zone_action_0",
         [](int wait_ms) {
             return wait_for_interactable("setup_tab_0", wait_ms);
         },
@@ -3342,7 +3346,7 @@ int setup_wrong_id_injector(void* data)
     (void)wait_for_interactable("continue_game", 5000);
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    (void)wait_for_interactable("setup", 10000);
+    (void)wait_for_interactable("zone_action_0", 10000);
 
     // No witness: a press that is nowhere near a button cannot land, so
     // this ladder is allowed to spend every attempt on a fresh press.
@@ -3384,7 +3388,7 @@ int setup_blind_cycler_injector(void* data)
     (void)wait_for_interactable("continue_game", 5000);
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    (void)wait_for_interactable("setup", 10000);
+    (void)wait_for_interactable("zone_action_0", 10000);
 
     state->opened = open_setup_step(3, "RULES", 15000);
     if (state->opened) {
@@ -3585,6 +3589,143 @@ TEST(CampaignZoneUi, setup_click_helper_recheck_saves_a_witnessless_cycler)
     EXPECT_EQ(1, g_click_ladder_edge_waits)
         << "the second attempt waited instead of pressing, because the "
            "re-check found the edge already there";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// ---------------------------------------------------------------------------
+// R2-5, the keyboard: the docket's one SETUP row is part of the camp's
+// SPINE, not a mouse-only face. Base Camp is the first shipped camp with a
+// band BELOW the roster (menu_screen_specs.cpp's bands_below), so the chain
+// has to read roster -> docket row -> seat rail with nothing stranded in
+// between. The same leg runs on a 2-hero company and on one big enough to
+// page the roster, because the row's neighbours above it are different in
+// the two cases — and the full-roster frame is the one the read-back
+// judges for "panel or stray".
+
+namespace {
+
+struct DocketSpineState
+{
+    std::atomic<bool> test_finished{false};
+    bool camp_seen = false;
+    bool row_seen = false;
+    int steps_to_row = -1;
+    std::string above_row;
+    std::string below_row;
+    // The full-roster lap writes the frame the read-back judges for
+    // "part of the panel, or a stray line under it".
+    bool capture_shot = false;
+    bool finished = false;
+};
+
+int docket_spine_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DocketSpineState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        static constexpr EscapeDoor kSpineDoors[] = {
+            {"setup_back", "setup_back"},
+            {"back", "back"},
+            {"go", "back"},
+            {"continue_game", "continue_game"},
+        };
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSpineDoors);
+    };
+
+    state->camp_seen = wait_for_interactable("continue_game", 10000);
+    if (!state->camp_seen)
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    state->row_seen = wait_for_interactable_label_containing(
+        "zone_action_0", "SETUP - ", 15000);
+    if (!state->row_seen)
+        return escape(2, "the versus docket never showed its SETUP row");
+    (void)wait_for_menu_frames(2);
+    if (state->capture_shot) {
+        capture_presented_frame("zone_default_modes_full_roster",
+                                std::getenv("UXSHOTS_DIR"));
+    }
+
+    // Walk DOWN from wherever the camp lands the highlight until the
+    // docket row has it, keeping the id of the step before: the chain is
+    // bounded by the table, so a spine that never reaches the row reports
+    // rather than spins.
+    std::string previous = highlighted_id();
+    for (int step = 1; step <= MAX_BUTTONS; ++step) {
+        if (!press_menu_nav(KEY_DOWN))
+            return escape(3, "a DOWN step was never consumed");
+        const std::string now = highlighted_id();
+        if (now == "zone_action_0") {
+            state->steps_to_row = step;
+            state->above_row = previous;
+            break;
+        }
+        if (now == previous)
+            break;  // the chain ends above the row; the assertions say so
+        previous = now;
+    }
+    if (state->steps_to_row < 0)
+        return escape(4, "DOWN never reached the docket's SETUP row");
+
+    if (!press_menu_nav(KEY_DOWN))
+        return escape(5, "the step off the docket row was never consumed");
+    state->below_row = highlighted_id();
+
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(CampaignZoneUi, versus_docket_row_is_in_the_camp_keyboard_spine)
+{
+    for (int heroes : {2, 8}) {
+        trace_clear();
+        SavedPickerSave save_guard;
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("modes"));
+        write_save0_with_soldiers("modes", 820, heroes);
+
+        DocketSpineState state;
+        state.capture_shot = heroes > 7;
+        SDL_Thread* thread =
+            SDL_CreateThread(docket_spine_injector, "docket_spine", &state);
+        ASSERT_NE(nullptr, thread);
+        g_picker_mainmenu_calls = 0;
+        g_picker_max_mainmenu_calls = 1;
+        picker_main(0, nullptr);
+        state.test_finished.store(true);
+        int thread_result = 0;
+        SDL_WaitThread(thread, &thread_result);
+        escape_tail_join_hygiene();
+        cleanup_picker_state();
+        g_picker_max_mainmenu_calls = 0;
+
+        EXPECT_EQ(0, thread_result)
+            << heroes << " heroes: the injector gave up at leg "
+            << thread_result;
+        ASSERT_TRUE(state.row_seen) << heroes << " heroes";
+        EXPECT_GT(state.steps_to_row, 0)
+            << heroes << " heroes: DOWN must reach the docket's SETUP row";
+        EXPECT_TRUE(state.above_row.starts_with("roster_row_"))
+            << heroes
+            << " heroes: the row the spine enters the docket from is the "
+               "last visible ROSTER row — '"
+            << state.above_row << "'";
+        EXPECT_EQ("seat_card_0", state.below_row)
+            << heroes
+            << " heroes: and one more DOWN lands on the seat rail, so "
+               "nothing is stranded under the band — '"
+            << state.below_row << "'";
+        // The full-roster lap is the only one that shoots; the ledger is
+        // per-flow, so both laps answer for what they recorded.
+        verify_captured_frames("docket_spine",
+                               state.capture_shot ? 1u : 0u);
+    }
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

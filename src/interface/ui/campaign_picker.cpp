@@ -276,11 +276,18 @@ void CampaignEntry::draw(int team_power)
         y += 8;
     }
 
-    // Print completion progress
-    if(num_levels_completed < 0)
+    // Print completion progress. R2-4: a Multiplayer Arenas campaign has no
+    // progress to report, so its card states the roll. The predicate is
+    // asked of THIS ENTRY's campaign id, never of the current save — the
+    // browser composes a card for every campaign on disk while the save
+    // sits on one of them.
+    if(!og::ui::progress_marks_shown(id))
+        buf = std::format("{} arena{}", num_levels, (num_levels == 1? "" : "s"));
+    else if(num_levels_completed < 0)
         buf = std::format("{} level{}", num_levels, (num_levels == 1? "" : "s"));
     else
         buf = std::format("{} out of {} completed", num_levels_completed, num_levels);
+    TRACE("campaign_card", "line %s %s", id.c_str(), buf.c_str());
     write_centered(y, buf, WHITE);
     y += 8;
 

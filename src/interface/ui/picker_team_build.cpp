@@ -1447,9 +1447,18 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
         return;
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
 
-    // Header
-    std::string header = std::format("Level Progress: {} cleared of {} discovered",
-             state->num_cleared, static_cast<int>(state->levels.size()));
+    // Header. R2-4: a Multiplayer Arenas campaign counts nothing, so the
+    // report states the roll instead of a score (og::ui::progress_marks_shown
+    // is the one predicate every versus surface asks).
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    std::string header =
+        og::ui::progress_marks_shown(save)
+            ? std::format("Level Progress: {} cleared of {} discovered",
+                          state->num_cleared,
+                          static_cast<int>(state->levels.size()))
+            : std::format("Arenas: {}", static_cast<int>(state->levels.size()));
+    TRACE("progress", "header %s", header.c_str());
     mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
 
     // Column headers (#207: Foes moved left of the two-button column)
@@ -1470,19 +1479,16 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
         std::string buf = std::format("{}", lp.id);
         mytext.write_xy(12, y + 2, buf.c_str(), WHITE, 1);
 
-        // Status
-        unsigned char status_color;
-        const char* status_text;
-        if (lp.is_cleared) {
-            status_text = "CLEARED";
-            status_color = DARK_GREEN;
-        } else if (lp.is_current) {
-            status_text = "CURRENT";
-            status_color = YELLOW;
-        } else {
-            status_text = "-------";
-            status_color = WHITE;
-        }
+        // Status, through the ONE status helper SET LEVEL's rows already
+        // use (the inline CLEARED/CURRENT pair here was its twin); the
+        // blank answer wears this screen's own dashes.
+        const char* helper_status =
+            og::ui::level_row_status_label(lp.is_cleared, lp.is_current);
+        const char* const status_text =
+            helper_status[0] != '\0' ? helper_status : "-------";
+        const unsigned char status_color =
+            lp.is_cleared ? DARK_GREEN : lp.is_current ? YELLOW : WHITE;
+        TRACE("progress", "row %d %s", lp.id, status_text);
         mytext.write_xy(36, y + 2, status_text, status_color, 1);
 
         // Title
@@ -1558,7 +1564,13 @@ Sint32 create_progress_menu(Sint32 arg1)
     for (int level_id : level_ids) {
         LevelProgress lp;
         lp.id = level_id;
-        lp.is_cleared = og::runtime::current_session->myscreen_->save_data.is_level_completed(level_id);
+        // R2-4: one derivation, one predicate. num_cleared, the status
+        // column and the REPLAY/VISIT affordance all follow from this
+        // field, so a versus campaign's rows wear GO and nothing else.
+        lp.is_cleared =
+            og::ui::progress_marks_shown(
+                og::runtime::current_session->myscreen_->save_data) &&
+            og::runtime::current_session->myscreen_->save_data.is_level_completed(level_id);
         lp.is_current = (level_id == og::runtime::current_session->myscreen_->save_data.scen_num);
 
         if (lp.is_cleared)

@@ -359,23 +359,15 @@ inline constexpr int kBaseCampZoneSpareCount = 3;
 // the y=178 strip with the other doors — the ordinal ordering is the table's
 // growth history, not the reading order.
 inline constexpr int kCreateMenuDifficultyIndex = 72;
-// The SETUP wizard's strip door (docs/match-setup-design.md §2.1):
-// DIFFICULTY's TWIN on ONE rect, the GO/READY shape — exactly one of the
-// pair is visible per frame, SETUP on a versus campaign and DIFFICULTY on
-// every other. Appended at the table's end like DIFFICULTY before it, so
-// no established ordinal moved; statically hidden like READY, so
-// createmenu_buttons_no_overlap holds on the materialized table with no
-// exemption.
-inline constexpr int kCreateMenuSetupIndex = 73;
-inline constexpr int kCreateMenuButtonCount = 74;
+inline constexpr int kCreateMenuButtonCount = 73;
 
 // The panel's two right edges and the docket's row/pager geometry. These
 // were file-static in menu_screen_specs.cpp until the SETUP wizard
 // (docs/match-setup-design.md §2.0) became a SECOND screen deriving from
 // them — shared layouts share constants, or the two drift the moment one is
-// edited alone. The STRIP family (kBaseCampStrip*) stays file-static: its
-// one new consumer, the SETUP twin row, is a row of the same table in the
-// same file.
+// edited alone. The STRIP family (kBaseCampStrip*) stays file-static: no
+// second screen derives from it, so its only consumers are rows of the
+// same table in the same file.
 //
 // Panel OUTER right edge (EXCLUSIVE): the bevel's last column (311) + 1 ==
 // the GO/READY right edge (262 + 50) — outside-to-outside alignment.

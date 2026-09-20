@@ -207,9 +207,6 @@ bool capture_frame(const char* name)
 // the SCORE cell it watched is parked (#304) and every remaining wait here
 // is a ladder's (tests/test_click_ladder.h).
 
-bool wait_for_trace(const char* category, const char* substring,
-                    int timeout_ms);
-
 // Counted instrumentation for the acknowledged click (TESTING-only, and this
 // whole file is TESTING-only): how many main-thread tasks the last call
 // posted, and the ceiling it posted them with. run_on_main_thread's ceiling
@@ -677,18 +674,9 @@ bool click_through_labels(const std::string& id,
     return true;
 }
 
-// Poll a trace category for a substring (the wait_for_picker_trace idiom).
-bool wait_for_trace(const char* category, const char* substring,
-                    int timeout_ms)
-{
-    for (int elapsed = 0; elapsed < timeout_ms; elapsed += 50) {
-        if (trace_contains(category, substring))
-            return true;
-        SDL_Delay(50);
-    }
-    fprintf(stderr, "  [lineup] TIMEOUT waiting for trace '%s'\n", substring);
-    return false;
-}
+// wait_for_trace is tests/test_interact.h's — this file carried a fourth
+// copy of the bounded trace poll until the SETUP wizard's flows wanted the
+// same rule and found the shared one already there.
 
 // A knob callback reaches the local lobby through an in-process message and
 // the owner restages on a trailing-edge debounce.  Waiting for merely *a*
@@ -2177,8 +2165,8 @@ int macro_round_trip_injector(void* data)
         return escape(1, "the main menu never came up");
     (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    if (!wait_for_interactable("setup", 15000))
-        return escape(2, "the versus strip never showed SETUP");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
 
     // (a) TEAMS at rest: no SIDES row on a two-side arena, FILL dealt FAIR.
     state->wizard_opened = open_setup_step(2, "TEAMS", 15000);
@@ -3705,6 +3693,215 @@ TEST(LineupUi, strong_on_a_soccer_arena_reads_two_bots_on_the_band)
            "reads on this world. Before both screens shared "
            "format_match_preview this column said NO FIGHTERS.";
     EXPECT_EQ(1, state.captures);
+
+    restore_gladiator_mount();
+}
+
+// ---------------------------------------------------------------------------
+// R2-2, the LINEUP half: "the FILL: selector from the wizard only changes
+// teams 1 and 2, even for 4-player maps".
+//
+// The matchup group pins the wizard's own faces and the save array; this
+// one pins what the maintainer actually saw — the per-team page. FOURSQUARE
+// (822) authors four sides, so a FILL turn must read back on FOUR bands,
+// and the collapsed state (every band NONE, the thing the shipped bug left
+// behind and the v20 load heals) must come back to four bands on ONE turn
+// rather than lighting the lowest opponent alone. The page's own labels
+// are the oracle: `lineup_fill_2` and `lineup_fill_3` reading EMPTY is
+// exactly the symptom the feedback reports.
+
+namespace {
+
+struct FourSideBandsState
+{
+    std::atomic<bool> test_finished{false};
+    bool wizard_opened = false;
+    std::string rest_sides_label;
+    std::string rest_fill_label;
+    bool turned_to_brutal = false;
+    bool lineup_opened = false;
+    std::array<std::string, 4> bands_after_turn;
+    bool bands_emptied = false;
+    bool back_on_teams = false;
+    std::string empty_sides_label;
+    bool healed = false;
+    std::string healed_sides_label;
+    std::string healed_fill_label;
+    std::array<std::string, 4> bands_after_heal;
+    bool finished = false;
+};
+
+bool read_lineup_bands(std::array<std::string, 4>& out)
+{
+    if (!wait_for_interactable("lineup_fill_0", 10000))
+        return false;
+    (void)wait_for_menu_frames(2);
+    for (int t = 0; t < 4; ++t) {
+        out[static_cast<std::size_t>(t)] =
+            interactable_label("lineup_fill_" + std::to_string(t));
+    }
+    return true;
+}
+
+int four_side_bands_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<FourSideBandsState*>(data);
+    // The wizard's own door table FIRST, then the nested LINEUP page's:
+    // inside them the Base Camp's `go` is not live, and the default table
+    // would spin against the group's ctest cap.
+    static constexpr EscapeDoor kSetupDoors[] = {
+        {"setup_back", "setup_back"},
+        {"lineup_unite", "back"},
+        {"back", "back"},
+        {"go", "back"},
+        {"continue_game", "continue_game"},
+    };
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupDoors);
+    };
+
+    if (!wait_for_interactable("continue_game", 10000))
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    if (!wait_for_interactable("zone_action_0", 15000))
+        return escape(2, "the versus docket never showed its SETUP row");
+
+    state->wizard_opened = open_setup_step(2, "TEAMS", 15000);
+    if (!state->wizard_opened)
+        return escape(3, "the TEAMS step never came up");
+    (void)wait_for_menu_frames(2);
+    state->rest_sides_label = interactable_label("setup_row_0");
+    state->rest_fill_label = interactable_label("setup_row_1");
+
+    state->turned_to_brutal = click_until_label_containing(
+        "setup_row_1", "FILL: BRUTAL", 3, 10000, "turned", "setup");
+    if (!state->turned_to_brutal)
+        return escape(4, "the FILL wheel never reached BRUTAL");
+
+    // The door is row 2 here: SIDES, FILL, LINEUP.
+    state->lineup_opened = click_until_edge("setup_row_2", [](int wait_ms) {
+        return wait_for_interactable("lineup_unite", wait_ms);
+    });
+    if (!state->lineup_opened)
+        return escape(5, "the LINEUP page never opened");
+    if (!read_lineup_bands(state->bands_after_turn))
+        return escape(6, "the LINEUP page never showed its bands");
+
+    // Collapse every band: LINEUP keeps per-team NONE (kLineupFillNote),
+    // and BRUTAL wraps straight onto it.
+    state->bands_emptied = true;
+    for (int t = 0; t < 4; ++t) {
+        state->bands_emptied =
+            click_until_label("lineup_fill_" + std::to_string(t),
+                              "FILL: NONE", 3, 10000, "fill team=",
+                              "lineup") &&
+            state->bands_emptied;
+    }
+
+    state->back_on_teams = click_until_edge("back", [](int wait_ms) {
+        return wait_for_interactable_label_matching(
+            "setup_tab_2",
+            [](const std::string& label) { return label == "[TEAMS]"; },
+            wait_ms);
+    });
+    if (!state->back_on_teams)
+        return escape(7, "LINEUP's BACK did not return to TEAMS");
+    (void)wait_for_menu_frames(2);
+    state->empty_sides_label = interactable_label("setup_row_0");
+
+    state->healed = click_until_label_containing(
+        "setup_row_1", "FILL: WEAK", 3, 10000, "turned", "setup");
+    if (!state->healed)
+        return escape(8, "the FILL wheel never re-lit the bands");
+    (void)wait_for_menu_frames(2);
+    state->healed_sides_label = interactable_label("setup_row_0");
+    state->healed_fill_label = interactable_label("setup_row_1");
+
+    if (!click_until_edge("setup_row_2", [](int wait_ms) {
+            return wait_for_interactable("lineup_unite", wait_ms);
+        }))
+    {
+        return escape(9, "the LINEUP page never reopened");
+    }
+    if (!read_lineup_bands(state->bands_after_heal))
+        return escape(10, "the LINEUP page never showed its healed bands");
+    (void)click_until_edge("back", [](int wait_ms) {
+        return wait_for_interactable_label_matching(
+            "setup_tab_2",
+            [](const std::string& label) { return label == "[TEAMS]"; },
+            wait_ms);
+    });
+    if (!click_until_edge("setup_back", [](int wait_ms) {
+            return wait_for_interactable("go", wait_ms);
+        }))
+    {
+        return escape(11, "BACK did not close the wizard");
+    }
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(LineupUi, setup_wizard_fill_moves_every_side_on_a_four_side_arena)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // FOURSQUARE (822): four authored sides, a ball arena, solo company.
+    write_save0_with_fighters("modes", 822, 1, {{"Solo", 3, true, 0}});
+
+    FourSideBandsState state;
+    SDL_Thread* thread = SDL_CreateThread(four_side_bands_injector,
+                                          "lineup_four_side", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_TRUE(state.finished);
+    ASSERT_TRUE(state.wizard_opened);
+    EXPECT_NE(std::string::npos, state.rest_sides_label.find("SIDES: 4"))
+        << "'" << state.rest_sides_label << "'";
+    EXPECT_NE(std::string::npos, state.rest_fill_label.find("FILL: STRONG"))
+        << "'" << state.rest_fill_label << "'";
+    ASSERT_TRUE(state.turned_to_brutal);
+    ASSERT_TRUE(state.lineup_opened);
+    for (int t = 0; t < 4; ++t) {
+        EXPECT_EQ("FILL: BRUTAL",
+                  state.bands_after_turn[static_cast<std::size_t>(t)])
+            << "R2-2: one wizard FILL turn deals EVERY authored band — "
+               "team " << (t + 1) << " read '"
+            << state.bands_after_turn[static_cast<std::size_t>(t)] << "'";
+    }
+    EXPECT_TRUE(state.bands_emptied);
+    ASSERT_TRUE(state.back_on_teams);
+    EXPECT_NE(std::string::npos, state.empty_sides_label.find("SIDES: 1"))
+        << "with no band on, the step says one side: '"
+        << state.empty_sides_label << "'";
+    ASSERT_TRUE(state.healed);
+    EXPECT_NE(std::string::npos, state.healed_sides_label.find("SIDES: 4"))
+        << "'" << state.healed_sides_label << "'";
+    EXPECT_NE(std::string::npos, state.healed_fill_label.find("FILL: WEAK"))
+        << "'" << state.healed_fill_label << "'";
+    for (int t = 0; t < 4; ++t) {
+        EXPECT_EQ("FILL: WEAK",
+                  state.bands_after_heal[static_cast<std::size_t>(t)])
+            << "and a turn out of the collapse lights every authored "
+               "opponent, not just the lowest — team " << (t + 1)
+            << " read '"
+            << state.bands_after_heal[static_cast<std::size_t>(t)] << "'";
+    }
 
     restore_gladiator_mount();
 }

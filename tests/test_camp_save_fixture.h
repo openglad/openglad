@@ -18,14 +18,19 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
 
 // `company` empty leaves save_name alone (the flows that pin a company name
-// pass their own).
-inline void write_save0_with_two_soldiers(
-    const std::string& campaign, short scen_num,
+// pass their own). `heroes` is how many deployed soldiers the company
+// holds: two is the camp flows' default, and a company big enough to PAGE
+// the roster band asks for more (the docket row's neighbours above it are
+// different on a full roster than on a two-hero one).
+inline void write_save0_with_soldiers(
+    const std::string& campaign, short scen_num, int heroes,
     const std::vector<int>& completed = {},
     const std::string& company = std::string())
 {
@@ -33,16 +38,20 @@ inline void write_save0_with_two_soldiers(
     for (auto& slot : save.team_list)
         slot.reset();
     save.team_size = 0;
-    const char* names[] = {"Alpha", "Beta"};
-    for (std::size_t i = 0; i < 2; ++i)
+    static const char* const kNames[] = {"Alpha", "Beta",  "Gamma", "Delta",
+                                         "Epsil", "Zeta",  "Eta",   "Theta",
+                                         "Iota",  "Kappa", "Lambd", "Mu"};
+    const int count = std::clamp(
+        heroes, 1, static_cast<int>(std::size(kNames)));
+    for (std::size_t i = 0; i < static_cast<std::size_t>(count); ++i)
     {
         save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
-        save.team_list[i]->name = names[i];
+        save.team_list[i]->name = kNames[i];
         save.team_list[i]->teamnum = 0;
         save.team_list[i]->deployed = true;
         save.team_list[i]->campaign_tag = 0;
     }
-    save.team_size = 2;
+    save.team_size = static_cast<unsigned char>(count);
     save.my_team = 0;
     save.numplayers = 1;
     save.allied_mode = 0;
@@ -72,4 +81,15 @@ inline void write_save0_with_two_soldiers(
     if (!company.empty())
         save.save_name = company;
     ASSERT_TRUE(save.save("save0"));
+}
+
+// The camp flows' default company: two deployed soldiers. One
+// implementation behind it, so a field added to the resting state above
+// reaches every caller.
+inline void write_save0_with_two_soldiers(
+    const std::string& campaign, short scen_num,
+    const std::vector<int>& completed = {},
+    const std::string& company = std::string())
+{
+    write_save0_with_soldiers(campaign, scen_num, 2, completed, company);
 }

@@ -74,7 +74,7 @@ struct SessionState {
 
     // UI button state (Batch 5) — moved from button.cpp global.
     // == MAX_BUTTONS from button.h (static_assert-tied in button.cpp).
-    static constexpr int kMaxButtons = 74;
+    static constexpr int kMaxButtons = 73;
     std::array<::vbutton*, kMaxButtons> allbuttons_ = {};
 
     // Button ownership (Phase 7d) — moved from button.cpp anonymous namespace.

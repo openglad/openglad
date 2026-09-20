@@ -420,10 +420,14 @@ inline bool click_until_label_containing(const std::string& id,
 // --- The SETUP wizard's one door-and-tab walk ------------------------------
 //
 // Every flow that wants a wizard step says WHICH STEP, once, and this walks
-// it: the Base Camp strip's SETUP door if the wizard is not already up,
+// it: the Base Camp DOCKET's SETUP row if the wizard is not already up,
 // then the step's own tab, each on an acknowledged ladder against the edge
 // that identifies where it landed. A hand-typed walk repeated in a dozen
 // flows is how the pre-#292 ladder copies happened.
+//
+// `zone_action_0` is that row — "SETUP - <TITLE>  >", the panel's last
+// line and (R2-5) the wizard's ONE door on this client, where round 1 also
+// carried a SETUP twin on the command strip.
 //
 // `word` is the step's own word (GAME / ARENA / TEAMS / RULES / MATCH):
 // the current tab wears it in square brackets, which is the oracle.
@@ -431,10 +435,10 @@ inline bool open_setup_step(int tab_index, const std::string& word,
                             int timeout_ms = 15000)
 {
     if (!has_interactable("setup_tab_0")) {
-        // The strip door. Its landing witness is the wizard's own entry
+        // The docket row. Its landing witness is the wizard's own entry
         // trace, so a press that landed on a slow frame is never re-sent.
         if (!click_until_edge(
-                "setup",
+                "zone_action_0",
                 [](int wait_ms) {
                     return wait_for_interactable("setup_tab_0", wait_ms);
                 },
