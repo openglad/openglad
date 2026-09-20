@@ -4043,6 +4043,111 @@ TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_c
               mount_campaign_package_with_error("gladiator"));
 }
 
+// R2-4, the SCENARIO door on a versus campaign: no progress vocabulary
+// survives behind it. PROGRESS states the campaign and the arena and never
+// a cleared count, and `Replay Level` refuses BEFORE its prompt -- through
+// terminal_item_gate, the one gate both terminal clients consult, so no
+// second predicate lives inside replay_level(). A classic campaign still
+// prompts, which is the half that proves the gate is campaign-shaped and
+// not a blanket retirement.
+TEST(PlatformHeadless, text_picker_scenario_progress_and_replay_wear_no_cleared_on_versus)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    std::string versus_printed;
+    {
+        HeadlessSaveDirSandbox sandbox;
+        ASSERT_TRUE(seed_arena_company("noreplay", 821));
+        {
+            SaveData sd;
+            ASSERT_EQ(SaveDataIoError::None, sd.load_with_error("noreplay"));
+            sd.add_level_completed("modes", 821);
+            ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("noreplay"));
+        }
+        og::ui::TextPickerError error;
+        {
+            StdinRedirect input(
+                "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+                "10\n"  // team build: Scenario
+                "5\n"   //   scenario: Progress
+                "6\n"   //   scenario: Replay Level -> the gate refuses
+                "7\n"   //   scenario: Back (read by the SUBMENU, which is
+                         //     the proof the refusal consumed no prompt line)
+                "8\n"   // team build: back -> main
+                "6\n");
+            StdoutCapture capture;
+            og::ui::TextPickerConfig config;
+            config.campaign = "modes";
+            config.team_families = {FAMILY_SOLDIER};
+            config.seed = 42;
+            og::ui::run_text_picker(config, &error);
+            versus_printed = capture.restore();
+        }
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    }
+    EXPECT_EQ(std::string::npos, versus_printed.find("CLEARED"))
+        << "no progress vocabulary behind the versus SCENARIO door:\n"
+        << versus_printed;
+    EXPECT_EQ(std::string::npos, versus_printed.find("cleared of"))
+        << versus_printed;
+    EXPECT_NE(std::string::npos,
+              versus_printed.find(
+                  std::string(og::ui::kReplayVersusGuardMessage)))
+        << "the replay row must refuse in words:\n" << versus_printed;
+    EXPECT_EQ(std::string::npos,
+              versus_printed.find("Replay level (must be cleared): "))
+        << "...and refuse BEFORE the prompt:\n" << versus_printed;
+
+    std::string classic_printed;
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("gladiator"));
+        HeadlessSaveDirSandbox sandbox;
+        {
+            SaveData sd;
+            sd.reset();
+            sd.save_name = "ROADS";
+            sd.current_campaign = "gladiator";
+            sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+            sd.team_list[0]->name = "Arthur";
+            sd.team_list[0]->teamnum = 0;
+            sd.team_list[0]->deployed = true;
+            sd.team_size = 1;
+            sd.scen_num = 1;
+            ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("roads"));
+        }
+        og::ui::TextPickerError error;
+        {
+            StdinRedirect input(
+                "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+                "10\n"  // team build: Scenario
+                "6\n"   //   scenario: Replay Level -> the prompt
+                "\n"    //   ...a blank line cancels it
+                "7\n"   //   scenario: Back
+                "8\n" "6\n");
+            StdoutCapture capture;
+            og::ui::TextPickerConfig config;
+            config.team_families = {FAMILY_SOLDIER};
+            og::ui::run_text_picker(config, &error);
+            classic_printed = capture.restore();
+        }
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+    }
+    EXPECT_NE(std::string::npos,
+              classic_printed.find("Replay level (must be cleared): "))
+        << "a classic campaign still replays its cleared roads:\n"
+        << classic_printed;
+    EXPECT_EQ(std::string::npos,
+              classic_printed.find(
+                  std::string(og::ui::kReplayVersusGuardMessage)))
+        << classic_printed;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 namespace {
 
 // Seeds a company slot with an explicit campaign id and display name. A

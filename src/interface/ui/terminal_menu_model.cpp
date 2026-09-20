@@ -67,6 +67,11 @@ std::vector<std::string> team_build_context_lines(const SaveData& save)
 // campaigns). Each is `Custom`-gated to its campaign kind and points at the
 // other in its guard line, so a prompt never hides a door in silence — the
 // terminal face of the SDL strip's SETUP/DIFFICULTY twin.
+//
+// The SCENARIO submenu's `Replay Level` is Custom-gated the other way
+// (R2-4): a campaign that carries no progress vocabulary has no cleared
+// level to re-fight, so the row stays LISTED and refuses in words. One gate
+// for both terminal clients — neither replay_level() knows about it.
 constexpr std::string_view kReadyGuardMessage =
     "Ready applies to networked lobbies only.";
 
@@ -83,6 +88,13 @@ GateBinding terminal_item_gate(PickerMenuCommand command)
                                       is_versus_campaign(*context.save);
                            },
                            kSetupClassicGuardMessage};
+    case PickerMenuCommand::ReplayLevel:
+        return GateBinding{MenuGate::Custom,
+                           [](const MenuLabelContext& context) {
+                               return context.save == nullptr ||
+                                      progress_marks_shown(*context.save);
+                           },
+                           kReplayVersusGuardMessage};
     default:
         return GateBinding{};
     }

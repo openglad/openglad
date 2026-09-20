@@ -365,6 +365,21 @@ TEST(MenuSpec, terminal_gate_messages_ready_setup_and_difficulty)
               og::ui::terminal_gate_message(*setup, saveless));
     EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, saveless));
 
+    // R2-4: the SCENARIO submenu's `Replay Level` is the one Custom-gated
+    // terminal row left. A campaign that shows progress marks prompts; a
+    // versus campaign refuses in words before the prompt; with no save at
+    // all there is nothing to refuse.
+    const PickerMenuItem* replay =
+        item_of(PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(nullptr, replay) << "the SCENARIO menu must carry a REPLAY row";
+    EXPECT_EQ("", og::ui::terminal_gate_message(*replay, context_for(save)))
+        << "a classic campaign keeps the replay prompt";
+    EXPECT_EQ("Arenas are set, never replayed.",
+              og::ui::terminal_gate_message(*replay, context_for(versus)))
+        << "Multiplayer Arenas carries no progress vocabulary, so there is "
+           "no cleared arena to re-fight";
+    EXPECT_EQ("", og::ui::terminal_gate_message(*replay, saveless));
+
     // Ungated items never produce a message.
     const PickerMenuItem* view_team =
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);

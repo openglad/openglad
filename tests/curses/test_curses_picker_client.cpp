@@ -2477,6 +2477,52 @@ TEST(CursesPickerClient, setup_flow_doors_point_at_the_pages_the_menus_own)
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
+// R2-4: the SCENARIO submenu's `Replay Level` refuses BEFORE its prompt on
+// a versus campaign -- through terminal_item_gate, the one gate both
+// terminal clients consult, so replay_level() itself is untouched and there
+// is no second predicate to drift. A classic campaign still prompts.
+TEST(CursesPickerClient, replay_level_refuses_on_a_versus_campaign)
+{
+    MountRestore mount_guard;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(item, nullptr);
+    {
+        PickerFixture f;
+        seed_setup_save(f, 821);
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("modes"));
+        f.save().add_level_completed("modes", 821);
+        dismiss(f.t());  // the guard's own text screen
+        f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+        const std::string dump = f.t().dump();
+        EXPECT_NE(dump.find(std::string(og::ui::kReplayVersusGuardMessage)),
+                  std::string::npos)
+            << "an arena is set, never replayed:\n" << dump;
+        EXPECT_EQ(dump.find("Level (must be cleared): "), std::string::npos)
+            << "the refusal comes before the prompt:\n" << dump;
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("gladiator"));
+        PickerFixture f;
+        f.save().current_campaign = "gladiator";
+        f.save().scen_num = 3;
+        f.config.level = 3;
+        f.t().push_special(KeyCode::Escape);  // cancel the prompt
+        f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+        const std::string dump = f.t().dump();
+        EXPECT_NE(dump.find("Level (must be cleared): "), std::string::npos)
+            << "a classic campaign still replays its cleared roads:\n"
+            << dump;
+        EXPECT_EQ(dump.find(std::string(og::ui::kReplayVersusGuardMessage)),
+                  std::string::npos)
+            << dump;
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+}
+
 // Amendment 7 (#276): presenting any menu on a versus campaign deals the
 // arena's FILL: FAIR onto the teams the map authors, once per cursor, and
 // the LINEUP page then reads the dealt code like any other stored one. A
