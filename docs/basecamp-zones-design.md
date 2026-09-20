@@ -234,6 +234,12 @@ interactive script, curses route tests) once.
 gated to versus campaigns — the terminal face of the SETUP wizard) and now
 gates `Difficulty` on CLASSIC campaigns, so the fight's rules have one door
 per campaign kind on every client (docs/match-setup-design.md §2.7).
+**Update (2026-09-20, PR #307):** REVERSED: item 13 `Setup` is RETIRED
+(`kTeamBuildItems` is 12) and item 11 `Difficulty` is a plain item again. The
+terminals' one wizard door is the camp's own SETUP row (Team Build `7 Camp` →
+`1`), the same one door SDL has. The one `Custom`-gated terminal item is now
+SCENARIO's `Replay Level`, which refuses on a versus campaign with `Arenas are
+set, never replayed.` (docs/match-setup-design.md §10).
 
 Eight v1 rules the terminals settle, since a prompt cannot hide a control
 behind a hover or a spent face:
@@ -343,6 +349,17 @@ behind a hover or a spent face:
   sentence had already gone stale (lineup-design B5 retired TROOPS, and the
   fourth knob has been TIME LIMIT since #241). Full record:
   docs/match-setup-design.md §2.1, §3.9.
+**Update (2026-09-20, PR #307):** and round 2 retired the untheme's own
+replacements. The camp is ONE row — `SETUP - <GAME>: <ARENA>  >`, the wizard's
+only door on every client — with the roster LEADING the panel, so there is no
+readout, no shortcut pair, no roll row and no joiner line. The two roll rows
+moved into the wizard (`RANDOM` on GAME, `RANDOM ARENA` on each game's ARENA
+page). Multiplayer Arenas now carries NO progress vocabulary at all: no
+`CLEARED n/40`, no `n/m cleared`, no `Every arena here is cleared.`, and no
+`[CLEARED]` on an arena row — `[CURRENT]` stays. #207 still keeps every
+cleared level replayable on the campaigns that earn their roads; on versus the
+terminal `Replay Level` row refuses in words instead
+(docs/match-setup-design.md §10).
 - **Westlands — the company fire.** Text: camp stanza + Bearer line.
   Roster: full capabilities; at the Falls, `assign` (WAR/BURDEN) with
   the taught-glyph toasts; after the swearing freezes (any road level

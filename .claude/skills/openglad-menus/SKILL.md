@@ -113,12 +113,15 @@ in `tests/unit/test_platform_headless.cpp`. Grep both whenever
 
 ## The SETUP wizard (the second screen on the camp chassis)
 
-On a `matchup: versus` campaign the Base Camp strip's (58,178,68,18) slot
-reads **SETUP** instead of **DIFFICULTY** — one rect, two ordinals, the
-GO/READY twin shape, the new one appended at ordinal 73 (ceiling 74). It
-opens `MenuScreenId::MatchSetup`, a five-step wizard (GAME → ARENA → TEAMS →
-RULES → MATCH) that is a room inside the camp panel and reuses the zone
-submenu's constants. Working on it, know these five things:
+On a `matchup: versus` campaign the wizard has exactly ONE door on every
+client, and it is not on the command strip: it is the Base Camp docket's own
+row, `SETUP - <GAME>: <ARENA>  >` (`zone_action_0` on SDL and web, the camp
+prompt's row `1` on the terminals). The strip reads
+`BACK · DIFFICULTY · SCENARIO · NETWORK · GO` on EVERY campaign — ordinals end
+at 72 and the ceiling is 73, so do not go looking for a versus-only strip
+ordinal. The row opens `MenuScreenId::MatchSetup`, a five-step wizard
+(GAME → ARENA → TEAMS → RULES → MATCH) that is a room inside the camp panel
+and reuses the zone submenu's constants. Working on it, know these six things:
 
 - **The grid is declared, and it has ONE right edge, 310.** Tabs, the 30 px
   cell column (280..310) and the ARENA pagers all end there; rows are the
@@ -135,11 +138,20 @@ submenu's constants. Working on it, know these five things:
 - **The escape-door table** the injector flows bind starts with
   `{"setup_back", "setup_back"}` — BACK/Escape closes the wizard from any
   step; PREV/NEXT walk it; a tab jumps to it.
-- **Team Build has 13 items now**, and two of them are `Custom`-gated on
-  campaign kind: item 13 `Setup` on versus campaigns, item 11 `Difficulty`
-  on classic ones. Both index consumers below apply.
+- **Team Build has 12 items**, and none of them is the wizard: item 11
+  `Difficulty` is a plain item and there is no `Setup` item. The one
+  `Custom`-gated terminal item is SCENARIO's `Replay Level`, which refuses on
+  a versus campaign (`Arenas are set, never replayed.`). Both index consumers
+  below apply whenever that list changes shape.
+- **Test flows press the docket row, not a strip button.**
+  `open_setup_step(tab, WORD)` in `tests/test_click_ladder.h` clicks
+  `zone_action_0` until `setup_tab_0` exists, then clicks the step's tab until
+  it wears `[WORD]`. The FILL notes are per WHEEL, not per screen:
+  `weak to brutal` on the wizard's macro row (NONE is off that wheel),
+  `none to brutal` on LINEUP's per-team band row. A joiner's CROSS CONTROL
+  home is the strip's DIFFICULTY door, visible and read-only (networked).
 - The design record, with the button table, the per-row budgets and the
-  decisions, is `docs/match-setup-design.md`.
+  decisions, is `docs/match-setup-design.md` (round 2 is its §10).
 
 ## Keyboard navigation rules
 

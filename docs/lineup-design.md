@@ -68,6 +68,10 @@ fully packed strip, so it gets no new door.
 **Update (2026-09-19, PR #307):** Base Camp gained the SETUP door as an
 appended twin ordinal (73), the way DIFFICULTY was appended; ceiling 74
 (docs/match-setup-design.md §3.7).
+**Update (2026-09-20, PR #307):** REVERSED: round 2 deleted the twin. The
+ceiling is **73** again, the strip reads DIFFICULTY on every campaign, and the
+wizard's door is the Base Camp docket's own SETUP row — no new ordinal at all
+(docs/match-setup-design.md §10).
 
 One engine-hosted screen (`MenuScreenId::Lineup`, a `MenuScreenSpec`
 like SCENARIO, not a legacy loop), four **team bands**, one action row.
@@ -383,6 +387,10 @@ the same commit.
 **Update (2026-09-19, PR #307):** Team Build now ends at item 13 `Setup`, the
 SETUP wizard's terminal door, gated to versus campaigns; item 11
 `Difficulty` is gated to classic ones (docs/match-setup-design.md §2.7).
+**Update (2026-09-20, PR #307):** REVERSED: item 13 `Setup` is retired (Team
+Build ends at 12) and item 11 `Difficulty` is ungated. The terminals reach the
+wizard through the camp's SETUP row, `7 Camp` → `1`
+(docs/match-setup-design.md §10).
 
 ## 9. Test matrix (teeth, not coverage theatre)
 
@@ -1590,7 +1598,7 @@ is clamped to the arena's authored side count (hidden on a two-side arena).
 |--|--|
 | G1 | **No second store.** Both rows are macros over the one per-team `fill[]` array (`og.campaign_match_set("fill_N")`); LINEUP keeps per-team authority and the camp faces DERIVE from the array on every refetch. |
 | G2 | **`TEAMS: n`** (wheel 2 → 3 → 4 → 2) = field n teams total: the local seat's team plus n−1 opponents, chosen by ascending team index skipping the local team; the chosen opponents get the FILL row's effective value (FAIR when the current common value is NONE or MIXED), the rest go NONE. Face: `TEAMS: 1 + count(opponents with fill ≠ NONE)` (reads `TEAMS: 1` in the all-NONE resting state; explicit fills on unauthored teams are legal per D2). |
-| G3 | **`FILL: x`** (wheel NONE → WEAK → FAIR → STRONG → BRUTAL) writes x to every opponent team currently on; with none on it turns on the lowest opponent at x (the `TEAMS: 2` shape). Face: the common value of the on opponents, `MIXED` when LINEUP diverged them, `NONE` at rest. |
+| G3 | **`FILL: x`** (wheel NONE → WEAK → FAIR → STRONG → BRUTAL) writes x to every opponent team currently on; with none on it turns on the lowest opponent at x (the `TEAMS: 2` shape). Face: the common value of the on opponents, `MIXED` when LINEUP diverged them, `NONE` at rest. **Update (2026-09-20, PR #307):** REVERSED twice over: with none on, a FILL turn now lights EVERY authored opponent (fix B), and NONE left the wizard's wheel entirely (WEAK → FAIR → STRONG → BRUTAL, note `weak to brutal`), so there is no resting NONE face to wrap to. LINEUP's own band wheel keeps NONE and `none to brutal` (docs/match-setup-design.md §10). |
 | G4 | **The local team comes from a new campaign binding `og.campaign_my_team()`** (the first local seat's team; falls back to `save.my_team`) — the one C++ hook this needs. Campaign fence rules as for the other `og.campaign_*` reads. |
 | G5 | **Pins**: the modes book page pins (row labels, faces, said-lines), a macro↔LINEUP round-trip test (set TEAMS/FILL on the page, read the bands; tweak one band in LINEUP, the page face reads MIXED), the zone-UI capture regenerated. Writes ride the existing match-settings dirty → sync → restage tail, so preview == launch needs no new plumbing. **Update (2026-09-19, PR #307):** the page pins moved with the macros to `tests/unit/test_match_setup_session.cpp`; the round trip is `LineupUi.setup_wizard_macros_round_trip_with_lineup` (docs/match-setup-design.md §8). |
 
@@ -1673,6 +1681,12 @@ its face spells `5 MIN` … `20 MIN` (docs/match-setup-design.md §2.5, §3.4).
   `LineupUi.setup_wizard_macros_round_trip_with_lineup`; the
   `zzz_uxr_capture_modes_match_setup_page` scene was retired for the
   wizard's per-step capture points (docs/match-setup-design.md §8).
+  **Update (2026-09-20, PR #307):** the said-lines are DELETED, and with them
+  `"Two squads at STRONG."`, `"One squad at WEAK."` and `"No squads."` — the
+  maintainer asked what the toast was for and the answer was nothing, so the
+  wizard's knobs now speak through their faces alone. The macro row's note is
+  `weak to brutal`; `none to brutal` above is still the LINEUP BAND wheel's own
+  note (docs/match-setup-design.md §10).
 
 ## Amendment 6 — the FILL macro deals the local band too (maintainer, 2026-08-28)
 
@@ -1710,6 +1724,10 @@ Rulings (H1–H3), superseding G's "count opponents only" for FILL:
   Yours too."` — the two-word tail because the own band is a KNOB write,
   not a promised squad (solo tables field no allies). The wrap keeps
   `"No squads."`: nothing fielded anywhere covers the cleared own band.
+  **Update (2026-09-20, PR #307):** H1's "the lowest opponent when none are on"
+  and "the wrap clears the own band" are both REVERSED: fix B lights every authored
+  opponent when none is on, and NONE is off the wizard's wheel so nothing wraps.
+  H3's said-line is deleted with the rest (docs/match-setup-design.md §10).
 
 # Amendment 7 (2026-09-06): versus campaigns deal FILL: FAIR to their defined teams (#276)
 

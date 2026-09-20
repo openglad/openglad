@@ -53,40 +53,45 @@ clients, the dedicated server, and the web build.
 
 ## Match setup
 
-Match rules live behind one door, **SETUP**, on the Base Camp command strip
-of this campaign (where a classic campaign shows DIFFICULTY). It is
-host-only in networked play — a joiner browses the same steps and reads the
-values as text — and every value is synchronized to every client by the
-lobby.
+Match rules live behind one door: the Base Camp docket's **SETUP** row, which
+states the match you are set up for (`SETUP - SOCCER: THE PITCH  >`) and opens
+the wizard. The command strip's DIFFICULTY door holds the rest of the rules,
+on this campaign as on every other. SETUP is host-only in networked play — a
+joiner browses the same steps and reads the values as text — and every value
+is synchronized to every client by the lobby.
 
 SETUP is a five-step wizard with a tab strip across the top. PREV and NEXT
 walk the sequence, BACK (or Escape) closes it from any step, a tab jumps
 straight to a step, and every value opens preselected from your save:
 
-- **GAME** — the seven games with their cleared tallies.
+- **GAME** — the seven games, each noting how many arenas it holds, and a
+  last row, `RANDOM - any game, any arena`, that rolls one.
 - **ARENA** — the arenas of the game you are on, the current one marked
-  `[CURRENT]` and the ones you have finished `[CLEARED]`.
+  `[CURRENT]`, and a last row, `RANDOM ARENA - any arena of this game`.
 - **TEAMS** — one line per team the arena authors (its colour, the seats on
   it, and what will stand on it), the **SIDES** wheel (how many sides the
   bots fill, clamped to the sides the arena actually authors and hidden when
-  it authors two), the **FILL** wheel over every fielded band at once, and a
-  door to LINEUP.
-- **RULES** — **SCORE** (the map's authored limit or a forced 1/3/5/10, read
-  by each game as its own win threshold: captures, frags, goals), **TIME
-  LIMIT** (the map's own clock or a forced 5–20 minutes), RESPAWNS, SPAWN
-  DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and, networked,
-  CROSS CONTROL. A click cycles a row forward; the `<` cell at its right
-  edge — or a right-click, or `N-` at a terminal prompt — steps it back.
+  it authors two), the **FILL** wheel over every fielded band at once — or
+  over every side the arena authors, when none is fielded — and a door to
+  LINEUP.
+- **RULES** — the two rules a match of this campaign sets: **SCORE** (the
+  map's authored limit or a forced 1/3/5/10, read by each game as its own win
+  threshold: captures, frags, goals) and **TIME LIMIT** (the map's own clock
+  or a forced 5–20 minutes). A click cycles a row forward; the `<` cell at its
+  right edge — or a right-click, or `N-` at a terminal prompt — steps it back.
+  RESPAWNS, SPAWN DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and
+  CROSS CONTROL are on the Base Camp strip's **DIFFICULTY** door, and the step
+  says so on its own line.
 - **MATCH** — the whole match on one screen: the arena, every team that will
   stand with what it fields, the rules two per line, a door to VIEW LEVEL,
   and GO. GO is live exactly when the Base Camp GO would launch and says why
   on its own face when it would not (`GO - DEPLOY FOR EVERY PLAYER`,
   `GO - STAGING`).
 
-The Base Camp docket's `GAME:` and `ARENA:` rows are shortcuts straight into
-the wizard's GAME and ARENA steps, and `RANDOM ARENA` rolls a scenario out of
-the whole manifest. The terminal clients reach the same five steps through
-Team Build → `Setup`.
+The Base Camp docket is that one SETUP row, and the wizard's own `RANDOM` rows
+are where a roll lives now: the GAME step rolls any arena of any game, a game's
+ARENA page rolls one of its own. The terminal clients reach the same five steps
+through Team Build → `Camp` → the SETUP row.
 
 **LINEUP** is the per-team page behind the TEAMS step's door (and still
 reachable at Base Camp → SCENARIO → LINEUP): one band per team, each with a
@@ -107,7 +112,7 @@ the other side; on a four-team deathmatch arena three squads take the
 field. The deal happens once per scenario selection, and it never lifts a
 choice: turn a defined team's band to NONE and it stays NONE through VIEW
 LEVEL, GO, the return to Base Camp and a restart. Picking a scenario again
-(SET LEVEL, the camp's RANDOM ARENA roll, SET CAMPAIGN into the modes
+(SET LEVEL, either of the wizard's RANDOM rows, SET CAMPAIGN into the modes
 campaign, or the advance after a match) deals FAIR back onto any defined
 team that is sitting at NONE. Classic campaigns never deal anything: a
 gladiator level at its defaults is exactly the level as authored.
@@ -118,11 +123,18 @@ called too easy: opening THE PITCH fields two bots without a knob being
 touched. One `<` tap on the FILL row puts it back to the FAIR 1v1, and the
 choice sticks through every re-entry like any other.
 
+A company saved before this change re-deals every arena once on its first
+visit: a four-side arena that had collapsed to two sides comes back to four
+with the restored bands at the arena's deal word, and an arena you had
+deliberately narrowed with SIDES is re-filled once the same way — turn SIDES
+again.
+
 The wizard's TEAMS step reads the same bands: after the deal it shows
 `SIDES: 2` / `FILL: FAIR` on a two-team map and `SIDES: 4` / `FILL: FAIR` on
 a four-team one. One SIDES click steps the bot-side count along the wheel the
 arena authors (dealing the lowest opponents in team order); one FILL click
-steps every fielded band, your own included, one stop along the wheel.
+steps every fielded band, your own included, one stop along the wheel — and
+when nothing is fielded, it lights every side the arena authors at once.
 
 VIEW LEVEL previews the result: the staged census lists every team that
 will stand, with its company, its map units and its bot squad, each squad
