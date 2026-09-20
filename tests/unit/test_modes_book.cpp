@@ -320,10 +320,10 @@ std::string expected_camp_note(int id)
 }
 
 // The band's own note: what the GAME step's rows say instead of a tally.
+// Branchless, like the Lua it pins: every shipped band holds four arenas or
+// more, so a singular arm would be dead on both sides of the pin.
 std::string expected_arenas_note(std::size_t band_size)
 {
-    if (band_size == 1)
-        return "1 arena";
     return std::format("{} arenas", band_size);
 }
 
