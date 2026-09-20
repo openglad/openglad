@@ -17,7 +17,7 @@
 # working table against `git show <ref>:...`, so pinning both ends to HEAD
 # makes the expected sets a function of the commit rather than of whatever is
 # half-edited in the tree right now. The logic under test is unaffected.
-set -euo pipefail
+set -Eeuo pipefail
 
 parity_bin=${1:?usage: test_mutation_canary_plan.sh <og_test_parity> <parity_runner_smoke>}
 smoke_bin=${2:?usage: test_mutation_canary_plan.sh <og_test_parity> <parity_runner_smoke>}
@@ -40,7 +40,23 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-fail() { printf 'test_mutation_canary_plan: %s\n' "$1" >&2; exit 1; }
+# Both streams, deliberately. ctest captures stdout and stderr alike, but a
+# CI log that carries only one of them (or interleaves them apart) has already
+# hidden a refusal once: the coverage lane reported this entry red three times
+# with nothing in the log but the self-test's OK line. A message worth writing
+# is worth writing where the capture cannot lose it.
+fail() {
+    printf 'test_mutation_canary_plan: %s\n' "$1"
+    printf 'test_mutation_canary_plan: %s\n' "$1" >&2
+    exit 1
+}
+
+# ...and the other half of that silence: an UNGUARDED command that fails kills
+# the script under `set -e` without printing anything at all (a SIGPIPE in a
+# `| head` pipeline under `pipefail`, an OOM-killed helper, a missing tool).
+# The ERR trap gives every one of those a line number, the command and the
+# status, on stdout. `set -E` is what makes it fire inside functions too.
+trap 'og_rc=$?; printf "test_mutation_canary_plan: ABORTED at line %s (exit %s): %s\n" "$LINENO" "$og_rc" "$BASH_COMMAND"; printf "test_mutation_canary_plan: ABORTED at line %s (exit %s): %s\n" "$LINENO" "$og_rc" "$BASH_COMMAND" >&2' ERR
 
 export PYTHONDONTWRITEBYTECODE=1
 
@@ -192,15 +208,26 @@ ln -s "$parity_bin" "$mirror/og_test_parity"
 ln -s "$smoke_bin"  "$mirror/parity_runner_smoke"
 cp -r "$build_dir/packs" "$mirror/packs"
 victim="$mirror/packs/core/lib/lc.lua"
-[[ -f "$victim" ]] || victim=$(find "$mirror/packs" -name '*.lua' | sort | head -1)
+if [[ ! -f "$victim" ]]; then
+    # Deliberately NOT `find ... | sort | head -1`: `head` exits after the
+    # first line, and a `sort` that has more than one stdio buffer left to
+    # write then dies of SIGPIPE — which `pipefail` turns into 141 and `set
+    # -e` into a SILENT abort of the whole script. The listing is ~5 KB, so
+    # whether it fits one write is a matter of scheduling luck: exactly the
+    # shape that passes locally and fails on a loaded CI runner. Read the
+    # whole listing and cut the first line in the shell instead.
+    victim_list=$(find "$mirror/packs" -name '*.lua' | sort)
+    victim=${victim_list%%$'\n'*}
+fi
 [[ -f "$victim" ]] || fail 'no staged .lua file to corrupt'
 printf '\n' >> "$victim"
 
-set +e
+# Guarded with `|| mirror_rc=$?` rather than `set +e`: a nonzero here is the
+# EXPECTED answer, and a bare command would fire the ERR trap above (which
+# `set +e` does not silence) as well as errexit.
+mirror_rc=0
 mirror_out=$(OG_CANARY_TABLE="$table" OG_CANARY_BUILD_DIR="$mirror" \
-    bash "$canary" --plan --all 2>&1)
-mirror_rc=$?
-set -e
+    bash "$canary" --plan --all 2>&1) || mirror_rc=$?
 (( mirror_rc == 9 )) ||
     fail "a corrupted staged packs mirror exited $mirror_rc, expected 9
 $mirror_out"
@@ -228,11 +255,10 @@ if (( hidden == 0 )); then
     fail 'no scen99.fss fixture was present to hide — run ctest -R ^og_test_level$ first'
 fi
 
-set +e
+missing_rc=0
 missing_out=$(OG_CANARY_TABLE="$table" OG_CANARY_BUILD_DIR="$build_dir" \
-    bash "$canary" --plan --scenario coverage_catchall_scen99 2>&1)
-missing_rc=$?
-set -e
+    bash "$canary" --plan --scenario coverage_catchall_scen99 2>&1) ||
+    missing_rc=$?
 (( missing_rc == 7 )) ||
     fail "a missing scenario fixture exited $missing_rc, expected 7
 $missing_out"

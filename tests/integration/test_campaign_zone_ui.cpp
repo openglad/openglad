@@ -23,6 +23,7 @@
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
@@ -959,6 +960,167 @@ TEST(CampaignZoneUi, zone_level_row_is_host_gated_with_a_toast)
            "joiner mid-GO)";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
+    og::ui::install_active_picker_lobby_client(saved_client);
+}
+
+namespace {
+
+// A lobby with ONE local seat, whose team the test moves between fetches.
+// The seat is deliberately not the host's (local_player_indices names 1),
+// so an answer of `team` can only have come through the lobby's seat view.
+struct SeatTeamLobbyClient final : og::ui::IPickerLobbyClient
+{
+    short team = 0;
+
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer>
+    lobby_players() const override
+    {
+        og::sim::LobbyPlayer host;
+        host.player_index = 0;
+        host.name = "net-0000000000000000";
+        host.company = "RED LANTERN";
+        host.team = 0;
+        host.is_host = true;
+        og::sim::LobbyPlayer mine;
+        mine.player_index = 1;
+        mine.name = "net-0000000000000001";
+        mine.company = "IRON KETTLE";
+        mine.team = team;
+        return {host, mine};
+    }
+    [[nodiscard]] std::vector<std::uint8_t>
+    local_player_indices() const override
+    {
+        return {1};
+    }
+};
+
+// The camp says one thing: which team is MINE.
+constexpr const char* kMyTeamZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "text", lines = { "MY SEAT TEAM " .. og.campaign_my_team() } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA";
+
+} // namespace
+
+// G4 (docs/lineup-design.md Amendment 5), the SDL half of the install-site
+// table: og.campaign_my_team is answered by the provider GameSession's
+// constructor installs (sdl_campaign_my_team -> og::ui::picker_lobby_my_team),
+// so a camp composition that asks "which team is mine" is told THIS
+// machine's first local seat — the LOBBY's seat once one exists, and the
+// save-derived seat before that. The terminals install their own lambda over
+// og::ui::first_local_seat_team and are pinned by their own clients
+// (CursesPickerClient.camp_page_reads_my_team_from_the_clients_own_seats,
+// PlatformHeadless.text_picker_camp_reads_my_team_from_its_own_seats); this
+// is the only place the SDL lambda is answerable.
+//
+// The rule it protects is the joiner's: the lobby's per-seat choice
+// outlives the legacy save fields, so a joiner's book reads the joiner's
+// team and never the host's. The Lua caller that used to run this path
+// (the modes book's MATCH SETUP macros, whose "skip my team" order was
+// og.campaign_my_team's only in-tree reader) moved to C++ in this branch;
+// the intent of the deleted ModesBookTest.macros_answer_to_the_local_seats_team
+// — the answer is the SEAT's team, never team 0 and never the save's
+// my_team — is what the three cases below assert.
+TEST(CampaignZoneUi, camp_my_team_answers_the_sdl_seat_provider)
+{
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kMyTeamZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    // The save's own seat sits on TEAM 1, and my_team names TEAM 3 — a team
+    // no hero fields, so the shipped fallback (campaign_my_team_fallback,
+    // which answers my_team verbatim) would say 3 and the bare default
+    // would say 0. Neither is ever the right answer below.
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.my_team = 3;
+
+    const auto camp_line = [](const og::ui::CampaignZoneSession& zone) {
+        if (zone.texts().empty() || zone.texts().front().lines.empty())
+            return std::string("<no text widget>");
+        return zone.texts().front().lines.front();
+    };
+
+    og::ui::CampaignZoneSession zone(save);
+
+    // (1) No lobby: the SDL provider falls through picker_lobby_my_team to
+    // the save-derived first seat — TEAM 1, not my_team's 3.
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(nullptr);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted())
+        << "og.campaign_my_team must ANSWER: an erroring binding drops the "
+           "composition to the default zone";
+    EXPECT_EQ(1, og::ui::first_local_seat_team(save));
+    EXPECT_EQ("MY SEAT TEAM 1", camp_line(zone))
+        << "with no lobby open the save's own first seat answers";
+
+    // (2) A lobby whose single local seat sits on TEAM 2: the lobby is
+    // authoritative, so the camp reads 2 while the save still says 1.
+    SeatTeamLobbyClient lobby;
+    lobby.team = 2;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ("MY SEAT TEAM 2", camp_line(zone))
+        << "the lobby's first LOCAL seat outranks the save's seats — this "
+           "is the joiner's own team, not the host's (which is 0)";
+    EXPECT_EQ(1, og::ui::first_local_seat_team(save))
+        << "the save is untouched: the 2 above came from the lobby";
+
+    // (3) The seat moves to TEAM 3: the answer follows it. (3 is also
+    // my_team's value, so this leg alone would be vacuous — it is the pair
+    // with (2) that pins the provider to the lobby.)
+    lobby.team = 3;
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ("MY SEAT TEAM 3", camp_line(zone))
+        << "a seat that changes team changes the camp's answer";
+
     og::ui::install_active_picker_lobby_client(saved_client);
 }
 

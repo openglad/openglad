@@ -2522,6 +2522,113 @@ TEST(PlatformHeadless, text_picker_camp_drive_runs_the_scripted_zone)
     og::data::set_active_company_slot("save0");
 }
 
+// G4 (docs/lineup-design.md Amendment 5), the text half of the install-site
+// table: TextPickerClient's constructor installs og.campaign_my_team over
+// og::ui::first_local_seat_team(save_data_), so the camp is told THIS
+// client's own first fielded seat — not the save's my_team, and not team 0.
+// The SDL twin (CampaignZoneUi.camp_my_team_answers_the_sdl_seat_provider)
+// pins the lobby-derived answer; the curses twin is
+// CursesPickerClient.camp_page_reads_my_team_from_the_clients_own_seats.
+//
+// The seats are read LIVE, once per composition: benching the TEAM 2 hero
+// moves the first seat to the TEAM 1 hero and the camp says so on the next
+// visit. The company's my_team is 0 after the load (it is not a saved
+// field), so the shipped fallback — og::data::campaign_my_team_fallback,
+// which answers my_team verbatim — would say 0 on every line below; that
+// is the answer this drive must never print.
+//
+// This also carries the intent of ModesBookTest.
+// macros_answer_to_the_local_seats_team, deleted with the modes book's
+// MATCH SETUP macros (the only in-tree Lua reader of og.campaign_my_team):
+// "mine" is the seat's team, never team 0.
+TEST(PlatformHeadless, text_picker_camp_reads_my_team_from_its_own_seats)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    HeadlessSaveDirSandbox sandbox;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "SEAT BAND";
+        sd.current_campaign = "gladiator";
+        // Slot 0 fields TEAM 2 — neither the default 0 nor the neighbour 1,
+        // so an answer of 2 can only have come from the derivation.
+        sd.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[0]->name = "Arthur";
+        sd.team_list[0]->teamnum = 2;
+        sd.team_list[0]->deployed = true;
+        sd.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_list[1]->name = "Bors";
+        sd.team_list[1]->teamnum = 1;
+        sd.team_list[1]->deployed = true;
+        sd.team_size = 2;
+        sd.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("seatband"));
+    }
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "text", lines = { "MY SEAT TEAM " .. og.campaign_my_team() } },
+        { kind = "roster" },
+      },
+    }
+  end,
+}))LUA");
+
+    const std::string input =
+        "7\n"          // main: load company -> the company list
+        "1\n"          //   list: open company...
+        "1\n"          //     #1 = seatband -> team build
+        "7\n"          // team build: camp -> "MY SEAT TEAM 2"
+        "0\n"          //   camp: back
+        "1\n"          // team build: roster
+        "deploy 1\n"   //   bench Arthur (TEAM 2): the first seat moves
+        "\n"           //   roster: blank exits
+        "7\n"          // team build: camp -> "MY SEAT TEAM 1"
+        "0\n"          //   camp: back
+        "8\n"          // team build: back -> main
+        "6\n";         // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+
+    const std::size_t first = out.find("MY SEAT TEAM 2");
+    const std::size_t second = out.find("MY SEAT TEAM 1");
+    EXPECT_NE(std::string::npos, first)
+        << "the camp must answer the client's OWN first fielded seat:\n"
+        << out;
+    EXPECT_NE(std::string::npos, second)
+        << "benching the TEAM 2 hero moves the first seat to TEAM 1, and "
+           "the next composition must read it LIVE:\n"
+        << out;
+    EXPECT_LT(first, second)
+        << "the TEAM 2 answer comes from the first camp visit, the TEAM 1 "
+           "answer from the visit after the bench";
+    EXPECT_EQ(std::string::npos, out.find("MY SEAT TEAM 0"))
+        << "0 is what the shipped fallback (my_team) and a provider-less "
+           "install would both answer: the text client installs neither";
+    EXPECT_EQ(std::string::npos, out.find("MY SEAT TEAM 3"));
+    // The bench really happened (the second answer is not the first one
+    // repeated): the client's own roster reports it.
+    EXPECT_NE(std::string::npos, out.find("Arthur benched.\n"))
+        << "the drive's premise is a bench the roster accepted:\n" << out;
+
+    // Hygiene: the bench autosaved the text client's slot; reap it so
+    // company-listing tests stay order-independent.
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
+}
 // --- LINEUP, the text twin (docs/lineup-design.md §8) -------------------
 
 namespace {
