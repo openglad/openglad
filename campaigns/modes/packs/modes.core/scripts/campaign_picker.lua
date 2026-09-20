@@ -110,11 +110,11 @@ end
 -- The facts each mode's rows carry, straight from the manifest row: sides
 -- and the arena's own score, minutes for CTF's flag rule, lives for
 -- Onslaught's elimination, heads and shifters for the roster games. Every
--- note is budgeted against the camp's 42-char panel row carrying its
--- longest arena name and the door marker, which is why CTF's clock is
--- "20m" and not "20 min": "ARENA: DUNGEON OF STARS" spends 23 of those
--- characters before the note starts. CTF's clock is the one fact the host
--- can override, so it reads the resolved value, not the row's.
+-- note is budgeted against the wizard's 42-char arena row carrying the
+-- band's longest arena name, which is why CTF's clock is "20m" and not
+-- "20 min": "DUNGEON OF STARS" spends 16 of those characters before the
+-- note starts. CTF's clock is the one fact the host can override, so it
+-- reads the resolved value, not the row's.
 local function mode_note(mode, row)
   if mode == "tdm" then
     return row.teams .. " teams, to " .. row.score_limit
