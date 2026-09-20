@@ -33,6 +33,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -4038,6 +4039,92 @@ TEST(PlatformHeadless, text_picker_difficulty_door_points_at_setup_on_a_versus_c
         << "item 11 on a versus campaign must point at SETUP: RULES";
     EXPECT_EQ(std::string::npos, printed.find("=== Difficulty ==="))
         << "the guard path must never open the DIFFICULTY submenu";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// R2-D11, the whole terminal path to the wizard: the ONE door is the
+// camp's SETUP row. Team Build carries no Setup item, so a player reaches
+// the five steps exactly one way -- Camp (item 7), the docket's row 1 --
+// and `0` walks back out onto the camp prompt, not past it. The GAME step's
+// RANDOM row is the roll the retired docket row used to be: it answers a
+// level through the shared Acted-level tail and advances like any other
+// applied arena.
+TEST(PlatformHeadless, text_picker_modes_camp_row_is_the_one_door)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("onedoor", 820));
+
+    // The arenas this campaign ships, by the title the level tail speaks.
+    std::vector<std::string> manifest;
+    for (const int id : list_levels_v()) {
+        manifest.push_back(og::data::load_scenario_title(
+            ("scen" + std::to_string(id)).c_str()));
+    }
+    ASSERT_EQ(40u, manifest.size()) << "the campaign ships 40 arenas";
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n" "1\n" "1\n"  // main: load company -> #1 -> team build
+            "7\n"    // team build: Camp -> the one-row docket
+            "1\n"    //   camp: the SETUP row -> the wizard's GAME step
+            "8\n"    // GAME: RANDOM - any game, any arena
+            "0\n"    // wizard: back out -> the camp prompt again
+            "0\n"    // camp: back out -> team build
+            "8\n"    // team build: back -> main
+            "6\n");  // main: quit
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+
+    std::size_t at = 0;
+    const auto expect_in_order = [&](const std::string& needle) {
+        const std::size_t found = printed.find(needle, at);
+        EXPECT_NE(std::string::npos, found)
+            << "one-door answer '" << needle << "' missing after offset "
+            << at << ":\n" << printed;
+        if (found != std::string::npos)
+            at = found + needle.size();
+    };
+    // The camp is ONE docket row wide, and that row states the match.
+    expect_in_order("   1. SETUP - ");
+    expect_in_order("Camp # [1-1] (0 = back): ");
+    expect_in_order("--- SETUP: GAME ---");
+    expect_in_order("   8. RANDOM - any game, any arena");
+    expect_in_order("Level set to ");
+    std::string rolled;
+    {
+        const std::size_t stop = printed.find(".\n", at);
+        ASSERT_NE(std::string::npos, stop);
+        rolled = printed.substr(at, stop - at);
+    }
+    EXPECT_NE(manifest.end(),
+              std::find(manifest.begin(), manifest.end(), rolled))
+        << "the roll answered '" << rolled
+        << "', which is no arena of this campaign";
+    // ...and an applied level advances the wizard, roll or row alike.
+    expect_in_order("--- SETUP: TEAMS ---");
+    // `0` leaves the wizard onto the CAMP prompt, `0` again onto Team Build.
+    expect_in_order("Camp # [1-1] (0 = back): ");
+    expect_in_order("=== Team Build ===");
+
+    // ...and never the pairing the camp was already set to: a roll that
+    // deals the current arena is a button that changes nothing.
+    EXPECT_NE(og::data::load_scenario_title("scen820"), rolled)
+        << "the roll stepped past the arena the camp already carried";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

@@ -2199,9 +2199,21 @@ const og::ui::PickerMenuItem& setup_item()
     return *item;
 }
 
+// The camp door: the terminals' ONE way into the wizard (R2-D11) is Team
+// Build's Camp row, whose one-row docket opens the five steps.
+const og::ui::PickerMenuItem& camp_item()
+{
+    const og::ui::PickerMenuItem* const item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild,
+                                      PickerMenuCommand::CampaignCamp);
+    EXPECT_TRUE(item != nullptr);
+    return *item;
+}
+
 // Type a wizard row number at the "Setup # [1-N]" prompt and send it. "2-"
 // is the `<` cell's terminal projection, so the trailing '-' is typed like
-// any other character.
+// any other character. The camp prompt takes the same shape, so the SETUP
+// row is typed with it too.
 void type_setup_row(HeadlessTerminal& term, std::string_view answer)
 {
     for (const char ch : answer)
@@ -2474,6 +2486,82 @@ TEST(CursesPickerClient, setup_flow_doors_point_at_the_pages_the_menus_own)
     EXPECT_NE(dump.find("SETUP: TEAMS"), std::string::npos) << dump;
     EXPECT_EQ(dump.find("Lineup"), std::string::npos)
         << "the door points; it does not nest the LINEUP page:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// R2-D11, the curses half: Team Build's Camp row is the ONE door. Its
+// docket is a single SETUP row and `1` opens the WIZARD, not the book's
+// page loop -- which is what the last key discriminates: after the arena
+// row applies, the wizard has ADVANCED to TEAMS, where row 1 is the FILL
+// wheel, while the page loop would still be on the SOCCER page, where row
+// 1 is THE PITCH and would drag the cursor back to 820. Leaving the wizard
+// lands back on the camp, whose row now states the arena just set.
+TEST(CursesPickerClient, setup_flow_camp_row_opens_the_wizard)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    type_setup_row(f.t(), "1");   // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "5");   // GAME: SOCCER -> the ARENA page
+    type_setup_row(f.t(), "2");   // ARENA: THE MUDBOWL -> Applied -> TEAMS
+    dismiss(f.t());               //   ...the "Level set to" notice
+    type_setup_row(f.t(), "1");   // TEAMS: the FILL wheel (THE PITCH there)
+    type_setup_row(f.t(), "0");   // wizard: back out -> the camp prompt
+    f.t().push_special(KeyCode::Escape);  // camp: close it
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(821, static_cast<int>(f.save().scen_num))
+        << "the wizard's own level tail ran behind the camp row -- and the "
+           "key after it turned a WHEEL, so the cursor stayed put";
+    EXPECT_EQ(821, f.config.level);
+    EXPECT_EQ(og::sim::kFillBrutal, f.save().fill[0])
+        << "row 1 on the step the wizard advanced to is FILL, one step past "
+           "the arena's dealt STRONG";
+    EXPECT_EQ(og::sim::kFillBrutal, f.save().fill[1]);
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Camp # [1-1]"), std::string::npos)
+        << "one docket row, so one door:\n" << dump;
+    EXPECT_NE(dump.find("1. SETUP - SOCCER: THE MUDBOWL"), std::string::npos)
+        << "the camp took the wizard's answer back and states it:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The GAME step's RANDOM row (R2-5): the roll the retired docket row used
+// to be. It answers a LEVEL, so it rides the shared Acted-level tail --
+// never a row label -- and lands on an arena this campaign ships that is
+// not the one already set. (The DOOR is pinned by the case above; this one
+// is the roll's pin, so it reads the arena and not the prompt it came
+// from.)
+TEST(CursesPickerClient, setup_flow_random_row_sets_an_arena)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    const std::vector<int> manifest = list_levels_v();
+    ASSERT_EQ(40u, manifest.size()) << "the campaign ships 40 arenas";
+
+    type_setup_row(f.t(), "1");   // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "8");   // GAME: RANDOM - any game, any arena
+    dismiss(f.t());               //   ...the "Level set to" notice
+    type_setup_row(f.t(), "0");   // wizard: back out
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    const int rolled = static_cast<int>(f.save().scen_num);
+    EXPECT_NE(manifest.end(),
+              std::find(manifest.begin(), manifest.end(), rolled))
+        << "the roll answered scen" << rolled
+        << ", which is no arena of this campaign";
+    EXPECT_NE(820, rolled)
+        << "a roll that deals the arena already set is a button that "
+           "changes nothing";
+    EXPECT_EQ(rolled, f.config.level)
+        << "the roll rode the client's own level tail, not a bare poke";
     EXPECT_TRUE(f.t().input_exhausted());
 }
 

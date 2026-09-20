@@ -1047,6 +1047,11 @@ og::ui::TerminalCampaignPickerIo make_camp_io(Menu& menu, SaveData& save,
     return io;
 }
 
+// The SETUP wizard's curses face, defined below: the camp's docket row is
+// its ONE door (R2-D11), and the camp flow is written first.
+void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
+                const CursesPickerOptions& options);
+
 // #206 CAMP, curses projection: the shared terminal driver over this
 // client's save. The camp renders as prompt context lines (the Company List
 // "dynamic rows + prompt" shape — never Menu::choose, whose digit jump
@@ -1057,8 +1062,14 @@ void campaign_camp_flow(Menu& menu, SaveData& save,
                         TextPickerConfig& config,
                         const CursesPickerOptions& options)
 {
-    og::ui::run_terminal_campaign_camp(
-        save, make_camp_io(menu, save, config, options, "Camp"));
+    // R2-D11: the camp's SETUP row is the terminals' ONE wizard door.
+    // Bound HERE and never inside make_camp_io(): the wizard's own io.base
+    // is make_camp_io() too, and a door wired there would let the wizard
+    // re-enter itself from its own ARENA page.
+    og::ui::TerminalCampaignPickerIo io =
+        make_camp_io(menu, save, config, options, "Camp");
+    io.open_match_setup = [&] { setup_flow(menu, save, config, options); };
+    og::ui::run_terminal_campaign_camp(save, io);
 }
 
 // --- LINEUP, curses projection (docs/lineup-design.md §8) ----------------
@@ -1222,13 +1233,13 @@ void apply_options_difficulty(Menu& menu, CursesPickerOptions& options,
     autosave_company_after_mutation(save); // §3.8 settings tail
 }
 
-// #304: the SETUP wizard's curses face. Every line, row, guard and dispatch
-// arm belongs to the shared driver (og::ui::run_terminal_match_setup) — this
-// function only says which tails are the curses client's. NOTE the MUTABLE
-// options: unlike the camp flow, the RULES step writes the session
-// difficulty.
+// #304: the SETUP wizard's curses face, reached from the camp's SETUP row.
+// Every line, row, guard and dispatch arm belongs to the shared driver
+// (og::ui::run_terminal_match_setup) — this function only says which tails
+// are the curses client's. The options are CONST: R2-3 moved DIFFICULTY off
+// the RULES step, so no wizard row writes the session any more.
 void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
-                CursesPickerOptions& options)
+                const CursesPickerOptions& options)
 {
     // W7-G: ONE stage for the whole wizard, on the same three inputs
     // lineup_flow() and view_scenario_locally_staged() stage with, so the

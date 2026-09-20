@@ -1667,7 +1667,13 @@ private:
     // row is composed by the driver, byte-identical with curses).
     void campaign_camp_flow()
     {
-        run_terminal_campaign_camp(save_data_, make_camp_io());
+        // R2-D11: the camp's SETUP row is the terminals' ONE wizard door.
+        // Bound HERE and never inside make_camp_io(): the wizard's own
+        // io.base is make_camp_io() too, and a door wired there would let
+        // the wizard re-enter itself from its own ARENA page.
+        TerminalCampaignPickerIo io = make_camp_io();
+        io.open_match_setup = [this] { setup_screen(); };
+        run_terminal_campaign_camp(save_data_, io);
     }
 
     // #304: the SETUP wizard's terminal face. Every line, row, guard and

@@ -1587,6 +1587,56 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
     install_providers();
 }
 
+// R2-D11, the camp's one door: the docket's SETUP row is a PAGE row, and
+// on a versus campaign the terminals hand it to the SETUP wizard instead
+// of descending into the book's page loop. The door is one OPTIONAL io
+// callback, so an io that leaves it unset -- a fixture, or a classic camp
+// -- still walks the page, which is the fallback every other camp test
+// relies on.
+TEST_F(ModesBookTest, terminal_camp_setup_row_opens_the_wizard_callback_or_the_page_loop)
+{
+    const auto joined = [](const std::vector<std::string>& pages) {
+        std::string out;
+        for (const std::string& page : pages)
+            out += page + "\n";
+        return out;
+    };
+
+    // Wired: the row calls the door and nothing else, and the camp prompt
+    // comes back for the `0` that closes it.
+    {
+        ScriptedCampIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"1", "0"};
+        int opened = 0;
+        og::ui::TerminalCampaignPickerIo io = scripted.io();
+        io.open_match_setup = [&opened] { ++opened; };
+        og::ui::run_terminal_campaign_camp(save_, io);
+
+        EXPECT_EQ(1, opened) << "the SETUP row IS the wizard's door";
+        const std::string pages = joined(scripted.pages);
+        EXPECT_EQ(std::string::npos, pages.find("--- GAMES ---"))
+            << "the door must not ALSO open the book's page:\n" << pages;
+        EXPECT_NE(std::string::npos, pages.find("Camp # [1-1] (0 = back): "))
+            << pages;
+        EXPECT_NE(std::string::npos, pages.find("1. SETUP - ")) << pages;
+        EXPECT_TRUE(scripted.notices.empty())
+            << "opening a door says nothing";
+    }
+
+    // Unwired: the same row walks the page loop, and `0` closes it.
+    {
+        ScriptedCampIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"1", "0", "0"};
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+        const std::string pages = joined(scripted.pages);
+        EXPECT_NE(std::string::npos, pages.find("--- GAMES ---"))
+            << "with no door bound the page row is a page row:\n" << pages;
+    }
+}
+
 // The LINEUP hook through the REAL shipped campaign script (§4): mounting
 // builtin/modes.glad registers campaign_picker.lua, whose lineup table is
 // `power` alone since amendment B1 (the preset names retired with the BOTS
