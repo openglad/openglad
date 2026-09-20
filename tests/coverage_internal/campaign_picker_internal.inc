@@ -296,7 +296,7 @@ int campaign_picker_testing_exercise_entry_draw_paths()
 
     // Arm 4: the same suggested power, now MET -- the row must turn
     // LIGHT_GREEN where arm 1's unmet row was RED.
-    return run_arm(
+    arm_result = run_arm(
         8,
         {centered(layout.title_y, "Rendered Campaign", WHITE),
          centered(layout.title_y + 10, "v2.5", WHITE),
@@ -304,4 +304,22 @@ int campaign_picker_testing_exercise_entry_draw_paths()
          centered(first_row_y + row_pitch, "Suggested Power: 4", LIGHT_GREEN),
          centered(first_row_y + 2 * row_pitch, "1 out of 2 completed", WHITE)},
         4);
+    if (arm_result != 0)
+        return arm_result;
+
+    // Arm 5 (R2-4): the SAME counted shape on a VERSUS campaign id. The
+    // card composes for EVERY entry in the browser, not for the current
+    // save, so the predicate is asked of the ENTRY's id -- and Multiplayer
+    // Arenas has no progress to report, so the line states the roll. The
+    // four arms above are the classic answer and must not move.
+    entry.id = "modes";
+    entry.num_levels = 40;
+    entry.num_levels_completed = 3;
+    entry.suggested_power = 0;
+    return run_arm(
+        -1,
+        {centered(layout.title_y, "Rendered Campaign", WHITE),
+         centered(layout.title_y + 10, "v2.5", WHITE),
+         centered(first_row_y, "40 arenas", WHITE)},
+        5);
 }
