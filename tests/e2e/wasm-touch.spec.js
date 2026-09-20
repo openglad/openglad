@@ -1121,8 +1121,15 @@ test.describe('Touch gameplay controls', () => {
 
     // Browser gameplay unwinds through the outer rAF state machine. Require
     // the exact NETWORKING button face captured from team build before the
-    // game. A result-dialog tap at (160,140) lands in the zone band on team build,
-    // so this assertion also catches input leaking across the handoff.
+    // game. A result-dialog tap at (160,140) lands in the zone band on team
+    // build — on a Multiplayer Arenas company that band is the docket's
+    // SETUP row, the SETUP wizard's one door on this client (PR #307 round
+    // 2, R2-5/R2-9) — so this assertion also catches input leaking across
+    // the handoff. The docket row itself is the SAME 10 px face the SDL
+    // flows click, and the web client IS the SDL client: its door evidence
+    // is tests/integration/test_campaign_zone_ui.cpp's
+    // versus_docket_page_rows_open_the_wizard_not_the_submenu and the
+    // keyboard-spine leg beside it, not a second tap chain here.
     await waitForRegionToMatch(
       page,
       TEAM_BUILD_NETWORKING_REGION,
