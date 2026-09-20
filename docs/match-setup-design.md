@@ -256,8 +256,7 @@ at fetch and the roster takes the unit the old joiner line spent.
  +--------------------------------------------------+   y=158
   [BACK]                                    [NEXT]      y=169
 ```
-**Update (2026-09-20, PR #307):** the rows carry no tally — the note is `N arenas`
-(`1 arena` in the singular) — there is no `Cleared:` line, and a host-only
+**Update (2026-09-20, PR #307):** the rows carry no tally — the note is `N arenas` — there is no `Cleared:` line, and a host-only
 `RANDOM - any game, any arena` row is appended LAST at y=131 (§10).
 
 Worst row `CAPTURE THE FLAG - 0/10 cleared  >` = 35 ≤ 42. The rows wear the

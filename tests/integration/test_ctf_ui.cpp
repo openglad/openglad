@@ -980,7 +980,7 @@ TEST(CtfUi, scenario_ctf_settings_flow)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.subscreen_opened)
-        << "a versus campaign's strip opens the SETUP wizard on RULES";
+        << "the camp's SETUP row opens the wizard on RULES";
     EXPECT_TRUE(state.score_map_seen) << "SCORE reads MAP for the map's own";
     EXPECT_TRUE(state.teams_cell_gone)
         << "SCENARIO's three retired cells (TEAMS A3, TROOPS B5, SCORE "
@@ -1085,7 +1085,7 @@ TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.subscreen_opened)
-        << "a versus campaign's strip opens the SETUP wizard on RULES";
+        << "the camp's SETUP row opens the wizard on RULES";
     EXPECT_TRUE(state.ladder_reported_false)
         << "a face the wheel never shows must be reported, not claimed";
     EXPECT_EQ(3, state.score_edge_waits)

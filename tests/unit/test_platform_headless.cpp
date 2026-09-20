@@ -1164,9 +1164,9 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // (og::runtime::current_session->current_difficulty_), not save state.
     // Item 1 of the DIFFICULTY submenu below asserts the one cycle step
     // Battle -> Slaughter, so it reads whatever the last case in the binary
-    // left behind — and the wizard's RULES step (SetDifficulty) now drives
-    // that same value from another case in this file. Pin the start and the
-    // STEP is the assertion; leave it ambient and --gtest_shuffle decides.
+    // left behind — and the DIFFICULTY-submenu cases elsewhere in this file
+    // write that same value. Pin the start and the STEP is the assertion;
+    // leave it ambient and --gtest_shuffle decides.
     og::runtime::current_session->current_difficulty_ = 1;  // Battle
 
     StdinRedirect stdin_redirect(input);
