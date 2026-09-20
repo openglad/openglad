@@ -415,6 +415,19 @@ void cycle_ctf_capture_limit(SaveData& save, int dir = +1);
 // settings gate, the lobby shared-teams rule) stay untouched until
 // the CTF engine retirement swaps them over.
 bool is_versus_campaign(const SaveData& save);
+// The same question of a campaign id: the SET CAMPAIGN card composes a line
+// for EVERY entry, not for the current save.
+bool is_versus_campaign(std::string_view campaign_id);
+
+// The ONE statement of "Multiplayer Arenas carries no progress vocabulary"
+// (PR #307 round 2, R2-4). False on a versus campaign: no CLEARED mark, no
+// "n cleared of m", no REPLAY affordance, no "must be cleared" prompt —
+// an arena is set, never earned. Readers: the SETUP wizard's [CLEARED]
+// seam, SET LEVEL's row status, the PROGRESS screen's derivation and
+// header, the SET CAMPAIGN card line and the terminal Replay Level gate.
+// [CURRENT] is not progress vocabulary and stays everywhere.
+bool progress_marks_shown(std::string_view campaign_id);
+bool progress_marks_shown(const SaveData& save);
 
 // Authored flag-team mask for a level known to match this save. Returns zero
 // when campaign/mount/scenario metadata is not yet synchronized; lobby
@@ -1845,19 +1858,20 @@ std::string match_fill_face(const SaveData& save, int my_team,
 // authored opponents turned NONE. The wheel runs 2..N where N is
 // match_sides_count, so a two-side arena has exactly one legal value and
 // never deals a side the map authors no markers for. Writes save.fill[]
-// directly (the caller runs the sync + autosave tail); returns the said
-// line, e.g. "Three sides. Two squads at FAIR.".
-std::string turn_match_sides(SaveData& save, int my_team,
-                             std::uint8_t authored_mask, int dir);
+// directly (the caller runs the sync + autosave tail) and says nothing:
+// the redrawn face is the answer (R2-1).
+void turn_match_sides(SaveData& save, int my_team,
+                      std::uint8_t authored_mask, int dir);
 
-// Turn FILL (amendment 5 G3 / amendment 6 H1-H3): one step along
-// {NONE, WEAK, FAIR, STRONG, BRUTAL}, written to every ON authored
-// opponent AND the local seat's own band; with no opponent on, the lowest
-// authored one turns on at the new value. A MIXED face is off the wheel
-// and rejoins at NONE, which clears the own band with the rest. Returns
-// the said line, e.g. "Two squads at STRONG. Yours too." / "No squads.".
-std::string turn_match_fill(SaveData& save, int my_team,
-                            std::uint8_t authored_mask, int dir);
+// Turn FILL (amendment 5 G3 / amendment 6 H1-H3, corrected by R2-2's fix
+// B): one step along {WEAK, FAIR, STRONG, BRUTAL}, written to every ON
+// authored opponent — or to EVERY authored opponent when none is on (fix
+// B) — AND the local seat's own band. NONE and MIXED faces are off the
+// wheel and rejoin at WEAK in either direction, so the wizard's FILL can
+// never empty an arena; LINEUP keeps per-team NONE. Writes save.fill[]
+// directly and says nothing (R2-1).
+void turn_match_fill(SaveData& save, int my_team,
+                     std::uint8_t authored_mask, int dir);
 
 // The TIME LIMIT wheel over save.time_limit: {0, 3600, 7200, 10800, 14400}
 // sim ticks (720 per minute — 12/s, the manifest's own unit). 0 is the
@@ -1867,13 +1881,6 @@ void cycle_time_limit(SaveData& save, int dir);
 // minutes are spelled out because "5M" reads as five million on a 6px
 // font. An off-wheel value wears the minutes it holds (2160 -> "3 MIN").
 std::string format_time_limit_label(const SaveData& save);
-// The toast: "Clock: the map's own." / "Clock: 5 minutes.".
-std::string format_time_limit_said(const SaveData& save);
-
-// The toast beside format_ctf_score_label: "Score: the map's own." /
-// "Score to 5.".
-std::string format_ctf_score_said(const SaveData& save);
-
 // The joiner caption every rules surface shows where the host's rows were
 // (the DIFFICULTY panel and the SETUP wizard: one sentence, one home).
 inline constexpr std::string_view kHostSetsForEveryoneCaption =
@@ -1881,8 +1888,14 @@ inline constexpr std::string_view kHostSetsForEveryoneCaption =
 // The M4 refusal's title: the strip GO pops it, the wizard's GO wears it.
 inline constexpr std::string_view kDeployForEveryPlayerTitle =
     "DEPLOY FOR EVERY PLAYER";
-// The FILL row's note on every surface that shows the wheel.
-inline constexpr std::string_view kMatchFillNote = "none to brutal";
+// The MACRO wheel's note (WEAK..BRUTAL), worn by the wizard's TEAMS FILL
+// row. It names the WHEEL, not the face: an off-wheel face (NONE, MIXED)
+// rejoins the wheel at WEAK, so the note is the same bytes on every face.
+inline constexpr std::string_view kMatchFillNote = "weak to brutal";
+// The LINEUP band wheel's note (kLineupFillWheel, NONE..BRUTAL), worn by
+// the wizard's BandFill row on the campaigns whose match_knobs ask for the
+// band wheel instead of the macro. One note per wheel.
+inline constexpr std::string_view kLineupFillNote = "none to brutal";
 
 // The M4 GO predicate, hoisted out of the Base Camp strip GO handler so
 // the two GO surfaces cannot disagree: true (nothing to refuse) for a
@@ -1983,6 +1996,11 @@ std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs);
 // would exceed `budget` splits across two lines.
 std::vector<std::string> format_match_rules_lines(
     const MatchRulesInputs& inputs, std::size_t budget = 48);
+// The same packer over a face list the caller has already filtered — the
+// wizard's joiner RULES prints only the rows that step owns, and the MATCH
+// recap prints them all, out of ONE packing loop.
+std::vector<std::string> format_match_rules_lines(
+    const std::vector<MatchRuleFace>& faces, std::size_t budget = 48);
 
 // What a fresh arena deals its authored bands. One override point for the
 // FAIR literal, read by the two deal readers when (and only when) a deal

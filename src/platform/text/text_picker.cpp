@@ -1690,10 +1690,6 @@ private:
             return headless_level_data_hooks();
         };
         io.autosave = [this] { autosave_company_after_mutation(); };
-        // Lead ruling 2: the wizard hands over the VALUE the session
-        // computed; the DIFFICULTY submenu's own row hands over
-        // cycle_difficulty(current). One tail, two callers.
-        io.set_difficulty = [this](int value) { apply_difficulty_value(value); };
         io.difficulty = [] {
             return og::runtime::current_session->current_difficulty_;
         };

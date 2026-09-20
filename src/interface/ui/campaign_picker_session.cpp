@@ -834,18 +834,9 @@ std::vector<std::string> terminal_campaign_page_lines(
     return lines;
 }
 
-// D3: an Acted outcome that carries a level (the action answered
-// `{ level = id }`) runs the SAME gated tail as a level-row click — host
-// gate first, then the closed-road check (missing file or the earned-roads
-// gate), then the already-here answer — so a scripted roll can never move
-// the cursor anywhere a click on a level row could not. On success the
-// ENGINE speaks ("Level set to <arena>." — the confirmation names something
-// playable) and the action's own message is dropped; a refused set speaks
-// the refusal first and then the Lua message, which keeps its slot only to
-// explain a roll that changed nothing. A terminal prints the two as two
-// notices because it has the room; the SDL toast is one slot, so its tails
-// compose them into a single line and drop a message that will not fit
-// (menu_screen_specs.cpp refusal_with_lua_message).
+} // namespace
+
+// D3 — contract in the header.
 void terminal_route_acted_level(SaveData& save,
                                 const TerminalCampaignPickerIo& io, int level,
                                 const std::string& toast,
@@ -876,6 +867,8 @@ void terminal_route_acted_level(SaveData& save,
     if (!toast.empty())
         io.notice(toast);
 }
+
+namespace {
 
 // The page render/prompt loop over an already-open session. Shared by the
 // root-book entry and the camp's page-row door so both spell every line,

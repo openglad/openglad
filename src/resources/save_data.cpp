@@ -784,12 +784,19 @@ bool SaveData::load(const std::string& filename)
         map_units.fill(0); // the map's own units are fielded
     }
 
-    // Versions 19+ append the arena FILL deal memo (amendment 7, #276): the
+    // Versions 20+ append the arena FILL deal memo (amendment 7, #276): the
     // (campaign, scenario) cursor the versus-campaign FILL: FAIR default was
     // last dealt for — u8 id length, the id bytes, then the i16 scenario.
-    // Read-side default only: a pre-v19 file reads as never dealt, so its
-    // next arena visit deals exactly once; the writer is unconditional.
-    if (temp_version >= 19)
+    // Read-side default only: a file with no memo reads as never dealt, so
+    // its next arena visit deals exactly once; the writer is unconditional.
+    //
+    // v19 wrote the SAME bytes at the SAME offset and is read here as NEVER
+    // DEALT on purpose (PR #307 round 2, R2-D13): a v19 memo was stamped by
+    // a wizard whose FILL wheel could collapse a four-side arena to two, and
+    // the memo is exactly what stops the re-deal that would undo it. A v20
+    // reader therefore re-deals a v19 company's arenas once, on first visit,
+    // lifting only the NONE bands. v20 writes the same bytes as v19.
+    if (temp_version >= 20)
     {
         std::uint8_t dealt_len = 0;
         READ_OR_FAIL(&dealt_len, 1, 1);
@@ -1070,7 +1077,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 19;
+	std::uint8_t temp_version = 20;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;

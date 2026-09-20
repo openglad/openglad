@@ -8547,19 +8547,6 @@ Sint32 match_setup_level_tail(MatchSetupScreenState& st, int level,
         return static_cast<int>(save.ctf_capture_limit);
     case Knob::Time:
         return static_cast<int>(save.time_limit);
-    case Knob::Respawns:
-        return static_cast<int>(save.respawn_mode);
-    case Knob::SpawnDelay:
-        return static_cast<int>(save.ctf_respawn_ticks);
-    case Knob::Permadeath:
-        return static_cast<int>(save.keep_fallen_heroes);
-    case Knob::Generators:
-        return static_cast<int>(save.generator_rate);
-    case Knob::InfiniteGold:
-        return static_cast<int>(save.infinite_gold);
-    case Knob::CrossControl:
-        return static_cast<int>(save.cross_control);
-    case Knob::Difficulty:
     case Knob::None:
         break;
     }
@@ -8601,22 +8588,9 @@ Sint32 match_setup_dispatch(MatchSetupScreenState& st,
         picker_lobby_sync_settings_from_save();
         (void)company_autosave_after_mutation(game->save_data,
                                               picker_lobby_is_networked());
-        if (!outcome.message.empty())
-            match_setup_show_toast(st, outcome.message);
+        // No toast: a knob turn says nothing (R2-1), so there is no
+        // message on this arm to show.
         st.session.refetch(inputs);
-        return MENU_REDRAW;
-    case Kind::SetDifficulty:
-        // Ruling 2: the SESSION computed the value (so the "<" cell and a
-        // right-click step it back); the client's ONE value-taking tail
-        // writes it — the same tail the DIFFICULTY row's cycling case
-        // calls with cycle_difficulty(current).
-        TRACE("setup", "difficulty %d", outcome.difficulty);
-        apply_difficulty_value(outcome.difficulty);
-        // The write landed in the SESSION, not in the save, so the Inputs
-        // this call was handed still carry the OLD session_difficulty: a
-        // refetch with them re-composes the face the click just replaced,
-        // and only the next restage would heal it. Ask the client again.
-        st.session.refetch(MatchSetupFreshInputs(st));
         return MENU_REDRAW;
     case Kind::OpenLineup:
         (void)create_lineup_menu(-1);

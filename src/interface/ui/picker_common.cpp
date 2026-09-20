@@ -816,9 +816,39 @@ void cycle_ctf_capture_limit(SaveData& save, int dir)
         wheel_next<short>(kScoreWheel, save.ctf_capture_limit, dir);
 }
 
+bool is_versus_campaign(std::string_view campaign_id)
+{
+    return og::data::campaign_matchup(std::string(campaign_id)) == "versus";
+}
+
 bool is_versus_campaign(const SaveData& save)
 {
-    return og::data::campaign_matchup(save.current_campaign) == "versus";
+    // One comparison, two callers: the save form is the id form asked of
+    // the save's own cursor.
+    return is_versus_campaign(std::string_view(save.current_campaign));
+}
+
+// The ONE statement of R2-4 ("get rid of the CLEARED: bullshit. Why do we
+// care, for multiplayer levels?"): Multiplayer Arenas carries no progress
+// vocabulary. An arena is not a road you earn, so nothing in a versus
+// campaign counts, marks or replays one. Every surface that would print
+// CLEARED, "n cleared of m", REPLAY or "must be cleared" asks HERE, and
+// nothing else spells the rule: the wizard's [CLEARED] seam
+// (MatchSetupSession::compose_book_page / compose_manifest), SET LEVEL's
+// row status (level_picker.cpp), PROGRESS's derivation and header
+// (picker_team_build.cpp), the SET CAMPAIGN card line (campaign_picker.cpp)
+// and the terminal Replay Level gate (terminal_menu_model.cpp).
+//
+// The id form is the primitive because the SET CAMPAIGN card composes for
+// EVERY entry, not for the current save.
+bool progress_marks_shown(std::string_view campaign_id)
+{
+    return !is_versus_campaign(campaign_id);
+}
+
+bool progress_marks_shown(const SaveData& save)
+{
+    return progress_marks_shown(std::string_view(save.current_campaign));
 }
 
 std::uint8_t ctf_authored_team_mask_for_loaded_level(
@@ -4648,15 +4678,18 @@ std::vector<NetworkingMachineRow> build_networking_machine_rows(
 //
 // The macros, wheels, cells and hoists the SETUP wizard composes with. The
 // Lua they replace lived in campaigns/modes/packs/modes.core/scripts/
-// campaign_picker.lua; the rules are ported verbatim — the said lines are
-// the same bytes — with the one addition the Lua could not make, because
-// it never saw the arena's marker mask: the authored-side clamp.
+// campaign_picker.lua. Two deliberate departures from that port:
+//
+//   * no said lines (R2-1). A knob's redrawn FACE is the whole answer, so
+//     the macros write the save and return nothing; the toast slot is left
+//     to the refusals, the level tail and the campaign's own Lua voice.
+//   * the authored-side clamp, the one addition the Lua could not make
+//     because it never saw the arena's marker mask.
+//
+// and one correction to the rule itself: fix B (R2-2) — a FILL turn with
+// no opponent on lights EVERY authored opponent, never just the lowest.
 
 namespace {
-
-// The count words both macros' sentences are built from.
-constexpr std::array<std::string_view, 4> kMatchCountWords = {
-    "One", "Two", "Three", "Four"};
 
 // SIDES and FILL both walk the AUTHORED teams other than the local seat's
 // own, ascending (amendment 5 G2's choosing order). An empty mask means
@@ -4747,28 +4780,6 @@ short match_effective_fill(const SaveData& save, int my_team,
     return *code;
 }
 
-// The second half of both macros' sentences: what was dealt, to how many.
-std::string match_squads_phrase(int count, short code)
-{
-    const std::string word(lineup_fill_name(code));
-    if (count == 1)
-        return "One squad at " + word + ".";
-    const int index =
-        std::clamp(count, 1, static_cast<int>(kMatchCountWords.size()));
-    return std::string(kMatchCountWords[static_cast<std::size_t>(index - 1)]) +
-           " squads at " + word + ".";
-}
-
-// H3: the own band is a KNOB write, not a promised squad (a solo table
-// fields no allies), so it rides as a two-word tail. The wrap cleared it
-// with the rest, and "No squads." covers nothing fielded anywhere.
-std::string match_fill_said(short code, int count)
-{
-    if (count == 0)
-        return "No squads.";
-    return match_squads_phrase(count, code) + " Yours too.";
-}
-
 // The SIDES wheel: every legal side count, 2..N. N < 2 (a one-team mask)
 // still offers the one value the macro can deal, so the wheel is never
 // empty and a turn is never a crash.
@@ -4842,8 +4853,8 @@ std::string match_fill_face(const SaveData& save, int my_team,
     return std::format("FILL: {}", lineup_fill_name(*code));
 }
 
-std::string turn_match_sides(SaveData& save, int my_team,
-                             std::uint8_t authored_mask, int dir)
+void turn_match_sides(SaveData& save, int my_team,
+                      std::uint8_t authored_mask, int dir)
 {
     const std::vector<int> opponents = match_opponents(my_team, authored_mask);
     const int standing = static_cast<int>(
@@ -4860,24 +4871,22 @@ std::string turn_match_sides(SaveData& save, int my_team,
                               ? code
                               : static_cast<short>(og::sim::kFillNone);
     }
-    const int word = std::clamp(next, 1,
-                                static_cast<int>(kMatchCountWords.size()));
-    return std::string(kMatchCountWords[static_cast<std::size_t>(word - 1)]) +
-           " sides. " + match_squads_phrase(next - 1, code);
 }
 
-std::string turn_match_fill(SaveData& save, int my_team,
-                            std::uint8_t authored_mask, int dir)
+void turn_match_fill(SaveData& save, int my_team,
+                     std::uint8_t authored_mask, int dir)
 {
-    static constexpr std::array<short, 5> kMatchFillWheel = {
-        og::sim::kFillNone, og::sim::kFillWeak, og::sim::kFillFair,
-        og::sim::kFillStrong, og::sim::kFillBrutal};
+    static constexpr std::array<short, 4> kMatchFillWheel = {
+        og::sim::kFillWeak, og::sim::kFillFair, og::sim::kFillStrong,
+        og::sim::kFillBrutal};
     const std::vector<MatchFillBand> on =
         match_on_opponents(save, my_team, authored_mask);
     const std::optional<short> common = match_common_fill(
         match_face_bands(save, my_team, authored_mask));
-    // A MIXED face is off the wheel and rejoins at the head, NONE — the
-    // same rule every knob applies to a value it cannot place.
+    // NONE (all bands off) and MIXED are off the wheel and rejoin at the
+    // head, WEAK, in either direction — the same rule every knob applies
+    // to a value it cannot place. The wizard's FILL can no longer empty an
+    // arena: SIDES owns "fewer sides" and LINEUP owns "this one band off".
     const short current = common.value_or(static_cast<short>(-1));
     const short code = wheel_next<short>(kMatchFillWheel, current, dir);
     std::vector<int> targets;
@@ -4885,21 +4894,16 @@ std::string turn_match_fill(SaveData& save, int my_team,
         targets.push_back(band.team);
     if (targets.empty())
     {
-        // With no opponent on, the lowest authored one turns on at the new
-        // value — the SIDES: 2 shape.
-        const std::vector<int> opponents =
-            match_opponents(my_team, authored_mask);
-        if (!opponents.empty())
-            targets.push_back(opponents.front());
+        // Fix B (R2-2): with no opponent on, a FILL turn lights EVERY
+        // authored opponent — never just the lowest, which stranded teams
+        // 3 and 4 on a four-side arena (recon2/fill-bug.md §1.3). A
+        // deliberate SIDES value is respected while bands are on.
+        targets = match_opponents(my_team, authored_mask);
     }
-    int count = static_cast<int>(targets.size());
     if (my_team >= 0 && my_team < 4)
         targets.push_back(my_team);
     for (const int team : targets)
         save.fill[static_cast<std::size_t>(team)] = code;
-    if (code == og::sim::kFillNone)
-        count = 0;
-    return match_fill_said(code, count);
 }
 
 void cycle_time_limit(SaveData& save, int dir)
@@ -4918,20 +4922,6 @@ std::string format_time_limit_label(const SaveData& save)
     if (save.time_limit <= 0)
         return "TIME LIMIT: MAP";
     return std::format("TIME LIMIT: {} MIN", save.time_limit / 720);
-}
-
-std::string format_time_limit_said(const SaveData& save)
-{
-    if (save.time_limit <= 0)
-        return "Clock: the map's own.";
-    return std::format("Clock: {} minutes.", save.time_limit / 720);
-}
-
-std::string format_ctf_score_said(const SaveData& save)
-{
-    if (save.ctf_capture_limit <= 0)
-        return "Score: the map's own.";
-    return std::format("Score to {}.", save.ctf_capture_limit);
 }
 
 bool local_seats_deployed_for_go(const SaveData& save,
@@ -5129,7 +5119,12 @@ std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs)
 std::vector<std::string> format_match_rules_lines(
     const MatchRulesInputs& inputs, std::size_t budget)
 {
-    const std::vector<MatchRuleFace> faces = match_rules_faces(inputs);
+    return format_match_rules_lines(match_rules_faces(inputs), budget);
+}
+
+std::vector<std::string> format_match_rules_lines(
+    const std::vector<MatchRuleFace>& faces, std::size_t budget)
+{
     std::vector<std::string> lines;
     for (std::size_t i = 0; i < faces.size();)
     {

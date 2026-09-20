@@ -111,8 +111,13 @@ public:
     // onto the teams it authors ONCE per scenario selection — an explicit
     // NONE turned afterwards is a choice the deal never lifts, and this pair
     // is what remembers that across page re-entries, launches and restarts.
-    // Empty/0 = never dealt (a fresh company, or a pre-v19 file), so the
-    // next arena visit deals exactly once. Host-local: never rides the wire.
+    // Empty/0 = never dealt (a fresh company, or a file with no memo the
+    // reader trusts), so the next arena visit deals exactly once.
+    // Host-local: never rides the wire.
+    //
+    // GTL v20 tail; a v19 tail carries the same bytes but is read as never
+    // dealt — the one-shot heal for the companies whose four-side arenas the
+    // PR #307 round-1 FILL wheel collapsed to two (R2-D13).
     std::string arena_lineup_dealt_campaign;
     short arena_lineup_dealt_scen = 0;
     // Difficulty submenu settings (0 = legacy default behavior for all three).
