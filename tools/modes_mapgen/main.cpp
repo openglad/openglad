@@ -147,7 +147,7 @@ void write_campaign_yaml(const std::string& path)
         << "    teams and the rules, then\n"
         << "    GO. Bots fill the empty\n"
         << "    sides. Find SETUP on the\n"
-        << "    Base Camp strip.\n";
+        << "    Base Camp.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
 }

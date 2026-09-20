@@ -630,6 +630,10 @@ TEST(ModesBriefingLint, refuses_the_retired_theme_lower_case_and_the_sign_off)
         {{"KILLS ALONE FILL THE LEDGER."}, "retired word 'LEDGER'"},
         {{"TAKES THE PURSE."}, "retired word 'PURSE'"},
         {{"FIRST BAND TO THE TALLY WINS."}, "retired word 'TALLY'"},
+        // Feedback item 4: no progress vocabulary anywhere in Multiplayer
+        // Arenas, briefings included. CLEARED is APPENDED to the word list,
+        // so every clause above still reports the word it always did.
+        {{"THE CLEARED ARENA."}, "retired word 'CLEARED'"},
         {{"FIRST BAND TO THE SCORE WINS.", "-- THE GAMESMASTER"},
          "begins '-- '"},
         {{"FIRST BAND TO THE SCORE WINS.", ""}, "blank line"},

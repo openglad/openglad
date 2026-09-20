@@ -24,9 +24,9 @@ namespace modes_mapgen {
 // lower-case letter is itself a violation, so the list is complete by
 // construction. First match wins, so a line naming two of them is reported
 // under the one listed first.
-inline constexpr std::array<std::string_view, 8> kBriefingRetiredWords = {
-    "GAMESMASTER", "THE BOOK", "LEDGER",   "CONTENDERS",
-    "PURSE",       "TALLY",    "PAGE OF",  "TONIGHT",
+inline constexpr std::array<std::string_view, 9> kBriefingRetiredWords = {
+    "GAMESMASTER", "THE BOOK", "LEDGER",  "CONTENDERS", "PURSE",
+    "TALLY",       "PAGE OF",  "TONIGHT", "CLEARED",
 };
 
 // Empty string = clean; otherwise one sentence naming the first violation.
