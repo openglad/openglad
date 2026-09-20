@@ -224,6 +224,10 @@ namespace {
 struct VersusProgressState
 {
     std::atomic<bool> test_finished{false};
+    // Each lap names its own frame: two tests share this injector, and a
+    // shared capture name means the second lap silently overwrites the
+    // first one's still (caught in the read-back, not by any assertion).
+    const char* shot = "progress_modes";
     bool camp_seen = false;
     bool scenario_open = false;
     bool progress_open = false;
@@ -273,7 +277,7 @@ int versus_progress_injector(void* data)
     if (!state->progress_open)
         return escape(4, "the PROGRESS report never came up");
     (void)wait_for_menu_frames(2);
-    capture_presented_frame("progress_modes", std::getenv("UXSHOTS_DIR"));
+    capture_presented_frame(state->shot, std::getenv("UXSHOTS_DIR"));
     ++state->captures;
 
     state->finished = true;
@@ -354,6 +358,7 @@ TEST(LevelProgress, classic_progress_report_still_counts_what_was_cleared)
         << "save0 must be seeded as the most recent company on disk";
 
     VersusProgressState state;
+    state.shot = "progress_gladiator";
     SDL_Thread* thread =
         SDL_CreateThread(versus_progress_injector, "classic_progress", &state);
     ASSERT_NE(nullptr, thread);
