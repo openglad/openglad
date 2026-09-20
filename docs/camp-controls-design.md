@@ -79,6 +79,9 @@ the `{scen_num}` seed — grandfathered, self-consistent.
      the predicate.
 - The SCENARIO level browser paints LOCKED (dim) in the status column for
   inaccessible rows, beside the existing CLEARED/CURRENT.
+  **Update (2026-09-20, PR #307):** on a campaign that carries no progress
+  vocabulary (Multiplayer Arenas) the column shows CURRENT only — no CLEARED,
+  and an arena is never LOCKED there (docs/match-setup-design.md §10).
 - The `[CURRENT]` refusal became a signpost:
   `kCampaignLevelUnchangedMessage` is now "Already on that level. GO when
   ready." (ASCII only — the sprite font has blank glyphs for several
@@ -134,6 +137,11 @@ inside tonight's game.
 **[SUPERSEDED — issue #306.]** RANDOM SCENARIO reads RANDOM ARENA (note
 `any game, any arena`); the deck vocabulary is gone
 (docs/match-setup-design.md §3.9).
+**Update (2026-09-20, PR #307):** and round 2 retired the camp roll row
+altogether: the two roll rows are the SETUP wizard's own `RANDOM - any game,
+any arena` (GAME step) and `RANDOM ARENA - any arena of this game` (each
+game's ARENA page), both appended LAST so no arena ordinal moves
+(docs/match-setup-design.md §10).
 
 A refused routed set answers on the surface's own terms. The terminals
 print two notices in sequence (the refusal, then the action's message).
@@ -263,6 +271,12 @@ terminal Difficulty item is gated the same way; the caption string is shared
 (`kHostSetsForEveryoneCaption`); the SCENARIO SCORE row is parked — the
 wizard serves every versus pack, so the "legacy versus packs" copy is gone;
 Team Build gains item 13 Setup (docs/match-setup-design.md §2.7, §3.7).
+**Update (2026-09-20, PR #307):** REVERSED: the (58,178,68,18) slot reads
+DIFFICULTY on EVERY campaign again (the SETUP twin and ordinal 73 are deleted,
+ceiling back to 73), the terminal `Difficulty` item is ungated, and Team Build
+item 13 `Setup` is retired. The wizard's one door on every client is the Base
+Camp docket's `SETUP - <GAME>: <ARENA>  >` row. The SCENARIO SCORE row stays
+parked (docs/match-setup-design.md §10).
 
 The difficulty submenu itself is unchanged and returns to whatever screen
 pushed it; from the strip that is a nested `MENU_REDRAW` the Base Camp loop

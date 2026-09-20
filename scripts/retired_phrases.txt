@@ -40,16 +40,40 @@ save_data\.cpp` canary pin	`save_data.cpp` canary pin is line **118**	kMut_save_
 save_data\.cpp[ :]118	all edits below the save_data.cpp:118 pin	kMut_save_corrupt was deleted as an orphan pin on 2026-09-15 (tests/parity/golden/DRIFT_LEDGER.md, "Removed pins"); save_data.cpp carries no canary pin at all (PR #292)
 OptionsMenu\.zz_capture	OptionsMenu.zz_capture_menu_tour is env-gated	the capture scenes are MenuCapture.zz_capture_* and run their oracles on every lane; OG_FX_CAPTURE_DIR gates only the film (PR #292)
 max\(lm, ?rm ?- ?2 ?- ?6 ?\* ?len\)	right-aligned with max(lm, rm - 2 - 6*len)	the per-row right-align idiom was replaced by one fit rule in include/openglad/interface/hud_counter_box.h (PR #292)
-Gamesmaster	the Gamesmaster's fourth row	the modes campaign is unthemed (PR #307): no narrator; the camp rows are GAME / ARENA / RANDOM ARENA and setup is the SETUP wizard (docs/match-setup-design.md)
+Gamesmaster	the Gamesmaster's fourth row	the modes campaign is unthemed (PR #307): no narrator; the camp is ONE row, SETUP - <title>, into the SETUP wizard (docs/match-setup-design.md §10)
 MATCH SETUP	the camp's MATCH SETUP page	the MATCH SETUP page retired into the SETUP wizard (og::ui::MatchSetupSession, PR #307); the macros live in picker_common
 Multiplayer Game Modes	("Multiplayer Game Modes"), 40 scenarios	the campaign's display title is Multiplayer Arenas (PR #307); the id stays modes
-stamp vocabulary	per-game stamp tallies -- stamp vocabulary everywhere	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #307)
-fully stamped page	a fully stamped page says	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #307)
-is stamped\.	Every field here is stamped.	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #307); a finished page says Every arena here is cleared.
-[0-9]+/[0-9]+ stamped	3/40 stamped	cleared arenas read n/m cleared and the camp readout is CLEARED (PR #307)
-RANDOM SCENARIO	the camp's RANDOM SCENARIO row	the roll row is RANDOM ARENA, note any game, any arena (PR #307)
+stamp vocabulary	per-game stamp tallies -- stamp vocabulary everywhere	Multiplayer Arenas carries no progress vocabulary (PR #307 round 2): a GAME row's note is N arenas, the camp has no readout
+fully stamped page	a fully stamped page says	Multiplayer Arenas carries no progress vocabulary (PR #307 round 2): a GAME row's note is N arenas, the camp has no readout
+is stamped\.	Every field here is stamped.	Multiplayer Arenas carries no progress vocabulary (PR #307 round 2): a GAME row's note is N arenas, the camp has no readout
+[0-9]+/[0-9]+ stamped	3/40 stamped	Multiplayer Arenas carries no progress vocabulary (PR #307 round 2): a GAME row's note is N arenas, the camp has no readout
+RANDOM SCENARIO	the camp's RANDOM SCENARIO row	the roll rows are the wizard's RANDOM (GAME step) and RANDOM ARENA (each game's ARENA page); the camp has no roll row (PR #307)
 TARGET SCORE	TARGET SCORE is the map's authored limit	the score knob has one home, the SETUP wizard's RULES step SCORE: row (PR #307); the SCENARIO copy is parked
-SIGN THE BOOK	SIGN THE BOOK lives on the index page	the signature retired with the untheme (PR #307); a full tally reads Cleared: 40 of 40.
+SIGN THE BOOK	SIGN THE BOOK lives on the index page	the signature retired with the untheme (PR #307); no tally exists
 Squad size follows the roster	Squad size follows the roster: a solo fighter faces one opponent	#305: soccer and basketball buy fighters above FAIR and deal STRONG (docs/mp-game-modes.md "Matched squads", docs/lineup-design.md Amendment 8, PR #307)
 Only levels move	Only levels move, and only between 1 and 9.	#305: soccer and basketball buy fighters above FAIR and deal STRONG (docs/mp-game-modes.md "Matched squads", docs/lineup-design.md Amendment 8, PR #307)
 legacy versus packs	keeps its own copies for legacy versus packs	the SCENARIO SCORE row is parked and the SETUP wizard serves every versus pack (PR #307)
+[0-9]+/[0-9]+ cleared	SOCCER - 0/4 cleared	no progress words in Multiplayer Arenas (PR #307 round 2); a GAME row's note reads N arenas
+Cleared: [0-9]+ of	Cleared: 0 of 40.	the GAME step has no tally line (PR #307 round 2)
+Every arena here is cleared	Every arena here is cleared.	the ARENA page's only line is the game's own rule line (PR #307 round 2)
+Next uncleared	Next uncleared: THE PITCH.	the ARENA page's only line is the game's own rule line (PR #307 round 2)
+CLEARED [0-9]+/[0-9]+	the camp readout CLEARED 0/40	the camp has no readout; the roster leads the panel (PR #307 round 2)
+cleared of [0-9]+ discovered	Level Progress: 3 cleared of 40 discovered	PROGRESS on a versus campaign reads Arenas: N; classic campaigns keep the tally (og::ui::progress_marks_shown, PR #307 round 2)
+Yours too\.	One squad at STRONG. Yours too.	the wizard's knobs speak through their faces; the said-lines are deleted (PR #307 round 2, R2-1)
+squads? at [A-Z]	Three squads at BRUTAL.	the wizard's knobs speak through their faces; the said-lines are deleted (PR #307 round 2, R2-1)
+No squads\.	No squads.	the wizard's knobs speak through their faces; the said-lines are deleted (PR #307 round 2, R2-1)
+Clock: 	Clock: 5 minutes.	the wizard's knobs speak through their faces; the said-lines are deleted (PR #307 round 2, R2-1)
+Score to [0-9]	Score to 5.	the wizard's knobs speak through their faces; the said-lines are deleted (PR #307 round 2, R2-1)
+Score: the map's own	Score: the map's own.	the wizard's knobs speak through their faces; the said-lines are deleted (PR #307 round 2, R2-1)
+lowest (authored )?opponent (turns|at|when)	it turns on the lowest opponent at x	fix B (PR #307 round 2): with no band on, a FILL turn lights EVERY authored opponent. Narrowed so the SIDES rule -- dealing the lowest opponents in team order, still true -- never trips
+SETUP[^.;:]*Base Camp (command )?strip	SETUP, on the Base Camp command strip	SETUP is the camp's one docket row (PR #307 round 2); the strip's second door is DIFFICULTY on every campaign. A true sentence naming both puts a . ; or : between them
+strip.s SETUP	the strip's SETUP door	SETUP is the camp's one docket row (PR #307 round 2); the strip's second door is DIFFICULTY on every campaign
+kCreateMenuSetupIndex	kCreateMenuSetupIndex == 73	ordinal 73 and the strip twin are deleted; the Base Camp ceiling is 73 (PR #307 round 2)
+ceiling 74	ceiling 74 across the tied triple	ordinal 73 and the strip twin are deleted; the Base Camp ceiling is 73 (PR #307 round 2)
+The fight's rules are on SETUP	The fight's rules are on SETUP: RULES.	terminal item 11 Difficulty is ungated and the guard string is deleted; RULES is SCORE + TIME LIMIT (PR #307 round 2)
+This campaign has no arena setup	This campaign has no arena setup.	Team Build has no Setup item; the terminal door is the camp's SETUP row (PR #307 round 2)
+Team Build has 13 items	Team Build has 13 items now	Team Build has 12 items; item 13 Setup is retired (PR #307 round 2)
+up to slaughter	DIFFICULTY: BATTLE - up to slaughter	DIFFICULTY is not a wizard row; it went back to the Base Camp DIFFICULTY door (PR #307 round 2)
+RANDOM ARENA - any game	RANDOM ARENA - any game, any arena	the camp roll row is gone; the wizard's RANDOM ARENA note is any arena of this game (PR #307 round 2)
+three-row docket	is now a three-row docket	the camp docket is ONE row, SETUP - <title> (PR #307 round 2)
+must be cleared\)	Replay level (must be cleared): 	the prompt is unchanged on classic campaigns, but a versus campaign refuses first with Arenas are set, never replayed. (PR #307 round 2)

@@ -2227,6 +2227,7 @@ struct FourSideFillState
     std::string rest_fill_row;
     bool turned_to_brutal = false;
     bool restaged_after_turn = false;
+    bool restaged_after_empty = false;
     bool restaged_after_heal = false;
     std::array<int, 4> fill_after_turn{};
     bool lineup_opened = false;
@@ -2273,6 +2274,14 @@ int four_side_fill_injector(void* data)
     (void)wait_for_menu_frames(2);
     state->rest_sides_row = interactable_label("setup_row_0");
     state->rest_fill_row = interactable_label("setup_row_1");
+    // The BEFORE half of R2-7's four-side pair, taken from THIS flow so the
+    // only difference between it and the _brutal frame is the one click.
+    // (The older `setup_step_teams_four_sides` shot is the GO-gate test's
+    // under-deployed company -- a different roster, so it cannot serve as a
+    // one-click before.)
+    capture_presented_frame("setup_step_teams_four_sides_rest",
+                            uxshots_dir());
+    ++state->captures;
 
     // (a) ONE turn off the deal. STRONG -> BRUTAL is the frame that shows
     // every band moving UP together; the next turn would wrap to WEAK and
@@ -2297,6 +2306,7 @@ int four_side_fill_injector(void* data)
 
     // (b) empty every band from the LINEUP page (row 2 is the door on a
     // four-side arena: SIDES, FILL, LINEUP).
+    trace_clear();
     state->lineup_opened = click_until_edge("setup_row_2", [](int wait_ms) {
         return wait_for_interactable("lineup_unite", wait_ms);
     });
@@ -2324,6 +2334,16 @@ int four_side_fill_injector(void* data)
     (void)wait_for_menu_frames(2);
     state->empty_sides_row = interactable_label("setup_row_0");
     state->empty_fill_row = interactable_label("setup_row_1");
+    // The BEFORE half of the trap pair: the collapsed state itself, the one
+    // the shipped bug left companies in. The team LINES lag the rows here
+    // for the same reason the turn above does -- emptying the bands only
+    // QUEUES the restage that recounts them -- so wait for the stage to
+    // announce itself or the frame carries the previous census.
+    state->restaged_after_empty = wait_for_trace("setup", "staged", 15000);
+    (void)wait_for_menu_frames(2);
+    capture_presented_frame("setup_step_teams_four_sides_empty",
+                            uxshots_dir());
+    ++state->captures;
 
     // ...and ONE turn out of the collapse, settled on the same oracle.
     trace_clear();
@@ -2400,6 +2420,8 @@ TEST(MatchSetupUi, fill_turn_moves_every_side_on_a_four_side_arena)
         << "LINEUP keeps per-team NONE, which is how a company collapses "
            "into the reported state in the first place";
     ASSERT_TRUE(state.back_on_teams);
+    EXPECT_TRUE(state.restaged_after_empty)
+        << "the emptied bands recount on a queued restage too";
     EXPECT_NE(std::string::npos, state.empty_sides_row.find("SIDES: 1"))
         << "with no band on, the step honestly says one side: '"
         << state.empty_sides_row << "'";
@@ -2416,6 +2438,6 @@ TEST(MatchSetupUi, fill_turn_moves_every_side_on_a_four_side_arena)
         og::sim::kFillWeak};
     EXPECT_EQ(kAllWeak, state.fill_after_heal)
         << "every authored side, not just the lowest (R2-2 fix B)";
-    verify_captured_frames("setup_four_fill", 2);
+    verify_captured_frames("setup_four_fill", 4);
     restore_gladiator_mount();
 }

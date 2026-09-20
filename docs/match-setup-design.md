@@ -20,8 +20,8 @@ step censuses), `docs/mp-game-modes.md` (the player-facing description).
 
 | Issue | Answer |
 |---|---|
-| **#304** setup too complicated | ONE door, **SETUP**, on the Base Camp command strip of every `matchup: versus` campaign (the DIFFICULTY door's twin on one rect, the GO/READY shape). It opens a five-step wizard on the camp's own chassis — **GAME → ARENA → TEAMS → RULES → MATCH** — with a tab strip for direct access, PREV/NEXT for the sequence, BACK/Escape to leave from any step, every value preselected from the save, and a last step that states the whole match and offers GO (dimmed, with its reason on its face, whenever the strip GO would refuse). The camp docket's `GAME:` / `ARENA:` rows become shortcuts INTO the wizard, so the versus campaign has one chassis for its pages. Cold 2v2 soccer: **22–26 clicks over 9 screens → 13 over 5** (7 clicks over 2 screens once the company is on the campaign). |
-| **#306** rip out the theming | **UNTHEME**, in the game's own plain words (GAME, ARENA, TEAMS, SIDES, RULES, MATCH, SETUP, CLEARED, FIGHTERS, BOTS; BAND stays — the original Gladiator's noun for a company). No narrator, no ledger, no signature, no deck. Campaign display title **Multiplayer Arenas**. 40 briefings lose the narrator through the generator, guarded by a generator-side theme lint (word list + no lower-case letters). `BaseCampSlotKind::Card` is renamed `Seat`. No Roman anachronism is introduced. |
+| **#304** setup too complicated | ONE door, **SETUP**, on the Base Camp command strip of every `matchup: versus` campaign (the DIFFICULTY door's twin on one rect, the GO/READY shape). It opens a five-step wizard on the camp's own chassis — **GAME → ARENA → TEAMS → RULES → MATCH** — with a tab strip for direct access, PREV/NEXT for the sequence, BACK/Escape to leave from any step, every value preselected from the save, and a last step that states the whole match and offers GO (dimmed, with its reason on its face, whenever the strip GO would refuse). The camp docket's `GAME:` / `ARENA:` rows become shortcuts INTO the wizard, so the versus campaign has one chassis for its pages. Cold 2v2 soccer: **22–26 clicks over 9 screens → 13 over 5** (7 clicks over 2 screens once the company is on the campaign). **Update (2026-09-20, PR #307):** round 2 collapsed the doors to ONE: the wizard opens from the Base Camp docket's single `SETUP - <TITLE>  >` row, the strip twin is deleted and the command strip reads DIFFICULTY on every campaign again (§10). |
+| **#306** rip out the theming | **UNTHEME**, in the game's own plain words (GAME, ARENA, TEAMS, SIDES, RULES, MATCH, SETUP, CLEARED, FIGHTERS, BOTS; BAND stays — the original Gladiator's noun for a company). No narrator, no ledger, no signature, no deck. Campaign display title **Multiplayer Arenas**. 40 briefings lose the narrator through the generator, guarded by a generator-side theme lint (word list + no lower-case letters). `BaseCampSlotKind::Card` is renamed `Seat`. No Roman anachronism is introduced. **Update (2026-09-20, PR #307):** CLEARED left the vocabulary in round 2 — Multiplayer Arenas carries no progress word anywhere (§10). |
 | **#305** AI needs more people | In **soccer and basketball only**, each FILL step above FAIR buys **one more bot at roughly one human's power** instead of 25 % more power: STRONG = H+1 bodies, BRUTAL = H+2, bounded by the five-family squad and the court's room. One helper, `lineup.squad_shape`, consumed by the decision (`match.fills`) and the apply (`lineup.spawn_bots`); one shape table, `mode_shape.lua`, read by both impls and the campaign picker. **The campaign declares what a fresh ball arena deals: STRONG** (`match_knobs.deal`), so a solo game on THE PITCH fields two bots without a knob being touched; every other arena and campaign keeps the FAIR deal byte-identically. The player sees the consequence as a **count** (`2 BOTS`) on the TEAMS step, on LINEUP and in the MATCH step's census. |
 
 Shape decisions that bind everything below (the full list is §7):
@@ -44,6 +44,11 @@ Shape decisions that bind everything below (the full list is §7):
 - **No wire, save, snapshot or replay version moves** (protocol 18, GTL 19).
 - **Grids are declared as constants** (§2.0) with ONE right edge
   (`kSetupRightEdge = 310`); alignment is pinned as relations.
+  **Update (2026-09-20, PR #307):** two statements in this list moved: the
+  said-lines were DELETED in round 2 rather than carried over byte-identically, and the save format DID
+  move — GTL 19 → **20**, the one-shot heal of a company the round-1 FILL
+  bug had collapsed (§10). Protocol 18, the snapshot and the replay are still
+  untouched.
 
 ---
 
@@ -161,6 +166,10 @@ with the bevel fix. **The current tab** wears square brackets AND the
 `setup tab_current`), and the dimmed face with its darker right/bottom
 bevels reads as the pressed-in tab of a tab strip. Green would say "this
 launches" and yellow "gated"; both would lie. Pinned by the centre pixel.
+**Update (2026-09-20, PR #307):** the `[CLEARED]` tail is suppressed on a
+campaign that carries no progress vocabulary — the session blanks it through
+`og::ui::progress_marks_shown(save)`, so no wizard row on Multiplayer Arenas
+wears it. `[CURRENT]` is unchanged (§10).
 
 **Nav**: pattern-b full-graph rewire every frame. Tabs chain left↔right; a
 tab's ↓ lands on the first visible row (else `setup_back`); row 0's ↑ lands
@@ -205,8 +214,12 @@ only other home.
 The strip's (58,178,68,18) slot reads **SETUP** on a versus campaign and
 **DIFFICULTY** everywhere else — one rect, two ordinals, the GO/READY twin
 shape. Ordinal 73 is `setup`; the ceiling goes 73 → 74 (§3.7).
+**Update (2026-09-20, PR #307):** REVERSED: ordinal 73 `setup` is deleted and the
+ceiling is back to 73. The slot reads **DIFFICULTY** on every campaign; the
+wizard's door is the docket row below (§10).
 
 The camp docket is three host rows and no text line:
+**Update (2026-09-20, PR #307):** the docket is ONE host row, and the roster leads the panel (§10).
 
 ```
  CLEARED 12/40                                     header readout
@@ -214,9 +227,17 @@ The camp docket is three host rows and no text line:
  ARENA: THE PITCH - 2 sides, 3 goals            >  shortcut into the wizard's ARENA step
  RANDOM ARENA - any game, any arena             >  the roll (host only)
 ```
+**Update (2026-09-20, PR #307):** the docket is now one row and no readout:
+```
+ SETUP - SOCCER: THE PITCH                       >  y=143, the wizard's one door
+```
+The readout, the shortcut pair and the roll row are all retired; the freed
+units go back to the roster, which leads the panel so the y=33 heading band is
+the classic one (§10).
 
 A joiner sees the two shortcut rows, browsable, and no line: the roll is cut
 at fetch and the roster takes the unit the old joiner line spent.
+**Update (2026-09-20, PR #307):** the joiner sees the SAME single SETUP row, browsable (§10).
 
 ### 2.2 SETUP: GAME (the campaign's book root, hosted)
 
@@ -224,29 +245,34 @@ at fetch and the roster takes the unit the old joiner line spent.
  SCEN 820: SOCCER: THE PITCH   1 PLAYER / 1 MACHINE     y=14  line B (unchanged)
  +--------------------------------------------------+   y=28
  | [GAME]  ARENA   TEAMS   RULES   MATCH            |   y=33  tabs (54x10 at 12/73/134/195/256)
- | Cleared: 0 of 40.                                |   y=47  line 1 (<= 38 from Lua; 48 on the panel)
- | TEAM DEATHMATCH - 0/6 cleared                  > |   y=59  setup_row_0   page "tdm"
- | CAPTURE THE FLAG - 0/10 cleared                > |   y=71  setup_row_1
- | ONSLAUGHT - 0/4 cleared                        > |   y=83
- | MUTANT - 0/4 cleared                           > |   y=95
- | SOCCER - 0/4 cleared                           > |   y=107  <- keyboard highlight (the current game)
- | BASKETBALL - 0/6 cleared                       > |   y=119
- | FREE FOR ALL - 0/6 cleared                     > |   y=131  setup_row_6
+ | Cleared: 0 of 40.                                |   y=47  line 1 (<= 38 from Lua; 48 on the panel)   # Update (2026-09-20, PR #307): retired, see §10
+ | TEAM DEATHMATCH - 0/6 cleared                  > |   y=59  setup_row_0   page "tdm"   # Update (2026-09-20, PR #307): retired, see §10
+ | CAPTURE THE FLAG - 0/10 cleared                > |   y=71  setup_row_1   # Update (2026-09-20, PR #307): retired, see §10
+ | ONSLAUGHT - 0/4 cleared                        > |   y=83   # Update (2026-09-20, PR #307): retired, see §10
+ | MUTANT - 0/4 cleared                           > |   y=95   # Update (2026-09-20, PR #307): retired, see §10
+ | SOCCER - 0/4 cleared                           > |   y=107  <- keyboard highlight (the current game)   # Update (2026-09-20, PR #307): retired, see §10
+ | BASKETBALL - 0/6 cleared                       > |   y=119   # Update (2026-09-20, PR #307): retired, see §10
+ | FREE FOR ALL - 0/6 cleared                     > |   y=131  setup_row_6   # Update (2026-09-20, PR #307): retired, see §10
  +--------------------------------------------------+   y=158
   [BACK]                                    [NEXT]      y=169
 ```
+**Update (2026-09-20, PR #307):** the rows carry no tally — the note is `N arenas`
+(`1 arena` in the singular) — there is no `Cleared:` line, and a host-only
+`RANDOM - any game, any arena` row is appended LAST at y=131 (§10).
 
 Worst row `CAPTURE THE FLAG - 0/10 cleared  >` = 35 ≤ 42. The rows wear the
 tallies and nothing else: the header names the arena, the highlight names
 the game. Pages are open to every machine. NEXT on GAME (and on ARENA) means
 "keep what is set" and lands on TEAMS.
+**Update (2026-09-20, PR #307):** the worst row is `CAPTURE THE FLAG - 10 arenas  >`
+(31); eight rows still fit without a pager (§10).
 
 ### 2.3 SETUP: ARENA (a game's page, hosted)
 
 ```
  | GAME   [ARENA]  TEAMS   RULES   MATCH            |   y=33
  | Kick the ball into their goal.                   |   y=47  line 1 (the game's rule line, <= 38)
- | Next uncleared: THE PITCH.                       |   y=55  line 2 ("Every arena here is cleared." when done)
+ | Next uncleared: THE PITCH.                       |   y=55  line 2 ("Every arena here is cleared." when done)   # Update (2026-09-20, PR #307): retired, see §10
  | THE PITCH - 2 sides, 3 goals         [CURRENT]   |   y=67  setup_row_0  level 820, GO green
  | THE MUDBOWL - 2 sides, 3 goals                   |   y=79
  | FOURSQUARE - 4 sides, 3 goals                    |   y=91
@@ -254,6 +280,9 @@ the game. Pages are open to every machine. NEXT on GAME (and on ARENA) means
  +--------------------------------------------------+
   [BACK]                           [PREV]    [NEXT]
 ```
+**Update (2026-09-20, PR #307):** line 2 is gone — the game's rule line is the
+only line, so the rows start at y=59 — no arena wears `[CLEARED]`, and a
+host-only `RANDOM ARENA - any arena of this game` row is appended LAST (§10).
 
 **Page resolution.** The ARENA step IS the book at depth ≥ 2.
 `goto_step(Arena)` from any other step descends from the root into the root
@@ -273,6 +302,9 @@ toast), never hidden. **Refusals never advance**: `DeniedHost`,
 `DeniedGate`, `Unchanged`, `LoadFailed` keep the step and toast; only
 `Set`/`SetReplay` advances to TEAMS, through the one hoisted
 `scripted_level_set_answer` (§3.4).
+**Update (2026-09-20, PR #307):** with one flavour line the window holds EIGHT rows,
+so CTF's ten arenas plus RANDOM ARENA page 8 + 3 and the roll row sits on
+window 2/2 (§10).
 
 ### 2.4 SETUP: TEAMS
 
@@ -286,6 +318,9 @@ toast), never hidden. **Refusals never advance**: `DeniedHost`,
  +--------------------------------------------------+
   [BACK]                           [PREV]    [NEXT]
 ```
+**Update (2026-09-20, PR #307):** the macro row's note is `weak to brutal`: NONE left
+the wizard's FILL wheel, so the wizard can no longer empty an arena. LINEUP
+keeps per-team NONE and its own `none to brutal` note (§10).
 
 On a four-side arena the SIDES row appears above FILL and the pointer line
 follows the team lines whenever any of them carries a diagnostic:
@@ -301,6 +336,8 @@ follows the team lines whenever any of them carries a diagnostic:
  | FILL: STRONG - none to brutal                  < |   y=111 setup_row_1
  | LINEUP - fill per team, map units              > |   y=123 setup_row_2
 ```
+**Update (2026-09-20, PR #307):** same — `FILL: STRONG - weak to brutal` on the
+four-side mock too (§10).
 
 **Team lines** (`compose_setup_team_line`, returning CELLS, not a string):
 one line per **authored** team (the loaded arena's `authored_team_mask` —
@@ -337,6 +374,10 @@ have no swatch — `TEAM 1 BLUE  P1 WASD  P2 ARROWS  2 FIGHTERS`, worst 55 ≤ 7
   opponents + own band, lowest opponent when none on, MIXED face, wrap
   clears);
 - `LINEUP - fill per team, map units  >` — door to LINEUP, refetch on return.
+  **Update (2026-09-20, PR #307):** SIDES and FILL say NOTHING: the said-lines
+  are deleted and the face is the whole answer. FILL's wheel is WEAK → FAIR →
+  STRONG → BRUTAL over the ON opponents plus the own band, or over EVERY
+  authored opponent when none is on (fix B); there is no wrap to NONE (§10).
 
 `match_knobs` shapes the step: `teams=false` drops the SIDES row AND the
 team lines (the lines are then the staged report's own lines plus the
@@ -355,11 +396,21 @@ LINEUP door, the home of MAP UNITS, its live knob.
  | SPAWN DELAY: NORMAL - normal, fast, slow       < |   y=83   setup_row_3
  | PERMADEATH: OFF - on, off                      < |   y=95   setup_row_4
  | GENERATORS: NORMAL - calm to frenzy            < |   y=107  setup_row_5
- | DIFFICULTY: BATTLE - up to slaughter           < |   y=119  setup_row_6
+ | DIFFICULTY: BATTLE - up to slaughter           < |   y=119  setup_row_6   # Update (2026-09-20, PR #307): retired, see §10
  | INFINITE GOLD: OFF - gold never runs out       < |   y=131  setup_row_7
  | CROSS CONTROL: OWN - own, all                  < |   y=143  setup_row_8 (NetworkedOnly)
  +--------------------------------------------------+   y=158
 ```
+**Update (2026-09-20, PR #307):** RULES is TWO rows, SCORE and TIME LIMIT, above one
+pointer line:
+```
+ | SCORE: MAP - map, 1, 3, 5, 10                  < |   y=47   setup_row_0
+ | TIME LIMIT: MAP - map, 5 to 20 min             < |   y=59   setup_row_1
+ | Respawns and the rest: the Base Camp DIFFICULTY. |   y=71   the pointer line (48)
+```
+RESPAWNS, SPAWN DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and
+CROSS CONTROL went back to the DIFFICULTY screen, which is on the Base Camp
+strip of every campaign again (§10).
 
 Case: the DIFFICULTY formatters emit Title Case and every camp row is upper
 case, so the SESSION upper-cases the shared formatter's output when it
@@ -372,6 +423,9 @@ reads as the key; the DIFFICULTY screen's 140 px face holds 23 glyphs, so
 its row takes the full word too). Notes are budgeted PER ROW against that
 row's longest label (`42 - 3 - max label`), and the sweep pins EVERY label
 value × its note.
+**Update (2026-09-20, PR #307):** DIFFICULTY is no longer a wizard row, so this
+paragraph now describes the DIFFICULTY screen's own rows; `CROSS CONTROL: OWN`
+and the `n MIN` clock faces are unchanged (§10).
 
 `match_knobs` hides SCORE (`score=false`) and TIME LIMIT (`time=false`)
 where the game ignores them (onslaught: `score_limit=0` IS elimination).
@@ -381,6 +435,12 @@ WITHOUT the `CROSS CONTROL` cell when that fact is already the read-only row
 below — a fact on the step as a ROW is never also a LINE. The
 `CROSS CONTROL` row stays a visible read-only row without a `<` cell; the
 MATCH step, which has no rows at all, keeps all five lines.
+**Update (2026-09-20, PR #307):** the wizard's RULES step holds SCORE and TIME LIMIT
+only. When `match_knobs` hides both, the step reads `This game takes its rules
+from the map.` above the pointer line and has no rows. The joiner face is the
+caption plus the ONE packed line; the CROSS CONTROL row is gone from this step
+(its read-only home is the strip's DIFFICULTY door). The MATCH step still
+recaps every rule line (§10).
 
 ### 2.6 SETUP: MATCH (reads the staged world)
 
@@ -434,6 +494,13 @@ STRONG adds a fighter, BRUTAL two.
    5. Back
 Setup # [1-5] (0 = back, N- steps a wheel back):
 ```
+**Update (2026-09-20, PR #307):** the terminal wizard prints the same two RULES rows,
+the ARENA page's `RANDOM ARENA` and the GAME step's `RANDOM`, and no said
+line. The mock's FILL row reads `FILL: STRONG - weak to brutal` now: NONE left
+the wizard's wheel (only LINEUP's per-band wheel keeps `none to brutal`).
+Confirmed ordinals: GAME `8 RANDOM, 9 Next: TEAMS, 10 Back`; a soccer
+ARENA page `5 RANDOM ARENA, 6 Next, 7 Prev, 8 Back`; RULES `1 SCORE, 2 TIME
+LIMIT, 3 Next: MATCH, 4 Prev, 5 Back` (§10).
 
 Rows through `campaign_picker_row_text(row, 72)`; `Next: <STEP>`,
 `Prev: <STEP>` and `Back` are appended items — the two steppers ARE the tab
@@ -442,26 +509,32 @@ lines and the navigation items only. Team Build item 13 `setup` ("Setup") is
 appended, gated `Custom` versus-only with guard
 `This campaign has no arena setup.`; item 11 `difficulty` is gated `Custom`
 classic-only with guard `The fight's rules are on SETUP: RULES.`
+**Update (2026-09-20, PR #307):** REVERSED: Team Build item 13 `Setup` is RETIRED (12
+items) and item 11 `Difficulty` is a plain item again; both guard strings are
+deleted. The terminals' one wizard door is the camp's SETUP row (Team Build
+`7 Camp` → `1`), exactly as on SDL. The one `Custom`-gated terminal item is
+SCENARIO's `Replay Level`, which refuses on versus with `Arenas are set, never
+replayed.` (§10).
 
 ### 2.8 Every new or moved label, with its budget
 
 | Surface | Label | Glyphs | Budget |
 |---|---|---|---|
-| Base Camp strip | `SETUP` | 5 | 10 (68 px beveled) |
+| Base Camp strip | `SETUP` | 5 | 10 (68 px beveled) **Update (2026-09-20, PR #307):** the strip slot reads DIFFICULTY on every campaign; the wizard's SDL door is the docket row `SETUP - SOCCER: THE PITCH  >` (39 worst, budget 42) (§10). |
 | tabs | `GAME` `ARENA` `TEAMS` `RULES` `MATCH`; current `[TEAMS]` | ≤ 7 | 7 (54 px beveled) |
 | footer | `BACK` / `PREV` / `NEXT` | 4 | 6 / 5 / 5 |
 | pagers, reverse cell | `<` `>` and `1/2`; `<` | 1 / 3; 1 | 14 px face; 30 px face |
-| GAME rows | `CAPTURE THE FLAG - 0/10 cleared  >` | 35 | 42 |
+| GAME rows | `CAPTURE THE FLAG - 0/10 cleared  >` | 35 | 42 **Update (2026-09-20, PR #307):** GAME rows carry no tally: worst is `CAPTURE THE FLAG - 10 arenas  >` (31), and the RANDOM row is `RANDOM - any game, any arena` (28) (§10). |
 | ARENA rows | `DUNGEON OF STARS - 4 sides, 20m  [CURRENT]` | 43 → label clipped, tail kept | 42 |
 | TEAMS line cells | `TEAM 4` / `P1 WASD  P2 ARROWS` / `12 MAP UNITS +5 BOTS` | 6 / 18 / 20 | columns 26 / 70 / 188 |
 | TEAMS pointer line | `Deploy and seats: the Base Camp roster and rail.` | 47 | 48 |
-| TEAMS rows | `SIDES: 2 - 2, 3, 4` / `FILL: BRUTAL - none to brutal` / `LINEUP - fill per team, map units  >` | 18 / 28 / 36 | 42 |
-| RULES rows | worst `SPAWN DELAY: NORMAL - normal, fast, slow` | 40 | 42 |
+| TEAMS rows | `SIDES: 2 - 2, 3, 4` / `FILL: BRUTAL - none to brutal` / `LINEUP - fill per team, map units  >` | 18 / 28 / 36 | 42 **Update (2026-09-20, PR #307):** the macro row's note is `weak to brutal` (NONE left the wizard wheel); `none to brutal` is the LINEUP band wheel's note (§10). |
+| RULES rows | worst `SPAWN DELAY: NORMAL - normal, fast, slow` | 40 | 42 **Update (2026-09-20, PR #307):** RULES is two rows, SCORE and TIME LIMIT; worst is `TIME LIMIT: MAP - map, 5 to 20 min` (§10). |
 | MATCH lines | title 28; census rows ≤ 48; rules pairs ≤ 44 | ≤ 48 | 48 |
 | MATCH rows | `VIEW LEVEL - the arena and every team  >` / `GO` / `GO - DEPLOY FOR EVERY PLAYER` | 40 / 2 / 28 | 42 |
 | joiner | `READY is on the Base Camp strip.` (row) 31; `The host sets these for everyone.` (line) 33 | | 42 / 48 |
-| camp docket (Lua) | `GAME: CAPTURE THE FLAG - 10/10 cleared  >` 41; `ARENA: DUNGEON OF STARS - 4 sides, 20m  >` 41; `RANDOM ARENA - any game, any arena` 34 | | 42 |
-| camp readout | `CLEARED` `12/40` | 7 / 5 | header band |
+| camp docket (Lua) | `GAME: CAPTURE THE FLAG - 10/10 cleared  >` 41; `ARENA: DUNGEON OF STARS - 4 sides, 20m  >` 41; `RANDOM ARENA - any game, any arena` 34 | | 42 **Update (2026-09-20, PR #307):** the docket is ONE row, `SETUP - <TITLE>  >` (worst 39); the roll rows moved into the wizard as `RANDOM - any game, any arena` and `RANDOM ARENA - any arena of this game` (37) (§10). |
+| camp readout | `CLEARED` `12/40` | 7 / 5 | header band **Update (2026-09-20, PR #307):** there is no camp readout — the roster leads the panel (§10). |
 | campaign lines (Lua) | `STRONG adds a fighter, BRUTAL two.` 34; `FILL sets how strong the bots are.` 34 | | 38 |
 | terminal | rows ≤ 72; items `Next: RULES` / `Prev: ARENA` / `Back`; team line worst 55 | | 72 |
 | DIFFICULTY screen row | `CROSS CONTROL: OWN` | 18 | 23 (140 px) |
@@ -500,6 +573,11 @@ machine, three renderers.
 - `open(Inputs, entry_page)`, `page()`, `step()`, `choose(row, dir, Inputs)`
   (`dir = +1` click, `-1` the `<` cell / right-click / `N-`), `next`, `prev`,
   `goto_step`, `page_step`, `level_applied`, `refetch`, `take_message`.
+- **Update (2026-09-20, PR #307):** three names in the two bullets above are
+  DELETED — `OutcomeKind::SetDifficulty` and `Outcome::difficulty` (the wizard
+  no longer sets difficulty; the row went back to the DIFFICULTY screen) and
+  `MatchSetupSession::take_message` with the `message_` field behind it.
+  `Outcome::message` is the one message channel (§3.3, §10).
 
 Level rows answer `SetLevel` WITHOUT touching the save (the
 `CampaignPickerSession` contract); the renderer runs its client's gated tail
@@ -507,6 +585,10 @@ and calls `level_applied` only on `Set`/`SetReplay`. Knob rows WRITE the save
 through the shared helper and answer `Turned{knob}`; the renderer runs its
 client's post-write tail. `Difficulty` answers `SetDifficulty{value}` because
 the value is session state, not save state.
+**Update (2026-09-20, PR #307):** the last sentence is REVERSED: the wizard has
+no `Difficulty` row any more (R2-3 sent the seven rules back to the Base Camp
+DIFFICULTY door), so `SetDifficulty` and the outcome's difficulty value are
+deleted rather than renamed (§3.3, §10).
 
 **Bookless versus campaign** (`picker_menu("")` fetches nothing) or an
 `arena_page` that names no root row: the ARENA step lists every level of the
@@ -557,11 +639,11 @@ stage lands, which would flicker rows during the debounce.
 | Client | What it adds |
 |---|---|
 | SDL | `menu_screen_specs.cpp`: `kMatchSetupRows` (28), `match_setup_menu_screen_spec()`, `match_setup_rewire`, `_draw_background` / `_draw_content`, `match_setup_on_spec_row`, `match_setup_frame_tick` (level-reload guard + `match_settings_fingerprint` compare + a `stage_generation()` watch rebuilding the cached report), `run_match_setup_screen(entry_page)`; `MenuScreenId::MatchSetup` registered **Runtime** so the engine-wide sweeps cover it; the screen state installed through the file-static seam pattern. |
-| Shared terminal driver | `run_terminal_match_setup(SaveData&, const TerminalMatchSetupIo&)` in `match_setup_session.cpp` — ONE prompt loop for both terminal clients (the `run_terminal_campaign_camp` precedent). Per prompt: the deal (`deal_arena_lineup_for_cursor` + autosave, the `present_menu` cadence, so the TEAMS prompt after an arena pick reads the dealt word), `io.census(stage)` for the report, `build_terminal_match_setup_model`, `io.prompt`, then dispatch — `SetLevel` through `terminal_level_set_gate` (§3.4), `Turned` → `io.autosave()`, `SetDifficulty` → `io.set_difficulty(value)`, `Refused` → `io.notice`. |
+| Shared terminal driver | `run_terminal_match_setup(SaveData&, const TerminalMatchSetupIo&)` in `match_setup_session.cpp` — ONE prompt loop for both terminal clients (the `run_terminal_campaign_camp` precedent). Per prompt: the deal (`deal_arena_lineup_for_cursor` + autosave, the `present_menu` cadence, so the TEAMS prompt after an arena pick reads the dealt word), `io.census(stage)` for the report, `build_terminal_match_setup_model`, `io.prompt`, then dispatch — `SetLevel` through `terminal_level_set_gate` (§3.4), `Turned` → `io.autosave()`, `SetDifficulty` → `io.set_difficulty(value)`, `Refused` → `io.notice`. **Update (2026-09-20, PR #307):** `SetDifficulty` is gone from the driver; `Turned` autosaves unconditionally and says nothing, and an `Acted` answer carrying a level routes through `terminal_route_acted_level` (§10). |
 | Text | `text_picker.cpp`: `setup_screen()` wires the io and calls the driver; `handle_team_build_item` gains `PickerMenuCommand::MatchSetup`. |
-| Curses | `curses_picker_client.cpp`: `setup_flow(...)` with a MUTABLE options reference (its `set_difficulty` writes `options_.difficulty`); numbered-prompt driver, not `Menu::choose` (up to 12 items). |
+| Curses | `curses_picker_client.cpp`: `setup_flow(...)` with a MUTABLE options reference (its `set_difficulty` writes `options_.difficulty`); numbered-prompt driver, not `Menu::choose` (up to 12 items). **Update (2026-09-20, PR #307):** the curses `setup_flow` takes a const options reference — the wizard no longer writes difficulty (§10). |
 | Projection | `terminal_menu_model.h`: `TerminalMatchSetupModel { lines, items }` + `build_terminal_match_setup_model`. |
-| Model | `menu_model.cpp`: `kTeamBuildItems` 12 → 13 with `{"setup", "Setup", PickerMenuCommand::MatchSetup}` appended; `terminal_item_gate` gains the two `Custom` gates of §2.7. |
+| Model | `menu_model.cpp`: `kTeamBuildItems` 12 → 13 with `{"setup", "Setup", PickerMenuCommand::MatchSetup}` appended; `terminal_item_gate` gains the two `Custom` gates of §2.7. **Update (2026-09-20, PR #307):** `kTeamBuildItems` is 12: item 13 `Setup` is retired and item 11 `Difficulty` is ungated. The one `Custom`-gated terminal item is now SCENARIO's `Replay Level`, which refuses on versus with `Arenas are set, never replayed.` (§10). |
 
 **The SetDifficulty tail** (lead ruling 2 of this PR's execution plan): the
 session computes the VALUE, so `<`, right-click and the terminal `N-` can
@@ -569,14 +651,19 @@ step −1. Each client extracts ONE value-taking tail
 (`apply_difficulty_value` / `apply_options_difficulty`) that the existing
 cycling case calls with `cycle_difficulty(current)` and the wizard calls
 with the value. One tail, two callers — no twin.
+**Update (2026-09-20, PR #307):** the wizard no longer sets difficulty at all — the
+row went back to the DIFFICULTY screen — so `OutcomeKind::SetDifficulty`,
+`Outcome::difficulty` and `TerminalMatchSetupIo::set_difficulty` are deleted.
+The value-taking tails stay: each client keeps ONE of them for its own cycling
+case (§10).
 
 ### 3.4 One implementation per rule — the no-twins audit
 
 | Rule | Home after this PR | What moved / died |
 |---|---|---|
 | SIDES macro and face, clamped to the arena's authored side count | `og::ui::turn_match_sides` / `match_sides_face` in `picker_common` | from `campaign_picker.lua` (which looped 0..3 with no clamp); the Lua is deleted |
-| FILL macro (on opponents + own band, lowest opponent when none on, MIXED face, wrap clears) | `turn_match_fill` / `match_fill_face` | deleted from Lua |
-| the said-lines (`Two sides. One squad at FAIR.`, …) | with the macros, strings verbatim | deleted from Lua |
+| FILL macro (on opponents + own band, lowest opponent when none on, MIXED face, wrap clears) | `turn_match_fill` / `match_fill_face` | deleted from Lua **Update (2026-09-20, PR #307):** fix B: with no band on, a FILL turn lights EVERY authored opponent, not the lowest; the wheel is `weak to brutal` and there is no wrap to NONE (§10). |
+| the said-lines (`Two sides. One squad at FAIR.`, …) | with the macros, strings verbatim | deleted from Lua **Update (2026-09-20, PR #307):** the said-lines are DELETED, not moved — the knobs speak through their faces alone (§10). |
 | SCORE cycle `{0,1,3,5,10}` + toasts | `cycle_ctf_capture_limit(SaveData&, int dir)` in `picker_common` | the Lua twin is deleted; the SCENARIO row is PARKED, `change_ctf_caps` deleted, `ButtonAction::CycleCtfCaptureLimit = 61` retired-do-not-reuse |
 | TIME LIMIT cycle + face `MAP` / `n MIN` + toasts | new `cycle_time_limit` / `format_time_limit_label` | from Lua; its `nM` face retired with it |
 | off-wheel value rejoins at the head | one C++ `next_value` inside the cyclers | from Lua |
@@ -607,6 +694,11 @@ The strip's geometry is untouched because SETUP is a TWIN of DIFFICULTY on
 one rect, statically hidden like READY, so the no-overlap pin holds on the
 materialized table with no test change. The wasm coordinate contracts (GO,
 NETWORK) do not move.
+**Update (2026-09-20, PR #307):** REVERSED: the twin is deleted and the ceiling is
+**73** again. `kCreateMenuSetupIndex` is gone, `MAX_BUTTONS` /
+`GameSession::kMaxButtons` / `kCreateMenuButtonCount` are all 73, and the
+wizard's door is the Base Camp docket's own SETUP row — one door on every
+client, no new ordinal (§10).
 
 ### 3.8 The #305 rule: the FILL step buys bodies in the ball games
 
@@ -720,6 +812,10 @@ signature, no address to an audience. Nothing Roman is introduced: the
 original is a fantasy mercenary-band game, and ludus/lanista would be an
 invention — replacing one cute layer with another is the failure mode #306
 names.
+**Update (2026-09-20, PR #307):** CLEARED is NOT one of this campaign's words any
+more. Multiplayer Arenas states no progress at all: no readout, no tally line,
+no `[CLEARED]` tail, no `n/m cleared` note. The engine's own CLEARED strings
+stay for the campaigns that earn their roads (§10).
 
 What STAYS, deliberately:
 - `arena` — this campaign's own word for a level, and the repo's one
@@ -763,6 +859,12 @@ this list is retired and its replacement is what ships:
 - `BaseCampSlotKind::Card` → `Seat`, and the "P# card" prose → "P# seat"
   (no live player-visible CARD string existed; the deck was already retired
   by the roll).
+  **Update (2026-09-20, PR #307):** the stamp words' replacements are retired
+  in turn: `n/m cleared` is now `N arenas`, and `Cleared: n of 40.`,
+  `Every arena here is cleared.`, `Next uncleared:` and the `CLEARED` readout
+  are all deleted with no replacement. `RANDOM ARENA - any game, any arena`
+  left the camp for the wizard's two roll rows, and `MATCH SETUP` is the
+  docket's one `SETUP` row (§10).
 
 The generator-side **theme lint** is the one guard for briefings: a builder
 `fail()` when any briefing line contains `GAMESMASTER`, `THE BOOK`,
@@ -823,6 +925,12 @@ unchanged (1 click for the same match) and the tab strip puts every knob at
 most 2 clicks from Base Camp, but **the warm clock/respawns change is 4
 clicks where it was 3**. That is the price of the single door, and the PR
 body states it rather than hiding it.
+**Update (2026-09-20, PR #307):** recounted. Cold 2v2 soccer is still 13 clicks over
+5 screens (the docket row replaces the strip door one for one). Respawns are
+now **3** clicks, not 4, because they went back to the DIFFICULTY door. Two
+warm flows got longer instead: "another arena of the same game" is 4 clicks
+(was 3) and a random arena to launch is 4 (was 2). That is the price of one
+button, and the PR body states it (§10, R2-R3).
 
 ---
 
@@ -837,9 +945,9 @@ body states it rather than hiding it.
 | D5 | **Flow = a SETUP wizard** with a tab strip + PREV/NEXT + BACK/Escape-closes; GAME → ARENA → TEAMS → RULES → MATCH | the tabs keep any knob ≤ 2 clicks and answer the 3-press-exit complaint; the last step is the "one screen with the whole match" |
 | D6 | **`ctf_capture_limit` gets ONE surface**, the RULES `SCORE:` row; the SCENARIO row is parked; the Lua twin dies | "the score on two screens" is part of the #304 complaint, and the wizard now serves every versus pack |
 | D7 | **`time_limit`'s home is the RULES row** (`cycle_time_limit` in `picker_common`), faces `n MIN` | one home as before, moved to C++ so bookless versus packs can set the clock; `5M` reads as a quantity, not minutes |
-| D8 | **Base Camp ceiling 73 → 74**: ordinal 73 `setup`, DIFFICULTY's twin on one rect, statically hidden like READY | append-never-carve; strip geometry and wasm contracts untouched |
-| D9 | **DIFFICULTY's knobs on versus campaigns live on the RULES step** (two surfaces, one rule); the DIFFICULTY door stays on classic campaigns, on all three clients | the fight's rules belong in the match setup; one door per campaign kind per client |
-| D10 | **Joiner face = cut the row, print the line** + browsable tabs; caption shared with DIFFICULTY; the joiner camp docket is the two rows and no line | the established grammar; Disabled cells would be a second grammar for one rule |
+| D8 | **Base Camp ceiling 73 → 74**: ordinal 73 `setup`, DIFFICULTY's twin on one rect, statically hidden like READY | append-never-carve; strip geometry and wasm contracts untouched **Update (2026-09-20, PR #307):** REVERSED: the strip twin is deleted, the ceiling is 73 again, and the wizard's door is the docket's SETUP row (§10). |
+| D9 | **DIFFICULTY's knobs on versus campaigns live on the RULES step** (two surfaces, one rule); the DIFFICULTY door stays on classic campaigns, on all three clients | the fight's rules belong in the match setup; one door per campaign kind per client **Update (2026-09-20, PR #307):** REVERSED: the DIFFICULTY door is back on the strip of every campaign; the RULES step keeps SCORE and TIME LIMIT only (§10). |
+| D10 | **Joiner face = cut the row, print the line** + browsable tabs; caption shared with DIFFICULTY; the joiner camp docket is the two rows and no line | the established grammar; Disabled cells would be a second grammar for one rule **Update (2026-09-20, PR #307):** the joiner camp docket is the SAME one SETUP row the host sees, browsable; the joiner's RULES is the caption plus one packed line (§10). |
 | D11 | **No batching**: each knob write syncs at once, the stage debounce coalesces, the MATCH step recomposes on `stage_generation()`, GO forces `ensure_current()` | the zone action tail's behaviour today; preview == launch by construction |
 | D12 | **Which knobs a game uses, which root row lists its arena, and what a fresh arena deals are the campaign's `match_knobs` hook**, not a C++ table keyed on `mode_name` | the engine must not spell mode semantics; `mode_name` exists only after a stage lands and would flicker rows |
 | D13 | **#305 = bodies above FAIR** (STRONG = H+1, BRUTAL = H+2 at FAIR per-body power) on the empty-team arm, bounded by the squad and the room; **the ball arenas DEAL STRONG** | literal to the issue's hedge for the rule, while the shipped default changes for the arenas the issue names; alternatives costed in §3.8.7 |
@@ -850,14 +958,14 @@ body states it rather than hiding it.
 | D18 | **The player learns the body rule from counts** (`2 BOTS` on TEAMS, LINEUP and MATCH) plus one campaign-authored line | counts are the staged census, never a rule twin; the words come from the campaign that owns the fact |
 | D19 | **A cycler row steps back through ONE session entry, `choose(row, -1)`, reached by its 30×10 `<` cell, the terminal `N-` item and the mouse right-click; LEFT/RIGHT stay navigation** | forward-only wheels cost a full lap on overshoot, and right-click alone left touch and pads without a reverse; a key that steps a wheel on one screen and navigates on every other is a rule the whole picker would have to learn |
 | D20 | **GO on the MATCH step IS the strip GO's click**: Base Camp dispatches `GoMenu`, the TeamBuild intercept selects StartGame and answers `MENU_EXIT`, and the state machine runs the popups and the launch | one body; the game must run from Base Camp's frame, not nested in the wizard's |
-| D21 | **The wizard hosts the campaign's book at its root** rather than a title-prefix catalog; the ARENA step IS the book at depth ≥ 2 | the book carries campaign-authored facts (rule lines, notes, cleared tallies) the engine cannot derive |
+| D21 | **The wizard hosts the campaign's book at its root** rather than a title-prefix catalog; the ARENA step IS the book at depth ≥ 2 | the book carries campaign-authored facts (rule lines, notes, cleared tallies) the engine cannot derive **Update (2026-09-20, PR #307):** still true, and the book's root now ends with the wizard's own `RANDOM` row — appended LAST so no arena ordinal moves (§10). |
 | D22 | **A generator-side theme lint** (word list, `TONIGHT`, no lower-case letters) is the one guard for briefings | one implementation per rule; the sign-off never was an on-screen label |
 | D23 | **The engine's "book" strings stay** | the scripted-page tree's engine noun, used by three other campaigns |
 | D24 | **No wire/save/snapshot/replay bump**; `book_signed` orphaned | no new knob; `campaign_state` keys are free-form |
 | D25 | **The rows are the docket's 42-glyph face beside a declared 30 px cell column (280..310) holding the pagers and the `<` cells; tabs, cells and pagers share ONE right edge (310)** | the footer NEXT is the step advance, so the pagers stay beside the rows they page; three unrelated right edges were a defect |
 | D26 | **`kSetupLinesMax = 10` for C++ steps**; hosted Lua pages keep the contract's 6; content starts at y=47 | the MATCH step needs title + 4 teams + 5 rules lines; the Lua contract is untouched; vertical rhythm is part of the design |
 | D27 | **The ARENA tab lands on the page that lists the cursor's arena**, opened on the window holding `[CURRENT]`; from depth ≥ 2 it is a no-op | a tab that searched seven pages or landed on the last page browsed would be a dead tab or a surprise |
-| D28 | **On a versus campaign the docket's page rows are shortcuts into the wizard**; the zone submenu serves classic campaigns only | two chassis for one page tree, with a NEXT that meant two things, was the clutter #304 names |
+| D28 | **On a versus campaign the docket's page rows are shortcuts into the wizard**; the zone submenu serves classic campaigns only | two chassis for one page tree, with a NEXT that meant two things, was the clutter #304 names **Update (2026-09-20, PR #307):** there is ONE docket row and it is a page row into the wizard's GAME step; the shortcut pair is gone (§10). |
 | D29 | **Footer = BACK · PREV · NEXT**, own ids on the zone submenu's rects (PREV at 224) | BACK/Escape keeps meaning "close"; the shared rects keep the footer geometry the chassis already has, and the new ids keep the zone submenu's own oracle honest |
 | D30 | **SIDES is clamped to the arena's authored side count**; the row hides on a two-side arena; team lines print authored teams only | a wheel that turns to 3 on a two-goal pitch writes a knob the map ignores while the line under it says EMPTY |
 | D31 | **Team identity on the wizard is the colour swatch**; TEAMS labels `TEAM n`, MATCH keeps VIEW LEVEL's `<COLOR> TEAM` line; terminals spell `TEAM n COLOR` | one identity every screen already uses; spelling the colour in the TEAMS label would overflow a 2-seat team's line |
@@ -901,6 +1009,13 @@ own block; the two living/code items (`docs/mp-game-modes.md` and
   place, no note).
 - `picker_sdl_defs.h`'s "this screen's back shares no other screen's
   geometry" — the wizard shares the rects under its own ids.
+  **Update (2026-09-20, PR #307):** round 2 reverses four of these in turn:
+  `docs/lineup-design.md` §2's ceiling is **73** again (the twin is deleted),
+  `docs/camp-controls-design.md` §5's DIFFICULTY door is back on the strip of
+  EVERY campaign, `docs/basecamp-zones-design.md`'s camp bullet is ONE row
+  with no readout, and its Terminals bullet loses item 13. G3/H1's "wrap
+  clears the own band" and "the lowest opponent when none are on" in
+  `docs/lineup-design.md` are reversed by fix B (§10).
 
 ### The wave-3 test renames
 
@@ -929,3 +1044,143 @@ retired. `campaign_state` keys are free-form (GTL v15), so an old save
 carrying the key loads unchanged, a new save never writes it, and no version
 moves. There is no cleanup pass — a migration that rewrote saves to delete a
 key nothing reads would be more risk than the byte it saves.
+
+---
+
+## 10. Round 2 (2026-09-20, PR #307) — the maintainer's five items
+
+The maintainer reviewed the branch at `e3582852` and sent five items. This
+section is the record of what round 2 changed; every note above points here.
+Sections 0-9 keep their text verbatim, as a dated snapshot should.
+
+### 10.1 The five items and the rulings they became
+
+| Item | Ruling | What ships |
+|---|---|---|
+| 1. "drop the whole toast. What's its point?" | R2-1 | The four wizard said-lines (SIDES, FILL, SCORE, TIME LIMIT) and their five formatters are DELETED, together with `kMatchCountWords`, `match_squads_phrase`, `match_fill_said`, `format_time_limit_said` and `format_ctf_score_said`. `turn_match_sides` and `turn_match_fill` return `void`. `Outcome::message` is the one message channel (`message_`/`take_message()` deleted), and it carries refusals, the engine's `Level set to <title>.` tail and the campaign's own Lua voice — which now reaches the terminals too. |
+| 2. "the FILL: selector only changes teams 1 and 2, even for 4-player maps" | R2-2 | Fix B: when NO band is on, a FILL turn lights **every authored opponent** plus the own band, not just the lowest. A deliberate SIDES value is still respected while bands are on. NONE also leaves the wizard's FILL wheel (WEAK → FAIR → STRONG → BRUTAL, note `weak to brutal`): in the wizard NONE only ever emptied a versus arena. LINEUP keeps per-team NONE. Pinned end to end on SDL and on the text client, on a four-side arena, and from the collapsed state. |
+| 3. "why does Rules include all the difficulty settings?" | R2-3 | RULES = **SCORE and TIME LIMIT** — the two `match_knobs` — plus one pointer line, `Respawns and the rest: the Base Camp DIFFICULTY.` RESPAWNS, SPAWN DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and CROSS CONTROL return to the DIFFICULTY screen, which is on the strip of every campaign again: `BACK · DIFFICULTY · SCENARIO · NETWORK · GO`. Five steps stay; the MATCH step's recap still states every rule line. |
+| 4. "get rid of the CLEARED: bullshit" | R2-4 | No progress vocabulary anywhere in Multiplayer Arenas, through ONE predicate, `og::ui::progress_marks_shown(save)` = `!is_versus_campaign(save)`. It is read by the wizard's `[CLEARED]` seam, the camp, SCENARIO → SET LEVEL, PROGRESS (header, status column and row affordance), the SET CAMPAIGN card and the terminals' `Replay Level`. `[CURRENT]` stays. Classic campaigns are byte-identical. |
+| 5. "replace all three multiplayer arena buttons with just one button… add a RANDOM button for game type and map" | R2-5 | The docket collapses to ONE row, `SETUP - <GAME>: <ARENA>  >`, which states the current match and opens the wizard on GAME; the joiner sees the same row, browsable. The strip twin is deleted. The wizard gains two roll rows, appended LAST so no arena ordinal moves: `RANDOM - any game, any arena` on the GAME step and `RANDOM ARENA - any arena of this game` on each game's ARENA page, both from ONE Lua `roll(rows)` helper and both host-gated in Lua. An `Acted` answer that carries a level now routes through each surface's existing gated level tail. |
+
+R2-6 records that item 2 is fixed on its own terms: RANDOM is not a
+workaround for a collapsed arena.
+
+### 10.2 Rows this round reverses
+
+- **D8** — ordinal 73 `setup` and the raised ceiling: both deleted. The
+  Base Camp ceiling is 73.
+- **D9** — DIFFICULTY's knobs on the RULES step: reversed. The DIFFICULTY
+  door is on the strip of every campaign, and RULES holds the two match
+  knobs.
+- **D10** — the joiner camp docket "two rows and no line": one row.
+- **D28** — "the docket's page rows are shortcuts": there is one docket row.
+- **G3 / H1** in `docs/lineup-design.md` — "with none on it turns on the
+  lowest opponent" and "the wrap clears the own band": both reversed. Fix B
+  lights every authored opponent, and NONE is off the wizard wheel so there
+  is no wrap to clear anything.
+- **The camp docket's three rows** in `docs/basecamp-zones-design.md`: one row.
+- **Terminal Team Build item 13 `Setup`**: retired. `kTeamBuildItems` is 12,
+  item 11 `Difficulty` is ungated, and both guard strings are deleted.
+
+### 10.3 The FILL rule after fix B
+
+Wheel `{WEAK, FAIR, STRONG, BRUTAL}`. Off-wheel faces (NONE = every band
+off, MIXED) rejoin at the head, WEAK, in either direction. Targets are the
+ON authored opponents, or every authored opponent when none is on, plus the
+own band. On a four-side arena with `my_team 0`:
+
+| State (fill[0..3]) | SIDES face | FILL face | turn +1 → | turn −1 → | SIDES after |
+|---|---|---|---|---|---|
+| dealt `{F,F,F,F}` | 4 | FAIR | `{S,S,S,S}` | `{W,W,W,W}` | 4 |
+| SIDES 3 `{F,F,F,N}` | 3 | FAIR | `{S,S,S,N}` | `{W,W,W,N}` | 3 — a deliberate SIDES value is respected |
+| SIDES 2 `{F,F,N,N}` | 2 | FAIR | `{S,S,N,N}` | `{W,W,N,N}` | 2 |
+| all off `{N,N,N,N}` | 1 | NONE (off-wheel) | `{W,W,W,W}` | `{W,W,W,W}` | **4** — the reported trap, closed |
+| own only `{F,N,N,N}` | 1 | FAIR | `{S,S,S,S}` | `{W,W,W,W}` | 4 |
+| MIXED `{N,W,S,N}` | 3 | MIXED | `{W,W,W,N}` | `{W,W,W,N}` | 3 — no wrap to NONE any more |
+| BRUTAL `{B,B,B,B}` | 4 | BRUTAL | `{W,W,W,W}` | `{S,S,S,S}` | 4 |
+
+Two-side arenas (820, 824, 500) have one opponent, so fix B is a no-op
+there; only the loss of NONE is visible. SIDES owns "fewer sides"; the
+wizard's FILL can no longer empty an arena.
+
+### 10.4 The save bump: GTL 19 → 20, and what a player sees
+
+The round-1 build could persist the collapsed state — `SIDES: 2` with the
+deal memo stamped — and the memo stops a re-deal, so fix B alone would leave
+an affected company at two sides forever. The memo pair entered the `.gtl`
+at v19; the writer moves to **v20** and the memo is read only from v20
+files, so a v19 file loads with the memo cleared and the next arena visit
+re-deals once, lifting NONE bands only. No other format-free heal exists:
+the byte signature of the collapsed state is also the signature of every
+deliberate SIDES 2/3 after a FILL turn, so a signature heal would re-fill a
+chosen SIDES on every entry.
+
+What the player sees, stated in the PR body verbatim:
+
+> A company saved by the previous build re-deals every arena once on its
+> first visit: a four-side arena that had collapsed to SIDES: 2 comes back
+> to SIDES: 4 with the two restored bands at the arena's deal word (FILL
+> reads MIXED until the next click). An arena you had deliberately narrowed
+> with SIDES in that older company is re-filled once the same way — turn
+> SIDES again.
+
+Protocol 18, the snapshot and the replay formats do not move.
+
+### 10.5 The SCENARIO surfaces (R2-4's full scope)
+
+On `progress_marks_shown(save) == false`:
+
+| Surface | Before | After |
+|---|---|---|
+| SCENARIO → SET LEVEL status column | `CLEARED` / `CURRENT` / `LOCKED` | `CURRENT` only (an arena is never LOCKED on versus) |
+| SCENARIO → PROGRESS header | `Level Progress: 3 cleared of N discovered` | `Arenas: N` |
+| PROGRESS status column | `CLEARED` / `CURRENT` / `-------` | `CURRENT` / `-------`, through the one `level_row_status_label` |
+| PROGRESS row affordance | REPLAY / VISIT on cleared rows | GO on every row |
+| SCENARIO → SET CAMPAIGN card line | `3 out of 40 completed` | `40 arenas` |
+| Terminals → SCENARIO → `Replay Level` | prompts for a level id it would call uncleared | refuses first: `Arenas are set, never replayed.` |
+
+The PROGRESS header's number is the ACCESSIBLE set, not 40 — that is the
+screen's own pre-existing listing rule, shared with the terminals, and
+round 2 did not widen into it.
+
+### 10.6 Click counts, recounted to LAUNCH
+
+Cold SDL 2v2 soccer: **13 clicks over 5 screens, unchanged** — the docket
+row replaces the strip door one for one. Warm: the clock is 4; **respawns
+are 3** (DIFFICULTY → row → BACK), down from 4; "another arena of the same
+game" is **4** (SETUP row → ARENA tab → row → Esc), up from 3; "another
+game" is 4; **a random arena to launch is 4** (SETUP → RANDOM → MATCH tab →
+GO, or SETUP → RANDOM → Esc → GO), up from 2.
+
+### 10.7 Residuals
+
+- **R2-R1** — a versus campaign with NO `base_camp` hook has no wizard door
+  on ANY client (the bookless fallback stays pinned at the session level; a
+  C++ default-zone SETUP row was rejected as a second composition of the
+  row — revisit if a second versus pack ships).
+- **R2-R2** — no-level `Acted` rows on wizard pages still skip the #212
+  sync/autosave tail; their MESSAGE now reaches the terminals.
+- **R2-R3** — warm "other arena, same game" is 4 clicks (was 3) and a random
+  arena is 4 clicks to launch (was 2), the price of one button.
+- **R2-R4** — the CTF page's RANDOM ARENA sits on window 2/2.
+- **R2-R5** — a company saved by the previous build re-deals each arena once
+  on its first visit after the upgrade (a deliberately narrowed arena in
+  such a company is re-filled once; turn SIDES again).
+- **R2-R6** — the SCENARIO door is still labelled PROGRESS / `Progress` on
+  the modes campaign; the screen behind it is an arena list with GO and no
+  progress word.
+- One test-depth residual carried from the wave: the curses client's own
+  binding of `io.seat_short_name` on the TEAMS step lost its last witness
+  when the camp took the prompt back, so that one assertion is dropped. The
+  RULE is still pinned at session level and end to end on the text client;
+  restoring the curses pin needs a frame-history accessor on
+  `HeadlessTerminal`.
+
+### 10.8 What did NOT change
+
+Lead ruling 3's grid split stands exactly as §2.0 describes it: the nine
+vertical/rhythm names in `match_setup_session.h`, every x/w/tab/cell/footer
+name in `picker_sdl_defs.h`. Five steps, the tab strip, the `<` reverse
+cell, the entry-highlight table, GO's gating and the MATCH recap are all
+unchanged.
