@@ -681,7 +681,7 @@ void MatchSetupSession::compose_match(const Inputs& inputs)
 
 // --- choose --------------------------------------------------------------
 
-MatchSetupSession::Outcome MatchSetupSession::turn(Row::Knob knob, int dir,
+MatchSetupSession::Outcome MatchSetupSession::turn(Row::Knob knob,
                                                    const Inputs& inputs)
 {
     Outcome out = bare(OutcomeKind::Turned);
@@ -689,21 +689,19 @@ MatchSetupSession::Outcome MatchSetupSession::turn(Row::Knob knob, int dir,
     switch (knob)
     {
         case Row::Knob::Sides:
-            turn_match_sides(save_, inputs.my_team, inputs.authored_mask,
-                             dir);
+            turn_match_sides(save_, inputs.my_team, inputs.authored_mask);
             break;
         case Row::Knob::Fill:
-            turn_match_fill(save_, inputs.my_team, inputs.authored_mask,
-                            dir);
+            turn_match_fill(save_, inputs.my_team, inputs.authored_mask);
             break;
         case Row::Knob::BandFill:
-            save_.fill[0] = cycle_lineup_fill(save_.fill[0], dir);
+            save_.fill[0] = cycle_lineup_fill(save_.fill[0], +1);
             break;
         case Row::Knob::Score:
-            cycle_ctf_capture_limit(save_, dir);
+            cycle_ctf_capture_limit(save_);
             break;
         case Row::Knob::Time:
-            cycle_time_limit(save_, dir);
+            cycle_time_limit(save_);
             break;
         case Row::Knob::None:
             break;
@@ -711,7 +709,7 @@ MatchSetupSession::Outcome MatchSetupSession::turn(Row::Knob knob, int dir,
     return out;
 }
 
-MatchSetupSession::Outcome MatchSetupSession::choose(std::size_t row, int dir,
+MatchSetupSession::Outcome MatchSetupSession::choose(std::size_t row,
                                                      const Inputs& inputs)
 {
     if (row >= page_.rows.size())
@@ -806,7 +804,7 @@ MatchSetupSession::Outcome MatchSetupSession::choose(std::size_t row, int dir,
 
     if (picked.extra == Row::Extra::Cycler)
     {
-        Outcome out = turn(picked.knob, dir, inputs);
+        Outcome out = turn(picked.knob, inputs);
         compose(inputs, Window::Keep);
         return out;
     }
@@ -911,21 +909,15 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         }
         const std::optional<std::string> answer = io.base.prompt(
             model.title, lines,
-            std::format("Setup # [1-{}] (0 = back, N- steps a wheel back): ",
-                        model.items.size()));
+            std::format("Setup # [1-{}] (0 = back): ", model.items.size()));
         if (!answer || answer->empty() || *answer == "0")
             return;
 
-        // "N" steps a wheel forward, "N-" steps it back — the `<` cell's
-        // projection onto a prompt.
-        std::string digits = *answer;
-        int dir = 1;
-        if (digits.size() > 1 && digits.back() == '-')
-        {
-            dir = -1;
-            digits.pop_back();
-        }
-        const std::optional<int> choice = parse_int_strict(digits);
+        // A plain row number, exactly as the camp's own prompt takes one.
+        // A cycler row steps its wheel one stop FORWARD; there is no
+        // reverse grammar, so anything that is not a number in range is
+        // the invalid-row notice.
+        const std::optional<int> choice = parse_int_strict(*answer);
         if (!choice || *choice < 1 ||
             static_cast<std::size_t>(*choice) > model.items.size())
         {
@@ -934,11 +926,6 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         }
         const TerminalMatchSetupItem item =
             model.items[static_cast<std::size_t>(*choice - 1)];
-        if (dir < 0 && !item.reversible)
-        {
-            io.base.notice(std::string(kSetupInvalidRowNotice));
-            continue;
-        }
 
         if (item.kind == TerminalMatchSetupItem::Kind::Back)
             return;
@@ -957,7 +944,7 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         const MatchSetupSession::Row picked = session.page().rows[item.row];
         using Kind = MatchSetupSession::OutcomeKind;
         const MatchSetupSession::Outcome outcome =
-            session.choose(item.row, dir, inputs);
+            session.choose(item.row, inputs);
         switch (outcome.kind)
         {
             case Kind::SetLevel:

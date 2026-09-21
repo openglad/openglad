@@ -239,16 +239,6 @@ std::uint64_t menu_screen_testing_completed_frames();
 int menu_screen_testing_highlighted_button();
 #endif
 
-// The right-click half of the reverse-step rule (docs/match-setup-design.md
-// D19): vbutton::do_call_right stashes a MenuSpecRow activation exactly as
-// do_call does and RAISES this flag, so a screen's on_spec_row can tell a
-// right-click from a left one and step its cycler backward. ONE session
-// entry (choose(row, -1)) reached three ways: the row's "<" cell, the
-// terminal "N-" item and this. The runner resets the flag after every
-// dispatch; under TESTING a stash that survives a frame aborts loudly.
-bool menu_spec_row_reverse();
-void set_menu_spec_row_reverse(bool reverse);
-
 // #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
 //
 // THE RULE: whoever fades a screen IN fades it OUT, at its own exit, while
@@ -782,8 +772,8 @@ struct MatchSetupScreenState {
 using MatchSetupExit = MatchSetupScreenState::Exit;
 
 // The wizard: a tab strip in the panel's header band, the step's lines and
-// team lines, up to nine 42-glyph rows with their reverse cells, the ARENA
-// window pagers, and BACK | PREV | NEXT in the footer.
+// team lines, up to nine 42-glyph rows, the ARENA window pagers, and
+// BACK | PREV | NEXT in the footer.
 const MenuScreenSpec& match_setup_menu_screen_spec();
 
 // Install the state the per-frame rewire and draw hooks read (the

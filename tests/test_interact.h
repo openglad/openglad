@@ -377,9 +377,10 @@ inline bool interact(const std::string& id)
 }
 
 // The RIGHT-button click on the same button, for the screens that answer
-// one (hire/train's reverse candidate cycling, the SETUP wizard's reverse
-// step on a cycler row). The pointer must be OVER the button when the
-// runner calls rightclick(), which is exactly what this does.
+// one (hire/train's reverse candidate cycling — the picker's cyclers
+// themselves turn forward only, whichever button is pressed). The pointer
+// must be OVER the button when the runner calls rightclick(), which is
+// exactly what this does.
 inline bool interact_right(const std::string& id)
 {
     int win_x = -1, win_y = -1;

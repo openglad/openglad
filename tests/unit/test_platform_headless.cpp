@@ -3676,8 +3676,9 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
             "2\n"    // ARENA: THE MUDBOWL -> Applied -> advance to TEAMS
             "3\n"    // TEAMS: Next: RULES
             "2\n"    // RULES: TIME LIMIT forward
-            "2-\n"   // RULES: the SAME row backward -- the `<` cell's
-                     //   projection; a cycle-once handler would lap instead
+            "2-\n"   // RULES: `N-` is not an answer any more -- the wheels
+                     //   are forward-only, so the driver's parse fails and
+                     //   the invalid-row notice is all it gets
             "3\n"    // RULES: Next: MATCH
             "2\n"    // MATCH: GO -> the terminal pointer notice
             "1\n"    // MATCH: VIEW LEVEL -> the terminal pointer notice
@@ -3746,7 +3747,11 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     expect_in_order("Respawns and the rest: the Base Camp DIFFICULTY.");
     expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
     expect_in_order("TIME LIMIT: 5 MIN - map, 5 to 20 min");
-    expect_in_order("TIME LIMIT: MAP - map, 5 to 20 min");
+    // ...and `2-` bought nothing but the invalid-row notice: the prompt
+    // takes a plain number and the clock stays where the forward turn
+    // left it.
+    expect_in_order(std::string(og::ui::kSetupInvalidRowNotice));
+    expect_in_order("TIME LIMIT: 5 MIN - map, 5 to 20 min");
     expect_in_order("--- SETUP: MATCH ---");
     expect_in_order("SOCCER: THE MUDBOWL");
     expect_in_order("ACTIVE - MATCHED BOTS (2) STRONG");
@@ -3768,9 +3773,10 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("setupw"));
     EXPECT_EQ(821, static_cast<int>(reloaded.scen_num))
         << "the ARENA row's Applied arm ran apply_level_tail";
-    EXPECT_EQ(0, static_cast<int>(reloaded.time_limit))
-        << "`2-` stepped the SAME wheel back, so the clock ends where it "
-           "started -- a cycle-once handler would have left it on 2 MIN";
+    EXPECT_EQ(3600, static_cast<int>(reloaded.time_limit))
+        << "`2-` is not an answer: the one FORWARD turn is the only thing "
+           "that moved the clock, and a reverse grammar would have put it "
+           "back on MAP";
     EXPECT_EQ(1, static_cast<int>(reloaded.ctf_capture_limit))
         << "the Turned arm's autosave tail put the last knob on disk";
 
@@ -3849,10 +3855,12 @@ TEST(PlatformHeadless, text_picker_setup_wizard_refuses_an_undeployed_go)
 }
 
 // #305 end to end, through the wizard's own FILL wheel: the ball arenas
-// deal STRONG, `N-` walks the wheel back to FAIR and the match fields ONE
-// bot, `N` twice walks it to BRUTAL and the match fields THREE -- while the
-// brawl arenas answer 1 at every word, because their FILL buys no body.
-// The at-rest twin above pins the untouched default; this pins the knob.
+// deal STRONG, three forward presses lap the four-stop wheel round to FAIR
+// and the match fields ONE bot, one press lands BRUTAL and the match fields
+// THREE -- while the brawl arenas answer 1 at every word, because their
+// FILL buys no body. The at-rest twin above pins the untouched default;
+// this pins the knob, and the press counts are what a forward-only wheel
+// costs.
 TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_count)
 {
     restore_default_campaigns();
@@ -3868,19 +3876,21 @@ TEST(PlatformHeadless, text_picker_go_on_an_arena_explicit_fill_walks_the_body_c
         int opponents;        // live opponents on GREEN at tick 3
     };
     // The deal is STRONG on 820/824 and FAIR on 300/500 (#305, SPEC
-    // §3.8.7), so "one step back" and "one step forward" land on different
-    // words per arena -- the wheel is walked by the FACE it writes, never
-    // by counting presses.
+    // §3.8.7), so the same press count lands on different words per arena
+    // -- the wheel is asserted by the FACE it writes, never by counting
+    // presses. The wheel is WEAK -> FAIR -> STRONG -> BRUTAL and turns
+    // forward only, so from STRONG three presses reach FAIR and one
+    // reaches BRUTAL, and a four-press lap on 300/500 comes home to FAIR.
     // 300 and 500 author FOUR sides, so their TEAMS step leads with SIDES
-    // and the FILL wheel is row 2 (the old `1-`/`1` round-tripped SIDES and
-    // never touched FILL at all -- recon2/fill-bug.md §5).
+    // and the FILL wheel is row 2 (a drive on row 1 would round-trip SIDES
+    // and never touch FILL at all -- recon2/fill-bug.md §5).
     const Walk walks[] = {
-        {820, "1-\n",     "FILL: FAIR - weak to brutal",   1},
-        {820, "1\n",      "FILL: BRUTAL - weak to brutal", 3},
-        {824, "1-\n",     "FILL: FAIR - weak to brutal",   1},
-        {824, "1\n",      "FILL: BRUTAL - weak to brutal", 3},
-        {300, "2-\n2\n",  "FILL: FAIR - weak to brutal",   1},
-        {500, "2-\n2\n",  "FILL: FAIR - weak to brutal",   1},
+        {820, "1\n1\n1\n",      "FILL: FAIR - weak to brutal",   1},
+        {820, "1\n",            "FILL: BRUTAL - weak to brutal", 3},
+        {824, "1\n1\n1\n",      "FILL: FAIR - weak to brutal",   1},
+        {824, "1\n",            "FILL: BRUTAL - weak to brutal", 3},
+        {300, "2\n2\n2\n2\n",   "FILL: FAIR - weak to brutal",   1},
+        {500, "2\n2\n2\n2\n",   "FILL: FAIR - weak to brutal",   1},
     };
     for (const Walk& walk : walks) {
         ASSERT_TRUE(seed_arena_company("arenaw", walk.scen));

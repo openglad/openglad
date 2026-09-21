@@ -7,9 +7,9 @@
  */
 
 // The SETUP wizard in real SDL (docs/match-setup-design.md §2): the door
-// twin on the Base Camp strip, the five steps, the tab jumps, the reverse
-// cell and the right-click, GO's gated face, and the #305 census a fresh
-// ball arena deals with no knob touched.
+// twin on the Base Camp strip, the five steps, the tab jumps, the
+// forward-only cycler wheels, GO's gated face, and the #305 census a
+// fresh ball arena deals with no knob touched.
 //
 // Every flow here drives picker_main from an injector thread through the
 // ACKNOWLEDGED ladders (tests/test_click_ladder.h) against named edges,
@@ -320,7 +320,7 @@ int step_walk_injector(void* data)
     ++state->captures;
 
     // TEAMS: the swatched team lines, the campaign's own line, the FILL
-    // wheel with its reverse cell, and the LINEUP door.
+    // wheel, and the LINEUP door.
     state->reached_teams = open_setup_step(2, "TEAMS", 15000);
     if (!state->reached_teams)
         return escape(5, "the TEAMS tab never came up");
@@ -331,9 +331,9 @@ int step_walk_injector(void* data)
     capture_presented_frame("setup_step_teams", uxshots_dir());
     ++state->captures;
 
-    // RULES: the TWO match knobs, each with its own "<" cell (R2-3). The
-    // other seven rules went home to the Base Camp DIFFICULTY screen, and
-    // the step's one line points there.
+    // RULES: the TWO match knobs (R2-3). The other seven rules went home
+    // to the Base Camp DIFFICULTY screen, and the step's one line points
+    // there.
     state->reached_rules = open_setup_step(3, "RULES", 15000);
     if (!state->reached_rules)
         return escape(6, "the RULES tab never came up");
@@ -468,26 +468,34 @@ TEST(MatchSetupUi, tab_walk_through_every_step)
 }
 
 // ---------------------------------------------------------------------------
-// 3. The reverse step, both ways into ONE session entry (D19): the row's
-//    "<" cell and a right-click on the row itself must land on the same
-//    face, and neither may be reachable by LEFT/RIGHT (those stay nav).
+// 3. The wheels turn FORWARD ONLY, like every other cycler in the picker
+//    (the DIFFICULTY rows, the LINEUP wheels). An overshoot costs a lap —
+//    the longest wheel on this screen is five stops.
+//
+//    The right button holds no secret reverse either. The wizard does not
+//    set `right_click_enabled`, and on such a screen the engine's rule is
+//    the legacy `if (leftmouse(buttons))` one it has always had: ANY
+//    nonzero click activates leftclick. So a right-click on a cycler row
+//    does exactly what a left-click does — it steps the wheel FORWARD —
+//    which is what every other MenuSpecRow screen already does with it.
 
 namespace
 {
-struct ReverseState
+struct ForwardState
 {
     std::atomic<bool> test_finished{false};
     bool opened = false;
     bool stepped_forward = false;
-    bool cell_stepped_back = false;
-    bool right_click_stepped_back = false;
+    std::string face_after_right_click;
+    bool right_click_stepped_forward = false;
+    bool lapped_home = false;
     bool finished = false;
 };
 
-int reverse_injector(void* data)
+int forward_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    auto* const state = static_cast<ReverseState*>(data);
+    auto* const state = static_cast<ForwardState*>(data);
     const auto escape = [state](int leg, const char* why) {
         return escape_to_the_main_thread(state->test_finished, leg, why,
                                          kSetupEscapeDoors);
@@ -514,35 +522,32 @@ int reverse_injector(void* data)
     state->stepped_forward = click_until_label_containing(
         "setup_row_0", "SCORE: 1", 3, 10000, "turned", "setup");
 
-    // The "<" cell steps the SAME wheel back: 1 -> MAP. Every pointer and
-    // every pad can reach it, which the right-click alone could not. The
-    // cell's OWN face never moves (it is the glyph "<"), so the edge this
-    // ladder watches is the ROW's face — press one id, watch another.
-    state->cell_stepped_back = click_until_edge(
-        "setup_rev_0",
-        [](int wait_ms) {
-            return wait_for_interactable_label_matching(
-                "setup_row_0",
-                [](const std::string& label) {
-                    return label.find("SCORE: MAP") != std::string::npos;
-                },
-                wait_ms);
+    // A RIGHT-click on the same row: one press, and the oracle is the
+    // face it writes. It steps the wheel FORWARD, 1 -> 3, exactly as the
+    // left click did — never back.
+    (void)interact_right("setup_row_0");
+    state->right_click_stepped_forward = wait_for_interactable_label_matching(
+        "setup_row_0",
+        [](const std::string& label) {
+            return label.find("SCORE: 3") != std::string::npos;
         },
-        "turned", 3, 10000, "setup");
+        10000);
+    (void)wait_for_menu_frames(2);
+    state->face_after_right_click = interactable_label("setup_row_0");
 
-    // And a right-click on the row itself is the third way in. It is not a
-    // ladder (interact_right sends one press), so prove it by the face.
-    if (state->cell_stepped_back) {
-        (void)click_until_label_containing("setup_row_0", "SCORE: 1", 3,
-                                           10000, "turned", "setup");
-        (void)interact_right("setup_row_0");
-        state->right_click_stepped_back =
-            wait_for_interactable_label_matching(
-                "setup_row_0",
-                [](const std::string& label) {
-                    return label.find("SCORE: MAP") != std::string::npos;
-                },
-                10000);
+    // And the overshoot is paid forward: SCORE is {MAP,1,3,5,10}, so the
+    // rest of the lap is three more presses. Each step is proven by the
+    // face the row wrote, which is exactly what a lap has to cost to be
+    // worth stating.
+    if (state->right_click_stepped_forward) {
+        static const char* const kFaces[] = {"SCORE: 5", "SCORE: 10",
+                                             "SCORE: MAP"};
+        state->lapped_home = true;
+        for (const char* face : kFaces) {
+            state->lapped_home = state->lapped_home &&
+                click_until_label_containing("setup_row_0", face, 3, 10000,
+                                             "turned", "setup");
+        }
     }
 
     if (!click_until_edge("setup_back", [](int wait_ms) {
@@ -556,16 +561,16 @@ int reverse_injector(void* data)
 }
 } // namespace
 
-TEST(MatchSetupUi, reverse_cell_and_right_click_step_a_rules_cycler_back)
+TEST(MatchSetupUi, a_rules_cycler_laps_forward_and_ignores_a_right_click)
 {
     trace_clear();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
     write_versus_save("modes", 300);
 
-    ReverseState state;
+    ForwardState state;
     SDL_Thread* thread =
-        SDL_CreateThread(reverse_injector, "setup_reverse", &state);
+        SDL_CreateThread(forward_injector, "setup_forward", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -582,13 +587,15 @@ TEST(MatchSetupUi, reverse_cell_and_right_click_step_a_rules_cycler_back)
     ASSERT_TRUE(state.opened);
     EXPECT_TRUE(state.stepped_forward)
         << "one click steps the SCORE wheel MAP -> 1";
-    EXPECT_TRUE(state.cell_stepped_back)
-        << "the row's '<' cell steps the SAME wheel back to MAP — a "
-           "forward-only wheel costs a full lap on an overshoot, and the "
-           "cell is the reverse every pointer and every pad can reach";
-    EXPECT_TRUE(state.right_click_stepped_back)
-        << "and a right-click on the row is the third way into the one "
-           "session entry (D19)";
+    EXPECT_TRUE(state.right_click_stepped_forward)
+        << "a right-click on a cycler row is just a click: the wizard sets "
+           "no right_click_enabled, so the engine's legacy rule applies and "
+           "it steps the wheel FORWARD, 1 -> 3. A reverse hidden on one "
+           "mouse button is a rule no other picker screen teaches; the "
+           "face read '" << state.face_after_right_click << "'";
+    EXPECT_TRUE(state.lapped_home)
+        << "and an overshoot is paid forward: the rest of the lap walks "
+           "the five-stop SCORE wheel home to MAP";
     restore_gladiator_mount();
 }
 
@@ -1110,19 +1117,9 @@ TEST(MatchSetupUi, warm_next_prev_through_every_step)
 }
 
 // ---------------------------------------------------------------------------
-// 8. The two doors, and the right-click that reaches them. TEAMS carries
-//    the LINEUP door and MATCH the VIEW LEVEL door; both open a NESTED
-//    engine screen over the wizard and both come back to the step that
-//    opened them.
-//
-//    The right-click is the part no flow covered and the runtime's own
-//    invariant caught nothing about: a right-click on a door row arrives as
-//    choose(row, -1), which is still the door, and the reverse flag it set
-//    used to be cleared only AFTER the dispatch returned — i.e. after the
-//    nested screen's whole loop had run. Its first frame therefore opened
-//    holding a flag from another screen's click: under TESTING the runner
-//    aborts on it, and in production the nested screen's first row press
-//    would have stepped its wheel backwards.
+// 8. The two doors. TEAMS carries the LINEUP door and MATCH the VIEW
+//    LEVEL door; both open a NESTED engine screen over the wizard and both
+//    come back to the step that opened them.
 
 namespace
 {
@@ -1130,7 +1127,7 @@ struct DoorsState
 {
     std::atomic<bool> test_finished{false};
     bool opened = false;
-    bool lineup_opened_by_right_click = false;
+    bool lineup_opened = false;
     bool back_on_teams = false;
     bool view_level_opened = false;
     bool back_on_match = false;
@@ -1158,13 +1155,12 @@ int doors_injector(void* data)
         return escape(3, "the TEAMS step never came up");
     (void)wait_for_menu_frames(2);
 
-    // A RIGHT-click on the LINEUP door. interact_right sends ONE press, so
-    // the oracle is the nested screen's own id.
-    (void)interact_right("setup_row_1");
-    state->lineup_opened_by_right_click =
-        wait_for_interactable("lineup_unite", 15000);
-    if (!state->lineup_opened_by_right_click)
-        return escape(4, "the LINEUP door did not open on a right-click");
+    // The door's oracle is the nested screen's own id.
+    state->lineup_opened = click_until_edge("setup_row_1", [](int wait_ms) {
+        return wait_for_interactable("lineup_unite", wait_ms);
+    }, nullptr, 3, 15000);
+    if (!state->lineup_opened)
+        return escape(4, "the LINEUP door did not open");
     (void)wait_for_menu_frames(2);
     state->back_on_teams = click_until_edge("back", [](int wait_ms) {
         return wait_for_interactable_label_matching(
@@ -1231,10 +1227,8 @@ TEST(MatchSetupUi, lineup_and_view_level_doors_round_trip)
     EXPECT_EQ(0, thread_result)
         << "the injector gave up at leg " << thread_result;
     ASSERT_TRUE(state.opened);
-    EXPECT_TRUE(state.lineup_opened_by_right_click)
-        << "D19: a right-click on a DOOR row is still the door — and the "
-           "reverse flag it set must not survive into the nested screen "
-           "(under TESTING the runner aborts the binary on one that does)";
+    EXPECT_TRUE(state.lineup_opened)
+        << "the TEAMS step's second row is the LINEUP door";
     EXPECT_TRUE(state.back_on_teams)
         << "the nested screen comes back to the step that opened it";
     EXPECT_TRUE(state.view_level_opened);
@@ -1430,7 +1424,6 @@ struct JoinerState
 {
     std::atomic<bool> test_finished{false};
     bool opened_rules = false;
-    bool no_reverse_cells = false;
     bool arena_refused = false;
     bool still_on_arena = false;
     bool rules_has_no_rows = false;
@@ -1459,10 +1452,6 @@ int joiner_injector(void* data)
     if (!state->opened_rules)
         return escape(2, "the RULES step never came up");
     (void)wait_for_menu_frames(2);
-    // A read-only row carries no reverse cell: the cells are the host's
-    // half of the wheel, and a joiner has no wheel.
-    state->no_reverse_cells = !has_interactable("setup_rev_0") &&
-        !has_interactable("setup_rev_1");
     // R2-3: a joiner's RULES is the caption and the ONE packed line. No
     // rows at all — not even a read-only one.
     state->rules_has_no_rows = !has_interactable("setup_row_0");
@@ -1541,8 +1530,6 @@ TEST(MatchSetupUi, joiner_read_only_walk_and_ready_row)
         << "the injector gave up at leg " << thread_result;
     ASSERT_TRUE(state.opened_rules)
         << "a joiner opens the wizard too: reading the match is the point";
-    EXPECT_TRUE(state.no_reverse_cells)
-        << "a read-only row has no '<' cell";
     EXPECT_TRUE(state.rules_has_no_rows)
         << "R2-3: the joiner's RULES step is the caption and ONE packed "
            "line — no rows, read-only or otherwise";

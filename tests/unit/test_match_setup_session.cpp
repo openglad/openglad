@@ -102,16 +102,15 @@ std::string fill(const SaveData& save, int my_team,
     return og::ui::match_fill_face(save, my_team, mask);
 }
 
-void turn_sides(SaveData& save, int my_team, int dir = +1,
+void turn_sides(SaveData& save, int my_team,
                 std::uint8_t mask = kFourSides)
 {
-    og::ui::turn_match_sides(save, my_team, mask, dir);
+    og::ui::turn_match_sides(save, my_team, mask);
 }
 
-void turn_fill(SaveData& save, int my_team, int dir = +1,
-               std::uint8_t mask = kFourSides)
+void turn_fill(SaveData& save, int my_team, std::uint8_t mask = kFourSides)
 {
-    og::ui::turn_match_fill(save, my_team, mask, dir);
+    og::ui::turn_match_fill(save, my_team, mask);
 }
 
 } // namespace
@@ -270,34 +269,6 @@ TEST(MatchSetupRules, dealt_arena_rest_reads_through_the_faces)
     EXPECT_EQ("FILL: FAIR", fill(save, 0));
 }
 
-// Both wheels step backwards, which the Lua's next_value could not do:
-// the reverse cell, the terminal "N-" item and a right-click all land
-// here. An off-wheel value still rejoins at the HEAD either way — it is
-// one rule, not a direction-dependent pair.
-TEST(MatchSetupRules, reverse_step_walks_every_wheel_backward)
-{
-    SaveData save;
-    turn_sides(save, 0, -1);
-    EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), save.fill)
-        << "SIDES: 1 is off the wheel: either direction rejoins at 2";
-    turn_sides(save, 0, -1);
-    EXPECT_EQ((Fills{kNone, kFair, kFair, kFair}), save.fill)
-        << "2 steps back to the tail of the 2 -> 3 -> 4 wheel";
-
-    SaveData fresh;
-    turn_fill(fresh, 0, -1);
-    EXPECT_EQ((Fills{kWeak, kWeak, kWeak, kWeak}), fresh.fill)
-        << "NONE is off the wheel: either direction rejoins at the head, "
-           "and fix B lights every authored opponent";
-
-    SaveData mixed;
-    mixed.fill = {kNone, kWeak, kStrong, kNone};
-    EXPECT_EQ("FILL: MIXED", fill(mixed, 0));
-    turn_fill(mixed, 0, -1);
-    EXPECT_EQ((Fills{kWeak, kWeak, kWeak, kNone}), mixed.fill)
-        << "MIXED is off the wheel: either direction rejoins at WEAK";
-}
-
 // --- The TIME LIMIT and SCORE wheels -----------------------------------
 
 TEST(MatchSetupRules, time_limit_wheel_faces)
@@ -318,44 +289,36 @@ TEST(MatchSetupRules, time_limit_wheel_faces)
     };
     for (const Step& step : steps)
     {
-        og::ui::cycle_time_limit(save, +1);
+        og::ui::cycle_time_limit(save);
         EXPECT_EQ(step.ticks, save.time_limit);
         EXPECT_EQ(step.face, og::ui::format_time_limit_label(save));
     }
 
-    og::ui::cycle_time_limit(save, -1);
-    EXPECT_EQ(14400, save.time_limit) << "0 steps back to the wheel's tail";
-
     // A clock settled from a lobby or an older save wears the minutes it
     // holds (integer division, the determinism contract) and rejoins the
-    // wheel at its head from either direction.
+    // wheel at its head.
     save.time_limit = 2160;
     EXPECT_EQ("TIME LIMIT: 3 MIN", og::ui::format_time_limit_label(save));
     save.time_limit = 5400;
     EXPECT_EQ("TIME LIMIT: 7 MIN", og::ui::format_time_limit_label(save));
-    og::ui::cycle_time_limit(save, +1);
-    EXPECT_EQ(0, save.time_limit);
-    save.time_limit = 5400;
-    og::ui::cycle_time_limit(save, -1);
+    og::ui::cycle_time_limit(save);
     EXPECT_EQ(0, save.time_limit);
 }
 
-TEST(MatchSetupRules, score_wheel_reverses)
+TEST(MatchSetupRules, score_wheel_laps_forward)
 {
     SaveData save;
-    const std::vector<short> backward = {10, 5, 3, 1, 0};
-    for (const short expected : backward)
+    // Five stops, forward only: a full lap is what an overshoot costs.
+    const std::vector<short> forward = {1, 3, 5, 10, 0};
+    for (const short expected : forward)
     {
-        og::ui::cycle_ctf_capture_limit(save, -1);
+        og::ui::cycle_ctf_capture_limit(save);
         EXPECT_EQ(expected, save.ctf_capture_limit);
     }
 
-    // Junk rejoins at the head whichever way it is turned.
+    // Junk rejoins at the head.
     save.ctf_capture_limit = 42;
-    og::ui::cycle_ctf_capture_limit(save, -1);
-    EXPECT_EQ(0, save.ctf_capture_limit);
-    save.ctf_capture_limit = 42;
-    og::ui::cycle_ctf_capture_limit(save, +1);
+    og::ui::cycle_ctf_capture_limit(save);
     EXPECT_EQ(0, save.ctf_capture_limit);
 }
 
@@ -380,27 +343,27 @@ TEST(MatchSetupRules, sides_wheel_is_clamped_to_the_authored_sides)
     // A two-side arena has exactly one legal value, so every turn lands on
     // it and team 2 is never dealt anything.
     SaveData two;
-    turn_sides(two, 0, +1, 0b0011);
+    turn_sides(two, 0, 0b0011);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), two.fill);
-    turn_sides(two, 0, +1, 0b0011);
+    turn_sides(two, 0, 0b0011);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), two.fill);
     EXPECT_EQ("SIDES: 2", sides(two, 0, 0b0011));
 
     // A three-side arena wheels 2 -> 3 -> 2.
     SaveData three;
-    turn_sides(three, 0, +1, 0b0111);
+    turn_sides(three, 0, 0b0111);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), three.fill);
-    turn_sides(three, 0, +1, 0b0111);
+    turn_sides(three, 0, 0b0111);
     EXPECT_EQ((Fills{kNone, kFair, kFair, kNone}), three.fill);
-    turn_sides(three, 0, +1, 0b0111);
+    turn_sides(three, 0, 0b0111);
     EXPECT_EQ((Fills{kNone, kFair, kNone, kNone}), three.fill);
 
     // A gap in the mask: the opponents of a seat on team 0 are 1 then 3,
     // and team 2 — which the map authors no markers for — is never written.
     SaveData gap;
     gap.fill[2] = kBrutal;  // a stale value the macro must leave alone
-    turn_sides(gap, 0, +1, 0b1011);
-    turn_sides(gap, 0, +1, 0b1011);
+    turn_sides(gap, 0, 0b1011);
+    turn_sides(gap, 0, 0b1011);
     EXPECT_EQ((Fills{kNone, kFair, kBrutal, kFair}), gap.fill);
 
     // A mask of 0 behaves exactly as the four-side one.
@@ -408,8 +371,8 @@ TEST(MatchSetupRules, sides_wheel_is_clamped_to_the_authored_sides)
     SaveData four;
     for (int step = 0; step < 5; ++step)
     {
-        turn_sides(four, 0, +1, 0b1111);
-        turn_sides(unknown, 0, +1, 0);
+        turn_sides(four, 0, 0b1111);
+        turn_sides(unknown, 0, 0);
         EXPECT_EQ(four.fill, unknown.fill);
     }
 }
@@ -1029,7 +992,7 @@ TEST_F(MatchSetupSessionTest,
     // From a page the player browsed to on purpose, the tab is a no-op
     // refetch: it does not drag them back to the campaign's own page.
     ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Game, inputs()).kind);
-    ASSERT_EQ(Kind::Advanced, session.choose(1, +1, inputs()).kind)
+    ASSERT_EQ(Kind::Advanced, session.choose(1, inputs()).kind)
         << "row 1 is the CTF page";
     EXPECT_EQ(Step::Arena, session.step());
     ASSERT_EQ(10u, session.page().rows.size());
@@ -1140,7 +1103,7 @@ TEST_F(MatchSetupSessionTest,
     save_.scen_num = 300;
     MatchSetupSession session(save_);
     ASSERT_TRUE(session.open(inputs(), "soccer"));
-    const MatchSetupSession::Outcome answer = session.choose(0, +1, inputs());
+    const MatchSetupSession::Outcome answer = session.choose(0, inputs());
     EXPECT_EQ(Kind::SetLevel, answer.kind);
     EXPECT_EQ(820, answer.level);
     EXPECT_FALSE(answer.replay_arm);
@@ -1155,11 +1118,11 @@ TEST_F(MatchSetupSessionTest,
     // renderer's, not the session's.
     MatchSetupSession joiner(save_);
     ASSERT_TRUE(joiner.open(inputs(false), "soccer"));
-    EXPECT_EQ(Kind::SetLevel, joiner.choose(1, +1, inputs(false)).kind);
+    EXPECT_EQ(Kind::SetLevel, joiner.choose(1, inputs(false)).kind);
     EXPECT_EQ(Step::Arena, joiner.step());
 
     // An out-of-range row is a no-op.
-    EXPECT_EQ(Kind::Stayed, joiner.choose(99, +1, inputs(false)).kind);
+    EXPECT_EQ(Kind::Stayed, joiner.choose(99, inputs(false)).kind);
 }
 
 // 8b. The seat cell names the CONTROLLER. Every client hands the session a
@@ -1270,22 +1233,19 @@ TEST_F(MatchSetupSessionTest, sides_row_hides_on_two_side_arenas_and_clamps_to_t
     std::vector<std::string> faces;
     for (int i = 0; i < 3; ++i) {
         const MatchSetupSession::Outcome out = session.choose(
-            static_cast<std::size_t>(at), +1, inputs(true, 0b1111));
+            static_cast<std::size_t>(at), inputs(true, 0b1111));
         ASSERT_EQ(Kind::Turned, out.kind);
         EXPECT_EQ(Knob::Sides, out.knob);
         faces.push_back(og::ui::match_sides_face(save_, 0, 0b1111));
     }
     EXPECT_EQ((std::vector<std::string>{"SIDES: 2", "SIDES: 3", "SIDES: 4"}),
               faces);
-    // The wheel wraps, and the SAME wheel walked backward retraces it.
+    // The wheel wraps — the only way round it, and the whole cost of an
+    // overshoot on a three-stop wheel.
     ASSERT_EQ(Kind::Turned,
-              session.choose(static_cast<std::size_t>(at), +1,
+              session.choose(static_cast<std::size_t>(at),
                              inputs(true, 0b1111)).kind);
     EXPECT_EQ("SIDES: 2", og::ui::match_sides_face(save_, 0, 0b1111));
-    ASSERT_EQ(Kind::Turned,
-              session.choose(static_cast<std::size_t>(at), -1,
-                             inputs(true, 0b1111)).kind);
-    EXPECT_EQ("SIDES: 4", og::ui::match_sides_face(save_, 0, 0b1111));
 
     // A three-side arena's wheel is 2 <-> 3 and never reaches 4.
     save_.fill = {};
@@ -1296,7 +1256,7 @@ TEST_F(MatchSetupSessionTest, sides_row_hides_on_two_side_arenas_and_clamps_to_t
     std::set<std::string> seen;
     for (int i = 0; i < 4; ++i) {
         ASSERT_EQ(Kind::Turned,
-                  session.choose(static_cast<std::size_t>(at), +1,
+                  session.choose(static_cast<std::size_t>(at),
                                  inputs(true, 0b0111)).kind);
         seen.insert(og::ui::match_sides_face(save_, 0, 0b0111));
         EXPECT_EQ(og::sim::kFillNone, save_.fill[3])
@@ -1325,7 +1285,7 @@ TEST_F(MatchSetupSessionTest, match_knobs_shape_the_steps)
     ASSERT_FALSE(band.page().lines.empty());
     EXPECT_EQ("FILL sets how strong the bots are.", band.page().lines.back());
     // The band wheel writes team 1's own knob, nothing else.
-    ASSERT_EQ(Kind::Turned, band.choose(0, +1, inputs()).kind);
+    ASSERT_EQ(Kind::Turned, band.choose(0, inputs()).kind);
     EXPECT_EQ(og::sim::kFillWeak, save_.fill[0]);
     EXPECT_EQ(og::sim::kFillNone, save_.fill[1]);
 
@@ -1443,7 +1403,7 @@ TEST_F(MatchSetupSessionTest, rules_rows_are_the_shared_formatters_upper_cased_w
             const MatchSetupSession::Row& row = session.page().rows[r];
             EXPECT_LE(row.base.label.size() + 3 + row.base.note.size(), 42u)
                 << row.base.label << " - " << row.base.note;
-            ASSERT_EQ(Kind::Turned, session.choose(r, +1, inputs()).kind);
+            ASSERT_EQ(Kind::Turned, session.choose(r, inputs()).kind);
         }
     }
 
@@ -1454,8 +1414,8 @@ TEST_F(MatchSetupSessionTest, rules_rows_are_the_shared_formatters_upper_cased_w
     EXPECT_EQ(2u, session.page().rows.size());
 }
 
-// 13 and 14 retired with R2-3. The two surviving wheels' reverse step is
-// pinned by MatchSetupRules.time_limit_wheel_faces / score_wheel_reverses
+// 13 and 14 retired with R2-3. The two surviving wheels' forward lap is
+// pinned by MatchSetupRules.time_limit_wheel_faces / score_wheel_laps_forward
 // and by the SDL cycler ladder; DIFFICULTY is a Base Camp door again, so
 // the session has no difficulty arm to pin.
 
@@ -1512,7 +1472,7 @@ TEST_F(MatchSetupSessionTest, joiner_steps_cut_rows_and_print_lines)
     EXPECT_EQ(std::string(og::ui::kSetupJoinerReadyRow),
               joiner.page().rows[1].base.label);
     EXPECT_EQ(og::ui::RowState::Disabled, joiner.page().rows[1].state);
-    EXPECT_EQ(Kind::OpenViewLevel, joiner.choose(0, +1, inputs(false)).kind);
+    EXPECT_EQ(Kind::OpenViewLevel, joiner.choose(0, inputs(false)).kind);
 }
 
 // 16. The MATCH step states the whole match in ten lines, and drops the rules
@@ -1597,7 +1557,7 @@ TEST_F(MatchSetupSessionTest, go_face_follows_the_deploy_predicate_and_stage_hea
     EXPECT_EQ(og::ui::RowState::Disabled,
               session.page().rows[static_cast<std::size_t>(at)].state);
     EXPECT_EQ(Kind::Refused,
-              session.choose(static_cast<std::size_t>(at), +1, inputs()).kind);
+              session.choose(static_cast<std::size_t>(at), inputs()).kind);
 
     // Deploy the second fighter: the M4 refusal clears and the stage's own
     // health takes over.
@@ -1633,7 +1593,7 @@ TEST_F(MatchSetupSessionTest, go_face_follows_the_deploy_predicate_and_stage_hea
               session.page().rows[static_cast<std::size_t>(at)].state);
     EXPECT_EQ(Extra::Go, session.page().rows[static_cast<std::size_t>(at)].extra);
     EXPECT_EQ(Kind::Go,
-              session.choose(static_cast<std::size_t>(at), +1, inputs()).kind);
+              session.choose(static_cast<std::size_t>(at), inputs()).kind);
     staged_ = nullptr;
 }
 
@@ -1828,10 +1788,10 @@ TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
         "1",    // ARENA: THE PITCH -> SetLevel 820 -> TEAMS
         "3",    // TEAMS: Next -> RULES
         "1",    // RULES: SCORE forward
-        "1-",   // RULES: SCORE back
+        "1-",   // the retired `N-` grammar: not a number, so not an answer
         "3",    // RULES: Next -> MATCH
         "3",    // MATCH: Prev -> RULES
-        "3-",   // a stepper is not a wheel
+        "3-",   // the same on a stepper
         "x",    // not a number at all
         "0",    // back out
     };
@@ -1856,10 +1816,9 @@ TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
                   "SETUP: RULES"}),
               titles);
 
-    // The prompt label names the range and both ways to leave a wheel.
+    // The prompt label names the range and the way out.
     // GAME: seven game pages, RANDOM, Next: TEAMS, Back.
-    EXPECT_EQ("Setup # [1-10] (0 = back, N- steps a wheel back): ",
-              scripted.prompts[0].label);
+    EXPECT_EQ("Setup # [1-10] (0 = back): ", scripted.prompts[0].label);
 
     // The TEAMS prompt's navigation items are the tab strip's projection.
     const std::string teams = scripted.page_text(2);
@@ -1867,21 +1826,24 @@ TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
     EXPECT_NE(std::string::npos, teams.find("   4. Prev: ARENA\n")) << teams;
     EXPECT_NE(std::string::npos, teams.find("   5. Back\n")) << teams;
 
-    // The notices, in order: the gated level set and the two refusals. A
-    // knob turn says NOTHING any more (R2-1): the redrawn face is the
-    // answer.
+    // The notices, in order: the gated level set and the THREE refusals --
+    // `1-`, `3-` and `x` are all just answers the prompt cannot parse now
+    // that the wheels turn forward only. A knob turn says NOTHING (R2-1):
+    // the redrawn face is the answer.
     EXPECT_EQ((std::vector<std::string>{
                   "Level set to THE PITCH.", "Invalid setup row.",
-                  "Invalid setup row."}),
+                  "Invalid setup row.", "Invalid setup row."}),
               scripted.notices);
-    EXPECT_EQ(0, static_cast<int>(save_.ctf_capture_limit))
-        << "forward then back leaves the wheel where it started";
+    EXPECT_EQ(1, static_cast<int>(save_.ctf_capture_limit))
+        << "the one FORWARD turn is the only thing that moved the wheel; "
+           "`1-` bought a notice, not a step back";
 
     // The autosave tail: the arena deal at the first prompt (scen 300 has
-    // never been dealt) and one per turned knob. The 820 deal that follows
-    // moves no band -- the 300 deal already lifted every one of them -- so it
-    // banks the memo without an autosave.
-    EXPECT_EQ(3, scripted.autosaves);
+    // never been dealt) and one per turned knob -- ONE, now that `1-` turns
+    // nothing. The 820 deal that follows moves no band -- the 300 deal
+    // already lifted every one of them -- so it banks the memo without an
+    // autosave.
+    EXPECT_EQ(2, scripted.autosaves);
 }
 
 // 20. The per-prompt deal (the present_menu cadence): the TEAMS prompt after
@@ -2063,8 +2025,8 @@ TEST_F(MatchSetupSessionTest, census_staged_match_report_answers_health_and_repo
         << "the bool form still leaves `out` alone on every other arm";
 }
 
-// 24. The projection: lines, items and the reverse marks.
-TEST_F(MatchSetupSessionTest, terminal_model_projects_lines_items_and_reverse_marks)
+// 24. The projection: lines and items.
+TEST_F(MatchSetupSessionTest, terminal_model_projects_lines_and_items)
 {
     register_book(kSoccerKnobs);
     save_.scen_num = 820;
@@ -2110,18 +2072,6 @@ TEST_F(MatchSetupSessionTest, terminal_model_projects_lines_items_and_reverse_ma
     EXPECT_EQ(og::ui::TerminalMatchSetupItem::Kind::Next, model.items[2].kind);
     EXPECT_EQ(og::ui::TerminalMatchSetupItem::Kind::Prev, model.items[3].kind);
     EXPECT_EQ(og::ui::TerminalMatchSetupItem::Kind::Back, model.items[4].kind);
-    for (std::size_t i = 0; i < model.items.size(); ++i)
-        EXPECT_EQ(i == 0, model.items[i].reversible) << i;
-
-    // A joiner's page projects lines and navigation and nothing reversible.
-    MatchSetupSession joiner(save_);
-    ASSERT_TRUE(joiner.open(inputs(false)));
-    ASSERT_EQ(Kind::Advanced, joiner.goto_step(Step::Teams, inputs(false)).kind);
-    const og::ui::TerminalMatchSetupModel joined =
-        og::ui::build_terminal_match_setup_model(joiner, inputs(false));
-    for (const og::ui::TerminalMatchSetupItem& item : joined.items)
-        EXPECT_FALSE(item.reversible) << item.label;
-
     // The MATCH step's team lines ARE the report lines and print alone.
     og::ui::ScenarioRosterReport report;
     report.is_versus = true;
@@ -2322,19 +2272,19 @@ TEST_F(MatchSetupSessionTest, book_action_and_refusal_rows_stay_on_the_step)
     ASSERT_TRUE(session.open(inputs()));
     ASSERT_EQ(4u, session.page().rows.size());
 
-    const MatchSetupSession::Outcome acted = session.choose(0, +1, inputs());
+    const MatchSetupSession::Outcome acted = session.choose(0, inputs());
     EXPECT_EQ(Kind::Stayed, acted.kind);
     EXPECT_EQ("The dice land on THE PITCH.", acted.message);
     EXPECT_EQ(Step::Game, session.step());
 
-    const MatchSetupSession::Outcome poor = session.choose(1, +1, inputs());
+    const MatchSetupSession::Outcome poor = session.choose(1, inputs());
     EXPECT_EQ(Kind::Refused, poor.kind);
     EXPECT_FALSE(poor.message.empty());
     EXPECT_EQ(Step::Game, session.step()) << "a refusal never advances";
 
     // A page the book will not hand back is refused in the shared words.
     const MatchSetupSession::Outcome unreadable =
-        session.choose(2, +1, inputs());
+        session.choose(2, inputs());
     EXPECT_EQ(Kind::Refused, unreadable.kind);
     EXPECT_EQ(std::string(og::ui::kCampaignPageUnreadableMessage),
               unreadable.message);
@@ -2342,7 +2292,7 @@ TEST_F(MatchSetupSessionTest, book_action_and_refusal_rows_stay_on_the_step)
 
     // A deeper page opened FROM the ARENA step stays on ARENA (a depth-3
     // book is still the arena tab's business).
-    ASSERT_EQ(Kind::Advanced, session.choose(3, +1, inputs()).kind);
+    ASSERT_EQ(Kind::Advanced, session.choose(3, inputs()).kind);
     EXPECT_EQ(Step::Arena, session.step());
 }
 
@@ -2368,7 +2318,7 @@ TEST_F(MatchSetupSessionTest, manifest_paging_absent_steps_and_a_nameless_scenar
 
     // A manifest row answers SetLevel and writes nothing, exactly as a book
     // level row does.
-    const MatchSetupSession::Outcome out = session.choose(0, +1, inputs());
+    const MatchSetupSession::Outcome out = session.choose(0, inputs());
     EXPECT_EQ(Kind::SetLevel, out.kind);
     EXPECT_EQ(list_levels_v().front(), out.level);
     EXPECT_EQ(300, static_cast<int>(save_.scen_num));
@@ -2685,7 +2635,7 @@ TEST_F(MatchSetupSessionTest, acted_row_with_a_level_answers_set_level_and_never
         << "seven game pages and the host's RANDOM row, appended LAST";
     EXPECT_EQ("random", session.page().rows[7].base.id);
 
-    const MatchSetupSession::Outcome out = session.choose(7, +1, inputs());
+    const MatchSetupSession::Outcome out = session.choose(7, inputs());
     EXPECT_EQ(Kind::SetLevel, out.kind);
     EXPECT_EQ(822, out.level);
     EXPECT_FALSE(out.replay_arm);
@@ -2712,7 +2662,7 @@ TEST_F(MatchSetupSessionTest, versus_level_rows_never_arm_replay_in_the_wizard)
     EXPECT_FALSE(session.page().rows[1].base.cleared);
     EXPECT_FALSE(session.page().rows[1].base.replay_arms());
 
-    const MatchSetupSession::Outcome out = session.choose(1, +1, inputs());
+    const MatchSetupSession::Outcome out = session.choose(1, inputs());
     EXPECT_EQ(Kind::SetLevel, out.kind);
     EXPECT_EQ(821, out.level);
     EXPECT_FALSE(out.replay_arm);

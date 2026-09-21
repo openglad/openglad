@@ -715,20 +715,16 @@ inline constexpr int kSetupLineChars = 48;
 static_assert(kSetupLeftX + 6 * kSetupLineChars <= kSetupRightEdge - 2,
               "a full-budget line inks inside the panel face");
 
-// The right cell column: the Base Camp docket's own pager pair on the
-// ARENA step's first row...
+// The right cell column holds exactly one thing: the Base Camp docket's
+// own pager pair, on the ARENA step's first row. (The column was sized
+// for a 30 px reverse cell on every cycler row; the wheels turn forward
+// only now, so the cell is gone and kSetupCellX/W survive as the column
+// the row face stops 4 px short of and the pagers close.)
 inline constexpr int kSetupPagerPrevX = kBaseCampZonePagerPrevX;  // 280, w 14
 inline constexpr int kSetupPagerNextX = kBaseCampZonePagerNextX;  // 296, w 14
 inline constexpr int kSetupPagerW = kBaseCampZonePagerWidth;      // 14
 static_assert(kSetupPagerNextX + kSetupPagerW == kSetupRightEdge,
               "the pager pair closes on the one right edge");
-// ...and ONE 30x10 reverse cell on every cycler row (the whole column),
-// label "<" — how a keyboard or a pad steps a wheel back (LEFT/RIGHT stay
-// navigation everywhere).
-inline constexpr int kSetupRevX = kSetupCellX;  // 280
-inline constexpr int kSetupRevW = kSetupCellW;  // 30
-static_assert(kSetupRevX + kSetupRevW == kSetupRightEdge,
-              "the reverse cells close on the one right edge");
 
 // Footer: the zone submenu's BACK and NEXT rects; PREV is NEXT's mirror on
 // the same 6px gap (D29 — every wizard puts "previous step" beside "next",
@@ -762,16 +758,15 @@ static_assert(kSetupTeamSeatX + 6 * kSetupTeamSeatChars < kSetupTeamCensusX,
 // Button-table ordinals (kMatchSetupRows, §2.0's table). Every row is a
 // ButtonAction::MenuSpecRow with arg == ordinal.
 inline constexpr int kMatchSetupRowBase = 0;       // setup_row_0..8
-inline constexpr int kMatchSetupRevBase = 9;       // setup_rev_0..8
-inline constexpr int kMatchSetupBackIndex = 18;
-inline constexpr int kMatchSetupPrevIndex = 19;
-inline constexpr int kMatchSetupNextIndex = 20;
-inline constexpr int kMatchSetupPagePrevIndex = 21;
-inline constexpr int kMatchSetupPageNextIndex = 22;
-inline constexpr int kMatchSetupTabBase = 23;      // setup_tab_0..4
-inline constexpr int kMatchSetupButtonCount = 28;
-static_assert(kMatchSetupRevBase - kMatchSetupRowBase == kSetupRowsMax,
-              "one reverse cell per row slot");
+inline constexpr int kMatchSetupBackIndex = 9;
+inline constexpr int kMatchSetupPrevIndex = 10;
+inline constexpr int kMatchSetupNextIndex = 11;
+inline constexpr int kMatchSetupPagePrevIndex = 12;
+inline constexpr int kMatchSetupPageNextIndex = 13;
+inline constexpr int kMatchSetupTabBase = 14;      // setup_tab_0..4
+inline constexpr int kMatchSetupButtonCount = 19;
+static_assert(kMatchSetupBackIndex - kMatchSetupRowBase == kSetupRowsMax,
+              "the footer starts where the row slots end");
 static_assert(kMatchSetupTabBase + kSetupTabCount == kMatchSetupButtonCount,
               "the tabs close the table");
 

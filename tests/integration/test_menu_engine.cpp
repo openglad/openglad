@@ -39,6 +39,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_interact.h"
 #include "test_save_state_guard.h"
 #include <gtest/gtest.h>
@@ -218,8 +219,11 @@ void synth_draw_background(void* /*state*/)
     og::runtime::current_session->myscreen_->clear_window();
 }
 
-int g_spec_row_hits = 0;
-int g_spec_row_last = -1;
+// Read from the injector thread as well as the menu thread (the
+// forward-only right-click pin below polls the counter as its edge), so
+// these are atomic rather than plain ints.
+std::atomic<int> g_spec_row_hits{0};
+std::atomic<int> g_spec_row_last{-1};
 int g_synth_content_draws = 0;
 
 void synth_draw_content(void* /*state*/)
@@ -1470,34 +1474,26 @@ TEST(MenuEngine, spec_row_retvalue_zero_discipline)
     EXPECT_TRUE(state.alive_after_click)
         << "screen exited on the MenuSpecRow click: retvalue 101 leaked "
            "into the MENU_EXIT loop condition";
-    EXPECT_EQ(1, g_spec_row_hits) << "on_spec_row must dispatch exactly once";
-    EXPECT_EQ(7, g_spec_row_last) << "dispatch must carry the row's arg";
+    EXPECT_EQ(1, g_spec_row_hits.load())
+        << "on_spec_row must dispatch exactly once";
+    EXPECT_EQ(7, g_spec_row_last.load()) << "dispatch must carry the row's arg";
     EXPECT_EQ(-1, pks().menu_spec_clicked_row) << "stash must be consumed";
 }
 
 // ---------------------------------------------------------------------------
-// D19, the runner side: a RIGHT-click on a MenuSpecRow row stashes the same
-// row a left click does and raises the reverse flag, so a screen's
-// on_spec_row can step its cycler's wheel BACK through one session entry.
-// The flag belongs to the DISPATCH: it is true inside on_spec_row and gone
-// by the time the next click is minted (the runner's own invariant check
-// aborts the TESTING build if it ever survives a frame — this flow is what
-// drives that check).
+// The runner side of the forward-only rule: a RIGHT-click on a
+// MenuSpecRow row dispatches NOTHING. Every cycler in the picker cycles
+// forward only, so `do_call_right` has no MenuSpecRow arm and answers 4
+// (its unhandled-action value) — even on a screen that sets
+// `right_click_enabled` for its own legacy rows. The same row answers a
+// LEFT click normally, which is the control arm that proves the right
+// click reached a live button and was ignored rather than missing it.
 namespace
 {
 
-std::atomic<int> g_reverse_seen_in_dispatch{-1};
-std::atomic<int> g_reverse_after_frame{-1};
+std::atomic<int> g_hits_after_right_click{-1};
 
-Sint32 reverse_on_spec_row(int row, void* /*screen_state*/)
-{
-    ++g_spec_row_hits;
-    g_spec_row_last = row;
-    g_reverse_seen_in_dispatch.store(og::ui::menu_spec_row_reverse() ? 1 : 0);
-    return MENU_OK;
-}
-
-int reverse_stash_injector(void* data)
+int right_click_inert_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     SpecRowState* state = static_cast<SpecRowState*>(data);
@@ -1507,10 +1503,19 @@ int reverse_stash_injector(void* data)
         return 0;
     (void)wait_for_menu_frames(2);
     interact_right("engine_spec_row");
-    // Two COMPLETED frames: the dispatch ran inside the first, and the
-    // second proves the flag did not survive it.
-    (void)wait_for_menu_frames(2);
-    g_reverse_after_frame.store(og::ui::menu_spec_row_reverse() ? 1 : 0);
+    // Three COMPLETED frames: a dispatch would have run inside the first.
+    // A frame is the proof a flat delay cannot give — the loop polled SDL,
+    // consumed the press and reached its dispatch point.
+    (void)wait_for_menu_frames(3);
+    g_hits_after_right_click.store(g_spec_row_hits.load());
+    // The control arm: the same button, left-clicked, IS live. The edge is
+    // the dispatch counter itself, polled a frame at a time.
+    (void)click_until_edge("engine_spec_row", [](int wait_ms) {
+        const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(wait_ms);
+        while (g_spec_row_hits.load() <= 0 && SDL_GetTicks() < deadline)
+            (void)wait_for_menu_frames(1, 100);
+        return g_spec_row_hits.load() > 0;
+    });
     state->alive_after_click = !g_run_returned;
     interact("engine_back");
     state->finished = true;
@@ -1519,7 +1524,7 @@ int reverse_stash_injector(void* data)
 
 } // namespace
 
-TEST(MenuEngine, spec_row_reverse_stash_never_survives_a_frame)
+TEST(MenuEngine, spec_row_right_click_dispatches_nothing)
 {
     static constexpr og::ui::MenuButtonSpec kRows[] = {
         {.id = "engine_spec_row", .label = "ENGINE ROW",
@@ -1536,18 +1541,15 @@ TEST(MenuEngine, spec_row_reverse_stash_never_survives_a_frame)
 
     og::ui::MenuScreenSpec spec = make_synth_spec(kRows, 2, "synthetic_rev");
     spec.right_click_enabled = true;
-    spec.on_spec_row = &reverse_on_spec_row;
     g_synth_spec = &spec;
     g_spec_row_hits = 0;
     g_spec_row_last = -1;
     g_run_returned = false;
-    g_reverse_seen_in_dispatch.store(-1);
-    g_reverse_after_frame.store(-1);
-    og::ui::set_menu_spec_row_reverse(false);
+    g_hits_after_right_click.store(-1);
 
     SpecRowState state;
     SDL_Thread* thread =
-        SDL_CreateThread(reverse_stash_injector, "reverse_stash", &state);
+        SDL_CreateThread(right_click_inert_injector, "right_inert", &state);
     ASSERT_NE(nullptr, thread);
 
     (void)og::ui::run_menu_screen(spec);
@@ -1555,41 +1557,15 @@ TEST(MenuEngine, spec_row_reverse_stash_never_survives_a_frame)
     SDL_WaitThread(thread, nullptr);
 
     EXPECT_TRUE(state.finished);
-    EXPECT_EQ(1, g_spec_row_hits)
-        << "a right-click on a MenuSpecRow row must dispatch it once";
-    EXPECT_EQ(5, g_spec_row_last) << "the dispatch carries the row's arg";
-    EXPECT_EQ(1, g_reverse_seen_in_dispatch.load())
-        << "the reverse flag must be readable INSIDE on_spec_row: that is "
-           "how a cycler row knows to step its wheel back";
-    EXPECT_EQ(0, g_reverse_after_frame.load())
-        << "a reverse stash that outlived its dispatch would make the next "
-           "left-click on some other screen step a wheel backward";
-    EXPECT_FALSE(og::ui::menu_spec_row_reverse());
+    EXPECT_EQ(0, g_hits_after_right_click.load())
+        << "a right-click on a MenuSpecRow row must dispatch nothing: the "
+           "picker's cyclers cycle FORWARD ONLY, and a hidden reverse on "
+           "one mouse button is a rule no other screen teaches";
+    EXPECT_EQ(1, g_spec_row_hits.load())
+        << "and the LEFT click on the same row still dispatches once — the "
+           "control arm that proves the right click hit a live button";
+    EXPECT_EQ(5, g_spec_row_last.load()) << "the dispatch carries the row's arg";
     EXPECT_EQ(-1, pks().menu_spec_clicked_row) << "stash must be consumed";
-}
-
-// The other half of the same audit: the LEGACY Networking loop calls
-// rightclick() on its own buttons, and do_call_right now stashes a row for
-// ButtonAction::MenuSpecRow. Nothing leaks there because the Networking
-// table has no MenuSpecRow row at all — stated in docs/menu-engine.md's
-// Networking section, and pinned here rather than trusted.
-TEST(MenuEngine, networking_right_click_never_sees_a_spec_row_stash)
-{
-    og::ui::set_menu_spec_row_reverse(false);
-    pks().menu_spec_clicked_row = -1;
-
-    button* buttons = picker_networking_buttons();
-    const int count = picker_networking_button_count();
-    ASSERT_GT(count, 0);
-    const Sint32 spec_row = button_action_id(ButtonAction::MenuSpecRow);
-    for (int i = 0; i < count; ++i) {
-        EXPECT_NE(spec_row, buttons[i].myfun)
-            << "networking row '" << buttons[i].id
-            << "' dispatches MenuSpecRow: its right-click would raise the "
-               "reverse stash in a loop that never consumes it";
-    }
-    EXPECT_FALSE(og::ui::menu_spec_row_reverse());
-    EXPECT_EQ(-1, pks().menu_spec_clicked_row);
 }
 
 // ---------------------------------------------------------------------------
@@ -1651,7 +1627,7 @@ TEST(MenuEngine, disabled_row_activation_no_op)
     EXPECT_EQ(MENU_REDRAW, result);
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.alive_after_click);
-    EXPECT_EQ(0, g_spec_row_hits)
+    EXPECT_EQ(0, g_spec_row_hits.load())
         << "a Disabled row must never dispatch its action";
     EXPECT_TRUE(trace_contains("menu_engine",
                                "disabled_row_click engine_disabled"))
@@ -1753,7 +1729,7 @@ TEST(MenuEngine, dispatch_keeps_the_dim_face_on_every_other_row)
     SDL_WaitThread(thread, nullptr);
     EXPECT_EQ(MENU_REDRAW, result);
     EXPECT_TRUE(state.finished);
-    EXPECT_EQ(1, g_spec_row_hits) << "the knob row must dispatch once";
+    EXPECT_EQ(1, g_spec_row_hits.load()) << "the knob row must dispatch once";
     EXPECT_GT(g_dim_frames.load(), 0) << "the dimmed row must be dimmed";
     EXPECT_EQ(0, g_undim_frames.load())
         << "a dispatch re-created the live buttons: the untouched dimmed "
@@ -2923,8 +2899,9 @@ TEST(MenuEngine, team_build_cluster_registry_hosts)
               setup.spec->remote_start_exit);
     EXPECT_EQ(MENU_EXIT, setup.spec->exit_value);
     EXPECT_TRUE(setup.spec->polls_lobby);
-    EXPECT_TRUE(setup.spec->right_click_enabled)
-        << "D19: a right-click steps a cycler row's wheel back";
+    EXPECT_FALSE(setup.spec->right_click_enabled)
+        << "the wizard's wheels turn forward only, so the right button has "
+           "nothing to reach on this screen";
     EXPECT_EQ(og::ui::kMatchSetupBackIndex, setup.spec->default_highlight);
     EXPECT_NE(nullptr, setup.spec->on_spec_row);
 }

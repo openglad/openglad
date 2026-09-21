@@ -506,8 +506,7 @@ TEST(MenuEnginePins, lineup_exact_table)
 
 // ---------------------------------------------------------------------------
 // SETUP wizard (docs/match-setup-design.md §2.0): nine 42-glyph rows over
-// the docket's own face, nine 30x10 reverse cells in the one cell column,
-// BACK | PREV | NEXT in the footer, the ARENA window's pager pair (parked
+// the docket's own face, BACK | PREV | NEXT in the footer, the ARENA window's pager pair (parked
 // at a zero-size rect until the rewire bands it, the Base Camp zone pagers'
 // idiom) and five step tabs on a 61px pitch. The STATIC table is the
 // no-lines anchor: the per-frame rewire re-bands the rows under whatever
@@ -519,7 +518,7 @@ TEST(MenuEnginePins, match_setup_exact_table)
     static const ExpectedButton kExpected[] = {
         {"setup_row_0", "", KEYSTATE_UNKNOWN, 12, 47, 264, 10,
          button_action_id(ButtonAction::MenuSpecRow), 0,
-         MenuNav{.up = 23, .down = 1}},
+         MenuNav{.up = 14, .down = 1}},
         {"setup_row_1", "", KEYSTATE_UNKNOWN, 12, 59, 264, 10,
          button_action_id(ButtonAction::MenuSpecRow), 1,
          MenuNav{.up = 0, .down = 2}},
@@ -543,78 +542,50 @@ TEST(MenuEnginePins, match_setup_exact_table)
          MenuNav{.up = 6, .down = 8}},
         {"setup_row_8", "", KEYSTATE_UNKNOWN, 12, 143, 264, 10,
          button_action_id(ButtonAction::MenuSpecRow), 8,
-         MenuNav{.up = 7, .down = 18}},
-        {"setup_rev_0", "<", KEYSTATE_UNKNOWN, 280, 47, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 9,
-         MenuNav{.left = 0}, true},
-        {"setup_rev_1", "<", KEYSTATE_UNKNOWN, 280, 59, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 10,
-         MenuNav{.left = 1}, true},
-        {"setup_rev_2", "<", KEYSTATE_UNKNOWN, 280, 71, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 11,
-         MenuNav{.left = 2}, true},
-        {"setup_rev_3", "<", KEYSTATE_UNKNOWN, 280, 83, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 12,
-         MenuNav{.left = 3}, true},
-        {"setup_rev_4", "<", KEYSTATE_UNKNOWN, 280, 95, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 13,
-         MenuNav{.left = 4}, true},
-        {"setup_rev_5", "<", KEYSTATE_UNKNOWN, 280, 107, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 14,
-         MenuNav{.left = 5}, true},
-        {"setup_rev_6", "<", KEYSTATE_UNKNOWN, 280, 119, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 15,
-         MenuNav{.left = 6}, true},
-        {"setup_rev_7", "<", KEYSTATE_UNKNOWN, 280, 131, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 16,
-         MenuNav{.left = 7}, true},
-        {"setup_rev_8", "<", KEYSTATE_UNKNOWN, 280, 143, 30, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 17,
-         MenuNav{.left = 8}, true},
+         MenuNav{.up = 7, .down = 9}},
         {"setup_back", "BACK", KEYSTATE_ESCAPE, 10, 169, 44, 20,
-         button_action_id(ButtonAction::MenuSpecRow), 18,
-         MenuNav{.up = 0, .right = 19}},
+         button_action_id(ButtonAction::MenuSpecRow), 9,
+         MenuNav{.up = 0, .right = 10}},
         {"setup_prev", "PREV", KEYSTATE_UNKNOWN, 224, 169, 40, 20,
-         button_action_id(ButtonAction::MenuSpecRow), 19,
-         MenuNav{.up = 0, .left = 18, .right = 20}, true},
+         button_action_id(ButtonAction::MenuSpecRow), 10,
+         MenuNav{.up = 0, .left = 9, .right = 11}, true},
         {"setup_next", "NEXT", KEYSTATE_UNKNOWN, 270, 169, 40, 20,
-         button_action_id(ButtonAction::MenuSpecRow), 20,
-         MenuNav{.up = 0, .left = 19}},
+         button_action_id(ButtonAction::MenuSpecRow), 11,
+         MenuNav{.up = 0, .left = 10}},
         {"setup_page_prev", "", KEYSTATE_UNKNOWN, 0, 0, 0, 0,
-         button_action_id(ButtonAction::MenuSpecRow), 21,
-         MenuNav{.left = 0, .right = 22}, true},
+         button_action_id(ButtonAction::MenuSpecRow), 12,
+         MenuNav{.left = 0, .right = 13}, true},
         {"setup_page_next", "", KEYSTATE_UNKNOWN, 0, 0, 0, 0,
-         button_action_id(ButtonAction::MenuSpecRow), 22,
-         MenuNav{.left = 21}, true},
+         button_action_id(ButtonAction::MenuSpecRow), 13,
+         MenuNav{.left = 12}, true},
         {"setup_tab_0", "", KEYSTATE_UNKNOWN, 12, 33, 54, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 23,
-         MenuNav{.down = 0, .left = -1, .right = 24}},
+         button_action_id(ButtonAction::MenuSpecRow), 14,
+         MenuNav{.down = 0, .left = -1, .right = 15}},
         {"setup_tab_1", "", KEYSTATE_UNKNOWN, 73, 33, 54, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 24,
-         MenuNav{.down = 0, .left = 23, .right = 25}},
+         button_action_id(ButtonAction::MenuSpecRow), 15,
+         MenuNav{.down = 0, .left = 14, .right = 16}},
         {"setup_tab_2", "", KEYSTATE_UNKNOWN, 134, 33, 54, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 25,
-         MenuNav{.down = 0, .left = 24, .right = 26}},
+         button_action_id(ButtonAction::MenuSpecRow), 16,
+         MenuNav{.down = 0, .left = 15, .right = 17}},
         {"setup_tab_3", "", KEYSTATE_UNKNOWN, 195, 33, 54, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 26,
-         MenuNav{.down = 0, .left = 25, .right = 27}},
+         button_action_id(ButtonAction::MenuSpecRow), 17,
+         MenuNav{.down = 0, .left = 16, .right = 18}},
         {"setup_tab_4", "", KEYSTATE_UNKNOWN, 256, 33, 54, 10,
-         button_action_id(ButtonAction::MenuSpecRow), 27,
-         MenuNav{.down = 0, .left = 26, .right = -1}},
+         button_action_id(ButtonAction::MenuSpecRow), 18,
+         MenuNav{.down = 0, .left = 17, .right = -1}},
     };
     button* buttons = picker_match_setup_buttons();
     check_exact_table(buttons, picker_match_setup_button_count(), kExpected,
                       static_cast<int>(std::size(kExpected)), "match_setup");
 
     EXPECT_EQ(0, og::ui::kMatchSetupRowBase);
-    EXPECT_EQ(9, og::ui::kMatchSetupRevBase);
-    EXPECT_EQ(18, og::ui::kMatchSetupBackIndex);
-    EXPECT_EQ(19, og::ui::kMatchSetupPrevIndex);
-    EXPECT_EQ(20, og::ui::kMatchSetupNextIndex);
-    EXPECT_EQ(21, og::ui::kMatchSetupPagePrevIndex);
-    EXPECT_EQ(22, og::ui::kMatchSetupPageNextIndex);
-    EXPECT_EQ(23, og::ui::kMatchSetupTabBase);
-    EXPECT_EQ(28, og::ui::kMatchSetupButtonCount);
+    EXPECT_EQ(9, og::ui::kMatchSetupBackIndex);
+    EXPECT_EQ(10, og::ui::kMatchSetupPrevIndex);
+    EXPECT_EQ(11, og::ui::kMatchSetupNextIndex);
+    EXPECT_EQ(12, og::ui::kMatchSetupPagePrevIndex);
+    EXPECT_EQ(13, og::ui::kMatchSetupPageNextIndex);
+    EXPECT_EQ(14, og::ui::kMatchSetupTabBase);
+    EXPECT_EQ(19, og::ui::kMatchSetupButtonCount);
 }
 
 TEST(MenuEnginePins, hiremenu_exact_table)

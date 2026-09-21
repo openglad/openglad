@@ -972,18 +972,13 @@ Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 call_arg)
 {
     switch (static_cast<ButtonAction>(whatfunc))
     {
-    case ButtonAction::MenuSpecRow:
-        // The reverse half of the one-session-entry rule
-        // (docs/match-setup-design.md D19): a right-click on a spec row
-        // stashes the SAME row do_call stashes and raises the reverse flag,
-        // so the screen's on_spec_row steps its cycler backward through
-        // choose(row, -1). Every other action keeps answering 4, so nothing
-        // leaks into the legacy Networking loop (which has no MenuSpecRow
-        // rows at all — audited, and pinned by
-        // MenuEngine.networking_right_click_never_sees_a_spec_row_stash).
-        pks().menu_spec_clicked_row = call_arg;
-        og::ui::set_menu_spec_row_reverse(true);
-        return whatfunc;
+    // ButtonAction::MenuSpecRow is deliberately absent: the picker's
+    // cyclers turn FORWARD ONLY, so there is no direction for a spec row
+    // to read off the mouse button. On a screen that opts into
+    // right_click_enabled a spec row therefore takes the default answer
+    // below and dispatches nothing; every other screen never reaches
+    // here at all (the runner's legacy arm sends any nonzero click to
+    // leftclick).
     case ButtonAction::DecreaseStat:
         return decrease_stat(call_arg, 5);
     case ButtonAction::IncreaseStat:

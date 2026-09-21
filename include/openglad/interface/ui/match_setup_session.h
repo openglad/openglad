@@ -243,8 +243,10 @@ public:
         return knobs_;
     }
 
-    // dir = +1 (a click) / -1 (the "<" cell, the terminal "N-", right-click).
-    Outcome choose(std::size_t row, int dir, const Inputs& inputs);
+    // Activate a row. A cycler row steps its wheel one stop FORWARD and
+    // wraps — the picker has no reverse on any cycler, and these wheels
+    // are three to five stops long.
+    Outcome choose(std::size_t row, const Inputs& inputs);
     Outcome next(const Inputs& inputs);
     Outcome prev(const Inputs& inputs);
     // The tab strip / the terminal Prev-Next. Arena descends into
@@ -287,7 +289,7 @@ private:
     void compose_match(const Inputs& inputs);
     void enter_arena(const Inputs& inputs);
     [[nodiscard]] bool has_step(Step step) const;
-    Outcome turn(Row::Knob knob, int dir, const Inputs& inputs);
+    Outcome turn(Row::Knob knob, const Inputs& inputs);
 
     SaveData& save_;
     CampaignPickerSession book_;  // depth 1 = GAME, depth >= 2 = ARENA

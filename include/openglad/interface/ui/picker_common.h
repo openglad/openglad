@@ -402,10 +402,10 @@ bool is_allied_mode(const SaveData& save);
 // no label. ctf_team_count survives only as an inert save/wire field.
 
 // Step the capture limit along {0, 1, 3, 5, 10} — 0 is the map's own
-// target. `dir` may be any step and the wheel wraps both ways; a stored
-// value the wheel has no slot for rejoins at the head (see the SETUP
-// wizard block below, which owns that rule for every knob).
-void cycle_ctf_capture_limit(SaveData& save, int dir = +1);
+// target. One step FORWARD, wrapping, like every other cycler in the
+// picker; a stored value the wheel has no slot for rejoins at the head
+// (see the SETUP wizard block below, which owns that rule for every knob).
+void cycle_ctf_capture_limit(SaveData& save);
 
 // True when the save's current campaign is the CTF campaign.
 
@@ -1817,10 +1817,12 @@ std::vector<NetworkingMachineRow> build_networking_machine_rows(
 // seat's team and the arena's authored-side mask arrive as ARGUMENTS, so
 // the same call answers identically on SDL, in openglad_text and in curses.
 //
-// Every wheel below steps through one rule: a value ON the wheel steps and
-// wraps in either direction; a value the wheel has no slot for — a derived
-// face (SIDES: 1, FILL: MIXED), a number settled from a lobby, an older
-// save — rejoins at the HEAD rather than pretending to know where it was.
+// Every wheel below steps through one rule: a value ON the wheel steps
+// FORWARD and wraps; a value the wheel has no slot for — a derived face
+// (SIDES: 1, FILL: MIXED), a number settled from a lobby, an older save —
+// rejoins at the HEAD rather than pretending to know where it was. There
+// is no reverse: every cycler in the picker turns one way, and the
+// longest wheel here is five stops.
 // (cycle_lineup_fill keeps its own documented rule: junk enters at NONE,
 // the slot the clamp lands it on, not at the head.)
 
@@ -1861,22 +1863,22 @@ std::string match_fill_face(const SaveData& save, int my_team,
 // directly (the caller runs the sync + autosave tail) and says nothing:
 // the redrawn face is the answer (R2-1).
 void turn_match_sides(SaveData& save, int my_team,
-                      std::uint8_t authored_mask, int dir);
+                      std::uint8_t authored_mask);
 
 // Turn FILL (amendment 5 G3 / amendment 6 H1-H3, corrected by R2-2's fix
 // B): one step along {WEAK, FAIR, STRONG, BRUTAL}, written to every ON
 // authored opponent — or to EVERY authored opponent when none is on (fix
 // B) — AND the local seat's own band. NONE and MIXED faces are off the
-// wheel and rejoin at WEAK in either direction, so the wizard's FILL can
-// never empty an arena; LINEUP keeps per-team NONE. Writes save.fill[]
-// directly and says nothing (R2-1).
+// wheel and rejoin at WEAK, so the wizard's FILL can never empty an
+// arena; LINEUP keeps per-team NONE. Writes save.fill[] directly and says
+// nothing (R2-1).
 void turn_match_fill(SaveData& save, int my_team,
-                     std::uint8_t authored_mask, int dir);
+                     std::uint8_t authored_mask);
 
 // The TIME LIMIT wheel over save.time_limit: {0, 3600, 7200, 10800, 14400}
 // sim ticks (720 per minute — 12/s, the manifest's own unit). 0 is the
 // MATCHUP sentinel: whatever the map itself authored.
-void cycle_time_limit(SaveData& save, int dir);
+void cycle_time_limit(SaveData& save);
 // "TIME LIMIT: MAP" / "TIME LIMIT: 5 MIN" ... "TIME LIMIT: 20 MIN". The
 // minutes are spelled out because "5M" reads as five million on a 6px
 // font. An off-wheel value wears the minutes it holds (2160 -> "3 MIN").

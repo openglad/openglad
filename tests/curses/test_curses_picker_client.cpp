@@ -2199,10 +2199,11 @@ const og::ui::PickerMenuItem& camp_item()
     return *item;
 }
 
-// Type a wizard row number at the "Setup # [1-N]" prompt and send it. "2-"
-// is the `<` cell's terminal projection, so the trailing '-' is typed like
-// any other character. The camp prompt takes the same shape, so the SETUP
-// row is typed with it too.
+// Type a wizard row number at the "Setup # [1-N]" prompt and send it. A
+// trailing '-' is typed like any other character, which is what lets a leg
+// below prove the retired `N-` grammar is now just an unparsable answer.
+// The camp prompt takes the same shape, so the SETUP row is typed with it
+// too.
 void type_setup_row(HeadlessTerminal& term, std::string_view answer)
 {
     for (const char ch : answer)
@@ -2339,7 +2340,12 @@ TEST(CursesPickerClient, setup_flow_level_row_rides_apply_level_then_level_appli
 // the prompt back when the wizard closes, so the face is read off the SAVE
 // and off the DISK -- the Turned arm's autosave banks the value in the
 // active company file, which is the witness a redrawn label could never be.
-TEST(CursesPickerClient, setup_flow_knob_turn_autosaves_and_n_minus_steps_back)
+//
+// And the wheels are FORWARD ONLY: `N-` is no longer a grammar the prompt
+// knows, so it buys the invalid-row notice and nothing else. An overshoot
+// costs a lap, which on the five-stop TIME LIMIT wheel is four more
+// presses -- the third leg walks exactly that lap.
+TEST(CursesPickerClient, setup_flow_knob_turn_autosaves_and_laps_forward)
 {
     MountRestore mount_guard;
     PickerFixture f;
@@ -2367,25 +2373,43 @@ TEST(CursesPickerClient, setup_flow_knob_turn_autosaves_and_n_minus_steps_back)
             << "the Turned arm's autosave tail must bank the knob";
     }
 
-    // Leg 2: `2-` on the SAME row walks it back. A cycle-once handler would
-    // take another lap forward instead -- this is the whole reason the
-    // session answers a VALUE and the client owns a value-taking tail.
+    // Leg 2: `2-` on the SAME row is not an answer. The prompt takes a
+    // plain number, the parse fails, and the driver says so.
     type_setup_row(f.t(), "1");
     type_setup_row(f.t(), "9");
     type_setup_row(f.t(), "3");
     type_setup_row(f.t(), "2-");
+    dismiss(f.t());
+    type_setup_row(f.t(), "0");
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(3600, static_cast<int>(f.save().time_limit))
+        << "`N-` retired with the reverse cell: it moves nothing, and the "
+           "dismissed screen it put up was the driver's invalid-row notice "
+           "(its words are pinned on the text client, whose stdout keeps "
+           "the whole transcript)";
+
+    // Leg 3: the overshoot costs a lap, not a reverse. Four more forward
+    // presses bring the five-stop wheel back to MAP.
+    type_setup_row(f.t(), "1");
+    type_setup_row(f.t(), "9");
+    type_setup_row(f.t(), "3");
+    for (int i = 0; i < 4; ++i)
+        type_setup_row(f.t(), "2");
     type_setup_row(f.t(), "0");
     f.t().push_special(KeyCode::Escape);
     f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
 
     EXPECT_EQ(0, static_cast<int>(f.save().time_limit))
-        << "`2-` is the `<` cell's projection: one step BACK to MAP";
+        << "five stops, four more presses: the lap is the whole cost of an "
+           "overshoot";
     {
         SaveData reloaded;
         ASSERT_EQ(SaveDataIoError::None,
                   reloaded.load_with_error(og::data::active_company_slot()));
         EXPECT_EQ(0, static_cast<int>(reloaded.time_limit))
-            << "and the disk went back with it";
+            << "and the disk went round with it";
     }
     EXPECT_TRUE(f.t().input_exhausted());
 }
@@ -2435,7 +2459,7 @@ TEST(CursesPickerClient, setup_flow_doors_point_at_the_pages_the_menus_own)
     dismiss(f.t());
     type_setup_row(f.t(), "99");   // TEAMS: out of range
     dismiss(f.t());
-    type_setup_row(f.t(), "3-");   // TEAMS: `N-` on a NON-cycler row
+    type_setup_row(f.t(), "3-");   // TEAMS: the retired `N-` grammar
     dismiss(f.t());
     type_setup_row(f.t(), "0");    // wizard: back out
     f.t().push_special(KeyCode::Escape);

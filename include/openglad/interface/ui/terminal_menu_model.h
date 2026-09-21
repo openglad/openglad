@@ -143,14 +143,13 @@ TerminalLineupModel build_terminal_lineup_model(
 //
 // A prompt has no tab strip, so the two steppers ARE the tab strip: the page
 // rows come first as numbered items, then `Next: <STEP>`, `Prev: <STEP>` and
-// `Back`. `N-` at the prompt is the `<` cell's projection, so only a live
-// cycler row is `reversible`.
+// `Back`. The prompt takes a plain row number: a cycler row steps its wheel
+// one stop FORWARD, the way every cycler in the picker turns.
 struct TerminalMatchSetupItem {
     enum class Kind : std::uint8_t { Row, Next, Prev, Back };
     Kind kind = Kind::Back;
     std::size_t row = 0;    // Kind::Row: the index into page().rows
     std::string label;
-    bool reversible = false;
 };
 
 struct TerminalMatchSetupModel {

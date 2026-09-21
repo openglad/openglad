@@ -62,9 +62,8 @@ inline void inject_click(int x, int y, int delay_ms = 50)
 
 // The RIGHT button, the same shape. leftmouse() answers 2 on its transition
 // edge (or on the collapsed-tap queue), which is what a right_click_enabled
-// screen dispatches through vbutton::rightclick() — the reverse step on a
-// cycler row (docs/match-setup-design.md D19) and the hire/train screens'
-// reverse candidate cycling.
+// screen dispatches through vbutton::rightclick() — the hire/train
+// screens' reverse candidate cycling, the one consumer left.
 inline void inject_right_mouse_down(int x, int y)
 {
     SDL_Event event;

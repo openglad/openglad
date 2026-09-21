@@ -281,7 +281,7 @@ TEST(CtfUi, team_build_row_and_scenario_settings_cycle)
     // The SCENARIO screen has NO cyclers left. TEAMS (A3), TROOPS (B5) and
     // SCORE (#304) all retired: no handler, parked cells, empty labels. The
     // score limit's one surface is the SETUP wizard's RULES row, which
-    // MatchSetupUi.reverse_cell_and_right_click_step_a_rules_cycler_back
+    // MatchSetupUi.a_rules_cycler_laps_forward_and_ignores_a_right_click
     // drives end to end; its rule is og::ui::cycle_ctf_capture_limit, the
     // same call the retired handler made.
     save.current_campaign = "modes";

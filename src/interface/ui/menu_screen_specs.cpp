@@ -7716,8 +7716,8 @@ void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
 // THE CAMP on the zone submenu's chassis. The Base Camp panel and its two
 // header lines are the walls the player walked in through; the tab strip
 // takes the panel's header band, up to nine rows wear the docket's own
-// 42-glyph face, ONE 30px cell column (280..310) holds the reverse cells
-// and the ARENA window pagers, and BACK | PREV | NEXT close the footer.
+// 42-glyph face, the 30px cell column (280..310) holds the ARENA window
+// pagers, and BACK | PREV | NEXT close the footer.
 //
 // NO RULE LIVES HERE. Every face is og::ui::MatchSetupSession's (SDL-free,
 // shared with both terminal clients); this file windows, inks, navigates
@@ -7768,22 +7768,6 @@ RowState match_setup_row_state(const MenuLabelContext& /*context*/)
                                             : RowState::Visible;
 }
 
-// A reverse cell exists only where a wheel does: the session emits Cycler
-// rows only for the viewer who may turn them, so the cell follows the row.
-template <int Slot>
-RowState match_setup_rev_state(const MenuLabelContext& context)
-{
-    const SetupRow* const row = match_setup_window_row(Slot);
-    if (row == nullptr || row->extra != SetupRow::Extra::Cycler ||
-        row->state == RowState::Disabled)
-    {
-        return RowState::Hidden;
-    }
-    // The gate pass's own host axis (the runner fills it from the lobby),
-    // so the G5 lattice sweep drives both halves of this cell.
-    return context.is_host ? RowState::Visible : RowState::Hidden;
-}
-
 // The ARENA window pagers: the docket's own pair, on the band's first row.
 RowState match_setup_pager_state(const MenuLabelContext& /*context*/)
 {
@@ -7825,8 +7809,8 @@ RowState match_setup_tab_state(const MenuLabelContext& /*context*/)
         : RowState::Visible;
 }
 
-// Rows and their reverse cells share a y; the rewire re-bands both under
-// the step's lines, so the table's own y is the no-lines anchor (47).
+// The rewire re-bands the rows under the step's lines, so the table's own
+// y is the no-lines anchor (47).
 #define OG_SETUP_ROW(i)                                                      \
     {.id = "setup_row_" #i, .label = "",                                     \
      .x = kSetupRowX, .y = setup_row_y0(0) + kSetupRowPitch * (i),           \
@@ -7837,13 +7821,6 @@ RowState match_setup_tab_state(const MenuLabelContext& /*context*/)
              .down = (i) < kSetupRowsMax - 1 ? kMatchSetupRowBase + (i) + 1  \
                                              : kMatchSetupBackIndex},        \
      .state_override = &match_setup_row_state<(i)>}
-#define OG_SETUP_REV(i)                                                      \
-    {.id = "setup_rev_" #i, .label = "<",                                    \
-     .x = kSetupRevX, .y = setup_row_y0(0) + kSetupRowPitch * (i),           \
-     .w = kSetupRevW, .h = kSetupRowH,                                       \
-     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupRevBase + (i),   \
-     .nav = {.left = kMatchSetupRowBase + (i)},                              \
-     .state_override = &match_setup_rev_state<(i)>, .hidden = true}
 #define OG_SETUP_TAB(i)                                                      \
     {.id = "setup_tab_" #i, .label = "",                                     \
      .x = setup_tab_x(i), .y = kSetupTabY, .w = kSetupTabW, .h = kSetupTabH, \
@@ -7859,9 +7836,6 @@ constexpr MenuButtonSpec kMatchSetupRows[] = {
     OG_SETUP_ROW(0), OG_SETUP_ROW(1), OG_SETUP_ROW(2), OG_SETUP_ROW(3),
     OG_SETUP_ROW(4), OG_SETUP_ROW(5), OG_SETUP_ROW(6), OG_SETUP_ROW(7),
     OG_SETUP_ROW(8),
-    OG_SETUP_REV(0), OG_SETUP_REV(1), OG_SETUP_REV(2), OG_SETUP_REV(3),
-    OG_SETUP_REV(4), OG_SETUP_REV(5), OG_SETUP_REV(6), OG_SETUP_REV(7),
-    OG_SETUP_REV(8),
     // BACK always CLOSES the wizard (D29): PREV is how a player steps back
     // through the steps, so BACK keeps the shared cancel meaning it has on
     // every other screen. Its RECT is the zone submenu's; its ID is not, so
@@ -7884,10 +7858,8 @@ constexpr MenuButtonSpec kMatchSetupRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupNextIndex,
      .nav = {.up = kMatchSetupRowBase, .left = kMatchSetupPrevIndex},
      .state_override = &match_setup_next_state},
-    // The ARENA window's pager pair lives in the SAME cell column the
-    // reverse cells do (D25: one column, 280..310), on the band's first
-    // row — and row 0 is either a cycler (RULES/TEAMS) or a level row on a
-    // paged list (ARENA), never both, so the two never show together. They
+    // The ARENA window's pager pair lives in the declared cell column
+    // (D25: one column, 280..310), on the band's first row. They
     // are PARKED at a zero-size rect with an empty label like the Base
     // Camp zone's own pagers, which keeps the static table free of a
     // declared same-geometry pair (gate-lattice safe); the rewire bands
@@ -7908,7 +7880,6 @@ constexpr MenuButtonSpec kMatchSetupRows[] = {
 };
 
 #undef OG_SETUP_ROW
-#undef OG_SETUP_REV
 #undef OG_SETUP_TAB
 
 static_assert(static_cast<int>(std::size(kMatchSetupRows)) ==
@@ -8119,15 +8090,12 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
     }
     const int row_top = setup_row_y0(std::min(lines, kSetupLinesMax));
 
-    // The rows and their cells, re-banded under the lines and re-faced.
+    // The rows, re-banded under the lines and re-faced.
     for (int r = 0; r < kSetupRowsMax; ++r) {
         const int ordinal = kMatchSetupRowBase + r;
-        const int rev = kMatchSetupRevBase + r;
         const int y = row_top + kSetupRowPitch * r;
         place(ordinal, kSetupRowX, y, kSetupRowW, kSetupRowH);
-        place(rev, kSetupRevX, y, kSetupRevW, kSetupRowH);
         buttons[ordinal].nav = {};
-        buttons[rev].nav = {};
         const SetupRow* const row = match_setup_window_row(r);
         if (row == nullptr) {
             write_label(ordinal, std::string());
@@ -8144,7 +8112,6 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
         // re-inking it here would undo the bevel fix.
         if (row->state != RowState::Disabled)
             apply_scripted_row_face_ink(live(ordinal), face.face);
-        write_label(rev, "<");
     }
     // The pagers un-park into the cell column's first row (they ship at a
     // zero-size rect with no label, the Base Camp zone pagers' idiom).
@@ -8194,33 +8161,16 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
             .right = k + 1 < tab_count ? kMatchSetupTabBase + k + 1 : -1};
     }
 
-    // The reverse cells chain among THEMSELVES (skipping rows with no
-    // wheel) and step LEFT back onto their own row.
-    const auto scan_rev = [&shown, visible](int from, int step) {
-        for (int r = from; r >= 0 && r < visible; r += step) {
-            if (shown(kMatchSetupRevBase + r))
-                return kMatchSetupRevBase + r;
-        }
-        return -1;
-    };
+    // The rows chain vertically. The only thing in the cell column is the
+    // ARENA pager pair, and it hangs off the first row's RIGHT.
     for (int r = 0; r < visible; ++r) {
         const int ordinal = kMatchSetupRowBase + r;
-        const int rev = kMatchSetupRevBase + r;
-        const bool has_cell = shown(rev);
         buttons[ordinal].nav = {
             .up = r > 0 ? kMatchSetupRowBase + r - 1 : tab_anchor,
             .down = r + 1 < visible ? kMatchSetupRowBase + r + 1
                                     : kMatchSetupBackIndex,
             .left = -1,
-            .right = has_cell
-                ? rev
-                : (r == 0 && pagers ? kMatchSetupPagePrevIndex : -1)};
-        if (!has_cell)
-            continue;
-        buttons[rev].nav = {.up = scan_rev(r - 1, -1),
-                            .down = scan_rev(r + 1, +1),
-                            .left = ordinal,
-                            .right = -1};
+            .right = r == 0 && pagers ? kMatchSetupPagePrevIndex : -1};
     }
     if (pagers) {
         buttons[kMatchSetupPagePrevIndex].nav = {
@@ -8595,7 +8545,7 @@ Sint32 match_setup_dispatch(MatchSetupScreenState& st,
     return 0;
 }
 
-Sint32 match_setup_choose(MatchSetupScreenState& st, int slot, int dir,
+Sint32 match_setup_choose(MatchSetupScreenState& st, int slot,
                           const og::ui::MatchSetupSession::Inputs& inputs)
 {
     const og::ui::MatchSetupSession::Page& page = st.session.page();
@@ -8606,7 +8556,7 @@ Sint32 match_setup_choose(MatchSetupScreenState& st, int slot, int dir,
         return 0;  // a stale click on a row this frame does not show
     }
     return match_setup_dispatch(
-        st, st.session.choose(static_cast<std::size_t>(index), dir, inputs),
+        st, st.session.choose(static_cast<std::size_t>(index), inputs),
         inputs);
 }
 
@@ -8621,14 +8571,6 @@ Sint32 match_setup_on_spec_row(int row, void* screen_state)
     // One click, one answer (the Base Camp rule).
     st->toast.clear();
     st->toast_until_ms = 0;
-    // Read AND clear: this dispatch may open a nested screen (the LINEUP
-    // and VIEW LEVEL doors), and a nested run_menu_screen's first frame
-    // would otherwise inherit a flag that belongs to THIS click — under
-    // TESTING the runner's own "reverse stash survived a frame" invariant
-    // fires on it, and in production the nested screen's first row press
-    // would step its wheel backwards (D19).
-    const bool reverse = og::ui::menu_spec_row_reverse();
-    og::ui::set_menu_spec_row_reverse(false);
     const LineupSeatView seats = picker_lineup_seat_view();
     const std::array<int, 4> map_units = picker_lineup_map_unit_counts();
     const og::ui::MatchSetupSession::Inputs inputs =
@@ -8670,13 +8612,8 @@ Sint32 match_setup_on_spec_row(int row, void* screen_state)
         return match_setup_dispatch(*st, st->session.goto_step(target, inputs),
                                     inputs);
     }
-    if (row >= kMatchSetupRevBase && row < kMatchSetupRevBase + kSetupRowsMax)
-        return match_setup_choose(*st, row - kMatchSetupRevBase, -1, inputs);
     if (row >= kMatchSetupRowBase && row < kMatchSetupRowBase + kSetupRowsMax)
-    {
-        return match_setup_choose(*st, row - kMatchSetupRowBase,
-                                  reverse ? -1 : +1, inputs);
-    }
+        return match_setup_choose(*st, row - kMatchSetupRowBase, inputs);
     return 0;
 }
 
@@ -8716,8 +8653,8 @@ void install_lineup_state_for_screen(LineupScreenState* state)
 }
 
 // The SETUP wizard: a tab strip in the panel's header band, the step's
-// lines and team lines, up to nine 42-glyph rows with their reverse cells,
-// the ARENA window pagers, and BACK | PREV | NEXT in the footer.
+// lines and team lines, up to nine 42-glyph rows, the ARENA window
+// pagers, and BACK | PREV | NEXT in the footer.
 const MenuScreenSpec& match_setup_menu_screen_spec()
 {
     static const MenuScreenSpec spec{
@@ -8735,9 +8672,6 @@ const MenuScreenSpec& match_setup_menu_screen_spec()
         .remote_start = RemoteStartScope::TeamBuildScope,
         .remote_start_exit = RemoteStartExit::ReturnMenuExit,
         .default_highlight = kMatchSetupBackIndex,
-        // D19: a right-click on a cycler row steps its wheel BACK, through
-        // the same session entry the "<" cell uses.
-        .right_click_enabled = true,
         .polls_lobby = true,
         .draw_background = &match_setup_draw_background,
         .draw_content = &match_setup_draw_content,

@@ -239,9 +239,7 @@ TerminalMatchSetupModel build_terminal_match_setup_model(
         model.items.push_back(TerminalMatchSetupItem{
             TerminalMatchSetupItem::Kind::Row, i,
             campaign_picker_row_text(row.base, kCampaignPickerTerminalRowBudget,
-                                     true),
-            row.extra == MatchSetupSession::Row::Extra::Cycler &&
-                row.state == RowState::Visible});
+                                     true)});
     }
     // The two steppers ARE the tab strip's projection. They name the step
     // the session's own next_step()/prev_step() land on, so an item can
@@ -250,18 +248,16 @@ TerminalMatchSetupModel build_terminal_match_setup_model(
         model.items.push_back(TerminalMatchSetupItem{
             TerminalMatchSetupItem::Kind::Next, 0,
             std::format("Next: {}",
-                        MatchSetupSession::step_word(session.next_step())),
-            false});
+                        MatchSetupSession::step_word(session.next_step()))});
     }
     if (page.can_prev) {
         model.items.push_back(TerminalMatchSetupItem{
             TerminalMatchSetupItem::Kind::Prev, 0,
             std::format("Prev: {}",
-                        MatchSetupSession::step_word(session.prev_step())),
-            false});
+                        MatchSetupSession::step_word(session.prev_step()))});
     }
     model.items.push_back(TerminalMatchSetupItem{
-        TerminalMatchSetupItem::Kind::Back, 0, "Back", false});
+        TerminalMatchSetupItem::Kind::Back, 0, "Back"});
     return model;
 }
 

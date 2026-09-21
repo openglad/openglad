@@ -568,17 +568,6 @@ void check_setup_grid(const SetupLayoutDriver& driver, const char* variant)
                 << variant << ": rows must keep one pitch";
         }
         previous_row_y = row.y;
-
-        // The reverse cell rides its row and closes the right edge.
-        const button& cell = b[og::ui::kMatchSetupRevBase + r];
-        if (cell.hidden)
-            continue;
-        EXPECT_EQ(og::ui::kSetupRevX, cell.x) << variant << " cell " << r;
-        EXPECT_EQ(og::ui::kSetupRevW, cell.sizex) << variant << " cell " << r;
-        EXPECT_EQ(og::ui::kSetupRightEdge, cell.x + cell.sizex)
-            << variant << ": the cell column has ONE right edge";
-        EXPECT_EQ(row.y, cell.y) << variant << ": the cell rides its row";
-        EXPECT_EQ("<", cell.label) << variant;
     }
 
     // The pagers share that edge and that first-row band.
@@ -593,9 +582,6 @@ void check_setup_grid(const SetupLayoutDriver& driver, const char* variant)
             << variant << ": the pager pair closes the one right edge";
         EXPECT_EQ(b[og::ui::kMatchSetupRowBase].y, page_prev.y)
             << variant << ": the pagers sit beside the row they page";
-        EXPECT_TRUE(b[og::ui::kMatchSetupRevBase].hidden)
-            << variant << ": a reverse cell and a pager in the same slot of "
-                          "the same column would overlap";
     }
 
     // The tab strip: one band, one pitch, closing on the right edge when

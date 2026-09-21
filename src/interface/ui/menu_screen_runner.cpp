@@ -111,23 +111,6 @@ int menu_screen_testing_highlighted_button()
 }
 #endif
 
-// The right-click reverse stash (D19). One flag beside the existing
-// MenuSpecRow row stash, raised by vbutton::do_call_right and cleared by
-// the loop right after the dispatch that reads it.
-namespace {
-bool g_menu_spec_row_reverse = false;
-}
-
-bool menu_spec_row_reverse()
-{
-    return g_menu_spec_row_reverse;
-}
-
-void set_menu_spec_row_reverse(bool reverse)
-{
-    g_menu_spec_row_reverse = reverse;
-}
-
 namespace {
 
 inline PickerState& pks()
@@ -633,11 +616,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
     // overrides the derivation in either direction for the doors the depth
     // alone cannot classify.
     const MenuDepthScope depth_scope;
-    // A NESTED screen starts from a clean reverse stash. The outer screen's
-    // dispatch reads the flag and opens this one from inside on_spec_row,
-    // so the outer runner has not reached its own clear yet; without this
-    // the nested loop's first frame trips the invariant below (D19).
-    set_menu_spec_row_reverse(false);
     const std::optional<MenuEntryFade> override_fade = consume_menu_entry_fade();
     // Two decisions, deliberately separate. owns_transition: this screen is
     // a boundary surface (a depth-1 Screen, or a nested main-menu door) and
@@ -856,10 +834,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             retvalue = spec.on_spec_row != nullptr
                 ? spec.on_spec_row(clicked_row, screen_state)
                 : 0;
-            // The reverse flag belongs to the DISPATCH, not to the frame:
-            // a screen reads it inside on_spec_row and it is gone by the
-            // time the next click is minted (D19).
-            set_menu_spec_row_reverse(false);
             // Structural exit from a spec row propagates MENU_EXIT itself
             // (a local BACK's break returns spec.exit_value instead).
             if (retvalue == MENU_EXIT)
@@ -867,11 +841,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         }
         OG_MENU_ENGINE_CHECK(pks().menu_spec_clicked_row < 0,
                              "MenuSpecRow stash was not consumed");
-        // The same discipline the row stash itself is held to: a reverse
-        // flag that outlives its dispatch would make the NEXT left-click on
-        // some other screen step a wheel backward.
-        OG_MENU_ENGINE_CHECK(!menu_spec_row_reverse(),
-                             "MenuSpecRow reverse stash survived a frame");
 
         // The reset point (legacy reset_buttons' trigger and its retvalue
         // consumption, verbatim). A dispatch that ran a BLOCKING CHILD — a

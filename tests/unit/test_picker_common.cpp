@@ -1406,16 +1406,6 @@ TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
     save.ctf_capture_limit = 42;
     og::ui::cycle_ctf_capture_limit(save);
     ASSERT_EQ(0, (int)save.ctf_capture_limit);
-
-    // The reverse step (the SETUP wizard's "<" cell, the terminal "N-"
-    // item and a right-click): the same wheel walked the other way.
-    // MatchSetupRules.score_wheel_reverses_and_speaks pins it with the
-    // toast beside it.
-    for (const int step : {10, 5, 3, 1, 0})
-    {
-        og::ui::cycle_ctf_capture_limit(save, -1);
-        ASSERT_EQ(step, (int)save.ctf_capture_limit);
-    }
 }
 
 TEST(PickerCommon, format_ctf_labels)

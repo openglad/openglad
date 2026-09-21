@@ -783,37 +783,36 @@ bool is_allied_mode(const SaveData& save)
 namespace {
 
 // ONE off-wheel rule for every SETUP knob, ported from the Lua next_value
-// (campaign_picker.lua:591-598) with the reverse step it never had: a
-// value ON the wheel steps and wraps in either direction; a value the
-// wheel has no slot for — a match settled from a lobby, an older save, a
-// derived face like SIDES: 1 or FILL: MIXED — rejoins at the HEAD rather
-// than pretending to know where it was.
+// (campaign_picker.lua:591-598): a value ON the wheel steps FORWARD and
+// wraps; a value the wheel has no slot for — a match settled from a
+// lobby, an older save, a derived face like SIDES: 1 or FILL: MIXED —
+// rejoins at the HEAD rather than pretending to know where it was.
+//
+// Forward only, like every other cycler in the picker. The wheels here
+// are three to five stops long, so an overshoot costs a lap.
 //
 // cycle_lineup_fill is NOT built on this: its documented rule enters junk
 // at NONE, the slot the clamp lands a negative on, not at the head.
 template <typename T>
-T wheel_next(std::span<const T> wheel, T current, int dir)
+T wheel_next(std::span<const T> wheel, T current)
 {
     const auto steps = static_cast<int>(wheel.size());
     for (int i = 0; i < steps; ++i)
     {
         if (wheel[static_cast<std::size_t>(i)] != current)
             continue;
-        long long next = (static_cast<long long>(i) + dir) % steps;
-        if (next < 0)
-            next += steps;
-        return wheel[static_cast<std::size_t>(next)];
+        return wheel[static_cast<std::size_t>((i + 1) % steps)];
     }
     return wheel.front();
 }
 
 } // namespace
 
-void cycle_ctf_capture_limit(SaveData& save, int dir)
+void cycle_ctf_capture_limit(SaveData& save)
 {
     static constexpr std::array<short, 5> kScoreWheel = {0, 1, 3, 5, 10};
     save.ctf_capture_limit =
-        wheel_next<short>(kScoreWheel, save.ctf_capture_limit, dir);
+        wheel_next<short>(kScoreWheel, save.ctf_capture_limit);
 }
 
 bool is_versus_campaign(std::string_view campaign_id)
@@ -4854,7 +4853,7 @@ std::string match_fill_face(const SaveData& save, int my_team,
 }
 
 void turn_match_sides(SaveData& save, int my_team,
-                      std::uint8_t authored_mask, int dir)
+                      std::uint8_t authored_mask)
 {
     const std::vector<int> opponents = match_opponents(my_team, authored_mask);
     const int standing = static_cast<int>(
@@ -4862,7 +4861,7 @@ void turn_match_sides(SaveData& save, int my_team,
     const std::vector<int> wheel = match_sides_wheel(authored_mask);
     // The all-NONE rest reads SIDES: 1, a value off the wheel, so the first
     // click rejoins at the head (2) instead of guessing where it was.
-    const int next = wheel_next<int>(wheel, 1 + standing, dir);
+    const int next = wheel_next<int>(wheel, 1 + standing);
     const short code = match_effective_fill(save, my_team, authored_mask);
     for (std::size_t i = 0; i < opponents.size(); ++i)
     {
@@ -4874,7 +4873,7 @@ void turn_match_sides(SaveData& save, int my_team,
 }
 
 void turn_match_fill(SaveData& save, int my_team,
-                     std::uint8_t authored_mask, int dir)
+                     std::uint8_t authored_mask)
 {
     static constexpr std::array<short, 4> kMatchFillWheel = {
         og::sim::kFillWeak, og::sim::kFillFair, og::sim::kFillStrong,
@@ -4884,11 +4883,11 @@ void turn_match_fill(SaveData& save, int my_team,
     const std::optional<short> common = match_common_fill(
         match_face_bands(save, my_team, authored_mask));
     // NONE (all bands off) and MIXED are off the wheel and rejoin at the
-    // head, WEAK, in either direction — the same rule every knob applies
-    // to a value it cannot place. The wizard's FILL can no longer empty an
-    // arena: SIDES owns "fewer sides" and LINEUP owns "this one band off".
+    // head, WEAK — the same rule every knob applies to a value it cannot
+    // place. The wizard's FILL can no longer empty an arena: SIDES owns
+    // "fewer sides" and LINEUP owns "this one band off".
     const short current = common.value_or(static_cast<short>(-1));
-    const short code = wheel_next<short>(kMatchFillWheel, current, dir);
+    const short code = wheel_next<short>(kMatchFillWheel, current);
     std::vector<int> targets;
     for (const MatchFillBand& band : on)
         targets.push_back(band.team);
@@ -4906,7 +4905,7 @@ void turn_match_fill(SaveData& save, int my_team,
         save.fill[static_cast<std::size_t>(team)] = code;
 }
 
-void cycle_time_limit(SaveData& save, int dir)
+void cycle_time_limit(SaveData& save)
 {
     // Sim ticks, 12/s: 5, 10, 15 and 20 minutes, plus the 0 sentinel for
     // whatever the map itself authored. Every shipped manifest value except
@@ -4914,7 +4913,7 @@ void cycle_time_limit(SaveData& save, int dir)
     // map's own number back explicitly.
     static constexpr std::array<short, 5> kTimeLimitWheel = {0, 3600, 7200,
                                                              10800, 14400};
-    save.time_limit = wheel_next<short>(kTimeLimitWheel, save.time_limit, dir);
+    save.time_limit = wheel_next<short>(kTimeLimitWheel, save.time_limit);
 }
 
 std::string format_time_limit_label(const SaveData& save)
