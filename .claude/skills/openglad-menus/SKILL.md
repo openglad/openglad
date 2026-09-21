@@ -123,17 +123,21 @@ ordinal. The row opens `MenuScreenId::MatchSetup`, a five-step wizard
 (GAME → ARENA → TEAMS → RULES → MATCH) that is a room inside the camp panel
 and reuses the zone submenu's constants. Working on it, know these six things:
 
-- **The grid is declared, and it has ONE right edge, 310.** Tabs, the 30 px
-  cell column (280..310) and the ARENA pagers all end there; rows are the
-  docket's 264-wide 42-glyph face. The vertical/rhythm names live in
+- **The grid is declared, and it has ONE right edge, 310.** Tabs and the
+  ARENA pagers (the only tenants of the 30 px cell column, 280..310) all
+  end there; rows are the docket's 264-wide 42-glyph face. The
+  vertical/rhythm names live in
   `include/openglad/interface/ui/match_setup_session.h` (the session is
   SDL-free and needs them); every x/w/tab/cell/footer/ordinal name lives in
   `picker_sdl_defs.h`, which includes that header and `static_assert`s the
   two against the zone constants. Do not add a third home.
-- **Every cycler row has a `<` reverse cell**, and the same
-  `session.choose(row, -1)` is reached three ways: the cell, a mouse
-  right-click (the `menu_spec_row_reverse` stash, docs/menu-engine.md) and
-  the terminal `N-` item. LEFT/RIGHT stay NAVIGATION on this screen as on
+- **The cycler rows cycle FORWARD ONLY**, like every other cycler in the
+  picker. There is no `<` cell and no terminal `N-` grammar — that answer
+  takes the driver's `Invalid setup row.` notice — and no reverse on the
+  right mouse button: the wizard sets no `right_click_enabled`, so the
+  engine's legacy rule applies and a right-click is just a click that
+  steps the wheel forward. The wheels are three to five stops, so an
+  overshoot costs a lap. LEFT/RIGHT stay NAVIGATION on this screen as on
   every other.
 - **The escape-door table** the injector flows bind starts with
   `{"setup_back", "setup_back"}` — BACK/Escape closes the wizard from any

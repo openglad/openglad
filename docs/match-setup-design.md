@@ -110,6 +110,9 @@ kSetupPagerNextX       = kBaseCampZonePagerNextX                 // 296, w 14 �
 // … and ONE 30x10 reverse cell on every cycler row, label "<"
 kSetupRevX             = kSetupCellX                             // 280
 kSetupRevW             = kSetupCellW                             // 30 — ends 310
+// ^ round 3 (2026-09-21, PR #307): kSetupRevX/kSetupRevW are DELETED — the
+//   wheels turn forward only, so the cell column holds the pagers alone.
+//   kSetupCellX/kSetupCellW and kSetupRowW = 264 are unchanged.
 // footer (the zone submenu's BACK and NEXT rects; PREV is NEXT's mirror on the same 6 px gap)
 kSetupBack             = (10,169,44,20)   id setup_back, Escape
 kSetupNext             = (270,169,40,20)  id setup_next, label NEXT
@@ -139,6 +142,13 @@ same table in the same file.
 
 Button table `kMatchSetupRows` (`kMatchSetupButtonCount = 28`), all
 `ButtonAction::MenuSpecRow` with `arg == ordinal`:
+
+**Update (2026-09-21, PR #307):** the nine `setup_rev_r` rows (ordinals 9..17) are REMOVED — the cyclers
+turn forward only (§11) — and every ordinal after them shifts down by nine:
+`setup_back` 9, `setup_prev` 10, `setup_next` 11, `setup_page_prev` 12,
+`setup_page_next` 13, `setup_tab_k` 14..18, `kMatchSetupButtonCount = 19`.
+`kMatchSetupRevBase` is deleted. The rects of every surviving row, the
+264-wide row face and the pager pair's own column are unchanged.
 
 | ord | id | rect | face | gate (per frame, rewire) |
 |---|---|---|---|---|
@@ -181,6 +191,10 @@ the last row's ↓ lands on `setup_back`; `setup_back` ↔ `setup_prev` ↔
 LEFT/RIGHT stay NAVIGATION everywhere (the `<` cell is how a keyboard or pad
 steps a wheel back: → then FIRE). Pinned by a BFS over {host, joiner} ×
 {5 steps} × {book, no-book} × {paged, unpaged} × {2-side, 4-side arena}.
+**Update (2026-09-21, PR #307):** with the reverse cells gone, the cell column holds nothing but the ARENA
+pagers: a row's → is `setup_page_prev` on row 0 when they show and −1
+otherwise, and there is no second vertical chain. The BFS is unchanged in
+shape and still runs over the same lattice (§11).
 
 On entry to a step the rewire moves the keyboard highlight onto a LIVE row.
 A step entered by clicking its own tab would otherwise leave the highlight ON
@@ -295,7 +309,8 @@ window opens on the page holding the `[CURRENT]` row on every entry to the
 step, so the host never sees four green rows none of which is theirs.
 
 A 10-arena page shows rows 0..6 with `<` `>` at (280,67)/(296,67) and `1/2`
-under them. A row that overflows 42 glyphs clips the LABEL, never the tail.
+under them. (The ARENA pager pair is unchanged in round 3; it is the only
+thing left in the cell column — §11.) A row that overflows 42 glyphs clips the LABEL, never the tail.
 Level rows are host-gated at the click (joiner: `(HOST)` face, refusal
 toast), never hidden. **Refusals never advance**: `DeniedHost`,
 `DeniedGate`, `Unchanged`, `LoadFailed` keep the step and toast; only
@@ -313,6 +328,7 @@ window 2/2 (§10).
  | ■ TEAM 2                        2 BOTS           |   y=55  a two-side arena prints two lines
  | STRONG adds a fighter, BRUTAL two.               |   y=63  the campaign's match_knobs lines (<= 2, <= 38)
  | FILL: STRONG - none to brutal                  < |   y=75  setup_row_0  cycler + setup_rev_0 at 280..310
+                                                         ^ round 3 (2026-09-21): no `<` cell — the wheel is forward-only (§11)
  | LINEUP - fill per team, map units              > |   y=87  setup_row_1  door -> LINEUP (nested), refetch on return
  +--------------------------------------------------+
   [BACK]                           [PREV]    [NEXT]
@@ -407,6 +423,8 @@ pointer line:
  | TIME LIMIT: MAP - map, 5 to 20 min             < |   y=59   setup_row_1
  | Respawns and the rest: the Base Camp DIFFICULTY. |   y=71   the pointer line (48)
 ```
+Round 3 (2026-09-21, PR #307): neither row carries a `<` cell any more —
+both wheels turn forward only, and the row face runs to 276 as before (§11).
 RESPAWNS, SPAWN DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and
 CROSS CONTROL went back to the DIFFICULTY screen, which is on the Base Camp
 strip of every campaign again (§10).
@@ -434,6 +452,7 @@ WITHOUT the `CROSS CONTROL` cell when that fact is already the read-only row
 below — a fact on the step as a ROW is never also a LINE. The
 `CROSS CONTROL` row stays a visible read-only row without a `<` cell; the
 MATCH step, which has no rows at all, keeps all five lines.
+**Update (2026-09-21, PR #307):** no row on any step has a `<` cell: the cyclers turn forward only (§11).
 **Update (2026-09-20, PR #307):** the wizard's RULES step holds SCORE and TIME LIMIT
 only. When `match_knobs` hides both, the step reads `This game takes its rules
 from the map.` above the pointer line and has no rows. The joiner face is the
@@ -493,6 +512,10 @@ STRONG adds a fighter, BRUTAL two.
    5. Back
 Setup # [1-5] (0 = back, N- steps a wheel back):
 ```
+**Update (2026-09-21, PR #307):** the prompt is `Setup # [1-5] (0 = back): ` — the `N-` grammar is
+retired with the reverse cell, and a trailing `-` is now just an answer the
+driver cannot parse, so it takes the existing `Invalid setup row.` notice
+(§11).
 **Update (2026-09-20, PR #307):** the terminal wizard prints the same two RULES rows,
 the ARENA page's `RANDOM ARENA` and the GAME step's `RANDOM`, and no said
 line. The mock's FILL row reads `FILL: STRONG - weak to brutal` now: NONE left
@@ -503,7 +526,9 @@ LIMIT, 3 Next: MATCH, 4 Prev, 5 Back` (§10).
 
 Rows through `campaign_picker_row_text(row, 72)`; `Next: <STEP>`,
 `Prev: <STEP>` and `Back` are appended items — the two steppers ARE the tab
-strip's projection, and `N-` is the `<` cell's. The joiner face prints the
+strip's projection, and `N-` is the `<` cell's.
+**Update (2026-09-21, PR #307):** `N-` is gone with the cell, and `TerminalMatchSetupItem::reversible`
+with it: the prompt takes a plain row number (§11). The joiner face prints the
 lines and the navigation items only. Team Build item 13 `setup` ("Setup") is
 appended, gated `Custom` versus-only with guard
 `This campaign has no arena setup.`; item 11 `difficulty` is gated `Custom`
@@ -522,7 +547,7 @@ replayed.` (§10).
 | Base Camp strip | `SETUP` | 5 | 10 (68 px beveled) **Update (2026-09-20, PR #307):** the strip slot reads DIFFICULTY on every campaign; the wizard's SDL door is the docket row `SETUP - SOCCER: THE PITCH  >` (39 worst, budget 42) (§10). |
 | tabs | `GAME` `ARENA` `TEAMS` `RULES` `MATCH`; current `[TEAMS]` | ≤ 7 | 7 (54 px beveled) |
 | footer | `BACK` / `PREV` / `NEXT` | 4 | 6 / 5 / 5 |
-| pagers, reverse cell | `<` `>` and `1/2`; `<` | 1 / 3; 1 | 14 px face; 30 px face |
+| pagers, reverse cell | `<` `>` and `1/2`; `<` | 1 / 3; 1 | 14 px face; 30 px face **Update (2026-09-21, PR #307):** the reverse cell is deleted; the row reads `pagers` alone, `<` `>` and `1/2` on the 14 px face (§11). |
 | GAME rows | `CAPTURE THE FLAG - 0/10 cleared  >` | 35 | 42 **Update (2026-09-20, PR #307):** GAME rows carry no tally: worst is `CAPTURE THE FLAG - 10 arenas  >` (31), and the RANDOM row is `RANDOM - any game, any arena` (28) (§10). |
 | ARENA rows | `DUNGEON OF STARS - 4 sides, 20m  [CURRENT]` | 43 → label clipped, tail kept | 42 |
 | TEAMS line cells | `TEAM 4` / `P1 WASD  P2 ARROWS` / `12 MAP UNITS +5 BOTS` | 6 / 18 / 20 | columns 26 / 70 / 188 |
@@ -577,6 +602,13 @@ machine, three renderers.
   no longer sets difficulty; the row went back to the DIFFICULTY screen) and
   `MatchSetupSession::take_message` with the `message_` field behind it.
   `Outcome::message` is the one message channel (§3.3, §10).
+- **Update (2026-09-21, PR #307):** the signature is `choose(row, Inputs)` — the `dir`
+  argument is gone with the reverse, and `turn(knob, Inputs)` with it. The
+  same collapse ran down through `picker_common`: `wheel_next(wheel,
+  current)`, `cycle_ctf_capture_limit(save)`, `cycle_time_limit(save)`,
+  `turn_match_sides(save, my_team, mask)`, `turn_match_fill(save, my_team,
+  mask)`. `cycle_lineup_fill(current, dir)` keeps its `dir`: it predates
+  this PR and LINEUP owns it (§11).
 
 Level rows answer `SetLevel` WITHOUT touching the save (the
 `CampaignPickerSession` contract); the renderer runs its client's gated tail
@@ -637,7 +669,7 @@ stage lands, which would flicker rows during the debounce.
 
 | Client | What it adds |
 |---|---|
-| SDL | `menu_screen_specs.cpp`: `kMatchSetupRows` (28), `match_setup_menu_screen_spec()`, `match_setup_rewire`, `_draw_background` / `_draw_content`, `match_setup_on_spec_row`, `match_setup_frame_tick` (level-reload guard + `match_settings_fingerprint` compare + a `stage_generation()` watch rebuilding the cached report), `run_match_setup_screen(entry_page)`; `MenuScreenId::MatchSetup` registered **Runtime** so the engine-wide sweeps cover it; the screen state installed through the file-static seam pattern. |
+| SDL | **Update (2026-09-21, PR #307):** `kMatchSetupRows` is 19, not 28 (§11). `menu_screen_specs.cpp`: `kMatchSetupRows` (28), `match_setup_menu_screen_spec()`, `match_setup_rewire`, `_draw_background` / `_draw_content`, `match_setup_on_spec_row`, `match_setup_frame_tick` (level-reload guard + `match_settings_fingerprint` compare + a `stage_generation()` watch rebuilding the cached report), `run_match_setup_screen(entry_page)`; `MenuScreenId::MatchSetup` registered **Runtime** so the engine-wide sweeps cover it; the screen state installed through the file-static seam pattern. |
 | Shared terminal driver | `run_terminal_match_setup(SaveData&, const TerminalMatchSetupIo&)` in `match_setup_session.cpp` — ONE prompt loop for both terminal clients (the `run_terminal_campaign_camp` precedent). Per prompt: the deal (`deal_arena_lineup_for_cursor` + autosave, the `present_menu` cadence, so the TEAMS prompt after an arena pick reads the dealt word), `io.census(stage)` for the report, `build_terminal_match_setup_model`, `io.prompt`, then dispatch — `SetLevel` through `terminal_level_set_gate` (§3.4), `Turned` → `io.autosave()`, `SetDifficulty` → `io.set_difficulty(value)`, `Refused` → `io.notice`. **Update (2026-09-20, PR #307):** `SetDifficulty` is gone from the driver; `Turned` autosaves unconditionally and says nothing, and an `Acted` answer carrying a level routes through `terminal_route_acted_level` (§10). |
 | Text | `text_picker.cpp`: `setup_screen()` wires the io and calls the driver; `handle_team_build_item` gains `PickerMenuCommand::MatchSetup`. |
 | Curses | `curses_picker_client.cpp`: `setup_flow(...)` with a MUTABLE options reference (its `set_difficulty` writes `options_.difficulty`); numbered-prompt driver, not `Menu::choose` (up to 12 items). **Update (2026-09-20, PR #307):** the curses `setup_flow` takes a const options reference — the wizard no longer writes difficulty (§10). |
@@ -646,7 +678,8 @@ stage lands, which would flicker rows during the debounce.
 
 **The SetDifficulty tail** (lead ruling 2 of this PR's execution plan): the
 session computes the VALUE, so `<`, right-click and the terminal `N-` can
-step −1. Each client extracts ONE value-taking tail
+step −1. **Update (2026-09-21, PR #307):** none of those three doors
+exists any more (§11); the value-taking tails are unaffected. Each client extracts ONE value-taking tail
 (`apply_difficulty_value` / `apply_options_difficulty`) that the existing
 cycling case calls with `cycle_difficulty(current)` and the wizard calls
 with the value. One tail, two callers — no twin.
@@ -669,7 +702,7 @@ case (§10).
 | the rules, spelled once | the RULES faces = the shared formatters upper-cased; `format_match_rules_lines` packs the SAME faces two per line and is BOTH the joiner-RULES lines and the MATCH step's | no abbreviated recap spellings exist |
 | cross control's word | `format_cross_control_label` says `CROSS CONTROL: OWN/ALL` | `CTRL:` is gone from every surface |
 | the authored side mask | `og::sim::authored_team_mask` through the deal's two readers → `Inputs.authored_mask` | nothing new |
-| reverse step on a cycler row | ONE session entry, `choose(row, -1)`, reached three ways: the `<` cell, the terminal `N-`, and the mouse right-click (`do_call_right` stashes the row with `menu_spec_row_reverse = true` and returns the callback's real value; the runner resets the stash after dispatch, and a stash that survives a frame fails under TESTING) | one entry, three doors |
+| reverse step on a cycler row | ONE session entry, `choose(row, -1)`, reached three ways: the `<` cell, the terminal `N-`, and the mouse right-click (`do_call_right` stashes the row with `menu_spec_row_reverse = true` and returns the callback's real value; the runner resets the stash after dispatch, and a stash that survives a frame fails under TESTING) | one entry, three doors **Update (2026-09-21, PR #307):** there is no reverse step: all three doors and the whole `menu_spec_row_reverse` stash are DELETED, and a right-click on a spec row dispatches nothing (§11) |
 | GO | `ButtonAction::GoMenu` dispatched by Base Camp for the wizard's `Go` | nothing copied; the popups stay the host's own |
 | the deploy refusal | `og::ui::local_seats_deployed_for_go` hoisted from the strip GO handler's inline block; the strip GO pops the title, the MATCH step dims GO | one predicate for both GO surfaces |
 | level-set answer | `scripted_level_set_answer(ScriptedLevelSet)` — the enum→string/trace switch; the Base Camp tail, the zone submenu tail and the wizard tail keep only their own refetch/toast/return around it | two byte-similar switches collapse to one |
@@ -955,13 +988,13 @@ button, and the PR body states it (§10, R2-R3).
 | D16 | **The headcount rulings are amended for soccer and basketball above FAIR** (lineup-design Amendment 8; matched-teams Update notes) | the headcount stays the BASELINE; the striker-only arm is reached only at WEAK/FAIR and by whittled squads |
 | D17 | **No `FILL_STEP_PERCENT` constant**; the per-body step is read off `FILL_PERCENT`'s own spacing | one table stays the only copy of what a wheel step is worth |
 | D18 | **The player learns the body rule from counts** (`2 BOTS` on TEAMS, LINEUP and MATCH) plus one campaign-authored line | counts are the staged census, never a rule twin; the words come from the campaign that owns the fact |
-| D19 | **A cycler row steps back through ONE session entry, `choose(row, -1)`, reached by its 30×10 `<` cell, the terminal `N-` item and the mouse right-click; LEFT/RIGHT stay navigation** | forward-only wheels cost a full lap on overshoot, and right-click alone left touch and pads without a reverse; a key that steps a wheel on one screen and navigates on every other is a rule the whole picker would have to learn |
+| D19 | **A cycler row steps back through ONE session entry, `choose(row, -1)`, reached by its 30×10 `<` cell, the terminal `N-` item and the mouse right-click; LEFT/RIGHT stay navigation** | forward-only wheels cost a full lap on overshoot, and right-click alone left touch and pads without a reverse; a key that steps a wheel on one screen and navigates on every other is a rule the whole picker would have to learn **Update (2026-09-21, PR #307):** REVERSED by the maintainer (§11). The wizard's cyclers cycle FORWARD ONLY, like every other cycler in the picker (the DIFFICULTY rows, the LINEUP wheels); the wheels are short — SIDES 3 stops, FILL 4, SCORE 5, TIME LIMIT 5 — so a mis-click costs at most four clicks. LEFT/RIGHT still stay navigation. |
 | D20 | **GO on the MATCH step IS the strip GO's click**: Base Camp dispatches `GoMenu`, the TeamBuild intercept selects StartGame and answers `MENU_EXIT`, and the state machine runs the popups and the launch | one body; the game must run from Base Camp's frame, not nested in the wizard's |
 | D21 | **The wizard hosts the campaign's book at its root** rather than a title-prefix catalog; the ARENA step IS the book at depth ≥ 2 | the book carries campaign-authored facts (rule lines, notes, cleared tallies) the engine cannot derive **Update (2026-09-20, PR #307):** still true, and the book's root now ends with the wizard's own `RANDOM` row — appended LAST so no arena ordinal moves (§10). |
 | D22 | **A generator-side theme lint** (word list, `TONIGHT`, no lower-case letters) is the one guard for briefings | one implementation per rule; the sign-off never was an on-screen label |
 | D23 | **The engine's "book" strings stay** | the scripted-page tree's engine noun, used by three other campaigns |
 | D24 | **No wire/save/snapshot/replay bump**; `book_signed` orphaned | no new knob; `campaign_state` keys are free-form |
-| D25 | **The rows are the docket's 42-glyph face beside a declared 30 px cell column (280..310) holding the pagers and the `<` cells; tabs, cells and pagers share ONE right edge (310)** | the footer NEXT is the step advance, so the pagers stay beside the rows they page; three unrelated right edges were a defect |
+| D25 | **The rows are the docket's 42-glyph face beside a declared 30 px cell column (280..310) holding the pagers and the `<` cells; tabs, cells and pagers share ONE right edge (310)** | the footer NEXT is the step advance, so the pagers stay beside the rows they page; three unrelated right edges were a defect **Update (2026-09-21, PR #307):** the column holds the pagers alone now (§11); the rows keep their 264-wide face and everything still closes on 310. |
 | D26 | **`kSetupLinesMax = 10` for C++ steps**; hosted Lua pages keep the contract's 6; content starts at y=47 | the MATCH step needs title + 4 teams + 5 rules lines; the Lua contract is untouched; vertical rhythm is part of the design |
 | D27 | **The ARENA tab lands on the page that lists the cursor's arena**, opened on the window holding `[CURRENT]`; from depth ≥ 2 it is a no-op | a tab that searched seven pages or landed on the last page browsed would be a dead tab or a surprise |
 | D28 | **On a versus campaign the docket's page rows are shortcuts into the wizard**; the zone submenu serves classic campaigns only | two chassis for one page tree, with a NEXT that meant two things, was the clutter #304 names **Update (2026-09-20, PR #307):** there is ONE docket row and it is a page row into the wizard's GAME step; the shortcut pair is gone (§10). |
@@ -1183,3 +1216,63 @@ vertical/rhythm names in `match_setup_session.h`, every x/w/tab/cell/footer
 name in `picker_sdl_defs.h`. Five steps, the tab strip, the `<` reverse
 cell, the entry-highlight table, GO's gating and the MATCH recap are all
 unchanged.
+**Update (2026-09-21, PR #307):** the `<` reverse cell is the one item on
+that list round 3 removed (§11). Everything else in the sentence still
+holds.
+
+---
+
+## 11. Round 3 (2026-09-21, PR #307) — the cyclers turn forward only
+
+Maintainer ruling, after round 2: **the SETUP wizard's cycler rows cycle
+FORWARD ONLY, like every other cycler in the picker** (the DIFFICULTY
+rows, the LINEUP wheels). D19 is reversed.
+
+The wheels are short — SIDES 3 stops, FILL 4, SCORE 5, TIME LIMIT 5 — so a
+mis-click costs at most four clicks, and the alternative was a reverse the
+rest of the picker does not teach: a `<` cell on one screen's rows, a
+right-click that means something here and nothing anywhere else, and a
+prompt grammar (`N-`) no other prompt in the game accepts.
+
+What went, in one list:
+
+- **The `<` cell.** Ordinals 9..17 (`setup_rev_0..8`), the
+  `OG_SETUP_REV` table macro, `match_setup_rev_state`, `kSetupRevX` /
+  `kSetupRevW`, the per-frame visibility, the cell column's own vertical
+  nav chain and the row's `→` into it. The button table is **19** rows,
+  not 28; every ordinal after the rows shifts down by nine. The ARENA
+  pager pair, `kSetupCellX` / `kSetupCellW` and the 264-wide row face are
+  untouched, so the screen's geometry is exactly what round 2 shipped
+  minus one column of cells.
+- **The right-click.** `vbutton::do_call_right`'s `MenuSpecRow` arm, the
+  `menu_spec_row_reverse` stash with its accessors, the runner's
+  nested-screen clear, its post-dispatch clear and its TESTING
+  "survived a frame" invariant, and the wizard spec's
+  `right_click_enabled`. What a right-click does now is whatever the
+  engine already did for every other `MenuSpecRow` screen: without
+  `right_click_enabled` the legacy `if (leftmouse(buttons))` rule applies
+  and any nonzero click activates `leftclick`, so the right button steps
+  the wheel FORWARD, exactly like the left one. (On a screen that DOES
+  set `right_click_enabled`, `do_call_right` now answers 4 for a spec row
+  and dispatches nothing.) Either way there is no reverse.
+- **The terminal `N-`.** The prompt reads `Setup # [1-N] (0 = back): `
+  again, the driver parses a plain number, and
+  `TerminalMatchSetupItem::reversible` is deleted. A trailing `-` is an
+  unparsable answer and takes the driver's existing `Invalid setup row.`
+  notice.
+- **The `dir` argument**, wherever it could only be `+1` afterwards:
+  `MatchSetupSession::choose` / `::turn`, and in `picker_common`
+  `wheel_next`, `cycle_ctf_capture_limit`, `cycle_time_limit`,
+  `turn_match_sides`, `turn_match_fill`. `cycle_lineup_fill(current, dir)`
+  keeps its `dir` — it predates this PR and belongs to LINEUP.
+
+Red-then-green, because two behaviours changed rather than disappeared:
+`MenuEngine.spec_row_right_click_dispatches_nothing` (with a left click on
+the same row as the control arm),
+`MatchSetupUi.a_rules_cycler_laps_forward_and_ignores_a_right_click` (the
+right-click steps the same wheel FORWARD, 1 -> 3, and the lap comes home),
+`PlatformHeadless.text_picker_setup_wizard_walks_every_step` (the `2-` leg
+is now the invalid-row notice) and
+`CursesPickerClient.setup_flow_knob_turn_autosaves_and_laps_forward` (leg 3
+walks the five-stop wheel home in four presses). All four failed on the
+round-2 tip before the removal landed.

@@ -237,8 +237,8 @@ pass
 
 # --- case 12: every row of the real table has teeth on its own sample -------
 cp -a "${tmp}/c1" "${tmp}/c12"
-[[ "${ROWS}" -eq 46 ]] || {
-    echo "FAIL case 12: the table has ${ROWS} rule rows, expected 46 --" >&2
+[[ "${ROWS}" -eq 47 ]] || {
+    echo "FAIL case 12: the table has ${ROWS} rule rows, expected 47 --" >&2
     echo "  a row was added or deleted; update this number (and the case" >&2
     echo "  numbering above) in the same commit." >&2
     exit 1

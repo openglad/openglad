@@ -77,3 +77,4 @@ up to slaughter	DIFFICULTY: BATTLE - up to slaughter	DIFFICULTY is not a wizard 
 RANDOM ARENA - any game	RANDOM ARENA - any game, any arena	the camp roll row is gone; the wizard's RANDOM ARENA note is any arena of this game (PR #307 round 2)
 three-row docket	is now a three-row docket	the camp docket is ONE row, SETUP - <title> (PR #307 round 2)
 must be cleared\)	Replay level (must be cleared): 	the prompt is unchanged on classic campaigns, but a versus campaign refuses first with Arenas are set, never replayed. (PR #307 round 2)
+N- steps a wheel back	Setup # [1-5] (0 = back, N- steps a wheel back):	the wizard prompt is Setup # [1-N] (0 = back): and the wheels turn forward only (PR #307 round 3); a trailing - takes the Invalid setup row. notice

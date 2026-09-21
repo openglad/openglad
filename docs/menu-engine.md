@@ -75,14 +75,17 @@ must replace the temporary action value with the callback's real return value
 before testing the loop condition. Test builds fail if the row stash survives
 a frame.
 
-A right-click on a `MenuSpecRow` button stashes the same row a second time,
-with `og::ui::set_menu_spec_row_reverse(true)`, and `do_call_right` still
-returns the callback's real value. A screen that wants a reverse step reads
-`og::ui::menu_spec_row_reverse()` inside its `on_spec_row` and passes the
-direction down; the runner clears the flag after dispatch, and — like the
-row stash — a reverse stash that survives a frame fails under TESTING. Every
-other `ButtonAction` keeps `do_call_right`'s default answer, so nothing
-leaks out of the runtime.
+`do_call_right` has no `MenuSpecRow` arm: on a screen that opts into
+`right_click_enabled`, a right-click on a spec row takes `do_call_right`'s
+default answer (4) and dispatches nothing. On every other screen the legacy
+rule above applies unchanged — any nonzero click activates `leftclick`, so
+a right-click on a spec row simply does what a left click does. Either way
+there is no direction for a screen to read: the picker's cyclers turn
+FORWARD ONLY, whichever button is pressed.
+`MenuEngine.spec_row_right_click_dispatches_nothing` pins the first shape,
+with a left click on the same row as the control arm;
+`MatchSetupUi.a_rules_cycler_laps_forward_and_ignores_a_right_click` pins
+the second on the SETUP wizard.
 
 ## Frame contract
 
@@ -336,9 +339,7 @@ Moving it into the runtime would require a pre-input phase and stable ID-based
 navigation. Until those facilities have another consumer, its focused race
 tests are the safer contract.
 
-The loop contains no `MenuSpecRow` rows, so the row stash and its reverse
-flag are inert there. That is audited rather than assumed:
-`MenuEngine.networking_right_click_never_sees_a_spec_row_stash` pins it.
+The loop contains no `MenuSpecRow` rows, so the row stash is inert there.
 
 ## Maintenance
 
