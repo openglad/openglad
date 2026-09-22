@@ -16,21 +16,26 @@
 # state can be looked at is on the runner, at the moment it is stuck.
 #
 # What this does:
-#   1. Runs `cmake --build` in the background and watches the build's
-#      .ninja_log, which ninja appends to (and flushes) each time an edge
-#      finishes. "No edge finished for OG_BUILD_STALL_SECS" is the stall
-#      oracle — it does not depend on anything printed to stdout, and the
-#      build's own stdout is left untouched so the capture sees the build
-#      exactly as it hangs (piping it through a file changes the very
-#      pipe topology under suspicion).
-#   2. On a stall: dumps the process tree under the build (per-process CPU,
-#      thread wait reasons, stacks where a debugger is present, crash
-#      reports, memory, disk — see win_build_stall.ps1), lists the edges that
-#      were in flight (outputs on disk that .ninja_log never recorded), kills
-#      the tree, deletes those half-written outputs so ninja cannot mistake
-#      a truncated .obj for a finished one, and runs the build again. Ninja
-#      resumes from the edges it recorded.
-#   3. Gives up after OG_BUILD_ATTEMPTS builds. Every stall is reported as a
+#   1. Runs `cmake --build` in the FOREGROUND, exactly as the workflow did
+#      before — same stdin, same stdout, same signal disposition, same place
+#      in the process tree. The watchdog is the background job, not the
+#      build: bash hands a background job /dev/null as stdin, and a build
+#      that hangs on some pipe or console interaction must not be run under
+#      a different topology than the one it hangs in, or the capture never
+#      happens and the cause stays unknown.
+#   2. The watchdog watches the build's .ninja_log, which ninja appends to
+#      (and flushes) each time an edge finishes. "No edge finished for
+#      OG_BUILD_STALL_SECS" is the stall oracle; it depends on nothing the
+#      build prints.
+#   3. On a stall: dumps the process tree under this shell, minus the
+#      watchdog's own subtree (per-process CPU, thread wait reasons, stacks
+#      where a debugger is present, crash reports, memory, disk — see
+#      win_build_stall.ps1), lists the edges that were in flight (outputs on
+#      disk that .ninja_log never recorded), kills the build's tree, and
+#      leaves a marker. The shell then deletes those half-written outputs so
+#      ninja cannot mistake a truncated .obj for a finished one, and runs
+#      the build again. Ninja resumes from the edges it recorded.
+#   4. Gives up after OG_BUILD_ATTEMPTS builds. Every stall is reported as a
 #      workflow warning and in the step summary, so a "green" job that
 #      needed the watchdog is never mistaken for a clean one.
 #
@@ -53,6 +58,8 @@ poll_secs=${OG_BUILD_POLL_SECS:-10}
 max_attempts=${OG_BUILD_ATTEMPTS:-3}
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ninja_log="$build_dir/.ninja_log"
+stall_marker=$(mktemp)
+rm -f "$stall_marker"
 
 on_windows() {
     case "$(uname -s 2>/dev/null)" in
@@ -61,8 +68,7 @@ on_windows() {
     return 1
 }
 
-# The Windows PID of a background job: cygwin/msys PIDs differ from the
-# ones the rest of the OS knows.
+# The Windows PID of a cygwin/msys process: the two PID spaces differ.
 win_pid_of() {
     ps -p "$1" 2>/dev/null | awk 'NR > 1 { print $4 }'
 }
@@ -75,11 +81,13 @@ powershell_exe() {
     fi
 }
 
+# $1 action, $2 root windows pid (the shell), $3 windows pid whose subtree
+# is skipped (the watchdog).
 run_stall_ps() {
-    local action=$1 winpid=$2
+    local action=$1 root=$2 exclude=$3
     "$(powershell_exe)" -NoProfile -NonInteractive -ExecutionPolicy Bypass \
         -File "$(cygpath -w "$script_dir/win_build_stall.ps1")" \
-        -Action "$action" -RootPid "$winpid" \
+        -Action "$action" -RootPid "$root" -ExcludePid "$exclude" \
         -BuildDir "$(cygpath -w "$build_dir")"
 }
 
@@ -106,7 +114,7 @@ unrecorded_outputs() {
     rm -f "$recorded"
 }
 
-# A process and all of its descendants, leaves last.
+# A process and all of its descendants, parents first.
 descendants_posix() {
     local pid=$1 child
     echo "$pid"
@@ -115,18 +123,79 @@ descendants_posix() {
     done
 }
 
+# The build's processes: everything under this shell except the shell
+# itself and the watchdog's own subtree.
+build_tree_posix() {
+    local root=$1 exclude=$2
+    comm -23 <(descendants_posix "$root" | grep -vx "$root" | sort) \
+             <(descendants_posix "$exclude" | sort)
+}
+
 dump_posix() {
-    local pid=$1
-    echo "process tree under $pid:"
-    # shellcheck disable=SC2046
-    ps --forest -o pid,ppid,stat,etime,time,rss,args -p $(descendants_posix "$pid" | paste -sd, -) 2>/dev/null \
-        || ps -ef 2>/dev/null | head -100
+    local pids
+    pids=$(build_tree_posix "$1" "$2" | paste -sd, -)
+    echo "build processes under shell $1 (watchdog $2 excluded): ${pids:-<none>}"
+    [ -n "$pids" ] && ps --forest -o pid,ppid,stat,etime,time,rss,args -p "$pids" 2>/dev/null
 }
 
 kill_tree_posix() {
-    local pid=$1 p
-    for p in $(descendants_posix "$pid" | tac); do
+    local p
+    for p in $(build_tree_posix "$1" "$2" | tac); do
         kill -KILL "$p" 2>/dev/null || true
+    done
+}
+
+# The background job. Polls the ninja log; on a stall, dumps and kills the
+# build and leaves the marker for the foreground shell.
+watchdog() {
+    local attempt=$1
+    local last_size=-1 last_change=$SECONDS size
+    local shell_pid=$$ self_pid=$BASHPID
+    while :; do
+        sleep "$poll_secs"
+        size=$(stat -c %s "$ninja_log" 2>/dev/null || echo 0)
+        if [ "$size" != "$last_size" ]; then
+            last_size=$size
+            last_change=$SECONDS
+            continue
+        fi
+        [ $((SECONDS - last_change)) -ge "$stall_secs" ] || continue
+
+        local last_edge inflight
+        last_edge=$(recorded_outputs | tail -n 1)
+        inflight=$(unrecorded_outputs)
+        {
+            echo "::group::stall diagnostics (attempt ${attempt}: no edge finished for ${stall_secs}s)"
+            echo "last recorded edge output: ${last_edge:-<none>}"
+            echo "outputs on disk the log never recorded (edges in flight):"
+            printf '%s\n' "${inflight:-<none>}"
+            echo "last ten .ninja_log lines:"
+            tail -n 10 "$ninja_log" 2>/dev/null || true
+        }
+        if on_windows; then
+            local shell_win self_win
+            shell_win=$(win_pid_of "$shell_pid")
+            self_win=$(win_pid_of "$self_pid")
+            echo "shell: msys pid ${shell_pid} / windows pid ${shell_win:-?}; watchdog: msys pid ${self_pid} / windows pid ${self_win:-?}"
+            if [ -n "$shell_win" ]; then
+                run_stall_ps Dump "$shell_win" "${self_win:-0}" || echo "(dump script failed: $?)"
+            fi
+        else
+            dump_posix "$shell_pid" "$self_pid"
+        fi
+        echo "::endgroup::"
+
+        echo "killing the stalled build tree"
+        if on_windows && [ -n "${shell_win:-}" ]; then
+            run_stall_ps Kill "$shell_win" "${self_win:-0}" || true
+        else
+            kill_tree_posix "$shell_pid" "$self_pid"
+        fi
+        {
+            printf '%s\n' "${last_edge:-<none>}"
+            printf '%s\n' "$inflight"
+        } > "$stall_marker"
+        exit 0
     done
 }
 
@@ -162,66 +231,33 @@ report_stall() {
 build_once() {
     local attempt=$1
     shift
-    cmake --build "$build_dir" "$@" &
-    local pid=$!
-    local last_size=-1 last_change=$SECONDS size
+    rm -f "$stall_marker"
 
-    while kill -0 "$pid" 2>/dev/null; do
-        sleep "$poll_secs"
-        size=$(stat -c %s "$ninja_log" 2>/dev/null || echo 0)
-        if [ "$size" != "$last_size" ]; then
-            last_size=$size
-            last_change=$SECONDS
-            continue
-        fi
-        if ! kill -0 "$pid" 2>/dev/null; then
-            break
-        fi
-        if [ $((SECONDS - last_change)) -ge "$stall_secs" ]; then
-            local last_edge inflight
-            last_edge=$(recorded_outputs | tail -n 1)
-            inflight=$(unrecorded_outputs)
+    watchdog "$attempt" &
+    local wd=$!
 
-            echo "::group::stall diagnostics (attempt ${attempt}: no edge finished for ${stall_secs}s)"
-            echo "last recorded edge output: ${last_edge:-<none>}"
-            echo "outputs on disk the log never recorded (edges in flight):"
-            printf '%s\n' "${inflight:-<none>}"
-            echo "last ten .ninja_log lines:"
-            tail -n 10 "$ninja_log" 2>/dev/null || true
-            if on_windows; then
-                local winpid
-                winpid=$(win_pid_of "$pid")
-                echo "build root: msys pid ${pid}, windows pid ${winpid:-?}"
-                if [ -n "$winpid" ]; then
-                    run_stall_ps Dump "$winpid" || echo "(dump script failed: $?)"
-                fi
-            else
-                dump_posix "$pid"
-            fi
-            echo "::endgroup::"
+    cmake --build "$build_dir" "$@"
+    local status=$?
 
-            echo "killing the stalled build tree"
-            if on_windows && [ -n "${winpid:-}" ]; then
-                run_stall_ps Kill "$winpid" || true
-            else
-                kill_tree_posix "$pid"
-            fi
-            wait "$pid" 2>/dev/null || true
+    kill "$wd" 2>/dev/null
+    wait "$wd" 2>/dev/null
 
-            if [ -n "$inflight" ]; then
-                echo "deleting the in-flight outputs so the retry rebuilds them:"
-                (
-                    cd "$build_dir" && printf '%s\n' "$inflight" | while IFS= read -r f; do
-                        [ -n "$f" ] && rm -f -- "$f" && echo "  rm $f"
-                    done
-                )
-            fi
-            report_stall "$attempt" "${last_edge:-<none>}" "$inflight"
-            return 75
-        fi
-    done
+    [ -e "$stall_marker" ] || return "$status"
 
-    wait "$pid"
+    local last_edge inflight
+    last_edge=$(head -n 1 "$stall_marker")
+    inflight=$(tail -n +2 "$stall_marker" | grep -v '^$')
+    rm -f "$stall_marker"
+    if [ -n "$inflight" ]; then
+        echo "deleting the in-flight outputs so the retry rebuilds them:"
+        (
+            cd "$build_dir" && printf '%s\n' "$inflight" | while IFS= read -r f; do
+                [ -n "$f" ] && rm -f -- "$f" && echo "  rm $f"
+            done
+        )
+    fi
+    report_stall "$attempt" "$last_edge" "$inflight"
+    return 75
 }
 
 attempt=1

@@ -1,19 +1,24 @@
 # scripts/ci/win_build_stall.ps1 — the Windows half of
-# build_with_stall_watchdog.sh: dump, or kill, the process tree under a
-# stalled build. Called from the MSYS2 shell with Windows-native paths and
-# PIDs. See the .sh header for the why (#309).
+# build_with_stall_watchdog.sh: dump, or kill, the build's process tree
+# once the build has stalled. Called from the MSYS2 shell with Windows-native
+# paths and PIDs. See the .sh header for the why (#309).
 #
-#   -Action Dump  writes everything a post-mortem of a hung build needs to
-#                 stdout: the process tree with CPU/working-set/handle
-#                 counts, each thread's state and wait reason, native
-#                 stacks when the Windows SDK debugger is on the image,
-#                 recent crash/hang events, Defender state, memory, disk.
-#                 Every section is best-effort: a failing probe prints its
-#                 error and the next one still runs.
-#   -Action Kill  terminates the tree, leaves first.
+#   -RootPid     the shell running the build: the tree root. It is dumped
+#                for context and never killed.
+#   -ExcludePid  the watchdog's own subshell: its subtree (this PowerShell
+#                among it) is left out of the dump and the kill.
+#   -Action Dump writes everything a post-mortem of a hung build needs to
+#                stdout: the process tree with CPU/working-set/handle
+#                counts, each thread's state and wait reason, native
+#                stacks when the Windows SDK debugger is on the image,
+#                recent crash/hang events, Defender state, memory, disk.
+#                Every section is best-effort: a failing probe prints its
+#                error and the next one still runs.
+#   -Action Kill terminates the build's processes, leaves first.
 param(
     [Parameter(Mandatory = $true)][ValidateSet('Dump', 'Kill')][string]$Action,
     [Parameter(Mandatory = $true)][int]$RootPid,
+    [int]$ExcludePid = 0,
     [string]$BuildDir = ''
 )
 
@@ -22,21 +27,22 @@ $ErrorActionPreference = 'Continue'
 function Get-AllProcesses {
     Get-CimInstance Win32_Process | ForEach-Object {
         [pscustomobject]@{
-            Pid         = $_.ProcessId
-            Ppid        = $_.ParentProcessId
-            Name        = $_.Name
-            CpuSeconds  = [math]::Round(($_.KernelModeTime + $_.UserModeTime) / 1e7, 2)
+            Pid          = $_.ProcessId
+            Ppid         = $_.ParentProcessId
+            Name         = $_.Name
+            CpuSeconds   = [math]::Round(($_.KernelModeTime + $_.UserModeTime) / 1e7, 2)
             WorkingSetMB = [math]::Round($_.WorkingSetSize / 1MB, 1)
-            Threads     = $_.ThreadCount
-            Handles     = $_.HandleCount
-            Created     = $_.CreationDate
-            CommandLine = $_.CommandLine
+            Threads      = $_.ThreadCount
+            Handles      = $_.HandleCount
+            Created      = $_.CreationDate
+            CommandLine  = $_.CommandLine
         }
     }
 }
 
-# Breadth-first descendants of $root (root included), in tree order.
-function Get-Descendants([object[]]$all, [int]$root) {
+# Breadth-first descendants of $root (root included, Depth 0), skipping the
+# subtree rooted at $exclude.
+function Get-Descendants([object[]]$all, [int]$root, [int]$exclude) {
     $byParent = @{}
     foreach ($p in $all) {
         if (-not $byParent.ContainsKey($p.Ppid)) { $byParent[$p.Ppid] = @() }
@@ -50,6 +56,7 @@ function Get-Descendants([object[]]$all, [int]$root) {
     while ($queue.Count -gt 0) {
         $entry = $queue.Dequeue()
         $p = $entry[0]; $depth = $entry[1]
+        if ($exclude -ne 0 -and $p.Pid -eq $exclude) { continue }
         $p | Add-Member -NotePropertyName Depth -NotePropertyValue $depth -Force
         $out += $p
         foreach ($c in ($byParent[$p.Pid] | Where-Object { $_ -ne $null })) {
@@ -66,11 +73,13 @@ function Section([string]$title, [scriptblock]$body) {
 }
 
 $all = @(Get-AllProcesses)
-$tree = @(Get-Descendants $all $RootPid)
+$tree = @(Get-Descendants $all $RootPid $ExcludePid)
+$build = @($tree | Where-Object { $_.Pid -ne $RootPid })
 
 if ($Action -eq 'Kill') {
-    # Leaves first so no child is orphaned into a new parent mid-walk.
-    foreach ($p in ($tree | Sort-Object Depth -Descending)) {
+    # Leaves first so no child is orphaned into a new parent mid-walk. The
+    # root (the shell) stays alive: it is the one waiting to retry.
+    foreach ($p in ($build | Sort-Object Depth -Descending)) {
         try {
             Stop-Process -Id $p.Pid -Force -ErrorAction Stop
             Write-Output "killed $($p.Pid) $($p.Name)"
@@ -82,10 +91,11 @@ if ($Action -eq 'Kill') {
 }
 
 $now = Get-Date
-Write-Output "stall dump at $($now.ToString('o')) for build root pid $RootPid"
+Write-Output "stall dump at $($now.ToString('o')): shell pid $RootPid, watchdog pid $ExcludePid excluded"
 
-Section "process tree under $RootPid (CPU is total seconds so far)" {
-    if ($tree.Count -eq 0) { Write-Output "(pid $RootPid has no process — the root already exited)" }
+Section "process tree under the shell (CPU is total seconds so far)" {
+    if ($tree.Count -eq 0) { Write-Output "(pid $RootPid has no process — the shell already exited)" }
+    if ($build.Count -eq 0) { Write-Output "(no build processes under the shell — everything already exited)" }
     foreach ($p in $tree) {
         $indent = '  ' * $p.Depth
         $age = if ($p.Created) { [math]::Round(($now - $p.Created).TotalSeconds) } else { '?' }
@@ -97,11 +107,11 @@ Section "process tree under $RootPid (CPU is total seconds so far)" {
     }
 }
 
-Section "threads of the tree (state / wait reason)" {
+Section "threads of the build processes (state / wait reason)" {
     # Win32_Thread: ThreadState 5 = waiting; ThreadWaitReason 7 = user
     # request (blocked in a wait or on I/O), 15 = Executive, 5 = suspended.
     $pids = @{}
-    foreach ($p in $tree) { $pids[[uint32]$p.Pid] = $p.Name }
+    foreach ($p in $build) { $pids[[uint32]$p.Pid] = $p.Name }
     $threads = Get-CimInstance Win32_Thread | Where-Object { $pids.ContainsKey([uint32]$_.ProcessHandle) }
     foreach ($t in ($threads | Sort-Object ProcessHandle, Handle)) {
         Write-Output ("pid {0} ({1}) tid {2}: state={3} waitReason={4} userTime={5} kernelTime={6}" -f `
@@ -118,7 +128,7 @@ Section "native stacks (cdb -pv, non-invasive)" {
     if (-not $cdb) { Write-Output "(no cdb.exe on this image; skipping stacks)"; return }
     $env:_NT_SYMBOL_PATH = 'srv*C:\symbols*https://msdl.microsoft.com/download/symbols'
     $interesting = '^(ninja|cmake|cmd|g\+\+|gcc|cc1plus|cc1|as|ar|ranlib|ld|collect2|python|python3|sh|bash)\.exe$'
-    foreach ($p in $tree | Where-Object { $_.Name -match $interesting }) {
+    foreach ($p in $build | Where-Object { $_.Name -match $interesting }) {
         Write-Output "--- pid $($p.Pid) $($p.Name)"
         $outFile = [System.IO.Path]::GetTempFileName()
         try {
