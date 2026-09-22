@@ -274,4 +274,26 @@ expect_rc 13 0
 expect_stdout 13 "${OK_LINE}"
 pass
 
+# --- case 14: legacy byte-encoded prose is scanned, including wrapped hits --
+# docs/classes.txt still carries its original 0xae bullets. Under C.UTF-8,
+# gawk 5.4.0 aborts while stripping the joined line's comment prefix unless
+# the gate scans bytes. A non-UTF-8 byte must neither crash nor hide a phrase.
+cp -a "${tmp}/c1" "${tmp}/c14"
+{
+    printf 'Legacy class notes.\n'
+    printf '\256 Orc: an old class description.\n'
+} > "${tmp}/c14/docs/legacy.txt"
+run_check "${tmp}/c14"
+expect_rc 14 0
+expect_stdout 14 "${OK_LINE}"
+{
+    printf '\nThe design snapshot says %s\n' "${HEAD_HALF}"
+    printf '  %s, which was true then.\n' "${TAIL_HALF}"
+} >> "${tmp}/c14/docs/legacy.txt"
+run_check "${tmp}/c14"
+expect_rc 14 1
+expect_stdout 14 'docs/legacy.txt:4-5'
+expect_no_stdout 14 "${OK_LINE}"
+pass
+
 echo "test_check_retired_phrases: ${CASES}/${CASES} PASS"

@@ -84,6 +84,11 @@
 # Usage: check_retired_phrases.sh [ROOT] [TABLE]
 set -euo pipefail
 
+# The rules and comment markers are ASCII, but legacy prose such as
+# docs/classes.txt contains original non-UTF-8 bytes. Scan those bytes too:
+# gawk 5.4.0 can abort on them when sub() runs under a UTF-8 locale.
+export LC_ALL=C
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 TABLE="${2:-${SCRIPT_DIR}/retired_phrases.txt}"
