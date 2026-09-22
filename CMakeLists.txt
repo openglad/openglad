@@ -384,62 +384,83 @@ function(prepare_component_include_root out_var component_name)
     set(${out_var} "${root}" PARENT_SCOPE)
 endfunction()
 
+# The shell-script lints below run through an explicit interpreter, never as
+# a bare `scripts/x.sh` COMMAND. On a Windows host the Ninja generator wraps
+# a custom command in `cmd.exe /C "cd /D <dir> && <command>"`, and cmd cannot
+# run a .sh: it hands the file to ShellExecuteEx, which on the CI runner (no
+# .sh association) launches the "How do you want to open this file?" picker
+# and returns success at once - so for as long as these targets existed the
+# lints never ran on the Windows release build - except that about one build
+# in three the picker's COM handshake never came back, cmd never returned,
+# and the job sat at "Linking CXX static library ..." until its 30-minute
+# cap (#309; the stack came from scripts/ci/win_build_stall.ps1). A machine
+# with no bash gets a loud failure when a lint target is BUILT, never a
+# silent pass, like every check target here.
+find_program(OG_BASH_EXECUTABLE NAMES bash)
+function(og_add_shell_check_target name comment script)
+    if(OG_BASH_EXECUTABLE)
+        add_custom_target(${name}
+            COMMAND ${OG_BASH_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/${script}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "${comment}"
+            VERBATIM
+        )
+    else()
+        add_custom_target(${name}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                    "${name}: this check needs bash and none was found at configure time. Install bash (MSYS2 on Windows) and reconfigure."
+            COMMAND ${CMAKE_COMMAND} -E false
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "${comment}"
+            VERBATIM
+        )
+    endif()
+endfunction()
+
 # External dependency header leak check: no package headers in public or unrelated code.
-add_custom_target(check_vendor_leaks
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_vendor_leaks.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking external dependency header isolation"
-    VERBATIM
+og_add_shell_check_target(check_vendor_leaks
+    "Checking external dependency header isolation"
+    check_vendor_leaks.sh
 )
 
 # Injector settles must be conditions, not clocks: no flat "fade settle" in a
 # converted menu-injector test (tier 1 bans a literal SDL_Delay(750); tier 2,
 # the fully converted files, allows only a poll tick). See the script header.
-add_custom_target(check_injector_settles
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_injector_settles.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking menu injector settles are conditions, not clocks"
-    VERBATIM
+og_add_shell_check_target(check_injector_settles
+    "Checking menu injector settles are conditions, not clocks"
+    check_injector_settles.sh
 )
 
 # <regex> is banned: libstdc++'s under GCC 15 with the nix cc-wrapper's
 # injected -O2 plus the ci-asan sanitizers trips -Werror=maybe-uninitialized
 # in bits/std_function.h. See the script header.
-add_custom_target(check_no_std_regex
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_no_std_regex.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking no TU includes <regex>"
-    VERBATIM
+og_add_shell_check_target(check_no_std_regex
+    "Checking no TU includes <regex>"
+    check_no_std_regex.sh
 )
 
 # Render must not write sim-read entity state (the "drawcycle" class of bug:
 # render-only writes freeze in the headless sim). See the script header.
-add_custom_target(check_render_no_sim_writes
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_render_no_sim_writes.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking render layer does not write synced entity state"
-    VERBATIM
+og_add_shell_check_target(check_render_no_sim_writes
+    "Checking render layer does not write synced entity state"
+    check_render_no_sim_writes.sh
 )
 
 # The four Code::Blocks-era touch/multiplayer build macros stay retired: no
 # CMake build ever defined them and PR #292 deleted their arms. The script
 # names them and explains why each one is gone; naming them here too would
 # trip the check itself, which is the point.
-add_custom_target(check_retired_build_macros
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_retired_build_macros.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking retired build macros have not reappeared"
-    VERBATIM
+og_add_shell_check_target(check_retired_build_macros
+    "Checking retired build macros have not reappeared"
+    check_retired_build_macros.sh
 )
 
 # Every fadeblack() caller is classified in scripts/fadeblack_sites.txt: fade
 # ownership (#237) only holds while the set of screens that fade stays the
 # deliberate one. See the script header.
-add_custom_target(check_fadeblack_sites
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_fadeblack_sites.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking every fadeblack() call site is classified"
-    VERBATIM
+og_add_shell_check_target(check_fadeblack_sites
+    "Checking every fadeblack() call site is classified"
+    check_fadeblack_sites.sh
 )
 
 # --------------------------------------------------------------------------
