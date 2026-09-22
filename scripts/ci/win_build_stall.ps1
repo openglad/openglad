@@ -1,4 +1,4 @@
-# scripts/ci/win_build_stall.ps1 — the Windows half of
+# scripts/ci/win_build_stall.ps1 - the Windows half of
 # build_with_stall_watchdog.sh: dump, or kill, the build's process tree
 # once the build has stalled. Called from the MSYS2 shell with Windows-native
 # paths and PIDs. See the .sh header for the why (#309).
@@ -15,6 +15,10 @@
 #                Every section is best-effort: a failing probe prints its
 #                error and the next one still runs.
 #   -Action Kill terminates the build's processes, leaves first.
+#
+# ASCII only: Windows PowerShell 5.1 reads a file without a BOM as ANSI, and
+# one UTF-8 dash in a string was enough to fail the whole parse on the runner
+# (the first real capture lost its dump and its kill to exactly that).
 param(
     [Parameter(Mandatory = $true)][ValidateSet('Dump', 'Kill')][string]$Action,
     [Parameter(Mandatory = $true)][int]$RootPid,
@@ -94,13 +98,13 @@ $now = Get-Date
 Write-Output "stall dump at $($now.ToString('o')): shell pid $RootPid, watchdog pid $ExcludePid excluded"
 
 Section "process tree under the shell (CPU is total seconds so far)" {
-    if ($tree.Count -eq 0) { Write-Output "(pid $RootPid has no process — the shell already exited)" }
-    if ($build.Count -eq 0) { Write-Output "(no build processes under the shell — everything already exited)" }
+    if ($tree.Count -eq 0) { Write-Output "(pid $RootPid has no process - the shell already exited)" }
+    if ($build.Count -eq 0) { Write-Output "(no build processes under the shell - everything already exited)" }
     foreach ($p in $tree) {
         $indent = '  ' * $p.Depth
         $age = if ($p.Created) { [math]::Round(($now - $p.Created).TotalSeconds) } else { '?' }
         $cmd = if ($p.CommandLine) { $p.CommandLine } else { '' }
-        if ($cmd.Length -gt 300) { $cmd = $cmd.Substring(0, 300) + '…' }
+        if ($cmd.Length -gt 300) { $cmd = $cmd.Substring(0, 300) + '...' }
         Write-Output ("{0}{1} {2}  cpu={3}s age={4}s ws={5}MB threads={6} handles={7}" -f `
             $indent, $p.Pid, $p.Name, $p.CpuSeconds, $age, $p.WorkingSetMB, $p.Threads, $p.Handles)
         if ($cmd) { Write-Output ("{0}    {1}" -f $indent, $cmd) }
@@ -126,15 +130,20 @@ Section "native stacks (cdb -pv, non-invasive)" {
         "$env:ProgramFiles\Windows Kits\10\Debuggers\x64\cdb.exe"
     ) | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $cdb) { Write-Output "(no cdb.exe on this image; skipping stacks)"; return }
-    $env:_NT_SYMBOL_PATH = 'srv*C:\symbols*https://msdl.microsoft.com/download/symbols'
+    # No symbol server: a download per module would blow the dump's time
+    # budget, and DLL exports already name the wait a thread is parked in.
+    $env:_NT_SYMBOL_PATH = ''
     $interesting = '^(ninja|cmake|cmd|g\+\+|gcc|cc1plus|cc1|as|ar|ranlib|ld|collect2|python|python3|sh|bash)\.exe$'
-    foreach ($p in $build | Where-Object { $_.Name -match $interesting }) {
+    # Eight processes at most, forty seconds each: the whole dump has to fit
+    # well inside the job's cap with the retry still to run.
+    $targets = @($build | Where-Object { $_.Name -match $interesting } | Select-Object -First 8)
+    foreach ($p in $targets) {
         Write-Output "--- pid $($p.Pid) $($p.Name)"
         $outFile = [System.IO.Path]::GetTempFileName()
         try {
             $proc = Start-Process -FilePath $cdb -ArgumentList @('-pv', '-p', $p.Pid, '-lines', '-c', '"~*k 25;qd"') `
                 -NoNewWindow -PassThru -RedirectStandardOutput $outFile
-            if (-not $proc.WaitForExit(90000)) {
+            if (-not $proc.WaitForExit(40000)) {
                 $proc.Kill()
                 Write-Output "(cdb timed out on $($p.Pid))"
             }
@@ -152,7 +161,7 @@ Section "every process on the machine (name, pid, ppid, cpu s, ws MB)" {
 }
 
 Section "application error / hang / WER events in the last hour" {
-    $events = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000, 1001, 1002; StartTime = $now.AddHours(-1) } -ErrorAction SilentlyContinue
+    $events = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000, 1001, 1002; StartTime = $now.AddHours(-1) } -MaxEvents 20 -ErrorAction SilentlyContinue
     if (-not $events) { Write-Output "(none)"; return }
     foreach ($e in $events) {
         Write-Output ("{0} id={1} {2}" -f $e.TimeCreated.ToString('o'), $e.Id, ($e.Message -replace '\s+', ' ').Substring(0, [math]::Min(400, $e.Message.Length)))

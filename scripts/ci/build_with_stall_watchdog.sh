@@ -83,8 +83,11 @@ powershell_exe() {
 
 # $1 action, $2 root windows pid (the shell), $3 windows pid whose subtree
 # is skipped (the watchdog).
+# The dump is bounded (OG_BUILD_DUMP_SECS) so that a probe that hangs can
+# never turn a captured stall into a job that dies at the cap anyway.
 run_stall_ps() {
     local action=$1 root=$2 exclude=$3
+    timeout -k 10 "${OG_BUILD_DUMP_SECS:-420}" \
     "$(powershell_exe)" -NoProfile -NonInteractive -ExecutionPolicy Bypass \
         -File "$(cygpath -w "$script_dir/win_build_stall.ps1")" \
         -Action "$action" -RootPid "$root" -ExcludePid "$exclude" \
@@ -105,10 +108,13 @@ unrecorded_outputs() {
     local recorded
     recorded=$(mktemp)
     recorded_outputs | sort -u > "$recorded"
+    # CMakeFiles/<version>/CompilerId*/a.exe are configure-time probes, not
+    # ninja outputs: never in the log, never in flight.
     (
         cd "$build_dir" || exit 0
         find . \( -name '*.obj' -o -name '*.o' -o -name '*.a' \
-                  -o -name '*.exe' -o -name '*.glad' \) -type f 2>/dev/null \
+                  -o -name '*.exe' -o -name '*.glad' \) -type f \
+             -not -path './CMakeFiles/[0-9]*/CompilerId*' 2>/dev/null \
             | sed 's|^\./||' | sort -u
     ) | comm -23 - "$recorded"
     rm -f "$recorded"
@@ -142,6 +148,18 @@ kill_tree_posix() {
     local p
     for p in $(build_tree_posix "$1" "$2" | tac); do
         kill -KILL "$p" 2>/dev/null || true
+    done
+}
+
+# Windows, without PowerShell: every direct child of the shell except the
+# watchdog, by Windows PID, through taskkill's own tree walk. Runs after the
+# PowerShell kill as well, so the build comes back even when that script
+# cannot run at all - the first real capture lost its retry to a parse
+# error there. cygwin ps columns: PID PPID PGID WINPID ...
+kill_tree_windows_fallback() {
+    local shell=$1 watchdog=$2 winpid
+    for winpid in $(ps 2>/dev/null | awk -v p="$shell" -v w="$watchdog" 'NR > 1 && $2 == p && $1 != w { print $4 }'); do
+        MSYS2_ARG_CONV_EXCL='*' taskkill /F /T /PID "$winpid" >/dev/null 2>&1 || true
     done
 }
 
@@ -186,8 +204,9 @@ watchdog() {
         echo "::endgroup::"
 
         echo "killing the stalled build tree"
-        if on_windows && [ -n "${shell_win:-}" ]; then
-            run_stall_ps Kill "$shell_win" "${self_win:-0}" || true
+        if on_windows; then
+            [ -n "${shell_win:-}" ] && { run_stall_ps Kill "$shell_win" "${self_win:-0}" || true; }
+            kill_tree_windows_fallback "$shell_pid" "$self_pid"
         else
             kill_tree_posix "$shell_pid" "$self_pid"
         fi
