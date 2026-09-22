@@ -3784,6 +3784,73 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
               mount_campaign_package_with_error("gladiator"));
 }
 
+// Round 4 (2026-09-22, PR #307): the wizard pages with a ROW, not with a
+// column of side arrows, and the terminals project the SESSION's window —
+// one window model for every surface, so the number a player types at a
+// prompt names the row they are reading. CTF ships ten arenas plus the
+// RANDOM ARENA row under one flavour line: eight slots, seven of them
+// arenas and the eighth the pager row "MORE ARENAS - 1/2  >".
+TEST(PlatformHeadless, text_picker_setup_wizard_pages_its_arenas_with_a_row)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    HeadlessSaveDirSandbox sandbox;
+    ASSERT_TRUE(seed_arena_company("setuppage", 820));
+
+    std::string printed;
+    og::ui::TextPickerError error;
+    {
+        StdinRedirect input(
+            "7\n"    // main: load company -> the company list
+            "1\n"    //   list: open company...
+            "1\n"    //     #1 = setuppage -> team build
+            "7\n"    // team build: Camp -> the one-row docket
+            "1\n"    //   camp: the SETUP row -> "--- SETUP: GAME ---"
+            "2\n"    // GAME: CAPTURE THE FLAG -> its arena page, window 1
+            "8\n"    // ARENA: the pager ROW -> window 2
+            "5\n"    // ARENA: the pager ROW again -> wraps home to 1/2
+            "0\n"    // wizard: back out -> the camp prompt
+            "0\n"    // camp: back out -> team build
+            "8\n"    // team build: back -> main
+            "6\n");  // main: quit
+        StdoutCapture capture;
+
+        og::ui::TextPickerConfig config;
+        config.campaign = "modes";
+        config.team_families = {FAMILY_SOLDIER};
+        config.seed = 42;
+        og::ui::run_text_picker(config, &error);
+        printed = capture.restore();
+    }
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code) << error.detail;
+
+    std::size_t at = 0;
+    const auto expect_in_order = [&](const std::string& needle) {
+        const std::size_t found = printed.find(needle, at);
+        EXPECT_NE(std::string::npos, found)
+            << "SETUP answer '" << needle << "' missing after offset " << at;
+        if (found != std::string::npos)
+            at = found + needle.size();
+    };
+    // Window 1: seven arenas and then the pager row, numbered like any
+    // other row, with the steppers after it.
+    expect_in_order("--- SETUP: ARENA ---");
+    expect_in_order("   8. MORE ARENAS - 1/2  >");
+    expect_in_order("   9. Next: TEAMS");
+    expect_in_order("  10. Prev: GAME");
+    expect_in_order("  11. Back");
+    // Window 2: the remaining three arenas, the roll, and the pager row
+    // counting itself.
+    expect_in_order("   4. RANDOM ARENA - any arena of this game");
+    expect_in_order("   5. MORE ARENAS - 2/2  >");
+    // ...and the row WRAPS: one more press comes home to window 1.
+    expect_in_order("   8. MORE ARENAS - 1/2  >");
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 // The Refused arm the happy path cannot reach: GO's row is DISABLED while
 // a seat has nobody to drive, and the wizard answers with the row's own
 // face -- the same words the strip GO pops (kDeployForEveryPlayerTitle).

@@ -22,10 +22,12 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include "test_camp_save_fixture.h"
@@ -1899,7 +1901,10 @@ TEST(CampaignZoneUi, joiner_level_rows_pay_for_the_host_marker_out_of_the_label)
 
     og::ui::install_zone_submenu_state_for_screen(nullptr);
 
-    // The Base Camp docket band is the same rule at its own 42-glyph face.
+    // The Base Camp docket band is the same rule at its own face — round 4
+    // (2026-09-22, PR #307) widened that face to the whole panel, 12..310,
+    // when the side pager column left, so it reads 48 glyphs like the zone
+    // submenu's rows and not the 264px 42 it used to.
     SyntheticCampaignScriptGuard::install(kLongRoadZoneScript);
     og::ui::CampaignZoneSession zone(save);
     zone.fetch();
@@ -1930,17 +1935,109 @@ TEST(CampaignZoneUi, joiner_level_rows_pay_for_the_host_marker_out_of_the_label)
         camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
         og::ui::install_active_picker_lobby_client(saved_client);
     }
-    EXPECT_EQ("ROADROADROADROADROADRO..  [CURRENT] (HOST)",
+    EXPECT_EQ("ROADROADROADROADROADROADROAD..  [CURRENT] (HOST)",
               camp_buttons[kBaseCampZoneActionBase].label);
+    EXPECT_EQ(static_cast<std::size_t>(48),
+              camp_buttons[kBaseCampZoneActionBase].label.size())
+        << "the docket face is the panel's whole width now";
 
     camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
-    EXPECT_EQ("ROADROADROADROADROADROADROADR..  [CURRENT]",
+    EXPECT_EQ("ROADROADROADROADROADROADROADROADROA..  [CURRENT]",
               camp_buttons[kBaseCampZoneActionBase].label)
         << "the host reads seven more glyphs of the same road name";
+    EXPECT_EQ(og::ui::kReadyGoFaceGo,
+              og::runtime::current_session
+                  ->allbuttons_[static_cast<std::size_t>(
+                      kBaseCampZoneActionBase)]
+                  ->color)
+        << "a CLASSIC campaign's docket level row keeps the green launch "
+           "face — the wizard's plain ARENA rows are the one seam";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
     clear_allbuttons();
     og::runtime::current_session->localbuttons_ = nullptr;
+}
+
+// Maintainer ruling (2026-09-22, round 4): green is GO's alone inside the
+// SETUP wizard. The ARENA step is a LIST of arenas — painting every one of
+// them the launch green says "this launches" about all ten and so about
+// none, and [CURRENT] is already the mark that says which arena is armed.
+// The seam is a flag on the shared composer, which is why the two halves
+// are pinned together: the wizard's level rows are PLAIN, and a classic
+// campaign's book page and camp docket keep the green they have always had
+// (the docket half rides
+// joiner_level_rows_pay_for_the_host_marker_out_of_the_label above; the
+// zone submenu's is its first half).
+TEST(CampaignZoneUi, wizard_arena_rows_are_plain_while_the_camps_stay_green)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "modes";
+    save.scen_num = 820;  // SOCCER: THE PITCH — the armed arena
+    // is_host explicitly, not make_campaign_providers's local-play
+    // default: these providers outlive the test (the hooks need SOME
+    // provider set installed, and clearing them leaves the next scripted
+    // camp unable to compose), so an unconditional TRUE here would hand a
+    // later JOINER flow a host book — which is how a host-gated RANDOM
+    // row turned up on a joiner's GAME step.
+    og::script::hooks::install_campaign_providers(
+        og::data::make_campaign_providers(
+            save, [] { return picker_lobby_host_controls_visible(); }));
+
+    og::ui::MatchSetupScreenState state(save);
+    og::ui::MatchSetupSession::Inputs in;
+    in.save = &save;
+    in.is_host = true;
+    in.authored_mask = 0b0011;
+    ASSERT_TRUE(state.session.open(in));
+    (void)state.session.goto_step(og::ui::MatchSetupSession::Step::Arena, in);
+    ASSERT_EQ(og::ui::MatchSetupSession::Step::Arena, state.session.step());
+    og::ui::install_match_setup_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec = og::ui::match_setup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    button* const buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, count);
+    const unsigned char resting_face =
+        og::runtime::current_session->allbuttons_[0]->color;
+    int highlighted = spec.default_highlight;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    int current_row = -1;
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        if (buttons[og::ui::kMatchSetupRowBase + r].label.find("[CURRENT]") !=
+            std::string::npos)
+        {
+            current_row = og::ui::kMatchSetupRowBase + r;
+            break;
+        }
+    }
+    ASSERT_GE(current_row, 0) << "the armed arena wears [CURRENT]";
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        const int ordinal = og::ui::kMatchSetupRowBase + r;
+        if (buttons[ordinal].hidden)
+            continue;
+        EXPECT_EQ(resting_face,
+                  og::runtime::current_session
+                      ->allbuttons_[static_cast<std::size_t>(ordinal)]
+                      ->color)
+            << "ARENA row " << r << " ('" << buttons[ordinal].label
+            << "') must wear the PLAIN face: green is GO's alone";
+    }
+
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // Fetch triggers 3 and 4 through the REAL frame hook: the level-reload
@@ -2522,16 +2619,18 @@ TEST(CampaignZoneUi, book_without_a_zone_opens_through_the_camp_door)
 
 namespace {
 
-// A docket that does not fit its band: five rows weighed two units. The
+// A docket that does not fit its band: five rows weighed three units. The
 // shipped camps are composed NOT to reach this state, but a camp that does
-// has to say so — two bare arrows tell a player a row can move, never that
-// rows are hidden, so the pager's gutter carries the "p/N" count.
+// has to say so — round 4 (2026-09-22, PR #307) makes the window's LAST
+// slot the pager ROW, "MORE - 2/3  >", which names what it does and
+// carries its own count, instead of two bare arrows in a side column that
+// tell a player a row can move but never that rows are hidden.
 constexpr const char* kPagedDocketScript =
     R"LUA(og.register_campaign_hooks({
   base_camp = function()
     return {
       widgets = {
-        { kind = "actions", weight = 2,
+        { kind = "actions", weight = 3,
           entries = {
             { id = "one", label = "ROW ONE", kind = "action" },
             { id = "two", label = "ROW TWO", kind = "action" },
@@ -2552,9 +2651,13 @@ struct PagedDocketState {
     bool finished = false;
     bool first_window = false;
     bool window_is_two_rows = false;
-    bool pager_shown = false;
+    bool side_pagers_gone = false;
+    std::string more_row_1;
+    std::string more_row_2;
     bool second_window = false;
+    bool last_window = false;
     bool wrapped_home = false;
+    std::string more_row_last;
 };
 
 int paged_docket_injector(void* data)
@@ -2563,26 +2666,43 @@ int paged_docket_injector(void* data)
     PagedDocketState* state = static_cast<PagedDocketState*>(data);
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
-
-    state->first_window =
-        wait_for_interactable_label("zone_action_0", "ROW ONE", 10000);
+    state->first_window = click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW ONE",
+                                           wait_ms);
+    });
+    // Two authored rows and the pager row fill the three-unit band, and
+    // nothing at all sits past them.
     state->window_is_two_rows = has_interactable("zone_action_1") &&
-        !has_interactable("zone_action_2");
-    state->pager_shown = wait_for_interactable("zone_pager_next_0", 5000);
+        has_interactable("zone_action_2") && !has_interactable("zone_action_3");
+    state->side_pagers_gone = !has_interactable("zone_pager_next_0") &&
+        !has_interactable("zone_pager_prev_0");
+    state->more_row_1 = interactable_label("zone_action_2");
     SDL_Delay(400);
     capture_presented_frame("uxr_docket_pager_page1", std::getenv("UXSHOTS_DIR"));
 
-    interact("zone_pager_next_0");
-    state->second_window =
-        wait_for_interactable_label("zone_action_0", "ROW THREE", 10000);
+    // Every press is ACKNOWLEDGED by the row the window brings up: a bare
+    // interact() whose predecessor's release is still in flight is
+    // silently dropped, and the pager row is exactly the kind of button
+    // that gets pressed twice in a row.
+    state->second_window = click_until_edge("zone_action_2", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW THREE",
+                                           wait_ms);
+    });
+    state->more_row_2 = interactable_label("zone_action_2");
     SDL_Delay(400);
     capture_presented_frame("uxr_docket_pager_page2", std::getenv("UXSHOTS_DIR"));
 
-    interact("zone_pager_prev_0");
-    state->wrapped_home =
-        wait_for_interactable_label("zone_action_0", "ROW ONE", 10000);
+    // The last window holds ROW FIVE alone, and the pager row WRAPS from
+    // there back to the first: a row has one direction.
+    state->last_window = click_until_edge("zone_action_2", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW FIVE",
+                                           wait_ms);
+    });
+    state->more_row_last = interactable_label("zone_action_1");
+    state->wrapped_home = click_until_edge("zone_action_1", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW ONE",
+                                           wait_ms);
+    });
 
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
@@ -2619,21 +2739,26 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.first_window) << "the band renders its first window";
     EXPECT_TRUE(state.window_is_two_rows)
-        << "a two-unit band shows two rows and parks the rest";
-    EXPECT_TRUE(state.pager_shown)
-        << "an overflowing band grows its pager pair";
+        << "a three-unit band shows two authored rows and the pager row";
+    EXPECT_TRUE(state.side_pagers_gone)
+        << "round 4: the docket has no side pager column at all";
+    EXPECT_EQ("MORE - 1/3  >", state.more_row_1)
+        << "the pager row names what it does and counts the window";
+    EXPECT_EQ("MORE - 2/3  >", state.more_row_2)
+        << "and the count moves with the window";
     EXPECT_TRUE(state.second_window)
-        << "the pager pages the docket IN PLACE, never onto a new screen";
-    EXPECT_TRUE(state.wrapped_home) << "and back again";
+        << "the pager row pages the docket IN PLACE, never onto a new screen";
+    EXPECT_TRUE(state.last_window)
+        << "the last window holds the fifth row alone";
+    EXPECT_EQ("MORE - 3/3  >", state.more_row_last)
+        << "the last window counts itself too";
+    EXPECT_TRUE(state.wrapped_home)
+        << "and the pager row WRAPS home from the last window";
 
-    // ...and COUNTS itself. state.pager_shown only proves the two arrows
-    // exist; the gutter strip under them prints
-    // ActionsLayout::page.indicator() for every multi-page band of 2+ units
-    // (src/interface/ui/menu_screen_specs.cpp, the docket-pager gutter
-    // loop). Compose the same docket the flow just paged and pin the count
-    // that strip has to ink -- without this, deleting the strip (the very
-    // thing the comment above kPagedDocketScript says two bare arrows cannot
-    // replace) left every expectation above green.
+    // ...and COUNTS itself, in the row's own note. Compose the same docket
+    // the flow just paged and pin the arithmetic behind it: the pager row
+    // costs the window one slot, so a three-unit band pages TWO authored
+    // rows at a time, and stepping wraps.
     SaveData& save = test_screen()->save_data;
     save.current_campaign = "gladiator";
     save.scen_num = 1;
@@ -2641,22 +2766,24 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
     ASSERT_EQ(1u, zone.actions().size());
-    og::ui::CampaignZoneSession::ActionsLayout band = zone.actions()[0];
-    EXPECT_EQ(2, band.units) << "weight 2 buys a two-row band";
-    EXPECT_EQ(5u, band.rows.size()) << "all five authored rows are carried";
-    ASSERT_TRUE(band.page.multi_page())
-        << "five rows in a two-row window overflow";
-    EXPECT_EQ(3, band.page.page_count())
-        << "five rows across a two-row window is three pages";
-    EXPECT_EQ(std::string("1/3"), band.page.indicator())
-        << "the gutter must open on page one of three";
-    ASSERT_TRUE(band.page.step(1));
-    EXPECT_EQ(std::string("2/3"), band.page.indicator())
-        << "one NEXT moves the printed count with the window";
-    ASSERT_TRUE(band.page.step(1));
-    EXPECT_EQ(std::string("3/3"), band.page.indicator());
-    EXPECT_FALSE(band.page.step(1))
-        << "the count saturates on the last page instead of wrapping";
+    EXPECT_EQ(3, zone.actions()[0].units) << "weight 3 buys a three-row band";
+    EXPECT_EQ(5u, zone.actions()[0].rows.size())
+        << "all five authored rows are carried";
+    ASSERT_TRUE(zone.actions()[0].more_row)
+        << "five rows in a three-slot band spend one slot on the pager row";
+    EXPECT_EQ(2, zone.actions()[0].page.rows_per_page)
+        << "the pager row costs the window a slot";
+    EXPECT_EQ(3, zone.actions()[0].page.page_count());
+    EXPECT_EQ(std::string("1/3"), zone.actions()[0].page.indicator());
+    EXPECT_EQ("MORE", zone.actions()[0].more.label);
+    EXPECT_EQ(std::string("1/3"), zone.actions()[0].more.note);
+    ASSERT_TRUE(zone.step_actions_window(0));
+    EXPECT_EQ(std::string("2/3"), zone.actions()[0].more.note)
+        << "the row's note moves with its window";
+    ASSERT_TRUE(zone.step_actions_window(0));
+    ASSERT_TRUE(zone.step_actions_window(0));
+    EXPECT_EQ(0, zone.actions()[0].page.page)
+        << "the last window wraps home instead of saturating";
 }
 
 namespace {

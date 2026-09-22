@@ -192,9 +192,52 @@ void MatchSetupSession::level_applied(const Inputs& inputs)
     compose(inputs, Window::Reset);
 }
 
-void MatchSetupSession::page_step(int delta)
+void MatchSetupSession::page_more()
 {
-    page_.page.step(delta);
+    step_row_window(page_.page);
+    refresh_more_row();
+}
+
+int MatchSetupSession::window_slots() const
+{
+    const int rows = std::max(0, page_.page.end_index() -
+                                     page_.page.first_index());
+    return rows + (page_.more_row ? 1 : 0);
+}
+
+const MatchSetupSession::Row* MatchSetupSession::window_row(int slot) const
+{
+    const int rows = std::max(0, page_.page.end_index() -
+                                     page_.page.first_index());
+    if (slot < 0 || slot >= rows)
+        return nullptr;
+    const int index = page_.page.first_index() + slot;
+    if (index < 0 || index >= static_cast<int>(page_.rows.size()))
+        return nullptr;
+    return &page_.rows[static_cast<std::size_t>(index)];
+}
+
+bool MatchSetupSession::is_more_slot(int slot) const
+{
+    return page_.more_row &&
+           slot == page_.page.end_index() - page_.page.first_index();
+}
+
+// The pager row, kept in step with the window it counts. Written wherever
+// the window is written (a recompose, a pager-row click) so its face and
+// its count can never disagree.
+void MatchSetupSession::refresh_more_row()
+{
+    page_.more_row = page_.page.multi_page();
+    page_.more = Row{};
+    if (!page_.more_row)
+        return;
+    // The one step that pages is the one listing a game's arenas, so it
+    // names them; anything else takes the engine's generic word.
+    page_.more.base = make_more_row(step_ == Step::Arena
+                                        ? kSetupMoreArenasLabel
+                                        : kMoreRowLabel,
+                                    page_.page);
 }
 
 // Every entry to ARENA resolves the page first: the book at depth >= 2 is
@@ -354,7 +397,9 @@ void MatchSetupSession::compose(const Inputs& inputs, Window window)
 
     const int lines = static_cast<int>(page_.lines.size() +
                                        page_.team_lines.size());
-    page_.page = PageModel::make(static_cast<int>(page_.rows.size()),
+    // The window spends its last slot on the pager ROW when the step's
+    // rows outrun their band (the shared make_row_window rule).
+    page_.page = make_row_window(static_cast<int>(page_.rows.size()),
                                  std::max(1, setup_rows_fit(lines)));
     if (window == Window::Keep)
     {
@@ -372,6 +417,7 @@ void MatchSetupSession::compose(const Inputs& inputs, Window window)
             break;
         }
     }
+    refresh_more_row();
 }
 
 // The book's own page, hosted: its lines and its rows, undecorated by the
@@ -929,6 +975,14 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
 
         if (item.kind == TerminalMatchSetupItem::Kind::Back)
             return;
+        if (item.kind == TerminalMatchSetupItem::Kind::More)
+        {
+            // The pager row: the next window, wrapping. Nothing the
+            // campaign owns moves, so there is nothing to autosave and
+            // nothing to say.
+            session.page_more();
+            continue;
+        }
         if (item.kind == TerminalMatchSetupItem::Kind::Next)
         {
             (void)session.next(inputs);

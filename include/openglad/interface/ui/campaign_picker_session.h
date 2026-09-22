@@ -235,6 +235,28 @@ std::string campaign_picker_row_text(const CampaignPickerSession::Row& row,
 // same click.
 std::string campaign_oath_toast(const std::string& label, bool stood_down);
 
+// --- The paged-row window rule (docs/match-setup-design.md §2.0) ----------
+//
+// A band of row slots that cannot hold every row spends its LAST slot on a
+// pager ROW — "MORE - 2/3  >" — and never on a column of side arrows. One
+// arithmetic and one face for every chassis that pages scripted rows: the
+// Base Camp docket, the SETUP wizard, and the terminals' projection of
+// both. The row is a Kind::Page row, so it wears the door grammar every
+// other "there is more behind this" row wears, and the note is the window
+// the player is standing on.
+inline constexpr std::string_view kMoreRowId = "__more";
+inline constexpr std::string_view kMoreRowLabel = "MORE";
+
+// The window over `count` rows in a band of `fit` slots: all of them when
+// they fit, otherwise one slot per window given up to the pager row.
+[[nodiscard]] PageModel make_row_window(int count, int fit);
+// The pager row for the window `page` is on.
+[[nodiscard]] CampaignPickerSession::Row make_more_row(
+    std::string_view label, const PageModel& page);
+// What the pager row's click does: the next window, wrapping home from the
+// last one. A row has one direction, so there is no step back to write.
+void step_row_window(PageModel& page);
+
 // --- Base Camp gameplay-zone session (docs/basecamp-zones-design.md) -------
 //
 // The SDL-free sibling of CampaignPickerSession behind the Base Camp's
@@ -313,6 +335,11 @@ public:
         PageModel page{};
         int start_unit = 0;
         int units = 0;
+        // A docket whose rows outrun its band spends the window's LAST
+        // slot on the pager ROW (make_more_row): "MORE - 2/3  >". False
+        // when everything fits, and then `more` is not drawn.
+        bool more_row = false;
+        Row more;
     };
     // One zone row of up to 3 label/value cells (fetch-composed strings;
     // staleness bound = the fetch cadence). `in_header_band` hoists it out
@@ -368,9 +395,13 @@ public:
     {
         return actions_;
     }
-    // Mutable window access for the widget's pager dispatch (null when out
-    // of range — stale clicks stay inert).
+    // Mutable window access for the widget's dispatch (null when out of
+    // range — stale clicks stay inert).
     ActionsLayout* actions_widget(int index);
+    // The docket pager ROW's click: widget `index` steps to its next
+    // window, wrapping, and its pager row re-composes with the new count.
+    // False when the widget does not page (a stale click on a parked row).
+    bool step_actions_window(int index);
     // Null when the composition carries no readout.
     [[nodiscard]] const ReadoutLayout* readout() const
     {

@@ -119,7 +119,12 @@ constexpr int kArenaCount = 40;
 constexpr std::size_t kLabelBudget = 24;
 constexpr std::size_t kNoteBudget = 20;
 constexpr std::size_t kLineBudget = 38;
-constexpr std::size_t kSdlRowFaceChars = 42;
+// Round 4 (2026-09-22, PR #307): the wizard's rows and the camp docket's
+// run the panel's whole width, 12..310, so the face they have to fit is
+// (298 - 8) / 6 = 48 glyphs, not the 264px 42 they used to. The per-field
+// Lua budgets (24 label, 20 note) are UNCHANGED — they guard the fields a
+// regeneration can grow, not the composed face.
+constexpr std::size_t kSdlRowFaceChars = 48;
 
 // ---------------------------------------------------------------------------
 // Runtime-derived expectations
@@ -1506,7 +1511,7 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
             EXPECT_LE(entry.label.size(), kLabelBudget)
                 << id << ": " << entry.label;
             // The face every surface has to draw: label + " - " + note on
-            // the wizard's 42-glyph row.
+            // the wizard's 48-glyph row.
             EXPECT_LE(entry.label.size() + 3 + entry.note.size(),
                       kSdlRowFaceChars)
                 << id << ": " << entry.label << " - " << entry.note;
@@ -1525,7 +1530,7 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
     // The camp itself, over EVERY arena the campaign ships as the cursor,
     // on BOTH faces — no exemptions. Its note is a generated scenario
     // TITLE, which is exactly the field a regeneration can grow, and the
-    // face it has to fit is the 42-glyph docket row with its door marker
+    // face it has to fit is the 48-glyph docket row with its door marker
     // ("SETUP - " + title + "  >"). The per-field budgets do not apply to
     // it any more (a title runs to 28); what must hold is that the composed
     // row is not clipped, so a title that no longer fits fails HERE rather

@@ -1453,6 +1453,14 @@ ZoneSubmenuRowBand zone_submenu_row_band(const ZoneSubmenuScreenState* state)
 // roads wear the dimmed face. Everything else is a plain row. Level rows
 // are host-gated at ACTIVATION, so a non-host's copy carries the " (HOST)"
 // marker inside the same budget (there is no per-face dim ink for that).
+//
+// `level_rows_green` is the ONE seam in that grammar (maintainer ruling,
+// 2026-09-22): the SETUP wizard's ARENA step is a LIST of arenas, where a
+// green row would say "this launches" about every one of them and green
+// would stop meaning anything — the wizard keeps green for GO alone, and
+// [CURRENT] is what marks the armed arena. Every classic campaign's book
+// page and camp docket keeps the green level row it has always had, which
+// is why this is a flag and not a rewrite.
 struct ScriptedRowFace {
     std::string label;
     enum class Face : std::uint8_t { Plain, Dim, Go } face = Face::Plain;
@@ -1460,7 +1468,7 @@ struct ScriptedRowFace {
 
 ScriptedRowFace compose_scripted_row_face(
     const og::ui::CampaignPickerSession::Row& row, std::size_t budget,
-    bool level_rows_actionable)
+    bool level_rows_actionable, bool level_rows_green = true)
 {
     constexpr std::size_t kHostMarkerChars = 7;  // " (HOST)"
     ScriptedRowFace out;
@@ -1476,7 +1484,7 @@ ScriptedRowFace compose_scripted_row_face(
          !row.affordable))
     {
         out.face = ScriptedRowFace::Face::Dim;
-    } else if (row.is_level() && level_rows_actionable) {
+    } else if (row.is_level() && level_rows_actionable && level_rows_green) {
         out.face = ScriptedRowFace::Face::Go;
     }
     return out;
@@ -3000,23 +3008,29 @@ constexpr MenuButtonSpec kBaseCampRows[] = {
     OG_BASE_CAMP_ZONE_ROW(zone_action, 13, kBaseCampZoneActionBase),
     OG_BASE_CAMP_ZONE_ROW(zone_action, 14, kBaseCampZoneActionBase),
     OG_BASE_CAMP_ZONE_ROW(zone_action, 15, kBaseCampZoneActionBase),
-    // One prev/next pager pair per actions widget (widget w -> ordinals
-    // base + 2w / base + 2w + 1).
-    {.id = "zone_pager_prev_0", .label = "",
+    // The RETIRED pager pair per actions widget (round 4: the window's
+    // last row is the MORE pager ROW now). Parked for good, and re-parked
+    // every frame; their names keep the history, exactly as the seat
+    // rail's own retired ordinals do.
+    {.id = "zone_pager_spare_0", .label = "",
      .x = 0, .y = 0, .w = 0, .h = 0,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase,
+     .action = ButtonAction::MenuSpecRow,
+     .arg = kBaseCampZoneRetiredPagerBase,
      .hidden = true},
-    {.id = "zone_pager_next_0", .label = "",
+    {.id = "zone_pager_spare_1", .label = "",
      .x = 0, .y = 0, .w = 0, .h = 0,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase + 1,
+     .action = ButtonAction::MenuSpecRow,
+     .arg = kBaseCampZoneRetiredPagerBase + 1,
      .hidden = true},
-    {.id = "zone_pager_prev_1", .label = "",
+    {.id = "zone_pager_spare_2", .label = "",
      .x = 0, .y = 0, .w = 0, .h = 0,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase + 2,
+     .action = ButtonAction::MenuSpecRow,
+     .arg = kBaseCampZoneRetiredPagerBase + 2,
      .hidden = true},
-    {.id = "zone_pager_next_1", .label = "",
+    {.id = "zone_pager_spare_3", .label = "",
      .x = 0, .y = 0, .w = 0, .h = 0,
-     .action = ButtonAction::MenuSpecRow, .arg = kBaseCampZonePagerBase + 3,
+     .action = ButtonAction::MenuSpecRow,
+     .arg = kBaseCampZoneRetiredPagerBase + 3,
      .hidden = true},
     // Three spare parked ordinals close the 50 -> 72 arithmetic.
     OG_BASE_CAMP_ZONE_ROW(zone_spare, 0, kBaseCampZoneSpareBase),
@@ -4050,11 +4064,14 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                                 : nullptr;
         const int band_first =
             actions != nullptr ? actions->page.first_index() : 0;
-        const int band_visible = actions != nullptr
+        const int band_rows = actions != nullptr
             ? std::max(0, actions->page.end_index() - band_first)
             : 0;
-        const bool band_pagers =
-            actions != nullptr && actions->page.multi_page();
+        // Round 4: a docket that outruns its band spends the window's LAST
+        // slot on the MORE pager ROW, so the panel carries no column of
+        // side arrows and the row face runs the whole panel width.
+        const bool band_more = actions != nullptr && actions->more_row;
+        const int band_visible = band_rows + (band_more ? 1 : 0);
         const int band_y = actions != nullptr
             ? kBaseCampRowY0 + kBaseCampRowPitch * actions->start_unit
             : 0;
@@ -4068,7 +4085,9 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             face.nav = {};
             // The row's FACE says what the click costs you — one composer
             // for every scripted chassis (the zone submenu and the SETUP
-            // wizard draw through the same one).
+            // wizard draw through the same one). The pager row goes
+            // through it too: it is a Kind::Page row, so it wears the same
+            // door grammar as every other "more behind this" row.
             ScriptedRowFace composed;
             if (on) {
                 face.x = kBaseCampZoneActionRowX;
@@ -4076,7 +4095,10 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                 face.sizex = kBaseCampZoneActionRowWidth;
                 face.sizey = 10;
                 composed = compose_scripted_row_face(
-                    actions->rows[static_cast<std::size_t>(band_first + r)],
+                    r < band_rows
+                        ? actions->rows[static_cast<std::size_t>(band_first +
+                                                                 r)]
+                        : actions->more,
                     kZoneRowLabelChars, level_rows_actionable);
                 face.label = composed.label;
             } else {
@@ -4090,48 +4112,26 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                     composed.face);
             }
         }
-        const int prev_ordinal = kBaseCampZonePagerBase + 2 * w;
-        const int next_ordinal = prev_ordinal + 1;
-        buttons[prev_ordinal].hidden = !band_pagers;
-        buttons[next_ordinal].hidden = !band_pagers;
-        buttons[prev_ordinal].nav = {};
-        buttons[next_ordinal].nav = {};
-        if (band_pagers) {
-            buttons[prev_ordinal].x = kBaseCampZonePagerPrevX;
-            buttons[prev_ordinal].y = band_y;
-            buttons[prev_ordinal].sizex = kBaseCampZonePagerWidth;
-            buttons[prev_ordinal].sizey = 10;
-            buttons[prev_ordinal].label = "<";
-            buttons[next_ordinal].x = kBaseCampZonePagerNextX;
-            buttons[next_ordinal].y = band_y;
-            buttons[next_ordinal].sizex = kBaseCampZonePagerWidth;
-            buttons[next_ordinal].sizey = 10;
-            buttons[next_ordinal].label = ">";
-        }
-        sync_live_rect(prev_ordinal);
-        sync_live_rect(next_ordinal);
         if (band_visible > 0) {
             const int band_base =
                 kBaseCampZoneActionBase + kBaseCampZoneActionsPerWidget * w;
-            // Internal chain + the pager pair off the first row.
+            // One vertical chain: the pager row is an ordinary row in it.
             for (int r = 0; r < band_visible; ++r) {
                 buttons[band_base + r].nav = {
                     .up = r > 0 ? band_base + r - 1 : -1,
                     .down = r + 1 < band_visible ? band_base + r + 1 : -1,
                     .left = -1,
-                    .right = r == 0 && band_pagers ? prev_ordinal : -1};
-            }
-            if (band_pagers) {
-                buttons[prev_ordinal].nav = {
-                    .up = -1, .down = -1,
-                    .left = band_base, .right = next_ordinal};
-                buttons[next_ordinal].nav = {
-                    .up = -1, .down = -1,
-                    .left = prev_ordinal, .right = -1};
+                    .right = -1};
             }
             zone_bands.push_back({band_base, band_base + band_visible - 1,
                                   actions->start_unit});
         }
+    }
+    // The retired pager ordinals stay parked, every frame (the seat rail's
+    // own retired-ordinal idiom).
+    for (int p = 0; p < kBaseCampZoneRetiredPagerCount; ++p) {
+        buttons[kBaseCampZoneRetiredPagerBase + p].hidden = true;
+        buttons[kBaseCampZoneRetiredPagerBase + p].nav = {};
     }
     // Spares stay parked.
     for (int spare = 0; spare < kBaseCampZoneSpareCount; ++spare) {
@@ -4767,22 +4767,10 @@ void base_camp_draw_content(void* screen_state)
                 }
             }
         }
-        // The docket pager's count, in the gutter directly under its own
-        // arrows: two bare arrows say a row can move, never that rows are
-        // HIDDEN, and a player who cannot see "1/2" has no reason to press
-        // one. Same "p/N" strip the roster pager wears. A one-unit band has
-        // no second line of gutter to spend, so it keeps the arrows alone
-        // rather than inking over the widget below it.
-        for (const og::ui::CampaignZoneSession::ActionsLayout& actions :
-             zone->actions())
-        {
-            if (!actions.page.multi_page() || actions.units < 2)
-                continue;
-            const int band_y =
-                kBaseCampRowY0 + kBaseCampRowPitch * actions.start_unit;
-            mytext.write_xy(kBaseCampZonePagerPrevX + 2, band_y + 12,
-                            actions.page.indicator().c_str(), BLACK, 1);
-        }
+        // Round 4: the docket's window count is not a strip in a gutter
+        // any more — it is the pager ROW's own note ("MORE - 2/3  >"),
+        // drawn by the row like every other face on the band. Nothing to
+        // ink here.
     }
 
     // Column headers: solo keeps CLASS/EXP; networked swaps in the
@@ -5331,21 +5319,11 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
     // --- Zone actions band (docs/basecamp-zones-design.md): widget w's
     // window row r rides ordinal base + 8w + r; each widget's pager pair
     // rides base + 2w / base + 2w + 1.
-    if (row >= kBaseCampZonePagerBase &&
-        row < kBaseCampZonePagerBase + kBaseCampZonePagerCount)
+    // The four retired pager ordinals are parked for good; a dispatch
+    // that reaches one raced the park and does nothing.
+    if (row >= kBaseCampZoneRetiredPagerBase &&
+        row < kBaseCampZoneRetiredPagerBase + kBaseCampZoneRetiredPagerCount)
     {
-        og::ui::CampaignZoneSession::ActionsLayout* actions =
-            st->zone != nullptr
-            ? st->zone->actions_widget((row - kBaseCampZonePagerBase) / 2)
-            : nullptr;
-        if (actions == nullptr)
-            return MENU_OK;  // stale click on a parked pager
-        if (actions->page.step(
-                (row - kBaseCampZonePagerBase) % 2 == 0 ? -1 : 1))
-        {
-            TRACE("zone", "actions_page %s",
-                  actions->page.indicator().c_str());
-        }
         return MENU_OK;
     }
     if (row >= kBaseCampZoneActionBase &&
@@ -5361,6 +5339,19 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
         if (actions == nullptr)
             return 0;  // stale click on a parked row
         const int idx = actions->page.first_index() + window_row;
+        // The window's last slot is the MORE pager ROW when the docket
+        // outruns its band: it steps the window, wrapping, and nothing
+        // else on the camp moves.
+        if (actions->more_row &&
+            window_row == actions->page.end_index() -
+                              actions->page.first_index())
+        {
+            if (zone->step_actions_window(widget)) {
+                TRACE("zone", "actions_page %s",
+                      actions->page.indicator().c_str());
+            }
+            return MENU_OK;
+        }
         if (idx < 0 || idx >= static_cast<int>(actions->rows.size()))
             return 0;  // stale click on a row hidden this frame
         // Copy: an Acted refetch replaces the rows under the one we read.
@@ -7732,27 +7723,36 @@ using SetupStep = og::ui::MatchSetupSession::Step;
 
 // How many rows the live page shows in its window this frame (the session
 // sized the window itself from its own line count).
+// Every slot the step draws this frame — the MORE pager row included,
+// because it is a ROW and takes a row slot (§2.0's MORE row rule).
 int match_setup_visible_rows()
 {
     const MatchSetupScreenState* const st = g_match_setup_state;
     if (st == nullptr)
         return 0;
-    const og::ui::MatchSetupSession::Page& page = st->session.page();
-    return std::clamp(page.page.end_index() - page.page.first_index(), 0,
-                      kSetupRowsMax);
+    return std::clamp(st->session.window_slots(), 0, kSetupRowsMax);
 }
 
-// The windowed row a display slot shows this frame, or null past the end.
+// The windowed row a display slot shows this frame, or null past the end
+// AND on the pager slot (whose face is page().more — a caller that treated
+// it as an ordinary row would dispatch a row the campaign never wrote).
 const SetupRow* match_setup_window_row(int slot)
 {
     const MatchSetupScreenState* const st = g_match_setup_state;
     if (st == nullptr || slot < 0 || slot >= match_setup_visible_rows())
         return nullptr;
-    const og::ui::MatchSetupSession::Page& page = st->session.page();
-    const int index = page.page.first_index() + slot;
-    if (index < 0 || index >= static_cast<int>(page.rows.size()))
+    return st->session.window_row(slot);
+}
+
+// The face a display slot draws: its windowed row, or the pager row.
+const SetupRow* match_setup_slot_face(int slot)
+{
+    const MatchSetupScreenState* const st = g_match_setup_state;
+    if (st == nullptr || slot < 0 || slot >= match_setup_visible_rows())
         return nullptr;
-    return &page.rows[static_cast<std::size_t>(index)];
+    if (st->session.is_more_slot(slot))
+        return &st->session.page().more;
+    return st->session.window_row(slot);
 }
 
 // Row visibility and the Disabled grammar in the engine's own terms, so the
@@ -7761,20 +7761,11 @@ const SetupRow* match_setup_window_row(int slot)
 template <int Slot>
 RowState match_setup_row_state(const MenuLabelContext& /*context*/)
 {
-    const SetupRow* const row = match_setup_window_row(Slot);
+    const SetupRow* const row = match_setup_slot_face(Slot);
     if (row == nullptr)
         return RowState::Hidden;
     return row->state == RowState::Disabled ? RowState::Disabled
                                             : RowState::Visible;
-}
-
-// The ARENA window pagers: the docket's own pair, on the band's first row.
-RowState match_setup_pager_state(const MenuLabelContext& /*context*/)
-{
-    const MatchSetupScreenState* const st = g_match_setup_state;
-    return st != nullptr && st->session.page().page.multi_page()
-        ? RowState::Visible
-        : RowState::Hidden;
 }
 
 RowState match_setup_prev_state(const MenuLabelContext& /*context*/)
@@ -7858,23 +7849,6 @@ constexpr MenuButtonSpec kMatchSetupRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupNextIndex,
      .nav = {.up = kMatchSetupRowBase, .left = kMatchSetupPrevIndex},
      .state_override = &match_setup_next_state},
-    // The ARENA window's pager pair lives in the declared cell column
-    // (D25: one column, 280..310), on the band's first row. They
-    // are PARKED at a zero-size rect with an empty label like the Base
-    // Camp zone's own pagers, which keeps the static table free of a
-    // declared same-geometry pair (gate-lattice safe); the rewire bands
-    // and labels them at (280/296, row_y0, 14, 10), where the layout test
-    // pins them.
-    {.id = "setup_page_prev", .label = "",
-     .x = 0, .y = 0, .w = 0, .h = 0,
-     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupPagePrevIndex,
-     .nav = {.left = kMatchSetupRowBase, .right = kMatchSetupPageNextIndex},
-     .state_override = &match_setup_pager_state, .hidden = true},
-    {.id = "setup_page_next", .label = "",
-     .x = 0, .y = 0, .w = 0, .h = 0,
-     .action = ButtonAction::MenuSpecRow, .arg = kMatchSetupPageNextIndex,
-     .nav = {.left = kMatchSetupPagePrevIndex},
-     .state_override = &match_setup_pager_state, .hidden = true},
     OG_SETUP_TAB(0), OG_SETUP_TAB(1), OG_SETUP_TAB(2), OG_SETUP_TAB(3),
     OG_SETUP_TAB(4),
 };
@@ -8096,13 +8070,18 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
         const int y = row_top + kSetupRowPitch * r;
         place(ordinal, kSetupRowX, y, kSetupRowW, kSetupRowH);
         buttons[ordinal].nav = {};
-        const SetupRow* const row = match_setup_window_row(r);
+        const SetupRow* const row = match_setup_slot_face(r);
         if (row == nullptr) {
             write_label(ordinal, std::string());
             continue;
         }
-        ScriptedRowFace face =
-            compose_scripted_row_face(row->base, kSetupRowLabelChars, host);
+        // The wizard's ARENA step is a LIST of arenas, so a level row is
+        // a PLAIN row here: green is GO's alone on this screen, and
+        // [CURRENT] is what says which arena is armed. Every classic
+        // campaign's book page and camp docket keeps its green level row.
+        ScriptedRowFace face = compose_scripted_row_face(
+            row->base, kSetupRowLabelChars, host,
+            /*level_rows_green=*/false);
         // The wizard's one addition to the shared grammar: GO is not a
         // level row, but it launches, so it wears the launch green.
         if (row->extra == SetupRow::Extra::Go)
@@ -8113,14 +8092,6 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
         if (row->state != RowState::Disabled)
             apply_scripted_row_face_ink(live(ordinal), face.face);
     }
-    // The pagers un-park into the cell column's first row (they ship at a
-    // zero-size rect with no label, the Base Camp zone pagers' idiom).
-    place(kMatchSetupPagePrevIndex, kSetupPagerPrevX, row_top, kSetupPagerW,
-          kSetupRowH);
-    place(kMatchSetupPageNextIndex, kSetupPagerNextX, row_top, kSetupPagerW,
-          kSetupRowH);
-    write_label(kMatchSetupPagePrevIndex, "<");
-    write_label(kMatchSetupPageNextIndex, ">");
 
     // The tab strip: one tab per PRESENT step, re-banded left-to-right from
     // x=12 so a four-step campaign shows four tabs on the same pitch.
@@ -8150,7 +8121,6 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
     const int first_row = visible > 0 ? kMatchSetupRowBase : -1;
     const int last_row = visible > 0 ? kMatchSetupRowBase + visible - 1 : -1;
     const int tab_anchor = current_tab >= 0 ? current_tab : -1;
-    const bool pagers = shown(kMatchSetupPagePrevIndex);
 
     for (int k = 0; k < tab_count; ++k) {
         const int ordinal = kMatchSetupTabBase + k;
@@ -8161,8 +8131,9 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
             .right = k + 1 < tab_count ? kMatchSetupTabBase + k + 1 : -1};
     }
 
-    // The rows chain vertically. The only thing in the cell column is the
-    // ARENA pager pair, and it hangs off the first row's RIGHT.
+    // The rows chain vertically, and that is the whole graph inside the
+    // panel now: the MORE pager row is an ordinary row in the chain, so
+    // there is no second column and no sideways link out of a row.
     for (int r = 0; r < visible; ++r) {
         const int ordinal = kMatchSetupRowBase + r;
         buttons[ordinal].nav = {
@@ -8170,16 +8141,7 @@ void match_setup_rewire(button* buttons, int count, int& highlighted_button)
             .down = r + 1 < visible ? kMatchSetupRowBase + r + 1
                                     : kMatchSetupBackIndex,
             .left = -1,
-            .right = r == 0 && pagers ? kMatchSetupPagePrevIndex : -1};
-    }
-    if (pagers) {
-        buttons[kMatchSetupPagePrevIndex].nav = {
-            .up = -1, .down = -1,
-            .left = first_row >= 0 ? first_row : -1,
-            .right = kMatchSetupPageNextIndex};
-        buttons[kMatchSetupPageNextIndex].nav = {
-            .up = -1, .down = -1,
-            .left = kMatchSetupPagePrevIndex, .right = -1};
+            .right = -1};
     }
 
     // The footer chain, absent members skipped.
@@ -8331,21 +8293,9 @@ void match_setup_draw_content(void* screen_state)
     if (page.team_lines_at >= page.lines.size())
         draw_team_lines();
 
-    // The ARENA window's "p/N" sits UNDER the pager pair it belongs to
-    // (SPEC §2.3), not in the footer: a window indicator one band away
-    // from its own arrows reads as a page count for the whole screen.
-    // Right-aligned on the cell column so it ends where the ">" does.
-    if (page.page.multi_page()) {
-        const std::string indicator = page.page.indicator();
-        const int lines = static_cast<int>(page.lines.size() +
-                                           page.team_lines.size());
-        const int x = kSetupRightEdge -
-                      static_cast<int>(indicator.size()) * 6;
-        mytext.write_xy_flat(x,
-                             setup_row_y0(std::min(lines, kSetupLinesMax)) +
-                                 kSetupRowPitch + 1,
-                             indicator.c_str(), PURE_BLACK, 1);
-    }
+    // Round 4: the window count is the MORE pager ROW's own note
+    // ("MORE ARENAS - 2/2  >"), drawn by the row with every other face.
+    // There is no strip in a gutter and no cell column to right-align on.
 }
 
 // The blocking-subscreen refresh discipline, three cursors: the host may
@@ -8548,13 +8498,20 @@ Sint32 match_setup_dispatch(MatchSetupScreenState& st,
 Sint32 match_setup_choose(MatchSetupScreenState& st, int slot,
                           const og::ui::MatchSetupSession::Inputs& inputs)
 {
+    if (slot < 0 || slot >= match_setup_visible_rows())
+        return 0;  // a stale click on a row this frame does not show
+    // The window's last slot is the MORE pager ROW: it steps the window,
+    // wrapping, and touches nothing the campaign owns.
+    if (st.session.is_more_slot(slot)) {
+        st.session.page_more();
+        TRACE("setup", "page %s",
+              st.session.page().page.indicator().c_str());
+        return MENU_OK;
+    }
     const og::ui::MatchSetupSession::Page& page = st.session.page();
     const int index = page.page.first_index() + slot;
-    if (slot < 0 || slot >= match_setup_visible_rows() || index < 0 ||
-        index >= static_cast<int>(page.rows.size()))
-    {
+    if (index < 0 || index >= static_cast<int>(page.rows.size()))
         return 0;  // a stale click on a row this frame does not show
-    }
     return match_setup_dispatch(
         st, st.session.choose(static_cast<std::size_t>(index), inputs),
         inputs);
@@ -8587,12 +8544,6 @@ Sint32 match_setup_on_spec_row(int row, void* screen_state)
                                         ? st->session.prev(inputs)
                                         : st->session.next(inputs),
                                     inputs);
-    }
-    if (row == kMatchSetupPagePrevIndex || row == kMatchSetupPageNextIndex) {
-        st->session.page_step(row == kMatchSetupPagePrevIndex ? -1 : 1);
-        TRACE("setup", "page %s",
-              st->session.page().page.indicator().c_str());
-        return MENU_OK;
     }
     if (row >= kMatchSetupTabBase && row < kMatchSetupTabBase + kSetupTabCount)
     {
@@ -8653,8 +8604,9 @@ void install_lineup_state_for_screen(LineupScreenState* state)
 }
 
 // The SETUP wizard: a tab strip in the panel's header band, the step's
-// lines and team lines, up to nine 42-glyph rows, the ARENA window
-// pagers, and BACK | PREV | NEXT in the footer.
+// lines and team lines, up to nine full-width 48-glyph rows (the last of
+// them the MORE pager row when a step outruns its band), and
+// BACK | PREV | NEXT in the footer.
 const MenuScreenSpec& match_setup_menu_screen_spec()
 {
     static const MenuScreenSpec spec{

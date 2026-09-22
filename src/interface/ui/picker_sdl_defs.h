@@ -349,8 +349,12 @@ int base_camp_seat_chip_ring_clearance();
 inline constexpr int kBaseCampZoneActionBase = 49;    // zone_action_0..15
 inline constexpr int kBaseCampZoneActionsPerWidget = 8;
 inline constexpr int kBaseCampZoneActionRows = 16;
-inline constexpr int kBaseCampZonePagerBase = 65;     // prev/next per widget
-inline constexpr int kBaseCampZonePagerCount = 4;
+// Round 4: the four pager ordinals are RETIRED and re-parked every frame,
+// the way the seat rail's own retired pagers are (kBaseCampSeatRailSpares).
+// Deleting them would renumber every ordinal above and buy nothing; the
+// names keep the history.
+inline constexpr int kBaseCampZoneRetiredPagerBase = 65;
+inline constexpr int kBaseCampZoneRetiredPagerCount = 4;
 inline constexpr int kBaseCampZoneSpareBase = 69;     // zone_spare_0..2
 inline constexpr int kBaseCampZoneSpareCount = 3;
 // The DIFFICULTY strip door (docs/camp-controls-design.md). Appended past the
@@ -379,12 +383,13 @@ inline constexpr int kBaseCampPanelInnerRightX = kBaseCampPanelRightX - 2;
 // arithmetic"): full-width row faces inside the panel's inner face with the
 // widget's pager pair closing the right rail on the band's first row.
 inline constexpr int kBaseCampZoneActionRowX = 12;
-inline constexpr int kBaseCampZoneActionRowWidth = 264;  // face ends x=276
-inline constexpr int kBaseCampZonePagerWidth = 14;
-inline constexpr int kBaseCampZonePagerNextX =
-    kBaseCampPanelInnerRightX - kBaseCampZonePagerWidth;          // 296..310
-inline constexpr int kBaseCampZonePagerPrevX =
-    kBaseCampZonePagerNextX - 2 - kBaseCampZonePagerWidth;        // 280..294
+// Round 4 (2026-09-22, PR #307): the row face runs the WHOLE panel width,
+// 12..310, because the column of side pager arrows it used to stop 4px
+// short of is gone — a docket that outruns its band spends the window's
+// last row on the MORE pager row instead (make_row_window /
+// make_more_row). 298 px of bevelled face is (298 - 8) / 6 = 48 glyphs.
+inline constexpr int kBaseCampZoneActionRowWidth =
+    kBaseCampPanelInnerRightX - kBaseCampZoneActionRowX;  // 298, ends x=310
 
 // --- LOCAL SEAT SETTINGS subscreen -----------------------------------------
 // A clicked owned Base Camp seat resolves its stable LobbySeatId to a dense
@@ -660,8 +665,8 @@ namespace og::ui {
 // redefinition would not compile) and static_asserts them against the zone
 // constants below.
 
-// The one left edge (tabs, lines, rows) and the one right edge (tabs,
-// cells, pagers).
+// The one left edge (tabs, lines, rows) and the one right edge (tabs and
+// rows both).
 inline constexpr int kSetupLeftX = kZoneSubmenuRowX;               // 12
 inline constexpr int kSetupRightEdge = kBaseCampPanelInnerRightX;  // 310
 
@@ -694,19 +699,20 @@ static_assert(kSetupPanelBottomY == kZoneSubmenuPanelBottomY,
 static_assert(kSetupContentY0 == kSetupTabY + kSetupTabH + kSetupLineToRowGap,
               "tab -> content gap == line -> row gap (the vertical rhythm)");
 
-// Rows: the docket's own 42-glyph face beside the cell column.
+// Rows: the docket's own full-width 48-glyph face. Round 4 (2026-09-22,
+// PR #307): the 30px cell column that used to close the right rail is
+// gone — nothing lives there any more, because the ARENA window's pager
+// pair became the MORE pager ROW — so a row runs from the one left edge
+// to the one right edge, like every other rect on this screen.
 inline constexpr int kSetupRowX = kSetupLeftX;                       // 12
-inline constexpr int kSetupCellX = kBaseCampZonePagerPrevX;          // 280
-inline constexpr int kSetupCellW = kSetupRightEdge - kSetupCellX;    // 30
-inline constexpr int kSetupRowW =
-    kSetupCellX - kSetupLineToRowGap - kSetupRowX;                   // 264
+inline constexpr int kSetupRowW = kSetupRightEdge - kSetupRowX;      // 298
 inline constexpr int kSetupRowH = 10;
 static_assert(kSetupRowW == kBaseCampZoneActionRowWidth,
-              "the wizard's rows wear the docket's 42-glyph face");
-static_assert(kSetupCellX + kSetupCellW == kSetupRightEdge,
-              "the cell column closes on the one right edge");
+              "the wizard's rows wear the docket's 48-glyph face");
+static_assert(kSetupRowX + kSetupRowW == kSetupRightEdge,
+              "a row closes on the one right edge, like the tab strip");
 inline constexpr std::size_t kSetupRowLabelChars =
-    static_cast<std::size_t>((kSetupRowW - 8) / 6);  // 42
+    static_cast<std::size_t>((kSetupRowW - 8) / 6);  // 48
 
 // The text-line budget. The panel's inner face holds 49 glyphs from x=12;
 // the budget is the 48 the session's own composition contract names, so a
@@ -714,17 +720,6 @@ inline constexpr std::size_t kSetupRowLabelChars =
 inline constexpr int kSetupLineChars = 48;
 static_assert(kSetupLeftX + 6 * kSetupLineChars <= kSetupRightEdge - 2,
               "a full-budget line inks inside the panel face");
-
-// The right cell column holds exactly one thing: the Base Camp docket's
-// own pager pair, on the ARENA step's first row. (The column was sized
-// for a 30 px reverse cell on every cycler row; the wheels turn forward
-// only now, so the cell is gone and kSetupCellX/W survive as the column
-// the row face stops 4 px short of and the pagers close.)
-inline constexpr int kSetupPagerPrevX = kBaseCampZonePagerPrevX;  // 280, w 14
-inline constexpr int kSetupPagerNextX = kBaseCampZonePagerNextX;  // 296, w 14
-inline constexpr int kSetupPagerW = kBaseCampZonePagerWidth;      // 14
-static_assert(kSetupPagerNextX + kSetupPagerW == kSetupRightEdge,
-              "the pager pair closes on the one right edge");
 
 // Footer: the zone submenu's BACK and NEXT rects; PREV is NEXT's mirror on
 // the same 6px gap (D29 — every wizard puts "previous step" beside "next",
@@ -761,10 +756,8 @@ inline constexpr int kMatchSetupRowBase = 0;       // setup_row_0..8
 inline constexpr int kMatchSetupBackIndex = 9;
 inline constexpr int kMatchSetupPrevIndex = 10;
 inline constexpr int kMatchSetupNextIndex = 11;
-inline constexpr int kMatchSetupPagePrevIndex = 12;
-inline constexpr int kMatchSetupPageNextIndex = 13;
-inline constexpr int kMatchSetupTabBase = 14;      // setup_tab_0..4
-inline constexpr int kMatchSetupButtonCount = 19;
+inline constexpr int kMatchSetupTabBase = 12;      // setup_tab_0..4
+inline constexpr int kMatchSetupButtonCount = 17;
 static_assert(kMatchSetupBackIndex - kMatchSetupRowBase == kSetupRowsMax,
               "the footer starts where the row slots end");
 static_assert(kMatchSetupTabBase + kSetupTabCount == kMatchSetupButtonCount,

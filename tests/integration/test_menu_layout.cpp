@@ -555,10 +555,9 @@ void check_setup_grid(const SetupLayoutDriver& driver, const char* variant)
         EXPECT_EQ(og::ui::kSetupRowX, row.x) << variant << " row " << r;
         EXPECT_EQ(og::ui::kSetupRowW, row.sizex) << variant << " row " << r;
         EXPECT_EQ(og::ui::kSetupRowH, row.sizey) << variant << " row " << r;
-        EXPECT_EQ(og::ui::kSetupCellX - og::ui::kSetupLineToRowGap,
-                  row.x + row.sizex)
-            << variant << ": the row face must end 4px before the cell "
-                          "column (276)";
+        EXPECT_EQ(og::ui::kSetupRightEdge, row.x + row.sizex)
+            << variant << ": a row runs the panel's whole width and closes "
+                          "on the one right edge (310)";
         EXPECT_GE(row.y, og::ui::kSetupContentY0) << variant << " row " << r;
         EXPECT_LE(row.y + row.sizey, og::ui::kSetupPanelBottomY)
             << variant << ": row " << r << " spills out of the panel";
@@ -568,20 +567,6 @@ void check_setup_grid(const SetupLayoutDriver& driver, const char* variant)
                 << variant << ": rows must keep one pitch";
         }
         previous_row_y = row.y;
-    }
-
-    // The pagers share that edge and that first-row band.
-    const button& page_prev = b[og::ui::kMatchSetupPagePrevIndex];
-    const button& page_next = b[og::ui::kMatchSetupPageNextIndex];
-    if (!page_prev.hidden)
-    {
-        EXPECT_FALSE(page_next.hidden) << variant << ": the pagers are a pair";
-        EXPECT_EQ(og::ui::kSetupPagerPrevX, page_prev.x) << variant;
-        EXPECT_EQ(og::ui::kSetupPagerNextX, page_next.x) << variant;
-        EXPECT_EQ(og::ui::kSetupRightEdge, page_next.x + page_next.sizex)
-            << variant << ": the pager pair closes the one right edge";
-        EXPECT_EQ(b[og::ui::kMatchSetupRowBase].y, page_prev.y)
-            << variant << ": the pagers sit beside the row they page";
     }
 
     // The tab strip: one band, one pitch, closing on the right edge when
@@ -773,9 +758,11 @@ TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
     EXPECT_EQ(og::ui::kSetupRightEdge,
               og::ui::setup_tab_x(og::ui::kSetupTabCount - 1) +
                   og::ui::kSetupTabW);
-    EXPECT_EQ(276, og::ui::kSetupRowX + og::ui::kSetupRowW);
-    EXPECT_EQ(og::ui::kSetupRightEdge,
-              og::ui::kSetupCellX + og::ui::kSetupCellW);
+    // Round 4: ONE right edge for rows AND tabs, and no cell column left
+    // between them.
+    EXPECT_EQ(310, og::ui::kSetupRowX + og::ui::kSetupRowW);
+    EXPECT_EQ(og::ui::kSetupRightEdge, og::ui::kSetupRowX + og::ui::kSetupRowW);
+    EXPECT_EQ(static_cast<std::size_t>(48), og::ui::kSetupRowLabelChars);
     // The TEAMS/MATCH line columns (the LINEUP band grammar), and the
     // census cell's right edge on the text line's own.
     EXPECT_EQ(12, og::ui::kSetupSwatchX);
@@ -920,11 +907,25 @@ TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
         EXPECT_EQ(Step::Arena, state.session.step());
         ASSERT_TRUE(state.session.page().page.multi_page())
             << "ten arenas over a seven-row window must page";
+        ASSERT_TRUE(state.session.page().more_row)
+            << "a multi-window step spends its last slot on the pager row";
         og::ui::install_match_setup_state_for_screen(&state);
         SetupLayoutDriver driver;
         driver.frame(/*is_host=*/true);
-        EXPECT_FALSE(driver.buttons[og::ui::kMatchSetupPagePrevIndex].hidden)
-            << "a multi-window page shows its pagers";
+        // The pager row is an ORDINARY row: same rect, same chain, last
+        // slot of the window, and the BFS below walks it like any other.
+        int last_visible = -1;
+        for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+        {
+            if (!driver.buttons[og::ui::kMatchSetupRowBase + r].hidden)
+                last_visible = r;
+        }
+        ASSERT_GE(last_visible, 0);
+        EXPECT_TRUE(driver.buttons[og::ui::kMatchSetupRowBase + last_visible]
+                        .label.starts_with("MORE ARENAS - "))
+            << "the window's last row is the pager row: '"
+            << driver.buttons[og::ui::kMatchSetupRowBase + last_visible].label
+            << "'";
         ASSERT_NO_FATAL_FAILURE(check_setup_grid(driver, "setup_arena_paged"));
         og::ui::install_match_setup_state_for_screen(nullptr);
     }
@@ -1341,17 +1342,17 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {
             const button& got = buttons[i];
             std::string want_id;
-            if (i < kBaseCampZonePagerBase)
+            if (i < kBaseCampZoneRetiredPagerBase)
             {
                 want_id = std::format("zone_action_{}",
                                       i - kBaseCampZoneActionBase);
             }
             else if (i < kBaseCampZoneSpareBase)
             {
-                const int pager = i - kBaseCampZonePagerBase;
-                want_id = std::format("zone_pager_{}_{}",
-                                      pager % 2 == 0 ? "prev" : "next",
-                                      pager / 2);
+                // Round 4: the four docket pager ordinals are RETIRED and
+                // parked for good — the window's last row pages now.
+                want_id = std::format("zone_pager_spare_{}",
+                                      i - kBaseCampZoneRetiredPagerBase);
             }
             else
             {
@@ -1447,8 +1448,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kBaseCampZoneActionBase, 49);
         EXPECT_EQ(kBaseCampZoneActionsPerWidget, 8);
         EXPECT_EQ(kBaseCampZoneActionRows, 16);
-        EXPECT_EQ(kBaseCampZonePagerBase, 65);
-        EXPECT_EQ(kBaseCampZonePagerCount, 4);
+        EXPECT_EQ(kBaseCampZoneRetiredPagerBase, 65);
+        EXPECT_EQ(kBaseCampZoneRetiredPagerCount, 4);
         EXPECT_EQ(kBaseCampZoneSpareBase, 69);
         EXPECT_EQ(kBaseCampZoneSpareCount, 3);
         EXPECT_EQ(kCreateMenuDifficultyIndex, 72);
@@ -1716,29 +1717,30 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
     int highlighted = kBaseCampRowBodyBase;
     spec.nav.rewire(buttons, count, highlighted);
 
-    // The actions band: 2 visible windows of the 5 entries at the band's
-    // units, labels composed, pagers shown on the band's first row.
+    // The actions band: 5 entries over a 2-unit band, so the window holds
+    // ONE entry and the second slot is the MORE pager row (round 4). Both
+    // rows run the panel's whole width, 12..310.
     EXPECT_FALSE(buttons[kBaseCampZoneActionBase].hidden);
     EXPECT_FALSE(buttons[kBaseCampZoneActionBase + 1].hidden);
     EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 2].hidden)
         << "a 2-unit band shows 2 window rows";
     EXPECT_EQ("ACT 0", buttons[kBaseCampZoneActionBase].label);
-    EXPECT_EQ("ACT 1", buttons[kBaseCampZoneActionBase + 1].label);
+    EXPECT_EQ("MORE - 1/5  >", buttons[kBaseCampZoneActionBase + 1].label)
+        << "the window's last slot is the pager row";
     EXPECT_EQ(12, buttons[kBaseCampZoneActionBase].x);
+    EXPECT_EQ(298, buttons[kBaseCampZoneActionBase].sizex);
+    EXPECT_EQ(310, buttons[kBaseCampZoneActionBase].x +
+                       buttons[kBaseCampZoneActionBase].sizex)
+        << "a docket row closes the panel's inner right rail itself";
     EXPECT_EQ(45 + 14 * 1, buttons[kBaseCampZoneActionBase].y)
         << "the band anchors on its start unit";
     EXPECT_EQ(45 + 14 * 2, buttons[kBaseCampZoneActionBase + 1].y);
-    EXPECT_FALSE(buttons[kBaseCampZonePagerBase].hidden)
-        << "5 entries over 2 rows page in place";
-    EXPECT_FALSE(buttons[kBaseCampZonePagerBase + 1].hidden);
-    EXPECT_EQ("<", buttons[kBaseCampZonePagerBase].label);
-    EXPECT_EQ(">", buttons[kBaseCampZonePagerBase + 1].label);
-    EXPECT_EQ(310, buttons[kBaseCampZonePagerBase + 1].x +
-                       buttons[kBaseCampZonePagerBase + 1].sizex)
-        << "the widget pagers close the panel's inner right rail";
-    // The second widget's pager pair stays parked.
-    EXPECT_TRUE(buttons[kBaseCampZonePagerBase + 2].hidden);
-    EXPECT_TRUE(buttons[kBaseCampZonePagerBase + 3].hidden);
+    // The four retired pager ordinals stay parked, every frame.
+    for (int p = 0; p < kBaseCampZoneRetiredPagerCount; ++p)
+    {
+        EXPECT_TRUE(buttons[kBaseCampZoneRetiredPagerBase + p].hidden)
+            << "retired docket pager " << p;
+    }
 
     // The roster re-bands below the actions: rows at the band's units, the
     // capability gates hide the chip/move-up columns.
@@ -1777,13 +1779,33 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
     EXPECT_EQ(kBaseCampSeatCardBase, buttons[3].nav.down)
         << "the roster's last row bottoms out on the seat rail";
 
-    // Pager stepping through the production dispatch windows the band.
+    // Pager stepping through the production dispatch windows the band:
+    // the MORE ROW is the thing that is clicked now.
     ASSERT_NE(nullptr, spec.on_spec_row);
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampZonePagerBase + 1, &state));
+              spec.on_spec_row(kBaseCampZoneActionBase + 1, &state));
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("ACT 2", buttons[kBaseCampZoneActionBase].label)
-        << "the widget's own pager steps its window";
+    EXPECT_EQ("ACT 1", buttons[kBaseCampZoneActionBase].label)
+        << "the widget's own pager row steps its window";
+    EXPECT_EQ("MORE - 2/5  >", buttons[kBaseCampZoneActionBase + 1].label);
+    // ...all the way to the LAST window, and then home: a pager ROW has
+    // one direction, so the fifth press wraps instead of saturating.
+    for (int step = 0; step < 3; ++step)
+    {
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(kBaseCampZoneActionBase + 1, &state))
+            << "step " << step;
+        spec.nav.rewire(buttons, count, highlighted);
+    }
+    EXPECT_EQ("ACT 4", buttons[kBaseCampZoneActionBase].label)
+        << "the last window holds the fifth entry alone";
+    EXPECT_EQ("MORE - 5/5  >", buttons[kBaseCampZoneActionBase + 1].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 1, &state));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ACT 0", buttons[kBaseCampZoneActionBase].label)
+        << "the pager row WRAPS home from the last window";
+    EXPECT_EQ("MORE - 1/5  >", buttons[kBaseCampZoneActionBase + 1].label);
 
     // A capability-gated composition with a frozen assign shows chips on
     // own rows even networked (the visibility fork is pinned by the zone

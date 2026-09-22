@@ -2162,15 +2162,17 @@ TEST(MenuEngine, base_camp_scripted_zone_gate_lattice_sweep)
         ensure_highlighted_button_visible(buttons, count, highlighted);
 
         // Teeth: the scripted composition is what got swept. The appended
-        // action band and its pagers must be LIVE in every variant — a
-        // regression that parked them would otherwise sail through the
+        // action band must be LIVE in every variant, pager row included —
+        // a regression that parked it would otherwise sail through the
         // checks below by sweeping the default zone again.
         EXPECT_FALSE(buttons[kBaseCampZoneActionBase].hidden)
             << variant.name << ": the scripted action band never appeared";
         EXPECT_FALSE(buttons[kBaseCampZoneActionBase + 1].hidden)
-            << variant.name << ": the 2-unit band shows both window rows";
-        EXPECT_FALSE(buttons[kBaseCampZonePagerBase].hidden)
-            << variant.name << ": 5 entries over 2 rows must page in place";
+            << variant.name << ": the 2-unit band shows both window slots";
+        EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 1].label.starts_with(
+            "MORE - "))
+            << variant.name
+            << ": 5 entries over 2 slots page on the window's last ROW";
 
         // No overlap among simultaneously-visible rows.
         for (int i = 0; i < count; ++i) {

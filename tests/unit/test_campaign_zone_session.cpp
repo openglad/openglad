@@ -268,7 +268,9 @@ TEST_F(CampaignZoneSessionTest, four_widget_layout_assigns_whole_row_units)
     ASSERT_EQ(1u, zone.actions().size());
     EXPECT_EQ(2, zone.actions()[0].start_unit);
     EXPECT_EQ(2, zone.actions()[0].units);
-    EXPECT_EQ(2, zone.actions()[0].page.rows_per_page);
+    EXPECT_EQ(2, zone.actions()[0].page.rows_per_page)
+        << "two rows in a two-slot band need no pager row";
+    EXPECT_FALSE(zone.actions()[0].more_row);
     const CampaignZoneSession::RosterLayout& roster = zone.roster();
     EXPECT_EQ(4, roster.start_unit);
     EXPECT_FALSE(roster.header_at_top);
@@ -350,16 +352,22 @@ TEST_F(CampaignZoneSessionTest, actions_overflow_pages_in_place)
     ASSERT_EQ(1u, zone.actions().size());
     const CampaignZoneSession::ActionsLayout& actions = zone.actions()[0];
     EXPECT_EQ(8, actions.page.item_count);
-    EXPECT_EQ(3, actions.page.rows_per_page);
+    // Round 4: the window's last slot is the MORE pager ROW, so a 3-slot
+    // band windows TWO authored rows at a time.
+    EXPECT_EQ(2, actions.page.rows_per_page);
     EXPECT_TRUE(actions.page.multi_page())
-        << "8 entries over a 3-row band page in place";
+        << "8 entries over a 3-slot band page in place";
+    ASSERT_TRUE(actions.more_row);
+    EXPECT_EQ("MORE", actions.more.label);
+    EXPECT_EQ("1/4", actions.more.note);
     // The refetch preserves the widget's window (the after-own-mutation
-    // trigger must not yank the page under the pointer).
-    CampaignZoneSession::ActionsLayout* window = zone.actions_widget(0);
-    ASSERT_NE(nullptr, window);
-    ASSERT_TRUE(window->page.step(1));
+    // trigger must not yank the page under the pointer), pager row and
+    // all.
+    ASSERT_TRUE(zone.step_actions_window(0));
+    EXPECT_EQ("2/4", zone.actions()[0].more.note);
     zone.refetch();
     EXPECT_EQ(1, zone.actions()[0].page.page);
+    EXPECT_EQ("2/4", zone.actions()[0].more.note);
 }
 
 // ---------------------------------------------------------------------------

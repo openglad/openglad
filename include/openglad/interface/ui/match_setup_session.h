@@ -135,6 +135,11 @@ inline constexpr std::string_view kSetupRowLineup = "lineup";
 inline constexpr std::string_view kSetupRowViewLevel = "view_level";
 inline constexpr std::string_view kSetupRowGo = "go";
 inline constexpr std::string_view kSetupRowReadyPointer = "ready_pointer";
+// The ARENA step's pager row (the shared MORE row rule, §2.0): the word
+// names what is behind it, because the one step that pages is the one
+// listing a game's arenas. Every other step falls back to the engine's
+// generic kMoreRowLabel.
+inline constexpr std::string_view kSetupMoreArenasLabel = "MORE ARENAS";
 
 // One SDL-free SETUP wizard. The renderer owns every tail (lobby sync,
 // autosave, the level-set gate, the difficulty write); the session owns the
@@ -175,6 +180,11 @@ public:
         std::size_t team_lines_at = 0;
         std::vector<Row> rows;
         PageModel page;
+        // The window's LAST slot is the pager row `more` when the step's
+        // rows outrun their band (§2.0's MORE row rule — the wizard has no
+        // side pager column). False when every row fits.
+        bool more_row = false;
+        Row more;
         bool can_next = false;
         bool can_prev = false;
     };
@@ -252,8 +262,18 @@ public:
     // The tab strip / the terminal Prev-Next. Arena descends into
     // knobs_.arena_page.
     Outcome goto_step(Step target, const Inputs& inputs);
-    // The ARENA window pagers.
-    void page_step(int delta);
+    // The ARENA window's pager ROW: the next window, wrapping home from
+    // the last. A row has one direction, so there is nothing to step back.
+    void page_more();
+    // The window's slots this step draws, the pager row included.
+    [[nodiscard]] int window_slots() const;
+    // The row a window slot draws, or null when the slot is past the end.
+    // The pager row answers through `page().more`, never here: a caller
+    // that dispatched it as an ordinary row would choose a row that is not
+    // the campaign's.
+    [[nodiscard]] const Row* window_row(int slot) const;
+    // True when `slot` is this window's pager row.
+    [[nodiscard]] bool is_more_slot(int slot) const;
     // The surface's gated tail landed: refetch the book + match_knobs and
     // advance to TEAMS.
     void level_applied(const Inputs& inputs);
@@ -290,6 +310,7 @@ private:
     void enter_arena(const Inputs& inputs);
     [[nodiscard]] bool has_step(Step step) const;
     Outcome turn(Row::Knob knob, const Inputs& inputs);
+    void refresh_more_row();
 
     SaveData& save_;
     CampaignPickerSession book_;  // depth 1 = GAME, depth >= 2 = ARENA

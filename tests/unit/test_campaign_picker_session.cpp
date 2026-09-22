@@ -510,6 +510,57 @@ TEST_F(CampaignPickerSessionTest, set_level_outcome_carries_id_writes_nothing)
 // Row text composition (shared by the surfaces)
 // ---------------------------------------------------------------------------
 
+// The paged-row window rule (docs/match-setup-design.md §12): ONE
+// arithmetic and ONE face for every chassis that pages scripted rows. The
+// pager is a ROW, so it costs the window a slot — and only when there is
+// something behind it to reach.
+TEST(CampaignPickerSessionRows, the_pager_row_costs_a_slot_only_when_it_pages)
+{
+    using og::ui::make_more_row;
+    using og::ui::make_row_window;
+    using og::ui::PageModel;
+    using og::ui::step_row_window;
+
+    // Everything fits: the band keeps all its slots and there is no row.
+    const PageModel whole = make_row_window(8, 9);
+    EXPECT_EQ(9, whole.rows_per_page);
+    EXPECT_FALSE(whole.multi_page());
+    EXPECT_EQ(8, whole.end_index());
+
+    // Exactly full is still one window (the shipped GAME step's shape).
+    EXPECT_FALSE(make_row_window(9, 9).multi_page());
+
+    // One row too many, and the LAST slot goes to the pager row: the
+    // shipped CTF arena page, eleven rows over eight slots.
+    PageModel paged = make_row_window(11, 8);
+    EXPECT_EQ(7, paged.rows_per_page);
+    EXPECT_TRUE(paged.multi_page());
+    EXPECT_EQ(2, paged.page_count());
+    EXPECT_EQ(7, paged.end_index()) << "window 1 draws seven arenas";
+
+    // The face is the shared row grammar's, note and door marker and all.
+    EXPECT_EQ("MORE ARENAS - 1/2  >",
+              og::ui::campaign_picker_row_text(
+                  make_more_row("MORE ARENAS", paged), 48));
+
+    // One direction, and it wraps home from the last window.
+    step_row_window(paged);
+    EXPECT_EQ(1, paged.page);
+    EXPECT_EQ("MORE - 2/2  >",
+              og::ui::campaign_picker_row_text(
+                  make_more_row(og::ui::kMoreRowLabel, paged), 48));
+    EXPECT_EQ(11, paged.end_index()) << "window 2 draws the remaining four";
+    step_row_window(paged);
+    EXPECT_EQ(0, paged.page) << "a row has no way back, so it wraps";
+
+    // A one-slot band cannot spend its only slot on the pager row and
+    // still show anything: the window clamps to one item and the row
+    // rides beside it rather than replacing the list.
+    const PageModel tiny = make_row_window(3, 1);
+    EXPECT_EQ(1, tiny.rows_per_page);
+    EXPECT_EQ(3, tiny.page_count());
+}
+
 TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
 {
     CampaignPickerSession::Row row;

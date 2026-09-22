@@ -234,11 +234,26 @@ TerminalMatchSetupModel build_terminal_match_setup_model(
     for (std::size_t i = at; i < page.lines.size(); ++i)
         model.lines.push_back(page.lines[i]);
 
-    for (std::size_t i = 0; i < page.rows.size(); ++i) {
-        const MatchSetupSession::Row& row = page.rows[i];
+    // The session's OWN window, pager row included: one window model for
+    // every surface, so "MORE ARENAS - 2/2  >" means the same thing at a
+    // prompt as it does on the panel and a number typed here names the
+    // row the player is reading.
+    const int first = page.page.first_index();
+    const int end = page.page.end_index();
+    for (int i = first; i < end && i < static_cast<int>(page.rows.size());
+         ++i) {
+        const MatchSetupSession::Row& row =
+            page.rows[static_cast<std::size_t>(i)];
         model.items.push_back(TerminalMatchSetupItem{
-            TerminalMatchSetupItem::Kind::Row, i,
+            TerminalMatchSetupItem::Kind::Row, static_cast<std::size_t>(i),
             campaign_picker_row_text(row.base, kCampaignPickerTerminalRowBudget,
+                                     true)});
+    }
+    if (page.more_row) {
+        model.items.push_back(TerminalMatchSetupItem{
+            TerminalMatchSetupItem::Kind::More, 0,
+            campaign_picker_row_text(page.more.base,
+                                     kCampaignPickerTerminalRowBudget,
                                      true)});
     }
     // The two steppers ARE the tab strip's projection. They name the step

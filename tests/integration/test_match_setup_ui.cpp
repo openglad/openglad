@@ -1571,11 +1571,13 @@ TEST(MatchSetupUi, joiner_read_only_walk_and_ready_row)
 // ---------------------------------------------------------------------------
 // 11. A paged ARENA window. CTF ships ten arenas plus the RANDOM ARENA row
 //     and the step fits eight, so the pagers un-park beside the first row
-//     and the window can be stepped. The step opens on the window holding
-//     [CURRENT] (D27) — a host who sees rows none of which is theirs
-//     cannot tell what GO would launch. The cursor is 508, the FIRST row
-//     of window 2: on a window-1 cursor "opens on the window holding
-//     [CURRENT]" passes without the step having chosen anything.
+//     and the step fits eight, so the window holds seven arenas and spends
+//     its last slot on the MORE pager ROW (round 4: no side pager column).
+//     The step opens on the window holding [CURRENT] (D27) — a host who
+//     sees rows none of which is theirs cannot tell what GO would launch.
+//     The cursor is 508, index 8, which is on window 2: on a window-1
+//     cursor "opens on the window holding [CURRENT]" would pass without
+//     the step having chosen anything.
 
 namespace
 {
@@ -1583,7 +1585,9 @@ struct PagerState
 {
     std::atomic<bool> test_finished{false};
     bool opened = false;
-    bool pagers_shown = false;
+    bool side_pagers_gone = false;
+    std::string more_row_label;
+    std::string more_row_label_window_1;
     bool current_on_entry = false;
     bool random_row_on_last_window = false;
     std::string first_window_row_0;
@@ -1613,14 +1617,17 @@ int pager_injector(void* data)
     if (!state->opened)
         return escape(3, "the ARENA step never came up");
     (void)wait_for_menu_frames(2);
-    state->pagers_shown = has_interactable("setup_page_next") &&
-        has_interactable("setup_page_prev");
-    // The one shot that shows the pager pair and the "p/N" under it
+    // Round 4: the window's LAST slot is the pager ROW, and there is no
+    // side pager column at all.
+    state->more_row_label = interactable_label("setup_row_4");
+    state->side_pagers_gone = !has_interactable("setup_page_next") &&
+        !has_interactable("setup_page_prev");
+    // The one shot that shows the MORE pager row closing a window
     // (SPEC §2.3): no unpaged step can.
     capture_presented_frame("setup_arena_paged", uxshots_dir());
     ++state->captures;
     // The window the step opened on holds the cursor's arena — window 2,
-    // whose first row IS the cursor (508). The RANDOM ARENA row is
+    // which runs 507..509 plus the roll. The RANDOM ARENA row is
     // appended LAST of all, so it rides this window too and no arena
     // ordinal moved to make room for it (D5).
     for (int r = 0; r < og::ui::kSetupRowsMax; ++r) {
@@ -1633,13 +1640,19 @@ int pager_injector(void* data)
     }
 
     // A page step moves a window, not a setting: nothing autosaves. The
-    // step opened on 2/2, so PREV is the first move and NEXT comes back.
+    // step opened on 2/2 and the pager row WRAPS, so one press comes home
+    // to 1/2 and the next goes back to 2/2.
     state->stepped_back = click_and_acknowledge_trace(
-        "setup_page_prev", "setup", "page 1/2",
+        "setup_row_4", "setup", "page 1/2",
         /*waits_for_autosave=*/false, 10000);
     state->first_window_row_0 = interactable_label("setup_row_0");
+    state->more_row_label_window_1 = interactable_label("setup_row_7");
+    // The other window, so the read-back can see a FULL band closed by
+    // the pager row as well as a short one.
+    capture_presented_frame("setup_arena_paged_window_1", uxshots_dir());
+    ++state->captures;
     state->stepped = click_and_acknowledge_trace(
-        "setup_page_next", "setup", "page 2/2",
+        "setup_row_7", "setup", "page 2/2",
         /*waits_for_autosave=*/false, 10000);
 
     if (!click_until_edge("setup_back", [](int wait_ms) {
@@ -1658,8 +1671,8 @@ TEST(MatchSetupUi, paged_arena_window_steps_and_opens_on_the_cursor)
     trace_clear();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
-    // CTF: ten arenas and the RANDOM ARENA row over an eight-row floor.
-    // 508 is index 8 — the first row of window 2.
+    // CTF: ten arenas and the RANDOM ARENA row over an eight-row floor,
+    // one slot of which is the pager row. 508 is index 8 — window 2.
     write_versus_save("modes", 508);
 
     PagerState state;
@@ -1679,22 +1692,27 @@ TEST(MatchSetupUi, paged_arena_window_steps_and_opens_on_the_cursor)
     EXPECT_EQ(0, thread_result)
         << "the injector gave up at leg " << thread_result;
     ASSERT_TRUE(state.opened);
-    EXPECT_TRUE(state.pagers_shown)
-        << "eleven rows over an eight-row floor: the pagers un-park";
+    EXPECT_TRUE(state.side_pagers_gone)
+        << "round 4: the wizard has no side pager column at all";
+    EXPECT_EQ("MORE ARENAS - 2/2  >", state.more_row_label)
+        << "window 2 holds four rows and then the pager ROW";
+    EXPECT_EQ("MORE ARENAS - 1/2  >", state.more_row_label_window_1)
+        << "window 1 fills the band and the pager row closes it";
     EXPECT_TRUE(state.current_on_entry)
         << "D27: the step opens on the window that holds [CURRENT], and "
-           "508 is the FIRST row of window 2 — a window-1 cursor would "
-           "pass this without the step choosing anything";
+           "508 is index 8, on window 2 — a window-1 cursor would pass "
+           "this without the step choosing anything";
     EXPECT_TRUE(state.random_row_on_last_window)
         << "D5: RANDOM ARENA is appended LAST, so it rides the last "
            "window and no arena ordinal moved to make room for it";
-    EXPECT_TRUE(state.stepped_back) << "'<' steps the window to 1/2";
-    EXPECT_TRUE(state.stepped) << "and '>' steps it back to 2/2";
+    EXPECT_TRUE(state.stepped_back)
+        << "the pager row wraps from the last window home to 1/2";
+    EXPECT_TRUE(state.stepped) << "and steps on to 2/2";
     EXPECT_EQ(std::string::npos,
               state.first_window_row_0.find("RANDOM"))
         << "window 1 is arenas only (500 up): '"
         << state.first_window_row_0 << "'";
-    verify_captured_frames("setup_pager", 1);
+    verify_captured_frames("setup_pager", 2);
     restore_gladiator_mount();
 }
 

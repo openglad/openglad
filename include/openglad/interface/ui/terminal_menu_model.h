@@ -146,7 +146,11 @@ TerminalLineupModel build_terminal_lineup_model(
 // `Back`. The prompt takes a plain row number: a cycler row steps its wheel
 // one stop FORWARD, the way every cycler in the picker turns.
 struct TerminalMatchSetupItem {
-    enum class Kind : std::uint8_t { Row, Next, Prev, Back };
+    // `More` is the pager ROW (§2.0's MORE row rule): the same row the SDL
+    // window's last slot draws, numbered here like any other. It steps the
+    // window, wrapping — the terminals project the session's window, they
+    // do not invent a second one.
+    enum class Kind : std::uint8_t { Row, More, Next, Prev, Back };
     Kind kind = Kind::Back;
     std::size_t row = 0;    // Kind::Row: the index into page().rows
     std::string label;

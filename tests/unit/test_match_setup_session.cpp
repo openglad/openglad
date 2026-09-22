@@ -1000,8 +1000,9 @@ TEST_F(MatchSetupSessionTest,
     EXPECT_EQ(10u, session.page().rows.size()) << "a no-op refetch";
 
     // Ten CTF arenas over ONE line of text (the "Next uncleared" line left
-    // with the progress vocabulary, R2-4): eight rows fit, and the window
-    // opens on the page that holds the cursor's own arena (508 -> page 1).
+    // with the progress vocabulary, R2-4): eight row slots fit, one of
+    // them the MORE pager row, and the window opens on the page that
+    // holds the cursor's own arena (508 -> page 1).
     og::script::clear_pack_scripts();
     register_book(R"({ arena_page = "ctf" })");
     save_.scen_num = 508;
@@ -1010,7 +1011,10 @@ TEST_F(MatchSetupSessionTest,
     ASSERT_EQ(Kind::Advanced, ctf.goto_step(Step::Arena, inputs()).kind);
     ASSERT_EQ(10u, ctf.page().rows.size());
     EXPECT_EQ(8, og::ui::setup_rows_fit(1));
-    EXPECT_EQ(8, ctf.page().page.rows_per_page);
+    // Round 4: the window's last slot is the MORE pager row, so seven
+    // arenas ride each window and the eighth slot pages.
+    EXPECT_EQ(7, ctf.page().page.rows_per_page);
+    EXPECT_TRUE(ctf.page().more_row);
     EXPECT_EQ(1, ctf.page().page.page);
     EXPECT_TRUE(ctf.page().page.multi_page());
 }
@@ -2199,10 +2203,11 @@ TEST_F(ModesSetupSessionTest, modes_820_arena_tab_shows_soccer_with_current_on_t
 }
 
 // 508, not 507: with the progress line gone the CTF page carries ONE line
-// (the rule line), so its window holds eight rows and 507 — index 7 — sits
-// on window 1, where "opens on the window holding [CURRENT]" would pass
-// trivially. 508 is index 8, the first row of window 2, which is also the
-// window RANDOM ARENA (row 10 of 11) lands on.
+// (the rule line), so its window holds eight SLOTS — seven arenas and the
+// MORE pager row (round 4) — and 506, index 6, sits on window 1, where
+// "opens on the window holding [CURRENT]" would pass trivially. 508 is
+// index 8, on window 2, which is also the window RANDOM ARENA (row 10 of
+// 11) lands on.
 TEST_F(ModesSetupSessionTest, modes_508_arena_tab_opens_the_ctf_window_holding_current)
 {
     save_.scen_num = 508;
@@ -2212,15 +2217,33 @@ TEST_F(ModesSetupSessionTest, modes_508_arena_tab_opens_the_ctf_window_holding_c
     ASSERT_EQ(Kind::Advanced, session.goto_step(Step::Arena, inputs()).kind);
     ASSERT_EQ(11u, session.page().rows.size())
         << "ten CTF arenas, then RANDOM ARENA";
-    EXPECT_EQ(8, session.page().page.rows_per_page)
-        << "one line on the page leaves eight rows per window";
+    EXPECT_EQ(7, session.page().page.rows_per_page)
+        << "one line leaves eight slots, one of them the pager row";
     EXPECT_TRUE(session.page().page.multi_page());
+    ASSERT_TRUE(session.page().more_row);
     EXPECT_EQ(1, session.page().page.page)
         << "the window opens on the page that holds [CURRENT]";
     EXPECT_EQ(508, session.page().rows[8].base.level);
     EXPECT_TRUE(session.page().rows[8].base.current);
     EXPECT_EQ("random_ctf", session.page().rows[10].base.id)
-        << "the second window holds 508, 509 and the roll";
+        << "the second window holds 507..509 and the roll";
+    // The pager row itself: the ARENA step names what is behind it, and
+    // it counts the window the player is standing on.
+    EXPECT_EQ("MORE ARENAS", session.page().more.base.label);
+    EXPECT_EQ("2/2", session.page().more.base.note);
+    EXPECT_EQ(5, session.window_slots())
+        << "window 2 draws 507, 508, 509, the roll and the pager row";
+    EXPECT_TRUE(session.is_more_slot(4));
+    EXPECT_EQ(nullptr, session.window_row(4))
+        << "the pager slot is not one of the campaign's rows";
+    // ...and the row WRAPS: one press comes home, the next goes back.
+    session.page_more();
+    EXPECT_EQ(0, session.page().page.page);
+    EXPECT_EQ("1/2", session.page().more.base.note);
+    EXPECT_EQ(8, session.window_slots())
+        << "window 1 fills the band: seven arenas and the pager row";
+    session.page_more();
+    EXPECT_EQ(1, session.page().page.page);
 }
 
 // ---------------------------------------------------------------------------
@@ -2296,8 +2319,8 @@ TEST_F(MatchSetupSessionTest, book_action_and_refusal_rows_stay_on_the_step)
     EXPECT_EQ(Step::Arena, session.step());
 }
 
-// The ARENA window pagers, the manifest's own SetLevel answer, an absent
-// step and a scenario the mount cannot name.
+// The ARENA window's pager ROW, the manifest's own SetLevel answer, an
+// absent step and a scenario the mount cannot name.
 TEST_F(MatchSetupSessionTest, manifest_paging_absent_steps_and_a_nameless_scenario)
 {
     register_knobs_only("{}");  // bookless: the ARENA step is the manifest
@@ -2308,13 +2331,17 @@ TEST_F(MatchSetupSessionTest, manifest_paging_absent_steps_and_a_nameless_scenar
     ASSERT_TRUE(session.page().page.multi_page())
         << "forty arenas do not fit one window";
 
+    ASSERT_TRUE(session.page().more_row)
+        << "a manifest that outruns its band pages on its last ROW";
+    const int pages = session.page().page.page_count();
     const int first_page = session.page().page.page;
-    session.page_step(+1);
+    session.page_more();
     EXPECT_EQ(first_page + 1, session.page().page.page);
-    session.page_step(-1);
-    EXPECT_EQ(first_page, session.page().page.page);
-    session.page_step(-1);
-    EXPECT_EQ(0, session.page().page.page) << "the window clamps";
+    // The pager row has ONE direction, and it wraps home from the last
+    // window rather than saturating there.
+    for (int i = 1; i < pages; ++i)
+        session.page_more();
+    EXPECT_EQ(first_page, session.page().page.page) << "the window wraps";
 
     // A manifest row answers SetLevel and writes nothing, exactly as a book
     // level row does.

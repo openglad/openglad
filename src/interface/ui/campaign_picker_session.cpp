@@ -297,6 +297,50 @@ std::string campaign_picker_row_text(const CampaignPickerSession::Row& row,
     return clip_with_ellipsis(std::move(text), budget);
 }
 
+// --- The paged-row window rule (docs/match-setup-design.md §2.0) ----------
+
+PageModel make_row_window(int count, int fit)
+{
+    const int slots = std::max(1, fit);
+    if (count <= slots)
+        return PageModel::make(count, slots);
+    // The pager row is a ROW: it costs the window one slot, and only when
+    // there is something behind it to reach.
+    return PageModel::make(count, std::max(1, slots - 1));
+}
+
+CampaignPickerSession::Row make_more_row(std::string_view label,
+                                         const PageModel& page)
+{
+    CampaignPickerSession::Row row;
+    row.id = std::string(kMoreRowId);
+    row.label = std::string(label);
+    row.note = page.indicator();
+    row.kind = CampaignPickerSession::Kind::Page;
+    return row;
+}
+
+void step_row_window(PageModel& page)
+{
+    const int count = page.page_count();
+    page.page = count > 0 ? (page.page + 1) % count : 0;
+}
+
+namespace {
+
+// The docket widget's pager row, kept in step with its window. Composed
+// wherever the window is written (fetch, refetch's clamp, the row's own
+// click) so the face and the count can never disagree.
+void refresh_more_row(CampaignZoneSession::ActionsLayout& actions)
+{
+    actions.more_row = actions.page.multi_page();
+    actions.more = actions.more_row
+        ? make_more_row(kMoreRowLabel, actions.page)
+        : CampaignZoneSession::Row{};
+}
+
+}  // namespace
+
 std::string campaign_oath_toast(const std::string& label, bool stood_down)
 {
     std::string toast = std::format("Sworn to {}.", label);
@@ -496,8 +540,11 @@ bool CampaignZoneSession::adopt(const hooks::CampaignZone& zone)
                 decorate_campaign_entries(save_, entries, actions.rows);
                 actions.start_unit = unit;
                 actions.units = slot.units;
-                actions.page = PageModel::make(
+                // The docket's window: the band's slots, minus the one
+                // the pager ROW takes when the rows outrun them.
+                actions.page = make_row_window(
                     static_cast<int>(actions.rows.size()), slot.units);
+                refresh_more_row(actions);
                 actions_.push_back(std::move(actions));
                 break;
             }
@@ -590,6 +637,7 @@ void CampaignZoneSession::refetch()
     {
         actions_[i].page.page = std::clamp(
             pages[i], 0, actions_[i].page.page_count() - 1);
+        refresh_more_row(actions_[i]);
     }
 }
 
@@ -599,6 +647,16 @@ CampaignZoneSession::actions_widget(int index)
     if (index < 0 || index >= static_cast<int>(actions_.size()))
         return nullptr;
     return &actions_[static_cast<std::size_t>(index)];
+}
+
+bool CampaignZoneSession::step_actions_window(int index)
+{
+    ActionsLayout* const actions = actions_widget(index);
+    if (actions == nullptr || !actions->page.multi_page())
+        return false;
+    step_row_window(actions->page);
+    refresh_more_row(*actions);
+    return true;
 }
 
 CampaignZoneSession::Outcome CampaignZoneSession::act(int widget_index,
