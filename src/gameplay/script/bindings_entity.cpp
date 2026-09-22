@@ -409,8 +409,14 @@ int m_fire(lua_State* L)
 
 int m_special(lua_State* L)
 {
-    lua_pushboolean(L, self_arg(L)->special() ? 1 : 0);
-    return 1;
+    std::string reason;
+    const bool succeeded = self_arg(L)->special(nullptr, &reason);
+    lua_pushboolean(L, succeeded ? 1 : 0);
+    if (succeeded)
+        lua_pushnil(L);
+    else
+        lua_pushlstring(L, reason.data(), reason.size());
+    return 2;
 }
 
 int m_death(lua_State* L)

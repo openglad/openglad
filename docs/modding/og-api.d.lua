@@ -234,7 +234,7 @@
 ---@field sizez fun(self: og.Walker): integer
 ---@field skip_exit fun(self: og.Walker): integer
 ---@field spaces_clear fun(self: og.Walker): integer
----@field special fun(self: og.Walker): boolean
+---@field special fun(self: og.Walker): boolean, string?
 ---@field speed_bonus fun(self: og.Walker): number
 ---@field speed_bonus_left fun(self: og.Walker): integer
 ---@field stepsize fun(self: og.Walker): number
@@ -275,20 +275,21 @@
 -- Table form of the do_special hook (the og.register_hooks key 'specials'):
 -- current_special() selects the entry, a missing index falls to `default`,
 -- and a table with neither is a successful no-op. Entries return
--- like do_special itself.
+-- true on success, or false plus a nonblank printable
+-- ASCII reason (at most 24 bytes) on refusal.
 ---@class og.LivingSpecials
 -- Keys are the special ids the family declared;
 -- registration resolves them to slot ints (an
 -- unknown id, or a bare slot number, is a load
 -- error).
----@field [string] fun(self: og.Walker): boolean
----@field default? fun(self: og.Walker): boolean
+---@field [string] fun(self: og.Walker): boolean, string?
+---@field default? fun(self: og.Walker): boolean, string?
 
 -- Hook table for og.register_hooks(order = "living").
 ---@class og.LivingHooks
 ---@field check_special_ai? fun(self: og.Walker): boolean
 ---@field customize_weapon? fun(self: og.Walker, weapon: og.Walker)
----@field do_special? fun(self: og.Walker): boolean
+---@field do_special? fun(self: og.Walker): boolean, string?
 ---@field handle_teleport? fun(self: og.Walker): boolean
 ---@field hit_response? fun(self: og.Walker, who: og.Walker)
 ---@field level_up? fun(self: og.Guy, level_diff: integer)

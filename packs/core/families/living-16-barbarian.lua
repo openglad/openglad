@@ -5,16 +5,16 @@ local WEAP_BOULDER = assert(og.family_id("weapon", "core:boulder"))
 
 local function do_special(self)
   if self:busy() > 0 then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local shot = self:fire()
   -- failed somehow? !?!
   if not shot then
-    return false
+    return false, "COULD NOT FIRE"
   end
   local boulder = og.add_ob("weapon", WEAP_BOULDER)
   if not boulder then
-    return false
+    return false, "COULD NOT CREATE BOULDER"
   end
   boulder:set_floor(shot:floor())  -- boulder rolls on the thrower's floor
   boulder:center_on(shot)

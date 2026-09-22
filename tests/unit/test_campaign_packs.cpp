@@ -451,7 +451,7 @@ TEST(ExampleClassPack, its_specials_table_selects_falls_through_and_refuses)
     wisp->stats()->set_max_magicpoints(100.0f);
     wisp->stats()->set_magicpoints(60.0f);
     wisp->set_current_special(static_cast<char>(3));
-    std::optional<bool> fallthrough = og::script::hooks::do_special(fd, wisp);
+    std::optional<SpecialResult> fallthrough = og::script::hooks::do_special(fd, wisp);
     ASSERT_TRUE(fallthrough.has_value())
         << "a registered specials table must consume the dispatch";
     EXPECT_TRUE(*fallthrough) << "the unmatched case is a successful no-op";
@@ -461,7 +461,7 @@ TEST(ExampleClassPack, its_specials_table_selects_falls_through_and_refuses)
     // ember to vent, and false means the engine charges no special cost.
     wisp->set_current_special(static_cast<char>(1));
     wisp->stats()->set_magicpoints(8.0f);
-    std::optional<bool> refused = og::script::hooks::do_special(fd, wisp);
+    std::optional<SpecialResult> refused = og::script::hooks::do_special(fd, wisp);
     ASSERT_TRUE(refused.has_value());
     EXPECT_FALSE(*refused) << "trunc(8) - burn_floor(10) <= 0 cannot vent";
     EXPECT_EQ(8.0f, wisp->stats()->magicpoints());
@@ -472,7 +472,7 @@ TEST(ExampleClassPack, its_specials_table_selects_falls_through_and_refuses)
     // = 4 + rand0(8), and turns the vent into busy time.
     wisp->stats()->set_magicpoints(60.0f);
     wisp->set_busy(0.0f);
-    std::optional<bool> burst = og::script::hooks::do_special(fd, wisp);
+    std::optional<SpecialResult> burst = og::script::hooks::do_special(fd, wisp);
     ASSERT_TRUE(burst.has_value());
     EXPECT_TRUE(*burst) << "with ember above the floor the burst fires";
     EXPECT_EQ(10.0f, wisp->stats()->magicpoints())

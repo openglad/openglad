@@ -89,7 +89,7 @@ local function flare_burst(self)
   local t = og.tuning(self)
   local ember = og.trunc(self.magicpoints) - t.burn_floor
   if ember <= 0 then
-    return false
+    return false, "NOT ENOUGH EMBER"
   end
   -- Tuning is modder data: clamp it into a sane sim window before use.
   local range = og.clamp(t.burst_range, C.GRID_SIZE, 320)

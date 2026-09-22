@@ -130,7 +130,7 @@ end
 
 local function teleport(self)
   if lc.mid_teleport(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   if self:shifter_down() == 0 then
     og.emit_positional_sound(self, C.SOUND_TELEPORT)
@@ -140,11 +140,10 @@ local function teleport(self)
   end
   -- leave/remove a marker
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   if self:has_guy() and self:g_intelligence() < 75 then
-    og.emit_notification("Need 75 Int for Marker!", 0, self)
-    return false
+    return false, "75 INT REQUIRED"
   end
   -- Remove this caster's old marker, if present. (The C++ sets
   -- generic = 1 here but never tests it: a new marker is always
@@ -169,7 +168,7 @@ local function teleport(self)
   end
   local marker = og.add_ob("fx", FX_MARKER)
   if not marker then
-    return false
+    return false, "COULD NOT CREATE MARKER"
   end
   marker:set_owner(self)
   marker:set_floor(self:floor())  -- marker stays on the caster's floor
@@ -194,7 +193,7 @@ end
 local function burst_or_chain(self)
   -- heartburst / chain lightning
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local radius
@@ -211,7 +210,7 @@ local function burst_or_chain(self)
   local foes, foe_count = og.find_foes_in_range(
     "ob", radius + t.radius_bonus_per_level * self.level, self)
   if foe_count == 0 then
-    return false
+    return false, "NO FOE IN RANGE"
   end
   if self:shifter_down() == 0 then
     -- normal heartburst
@@ -228,7 +227,7 @@ local function burst_or_chain(self)
       local foe = foes[i]
       local burst = og.summon(self, "fx", FX_EXPLOSION)
       if not burst then
-        return false
+        return false, "COULD NOT MAKE EXPLOSION"
       end
       burst:s_set_bit_flags(C.BIT_MAGICAL, 1)
       burst.damage = pool
@@ -256,7 +255,7 @@ local function burst_or_chain(self)
   end
   local bolt = og.summon(self, "fx", FX_CHAIN)
   if not bolt then
-    return false
+    return false, "COULD NOT CREATE CHAIN"
   end
   -- The initial bolt and its MP charge cap only above roughly 1280 MP.
   local pool = lc.mp_pool_damage(self, 2)
@@ -282,23 +281,19 @@ end
 local function summon_image(self)
   -- summon image / elemental
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   if self:shifter_down() ~= 0 then
     -- true summoning
     local t = og.tuning(self)
     if self:has_guy() and self:g_intelligence() < t.summon_int_req then
-      if self:user() ~= -1 then
-        og.emit_notification(string.format(
-          "%d Int required to Summon!", t.summon_int_req))
-      end
-      return false
+      return false, string.format("%d INT REQUIRED", t.summon_int_req)
     end
     lc.halve_mp_surcharge(self, 3)
     -- First make the guy we'd summon, at least physically
     local elemental = og.add_ob("living", LIVING_ELEMENTAL)
     if not elemental then
-      return false
+      return false, "COULD NOT SUMMON"
     end
     -- Set the caster's floor before placement probes and setxy so both use
     -- the right floor.
@@ -328,7 +323,7 @@ local function summon_image(self)
     end
     if not placed then
       elemental.dead = 1
-      return false
+      return false, "NO ROOM TO SUMMON"
     end
     -- Summoning takes lots of time :)
     -- busy is a C++ float: per-op rounding.
@@ -414,7 +409,7 @@ local function summon_image(self)
   -- Now make the guy we'd summon, at least physically
   local phantom = og.add_ob("living", person)
   if not phantom then
-    return false
+    return false, "COULD NOT MAKE ILLUSION"
   end
   -- Place the illusion beside the caster on the caster's floor.
   phantom:set_floor(self:floor())
@@ -449,7 +444,7 @@ local function summon_image(self)
   end
   if not placed then
     phantom.dead = 1
-    return false
+    return false, "NO ROOM TO SUMMON"
   end
   -- Summoning takes lots of time :)
   -- busy is a C++ float: per-op rounding.
@@ -459,7 +454,7 @@ end
 
 local function mind_control(self)
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local mp_after_base_cost = lc.spare_mp(self, self:current_special())
@@ -468,7 +463,7 @@ local function mind_control(self)
     t.mind_control_range_base + t.mind_control_range_per_level * self.level,
     self)
   if foe_count < 1 then
-    return false
+    return false, "NO FOE IN RANGE"
   end
   local controlled = 0
   local budget = mp_after_base_cost + 10
@@ -508,7 +503,7 @@ local function mind_control(self)
     end
   end
   if controlled == 0 then
-    return false
+    return false, "NO VALID TARGET"
   end
   og.emit_notification(string.format(
     "%s has controlled %d men",

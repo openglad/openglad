@@ -24,6 +24,7 @@
 // operators.
 
 #include <openglad/core/order.h>
+#include <openglad/gameplay/special_result.h>
 
 #include <array>
 #include <cstdint>
@@ -150,7 +151,10 @@ std::uint32_t level_hook_kinds_for(int level_id);
 
 // Living-family hooks (FamilyDescriptor). Each returns the hook's result,
 // or nullopt when no hook (script or C++) ran.
-std::optional<bool> do_special(const FamilyDescriptor* fd, walker* self);
+// A failed script dispatch remains nullopt, with a deterministic HUD reason
+// in error_reason. A callback that runs successfully clears that reason.
+std::optional<SpecialResult> do_special(const FamilyDescriptor* fd, walker* self,
+                                        std::string* error_reason = nullptr);
 std::optional<bool> check_special_ai(const FamilyDescriptor* fd, living* self);
 bool hit_response(const FamilyDescriptor* fd, statistics* stats, walker* who);
 bool set_difficulty(const FamilyDescriptor* fd, living* self,

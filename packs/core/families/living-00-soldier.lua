@@ -7,7 +7,7 @@ local FX_BOOMERANG = assert(og.family_id("fx", "core:boomerang"))
 
 local function charge(self)
   if self:s_forward_blocked() then
-    return false
+    return false, "PATH BLOCKED"
   end
   -- lastx/lasty are C++ floats: one fdiv then one C trunc, per axis
   self:s_add_command(C.COMMAND_RUSH, 3,
@@ -31,7 +31,7 @@ local function throw_boomerang(self)
     damage_add = self.level * t.boomerang_damage_per_level,
   })
   if not boomerang then
-    return false
+    return false, "COULD NOT MAKE BOOMERANG"
   end
   return true
 end
@@ -39,7 +39,7 @@ end
 local function whirlwind(self)
   -- can't do while attacking, etc.
   if self:busy() ~= 0 then
-    return false
+    return false, "SPECIAL BUSY"
   end
   -- busy is a C++ float: per-op rounding
   self:set_busy(og.fadd(self:busy(), 8.0))
@@ -71,11 +71,11 @@ end
 
 local function disarm(self)
   if self:busy() ~= 0 then
-    return false
+    return false, "SPECIAL BUSY"
   end
   -- can't do this if no frontal enemy
   if not self:s_forward_blocked() then
-    return false
+    return false, "NO FOE IN REACH"
   end
 
   local found = 0
@@ -94,7 +94,7 @@ local function disarm(self)
   end
 
   if found == 0 then
-    return false
+    return false, "NO FOE IN RANGE"
   end
   og.emit_sound(C.SOUND_CHARGE)
   if self.team == 0 or self:has_guy() then

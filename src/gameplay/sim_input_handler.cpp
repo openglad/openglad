@@ -27,13 +27,15 @@ namespace {
 // What a failed cast says, or nullptr when it says nothing: a corpse, a
 // statless walker or a non-Living body are engine states the player cannot
 // answer, so they stay silent rather than blaming the key.
-const char* special_failure_message(walker::SpecialFailure why)
+const char* special_failure_message(walker::SpecialFailure why,
+                                    const std::string& reason)
 {
     switch (why)
     {
-        case walker::SpecialFailure::NoMP:           return "NOT ENOUGH MP";
-        case walker::SpecialFailure::Disabled:       return "SPECIALS DISABLED";
-        case walker::SpecialFailure::ScriptDeclined: return "SPECIAL FAILED";
+        case walker::SpecialFailure::NoMP:
+        case walker::SpecialFailure::Disabled:
+        case walker::SpecialFailure::ScriptDeclined:
+            return reason.c_str();
         case walker::SpecialFailure::None:
         case walker::SpecialFailure::Dead:
         case walker::SpecialFailure::NoStats:
@@ -76,7 +78,8 @@ bool player_cast_special(walker* control, SimInputDebounce& debounce,
                          bool press_edge, bool& cast_succeeded)
 {
     walker::SpecialFailure why = walker::SpecialFailure::None;
-    if (control->special(&why))
+    std::string reason;
+    if (control->special(&why, &reason))
     {
         cast_succeeded = true;
         return true;
@@ -86,7 +89,7 @@ bool player_cast_special(walker* control, SimInputDebounce& debounce,
     if (why == walker::SpecialFailure::ScriptDeclined && !press_edge)
         return false;
     emit_throttled_cue(debounce, player_num, sim_events,
-                       special_failure_message(why));
+                       special_failure_message(why, reason));
     return false;
 }
 

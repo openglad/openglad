@@ -44,7 +44,7 @@ end
 local function drop_bomb(self)
   local bomb = og.add_ob("fx", FX_BOMB)
   if not bomb then
-    return false
+    return false, "COULD NOT CREATE BOMB"
   end
   bomb.ani_type = C.ANI_BOMB
   if self:has_guy() then
@@ -83,7 +83,7 @@ local function taunt_or_charm(self)
   if self:shifter_down() == 0 then
     -- normal taunt
     if lc.is_busy(self) then
-      return false
+      return false, "SPECIAL BUSY"
     end
     local foes = og.foes_in_range(
       self, t.taunt_range_base + t.taunt_range_per_level * self.level)
@@ -112,12 +112,12 @@ local function taunt_or_charm(self)
   end
   -- charm opponent
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local foes, foe_count = og.find_foes_in_range(
     "ob", t.charm_range_base + t.charm_range_per_level * self.level, self)
   if foe_count < 1 then
-    return false
+    return false, "NO FOE IN RANGE"
   end
   local handled = 0
   local resisted = 0
@@ -155,7 +155,7 @@ local function taunt_or_charm(self)
     end
   end
   if handled == 0 then
-    return false
+    return false, "NO VALID TARGET"
   end
   local message
   if resisted ~= 0 then
@@ -173,12 +173,12 @@ end
 
 local function poison_cloud(self)
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local cloud = og.summon(self, "fx", FX_CLOUD)
   if not cloud then
-    return false
+    return false, "COULD NOT CREATE CLOUD"
   end
   -- shim kept: busy is a C++ float: per-op float rounding.
   self:set_busy(og.fadd(self:busy(), 5.0))

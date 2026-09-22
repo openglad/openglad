@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -173,7 +174,8 @@ class walker : public og::sim::SimEntity
 		// path asks: a silent no-op there reads as a broken key, while the
 		// AI and Lua callers poll special() constantly and must stay
 		// cue-free. Dead/NoStats/NotLiving are engine-state failures nobody
-		// can act on; the other three are worth voicing.
+		// can act on; the other three are worth voicing. The optional reason
+		// receives the cast's HUD text without emitting any event itself.
 		enum class SpecialFailure : std::uint8_t
 		{
 			None,           // the special fired
@@ -184,7 +186,7 @@ class walker : public og::sim::SimEntity
 			NotLiving,      // weapons/FX/treasure have no specials
 			ScriptDeclined, // the family hook ran and returned false
 		};
-		bool special(SpecialFailure* why = nullptr);
+		bool special(SpecialFailure* why = nullptr, std::string* reason = nullptr);
 		bool teleport();
 		bool teleport_ranged(std::int32_t range);
 		std::int32_t  turn_undead(std::int32_t range, std::int32_t power);

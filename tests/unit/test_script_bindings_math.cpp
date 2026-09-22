@@ -64,7 +64,7 @@ protected:
 
     // Install `body` as core:soldier's do_special and dispatch it (the same
     // door the sim uses). nullopt = the hook errored.
-    static std::optional<bool> run_do_special(const std::string& body,
+    static std::optional<SpecialResult> run_do_special(const std::string& body,
                                               walker* self)
     {
         og::script::clear_pack_scripts();
@@ -96,13 +96,13 @@ protected:
 
     // The hook must have completed; a Lua-side `error('label')` from one of
     // the generated asserts surfaces here with its label and chunk line.
-    static void expect_ran_clean(const std::optional<bool>& handled)
+    static void expect_ran_clean(const std::optional<SpecialResult>& handled)
     {
         ASSERT_TRUE(handled.has_value()) << last_error();
         EXPECT_TRUE(*handled);
     }
 
-    static void expect_errored_with(const std::optional<bool>& handled,
+    static void expect_errored_with(const std::optional<SpecialResult>& handled,
                                     const std::string& fragment)
     {
         EXPECT_FALSE(handled.has_value())

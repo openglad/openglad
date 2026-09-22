@@ -1118,7 +1118,7 @@ TEST(SimInputUnit, sim_input_successful_cast_is_never_called_a_failure)
 // The press edge is the one place a script's refusal IS an answer: the player
 // asked now, and nothing happened. The soldier's charge declines when the way
 // forward is blocked (here, the edge of the map).
-TEST(SimInputUnit, sim_input_declined_cast_says_special_failed_on_a_press)
+TEST(SimInputUnit, sim_input_declined_cast_explains_blocked_path_on_a_press)
 {
     SimInputFixture fx;
     walker* control = add_hero(fx, 0, 0, FAMILY_SOLDIER);
@@ -1135,13 +1135,79 @@ TEST(SimInputUnit, sim_input_declined_cast_says_special_failed_on_a_press)
     input.players[0].held[static_cast<int>(InputAction::Special)] = true;
 
     process(fx, input, control, 0, debounce);
-    ASSERT_EQ(1, count_cue(fx.events, "SPECIAL FAILED", 0))
+    ASSERT_EQ(1, count_cue(fx.events, "PATH BLOCKED", 0))
         << "a refused cast on a press edge names itself, once";
     ASSERT_EQ(1, count_seat_lines(fx.events, 0))
         << "and says nothing else";
     ASSERT_EQ(1, count_clang(fx.events, 0));
     ASSERT_EQ(0, count_clang(fx.events, -1))
         << "the clang belongs to the seat that pressed, not to the room";
+}
+
+TEST(SimInputUnit, failed_resurrection_reason_is_private_throttled_and_free)
+{
+    SimInputFixture fx;
+    walker* control = add_hero(fx, 0, 2, FAMILY_CLERIC);
+    control->set_act_type(ACT_CONTROL);
+    control->set_current_special(4);
+    control->stats()->set_magicpoints(500.0f);
+    const auto rng_before = fx.world().rng_.state_;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    input.players[2].pressed[static_cast<int>(InputAction::Special)] = true;
+    input.players[2].held[static_cast<int>(InputAction::Special)] = true;
+    process(fx, input, control, 2, debounce);
+    EXPECT_EQ(1, count_cue(fx.events, "NO CORPSE NEARBY", 2));
+    EXPECT_EQ(1, count_seat_lines(fx.events, 2));
+    EXPECT_EQ(0, count_seat_lines(fx.events, -1));
+    EXPECT_EQ(1, count_clang(fx.events, 2));
+
+    // Another press during the throttle cannot duplicate the reason.
+    process(fx, input, control, 2, debounce);
+    EXPECT_EQ(1, count_seat_lines(fx.events, 2));
+    input.players[2].pressed[static_cast<int>(InputAction::Special)] = false;
+    for (int tick = 0; tick <= kSimCueThrottleTicks; ++tick)
+        process(fx, input, control, 2, debounce);
+    EXPECT_EQ(1, count_seat_lines(fx.events, 2));
+    input.players[2].pressed[static_cast<int>(InputAction::Special)] = true;
+    process(fx, input, control, 2, debounce);
+    EXPECT_EQ(2, count_cue(fx.events, "NO CORPSE NEARBY", 2));
+    EXPECT_EQ(2, count_clang(fx.events, 2));
+    EXPECT_EQ(500.0f, control->stats()->magicpoints());
+    EXPECT_EQ(rng_before, fx.world().rng_.state_);
+}
+
+TEST(SimInputUnit, intelligence_refusals_use_one_private_cue)
+{
+    struct Case { char family; char slot; const char* reason; };
+    for (const Case& c : {
+             Case{FAMILY_MAGE, 1, "75 INT REQUIRED"},
+             Case{FAMILY_ARCHMAGE, 1, "75 INT REQUIRED"},
+             Case{FAMILY_ARCHMAGE, 3, "150 INT REQUIRED"},
+             Case{FAMILY_CLERIC, 1, "50 INT REQUIRED"},
+             Case{FAMILY_CLERIC, 2, "60 INT REQUIRED"}}) {
+        SCOPED_TRACE(static_cast<int>(c.family));
+        SCOPED_TRACE(static_cast<int>(c.slot));
+        SimInputFixture fx;
+        walker* control = add_hero(fx, 0, 1, c.family);
+        control->myguy->intelligence = 10;
+        control->set_act_type(ACT_CONTROL);
+        control->set_current_special(c.slot);
+        control->stats()->set_magicpoints(9000.0f);
+        SimInputDebounce debounce{};
+        InputState input;
+        input.clear();
+        input.players[1].held[static_cast<int>(InputAction::Shift)] = true;
+        input.players[1].pressed[static_cast<int>(InputAction::Special)] = true;
+        input.players[1].held[static_cast<int>(InputAction::Special)] = true;
+        process(fx, input, control, 1, debounce);
+        EXPECT_EQ(1, count_cue(fx.events, c.reason, 1));
+        EXPECT_EQ(1, count_seat_lines(fx.events, 1));
+        EXPECT_EQ(0, count_seat_lines(fx.events, -1));
+        EXPECT_EQ(2u, fx.events.events().size());
+        EXPECT_EQ(9000.0f, control->stats()->magicpoints());
+    }
 }
 
 int count_live_fx(const GameWorld& world, int family)

@@ -147,7 +147,7 @@ local function grow_into(self, grown_family)
     local dy = og.rand(3) - 1
     local dx = og.rand(3) - 1
     self:s_set_command(C.COMMAND_WALK, 10, dx, dy)
-    return false
+    return false, "NO ROOM TO GROW"
   end
   return true
 end

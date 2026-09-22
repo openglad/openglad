@@ -86,7 +86,7 @@ protected:
                  "})\n"});
     }
 
-    static std::optional<bool> dispatch(walker* self)
+    static std::optional<SpecialResult> dispatch(walker* self)
     {
         const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
         EXPECT_NE(nullptr, fd);
@@ -95,7 +95,7 @@ protected:
         return og::script::hooks::do_special(fd, self);
     }
 
-    static std::optional<bool> run_do_special(const std::string& body,
+    static std::optional<SpecialResult> run_do_special(const std::string& body,
                                               walker* self)
     {
         register_do_special(body);
@@ -113,13 +113,13 @@ protected:
                                 : errors().back().message;
     }
 
-    static void expect_ran_clean(const std::optional<bool>& handled)
+    static void expect_ran_clean(const std::optional<SpecialResult>& handled)
     {
         ASSERT_TRUE(handled.has_value()) << last_error();
         EXPECT_TRUE(*handled);
     }
 
-    static void expect_errored_with(const std::optional<bool>& handled,
+    static void expect_errored_with(const std::optional<SpecialResult>& handled,
                                     const std::string& fragment)
     {
         EXPECT_FALSE(handled.has_value())

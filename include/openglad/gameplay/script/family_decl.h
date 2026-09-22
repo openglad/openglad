@@ -43,7 +43,8 @@ namespace og::script {
 // unknown key is skipped (v3 made unknown keys load errors; see V5 in the
 // format spec). v4 adds the campaign API (og.register_campaign_hooks,
 // og.campaign_*, og.campaign_var — docs/campaign-scripting-design.md).
-inline constexpr int kPackApiVersion = 4;
+// v5 requires a HUD reason when a special cast returns false.
+inline constexpr int kPackApiVersion = 5;
 
 struct DeclareResult {
     bool ok = false;

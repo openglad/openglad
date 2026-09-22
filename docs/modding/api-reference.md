@@ -86,7 +86,7 @@ Three companions live in the same chunk:
 | `og.pack{ id, version, title, authors }` | the pack header, for the multiplayer manifest. Optional, last one wins. |
 | `og.anims(name, { rows = N, frames = { {0,1,2}, false, ... } })` | a pack-shipped frame table a family can name in `animation` (`false` is a null row) |
 | `og.NIL` | the present-null: `sprite = og.NIL` CLEARS the field, where omitting the key keeps whatever is there |
-| `og.api.version` | the pack format version, for a pack straddling engine releases; `ext = {}` is accepted and ignored on any declaration |
+| `og.api.version` | `5` for this pack format; use it for feature detection when a pack supports several engine releases; `ext = {}` is accepted and ignored on any declaration |
 
 None of the world API works at a chunk's top level — see R4 in the design
 doc. Declare, bind, and ask the world from inside a hook.
@@ -185,14 +185,16 @@ form only when probing for a family another pack may or may not ship.
 
 ### Hook signatures
 
-Returns are coerced to boolean where the caller uses them. A hook listed
-without a return value may still return anything; it is ignored.
+Returns are coerced to boolean where the caller uses them, except special cast
+handlers: those require the strict `true, nil` success or `false, reason`
+refusal pair described below. A hook listed without a return value may still
+return anything; it is ignored.
 
 **living** (registered against `FamilyDescriptor`):
 
 | Hook | Signature | Notes |
 |---|---|---|
-| `do_special` | `(self) → bool` | `false` = the special did not fire. Usually registered as a [`specials` table](#the-specials-table) instead. |
+| `do_special` | `(self) → true` or `(self) → false, reason` | Return `true` on success; return a bounded reason on refusal. Usually registered as a [`specials` table](#the-specials-table) instead. |
 | `check_special_ai` | `(self) → bool` | AI's "should I special now?" |
 | `hit_response` | `(self, foe)` | `self` is the stats OWNER (`statistics::controller()`), not a stats handle. |
 | `set_difficulty` | `(self, level)` | |
@@ -268,8 +270,19 @@ Dispatch implements the slot semantics directly:
 `self:current_special()` selects the entry, a missing slot falls to
 `default`, and a table with neither consumes the dispatch as a **successful
 no-op** — result `true`, with no Lua call at all (no budget armed, no RNG
-touched). Each entry has the plain `do_special` signature: `(self) → bool`,
-`false` = the special did not fire.
+touched). Each entry has the plain `do_special` signature: `(self) → true`
+or `(self) → false, reason`. A refusal returns exactly `false, reason`, where
+`reason` is a nonblank printable ASCII string of at most 24 bytes, keeping the
+player cue within the compact HUD. Returning `false` without a reason, a
+non-boolean first result, or a non-string/empty/overlong
+reason raises a hook error; the cast does not charge MP, and mutations made
+before the error are not rolled back. `cast = false` in a declaration remains
+the explicit charged successful no-op.
+
+From Lua, `self:special()` returns `true, nil` on success or `false, reason` on
+a refusal. AI casts stay silent. A player-input refusal is shown only to that
+seat and is throttled. Script refusals are suppressed on held-key repeats. A hook
+error reaches the player as `SPECIAL SCRIPT ERROR`.
 
 **Keys are declared ids.** A key is the special's declared `id` from the
 family's `specials` list, resolved to a slot ONCE, at registration — the
@@ -309,8 +322,8 @@ Rules:
 **The cost contract around either form** (`walker_specials.cpp`): the engine
 gates the dispatch on `magicpoints >= special_cost(current_special)` (the
 slot's `mp_cost` in the family's `specials` list) *before* calling the
-hook, and deducts that cost only after the hook answers `true`. So `false`
-means "did not fire, charge nothing", and specials that price themselves (a
+hook, and deducts that cost only after the hook answers `true`. A refusal
+returns its reason without charging MP; specials that price themselves (a
 pool vent, a scaling drain) do their own extra deduction inside the entry.
 
 A castable slot with neither a handler nor a `default` still charges — that
@@ -501,7 +514,7 @@ range.
 |---|---|
 | `attack(target)` | `bool`. **Draws from the RNG** — reordering or short-circuiting it changes the stream. |
 | `fire()` | New weapon handle, or `nil`. |
-| `special()` | `bool`. |
+| `special()` | `true, nil` on success; `false, reason` on refusal. Player hook errors show as `SPECIAL SCRIPT ERROR`. |
 | `death()` | `bool`. |
 | `teleport()` | `bool`. |
 | `teleport_ranged(range)` | `bool`. |
@@ -1094,13 +1107,13 @@ local function on_fire_weapon(self)
 end
 
 -- Special 1, FLARE BURST: vent every point of ember above the burn floor
--- as a stunning flash. Answering false means "did not fire" — the engine
--- then skips the special's descriptor MP cost.
+-- as a stunning flash. A refusal returns a short reason, so the engine skips
+-- the special's descriptor MP cost and shows that reason to the player.
 local function flare_burst(self)
   local t = og.tuning(self)
   local ember = og.trunc(self.magicpoints) - t.burn_floor
   if ember <= 0 then
-    return false
+    return false, "NO EMBER TO VENT"
   end
   -- Tuning is modder data: clamp it into a sane sim window before use.
   local range = og.clamp(t.burst_range, C.GRID_SIZE, 320)

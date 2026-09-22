@@ -3722,7 +3722,7 @@ TEST_F(PackLibTest, og_use_is_load_time_only)
          "})"});
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
-    const std::optional<bool> handled =
+    const std::optional<SpecialResult> handled =
         og::script::hooks::do_special(fd, nullptr);
     EXPECT_FALSE(handled.has_value());
     EXPECT_TRUE(any_error_contains(
@@ -4003,7 +4003,7 @@ TEST_F(PackLibTest, qualified_use_is_load_time_only)
          "})"});
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
-    const std::optional<bool> handled =
+    const std::optional<SpecialResult> handled =
         og::script::hooks::do_special(fd, nullptr);
     EXPECT_FALSE(handled.has_value());
     EXPECT_TRUE(any_error_contains(

@@ -434,6 +434,16 @@ def infer_signature(fn: CppFunction) -> Signature:
         for m in pat.finditer(body):
             pushes.append((m.start(), ltype))
     pushes.sort()
+    # An optional last return may push nil in one arm and a string in the
+    # other. They occupy one Lua stack slot, not two result positions.
+    optional_string = re.search(
+        r"if\s*\([^\n]+\)\s*\n\s*lua_pushnil\(L\);\s*"
+        r"else\s*\n\s*lua_push(?:lstring|string)\(L,[^;]+;", body)
+    if optional_string is not None:
+        pushes = [(p, t) for p, t in pushes
+                  if not optional_string.start() <= p < optional_string.end()]
+        pushes.append((optional_string.start(), "string?"))
+        pushes.sort()
     if not pushes:
         sig.returns = [TODO_ANY] * nresults
         sig.todo = True
@@ -754,7 +764,7 @@ def parse_family_hook_signatures(
     # template, so its signature is read from that site. Fail loudly if the
     # dispatch pattern ever moves again.
     m = re.search(
-        r"std::optional<bool>\s+try_script_do_special\(([^)]*)\)\s*\n\{",
+        r"std::optional<SpecialResult>\s+try_script_do_special\(([^)]*)\)\s*\n\{",
         src,
     )
     if m is None:
@@ -770,7 +780,7 @@ def parse_family_hook_signatures(
         ptypes[pname] = ptype
     arg_names = re.findall(r"f\.arg\((\w+)\);", body)
     call = re.search(
-        r"f\.call\(hook_where\(FamilyHook::DoSpecial\),\s*(true|false)\)",
+        r"f\.call_special\(hook_where\(FamilyHook::DoSpecial\),\s*error_reason\)",
         body,
     )
     if not arg_names or call is None:
@@ -779,7 +789,7 @@ def parse_family_hook_signatures(
             "recognized (update the stub generator)")
     out["DoSpecial"] = (
         [hook_arg_of(n, ptypes) for n in arg_names],
-        call.group(1) == "true",
+        True,
     )
     return out
 
@@ -1195,7 +1205,7 @@ def generate(repo_root: Path) -> str:
                     "generator)")
             ds_args, ds_wants = hook_sigs["DoSpecial"]
             ds_sig = Signature(params=ds_args,
-                               returns=["boolean"] if ds_wants else [])
+                               returns=["boolean", "string?"] if ds_wants else [])
             branch_fun = fun_type(ds_sig, None)
             out.append("-- Table form of the do_special hook (the "
                        "og.register_hooks key 'specials'):")
@@ -1203,7 +1213,8 @@ def generate(repo_root: Path) -> str:
                        "index falls to `default`,")
             out.append("-- and a table with neither is a successful no-op. "
                        "Entries return")
-            out.append("-- like do_special itself.")
+            out.append("-- true on success, or false plus a nonblank printable")
+            out.append("-- ASCII reason (at most 24 bytes) on refusal.")
             out.append(f"---@class {cls[:-5]}Specials")
             out.append("-- Keys are the special ids the family declared;")
             out.append("-- registration resolves them to slot ints (an")
@@ -1218,7 +1229,8 @@ def generate(repo_root: Path) -> str:
         for hook_name, enum_name in hook_tables[table]:
             args, wants_result = hook_sigs.get(enum_name, ([], False))
             sig = Signature(params=args,
-                            returns=["boolean"] if wants_result else [],
+                            returns=(["boolean", "string?"] if enum_name == "DoSpecial"
+                                     else ["boolean"] if wants_result else []),
                             todo=enum_name not in hook_sigs)
             rows.append(field_line(hook_name, fun_type(sig, None), "",
                                    sig.todo, optional=True))

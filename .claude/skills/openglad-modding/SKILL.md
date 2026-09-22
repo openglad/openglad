@@ -159,8 +159,16 @@ either pass.
     bare slot number like `[1]`, are both load errors listing the ids that
     exist. Missing slot → `default`;
     neither → successful no-op (`true`, no Lua call) that STILL charges,
-    and now warns at load. The engine gates on the slot's `mp_cost` before
-    dispatch and deducts it only on a `true` answer.
+    and now warns at load. A cast handler returns `true` on success or
+    `false, reason` on refusal. The reason must be nonblank printable ASCII
+    and at most 24 bytes so the player cue fits the compact HUD. A missing,
+    invalid, or non-boolean result is a hook error; no MP is charged, mutations
+    are not rolled back, and player input shows `SPECIAL SCRIPT ERROR`. The
+    engine gates on the slot's
+    `mp_cost` before dispatch and deducts it only on a `true` answer. AI calls
+    stay silent; player refusals are seat-targeted and throttled, and held-key
+    script refusals are suppressed. `self:special()` returns `true, nil` on
+    success or `false, reason` on refusal.
   - *`og.use("name")`*: binds `packs/<id>/lib/<name>.lua` (own pack only),
     at chunk load time only, frozen pure exports. A helper used by 2+ files
     goes in lib/; a single-file helper stays a `local function`.
@@ -411,8 +419,10 @@ ships them in an embedded pack that mounts and unmounts with it.
 - A cast slot with no handler and no `default_cast` is a *successful*
   no-op: the engine still deducts the slot's MP cost (that is the defined
   unmatched-slot behavior), and for a slot the pack itself DECLARED it is
-  also a pack error at the end of the load. Return `false` from a cast to
-  fire-and-charge-nothing.
+  also a pack error at the end of the load. `cast = false` is the explicit
+  charged successful no-op. A cast function that refuses must return
+  `false, reason`, with a nonblank printable ASCII reason no longer than 24
+  bytes; a bare or malformed refusal is a hook error.
 - `stats` accessors are flattened onto the walker with the `s_` prefix; the
   guy record uses `g_`. Where a property or fused verb exists, the `s_*`
   spelling is a legacy alias (style S6) — new code uses the property.

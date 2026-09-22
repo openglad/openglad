@@ -70,7 +70,7 @@ end
 
 local function teleport(self)
   if lc.mid_teleport(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   if self:shifter_down() == 0 then
     og.emit_positional_sound(self, C.SOUND_TELEPORT)
@@ -80,15 +80,11 @@ local function teleport(self)
   end
   -- leave/remove a marker
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   if self:has_guy() and self:g_intelligence() < t.marker_int_req then
-    if self:user() ~= -1 then
-      og.emit_notification(
-        string.format("Need %d Int for Marker!", t.marker_int_req), 0, self)
-    end
-    return false
+    return false, string.format("%d INT REQUIRED", t.marker_int_req)
   end
   -- Remove a marker, if present
   local obs = og.oblist()
@@ -114,7 +110,7 @@ local function teleport(self)
   -- placement, for now"), so a marker is always placed here.
   local marker = og.add_ob("fx", FX_MARKER)
   if not marker then
-    return false
+    return false, "COULD NOT CREATE MARKER"
   end
   marker:set_owner(self)
   marker:set_floor(self:floor())  -- marker stays on the caster's floor
@@ -215,11 +211,11 @@ end
 local function energy_wave(self)
   local bolt = self:fire()
   if not bolt then
-    return false
+    return false, "COULD NOT FIRE"
   end
   local wave = og.add_ob("weapon", WEAPON_WAVE)
   if not wave then
-    return false
+    return false, "COULD NOT CREATE WAVE"
   end
   wave:set_floor(bolt:floor())  -- wave rides the caster's floor
   wave:center_on(bolt)
@@ -238,7 +234,7 @@ local function heartburst(self)
     t.heartburst_range_base + t.heartburst_range_per_level * self.level,
     self)
   if foe_count == 0 then
-    return false
+    return false, "NO FOE IN RANGE"
   end
   local share = lc.mp_pool_damage(self, 5)
   -- shim kept: the share can be negative: C trunc, not Lua floor.
@@ -253,7 +249,7 @@ local function heartburst(self)
     local foe = foes[i]
     local burst = og.summon(self, "fx", FX_EXPLOSION)
     if not burst then
-      return false
+      return false, "COULD NOT MAKE EXPLOSION"
     end
     burst.damage = damage
     -- Heartburst bursts materialize ON each acquired foe, so they take
