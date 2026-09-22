@@ -21,6 +21,12 @@ completion report.
   is NOT a failure — never report it as one.
 - Known flake: the wasm-jitter E2E on PR runs. Remedy: `gh run rerun <id>
   --failed`, then PROVE it green. A flake explained away is a red check.
+- Known flake: the Windows release build froze after a static-library link
+  in ~1 of 3 attempts (#309). `scripts/ci/build_with_stall_watchdog.sh`
+  now dumps the stuck tree, kills it and resumes, so the job stays green —
+  but a "Windows build stall (#309)" warning on a run means it captured
+  one: paste that run's "stall diagnostics" log group into #309, that
+  evidence is what closes the issue. No rerun ritual any more.
 - Report on state change only (first red, final verdict) — not a
   narration of every poll.
 

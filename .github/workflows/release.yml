@@ -208,7 +208,14 @@ jobs:
             -DBUILD_TESTING=OFF \
             -DBUILD_EDITOR=ON \
 
-          cmake --build build --target openglad openscen -j"$(nproc)"
+          # About one build in three used to freeze for good right after a
+          # static library linked and sit there until the job cap (#309).
+          # The watchdog notices when no ninja edge finishes for three
+          # minutes, dumps the stuck process tree into the log (the only
+          # place that state can be seen), kills it and resumes the build.
+          # A job it rescued carries a "Windows build stall (#309)" warning.
+          scripts/ci/build_with_stall_watchdog.sh build \
+            --target openglad openscen -j"$(nproc)"
 
       # ── Package ──
 
