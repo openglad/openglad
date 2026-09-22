@@ -62,7 +62,7 @@ protected:
     // Install `body` as core:soldier's do_special and dispatch it. Returns
     // the hook's answer: std::nullopt means the hook errored (which is what
     // every case here expects).
-    static std::optional<bool> run_do_special(const std::string& body,
+    static std::optional<SpecialResult> run_do_special(const std::string& body,
                                               walker* self)
     {
         og::script::clear_pack_scripts();
@@ -195,7 +195,7 @@ TEST_F(ScriptBindingErrorTest, an_undeclared_family_flag_query_answers_nil)
     walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, self);
 
-    const std::optional<bool> answered = run_do_special(
+    const std::optional<SpecialResult> answered = run_do_special(
         "    if og.family_flag('living', 250, 'is_undead') ~= nil then\n"
         "      error('an empty slot must answer nil')\n"
         "    end",
@@ -272,7 +272,7 @@ TEST_F(ScriptBindingErrorTest, an_erroring_hook_does_not_report_success)
     ASSERT_NE(nullptr, self);
     const std::size_t obs_before = w.oblist.size();
 
-    const std::optional<bool> handled = run_do_special(
+    const std::optional<SpecialResult> handled = run_do_special(
         "    self:set_busy(7)\n"
         "    og.add_ob('not_an_order', 0)", self);
 
@@ -342,7 +342,7 @@ TEST_F(ScriptBindingErrorTest, living_only_bindings_refuse_a_weapon_handle)
 
     // The control: the very same calls on the living they were written for
     // run clean, so the two refusals above are the cast talking.
-    const std::optional<bool> ok = run_do_special(
+    const std::optional<SpecialResult> ok = run_do_special(
         "    og.check_special_ai_distance(self, 100)\n"
         "    og.apply_difficulty_scaling(self, 3, 1, 1, 1, 1)", soldier);
     ASSERT_TRUE(ok.has_value())
@@ -380,7 +380,7 @@ TEST_F(ScriptBindingErrorTest, the_sim_event_bindings_refuse_with_no_context)
     walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, self);
     tw.events.clear();
-    const std::optional<bool> ran = run_do_special(
+    const std::optional<SpecialResult> ran = run_do_special(
         "    og.emit_sound(9)\n"
         "    og.emit_positional_sound(self, 10)\n"
         "    og.emit_notification('HI', 5)\n"

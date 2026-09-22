@@ -17,6 +17,7 @@
 #pragma once
 
 #include <openglad/core/family_presentation.h>
+#include <openglad/gameplay/special_result.h>
 
 #include <cstdint>
 
@@ -159,7 +160,7 @@ struct FamilyDescriptor {
     const char* death_message;                 // "SOLDIER SLAIN", etc. (fallback: "SOMEONE DIED")
 
     // Optional behavior callbacks (nullptr = use the caller's default path)
-    bool (*do_special)(walker* self);
+    SpecialResult (*do_special)(walker* self);
     bool (*check_special_ai)(living* self);
     void (*hit_response)(statistics* stats, walker* who);
     void (*set_difficulty)(living* self, std::uint32_t level);

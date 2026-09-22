@@ -10,6 +10,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/render/pal32.h>
@@ -6379,6 +6380,129 @@ TEST_F(RenderEffects, damage_number_glyphs_paint_in_the_requested_band)
         << "the scene must leave effects/damage_numbers as it found it";
     EXPECT_EQ(expect_heal, cfg.get_setting("effects", "heal_numbers"))
         << "the scene must leave effects/heal_numbers as it found it";
+}
+
+// Issue #268: a refused special must travel through the same player-input /
+// event-dispatch path as a live game.  Calling walker::special() here would
+// prove only the scripted hook; it would skip the seat-targeted SimEventLog
+// notification and the screen HUD consumer that the player actually sees.
+TEST_F(RenderEffects, special_failure_reason_reaches_player_hud)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    GameWorld& world = scr()->world();
+    EffectsCfgGuard guard;
+    prepare_world();
+    all_effects_off();
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    world.set_weather(WeatherKind::None);
+
+    struct HudSceneGuard
+    {
+        screen* screen_ptr;
+        viewscreen* view_ptr;
+        bool saved_gameplay_active;
+        short saved_mynum;
+        short saved_global_player_index;
+        short saved_my_team;
+
+        HudSceneGuard(screen* s, viewscreen* v)
+            : screen_ptr(s)
+            , view_ptr(v)
+            , saved_gameplay_active(
+                  og::runtime::current_session->gameplay_active_)
+            , saved_mynum(v->mynum)
+            , saved_global_player_index(v->global_player_index_)
+            , saved_my_team(v->my_team)
+        {
+            og::runtime::current_session->gameplay_active_ = false;
+        }
+
+        ~HudSceneGuard()
+        {
+            view_ptr->control = nullptr;
+            screen_ptr->world().delete_objects();
+            ctx().sim_events->clear();
+            view_ptr->clear_text();
+            view_ptr->mynum = saved_mynum;
+            view_ptr->global_player_index_ = saved_global_player_index;
+            view_ptr->my_team = saved_my_team;
+            og::runtime::current_session->gameplay_active_ =
+                saved_gameplay_active;
+        }
+    } scene_guard(scr(), vs);
+
+    og::runtime::current_session->gameplay_active_ = false;
+    vs->mynum = 0;
+    vs->global_player_index_ = 0;
+    vs->my_team = 0;
+
+    const auto run_refusal = [&](unsigned char family, char special,
+                                 Sint32 x, Sint32 y, signed char direction,
+                                 const char* expected, int capture_frame) {
+        vs->control = nullptr;
+        world.delete_objects();
+        ctx().sim_events->clear();
+        vs->clear_text();
+        reset_viewscreen_input_debounce();
+
+        walker* hero = world.add_ob(Order::Living, family);
+        ASSERT_NE(nullptr, hero);
+        hero->setxy(x, y);
+        hero->set_curdir(direction);
+        hero->set_enddir(direction);
+        hero->set_lastx(hero->stepsize() *
+                        (direction == FACE_LEFT ? -1 : 1));
+        hero->set_lasty(0);
+        hero->set_user(0);
+        hero->set_act_type(ACT_CONTROL);
+        hero->stats()->set_magicpoints(500.0f);
+        hero->set_current_special(special);
+        vs->control = hero;
+
+        // Establish the real terrain/hero frame before the cue.
+        ASSERT_TRUE(do_redraw(vs));
+        const int hud_width = vs->endx - vs->xloc;
+        constexpr int kHudTextY = 24;
+        constexpr int kHudTextHeight = 20;
+        ASSERT_LE(vs->yloc + kHudTextY + kHudTextHeight, vs->endy);
+        const std::vector<RGB> before =
+            grab_rect(vs->xloc, vs->yloc + kHudTextY, hud_width,
+                      kHudTextHeight);
+
+        InputState input{};
+        input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+        input.players[0].held[static_cast<int>(InputAction::Special)] = true;
+        vs->process_input(input); // real sim_process_player_input path
+
+        og::sim::SimEventBatch batch;
+        batch.events = ctx().sim_events->drain();
+        ASSERT_EQ(2u, batch.events.size())
+            << "a refused player cast emits its targeted clang and notification";
+        ASSERT_EQ(og::sim::EventKind::Notification, batch.events.back().kind);
+        ASSERT_EQ(std::string(expected), batch.events.back().text);
+        ASSERT_EQ(0, batch.events.back().target_player);
+
+        scr()->dispatch_cosmetic_events(batch);
+        ASSERT_EQ(std::string(expected), vs->textlist[0])
+            << "the seat-targeted sim event must enter this player's HUD feed";
+        ASSERT_TRUE(do_redraw(vs));
+        const std::vector<RGB> after =
+            grab_rect(vs->xloc, vs->yloc + kHudTextY, hud_width,
+                      kHudTextHeight);
+        ASSERT_FALSE(rects_equal(before, after))
+            << "the refusal reason must change pixels in the HUD text band";
+
+        if (getenv("OG_FX_CAPTURE_DIR"))
+            fx_capture::dump_frame(vs, "special_failure_reasons", capture_frame);
+    };
+
+    // Soldier charge at the left map edge, facing out of the map.
+    run_refusal(FAMILY_SOLDIER, 1, 0, 128, FACE_LEFT, "PATH BLOCKED", 0);
+    // Cleric resurrection with no bloodstain in the world.
+    run_refusal(FAMILY_CLERIC, 4, 160, 128, FACE_RIGHT, "NO CORPSE NEARBY", 1);
+
+    restore_world(vs);
 }
 
 // Pin the TESTING capture hook in screen::buffer_to_screen: with OG_DUMP_DIR

@@ -657,6 +657,73 @@ TEST(PackLuaCleric, a_thin_pool_still_funds_a_scaled_heal)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+TEST(PackLuaCleric, corpse_refusals_distinguish_absence_blockage_and_range)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    for (int slot = 2; slot <= 4; ++slot) {
+        SCOPED_TRACE(slot);
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        walker* cleric = make_cleric(w, 6);
+        ASSERT_NE(nullptr, cleric);
+        cleric->set_current_special(static_cast<char>(slot));
+        const float mp_before = cleric->stats()->magicpoints();
+        const auto refuse = [&](const char* expected) {
+            tw.events.clear();
+            std::string reason = "STALE REASON";
+            walker::SpecialFailure why = walker::SpecialFailure::None;
+            EXPECT_FALSE(cleric->special(&why, &reason));
+            EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+            EXPECT_EQ(expected, reason);
+            EXPECT_FLOAT_EQ(mp_before, cleric->stats()->magicpoints());
+            EXPECT_EQ(0u, tw.events.size());
+        };
+        refuse("NO CORPSE NEARBY");
+
+        walker* stain = drop_bloodstain(w, cleric, 1, FAMILY_ARCHER, 30);
+        ASSERT_NE(nullptr, stain);
+        const auto clear_x = stain->xpos();
+        const auto clear_y = stain->ypos();
+        stain->setxy(cleric->xpos(), cleric->ypos());
+        ASSERT_FALSE(w.query_passable(stain->xpos(), stain->ypos(), stain));
+        refuse("CORPSE IS BLOCKED");
+        EXPECT_EQ(0, stain->dead());
+
+        stain->setxy(static_cast<short>(32), cleric->ypos());
+        ASSERT_TRUE(w.query_passable(stain->xpos(), stain->ypos(), stain));
+        ASSERT_EQ(128, cleric->distance_to_ob(stain));
+        ASSERT_EQ(nullptr, w.find_nearest_blood(cleric));
+        refuse("NO CORPSE NEARBY");
+        EXPECT_EQ(0, stain->dead());
+
+        // The finder has its own squared-distance limit. Ghost and
+        // resurrection can select a stain just beyond their 30px cast range.
+        if (slot != 2) {
+            stain->setxy(cleric->xpos() + 16, cleric->ypos() + 15);
+            ASSERT_TRUE(w.query_passable(stain->xpos(), stain->ypos(), stain));
+            ASSERT_EQ(31, cleric->distance_to_ob(stain));
+            ASSERT_EQ(stain, w.find_nearest_blood(cleric));
+            refuse("CORPSE TOO FAR");
+            EXPECT_EQ(0, stain->dead());
+        }
+
+        stain->setxy(clear_x, clear_y);
+        std::string reason = "STALE REASON";
+        walker::SpecialFailure why = walker::SpecialFailure::ScriptDeclined;
+        ASSERT_TRUE(cleric->special(&why, &reason));
+        EXPECT_EQ(walker::SpecialFailure::None, why);
+        EXPECT_TRUE(reason.empty());
+        EXPECT_FLOAT_EQ(mp_before - cleric->stats()->special_cost(slot),
+                        cleric->stats()->magicpoints());
+        EXPECT_NE(0, stain->dead());
+        const int raised_family = slot == 2 ? FAMILY_SKELETON
+                                : slot == 3 ? FAMILY_GHOST : FAMILY_ARCHER;
+        EXPECT_EQ(1u, count_family(w, Order::Living, raised_family));
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 TEST(PackLuaCleric, a_skeleton_rises_from_a_bloodstain_in_reach)
 {
     og::test::mount_core_pack();
@@ -1601,9 +1668,8 @@ TEST(PackLuaArchmage, a_second_teleport_marker_retires_the_first)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// The same rule on the mage, which additionally gates the Int refusal on
-// user() != -1: a roster mage too dim to place a marker is told so privately,
-// and so is every line of the placement that follows.
+// Placement notifications are private. Refusals return their reason to
+// the player-input path, which owns seat targeting and throttling.
 TEST(PackLuaMage, the_marker_flow_talks_only_to_the_casting_seat)
 {
     og::test::mount_core_pack();
@@ -1625,11 +1691,11 @@ TEST(PackLuaMage, the_marker_flow_talks_only_to_the_casting_seat)
     ASSERT_NE(nullptr, mage->myguy);
     mage->myguy->intelligence = 10;  // below marker_int_req (75)
 
-    EXPECT_FALSE(og::test::do_special(desc, mage))
-        << "10 Int cannot place a marker";
-    ASSERT_EQ(1, count_notifications(tw.events, "Int for Marker!"));
-    EXPECT_EQ(1, notification_target(tw.events, "Int for Marker!"))
-        << "a refusal is for the hand that pressed the key, nobody else";
+    const auto refused = og::script::hooks::do_special(&desc, mage);
+    ASSERT_TRUE(refused.has_value());
+    EXPECT_FALSE(refused->succeeded()) << "10 Int cannot place a marker";
+    EXPECT_EQ("75 INT REQUIRED", refused->reason());
+    EXPECT_EQ(0u, tw.events.events().size());
 
     mage->myguy->intelligence = 200;
     mage->set_busy(0);
@@ -1644,9 +1710,9 @@ TEST(PackLuaMage, the_marker_flow_talks_only_to_the_casting_seat)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// The cleric's two Int refusals are the same class of line: a private "you
-// cannot do that", never a line about the party's state.
-TEST(PackLuaCleric, an_int_refusal_reaches_only_the_cleric_it_refused)
+// The cast returns its reason without emitting a second, unthrottled
+// notification; the player-input path decides when and where to display it.
+TEST(PackLuaCleric, int_refusals_return_reasons_without_emitting_notifications)
 {
     og::test::mount_core_pack();
     const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
@@ -1665,16 +1731,21 @@ TEST(PackLuaCleric, an_int_refusal_reaches_only_the_cleric_it_refused)
     cleric->set_current_special(2);  // RAISE UNDEAD / TURN UNDEAD
     cleric->set_shifter_down(1);
     cleric->set_busy(0);
-    EXPECT_FALSE(og::test::do_special(desc, cleric));
-    ASSERT_EQ(1, count_notifications(tw.events, "Int to Turn Undead"));
-    EXPECT_EQ(2, notification_target(tw.events, "Int to Turn Undead"));
+    const auto turn = og::script::hooks::do_special(&desc, cleric);
+    ASSERT_TRUE(turn.has_value());
+    EXPECT_FALSE(turn->succeeded());
+    EXPECT_EQ("60 INT REQUIRED", turn->reason());
+    EXPECT_EQ(5.0f, cleric->busy());
+    EXPECT_EQ(0u, tw.events.events().size());
 
     cleric->set_current_special(1);  // HEAL / MYSTIC MACE
     cleric->set_shifter_down(1);
     cleric->set_busy(0);
-    EXPECT_FALSE(og::test::do_special(desc, cleric));
-    ASSERT_EQ(1, count_notifications(tw.events, "Mystic Mace!"));
-    EXPECT_EQ(2, notification_target(tw.events, "Mystic Mace!"));
+    const auto mace = og::script::hooks::do_special(&desc, cleric);
+    ASSERT_TRUE(mace.has_value());
+    EXPECT_FALSE(mace->succeeded());
+    EXPECT_EQ("50 INT REQUIRED", mace->reason());
+    EXPECT_EQ(0u, tw.events.events().size());
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

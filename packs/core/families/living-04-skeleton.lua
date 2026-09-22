@@ -26,7 +26,7 @@ end
 
 local function do_special(self)
   if lc.mid_teleport(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   self.ani_type = C.ANI_TELE_OUT
   self:set_cycle(0)

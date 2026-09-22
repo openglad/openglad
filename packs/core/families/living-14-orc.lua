@@ -9,7 +9,7 @@ local ai = og.use("ai")
 local function yell(self)
   -- yell and 'freeze' foes (special 1)
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   -- busy is a C++ float: per-op rounding.
@@ -50,17 +50,17 @@ local function eat_corpse(self)
   -- eat corpse for health (specials 2/3/4 and the default case)
   -- can't eat if we're 'full'
   if self.hp >= self.max_hp then
-    return false
+    return false, "ALREADY AT FULL HEALTH"
   end
   local t = og.tuning(self)
   local corpse = og.find_nearest_blood(self)
   -- no blood, so do nothing
   if not corpse then
-    return false
+    return false, "NO CORPSE NEARBY"
   end
   local dist = self:distance_to_ob_center(corpse)
   if dist > t.corpse_eat_range then
-    return false
+    return false, "NO CORPSE IN RANGE"
   end
   -- hp is a C++ float: per-op rounding.
   self.hp = og.fadd(self.hp, corpse.level * t.corpse_heal_per_level)

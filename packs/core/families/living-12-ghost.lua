@@ -8,7 +8,7 @@ local function do_special(self)
   -- The old "nifty scare thing" is a carrier; its on_death does the scare.
   local scare = og.summon(self, "fx", FX_GHOST_SCARE)
   if not scare then
-    return false
+    return false, "COULD NOT CREATE SCARE"
   end
   scare:set_ani_type(1)  -- ANI_SCARE
   -- center on self: sizes/coords are non-negative shorts, so // is the C /2

@@ -26,7 +26,7 @@ end
 
 local function flurry(self)
   if self:busy() ~= 0 then
-    return false
+    return false, "SPECIAL BUSY"
   end
   -- magicpoints is a C++ float: per-op rounding
   self.magicpoints = og.fadd(self.magicpoints, 3 * self:s_weapon_cost())
@@ -40,7 +40,7 @@ end
 
 local function exploding_shot(self)
   if self:busy() ~= 0 then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local old_weapon = self:current_weapon()
@@ -48,7 +48,7 @@ local function exploding_shot(self)
   local arrow = self:fire()
   self:set_current_weapon(old_weapon)
   if not arrow then
-    return false
+    return false, "COULD NOT FIRE"
   end
   -- used as a dummy variable to
   -- signify exploding .. :(

@@ -124,22 +124,26 @@ bool teleport_landing_clear(GameWorld& world, walker* self,
 
 } // namespace
 
-bool walker::special(SpecialFailure* why)
+bool walker::special(SpecialFailure* why, std::string* reason)
 {
-	auto fail = [why](SpecialFailure reason) {
+	auto fail = [why, reason](SpecialFailure failure, const std::string& message) {
 		if (why)
-			*why = reason;
+			*why = failure;
+		if (reason)
+			*reason = message;
 		return false;
 	};
 	if (why)
 		*why = SpecialFailure::None;
+	if (reason)
+		reason->clear();
 
 	// Per-placed-NPC scenario flag: a specials-disabled walker never executes
 	// its special, whatever the caller (player input, AI act logic, hit
 	// responses, archmage scripting). Bail before the trace and before any
 	// cost is charged so a disabled special simply does not fire.
 	if (specials_disabled())
-		return fail(SpecialFailure::Disabled);
+		return fail(SpecialFailure::Disabled, "SPECIALS DISABLED");
 
 	TRACE("walker", "special: family=%d current_special=%d", family(), current_special());
 
@@ -147,14 +151,14 @@ bool walker::special(SpecialFailure* why)
 	if (dead())
 	{
 		Log("Dead guy doing special!\n");
-		return fail(SpecialFailure::Dead);
+		return fail(SpecialFailure::Dead, "CANNOT CAST WHILE DEAD");
 	}
 
 	// Do we have a stats object? If not, freak out and exit :)
 	if (!stats_)
 	{
 		Log("Special with no stats\n");
-		return fail(SpecialFailure::NoStats);
+		return fail(SpecialFailure::NoStats, "SPECIAL UNAVAILABLE");
 	}
 
 		int special_index = static_cast<int>(current_special());
@@ -166,17 +170,19 @@ bool walker::special(SpecialFailure* why)
 
 	// Do we have enough for our special ability?
 	if (stats_->magicpoints() < stats_->special_cost(special_index))
-		return fail(SpecialFailure::NoMP);
+		return fail(SpecialFailure::NoMP, "NOT ENOUGH MP");
 
 	if (query_order() != Order::Living)
-		return fail(SpecialFailure::NotLiving);
+		return fail(SpecialFailure::NotLiving, "NO SPECIAL AVAILABLE");
 
 	// Dispatch via scripted hook or family descriptor callback
 	auto* fd = get_family_descriptor(family());
 	bool did_special = false;
-	if (auto hook_result = og::script::hooks::do_special(fd, this))
+	std::string decline_reason;
+	if (auto hook_result = og::script::hooks::do_special(fd, this, &decline_reason))
 	{
-		did_special = *hook_result;
+		did_special = hook_result->succeeded();
+		decline_reason = hook_result->reason();
 		if (did_special)
 			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
 	}
@@ -192,7 +198,8 @@ bool walker::special(SpecialFailure* why)
 		current_game->world->enemy_freeze = og::combat::kEnemyFreezeBankCap;
 	}
 	if (!did_special)
-		return fail(SpecialFailure::ScriptDeclined);
+		return fail(SpecialFailure::ScriptDeclined,
+		            decline_reason.empty() ? "NO SPECIAL AVAILABLE" : decline_reason);
 	return did_special;
 }
 

@@ -122,7 +122,8 @@ inline bool has_on_death(const FamilyDescriptor& fd)
 inline bool do_special(const FamilyDescriptor& fd, walker* self)
 {
     mount_core_pack();
-    return og::script::hooks::do_special(&fd, self).value_or(false);
+    const auto result = og::script::hooks::do_special(&fd, self);
+    return result.has_value() && result->succeeded();
 }
 
 inline bool check_special_ai(const FamilyDescriptor& fd, living* self)

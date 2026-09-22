@@ -15,23 +15,19 @@ local MACE_LIFE_CAP = 468
 -- false out of do_special; true = the ladder's `return true`.
 local function do_turn_undead(self)
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   if self:has_guy() and self:g_intelligence() < t.turn_undead_int_req then
-    if self.team == 0 or self:has_guy() then
-      og.emit_notification(string.format(
-        "You need %d Int to Turn Undead", t.turn_undead_int_req), 0, self)
-    end
     -- busy is a C++ float: per-op rounding
     self:set_busy(og.fadd(self:busy(), 5.0))
-    return false
+    return false, string.format("%d INT REQUIRED", t.turn_undead_int_req)
   end
   -- Returns -1 when there are no candidates, otherwise the number destroyed.
   local turned = self:turn_undead(
     t.turn_undead_range_per_level * self.level, self.level)
   if turned == -1 then
-    return false
+    return false, "NO FOE IN RANGE"
   end
   if self:has_guy() and turned ~= 0 then
     self:g_set_exp(self:g_exp() +
@@ -52,13 +48,16 @@ end
 local function nearby_corpse(self, range)
   local blood = og.find_nearest_blood(self)
   if not blood then
-    return nil
+    return nil, "NO CORPSE NEARBY"
   end
   local passable = og.query_passable(blood:xpos(), blood:ypos(), blood)
-  if passable and self:distance_to_ob(blood) < range then
+  if not passable then
+    return nil, "CORPSE IS BLOCKED"
+  end
+  if self:distance_to_ob(blood) < range then
     return blood
   end
-  return nil
+  return nil, "CORPSE TOO FAR"
 end
 
 local function heal_or_mace(self)
@@ -69,9 +68,9 @@ local function heal_or_mace(self)
       og.find_friends_in_range("ob", t.heal_range, self)
     -- no friends, so don't charge us
     if friend_count <= 1 then
-      return false
+      return false, "NO ALLY IN RANGE"
     end
-    local healed = 0
+    local healed, reason = 0, "NO ALLY NEEDS HEALING"
     for i = 1, #friends do
       local ally = friends[i]
       if ally.hp < ally.max_hp and ally ~= self then
@@ -82,6 +81,7 @@ local function heal_or_mace(self)
         -- mp_cost is a heal's floor; cost prices only the pool-scaled part, so cost 0 lands base + level*5.
         -- Didn't heal any for this guy
         if amount <= 0 then
+          reason = "HEAL TOO WEAK"
           break
         end
         -- hp and magicpoints are C++ floats: per-op rounding
@@ -96,8 +96,9 @@ local function heal_or_mace(self)
       end
     end
     -- everyone was healthy; don't charge us
+    -- A zero-strength heal also reaches this refusal.
     if healed == 0 then
-      return false
+      return false, reason
     end
     local message
     if healed == 1 then
@@ -113,15 +114,11 @@ local function heal_or_mace(self)
   end
   -- mystic mace
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   if self:has_guy() and self:g_intelligence() < t.mace_int_req then
     -- only players get this
-    if self:user() ~= -1 then
-      og.emit_notification(string.format(
-        "%d Int required for Mystic Mace!", t.mace_int_req), 0, self)
-    end
-    return false
+    return false, string.format("%d INT REQUIRED", t.mace_int_req)
   end
   if self:has_guy() then
     self:g_set_total_shots(self:g_total_shots() + 1)
@@ -130,7 +127,7 @@ local function heal_or_mace(self)
   -- All okay, let's summon!
   local mace = og.summon(self, "fx", FX_MAGIC_SHIELD)
   if not mace then
-    return false
+    return false, "COULD NOT CREATE MACE"
   end
   -- The old code used ani_type = 1 only as a dummy non-zero value.
   mace:set_ani_type(1)
@@ -155,14 +152,14 @@ local function raise_skeleton(self)
     return do_turn_undead(self)
   end
   -- raise skeleton at the nearest bloodstain
-  local blood = nearby_corpse(self, og.tuning(self).raise_skeleton_range)
+  local blood, reason = nearby_corpse(self, og.tuning(self).raise_skeleton_range)
   if not blood then
-    return false
+    return false, reason
   end
   local life = og.combat.skeleton_lifetime(self.level)
   local alive = self:do_summon(LIVING_SKELETON, life)
   if not alive then
-    return false
+    return false, "COULD NOT RAISE SKELETON"
   end
   alive.team = self.team
   alive.level = og.rand0(self.level) + 1
@@ -185,14 +182,14 @@ local function raise_ghost(self)
     return do_turn_undead(self)
   end
   -- raise ghost at the nearest bloodstain
-  local blood = nearby_corpse(self, og.tuning(self).raise_ghost_range)
+  local blood, reason = nearby_corpse(self, og.tuning(self).raise_ghost_range)
   if not blood then
-    return false
+    return false, reason
   end
   local life = og.combat.ghost_raise_lifetime(self.level)
   local alive = self:do_summon(LIVING_GHOST, life)
   if not alive then
-    return false
+    return false, "COULD NOT CREATE GHOST"
   end
   alive.level = og.rand0(self.level) + 1
   alive:set_difficulty(alive.level)
@@ -211,9 +208,9 @@ end
 -- Resurrect our guys ..
 local function resurrect(self)
   local t = og.tuning(self)
-  local blood = nearby_corpse(self, t.resurrect_range)
+  local blood, reason = nearby_corpse(self, t.resurrect_range)
   if not blood then
-    return false
+    return false, reason
   end
   local alive
   if self:is_friendly(blood) then
@@ -222,7 +219,7 @@ local function resurrect(self)
     -- at half health.
     alive = og.add_ob("living", blood:s_old_family())
     if not alive then
-      return false
+      return false, "COULD NOT RESURRECT"
     end
     -- restore our old values ..
     blood:transfer_stats(alive)
@@ -250,7 +247,7 @@ local function resurrect(self)
     -- raise an opponent as undead
     alive = self:do_summon(LIVING_GHOST, t.resurrect_ghost_lifetime)
     if not alive then
-      return false
+      return false, "COULD NOT CREATE GHOST"
     end
     alive.team = self.team
     alive.level = og.rand0(self.level) + 1

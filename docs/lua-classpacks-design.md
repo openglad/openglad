@@ -331,7 +331,8 @@ specials entry, and to hook names. There is no silent forward-compatibility
 tier: a key the engine does not know is a key that would have done nothing,
 and a pack is better off being told. Two escape hatches for a pack straddling
 engine releases: `ext = { ... }` is accepted and ignored (opaque, reserved),
-and `og.api.version` reports the format version so a pack can branch.
+and `og.api.version` reports the format version so a pack can branch. The
+current format version is 5.
 
 **`og.NIL` is the present-null.** Because the installer patches, "I did not
 say" and "I say: none" are different answers, and the nullable fields
@@ -804,15 +805,23 @@ the key and the ids that would have worked. Slot numbers were the original
 spelling and they bound a handler to a position in the list; nothing in the
 tree keys that way any more.
 
-Around either form the engine contract is unchanged
+Around either form the engine's MP and dispatch rules remain the same
 (`walker_specials.cpp`): the caller gates on `magicpoints() >=
 special_cost(current_special)` BEFORE dispatch and deducts that cost only
-after a `true` answer — so `false` means "did not fire, charge nothing",
-and the no-op fall-through, answering `true`, is charged like the ladders'
-unmatched case always was. That last case is the one real trap in the
-mechanism, so every VM build now sweeps the living families and warns for
-each castable slot the final table handles neither directly nor through
-`default`, naming the special and the MP a cast would waste.
+after a `true` answer. A cast handler must return `true` on success or
+`false, reason` on refusal, where `reason` is a nonblank printable ASCII
+string no longer than 24 bytes so the player cue fits the compact HUD. A
+missing reason, a non-boolean result, or an invalid reason is a hook error; no
+MP is charged, and mutations made before the error are not rolled back. The
+no-op fall-through, answering `true`, is charged like the ladders' unmatched
+case always was. `cast = false` remains a
+declaration-level charged successful no-op. `self:special()` exposes `true, nil`
+on success or `false, reason` on refusal. AI calls stay silent; player refusals are
+seat-targeted and throttled, held-key script refusals are suppressed, and a
+hook error is shown as `SPECIAL SCRIPT ERROR`. Independently, every VM build sweeps
+the living families and warns for each castable slot the final table handles
+neither directly nor through `default`, naming the special and the MP a cast
+would waste.
 
 ## 7. Level and entity scripting
 

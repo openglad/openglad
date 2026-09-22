@@ -9,19 +9,19 @@ local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protec
 
 local function plant_tree(self)
   if lc.is_busy(self) then  -- do not start the fire-and-replace sequence
-    return false
+    return false, "SPECIAL BUSY"
   end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
   local bolt = self:fire()
   if not bolt then
-    return false
+    return false, "COULD NOT FIRE"
   end
   -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
   self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 2.0)))
   local tree = og.summon(self, "weapon", WEAP_TREE)
   if not tree then
-    return false
+    return false, "COULD NOT CREATE TREE"
   end
   tree:setxy(bolt:xpos(), bolt:ypos())
   tree.ani_type = C.ANI_GROW
@@ -31,17 +31,17 @@ end
 
 local function summon_faerie(self)
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
   local bolt = self:fire()
   if not bolt then
-    return false
+    return false, "COULD NOT FIRE"
   end
   local faerie = og.add_ob("living", LIVING_FAERIE)
   if not faerie then
-    return false
+    return false, "COULD NOT CREATE FAERIE"
   end
   faerie:set_owner(self)
   faerie.team = self.team
@@ -51,7 +51,7 @@ local function summon_faerie(self)
   bolt.dead = 1
   if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then
     faerie.dead = 1
-    return false
+    return false, "NO ROOM TO SUMMON"
   end
   -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
   self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 3.0)))
@@ -60,7 +60,7 @@ end
 
 local function reveal_items(self)
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   self:set_view_all(self:view_all() + self.level * 10)
   -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
@@ -70,11 +70,11 @@ end
 
 local function protection_circle(self)
   if lc.is_busy(self) then
-    return false
+    return false, "SPECIAL BUSY"
   end
   local friends, friend_count = og.find_friends_in_range("ob", 60, self)
   if friend_count <= 1 then
-    return false
+    return false, "NO ALLY IN RANGE"
   end
   local protected_count = 0
   for i = 1, #friends do
@@ -101,7 +101,7 @@ local function protection_circle(self)
       if not existing then
         local circle = og.summon(friend, "weapon", WEAP_CIRCLE_PROTECTION)
         if not circle then
-          return false
+          return false, "COULD NOT PROTECT"
         end
         protected_count = protected_count + 1
       else
@@ -109,7 +109,7 @@ local function protection_circle(self)
         -- its hitpoints top up the existing circle and it dies unused.
         local fresh = og.add_ob("weapon", WEAP_CIRCLE_PROTECTION)
         if not fresh then
-          return false
+          return false, "COULD NOT PROTECT"
         end
         -- shim kept: hitpoints is a C++ float: per-op float rounding.
         existing.hp = og.fadd(existing.hp, fresh.hp)
@@ -126,7 +126,7 @@ local function protection_circle(self)
   end
   if protected_count == 0 then
     -- Everyone was okay; don't charge us.
-    return false
+    return false, "NO ALLY IN RANGE"
   end
   local message
   if protected_count == 1 then

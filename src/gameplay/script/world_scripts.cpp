@@ -2037,6 +2037,70 @@ public:
         return result;
     }
 
+    // Cast results are stricter than the other boolean hooks: a refusal
+    // must carry a usable HUD reason. Keep the result inside this frame so
+    // self:special() can re-enter dispatch without replacing an outer reason.
+    std::optional<SpecialResult> call_special(const char* where,
+                                              std::string* error_reason)
+    {
+        // A malformed return is detected after the Lua call has unwound,
+        // so keep the declaring location while the closure is still here.
+        // Otherwise different broken casts would share one anonymous error.
+        lua_Debug source{};
+        lua_pushvalue(L_, lua_gettop(L_) - nargs_);
+        lua_getinfo(L_, ">S", &source);
+        const std::string source_name = source.source ? source.source : "?";
+        const std::size_t errors_before = impl_.errors.size();
+        if (!impl_.protected_call(where, nargs_, 2)) {
+            note_hook_failure(where, impl_,
+                              impl_.errors.size() > errors_before);
+            if (error_reason)
+                *error_reason = "SPECIAL SCRIPT ERROR";
+            return std::nullopt;
+        }
+
+        const char* contract_error = nullptr;
+        std::string reason;
+        bool succeeded = false;
+        if (!lua_isboolean(L_, -2)) {
+            contract_error =
+                "special cast must return true or false, 'reason'";
+        } else {
+            succeeded = lua_toboolean(L_, -2) != 0;
+            if (!succeeded) {
+                if (lua_type(L_, -1) != LUA_TSTRING) {
+                    contract_error =
+                        "special cast returning false must supply a string reason";
+                } else {
+                    std::size_t length = 0;
+                    const char* text = lua_tolstring(L_, -1, &length);
+                    const std::string_view candidate(text, length);
+                    if (!SpecialResult::valid_reason(candidate)) {
+                        contract_error =
+                            "special failure reason must contain visible text, "
+                            "use printable ASCII, and fit in 24 bytes";
+                    } else {
+                        reason.assign(candidate);
+                    }
+                }
+            }
+        }
+        lua_pop(L_, 2);
+
+        if (contract_error) {
+            const std::string message = std::format(
+                "{}:{}: {}", source_name, source.linedefined, contract_error);
+            impl_.record_error(where, message.c_str());
+            note_hook_failure(where, impl_,
+                              impl_.errors.size() > errors_before);
+            if (error_reason)
+                *error_reason = "SPECIAL SCRIPT ERROR";
+            return std::nullopt;
+        }
+        return succeeded ? SpecialResult::success()
+                         : SpecialResult::failure(std::move(reason));
+    }
+
 private:
     ScriptHost::Impl& impl_;
     lua_State* L_;
@@ -2090,14 +2154,15 @@ std::optional<bool> try_script_hook(Order order, int family_id,
     return f.call(hook_where(hook), wants_result);
 }
 
-// DoSpecial dispatch, honoring both slot forms (stub generator: do_special
-// is fun(self: og.Walker): boolean, wants_result=true — asserted below).
+// DoSpecial dispatch, honoring both slot forms (stub generator reads this
+// separate funnel and its call_special contract).
 // Returns nullopt when no script hook ran (the caller may use an optional
-// descriptor callback), and the hook's boolean-coerced result otherwise.
+// descriptor callback), and the hook's validated cast result otherwise.
 // The specials-table form implements the class-pack dispatch contract:
 // self:current_special() selects, a missing index falls to `default`, and a
 // table with neither is the ladder's fall-through — result true, no call.
-std::optional<bool> try_script_do_special(int family_id, walker* self)
+std::optional<SpecialResult> try_script_do_special(int family_id, walker* self,
+                                                  std::string* error_reason)
 {
     WorldScripts& ws = active_world_scripts();
     if (!ws.has_hook(Order::Living, family_id, FamilyHook::DoSpecial))
@@ -2112,11 +2177,11 @@ std::optional<bool> try_script_do_special(int family_id, walker* self)
     bool no_special_handler = false;
     if (!f.begin_special(family_id, sp, &no_special_handler)) {
         if (no_special_handler)
-            return true;
+            return SpecialResult::success();
         return std::nullopt;
     }
     f.arg(self);
-    return f.call(hook_where(FamilyHook::DoSpecial), true);
+    return f.call_special(hook_where(FamilyHook::DoSpecial), error_reason);
 }
 
 }  // namespace
@@ -2133,14 +2198,20 @@ void reset_hook_failures()
     hook_failure_state() = HookFailure{};
 }
 
-std::optional<bool> do_special(const FamilyDescriptor* fd, walker* self)
+std::optional<SpecialResult> do_special(const FamilyDescriptor* fd, walker* self,
+                                        std::string* error_reason)
 {
+    if (error_reason)
+        error_reason->clear();
     if (fd == nullptr)
         return std::nullopt;
-    if (auto r = try_script_do_special(fd->family_id, self))
+    if (auto r = try_script_do_special(fd->family_id, self, error_reason))
         return r;
-    if (fd->do_special != nullptr)
+    if (fd->do_special != nullptr) {
+        if (error_reason)
+            error_reason->clear();
         return fd->do_special(self);
+    }
     return std::nullopt;
 }
 

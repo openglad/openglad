@@ -67,8 +67,8 @@ stronger. What 2013 changed is how many bombs one keypress arms.
 
 | | max HP | armor | source |
 |---|---|---|---|
-| **player character** (hired L1, levelled, untrained) | **340** | **15** | `src/gameplay/guy.cpp:437-439,452-454,478,488`: `120 + 10 + 3·con`; cleric base con 6 / armor 7 (`living-05-cleric.lua:312-313`) + `kDefaultLevelUpGains{8,6,8,8,1}` (`family_descriptor.h:87`, the cleric scripts no `level_up`) × 8 levels → con 70, armor 15 |
-| enemy / placed NPC at 100 % | 849 | 40.5 | `living-05-cleric.lua:294` `apply_difficulty_scaling(9, 12, 4, 0.5)`: 120 + 9·81; 0.5·81 |
+| **player character** (hired L1, levelled, untrained) | **340** | **15** | `src/gameplay/guy.cpp:437-439,452-454,478,488`: `120 + 10 + 3·con`; cleric base con 6 / armor 7 (`living-05-cleric.lua:304-305`) + `kDefaultLevelUpGains{8,6,8,8,1}` (`family_descriptor.h:87`, the cleric scripts no `level_up`) × 8 levels → con 70, armor 15 |
+| enemy / placed NPC at 100 % | 849 | 40.5 | `living-05-cleric.lua:286` `apply_difficulty_scaling(9, 12, 4, 0.5)`: 120 + 9·81; 0.5·81 |
 
 Player crews never go through `set_difficulty` (`game.cpp:161-166` runs it on
 the *placed* list before the roster spawns; `guy_create.cpp:26-47`;

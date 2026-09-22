@@ -17,14 +17,14 @@ local function some_rocks(self)
   self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())
   local rock = self:fire()
   if not rock then
-    return false
+    return false, "COULD NOT FIRE"
   end
   -- lastx/lasty are C++ floats: per-op rounding.
   rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
   rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
   rock = self:fire()
   if not rock then
-    return false
+    return false, "COULD NOT FIRE"
   end
   -- lastx/lasty are C++ floats: per-op rounding.
   rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
@@ -43,7 +43,7 @@ local function bounce_volley(cost_mult, count, los_num)
     for i = 1, count do
       local rock = self:fire()
       if not rock then
-        return false
+        return false, "COULD NOT FIRE"
       end
       rock:set_lineofsight(rock:lineofsight() * los_num // 2)
       rock:set_do_bounce(1)

@@ -264,7 +264,7 @@ protected:
 
     // Sets the walker's special slot and dispatches through the same funnel
     // walker::special() uses.
-    std::optional<bool> dispatch(int sp)
+    std::optional<SpecialResult> dispatch(int sp)
     {
         self->set_current_special(static_cast<char>(sp));
         const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
@@ -299,7 +299,7 @@ TEST_F(SpecialsDispatchTest, table_selects_by_current_special)
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
         "    charge = function(self) og.log('charge') return true end,\n"
-        "    boomerang = function(self) og.log('boomerang') return false end,\n"
+        "    boomerang = function(self) og.log('boomerang') return false, 'TEST REFUSAL' end,\n"
         "  },\n"
         "})\n");
     auto r1 = dispatch(1);
@@ -308,12 +308,12 @@ TEST_F(SpecialsDispatchTest, table_selects_by_current_special)
     ASSERT_FALSE(vm_log().empty());
     EXPECT_EQ("charge", vm_log().back());
 
-    // Result plumbing is the branch's own return, boolean-coerced exactly
-    // like a plain do_special return (false stays false).
+    // A refused cast carries its own reason through the table dispatch.
     auto r2 = dispatch(2);
     ASSERT_TRUE(r2.has_value()) << "slot 2 must dispatch";
     EXPECT_FALSE(*r2);
     EXPECT_EQ("boomerang", vm_log().back());
+    EXPECT_EQ("TEST REFUSAL", r2->reason());
     ASSERT_TRUE(vm_errors().empty()) << vm_errors().front().message;
 }
 
@@ -323,7 +323,7 @@ TEST_F(SpecialsDispatchTest, missing_index_falls_to_default)
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
         "    charge = function(self) og.log('one') return true end,\n"
-        "    default = function(self) og.log('default') return false end,\n"
+        "    default = function(self) og.log('default') return false, 'TEST REFUSAL' end,\n"
         "  },\n"
         "})\n");
     auto r = dispatch(5);
@@ -338,7 +338,7 @@ TEST_F(SpecialsDispatchTest, unmatched_index_without_default_is_a_noop_true)
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
-        "    charge = function(self) og.log('one') return false end,\n"
+        "    charge = function(self) og.log('one') return false, 'TEST REFUSAL' end,\n"
         "  },\n"
         "})\n");
     hooks::reset_hook_failures();
@@ -378,7 +378,7 @@ TEST_F(SpecialsDispatchTest, plain_do_special_function_form_still_works)
         "  },\n"
         "})\n"
         "og.register_hooks('living', 'core:elf', {\n"
-        "  do_special = function(self) og.log('function form') return false "
+        "  do_special = function(self) og.log('function form') return false, 'TEST REFUSAL' "
         "end,\n"
         "})\n");
     ASSERT_TRUE(dispatch(1).has_value());
@@ -434,11 +434,9 @@ TEST_F(SpecialsDispatchTest, registered_table_is_immune_to_later_mutation)
         << "the sneaked default must not dispatch";
 }
 
-TEST_F(SpecialsDispatchTest, branch_falling_off_the_end_reads_as_false)
+TEST_F(SpecialsDispatchTest, branch_falling_off_the_end_is_a_contract_error)
 {
-    // Documented sharp edge: the branch's return converts exactly like a
-    // plain do_special return, so falling off the end (nil) is false. The
-    // ladder rewrites append the ladder's shared `return true` explicitly.
+    // A missing return cannot silently decline without explaining why.
     register_chunk(
         "og.register_hooks('living', 'core:soldier', {\n"
         "  specials = {\n"
@@ -446,9 +444,10 @@ TEST_F(SpecialsDispatchTest, branch_falling_off_the_end_reads_as_false)
         "  },\n"
         "})\n");
     auto r = dispatch(1);
-    ASSERT_TRUE(r.has_value());
-    EXPECT_FALSE(*r);
+    EXPECT_FALSE(r.has_value());
     EXPECT_EQ("no return", vm_log().back());
+    ASSERT_EQ(1u, vm_errors().size());
+    EXPECT_EQ("hook:do_special", vm_errors().back().where);
 }
 
 TEST_F(SpecialsDispatchTest, erroring_branch_latches_like_any_hook_error)
@@ -466,6 +465,141 @@ TEST_F(SpecialsDispatchTest, erroring_branch_latches_like_any_hook_error)
     EXPECT_EQ("hook:do_special", hooks::hook_failures().where);
     EXPECT_NE(std::string::npos,
               hooks::hook_failures().message.find("branch boom"));
+}
+
+TEST_F(SpecialsDispatchTest, malformed_cast_results_are_errors_and_do_not_charge)
+{
+    const std::vector<std::string> bodies = {
+        "return false", "return nil", "return 0", "return 'yes'",
+        "return {}", "return false, 7", "return false, ''",
+        "return false, '   '", "return false, 'NO\\nTARGET'",
+        "return false, 'NO\\0TARGET'", "return false, string.char(127)",
+        "return false, string.char(128)", "return false, string.rep('X', 25)",
+        "error('cast broke')",
+    };
+    for (const std::string& body : bodies) {
+        SCOPED_TRACE(body);
+        clear_pack_scripts();
+        register_chunk("og.register_hooks('living', 'core:soldier', {\n"
+                       "  do_special = function(self)\n    " + body +
+                       "\n  end,\n})\n");
+        hooks::reset_hook_failures();
+        self->set_current_special(1);
+        self->stats()->set_magicpoints(500.0f);
+        walker::SpecialFailure why = walker::SpecialFailure::None;
+        std::string reason = "STALE REASON";
+        EXPECT_FALSE(self->special(&why, &reason));
+        EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+        EXPECT_EQ("SPECIAL SCRIPT ERROR", reason);
+        EXPECT_EQ(500.0f, self->stats()->magicpoints());
+        EXPECT_EQ(1u, hooks::hook_failures().count);
+        EXPECT_EQ("hook:do_special", hooks::hook_failures().where);
+        ASSERT_EQ(1u, vm_errors().size());
+        EXPECT_EQ(0u, events.events().size());
+    }
+
+    clear_pack_scripts();
+    register_chunk("og.register_hooks('living', 'core:soldier', {\n"
+                   "  specials = {\n"
+                   "    charge = function(self) return false end,\n"
+                   "    boomerang = function(self) return false end,\n"
+                   "  },\n})\n");
+    EXPECT_FALSE(dispatch(1).has_value());
+    EXPECT_FALSE(dispatch(2).has_value());
+    ASSERT_EQ(2u, vm_errors().size());
+    EXPECT_NE(std::string::npos, vm_errors()[0].message.find("specials.lua:3:"));
+    EXPECT_NE(std::string::npos, vm_errors()[1].message.find("specials.lua:4:"));
+}
+
+TEST_F(SpecialsDispatchTest, nested_casts_preserve_each_reason_and_success_clears_it)
+{
+    register_chunk(R"LUA(
+og.register_hooks('living', 'core:soldier', {
+  specials = {
+    charge = function(self)
+      return false, "INNER REFUSAL"
+    end,
+    boomerang = function(self)
+      self:set_current_special(1)
+      local ok, reason = self:special()
+      self:set_current_special(2)
+      return ok, reason
+    end,
+    whirlwind = function(self)
+      self:set_current_special(1)
+      self:special()
+      self:set_current_special(3)
+      return false, "OUTER REFUSAL"
+    end,
+    disarm = function(self)
+      return true
+    end,
+  },
+})
+)LUA");
+    self->stats()->set_magicpoints(500.0f);
+    self->stats()->set_special_cost(4, 20);
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+    self->set_current_special(2);
+    ASSERT_FALSE(self->special(&why, &reason));
+    EXPECT_EQ("INNER REFUSAL", reason);
+    EXPECT_EQ(500.0f, self->stats()->magicpoints());
+    self->set_current_special(3);
+    ASSERT_FALSE(self->special(&why, &reason));
+    EXPECT_EQ("OUTER REFUSAL", reason);
+    EXPECT_EQ(500.0f, self->stats()->magicpoints());
+    self->set_current_special(4);
+    ASSERT_TRUE(self->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::None, why);
+    EXPECT_EQ("", reason);
+    EXPECT_EQ(480.0f, self->stats()->magicpoints());
+    EXPECT_EQ(0u, events.events().size());
+    EXPECT_TRUE(vm_errors().empty());
+}
+
+TEST_F(SpecialsDispatchTest, cast_reason_length_boundary_and_native_callbacks)
+{
+    register_chunk("og.register_hooks('living', 'core:soldier', {\n"
+                   "  do_special = function(self)\n"
+                   "    return false, string.rep('X', 24)\n"
+                   "  end,\n})\n");
+    const auto result = dispatch(1);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->succeeded());
+    EXPECT_EQ(std::string(24, 'X'), result->reason());
+    EXPECT_TRUE(vm_errors().empty());
+
+    clear_pack_scripts();
+    FamilyDescriptor native = *get_family_descriptor(FAMILY_SOLDIER);
+    native.do_special = [](walker*) {
+        return SpecialResult::failure("NATIVE REFUSAL");
+    };
+    std::string error_reason = "STALE";
+    const auto refused = hooks::do_special(&native, self, &error_reason);
+    ASSERT_TRUE(refused.has_value());
+    EXPECT_FALSE(refused->succeeded());
+    EXPECT_EQ("NATIVE REFUSAL", refused->reason());
+    EXPECT_EQ("", error_reason);
+    native.do_special = [](walker*) { return SpecialResult::success(); };
+    const auto accepted = hooks::do_special(&native, self, &error_reason);
+    ASSERT_TRUE(accepted.has_value());
+    EXPECT_TRUE(accepted->succeeded());
+    EXPECT_EQ("", accepted->reason());
+    EXPECT_THROW(SpecialResult::failure(""), std::invalid_argument);
+
+    register_chunk("og.register_hooks('living', 'core:soldier', {\n"
+                   "  do_special = function(self) error('broken cast') end,\n"
+                   "})\n");
+    hooks::reset_hook_failures();
+    const auto fallback = hooks::do_special(&native, self, &error_reason);
+    ASSERT_TRUE(fallback.has_value());
+    EXPECT_TRUE(fallback->succeeded());
+    EXPECT_EQ("", error_reason);
+    EXPECT_EQ(1u, hooks::hook_failures().count);
+    error_reason = "STALE";
+    EXPECT_FALSE(hooks::do_special(nullptr, self, &error_reason).has_value());
+    EXPECT_EQ("", error_reason);
 }
 
 TEST_F(SpecialsDispatchTest, cross_chunk_collision_reports_and_last_wins)
@@ -638,7 +772,7 @@ protected:
         ASSERT_NE(nullptr, self);
     }
 
-    std::optional<bool> dispatch_warlock(int sp)
+    std::optional<SpecialResult> dispatch_warlock(int sp)
     {
         self->set_current_special(static_cast<char>(sp));
         const FamilyDescriptor* fd =
@@ -699,7 +833,7 @@ TEST_F(SpecialsByIdTest, a_slot_number_beside_its_id_is_still_a_load_error)
         "og.register_hooks('living', 'v2test:warlock', {\n"
         "  specials = {\n"
         "    [1] = function(self) return true end,\n"
-        "    flare_burst = function(self) return false end,\n"
+        "    flare_burst = function(self) return false, 'TEST REFUSAL' end,\n"
         "  },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());
