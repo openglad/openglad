@@ -63,7 +63,7 @@ std::size_t count_live_family(GameWorld& w, Order order, int family)
     return n;
 }
 
-// nearby_corpse() (living-05-cleric.lua:52-62) accepts a bloodstain only
+// nearby_corpse() (living-05-cleric.lua:48-60) accepts a bloodstain only
 // when its tile is PASSABLE and it sits within `max_distance` (Manhattan).
 // The caster's own body blocks the tile it stands on, so hard-coding an
 // offset would depend on sprite sizes; walk outward for the first spot that
@@ -1232,4 +1232,135 @@ TEST(FamilyCleric, r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp)
     EXPECT_EQ(185u, cleric->myguy->exp)
         << "the hostile resurrect pays the same flat 90 (no penalty arm)";
 }
+
+TEST(FamilyCleric, heal_refusal_distinguishes_absent_and_healthy_allies)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
+    og::test::ScopedHookFailureGuard guard;
+    ClericR15Fixture fx;
+    living* cleric = add_living(fx, 0, FAMILY_CLERIC, 80, 80);
+    ASSERT_NE(nullptr, cleric);
+    cleric->stats()->set_level(1);
+    cleric->stats()->set_special_cost(1, desc.special_cost[1]);
+    cleric->stats()->set_magicpoints(3.0f);
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(0);
+
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+    ASSERT_FALSE(cleric->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+    EXPECT_EQ("NO ALLY IN RANGE", reason);
+    EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints());
+
+    living* ally = add_living(fx, 0, FAMILY_SOLDIER, 100, 80);
+    ASSERT_NE(nullptr, ally);
+    ally->stats()->set_max_hitpoints(100.0f);
+    ally->stats()->set_hitpoints(100.0f);
+    ASSERT_FALSE(cleric->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+    EXPECT_EQ("NO ALLY NEEDS HEALING", reason);
+    EXPECT_FLOAT_EQ(100.0f, ally->stats()->hitpoints());
+    EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints());
+
+    // The same ally and MP pool work once there is a wound to heal.
+    ally->stats()->set_hitpoints(40.0f);
+    ASSERT_TRUE(cleric->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::None, why);
+    EXPECT_EQ("", reason);
+    EXPECT_FLOAT_EQ(45.0f, ally->stats()->hitpoints());
+    EXPECT_FLOAT_EQ(1.0f, cleric->stats()->magicpoints());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+TEST(FamilyCleric, zero_strength_heal_explains_why_a_wounded_ally_was_not_healed)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_CLERIC);
+    og::test::ScopedHookFailureGuard guard;
+    ClericR15Fixture fx;
+    living* cleric = add_living(fx, 0, FAMILY_CLERIC, 80, 80);
+    living* ally = add_living(fx, 0, FAMILY_SOLDIER, 100, 80);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, ally);
+    cleric->stats()->set_level(0);
+    cleric->stats()->set_special_cost(1, desc.special_cost[1]);
+    cleric->stats()->set_magicpoints(3.0f);
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(0);
+    ally->stats()->set_max_hitpoints(100.0f);
+    ally->stats()->set_hitpoints(40.0f);
+
+    // Three MP clears the two-MP gate, but level zero has no heal bonus
+    // and trunc(3)/4 contributes no base amount.
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+    ASSERT_FALSE(cleric->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+    EXPECT_EQ("HEAL TOO WEAK", reason);
+    EXPECT_FLOAT_EQ(40.0f, ally->stats()->hitpoints());
+    EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints());
+
+    cleric->stats()->set_level(1);
+    ASSERT_TRUE(cleric->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::None, why);
+    EXPECT_EQ("", reason);
+    EXPECT_FLOAT_EQ(45.0f, ally->stats()->hitpoints());
+    EXPECT_FLOAT_EQ(1.0f, cleric->stats()->magicpoints());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+TEST(FamilySoldier, disarm_refusal_explains_facing_with_a_foe_already_in_range)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_SOLDIER);
+    og::test::ScopedHookFailureGuard guard;
+    ClericR15Fixture fx;
+    living* soldier = add_living(fx, 0, FAMILY_SOLDIER, 80, 80);
+    living* foe = add_living(fx, 1, FAMILY_ORC, 100, 80);
+    ASSERT_NE(nullptr, soldier);
+    ASSERT_NE(nullptr, foe);
+    // Refresh the spatial map after the helper assigns the 16-pixel sizes.
+    soldier->setxy(80, 80);
+    foe->setxy(100, 80);
+    soldier->stats()->set_level(6);
+    soldier->stats()->set_special_cost(4, desc.special_cost[4]);
+    soldier->stats()->set_magicpoints(500.0f);
+    soldier->set_current_special(4);
+    soldier->set_curdir(FACE_UP);
+    soldier->set_busy(0);
+    foe->stats()->set_level(1);
+    foe->set_busy(0);
+
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+    const short positions[][2] = {{100, 80}, {80, 100}};
+    for (const auto& position : positions) {
+        SCOPED_TRACE(testing::Message() << "foe at " << position[0]
+                                       << ',' << position[1]);
+        foe->setxy(position[0], position[1]);
+        ASSERT_EQ(20, soldier->distance_to_ob(foe));
+        ASSERT_FALSE(soldier->stats()->forward_blocked());
+        ASSERT_FALSE(soldier->special(&why, &reason));
+        EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+        EXPECT_EQ("FACE FOE AT CLOSE RANGE", reason);
+        EXPECT_FLOAT_EQ(500.0f, soldier->stats()->magicpoints());
+        EXPECT_FLOAT_EQ(0.0f, foe->busy());
+    }
+
+    // Turn toward that same enemy and close the final gap: the one-pixel
+    // forward probe now meets it, and the level-six disarm beats level one.
+    foe->setxy(95, 80);
+    soldier->set_curdir(FACE_RIGHT);
+    ASSERT_TRUE(soldier->stats()->forward_blocked());
+    ASSERT_TRUE(soldier->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::None, why);
+    EXPECT_EQ("", reason);
+    EXPECT_FLOAT_EQ(350.0f, soldier->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(36.0f, foe->busy());
+    EXPECT_FLOAT_EQ(5.0f, soldier->busy());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 } // namespace detail_family_cleric_r15

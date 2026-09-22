@@ -75,7 +75,7 @@ local function disarm(self)
   end
   -- can't do this if no frontal enemy
   if not self:s_forward_blocked() then
-    return false, "NO FOE IN REACH"
+    return false, "FACE FOE AT CLOSE RANGE"
   end
 
   local found = 0

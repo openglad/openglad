@@ -657,6 +657,73 @@ TEST(PackLuaCleric, a_thin_pool_still_funds_a_scaled_heal)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+TEST(PackLuaCleric, corpse_refusals_distinguish_absence_blockage_and_range)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    for (int slot = 2; slot <= 4; ++slot) {
+        SCOPED_TRACE(slot);
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        walker* cleric = make_cleric(w, 6);
+        ASSERT_NE(nullptr, cleric);
+        cleric->set_current_special(static_cast<char>(slot));
+        const float mp_before = cleric->stats()->magicpoints();
+        const auto refuse = [&](const char* expected) {
+            tw.events.clear();
+            std::string reason = "STALE REASON";
+            walker::SpecialFailure why = walker::SpecialFailure::None;
+            EXPECT_FALSE(cleric->special(&why, &reason));
+            EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+            EXPECT_EQ(expected, reason);
+            EXPECT_FLOAT_EQ(mp_before, cleric->stats()->magicpoints());
+            EXPECT_EQ(0u, tw.events.size());
+        };
+        refuse("NO CORPSE NEARBY");
+
+        walker* stain = drop_bloodstain(w, cleric, 1, FAMILY_ARCHER, 30);
+        ASSERT_NE(nullptr, stain);
+        const auto clear_x = stain->xpos();
+        const auto clear_y = stain->ypos();
+        stain->setxy(cleric->xpos(), cleric->ypos());
+        ASSERT_FALSE(w.query_passable(stain->xpos(), stain->ypos(), stain));
+        refuse("CORPSE IS BLOCKED");
+        EXPECT_EQ(0, stain->dead());
+
+        stain->setxy(static_cast<short>(32), cleric->ypos());
+        ASSERT_TRUE(w.query_passable(stain->xpos(), stain->ypos(), stain));
+        ASSERT_EQ(128, cleric->distance_to_ob(stain));
+        ASSERT_EQ(nullptr, w.find_nearest_blood(cleric));
+        refuse("NO CORPSE NEARBY");
+        EXPECT_EQ(0, stain->dead());
+
+        // The finder has its own squared-distance limit. Ghost and
+        // resurrection can select a stain just beyond their 30px cast range.
+        if (slot != 2) {
+            stain->setxy(cleric->xpos() + 16, cleric->ypos() + 15);
+            ASSERT_TRUE(w.query_passable(stain->xpos(), stain->ypos(), stain));
+            ASSERT_EQ(31, cleric->distance_to_ob(stain));
+            ASSERT_EQ(stain, w.find_nearest_blood(cleric));
+            refuse("CORPSE TOO FAR");
+            EXPECT_EQ(0, stain->dead());
+        }
+
+        stain->setxy(clear_x, clear_y);
+        std::string reason = "STALE REASON";
+        walker::SpecialFailure why = walker::SpecialFailure::ScriptDeclined;
+        ASSERT_TRUE(cleric->special(&why, &reason));
+        EXPECT_EQ(walker::SpecialFailure::None, why);
+        EXPECT_TRUE(reason.empty());
+        EXPECT_FLOAT_EQ(mp_before - cleric->stats()->special_cost(slot),
+                        cleric->stats()->magicpoints());
+        EXPECT_NE(0, stain->dead());
+        const int raised_family = slot == 2 ? FAMILY_SKELETON
+                                : slot == 3 ? FAMILY_GHOST : FAMILY_ARCHER;
+        EXPECT_EQ(1u, count_family(w, Order::Living, raised_family));
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 TEST(PackLuaCleric, a_skeleton_rises_from_a_bloodstain_in_reach)
 {
     og::test::mount_core_pack();

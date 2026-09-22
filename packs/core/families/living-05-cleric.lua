@@ -48,13 +48,16 @@ end
 local function nearby_corpse(self, range)
   local blood = og.find_nearest_blood(self)
   if not blood then
-    return nil
+    return nil, "NO CORPSE NEARBY"
   end
   local passable = og.query_passable(blood:xpos(), blood:ypos(), blood)
-  if passable and self:distance_to_ob(blood) < range then
+  if not passable then
+    return nil, "CORPSE IS BLOCKED"
+  end
+  if self:distance_to_ob(blood) < range then
     return blood
   end
-  return nil
+  return nil, "CORPSE TOO FAR"
 end
 
 local function heal_or_mace(self)
@@ -65,9 +68,9 @@ local function heal_or_mace(self)
       og.find_friends_in_range("ob", t.heal_range, self)
     -- no friends, so don't charge us
     if friend_count <= 1 then
-      return false, "NO ALLY NEEDS HEALING"
+      return false, "NO ALLY IN RANGE"
     end
-    local healed = 0
+    local healed, reason = 0, "NO ALLY NEEDS HEALING"
     for i = 1, #friends do
       local ally = friends[i]
       if ally.hp < ally.max_hp and ally ~= self then
@@ -78,6 +81,7 @@ local function heal_or_mace(self)
         -- mp_cost is a heal's floor; cost prices only the pool-scaled part, so cost 0 lands base + level*5.
         -- Didn't heal any for this guy
         if amount <= 0 then
+          reason = "HEAL TOO WEAK"
           break
         end
         -- hp and magicpoints are C++ floats: per-op rounding
@@ -92,8 +96,9 @@ local function heal_or_mace(self)
       end
     end
     -- everyone was healthy; don't charge us
+    -- A zero-strength heal also reaches this refusal.
     if healed == 0 then
-      return false, "NO ALLY NEEDS HEALING"
+      return false, reason
     end
     local message
     if healed == 1 then
@@ -147,9 +152,9 @@ local function raise_skeleton(self)
     return do_turn_undead(self)
   end
   -- raise skeleton at the nearest bloodstain
-  local blood = nearby_corpse(self, og.tuning(self).raise_skeleton_range)
+  local blood, reason = nearby_corpse(self, og.tuning(self).raise_skeleton_range)
   if not blood then
-    return false, "NO CORPSE NEARBY"
+    return false, reason
   end
   local life = og.combat.skeleton_lifetime(self.level)
   local alive = self:do_summon(LIVING_SKELETON, life)
@@ -177,9 +182,9 @@ local function raise_ghost(self)
     return do_turn_undead(self)
   end
   -- raise ghost at the nearest bloodstain
-  local blood = nearby_corpse(self, og.tuning(self).raise_ghost_range)
+  local blood, reason = nearby_corpse(self, og.tuning(self).raise_ghost_range)
   if not blood then
-    return false, "NO CORPSE NEARBY"
+    return false, reason
   end
   local life = og.combat.ghost_raise_lifetime(self.level)
   local alive = self:do_summon(LIVING_GHOST, life)
@@ -203,9 +208,9 @@ end
 -- Resurrect our guys ..
 local function resurrect(self)
   local t = og.tuning(self)
-  local blood = nearby_corpse(self, t.resurrect_range)
+  local blood, reason = nearby_corpse(self, t.resurrect_range)
   if not blood then
-    return false, "NO CORPSE NEARBY"
+    return false, reason
   end
   local alive
   if self:is_friendly(blood) then
