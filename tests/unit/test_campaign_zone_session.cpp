@@ -370,6 +370,85 @@ TEST_F(CampaignZoneSessionTest, actions_overflow_pages_in_place)
     EXPECT_EQ("2/4", zone.actions()[0].more.note);
 }
 
+// The window a paged docket OPENS on is the one holding the [CURRENT] row
+// (og::ui::open_row_window, 2026-09-22, PR #307): the row the camp is
+// pointing at — the one the command strip's GO is about — is never the row
+// behind the pager. Browsing is the player's after that: the pager row
+// moves the window and an own-mutation refetch keeps it, and only a NEW
+// [CURRENT] row (a level set through the docket or the wizard, under the
+// open camp) re-opens the band.
+TEST_F(CampaignZoneSessionTest, a_paged_docket_opens_on_the_current_row)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "actions", weight = 3,
+          entries = {
+            { id = "e1", label = "E1", kind = "action" },
+            { id = "L6", label = "THE LATE ROAD", kind = "level", level = 6 },
+            { id = "e3", label = "E3", kind = "action" },
+            { id = "L4", label = "THE ROAD", kind = "level", level = 4 },
+            { id = "e5", label = "E5", kind = "action" },
+            { id = "e6", label = "E6", kind = "action" },
+          } },
+        { kind = "roster" },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "Noted." }
+  end,
+}))LUA");
+    save_.scen_num = 4;
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    EXPECT_EQ(6, zone.actions()[0].page.item_count);
+    EXPECT_EQ(2, zone.actions()[0].page.rows_per_page)
+        << "a 3-slot band spends one slot on the pager row";
+    EXPECT_EQ(3, og::ui::current_row_index(zone.actions()[0].rows))
+        << "the fourth row is the one the cursor sits on";
+    EXPECT_EQ(1, zone.actions()[0].page.page)
+        << "so the camp opens on the SECOND window, not at home";
+    EXPECT_EQ(2, zone.actions()[0].page.first_index());
+    EXPECT_EQ(4, zone.actions()[0].page.end_index());
+    EXPECT_EQ("2/3", zone.actions()[0].more.note);
+    EXPECT_EQ("L4", zone.actions()[0].current_id);
+
+    // Browsing: the pager row moves the window, and a refetch (the
+    // after-own-mutation trigger — a purchase, a state write) leaves the
+    // player where they were reading.
+    ASSERT_TRUE(zone.step_actions_window(0));
+    EXPECT_EQ(2, zone.actions()[0].page.page);
+    zone.refetch();
+    EXPECT_EQ(2, zone.actions()[0].page.page)
+        << "a refetch with the same [CURRENT] row keeps the browsed window";
+    EXPECT_EQ("3/3", zone.actions()[0].more.note);
+    const CampaignZoneSession::Outcome acted = zone.act(0, 4);
+    EXPECT_EQ(CampaignZoneSession::OutcomeKind::Acted, acted.kind);
+    EXPECT_EQ(2, zone.actions()[0].page.page)
+        << "and so does the refetch an ACTED row fires";
+
+    // A level set under the open camp IS the camp pointing somewhere
+    // else: the next refetch re-opens the band on the new [CURRENT] row.
+    save_.scen_num = 6;
+    zone.refetch();
+    EXPECT_EQ(1, og::ui::current_row_index(zone.actions()[0].rows));
+    EXPECT_EQ(0, zone.actions()[0].page.page)
+        << "a NEW current row re-opens the window that holds it";
+    EXPECT_EQ("1/3", zone.actions()[0].more.note);
+    EXPECT_EQ("L6", zone.actions()[0].current_id);
+
+    // And a docket that marks no row at all opens at home.
+    save_.scen_num = 99;
+    zone.refetch();
+    EXPECT_EQ(-1, og::ui::current_row_index(zone.actions()[0].rows));
+    EXPECT_EQ(0, zone.actions()[0].page.page);
+    EXPECT_EQ("", zone.actions()[0].current_id);
+}
+
 // ---------------------------------------------------------------------------
 // Decoration: the shared row helpers behind both sessions.
 // ---------------------------------------------------------------------------

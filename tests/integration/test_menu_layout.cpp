@@ -1834,6 +1834,122 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
     (void)picker_createmenu_buttons();
 }
 
+// The window a paged docket OPENS on, drawn: the one holding the [CURRENT]
+// row (og::ui::open_row_window, 2026-09-22, PR #307). Six rows over a
+// three-slot band window two at a time behind a pager ROW, and the row the
+// cursor sits on is the FOURTH — so the panel comes up on window 2 with
+// that row on it, instead of showing a home window the player has no
+// business on and hiding the job they are about to launch behind "MORE".
+TEST(MenuLayout, createmenu_basecamp_docket_opens_on_the_current_row)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    const short old_scen = save.scen_num;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Z0";
+    save.team_size = 1;
+    save.scen_num = 3;
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    og::script::hooks::CampaignZone raw;
+    {
+        og::script::hooks::CampaignZoneWidget actions;
+        actions.kind = og::script::hooks::CampaignZoneWidget::Kind::Actions;
+        actions.weight = 3;
+        for (int i = 0; i < 6; ++i)
+        {
+            og::script::hooks::CampaignPageEntry entry;
+            entry.id = std::format("act{}", i);
+            entry.label = std::format("ACT {}", i);
+            entry.kind = og::script::hooks::CampaignPageEntry::Kind::Action;
+            if (i == 3)
+            {
+                // The row the camp is pointing at: the level the save's
+                // cursor already stands on decorates as [CURRENT].
+                entry.id = "road";
+                entry.label = "THE ROAD";
+                entry.kind =
+                    og::script::hooks::CampaignPageEntry::Kind::Level;
+                entry.level = save.scen_num;
+            }
+            actions.entries.push_back(std::move(entry));
+        }
+        raw.widgets.push_back(actions);
+        og::script::hooks::CampaignZoneWidget roster;
+        roster.kind = og::script::hooks::CampaignZoneWidget::Kind::Roster;
+        raw.widgets.push_back(roster);
+    }
+    og::ui::CampaignZoneSession zone(save);
+    ASSERT_TRUE(zone.adopt(raw));
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(6u, zone.actions()[0].rows.size());
+    ASSERT_TRUE(zone.actions()[0].rows[3].current)
+        << "the fourth row is the [CURRENT] one";
+    EXPECT_EQ(2, zone.actions()[0].page.rows_per_page)
+        << "a three-slot band spends one slot on the pager row";
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = kBaseCampRowBodyBase;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    // The band as the player finds it: the row before the cursor, the
+    // cursor's own row, and the pager row LAST, counting window 2 of 3.
+    EXPECT_EQ("ACT 2", buttons[kBaseCampZoneActionBase].label);
+    EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 1].label.starts_with(
+        "THE ROAD"))
+        << "the [CURRENT] row is ON the window the camp opens: '"
+        << buttons[kBaseCampZoneActionBase + 1].label << "'";
+    EXPECT_EQ("MORE - 2/3  >", buttons[kBaseCampZoneActionBase + 2].label)
+        << "the pager row is the window's last slot and counts it";
+    EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 3].hidden)
+        << "a 3-unit band draws 3 slots";
+    for (int slot = 0; slot < 3; ++slot)
+    {
+        const button& row = buttons[kBaseCampZoneActionBase + slot];
+        EXPECT_FALSE(row.hidden) << "docket slot " << slot;
+        EXPECT_EQ(12, row.x) << "docket slot " << slot;
+        EXPECT_EQ(310, row.x + row.sizex) << "docket slot " << slot;
+    }
+    check_no_overlaps(buttons, count, "basecamp_docket_on_current");
+    check_bounds(buttons, count, "basecamp_docket_on_current");
+
+    // And the player's own browsing survives the rewire: the pager row
+    // wraps home through the production dispatch, window by window.
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 2, &state));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ACT 4", buttons[kBaseCampZoneActionBase].label);
+    EXPECT_EQ("MORE - 3/3  >", buttons[kBaseCampZoneActionBase + 2].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 2, &state));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ACT 0", buttons[kBaseCampZoneActionBase].label)
+        << "the pager row WRAPS home from the last window";
+    EXPECT_EQ("MORE - 1/3  >", buttons[kBaseCampZoneActionBase + 2].label);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    save.scen_num = old_scen;
+    (void)picker_createmenu_buttons();
+}
+
 // The spine with BOTH actions widgets on one side of the roster, and with
 // no roster rows at all (an empty company is a real camp — you hire your
 // first hero here): the bands sort by start unit and chain top-to-bottom,

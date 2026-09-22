@@ -256,6 +256,18 @@ inline constexpr std::string_view kMoreRowLabel = "MORE";
 // What the pager row's click does: the next window, wrapping home from the
 // last one. A row has one direction, so there is no step back to write.
 void step_row_window(PageModel& page);
+// The index of the row marked [CURRENT] in `rows`, or -1 when none is.
+[[nodiscard]] int current_row_index(
+    const std::vector<CampaignPickerSession::Row>& rows);
+// The window a band OPENS on: the one holding the row at `current_index`
+// (the [CURRENT] row), or window 0 when there is none (`current_index` < 0).
+// A paged band that opened at home hid the row the player is standing on
+// behind the pager — the one row a camp exists to point at — so entry
+// resolves the window instead of assuming it. Browsing is the player's:
+// the pager row moves the window and a refetch keeps it, and only a NEW
+// [CURRENT] row re-opens the band (CampaignZoneSession::refetch,
+// MatchSetupSession::compose).
+void open_row_window(PageModel& page, int current_index);
 
 // --- Base Camp gameplay-zone session (docs/basecamp-zones-design.md) -------
 //
@@ -340,6 +352,11 @@ public:
         // when everything fits, and then `more` is not drawn.
         bool more_row = false;
         Row more;
+        // The id of the [CURRENT] row the window was opened on ("" when
+        // the docket marks none). A refetch keeps the window the player
+        // browsed to and re-opens on the current row only when this
+        // changes — a level set through the docket or the wizard.
+        std::string current_id;
     };
     // One zone row of up to 3 label/value cells (fetch-composed strings;
     // staleness bound = the fetch cadence). `in_header_band` hoists it out

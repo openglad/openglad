@@ -326,6 +326,27 @@ void step_row_window(PageModel& page)
     page.page = count > 0 ? (page.page + 1) % count : 0;
 }
 
+int current_row_index(const std::vector<CampaignPickerSession::Row>& rows)
+{
+    for (std::size_t i = 0; i < rows.size(); ++i)
+    {
+        if (rows[i].current)
+            return static_cast<int>(i);
+    }
+    return -1;
+}
+
+void open_row_window(PageModel& page, int current_index)
+{
+    if (current_index < 0 || current_index >= page.item_count)
+    {
+        page.page = 0;
+        return;
+    }
+    page.page = std::clamp(current_index / std::max(1, page.rows_per_page), 0,
+                           std::max(0, page.page_count() - 1));
+}
+
 namespace {
 
 // The docket widget's pager row, kept in step with its window. Composed
@@ -541,9 +562,19 @@ bool CampaignZoneSession::adopt(const hooks::CampaignZone& zone)
                 actions.start_unit = unit;
                 actions.units = slot.units;
                 // The docket's window: the band's slots, minus the one
-                // the pager ROW takes when the rows outrun them.
+                // the pager ROW takes when the rows outrun them. The
+                // window that OPENS is the one holding the [CURRENT] row,
+                // so the job the camp is pointing at is never behind the
+                // pager on entry.
                 actions.page = make_row_window(
                     static_cast<int>(actions.rows.size()), slot.units);
+                const int current = current_row_index(actions.rows);
+                open_row_window(actions.page, current);
+                if (current >= 0)
+                {
+                    actions.current_id =
+                        actions.rows[static_cast<std::size_t>(current)].id;
+                }
                 refresh_more_row(actions);
                 actions_.push_back(std::move(actions));
                 break;
@@ -627,16 +658,31 @@ void CampaignZoneSession::fetch_composition()
 
 void CampaignZoneSession::refetch()
 {
+    // The window the player browsed to, and the row it was opened on. A
+    // refetch is an own mutation under an OPEN camp, not an entry: it
+    // keeps the window the player stepped to, because a docket that
+    // snapped home on every purchase would page itself out from under the
+    // hand that was reading it. The one thing that re-opens the band is a
+    // NEW [CURRENT] row — a level set through the docket or the wizard,
+    // which is the camp pointing somewhere else.
     std::vector<int> pages;
+    std::vector<std::string> currents;
     pages.reserve(actions_.size());
+    currents.reserve(actions_.size());
     for (const ActionsLayout& actions : actions_)
+    {
         pages.push_back(actions.page.page);
+        currents.push_back(actions.current_id);
+    }
     fetch();
     for (std::size_t i = 0;
          i < actions_.size() && i < pages.size(); ++i)
     {
-        actions_[i].page.page = std::clamp(
-            pages[i], 0, actions_[i].page.page_count() - 1);
+        if (actions_[i].current_id == currents[i])
+        {
+            actions_[i].page.page = std::clamp(
+                pages[i], 0, actions_[i].page.page_count() - 1);
+        }
         refresh_more_row(actions_[i]);
     }
 }

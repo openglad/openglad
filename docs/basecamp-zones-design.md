@@ -121,6 +121,15 @@ per frame.
   last. The terminals' camp listing is unchanged — it still prints the
   whole widget, because the window is a pixel-band constraint of the
   panel and a prompt has no band.
+  The window that OPENS is the one holding the `[CURRENT]` row
+  (`og::ui::open_row_window(page, og::ui::current_row_index(rows))`,
+  the same call the SETUP wizard's ARENA step makes), window 0 when no
+  row is marked: a docket that opened at home hid the job the camp is
+  pointing at — the one the command strip's GO launches — behind the
+  pager. Browsing is the player's from then on: the pager row moves the
+  window, `refetch()` (the own-mutation trigger) KEEPS it, and only a NEW
+  `[CURRENT]` row — a level set through the docket or the wizard under
+  the open camp — re-opens the band on the row it marks.
   Level rows: host-gated, earned-roads-gated (see the voice rule below)
   load-with-rollback set tail. Page rows: the zone submenu. Action rows: debit-then-dispatch + autosave
   tail (+ settings sync when the match dirty flag armed). Actions do NOT

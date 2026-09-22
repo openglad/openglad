@@ -1394,7 +1394,22 @@ PageModel make_row_window(int count, int fit);   // fit, or fit - 1 when paging
 CampaignPickerSession::Row make_more_row(std::string_view label,
                                          const PageModel& page);
 void step_row_window(PageModel& page);           // next window, WRAPPING
+int  current_row_index(const std::vector<Row>& rows);   // the [CURRENT] row
+void open_row_window(PageModel& page, int current_index);  // the window it is on
 ```
+
+**Update (2026-09-22, PR #307):** the last two are the round-4 follow-up.
+A band that pages OPENS on the window holding the `[CURRENT]` row, window
+0 when no row is marked. The wizard's ARENA step already did this with its
+own inline arithmetic (the F1/F24 fix: a host must not land on a page of
+arenas none of which is theirs); the Base Camp docket did not, and the
+pager row's slot is what made that visible — Settlement Day's `[CURRENT]`
+level row landed one click behind the window. There is no rule twin: the
+inline copy in `MatchSetupSession::compose` is gone and both sessions call
+`open_row_window`. Browsing still belongs to the player: the pager row
+moves the window, a refetch keeps it, and only a NEW `[CURRENT]` row —
+a level set under the open camp — re-opens the band
+(`CampaignZoneSession::ActionsLayout::current_id` is the memory).
 
 A band of `fit` row slots holding more rows than fit spends its LAST slot
 on the pager row, and only then: `make_row_window(8, 9)` is one window of
@@ -1444,3 +1459,22 @@ terms. The camp cannot simply buy the unit back: its band is
 = 8, and the roster's three rows are that campaign's own adjudicated
 floor. Westlands' fork night (4 rows over 3 units) pays the same way, and
 Imaginations and the versus camp do not page at all.
+
+**Update (2026-09-22, PR #307):** the ruling above — "a `[CURRENT]` level
+row may page, because it is a signpost" — is REVERSED. A camp exists to
+point at the job in front of you, so the window that opens is the one
+holding that row (§12.2, `open_row_window`), everywhere and on every
+chassis. What that changes in the shipped data:
+
+- **The spring docket** is unchanged in what it shows: the `[CURRENT]`
+  job is already its first row, so the camp still opens on the job and
+  the advance with the shop door and the contract behind the pager.
+- **Settlement Day** opens on window 2 of 3 instead: the `Settlement Day`
+  level row alone, over `MORE - 2/3  >`, with `DRAW YOUR PAY` the one
+  click behind it and the shop door the click before. Its one-slot window
+  can hold the signpost or the payout, and the rule picks the signpost.
+  The camp would show both if that state's docket had three units, which
+  it cannot buy back without dropping the roster below its three-row
+  floor — a Long Season content decision, not this rule's to take.
+- **Westlands' fork night**, Imaginations and the versus camp are
+  unaffected: their `[CURRENT]` row is always the docket's first.

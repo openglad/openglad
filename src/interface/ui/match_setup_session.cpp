@@ -408,14 +408,17 @@ void MatchSetupSession::compose(const Inputs& inputs, Window window)
     }
     else if (window == Window::OnCurrent)
     {
+        // The same rule the Base Camp docket opens on, out of the same
+        // helper: the window holding the [CURRENT] row (open_row_window).
+        int current = -1;
         for (std::size_t i = 0; i < page_.rows.size(); ++i)
         {
             if (!page_.rows[i].base.current)
                 continue;
-            page_.page.page =
-                static_cast<int>(i) / std::max(1, page_.page.rows_per_page);
+            current = static_cast<int>(i);
             break;
         }
+        open_row_window(page_.page, current);
     }
     refresh_more_row();
 }

@@ -147,6 +147,17 @@ things:
   session's window; the camp docket's listing deliberately does not window
   at all. With the shipped data exactly one page in the game pages: a
   game's ARENA step for CTF (11 rows over 8 slots).
+- **A paged band OPENS on the window holding `[CURRENT]`.** Same helper
+  file, same rule for every chassis: `open_row_window(page, index)`, with
+  `current_row_index(rows)` finding the marked row (window 0 when nothing
+  is marked). The row the surface is pointing at — the one the strip's GO
+  will launch — is never the row behind the pager. After that the window
+  is the player's: the pager row moves it, a refetch KEEPS it, and only a
+  new `[CURRENT]` row (a level set under the open camp) re-opens the band.
+  Both callers are pinned: the docket in
+  `tests/unit/test_campaign_zone_session.cpp` +
+  `tests/integration/test_menu_layout.cpp`, the wizard's ARENA step in
+  `tests/unit/test_match_setup_session.cpp`.
 - **Level rows in the wizard are PLAIN, not GO-green.** Green is GO's
   alone here: the MATCH step's GO row and the strip GO. `[CURRENT]` is
   what marks the armed arena. The seam is one argument on the shared
