@@ -24,7 +24,7 @@ edge's stake as its note, and the Bearer's SAVE_ALL levels flagged
 `escort`); `lib/fronts.lua` holds the split-party derivations;
 `lib/stanzas.lua` holds every line the fire speaks. The camp's text band is
 three lines and its rows are 24/20 glyphs, and what those two budgets COMPOSE
-has to reach the panel's 42-glyph row face beside the marker the engine
+has to reach the panel's 48-glyph row face beside the marker the engine
 writes there — so the row under the company's feet carries no note at all
 (`[CURRENT]` is its note, and a second one cost the borrowed title its last
 syllables). `test_westlands_fire.cpp` sweeps the budgets and the composed

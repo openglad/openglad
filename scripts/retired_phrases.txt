@@ -78,3 +78,9 @@ RANDOM ARENA - any game	RANDOM ARENA - any game, any arena	the camp roll row is 
 three-row docket	is now a three-row docket	the camp docket is ONE row, SETUP - <title> (PR #307 round 2)
 must be cleared\)	Replay level (must be cleared): 	the prompt is unchanged on classic campaigns, but a versus campaign refuses first with Arenas are set, never replayed. (PR #307 round 2)
 N- steps a wheel back	Setup # [1-5] (0 = back, N- steps a wheel back):	the wizard prompt is Setup # [1-N] (0 = back): and the wheels turn forward only (PR #307 round 3); a trailing - takes the Invalid setup row. notice
+42-glyph (docket|row|face)	rows are the docket 42-glyph face	the wizard row and the camp docket row are 298px, 48 glyphs, since PR #307 round 4 (docs/match-setup-design.md §12)
+30 ?px cell column	the only tenants of the 30 px cell column	the cell column is deleted with the pager pair; rows run 12..310 (PR #307 round 4)
+setup_page_(prev|next)	click setup_page_next to step the window	the wizard pages on its last ROW, MORE ARENAS - n/m  >; the pager ordinals are deleted (PR #307 round 4)
+zone_pager_(prev|next)_[01]	interact("zone_pager_next_0")	the docket pages on its last ROW, MORE - n/m  >; ordinals 65..68 are parked as zone_pager_spare_0..3 (PR #307 round 4)
+pager.s gutter carries	the pager's gutter carries the p/N count	the window count is the MORE pager ROW own note (PR #307 round 4)
+level rows and GO wear the GO green	level rows and GO wear the GO green	inside the SETUP wizard green is GO alone: ARENA level rows are plain (PR #307 round 4). Classic campaigns keep the green, so a sentence about THEM must say so

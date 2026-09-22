@@ -107,10 +107,22 @@ per frame.
   (level/page/action, id/label/note/cost) plus `done`, which retires a
   costed action the book has already honored (no price quoted, spent
   face, refuses instead of charging twice). Each actions widget is
-  windowed by PageModel with its own two pager ordinals; overflow pages
-  in place. Level rows: host-gated, earned-roads-gated (see the voice
-  rule below) load-with-rollback set tail. Page
-  rows: the zone submenu. Action rows: debit-then-dispatch + autosave
+  windowed by PageModel; overflow pages in place.
+  **Update (2026-09-22, PR #307):** the two pager ordinals per widget are
+  RETIRED and parked for good. A docket that outruns its band spends the
+  window's LAST slot on a pager ROW — `MORE - 2/3  >` — so the band has no
+  side column of arrows and the row face runs the panel's whole width
+  (`kBaseCampZoneActionRowWidth` 264 → 298, x=12..310, 48 glyphs). The
+  arithmetic is the shared `og::ui::make_row_window(count, fit)`: `fit`
+  slots when everything fits, `fit - 1` when it does not. The pager row
+  is an ordinary Kind::Page row (`make_more_row`), so it wears the same
+  door marker and rides the same vertical nav chain as everything else,
+  and a click on it steps to the next window, WRAPPING home from the
+  last. The terminals' camp listing is unchanged — it still prints the
+  whole widget, because the window is a pixel-band constraint of the
+  panel and a prompt has no band.
+  Level rows: host-gated, earned-roads-gated (see the voice rule below)
+  load-with-rollback set tail. Page rows: the zone submenu. Action rows: debit-then-dispatch + autosave
   tail (+ settings sync when the match dirty flag armed). Actions do NOT
   clear ready. **Each kind is legible before the click**: page rows wear
   the repo's door marker (" >"), level rows wear the GO green because
@@ -124,9 +136,11 @@ per frame.
   carries, so a docket meant to be read at a glance states its `weight` —
   and clamps the ask to the band the roster floor leaves, since
   over-weight falls back to the DEFAULT zone (the camp disappears) while
-  a too-small weight only pages. When a docket does page, the pager's
-  gutter carries the "p/N" count under its arrows: two bare arrows say a
-  row can move, never that rows are hidden.
+  a too-small weight only pages. When a docket does page, the count is
+  the pager ROW's own note (`MORE - 2/3  >`): the row says what it does
+  and how far along it is, which two bare arrows in a gutter never did.
+  (Before 2026-09-22 that count was a "p/N" strip inked under a side
+  pager pair.)
 - `readout` — ONE zone row of up to 3 label/value cells (fetch-composed
   strings; staleness bound = the fetch cadence), labels in the
   column-header ink and values in the row-data ink. When the roster does
@@ -153,7 +167,9 @@ pre-reset roster slot. Assignment is menu-authored, so nothing inside a
 level ever needs to write it back.
 
 **Bounds arithmetic (closed)**: appended ordinal band 49..71 = 16 action
-rows + 4 actions pagers + 3 spare; `MAX_BUTTONS` and
+rows + 4 actions pagers (RETIRED 2026-09-22, PR #307, and parked as
+spares — deleting them would renumber every ordinal above and buy
+nothing) + 3 spare; `MAX_BUTTONS` and
 `GameSession::kMaxButtons` rise 50 → 72 together with a static_assert
 tying them. Appended rows are statically parked at zero-size rects with
 empty labels (gate-lattice safe) and re-banded per frame by the rewire.

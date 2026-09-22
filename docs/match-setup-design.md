@@ -98,15 +98,25 @@ kSetupCellX            = kBaseCampZonePagerPrevX                 // 280 — the 
 kSetupCellW            = kSetupRightEdge - kSetupCellX           // 30
 kSetupRowW             = kSetupCellX - kSetupLineToRowGap - kSetupRowX   // 264, ends x=276
 kSetupRowH             = 10
+// ^ round 4 (2026-09-22, PR #307): kSetupCellX/kSetupCellW are DELETED
+//   with the pager pair below, and a row runs the panel's whole width —
+//   kSetupRowW = kSetupRightEdge - kSetupRowX = 298, ending on x=310 with
+//   the tab strip. kSetupRowLabelChars goes 42 -> 48.
 kSetupRowPitch         = kZoneSubmenuRowPitch                    // 12
 kSetupPanelBottomY     = kZoneSubmenuPanelBottomY                // 158
 setup_rows_fit(lines)  = (158 - setup_row_y0(lines)) / 12
 kSetupRowsMax          = 9                                       // setup_row_0..8 (RULES is exactly 9)
+                                                                 // round 4: the LAST of the nine is
+                                                                 // the pager row when a step pages
 kSetupLineChars        = 48                                      // the face holds 49; the 48 budget
                                                                  // clears the bevel by a column
 // the right cell column: the docket's pager pair on the ARENA step's first row …
 kSetupPagerPrevX       = kBaseCampZonePagerPrevX                 // 280, w 14
 kSetupPagerNextX       = kBaseCampZonePagerNextX                 // 296, w 14 — ends 310
+// ^ round 4 (2026-09-22, PR #307): DELETED, with kBaseCampZonePagerPrevX /
+//   NextX / Width themselves. A step whose rows outrun their band spends
+//   the window's LAST ROW on the pager row `MORE ARENAS - 2/2  >` (§12),
+//   so nothing lives in the 30 px column any more and it is gone.
 // … and ONE 30x10 reverse cell on every cycler row, label "<"
 kSetupRevX             = kSetupCellX                             // 280
 kSetupRevW             = kSetupCellW                             // 30 — ends 310
@@ -152,13 +162,13 @@ turn forward only (§11) — and every ordinal after them shifts down by nine:
 
 | ord | id | rect | face | gate (per frame, rewire) |
 |---|---|---|---|---|
-| 0..8 | `setup_row_r` | (12, row_y0 + 12r, 264, 10) | `compose_scripted_row_face(row, 42, …)` (§3.4) | hidden past the step's visible rows |
+| 0..8 | `setup_row_r` | (12, row_y0 + 12r, 264, 10) | `compose_scripted_row_face(row, 42, …)` (§3.4) | hidden past the step's visible rows (round 4: **298** wide, budget **48**, and the last visible slot is the pager row on a paged step) |
 | 9..17 | `setup_rev_r` | (280, row_y0 + 12r, 30, 10) | `<` | visible iff row r is a cycler and the viewer may turn it (host) |
 | 18 | `setup_back` | (10,169,44,20) | BACK, Escape | always |
 | 19 | `setup_prev` | (224,169,40,20) | PREV | hidden on the first present step |
 | 20 | `setup_next` | (270,169,40,20) | NEXT | hidden on MATCH |
-| 21 | `setup_page_prev` | (280, row_y0, 14, 10) | `<` | multi-window pages only (ARENA) |
-| 22 | `setup_page_next` | (296, row_y0, 14, 10) | `>` | same |
+| 21 | `setup_page_prev` | (280, row_y0, 14, 10) | `<` | multi-window pages only (ARENA) — **Update (2026-09-22, PR #307):** DELETED; the window's last ROW pages (§12) |
+| 22 | `setup_page_next` | (296, row_y0, 14, 10) | `>` | same — **Update (2026-09-22, PR #307):** DELETED with its twin (§12) |
 | 23..27 | `setup_tab_k` | (tab_x(slot), 33, 54, 10) | step word; the current step wears `[WORD]` and `RowState::Disabled` | one tab per PRESENT step, re-banded left-to-right from x=12 |
 
 Ordinal constants: `kMatchSetupRowBase = 0`, `kMatchSetupRevBase = 9`,
@@ -167,11 +177,31 @@ Ordinal constants: `kMatchSetupRowBase = 0`, `kMatchSetupRevBase = 9`,
 `kMatchSetupPageNextIndex = 22`, `kMatchSetupTabBase = 23`,
 `kMatchSetupButtonCount = 28`.
 
+**Update (2026-09-22, PR #307):** the two `setup_page_*` rows go the way of
+the nine `setup_rev_r` rows — the window pages on its own last ROW now —
+and the table is **17**: `setup_row_0..8` (12, row_y0 + 12r, **298**, 10),
+`setup_back` 9, `setup_prev` 10, `setup_next` 11, `setup_tab_k` 12..16.
+Every row face is 48 glyphs and closes on the one right edge, 310, with
+the tab strip (§12).
+
 Row faces follow the chassis grammar through the ONE hoisted composer
 (§3.4 `compose_scripted_row_face`): page rows and doors wear ` >`, level
 rows and GO wear the GO green, the current arena wears `[CURRENT]`, cleared
 arenas `[CLEARED]`, cycler rows wear their value, inert rows the GREY face
-with the bevel fix. **The current tab** wears square brackets AND the
+with the bevel fix.
+**Update (2026-09-22, PR #307):** maintainer ruling — inside the wizard,
+**green is GO's alone**. The ARENA step is a LIST of arenas: painting all
+ten of them the launch green says "this launches" about every row and so
+about none, and `[CURRENT]` is already the mark that says which arena is
+armed. The wizard's level rows are PLAIN (the ordinary grey face); the
+MATCH step's GO row and the Base Camp strip's GO keep the green. The seam
+is one argument on the shared composer,
+`compose_scripted_row_face(row, budget, level_rows_actionable,
+level_rows_green = true)`, which the wizard alone passes `false` — every
+classic campaign's book page, zone submenu and camp docket keeps the green
+level row it has always had, and both halves are pinned
+(`CampaignZoneUi.wizard_arena_rows_are_plain_while_the_camps_stay_green`
+and `…joiner_level_rows_pay_for_the_host_marker_out_of_the_label`). **The current tab** wears square brackets AND the
 `RowState::Disabled` face: it is inert (a click is a no-op refetch, traced
 `setup tab_current`), and the dimmed face with its darker right/bottom
 bevels reads as the pressed-in tab of a tab strip. Green would say "this
@@ -195,6 +225,11 @@ steps a wheel back: → then FIRE). Pinned by a BFS over {host, joiner} ×
 pagers: a row's → is `setup_page_prev` on row 0 when they show and −1
 otherwise, and there is no second vertical chain. The BFS is unchanged in
 shape and still runs over the same lattice (§11).
+**Update (2026-09-22, PR #307):** with the pagers gone too, a row's → is
+−1 always and the panel's whole graph is the ROW CHAIN: the pager row is
+an ordinary row in it, entered from the row above and leaving into
+`setup_back`. The BFS is unchanged in shape and still runs over the same
+lattice, paged and unpaged (§12).
 
 On entry to a step the rewire moves the keyboard highlight onto a LIVE row.
 A step entered by clicking its own tab would otherwise leave the highlight ON
@@ -311,6 +346,25 @@ step, so the host never sees four green rows none of which is theirs.
 A 10-arena page shows rows 0..6 with `<` `>` at (280,67)/(296,67) and `1/2`
 under them. (The ARENA pager pair is unchanged in round 3; it is the only
 thing left in the cell column — §11.) A row that overflows 42 glyphs clips the LABEL, never the tail.
+**Update (2026-09-22, PR #307):** there is no pager pair and no `1/2`
+strip. The window's LAST slot is the pager ROW, and it says both things a
+bare arrow never did — what it does and where you are:
+
+```
+ | GAME   [ARENA]  TEAMS   RULES   MATCH            |   y=33
+ | Take their flag. Bring it home.                  |   y=47  the game's rule line
+ | THE OLD KEEP - 2 sides, 5 flags                  |   y=59  setup_row_0
+ | ...                                              |
+ | (seven arenas)                                   |
+ | MORE ARENAS - 1/2  >                             |   y=131 setup_row_7 — the pager row
+ +--------------------------------------------------+   y=158
+```
+
+CTF's eleven rows (ten arenas + RANDOM ARENA) over `setup_rows_fit(1)` = 8
+slots therefore window 7 + 4, the pager row closing each. A click steps to
+the next window and WRAPS home from the last — a row has one direction,
+like every cycler on this screen (§11). A row that overflows **48** glyphs
+clips the LABEL, never the tail.
 Level rows are host-gated at the click (joiner: `(HOST)` face, refusal
 toast), never hidden. **Refusals never advance**: `DeniedHost`,
 `DeniedGate`, `Unchanged`, `LoadFailed` keep the step and toast; only
@@ -527,6 +581,16 @@ LIMIT, 3 Next: MATCH, 4 Prev, 5 Back` (§10).
 Rows through `campaign_picker_row_text(row, 72)`; `Next: <STEP>`,
 `Prev: <STEP>` and `Back` are appended items — the two steppers ARE the tab
 strip's projection, and `N-` is the `<` cell's.
+**Update (2026-09-22, PR #307):** the terminals project the SESSION's own
+window, pager row and all: a paged step prints its window's rows and then
+`MORE ARENAS - 1/2  >` as a numbered item, which steps the window and
+wraps. `Next:` / `Prev:` are unchanged and still follow it. One window
+model for every surface, so the number a player types names the row they
+are reading and the same face means the same thing at a prompt as on the
+panel. (The camp DOCKET's terminal listing is deliberately NOT windowed —
+it still prints the whole widget, because there the window is a pixel
+constraint of the panel and a prompt has no band; the wizard's window is
+the session's, which the terminals share.)
 **Update (2026-09-21, PR #307):** `N-` is gone with the cell, and `TerminalMatchSetupItem::reversible`
 with it: the prompt takes a plain row number (§11). The joiner face prints the
 lines and the navigation items only. Team Build item 13 `setup` ("Setup") is
@@ -547,9 +611,9 @@ replayed.` (§10).
 | Base Camp strip | `SETUP` | 5 | 10 (68 px beveled) **Update (2026-09-20, PR #307):** the strip slot reads DIFFICULTY on every campaign; the wizard's SDL door is the docket row `SETUP - SOCCER: THE PITCH  >` (39 worst, budget 42) (§10). |
 | tabs | `GAME` `ARENA` `TEAMS` `RULES` `MATCH`; current `[TEAMS]` | ≤ 7 | 7 (54 px beveled) |
 | footer | `BACK` / `PREV` / `NEXT` | 4 | 6 / 5 / 5 |
-| pagers, reverse cell | `<` `>` and `1/2`; `<` | 1 / 3; 1 | 14 px face; 30 px face **Update (2026-09-21, PR #307):** the reverse cell is deleted; the row reads `pagers` alone, `<` `>` and `1/2` on the 14 px face (§11). |
+| pagers, reverse cell | `<` `>` and `1/2`; `<` | 1 / 3; 1 | 14 px face; 30 px face **Update (2026-09-21, PR #307):** the reverse cell is deleted; the row reads `pagers` alone, `<` `>` and `1/2` on the 14 px face (§11). **Update (2026-09-22, PR #307):** the pager pair is deleted too — the pager is a ROW, `MORE ARENAS - 2/2  >` (20) on the wizard and `MORE - 2/3  >` (13) on the docket, both on the 48-glyph row face (§12). |
 | GAME rows | `CAPTURE THE FLAG - 0/10 cleared  >` | 35 | 42 **Update (2026-09-20, PR #307):** GAME rows carry no tally: worst is `CAPTURE THE FLAG - 10 arenas  >` (31), and the RANDOM row is `RANDOM - any game, any arena` (28) (§10). |
-| ARENA rows | `DUNGEON OF STARS - 4 sides, 20m  [CURRENT]` | 43 → label clipped, tail kept | 42 |
+| ARENA rows | `DUNGEON OF STARS - 4 sides, 20m  [CURRENT]` | 43 → label clipped, tail kept | 42 **Update (2026-09-22, PR #307):** the face is 48 and this worst row fits uncut (§12). |
 | TEAMS line cells | `TEAM 4` / `P1 WASD  P2 ARROWS` / `12 MAP UNITS +5 BOTS` | 6 / 18 / 20 | columns 26 / 70 / 188 |
 | TEAMS pointer line | `Deploy and seats: the Base Camp roster and rail.` | 47 | 48 |
 | TEAMS rows | `SIDES: 2 - 2, 3, 4` / `FILL: BRUTAL - none to brutal` / `LINEUP - fill per team, map units  >` | 18 / 28 / 36 | 42 **Update (2026-09-20, PR #307):** the macro row's note is `weak to brutal` (NONE left the wizard wheel); `none to brutal` is the LINEUP band wheel's note (§10). |
@@ -557,7 +621,7 @@ replayed.` (§10).
 | MATCH lines | title 28; census rows ≤ 48; rules pairs ≤ 44 | ≤ 48 | 48 |
 | MATCH rows | `VIEW LEVEL - the arena and every team  >` / `GO` / `GO - DEPLOY FOR EVERY PLAYER` | 40 / 2 / 28 | 42 |
 | joiner | `READY is on the Base Camp strip.` (row) 31; `The host sets these for everyone.` (line) 33 | | 42 / 48 |
-| camp docket (Lua) | `GAME: CAPTURE THE FLAG - 10/10 cleared  >` 41; `ARENA: DUNGEON OF STARS - 4 sides, 20m  >` 41; `RANDOM ARENA - any game, any arena` 34 | | 42 **Update (2026-09-20, PR #307):** the docket is ONE row, `SETUP - <TITLE>  >` (worst 39); the roll rows moved into the wizard as `RANDOM - any game, any arena` and `RANDOM ARENA - any arena of this game` (37) (§10). |
+| camp docket (Lua) | `GAME: CAPTURE THE FLAG - 10/10 cleared  >` 41; `ARENA: DUNGEON OF STARS - 4 sides, 20m  >` 41; `RANDOM ARENA - any game, any arena` 34 | | 42 **Update (2026-09-20, PR #307):** the docket is ONE row, `SETUP - <TITLE>  >` (worst 39); the roll rows moved into the wizard as `RANDOM - any game, any arena` and `RANDOM ARENA - any arena of this game` (37) (§10). **Update (2026-09-22, PR #307):** the docket face is 48 too — the worst `SETUP - ` row has six glyphs of room it did not have (§12). |
 | camp readout | `CLEARED` `12/40` | 7 / 5 | header band **Update (2026-09-20, PR #307):** there is no camp readout — the roster leads the panel (§10). |
 | campaign lines (Lua) | `STRONG adds a fighter, BRUTAL two.` 34; `FILL sets how strong the bots are.` 34 | | 38 |
 | terminal | rows ≤ 72; items `Next: RULES` / `Prev: ARENA` / `Back`; team line worst 55 | | 72 |
@@ -1276,3 +1340,107 @@ is now the invalid-row notice) and
 `CursesPickerClient.setup_flow_knob_turn_autosaves_and_laps_forward` (leg 3
 walks the five-stop wheel home in four presses). All four failed on the
 round-2 tip before the removal landed.
+
+---
+
+## 12. Round 4 (2026-09-22, PR #307) — full-width rows, a pager ROW, and green for GO alone
+
+Two maintainer rulings, after round 3.
+
+### 12.1 Green is GO's alone inside the wizard
+
+The ARENA step's level rows are **plain** — the ordinary grey face — not
+the GO green. A list of ten arenas painted green says "this launches"
+about every one of them and therefore about none; `[CURRENT]` is already
+the mark that says which arena is armed, and the only rows on this screen
+that launch anything are the MATCH step's GO row and the Base Camp strip's
+GO, which keep the green.
+
+The grammar itself is not rewritten. `compose_scripted_row_face` is shared
+by three chassis (the zone submenu's book pages, the Base Camp docket, the
+wizard), and every classic campaign's level rows are green today on
+purpose. So the change is a SEAM: the composer takes
+`level_rows_green = true`, and the wizard is the one caller that passes
+`false`. Both halves are pinned, in the same file and beside each other:
+`CampaignZoneUi.wizard_arena_rows_are_plain_while_the_camps_stay_green`
+and the docket/submenu half of
+`CampaignZoneUi.joiner_level_rows_pay_for_the_host_marker_out_of_the_label`.
+
+Nowhere else shows a versus campaign a green level row: the versus docket
+composes ONE page row (`SETUP - <GAME>: <ARENA>  >`, no green), and the
+SCENARIO and PROGRESS screens have their own GO buttons, which the ruling
+leaves alone.
+
+### 12.2 Rows take the whole panel width, and the pager is a ROW
+
+Every row on every step of the wizard, and every row of the Base Camp
+docket, now runs `kSetupLeftX` (12) to `kSetupRightEdge` (310): 298 px of
+bevelled face, `(298 - 8) / 6 = 48` glyphs. The 30 px column of cells
+that used to close the right rail is gone, and with it every constant
+that described it — `kSetupCellX`, `kSetupCellW`, `kSetupPagerPrevX`,
+`kSetupPagerNextX`, `kSetupPagerW`, `kBaseCampZonePagerPrevX`,
+`kBaseCampZonePagerNextX`, `kBaseCampZonePagerWidth` — plus the two
+`setup_page_*` ordinals and both "p/N" gutter strips. The Base Camp's four
+docket pager ordinals (65..68) are RETIRED rather than deleted: they park
+every frame as `zone_pager_spare_0..3`, the way the seat rail's own
+retired ordinals do, because renumbering every ordinal above them would
+buy nothing.
+
+What replaces them is one rule with one implementation, in
+`campaign_picker_session.h` where both SDL-free sessions can reach it:
+
+```cpp
+PageModel make_row_window(int count, int fit);   // fit, or fit - 1 when paging
+CampaignPickerSession::Row make_more_row(std::string_view label,
+                                         const PageModel& page);
+void step_row_window(PageModel& page);           // next window, WRAPPING
+```
+
+A band of `fit` row slots holding more rows than fit spends its LAST slot
+on the pager row, and only then: `make_row_window(8, 9)` is one window of
+eight, `make_row_window(11, 8)` is two windows of seven plus the row. The
+row itself is an ordinary `Kind::Page` row composed through
+`campaign_picker_row_text`, so it wears the same `  >` door marker as
+every other "more behind this" row, clips the same way, rides the same
+vertical nav chain, and needs no face of its own. Its note is the window
+the player is standing on, so it reads `MORE ARENAS - 1/2  >` on the
+wizard's ARENA step and `MORE - 2/3  >` on the docket. A click steps to
+the next window and wraps home from the last — a row has one direction,
+exactly like the cyclers of §11.
+
+**The shipped data.** GAME = 7 games + RANDOM = 8 rows against
+`setup_rows_fit(0)` = 9: no pager. Each game's ARENA page carries one
+flavour line, `setup_rows_fit(1)` = 8: CTF's 10 arenas + RANDOM ARENA = 11
+rows window 7 + 4 with the pager row closing each; every other game's band
+(4 to 6 arenas + the roll) fits. TEAMS is at most three rows, RULES two,
+MATCH two. So the wizard shows exactly one pager row, on one page, and the
+Base Camp's versus docket — one row — never pages at all.
+
+**The terminals** project the session's window, pager row included: a
+paged step prints its window's rows, then `MORE ARENAS - 1/2  >` as a
+numbered item, then `Next:` / `Prev:` / `Back` unchanged. One window model
+for every surface. The camp DOCKET's terminal listing is deliberately not
+windowed (docs/basecamp-zones-design.md, "Terminals"): there the window is
+a constraint of the panel's pixels, and a prompt has no band.
+
+### 12.3 What it cost the shipped camps
+
+`kBaseCampZoneActionRowWidth` 264 → 298 gives every camp docket six more
+glyphs; nothing that fitted stops fitting, and the versus docket's worst
+`SETUP - <GAME>: <ARENA>  >` row is no longer near its ceiling.
+
+The pager row costs a paging band one authored row per window, and one
+shipped camp pays it: **The Long Season**. Its spring docket (4 rows over
+a 3-unit band) now shows the job and the advance, with the shop door and
+the open contract behind the pager instead of just the contract; its
+Settlement Day docket (3 rows over a 2-unit band) shows `DRAW YOUR PAY`
+and the pager row, with the `[CURRENT]` Settlement Day level row one click
+behind. That row is a signpost rather than a decision — header line B
+already names the scenario and the command strip's GO already launches it
+— which is why it is the row the camp can afford to lose, and the budget
+sweep in `tests/unit/test_longseason_ledger.cpp` now says so in those
+terms. The camp cannot simply buy the unit back: its band is
+`readout(0) + stanza(1..2) + docket(2..3) + roster header(1) + roster(3)`
+= 8, and the roster's three rows are that campaign's own adjudicated
+floor. Westlands' fork night (4 rows over 3 units) pays the same way, and
+Imaginations and the versus camp do not page at all.
