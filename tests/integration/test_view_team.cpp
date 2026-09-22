@@ -1876,7 +1876,8 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
 
 // The interior focus ring is bounded to the compact seat rail / move-up band
 // (kBaseCampInteriorRingFirstIndex..kBaseCampInteriorRingLastIndex). The
-// appended gameplay-zone rows past it are 264px full-width faces where a
+// appended gameplay-zone rows past it are full-width faces
+// (kBaseCampZoneActionRowWidth, the whole panel since round 4) where a
 // 3px-inset
 // ring would read as a stray box inside the row, so they take the normal
 // exterior pulse. Pin BOTH directions: nothing may paint in the row's
@@ -1903,7 +1904,7 @@ TEST(ViewTeam, base_camp_zone_action_row_focus_takes_the_exterior_ring)
     save.team_size = 1;
 
     // A composition whose first band is an actions widget: its rows un-park
-    // at x=12, sizex=264 (kBaseCampZoneActionRowWidth).
+    // at x=12, sizex=kBaseCampZoneActionRowWidth (the full panel width).
     og::script::hooks::CampaignZone raw;
     {
         og::script::hooks::CampaignZoneWidget actions;
@@ -1948,7 +1949,7 @@ TEST(ViewTeam, base_camp_zone_action_row_focus_takes_the_exterior_ring)
 
     const button& face = buttons[kBaseCampZoneActionBase];
     ASSERT_EQ(12, face.x);
-    ASSERT_EQ(264, face.sizex);
+    ASSERT_EQ(kBaseCampZoneActionRowWidth, face.sizex);
 
     // Sample bands three pixels wide on each side of the face's left edge,
     // clear of the ring's corners so only the vertical run is observed.
