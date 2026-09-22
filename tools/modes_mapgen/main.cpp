@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator.
+/* Multiplayer Arenas campaign generator.
  *
  * Produces campaigns/modes/ (the source tree the build
  * composes into builtin/modes.glad): the 40-scenario seven-mode
@@ -129,7 +129,7 @@ void write_campaign_yaml(const std::string& path)
     // accessors key on (unknown keys are ignored by older readers).
     std::ofstream out(path);
     out << "format_version:  1\n"
-        << "title:           Multiplayer Game Modes\n"
+        << "title:           Multiplayer Arenas\n"
         << "version:         1\n"
         << "first_level:     300\n"
         << "suggested_power: 60\n"
@@ -138,22 +138,22 @@ void write_campaign_yaml(const std::string& path)
         << "contributors:    Forgotten Sages (arena grids)\n"
         << "\n"
         << "description:     |\n"
-        << "    One arena, seven games, one\n"
-        << "    book. The Gamesmaster calls\n"
-        << "    team deathmatch, capture the\n"
-        << "    flag, onslaught, mutant,\n"
-        << "    soccer, basketball, and free\n"
-        << "    for all across forty fields\n"
-        << "    old and new. The bots know\n"
-        << "    the rules. Respawns honor your\n"
-        << "    difficulty. First to the\n"
-        << "    target score takes the purse.\n";
+        << "    Seven games, forty arenas:\n"
+        << "    team deathmatch, capture\n"
+        << "    the flag, onslaught,\n"
+        << "    mutant, soccer, basketball\n"
+        << "    and free for all. Pick a\n"
+        << "    game and an arena, set the\n"
+        << "    teams and the rules, then\n"
+        << "    GO. Bots fill the empty\n"
+        << "    sides. Find SETUP on the\n"
+        << "    Base Camp.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
 }
 
 // The quartered games shield: four team-color quadrants under a gray
-// shield border, the Gamesmaster's gold coin as the boss.
+// shield border, the campaign's gold coin as the boss.
 void write_icon(const std::string& path)
 {
     constexpr int kSize = 32;
@@ -253,12 +253,19 @@ void copy_pack_tree(const std::string& staging_root)
 // against its ExpectedLevel row.
 // ---------------------------------------------------------------------------
 
+// The FILL squad a ball GAME's team can field (#305): the size of
+// packs/core/lib/lineup.lua's BOT_SQUAD — the seam's hard ceiling
+// (squad_prefix never exceeds #families), not a restatement of the Lua
+// body rule.
+constexpr int kFillSquadCeiling = 5;
+
 // Obmap peak ledger (§2.3 model): authored ground load + capped spawns +
 // 16 heroes + 20 corpse/stain transients + 25 projectiles (+ the soccer
 // ball; + basketball's ball AND its shadow fx, D11, AND one hoop sprite
 // per authored hoop, D29/D32 — the peak activation, even when a 2/3-team
-// game on a 4-hoop court spawns fewer). Must stay <= 190 unless the row
-// carries the documented waiver.
+// game on a 4-hoop court spawns fewer; + a full FILL squad per team on
+// those same two ball games). Must stay <= 190 unless the row carries the
+// documented waiver.
 int obmap_ledger(const ExpectedLevel& row)
 {
     int gens = 0;
@@ -268,12 +275,18 @@ int obmap_ledger(const ExpectedLevel& row)
     for (const SpawnCap& cap : row.spawn_caps)
         caps += cap.cap;
     int ball = 0;
+    int fill_bodies = 0;
     if (row.mode == ModeKind::Soccer)
         ball = 1;
     else if (row.mode == ModeKind::Basketball)
         ball = 2 + static_cast<int>(row.hoops.size()); // ball + shadow + rims
+    // Only the ball games buy bodies above FAIR (#305), so only they
+    // carry the term. A brawl arena's FILL squads stay inside the +16
+    // heroes assumption above, which this rule leaves alone.
+    if (row.mode == ModeKind::Soccer || row.mode == ModeKind::Basketball)
+        fill_bodies = row.team_count * kFillSquadCeiling;
     return gens + row.treasures + row.flags + row.control_points + row.doors +
-           row.authored_livings + caps + 16 + 20 + 25 + ball;
+           row.authored_livings + caps + 16 + 20 + 25 + ball + fill_bodies;
 }
 
 // A 2x2-tile clearance probe: some 2x2 tile block containing the tile is
@@ -327,7 +340,7 @@ void self_check_level(const ExpectedLevel& row)
         fail(std::format("{}: grid {}x{} != {}x{}", where, world.grid.w,
                          world.grid.h, row.grid_w, row.grid_h));
 
-    // Briefing: exact text, budget, sign-off.
+    // Briefing: exact text, budget, theme lint.
     const std::vector<std::string> description(level.description.begin(),
                                                level.description.end());
     if (description != row.briefing)
@@ -337,9 +350,10 @@ void self_check_level(const ExpectedLevel& row)
         if (line.size() > 33)
             fail(std::format("{}: briefing line '{}' overflows 33", where,
                              line));
-    if (description.empty() || description.back() != "-- THE GAMESMASTER")
-        fail(std::format("{}: briefing must end '-- THE GAMESMASTER'",
-                         where));
+    if (const std::string violation =
+            modes_mapgen::briefing_theme_violation(description);
+        !violation.empty())
+        fail(std::format("{}: {}", where, violation));
 
     // Decor plane: well-formed ids/dims, never over air/stair/void, and
     // the exact nonzero-cell pin.

@@ -72,6 +72,11 @@ HYPHENATED="${HALF_A}-${HALF_B}"
 
 OK_LINE='Retired HUD label check: OK'
 
+# The three #306 labels, likewise never written whole in this file.
+HALF_GAMES='GAMES'
+HALF_BOOK='BOOK'
+HALF_FIELD='FIELD'
+
 make_tree() {  # every root the gate scans, plus the two allowlisted fixtures
     local root="$1"
     mkdir -p "${root}/src" "${root}/include" "${root}/tests/integration" \
@@ -197,6 +202,47 @@ run_check "${tmp}/c9"
 expect_rc 9 2
 expect_stderr 9 'cannot find'
 expect_no_stdout 9 "${OK_LINE}"
+pass
+
+# --- every RETIRED_RE row has teeth on its own sample -----------------------
+# The phrases gate's self-test case 12 in one sentence: a regex that rots --
+# or that this system's awk cannot compile -- must red HERE, not go quietly
+# toothless on a clean tree.  The sample column is assembled from halves for
+# the same reason the label above is.
+cp -a "${tmp}/c1" "${tmp}/c10"
+SAMPLES=("${LBL}" "SEVEN ${HALF_GAMES}" "THE ${HALF_BOOK} OF STARS" \
+         "${HALF_FIELD}: DUNGEON")
+# Counted with awk over the array block, not by halving every quote in a sed
+# range: a range ending at /)$/ runs past an array collapsed onto ONE line,
+# into the next )-terminated line, and silently doubles the count.  \047 is
+# the single quote, which no awk program written in single quotes can spell.
+DECLARED_ROWS="$(awk '
+    /^RETIRED_RE=\(/            { inside = 1 }
+    inside                      { n += gsub(/\047[^\047]*\047/, "") }
+    inside && /\)[[:space:]]*$/ { print n; exit }
+' "${SCRIPTS_DIR}/check_retired_hud_labels.sh")"
+[[ "${DECLARED_ROWS}" -eq "${#SAMPLES[@]}" ]] || {
+    echo "FAIL case 10: the gate declares ${DECLARED_ROWS} retired labels," >&2
+    echo "  and this case plants ${#SAMPLES[@]} samples -- a row was added or" >&2
+    echo "  deleted; add (or drop) its sample here in the same commit." >&2
+    exit 1
+}
+for (( i = 0; i < ${#SAMPLES[@]}; i++ )); do
+    printf 'prose that still spells %s today.\n' "${SAMPLES[i]}" \
+        > "${tmp}/c10/docs/row$((i + 1)).md"
+done
+# The joined-pair path, on the one row whose prefilter used to be two words:
+# grep -rIl runs BEFORE the awk, so a prefilter of 'BOOK OF' never handed this
+# file over and the wrap passed silently.  A single-word prefilter does.
+printf 'THE %s\nOF STARS in the old cover.\n' "${HALF_BOOK}" \
+    > "${tmp}/c10/docs/row_wrapped.md"
+run_check "${tmp}/c10"
+expect_rc 10 1
+for (( i = 0; i < ${#SAMPLES[@]}; i++ )); do
+    expect_stderr 10 "docs/row$((i + 1)).md:1:"
+done
+expect_stderr 10 'docs/row_wrapped.md:1-2:'
+expect_no_stdout 10 "${OK_LINE}"
 pass
 
 echo "test_check_retired_hud_labels: ${CASES}/${CASES} PASS"

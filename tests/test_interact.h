@@ -376,6 +376,20 @@ inline bool interact(const std::string& id)
     return true;
 }
 
+// The RIGHT-button click on the same button, for the screens that answer
+// one (hire/train's reverse candidate cycling — the picker's cyclers
+// themselves turn forward only, whichever button is pressed). The pointer
+// must be OVER the button when the runner calls rightclick(), which is
+// exactly what this does.
+inline bool interact_right(const std::string& id)
+{
+    int win_x = -1, win_y = -1;
+    if (!interact_window_point(id, win_x, win_y))
+        return false;
+    inject_right_click(win_x, win_y, 100);
+    return true;
+}
+
 // The same click, but the press is held until the engine has COMPLETED a
 // frame with the button down instead of for a flat 100 ms. The flat hold is a
 // guess that the menu loop polled SDL in between; a completed frame proves it

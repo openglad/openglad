@@ -19,19 +19,25 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include "test_camp_save_fixture.h"
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
 #include "test_escape_tail.h"
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include "test_menu_highlight.h"
 
 #include <SDL3/SDL.h>
 
@@ -226,47 +232,10 @@ private:
 // (PR #245). Every call site below resolves this suite's own output
 // directory (UXSHOTS_DIR) and hands it to the shared capture.
 
-void write_save0_with_two_soldiers(const std::string& campaign, short scen_num,
-                                   const std::vector<int>& completed = {})
-{
-    SaveData& save = test_screen()->save_data;
-    for (auto& slot : save.team_list)
-        slot.reset();
-    save.team_size = 0;
-    const char* names[] = {"Alpha", "Beta"};
-    for (std::size_t i = 0; i < 2; ++i)
-    {
-        save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
-        save.team_list[i]->name = names[i];
-        save.team_list[i]->teamnum = 0;
-        save.team_list[i]->deployed = true;
-        save.team_list[i]->campaign_tag = 0;
-    }
-    save.team_size = 2;
-    save.my_team = 0;
-    save.numplayers = 1;
-    save.allied_mode = 0;
-    // A defined resting state includes the match knobs: in binary order an
-    // earlier flow's fill/map_units would otherwise leak into this save and
-    // the amendment-5 macro faces (derived from fill[]) would not be at
-    // rest (caught by the ordered og_test_matchup run, invisible alone).
-    save.fill = {};
-    save.map_units = {};
-    // ...and the arena deal memo (amendment 7): a memo left by an earlier
-    // flow on the same cursor would mark the fresh bands as already dealt.
-    save.arena_lineup_dealt_campaign.clear();
-    save.arena_lineup_dealt_scen = 0;
-    save.scen_num = scen_num;
-    save.current_campaign = campaign;
-    save.current_levels.clear();
-    save.current_levels[campaign] = scen_num;
-    save.m_totalcash[0] = 5000;
-    save.campaign_state.clear();
-    save.completed_levels.clear();
-    for (int level : completed)
-        save.add_level_completed(campaign, level);
-    ASSERT_TRUE(save.save("save0"));
-}
+// write_save0_with_two_soldiers moved VERBATIM to
+// tests/test_camp_save_fixture.h when the SETUP wizard's flows in this same
+// binary wanted the same starting company: one fixture, not a twin that
+// drifts the day one copy gains a field.
 
 // The synthetic zone: all four widget kinds. Readout (coin + kit — hoisted
 // into the panel's header band, so it costs no row unit), one text line, an
@@ -995,6 +964,167 @@ TEST(CampaignZoneUi, zone_level_row_is_host_gated_with_a_toast)
            "joiner mid-GO)";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
+    og::ui::install_active_picker_lobby_client(saved_client);
+}
+
+namespace {
+
+// A lobby with ONE local seat, whose team the test moves between fetches.
+// The seat is deliberately not the host's (local_player_indices names 1),
+// so an answer of `team` can only have come through the lobby's seat view.
+struct SeatTeamLobbyClient final : og::ui::IPickerLobbyClient
+{
+    short team = 0;
+
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override { return std::nullopt; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override { return std::nullopt; }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer>
+    lobby_players() const override
+    {
+        og::sim::LobbyPlayer host;
+        host.player_index = 0;
+        host.name = "net-0000000000000000";
+        host.company = "RED LANTERN";
+        host.team = 0;
+        host.is_host = true;
+        og::sim::LobbyPlayer mine;
+        mine.player_index = 1;
+        mine.name = "net-0000000000000001";
+        mine.company = "IRON KETTLE";
+        mine.team = team;
+        return {host, mine};
+    }
+    [[nodiscard]] std::vector<std::uint8_t>
+    local_player_indices() const override
+    {
+        return {1};
+    }
+};
+
+// The camp says one thing: which team is MINE.
+constexpr const char* kMyTeamZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "text", lines = { "MY SEAT TEAM " .. og.campaign_my_team() } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA";
+
+} // namespace
+
+// G4 (docs/lineup-design.md Amendment 5), the SDL half of the install-site
+// table: og.campaign_my_team is answered by the provider GameSession's
+// constructor installs (sdl_campaign_my_team -> og::ui::picker_lobby_my_team),
+// so a camp composition that asks "which team is mine" is told THIS
+// machine's first local seat — the LOBBY's seat once one exists, and the
+// save-derived seat before that. The terminals install their own lambda over
+// og::ui::first_local_seat_team and are pinned by their own clients
+// (CursesPickerClient.camp_page_reads_my_team_from_the_clients_own_seats,
+// PlatformHeadless.text_picker_camp_reads_my_team_from_its_own_seats); this
+// is the only place the SDL lambda is answerable.
+//
+// The rule it protects is the joiner's: the lobby's per-seat choice
+// outlives the legacy save fields, so a joiner's book reads the joiner's
+// team and never the host's. The Lua caller that used to run this path
+// (the modes book's MATCH SETUP macros, whose "skip my team" order was
+// og.campaign_my_team's only in-tree reader) moved to C++ in this branch;
+// the intent of the deleted ModesBookTest.macros_answer_to_the_local_seats_team
+// — the answer is the SEAT's team, never team 0 and never the save's
+// my_team — is what the three cases below assert.
+TEST(CampaignZoneUi, camp_my_team_answers_the_sdl_seat_provider)
+{
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kMyTeamZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    // The save's own seat sits on TEAM 1, and my_team names TEAM 3 — a team
+    // no hero fields, so the shipped fallback (campaign_my_team_fallback,
+    // which answers my_team verbatim) would say 3 and the bare default
+    // would say 0. Neither is ever the right answer below.
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.my_team = 3;
+
+    const auto camp_line = [](const og::ui::CampaignZoneSession& zone) {
+        if (zone.texts().empty() || zone.texts().front().lines.empty())
+            return std::string("<no text widget>");
+        return zone.texts().front().lines.front();
+    };
+
+    og::ui::CampaignZoneSession zone(save);
+
+    // (1) No lobby: the SDL provider falls through picker_lobby_my_team to
+    // the save-derived first seat — TEAM 1, not my_team's 3.
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(nullptr);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted())
+        << "og.campaign_my_team must ANSWER: an erroring binding drops the "
+           "composition to the default zone";
+    EXPECT_EQ(1, og::ui::first_local_seat_team(save));
+    EXPECT_EQ("MY SEAT TEAM 1", camp_line(zone))
+        << "with no lobby open the save's own first seat answers";
+
+    // (2) A lobby whose single local seat sits on TEAM 2: the lobby is
+    // authoritative, so the camp reads 2 while the save still says 1.
+    SeatTeamLobbyClient lobby;
+    lobby.team = 2;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ("MY SEAT TEAM 2", camp_line(zone))
+        << "the lobby's first LOCAL seat outranks the save's seats — this "
+           "is the joiner's own team, not the host's (which is 0)";
+    EXPECT_EQ(1, og::ui::first_local_seat_team(save))
+        << "the save is untouched: the 2 above came from the lobby";
+
+    // (3) The seat moves to TEAM 3: the answer follows it. (3 is also
+    // my_team's value, so this leg alone would be vacuous — it is the pair
+    // with (2) that pins the provider to the lobby.)
+    lobby.team = 3;
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    EXPECT_EQ("MY SEAT TEAM 3", camp_line(zone))
+        << "a seat that changes team changes the camp's answer";
+
     og::ui::install_active_picker_lobby_client(saved_client);
 }
 
@@ -1771,7 +1901,10 @@ TEST(CampaignZoneUi, joiner_level_rows_pay_for_the_host_marker_out_of_the_label)
 
     og::ui::install_zone_submenu_state_for_screen(nullptr);
 
-    // The Base Camp docket band is the same rule at its own 42-glyph face.
+    // The Base Camp docket band is the same rule at its own face — round 4
+    // (2026-09-22, PR #307) widened that face to the whole panel, 12..310,
+    // when the side pager column left, so it reads 48 glyphs like the zone
+    // submenu's rows and not the 264px 42 it used to.
     SyntheticCampaignScriptGuard::install(kLongRoadZoneScript);
     og::ui::CampaignZoneSession zone(save);
     zone.fetch();
@@ -1802,17 +1935,109 @@ TEST(CampaignZoneUi, joiner_level_rows_pay_for_the_host_marker_out_of_the_label)
         camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
         og::ui::install_active_picker_lobby_client(saved_client);
     }
-    EXPECT_EQ("ROADROADROADROADROADRO..  [CURRENT] (HOST)",
+    EXPECT_EQ("ROADROADROADROADROADROADROAD..  [CURRENT] (HOST)",
               camp_buttons[kBaseCampZoneActionBase].label);
+    EXPECT_EQ(static_cast<std::size_t>(48),
+              camp_buttons[kBaseCampZoneActionBase].label.size())
+        << "the docket face is the panel's whole width now";
 
     camp.nav.rewire(camp_buttons, camp_count, camp_highlight);
-    EXPECT_EQ("ROADROADROADROADROADROADROADR..  [CURRENT]",
+    EXPECT_EQ("ROADROADROADROADROADROADROADROADROA..  [CURRENT]",
               camp_buttons[kBaseCampZoneActionBase].label)
         << "the host reads seven more glyphs of the same road name";
+    EXPECT_EQ(og::ui::kReadyGoFaceGo,
+              og::runtime::current_session
+                  ->allbuttons_[static_cast<std::size_t>(
+                      kBaseCampZoneActionBase)]
+                  ->color)
+        << "a CLASSIC campaign's docket level row keeps the green launch "
+           "face — the wizard's plain ARENA rows are the one seam";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
     clear_allbuttons();
     og::runtime::current_session->localbuttons_ = nullptr;
+}
+
+// Maintainer ruling (2026-09-22, round 4): green is GO's alone inside the
+// SETUP wizard. The ARENA step is a LIST of arenas — painting every one of
+// them the launch green says "this launches" about all ten and so about
+// none, and [CURRENT] is already the mark that says which arena is armed.
+// The seam is a flag on the shared composer, which is why the two halves
+// are pinned together: the wizard's level rows are PLAIN, and a classic
+// campaign's book page and camp docket keep the green they have always had
+// (the docket half rides
+// joiner_level_rows_pay_for_the_host_marker_out_of_the_label above; the
+// zone submenu's is its first half).
+TEST(CampaignZoneUi, wizard_arena_rows_are_plain_while_the_camps_stay_green)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "modes";
+    save.scen_num = 820;  // SOCCER: THE PITCH — the armed arena
+    // is_host explicitly, not make_campaign_providers's local-play
+    // default: these providers outlive the test (the hooks need SOME
+    // provider set installed, and clearing them leaves the next scripted
+    // camp unable to compose), so an unconditional TRUE here would hand a
+    // later JOINER flow a host book — which is how a host-gated RANDOM
+    // row turned up on a joiner's GAME step.
+    og::script::hooks::install_campaign_providers(
+        og::data::make_campaign_providers(
+            save, [] { return picker_lobby_host_controls_visible(); }));
+
+    og::ui::MatchSetupScreenState state(save);
+    og::ui::MatchSetupSession::Inputs in;
+    in.save = &save;
+    in.is_host = true;
+    in.authored_mask = 0b0011;
+    ASSERT_TRUE(state.session.open(in));
+    (void)state.session.goto_step(og::ui::MatchSetupSession::Step::Arena, in);
+    ASSERT_EQ(og::ui::MatchSetupSession::Step::Arena, state.session.step());
+    og::ui::install_match_setup_state_for_screen(&state);
+
+    const og::ui::MenuScreenSpec& spec = og::ui::match_setup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.nav.rewire);
+    button* const buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, count);
+    const unsigned char resting_face =
+        og::runtime::current_session->allbuttons_[0]->color;
+    int highlighted = spec.default_highlight;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    int current_row = -1;
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        if (buttons[og::ui::kMatchSetupRowBase + r].label.find("[CURRENT]") !=
+            std::string::npos)
+        {
+            current_row = og::ui::kMatchSetupRowBase + r;
+            break;
+        }
+    }
+    ASSERT_GE(current_row, 0) << "the armed arena wears [CURRENT]";
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        const int ordinal = og::ui::kMatchSetupRowBase + r;
+        if (buttons[ordinal].hidden)
+            continue;
+        EXPECT_EQ(resting_face,
+                  og::runtime::current_session
+                      ->allbuttons_[static_cast<std::size_t>(ordinal)]
+                      ->color)
+            << "ARENA row " << r << " ('" << buttons[ordinal].label
+            << "') must wear the PLAIN face: green is GO's alone";
+    }
+
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // Fetch triggers 3 and 4 through the REAL frame hook: the level-reload
@@ -2068,7 +2293,8 @@ TEST(CampaignZoneUi, roster_mutations_refetch_the_composition)
 // name a DIFFERENT campaign. The standalone picker lobby client is a
 // process-wide singleton whose settings are stamped by
 // picker_lobby_sync_settings_from_save() — the tail of every settings
-// cycler (change_ctf_caps, set_difficulty, ...) — and nothing in a test
+// cycler (the SETUP wizard's Turned dispatch, set_difficulty, ...) — and
+// nothing in a test
 // binary ever tears it down. A stamp left behind by an earlier flow reaches
 // this mutation through picker_base_camp_after_roster_mutation's lobby
 // sync, whose apply writes settings.campaign_id back over save.current_campaign
@@ -2081,9 +2307,10 @@ TEST(CampaignZoneUi, roster_mutations_survive_a_stale_lobby_settings_stamp)
     trace_clear();
 
     // Staged BEFORE the fixture, because that is where it comes from: an
-    // EARLIER test's settings cycle. This is the exact shape
-    // src/interface/ui/picker.cpp change_ctf_caps leaves behind — sync the
-    // lobby under a foreign campaign, then restore only the save FIELD.
+    // EARLIER test's settings cycle. This is the exact shape a turned knob
+    // leaves behind (the wizard's Turned tail, menu_screen_specs.cpp) —
+    // sync the lobby under a foreign campaign, then restore only the save
+    // FIELD.
     {
         SaveData& live = test_screen()->save_data;
         const std::string before = live.current_campaign;
@@ -2381,20 +2608,29 @@ TEST(CampaignZoneUi, book_without_a_zone_opens_through_the_camp_door)
     // the default roster plus one row).
     EXPECT_TRUE(trace_contains("zone", "page_row "))
         << "the door dispatches as a page-kind zone row";
+    // D28's classic half, pinned beside its versus twin
+    // (versus_docket_page_rows_open_the_wizard_not_the_submenu): a page
+    // row on a CLASSIC campaign keeps the chassis it has always had. The
+    // wizard is the versus campaigns' alone, and its shortcut trace must
+    // be nowhere near this flow.
+    EXPECT_FALSE(trace_contains("setup", "docket_shortcut"))
+        << "the SETUP wizard must not answer a classic campaign's book";
 }
 
 namespace {
 
-// A docket that does not fit its band: five rows weighed two units. The
+// A docket that does not fit its band: five rows weighed three units. The
 // shipped camps are composed NOT to reach this state, but a camp that does
-// has to say so — two bare arrows tell a player a row can move, never that
-// rows are hidden, so the pager's gutter carries the "p/N" count.
+// has to say so — round 4 (2026-09-22, PR #307) makes the window's LAST
+// slot the pager ROW, "MORE - 2/3  >", which names what it does and
+// carries its own count, instead of two bare arrows in a side column that
+// tell a player a row can move but never that rows are hidden.
 constexpr const char* kPagedDocketScript =
     R"LUA(og.register_campaign_hooks({
   base_camp = function()
     return {
       widgets = {
-        { kind = "actions", weight = 2,
+        { kind = "actions", weight = 3,
           entries = {
             { id = "one", label = "ROW ONE", kind = "action" },
             { id = "two", label = "ROW TWO", kind = "action" },
@@ -2415,9 +2651,13 @@ struct PagedDocketState {
     bool finished = false;
     bool first_window = false;
     bool window_is_two_rows = false;
-    bool pager_shown = false;
+    bool side_pagers_gone = false;
+    std::string more_row_1;
+    std::string more_row_2;
     bool second_window = false;
+    bool last_window = false;
     bool wrapped_home = false;
+    std::string more_row_last;
 };
 
 int paged_docket_injector(void* data)
@@ -2426,26 +2666,43 @@ int paged_docket_injector(void* data)
     PagedDocketState* state = static_cast<PagedDocketState*>(data);
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
-
-    state->first_window =
-        wait_for_interactable_label("zone_action_0", "ROW ONE", 10000);
+    state->first_window = click_until_edge("continue_game", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW ONE",
+                                           wait_ms);
+    });
+    // Two authored rows and the pager row fill the three-unit band, and
+    // nothing at all sits past them.
     state->window_is_two_rows = has_interactable("zone_action_1") &&
-        !has_interactable("zone_action_2");
-    state->pager_shown = wait_for_interactable("zone_pager_next_0", 5000);
+        has_interactable("zone_action_2") && !has_interactable("zone_action_3");
+    state->side_pagers_gone = !has_interactable("zone_pager_next_0") &&
+        !has_interactable("zone_pager_prev_0");
+    state->more_row_1 = interactable_label("zone_action_2");
     SDL_Delay(400);
     capture_presented_frame("uxr_docket_pager_page1", std::getenv("UXSHOTS_DIR"));
 
-    interact("zone_pager_next_0");
-    state->second_window =
-        wait_for_interactable_label("zone_action_0", "ROW THREE", 10000);
+    // Every press is ACKNOWLEDGED by the row the window brings up: a bare
+    // interact() whose predecessor's release is still in flight is
+    // silently dropped, and the pager row is exactly the kind of button
+    // that gets pressed twice in a row.
+    state->second_window = click_until_edge("zone_action_2", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW THREE",
+                                           wait_ms);
+    });
+    state->more_row_2 = interactable_label("zone_action_2");
     SDL_Delay(400);
     capture_presented_frame("uxr_docket_pager_page2", std::getenv("UXSHOTS_DIR"));
 
-    interact("zone_pager_prev_0");
-    state->wrapped_home =
-        wait_for_interactable_label("zone_action_0", "ROW ONE", 10000);
+    // The last window holds ROW FIVE alone, and the pager row WRAPS from
+    // there back to the first: a row has one direction.
+    state->last_window = click_until_edge("zone_action_2", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW FIVE",
+                                           wait_ms);
+    });
+    state->more_row_last = interactable_label("zone_action_1");
+    state->wrapped_home = click_until_edge("zone_action_1", [](int wait_ms) {
+        return wait_for_interactable_label("zone_action_0", "ROW ONE",
+                                           wait_ms);
+    });
 
     wait_for_interactable("go", 10000);
     SDL_Delay(300);
@@ -2482,21 +2739,26 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     EXPECT_TRUE(state.finished) << "injector should complete the flow";
     EXPECT_TRUE(state.first_window) << "the band renders its first window";
     EXPECT_TRUE(state.window_is_two_rows)
-        << "a two-unit band shows two rows and parks the rest";
-    EXPECT_TRUE(state.pager_shown)
-        << "an overflowing band grows its pager pair";
+        << "a three-unit band shows two authored rows and the pager row";
+    EXPECT_TRUE(state.side_pagers_gone)
+        << "round 4: the docket has no side pager column at all";
+    EXPECT_EQ("MORE - 1/3  >", state.more_row_1)
+        << "the pager row names what it does and counts the window";
+    EXPECT_EQ("MORE - 2/3  >", state.more_row_2)
+        << "and the count moves with the window";
     EXPECT_TRUE(state.second_window)
-        << "the pager pages the docket IN PLACE, never onto a new screen";
-    EXPECT_TRUE(state.wrapped_home) << "and back again";
+        << "the pager row pages the docket IN PLACE, never onto a new screen";
+    EXPECT_TRUE(state.last_window)
+        << "the last window holds the fifth row alone";
+    EXPECT_EQ("MORE - 3/3  >", state.more_row_last)
+        << "the last window counts itself too";
+    EXPECT_TRUE(state.wrapped_home)
+        << "and the pager row WRAPS home from the last window";
 
-    // ...and COUNTS itself. state.pager_shown only proves the two arrows
-    // exist; the gutter strip under them prints
-    // ActionsLayout::page.indicator() for every multi-page band of 2+ units
-    // (src/interface/ui/menu_screen_specs.cpp, the docket-pager gutter
-    // loop). Compose the same docket the flow just paged and pin the count
-    // that strip has to ink -- without this, deleting the strip (the very
-    // thing the comment above kPagedDocketScript says two bare arrows cannot
-    // replace) left every expectation above green.
+    // ...and COUNTS itself, in the row's own note. Compose the same docket
+    // the flow just paged and pin the arithmetic behind it: the pager row
+    // costs the window one slot, so a three-unit band pages TWO authored
+    // rows at a time, and stepping wraps.
     SaveData& save = test_screen()->save_data;
     save.current_campaign = "gladiator";
     save.scen_num = 1;
@@ -2504,22 +2766,24 @@ TEST(CampaignZoneUi, an_overflowing_docket_pages_in_place_and_counts_itself)
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
     ASSERT_EQ(1u, zone.actions().size());
-    og::ui::CampaignZoneSession::ActionsLayout band = zone.actions()[0];
-    EXPECT_EQ(2, band.units) << "weight 2 buys a two-row band";
-    EXPECT_EQ(5u, band.rows.size()) << "all five authored rows are carried";
-    ASSERT_TRUE(band.page.multi_page())
-        << "five rows in a two-row window overflow";
-    EXPECT_EQ(3, band.page.page_count())
-        << "five rows across a two-row window is three pages";
-    EXPECT_EQ(std::string("1/3"), band.page.indicator())
-        << "the gutter must open on page one of three";
-    ASSERT_TRUE(band.page.step(1));
-    EXPECT_EQ(std::string("2/3"), band.page.indicator())
-        << "one NEXT moves the printed count with the window";
-    ASSERT_TRUE(band.page.step(1));
-    EXPECT_EQ(std::string("3/3"), band.page.indicator());
-    EXPECT_FALSE(band.page.step(1))
-        << "the count saturates on the last page instead of wrapping";
+    EXPECT_EQ(3, zone.actions()[0].units) << "weight 3 buys a three-row band";
+    EXPECT_EQ(5u, zone.actions()[0].rows.size())
+        << "all five authored rows are carried";
+    ASSERT_TRUE(zone.actions()[0].more_row)
+        << "five rows in a three-slot band spend one slot on the pager row";
+    EXPECT_EQ(2, zone.actions()[0].page.rows_per_page)
+        << "the pager row costs the window a slot";
+    EXPECT_EQ(3, zone.actions()[0].page.page_count());
+    EXPECT_EQ(std::string("1/3"), zone.actions()[0].page.indicator());
+    EXPECT_EQ("MORE", zone.actions()[0].more.label);
+    EXPECT_EQ(std::string("1/3"), zone.actions()[0].more.note);
+    ASSERT_TRUE(zone.step_actions_window(0));
+    EXPECT_EQ(std::string("2/3"), zone.actions()[0].more.note)
+        << "the row's note moves with its window";
+    ASSERT_TRUE(zone.step_actions_window(0));
+    ASSERT_TRUE(zone.step_actions_window(0));
+    EXPECT_EQ(0, zone.actions()[0].page.page)
+        << "the last window wraps home instead of saturating";
 }
 
 namespace {
@@ -2615,11 +2879,15 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
     // campaign whose mount left the screen empty must be caught here.
     DefaultTourState tours[] = {
         {"gladiator", "zone_default_gladiator", 1, 0, nullptr, {}},
-        // The Gamesmaster's table composes GAME / FIELD / RANDOM SCENARIO
-        // / MATCH SETUP — all FOUR on the panel's first face. The camp
-        // spends no text line precisely so that its last row is not parked
-        // behind a pager arrow on the screen a player lives on.
-        {"modes", "zone_default_modes", 300, 4, nullptr, {}},
+        // The arena docket composes ONE row: "SETUP - <TITLE>  >", which
+        // states the match and opens the wizard on its GAME step (R2-5,
+        // "replace all three multiplayer arena buttons in the base camp
+        // with just one button to launch the wizard"). The roster LEADS,
+        // so the panel keeps its classic y=33 heading and the freed docket
+        // units go back to hero rows; the camp still spends no text line,
+        // so its one row is never parked behind a pager arrow on the
+        // screen a player lives on.
+        {"modes", "zone_default_modes", 300, 1, nullptr, {}},
         // The Company Fire composes its camp: at the vale that is the fight
         // at your feet plus the QUARTERMASTER and THE LEDGER doors (the
         // road out is named only on the night it opens).
@@ -2960,183 +3228,8 @@ bool wait_for_interactable_label_containing(const std::string& id,
     return false;
 }
 
-// MATCH SETUP, the modes camp's page of knobs: four rows that each read
-// out what the match holds and step it on when clicked. The page replaced a
-// row of named presets, so the still that documents it has to show the
-// VALUES on the faces — and the later captures have to show them actually
-// moving, since a page of labels that never change would look exactly the
-// same from a screenshot. TEAMS retired with lineup amendment A1/A3 and
-// TROOPS with B5, and amendment 5 (G2/G3) seats TEAMS and FILL back on
-// top as MACROS over the per-team fill array: the page is now TEAMS and
-// FILL over TARGET SCORE and the clock (#241). Since lineup amendment 7
-// (#276) the arena's rest is already dealt: THE CIRCLE (scen 300) authors
-// all four teams, so the page opens on TEAMS: 4 / FILL: FAIR. The macro
-// shot steps TEAMS once — off the wheel's end and back to its head, 2 —
-// and FILL one stop past that FAIR face to STRONG; the clock still gets
-// its own shot — MAP is the map's own limit, 5M is a host overriding it.
-struct MatchSetupShotState
-{
-    bool camp_seen = false;
-    bool setup_row_seen = false;
-    bool page_opened = false;
-    bool teams_row_read_four = false;
-    bool fill_row_read_fair = false;
-    bool teams_stepped_to_two = false;
-    bool fill_stepped_to_strong = false;
-    bool score_row_read_map = false;
-    bool score_row_stepped_to_one = false;
-    bool time_row_read_map = false;
-    bool time_row_stepped_to_five = false;
-    bool finished = false;
-};
-
-int match_setup_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    MatchSetupShotState* state = static_cast<MatchSetupShotState*>(data);
-
-    state->camp_seen = wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
-    interact("continue_game");
-
-    // Row 3 of the Gamesmaster's four: GAME, FIELD, RANDOM SCENARIO, and
-    // the door this shot is about.
-    state->setup_row_seen = wait_for_interactable_label_containing(
-        "zone_action_3", "MATCH SETUP", 10000);
-
-    // The zone submenu's own BACK owns the unique (10,169) rect. At rest
-    // the two macro rows lead the page (amendment 5): TEAMS: 4 — the face
-    // derived from the arena's deal on its four authored teams (amendment
-    // 7) — over FILL: FAIR, then the two knobs at MAP.
-    state->page_opened = click_until_edge(
-        "zone_action_3",
-        [](int wait_ms) {
-            return wait_for_interactable_at("back", 10, 169, wait_ms);
-        },
-        "submenu_opened");
-    state->teams_row_read_four = wait_for_interactable_label_containing(
-        "zone_row_0", "TEAMS: 4", 10000);
-    state->fill_row_read_fair = wait_for_interactable_label_containing(
-        "zone_row_1", "FILL: FAIR", 10000);
-    state->score_row_read_map = wait_for_interactable_label_containing(
-        "zone_row_2", "TARGET SCORE: MAP", 10000);
-    state->time_row_read_map = wait_for_interactable_label_containing(
-        "zone_row_3", "TIME LIMIT: MAP", 10000);
-    (void)wait_for_menu_frames(2);
-    capture_presented_frame("zone_submenu_match_setup", std::getenv("UXSHOTS_DIR"));
-
-    // The macros move: one TEAMS click wraps the four-side deal back to
-    // two — the lowest opponent keeps FAIR, the other two turn NONE (both
-    // faces re-derive from the one fill array) — and one FILL click steps
-    // that FAIR face to STRONG.
-    state->teams_stepped_to_two =
-        click_until_edge(
-            "zone_row_0",
-            [](int wait_ms) {
-                return wait_for_interactable_label_containing(
-                    "zone_row_0", "TEAMS: 2", wait_ms);
-            },
-            "acted_autosave");
-    state->fill_stepped_to_strong =
-        click_until_edge(
-            "zone_row_1",
-            [](int wait_ms) {
-                return wait_for_interactable_label_containing(
-                    "zone_row_1", "FILL: STRONG", wait_ms);
-            },
-            "acted_autosave");
-    (void)wait_for_menu_frames(2);
-    capture_presented_frame("uxr_match_setup_macros", std::getenv("UXSHOTS_DIR"));
-
-    // One click walks the score cycle one stop (map -> 1) and speaks it.
-    state->score_row_stepped_to_one =
-        click_until_edge(
-            "zone_row_2",
-            [](int wait_ms) {
-                return wait_for_interactable_label_containing(
-                    "zone_row_2", "TARGET SCORE: 1", wait_ms);
-            },
-            "acted_autosave");
-    (void)wait_for_menu_frames(2);
-    capture_presented_frame("uxr_match_setup_cycled", std::getenv("UXSHOTS_DIR"));
-
-    // The clock: a fresh match wears MAP — the limit the level's own
-    // manifest authored — and one click hands the host the shortest
-    // override the cycle offers.
-    state->time_row_stepped_to_five =
-        click_until_edge(
-            "zone_row_3",
-            [](int wait_ms) {
-                return wait_for_interactable_label_containing(
-                    "zone_row_3", "TIME LIMIT: 5M", wait_ms);
-            },
-            "acted_autosave");
-    (void)wait_for_menu_frames(2);
-    capture_presented_frame("uxr_match_setup_time", std::getenv("UXSHOTS_DIR"));
-
-    (void)click_until_edge("back", [](int wait_ms) {
-        return wait_for_interactable("go", wait_ms);
-    });
-    (void)interact("back");
-    state->finished = true;
-    return 0;
-}
-
 } // namespace
 
-TEST(CampaignZoneUi, zzz_uxr_capture_modes_match_setup_page)
-{
-    trace_clear();
-    SavedPickerSave save_guard;
-    ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("modes"));
-    write_save0_with_two_soldiers("modes", 300);
-
-    MatchSetupShotState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(match_setup_injector, "uxr_setup", &state);
-    ASSERT_NE(nullptr, thread);
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
-
-    verify_captured_frames("match_setup", 4);
-
-    EXPECT_TRUE(state.camp_seen) << "main menu";
-    EXPECT_TRUE(state.setup_row_seen)
-        << "the Gamesmaster's fourth row is the MATCH SETUP door";
-    EXPECT_TRUE(state.page_opened)
-        << "the MATCH SETUP row must open the zone submenu";
-    EXPECT_TRUE(state.teams_row_read_four)
-        << "the macro rows lead the page (amendment 5), and on a map that "
-           "authors four teams the arena's deal derives TEAMS: 4 (#276)";
-    EXPECT_TRUE(state.fill_row_read_fair)
-        << "FILL: FAIR is the resting face of the second macro row";
-    EXPECT_TRUE(state.teams_stepped_to_two)
-        << "one TEAMS click wraps the wheel to two sides and re-derives the "
-           "face";
-    EXPECT_TRUE(state.fill_stepped_to_strong)
-        << "one FILL click steps the dealt FAIR face to STRONG";
-    EXPECT_TRUE(state.score_row_read_map)
-        << "a fresh match plays to the map's own target, and the row that "
-           "leads the page now says so on its face";
-    EXPECT_TRUE(state.score_row_stepped_to_one)
-        << "clicking a knob row steps its cycle and re-labels the row";
-    EXPECT_TRUE(state.time_row_read_map)
-        << "a fresh match runs the map's own clock, and the TIME LIMIT row "
-           "says MAP on its face";
-    EXPECT_TRUE(state.time_row_stepped_to_five)
-        << "clicking the clock row steps it to the cycle's shortest "
-           "override (5M)";
-    EXPECT_TRUE(state.finished);
-
-    // Leave the default campaign mounted for whatever runs next.
-    ASSERT_EQ(CampaignPackageIoError::None,
-              mount_campaign_package_with_error("gladiator"));
-}
 
 namespace {
 
@@ -3164,8 +3257,8 @@ int camp_entry_order_injector(void* data)
     (void)wait_for_interactable("continue_game", 5000);
     SDL_Delay(750);  // fadeblack eats events; the only settle left here
     (void)interact("continue_game");
-    (void)wait_for_interactable_label_containing("zone_action_3",
-                                                 "MATCH SETUP", 10000);
+    (void)wait_for_interactable_label_containing("zone_action_0",
+                                                 "SETUP - ", 10000);
     (void)wait_for_interactable("go", 10000);
     SDL_Delay(300);
     (void)interact("back");
@@ -3175,21 +3268,127 @@ int camp_entry_order_injector(void* data)
 
 } // namespace
 
+namespace {
+
+// D28 / R2-5: on a VERSUS campaign the docket's ONE page row is the SETUP
+// wizard's door on this client — `games`, which names no root PAGE row, so
+// the wizard opens on GAME. On every other campaign a page row still opens
+// the zone submenu over the book. The two chassis are told apart by what
+// comes up, not by what the click looked like.
+struct DocketShortcutState
+{
+    std::atomic<bool> test_finished{false};
+    bool camp_seen = false;
+    bool row_seen = false;
+    bool wizard_opened = false;
+    bool submenu_opened = false;
+    bool finished = false;
+};
+
+int versus_docket_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DocketShortcutState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        static constexpr EscapeDoor kSetupDoors[] = {
+            {"setup_back", "setup_back"},
+            {"back", "back"},
+            {"go", "back"},
+            {"continue_game", "continue_game"},
+        };
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSetupDoors);
+    };
+
+    state->camp_seen = wait_for_interactable("continue_game", 10000);
+    if (!state->camp_seen)
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+
+    state->row_seen = wait_for_interactable_label_containing(
+        "zone_action_0", "SETUP - ", 15000);
+    if (!state->row_seen)
+        return escape(2, "the versus docket never composed its SETUP row");
+    trace_clear();
+    state->wizard_opened = click_until_edge(
+        "zone_action_0",
+        [](int wait_ms) {
+            return wait_for_interactable("setup_tab_0", wait_ms);
+        },
+        "docket_shortcut", 3, 10000, "setup");
+    if (!state->wizard_opened)
+        return escape(3, "the SETUP row did not open the wizard");
+    state->submenu_opened = trace_contains("zone", "submenu_opened");
+
+    (void)click_until_edge("setup_back", [](int wait_ms) {
+        return wait_for_interactable("go", wait_ms);
+    });
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(CampaignZoneUi, versus_docket_page_rows_open_the_wizard_not_the_submenu)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    write_save0_with_two_soldiers("modes", 820);
+
+    DocketShortcutState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(versus_docket_injector, "versus_docket", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_TRUE(state.finished);
+    EXPECT_TRUE(state.wizard_opened)
+        << "the versus docket's SETUP row must land on the wizard's GAME "
+           "step — two doors from one screen into the same pages on two "
+           "chassis is the clutter #304 names";
+    EXPECT_FALSE(state.submenu_opened)
+        << "the zone submenu must not open on a versus campaign's page row";
+    EXPECT_TRUE(trace_contains("setup", "docket_shortcut games"))
+        << "the shortcut names the page it carries";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 // The camp's ENTRY composition must read a save the arena deal has already
 // dealt (amendment 7, #276).
 //
 // create_team_menu composes the zone once at screen entry (fetch trigger 1)
 // and only then runs the loop, whose FIRST frame_tick holds the level-reload
 // guard that loads the arena and deals its FILL: FAIR bands. Everything the
-// entry composed — the camp's own rows and, through them, the MATCH SETUP
-// page a door opens — therefore read an UNDEALT save, and a click dispatched
-// on the loop's first iteration (dispatch runs before frame_tick) opens that
-// page before the deal ever lands. On a fast box the injector's 50 ms poll
+// entry composed — the camp's own rows and, through them, the step a
+// docket door opens — therefore read an UNDEALT save, and a click
+// dispatched on the loop's first iteration (dispatch runs before
+// frame_tick) opens that step before the deal ever lands. On a fast box the injector's 50 ms poll
 // never wins that race; on the instrumented four-slot CI runners of PR #291
-// it won every time — CampaignZoneUi.zzz_uxr_capture_modes_match_setup_page
+// it won every time — the retired
+// CampaignZoneUi.zzz_uxr_capture_modes_match_setup_page (its page is the
+// SETUP wizard's TEAMS step now, #304)
 // read TEAMS: 1 / FILL: NONE and failed 3/3 attempts in BOTH the Coverage
 // (run 34684325469) and the ASan (run 34684325459) lane, with the deal's
 // autosave appearing in the log only after the page was closed again.
+// That page is the SETUP wizard's TEAMS step now (#304) and the docket's
+// own ARENA: row is what this flow waits on, but the ORDER it pins is the
+// same one and for the same reason: the wizard's first composition reads
+// the save the entry left behind.
 //
 // Ordered traces, not a clock: the deal must be recorded before the entry
 // fetch it feeds.
@@ -3225,7 +3424,7 @@ TEST(CampaignZoneUi, base_camp_entry_deals_the_arena_before_it_composes)
         << "the camp's entry composition read a save whose arena FILL deal "
            "had not been dealt yet: the deal belongs to screen ENTRY, not to "
            "the first frame tick, or a door activated on the loop's first "
-           "iteration serves an undealt MATCH SETUP page";
+           "iteration serves an undealt SETUP: TEAMS step";
 
     // Leave the default campaign mounted for whatever runs next.
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -3234,29 +3433,28 @@ TEST(CampaignZoneUi, base_camp_entry_deals_the_arena_before_it_composes)
 
 namespace {
 
-// Open MATCH SETUP through the ladder and come straight back out. The
-// press the flow starts with is dropped on purpose (g_click_ladder_click_drops), so
-// only a retry can reach the page.
-int match_setup_retry_injector(void* data)
+// Open the SETUP wizard through the ladder and come straight back out. The
+// press the flow starts with is dropped on purpose
+// (g_click_ladder_click_drops), so only a retry can reach the screen.
+int setup_retry_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* opened = static_cast<bool*>(data);
 
     (void)wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    (void)wait_for_interactable_label_containing("zone_action_3",
-                                                 "MATCH SETUP", 10000);
+    (void)wait_for_interactable("zone_action_0", 10000);
 
     *opened = click_until_edge(
-        "zone_action_3",
+        "zone_action_0",
         [](int wait_ms) {
-            return wait_for_interactable_at("back", 10, 169, wait_ms);
+            return wait_for_interactable("setup_tab_0", wait_ms);
         },
-        "submenu_opened");
+        "opened", 3, 10000, "setup");
 
     if (*opened) {
-        (void)click_until_edge("back", [](int wait_ms) {
+        (void)click_until_edge("setup_back", [](int wait_ms) {
             return wait_for_interactable("go", wait_ms);
         });
     }
@@ -3267,23 +3465,22 @@ int match_setup_retry_injector(void* data)
 // The same ladder, pointed at a button that is not on this screen: it must
 // spend its three attempts and REPORT, never hang against the group's
 // 420 s budget.
-int match_setup_wrong_id_injector(void* data)
+int setup_wrong_id_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* reached = static_cast<bool*>(data);
 
     (void)wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    (void)wait_for_interactable_label_containing("zone_action_3",
-                                                 "MATCH SETUP", 10000);
+    (void)wait_for_interactable("zone_action_0", 10000);
 
     // No witness: a press that is nowhere near a button cannot land, so
     // this ladder is allowed to spend every attempt on a fresh press.
     *reached = click_until_edge(
         "zone_action_99_not_a_row",
         [](int wait_ms) {
-            return wait_for_interactable_at("back", 10, 169, wait_ms);
+            return wait_for_interactable("setup_tab_0", wait_ms);
         },
         nullptr, 3, 500);
 
@@ -3293,7 +3490,9 @@ int match_setup_wrong_id_injector(void* data)
 
 struct BlindCyclerState
 {
-    // false: the press names its landing with a trace ("acted_autosave").
+    // false: the press names its landing with a trace (the wizard's own
+    // TRACE("setup", "turned <knob>"), written by the dispatch before the
+    // face is republished).
     // true: the same press with NO witness at all — the ladder then has only
     // its re-check-before-re-press to keep the wheel from overshooting.
     bool witnessless = false;
@@ -3302,47 +3501,42 @@ struct BlindCyclerState
     bool wheel_still_on_two = false;
 };
 
-// The cycler half of the same ladder. Open MATCH SETUP, then step the TEAMS
-// macro exactly ONCE with the first edge observation blinded
-// (g_click_ladder_edge_blinds) — the starved menu thread that has not republished
-// the row's label yet, seen from here. A ladder that re-presses a landed
-// cycler walks the wheel 4 -> 2 -> 3 -> 4 and never reads TEAMS: 2 again.
-int match_setup_blind_cycler_injector(void* data)
+// The cycler half of the same ladder. Open the wizard's RULES step, then
+// step the SCORE wheel exactly ONCE with the first edge observation blinded
+// (g_click_ladder_edge_blinds) — the starved menu thread that has not
+// republished the row's label yet, seen from here. A ladder that re-presses
+// a landed cycler walks the wheel MAP -> 1 -> 3 and never reads SCORE: 1
+// again.
+int setup_blind_cycler_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<BlindCyclerState*>(data);
 
     (void)wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);  // fadeblack eats events; the only settle left here
+    (void)wait_for_menu_frames(2);
     (void)interact("continue_game");
-    (void)wait_for_interactable_label_containing("zone_action_3",
-                                                 "MATCH SETUP", 10000);
+    (void)wait_for_interactable("zone_action_0", 10000);
 
-    state->opened = click_until_edge(
-        "zone_action_3",
-        [](int wait_ms) {
-            return wait_for_interactable_at("back", 10, 169, wait_ms);
-        },
-        "submenu_opened");
+    state->opened = open_setup_step(3, "RULES", 15000);
     if (state->opened) {
-        (void)wait_for_interactable_label_containing("zone_row_0", "TEAMS: 4",
-                                                     10000);
+        (void)wait_for_interactable_label_containing("setup_row_0",
+                                                     "SCORE: MAP", 10000);
         // Armed HERE, not in the test body: the blind belongs to the cycler
         // press, and the door ladder above would otherwise eat it.
         g_click_ladder_edge_blinds = 1;
         state->stepped = click_until_edge(
-            "zone_row_0",
+            "setup_row_0",
             [](int wait_ms) {
                 return wait_for_interactable_label_containing(
-                    "zone_row_0", "TEAMS: 2", wait_ms);
+                    "setup_row_0", "SCORE: 1", wait_ms);
             },
-            state->witnessless ? nullptr : "acted_autosave");
+            state->witnessless ? nullptr : "turned", 3, 2500, "setup");
         // Where the wheel actually stands once the ladder is done: one
-        // press, one stop. An overshoot reads 3 or 4 here and this stays
+        // press, one stop. An overshoot reads 3 or 5 here and this stays
         // false however the ladder reported.
         state->wheel_still_on_two = wait_for_interactable_label_containing(
-            "zone_row_0", "TEAMS: 2", 5000);
-        (void)click_until_edge("back", [](int wait_ms) {
+            "setup_row_0", "SCORE: 1", 5000);
+        (void)click_until_edge("setup_back", [](int wait_ms) {
             return wait_for_interactable("go", wait_ms);
         });
     }
@@ -3354,12 +3548,14 @@ int match_setup_blind_cycler_injector(void* data)
 
 // Teeth for the ladder: a press that evaporates costs one attempt, and the
 // flow still reaches the screen. Counts, never clocks.
-TEST(CampaignZoneUi, match_setup_click_helper_retries_a_dropped_press)
+TEST(CampaignZoneUi, setup_click_helper_retries_a_dropped_press)
 {
     trace_clear();
     SavedPickerSave save_guard;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) is a TEAM DEATHMATCH arena, so the wizard's
+    // RULES step leads with the SCORE wheel: MAP -> 1 -> 3 -> 5 -> 10.
     write_save0_with_two_soldiers("modes", 300);
 
     g_click_ladder_click_retries = 0;
@@ -3369,7 +3565,7 @@ TEST(CampaignZoneUi, match_setup_click_helper_retries_a_dropped_press)
 
     bool opened = false;
     SDL_Thread* thread =
-        SDL_CreateThread(match_setup_retry_injector, "zone_retry", &opened);
+        SDL_CreateThread(setup_retry_injector, "setup_retry", &opened);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -3388,12 +3584,14 @@ TEST(CampaignZoneUi, match_setup_click_helper_retries_a_dropped_press)
               mount_campaign_package_with_error("gladiator"));
 }
 
-TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
+TEST(CampaignZoneUi, setup_click_helper_reports_a_ladder_that_never_lands)
 {
     trace_clear();
     SavedPickerSave save_guard;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) is a TEAM DEATHMATCH arena, so the wizard's
+    // RULES step leads with the SCORE wheel: MAP -> 1 -> 3 -> 5 -> 10.
     write_save0_with_two_soldiers("modes", 300);
 
     g_click_ladder_click_retries = 0;
@@ -3402,8 +3600,8 @@ TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
     g_click_ladder_edge_blinds = 0;
 
     bool reached = true;
-    SDL_Thread* thread = SDL_CreateThread(match_setup_wrong_id_injector,
-                                          "zone_wrong_id", &reached);
+    SDL_Thread* thread = SDL_CreateThread(setup_wrong_id_injector,
+                                          "setup_wrong_id", &reached);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -3412,7 +3610,7 @@ TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    EXPECT_FALSE(reached) << "a wrong id can never reach the page";
+    EXPECT_FALSE(reached) << "a wrong id can never reach the screen";
     EXPECT_EQ(3, g_click_ladder_click_retries)
         << "the ladder spends its three attempts and reports, never hangs";
 
@@ -3425,12 +3623,14 @@ TEST(CampaignZoneUi, match_setup_click_helper_reports_a_ladder_that_never_lands)
 // observation lie exactly the way a starved menu thread does, and a cycler
 // is the one row where a second press is not free — it costs the wheel a
 // stop it can only get back by going all the way round.
-TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
+TEST(CampaignZoneUi, setup_click_helper_waits_out_a_landed_cycler)
 {
     trace_clear();
     SavedPickerSave save_guard;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) is a TEAM DEATHMATCH arena, so the wizard's
+    // RULES step leads with the SCORE wheel: MAP -> 1 -> 3 -> 5 -> 10.
     write_save0_with_two_soldiers("modes", 300);
 
     g_click_ladder_click_retries = 0;
@@ -3441,8 +3641,8 @@ TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
     g_click_ladder_edge_blinds = 0;
 
     BlindCyclerState state;
-    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
-                                          "zone_blind_cycler", &state);
+    SDL_Thread* thread = SDL_CreateThread(setup_blind_cycler_injector,
+                                          "setup_blind_cycler", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -3451,13 +3651,13 @@ TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_TRUE(state.opened) << "the SETUP door still opens on RULES";
     EXPECT_EQ(0, g_click_ladder_edge_blinds) << "the injected blind must be consumed";
     EXPECT_TRUE(state.stepped)
         << "a landed press whose label lagged must still reach its edge";
     EXPECT_TRUE(state.wheel_still_on_two)
         << "the ladder must not press a landed cycler again: a second press "
-           "walks the TEAMS wheel past the stop the flow asked for";
+           "walks the SCORE wheel past the stop the flow asked for";
     EXPECT_EQ(1, g_click_ladder_edge_waits)
         << "exactly one attempt waited on a press that had already landed";
     EXPECT_EQ(0, g_click_ladder_click_retries)
@@ -3474,14 +3674,16 @@ TEST(CampaignZoneUi, match_setup_click_helper_waits_out_a_landed_cycler)
 // there, and the press is cancelled instead of sent.
 //
 // Without that re-check this flow presses a second time on a wheel that has
-// already moved, and TEAMS walks 4 -> 2 -> 3 (then 4) while the flow waits
-// for a face the row has gone by.
-TEST(CampaignZoneUi, match_setup_click_helper_recheck_saves_a_witnessless_cycler)
+// already moved, and SCORE walks MAP -> 1 -> 3 while the flow waits for a
+// face the row has gone by.
+TEST(CampaignZoneUi, setup_click_helper_recheck_saves_a_witnessless_cycler)
 {
     trace_clear();
     SavedPickerSave save_guard;
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) is a TEAM DEATHMATCH arena, so the wizard's
+    // RULES step leads with the SCORE wheel: MAP -> 1 -> 3 -> 5 -> 10.
     write_save0_with_two_soldiers("modes", 300);
 
     g_click_ladder_click_retries = 0;
@@ -3491,8 +3693,8 @@ TEST(CampaignZoneUi, match_setup_click_helper_recheck_saves_a_witnessless_cycler
 
     BlindCyclerState state;
     state.witnessless = true;  // no landed_trace on the cycler press
-    SDL_Thread* thread = SDL_CreateThread(match_setup_blind_cycler_injector,
-                                          "zone_recheck_cycler", &state);
+    SDL_Thread* thread = SDL_CreateThread(setup_blind_cycler_injector,
+                                          "setup_recheck_cycler", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -3501,19 +3703,156 @@ TEST(CampaignZoneUi, match_setup_click_helper_recheck_saves_a_witnessless_cycler
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    EXPECT_TRUE(state.opened) << "the MATCH SETUP door still opens";
+    EXPECT_TRUE(state.opened) << "the SETUP door still opens on RULES";
     EXPECT_EQ(0, g_click_ladder_edge_blinds)
         << "the injected blind must be consumed";
     EXPECT_TRUE(state.stepped)
         << "the re-check must report the late edge as an arrival";
     EXPECT_TRUE(state.wheel_still_on_two)
         << "a witnessless cycler must not be pressed again either: the "
-           "re-check found TEAMS: 2 before the re-press went out";
+           "re-check found SCORE: 1 before the re-press went out";
     EXPECT_EQ(1, g_click_ladder_click_retries)
         << "exactly one attempt expired with no witness and no edge";
     EXPECT_EQ(1, g_click_ladder_edge_waits)
         << "the second attempt waited instead of pressing, because the "
            "re-check found the edge already there";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// ---------------------------------------------------------------------------
+// R2-5, the keyboard: the docket's one SETUP row is part of the camp's
+// SPINE, not a mouse-only face. Base Camp is the first shipped camp with a
+// band BELOW the roster (menu_screen_specs.cpp's bands_below), so the chain
+// has to read roster -> docket row -> seat rail with nothing stranded in
+// between. The same leg runs on a 2-hero company and on one big enough to
+// page the roster, because the row's neighbours above it are different in
+// the two cases — and the full-roster frame is the one the read-back
+// judges for "panel or stray".
+
+namespace {
+
+struct DocketSpineState
+{
+    std::atomic<bool> test_finished{false};
+    bool camp_seen = false;
+    bool row_seen = false;
+    int steps_to_row = -1;
+    std::string above_row;
+    std::string below_row;
+    // The full-roster lap writes the frame the read-back judges for
+    // "part of the panel, or a stray line under it".
+    bool capture_shot = false;
+    bool finished = false;
+};
+
+int docket_spine_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DocketSpineState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        static constexpr EscapeDoor kSpineDoors[] = {
+            {"setup_back", "setup_back"},
+            {"back", "back"},
+            {"go", "back"},
+            {"continue_game", "continue_game"},
+        };
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kSpineDoors);
+    };
+
+    state->camp_seen = wait_for_interactable("continue_game", 10000);
+    if (!state->camp_seen)
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    state->row_seen = wait_for_interactable_label_containing(
+        "zone_action_0", "SETUP - ", 15000);
+    if (!state->row_seen)
+        return escape(2, "the versus docket never showed its SETUP row");
+    (void)wait_for_menu_frames(2);
+    if (state->capture_shot) {
+        capture_presented_frame("zone_default_modes_full_roster",
+                                std::getenv("UXSHOTS_DIR"));
+    }
+
+    // Walk DOWN from wherever the camp lands the highlight until the
+    // docket row has it, keeping the id of the step before: the chain is
+    // bounded by the table, so a spine that never reaches the row reports
+    // rather than spins.
+    std::string previous = highlighted_id();
+    for (int step = 1; step <= MAX_BUTTONS; ++step) {
+        if (!press_menu_nav(KEY_DOWN))
+            return escape(3, "a DOWN step was never consumed");
+        const std::string now = highlighted_id();
+        if (now == "zone_action_0") {
+            state->steps_to_row = step;
+            state->above_row = previous;
+            break;
+        }
+        if (now == previous)
+            break;  // the chain ends above the row; the assertions say so
+        previous = now;
+    }
+    if (state->steps_to_row < 0)
+        return escape(4, "DOWN never reached the docket's SETUP row");
+
+    if (!press_menu_nav(KEY_DOWN))
+        return escape(5, "the step off the docket row was never consumed");
+    state->below_row = highlighted_id();
+
+    state->finished = true;
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(CampaignZoneUi, versus_docket_row_is_in_the_camp_keyboard_spine)
+{
+    for (int heroes : {2, 8}) {
+        trace_clear();
+        SavedPickerSave save_guard;
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("modes"));
+        write_save0_with_soldiers("modes", 820, heroes);
+
+        DocketSpineState state;
+        state.capture_shot = heroes > 7;
+        SDL_Thread* thread =
+            SDL_CreateThread(docket_spine_injector, "docket_spine", &state);
+        ASSERT_NE(nullptr, thread);
+        g_picker_mainmenu_calls = 0;
+        g_picker_max_mainmenu_calls = 1;
+        picker_main(0, nullptr);
+        state.test_finished.store(true);
+        int thread_result = 0;
+        SDL_WaitThread(thread, &thread_result);
+        escape_tail_join_hygiene();
+        cleanup_picker_state();
+        g_picker_max_mainmenu_calls = 0;
+
+        EXPECT_EQ(0, thread_result)
+            << heroes << " heroes: the injector gave up at leg "
+            << thread_result;
+        ASSERT_TRUE(state.row_seen) << heroes << " heroes";
+        EXPECT_GT(state.steps_to_row, 0)
+            << heroes << " heroes: DOWN must reach the docket's SETUP row";
+        EXPECT_TRUE(state.above_row.starts_with("roster_row_"))
+            << heroes
+            << " heroes: the row the spine enters the docket from is the "
+               "last visible ROSTER row — '"
+            << state.above_row << "'";
+        EXPECT_EQ("seat_card_0", state.below_row)
+            << heroes
+            << " heroes: and one more DOWN lands on the seat rail, so "
+               "nothing is stranded under the band — '"
+            << state.below_row << "'";
+        // The full-roster lap is the only one that shoots; the ledger is
+        // per-flow, so both laps answer for what they recorded.
+        verify_captured_frames("docket_spine",
+                               state.capture_shot ? 1u : 0u);
+    }
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));

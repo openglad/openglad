@@ -70,14 +70,15 @@ constexpr const char* kCampLine = "Every dream can be dreamed again.";
 // still has room for the engine's own [CURRENT]/[CLEARED] stamp. The last
 // is the ENGINE's — the Base Camp action row's face,
 // (kBaseCampZoneActionRowWidth - 8) / 6 in the picker's private
-// menu_screen_specs.cpp, a literal here on purpose: this test is the pin
-// that says the composed dream row still fits it uncut. It is the narrower
-// of the two SDL row faces a dream row can land on (the zone submenu's is
-// 48).
+// picker_sdl_defs.h, a literal here on purpose: this test is the pin that
+// says the composed dream row still fits it uncut. Round 4 (2026-09-22,
+// PR #307) widened that face to the panel's whole width when the side
+// pager column left, so both SDL row faces a dream row can land on — the
+// docket's and the zone submenu's — are 48 now.
 constexpr std::size_t kLabelBudget = 24;
 constexpr std::size_t kNoteBudget = 20;
 constexpr std::size_t kLineBudget = 38;
-constexpr std::size_t kSdlRowFaceChars = 42;
+constexpr std::size_t kSdlRowFaceChars = 48;
 
 class ImaginationsDreamLogTest : public ::testing::Test
 {

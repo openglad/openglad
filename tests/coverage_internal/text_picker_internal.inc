@@ -875,8 +875,9 @@ int text_picker_testing_exercise_internal_paths()
     }
 
     // The scenario-troops row retired with its knob (amendment B5); teams
-    // and target score moved to the camp's MATCH SETUP page
-    // (docs/camp-controls-design.md). Neither is dispatched here any more.
+    // and target score moved to the SETUP wizard's RULES step
+    // (docs/match-setup-design.md §2.5). Neither is dispatched here any
+    // more.
     config.campaign = "modes";
     check(client.save_game() &&
           save.current_campaign == "modes");

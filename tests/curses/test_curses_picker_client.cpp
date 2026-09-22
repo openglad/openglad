@@ -34,6 +34,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
@@ -491,7 +492,7 @@ TEST(CursesPickerClient, level_edit_notice_renders)
 }
 
 // The flat match-rule rows (match teams, target score) left Team Build for
-// the camp's MATCH SETUP page (docs/camp-controls-design.md): one place, in
+// the SETUP wizard's RULES step (docs/match-setup-design.md): one place, in
 // plain words, on every client. Nothing in the curses surface carries them
 // any more — see team_build_lists_the_appended_doors_last below for the
 // list. The third of that trio, TROOPS, retired outright with amendment B5,
@@ -499,9 +500,10 @@ TEST(CursesPickerClient, level_edit_notice_renders)
 // guard-rendering branch stays covered by the READY row's networked-only
 // guard.
 
-// The Team Build list renders the two appended doors — DIFFICULTY and then
-// LINEUP (docs/lineup-design.md §8) — with their fixed labels, past the digit
-// ceiling and reachable by the arrow walk.
+// The Team Build list renders the two appended doors — DIFFICULTY, then
+// LINEUP (docs/lineup-design.md §8) — with their fixed labels, past the
+// digit ceiling and reachable by the arrow walk. There is no third: the
+// SETUP wizard's terminal door is the Camp's row 1 (R2-D11).
 TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
 {
     PickerFixture f;
@@ -511,7 +513,7 @@ TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
         team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
     const int lineup_idx = team_build_item_index(PickerMenuCommand::Lineup);
     ASSERT_EQ(items - 2, difficulty_idx)
-        << "LINEUP appended BELOW difficulty, so difficulty kept its ordinal";
+        << "LINEUP appended BELOW difficulty, which kept its ordinal";
     ASSERT_EQ(items - 1, lineup_idx)
         << "lineup is appended last, so nothing above it moved";
 
@@ -544,6 +546,8 @@ TEST(CursesPickerClient, team_build_lists_the_appended_doors_last)
     ASSERT_GE(rows.size(), 2u) << dump;
     EXPECT_EQ("  Difficulty", rows[rows.size() - 2])
         << "difficulty sits directly above the LINEUP door:\n" << dump;
+    EXPECT_EQ(dump.find("Setup"), std::string::npos)
+        << "no SETUP row: the camp's docket is the wizard's door:\n" << dump;
     EXPECT_EQ(dump.find("Match Teams"), std::string::npos)
         << "the flat match-rule rows are gone from Team Build:\n" << dump;
     EXPECT_EQ(dump.find("Score Limit"), std::string::npos) << dump;
@@ -1534,7 +1538,7 @@ TEST(CursesPickerClient, progress_level_title_requires_matching_mount)
     f.client.handle_menu_item(PickerMenuId::Scenario, *item);
 
     const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("Campaign: Multiplayer Game Modes"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Campaign: Multiplayer Arenas"), std::string::npos) << dump;
     EXPECT_NE(dump.find("Level: 4"), std::string::npos) << dump;
     EXPECT_EQ(dump.find("Level: 4."), std::string::npos)
         << "a mismatched mount must not show another campaign's title";
@@ -2173,6 +2177,426 @@ TEST(CursesPickerClient, lineup_knob_cycles_on_a_classic_campaign)
     EXPECT_NE(dump.find("TEAM 1  FILL: WEAK"), std::string::npos)
         << "the redraw re-reads the wheel out of the save:\n" << dump;
     EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// --- #304: the SETUP wizard, curses face --------------------------------
+//
+// The wizard is the SHARED terminal driver (og::ui::run_terminal_match_setup),
+// so these cases prove the curses WIRING — the numbered prompt, the notice
+// screens, the tails this client binds — not the driver's composition,
+// which test_match_setup_session.cpp pins arm by arm. Every line and row
+// below is byte-identical with the text client's by construction.
+namespace {
+
+// The camp door: the terminals' ONE way into the wizard (R2-D11) is Team
+// Build's Camp row, whose one-row docket opens the five steps.
+const og::ui::PickerMenuItem& camp_item()
+{
+    const og::ui::PickerMenuItem* const item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild,
+                                      PickerMenuCommand::CampaignCamp);
+    EXPECT_TRUE(item != nullptr);
+    return *item;
+}
+
+// Type a wizard row number at the "Setup # [1-N]" prompt and send it. A
+// trailing '-' is typed like any other character, which is what lets a leg
+// below prove the retired `N-` grammar is now just an unparsable answer.
+// The camp prompt takes the same shape, so the SETUP row is typed with it
+// too.
+void type_setup_row(HeadlessTerminal& term, std::string_view answer)
+{
+    for (const char ch : answer)
+        term.push_char(static_cast<char32_t>(ch));
+    term.push_special(KeyCode::Enter);
+}
+
+// A SOLO modes company parked on THE PITCH: one deployed fighter on team 1
+// and nobody stranded anywhere else, which is the roster every #305
+// assertion below reads. (seed_lineup_roster's fourth fighter sits on team
+// 2 with no seat, so that band answers the NO SEAT: AI diagnostic -- which
+// correctly outranks the census and would hide the very number these cases
+// exist to pin.)
+void seed_setup_save(PickerFixture& f, short scen = 820)
+{
+    SaveData& save = f.save();
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Solo";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_size = 1;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.current_campaign = "modes";
+    save.scen_num = scen;
+    f.config.campaign = "modes";
+    f.config.level = scen;
+    save.fill = {};
+    save.map_units = {};
+}
+
+} // namespace
+
+// The five steps and the two steppers, through the camp's ONE door. NEXT
+// on GAME means "keep the arena that is set" (§2.2), so this walk reaches
+// TEAMS, RULES and MATCH without ever touching a level row.
+//
+// Leaving the wizard lands back on the camp, which then renders the last
+// frame, so the STEPPER is proven by state rather than by a dump: only a
+// walk that actually reached MATCH can PREV back onto RULES and turn the
+// SCORE row there. (The pages' composition -- MATCH's two doors, its PREV
+// and its missing NEXT -- is pinned arm by arm in
+// test_match_setup_session.cpp; these cases prove the curses WIRING.)
+TEST(CursesPickerClient, setup_flow_walks_game_to_match)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    ASSERT_EQ(0, static_cast<int>(f.save().ctf_capture_limit));
+
+    type_setup_row(f.t(), "1");   // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "9");   // GAME: Next: TEAMS
+    type_setup_row(f.t(), "3");   // TEAMS: Next: RULES
+    type_setup_row(f.t(), "3");   // RULES: Next: MATCH
+    type_setup_row(f.t(), "3");   // MATCH: Prev: RULES (MATCH offers no NEXT)
+    type_setup_row(f.t(), "1");   // RULES: SCORE, MAP -> 1
+    type_setup_row(f.t(), "0");   // wizard: back out -> the camp prompt
+    f.t().push_special(KeyCode::Escape);  // camp: close it
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(1, static_cast<int>(f.save().ctf_capture_limit))
+        << "three NEXTs must land on the LAST step: only from MATCH does a "
+           "PREV reach RULES, where row 1 is SCORE";
+    EXPECT_EQ(820, static_cast<int>(f.save().scen_num))
+        << "the walk touched no level row";
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Camp # [1-1]"), std::string::npos)
+        << "the wizard hands the prompt back to the camp it came from:\n"
+        << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// A level row answers through the SHARED terminal gate and this client's
+// own apply_level tail -- the one the camp flow binds -- and only its
+// Applied arm advances. The camp's docket row then states the arena the
+// wizard set, and the LINEUP page (the curses surface that renders last)
+// reads the same staged squad the wizard's TEAMS step previewed, seat
+// name included -- this client HAS input hardware, so the cell says what
+// the controller is, not the company abbreviation.
+TEST(CursesPickerClient, setup_flow_level_row_rides_apply_level_then_level_applied)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    type_setup_row(f.t(), "1");   // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "5");   // GAME: SOCCER -> descend to the ARENA page
+    type_setup_row(f.t(), "1");   // ARENA: THE PITCH is [CURRENT] -> Unchanged
+    dismiss(f.t());               //   ...its notice screen
+    type_setup_row(f.t(), "2");   // ARENA: THE MUDBOWL -> Applied
+    dismiss(f.t());               //   ...the "Level set to" notice
+    type_setup_row(f.t(), "1");   // TEAMS: the FILL wheel -- only the Applied
+                                  //   arm advances, and it advances HERE
+    type_setup_row(f.t(), "0");   // wizard: back out -> the camp prompt
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(821, static_cast<int>(f.save().scen_num))
+        << "the row wrote through the curses set-level tail";
+    EXPECT_EQ(821, f.config.level)
+        << "the same tail moves the session config, like the camp flow's";
+    EXPECT_EQ(og::sim::kFillBrutal, f.save().fill[0])
+        << "the Unchanged arm did NOT advance and the Applied one did: the "
+           "key after it turned the TEAMS wheel off the arena's dealt STRONG";
+    {
+        const std::string dump = f.t().dump();
+        EXPECT_NE(dump.find("1. SETUP - SOCCER: THE MUDBOWL"),
+                  std::string::npos)
+            << "the camp states the arena the wizard set:\n" << dump;
+    }
+
+    // The census the wizard's wheel bought, read back on the page that
+    // renders last. (The wizard's own TEAMS line -- seat cell included --
+    // is pinned at session level in test_match_setup_session.cpp and, end
+    // to end, by the text client's walk in test_platform_headless.cpp; the
+    // camp takes the curses prompt back before this dump is taken.)
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+    const std::string lineup = f.t().dump();
+    EXPECT_NE(lineup.find("TEAM 1 RED"), std::string::npos) << lineup;
+    EXPECT_NE(lineup.find("3 BOTS"), std::string::npos)
+        << "the band reads the staged census of the wheel the wizard "
+           "turned:\n" << lineup;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// A cycler row: `N` forward, `N-` back to where it started. The camp takes
+// the prompt back when the wizard closes, so the face is read off the SAVE
+// and off the DISK -- the Turned arm's autosave banks the value in the
+// active company file, which is the witness a redrawn label could never be.
+//
+// And the wheels are FORWARD ONLY: `N-` is no longer a grammar the prompt
+// knows, so it buys the invalid-row notice and nothing else. An overshoot
+// costs a lap, which on the five-stop TIME LIMIT wheel is four more
+// presses -- the third leg walks exactly that lap.
+TEST(CursesPickerClient, setup_flow_knob_turn_autosaves_and_laps_forward)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    ASSERT_EQ(0, static_cast<int>(f.save().time_limit));
+
+    // Leg 1: forward.
+    type_setup_row(f.t(), "1");   // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "9");   // GAME: Next: TEAMS
+    type_setup_row(f.t(), "3");   // TEAMS: Next: RULES
+    type_setup_row(f.t(), "2");   // RULES: TIME LIMIT forward
+    type_setup_row(f.t(), "0");   // wizard: back out
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(3600, static_cast<int>(f.save().time_limit))
+        << "one forward step off MAP is the wheel's first value";
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None,
+                  reloaded.load_with_error(og::data::active_company_slot()));
+        EXPECT_EQ(3600, static_cast<int>(reloaded.time_limit))
+            << "the Turned arm's autosave tail must bank the knob";
+    }
+
+    // Leg 2: `2-` on the SAME row is not an answer. The prompt takes a
+    // plain number, the parse fails, and the driver says so.
+    type_setup_row(f.t(), "1");
+    type_setup_row(f.t(), "9");
+    type_setup_row(f.t(), "3");
+    type_setup_row(f.t(), "2-");
+    dismiss(f.t());
+    type_setup_row(f.t(), "0");
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(3600, static_cast<int>(f.save().time_limit))
+        << "`N-` retired with the reverse cell: it moves nothing, and the "
+           "dismissed screen it put up was the driver's invalid-row notice "
+           "(its words are pinned on the text client, whose stdout keeps "
+           "the whole transcript)";
+
+    // Leg 3: the overshoot costs a lap, not a reverse. Four more forward
+    // presses bring the five-stop wheel back to MAP.
+    type_setup_row(f.t(), "1");
+    type_setup_row(f.t(), "9");
+    type_setup_row(f.t(), "3");
+    for (int i = 0; i < 4; ++i)
+        type_setup_row(f.t(), "2");
+    type_setup_row(f.t(), "0");
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(0, static_cast<int>(f.save().time_limit))
+        << "five stops, four more presses: the lap is the whole cost of an "
+           "overshoot";
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None,
+                  reloaded.load_with_error(og::data::active_company_slot()));
+        EXPECT_EQ(0, static_cast<int>(reloaded.time_limit))
+            << "and the disk went round with it";
+    }
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// R2-3, the curses half: item 11 is a plain row on EVERY campaign now. The
+// seven rules the wizard's RULES step briefly held went back behind this
+// one door, so on a versus campaign it OPENS instead of refusing.
+TEST(CursesPickerClient, difficulty_opens_on_a_versus_campaign)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    const auto* difficulty = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::OpenDifficultyMenu);
+    ASSERT_NE(difficulty, nullptr);
+
+    f.t().push_special(KeyCode::Escape);  // the submenu: Esc closes it
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *difficulty);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Respawns:"), std::string::npos)
+        << "item 11 must OPEN the DIFFICULTY submenu on a versus "
+           "campaign:\n" << dump;
+    EXPECT_EQ(dump.find("SETUP: RULES"), std::string::npos)
+        << "nothing points at the wizard for the rules any more:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The two pointer doors and the invalid-row notice. Terminals reach LINEUP
+// and VIEW SCENARIO from their own menus, so the wizard's rows say WHERE
+// the page is instead of nesting a second copy of it. None of the three
+// legs may advance a step, open a page or write anything -- which is what
+// the untouched save and the unchanged camp row say after the drive.
+TEST(CursesPickerClient, setup_flow_doors_point_at_the_pages_the_menus_own)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    type_setup_row(f.t(), "1");    // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "9");    // GAME: Next: TEAMS
+    type_setup_row(f.t(), "2");    // TEAMS: the LINEUP door
+    dismiss(f.t());
+    type_setup_row(f.t(), "99");   // TEAMS: out of range
+    dismiss(f.t());
+    type_setup_row(f.t(), "3-");   // TEAMS: the retired `N-` grammar
+    dismiss(f.t());
+    type_setup_row(f.t(), "0");    // wizard: back out
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(820, static_cast<int>(f.save().scen_num))
+        << "no leg moved the arena";
+    EXPECT_EQ(0, static_cast<int>(f.save().time_limit))
+        << "no leg turned a knob";
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("1. SETUP - SOCCER: THE PITCH"), std::string::npos)
+        << "the camp row is where it started:\n" << dump;
+    EXPECT_EQ(dump.find("MAP UNITS"), std::string::npos)
+        << "the door points; it does not nest the LINEUP page:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// R2-D11, the curses half: Team Build's Camp row is the ONE door. Its
+// docket is a single SETUP row and `1` opens the WIZARD, not the book's
+// page loop -- which is what the last key discriminates: after the arena
+// row applies, the wizard has ADVANCED to TEAMS, where row 1 is the FILL
+// wheel, while the page loop would still be on the SOCCER page, where row
+// 1 is THE PITCH and would drag the cursor back to 820. Leaving the wizard
+// lands back on the camp, whose row now states the arena just set.
+TEST(CursesPickerClient, setup_flow_camp_row_opens_the_wizard)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    type_setup_row(f.t(), "1");   // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "5");   // GAME: SOCCER -> the ARENA page
+    type_setup_row(f.t(), "2");   // ARENA: THE MUDBOWL -> Applied -> TEAMS
+    dismiss(f.t());               //   ...the "Level set to" notice
+    type_setup_row(f.t(), "1");   // TEAMS: the FILL wheel (THE PITCH there)
+    type_setup_row(f.t(), "0");   // wizard: back out -> the camp prompt
+    f.t().push_special(KeyCode::Escape);  // camp: close it
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    EXPECT_EQ(821, static_cast<int>(f.save().scen_num))
+        << "the wizard's own level tail ran behind the camp row -- and the "
+           "key after it turned a WHEEL, so the cursor stayed put";
+    EXPECT_EQ(821, f.config.level);
+    EXPECT_EQ(og::sim::kFillBrutal, f.save().fill[0])
+        << "row 1 on the step the wizard advanced to is FILL, one step past "
+           "the arena's dealt STRONG";
+    EXPECT_EQ(og::sim::kFillBrutal, f.save().fill[1]);
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Camp # [1-1]"), std::string::npos)
+        << "one docket row, so one door:\n" << dump;
+    EXPECT_NE(dump.find("1. SETUP - SOCCER: THE MUDBOWL"), std::string::npos)
+        << "the camp took the wizard's answer back and states it:\n" << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The GAME step's RANDOM row (R2-5): the roll the retired docket row used
+// to be. It answers a LEVEL, so it rides the shared Acted-level tail --
+// never a row label -- and lands on an arena this campaign ships that is
+// not the one already set. (The DOOR is pinned by the case above; this one
+// is the roll's pin, so it reads the arena and not the prompt it came
+// from.)
+TEST(CursesPickerClient, setup_flow_random_row_sets_an_arena)
+{
+    MountRestore mount_guard;
+    PickerFixture f;
+    seed_setup_save(f);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    const std::vector<int> manifest = list_levels_v();
+    ASSERT_EQ(40u, manifest.size()) << "the campaign ships 40 arenas";
+
+    type_setup_row(f.t(), "1");   // camp: the SETUP row -> SETUP: GAME
+    type_setup_row(f.t(), "8");   // GAME: RANDOM - any game, any arena
+    dismiss(f.t());               //   ...the "Level set to" notice
+    type_setup_row(f.t(), "0");   // wizard: back out
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, camp_item());
+
+    const int rolled = static_cast<int>(f.save().scen_num);
+    EXPECT_NE(manifest.end(),
+              std::find(manifest.begin(), manifest.end(), rolled))
+        << "the roll answered scen" << rolled
+        << ", which is no arena of this campaign";
+    EXPECT_NE(820, rolled)
+        << "a roll that deals the arena already set is a button that "
+           "changes nothing";
+    EXPECT_EQ(rolled, f.config.level)
+        << "the roll rode the client's own level tail, not a bare poke";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// R2-4: the SCENARIO submenu's `Replay Level` refuses BEFORE its prompt on
+// a versus campaign -- through terminal_item_gate, the one gate both
+// terminal clients consult, so replay_level() itself is untouched and there
+// is no second predicate to drift. A classic campaign still prompts.
+TEST(CursesPickerClient, replay_level_refuses_on_a_versus_campaign)
+{
+    MountRestore mount_guard;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(item, nullptr);
+    {
+        PickerFixture f;
+        seed_setup_save(f, 821);
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("modes"));
+        f.save().add_level_completed("modes", 821);
+        dismiss(f.t());  // the guard's own text screen
+        f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+        const std::string dump = f.t().dump();
+        EXPECT_NE(dump.find(std::string(og::ui::kReplayVersusGuardMessage)),
+                  std::string::npos)
+            << "an arena is set, never replayed:\n" << dump;
+        EXPECT_EQ(dump.find("Level (must be cleared): "), std::string::npos)
+            << "the refusal comes before the prompt:\n" << dump;
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("gladiator"));
+        PickerFixture f;
+        f.save().current_campaign = "gladiator";
+        f.save().scen_num = 3;
+        f.config.level = 3;
+        f.t().push_special(KeyCode::Escape);  // cancel the prompt
+        f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+        const std::string dump = f.t().dump();
+        EXPECT_NE(dump.find("Level (must be cleared): "), std::string::npos)
+            << "a classic campaign still replays its cleared roads:\n"
+            << dump;
+        EXPECT_EQ(dump.find(std::string(og::ui::kReplayVersusGuardMessage)),
+                  std::string::npos)
+            << dump;
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
 }
 
 // Amendment 7 (#276): presenting any menu on a versus campaign deals the
@@ -3862,3 +4286,4 @@ TEST(CursesPickerClient, view_scenario_refuses_an_unmounted_campaign)
             << f.t().dump();
     }
 }
+

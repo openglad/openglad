@@ -1,4 +1,4 @@
-// Shipped "Multiplayer Game Modes" campaign validation
+// Shipped "Multiplayer Arenas" campaign validation
 // (builtin/modes.glad, authored by tools/modes_mapgen).
 //
 // The 40-scenario seven-mode campaign (TDM 300-305 absorbing the arenas
@@ -6,11 +6,11 @@
 // Soccer 820-823, Basketball 824-829, Mutant 840-843, Free For All
 // 850-855) is loaded through the production campaign-mount path and
 // pinned against the authoring invariants the generator promises: every
-// level SCEN_TYPE_SCRIPTED with no exit treasures, Gamesmaster briefings
-// inside the 33-char budget with the exact sign-off, per-mode entity
-// inventories (markers, flags, waypoints, per-team generators,
-// treasures, doors), the migrated decor-cell pins (arenas + CTF values
-// carried over from test_migrated_campaigns), the kept CTF
+// level SCEN_TYPE_SCRIPTED with no exit treasures, briefings inside the
+// 33-char budget, upper case, no sign-off (the generator's theme lint),
+// per-mode entity inventories (markers, flags, waypoints, per-team
+// generators, treasures, doors), the migrated decor-cell pins (arenas +
+// CTF values carried over from test_migrated_campaigns), the kept CTF
 // door/key/capture-limit content, the §2.3 obmap ledger with its
 // documented 303/305 A* waivers, closed
 // soccer perimeters whose painted goal strips match the generated
@@ -24,6 +24,10 @@
 // the same tables) and update the pins here in the same change.
 
 #include <gtest/gtest.h>
+
+// The generator's briefing theme lint, header-only and engine-free so the
+// pins below run the same code the tool fails the build with.
+#include "../../tools/modes_mapgen/briefing_lint.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
@@ -580,7 +584,7 @@ TEST_F(ModesLevels, roster_structure_round_trips)
     }
 }
 
-TEST_F(ModesLevels, briefings_fit_budget_and_carry_the_signoff)
+TEST_F(ModesLevels, briefings_fit_budget_and_speak_plainly)
 {
     for (const ShippedModeLevel& pin : shipped_levels())
     {
@@ -591,10 +595,70 @@ TEST_F(ModesLevels, briefings_fit_budget_and_carry_the_signoff)
         for (const std::string& line : lines)
             EXPECT_LE(line.size(), 33u)
                 << "scen" << pin.id << ": briefing line '" << line << "'";
-        EXPECT_EQ("-- THE GAMESMASTER", lines.back())
-            << "scen" << pin.id
-            << ": every briefing ends with the Gamesmaster sign-off";
+        // The generator's own theme lint, run against the SHIPPED bytes: no
+        // line is blank, leads with the retired sign-off, names a retired
+        // word or holds a lower-case letter. (The loaded description is a
+        // list; the lint takes the generator's vector.)
+        const std::vector<std::string> briefing(lines.begin(), lines.end());
+        EXPECT_EQ("", modes_mapgen::briefing_theme_violation(briefing))
+            << "scen" << pin.id;
     }
+}
+
+// The lint itself, against fixtures: a lint that always answered "" would
+// pass the sweep above on any briefing, so every violating fixture must be
+// refused AND the answer must name the cause.
+TEST(ModesBriefingLint, refuses_the_retired_theme_lower_case_and_the_sign_off)
+{
+    struct Case
+    {
+        std::vector<std::string> lines;
+        // The lint's OWN clause, not a word the fixture already holds: the
+        // violation sentence echoes the offending line, so asserting on the
+        // bare word would be satisfied by the echo and a lint that refused
+        // every line for the wrong reason would still pass.
+        const char* clause;
+    };
+    const std::vector<Case> refused = {
+        {{"THE FOREST GAME, CONTENDERS."}, "retired word 'CONTENDERS'"},
+        {{"WATCH YOUR compass."}, "lower-case letter"},
+        {{"TONIGHT, ALL OF THEM HUNTING."}, "retired word 'TONIGHT'"},
+        // Two retired words on one line: the list order decides, and THE
+        // BOOK is listed first.
+        {{"A SPECIAL PAGE OF THE BOOK."}, "retired word 'THE BOOK'"},
+        {{"YOUR PAGE OF HONOR."}, "retired word 'PAGE OF'"},
+        {{"KILLS ALONE FILL THE LEDGER."}, "retired word 'LEDGER'"},
+        {{"TAKES THE PURSE."}, "retired word 'PURSE'"},
+        {{"FIRST BAND TO THE TALLY WINS."}, "retired word 'TALLY'"},
+        // Feedback item 4: no progress vocabulary anywhere in Multiplayer
+        // Arenas, briefings included. CLEARED is APPENDED to the word list,
+        // so every clause above still reports the word it always did.
+        {{"THE CLEARED ARENA."}, "retired word 'CLEARED'"},
+        {{"FIRST BAND TO THE SCORE WINS.", "-- THE GAMESMASTER"},
+         "begins '-- '"},
+        {{"FIRST BAND TO THE SCORE WINS.", ""}, "blank line"},
+        {{}, "is empty"},
+    };
+    for (const Case& c : refused)
+    {
+        const std::string v = modes_mapgen::briefing_theme_violation(c.lines);
+        const std::string first = c.lines.empty() ? std::string("<empty>")
+                                                  : c.lines.front();
+        EXPECT_NE("", v) << "the lint accepted '" << first << "'";
+        EXPECT_NE(std::string::npos, v.find(c.clause))
+            << "'" << v << "' does not say " << c.clause;
+    }
+
+    // Clean briefings: an apostrophe, a digit and plain upper case are not
+    // violations, so the lint cannot pass by always failing.
+    const std::vector<std::vector<std::string>> clean = {
+        {"KILLS ALONE COUNT."},
+        {"SOMEBODY ELSE'S SCORE."},
+        {"FIRST TO 5 WINS."},
+    };
+    for (const std::vector<std::string>& lines : clean)
+        EXPECT_EQ("", modes_mapgen::briefing_theme_violation(lines))
+            << "the lint refused '" << lines.front() << "'";
 }
 
 TEST_F(ModesLevels, entity_inventories_match)
@@ -797,7 +861,8 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
     // 20 corpse/stain transients + 25 projectiles (+ the mode's own fx
     // entities: soccer spawns 1 ball; basketball 2 — the ball plus its
     // ground shadow — plus one hoop sprite per authored hoop, the peak
-    // activation, D29/D32) stays <= 190 so A* never short-circuits
+    // activation, D29/D32; + on the ball GAMES only, the #305 FILL
+    // bodies, 5 per team) stays <= 190 so A* never short-circuits
     // mid-match. 303 and 305 are the documented arenas-heritage waivers.
     //
     // The ground-load inputs (gens/flags/cps/treasures/doors/livings) are
@@ -805,6 +870,27 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
     // ledger may read them from the pin row. The spawn caps have no such
     // cross-check — nothing else in the file reads pool sums — so the row's
     // caps_total is measured off the manifest here before it is spent.
+    //
+    // Every row's ledger VALUE is pinned below as well as its <= 190 fit:
+    // the worst non-waived row sits at 183 and the ball arenas well under
+    // 100, so no input drift — and no change to the fill-squad term — can
+    // red the cap on its own. A value pin reds instead of silently eating
+    // the headroom.
+    static const std::map<int, int> expected_ledger = {
+        {300, 131}, {301, 171}, {302, 171}, {303, 222}, {304, 183},
+        {305, 201}, {500, 71},  {501, 99},  {502, 80},  {503, 121},
+        {504, 71},  {505, 72},  {506, 119}, {507, 145}, {508, 83},
+        {509, 75},  {800, 138}, {801, 139}, {802, 140}, {803, 147},
+        // The ten ball arenas carry the #305 fill-squad term
+        // (teams * 5): 820-823 soccer, 824-829 basketball.
+        {820, 84},  {821, 86},  {822, 94},  {823, 98},  {824, 85},
+        {825, 81},  {826, 99},  {827, 85},  {828, 95},  {829, 85},
+        {840, 69},  {841, 73},  {842, 73},  {843, 71},  {850, 71},
+        {851, 71},  {852, 71},  {853, 71},  {854, 71},  {855, 71},
+    };
+    ASSERT_EQ(shipped_levels().size(), expected_ledger.size())
+        << "every shipped row carries a pinned ledger value";
+
     const std::string expr_prefix = manifest_expr_prefix();
     og::script::ScriptHost host;
 
@@ -841,10 +927,21 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
             ball = 2 + hoops;
         }
         int flags = pin.flags;
+        // The #305 FILL bodies (ball GAMES only), mirroring the tool's
+        // kFillSquadCeiling: 5 per team, the size of
+        // packs/core/lib/lineup.lua's BOT_SQUAD — the seam's hard ceiling
+        // (squad_prefix never exceeds #families), not a restatement of the
+        // Lua body rule. Brawl arenas take no such term: their FILL squads
+        // stay inside the +16 heroes assumption above, which this rule
+        // leaves alone.
+        constexpr int kFillSquadCeiling = 5;
+        const int fill_bodies = (mode == "soccer" || mode == "basketball")
+                                    ? pin.teams * kFillSquadCeiling
+                                    : 0;
         const int ledger = gens + pin.treasures + flags + pin.cps +
                            pin.doors + pin.livings +
                            static_cast<int>(*manifest_caps) + 16 +
-                           20 + 25 + ball;
+                           20 + 25 + ball + fill_bodies;
         if (pin.a_star_waived)
             EXPECT_GT(ledger, 190)
                 << "scen" << pin.id
@@ -855,6 +952,12 @@ TEST_F(ModesLevels, obmap_budget_ledger_holds)
         EXPECT_TRUE(pin.a_star_waived == (pin.id == 303 || pin.id == 305))
             << "scen" << pin.id
             << ": only the two arenas-heritage maps carry the waiver";
+
+        const auto pinned = expected_ledger.find(pin.id);
+        ASSERT_NE(expected_ledger.end(), pinned)
+            << "scen" << pin.id << ": row missing from the ledger value pin";
+        EXPECT_EQ(pinned->second, ledger)
+            << "scen" << pin.id << ": obmap ledger value drifted";
     }
 }
 

@@ -324,14 +324,12 @@ void ensure_highlighted_button_visible(const button* buttons,
 // so no variant inherits a stale one.
 void picker_wire_scenario_menu_nav(button* buttons,
                                    int count,
-                                   bool host_controls_visible,
-                                   bool match_settings_visible)
+                                   bool host_controls_visible)
 {
     if (buttons == nullptr || count < kScenarioMenuButtonCount)
         return;
 
     const bool host = host_controls_visible;
-    const bool match = match_settings_visible;
 
     // Host column: SET CAMPAIGN over SET LEVEL over VIEW LEVEL.
     buttons[kScenarioMenuSetCampaignIndex].nav =
@@ -340,42 +338,36 @@ void picker_wire_scenario_menu_nav(button* buttons,
         {.up = kScenarioMenuSetCampaignIndex,
          .down = kScenarioMenuViewScenarioIndex};
 
-    // y=140 knob row: SCORE alone at (30,140) since TROOPS retired
-    // (amendment B5), versus-gated. What DOWN from the y=100 row lands on
-    // is SCORE when it is visible, else BACK.
-    const int score_or = match ? kScenarioMenuCtfCapsIndex : -1;
-    const int under_left = score_or >= 0 ? score_or : kScenarioMenuBackIndex;
-    const int under_right = under_left;
+    // The y=140 knob row is EMPTY since SCORE retired into the SETUP
+    // wizard's RULES step (#304), so the y=100 row drops straight onto
+    // BACK on every campaign — there is no versus axis on this screen any
+    // more.
+    const int under = kScenarioMenuBackIndex;
 
     // y=100 row: VIEW LEVEL <-> PROGRESS <-> LINEUP; up-links close for
     // joiners.
     const int row_up = host ? kScenarioMenuSetLevelIndex : -1;
     buttons[kScenarioMenuViewScenarioIndex].nav =
         {.up = row_up,
-         .down = under_left,
+         .down = under,
          .right = kScenarioMenuProgressIndex};
     buttons[kScenarioMenuProgressIndex].nav =
         {.up = row_up,
-         .down = under_right,
+         .down = under,
          .left = kScenarioMenuViewScenarioIndex,
          .right = kScenarioMenuLineupIndex};
     buttons[kScenarioMenuLineupIndex].nav =
         {.up = row_up,
-         .down = under_right,
+         .down = under,
          .left = kScenarioMenuProgressIndex};
 
-    // SCORE sits in the x=30 column now: it climbs into VIEW LEVEL above
-    // it and drops onto BACK below it.
-    buttons[kScenarioMenuCtfCapsIndex].nav =
-        {.up = kScenarioMenuViewScenarioIndex,
-         .down = kScenarioMenuBackIndex};
+    buttons[kScenarioMenuCtfCapsIndex].nav = {};
     buttons[kScenarioMenuTroopsIndex].nav = {};
     buttons[kScenarioMenuSpareIndex].nav = {};
 
-    // BACK climbs into the nearest visible member above it: SCORE, else
-    // VIEW LEVEL.
+    // BACK climbs into the y=100 row's left member.
     buttons[kScenarioMenuBackIndex].nav =
-        {.up = score_or >= 0 ? score_or : kScenarioMenuViewScenarioIndex};
+        {.up = kScenarioMenuViewScenarioIndex};
 }
 
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -388,42 +380,25 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
     // SET CAMPAIGN / SET LEVEL keep their host-only visibility inside the
     // subscreen; VIEW LEVEL / PROGRESS stay visible for everyone.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
-    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
     buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
     buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
     sync_button_hidden_state(buttons, kScenarioMenuSetCampaignIndex);
     sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
-    // SCORE (#218, re-homed from MATCHUP; A5): versus campaigns only, and —
-    // unlike the host-gated pair — visible to JOINERS as a read-only label (the host's
-    // turns land in the lobby-synced save and the same re-derive shows
-    // them; change_ctf_caps popups for a non-host).
-    const bool match_settings_visible = og::ui::is_versus_campaign(save);
-    {
-        const int index = kScenarioMenuCtfCapsIndex;
-        buttons[index].hidden = !match_settings_visible;
-        buttons[index].label = og::ui::format_ctf_score_label(save);
-        sync_button_hidden_state(buttons, index);
-        if (og::runtime::current_session
-                ->allbuttons_[static_cast<std::size_t>(index)] != nullptr)
-        {
-            og::runtime::current_session
-                ->allbuttons_[static_cast<std::size_t>(index)]
-                ->label = buttons[index].label;
-        }
-    }
-    // The retired TEAMS (A3) and TROOPS (B5) cells stay parked whatever
-    // the frame says — the engine's gate pass re-derives visibility per
-    // frame, so a park must be re-asserted here, not only in the static
-    // table.
+    // The retired TEAMS (A3), TROOPS (B5) and SCORE (#304) cells stay
+    // parked whatever the frame says — the engine's gate pass re-derives
+    // visibility per frame, so a park must be re-asserted here, not only
+    // in the static table. SCORE is the SETUP wizard's RULES row now: one
+    // surface for the match's target, on every client.
     buttons[kScenarioMenuSpareIndex].hidden = true;
     sync_button_hidden_state(buttons, kScenarioMenuSpareIndex);
     buttons[kScenarioMenuTroopsIndex].hidden = true;
     sync_button_hidden_state(buttons, kScenarioMenuTroopsIndex);
+    buttons[kScenarioMenuCtfCapsIndex].hidden = true;
+    sync_button_hidden_state(buttons, kScenarioMenuCtfCapsIndex);
     // LINEUP (the ordinal the MATCHUP door vacated) is never gated: a
     // joiner opens the page read-only (docs/lineup-design.md §2.3).
     picker_wire_scenario_menu_nav(buttons, num_buttons,
-                                  host_controls_visible,
-                                  match_settings_visible);
+                                  host_controls_visible);
 
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
@@ -482,7 +457,7 @@ std::string difficulty_panel_caption()
 {
     if (picker_lobby_host_controls_visible())
         return std::string();
-    return std::string("The host sets these for everyone.");
+    return std::string(og::ui::kHostSetsForEveryoneCaption);
 }
 
 // Per-session picker message buffer: access via current_session->message_.
@@ -1472,9 +1447,18 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
         return;
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
 
-    // Header
-    std::string header = std::format("Level Progress: {} cleared of {} discovered",
-             state->num_cleared, static_cast<int>(state->levels.size()));
+    // Header. R2-4: a Multiplayer Arenas campaign counts nothing, so the
+    // report states the roll instead of a score (og::ui::progress_marks_shown
+    // is the one predicate every versus surface asks).
+    const SaveData& save =
+        og::runtime::current_session->myscreen_->save_data;
+    std::string header =
+        og::ui::progress_marks_shown(save)
+            ? std::format("Level Progress: {} cleared of {} discovered",
+                          state->num_cleared,
+                          static_cast<int>(state->levels.size()))
+            : std::format("Arenas: {}", static_cast<int>(state->levels.size()));
+    TRACE("progress", "header %s", header.c_str());
     mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
 
     // Column headers (#207: Foes moved left of the two-button column)
@@ -1495,19 +1479,16 @@ void picker_progress_menu_engine_draw_content(void* screen_state)
         std::string buf = std::format("{}", lp.id);
         mytext.write_xy(12, y + 2, buf.c_str(), WHITE, 1);
 
-        // Status
-        unsigned char status_color;
-        const char* status_text;
-        if (lp.is_cleared) {
-            status_text = "CLEARED";
-            status_color = DARK_GREEN;
-        } else if (lp.is_current) {
-            status_text = "CURRENT";
-            status_color = YELLOW;
-        } else {
-            status_text = "-------";
-            status_color = WHITE;
-        }
+        // Status, through the ONE status helper SET LEVEL's rows already
+        // use (the inline CLEARED/CURRENT pair here was its twin); the
+        // blank answer wears this screen's own dashes.
+        const char* helper_status =
+            og::ui::level_row_status_label(lp.is_cleared, lp.is_current);
+        const char* const status_text =
+            helper_status[0] != '\0' ? helper_status : "-------";
+        const unsigned char status_color =
+            lp.is_cleared ? DARK_GREEN : lp.is_current ? YELLOW : WHITE;
+        TRACE("progress", "row %d %s", lp.id, status_text);
         mytext.write_xy(36, y + 2, status_text, status_color, 1);
 
         // Title
@@ -1583,7 +1564,13 @@ Sint32 create_progress_menu(Sint32 arg1)
     for (int level_id : level_ids) {
         LevelProgress lp;
         lp.id = level_id;
-        lp.is_cleared = og::runtime::current_session->myscreen_->save_data.is_level_completed(level_id);
+        // R2-4: one derivation, one predicate. num_cleared, the status
+        // column and the REPLAY/VISIT affordance all follow from this
+        // field, so a versus campaign's rows wear GO and nothing else.
+        lp.is_cleared =
+            og::ui::progress_marks_shown(
+                og::runtime::current_session->myscreen_->save_data) &&
+            og::runtime::current_session->myscreen_->save_data.is_level_completed(level_id);
         lp.is_current = (level_id == og::runtime::current_session->myscreen_->save_data.scen_num);
 
         if (lp.is_cleared)
@@ -2641,35 +2628,17 @@ Sint32 go_menu(Sint32 arg1)
         return MENU_REDRAW;
     }
 
-    if (!picker_lobby_is_networked() &&
-        og::runtime::current_session->myscreen_->save_data.numplayers > 0)
+    // The M4 question — do this machine's seats each have a deployed hero
+    // to drive? — lives in og::ui::local_seats_deployed_for_go, so the
+    // SETUP wizard's GO row can dim itself on the same answer. The popup
+    // stays here: a host GO refusal strands nobody.
+    if (!og::ui::local_seats_deployed_for_go(
+            og::runtime::current_session->myscreen_->save_data,
+            picker_lobby_players(), picker_lobby_is_networked()))
     {
-        const SaveData& save =
-            og::runtime::current_session->myscreen_->save_data;
-        std::vector<og::sim::LobbyPlayer> lobby_players =
-            picker_lobby_players();
-        std::sort(lobby_players.begin(), lobby_players.end(),
-                  [](const og::sim::LobbyPlayer& lhs,
-                     const og::sim::LobbyPlayer& rhs) {
-                      return lhs.player_index < rhs.player_index;
-                  });
-        std::vector<short> seat_teams;
-        seat_teams.reserve(lobby_players.size());
-        for (const og::sim::LobbyPlayer& player : lobby_players)
-            seat_teams.push_back(player.team);
-        if (seat_teams.size() != save.numplayers)
-        {
-            // A not-yet-initialized lobby has no explicit state. Legacy save
-            // fields are only the seed for that narrow fallback; once the
-            // local lobby exists, its per-seat choices are authoritative.
-            seat_teams = og::ui::derive_local_gameplay_seat_teams(save);
-        }
-        if (!og::ui::local_seat_teams_have_controls(save, seat_teams))
-        {
-            popup_dialog("DEPLOY FOR EVERY PLAYER",
-                         "Each player needs\na deployed hero on\ntheir playing team");
-            return MENU_REDRAW;
-        }
+        popup_dialog(std::string(og::ui::kDeployForEveryPlayerTitle).c_str(),
+                     "Each player needs\na deployed hero on\ntheir playing team");
+        return MENU_REDRAW;
     }
 
     // Tier-B progression hook (tower-triple §5.9): the mounted mode

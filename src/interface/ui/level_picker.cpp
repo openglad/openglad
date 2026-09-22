@@ -16,6 +16,7 @@
  */
 
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -321,11 +322,22 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
 
     // Status markers, derived exactly as the PROGRESS report derives them.
     const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    is_cleared = save.is_level_completed(scen_num);
+    // R2-4: Multiplayer Arenas carries no progress vocabulary. One
+    // predicate answers it for every surface (og::ui::progress_marks_shown);
+    // an arena is set, never earned, so no row here is ever CLEARED.
+    // [CURRENT] is not progress vocabulary and stays.
+    is_cleared = og::ui::progress_marks_shown(save) &&
+                 save.is_level_completed(scen_num);
     is_current = (scen_num == save.scen_num);
     // Cleared and current rows are always in the frontier, so LOCKED only
     // ever fills the blank status cell.
     is_locked = !og::data::level_selection_allowed(save, scen_num);
+    // The row's status word, as draw() will write it, recorded where it is
+    // DERIVED: the browser's loop can exit before a frame is painted, and
+    // the derivation is the rule this trace is the oracle for.
+    TRACE("levelpick", "status %d %s locked=%d", scen_num,
+          og::ui::level_row_status_label(is_cleared, is_current),
+          is_locked ? 1 : 0);
 
     // Store this level's info
     level_name = og::ui::fit_text_to_chars(level_data.world().title,

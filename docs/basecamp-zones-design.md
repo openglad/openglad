@@ -107,10 +107,31 @@ per frame.
   (level/page/action, id/label/note/cost) plus `done`, which retires a
   costed action the book has already honored (no price quoted, spent
   face, refuses instead of charging twice). Each actions widget is
-  windowed by PageModel with its own two pager ordinals; overflow pages
-  in place. Level rows: host-gated, earned-roads-gated (see the voice
-  rule below) load-with-rollback set tail. Page
-  rows: the zone submenu. Action rows: debit-then-dispatch + autosave
+  windowed by PageModel; overflow pages in place.
+  **Update (2026-09-22, PR #307):** the two pager ordinals per widget are
+  RETIRED and parked for good. A docket that outruns its band spends the
+  window's LAST slot on a pager ROW — `MORE - 2/3  >` — so the band has no
+  side column of arrows and the row face runs the panel's whole width
+  (`kBaseCampZoneActionRowWidth` 264 → 298, x=12..310, 48 glyphs). The
+  arithmetic is the shared `og::ui::make_row_window(count, fit)`: `fit`
+  slots when everything fits, `fit - 1` when it does not. The pager row
+  is an ordinary Kind::Page row (`make_more_row`), so it wears the same
+  door marker and rides the same vertical nav chain as everything else,
+  and a click on it steps to the next window, WRAPPING home from the
+  last. The terminals' camp listing is unchanged — it still prints the
+  whole widget, because the window is a pixel-band constraint of the
+  panel and a prompt has no band.
+  The window that OPENS is the one holding the `[CURRENT]` row
+  (`og::ui::open_row_window(page, og::ui::current_row_index(rows))`,
+  the same call the SETUP wizard's ARENA step makes), window 0 when no
+  row is marked: a docket that opened at home hid the job the camp is
+  pointing at — the one the command strip's GO launches — behind the
+  pager. Browsing is the player's from then on: the pager row moves the
+  window, `refetch()` (the own-mutation trigger) KEEPS it, and only a NEW
+  `[CURRENT]` row — a level set through the docket or the wizard under
+  the open camp — re-opens the band on the row it marks.
+  Level rows: host-gated, earned-roads-gated (see the voice rule below)
+  load-with-rollback set tail. Page rows: the zone submenu. Action rows: debit-then-dispatch + autosave
   tail (+ settings sync when the match dirty flag armed). Actions do NOT
   clear ready. **Each kind is legible before the click**: page rows wear
   the repo's door marker (" >"), level rows wear the GO green because
@@ -124,9 +145,11 @@ per frame.
   carries, so a docket meant to be read at a glance states its `weight` —
   and clamps the ask to the band the roster floor leaves, since
   over-weight falls back to the DEFAULT zone (the camp disappears) while
-  a too-small weight only pages. When a docket does page, the pager's
-  gutter carries the "p/N" count under its arrows: two bare arrows say a
-  row can move, never that rows are hidden.
+  a too-small weight only pages. When a docket does page, the count is
+  the pager ROW's own note (`MORE - 2/3  >`): the row says what it does
+  and how far along it is, which two bare arrows in a gutter never did.
+  (Before 2026-09-22 that count was a "p/N" strip inked under a side
+  pager pair.)
 - `readout` — ONE zone row of up to 3 label/value cells (fetch-composed
   strings; staleness bound = the fetch cadence), labels in the
   column-header ink and values in the row-data ink. When the roster does
@@ -153,7 +176,9 @@ pre-reset roster slot. Assignment is menu-authored, so nothing inside a
 level ever needs to write it back.
 
 **Bounds arithmetic (closed)**: appended ordinal band 49..71 = 16 action
-rows + 4 actions pagers + 3 spare; `MAX_BUTTONS` and
+rows + 4 actions pagers (RETIRED 2026-09-22, PR #307, and parked as
+spares — deleting them would renumber every ordinal above and buy
+nothing) + 3 spare; `MAX_BUTTONS` and
 `GameSession::kMaxButtons` rise 50 → 72 together with a static_assert
 tying them. Appended rows are statically parked at zero-size rects with
 empty labels (gate-lattice safe) and re-banded per frame by the rewire.
@@ -230,6 +255,16 @@ this is a door, not the terminal camp face — the bounded-churn
 compromise; the path forward is the zone becoming the terminal TeamBuild
 face. The item re-pins the three positional drivers (headless drives,
 interactive script, curses route tests) once.
+**Update (2026-09-19, PR #307):** Team Build also gained `Setup` (item 13,
+gated to versus campaigns — the terminal face of the SETUP wizard) and now
+gates `Difficulty` on CLASSIC campaigns, so the fight's rules have one door
+per campaign kind on every client (docs/match-setup-design.md §2.7).
+**Update (2026-09-20, PR #307):** REVERSED: item 13 `Setup` is RETIRED
+(`kTeamBuildItems` is 12) and item 11 `Difficulty` is a plain item again. The
+terminals' one wizard door is the camp's own SETUP row (Team Build `7 Camp` →
+`1`), the same one door SDL has. The one `Custom`-gated terminal item is now
+SCENARIO's `Replay Level`, which refuses on a versus campaign with `Arenas are
+set, never replayed.` (docs/match-setup-design.md §10).
 
 Eight v1 rules the terminals settle, since a prompt cannot hide a control
 behind a hover or a spent face:
@@ -329,6 +364,27 @@ behind a hover or a spent face:
   cleared field replayable. Every camp row is budgeted against the
   42-char panel face carrying the campaign's longest arena name, which
   is why CTF's clock reads "20m".
+  **Update (2026-09-19, PR #307):** #306 unthemed the whole bullet. The camp
+  is now a three-row docket — GAME, ARENA, RANDOM ARENA — of which the first
+  two are shortcuts INTO the SETUP wizard's GAME and ARENA steps; the
+  readout reads `CLEARED n/40`; there is no signature row, no setup row (the
+  strip door is SETUP, ordinal 73), and the joiner sees the two shortcut
+  rows with no text line at all. The tally words are `n/m cleared` and
+  `Every arena here is cleared.` The same note records that the TROOPS
+  sentence had already gone stale (lineup-design B5 retired TROOPS, and the
+  fourth knob has been TIME LIMIT since #241). Full record:
+  docs/match-setup-design.md §2.1, §3.9.
+**Update (2026-09-20, PR #307):** and round 2 retired the untheme's own
+replacements. The camp is ONE row — `SETUP - <GAME>: <ARENA>  >`, the wizard's
+only door on every client — with the roster LEADING the panel, so there is no
+readout, no shortcut pair, no roll row and no joiner line. The two roll rows
+moved into the wizard (`RANDOM` on GAME, `RANDOM ARENA` on each game's ARENA
+page). Multiplayer Arenas now carries NO progress vocabulary at all: no
+`CLEARED n/40`, no `n/m cleared`, no `Every arena here is cleared.`, and no
+`[CLEARED]` on an arena row — `[CURRENT]` stays. #207 still keeps every
+cleared level replayable on the campaigns that earn their roads; on versus the
+terminal `Replay Level` row refuses in words instead
+(docs/match-setup-design.md §10).
 - **Westlands — the company fire.** Text: camp stanza + Bearer line.
   Roster: full capabilities; at the Falls, `assign` (WAR/BURDEN) with
   the taught-glyph toasts; after the swearing freezes (any road level

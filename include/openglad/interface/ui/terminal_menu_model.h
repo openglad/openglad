@@ -16,6 +16,7 @@
 // rendering; only the content is shared.
 
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/interface/ui/match_setup_session.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -69,8 +70,9 @@ std::string_view terminal_gate_message(const PickerMenuItem& item,
 // no grid, so the bands become CONTEXT LINES above a numbered item list — the
 // campaign-camp shape (lines + rows + a numeric prompt), which both terminal
 // clients already drive. Every string here comes from the shared §2.1/§4
-// formatters (format_lineup_fill_label / _map_units_label / _census /
-// _power), so the three clients cannot drift apart on a label.
+// formatters (format_lineup_fill_label / _map_units_label / _power and
+// format_match_preview for the census column), so the three clients cannot
+// drift apart on a label.
 
 // One selectable LINEUP row. `team` is meaningful for the two knob kinds only.
 struct TerminalLineupItem {
@@ -117,17 +119,68 @@ struct TerminalLineupInputs {
     // printed NO MAP UNITS off an absent census would be inventing a rule.
     //
     // F3: both live terminal clients FILL this span from the staged world
-    // their VIEW LEVEL shows (census_staged_lineup_map_units below), and
-    // refuse the MAP UNITS toggle with the hint where the count is 0 — the
-    // SDL box's dim and click belt, in the band's own words. The empty-span
-    // fallback survives for the no-world shapes.
+    // their VIEW LEVEL shows (census_staged_match_report below, which hands
+    // back `report` from the very same ensure_current()), and refuse the
+    // MAP UNITS toggle with the hint where the count is 0 — the SDL box's
+    // dim and click belt, in the band's own words. The empty-span fallback
+    // survives for the no-world shapes.
     std::span<const int> map_unit_counts;
+    // §3.8.4: the staged roster report the census column reads, from the
+    // SAME census_staged_match_report() call that filled `map_unit_counts`.
+    // nullptr = nothing staged, and format_match_preview then falls back to
+    // the band's own fighter census — so the column never goes blank and a
+    // terminal never invents a picture it could not see. A pointer (not a
+    // value) keeps every existing call site compiling unchanged.
+    const ScenarioRosterReport* report = nullptr;
     bool networked = false;
     bool is_host = true;
 };
 
 TerminalLineupModel build_terminal_lineup_model(
     const TerminalLineupInputs& inputs);
+
+// --- The SETUP wizard, the terminal projection (§2.7) --------------------
+//
+// A prompt has no tab strip, so the two steppers ARE the tab strip: the page
+// rows come first as numbered items, then `Next: <STEP>`, `Prev: <STEP>` and
+// `Back`. The prompt takes a plain row number: a cycler row steps its wheel
+// one stop FORWARD, the way every cycler in the picker turns.
+struct TerminalMatchSetupItem {
+    // `More` is the pager ROW (§2.0's MORE row rule): the same row the SDL
+    // window's last slot draws, numbered here like any other. It steps the
+    // window, wrapping — the terminals project the session's window, they
+    // do not invent a second one.
+    enum class Kind : std::uint8_t { Row, More, Next, Prev, Back };
+    Kind kind = Kind::Back;
+    std::size_t row = 0;    // Kind::Row: the index into page().rows
+    std::string label;
+};
+
+struct TerminalMatchSetupModel {
+    std::string title;
+    std::vector<std::string> lines;
+    std::vector<TerminalMatchSetupItem> items;
+};
+
+// Project one composed page. The team lines are spelled with the colour
+// WORD where the pixel surfaces ink a swatch — the terminal LINEUP header's
+// own grammar ("TEAM 1 BLUE  ...") — and they render at the page's
+// team_lines_at, so nothing reorders.
+TerminalMatchSetupModel build_terminal_match_setup_model(
+    const MatchSetupSession& session, const MatchSetupSession::Inputs& inputs);
+
+// The wizard's and LINEUP's shared staged census: the MAP UNITS counts AND
+// the roster report, from ONE synchronous ensure_current() over the world
+// the launch would adopt. Staged = the world censused (`out_counts` is
+// meaningful); Failed = the owner's stage failed; Unavailable = there is no
+// world to census at all (unmounted campaign, or a stage that fell back to
+// another level — a fallback world must not masquerade as this level's
+// census, exactly as VIEW LEVEL refuses it). `out_report` is written on
+// EVERY arm, so a degraded preview still says so in the report's own words.
+IPickerLobbyClient::StagedPreviewHealth census_staged_match_report(
+    og::server::MatchStage& stage, const SaveData& save, int difficulty,
+    std::uint32_t match_seed, std::array<int, 4>& out_counts,
+    ScenarioRosterReport& out_report);
 
 // F3/W7-G: the terminals' MAP UNITS census, taken over the world the launch
 // would adopt — the SAME MatchStage both clients' VIEW LEVEL already stages

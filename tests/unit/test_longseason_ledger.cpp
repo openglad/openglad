@@ -515,28 +515,37 @@ struct BookState
     int widgets;
     int roster_rows;
     int action_units;
-    // The one row this state is allowed to push past its band, beyond the
-    // optional contracts every state may page.
-    const char* may_page;
+    // The rows this state is allowed to push OUTSIDE the window its camp
+    // opens on, beyond the optional contracts every state may page.
+    //
+    // Update (2026-09-22, PR #307): the window that opens is the one
+    // holding the [CURRENT] row (og::ui::open_row_window) — the job the
+    // camp is pointing at is never behind the pager — and the pager is a
+    // ROW, so a band that pages is one slot shorter than its units.
+    // Settlement Day is the one shipped state that pays both: its
+    // two-unit band opens on the [CURRENT] level row alone, with DRAW
+    // YOUR PAY the one click behind it.
+    std::vector<const char*> off_window;
 };
 
 const BookState kBookStates[] = {
     // One stanza line: text 1 + docket 3, so the job, the money row and the
     // shop door are all on the screen at once.
-    {"ordinary week", 6, 5, false, false, false, 4, 3, 3, nullptr},
+    {"ordinary week", 6, 5, false, false, false, 4, 3, 3, {}},
     // The ritual IS the camp while a coin waits: stanza 2, two rows, no
     // docket at all until the coin is written.
-    {"coin waiting", 6, 5, false, false, true, 4, 3, 2, nullptr},
+    {"coin waiting", 6, 5, false, false, true, 4, 3, 2, {}},
     // Owing before the Toll: the DEBT cell and the SETTLE row say it all,
     // so the stanza stays one line and the docket keeps its three.
-    {"debt outstanding", 14, 13, true, false, false, 4, 3, 3, nullptr},
+    {"debt outstanding", 14, 13, true, false, false, 4, 3, 3, {}},
     // Settlement Day is the one state that spends the docket's third unit
     // on prose: the year's arithmetic runs before an irreversible one-time
     // payout, and the shop door — not a decision — pays for it.
-    {"settlement day", 19, 18, true, false, false, 4, 3, 2, "stores"},
+    {"settlement day", 19, 18, true, false, false, 4, 3, 2,
+     {"draw_pay", "stores"}},
     // "New season. Same book." plus the season line: two lines, and a
     // closed book has no money row to fit under them.
-    {"new season", 19, 19, false, true, false, 4, 3, 2, nullptr},
+    {"new season", 19, 19, false, true, false, 4, 3, 2, {}},
 };
 
 void apply_book_state(SaveData& book, const BookState& s)
@@ -643,21 +652,46 @@ TEST_F(LedgerBookTest, every_camp_state_fits_the_zone_budgets)
             << s.name << ": the readout heads the panel";
 
         // The window the surface actually draws. A band shorter than its
-        // row list pages, so every row that carries a decision has to be
+        // row list pages, so every row that carries a DECISION has to be
         // inside it: what falls off may only ever be an optional contract
-        // (extra work) or the one row this state declares it can spare.
+        // (extra work) or a row this state declares it can spare.
+        //
+        // Update (2026-09-22, PR #307): the docket's pager is a ROW now
+        // ("MORE - 2/3  >") rather than a column of arrows beside the
+        // band, so a band that pages is one slot shorter — and the window
+        // that OPENS is the one holding the [CURRENT] row, never window 0
+        // by default. The row the camp is pointing at is the whole reason
+        // the docket exists; a paged docket that opened at home hid it
+        // behind the pager. Settlement Day is the one shipped state that
+        // pages at all, and it pays both slots: it opens on the [CURRENT]
+        // level row alone, with DRAW YOUR PAY one click behind.
         ASSERT_EQ(1u, zone.actions().size()) << s.name;
         const CampaignZoneSession::ActionsLayout& band = zone.actions()[0];
         EXPECT_EQ(s.action_units, band.units) << s.name;
-        EXPECT_EQ(0, band.page.first_index())
-            << s.name << ": the camp opens on its first page";
-        for (int i = band.page.end_index();
-             i < static_cast<int>(band.rows.size()); ++i)
+        const int current = og::ui::current_row_index(band.rows);
+        if (current >= 0)
         {
+            EXPECT_LE(band.page.first_index(), current)
+                << s.name << ": the camp opens on the [CURRENT] row";
+            EXPECT_LT(current, band.page.end_index())
+                << s.name << ": the camp opens on the [CURRENT] row";
+        }
+        else
+        {
+            EXPECT_EQ(0, band.page.first_index())
+                << s.name << ": no [CURRENT] row, so the camp opens home";
+        }
+        for (int i = 0; i < static_cast<int>(band.rows.size()); ++i)
+        {
+            if (i >= band.page.first_index() && i < band.page.end_index())
+                continue;
             const CampaignZoneSession::Row& off =
                 band.rows[static_cast<std::size_t>(i)];
             const bool spared =
-                s.may_page != nullptr && off.id == s.may_page;
+                std::find_if(s.off_window.begin(), s.off_window.end(),
+                             [&off](const char* id) {
+                                 return off.id == id;
+                             }) != s.off_window.end();
             EXPECT_TRUE(spared || off.note == "optional, pays extra")
                 << s.name << ": '" << off.label
                 << "' paged off the camp — only contracts may";
@@ -1368,12 +1402,22 @@ TEST_F(LedgerBookTest, ordinary_week_reads_like_the_open_ledger)
     EXPECT_EQ("3", rows[3].id);
     EXPECT_EQ("optional, pays extra", rows[3].note);
 
-    // The window the panel draws: the campaign's headline decision and the
-    // shop door are ON the screen, and the contract is what pages.
+    // The window the panel draws: the job in front of you and the
+    // campaign's headline decision are ON the screen, and the shop door
+    // and the contract are what page. (Before 2026-09-22 the shop door
+    // rode the window too; the docket's pager is a ROW now, so the band
+    // spends its third slot on "MORE - 1/2  >" instead of on a column of
+    // arrows beside it.) The window that opens is the one holding the
+    // [CURRENT] row — here that is the first one, which is why this
+    // docket reads the same as it did before the rule.
     EXPECT_EQ(3, docket(zone).units);
     EXPECT_EQ(0, docket(zone).page.first_index());
-    EXPECT_EQ(3, docket(zone).page.end_index());
-    EXPECT_TRUE(docket(zone).page.multi_page()) << "and the pager says so";
+    EXPECT_EQ(2, docket(zone).page.end_index());
+    EXPECT_EQ(0, og::ui::current_row_index(docket(zone).rows))
+        << "the job in front of you IS the [CURRENT] row";
+    EXPECT_TRUE(docket(zone).page.multi_page()) << "and the pager row says so";
+    EXPECT_TRUE(docket(zone).more_row);
+    EXPECT_EQ("1/2", docket(zone).more.note);
 
     // The company keeps every capability: Long Season adds no locks, no
     // oath column, no retired affordance.
@@ -1641,11 +1685,11 @@ TEST_F(LedgerBookTest, the_advance_writes_the_debt_and_the_camp_says_so)
     EXPECT_LT(settle, docket(zone).page.end_index())
         << "the decision must be inside the band the panel draws";
 
-    // And the row survives the panel's own 42-character face. The clip
-    // cuts on a word boundary, so a note long enough to push the price
-    // past the end takes the WHOLE price with it — leaving a purchase row
-    // that quotes no price at all, the one thing it may never do.
-    constexpr std::size_t kZoneRowChars = 42;  // (264px face - 8) / 6px
+    // And the row survives the panel's own face. The clip cuts on a word
+    // boundary, so a note long enough to push the price past the end
+    // takes the WHOLE price with it — leaving a purchase row that quotes
+    // no price at all, the one thing it may never do.
+    constexpr std::size_t kZoneRowChars = 48;  // (298px face - 8) / 6px
     const std::string drawn = og::ui::campaign_picker_row_text(
         docket(zone).rows[settle_row], kZoneRowChars);
     EXPECT_EQ(std::string::npos, drawn.find(".."))
@@ -1798,8 +1842,15 @@ TEST_F(LedgerBookTest, settlement_day_shows_the_arithmetic_then_pays_it)
     EXPECT_EQ(2, zone.texts()[0].units);
     EXPECT_EQ("18 done", zone.readout()->items[0].value);
 
-    // The headline row carries the computed net, not a slogan — and it is
-    // on the screen with the level row; the shop door is what pages here.
+    // The headline row carries the computed net, not a slogan — and it
+    // leads the DOCKET. What the panel OPENS on is a different question,
+    // and since 2026-09-22 it has one answer everywhere: the window
+    // holding the [CURRENT] row. This two-unit band pages (three rows,
+    // one slot spent on the pager ROW), so the camp opens on the
+    // Settlement Day level row itself, alone, over "MORE - 2/3  >" —
+    // the row the strip's GO is about is never the row behind the pager.
+    // DRAW YOUR PAY is the one click behind it, and the shop door the
+    // click before.
     const std::vector<CampaignZoneSession::Row>& rows = docket(zone).rows;
     ASSERT_EQ(3u, rows.size());
     EXPECT_EQ("draw_pay", rows[0].id);
@@ -1807,8 +1858,21 @@ TEST_F(LedgerBookTest, settlement_day_shows_the_arithmetic_then_pays_it)
     EXPECT_EQ("pays 900g, once", rows[0].note) << "1800 earned less 900 owed";
     EXPECT_EQ("19", rows[1].id);
     EXPECT_EQ("Settlement Day", rows[1].label);
+    EXPECT_TRUE(rows[1].current);
     EXPECT_EQ("stores", rows[2].id);
+    // The composed window, slot by slot: the [CURRENT] row, then the
+    // pager row LAST, and nothing else on the band.
+    EXPECT_EQ(1, docket(zone).page.first_index());
     EXPECT_EQ(2, docket(zone).page.end_index());
+    EXPECT_EQ("19", rows[static_cast<std::size_t>(
+                            docket(zone).page.first_index())].id)
+        << "the window opens on the row the camp is pointing at";
+    ASSERT_TRUE(docket(zone).more_row) << "and says there is more behind it";
+    EXPECT_EQ("MORE", docket(zone).more.label);
+    EXPECT_EQ("2/3", docket(zone).more.note);
+    EXPECT_EQ("MORE - 2/3  >",
+              og::ui::campaign_picker_row_text(docket(zone).more, 48))
+        << "the pager row is the window's last slot";
     EXPECT_FALSE(has_camp_row(docket(zone), "settle_book"))
         << "settling 900 to dodge a 900 dock is a wash: never offered";
     EXPECT_FALSE(has_camp_row(docket(zone), "take_advance"))

@@ -99,17 +99,99 @@ code, and the layout tests in the same change.
 Base Camp has exactly one page window: the eight roster rows. The seat rail
 below it is not paged — it is this machine's four fixed slots (ordinals
 35..38), and remote seats never appear there. A slot holding one of this
-machine's seats draws a card; a bare slot is the ADD PLAYER door on the same
-ordinal (LOBBY FULL and dimmed when the lobby has no room, hidden outright
-past what the device can seat). Ordinals 33, 34, 39 and 40 are parked spares
-— the retired `[+]` and the two seat pagers — re-parked every frame. The
-header's line B carries the players/machines census that the rail no longer
-shows.
+machine's seats draws that seat (`BaseCampSlotKind::Seat`); a bare slot is
+the ADD PLAYER door on the same ordinal (LOBBY FULL and dimmed when the
+lobby has no room, hidden outright past what the device can seat).
+Ordinals 33, 34, 39 and 40 are parked spares — the retired `[+]` and the
+two seat pagers — re-parked every frame, and so are the four retired
+docket pagers at 65..68 (`zone_pager_spare_0..3`). The header's line B
+carries the players/machines census that the rail no longer shows.
 
 Two consumers select TEXT menu items by 1-based position and break silently
 on reorders: `scripts/test_text_picker_interactive.sh` and the scripted drive
 in `tests/unit/test_platform_headless.cpp`. Grep both whenever
 `kTeamBuildItems` (or any menu's item list) changes shape.
+
+## The SETUP wizard (the second screen on the camp chassis)
+
+On a `matchup: versus` campaign the wizard has exactly ONE door on every
+client, and it is not on the command strip: it is the Base Camp docket's own
+row, `SETUP - <GAME>: <ARENA>  >` (`zone_action_0` on SDL and web, the camp
+prompt's row `1` on the terminals). The strip reads
+`BACK · DIFFICULTY · SCENARIO · NETWORK · GO` on EVERY campaign — ordinals end
+at 72 and the ceiling is 73, so do not go looking for a versus-only strip
+ordinal. The row opens `MenuScreenId::MatchSetup`, a five-step wizard
+(GAME → ARENA → TEAMS → RULES → MATCH) that is a room inside the camp panel
+and reuses the zone submenu's constants. Working on it, know these eight
+things:
+
+- **The grid is declared, and it has ONE right edge, 310.** Tabs AND rows
+  end there: a row is the docket's full-width 298 px, 48-glyph face, from
+  the one left edge 12 to the one right edge 310. There is no cell column
+  and no side pager pair — nothing at all lives to the right of a row. The
+  vertical/rhythm names live in
+  `include/openglad/interface/ui/match_setup_session.h` (the session is
+  SDL-free and needs them); every x/w/tab/footer/ordinal name lives in
+  `picker_sdl_defs.h`, which includes that header and `static_assert`s the
+  two against the zone constants. Do not add a third home.
+- **Rows page on a ROW.** A step — or a Base Camp docket band — whose rows
+  outrun their slots spends the window's LAST slot on the pager row:
+  `MORE ARENAS - 1/2  >` in the wizard, `MORE - 2/3  >` on the docket. One
+  arithmetic and one face for every chassis, in
+  `campaign_picker_session.h`: `make_row_window(count, fit)` (which is
+  `fit`, or `fit - 1` when it must page), `make_more_row(label, page)` and
+  `step_row_window(page)` (next window, WRAPPING home from the last). The
+  row is an ordinary `Kind::Page` row, so it wears the `  >` marker and
+  rides the vertical nav chain like any other, and the terminals print it
+  as a numbered item — the wizard's terminal projection shares the
+  session's window; the camp docket's listing deliberately does not window
+  at all. With the shipped data exactly one page in the game pages: a
+  game's ARENA step for CTF (11 rows over 8 slots).
+- **A paged band OPENS on the window holding `[CURRENT]`.** Same helper
+  file, same rule for every chassis: `open_row_window(page, index)`, with
+  `current_row_index(rows)` finding the marked row (window 0 when nothing
+  is marked). The row the surface is pointing at — the one the strip's GO
+  will launch — is never the row behind the pager. After that the window
+  is the player's: the pager row moves it, a refetch KEEPS it, and only a
+  new `[CURRENT]` row (a level set under the open camp) re-opens the band.
+  Both callers are pinned: the docket in
+  `tests/unit/test_campaign_zone_session.cpp` +
+  `tests/integration/test_menu_layout.cpp`, the wizard's ARENA step in
+  `tests/unit/test_match_setup_session.cpp`.
+- **Level rows in the wizard are PLAIN, not GO-green.** Green is GO's
+  alone here: the MATCH step's GO row and the strip GO. `[CURRENT]` is
+  what marks the armed arena. The seam is one argument on the shared
+  composer (`compose_scripted_row_face(..., level_rows_green)`), which the
+  wizard alone passes `false`; every classic campaign's book page, zone
+  submenu and camp docket keeps its green level row, and both halves are
+  pinned in `tests/integration/test_campaign_zone_ui.cpp`.
+- **The cycler rows cycle FORWARD ONLY**, like every other cycler in the
+  picker. There is no `<` cell and no terminal `N-` grammar — that answer
+  takes the driver's `Invalid setup row.` notice — and no reverse on the
+  right mouse button: the wizard sets no `right_click_enabled`, so the
+  engine's legacy rule applies and a right-click is just a click that
+  steps the wheel forward. The wheels are three to five stops, so an
+  overshoot costs a lap. LEFT/RIGHT stay NAVIGATION on this screen as on
+  every other.
+- **The escape-door table** the injector flows bind starts with
+  `{"setup_back", "setup_back"}` — BACK/Escape closes the wizard from any
+  step; PREV/NEXT walk it; a tab jumps to it.
+- **Team Build has 12 items**, and none of them is the wizard: item 11
+  `Difficulty` is a plain item and there is no `Setup` item. The one
+  `Custom`-gated terminal item is SCENARIO's `Replay Level`, which refuses on
+  a versus campaign (`Arenas are set, never replayed.`). Both index consumers
+  below apply whenever that list changes shape.
+- **Test flows press the docket row, not a strip button.**
+  `open_setup_step(tab, WORD)` in `tests/test_click_ladder.h` clicks
+  `zone_action_0` until `setup_tab_0` exists, then clicks the step's tab until
+  it wears `[WORD]`. There is no side pager button to drive: a paged step
+  is stepped by clicking its LAST visible `setup_row_r`, which is the
+  MORE row. The FILL notes are per WHEEL, not per screen:
+  `weak to brutal` on the wizard's macro row (NONE is off that wheel),
+  `none to brutal` on LINEUP's per-team band row. A joiner's CROSS CONTROL
+  home is the strip's DIFFICULTY door, visible and read-only (networked).
+- The design record, with the button table, the per-row budgets and the
+  decisions, is `docs/match-setup-design.md` (round 2 is its §10).
 
 ## Keyboard navigation rules
 

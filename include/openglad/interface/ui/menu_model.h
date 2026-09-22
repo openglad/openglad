@@ -103,6 +103,16 @@ enum class PickerMenuCommand : std::int32_t
     Lineup,
 };
 
+// The terminal `Replay Level` row's refusal on a campaign that carries no
+// progress vocabulary (R2-4, the #207 row above): Multiplayer Arenas SETS
+// its arenas, it never replays them, so the row stays LISTED and refuses in
+// words instead of prompting for a level id it would always call uncleared.
+// terminal_item_gate owns the predicate, so both terminal clients speak it
+// once; the SDL PROGRESS screen shows GO on every row there instead of
+// REPLAY/VISIT.
+inline constexpr std::string_view kReplayVersusGuardMessage =
+    "Arenas are set, never replayed.";  // 31
+
 struct PickerMenuItem
 {
     std::string_view id;

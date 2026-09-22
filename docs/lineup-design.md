@@ -65,6 +65,13 @@ parked `scenario_spare` ordinal 4 is reused (no table growth; label
 after `difficulty` (Team Build position 12; the two 1-based consumers
 are re-pinned). Base Camp itself is at its 73-button ceiling with a
 fully packed strip, so it gets no new door.
+**Update (2026-09-19, PR #307):** Base Camp gained the SETUP door as an
+appended twin ordinal (73), the way DIFFICULTY was appended; ceiling 74
+(docs/match-setup-design.md §3.7).
+**Update (2026-09-20, PR #307):** REVERSED: round 2 deleted the twin. The
+ceiling is **73** again, the strip reads DIFFICULTY on every campaign, and the
+wizard's door is the Base Camp docket's own SETUP row — no new ordinal at all
+(docs/match-setup-design.md §10).
 
 One engine-hosted screen (`MenuScreenId::Lineup`, a `MenuScreenSpec`
 like SCENARIO, not a legacy loop), four **team bands**, one action row.
@@ -377,6 +384,13 @@ bands as context lines + the two knob items per team, `fighters`
 SPLIT items; curses networking gains kick/disconnect. All labels from
 one `format_*` helper each. The two 1-based consumers are re-pinned in
 the same commit.
+**Update (2026-09-19, PR #307):** Team Build now ends at item 13 `Setup`, the
+SETUP wizard's terminal door, gated to versus campaigns; item 11
+`Difficulty` is gated to classic ones (docs/match-setup-design.md §2.7).
+**Update (2026-09-20, PR #307):** REVERSED: item 13 `Setup` is retired (Team
+Build ends at 12) and item 11 `Difficulty` is ungated. The terminals reach the
+wizard through the camp's SETUP row, `7 Camp` → `1`
+(docs/match-setup-design.md §10).
 
 ## 9. Test matrix (teeth, not coverage theatre)
 
@@ -514,9 +528,9 @@ above.
 |---|--------|
 | A1 | **TEAMS (`ctf_team_count`) is retired as a control.** Its only power LINEUP lacked — *deactivating an authored team* — moves onto the band as a wheel value **`OFF`**. The wheel is now `AUTO / OFF / NONE / <presets>`; storage `bot_squad`: `0 = AUTO`, `1 = OFF`, `2 = NONE`, `3.. = preset ordinal (index + 3)`; `kMaxBotSquad = 2 + kMaxBotPresets`. (The field only exists on this branch, so renumbering costs nothing.) |
 | A2 | **`OFF` semantics = exactly what `TEAMS: n` did to a dropped team**: the team leaves the active mask — its authored troops, generators and flags are not fielded — decided in the same activation fold. A team with a seat or a deployed fighter is *on* by definition, so `OFF` there is **refused with a toast** (`TEAM n HAS PLAYERS` / `TEAM n HAS FIGHTERS` — the refusal that was wrong for NONE is right for OFF), and the lobby seat domain (`lobby_effective_team_mask`) excludes OFF teams so a joiner cannot move a seat onto one; the existing settings-change reteam handles any residual. `AUTO` keeps meaning the map's own value (manifest default or authored count); a team the map leaves inactive turns on by putting something on it (a seat, or a preset squad). |
-| A3 | **`ctf_team_count` stays in the save/wire layout (no format bump) but is inert**: the sanitizer and both world-entry twins snap it to `0`, the campaign vocabulary drops `team_count` (`kCampaignMatchSettingNames`, provider slot map, stub regenerated), `census_inputs` stops reading it, `effective_team_mask` becomes the identity, and every TEAMS control goes: the SCENARIO cycler, the Modes camp MATCH SETUP row (digest loses "Auto sides"), the terminal items and every pin. Legacy `.gtl` values 2/3/4 heal to Auto on first sanitize — a one-time documented migration (D30 precedent). |
+| A3 | **`ctf_team_count` stays in the save/wire layout (no format bump) but is inert**: the sanitizer and both world-entry twins snap it to `0`, the campaign vocabulary drops `team_count` (`kCampaignMatchSettingNames`, provider slot map, stub regenerated), `census_inputs` stops reading it, `effective_team_mask` becomes the identity, and every TEAMS control goes: the SCENARIO cycler, the Modes camp MATCH SETUP row (digest loses "Auto sides"), the terminal items and every pin. Legacy `.gtl` values 2/3/4 heal to Auto on first sanitize — a one-time documented migration (D30 precedent). **Update (2026-09-19, PR #307):** the camp page is gone with it: the side count is the SETUP wizard's TEAMS step (`SIDES:`, clamped to the arena's authored sides), docs/match-setup-design.md §2.4. |
 | A4 | **TROOPS stays.** `ALL`/`OWN` answers a question LINEUP has no home for — whether the map's *own* authored cast fights — and `FAIR` is kept as the one-click default: *TROOPS sets what `BOTS: AUTO` resolves to on an empty team; LINEUP's per-team value overrides it.* Documented on the band (`AUTO` census hint) rather than duplicated. |
-| A5 | **`Limit: Map` is relabelled `SCORE: MAP` / `SCORE: 5`** (the score limit — captures, goals, kills; `MAP` = the level's own). The camp page keeps `TARGET SCORE`. After A3 the SCENARIO knob row re-grids to `TROOPS (30,140) | SCORE (120,140)`, cell (210,140) free; nav and the static-layout pin move with it. |
+| A5 | **`Limit: Map` is relabelled `SCORE: MAP` / `SCORE: 5`** (the score limit — captures, goals, kills; `MAP` = the level's own). The camp page keeps `TARGET SCORE`. **Update (2026-09-19, PR #307):** it does not any more — the score knob has ONE home, the SETUP wizard's RULES step `SCORE:` row, and the SCENARIO copy is parked (docs/match-setup-design.md §2.5, D6). After A3 the SCENARIO knob row re-grids to `TROOPS (30,140) | SCORE (120,140)`, cell (210,140) free; nav and the static-layout pin move with it. |
 | A6 | **`LV` is an offset, −5…+5, on top of the AUTO source**: `bot_level` clamps `[-5, 5]`; `0` renders `LV: AUTO`, others `LV +2` / `LV -1`; wheel `AUTO, +1 … +5, -5 … -1, AUTO`. Resolution (one place, `bot_level_for`): `clamp(base + offset, 1, 9)` where `base` is the FAIR solve for a FAIR squad and the difficulty formula otherwise; the *resolved* level is what the team's plan banks (respawns reproduce it), and the preview label reads `LV+2` / `LV-1` (no inner space, budget rule from §3.4). Band modes apply the same offset to team 1's pair. |
 
 Work packages: W4-B (opus) the scale/clamps/vocabulary/mask + unit
@@ -573,6 +587,8 @@ have to know, so nobody re-derives it:
   **`campaign_picker.lua` still reads it** (the MATCH SETUP TEAMS row and
   the rules digest), which is W4-A's camp-page work and is red until it
   lands.
+  **Update (2026-09-19, PR #307):** that Lua is deleted; the row is the SETUP
+  wizard's `SIDES:` wheel in `picker_common` (docs/match-setup-design.md §3.4).
 - **`cycle_ctf_team_count` / `format_ctf_teams_label` are GONE.** W4-B
   left them compiling as stubs (write Auto / answer `"Teams: Auto"`) for
   the three callers W4-C and W4-G still owned; those callers went with
@@ -627,7 +643,7 @@ Rulings B1–B9 supersede A1–A6 and the matching sentences above.
 | B2 | **`FILL` = the matched solver with a multiplier.** Values and storage `fill[4]`: `0 = FAIR` (the default — all-zero stays the default state), `1 = NONE`, `2 = WEAK ×0.75`, `3 = STRONG ×1.25`, `4 = BRUTAL ×1.5`; wheel order NONE, WEAK, FAIR, STRONG, BRUTAL. The squad is the mode's stock `BOT_SQUAD`, sized by the matched-headcount rule; level solved by the existing D22 argmin against `target = reference × m`. |
 | B3 | **Reference = the weakest human team's f-sum** (all human teams in the lobby; D11's mean is retired). Allies (FILL on an occupied team): `target = (strongest other team's f-sum − this team's human f-sum) × m`, floor 0 (→ no squad). No human power anywhere → the legacy difficulty formula, as today. Hard-shape modes cap the squad at `cap − roster` (R2). Band modes (FFA/mutant) fill singles at the solved level; NONE with <2 fighters refuses (R1). |
 | B4 | **`MAP UNITS` box per team, `map_units[4]`: `0 = on` (default), `1 = off`** — whether the map-shipped units on that team are fielded (the old strip, now per team). Dimmed/inert when the map ships no units on that team (census hint `NO MAP UNITS`). A team is active when anything is on it: a seat, a deployed fighter, fielded map units, or a FILL squad. |
-| B5 | **TROOPS is retired everywhere at once** (the SCENARIO cycler, the camp MATCH SETUP row, the terminal item, `og.campaign_match_*("strip_troops")`); `ctf_strip_scenario_troops` stays on disk/wire but is sanitized to 0 like `ctf_team_count`. `bot_squad`/`bot_level` are renamed `fill`/`map_units` at every copy site (all on this branch; no format bump — protocol 16 / GTL 18 / snapshot 12 / replay 18 unchanged). The SCENARIO knob row is `SCORE` alone at (30,140). |
+| B5 | **TROOPS is retired everywhere at once** (the SCENARIO cycler, the camp MATCH SETUP row, the terminal item, `og.campaign_match_*("strip_troops")`); `ctf_strip_scenario_troops` stays on disk/wire but is sanitized to 0 like `ctf_team_count`. `bot_squad`/`bot_level` are renamed `fill`/`map_units` at every copy site (all on this branch; no format bump — protocol 16 / GTL 18 / snapshot 12 / replay 18 unchanged). The SCENARIO knob row is `SCORE` alone at (30,140). **Update (2026-09-19, PR #307):** that row is now PARKED too — `ctf_capture_limit` has one surface, the SETUP wizard's RULES `SCORE:` row (docs/match-setup-design.md D6). |
 | B6 | **FIGHTERS is deleted** (screen, door, terminal items). Its one unique power — repairing a seat/colour mismatch networked — moves to the Base Camp roster chip: editable for **your own company** in networked sessions through the existing `lineup_fighter_team_editable` predicate (the `!networked` gate on the chip goes; foreign rows stay inert). SPLIT EVEN / SPLIT FAIR / UNITE stay on LINEUP; strip = `BACK | SPLIT EVEN | SPLIT FAIR | UNITE`, flush right, 6px gaps. |
 | B7 | **Preview** (VIEW LEVEL) renders what the staged world holds: `MAP TROOPS (n)`, `BOT SQUAD (5) FAIR` / `STRONG`, `COMPANY+BOTS (3+2) WEAK`; the banked facts carry the fill code (no ordinal, no offset). Refusal sentences unchanged. |
 | B8 | **No refusals on the wheel.** NONE is legal anywhere; nothing on the band can deactivate a team that has people, so the toasts go. |
@@ -808,6 +824,8 @@ re-derives them from the code:
   DEFAULT world with rosters is the matched world — the old TROOPS: FAIR
   behaviour — and the all-zero byte-identity is gone by design (the
   staged-rules suite pins the new default rows instead, and says so).
+  **Update (2026-09-19, PR #307):** still true, and the ball games derive
+  their BODY COUNT from it above FAIR — Amendment 8.
 - **`TEAMS MATCHED` announces for any solved squad**, allies included,
   through the unchanged R3 one-shot latch (`announce_matched` gates on
   init and fires once); the legacy arm and the band modes never announce.
@@ -968,7 +986,10 @@ so nobody re-derives them:
   the bot mark (`BOT_MARK_BIT` / `mark_bot`), the stock `BOT_SQUAD`, the
   per-team strip (`strip_authored_troops`) and the fact banking
   (`bank_lineup_facts`, `bank_match_target`) — is one module, bound as
-  `og.use("core:lineup")`.
+  `og.use("core:lineup")`. **Update (2026-09-19, PR #307):**
+  `matched_families` and `squad_families` collapsed into `squad_shape` +
+  the pure `squad_prefix` when the ball games started buying bodies —
+  Amendment 8.
 - **`mode_match` is the modes' FACADE over it, not a copy.** The
   mode-specific rules stay there in full (activation, `fills`, the mask
   helpers' consumers, `consume_markers`, `strip_inactive_teams`, the
@@ -1561,19 +1582,25 @@ itself turned up:
   in the sim.
 
 # Amendment 5 (2026-08-28): MATCH SETUP gets TEAMS and FILL macros over the per-team knobs
+**Update (2026-09-19, PR #307):** the macros survive, the page does not — they
+are `og::ui::turn_match_sides` / `turn_match_fill` in `picker_common`, on the
+SETUP wizard's TEAMS step (docs/match-setup-design.md §2.4, §3.4).
 
 Maintainer ruling: the Multiplayer Modes camp's MATCH SETUP page gains
 "one selector for number of teams and one selector for the FILL of all
 selected teams… they drive the same logic as LINEUP and are later
 tweakable there." Rulings G1–G5.
+**Update (2026-09-19, PR #307):** faces and said-lines are byte-identical
+after the move; the one deliberate change is that the sides row is SIDES and
+is clamped to the arena's authored side count (hidden on a two-side arena).
 
 | # | Ruling |
 |--|--|
 | G1 | **No second store.** Both rows are macros over the one per-team `fill[]` array (`og.campaign_match_set("fill_N")`); LINEUP keeps per-team authority and the camp faces DERIVE from the array on every refetch. |
 | G2 | **`TEAMS: n`** (wheel 2 → 3 → 4 → 2) = field n teams total: the local seat's team plus n−1 opponents, chosen by ascending team index skipping the local team; the chosen opponents get the FILL row's effective value (FAIR when the current common value is NONE or MIXED), the rest go NONE. Face: `TEAMS: 1 + count(opponents with fill ≠ NONE)` (reads `TEAMS: 1` in the all-NONE resting state; explicit fills on unauthored teams are legal per D2). |
-| G3 | **`FILL: x`** (wheel NONE → WEAK → FAIR → STRONG → BRUTAL) writes x to every opponent team currently on; with none on it turns on the lowest opponent at x (the `TEAMS: 2` shape). Face: the common value of the on opponents, `MIXED` when LINEUP diverged them, `NONE` at rest. |
+| G3 | **`FILL: x`** (wheel NONE → WEAK → FAIR → STRONG → BRUTAL) writes x to every opponent team currently on; with none on it turns on the lowest opponent at x (the `TEAMS: 2` shape). Face: the common value of the on opponents, `MIXED` when LINEUP diverged them, `NONE` at rest. **Update (2026-09-20, PR #307):** REVERSED twice over: with none on, a FILL turn now lights EVERY authored opponent (fix B), and NONE left the wizard's wheel entirely (WEAK → FAIR → STRONG → BRUTAL, note `weak to brutal`), so there is no resting NONE face to wrap to. LINEUP's own band wheel keeps NONE and `none to brutal` (docs/match-setup-design.md §10). |
 | G4 | **The local team comes from a new campaign binding `og.campaign_my_team()`** (the first local seat's team; falls back to `save.my_team`) — the one C++ hook this needs. Campaign fence rules as for the other `og.campaign_*` reads. |
-| G5 | **Pins**: the modes book page pins (row labels, faces, said-lines), a macro↔LINEUP round-trip test (set TEAMS/FILL on the page, read the bands; tweak one band in LINEUP, the page face reads MIXED), the zone-UI capture regenerated. Writes ride the existing match-settings dirty → sync → restage tail, so preview == launch needs no new plumbing. |
+| G5 | **Pins**: the modes book page pins (row labels, faces, said-lines), a macro↔LINEUP round-trip test (set TEAMS/FILL on the page, read the bands; tweak one band in LINEUP, the page face reads MIXED), the zone-UI capture regenerated. Writes ride the existing match-settings dirty → sync → restage tail, so preview == launch needs no new plumbing. **Update (2026-09-19, PR #307):** the page pins moved with the macros to `tests/unit/test_match_setup_session.cpp`; the round trip is `LineupUi.setup_wizard_macros_round_trip_with_lineup` (docs/match-setup-design.md §8). |
 
 ## G4 as built: `og.campaign_my_team()`
 
@@ -1602,12 +1629,17 @@ silent 0 of its own invention. `openglad_server` installs no providers at
 all, and there the binding raises rather than inventing a team.
 
 ## As built: W9 — the MATCH SETUP macros (G1–G3, G5)
+**Update (2026-09-19, PR #307):** the page is retired into the SETUP wizard.
 
 The two rows lead the page (TEAMS, FILL, then TARGET SCORE and TIME
 LIMIT), live entirely in `campaign_picker.lua`, and are macros exactly as
 G1 rules: no store, no key of their own, every write an
 `og.campaign_match_set("fill_N")`, both faces re-derived from the array at
 every fetch. Rulings the implementation had to make:
+**Update (2026-09-19, PR #307):** the rows are now the wizard's `SIDES:` and
+`FILL:` on TEAMS, in C++; TARGET SCORE has one home, the RULES step's
+`SCORE:` row; the TIME LIMIT cycle moved to `og::ui::cycle_time_limit` and
+its face spells `5 MIN` … `20 MIN` (docs/match-setup-design.md §2.5, §3.4).
 
 - **Off-wheel faces rejoin at the head** — the book's standing rule for a
   value a wheel cannot place, applied to the two derived faces it can now
@@ -1626,6 +1658,8 @@ every fetch. Rulings the implementation had to make:
   at WEAK."` for the none-on turn-on, `"No squads."` for the wrap to NONE.
   Non-host clicks answer the knobs' own `"The host calls the rules."`
   backstop, behind rows that are already cut at fetch.
+  **Update (2026-09-20, PR #307):** DELETED — see the note at the foot of this
+  list; the wizard's knobs speak through their faces alone.
 - **The digest is three-valued now**: `"<n>-way, <fill>, <score>"`
   (`"1-way, none, map"` at rest; `mixed` when LINEUP diverged the on
   bands). `-way` and not `sides` because the worst case —
@@ -1644,6 +1678,19 @@ every fetch. Rulings the implementation had to make:
   LINEUP tweak to WEAK reads back `FILL: MIXED` with the sides count
   kept); the `zzz_uxr_capture_modes_match_setup_page` capture regenerated
   with the macro rows at rest and stepped.
+  **Update (2026-09-19, PR #307):** the page matrix moved with the macros to
+  `tests/unit/test_match_setup_session.cpp`; the round trip is
+  `LineupUi.setup_wizard_macros_round_trip_with_lineup`; the
+  `zzz_uxr_capture_modes_match_setup_page` scene was retired for the
+  wizard's per-step capture points (docs/match-setup-design.md §8).
+  **Update (2026-09-20, PR #307):** the said-lines are DELETED, and with them
+  `"Two squads at STRONG."`, `"One squad at WEAK."` and `"No squads."` — the
+  maintainer asked what the toast was for and the answer was nothing, so the
+  wizard's knobs now speak through their faces alone. And the `none to brutal`
+  in the **Row notes** bullet above is the MACRO row's note, on the camp page
+  this amendment was written against: that note is `weak to brutal` now, because
+  NONE left the macro wheel. `none to brutal` survives only as the LINEUP BAND
+  wheel's own note (docs/match-setup-design.md §10).
 
 ## Amendment 6 — the FILL macro deals the local band too (maintainer, 2026-08-28)
 
@@ -1681,6 +1728,10 @@ Rulings (H1–H3), superseding G's "count opponents only" for FILL:
   Yours too."` — the two-word tail because the own band is a KNOB write,
   not a promised squad (solo tables field no allies). The wrap keeps
   `"No squads."`: nothing fielded anywhere covers the cleared own band.
+  **Update (2026-09-20, PR #307):** H1's "the lowest opponent when none are on"
+  and "the wrap clears the own band" are both REVERSED: fix B lights every authored
+  opponent when none is on, and NONE is off the wizard's wheel so nothing wraps.
+  H3's said-line is deleted with the rest (docs/match-setup-design.md §10).
 
 # Amendment 7 (2026-09-06): versus campaigns deal FILL: FAIR to their defined teams (#276)
 
@@ -1703,7 +1754,7 @@ only. Rulings I1–I5 supersede E3 there and nowhere else.
 | I2 | **Once per cursor, memoed on the save**: `SaveData::arena_lineup_dealt_campaign` + `arena_lineup_dealt_scen` (GTL v19 tail: u8 id length, id bytes, i16 scenario) record the last cursor dealt. Re-entering a page, VIEW LEVEL, GO, the return to the lobby and a process restart all reload the level through the seams that deal — and none of them lifts an explicit NONE turned after the deal. Re-selecting a scenario (SET LEVEL, SET CAMPAIGN into a versus campaign, the camp docket/roll, a post-match cursor advance) deals FAIR back onto defined teams still at NONE: FILL: NONE on a defined arena team is a per-scenario choice. A pre-v19 file reads as never dealt and is dealt exactly once. |
 | I3 | **One rule, one home, above the sim**: `og::ui::deal_arena_lineup_fill` (pure core over a mask) with `deal_arena_lineup_for_loaded_level` (a world already loaded to match the save) and `deal_arena_lineup_for_cursor` (a scratch headless load — the curses lobby's `ctf_authored_team_mask_for_save` is hoisted into `og::ui` so the lobby's mask and the deal's are the same function). The stored code stays the only thing the engine reads: `packs/core/lib/lineup.lua`, `lineup_stage.lua`, `mode_match.lua` and `game_world.cpp` are untouched, the face reads the stored code (E1 stands), and the C3 all-default byte no-op stands on every classic campaign because a classic cursor never pends. No wire change: `LobbySettings` and the equivalent carry the dealt fills exactly as they carry a wheel turn; the memo is host-local and never rides the wire. |
 | I4 | **Host only, before the publish**: the SDL seam is `reload_picker_level_and_sync_settings` (the one reload every team-build screen, SCENARIO/VIEW LEVEL, LINEUP, SET LEVEL/SET CAMPAIGN and the camp defer to), gated on `picker_lobby_host_controls_visible()` and run BEFORE `picker_lobby_sync_settings_from_save()` so the lobby's echo agrees; a joiner adopts the host's fills from settings and never deals. The terminals deal at the top of `present_menu` (the text picker is always its own host; curses gates on the label context's `is_host`); the demo deals off a scratch load before its bootstrap save because both its display load and the transport shadow's authoritative load read that slot back off disk. The §3.8 settings-tail autosave follows every change. |
-| I5 | **Pins move, not weaken**: the E3 flow pin becomes `arena_rest_deals_fair_and_an_explicit_none_still_refuses` (rest FAIR/FAIR/NONE/NONE on FIRST BLOOD, a two-team census with GREEN's row closing FAIR, the refusal back the moment GREEN is turned to NONE, and the choice standing through the page's re-entry); `arena_defaults_field_a_fair_match_in_the_launched_world` is the reporter's own shape through Base Camp → GO with the ADOPTED world censused (one FAIR opponent against a solo roster — the D34 headcount rule); the text picker's `text_picker_go_on_an_arena_at_rest_fields_the_match` drives GO on 500/300/820/824 and pins the mode live at tick 3 with one opponent on GREEN. The MATCH SETUP rest faces move to `TEAMS: 2 / FILL: FAIR` (500) and `TEAMS: 4 / FILL: FAIR` (300); the 501 wheel walk starts at the dealt FAIR; the `.gtl` version pins move to 19. |
+| I5 | **Pins move, not weaken**: the E3 flow pin becomes `arena_rest_deals_fair_and_an_explicit_none_still_refuses` (rest FAIR/FAIR/NONE/NONE on FIRST BLOOD, a two-team census with GREEN's row closing FAIR, the refusal back the moment GREEN is turned to NONE, and the choice standing through the page's re-entry); `arena_defaults_field_a_fair_match_in_the_launched_world` is the reporter's own shape through Base Camp → GO with the ADOPTED world censused (one FAIR opponent against a solo roster — the D34 headcount rule); the text picker's `text_picker_go_on_an_arena_at_rest_fields_the_match` drives GO on 500/300/820/824 and pins the mode live at tick 3 with one opponent on GREEN. The MATCH SETUP rest faces move to `TEAMS: 2 / FILL: FAIR` (500) and `TEAMS: 4 / FILL: FAIR` (300); the 501 wheel walk starts at the dealt FAIR; the `.gtl` version pins move to 19. **Update (2026-09-19, PR #307):** those faces live on the SETUP wizard's TEAMS step now, the sides row reads `SIDES:`, and a fresh SOCCER or BASKETBALL arena deals STRONG instead of FAIR (Amendment 8; docs/match-setup-design.md §3.8.7) — the 500/300 legs are unchanged. |
 
 ## As built (2026-09-06)
 
@@ -1740,3 +1791,69 @@ only. Rulings I1–I5 supersede E3 there and nowhere else.
 - `docs/mp-game-modes.md`'s "Match setup" section, which still described
   the pre-Amendment-4 auto-fill and the retired TROOPS control, is
   rewritten to the LINEUP/FILL vocabulary and this default.
+
+# Amendment 8 (2026-09-19, PR #307) — the band buys fighters in the ball games, and the ball arenas deal STRONG
+
+Reporter ruling (#305): "the AI needs more people". In **soccer and
+basketball only**, each FILL step above FAIR buys one more BODY at roughly
+one human's power instead of 25 % more power on the same bodies, and a
+fresh ball arena is dealt STRONG so the change is visible without a knob
+being found. Everything else on the wheel — WEAK, FAIR, the allies arm, the
+troops arm, TDM, CTF, onslaught, the band modes and every classic campaign —
+is byte-identical.
+
+| H (empty bench) | WEAK | FAIR | STRONG (the dealt default on soccer/basketball) | BRUTAL |
+|---|---|---|---|---|
+| 1 | 1 @ 75 % | 1 @ 100 % | **2**, ≈ 1 human each | **3**, ≈ 1 human each |
+| 2 | 2 @ 75 % | 2 @ 100 % | **3** | **4** |
+| 3 | 3 @ 75 % | 3 @ 100 % | **4** | **5** |
+| 4 | 4 @ 75 % | 4 @ 100 % | **5** | 5 @ 125 % (one step absorbed, one falls to power) |
+| ≥ 5 | 5 @ 75 % | 5 @ 100 % | 5 @ 125 % | 5 @ 150 % — the pre-#305 numbers |
+| 0 (no human power) | the legacy difficulty squad of 5, unchanged | | | |
+
+**One seam.** `packs/core/lib/lineup.lua` exports
+`squad_shape(knob, headcount, room, table_size, fielded_is_empty,
+bodies_allowed) → count, pct, base`, and it is the only place the rule is
+written. The decision (`mode_match.fills`) and the apply
+(`lineup.spawn_bots`) both call it with the same inputs, which is what makes
+the staged-world matrix a real agreement check rather than two derivations
+that happen to agree. `matched_families` and `squad_families` collapsed into
+the pure `squad_prefix(families, count)`; `fill_target` gained `count, base`
+and computes `og.div(P * pct * count, 100 * base)` in both arms, which
+reduces to the old expression whenever `count == base`, so there is no
+fast-path twin. The absorbed-step discount is read off `FILL_PERCENT`'s own
+spacing — no `FILL_STEP_PERCENT` constant, so one table stays the only copy
+of what a wheel step is worth.
+
+**One shape rail.** `spawn_bots`' fifth parameter is
+`shape = nil | { cap = n|nil, bodies = bool }`, and
+`campaigns/modes/packs/modes.core/lib/mode_shape.lua` is the ONE table that
+answers it: `soccer = { bodies = true }`,
+`basketball = { cap = 5, bodies = true }`, nothing else. Soccer stays
+uncapped deliberately — a cap would change its ALLIES room below FAIR, which
+#305 never asked for, and `#BOT_SQUAD = 5` bounds the body count anyway.
+Basketball keeps its five anchors. Both mode impls read
+`T.squad_shape = shape.of("<mode>")`, and the table is pinned against them.
+
+**The census surfaces.** The player learns the rule from COUNTS, never from
+a second copy of the rule: the SETUP wizard's TEAMS lines and its MATCH step
+census the staged world (`2 BOTS`, `MATCHED BOTS (2) STRONG`), and LINEUP's
+own census column switched from `format_lineup_census` to the wizard's
+`format_match_preview` over the same staged report — so the page where the
+wheel turns finally shows what the wheel buys. The campaign adds one
+authored line on the TEAMS step, `STRONG adds a fighter, BRUTAL two.`
+
+**The campaign-declared deal.** Amendment 7 deals `FILL: FAIR` once per
+cursor. A rule that only bit above FAIR would be invisible at the shipped
+default, so the campaign declares the dealt word through the new
+`match_knobs.deal` key (`"strong"` for soccer and basketball, derived from
+the same `mode_shape.bodies` fact; absent, i.e. FAIR, everywhere else), and
+`deal_arena_lineup_fill` writes the code the hook names. The memo is
+unchanged: turn a ball arena down to FAIR and it stays FAIR through every
+re-entry.
+
+This **supersedes D34/D38/D39 of `docs/matched-teams-design.md` for soccer
+and basketball above FAIR, and Amendment 7's FAIR literal for the ball
+arenas**. The headcount stays the BASELINE everywhere; the per-team ceiling
+is still five; the obmap ledger gains a `team_count × 5` term on the ball
+arenas only. Full record: `docs/match-setup-design.md` §3.8.

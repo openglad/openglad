@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — grid canvas.
+/* Multiplayer Arenas campaign generator — grid canvas.
  *
  * The BASE + DECOR painting helper the new-mode maps are drawn with,
  * carried over from tools/ctf_mapgen/grid_painters.cpp (which stays

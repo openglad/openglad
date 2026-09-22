@@ -961,8 +961,8 @@ TEST(CursesNetwork, lobby_cross_control_key_host_toggles_and_clears_ready)
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
     }
-    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: OWN"));
-    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: OWN"))
+    EXPECT_TRUE(status_contains(*host_lobby, "CROSS CONTROL: OWN"));
+    EXPECT_TRUE(status_contains(*join_lobby, "CROSS CONTROL: OWN"))
         << "every peer sees the mode that changes its own rights (§2.7)";
 
     ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
@@ -975,23 +975,23 @@ TEST(CursesNetwork, lobby_cross_control_key_host_toggles_and_clears_ready)
         join_lobby->poll(join_term, clock);
     }
     EXPECT_TRUE(status_contains(*join_lobby, "Host controls cross-control"));
-    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(status_contains(*join_lobby, "CROSS CONTROL: OWN"));
     EXPECT_TRUE(status_contains(*host_lobby, "[ready]"))
         << "a denied joiner toggle must not clear ready";
 
-    // Host 'c': both peers converge on CTRL: ALL and the settings change
-    // clears the joiner's ready (§4.5).
+    // Host 'c': both peers converge on CROSS CONTROL: ALL and the
+    // settings change clears the joiner's ready (§4.5).
     host_term.push_char(U'c');
     bool converged = false;
     for (int i = 0; i < 200 && !converged; ++i) {
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
-        converged = status_contains(*host_lobby, "Control: CTRL: ALL") &&
-            status_contains(*join_lobby, "Control: CTRL: ALL") &&
+        converged = status_contains(*host_lobby, "CROSS CONTROL: ALL") &&
+            status_contains(*join_lobby, "CROSS CONTROL: ALL") &&
             !status_contains(*host_lobby, "[ready]");
     }
-    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: ALL"));
-    EXPECT_TRUE(status_contains(*join_lobby, "Control: CTRL: ALL"))
+    EXPECT_TRUE(status_contains(*host_lobby, "CROSS CONTROL: ALL"));
+    EXPECT_TRUE(status_contains(*join_lobby, "CROSS CONTROL: ALL"))
         << "the toggle must replicate to the joiner's status";
     EXPECT_FALSE(status_contains(*host_lobby, "[ready]"))
         << "a settings change clears every non-host machine's ready (§4.5)";
@@ -1002,9 +1002,9 @@ TEST(CursesNetwork, lobby_cross_control_key_host_toggles_and_clears_ready)
     for (int i = 0; i < 200 && !reverted; ++i) {
         host_lobby->poll(host_term, clock);
         join_lobby->poll(join_term, clock);
-        reverted = status_contains(*join_lobby, "Control: CTRL: OWN");
+        reverted = status_contains(*join_lobby, "CROSS CONTROL: OWN");
     }
-    EXPECT_TRUE(status_contains(*host_lobby, "Control: CTRL: OWN"));
+    EXPECT_TRUE(status_contains(*host_lobby, "CROSS CONTROL: OWN"));
     EXPECT_TRUE(reverted);
 }
 
@@ -2512,7 +2512,7 @@ TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
     FakeClock clock;
     lobby->poll(term, clock);
 
-    EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Game Modes"));
+    EXPECT_TRUE(status_contains(*lobby, "Campaign: Multiplayer Arenas"));
     EXPECT_TRUE(status_contains(*lobby, "Level: 1"));
     // The guarded hazard: gladiator's scen1 title must never label a modes
     // lobby's level number.

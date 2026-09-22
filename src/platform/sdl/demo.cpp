@@ -589,7 +589,7 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     }
 
     // OPENGLAD_DEMO_MATCH_TIME_LIMIT=<sim ticks> drives the #241 match clock
-    // through a render-real capture, the way a host's MATCH SETUP write
+    // through a render-real capture, the way a host's SETUP: RULES write
     // does; 0 (the default) keeps the map's own value. The knob rides the
     // save into sync_world_from_save_data, so no launch path is special-cased.
     // It goes through clamp_match_setting for the same reason
@@ -614,6 +614,30 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     (void)og::ui::sync_campaign_mount_to_save(s->save_data);
     (void)og::ui::deal_arena_lineup_for_cursor(s->save_data,
                                                sdl_level_data_hooks());
+
+    // OPENGLAD_DEMO_FILL=<0..4> overwrites the FILL wheel on every team the
+    // arena authors, AFTER the deal above has had its say: the deal fields
+    // the campaign's own word (STRONG on a ball arena, #305), and the
+    // BRUTAL evidence a capture needs is one notch further out. -1, the
+    // default, leaves every band exactly as the deal left it. Through
+    // clamp_match_setting for the same reason the clock above is: the
+    // capture tooling must not be the one producer that can mint a code
+    // the lobby would bounce.
+    const int fill = env_int("OPENGLAD_DEMO_FILL", -1, -1);
+    if (fill >= 0) {
+        const std::uint8_t authored = og::ui::ctf_authored_team_mask_for_save(
+            s->save_data, sdl_level_data_hooks());
+        for (std::size_t team = 0; team < s->save_data.fill.size(); ++team) {
+            if ((authored & (1u << team)) == 0)
+                continue;
+            if (!og::data::clamp_match_setting(
+                    std::format("fill_{}", team + 1), fill,
+                    s->save_data.fill[team])) {
+                throw std::runtime_error(
+                    "OPENGLAD_DEMO_FILL could not be applied");
+            }
+        }
+    }
 
     // The demo never selects a company, so this is the default "save0" slot
     // and the bootstrap stays byte-identical (§3.9).

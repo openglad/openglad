@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — Soccer (820-823).
+/* Multiplayer Arenas campaign generator — Soccer (820-823).
  *
  * Pitch grammar (all four): a CLOSED impassable perimeter (ball and
  * players can never leave — the self-check flood-fills the border), a
@@ -340,8 +340,7 @@ std::vector<ExpectedLevel> soccer_expectations()
             "PUT IT PAST THEIR LINE THREE",
             "TIMES AND THE MATCH IS YOURS.",
             "THE DEAD MAY REJOIN THE FIELD.",
-            "PLAY ON, CONTENDERS.",
-            "-- THE GAMESMASTER",
+            "PLAY ON.",
         });
     pitch.decor_cells = 4;
     out.push_back(std::move(pitch));
@@ -366,13 +365,12 @@ std::vector<ExpectedLevel> soccer_expectations()
         },
         {{1, 11, 2, 18}, {47, 11, 48, 18}}, {24, 14},
         {
-            "THE MUDBOWL, CONTENDERS. TWO",
+            "THE MUDBOWL. TWO",
             "POOLS FLANK THE MIDDLE. A BALL",
             "THAT HITS WATER BOGS DOWN.",
             "IF IT BOGS, SHOOT IT LOOSE.",
             "FLY THE POOLS OR GO AROUND.",
             "THREE GOALS TAKE THE MATCH.",
-            "-- THE GAMESMASTER",
         });
     mudbowl.decor_cells = 4;
     mudbowl.water_cells = 24;
@@ -407,8 +405,7 @@ std::vector<ExpectedLevel> soccer_expectations()
             "SMASH THE BALL PAST ANY RIVAL",
             "LINE. THREE GOALS TAKE THE",
             "MATCH - AND EVERY MISS FEEDS",
-            "SOMEBODY ELSE'S PAGE.",
-            "-- THE GAMESMASTER",
+            "SOMEBODY ELSE'S SCORE.",
         });
     foursquare.decor_cells = 8;
     out.push_back(std::move(foursquare));
@@ -439,7 +436,6 @@ std::vector<ExpectedLevel> soccer_expectations()
             "BONY KEEPERS, TIRELESS WINGS.",
             "THE BALL BITES ALL THE SAME.",
             "THREE GOALS TAKE THE MATCH.",
-            "-- THE GAMESMASTER",
         });
     boneyard.generators_per_team[0] = 1;
     boneyard.generators_per_team[1] = 1;

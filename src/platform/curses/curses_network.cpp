@@ -1693,14 +1693,14 @@ public:
                 // host-only actionable; a toggle is a SETTINGS change, so
                 // the server clears every non-host machine's ready (§4.5)
                 // and the echoed settings drive the status line below.
-                // Sanitize on toggle ({0,1}; junk counts as ON, lands 0).
-                // Host-only means "is host NOW" here too: the server accepts
-                // a SettingsChange from the host PEER, which on a dedicated
-                // lobby is the elected host's JOIN client.
+                // Sanitize on toggle ({0,1}; junk counts as ON, lands 0) —
+                // the ONE implementation of that rule is
+                // og::ui::toggle_cross_control, which the wizard's RULES row
+                // and the DIFFICULTY panel also turn (lead ruling 14: this
+                // was the terminals' inline twin).
                 og::sim::ITransport* const ctrl_link = server_link();
                 if (local_player_is_host() && ctrl_link != nullptr) {
-                    save_.cross_control = static_cast<std::int16_t>(
-                        save_.cross_control != 0 ? 0 : 1);
+                    og::ui::toggle_cross_control(save_);
                     send_lobby_message(
                         *ctrl_link, server_link_peer(),
                         make_settings_message(save_, difficulty_));
@@ -1901,9 +1901,8 @@ public:
                 og::ui::kBaseCampLineBCharsHireHidden));
             // §2.7: every peer sees the mode that changes its own rights
             // (the SDL DIFFICULTY row's shared label formatter).
-            lines.push_back(
-                "Control: " + og::ui::format_cross_control_label(
-                                  state_->settings.cross_control != 0));
+            lines.push_back(og::ui::format_cross_control_label(
+                state_->settings.cross_control != 0));
         } else if (!kicked_) {
             // A kicked client is not connecting to anything; the alert above
             // is the whole story, and "Connecting..." under it would be the

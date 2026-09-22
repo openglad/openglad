@@ -92,7 +92,7 @@ TEST_F(CampaignMetadataTest, mounted_campaign_title_from_yaml)
 
 TEST_F(CampaignMetadataTest, unmounted_campaign_title_via_private_mount)
 {
-    ASSERT_EQ("Multiplayer Game Modes",
+    ASSERT_EQ("Multiplayer Arenas",
               og::data::campaign_display_title(kModesId));
 
     // The private-mountpoint lookup must not disturb the active mount.
@@ -244,7 +244,7 @@ TEST_F(CampaignMetadataTest, cache_survives_repeat_calls_and_clear)
     // Anchor both first reads to real content before comparing them to
     // themselves: without this, a lookup that always returned the raw id (or
     // always "1. Level 1") satisfied every ASSERT_EQ below.
-    ASSERT_EQ("Multiplayer Game Modes", title_first)
+    ASSERT_EQ("Multiplayer Arenas", title_first)
         << "the unmounted-campaign private mount must serve the real title";
     const std::string scen1_title = og::data::load_scenario_title("scen1");
     ASSERT_NE("none", scen1_title);

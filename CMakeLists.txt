@@ -939,6 +939,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/campaign_picker_session.cpp
+        ${SRC_DIR}/interface/ui/match_setup_session.cpp
         ${SRC_DIR}/interface/ui/cloud_save_client.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
         # core
@@ -1091,7 +1092,7 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(imaginations_mapgen)
 
-    # --- modes_mapgen ("Multiplayer Game Modes" campaign generator) ---
+    # --- modes_mapgen ("Multiplayer Arenas" campaign generator) ---
     # SDL-free authoring tool that writes campaigns/modes/
     # (the six-mode campaign absorbing arenas + ctf; the archive is composed
     # from that tree — packs/ subtree included — by og_builtin_campaigns)
@@ -1289,6 +1290,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/campaign_picker_session.cpp
+        ${SRC_DIR}/interface/ui/match_setup_session.cpp
         ${SRC_DIR}/interface/ui/cloud_save_client.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
     )

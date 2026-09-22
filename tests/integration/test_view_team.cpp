@@ -1876,7 +1876,8 @@ TEST(ViewTeam, base_camp_seat_card_focus_preserves_neighbors_and_team_chip)
 
 // The interior focus ring is bounded to the compact seat rail / move-up band
 // (kBaseCampInteriorRingFirstIndex..kBaseCampInteriorRingLastIndex). The
-// appended gameplay-zone rows past it are 264px full-width faces where a
+// appended gameplay-zone rows past it are full-width faces
+// (kBaseCampZoneActionRowWidth, the whole panel since round 4) where a
 // 3px-inset
 // ring would read as a stray box inside the row, so they take the normal
 // exterior pulse. Pin BOTH directions: nothing may paint in the row's
@@ -1903,7 +1904,7 @@ TEST(ViewTeam, base_camp_zone_action_row_focus_takes_the_exterior_ring)
     save.team_size = 1;
 
     // A composition whose first band is an actions widget: its rows un-park
-    // at x=12, sizex=264 (kBaseCampZoneActionRowWidth).
+    // at x=12, sizex=kBaseCampZoneActionRowWidth (the full panel width).
     og::script::hooks::CampaignZone raw;
     {
         og::script::hooks::CampaignZoneWidget actions;
@@ -1948,7 +1949,7 @@ TEST(ViewTeam, base_camp_zone_action_row_focus_takes_the_exterior_ring)
 
     const button& face = buttons[kBaseCampZoneActionBase];
     ASSERT_EQ(12, face.x);
-    ASSERT_EQ(264, face.sizex);
+    ASSERT_EQ(kBaseCampZoneActionRowWidth, face.sizex);
 
     // Sample bands three pixels wide on each side of the face's left edge,
     // clear of the ring's corners so only the vertical run is observed.
@@ -4575,7 +4576,7 @@ TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
     EXPECT_EQ(173, buttons[kDifficultyMenuCrossControlIndex].y);
     EXPECT_EQ(140, buttons[kDifficultyMenuCrossControlIndex].sizex);
     EXPECT_EQ(15, buttons[kDifficultyMenuCrossControlIndex].sizey);
-    EXPECT_EQ("CTRL: OWN", buttons[kDifficultyMenuCrossControlIndex].label);
+    EXPECT_EQ("CROSS CONTROL: OWN", buttons[kDifficultyMenuCrossControlIndex].label);
     EXPECT_EQ(kDifficultyMenuCrossControlIndex,
               buttons[kDifficultyMenuBackIndex].nav.up);
     EXPECT_EQ(kDifficultyMenuBackIndex,
@@ -4599,13 +4600,13 @@ TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
     EXPECT_EQ(1, lobby.settings_syncs);
     ASSERT_GT(static_cast<int>(pks().difficulty_menu_buttons.size()),
               kDifficultyMenuCrossControlIndex);
-    EXPECT_EQ("CTRL: ALL",
+    EXPECT_EQ("CROSS CONTROL: ALL",
               pks().difficulty_menu_buttons[kDifficultyMenuCrossControlIndex]
                   .label);
 
     EXPECT_EQ(MENU_OK, change_cross_control());
     EXPECT_EQ(0, save.cross_control);
-    EXPECT_EQ("CTRL: OWN",
+    EXPECT_EQ("CROSS CONTROL: OWN",
               pks().difficulty_menu_buttons[kDifficultyMenuCrossControlIndex]
                   .label);
 
@@ -4630,13 +4631,15 @@ TEST(ViewTeam, difficulty_cross_control_row_gates_and_syncs)
 }
 
 // ---------------------------------------------------------------------------
-// The score limit at its re-homed SCENARIO row (#218): visible to a
-// networked joiner as a read-only label on versus campaigns, with the §2.7
-// denial in the callback — a joiner click popups and cycles nothing, a
-// host click cycles and syncs. (TROOPS retired with amendment B5; its
-// ordinal is a parked spare like the TEAMS cell before it.)
+// SCENARIO carries no knob any more. TEAMS retired with A1/A3, TROOPS with
+// B5, and SCORE with #304 — the match's target has ONE surface now, the
+// SETUP wizard's RULES row, host-gated by the session rather than by a
+// per-callback popup. All three ordinals are parked spares on EVERY frame,
+// for host and joiner, versus campaign and classic alike: that invariance
+// is what this case pins, because a park that only holds on one axis is a
+// row waiting to come back.
 // ---------------------------------------------------------------------------
-TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
+TEST(ViewTeam, scenario_carries_no_knob_for_host_or_joiner)
 {
     trace_clear();
 
@@ -4659,47 +4662,45 @@ TEST(ViewTeam, scenario_match_settings_joiner_readonly_host_actionable)
     int highlighted = kScenarioMenuBackIndex;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
 
-    // Joiner + versus: SCORE visible read-only; the host-gated SET CAMPAIGN
-    // / SET LEVEL hide; the label is the formatter's (A5: SCORE, MAP = the
-    // level's own target). Both retired cyclers' cells (TEAMS A3, TROOPS
-    // B5) are parked spares on every frame.
+    // Joiner + versus: three parked cells, no label on any of them, and
+    // the host-gated SET CAMPAIGN / SET LEVEL hidden.
     EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);
-    EXPECT_FALSE(buttons[kScenarioMenuCtfCapsIndex].hidden);
+    EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetCampaignIndex].hidden);
     EXPECT_TRUE(buttons[kScenarioMenuSetLevelIndex].hidden);
     EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
         << "the LINEUP door is never gated (docs/lineup-design.md §2.3)";
-    EXPECT_EQ("SCORE: MAP", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ("", buttons[kScenarioMenuCtfCapsIndex].label)
+        << "a parked cell carries no face";
 
-    // Joiner click: §2.7 denial — popup, TRACE, no cycle, no sync.
-    trace_clear();
-    EXPECT_EQ(MENU_OK, change_ctf_caps());
-    EXPECT_TRUE(trace_contains("teams", "ctf_caps_denied"));
-    EXPECT_TRUE(trace_contains("popup", "HOST CONTROLS THIS SETTING"));
-    EXPECT_EQ(0, (int)save.ctf_capture_limit);
-    EXPECT_EQ(0, lobby.settings_syncs);
-
-    // A host's lobby-synced turn reaches the joiner's read-only label
-    // through the same per-frame re-derive TROOPS uses.
+    // A value in the save can no longer wake the cell: the read-only
+    // re-derive that used to write "SCORE: 5" here went with the row, so
+    // nothing this screen draws depends on the match's target.
     save.ctf_capture_limit = 5;
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
-    EXPECT_EQ("SCORE: 5", buttons[kScenarioMenuCtfCapsIndex].label);
-    EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
+    EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden)
         << "the spare never wakes, whatever the save holds";
+    EXPECT_EQ("", buttons[kScenarioMenuCtfCapsIndex].label);
+    EXPECT_EQ(0, lobby.settings_syncs)
+        << "and nothing on this screen syncs a match setting any more";
 
-    // Host click: cycle + sync + both-surface refresh.
+    // The HOST axis does not wake it either.
     lobby.host = true;
     save.ctf_capture_limit = 0;
-    EXPECT_EQ(MENU_OK, change_ctf_caps());
-    EXPECT_EQ(1, (int)save.ctf_capture_limit);
-    EXPECT_EQ(1, lobby.settings_syncs);
-    EXPECT_EQ("SCORE: 1",
-              pks().scenariomenu_buttons[kScenarioMenuCtfCapsIndex].label);
+    sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
+    EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden);
     EXPECT_EQ(0, (int)save.ctf_team_count) << "inert since A3";
+    // Nav closes over the gap: the y=100 row drops onto BACK and BACK
+    // climbs into VIEW LEVEL, with no link left pointing at the spare.
+    EXPECT_EQ(kScenarioMenuBackIndex,
+              buttons[kScenarioMenuViewScenarioIndex].nav.down);
+    EXPECT_EQ(kScenarioMenuBackIndex,
+              buttons[kScenarioMenuLineupIndex].nav.down);
+    EXPECT_EQ(kScenarioMenuViewScenarioIndex,
+              buttons[kScenarioMenuBackIndex].nav.up);
 
-    // Non-versus campaign: SCORE hides for host and joiner alike, and the
-    // parked TROOPS spare stays parked (B5) whatever the frame says.
+    // ...nor the campaign axis, which is the one that used to gate it.
     save.current_campaign = "gladiator";
     sync_scenario_menu_host_control_visibility(buttons, count, highlighted);
     EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden);

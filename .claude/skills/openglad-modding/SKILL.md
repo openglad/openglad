@@ -340,6 +340,14 @@ ships them in an embedded pack that mounts and unmounts with it.
   cancel** — it is a zero-damage hit, and the engine still runs its `hp <= 0`
   death check afterwards, so 0 against a target already at 0 hp kills it.
   Check the target's hp before returning 0.
+- A **versus campaign's** `picker_menu("")` root is not a page of its own
+  any more: it is what the SETUP wizard's GAME step hosts, and the ARENA
+  step is that book at depth >= 2. Return the game index from `""`.
+- `match_knobs` (optional campaign hook, one pure table, seven keys:
+  `teams`, `fill`, `score`, `time`, `lines`, `arena_page`, `deal`) tells the
+  wizard which knobs this game uses, which root row lists the cursor's
+  arena, and what FILL word a fresh arena deals. Absent = every knob on, a
+  FAIR deal, no lines. See `docs/match-setup-design.md` §3.2.
 
 ## Mode/sim scripting traps (paid for across five game-mode builds)
 

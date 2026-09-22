@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — shared authoring helpers.
+/* Multiplayer Arenas campaign generator — shared authoring helpers.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -121,10 +121,10 @@ bool save_level(GameWorld& world, const ExpectedLevel& row)
                              row.id, line));
         metadata.description.push_back(line);
     }
-    if (row.briefing.empty() ||
-        row.briefing.back() != "-- THE GAMESMASTER")
-        fail(std::format("scen{}: briefing must end '-- THE GAMESMASTER'",
-                         row.id));
+    if (const std::string violation =
+            modes_mapgen::briefing_theme_violation(row.briefing);
+        !violation.empty())
+        fail(std::format("scen{}: {}", row.id, violation));
 
     const std::string path =
         get_user_path() + std::format("temp/scen/scen{}.fss", row.id);

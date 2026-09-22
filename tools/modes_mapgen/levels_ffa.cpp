@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — Free For All (850-855).
+/* Multiplayer Arenas campaign generator — Free For All (850-855).
  *
  * Six arenas for the mode where the team byte stops meaning anything
  * (docs/ffa-design.md §6-7): every deployed character fights every other,
@@ -482,14 +482,13 @@ std::vector<ExpectedLevel> ffa_expectations()
                               {FAMILY_DRUMSTICK, {24, 24}},
                           },
                           {
-                              "FREE FOR ALL, CONTENDERS.",
+                              "FREE FOR ALL.",
                               "YOUR TEAM COLOR BUYS NOTHING",
                               "HERE - EVERY BLADE IS AIMED AT",
                               "YOU, AND YOURS AT EVERY BLADE.",
                               "EIGHT ENTER THE PILLAR RING.",
-                              "THE PURSE GOES TO THE NAME",
+                              "THE MATCH GOES TO THE NAME",
                               "STILL COUNTING KILLS.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ffa_row(851, "FFA: CROSSFIRE", 8, 40, 40, 10, 16,
@@ -512,7 +511,6 @@ std::vector<ExpectedLevel> ffa_expectations()
                               "NOT RESTRICT YOUR TARGETS.",
                               "MIND THE PLANKS - THE WATER",
                               "KEEPS NO SCORE.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ffa_row(852, "FFA: SHARDS", 8, 44, 44, 12, 36,
@@ -535,7 +533,6 @@ std::vector<ExpectedLevel> ffa_expectations()
                               "FREE FOR ALL: TEAM CHOICE",
                               "RESTRICTS NO TARGET. TRUST THE",
                               "WALLS, NEVER THE COMPANY.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ffa_row(853, "FFA: THE ROSE", 10, 45, 45, 16, 4,
@@ -558,7 +555,6 @@ std::vector<ExpectedLevel> ffa_expectations()
                               "NAMES NO ALLY. THE HEART FEEDS",
                               "WHOEVER HOLDS IT, AND HOLDING",
                               "IT IS THE HARD PART.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ffa_row(854, "FFA: SCRAMBLE", 10, 48, 48, 16, 16,
@@ -581,7 +577,6 @@ std::vector<ExpectedLevel> ffa_expectations()
                               "NOT RESTRICT YOUR TARGETS.",
                               "TWIN PADS FEED THE BOLD AND",
                               "SIXTEEN COME TO CLAIM THEM.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ffa_row(855, "FFA: NIGHTFALL", 12, 50, 50, 16, 36,
@@ -600,11 +595,10 @@ std::vector<ExpectedLevel> ffa_expectations()
                           {
                               "THE TORCHES ARE LIT AND THE",
                               "LOOP IS LONG. SIXTEEN WALK IT",
-                              "TONIGHT, ALL OF THEM HUNTING.",
+                              "AT ONCE, ALL OF THEM HUNTING.",
                               "FREE FOR ALL: TEAM COLOR BUYS",
                               "NO TRUCE. WHAT STANDS BEHIND",
                               "YOU IS A TARGET, NOT A FRIEND.",
-                              "-- THE GAMESMASTER",
                           }));
 
     return out;

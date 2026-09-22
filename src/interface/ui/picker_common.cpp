@@ -35,6 +35,7 @@
 #include <openglad/core/irandom.h>
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -779,21 +780,74 @@ bool is_allied_mode(const SaveData& save)
 // BOTS: OFF, and nothing reads ctf_team_count as a control any more. The
 // save/wire field keeps its place — every authority home snaps it to 0 —
 // but no menu offers it and no label speaks for it.
+namespace {
+
+// ONE off-wheel rule for every SETUP knob, ported from the Lua next_value
+// (campaign_picker.lua:591-598): a value ON the wheel steps FORWARD and
+// wraps; a value the wheel has no slot for — a match settled from a
+// lobby, an older save, a derived face like SIDES: 1 or FILL: MIXED —
+// rejoins at the HEAD rather than pretending to know where it was.
+//
+// Forward only, like every other cycler in the picker. The wheels here
+// are three to five stops long, so an overshoot costs a lap.
+//
+// cycle_lineup_fill is NOT built on this: its documented rule enters junk
+// at NONE, the slot the clamp lands a negative on, not at the head.
+template <typename T>
+T wheel_next(std::span<const T> wheel, T current)
+{
+    const auto steps = static_cast<int>(wheel.size());
+    for (int i = 0; i < steps; ++i)
+    {
+        if (wheel[static_cast<std::size_t>(i)] != current)
+            continue;
+        return wheel[static_cast<std::size_t>((i + 1) % steps)];
+    }
+    return wheel.front();
+}
+
+} // namespace
+
 void cycle_ctf_capture_limit(SaveData& save)
 {
-    switch (save.ctf_capture_limit)
-    {
-        case 0: save.ctf_capture_limit = 1; break;
-        case 1: save.ctf_capture_limit = 3; break;
-        case 3: save.ctf_capture_limit = 5; break;
-        case 5: save.ctf_capture_limit = 10; break;
-        default: save.ctf_capture_limit = 0; break;
-    }
+    static constexpr std::array<short, 5> kScoreWheel = {0, 1, 3, 5, 10};
+    save.ctf_capture_limit =
+        wheel_next<short>(kScoreWheel, save.ctf_capture_limit);
+}
+
+bool is_versus_campaign(std::string_view campaign_id)
+{
+    return og::data::campaign_matchup(std::string(campaign_id)) == "versus";
 }
 
 bool is_versus_campaign(const SaveData& save)
 {
-    return og::data::campaign_matchup(save.current_campaign) == "versus";
+    // One comparison, two callers: the save form is the id form asked of
+    // the save's own cursor.
+    return is_versus_campaign(std::string_view(save.current_campaign));
+}
+
+// The ONE statement of R2-4 ("get rid of the CLEARED: bullshit. Why do we
+// care, for multiplayer levels?"): Multiplayer Arenas carries no progress
+// vocabulary. An arena is not a road you earn, so nothing in a versus
+// campaign counts, marks or replays one. Every surface that would print
+// CLEARED, "n cleared of m", REPLAY or "must be cleared" asks HERE, and
+// nothing else spells the rule: the wizard's [CLEARED] seam
+// (MatchSetupSession::compose_book_page / compose_manifest), SET LEVEL's
+// row status (level_picker.cpp), PROGRESS's derivation and header
+// (picker_team_build.cpp), the SET CAMPAIGN card line (campaign_picker.cpp)
+// and the terminal Replay Level gate (terminal_menu_model.cpp).
+//
+// The id form is the primitive because the SET CAMPAIGN card composes for
+// EVERY entry, not for the current save.
+bool progress_marks_shown(std::string_view campaign_id)
+{
+    return !is_versus_campaign(campaign_id);
+}
+
+bool progress_marks_shown(const SaveData& save)
+{
+    return progress_marks_shown(std::string_view(save.current_campaign));
 }
 
 std::uint8_t ctf_authored_team_mask_for_loaded_level(
@@ -836,7 +890,21 @@ bool arena_lineup_deal_pending(const SaveData& save)
             save.arena_lineup_dealt_scen != save.scen_num);
 }
 
-bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask)
+std::int16_t arena_deal_fill_code(const SaveData&)
+{
+    // The campaign's own word for what a fresh arena deals (match_knobs.deal,
+    // docs/match-setup-design.md §3.4). Both readers evaluate this only
+    // AFTER their arena_lineup_deal_pending guard, so the Lua call costs one
+    // dispatch per cursor change and never one per frame. No hook, or a hook
+    // that errors: the knobs keep their defaults and FAIR is the answer,
+    // which is what every campaign but the ball arenas wants.
+    og::script::hooks::CampaignMatchKnobs knobs;
+    return og::script::hooks::campaign_match_knobs(knobs) ? knobs.deal_fill
+                                                          : og::sim::kFillFair;
+}
+
+bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask,
+                            std::int16_t code)
 {
     if (!arena_lineup_deal_pending(save) || authored_mask == 0)
         return false;
@@ -848,7 +916,7 @@ bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask)
         const bool authored = (authored_mask & (1u << team)) != 0;
         if (authored && save.fill[team] == og::sim::kFillNone)
         {
-            save.fill[team] = og::sim::kFillFair;
+            save.fill[team] = code;
             changed = true;
         }
     }
@@ -868,9 +936,13 @@ bool deal_arena_lineup_for_loaded_level(SaveData& save,
 {
     if (!arena_lineup_deal_pending(save))
         return false;
+    // arena_deal_fill_code is read HERE, as the argument, so the (future)
+    // campaign call happens once per pending deal and never per frame: the
+    // pending guard above has already refused every other frame.
     return deal_arena_lineup_fill(
-        save, ctf_authored_team_mask_for_loaded_level(save, world,
-                                                      mounted_campaign));
+        save,
+        ctf_authored_team_mask_for_loaded_level(save, world, mounted_campaign),
+        arena_deal_fill_code(save));
 }
 
 bool deal_arena_lineup_for_cursor(SaveData& save, const LevelDataHooks& hooks)
@@ -878,7 +950,8 @@ bool deal_arena_lineup_for_cursor(SaveData& save, const LevelDataHooks& hooks)
     if (!arena_lineup_deal_pending(save))
         return false;
     return deal_arena_lineup_fill(save,
-                                  ctf_authored_team_mask_for_save(save, hooks));
+                                  ctf_authored_team_mask_for_save(save, hooks),
+                                  arena_deal_fill_code(save));
 }
 
 // --- Difficulty submenu match rules ---
@@ -932,6 +1005,15 @@ void cycle_generator_rate(SaveData& save)
 void toggle_infinite_gold(SaveData& save)
 {
     save.infinite_gold = static_cast<short>(save.infinite_gold != 0 ? 0 : 1);
+}
+
+void toggle_cross_control(SaveData& save)
+{
+    // Sanitized on toggle ({0,1}; any junk counts as ON and lands on 0) —
+    // the rule change_cross_control() has always applied, hoisted so the
+    // wizard's RULES row and the DIFFICULTY panel's row cannot disagree.
+    save.cross_control =
+        static_cast<short>(save.cross_control != 0 ? 0 : 1);
 }
 
 bool gold_is_infinite(const SaveData& save) noexcept
@@ -2031,7 +2113,11 @@ StartDenialNotice describe_start_denial(
 
 std::string format_cross_control_label(bool cross_control_enabled)
 {
-    return cross_control_enabled ? "CTRL: ALL" : "CTRL: OWN";
+    // The word is spelled out: "CTRL" read as the key, and the two 140px
+    // faces this label wears (the DIFFICULTY row, the SETUP wizard's RULES
+    // row) hold 23 glyphs, so 18 costs nothing. The curses lobby status
+    // line prints it bare — the noun is in the label now.
+    return cross_control_enabled ? "CROSS CONTROL: ALL" : "CROSS CONTROL: OWN";
 }
 
 BaseCampNetRowText format_base_camp_net_row(std::string_view name,
@@ -2101,7 +2187,7 @@ void order_campaigns_for_select(std::list<std::string>& campaign_ids)
         "tryxian",
         "westlands",
         "longseason",
-        "modes",   // Multiplayer Game Modes (versus)
+        "modes",   // Multiplayer Arenas (versus)
         og::kTowerCampaignId,   // tower (The Endless Tower)
         "imaginations", // the community dream-log (kid-submitted levels)
         "concept",
@@ -3678,6 +3764,57 @@ ScenarioRosterReport build_scenario_roster_report(
     return report;
 }
 
+std::string format_scenario_report_team_line(const ScenarioRosterReport& report,
+                                             int team)
+{
+    if (team < 0 || team > 3)
+        return {};
+    const auto ti = static_cast<std::size_t>(team);
+    if (!report.team_active[ti])
+        return {};
+    std::string fill = fill_display_label(report.team_fill[ti]);
+    if (report.team_squad_count[ti] > 0 &&
+        report.team_fill[ti] != ScenarioFill::Empty &&
+        report.team_fill[ti] != ScenarioFill::Bots &&
+        report.team_fill[ti] != ScenarioFill::Matched)
+    {
+        // A squad fielded BESIDE the occupants (review L2): both halves
+        // are named and both are counted, because both walk onto the
+        // floor. The squad half is the plain word BOTS now — B7 moved what
+        // KIND of squad it is out of the noun and into the trailing fill
+        // word, where one spelling answers for every shape.
+        fill += std::format("+BOTS ({}+{})", report.team_fill_count[ti],
+                            report.team_squad_count[ti]);
+    }
+    else if (report.team_fill[ti] != ScenarioFill::Empty)
+    {
+        fill += std::format(" ({})", report.team_fill_count[ti]);
+    }
+    // The APPLIED fill word closes the row (B7): "BOT SQUAD (5) FAIR",
+    // "COMPANY+BOTS (3+2) WEAK". A team that banked no fill — map troops
+    // alone, a mode that ignored the knob — ends at its count, so the pane
+    // never names a fill that did not decide anything.
+    //
+    // Budget: the worst row is
+    // "  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2) BRUTAL"
+    // (24 + 12 + 6 + 7 = 49), one over. The separator space before the
+    // word is the first thing the budget spends, so such a row glues the
+    // word to the count ("(3+2)BRUTAL", 48) rather than losing a letter of
+    // it — a clipped word is a different word.
+    std::string line = std::format("  {} TEAM  ACTIVE - {}",
+                                   og::sim::team_color_name(team), fill);
+    if (report.team_squad_fill[ti] >= 0)
+    {
+        const std::string_view token =
+            lineup_fill_name(static_cast<short>(report.team_squad_fill[ti]));
+        if (line.size() + 1 + token.size() > kMaxReportLine)
+            line += token;
+        else
+            line += " " + std::string(token);
+    }
+    return clip_line(line);
+}
+
 std::vector<std::string> format_scenario_report_lines(
     const ScenarioRosterReport& report)
 {
@@ -3719,55 +3856,9 @@ std::vector<std::string> format_scenario_report_lines(
             }
             for (int t = 0; t < 4; ++t)
             {
-                const auto ti = static_cast<std::size_t>(t);
-                if (!report.team_active[ti])
-                    continue;
-                std::string fill = fill_display_label(report.team_fill[ti]);
-                if (report.team_squad_count[ti] > 0 &&
-                    report.team_fill[ti] != ScenarioFill::Empty &&
-                    report.team_fill[ti] != ScenarioFill::Bots &&
-                    report.team_fill[ti] != ScenarioFill::Matched)
-                {
-                    // A squad fielded BESIDE the occupants (review L2): both
-                    // halves are named and both are counted, because both
-                    // walk onto the floor. The squad half is the plain word
-                    // BOTS now — B7 moved what KIND of squad it is out of
-                    // the noun and into the trailing fill word, where one
-                    // spelling answers for every shape.
-                    fill += std::format("+BOTS ({}+{})",
-                                        report.team_fill_count[ti],
-                                        report.team_squad_count[ti]);
-                }
-                else if (report.team_fill[ti] != ScenarioFill::Empty)
-                {
-                    fill += std::format(" ({})", report.team_fill_count[ti]);
-                }
-                // The APPLIED fill word closes the row (B7): "BOT SQUAD (5)
-                // FAIR", "COMPANY+BOTS (3+2) WEAK". A team that banked no
-                // fill — map troops alone, a mode that ignored the knob —
-                // ends at its count, so the pane never names a fill that
-                // did not decide anything.
-                //
-                // Budget: the worst row is
-                // "  YELLOW TEAM  ACTIVE - COMPANY+BOTS (3+2) BRUTAL"
-                // (24 + 12 + 6 + 7 = 49), one over. The separator space
-                // before the word is the first thing the budget spends, so
-                // such a row glues the word to the count ("(3+2)BRUTAL",
-                // 48) rather than losing a letter of it — a clipped word is
-                // a different word.
-                std::string line = std::format("  {} TEAM  ACTIVE - {}",
-                                               og::sim::team_color_name(t),
-                                               fill);
-                if (report.team_squad_fill[ti] >= 0)
-                {
-                    const std::string_view token = lineup_fill_name(
-                        static_cast<short>(report.team_squad_fill[ti]));
-                    if (line.size() + 1 + token.size() > kMaxReportLine)
-                        line += token;
-                    else
-                        line += " " + std::string(token);
-                }
-                lines.push_back(clip_line(line));
+                std::string line = format_scenario_report_team_line(report, t);
+                if (!line.empty())
+                    lines.push_back(std::move(line));
             }
         }
         else if (report.staged && report.refusing)
@@ -4580,6 +4671,476 @@ std::vector<NetworkingMachineRow> build_networking_machine_rows(
         rows.push_back(std::move(row));
     }
     return rows;
+}
+
+// --- SETUP wizard rules (docs/match-setup-design.md) --------------------
+//
+// The macros, wheels, cells and hoists the SETUP wizard composes with. The
+// Lua they replace lived in campaigns/modes/packs/modes.core/scripts/
+// campaign_picker.lua. Two deliberate departures from that port:
+//
+//   * no said lines (R2-1). A knob's redrawn FACE is the whole answer, so
+//     the macros write the save and return nothing; the toast slot is left
+//     to the refusals, the level tail and the campaign's own Lua voice.
+//   * the authored-side clamp, the one addition the Lua could not make
+//     because it never saw the arena's marker mask.
+//
+// and one correction to the rule itself: fix B (R2-2) — a FILL turn with
+// no opponent on lights EVERY authored opponent, never just the lowest.
+
+namespace {
+
+// SIDES and FILL both walk the AUTHORED teams other than the local seat's
+// own, ascending (amendment 5 G2's choosing order). An empty mask means
+// nothing is loaded yet, or campaign/mount metadata has not synchronized:
+// the four-team as-built shape answers, so a transient frame never narrows
+// the host's wheel.
+std::vector<int> match_opponents(int my_team, std::uint8_t authored_mask)
+{
+    const unsigned authored = authored_mask & 0b1111u;
+    const unsigned mask = authored != 0u ? authored : 0b1111u;
+    std::vector<int> list;
+    for (int team = 0; team < 4; ++team)
+    {
+        if (team != my_team && (mask & (1u << team)) != 0u)
+            list.push_back(team);
+    }
+    return list;
+}
+
+struct MatchFillBand {
+    int team = 0;
+    short code = 0;
+};
+
+// The authored opponents whose band is ON (fill != NONE), each with the
+// code it holds. Opponents only: this list IS the SIDES count, and the
+// local team is already at the table.
+std::vector<MatchFillBand> match_on_opponents(const SaveData& save,
+                                              int my_team,
+                                              std::uint8_t authored_mask)
+{
+    std::vector<MatchFillBand> on;
+    for (const int team : match_opponents(my_team, authored_mask))
+    {
+        const short code = save.fill[static_cast<std::size_t>(team)];
+        if (code != og::sim::kFillNone)
+            on.push_back({team, code});
+    }
+    return on;
+}
+
+// Every band the FILL face answers for (amendment 6, H2): the on opponents
+// plus the local seat's own band where it holds a word — one uniform
+// non-NONE rule instead of G's own-band carve-out, so a LINEUP tweak to
+// the own band reads back MIXED here like any other. NONE stays silent: a
+// fresh deal leaves the own band NONE and must not read MIXED for it.
+std::vector<MatchFillBand> match_face_bands(const SaveData& save, int my_team,
+                                            std::uint8_t authored_mask)
+{
+    std::vector<MatchFillBand> bands =
+        match_on_opponents(save, my_team, authored_mask);
+    if (my_team >= 0 && my_team < 4)
+    {
+        const short code = save.fill[static_cast<std::size_t>(my_team)];
+        if (code != og::sim::kFillNone)
+            bands.push_back({my_team, code});
+    }
+    return bands;
+}
+
+// The FILL face's one number: the common code of the given bands, 0 with
+// none on, nullopt where LINEUP diverged them (the MIXED face).
+std::optional<short> match_common_fill(std::span<const MatchFillBand> bands)
+{
+    if (bands.empty())
+        return static_cast<short>(og::sim::kFillNone);
+    const short code = bands.front().code;
+    for (const MatchFillBand& band : bands)
+    {
+        if (band.code != code)
+            return std::nullopt;
+    }
+    return code;
+}
+
+// What a SIDES turn deals its chosen opponents (G2, H2): the FILL row's
+// own value where the face names one — a BRUTAL own band deals BRUTAL
+// sides — FAIR where the face reads NONE or MIXED, because a diverged pair
+// names nothing a new side could honestly copy.
+short match_effective_fill(const SaveData& save, int my_team,
+                           std::uint8_t authored_mask)
+{
+    const std::vector<MatchFillBand> bands =
+        match_face_bands(save, my_team, authored_mask);
+    const std::optional<short> code = match_common_fill(bands);
+    if (!code.has_value() || *code == og::sim::kFillNone)
+        return og::sim::kFillFair;
+    return *code;
+}
+
+// The SIDES wheel: every legal side count, 2..N. N < 2 (a one-team mask)
+// still offers the one value the macro can deal, so the wheel is never
+// empty and a turn is never a crash.
+std::vector<int> match_sides_wheel(std::uint8_t authored_mask)
+{
+    std::vector<int> wheel;
+    const int sides = std::max(2, match_sides_count(authored_mask));
+    for (int value = 2; value <= sides; ++value)
+        wheel.push_back(value);
+    return wheel;
+}
+
+std::string match_upper(std::string text)
+{
+    uppercase(text);
+    return text;
+}
+
+// format_match_preview's staged arm. It is NOT the formatter's own
+// condition (format_scenario_report_lines leads with STAGING FAILED and
+// then renders the fallback census below it, so it cannot demand
+// !stage_failed): a 20-glyph cell has no room for a lead line, so a failed
+// stage falls back to the band's own census instead of showing numbers
+// from a world the launch would not adopt.
+bool match_preview_reads_the_stage(const ScenarioRosterReport* report)
+{
+    return report != nullptr && report->staged && !report->stage_failed &&
+           !report->unavailable && report->mode_census;
+}
+
+std::string match_preview_count(int count, std::string_view noun)
+{
+    return count == 1 ? std::format("1 {}", noun)
+                      : std::format("{} {}S", count, noun);
+}
+
+} // namespace
+
+int match_sides_count(std::uint8_t authored_mask)
+{
+    const unsigned authored = authored_mask & 0b1111u;
+    return std::popcount(authored != 0u ? authored : 0b1111u);
+}
+
+std::string match_sides_note(std::uint8_t authored_mask)
+{
+    std::string note = "2";
+    for (const int value : match_sides_wheel(authored_mask))
+    {
+        if (value > 2)
+            note += ", " + std::to_string(value);
+    }
+    return note;
+}
+
+std::string match_sides_face(const SaveData& save, int my_team,
+                             std::uint8_t authored_mask)
+{
+    return std::format(
+        "SIDES: {}",
+        1 + match_on_opponents(save, my_team, authored_mask).size());
+}
+
+std::string match_fill_face(const SaveData& save, int my_team,
+                            std::uint8_t authored_mask)
+{
+    const std::optional<short> code = match_common_fill(
+        match_face_bands(save, my_team, authored_mask));
+    if (!code.has_value())
+        return "FILL: MIXED";
+    return std::format("FILL: {}", lineup_fill_name(*code));
+}
+
+void turn_match_sides(SaveData& save, int my_team,
+                      std::uint8_t authored_mask)
+{
+    const std::vector<int> opponents = match_opponents(my_team, authored_mask);
+    const int standing = static_cast<int>(
+        match_on_opponents(save, my_team, authored_mask).size());
+    const std::vector<int> wheel = match_sides_wheel(authored_mask);
+    // The all-NONE rest reads SIDES: 1, a value off the wheel, so the first
+    // click rejoins at the head (2) instead of guessing where it was.
+    const int next = wheel_next<int>(wheel, 1 + standing);
+    const short code = match_effective_fill(save, my_team, authored_mask);
+    for (std::size_t i = 0; i < opponents.size(); ++i)
+    {
+        const auto team = static_cast<std::size_t>(opponents[i]);
+        save.fill[team] = static_cast<int>(i) < next - 1
+                              ? code
+                              : static_cast<short>(og::sim::kFillNone);
+    }
+}
+
+void turn_match_fill(SaveData& save, int my_team,
+                     std::uint8_t authored_mask)
+{
+    static constexpr std::array<short, 4> kMatchFillWheel = {
+        og::sim::kFillWeak, og::sim::kFillFair, og::sim::kFillStrong,
+        og::sim::kFillBrutal};
+    const std::vector<MatchFillBand> on =
+        match_on_opponents(save, my_team, authored_mask);
+    const std::optional<short> common = match_common_fill(
+        match_face_bands(save, my_team, authored_mask));
+    // NONE (all bands off) and MIXED are off the wheel and rejoin at the
+    // head, WEAK — the same rule every knob applies to a value it cannot
+    // place. The wizard's FILL can no longer empty an arena: SIDES owns
+    // "fewer sides" and LINEUP owns "this one band off".
+    const short current = common.value_or(static_cast<short>(-1));
+    const short code = wheel_next<short>(kMatchFillWheel, current);
+    std::vector<int> targets;
+    for (const MatchFillBand& band : on)
+        targets.push_back(band.team);
+    if (targets.empty())
+    {
+        // Fix B (R2-2): with no opponent on, a FILL turn lights EVERY
+        // authored opponent — never just the lowest, which stranded teams
+        // 3 and 4 on a four-side arena (recon2/fill-bug.md §1.3). A
+        // deliberate SIDES value is respected while bands are on.
+        targets = match_opponents(my_team, authored_mask);
+    }
+    if (my_team >= 0 && my_team < 4)
+        targets.push_back(my_team);
+    for (const int team : targets)
+        save.fill[static_cast<std::size_t>(team)] = code;
+}
+
+void cycle_time_limit(SaveData& save)
+{
+    // Sim ticks, 12/s: 5, 10, 15 and 20 minutes, plus the 0 sentinel for
+    // whatever the map itself authored. Every shipped manifest value except
+    // basketball's one short court is on it, so a host can always dial the
+    // map's own number back explicitly.
+    static constexpr std::array<short, 5> kTimeLimitWheel = {0, 3600, 7200,
+                                                             10800, 14400};
+    save.time_limit = wheel_next<short>(kTimeLimitWheel, save.time_limit);
+}
+
+std::string format_time_limit_label(const SaveData& save)
+{
+    if (save.time_limit <= 0)
+        return "TIME LIMIT: MAP";
+    return std::format("TIME LIMIT: {} MIN", save.time_limit / 720);
+}
+
+bool local_seats_deployed_for_go(const SaveData& save,
+                                 std::span<const og::sim::LobbyPlayer> players,
+                                 bool networked)
+{
+    // A networked session answers for its own seats on its own machine
+    // (the strip GO's own guard), and a spectator save seats nobody.
+    if (networked || save.numplayers == 0)
+        return true;
+    std::vector<og::sim::LobbyPlayer> seated(players.begin(), players.end());
+    std::sort(seated.begin(), seated.end(),
+              [](const og::sim::LobbyPlayer& lhs,
+                 const og::sim::LobbyPlayer& rhs) {
+                  return lhs.player_index < rhs.player_index;
+              });
+    std::vector<short> seat_teams;
+    seat_teams.reserve(seated.size());
+    for (const og::sim::LobbyPlayer& player : seated)
+        seat_teams.push_back(player.team);
+    if (seat_teams.size() != save.numplayers)
+    {
+        // A not-yet-initialized lobby has no explicit state. Legacy save
+        // fields are only the seed for that narrow fallback; once the local
+        // lobby exists, its per-seat choices are authoritative.
+        seat_teams = derive_local_gameplay_seat_teams(save);
+    }
+    return local_seat_teams_have_controls(save, seat_teams);
+}
+
+std::uint64_t match_settings_fingerprint(const SaveData& save)
+{
+    // The lobby-synced knobs an applied settings change rewrites under an
+    // open screen (recon: apply_state_to_save / the networked apply path).
+    // scen_num is deliberately EXCLUDED: level changes already refetch
+    // through the frame-tick reload guard, and double-triggering would hide
+    // a broken guard from the tests.
+    std::string composed = std::format(
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        save.current_campaign, save.allied_mode, save.ctf_team_count,
+        save.ctf_capture_limit, save.ctf_respawn_ticks,
+        save.ctf_strip_scenario_troops, save.respawn_mode,
+        save.generator_rate, save.keep_fallen_heroes, save.cross_control,
+        save.infinite_gold, save.time_limit);
+    // The eight per-team bot knobs (LINEUP §3.1) are lobby-synced like the
+    // rest: a host cycling a squad preset must refresh the missions surface.
+    for (std::size_t team = 0; team < save.fill.size(); ++team)
+    {
+        composed += std::format("|{}|{}", save.fill[team],
+                                save.map_units[team]);
+    }
+    return static_cast<std::uint64_t>(std::hash<std::string>{}(composed));
+}
+
+std::string format_lineup_seat_run(std::span<const std::string> labels,
+                                   int seat_count, int budget)
+{
+    if (seat_count <= 0)
+        return {};
+    const auto whole_labels = [&labels](std::size_t count) {
+        std::string run;
+        for (std::size_t i = 0; i < count; ++i)
+            run += run.empty() ? labels[i] : "  " + labels[i];
+        return run;
+    };
+    if (static_cast<int>(labels.size()) == seat_count)
+    {
+        // Tier 1: every "P# owner" label, two spaces between them.
+        const std::string all = whole_labels(labels.size());
+        if (static_cast<int>(all.size()) <= budget)
+            return all;
+        // Tier 2: the bare "P#" tokens, one space between them. Dropping
+        // the owners keeps every SEAT visible, which is what this column
+        // is read for; cutting an owner's name mid-word named nobody.
+        std::string bare;
+        for (const std::string& label : labels)
+        {
+            const std::string token = label.substr(0, label.find(' '));
+            bare += bare.empty() ? token : " " + token;
+        }
+        if (static_cast<int>(bare.size()) <= budget)
+            return bare;
+    }
+    // Tier 3: the whole labels that fit, then " +k" for what did not.
+    for (std::size_t count = labels.size(); count > 0; --count)
+    {
+        std::string run = whole_labels(count);
+        const int missing = seat_count - static_cast<int>(count);
+        if (missing > 0)
+            run += std::format(" +{}", missing);
+        if (static_cast<int>(run.size()) <= budget)
+            return run;
+    }
+    // Not even one whole label fits: the count alone is the honest answer.
+    return std::format("+{}", seat_count);
+}
+
+std::string format_match_preview(const LineupTeamBand& band,
+                                 const ScenarioRosterReport* report, int team)
+{
+    // The diagnostic outranks the picture because it mirrors GO's refusal.
+    if (band.diag != LineupTeamBand::Diag::None)
+        return format_lineup_census(band);
+    if (!match_preview_reads_the_stage(report) || team < 0 || team > 3)
+        return format_lineup_census(band);
+    const auto ti = static_cast<std::size_t>(team);
+    if (!report->team_active[ti] ||
+        report->team_fill[ti] == ScenarioFill::Empty)
+    {
+        return "EMPTY";
+    }
+    const int count = report->team_fill_count[ti];
+    std::string cell;
+    switch (report->team_fill[ti])
+    {
+        case ScenarioFill::Company:
+            cell = match_preview_count(count, "FIGHTER");
+            break;
+        case ScenarioFill::Troops:
+            cell = match_preview_count(count, "MAP UNIT");
+            break;
+        case ScenarioFill::Bots:
+        case ScenarioFill::Matched:
+            cell = match_preview_count(count, "BOT");
+            break;
+        case ScenarioFill::Generators:
+            cell = match_preview_count(count, "GENERATOR");
+            break;
+        case ScenarioFill::Empty:
+            break;
+    }
+    // A squad fielded BESIDE the occupants: both halves walk onto the
+    // floor, so both are counted (the report line's "+BOTS (n+m)" rule in
+    // the width this column has).
+    const int squad = report->team_squad_count[ti];
+    if (squad > 0 && (report->team_fill[ti] == ScenarioFill::Company ||
+                      report->team_fill[ti] == ScenarioFill::Troops))
+    {
+        cell += " +" + match_preview_count(squad, "BOT");
+    }
+    return cell;
+}
+
+SetupTeamLineCells compose_setup_team_line(const LineupTeamBand& band,
+                                           const ScenarioRosterReport* report,
+                                           int team, int seat_chars,
+                                           int census_chars)
+{
+    // census_chars is the column the caller reserves. The cell is never
+    // clipped against it — "12 MAP UNITS +5 BOTS" is exactly 20, the column
+    // width, and a clipped census is a different number — so the budget is
+    // a contract the tests assert, not something spent here.
+    (void)census_chars;
+    SetupTeamLineCells cells;
+    cells.label = std::format("TEAM {}", team + 1);
+    cells.seats =
+        format_lineup_seat_run(band.seat_labels, band.seat_count, seat_chars);
+    cells.census = format_match_preview(band, report, team);
+    cells.diag = band.diag != LineupTeamBand::Diag::None;
+    return cells;
+}
+
+std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs)
+{
+    std::vector<MatchRuleFace> faces;
+    if (inputs.save == nullptr)
+        return faces;
+    const SaveData& save = *inputs.save;
+    // The DIFFICULTY formatters emit Title Case and every camp row is upper
+    // case, so the case conversion happens HERE, at the one composer: all
+    // three renderers receive the same string and nothing mirrors anything.
+    if (inputs.show_score)
+        faces.push_back({kRulesRowScore, match_upper(format_ctf_score_label(save))});
+    if (inputs.show_time)
+        faces.push_back({kRulesRowTime, match_upper(format_time_limit_label(save))});
+    faces.push_back({kRulesRowRespawns, match_upper(format_respawn_mode_label(save))});
+    faces.push_back(
+        {kRulesRowSpawnDelay, match_upper(format_respawn_delay_label(save))});
+    faces.push_back({kRulesRowPermadeath, match_upper(format_permadeath_label(save))});
+    faces.push_back(
+        {kRulesRowGenerators, match_upper(format_generator_rate_label(save))});
+    faces.push_back({kRulesRowDifficulty,
+                     match_upper(format_difficulty_label(inputs.difficulty))});
+    faces.push_back(
+        {kRulesRowInfiniteGold, match_upper(format_infinite_gold_label(save))});
+    if (inputs.networked)
+    {
+        faces.push_back({kRulesRowCrossControl,
+                         match_upper(format_cross_control_label(
+                             save.cross_control != 0))});
+    }
+    return faces;
+}
+
+std::vector<std::string> format_match_rules_lines(
+    const MatchRulesInputs& inputs, std::size_t budget)
+{
+    return format_match_rules_lines(match_rules_faces(inputs), budget);
+}
+
+std::vector<std::string> format_match_rules_lines(
+    const std::vector<MatchRuleFace>& faces, std::size_t budget)
+{
+    std::vector<std::string> lines;
+    for (std::size_t i = 0; i < faces.size();)
+    {
+        if (i + 1 < faces.size())
+        {
+            std::string pair = faces[i].face + "  " + faces[i + 1].face;
+            if (pair.size() <= budget)
+            {
+                lines.push_back(std::move(pair));
+                i += 2;
+                continue;
+            }
+        }
+        lines.push_back(faces[i].face);
+        ++i;
+    }
+    return lines;
 }
 
 } // namespace og::ui

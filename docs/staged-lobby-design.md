@@ -87,6 +87,11 @@ and in the solo picker's viewer (`CursesRenderer::draw_preview`); the text
 client stages locally with its session-latched `--seed`. MatchStage loads
 are HEADLESS-hooked only — lobby-poll restaging never touches the SDL loader
 (#162 stays closed, TRAIN included).
+**Update (2026-09-19, PR #307):** the SETUP wizard joins the list of readers —
+its TEAMS lines and its MATCH step census the same staged report VIEW LEVEL
+renders, rebuilt on the `stage_generation()` watch, and its GO reads
+`staged_preview_health()` alone. It stages nothing of its own
+(docs/match-setup-design.md §2.6, §3.3).
 
 ## Launch = adoption
 

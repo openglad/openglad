@@ -5,6 +5,8 @@ changes: an engine-level progression gate ("earned roads"), a Westlands
 docket that tells the truth under it, a random-scenario draw for the
 Multiplayer Modes camp, and MATCH SETUP rebuilt as direct knobs. A fifth
 moves DIFFICULTY out of the main menu into Base Camp.
+**[SUPERSEDED in part — issue #304.]** The MATCH SETUP page is retired into
+the SETUP wizard (docs/match-setup-design.md).
 
 ## 1. Earned roads: the engine-level progression gate
 
@@ -77,6 +79,9 @@ the `{scen_num}` seed — grandfathered, self-consistent.
      the predicate.
 - The SCENARIO level browser paints LOCKED (dim) in the status column for
   inaccessible rows, beside the existing CLEARED/CURRENT.
+  **Update (2026-09-20, PR #307):** on a campaign that carries no progress
+  vocabulary (Multiplayer Arenas) the column shows CURRENT only — no CLEARED,
+  and an arena is never LOCKED there (docs/match-setup-design.md §10).
 - The `[CURRENT]` refusal became a signpost:
   `kCampaignLevelUnchangedMessage` is now "Already on that level. GO when
   ready." (ASCII only — the sprite font has blank glyphs for several
@@ -129,6 +134,14 @@ settable. The row's note is `any game, any field`: the draw is over the
 whole manifest, so it can land on a different game than the one the table
 is set to, and a note that said only "any field" would read as a reroll
 inside tonight's game.
+**[SUPERSEDED — issue #306.]** RANDOM SCENARIO reads RANDOM ARENA (note
+`any game, any arena`); the deck vocabulary is gone
+(docs/match-setup-design.md §3.9).
+**Update (2026-09-20, PR #307):** and round 2 retired the camp roll row
+altogether: the two roll rows are the SETUP wizard's own `RANDOM - any game,
+any arena` (GAME step) and `RANDOM ARENA - any arena of this game` (each
+game's ARENA page), both appended LAST so no arena ordinal moves
+(docs/match-setup-design.md §10).
 
 A refused routed set answers on the surface's own terms. The terminals
 print two notices in sequence (the refusal, then the action's message).
@@ -139,6 +152,11 @@ click, and the pack's line must never speak in its place. Budgets: 34
 glyphs on the Base Camp line-B slot, 41 in a zone submenu.
 
 ## 4. MATCH SETUP: direct knobs
+**[SUPERSEDED — issue #304.]** The MATCH SETUP page is retired; the knobs are
+the SETUP wizard's TEAMS and RULES steps (`og::ui::MatchSetupSession`); the
+macros and the TIME LIMIT cycle live in `picker_common`; TARGET SCORE is the
+RULES step's `SCORE:` row; which knobs a game uses is the campaign's
+`match_knobs` hook (docs/match-setup-design.md).
 
 The preset pages give way to three cycle-on-click rows, each labeled with
 the current value at fetch:
@@ -146,6 +164,9 @@ the current value at fetch:
 - `TEAMS: AUTO` — Auto → 2 → 3 → 4 → Auto.
 - `TARGET SCORE: MAP` — map's own → 1 → 3 → 5 → 10 → map's own.
 - `TROOPS: ALL` — all → own → fair → all.
+**[SUPERSEDED — issue #304.]** All three rows are gone: TEAMS became the
+wizard's SIDES wheel (clamped to the arena's authored sides), TARGET SCORE
+the RULES step's `SCORE:` row, and TROOPS retired with lineup-design B5.
 
 Each click writes through `og.campaign_match_set` and toasts the new
 state in plain words. Host enforcement is unchanged (the provider refuses
@@ -163,6 +184,11 @@ lobby could not touch. The two summaries — `rules_line()` and the camp's
 `rules_digest()` — deliberately stayed at three knobs: the digest's 20-char
 note budget has no room for a fourth term, and the row itself is where the
 value is turned and read.
+**Update (2026-09-19, PR #307):** the row is the SETUP wizard's RULES step
+`TIME LIMIT:` (`og::ui::cycle_time_limit`, faces `5 MIN` … `20 MIN`, spelled
+by `og::ui::format_time_limit_label`); the camp's `rules_digest()` went with
+the page, and the MATCH step's `format_match_rules_lines` is the one summary
+now (docs/match-setup-design.md §2.5, D7).
 
 ## 5. DIFFICULTY into Base Camp; main menu split
 
@@ -209,6 +235,9 @@ prints "The host sets these for everyone." where the rows would have been,
 the way the modes book says "The host calls the rules."; a host or solo
 player gets no caption, because six rows that answer to them explain
 themselves.
+**[SUPERSEDED in part — issue #306.]** The modes book no longer says it; the
+one caption is `kHostSetsForEveryoneCaption`, shared by DIFFICULTY and the
+SETUP wizard (docs/match-setup-design.md §3.4).
 
 **The main menu.** The difficulty row is gone and the narrow `GAME | CLOUD`
 pair it sat under becomes two full-width rows that say what they are:
@@ -236,6 +265,18 @@ source of truth in plain words, and scenario troops keeps its SCENARIO row.
 The SDL SCENARIO screen keeps its own copies for legacy versus packs
 (`Teams:` / `Limit:` rows on the y=140 match-settings band beside TROOPS,
 visible read-only to joiners, host-actionable).
+**[SUPERSEDED in part — issue #304.]** On a versus campaign the (58,178,68,18)
+slot reads SETUP (ordinal 73, DIFFICULTY's twin; ceiling 73 → 74) and the
+terminal Difficulty item is gated the same way; the caption string is shared
+(`kHostSetsForEveryoneCaption`); the SCENARIO SCORE row is parked — the
+wizard serves every versus pack, so the "legacy versus packs" copy is gone;
+Team Build gains item 13 Setup (docs/match-setup-design.md §2.7, §3.7).
+**Update (2026-09-20, PR #307):** REVERSED: the (58,178,68,18) slot reads
+DIFFICULTY on EVERY campaign again (the SETUP twin and ordinal 73 are deleted,
+ceiling back to 73), the terminal `Difficulty` item is ungated, and Team Build
+item 13 `Setup` is retired. The wizard's one door on every client is the Base
+Camp docket's `SETUP - <GAME>: <ARENA>  >` row. The SCENARIO SCORE row stays
+parked (docs/match-setup-design.md §10).
 
 The difficulty submenu itself is unchanged and returns to whatever screen
 pushed it; from the strip that is a nested `MENU_REDRAW` the Base Camp loop

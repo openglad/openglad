@@ -307,8 +307,11 @@ inline constexpr std::int16_t kTroopsMatched = 3;
 //                 resolver retires with the code. The engine stores and
 //                 clamps the code and nothing else: the multiplier table
 //                 that turns a code into a target lives in the mode Lua,
-//                 which is the only layer that solves anything, so there is
-//                 no percent twin here. Wheel order on the band is the five
+//                 and, for the ball games, the body count with it
+//                 (packs/core/lib/lineup.lua squad_shape, issue #305 --
+//                 above FAIR a soccer or basketball side buys a fighter
+//                 per step instead of power), which is the only layer that
+//                 solves anything, so there is no percent twin here. Wheel order on the band is the five
 //                 codes in storage order — NONE, WEAK, FAIR, STRONG,
 //                 BRUTAL, weakest to strongest — and a fresh band enters
 //                 the wheel at NONE's own slot. Amendment 7 (#276) adds the

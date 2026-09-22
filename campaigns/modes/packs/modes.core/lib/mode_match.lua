@@ -208,8 +208,13 @@ end
 -- apply spawns exactly where a row says a squad walks on. opts:
 --   no_bots           (onslaught D17) never field a squad
 --   matched, matched_size   activation's answers (the solver seam)
---   squad_cap         the mode's hard shape (basketball's 5v5, review
---                     R2): no squad row counts past it
+--   squad_shape       the mode's squad shape, nil or
+--                     { cap = n|nil, bodies = bool }: cap is the hard
+--                     shape (basketball's 5v5, review R2) no squad row
+--                     counts past, bodies arms the #305 body rule on the
+--                     empty-team arm. Handed straight to
+--                     lineup.squad_shape, the one helper the spawn seam
+--                     also calls
 -- Returns (teams, wants_bots, mask): teams is the decision's [1..4] row
 -- array ({active, fill, count, squad, squad_count}); wants_bots reports
 -- any squad row (squad classes are drawn at spawn — mode_anchors
@@ -244,19 +249,25 @@ end
 --                                 prices only the room beside the units
 --   NONE                          no squad, whatever else stands
 local function fills(inputs, active_mask, opts)
-  -- Every shipped squad table fields five bots (D35 soldier-first); a
-  -- solved squad truncates to the headcount prefix (D39).
-  local squad_size = 5
+  -- The stock squad table (D35 soldier-first) is the ceiling on every
+  -- row: a solved squad truncates to the headcount prefix (D39), and the
+  -- #305 body rule can never grow past it either.
+  local squad_size = #lineup.BOT_SQUAD
   local no_bots = false
   local matched = false
   local matched_size = 0
-  local squad_cap = nil
+  local shape = nil
   if opts ~= nil then
     no_bots = opts.no_bots == true
     matched = opts.matched == true
     matched_size = opts.matched_size or 0
-    squad_cap = opts.squad_cap
+    shape = opts.squad_shape
   end
+  local squad_cap = nil
+  if shape ~= nil then
+    squad_cap = shape.cap
+  end
+  local bodies = shape ~= nil and shape.bodies == true
   local fill_knobs = inputs.fill or {}
   local unit_boxes = inputs.map_units or {}
   -- The weakest human team's f-sum (B3's reference) and the strongest,
@@ -297,23 +308,20 @@ local function fills(inputs, active_mask, opts)
       if not units_on then
         gens_stand = false
       end
-      -- The squad size a headcount-ruled solve fields (B2): the mode's
-      -- stock table truncated to the min human roster, then to the room
-      -- the hard shape leaves beside this team's occupants (R2).
-      local solved_size = squad_size
-      if matched_size > 0 then
-        solved_size = og.min(matched_size, squad_size)
-      end
-      local room = lineup.squad_room(squad_cap, row.roster)
-      if room ~= nil then
-        solved_size = og.min(solved_size, room)
-      end
       if row.roster > 0 then
         -- Allies (B3): a company's squad targets the gap to the
         -- strongest other team, scaled by the wheel; a gap at or below
         -- zero fields nobody. The gap is decided from the census powers
         -- so the row's count IS the fielded count.
         if not no_bots and not lineup.squad_off(knob) then
+          -- The squad size a headcount-ruled solve fields (B2), from the
+          -- one helper the spawn seam calls: the stock table truncated to
+          -- the min human roster, then to the room the hard shape leaves
+          -- beside this company (R2). An occupied arm never buys bodies
+          -- (D14), so the count is the baseline whatever the wheel says.
+          local room = lineup.squad_room(squad_cap, row.roster)
+          local solved = lineup.squad_shape(knob, matched_size, room,
+                                            squad_size, false, bodies)
           local best = 0
           for t = 1, C.SCORE_TEAM_COUNT do
             if t ~= team + 1 then
@@ -326,7 +334,7 @@ local function fills(inputs, active_mask, opts)
           local target = og.div((best - (row.power or 0))
                                   * lineup.fill_percent(knob), 100)
           if target > 0 then
-            squad_count = solved_size
+            squad_count = solved
           end
           if squad_count > 0 then
             -- E4: the banked fact IS the stored wheel code.
@@ -347,11 +355,11 @@ local function fills(inputs, active_mask, opts)
         fill = "troops"
         count = row.npcs
         if not no_bots and not lineup.squad_off(knob) then
-          local troop_size = solved_size
-          local troop_room = lineup.squad_room(squad_cap, row.npcs)
-          if troop_room ~= nil then
-            troop_size = og.min(troop_size, troop_room)
-          end
+          -- Standing units are occupants too: the hard shape prices only
+          -- the room they leave, and the arm never buys bodies (D14).
+          local room = lineup.squad_room(squad_cap, row.npcs)
+          local troop_size = lineup.squad_shape(knob, matched_size, room,
+                                                squad_size, false, bodies)
           if troop_size > 0 then
             squad_count = troop_size
             -- E4: the banked fact IS the stored wheel code.
@@ -381,17 +389,21 @@ local function fills(inputs, active_mask, opts)
         -- The FILL squad on an empty team (B2/B3): solved against
         -- reference × multiplier where any human roster stands, the
         -- legacy difficulty squad where none does — spawn_bots' twin
-        -- arms over the same census.
+        -- arms over the same census. Nothing stands here, so the whole
+        -- hard shape is room and the #305 body rule applies: calling the
+        -- SAME helper the spawn seam calls, with the same inputs, is what
+        -- makes decision and apply agree body for body. With no human
+        -- power the headcount is 0, so the helper hands back the legacy
+        -- squad of five inside the hard shape.
+        local room = lineup.squad_room(squad_cap, 0)
+        local solved = lineup.squad_shape(knob, matched_size, room,
+                                          squad_size, true, bodies)
         if reference > 0 then
           fill = "matched"
-          count = solved_size
         else
           fill = "bots"
-          count = squad_size
-          if squad_cap ~= nil then
-            count = og.min(count, squad_cap)
-          end
         end
+        count = solved
         -- count is never zero here: the legacy squad is five, a solved
         -- size is at least min(1, headcount) and every shipped hard shape
         -- leaves an empty team its whole cap. The banked fact IS the
@@ -507,9 +519,10 @@ end
 
 -- The mode spelling of the one squad seam: the core spawner with the
 -- TEAMS MATCHED announce threaded in (every mode caller keeps the old
--- five-argument signature; the announce rule stays mode-side).
-local function spawn_bots(team, families, cursor_slot, placer, cap)
-  lineup.spawn_bots(team, families, cursor_slot, placer, cap,
+-- five-argument signature; the announce rule stays mode-side). shape is
+-- the caller's squad shape, handed straight through to the seam.
+local function spawn_bots(team, families, cursor_slot, placer, shape)
+  lineup.spawn_bots(team, families, cursor_slot, placer, shape,
                     announce_matched)
 end
 
@@ -585,7 +598,7 @@ end
 -- mode_anchors module: og.use is load-time only and rejects cycles, and
 -- mode_anchors already uses THIS module, so the score-team read arrives
 -- as an argument rather than an import.
-local function revive_wiped_teams(anchors, mask, ticks, cursor_slot, cap)
+local function revive_wiped_teams(anchors, mask, ticks, cursor_slot, shape)
   local obs = og.oblist()
   local live = { 0, 0, 0, 0 }
   for k = 1, #obs do
@@ -626,7 +639,7 @@ local function revive_wiped_teams(anchors, mask, ticks, cursor_slot, cap)
     if core.mask_has(mask, team) then
       if live[team + 1] == 0 then
         if og.respawn_pending_count(team) == 0 then
-          anchors.spawn_bot_squad(team, cursor_slot, cap)
+          anchors.spawn_bot_squad(team, cursor_slot, shape)
         end
       end
     end

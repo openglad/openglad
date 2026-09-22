@@ -196,6 +196,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/ui/level_editor_tools.cpp
     ${SRC_DIR}/interface/ui/level_editor_ui.cpp
     ${SRC_DIR}/interface/ui/level_picker.cpp
+    ${SRC_DIR}/interface/ui/match_setup_session.cpp
     ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
     ${SRC_DIR}/interface/ui/input_cycler.cpp

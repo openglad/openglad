@@ -6,8 +6,8 @@
  * (at your option) any later version.
  */
 
-// THE GAMESMASTER'S TABLE (issues #206/#212): the Multiplayer Modes
-// campaign's Base Camp composition and the rooms it opens —
+// MULTIPLAYER ARENAS (issues #206/#304/#305/#306): the campaign's Base
+// Camp composition and the pages the SETUP wizard hosts —
 // campaigns/modes/packs/modes.core/scripts/campaign_picker.lua — driven
 // through the real CampaignZoneSession and CampaignPickerSession over
 // og::data::make_campaign_providers, with the SHIPPED campaign archive
@@ -17,14 +17,18 @@
 // pinned list of 40 strings, so a modes_mapgen regeneration moves both
 // sides together.
 //
-// The camp replaced the book's root and card pages: the tallies live in the
-// header readout and the GAME row, and the RANDOM SCENARIO roll (D3, which
-// replaced TONIGHT'S CARD) is a camp action whose result carries the level.
-// The seven field pages, the games index (which keeps the signature, since
-// the cover is what it changes) and MATCH SETUP — the TEAMS/FILL macros
-// over the per-team fill array (lineup amendment 5) above the two knobs
-// the host turns one click at a time (D4, which retired the presets) —
-// are the rooms, reached by page rows.
+// The camp is ONE docket row — SETUP, noted with the scenario the campaign
+// cursor sits on — under a roster that LEADS, and it is this client's only
+// door into the wizard. The ROOT page is the GAMES index the wizard's GAME
+// step hosts, and the seven arena pages are what its ARENA step shows;
+// each carries a host-only RANDOM row appended LAST, served by the
+// script's ONE roll helper. match_knobs tells the wizard which knobs this
+// game uses, which root row lists the cursor's arena, and what a fresh
+// arena deals to its authored teams (#305). No progress vocabulary
+// survives anywhere in this campaign any more — no tally, no readout, no
+// call line (feedback item 4). The retired camp setup page, its TEAMS/FILL
+// macros and the signature are gone: the rules have one home in
+// picker_common now (tests/unit/test_match_setup_session.cpp).
 
 #include <gtest/gtest.h>
 
@@ -44,7 +48,9 @@
 #include <openglad/resources/packs.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <charconv>
@@ -69,8 +75,8 @@ using og::ui::CampaignPickerSession;
 using og::ui::CampaignZoneSession;
 
 // The seven games in campaign.yaml description order — the one ordering
-// pin the book carries (mode tags, page titles and flavor lines; never the
-// 40 arena strings).
+// pin this campaign carries (mode tags, page titles and rule lines; never
+// the 40 arena strings).
 struct BookMode {
     const char* tag;
     const char* prefix;  // the scen-title prefix that marks the band
@@ -80,61 +86,45 @@ struct BookMode {
 
 constexpr BookMode kBookModes[] = {
     {"tdm", "Team Deathmatch: ", "TEAM DEATHMATCH",
-     "Four colors go in. One walks out."},
-    {"ctf", "CTF: ", "CAPTURE THE FLAG", "Steal theirs. Keep yours. Simple."},
+     "First team to the kill target wins."},
+    {"ctf", "CTF: ", "CAPTURE THE FLAG", "Take their flag home. Keep yours."},
     {"onslaught", "Onslaught: ", "ONSLAUGHT",
-     "Hold the line until there is no line."},
-    {"mutant", "Mutant: ", "MUTANT", "New shape every kill. Keep count."},
-    {"soccer", "Soccer: ", "SOCCER", "No hands. Blades are fine."},
+     "Last team with engines standing wins."},
+    {"mutant", "Mutant: ", "MUTANT", "Every kill changes your form."},
+    {"soccer", "Soccer: ", "SOCCER", "Kick the ball into their goal."},
     {"basketball", "Basketball: ", "BASKETBALL",
-     "The arc is chalk. The rim is law."},
-    {"ffa", "FFA: ", "FREE FOR ALL", "No teams. No excuses. No refunds."},
+     "Shoot or dunk. Most points wins."},
+    {"ffa", "FFA: ", "FREE FOR ALL", "Every fighter for themselves."},
 };
 constexpr std::size_t kModeCount = sizeof(kBookModes) / sizeof(kBookModes[0]);
 
-// Camp docket geometry: GAME, FIELD, then (host only) the RANDOM SCENARIO
-// roll, then MATCH SETUP. Four rows on the host in EVERY state and three
-// on a joiner — the camp's whole grid is 8 units and the roster floor
-// takes three, so an over-band row would not append, it would hide one
-// behind the pager (the signature therefore lives on the games index).
-constexpr std::size_t kCampGameRow = 0;
-constexpr std::size_t kCampFieldRow = 1;
-constexpr std::size_t kCampRandomRow = 2;
-constexpr std::size_t kCampSetupRow = 3;
-constexpr std::size_t kCampHostRows = 4;
-constexpr std::size_t kCampJoinerRows = 3;
-constexpr std::size_t kCampJoinerSetupRow = 2;
-// The roster's share of the camp band: four docket rows + the roster
-// heading leave three hero rows of the 8-unit band (the readout hoists
-// into the panel heading for free).
-constexpr int kCampRosterRows = 3;
+// Camp docket geometry: ONE row, SETUP, which states the match the campaign
+// is set to and opens the wizard on its GAME step. The same row on a joiner
+// — it browses the wizard, so there is nothing to cut — which is why the
+// host and joiner counts are equal now.
+constexpr std::size_t kCampSetupRow = 0;
+constexpr std::size_t kCampHostRows = 1;
+constexpr std::size_t kCampJoinerRows = 1;
+// The roster's share of the camp band: the roster LEADS the composition, so
+// its column heading sits outside the grid at the classic y=33 and costs no
+// unit. 8 units - 1 docket unit - 0 heading = 7 hero rows, on both faces.
+constexpr int kCampRosterRows = 7;
+constexpr int kCampJoinerRosterRows = 7;
 
 // The campaign's arena census (the generator's own hard count — the old
 // DECK_SIZE, which the roll inherits as og.campaign_random(#rows)).
 constexpr int kArenaCount = 40;
 
-// MATCH SETUP's rows (D4 — the presets retired): one row each, in the
-// order the page composes them, each labelled with the value it holds.
-// TIME LIMIT joined in #241 — the rules line deliberately stays at the
-// score, because the row itself already wears its value where the host
-// turns it. TEAMS left in the 2026-08-26 lineup amendment (A1/A3) and
-// TROOPS in amendment B5; lineup amendment 5 (G1-G3) seats TEAMS and FILL
-// back ABOVE the knobs as macros over the one per-team fill[] array — no
-// store of their own, faces derived at fetch, writes only through
-// og.campaign_match_set("fill_N") — and the camp's digest now carries the
-// sides and the fill beside the score.
-constexpr std::size_t kTeamsRow = 0;
-constexpr std::size_t kFillRow = 1;
-constexpr std::size_t kScoreRow = 2;
-constexpr std::size_t kTimeRow = 3;
-constexpr const char* kKnobIds[] = {"teams", "fill", "score", "time"};
-constexpr std::size_t kKnobCount = sizeof(kKnobIds) / sizeof(kKnobIds[0]);
-
 // Display budgets (the imaginations pins).
 constexpr std::size_t kLabelBudget = 24;
 constexpr std::size_t kNoteBudget = 20;
 constexpr std::size_t kLineBudget = 38;
-constexpr std::size_t kSdlRowFaceChars = 42;
+// Round 4 (2026-09-22, PR #307): the wizard's rows and the camp docket's
+// run the panel's whole width, 12..310, so the face they have to fit is
+// (298 - 8) / 6 = 48 glyphs, not the 264px 42 they used to. The per-field
+// Lua budgets (24 label, 20 note) are UNCHANGED — they guard the fields a
+// regeneration can grow, not the composed face.
+constexpr std::size_t kSdlRowFaceChars = 48;
 
 // ---------------------------------------------------------------------------
 // Runtime-derived expectations
@@ -179,18 +169,6 @@ DerivedBook derive_book()
                              << "' carries no known mode prefix";
     }
     return book;
-}
-
-// The mode table row for a tag (the title the camp's GAME row spells).
-const BookMode& book_mode(const std::string& tag)
-{
-    for (const BookMode& mode : kBookModes)
-    {
-        if (tag == mode.tag)
-            return mode;
-    }
-    ADD_FAILURE() << "no such mode tag: " << tag;
-    return kBookModes[0];
 }
 
 // The manifest facts each row's note carries, parsed from the generated
@@ -330,40 +308,34 @@ std::string expected_note(const std::string& tag, const ManifestRow& row)
     return std::format("{} heads, to {}", row.fighters, row.score_limit);
 }
 
-// The call-line twin: first unstamped band id scanning forward from the
-// cursor, wrapping past the band end; -1 when the band is fully stamped.
-int expected_call(const std::vector<int>& band, const SaveData& save)
+// The camp row's note twin: the scenario's OWN title, upper-cased — the
+// same bytes the Base Camp's second header line and the wizard's MATCH step
+// already print. Read through the MOUNTED archive's loader, never a pinned
+// list of 40 strings, so a regeneration moves both sides together.
+std::string expected_camp_note(int id)
 {
-    for (int id : band)
-    {
-        if (id >= save.scen_num && !save.is_level_completed(id))
-            return id;
-    }
-    for (int id : band)
-    {
-        if (id < save.scen_num && !save.is_level_completed(id))
-            return id;
-    }
-    return -1;
+    std::string title;
+    EXPECT_EQ(og::data::LevelFileIoError::None,
+              og::data::load_scenario_title_with_error(
+                  ("scen" + std::to_string(id)).c_str(), title))
+        << "scen" << id;
+    for (char& c : title)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return title;
 }
 
-// The stamp-tally twin: the book's ONE word for a cleared field.
-std::string expected_stamp_note(const std::vector<int>& band,
-                                const SaveData& save)
+// The band's own note: what the GAME step's rows say instead of a tally.
+// Branchless, like the Lua it pins: every shipped band holds four arenas or
+// more, so a singular arm would be dead on both sides of the pin.
+std::string expected_arenas_note(std::size_t band_size)
 {
-    int stamped = 0;
-    for (int id : band)
-    {
-        if (save.is_level_completed(id))
-            stamped++;
-    }
-    return std::format("{}/{} stamped", stamped, band.size());
+    return std::format("{} arenas", band_size);
 }
 
 // The roll twin: the 1-based ordered-manifest index the deterministic test
 // provider answers, stepped one row on (wrapping) when it lands on the
-// field the table is ALREADY set to — a roll that deals the current
-// pairing is a button that changes nothing.
+// arena the camp is ALREADY set to — a roll that deals the current pairing
+// is a button that changes nothing.
 int expected_roll(const DerivedBook& book, int pick, int pair_id)
 {
     const int count = static_cast<int>(book.ordered.size());
@@ -372,17 +344,6 @@ int expected_roll(const DerivedBook& book, int pick, int pair_id)
         count > 1)
         index = (index + 1) % count;
     return book.ordered[static_cast<std::size_t>(index)];
-}
-
-std::unique_ptr<guy> make_member(short teamnum, const std::string& name,
-                                 short level, std::uint32_t exp)
-{
-    auto member = std::make_unique<guy>(static_cast<char>(FAMILY_SOLDIER));
-    member->teamnum = teamnum;
-    member->name = name;
-    member->level = level;
-    member->exp = exp;
-    return member;
 }
 
 // ---------------------------------------------------------------------------
@@ -443,19 +404,14 @@ protected:
         hooks::install_campaign_providers(std::move(providers));
     }
 
-    std::int32_t state(const std::string& key) const
-    {
-        return save_.campaign_state_get("modes", key);
-    }
-
     void complete_all(const DerivedBook& book)
     {
         for (const int id : book.ordered)
             save_.add_level_completed("modes", id);
     }
 
-    // The book's rooms open on their own page ids now — the root page
-    // retired into the camp.
+    // Every page opens on its own id; the ROOT ("") is the GAMES index,
+    // and open_at("") is what CampaignPickerSession::open() does.
     CampaignPickerSession::DecoratedPage open_page(const std::string& page_id)
     {
         CampaignPickerSession session(save_);
@@ -477,8 +433,8 @@ const std::vector<CampaignZoneSession::Row>& camp_rows(
 
 // A scripted terminal client: answers in, the composed page text and the
 // notice lines out. The terminal camp is the surface that renders the
-// WHOLE composition (no pager, no hover), so it is where a docket row and
-// its confirmation can be read as a player meets them.
+// WHOLE composition (no pager, no hover), so it is where the docket row
+// and its confirmation can be read as a player meets them.
 struct ScriptedCampIo {
     SaveData* save = nullptr;
     std::vector<std::string> answers;
@@ -525,20 +481,25 @@ struct ScriptedCampIo {
 TEST_F(ModesBookTest, pack_registers_one_camp_and_book_with_no_vars)
 {
     EXPECT_TRUE(hooks::campaign_picker_registered())
-        << "modes.core must register the book";
+        << "modes.core must register its pages";
     EXPECT_TRUE(hooks::campaign_zone_registered())
         << "modes.core must compose the camp";
+    EXPECT_TRUE(hooks::campaign_match_knobs_registered())
+        << "modes.core must tell the wizard which knobs its games use";
     EXPECT_TRUE(hooks::campaign_registered_vars().empty())
-        << "the table registers no campaign vars";
+        << "the campaign registers no campaign vars";
 
-    // The camp and every room it opens parse clean.
+    // The camp, every page the wizard hosts and the knobs parse clean.
     hooks::CampaignZone zone;
     EXPECT_TRUE(hooks::campaign_zone(zone));
     hooks::CampaignPage page;
+    EXPECT_TRUE(hooks::campaign_picker_page("", page))
+        << "the root IS the GAMES index the wizard's GAME step hosts";
     EXPECT_TRUE(hooks::campaign_picker_page("games", page));
     for (const BookMode& mode : kBookModes)
         EXPECT_TRUE(hooks::campaign_picker_page(mode.tag, page)) << mode.tag;
-    EXPECT_TRUE(hooks::campaign_picker_page("setup", page));
+    hooks::CampaignMatchKnobs k;
+    EXPECT_TRUE(hooks::campaign_match_knobs(k));
 
     const std::vector<og::script::ScriptError>& errors =
         og::script::active_world_scripts().host().errors();
@@ -547,28 +508,39 @@ TEST_F(ModesBookTest, pack_registers_one_camp_and_book_with_no_vars)
                       << error.message;
 }
 
-// A page id the book never lists answers "no page" (the engine's
+// A page id the campaign never lists answers "no page" (the engine's
 // malformed-page guard keeps the stock UI reachable); an entry id no row
-// carries is a served no-op with no toast. The v1 root and card pages are
-// retired into the camp, so they are two more ids the book does not serve.
+// carries is a served no-op with no toast. The ROOT is the one id that
+// changed sides: it used to be retired and now answers the GAMES index.
 TEST_F(ModesBookTest, unknown_and_retired_pages_are_guarded)
 {
     hooks::CampaignPage page;
     EXPECT_FALSE(hooks::campaign_picker_page("neverwhere", page));
-    EXPECT_FALSE(hooks::campaign_picker_page("", page))
-        << "the root page retired into the camp";
+    EXPECT_TRUE(hooks::campaign_picker_page("", page))
+        << "the root is the GAMES index the wizard hosts";
+    EXPECT_FALSE(hooks::campaign_picker_page("setup", page))
+        << "the camp setup page retired into the wizard";
     EXPECT_FALSE(hooks::campaign_picker_page("card", page))
         << "the v1 card page stays retired (the deck itself retired with "
-           "D3's RANDOM SCENARIO roll)";
+           "D3's RANDOM ARENA roll)";
     hooks::CampaignActionResult result;
     EXPECT_TRUE(hooks::campaign_picker_action("neverwhere", result))
-        << "the book serves actions, so the hook dispatches";
+        << "the campaign serves actions, so the hook dispatches";
     EXPECT_TRUE(result.ok);
     EXPECT_EQ("", result.message);
+
+    // The retired roll id: the docket's RANDOM ARENA action became the two
+    // RANDOM rows the wizard's own pages carry, so "random_scenario" is a
+    // served no-op like any id no row spells — never a second roll.
+    hooks::CampaignActionResult retired;
+    EXPECT_TRUE(hooks::campaign_picker_action("random_scenario", retired));
+    EXPECT_TRUE(retired.ok);
+    EXPECT_EQ(-1, retired.level) << "the retired roll answers no level";
+    EXPECT_EQ("", retired.message);
 }
 
 // ---------------------------------------------------------------------------
-// The camp: the Gamesmaster's table
+// The camp: one SETUP row under a roster that leads
 // ---------------------------------------------------------------------------
 
 TEST_F(ModesBookTest, base_camp_composes_the_table)
@@ -577,81 +549,52 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     ASSERT_EQ(static_cast<std::size_t>(kArenaCount), book.ordered.size())
         << "the campaign ships 40 arenas";
     ASSERT_EQ(kModeCount, book.bands.size());
-    const std::map<int, ManifestRow> manifest = parse_manifest();
     const int cursor = save_.scen_num;
-    ASSERT_TRUE(book.tag_of.contains(cursor)) << "the fixture cursor is a "
-                                                 "field of the manifest";
-    const std::string tag = book.tag_of.at(cursor);
+    ASSERT_TRUE(book.tag_of.contains(cursor)) << "the fixture cursor is an "
+                                                 "arena of the manifest";
 
     CampaignZoneSession zone(save_);
     zone.fetch();
     ASSERT_TRUE(zone.scripted()) << "the camp composition must adopt";
     EXPECT_TRUE(zone.composed());
 
-    // The header readout: your stamps, and ONLY your stamps. The purse is
-    // already inked in the C++ header cell above this band on every
-    // surface — a composed GOLD cell would print the same wallet twice,
-    // and disagree with it outright under infinite gold.
-    ASSERT_NE(nullptr, zone.readout());
-    EXPECT_TRUE(zone.readout()->in_header_band)
-        << "the roster does not lead, so the readout heads the panel";
-    ASSERT_EQ(1u, zone.readout()->items.size());
-    EXPECT_EQ("BOOK", zone.readout()->items[0].label);
-    EXPECT_EQ("0/40", zone.readout()->items[0].value);
-    for (const hooks::CampaignZoneWidget::ReadoutItem& item :
-         zone.readout()->items)
-    {
-        EXPECT_NE("GOLD", item.label)
-            << "the header cell owns the purse (docs/basecamp-zones-design"
-               ".md: the strip may never depend on a campaign composing "
-               "gold into its own readout)";
-    }
+    // No readout at all. The tally it carried was the progress vocabulary
+    // feedback item 4 retired, and the purse is already inked in the C++
+    // header cell above this band on every surface.
+    EXPECT_EQ(nullptr, zone.readout())
+        << "the camp composes no readout: nothing here counts anything";
 
-    // No text line on the host: the five docket rows take the whole band
-    // the roster floor leaves, and the match rules live on the row that
-    // changes them.
+    // No text line either: the one row already states the match, and the
+    // rules are the wizard's own steps.
     EXPECT_TRUE(zone.texts().empty())
-        << "a host line would cost the fifth docket row";
+        << "a line here would restate the row and cost a roster unit";
 
-    // The docket: the pairing, the roll and the rules.
+    // The docket: ONE row, the wizard's only door on this client.
     ASSERT_EQ(1u, zone.actions().size());
     const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
     ASSERT_EQ(kCampHostRows, rows.size())
-        << "the docket is four rows in every host state";
-
-    const CampaignZoneSession::Row& game = rows[kCampGameRow];
-    EXPECT_EQ(CampaignPickerSession::Kind::Page, game.kind);
-    EXPECT_EQ("games", game.id);
-    EXPECT_EQ(std::string("GAME: ") + book_mode(tag).title, game.label);
-    EXPECT_EQ(expected_stamp_note(book.bands.at(tag), save_), game.note);
-
-    const CampaignZoneSession::Row& field = rows[kCampFieldRow];
-    EXPECT_EQ(CampaignPickerSession::Kind::Page, field.kind);
-    EXPECT_EQ(tag, field.id) << "the FIELD row is one hop into its game";
-    EXPECT_EQ("FIELD: " + book.stripped.at(cursor), field.label);
-    EXPECT_EQ(expected_note(tag, manifest.at(cursor)), field.note);
-
-    // The roll is an ACTION wearing its own name — the arena is only known
-    // after the click, and the "level row wears the arena" rule is honored
-    // by the engine's confirmation toast ("Level set to <arena>.", pinned
-    // by the terminal camp test below), not by this label.
-    const CampaignZoneSession::Row& roll = rows[kCampRandomRow];
-    EXPECT_EQ(CampaignPickerSession::Kind::Action, roll.kind);
-    EXPECT_EQ("random_scenario", roll.id);
-    EXPECT_EQ("RANDOM SCENARIO", roll.label);
-    EXPECT_EQ("any game, any field", roll.note)
-        << "the roll crosses games, so the note must not read as the "
-           "current game's fields only";
-    EXPECT_EQ(0, roll.cost) << "the roll is free";
-    EXPECT_TRUE(roll.affordable);
+        << "the docket is ONE row in every host state";
 
     const CampaignZoneSession::Row& setup = rows[kCampSetupRow];
     EXPECT_EQ(CampaignPickerSession::Kind::Page, setup.kind);
-    EXPECT_EQ("setup", setup.id);
-    EXPECT_EQ("MATCH SETUP", setup.label);
-    EXPECT_EQ("1-way, none, map", setup.note)
-        << "the rules digest, at note length: the sides, the fill and the "
-           "score (amendment 5)";
+    EXPECT_EQ("games", setup.id)
+        << "the id names no ROOT page row, so the wizard opens on GAME";
+    EXPECT_EQ("SETUP", setup.label);
+    EXPECT_EQ(expected_camp_note(cursor), setup.note)
+        << "the note is the scenario's OWN title, the same bytes the header "
+           "line and the wizard's MATCH step print";
+    EXPECT_EQ(0, setup.cost);
+    EXPECT_TRUE(setup.affordable);
+
+    for (const CampaignZoneSession::Row& row : rows)
+    {
+        EXPECT_NE("setup", row.id) << "the camp setup page left for the wizard";
+        EXPECT_NE("random_scenario", row.id)
+            << "the docket roll moved onto the wizard's own pages";
+        EXPECT_EQ(std::string::npos, row.label.find("GAME:"))
+            << "the GAME:/ARENA: pair collapsed into one row";
+        EXPECT_EQ(std::string::npos, row.label.find("ARENA:"));
+    }
 
     // The roster keeps every capability and no oath column: this campaign
     // has no story reason for locks or assignment.
@@ -663,16 +606,18 @@ TEST_F(ModesBookTest, base_camp_composes_the_table)
     EXPECT_TRUE(roster.can_hire);
     EXPECT_TRUE(roster.locks.empty());
     EXPECT_FALSE(roster.assign.active);
+    EXPECT_TRUE(roster.header_at_top)
+        << "the roster leads the composition, so its column heading keeps "
+           "the classic y=33 band instead of leaving it blank";
     EXPECT_EQ(kCampRosterRows, roster.rows_per_page)
-        << "4 docket units + 1 roster heading leaves 3 roster rows of the "
-           "8-unit band (the readout hoists into the panel heading for "
-           "free)";
+        << "1 docket unit + a roster that leads (header outside the grid) "
+           "leave 7 of 8";
 }
 
 // The docket the SDL panel actually SHOWS. A composition whose rows spill
 // past their band does not append — it hides the tail behind two bare
-// arrows at the end of the first row, and MATCH SETUP living on page 2 of
-// an uncounted pager is not a camp that "has" a MATCH SETUP row.
+// arrows at the end of the first row, and a door living on page 2 of an
+// uncounted pager is not a camp that "has" that door.
 TEST_F(ModesBookTest, every_camp_row_renders_without_a_pager)
 {
     const DerivedBook book = derive_book();
@@ -690,32 +635,22 @@ TEST_F(ModesBookTest, every_camp_row_renders_without_a_pager)
         CampaignZoneSession zone(save_);
         zone.fetch();
         ASSERT_TRUE(zone.scripted());
+        ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
         check(zone, "the fresh host camp");
     }
 
-    // The states that used to grow an extra row: a full book (the
-    // signature moved to the index it retitles) and a signed one (no cover
-    // line at the table).
+    // A campaign played to the end composes the identical camp: there is
+    // nothing here for completion to move.
     complete_all(book);
     {
         CampaignZoneSession zone(save_);
         zone.fetch();
         ASSERT_TRUE(zone.scripted());
         ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
-        EXPECT_EQ("sign the book", camp_rows(zone)[kCampGameRow].note)
-            << "a full book asks for the signature through its own door";
-        check(zone, "40/40, unsigned");
-    }
-    ASSERT_TRUE(save_.campaign_state_set("modes", "book_signed", 1));
-    {
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
-        check(zone, "40/40, signed");
+        check(zone, "every arena played");
     }
 
-    // And the joiner, whose one line costs a row unit rather than a row.
+    // And the joiner, which browses the same one row.
     install_providers([] { return false; });
     {
         CampaignZoneSession zone(save_);
@@ -726,161 +661,135 @@ TEST_F(ModesBookTest, every_camp_row_renders_without_a_pager)
     }
 }
 
-// The whole camp, driven on a real client: the terminal camp loop renders
-// the composition and dispatches one row. The roll is the row this test is
-// here for — a one-click level set whose CONFIRMATION has to name the
-// arena it just set (the action row itself wears the ceremony's name, so
-// the engine toast is where the "level row wears the arena" rule now
-// lives), routed Acted-level through the driver's own gated tail.
-TEST_F(ModesBookTest, terminal_camp_rolls_the_scenario_and_names_what_it_set)
+// The host gate on the two RANDOM rows is the SCRIPT's, at fetch: a joiner
+// cannot set the level, so the row is never composed for it rather than
+// left to refuse at the click (the SDL "(HOST)" face is level-rows-only, so
+// an ungated action row would be a dead button).
+TEST_F(ModesBookTest, joiner_pages_compose_no_random_rows)
 {
     const DerivedBook book = derive_book();
-    // A deterministic mid-manifest pick, off the current field: no skip
-    // arm.
-    const int pick = 7;
-    const int rolled = expected_roll(book, pick, save_.scen_num);
-    ASSERT_NE(save_.scen_num, rolled);
-    install_providers_with_pick(pick);
+    install_providers([] { return false; });
 
-    ScriptedCampIo io;
-    io.save = &save_;
-    io.answers = {std::to_string(kCampRandomRow + 1), "0"};
-    og::ui::run_terminal_campaign_camp(save_, io.io());
+    hooks::CampaignPage root;
+    ASSERT_TRUE(hooks::campaign_picker_page("", root));
+    ASSERT_EQ(kModeCount, root.entries.size())
+        << "seven games and nothing else on a joiner";
+    for (const hooks::CampaignPageEntry& entry : root.entries)
+    {
+        EXPECT_EQ(hooks::CampaignPageEntry::Kind::Page, entry.kind)
+            << entry.id;
+        EXPECT_NE("random", entry.id);
+    }
 
-    EXPECT_EQ(rolled, io.applied_level) << "the docket row set the level";
-    EXPECT_EQ(rolled, save_.scen_num);
-    ASSERT_EQ(1u, io.notices.size());
-    // The ENGINE names what it set, in its own voice: the scenario's full
-    // title (the SDL tail toasts world().title, and the routed set speaks
-    // identically here). The stripped-arena spelling was the card ROW's
-    // label affair; the rule that survives the deck is that the
-    // confirmation names something playable, never the ceremony.
-    std::string raw_title;
-    ASSERT_EQ(og::data::LevelFileIoError::None,
-              og::data::load_scenario_title_with_error(
-                  ("scen" + std::to_string(rolled)).c_str(), raw_title));
-    EXPECT_EQ(std::format("Level set to {}.", raw_title), io.notices[0])
-        << "the confirmation names the arena, never the row's ceremony";
+    for (const BookMode& mode : kBookModes)
+    {
+        hooks::CampaignPage page;
+        ASSERT_TRUE(hooks::campaign_picker_page(mode.tag, page)) << mode.tag;
+        EXPECT_EQ(book.bands.at(mode.tag).size(), page.entries.size())
+            << mode.tag << ": the band's arenas, no RANDOM ARENA";
+        for (const hooks::CampaignPageEntry& entry : page.entries)
+        {
+            EXPECT_EQ(hooks::CampaignPageEntry::Kind::Level, entry.kind)
+                << mode.tag << " " << entry.id;
+            EXPECT_NE(std::string("random_") + mode.tag, entry.id);
+        }
+    }
 
-    // The docket the prompt actually listed: four rows, numbered, in the
-    // camp's own order — the pager is a panel constraint, and a terminal
-    // that hid rows behind one would be inventing a limit.
-    ASSERT_GE(io.pages.size(), 2u);
-    EXPECT_NE(std::string::npos, io.pages[0].find("Camp # [1-4] (0 = back): "))
-        << io.pages[0];
-    EXPECT_NE(std::string::npos, io.pages[0].find("BOOK 0/40"));
-    EXPECT_NE(std::string::npos,
-              io.pages[0].find("   3. RANDOM SCENARIO - any game, any field\n"))
-        << io.pages[0];
-    EXPECT_NE(std::string::npos,
-              io.pages[0].find("   4. MATCH SETUP - 1-way, none, map  >\n"))
-        << "the fourth row is on the first face of every client";
-
-    // And the click was not a no-op: the refetched camp is set to the
-    // arena it named, and the roll row still stands for the next night.
-    EXPECT_NE(std::string::npos,
-              io.pages[1].find("   2. FIELD: " + book.stripped.at(rolled)))
-        << io.pages[1];
-    EXPECT_NE(std::string::npos,
-              io.pages[1].find("   3. RANDOM SCENARIO - any game, any field\n"))
-        << io.pages[1];
+    // And the host, for the same fetch: the rows ARE there, so the pin
+    // above is a gate and not a page that never grew a row.
+    install_providers();
+    hooks::CampaignPage host_root;
+    ASSERT_TRUE(hooks::campaign_picker_page("", host_root));
+    EXPECT_EQ(kModeCount + 1u, host_root.entries.size());
 }
 
-// The driver-level host gate on the Acted-carried level: the terminal
-// providers have no host predicate (og.campaign_is_host is true on a
-// terminal), so the row COMPOSES — and the driver's own is_host, the SET
-// LEVEL predicate, still refuses the set. One refusal, no cursor motion,
-// and no second answer behind it (the roll carries no message).
-TEST_F(ModesBookTest, terminal_roll_refuses_for_a_non_host_driver)
-{
-    install_providers_with_pick(7);
-
-    ScriptedCampIo io;
-    io.save = &save_;
-    io.answers = {std::to_string(kCampRandomRow + 1), "0"};
-    og::ui::TerminalCampaignPickerIo tio = io.io();
-    tio.is_host = [] { return false; };
-    og::ui::run_terminal_campaign_camp(save_, tio);
-
-    EXPECT_EQ(-1, io.applied_level) << "the refused set never applies";
-    EXPECT_EQ(300, save_.scen_num);
-    ASSERT_EQ(1u, io.notices.size());
-    EXPECT_EQ(std::string(og::ui::kCampaignPickerHostGuardMessage),
-              io.notices[0]);
-}
-
-TEST_F(ModesBookTest, base_camp_tallies_recount_from_the_save)
+// The one thing the camp row says is WHICH match is set — never how much of
+// the campaign is behind you. Playing every arena must move nothing on it.
+TEST_F(ModesBookTest, camp_row_note_is_the_scenario_title_never_a_tally)
 {
     const DerivedBook book = derive_book();
     const std::vector<int>& ctf = book.bands.at("ctf");
     ASSERT_GE(ctf.size(), 3u);
-    for (int i = 0; i < 3; i++)
-        save_.add_level_completed("modes", ctf[static_cast<std::size_t>(i)]);
     save_.scen_num = static_cast<short>(ctf[0]);
 
-    CampaignZoneSession zone(save_);
-    zone.fetch();
-    ASSERT_TRUE(zone.scripted());
-    EXPECT_EQ("3/40", zone.readout()->items[0].value)
-        << "the header counts the whole book";
-    const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
-    EXPECT_EQ("GAME: CAPTURE THE FLAG", rows[kCampGameRow].label);
-    EXPECT_EQ(std::format("3/{} stamped", ctf.size()),
-              rows[kCampGameRow].note)
-        << "the GAME row tallies the band the cursor sits in";
-    EXPECT_EQ("FIELD: " + book.stripped.at(ctf[0]),
-              rows[kCampFieldRow].label);
+    const auto read_row = [this]() {
+        CampaignZoneSession zone(save_);
+        zone.fetch();
+        EXPECT_TRUE(zone.scripted());
+        EXPECT_EQ(kCampHostRows, camp_rows(zone).size());
+        return camp_rows(zone)[kCampSetupRow];
+    };
+
+    const CampaignZoneSession::Row before = read_row();
+    EXPECT_EQ("SETUP", before.label);
+    EXPECT_EQ(expected_camp_note(ctf[0]), before.note);
+
+    for (int i = 0; i < 3; i++)
+        save_.add_level_completed("modes", ctf[static_cast<std::size_t>(i)]);
+    const CampaignZoneSession::Row partway = read_row();
+    EXPECT_EQ(before.note, partway.note) << "three arenas played: nothing moved";
+
+    complete_all(book);
+    const CampaignZoneSession::Row done = read_row();
+    EXPECT_EQ(before.id, done.id);
+    EXPECT_EQ(before.label, done.label);
+    EXPECT_EQ(before.note, done.note)
+        << "a finished campaign composes the identical row";
+    EXPECT_EQ(std::string::npos, done.note.find('/'))
+        << "no n/m tally: " << done.note;
+    EXPECT_EQ(std::string::npos, done.note.find("CLEARED")) << done.note;
+    EXPECT_EQ(std::string::npos, done.note.find("cleared")) << done.note;
 }
 
-// The pairing derivation when the cursor is NOT a field of the manifest —
-// winning a band's last arena parks it one past the band. The table falls
-// back to the first game still holding an unstamped field, and says so
-// without claiming to have fixed progression.
-TEST_F(ModesBookTest, dangling_cursor_falls_back_to_the_first_open_game)
+// The pairing derivation when the cursor is NOT an arena of the manifest —
+// winning a band's last arena parks it one past the band. The fallback is
+// pure ORDERING now: the band holding the greatest id BELOW the cursor, so
+// a dangling cursor stays on the game just played. Nothing here reads
+// completion, which is the whole point of the rewrite (feedback item 4).
+TEST_F(ModesBookTest, dangling_cursor_falls_back_to_the_band_below_it)
 {
     const DerivedBook book = derive_book();
     const std::vector<int>& ctf = book.bands.at("ctf");
     const std::vector<int>& tdm = book.bands.at("tdm");
+    ASSERT_EQ(book.ordered.front(), tdm.front())
+        << "tdm leads the manifest, so scen 0 falls through to it";
+
+    const auto camp_note = [this]() {
+        CampaignZoneSession zone(save_);
+        zone.fetch();
+        EXPECT_TRUE(zone.scripted());
+        EXPECT_EQ(kCampHostRows, camp_rows(zone).size());
+        return camp_rows(zone)[kCampSetupRow].note;
+    };
+
+    // One past the last CTF arena: the greatest id below the cursor IS that
+    // arena, so the camp still names the game just played.
     save_.scen_num = static_cast<short>(ctf.back() + 1);
     ASSERT_FALSE(book.tag_of.contains(save_.scen_num)) << "cursor dangles";
+    EXPECT_EQ(expected_camp_note(ctf.back()), camp_note())
+        << "the band holding the greatest id below the cursor";
 
-    {
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
-        EXPECT_EQ("GAME: TEAM DEATHMATCH", rows[kCampGameRow].label)
-            << "the first game with an unstamped field";
-        const int call = expected_call(tdm, save_);
-        ASSERT_GE(call, 0);
-        EXPECT_EQ("FIELD: " + book.stripped.at(call),
-                  rows[kCampFieldRow].label)
-            << "its own next unstamped field, wrapped like the call line";
-    }
-
-    // Every field stamped AND the cursor dangling: the table still names a
-    // pairing rather than composing a broken row.
+    // And it says the same with every arena played: the fallback is an
+    // ordering, not a search for something unplayed.
     complete_all(book);
-    {
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
-        EXPECT_EQ("GAME: TEAM DEATHMATCH", rows[kCampGameRow].label);
-        EXPECT_EQ("FIELD: " + book.stripped.at(tdm[0]),
-                  rows[kCampFieldRow].label);
-        EXPECT_EQ("sign the book", rows[kCampGameRow].note)
-            << "a book with nothing left to tally asks for the signature "
-               "waiting behind this door";
-    }
+    EXPECT_EQ(expected_camp_note(ctf.back()), camp_note())
+        << "a finished campaign moves the fallback nowhere";
+    save_.completed_levels.clear();
+
+    // Below EVERY arena: nothing sits under the cursor, so the first game's
+    // first arena answers.
+    save_.scen_num = 0;
+    ASSERT_FALSE(book.tag_of.contains(save_.scen_num));
+    EXPECT_EQ(expected_camp_note(tdm.front()), camp_note())
+        << "nothing below the cursor: MODES[1]'s first arena";
 }
 
-// A joiner gets the pairing, the rules and its own book — and loses the
-// rows it could never play. The cut is at FETCH, not at the click.
-TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
+// A joiner meets the same one row — there is nothing on this docket a
+// machine that does not set the level cannot browse.
+TEST_F(ModesBookTest, joiner_camp_is_the_one_setup_row)
 {
     const DerivedBook book = derive_book();
-    complete_all(book);  // even at 40/40 a joiner is offered no signature
+    complete_all(book);
     install_providers([] { return false; });
 
     CampaignZoneSession zone(save_);
@@ -888,34 +797,22 @@ TEST_F(ModesBookTest, joiner_camp_cuts_the_roll_and_the_sign)
     ASSERT_TRUE(zone.scripted());
     const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
     ASSERT_EQ(kCampJoinerRows, rows.size());
-    EXPECT_EQ("games", rows[kCampGameRow].id);
-    EXPECT_EQ(book.tag_of.at(save_.scen_num), rows[kCampFieldRow].id);
-    const CampaignZoneSession::Row& setup = rows[kCampJoinerSetupRow];
-    EXPECT_EQ("setup", setup.id);
-    EXPECT_EQ("MATCH SETUP", setup.label);
-    EXPECT_EQ("1-way, none, map", setup.note)
-        << "the match rules are SYNCED: a joiner reads the same digest it "
-           "cannot write, and the page behind the row says whose call it "
-           "is";
+    EXPECT_EQ("games", rows[kCampSetupRow].id);
+    EXPECT_EQ("SETUP", rows[kCampSetupRow].label);
+    EXPECT_EQ(expected_camp_note(save_.scen_num), rows[kCampSetupRow].note);
     for (const CampaignZoneSession::Row& row : rows)
     {
         EXPECT_NE("random_scenario", row.id)
-            << "a joiner cannot play the roll — cut at fetch";
-        EXPECT_NE("sign", row.id);
+            << "the docket roll retired onto the wizard's pages";
+        EXPECT_NE("setup", row.id) << "the camp setup page left for the wizard";
     }
-    EXPECT_EQ(expected_stamp_note(book.bands.at(book.tag_of.at(save_.scen_num)),
-                                  save_),
-              rows[kCampGameRow].note)
-        << "a joiner is never sent to a signature it will not be offered";
 
-    // One line, spending the row unit the host leaves free: who calls the
-    // game.
-    ASSERT_EQ(1u, zone.texts().size());
-    ASSERT_EQ(1u, zone.texts()[0].lines.size());
-    EXPECT_EQ("The host calls the game.", zone.texts()[0].lines[0]);
-
-    // Its own book, and a roster it may still shape.
-    EXPECT_EQ("40/40", zone.readout()->items[0].value);
+    // No readout, no line, and the roster keeps the whole rest of the band.
+    EXPECT_EQ(nullptr, zone.readout());
+    EXPECT_TRUE(zone.texts().empty());
+    EXPECT_EQ(kCampJoinerRosterRows, zone.roster().rows_per_page)
+        << "1 docket unit + a roster that leads leave 7 of 8";
+    EXPECT_TRUE(zone.roster().header_at_top);
     EXPECT_TRUE(zone.roster().can_deploy);
     EXPECT_TRUE(zone.roster().can_hire);
 }
@@ -941,14 +838,8 @@ TEST_F(ModesBookTest, base_camp_is_pure_and_render_stable)
     second.fetch();
     ASSERT_TRUE(first.scripted());
     ASSERT_TRUE(second.scripted());
-    ASSERT_EQ(first.readout()->items.size(), second.readout()->items.size());
-    for (std::size_t i = 0; i < first.readout()->items.size(); i++)
-    {
-        EXPECT_EQ(first.readout()->items[i].label,
-                  second.readout()->items[i].label);
-        EXPECT_EQ(first.readout()->items[i].value,
-                  second.readout()->items[i].value);
-    }
+    EXPECT_EQ(nullptr, first.readout());
+    EXPECT_EQ(nullptr, second.readout());
     ASSERT_EQ(first.texts().size(), second.texts().size());
     for (std::size_t w = 0; w < first.texts().size(); w++)
     {
@@ -964,7 +855,8 @@ TEST_F(ModesBookTest, base_camp_is_pure_and_render_stable)
         EXPECT_EQ(camp_rows(first)[i].label, camp_rows(second)[i].label);
         EXPECT_EQ(camp_rows(first)[i].note, camp_rows(second)[i].note);
     }
-    EXPECT_EQ(0, state("book_signed")) << "a fetch never writes";
+    EXPECT_FALSE(og::data::consume_match_settings_dirty())
+        << "a fetch never writes a knob";
     EXPECT_EQ(0, rolls) << "a fetch never rolls — the roll lives in the "
                            "action, where the click is";
 }
@@ -973,38 +865,53 @@ TEST_F(ModesBookTest, base_camp_is_pure_and_render_stable)
 // The games index
 // ---------------------------------------------------------------------------
 
-TEST_F(ModesBookTest, games_index_lists_the_seven_games_with_stamp_tallies)
+// The GAME step's own page: seven games noted with the SIZE of their band —
+// a fact, not a score — and then, host only and LAST so no arena ordinal
+// moves, the RANDOM row. No tally line: with zero lines the step fits nine
+// rows, which is what lets the eighth row land without a pager.
+TEST_F(ModesBookTest, games_index_lists_the_seven_games_then_random)
 {
     const DerivedBook book = derive_book();
     const std::vector<int>& ctf = book.bands.at("ctf");
     ASSERT_GE(ctf.size(), 3u);
+    // Progress in the save must change nothing on this page.
     for (int i = 0; i < 3; i++)
         save_.add_level_completed("modes", ctf[static_cast<std::size_t>(i)]);
 
     const CampaignPickerSession::DecoratedPage page = open_page("games");
-    EXPECT_EQ("SEVEN GAMES", page.title);
-    ASSERT_EQ(2u, page.lines.size());
-    EXPECT_EQ("Every game keeps its own page.", page.lines[0]);
-    EXPECT_EQ("Stamped: 3 of 40.", page.lines[1]);
+    EXPECT_EQ("GAMES", page.title);
+    EXPECT_TRUE(page.lines.empty())
+        << "the index states the games; it counts nothing — "
+        << (page.lines.empty() ? std::string() : page.lines[0]);
 
-    ASSERT_EQ(kModeCount, page.rows.size());
+    ASSERT_EQ(kModeCount + 1u, page.rows.size())
+        << "seven games, then the host's RANDOM";
     for (std::size_t i = 0; i < kModeCount; i++)
     {
         const CampaignPickerSession::Row& row = page.rows[i];
         EXPECT_EQ(CampaignPickerSession::Kind::Page, row.kind);
         EXPECT_EQ(kBookModes[i].tag, row.id);
         EXPECT_EQ(kBookModes[i].title, row.label);
-        EXPECT_EQ(expected_stamp_note(book.bands.at(kBookModes[i].tag), save_),
+        EXPECT_EQ(expected_arenas_note(book.bands.at(kBookModes[i].tag).size()),
                   row.note);
     }
+
+    const CampaignPickerSession::Row& random = page.rows[kModeCount];
+    EXPECT_EQ(CampaignPickerSession::Kind::Action, random.kind)
+        << "the roll is an action: the arena is only known after the click";
+    EXPECT_EQ("random", random.id);
+    EXPECT_EQ("RANDOM", random.label);
+    EXPECT_EQ("any game, any arena", random.note);
+    EXPECT_EQ(0, random.cost) << "the roll is free";
+    EXPECT_TRUE(random.affordable);
 }
 
-// The obligation the camp migration must not drop: a page FETCH renders the
-// same bytes twice and writes nothing. The pages read state (the tallies,
-// the signature, the match rules); only actions may write it.
+// The obligation the wizard migration must not drop: a page FETCH renders
+// the same bytes twice and writes nothing. The pages read state (the
+// tallies, the clock); only actions may write it.
 TEST_F(ModesBookTest, picker_menu_is_pure_and_render_stable)
 {
-    std::vector<std::string> pages = {"games", "setup"};
+    std::vector<std::string> pages = {"", "games"};
     for (const BookMode& mode : kBookModes)
         pages.push_back(mode.tag);
 
@@ -1022,14 +929,15 @@ TEST_F(ModesBookTest, picker_menu_is_pure_and_render_stable)
             EXPECT_EQ(first.rows[i].note, second.rows[i].note) << id;
         }
     }
-    EXPECT_EQ(0, state("book_signed")) << "a page fetch never writes";
+    EXPECT_FALSE(og::data::consume_match_settings_dirty())
+        << "a page fetch never writes a knob";
 }
 
 // ---------------------------------------------------------------------------
-// The field pages
+// The arena pages (the wizard's ARENA step)
 // ---------------------------------------------------------------------------
 
-TEST_F(ModesBookTest, field_pages_match_the_manifest_bands)
+TEST_F(ModesBookTest, arena_pages_match_the_manifest_bands)
 {
     const DerivedBook book = derive_book();
     const std::map<int, ManifestRow> manifest = parse_manifest();
@@ -1056,7 +964,8 @@ TEST_F(ModesBookTest, field_pages_match_the_manifest_bands)
         EXPECT_EQ(kBookModes[i].title, page.title);
 
         const std::vector<int>& band = book.bands.at(kBookModes[i].tag);
-        ASSERT_EQ(band.size(), page.rows.size()) << kBookModes[i].tag;
+        ASSERT_EQ(band.size() + 1u, page.rows.size())
+            << kBookModes[i].tag << ": the band's arenas, then RANDOM ARENA";
         for (std::size_t r = 0; r < band.size(); r++)
         {
             const CampaignPickerSession::Row& row = page.rows[r];
@@ -1072,12 +981,19 @@ TEST_F(ModesBookTest, field_pages_match_the_manifest_bands)
                 << "scen" << id;
         }
 
-        ASSERT_EQ(2u, page.lines.size());
+        // The roll comes LAST, so every arena above it keeps the ordinal a
+        // player (and a terminal drive) already learned.
+        const CampaignPickerSession::Row& random = page.rows[band.size()];
+        EXPECT_EQ(CampaignPickerSession::Kind::Action, random.kind);
+        EXPECT_EQ(std::string("random_") + kBookModes[i].tag, random.id)
+            << "the row id carries the band the roll covers";
+        EXPECT_EQ("RANDOM ARENA", random.label);
+        EXPECT_EQ("any arena of this game", random.note);
+        EXPECT_EQ(0, random.cost);
+
+        ASSERT_EQ(1u, page.lines.size())
+            << kBookModes[i].tag << ": the rule line alone";
         EXPECT_EQ(kBookModes[i].flavor, page.lines[0]);
-        const int call = expected_call(band, save_);
-        ASSERT_GE(call, 0) << "nothing completed: every band has a call";
-        EXPECT_EQ("The book calls: " + book.stripped.at(call) + ".",
-                  page.lines[1]);
 
         // A row select carries the SET LEVEL consequence, save untouched.
         const CampaignPickerSession::Outcome pick = session.choose(0);
@@ -1089,11 +1005,13 @@ TEST_F(ModesBookTest, field_pages_match_the_manifest_bands)
 
 // CTF is the one game whose note states a clock, and the clock is the one
 // fact the TIME LIMIT knob overrides (#241). The note must promise what the
-// field will actually run: the row's own value while the knob is MAP, and
+// arena will actually run: the row's own value while the knob is MAP, and
 // the knob's minutes the moment it is turned. A note still advertising the
 // manifest after an override is the same dishonesty this issue set out to
-// close — and it is the only place a player reads the clock before the
-// match, since rules_line/rules_digest deliberately stop at three knobs.
+// close. The wizard's RULES row and this note are now the two places the
+// clock shows before the match. (The camp docket used to carry a third
+// copy on its ARENA row; that row collapsed into the one SETUP row, whose
+// note is the scenario title.)
 TEST_F(ModesBookTest, ctf_note_follows_the_time_limit_knob)
 {
     const DerivedBook book = derive_book();
@@ -1117,15 +1035,9 @@ TEST_F(ModesBookTest, ctf_note_follows_the_time_limit_knob)
     const std::string overridden =
         std::format("{} sides, 5m", manifest.at(id).teams);
     EXPECT_EQ(overridden, open_page("ctf").rows[0].note)
-        << "the field page's row promises the resolved clock";
+        << "the arena page's row promises the resolved clock";
 
-    CampaignZoneSession zone(save_);
-    zone.fetch();
-    ASSERT_TRUE(zone.scripted());
-    EXPECT_EQ(overridden, camp_rows(zone)[kCampFieldRow].note)
-        << "so does the camp docket's FIELD row";
-
-    // And the fields of every OTHER game are untouched — the knob names a
+    // And the arenas of every OTHER game are untouched — the knob names a
     // clock, and only CTF's note states one.
     save_.scen_num = 300;
     const std::vector<int>& tdm = book.bands.at("tdm");
@@ -1135,58 +1047,44 @@ TEST_F(ModesBookTest, ctf_note_follows_the_time_limit_knob)
     save_.time_limit = 0;
 }
 
-TEST_F(ModesBookTest, call_line_scans_forward_and_wraps)
+// An arena page carries the game's rule line and NOTHING else — no "Next
+// uncleared:", no "Every arena here is cleared." The line count is the pin
+// that matters: with one line the window holds eight rows, which is the
+// arithmetic the wizard's pager depends on.
+TEST_F(ModesBookTest, arena_pages_carry_no_progress_line)
 {
     const DerivedBook book = derive_book();
-    const std::vector<int>& ctf = book.bands.at("ctf");
-    ASSERT_GE(ctf.size(), 3u);
-    const int last = ctf.back();
-
-    // The post-band dangling cursor (winning the last CTF arena parks
-    // scen_num one past it): the call wraps to the band start.
-    save_.scen_num = static_cast<short>(last + 1);
+    for (const bool played : {false, true})
     {
-        hooks::CampaignPage page;
-        ASSERT_TRUE(hooks::campaign_picker_page("ctf", page));
-        const int call = expected_call(ctf, save_);
-        EXPECT_EQ(ctf.front(), call) << "the wraparound arm";
-        ASSERT_EQ(2u, page.lines.size());
-        EXPECT_EQ("The book calls: " + book.stripped.at(call) + ".",
-                  page.lines[1]);
-    }
-
-    // Mid-band cursor with stamped fields ahead: the scan skips them.
-    save_.scen_num = static_cast<short>(ctf[1]);
-    save_.add_level_completed("modes", ctf[1]);
-    {
-        hooks::CampaignPage page;
-        ASSERT_TRUE(hooks::campaign_picker_page("ctf", page));
-        const int call = expected_call(ctf, save_);
-        EXPECT_EQ(ctf[2], call) << "the forward-scan arm skips the stamp";
-        EXPECT_EQ("The book calls: " + book.stripped.at(call) + ".",
-                  page.lines[1]);
-    }
-
-    // Every field stamped: the line says exactly that, and NOT that the
-    // page is shut — #207 keeps every cleared field replayable, and all
-    // ten rows under this line are still live level rows.
-    for (const int id : ctf)
-        save_.add_level_completed("modes", id);
-    {
-        hooks::CampaignPage page;
-        ASSERT_TRUE(hooks::campaign_picker_page("ctf", page));
-        EXPECT_EQ("Every field here is stamped.", page.lines[1]);
-        ASSERT_EQ(ctf.size(), page.entries.size());
-        for (const hooks::CampaignPageEntry& entry : page.entries)
+        if (played)
+            complete_all(book);
+        for (std::size_t i = 0; i < kModeCount; i++)
         {
-            EXPECT_EQ(hooks::CampaignPageEntry::Kind::Level, entry.kind)
-                << "a stamped field still plays";
+            hooks::CampaignPage page;
+            ASSERT_TRUE(hooks::campaign_picker_page(kBookModes[i].tag, page))
+                << kBookModes[i].tag;
+            ASSERT_EQ(1u, page.lines.size())
+                << kBookModes[i].tag << (played ? " (played out)" : "")
+                << ": the rule line alone";
+            EXPECT_EQ(kBookModes[i].flavor, page.lines[0]);
+            EXPECT_EQ(std::string::npos, page.lines[0].find("cleared"));
         }
+    }
+
+    // A played-out band still lists live level rows: #207 keeps every
+    // arena replayable, and nothing on the page says otherwise.
+    hooks::CampaignPage ctf;
+    ASSERT_TRUE(hooks::campaign_picker_page("ctf", ctf));
+    ASSERT_EQ(book.bands.at("ctf").size() + 1u, ctf.entries.size());
+    for (std::size_t i = 0; i < book.bands.at("ctf").size(); i++)
+    {
+        EXPECT_EQ(hooks::CampaignPageEntry::Kind::Level, ctf.entries[i].kind)
+            << "a played arena still plays";
     }
 }
 
 // The scripted labels fall back honestly when a title misbehaves: an
-// empty title reads as the field number, a prefix-less one as itself.
+// empty title reads as the arena number, a prefix-less one as itself.
 // The providers are the sanctioned seam (the unit-fixture install site).
 TEST_F(ModesBookTest, label_fallbacks_for_empty_and_prefixless_titles)
 {
@@ -1204,29 +1102,30 @@ TEST_F(ModesBookTest, label_fallbacks_for_empty_and_prefixless_titles)
         if (id == blank_id)
             return "";
         if (id == raw_id)
-            return "AN UNPREFIXED FIELD";
+            return "AN UNPREFIXED ARENA";
         return real_title(id);
     };
     hooks::install_campaign_providers(std::move(providers));
 
     hooks::CampaignPage page;
     ASSERT_TRUE(hooks::campaign_picker_page("tdm", page));
-    ASSERT_EQ(tdm.size(), page.entries.size());
-    EXPECT_EQ("FIELD " + std::to_string(blank_id), page.entries[0].label);
-    EXPECT_EQ("AN UNPREFIXED FIELD", page.entries[1].label);
+    ASSERT_EQ(tdm.size() + 1u, page.entries.size())
+        << "the band's arenas, then the host's RANDOM ARENA";
+    EXPECT_EQ("ARENA " + std::to_string(blank_id), page.entries[0].label);
+    EXPECT_EQ("AN UNPREFIXED ARENA", page.entries[1].label);
 }
 
 // ---------------------------------------------------------------------------
-// RANDOM SCENARIO: the roll (D3 — TONIGHT'S CARD retired)
+// RANDOM / RANDOM ARENA: the roll, one Lua helper behind two rows
 // ---------------------------------------------------------------------------
 
 // Every provider answer maps to the manifest row it names — and never to
-// the field the table is already set to (the click that changes nothing
-// steps one row on). The outcome CARRIES the level; the session itself
-// never writes the cursor — the routing belongs to each client's gated
-// tail, which is pinned by the terminal tests above and the SDL zone test
-// in test_campaign_zone_ui.cpp.
-TEST_F(ModesBookTest, roll_answers_every_arena_and_never_the_current_field)
+// the arena the campaign is already set to (the click that changes nothing
+// steps one row on). The row is the GAME step's LAST one, driven through
+// the same CampaignPickerSession the wizard drives; the outcome CARRIES the
+// level and the session never writes the cursor — the routing belongs to
+// each client's gated tail.
+TEST_F(ModesBookTest, roll_answers_every_arena_and_never_the_current_arena)
 {
     const DerivedBook book = derive_book();
     ASSERT_EQ(static_cast<std::size_t>(kArenaCount), book.ordered.size());
@@ -1239,46 +1138,99 @@ TEST_F(ModesBookTest, roll_answers_every_arena_and_never_the_current_field)
     for (int pick = 1; pick <= kArenaCount; pick++)
     {
         install_providers_with_pick(pick);
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        const CampaignZoneSession::Outcome outcome =
-            zone.act(0, static_cast<int>(kCampRandomRow));
-        ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted, outcome.kind)
+        CampaignPickerSession session(save_);
+        ASSERT_TRUE(session.open()) << "pick " << pick;
+        ASSERT_EQ(kModeCount + 1u, session.page().rows.size());
+        const CampaignPickerSession::Outcome outcome =
+            session.choose(kModeCount);
+        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted, outcome.kind)
             << "pick " << pick;
         const int expected = expected_roll(book, pick, pair);
         EXPECT_EQ(expected, outcome.level) << "pick " << pick;
         EXPECT_NE(pair, outcome.level)
-            << "pick " << pick << ": the roll never answers the field the "
-                                  "table is set to";
+            << "pick " << pick << ": the roll never answers the arena the "
+                                  "campaign is set to";
         EXPECT_EQ(pair, save_.scen_num)
             << "the session never writes the cursor — the caller's gated "
                "tail does";
-        EXPECT_EQ("", zone.take_message())
+        EXPECT_EQ("", session.take_message())
             << "the roll speaks through the engine's set toast, not a "
                "message of its own";
         rolled.insert(outcome.level);
     }
     EXPECT_EQ(static_cast<std::size_t>(kArenaCount) - 1, rolled.size())
-        << "the 40 picks reach every arena but the current field";
+        << "the 40 picks reach every arena but the current one";
     EXPECT_FALSE(rolled.contains(pair));
 }
 
 // The step-on wraps: a roll that lands on the LAST manifest row while the
-// table is set to it answers the FIRST row, not one past the end.
-TEST_F(ModesBookTest, roll_on_the_last_field_wraps_to_the_first)
+// campaign is set to it answers the FIRST row, not one past the end.
+TEST_F(ModesBookTest, roll_on_the_last_arena_wraps_to_the_first)
 {
     const DerivedBook book = derive_book();
     save_.scen_num = static_cast<short>(book.ordered.back());
     install_providers_with_pick(kArenaCount);
 
-    CampaignZoneSession zone(save_);
-    zone.fetch();
-    ASSERT_TRUE(zone.scripted());
-    const CampaignZoneSession::Outcome outcome =
-        zone.act(0, static_cast<int>(kCampRandomRow));
-    ASSERT_EQ(CampaignZoneSession::OutcomeKind::Acted, outcome.kind);
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open());
+    const CampaignPickerSession::Outcome outcome =
+        session.choose(kModeCount);
+    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted, outcome.kind);
     EXPECT_EQ(book.ordered.front(), outcome.level) << "the wrap arm";
+}
+
+// The ARENA page's own roll: the SAME helper over the band the row's id
+// names, so it can only ever answer an arena of the game you are looking
+// at — and never the one already set.
+TEST_F(ModesBookTest, page_random_arena_rolls_only_its_band)
+{
+    const DerivedBook book = derive_book();
+    for (const BookMode& mode : kBookModes)
+    {
+        const std::vector<int>& band = book.bands.at(mode.tag);
+        ASSERT_GE(band.size(), 2u) << mode.tag;
+        const int cursor = band.front();
+        save_.scen_num = static_cast<short>(cursor);
+
+        std::set<int> rolled;
+        for (std::size_t pick = 1; pick <= band.size(); pick++)
+        {
+            install_providers_with_pick(static_cast<int>(pick));
+            CampaignPickerSession session(save_);
+            ASSERT_TRUE(session.open_at(mode.tag)) << mode.tag;
+            ASSERT_EQ(band.size() + 1u, session.page().rows.size())
+                << mode.tag;
+            const CampaignPickerSession::Outcome outcome =
+                session.choose(band.size());
+            ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted, outcome.kind)
+                << mode.tag << " pick " << pick;
+            EXPECT_TRUE(std::find(band.begin(), band.end(),
+                                  outcome.level) != band.end())
+                << mode.tag << " pick " << pick << ": scen" << outcome.level
+                << " is not an arena of this game";
+            EXPECT_NE(cursor, outcome.level)
+                << mode.tag << " pick " << pick;
+            EXPECT_EQ(cursor, save_.scen_num) << mode.tag;
+            rolled.insert(outcome.level);
+        }
+        EXPECT_EQ(band.size() - 1, rolled.size())
+            << mode.tag << ": the band's picks reach every arena but the "
+                           "current one";
+
+        // The wrap arm on this band: set to its LAST arena, the pick that
+        // names that arena steps round to the first.
+        save_.scen_num = static_cast<short>(band.back());
+        install_providers_with_pick(static_cast<int>(band.size()));
+        CampaignPickerSession session(save_);
+        ASSERT_TRUE(session.open_at(mode.tag)) << mode.tag;
+        const CampaignPickerSession::Outcome wrapped =
+            session.choose(band.size());
+        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted, wrapped.kind)
+            << mode.tag;
+        EXPECT_EQ(band.front(), wrapped.level)
+            << mode.tag << ": the wrap arm stays inside the band";
+    }
+    install_providers();
 }
 
 // The SHIPPED provider (make_campaign_providers' default): wall-clock
@@ -1306,620 +1258,240 @@ TEST_F(ModesBookTest, default_random_pick_rolls_and_stays_inside_the_range)
     EXPECT_EQ(1, providers.random_pick(-4));
 
     // It ROLLS. 64 draws over 40 arenas: a live generator lands on at least
-    // five distinct fields with probability 1 - ~1e-30, while a provider that
+    // five distinct arenas with probability 1 - ~1e-30, while a provider that
     // answers a constant (or steps a fixed cycle of one) collapses to one.
     std::set<int> distinct;
     for (int draw = 0; draw < 64; draw++)
         distinct.insert(providers.random_pick(kArenaCount));
     EXPECT_GE(distinct.size(), std::size_t{5})
         << "64 draws over " << kArenaCount
-        << " arenas must not collapse onto one field — the shipped roll is a "
+        << " arenas must not collapse onto one — the shipped roll is a "
            "seeded generator, not a constant";
 }
 
 // ---------------------------------------------------------------------------
-// SIGN THE BOOK
+// match_knobs: what the wizard shows for this game, and what it deals
 // ---------------------------------------------------------------------------
 
-// The signature lives on the index page whose COVER it takes, one door
-// from the camp: this is the page that visibly changes when the name
-// lands, and the camp's docket stays the same four rows in every state.
-TEST_F(ModesBookTest, sign_the_book_materializes_latches_and_retitles)
+// The ROOT page is the GAMES index (SPEC §3.2 item 1). "games" stays a
+// valid alias — the docket's one SETUP row keeps that id — so the two
+// answers must be the same bytes, and the engine's own root fetch (open(),
+// which is open_at("")) must land on it.
+TEST_F(ModesBookTest, root_page_is_the_games_index)
+{
+    hooks::CampaignPage root;
+    hooks::CampaignPage alias;
+    ASSERT_TRUE(hooks::campaign_picker_page("", root));
+    ASSERT_TRUE(hooks::campaign_picker_page("games", alias));
+    EXPECT_EQ("GAMES", root.title);
+    EXPECT_EQ(alias.title, root.title);
+    EXPECT_TRUE(root.lines.empty()) << "no tally line heads the index";
+    EXPECT_EQ(alias.lines, root.lines);
+    ASSERT_EQ(kModeCount + 1u, root.entries.size())
+        << "seven games and the host's RANDOM";
+    ASSERT_EQ(alias.entries.size(), root.entries.size());
+    for (std::size_t i = 0; i < kModeCount; i++)
+    {
+        EXPECT_EQ(hooks::CampaignPageEntry::Kind::Page, root.entries[i].kind);
+        EXPECT_EQ(kBookModes[i].tag, root.entries[i].id);
+        EXPECT_EQ(kBookModes[i].title, root.entries[i].label);
+        EXPECT_EQ(alias.entries[i].id, root.entries[i].id);
+        EXPECT_EQ(alias.entries[i].label, root.entries[i].label);
+        EXPECT_EQ(alias.entries[i].note, root.entries[i].note);
+    }
+    EXPECT_EQ(hooks::CampaignPageEntry::Kind::Action,
+              root.entries[kModeCount].kind);
+    EXPECT_EQ("random", root.entries[kModeCount].id);
+    EXPECT_EQ(alias.entries[kModeCount].id, root.entries[kModeCount].id);
+
+    // And through the session the wizard's GAME step drives: open() is
+    // open_at(""), which used to fail outright on this campaign.
+    CampaignPickerSession session(save_);
+    ASSERT_TRUE(session.open())
+        << "the root must open: it is the page the GAME step hosts";
+    EXPECT_EQ("GAMES", session.page().title);
+    EXPECT_EQ(kModeCount + 1u, session.page().rows.size());
+}
+
+// The §3.2 table, one row per game: which knobs the wizard shows, the
+// campaign's own TEAMS lines, and the root row whose page lists the
+// cursor's arena. The engine spells no mode fact — this test is the
+// contract between MODE_KNOBS and the wizard.
+TEST_F(ModesBookTest, match_knobs_answers_per_mode)
 {
     const DerivedBook book = derive_book();
-    save_.team_list[0] = make_member(0, "Valkyrie", 4, 1234);
-    save_.team_size = 1;
-    complete_all(book);
+    struct Expected {
+        const char* tag;
+        bool teams;
+        hooks::CampaignFillKnob fill;
+        bool score;
+        bool time;
+        const char* line;  // nullptr = the game posts no line
+    };
+    const Expected table[] = {
+        {"tdm", true, hooks::CampaignFillKnob::Macro, true, true, nullptr},
+        {"ctf", true, hooks::CampaignFillKnob::Macro, true, true, nullptr},
+        {"onslaught", false, hooks::CampaignFillKnob::Off, false, true,
+         nullptr},
+        {"mutant", false, hooks::CampaignFillKnob::Band, true, true,
+         "FILL sets how strong the bots are."},
+        {"soccer", true, hooks::CampaignFillKnob::Macro, true, true,
+         "STRONG adds a fighter, BRUTAL two."},
+        {"basketball", true, hooks::CampaignFillKnob::Macro, true, true,
+         "STRONG adds a fighter, BRUTAL two."},
+        {"ffa", false, hooks::CampaignFillKnob::Band, true, true,
+         "FILL sets how strong the bots are."},
+    };
+    ASSERT_EQ(kModeCount, sizeof(table) / sizeof(table[0]));
 
-    // The camp points at the door and grows no row of its own.
+    for (const Expected& want : table)
     {
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        EXPECT_EQ("40/40", zone.readout()->items[0].value);
-        EXPECT_TRUE(zone.texts().empty());
-        ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
-        EXPECT_EQ("sign the book", camp_rows(zone)[kCampGameRow].note);
-        for (const CampaignZoneSession::Row& row : camp_rows(zone))
-            EXPECT_NE("sign", row.id) << "the table gives the signature no "
-                                         "row of its own";
+        const std::vector<int>& band = book.bands.at(want.tag);
+        ASSERT_FALSE(band.empty()) << want.tag;
+        save_.scen_num = static_cast<short>(band.front());
+        hooks::CampaignMatchKnobs k;
+        ASSERT_TRUE(hooks::campaign_match_knobs(k)) << want.tag;
+        EXPECT_EQ(want.teams, k.teams) << want.tag;
+        EXPECT_EQ(want.fill, k.fill) << want.tag;
+        EXPECT_EQ(want.score, k.score) << want.tag;
+        EXPECT_EQ(want.time, k.time) << want.tag;
+        EXPECT_EQ(want.tag, k.arena_page)
+            << "the ARENA tab descends into the page that lists this arena";
+        if (want.line == nullptr)
+        {
+            EXPECT_TRUE(k.lines.empty()) << want.tag << ": " << (k.lines.empty() ? "" : k.lines[0]);
+            continue;
+        }
+        ASSERT_EQ(1u, k.lines.size()) << want.tag;
+        EXPECT_EQ(want.line, k.lines[0]) << want.tag;
+    }
+}
+
+// #305: the ball games buy bodies above FAIR, so their arenas DEAL STRONG
+// and say why. Every other game deals FAIR, exactly as before — the memo
+// (arena_lineup_dealt_campaign/scen) and every 300/500 pin are untouched.
+// The two truths have ONE source, mode_shape.bodies (§3.8.2).
+TEST_F(ModesBookTest, match_knobs_ball_line_and_strong_deal_only_on_ball_arenas)
+{
+    const DerivedBook book = derive_book();
+    constexpr int kThePitch = 820;      // soccer
+    constexpr int kFirstCourt = 824;    // basketball
+    ASSERT_EQ("soccer", book.tag_of.at(kThePitch));
+    ASSERT_EQ("basketball", book.tag_of.at(kFirstCourt));
+
+    for (const int id : {kThePitch, kFirstCourt})
+    {
+        save_.scen_num = static_cast<short>(id);
+        hooks::CampaignMatchKnobs k;
+        ASSERT_TRUE(hooks::campaign_match_knobs(k)) << "scen" << id;
+        EXPECT_EQ(og::sim::kFillStrong, k.deal_fill)
+            << "scen" << id << ": a fresh ball arena deals STRONG so the "
+                               "shipped default fields the extra body";
+        ASSERT_EQ(1u, k.lines.size()) << "scen" << id;
+        EXPECT_EQ("STRONG adds a fighter, BRUTAL two.", k.lines[0]);
     }
 
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("games"));
-    EXPECT_EQ("SEVEN GAMES", session.page().title);
-    ASSERT_EQ(3u, session.page().lines.size());
-    EXPECT_EQ("The book is full. Sign it.", session.page().lines[2]);
-    ASSERT_EQ(kModeCount + 1, session.page().rows.size());
-    const CampaignPickerSession::Row& sign = session.page().rows[kModeCount];
-    EXPECT_EQ(CampaignPickerSession::Kind::Action, sign.kind);
-    EXPECT_EQ("sign", sign.id);
-    EXPECT_EQ("SIGN THE BOOK", sign.label);
-    EXPECT_EQ("your name, for good", sign.note)
-        << "the permanence is stated before the click";
-    EXPECT_EQ(0, sign.cost) << "the signature is free";
+    // The brawl games: FAIR, and no body line. One id per band, so a
+    // mode_shape row added by hand without its line fails here.
+    for (const char* tag : {"tdm", "ctf", "onslaught", "mutant", "ffa"})
+    {
+        const std::vector<int>& band = book.bands.at(tag);
+        ASSERT_FALSE(band.empty()) << tag;
+        save_.scen_num = static_cast<short>(band.front());
+        hooks::CampaignMatchKnobs k;
+        ASSERT_TRUE(hooks::campaign_match_knobs(k)) << tag;
+        EXPECT_EQ(og::sim::kFillFair, k.deal_fill)
+            << tag << ": only the ball games buy bodies";
+        for (const std::string& line : k.lines)
+        {
+            EXPECT_EQ(std::string::npos, line.find("adds a fighter"))
+                << tag << ": " << line;
+        }
+    }
+}
 
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(static_cast<int>(kModeCount)).kind);
-    EXPECT_EQ("Your name goes in the book.", session.take_message());
-    EXPECT_EQ(1, state("book_signed"));
-    EXPECT_EQ("THE BOOK OF VALKYRIE", session.page().title)
-        << "the cover takes the name the moment it is signed";
-    EXPECT_EQ(kModeCount, session.page().rows.size())
-        << "the signature row is spent";
-    EXPECT_EQ(2u, session.page().lines.size());
+// The knobs follow the SAME cursor derivation the docket does — there is
+// one owner of level -> game (current_pair), and a dangling cursor must
+// not send the wizard's ARENA tab somewhere the docket row does not name.
+TEST_F(ModesBookTest, match_knobs_follows_the_dangling_cursor_like_the_docket)
+{
+    const DerivedBook book = derive_book();
+    const std::vector<int>& ctf = book.bands.at("ctf");
+    save_.scen_num = static_cast<short>(ctf.back() + 1);
+    ASSERT_FALSE(book.tag_of.contains(save_.scen_num)) << "cursor dangles";
 
-    // And it keeps it: a signed book is titled for good, and the camp goes
-    // back to tallying.
-    EXPECT_EQ("THE BOOK OF VALKYRIE", open_page("games").title);
+    hooks::CampaignMatchKnobs k;
+    ASSERT_TRUE(hooks::campaign_match_knobs(k));
+    EXPECT_EQ("ctf", k.arena_page)
+        << "the band holding the greatest id below the cursor — "
+           "current_pair's own fallback, the one owner";
+
     CampaignZoneSession zone(save_);
     zone.fetch();
     ASSERT_TRUE(zone.scripted());
     ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
-    EXPECT_EQ(expected_stamp_note(book.bands.at("tdm"), save_),
-              camp_rows(zone)[kCampGameRow].note)
-        << "nothing left to ask for";
+    EXPECT_EQ(expected_camp_note(ctf.back()),
+              camp_rows(zone)[kCampSetupRow].note)
+        << "the docket row names the arena the ARENA tab will open on";
 }
 
-TEST_F(ModesBookTest, signed_book_with_no_roster_keeps_the_old_title)
+// A fetch is a READING: two in a row answer the same bytes and neither
+// writes a knob. The hook runs per navigation and per deal, so a write
+// here would restage the match on every tab press.
+TEST_F(ModesBookTest, match_knobs_is_pure_and_render_stable)
 {
-    const DerivedBook book = derive_book();
-    complete_all(book);
-    ASSERT_TRUE(save_.campaign_state_set("modes", "book_signed", 1));
-
-    const CampaignPickerSession::DecoratedPage page = open_page("games");
-    EXPECT_EQ("SEVEN GAMES", page.title)
-        << "an empty roster leaves nobody to sign as";
-    EXPECT_EQ(kModeCount, page.rows.size())
-        << "a signed book offers no signature";
-    ASSERT_EQ(2u, page.lines.size());
-
-    CampaignZoneSession zone(save_);
-    zone.fetch();
-    ASSERT_TRUE(zone.scripted());
-    ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
-    EXPECT_TRUE(zone.texts().empty())
-        << "the cover line lives on the cover, not on the table";
-}
-
-// A joiner is never offered the signature — on the camp OR behind the
-// door. The book is local, but the row that writes it is the host's.
-TEST_F(ModesBookTest, joiner_index_offers_no_signature)
-{
-    const DerivedBook book = derive_book();
-    complete_all(book);
-    install_providers([] { return false; });
-
-    const CampaignPickerSession::DecoratedPage page = open_page("games");
-    EXPECT_EQ(kModeCount, page.rows.size());
-    ASSERT_EQ(2u, page.lines.size()) << "no signature, no prompt for one";
-    for (const CampaignPickerSession::Row& row : page.rows)
-        EXPECT_NE("sign", row.id);
-}
-
-// ---------------------------------------------------------------------------
-// MATCH SETUP (#212)
-// ---------------------------------------------------------------------------
-
-// The page is the knob table, and every row wears the value it holds at
-// FETCH: the label is the state, so a player never has to guess what the
-// match is set to before touching it.
-TEST_F(ModesBookTest, match_setup_labels_every_knob_with_what_it_holds)
-{
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("setup"));
-    const CampaignPickerSession::DecoratedPage& page = session.page();
-    EXPECT_EQ("MATCH SETUP", page.title);
-    ASSERT_EQ(1u, page.lines.size());
-    EXPECT_EQ("Map score.", page.lines[0])
-        << "0 spells its MATCHUP meaning, and nothing is 'posted'; the "
-           "sides are LINEUP's, so the sentence opens on the score";
-    ASSERT_EQ(kKnobCount, page.rows.size());
-    const char* labels[] = {"TEAMS: 1", "FILL: NONE", "TARGET SCORE: MAP",
-                            "TIME LIMIT: MAP"};
-    const char* notes[] = {"2, 3, 4", "none to brutal", "map, 1, 3, 5, 10",
-                           "map, 5, 10, 15, 20m"};
-    for (std::size_t i = 0; i < kKnobCount; i++)
-    {
-        EXPECT_EQ(CampaignPickerSession::Kind::Action, page.rows[i].kind);
-        EXPECT_EQ(kKnobIds[i], page.rows[i].id);
-        EXPECT_EQ(labels[i], page.rows[i].label);
-        EXPECT_EQ(notes[i], page.rows[i].note)
-            << "the note is the cycle, so the next click is never a "
-               "surprise";
-        EXPECT_EQ(0, page.rows[i].cost) << "turning a knob is free";
-        EXPECT_TRUE(page.rows[i].affordable);
-    }
-
-    // An off-menu value (a match settled from the MATCHUP screen or a
-    // lobby) spells itself on the row and in the line rather than lying.
-    // The macro faces DERIVE from the fill array the same way (G1): a
-    // LINEUP band set by hand reads back as the sides it fields.
-    save_.ctf_strip_scenario_troops = 1;
-    save_.ctf_capture_limit = 7;
-    save_.time_limit = 2160;  // 3 minutes, off the cycle
-    save_.fill[2] = og::sim::kFillStrong;  // TEAM 3, straight off LINEUP
-    session.refresh();
-    EXPECT_EQ("To 7.", session.page().lines[0])
-        << "the line speaks the score, as ever; the sides and the clock "
-           "stay on their own rows";
-    EXPECT_EQ("TEAMS: 2", session.page().rows[kTeamsRow].label)
-        << "one on opponent beside the local team's own side";
-    EXPECT_EQ("FILL: STRONG", session.page().rows[kFillRow].label)
-        << "the common on-opponent value is the face";
-    EXPECT_EQ("TARGET SCORE: 7", session.page().rows[kScoreRow].label);
-    EXPECT_EQ("TIME LIMIT: 3M", session.page().rows[kTimeRow].label)
-        << "minutes, from the ticks the modes actually run on";
-
-    // And the fetch that reads them writes nothing: the page is a mirror
-    // until a row is clicked.
     (void)og::data::consume_match_settings_dirty();
-    session.refresh();
-    EXPECT_EQ(0, save_.ctf_team_count);
-    EXPECT_EQ(7, save_.ctf_capture_limit);
-    EXPECT_EQ(1, save_.ctf_strip_scenario_troops);
-    EXPECT_EQ(2160, save_.time_limit);
-    EXPECT_EQ(og::sim::kFillStrong, save_.fill[2]);
+    save_.scen_num = 820;
+    hooks::CampaignMatchKnobs first;
+    hooks::CampaignMatchKnobs second;
+    ASSERT_TRUE(hooks::campaign_match_knobs(first));
+    ASSERT_TRUE(hooks::campaign_match_knobs(second));
+    EXPECT_EQ(first.teams, second.teams);
+    EXPECT_EQ(first.fill, second.fill);
+    EXPECT_EQ(first.score, second.score);
+    EXPECT_EQ(first.time, second.time);
+    EXPECT_EQ(first.lines, second.lines);
+    EXPECT_EQ(first.arena_page, second.arena_page);
+    EXPECT_EQ(first.deal_fill, second.deal_fill);
     EXPECT_FALSE(og::data::consume_match_settings_dirty())
         << "a fetch never writes a knob";
 }
 
-// The whole of every cycle, one click at a time and round the wrap: the
-// value the save holds, the label the refetched row wears, and the plain
-// sentence the click answers with.
-TEST_F(ModesBookTest, every_knob_cycles_through_its_values_and_wraps)
+// The docket's one page row IS the wizard's door (D28): its id is what the
+// SDL Base Camp hands to run_match_setup_screen(page_id), and "games"
+// names no ROOT page row, so MatchSetupSession::open leaves the wizard on
+// its GAME step. A renamed id would silently drop the host somewhere else.
+TEST_F(ModesBookTest, docket_page_rows_keep_their_ids_for_the_wizard_shortcuts)
 {
-    struct Step {
-        int value;
-        const char* label;
-        const char* said;
-    };
-    const std::vector<Step> score = {
-        {1, "TARGET SCORE: 1", "Score to 1."},
-        {3, "TARGET SCORE: 3", "Score to 3."},
-        {5, "TARGET SCORE: 5", "Score to 5."},
-        {10, "TARGET SCORE: 10", "Score to 10."},
-        {0, "TARGET SCORE: MAP", "Score: the map's own."},
-    };
-    // Ticks in the save (12/s, the manifest's own unit), minutes on the
-    // face. Every value on the cycle survives the provider's [720, 21600]
-    // clamp untouched, so what the row says is what the sim gets.
-    const std::vector<Step> time = {
-        {3600, "TIME LIMIT: 5M", "Clock: 5 minutes."},
-        {7200, "TIME LIMIT: 10M", "Clock: 10 minutes."},
-        {10800, "TIME LIMIT: 15M", "Clock: 15 minutes."},
-        {14400, "TIME LIMIT: 20M", "Clock: 20 minutes."},
-        {0, "TIME LIMIT: MAP", "Clock: the map's own."},
-    };
-    const struct {
-        std::size_t row;
-        const char* setting;
-        const std::vector<Step>* steps;
-    } knobs[] = {
-        {kScoreRow, "score_limit", &score},
-        {kTimeRow, "time_limit", &time},
-    };
-
-    for (const auto& knob : knobs)
+    const DerivedBook book = derive_book();
+    for (const int id : {300, 507, 820, 824})
     {
-        CampaignPickerSession session(save_);
-        ASSERT_TRUE(session.open_at("setup"));
-        for (const Step& step : *knob.steps)
-        {
-            ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-                      session.choose(knob.row).kind)
-                << knob.setting << " -> " << step.value;
-            EXPECT_EQ(step.said, session.take_message()) << knob.setting;
-            // The write landed on the knob the row names, read back
-            // through the same seam the script reads.
-            const hooks::CampaignProviders readback =
-                og::data::make_campaign_providers(save_);
-            EXPECT_EQ(step.value, readback.match_get(knob.setting));
-            EXPECT_EQ(step.label,
-                      session.page().rows[knob.row].label)
-                << "the refetched row wears the new value";
-        }
-        // A whole lap leaves the knob exactly where it started, and the
-        // other never moved (nor the two retired fields, which no row can
-        // reach: TEAMS since A3, TROOPS since B5 — nor the fill array,
-        // which only the macro rows and LINEUP write).
-        EXPECT_EQ(0, save_.ctf_team_count);
-        EXPECT_EQ(0, save_.ctf_capture_limit);
-        EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
-        EXPECT_EQ(0, save_.time_limit);
-        for (const short fill : save_.fill)
-            EXPECT_EQ(0, fill) << "a score/time lap never deals a squad";
+        save_.scen_num = static_cast<short>(id);
+        CampaignZoneSession zone(save_);
+        zone.fetch();
+        ASSERT_TRUE(zone.scripted()) << "scen" << id;
+        const std::vector<CampaignZoneSession::Row>& rows = camp_rows(zone);
+        ASSERT_EQ(kCampHostRows, rows.size()) << "scen" << id;
+        EXPECT_EQ(CampaignPickerSession::Kind::Page, rows[kCampSetupRow].kind);
+        EXPECT_EQ("games", rows[kCampSetupRow].id)
+            << "scen" << id << ": the wizard opens on the GAME step";
+        EXPECT_EQ(expected_camp_note(id), rows[kCampSetupRow].note)
+            << "scen" << id;
+
+        hooks::CampaignMatchKnobs k;
+        ASSERT_TRUE(hooks::campaign_match_knobs(k)) << "scen" << id;
+        EXPECT_EQ(book.tag_of.at(id), k.arena_page)
+            << "scen" << id << ": one owner of level -> game";
     }
-}
-
-// A value that is not on the cycle at all — every knob can be set from the
-// MATCHUP screen, a lobby or an older save — rejoins at the head instead of
-// pretending to know where it was.
-TEST_F(ModesBookTest, an_off_menu_value_rejoins_the_cycle_at_its_head)
-{
-    save_.ctf_capture_limit = 7;
-    save_.ctf_strip_scenario_troops = 1;  // the retired middle state
-    save_.time_limit = 5400;    // a 7:30 court, between two cycle stops
-
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("setup"));
-    EXPECT_EQ("TARGET SCORE: 7", session.page().rows[kScoreRow].label);
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kScoreRow).kind);
-    EXPECT_EQ("Score: the map's own.", session.take_message());
-    EXPECT_EQ(0, save_.ctf_capture_limit);
-
-    EXPECT_EQ("TIME LIMIT: 7M", session.page().rows[kTimeRow].label)
-        << "5400 ticks is 7 whole minutes, said plainly";
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTimeRow).kind);
-    EXPECT_EQ("Clock: the map's own.", session.take_message());
-    EXPECT_EQ(0, save_.time_limit);
 }
 
 // ---------------------------------------------------------------------------
-// The TEAMS/FILL macros (lineup amendment 5, G1-G3)
-// ---------------------------------------------------------------------------
-
-// Amendment 7 (#276): the array the arena deals at selection — FAIR on the
-// teams the map authors — reads back through the macro faces and the camp
-// digest like any other fill array (G1: one array, no invention). THE
-// CIRCLE (scen 300) authors all four; a two-team map deals two.
-TEST_F(ModesBookTest, dealt_arena_rest_reads_through_the_macro_faces)
-{
-    const short fair = og::sim::kFillFair;
-    save_.fill = {fair, fair, 0, 0};
-    {
-        CampaignPickerSession session(save_);
-        ASSERT_TRUE(session.open_at("setup"));
-        EXPECT_EQ("TEAMS: 2", session.page().rows[kTeamsRow].label)
-            << "the own band and one dealt opponent: two sides";
-        EXPECT_EQ("FILL: FAIR", session.page().rows[kFillRow].label)
-            << "every non-NONE band holds FAIR, own included (H2)";
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        EXPECT_EQ("2-way, fair, map", camp_rows(zone)[kCampSetupRow].note);
-    }
-    save_.fill = {fair, fair, fair, fair};
-    {
-        CampaignPickerSession session(save_);
-        ASSERT_TRUE(session.open_at("setup"));
-        EXPECT_EQ("TEAMS: 4", session.page().rows[kTeamsRow].label);
-        EXPECT_EQ("FILL: FAIR", session.page().rows[kFillRow].label);
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        EXPECT_EQ("4-way, fair, map", camp_rows(zone)[kCampSetupRow].note);
-    }
-    save_.fill = {};
-}
-
-// G2 round the wheel from rest: TEAMS: 1 is the derived all-NONE face (the
-// fixture holds a bare array — the arena's own deal is the picker's, above
-// this session, and is pinned in the flow suites), off
-// the 2 -> 3 -> 4 wheel, so the first click rejoins at the head and each
-// later one steps on — dealing FAIR (the effective value while FILL reads
-// NONE) to the lowest opponents in ascending order and turning the rest
-// NONE. Every write is a fill_N write (G1): the faces, the LINEUP bands
-// and the camp digest all read the one array.
-TEST_F(ModesBookTest, teams_macro_deals_fair_sides_ascending_and_wraps)
-{
-    (void)og::data::consume_match_settings_dirty();
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("setup"));
-    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label)
-        << "the all-NONE rest: the local side alone";
-
-    struct Step {
-        const char* said;
-        const char* teams_label;
-        const char* fill_label;
-        std::array<short, 4> fills;
-    };
-    const short fair = og::sim::kFillFair;
-    const std::vector<Step> steps = {
-        {"Two sides. One squad at FAIR.", "TEAMS: 2", "FILL: FAIR",
-         {0, fair, 0, 0}},
-        {"Three sides. Two squads at FAIR.", "TEAMS: 3", "FILL: FAIR",
-         {0, fair, fair, 0}},
-        {"Four sides. Three squads at FAIR.", "TEAMS: 4", "FILL: FAIR",
-         {0, fair, fair, fair}},
-        {"Two sides. One squad at FAIR.", "TEAMS: 2", "FILL: FAIR",
-         {0, fair, 0, 0}},
-    };
-    for (const Step& step : steps)
-    {
-        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-                  session.choose(kTeamsRow).kind)
-            << step.teams_label;
-        EXPECT_EQ(step.said, session.take_message());
-        EXPECT_EQ(step.fills, save_.fill);
-        EXPECT_EQ(step.teams_label, session.page().rows[kTeamsRow].label)
-            << "the refetched face derives from the array";
-        EXPECT_EQ(step.fill_label, session.page().rows[kFillRow].label);
-        EXPECT_TRUE(og::data::consume_match_settings_dirty())
-            << "every macro write rides the dirty -> sync -> restage tail";
-    }
-    EXPECT_EQ(0, save_.fill[0])
-        << "a TEAMS turn never deals the local band (H1 is FILL's rule)";
-
-    // The camp digest follows the array: the sides, the fill, the score.
-    CampaignZoneSession zone(save_);
-    zone.fetch();
-    ASSERT_TRUE(zone.scripted());
-    EXPECT_EQ("2-way, fair, map", camp_rows(zone)[kCampSetupRow].note);
-}
-
-// The effective value (G2): the FILL row's own word where it names one —
-// a STRONG face deals STRONG sides — and FAIR where the face is MIXED,
-// because a diverged pair names nothing a new side could honestly copy.
-TEST_F(ModesBookTest, teams_macro_copies_the_fill_face_and_fair_on_mixed)
-{
-    save_.fill[1] = og::sim::kFillStrong;
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("setup"));
-    EXPECT_EQ("TEAMS: 2", session.page().rows[kTeamsRow].label);
-    EXPECT_EQ("FILL: STRONG", session.page().rows[kFillRow].label);
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTeamsRow).kind);
-    EXPECT_EQ("Three sides. Two squads at STRONG.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{0, og::sim::kFillStrong,
-                                    og::sim::kFillStrong, 0}),
-              save_.fill)
-        << "the new side copies the face, the standing one keeps it";
-
-    // LINEUP diverges a band (G1 keeps that its right): the face reads
-    // MIXED, the digest says so, and the next TEAMS turn falls back to
-    // FAIR for every side it deals.
-    save_.fill[1] = og::sim::kFillWeak;
-    session.refresh();
-    EXPECT_EQ("TEAMS: 3", session.page().rows[kTeamsRow].label);
-    EXPECT_EQ("FILL: MIXED", session.page().rows[kFillRow].label);
-    {
-        CampaignZoneSession zone(save_);
-        zone.fetch();
-        ASSERT_TRUE(zone.scripted());
-        EXPECT_EQ("3-way, mixed, map", camp_rows(zone)[kCampSetupRow].note);
-    }
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTeamsRow).kind);
-    EXPECT_EQ("Four sides. Three squads at FAIR.", session.take_message());
-    const short fair = og::sim::kFillFair;
-    EXPECT_EQ((std::array<short, 4>{0, fair, fair, fair}), save_.fill)
-        << "MIXED names nothing to copy, so the deal is FAIR across";
-}
-
-// G3 round the wheel: from rest each click turns on the LOWEST opponent
-// (the TEAMS: 2 shape) and the local band with it (H1) and walks them
-// WEAK, FAIR, STRONG, BRUTAL; the wrap writes NONE — the own band
-// cleared with the rest — and the table goes quiet. With two sides on,
-// one click deals them BOTH plus the own band; a MIXED face is off the
-// wheel and rejoins at the head — NONE — like every off-menu value on
-// this page.
-TEST_F(ModesBookTest, fill_macro_turns_on_the_lowest_opponent_then_every_on_side)
-{
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("setup"));
-
-    struct Step {
-        const char* said;
-        const char* label;
-        short code;
-        const char* teams_label;
-    };
-    const std::vector<Step> steps = {
-        {"One squad at WEAK. Yours too.", "FILL: WEAK", og::sim::kFillWeak,
-         "TEAMS: 2"},
-        {"One squad at FAIR. Yours too.", "FILL: FAIR", og::sim::kFillFair,
-         "TEAMS: 2"},
-        {"One squad at STRONG. Yours too.", "FILL: STRONG",
-         og::sim::kFillStrong, "TEAMS: 2"},
-        {"One squad at BRUTAL. Yours too.", "FILL: BRUTAL",
-         og::sim::kFillBrutal, "TEAMS: 2"},
-        {"No squads.", "FILL: NONE", 0, "TEAMS: 1"},
-    };
-    for (const Step& step : steps)
-    {
-        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-                  session.choose(kFillRow).kind)
-            << step.label;
-        EXPECT_EQ(step.said, session.take_message());
-        EXPECT_EQ((std::array<short, 4>{step.code, step.code, 0, 0}),
-                  save_.fill)
-            << "the lowest opponent AND the own band carry the wheel (H1)";
-        EXPECT_EQ(step.label, session.page().rows[kFillRow].label);
-        EXPECT_EQ(step.teams_label, session.page().rows[kTeamsRow].label)
-            << "the own band adds allies, never a side (H2)";
-    }
-
-    // Two sides on: one click deals them both, and the own band with them.
-    save_.fill = {0, og::sim::kFillFair, og::sim::kFillFair, 0};
-    session.refresh();
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kFillRow).kind);
-    EXPECT_EQ("Two squads at STRONG. Yours too.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{og::sim::kFillStrong,
-                                    og::sim::kFillStrong,
-                                    og::sim::kFillStrong, 0}),
-              save_.fill);
-
-    // LINEUP diverges them: MIXED rejoins at the head, and the head is
-    // NONE — every side off, the honest zero of a face that named
-    // nothing.
-    save_.fill[2] = og::sim::kFillWeak;
-    session.refresh();
-    EXPECT_EQ("FILL: MIXED", session.page().rows[kFillRow].label);
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kFillRow).kind);
-    EXPECT_EQ("No squads.", session.take_message());
-    for (const short fill : save_.fill)
-        EXPECT_EQ(0, fill);
-    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label);
-}
-
-// G2's "skipping the local team" means the seat's team, not team 0: with
-// the save's my_team on TEAM 3 (the G4 fallback every scriptless surface
-// ends on) the macros deal teams 1 and 2 first. Amendment 6 seats the own
-// band in the FILL face (H2: a LINEUP-set own fill wears its word, and a
-// TEAMS deal copies it) and under the FILL wheel (H1) — but it is never a
-// SIDE, and a TEAMS turn never writes it.
-TEST_F(ModesBookTest, macros_answer_to_the_local_seats_team)
-{
-    save_.my_team = 2;
-    save_.fill[2] = og::sim::kFillBrutal;  // the OWN band, set from LINEUP
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("setup"));
-    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label)
-        << "an own-team fill adds allies, never a side";
-    EXPECT_EQ("FILL: BRUTAL", session.page().rows[kFillRow].label)
-        << "the face wears the own band's word (H2)";
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTeamsRow).kind);
-    EXPECT_EQ("Two sides. One squad at BRUTAL.", session.take_message())
-        << "the deal copies the face, and the face is the own band's";
-    EXPECT_EQ((std::array<short, 4>{og::sim::kFillBrutal, 0,
-                                    og::sim::kFillBrutal, 0}),
-              save_.fill)
-        << "the lowest OPPONENT is TEAM 1; a TEAMS turn leaves the own band";
-
-    // FILL from the BRUTAL face wraps to NONE — clearing the own band
-    // WITH the on opponent (H1: the wheel owns every band it counts).
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kFillRow).kind);
-    EXPECT_EQ("No squads.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{0, 0, 0, 0}), save_.fill);
-    EXPECT_EQ("TEAMS: 1", session.page().rows[kTeamsRow].label);
-
-    // And on from rest: the lowest opponent turns on and the own band
-    // rides along, both at WEAK.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kFillRow).kind);
-    EXPECT_EQ("One squad at WEAK. Yours too.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, 0,
-                                    og::sim::kFillWeak, 0}),
-              save_.fill)
-        << "the own band is my_team's, not team 0's";
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTeamsRow).kind);
-    EXPECT_EQ("Three sides. Two squads at WEAK.", session.take_message());
-    EXPECT_EQ((std::array<short, 4>{og::sim::kFillWeak, og::sim::kFillWeak,
-                                    og::sim::kFillWeak, 0}),
-              save_.fill)
-        << "ascending order skips the local seat's own team";
-}
-
-TEST_F(ModesBookTest, turning_a_knob_arms_the_dirty_flag_and_the_camp_follows)
-{
-    (void)og::data::consume_match_settings_dirty();
-    CampaignPickerSession session(save_);
-    ASSERT_TRUE(session.open_at("setup"));
-
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kScoreRow).kind);
-    EXPECT_EQ(1, save_.ctf_capture_limit);
-    EXPECT_TRUE(og::data::consume_match_settings_dirty())
-        << "a successful write arms the session tail";
-    EXPECT_FALSE(og::data::consume_match_settings_dirty())
-        << "the flag is consumed";
-    EXPECT_EQ("To 1.", session.page().lines[0])
-        << "the refetched page re-derives the rules";
-
-    // Two more clicks put the score on 5: the knobs are independent.
-    for (int i = 0; i < 2; i++)
-    {
-        ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-                  session.choose(kScoreRow).kind);
-    }
-    // And one puts the clock on five minutes — which the summaries
-    // deliberately do NOT speak: the line and the camp digest speak the
-    // score (#241), so the TIME LIMIT row is the only place its value
-    // shows.
-    ASSERT_EQ(CampaignPickerSession::OutcomeKind::Acted,
-              session.choose(kTimeRow).kind);
-    EXPECT_EQ(5, save_.ctf_capture_limit);
-    EXPECT_EQ(3600, save_.time_limit);
-    EXPECT_EQ(0, save_.ctf_team_count) << "no row reaches the retired knob";
-    EXPECT_EQ(0, save_.ctf_strip_scenario_troops)
-        << "and none reaches the other one either (B5)";
-    EXPECT_EQ("To 5.", session.page().lines[0]);
-    EXPECT_EQ("TIME LIMIT: 5M", session.page().rows[kTimeRow].label);
-    EXPECT_TRUE(og::data::consume_match_settings_dirty());
-
-    // The camp's own row carries the same rules at note length — the whole
-    // state, on the row that changes it, with no line of its own.
-    CampaignZoneSession zone(save_);
-    zone.fetch();
-    ASSERT_TRUE(zone.scripted());
-    EXPECT_EQ("1-way, none, to 5", camp_rows(zone)[kCampSetupRow].note);
-    EXPECT_TRUE(zone.texts().empty());
-}
-
-// A joiner's MATCH SETUP is a READING: the knob rows are cut at fetch and
-// the page states whose call it is instead. The host-hand refusal stays
-// behind them as the backstop — page-agnostic action dispatch means a stale
-// click still cannot write.
-TEST_F(ModesBookTest, joiner_setup_page_reads_and_refuses_without_writing)
-{
-    install_providers([] { return false; });
-    (void)og::data::consume_match_settings_dirty();
-
-    const CampaignPickerSession::DecoratedPage page = open_page("setup");
-    EXPECT_TRUE(page.rows.empty()) << "no row that could only refuse";
-    ASSERT_EQ(2u, page.lines.size());
-    EXPECT_EQ("Map score.", page.lines[0]);
-    EXPECT_EQ("The host calls the rules.", page.lines[1])
-        << "who decides, stated before any click";
-
-    for (const char* id : kKnobIds)
-    {
-        hooks::CampaignActionResult result;
-        ASSERT_TRUE(hooks::campaign_picker_action(id, result)) << id;
-        EXPECT_TRUE(result.ok);
-        EXPECT_EQ("The host calls the rules.", result.message) << id;
-    }
-    EXPECT_EQ(0, save_.ctf_team_count) << "no knob moved";
-    EXPECT_EQ(0, save_.ctf_capture_limit);
-    EXPECT_EQ(0, save_.ctf_strip_scenario_troops);
-    EXPECT_EQ(0, save_.time_limit);
-    for (const short fill : save_.fill)
-        EXPECT_EQ(0, fill) << "the macro backstop refuses before any write";
-    EXPECT_FALSE(og::data::consume_match_settings_dirty())
-        << "a refusal never arms the session tail";
-}
-
-// ---------------------------------------------------------------------------
-// Budgets: the table has to fit the faces on every client
+// Budgets: every face has to fit on every client
 // ---------------------------------------------------------------------------
 
 TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
 {
-    std::vector<std::string> pages = {"games", "setup"};
+    std::vector<std::string> pages = {"", "games"};
     for (const BookMode& mode : kBookModes)
         pages.push_back(mode.tag);
 
@@ -1938,69 +1510,135 @@ TEST_F(ModesBookTest, every_page_and_the_camp_fit_their_budgets)
             EXPECT_FALSE(entry.label.empty()) << id << " row " << entry.id;
             EXPECT_LE(entry.label.size(), kLabelBudget)
                 << id << ": " << entry.label;
+            // The face every surface has to draw: label + " - " + note on
+            // the wizard's 48-glyph row.
+            EXPECT_LE(entry.label.size() + 3 + entry.note.size(),
+                      kSdlRowFaceChars)
+                << id << ": " << entry.label << " - " << entry.note;
+            // The 20-glyph note budget guards the notes the campaign
+            // GENERATES from manifest facts — the field a regeneration can
+            // grow. The two RANDOM rows are hand-written constants that
+            // carry no manifest data ("any arena of this game" is 22), so
+            // the composed face above is their whole contract.
+            if (entry.kind == hooks::CampaignPageEntry::Kind::Action)
+                continue;
             EXPECT_LE(entry.note.size(), kNoteBudget)
                 << id << ": " << entry.note;
         }
     }
 
-    // The camp itself, over EVERY arena the campaign ships as the pairing —
-    // no exemptions. The FIELD row carries a generated arena title, and it
-    // is exactly the row whose overflow eats the grammar (the door marker
-    // off its tail). A regenerated title that no longer fits has to fail
-    // HERE, where the note that must give way is one line above, rather
+    // The camp itself, over EVERY arena the campaign ships as the cursor,
+    // on BOTH faces — no exemptions. Its note is a generated scenario
+    // TITLE, which is exactly the field a regeneration can grow, and the
+    // face it has to fit is the 48-glyph docket row with its door marker
+    // ("SETUP - " + title + "  >"). The per-field budgets do not apply to
+    // it any more (a title runs to 28); what must hold is that the composed
+    // row is not clipped, so a title that no longer fits fails HERE rather
     // than quietly ellipsing on the panel.
     //
-    // Both ends of the rules digest are swept with it: the defaults spell
-    // the longest SENTENCE ("map score"), and the macro worst case the
-    // longest NOTE — three BRUTAL sides over a 50-point score is
-    // "4-way, brutal, to 50", the digest's whole 20-char budget spent to
-    // the last column.
+    // The campaign's match_knobs lines are swept with it: the TEAMS step
+    // prints them straight, so a line the hook grew past 38 glyphs would
+    // be a hard rejection at the wizard, not a clip.
     const DerivedBook book = derive_book();
-    save_.ctf_strip_scenario_troops = 3;
-    save_.fill = {0, og::sim::kFillBrutal, og::sim::kFillBrutal,
-                  og::sim::kFillBrutal};
-    const short limits[] = {0, 50};
-    for (const short limit : limits)
+    for (const bool host : {true, false})
     {
-        save_.ctf_capture_limit = limit;
+        if (host)
+            install_providers();
+        else
+            install_providers([] { return false; });
+        const std::size_t expected_rows =
+            host ? kCampHostRows : kCampJoinerRows;
         for (const int id : book.ordered)
         {
             save_.scen_num = static_cast<short>(id);
-            // Both stamp faces: an unplayed book and a fully stamped one
-            // (the GAME row's tally and the sign-the-book note both move).
-            for (const bool stamped : {false, true})
+            CampaignZoneSession zone(save_);
+            zone.fetch();
+            ASSERT_TRUE(zone.scripted());
+            ASSERT_EQ(expected_rows, camp_rows(zone).size())
+                << (host ? "host" : "joiner") << " scen" << id;
+            EXPECT_TRUE(zone.texts().empty())
+                << "neither face spends a unit on a line";
+            EXPECT_EQ(nullptr, zone.readout())
+                << "neither face composes a readout";
+            for (const CampaignZoneSession::Row& row : camp_rows(zone))
             {
-                if (stamped)
-                    complete_all(book);
-                CampaignZoneSession zone(save_);
-                zone.fetch();
-                ASSERT_TRUE(zone.scripted());
-                ASSERT_EQ(kCampHostRows, camp_rows(zone).size());
-                for (const CampaignZoneSession::TextLayout& text :
-                     zone.texts())
-                {
-                    for (const std::string& line : text.lines)
-                        EXPECT_LE(line.size(), kLineBudget) << "camp: " << line;
-                }
-                for (const CampaignZoneSession::Row& row : camp_rows(zone))
-                {
-                    EXPECT_FALSE(row.label.empty()) << "camp row " << row.id;
-                    EXPECT_LE(row.label.size(), kLabelBudget)
-                        << "camp: " << row.label;
-                    EXPECT_LE(row.note.size(), kNoteBudget)
-                        << "camp: " << row.note;
-                    const std::string composed =
-                        og::ui::campaign_picker_row_text(row,
-                                                         kSdlRowFaceChars);
-                    EXPECT_EQ(composed,
-                              og::ui::campaign_picker_row_text(
-                                  row, kSdlRowFaceChars * 4))
-                        << "camp row clipped on the SDL face at scen" << id
-                        << ": " << composed;
-                }
+                EXPECT_FALSE(row.label.empty()) << "camp row " << row.id;
+                const std::string composed =
+                    og::ui::campaign_picker_row_text(row, kSdlRowFaceChars);
+                EXPECT_EQ(composed,
+                          og::ui::campaign_picker_row_text(
+                              row, kSdlRowFaceChars * 4))
+                    << "camp row clipped on the SDL face at scen" << id
+                    << ": " << composed;
+                EXPECT_LE(composed.size(), kSdlRowFaceChars)
+                    << "camp row overruns the docket face at scen" << id
+                    << ": " << composed;
             }
-            save_.completed_levels.clear();
+
+            hooks::CampaignMatchKnobs knobs;
+            ASSERT_TRUE(hooks::campaign_match_knobs(knobs)) << "scen" << id;
+            EXPECT_LE(knobs.lines.size(),
+                      static_cast<std::size_t>(
+                          hooks::kCampaignMatchKnobsMaxLines));
+            for (const std::string& line : knobs.lines)
+            {
+                EXPECT_LE(line.size(),
+                          static_cast<std::size_t>(
+                              hooks::kCampaignMatchKnobsLineMax))
+                    << "knobs line at scen" << id << ": " << line;
+            }
         }
+    }
+    install_providers();
+}
+
+// R2-D11, the camp's one door: the docket's SETUP row is a PAGE row, and
+// on a versus campaign the terminals hand it to the SETUP wizard instead
+// of descending into the book's page loop. The door is one OPTIONAL io
+// callback, so an io that leaves it unset -- a fixture, or a classic camp
+// -- still walks the page, which is the fallback every other camp test
+// relies on.
+TEST_F(ModesBookTest, terminal_camp_setup_row_opens_the_wizard_callback_or_the_page_loop)
+{
+    const auto joined = [](const std::vector<std::string>& pages) {
+        std::string out;
+        for (const std::string& page : pages)
+            out += page + "\n";
+        return out;
+    };
+
+    // Wired: the row calls the door and nothing else, and the camp prompt
+    // comes back for the `0` that closes it.
+    {
+        ScriptedCampIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"1", "0"};
+        int opened = 0;
+        og::ui::TerminalCampaignPickerIo io = scripted.io();
+        io.open_match_setup = [&opened] { ++opened; };
+        og::ui::run_terminal_campaign_camp(save_, io);
+
+        EXPECT_EQ(1, opened) << "the SETUP row IS the wizard's door";
+        const std::string pages = joined(scripted.pages);
+        EXPECT_EQ(std::string::npos, pages.find("--- GAMES ---"))
+            << "the door must not ALSO open the book's page:\n" << pages;
+        EXPECT_NE(std::string::npos, pages.find("Camp # [1-1] (0 = back): "))
+            << pages;
+        EXPECT_NE(std::string::npos, pages.find("1. SETUP - ")) << pages;
+        EXPECT_TRUE(scripted.notices.empty())
+            << "opening a door says nothing";
+    }
+
+    // Unwired: the same row walks the page loop, and `0` closes it.
+    {
+        ScriptedCampIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"1", "0", "0"};
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+        const std::string pages = joined(scripted.pages);
+        EXPECT_NE(std::string::npos, pages.find("--- GAMES ---"))
+            << "with no door bound the page row is a page row:\n" << pages;
     }
 }
 

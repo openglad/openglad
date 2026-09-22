@@ -49,7 +49,7 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
 // positional drivers (the headless drives, the interactive script, the
 // curses route tests).
 // The flat CTF trio then LEFT (docs/camp-controls-design.md): teams, target
-// score and troops are the modes camp's MATCH SETUP page now, one place that
+// score and troops are the SETUP wizard's RULES step now, one place that
 // speaks them in plain words on every client. DIFFICULTY arrived in their
 // place, appended so nothing above it moved. It is past the digit-jump
 // budget, like Scenario before it — the arrow keys reach it, and unlike a
@@ -59,6 +59,11 @@ constexpr std::array<PickerMenuItem, 8> kMainMenuItems = {{
 // 1-based position consumers keep every ordinal they already pin and only
 // gain one. It sits past the digit-jump budget for the same reason
 // difficulty does — a match-composition page is not a per-round retune.
+// The SETUP wizard has NO Team Build item (R2-D11). Its terminal door is
+// the Camp's row 1 — the one-row docket the campaign composes — which is
+// the same single door the SDL and web clients tap. So the list is 12
+// items, DIFFICULTY at 11 and LINEUP at 12, and every 1-based ordinal a
+// positional consumer pins is the one it has always had.
 constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"roster", "Roster", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},

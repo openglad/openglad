@@ -1479,12 +1479,14 @@ constexpr const char* kLineupProbeLua =
     "og.register_level_hooks(9093, {\n"
     "  on_mode_init = function(level)\n"
     "    local sums = { 100, 250, 0, 40 }\n"
-    "    og.log(\"target\", opt(match.fill_target(100, sums, 0, 100)),\n"
-    "           opt(match.fill_target(100, sums, 1, 100)),\n"
-    "           opt(match.fill_target(100, sums, 2, 100)),\n"
-    "           opt(match.fill_target(100, sums, 2, 150)),\n"
-    "           opt(match.fill_target(100, sums, 0, 150)),\n"
-    "           opt(match.fill_target(0, sums, 2, 100)))\n"
+    "    og.log(\"target\", opt(match.fill_target(100, sums, 0, 100, 1, 1)),\n"
+    "           opt(match.fill_target(100, sums, 1, 100, 1, 1)),\n"
+    "           opt(match.fill_target(100, sums, 2, 100, 1, 1)),\n"
+    "           opt(match.fill_target(100, sums, 2, 150, 1, 1)),\n"
+    "           opt(match.fill_target(100, sums, 0, 150, 1, 1)),\n"
+    "           opt(match.fill_target(0, sums, 2, 100, 1, 1)),\n"
+    "           opt(match.fill_target(100, sums, 2, 100, 2, 1)),\n"
+    "           opt(match.fill_target(100, sums, 0, 100, 2, 1)))\n"
     "    og.log(\"room\", opt(match.squad_room(5, 3)),\n"
     "           opt(match.squad_room(5, 9)), opt(match.squad_room(nil, 3)))\n"
     "    og.log(\"pct\", match.fill_percent(2), match.fill_percent(1),\n"
@@ -1495,7 +1497,7 @@ constexpr const char* kLineupProbeLua =
     "           match.squad_off(5) and 1 or 0,\n"
     "           match.squad_off(9) and 1 or 0)\n"
     "    match.spawn_bots(0, squad, 15)\n"
-    "    match.spawn_bots(1, squad, 12, nil, 3)\n"
+    "    match.spawn_bots(1, squad, 12, nil, { cap = 3 })\n"
     "    match.spawn_bots(3, squad, 14)\n"
     "  end,\n"
     "})\n";
@@ -1516,7 +1518,9 @@ struct LineupProbeScript
 };
 
 // The pure lineup arms: fill_target's three shapes (allies gap, no gap,
-// empty-team reference — each scaled by the wheel's percent), squad_room,
+// empty-team reference — each scaled by the wheel's percent AND by the
+// #305 count/base body ratio, which is 1 in every shape that came
+// before), squad_room,
 // the FILL_PERCENT table (1..4 only — NONE has no row) and squad_off's
 // vocabulary (B8/E2: NONE forbids, and so does any code off the wheel —
 // junk reads NONE). Then the knob-aware spawn seam: the explicit-FAIR
@@ -1540,7 +1544,7 @@ TEST_F(ModesTdm, lineup_fill_target_percent_table_and_knobbed_spawns)
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
 
     const auto target = matched_log(fx.world(), "target");
-    ASSERT_EQ(7u, target.size());
+    ASSERT_EQ(9u, target.size());
     EXPECT_EQ(150, tab_int(target, 1)) << "allies: best other 250 - own 100";
     EXPECT_EQ(-1, tab_int(target, 2))
         << "the strongest team has no gap: nil = no squad (B3)";
@@ -1549,6 +1553,15 @@ TEST_F(ModesTdm, lineup_fill_target_percent_table_and_knobbed_spawns)
     EXPECT_EQ(150, tab_int(target, 4)) << "BRUTAL scales the reference";
     EXPECT_EQ(225, tab_int(target, 5)) << "BRUTAL scales the allies gap";
     EXPECT_EQ(-1, tab_int(target, 6)) << "no reference, no solve";
+    // The #305 arms: count / base scales the WHOLE solve, so a two-body
+    // squad standing in for a one-body base asks for twice the power on
+    // both the empty-team reference and the allies gap. count == base
+    // above reduces to today's div(P * pct, 100), which is why every
+    // number in this table is unchanged.
+    EXPECT_EQ(200, tab_int(target, 7))
+        << "two bodies against the reference: 100 x 2 / 1";
+    EXPECT_EQ(300, tab_int(target, 8))
+        << "two bodies against the allies gap: 150 x 2 / 1";
 
     const auto room = matched_log(fx.world(), "room");
     EXPECT_EQ(2, tab_int(room, 1)) << "cap 5 - roster 3";

@@ -3,6 +3,7 @@
 // canvas is nonblank. Set UXSHOTS_DIR to retain the frames as PPM artifacts;
 // normal test runs perform the visual smoke assertions without writing files.
 
+#include "test_campaign_picker_drive.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <SDL3/SDL.h>
@@ -2074,13 +2075,38 @@ int view_level_staged_injector(void *data) {
     interact("scenario");
     if (wait_for_interactable("view_scenario", 5000)) {
       SDL_Delay(300);
-      // The reshaped SCENARIO screen first (#218, A5/B5): a versus host
-      // shows SCORE alone on the y=140 knob row under the VIEW LEVEL |
-      // PROGRESS | LINEUP row.
-      if (wait_for_interactable("ctf_caps", 5000)) {
-        SDL_Delay(300);
-        state->captures +=
-            capture_frame("scenario_match_band", &stash_menu_before_viewer);
+      // The reshaped SCENARIO screen first: the y=140 knob row is EMPTY
+      // since SCORE retired into the SETUP wizard's RULES step (#304), so
+      // there is no versus-only row left to wait on — the screen is the
+      // same for every campaign and the shot is unconditional.
+      state->captures +=
+          capture_frame("scenario_band", &stash_menu_before_viewer);
+      // Lead ruling 4: the SET CAMPAIGN browser on the modes entry, the
+      // card WP10 puts beside the wizard's own shots. The browser is the
+      // one surface run_menu_screen does not host, so it is driven and
+      // closed through its own counters (tests/test_campaign_picker_drive.h),
+      // never through interact().
+      {
+        // Auto-accept off for the visit: the suite's default takes the
+        // first frame's entry and returns, so there is nothing left to
+        // photograph. The abort below is what ends the loop instead —
+        // pick_campaign owns the main thread and only its own loop can.
+        CampaignPickerInputGuard picker_input;
+        CampaignPickerAutoAcceptOff no_auto_accept;
+        const std::uint64_t entered_before =
+            campaign_picker_testing_entered_count();
+        if (wait_for_interactable("set_campaign", 5000)) {
+          interact("set_campaign");
+          if (wait_for_campaign_picker_entry(entered_before) &&
+              wait_for_campaign_picker_frames(2)) {
+            state->captures += capture_frame("campaign_card_modes");
+          }
+          campaign_picker_testing_abort();
+          // The browser owns the main thread until its own loop ends; the
+          // SCENARIO screen is back once its buttons answer again.
+          (void)wait_for_interactable("view_scenario", 10000);
+          (void)wait_for_menu_frames(2);
+        }
       }
       interact("view_scenario");
       // The pane-heal trace is the "viewer is up and staged" signal.
@@ -2229,12 +2255,13 @@ TEST(UxShots, n_view_level_staged) {
   // the #251 comparison with nothing to catch.
   ASSERT_TRUE(trace_contains("picker", "view_scenario pane gen="))
       << "the staged pane never healed: the camera pin below has no teeth";
-  // All five shots: the reshaped SCENARIO screen (#218 match-settings band),
-  // two staged frames a pan apart (#251), then the HIRE portrait drawn in the
-  // same menu session right after the viewer closed, and the live name prompt
-  // composed over that full HIRE screen. A failed capture is not counted, so
-  // this equality is the pass/fail line for every check above.
-  ASSERT_EQ(5, state.captures);
+  // All six shots: the reshaped SCENARIO screen, the SET CAMPAIGN browser
+  // on the modes card (lead ruling 4), two staged frames a pan apart
+  // (#251), then the HIRE portrait drawn in the same menu session right
+  // after the viewer closed, and the live name prompt composed over that
+  // full HIRE screen. A failed capture is not counted, so this equality is
+  // the pass/fail line for every check above.
+  ASSERT_EQ(6, state.captures);
 
   // The save0 load mounted the modes campaign; restore the default.
   (void)unmount_campaign_package_with_error(get_mounted_campaign());

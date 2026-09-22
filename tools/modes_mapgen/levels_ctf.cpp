@@ -1,13 +1,13 @@
-/* Multiplayer Game Modes campaign generator — CTF (500-509).
+/* Multiplayer Arenas campaign generator — CTF (500-509).
  *
  * The ten proven CTF maps, kept as-is from the vendored layouts
  * (data/ctf): grids byte-copied, entity dressing (flags, control points,
  * anchor clusters, doors, keys, spice, par values, capture limits)
  * reproduced through a load/save round-trip. The only content changes are
  * the type byte (0x20 scripted — the Lua CTF port owns these levels), the
- * re-voiced Gamesmaster briefings, and the allied-guard rule (team-0/1
- * ACT_GUARD livings gain the hold-post bit the guard wake policy
- * requires; scen501's garrison predates the rule).
+ * re-voiced briefings, and the allied-guard rule (team-0/1 ACT_GUARD
+ * livings gain the hold-post bit the guard wake policy requires;
+ * scen501's garrison predates the rule).
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -131,7 +131,7 @@ std::vector<ExpectedLevel> ctf_expectations()
                               {FAMILY_SPEED_POTION, {20, 24}},
                           },
                           {
-                              "CONTENDERS, THE BANNER GAME.",
+                              "THE BANNER GAME.",
                               "STEAL THEIR FLAG AND RUN IT",
                               "HOME WHILE YOURS STILL STANDS.",
                               "THREE GAPS CROSS THE WALL:",
@@ -139,7 +139,6 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "A PLAZA IN THE MIDDLE. HOLD",
                               "THE PLAZA POST AND YOUR FALLEN",
                               "RETURN TWICE AS FAST.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(501, "CTF: A BORDER FORT", 4, 30, 30, 2, 25, 5, 0, 5,
@@ -163,7 +162,6 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "THE GATEHOUSE POST DECIDES WHO",
                               "DICTATES THE SIEGE. A KEY OPENS",
                               "THE SIDE DOOR, FOR THE SLY.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(502, "CTF: CASTLE CORNER", 4, 30, 40, 2, 16, 0, 0, 0,
@@ -186,8 +184,7 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "ALL ROADS MEET AT THE HALL",
                               "MOUTH - HOLD THAT POST AND",
                               "THE CASTLE PAYS ITS TAX TO",
-                              "YOUR PAGE OF THE BOOK.",
-                              "-- THE GAMESMASTER",
+                              "YOUR SIDE OF THE SCORE.",
                           }));
 
     out.push_back(ctf_row(503, "CTF: THE OUTPOST", 5, 40, 60, 2, 52, 5, 0, 0, 1,
@@ -214,7 +211,6 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "RING ROADS FLANK EVERY WALL.",
                               "THE GATE POST DECIDES WHO KEEPS",
                               "THE DOOR. A KEY OPENS THE KEEP.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(504, "CTF: RIVER RUN", 5, 60, 40, 2, 7, 0, 0, 0, 1,
@@ -229,14 +225,13 @@ std::vector<ExpectedLevel> ctf_expectations()
                               {FAMILY_SPEED_POTION, {50, 20}},
                           },
                           {
-                              "THE RIVER GAME, CONTENDERS.",
+                              "THE RIVER GAME.",
                               "TWO PLANK BRIDGES FLANK A WIDE",
                               "STONE CROSSING; THE ISLAND",
                               "POST SITS IN ITS MIDDLE. DROP",
                               "A BANNER IN THE DRINK AND IT",
                               "FLIES STRAIGHT HOME - BRIDGES",
                               "ARE SAFE, FLIERS GAMBLE.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(505, "CTF: TRIAD", 6, 51, 51, 3, 7, 0, 0, 0, 1, 0,
@@ -257,7 +252,6 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "ONE RIVAL AND YOU BARE YOUR",
                               "BACK TO THE OTHER. THE PLAZA",
                               "POST BREAKS STALEMATES.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(506, "CTF: THE UNDERPASS", 5, 60, 20, 2, 52, 3, 16, 0,
@@ -284,7 +278,6 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "NARROWS HALVES YOUR WAIT.",
                               "A KEY OPENS A TREASURE DOOR",
                               "OFF THE TUNNEL, FOR THE BOLD.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(507, "CTF: DUNGEON OF STARS", 6, 70, 70, 4, 57, 22, 0,
@@ -314,7 +307,6 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "FOR WILD ESCAPES WITH STOLEN",
                               "CLOTH. THE STAR CHAMBER POST",
                               "COMMANDS THE CROSSROADS.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(508, "CTF: CENTWHEIT MANOR", 6, 50, 50, 3, 17, 0, 0,
@@ -337,7 +329,6 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "WING. TWO POSTS - THE ARTERY",
                               "AND THE EAST HALL. CLAIM BOTH",
                               "AND RULE THE HOUSE.",
-                              "-- THE GAMESMASTER",
                           }));
 
     out.push_back(ctf_row(509, "CTF: CROSSFIRE", 6, 60, 60, 4, 9, 0, 0, 0, 1,
@@ -360,8 +351,7 @@ std::vector<ExpectedLevel> ctf_expectations()
                               "HIDE BEHIND BOULDERS. RAID",
                               "FAST, SNEAK HOME. FIVE",
                               "CAPTURES TAKE THE FIELD -",
-                              "THE BOOK DEMANDS A SHOW.",
-                              "-- THE GAMESMASTER",
+                              "MAKE IT A SHOW.",
                           }));
 
     return out;

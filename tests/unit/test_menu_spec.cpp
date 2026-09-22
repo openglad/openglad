@@ -104,8 +104,8 @@ TEST(MenuSpec, legacy_allied_mode_helper_has_no_menu_item)
 TEST(MenuSpec, ctf_setting_labels_full_cycles)
 {
     SaveData save;
-    // Teams and target score are the camp's MATCH SETUP page now
-    // (docs/camp-controls-design.md), so no terminal menu lists them; their
+    // Teams and target score are the SETUP wizard's RULES step now
+    // (docs/match-setup-design.md), so no terminal menu lists them; their
     // label formatters stay the shared word authority and are exercised
     // directly.
     //
@@ -311,17 +311,15 @@ TEST(MenuSpec, gate_state_matrix)
               og::ui::gate_state(GateBinding{MenuGate::Custom, nullptr, {}}, local));
 }
 
-TEST(MenuSpec, ready_guard_is_the_only_terminal_gate_message)
+TEST(MenuSpec, terminal_gate_messages_ready_difficulty_and_replay)
 {
+    restore_default_campaigns();  // the versus predicate reads modes' yaml
     SaveData save;
     save.current_campaign = "gladiator";
 
-    // The match-rule knobs left the terminal menus for the camp's MATCH
-    // SETUP page, and their versus guard left with them; the SCENARIO
-    // troops row went with the knob itself (amendment B5). READY is the one
-    // surviving gated terminal command (terminal_item_gate maps it to a
-    // NetworkedOnly binding), so BOTH of its arms are pinned here: the
-    // exact refusal line outside a lobby, and silence inside one.
+    // READY is the NetworkedOnly gate (terminal_item_gate), so BOTH of its
+    // arms are pinned: the exact refusal line outside a lobby, and silence
+    // inside one.
     const PickerMenuItem* ready =
         item_of(PickerMenuId::TeamBuild, PickerMenuCommand::ToggleReady);
     ASSERT_NE(nullptr, ready) << "the TEAM BUILD menu must carry a READY row";
@@ -335,6 +333,48 @@ TEST(MenuSpec, ready_guard_is_the_only_terminal_gate_message)
     networked.is_host = false;
     EXPECT_EQ("", og::ui::terminal_gate_message(*ready, networked))
         << "inside a networked lobby READY is live and must carry no guard";
+
+    // The match rules have ONE door on every campaign now (R2-3): the
+    // DIFFICULTY submenu, item 11, ungated everywhere. The SETUP wizard has
+    // no Team Build row left to gate (R2-D11) — its terminal door is the
+    // Camp's row 1.
+    ASSERT_EQ(nullptr,
+              og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, "setup"))
+        << "the SETUP item retired with its gate";
+    const PickerMenuItem* difficulty =
+        item_of(PickerMenuId::TeamBuild, PickerMenuCommand::OpenDifficultyMenu);
+    ASSERT_NE(nullptr, difficulty);
+
+    EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, context_for(save)))
+        << "a classic campaign keeps the DIFFICULTY door";
+
+    SaveData versus;
+    versus.current_campaign = "modes";
+    ASSERT_TRUE(og::ui::is_versus_campaign(versus))
+        << "modes must declare matchup: versus for this pin to mean anything";
+    EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, context_for(versus)))
+        << "item 11 is ungated on every campaign (R2-3)";
+
+    // No save at all (the main menu's own context): the DIFFICULTY door
+    // stays open there too.
+    MenuLabelContext saveless = context_for(save);
+    saveless.save = nullptr;
+    EXPECT_EQ("", og::ui::terminal_gate_message(*difficulty, saveless));
+
+    // R2-4: the SCENARIO submenu's `Replay Level` is the one Custom-gated
+    // terminal row left. A campaign that shows progress marks prompts; a
+    // versus campaign refuses in words before the prompt; with no save at
+    // all there is nothing to refuse.
+    const PickerMenuItem* replay =
+        item_of(PickerMenuId::Scenario, PickerMenuCommand::ReplayLevel);
+    ASSERT_NE(nullptr, replay) << "the SCENARIO menu must carry a REPLAY row";
+    EXPECT_EQ("", og::ui::terminal_gate_message(*replay, context_for(save)))
+        << "a classic campaign keeps the replay prompt";
+    EXPECT_EQ("Arenas are set, never replayed.",
+              og::ui::terminal_gate_message(*replay, context_for(versus)))
+        << "Multiplayer Arenas carries no progress vocabulary, so there is "
+           "no cleared arena to re-fight";
+    EXPECT_EQ("", og::ui::terminal_gate_message(*replay, saveless));
 
     // Ungated items never produce a message.
     const PickerMenuItem* view_team =

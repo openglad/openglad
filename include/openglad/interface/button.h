@@ -133,8 +133,15 @@ class vbutton
 // DIFFICULTY moved off the main menu into the Base Camp command strip
 // (docs/camp-controls-design.md): the three parked spares are a documented
 // reserve for scripted compositions, so the strip door was appended instead
-// of carved out of them. Mirrored by GameSession::kMaxButtons
-// (session_state.h) — a static_assert in button.cpp ties the two literals.
+// of carved out of them. Raised 73 -> 74 for a SETUP twin of that door on
+// versus campaigns, and back to 73 when PR #307's round 2 gave the SETUP
+// wizard ONE door on every client — the Base Camp docket's own SETUP row —
+// and put DIFFICULTY back on the strip everywhere
+// (docs/match-setup-design.md §3.7). The rule the ceiling grew by still
+// holds: append, never carve; the strip's geometry and the wasm coordinate
+// contracts are untouched, and the three parked spares stay a reserve.
+// Mirrored by GameSession::kMaxButtons (session_state.h) — a static_assert
+// in button.cpp ties the two literals.
 inline constexpr int MAX_BUTTONS = 73;
 // allbuttons lives in GameSession — access via current_session->allbuttons_.
 void clear_allbuttons();
@@ -181,12 +188,21 @@ Sint32 do_set_scen_level(Sint32 arg1);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_pick_spritesheet(Sint32 arg);
 Sint32 set_difficulty();
+// The value half of SetDifficulty (docs/match-setup-design.md ruling 2):
+// set_difficulty() cycles and calls this with the new value. The SETUP
+// wizard's RULES row was the second caller until R2-3 sent difficulty back
+// to the Base Camp DIFFICULTY screen; the split stays because the rule is
+// one every client keeps (the terminals have their own value-taking
+// tails), and a caller that re-typed the write/sync/autosave would be the
+// twin the ruling forbids.
+void apply_difficulty_value(int value);
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 // change_ctf_teams retired with the TEAMS cycler (docs/lineup-design.md
 // A1/A3): deactivating an authored team is LINEUP's BOTS: OFF now.
-Sint32 change_ctf_caps();
+// change_ctf_caps retired with #304: SCORE has one surface, the SETUP
+// wizard's RULES row.
 // change_ctf_troops retired with the TROOPS cycler (amendment B5): whether
 // the map's own authored cast fights is the LINEUP band's per-team MAP UNITS
 // box now.
@@ -320,6 +336,9 @@ enum class ButtonAction : Sint32
     // docs/lineup-design.md amendment A1/A3 (its one power, deactivating an
     // authored team, is LINEUP's BOTS: OFF; the field is inert). Value
     // retired, do not reuse.
+    // 61 was CycleCtfCaptureLimit — SCENARIO's SCORE cycler. Retired with
+    // #304 (the match's target is the SETUP wizard's RULES row, one
+    // surface on every client). Value retired, do not reuse.
     CycleCtfCaptureLimit = 61,
     // 62 was CreateTeamsMenu — the SCENARIO door to the MATCHUP subscreen.
     // The screen retired with #218 (its seat/team overview is VIEW LEVEL's

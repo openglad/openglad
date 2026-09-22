@@ -92,13 +92,13 @@ TEST(MenuModel, team_build_lookup)
         PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 99);
     ASSERT_TRUE(wrong_arg == nullptr) << "unknown arg variant should return nullptr";
 
-    // The flat CTF trio left the team build menu for the modes camp's MATCH
-    // SETUP page (docs/camp-controls-design.md); the DIFFICULTY door took
+    // The flat CTF trio left the team build menu for the SETUP wizard's
+    // RULES step (docs/match-setup-design.md); the DIFFICULTY door took
     // their place, appended so nothing above it moved.
     for (const char* retired_id : {"ctf_teams", "ctf_caps", "ctf_troops"}) {
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild,
                                           retired_id) == nullptr)
-            << retired_id << " belongs to the camp's MATCH SETUP page now";
+            << retired_id << " belongs to the SETUP wizard's RULES step now";
         ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, retired_id) ==
                     nullptr)
             << retired_id << " never lived in the main menu";
@@ -106,7 +106,8 @@ TEST(MenuModel, team_build_lookup)
 
     ASSERT_EQ(12u, def.items.size())
         << "team build is the core team items + the zone's Camp door + "
-           "networking + scenario + the DIFFICULTY door + the LINEUP door";
+           "networking + scenario + the DIFFICULTY door + the LINEUP door "
+           "(the SETUP wizard's door is the camp's own row, R2-D11)";
 
     const PickerMenuItem* difficulty =
         find_picker_menu_item(PickerMenuId::TeamBuild, "difficulty");
@@ -128,7 +129,7 @@ TEST(MenuModel, team_build_lookup)
         << "lineup should map to the Lineup door command";
     ASSERT_EQ("Lineup", std::string(lineup->label));
     ASSERT_TRUE(&def.items[11] == lineup)
-        << "lineup is appended last, at 1-based position 12";
+        << "lineup is at 1-based position 12, the last item";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "lineup") == nullptr)
         << "the lineup door belongs to team build only";
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "lineup") ==
@@ -138,6 +139,19 @@ TEST(MenuModel, team_build_lookup)
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "difficulty") ==
                 nullptr)
         << "the difficulty door left the main menu";
+
+    // SETUP has NO Team Build row (R2-D11): the terminals' one wizard door
+    // is the Camp's row 1, the same single door the pixel clients tap. So
+    // the list is 12 items and LINEUP is the last of them.
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, "setup") ==
+                nullptr)
+        << "the setup row retired; the camp's docket is the door";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "setup") == nullptr)
+        << "no client carries a SETUP menu row";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "setup") ==
+                nullptr)
+        << "the SDL surface reaches SETUP from the Base Camp DOCKET, never "
+           "from a SCENARIO menu row";
 
     const PickerMenuItem* scenario =
         find_picker_menu_item(PickerMenuId::TeamBuild, "scenario");
@@ -782,10 +796,12 @@ TEST(MenuModel, company_screens_cancel_to_back_and_leak_nowhere)
     // §2.1: load_company remains after the classic items; the #155 cloud
     // door is appended last. Main exposes both stable Help and Quit actions,
     // and lost its difficulty door to Team Build. TeamBuild grew the #206
-    // Camp door, that difficulty door and the LINEUP door (§8), and lost the
-    // flat CTF trio to the camp's MATCH SETUP page; Scenario grew the #207
-    // replay-level row, gave the missions door back, and lost the TROOPS row
-    // to amendment B5; Difficulty grew the appended infinite-gold row.
+    // Camp door, that difficulty door and the LINEUP door (§8), and lost
+    // the flat CTF trio to the SETUP wizard's RULES step; the wizard itself
+    // has no Team Build row (R2-D11 -- its terminal door is the Camp's own
+    // docket row); Scenario grew the #207 replay-level row, gave the
+    // missions door back, and lost the TROOPS row to amendment B5;
+    // Difficulty grew the appended infinite-gold row.
     ASSERT_EQ(8u, picker_menu_definition(PickerMenuId::Main).items.size());
     ASSERT_EQ(12u, picker_menu_definition(PickerMenuId::TeamBuild).items.size());
     ASSERT_EQ(7u, picker_menu_definition(PickerMenuId::Scenario).items.size());

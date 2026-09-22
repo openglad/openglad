@@ -291,6 +291,44 @@ int alive_on_team(GameWorld& world, int team)
 // squad-order code + 1, drawn once per match by the first bot-squad spawn.
 inline constexpr int kSlotSquadSeed = 6;
 
+// The modes.core bot provenance tag (mode_caps.lua BOT_MARK_BIT): a
+// squad member carries it, an authored or roster walker never does. The
+// one walk every count pin in this file shares.
+int marked_bots_on(GameWorld& world, int team)
+{
+    int count = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->stats() == nullptr)
+            continue;
+        if ((w->stats()->bit_flags() & 65536) != 0)
+            ++count;
+    }
+    return count;
+}
+
+// A team's live marked squad members, in oblist (spawn) order.
+std::vector<walker*> marked_bots_in_order(GameWorld& world, int team)
+{
+    std::vector<walker*> bots;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->team_num() != static_cast<unsigned char>(team) ||
+            w->stats() == nullptr)
+            continue;
+        if ((w->stats()->bit_flags() & 65536) != 0)
+            bots.push_back(w);
+    }
+    return bots;
+}
+
 // A team's live Living family bytes in oblist (spawn) order.
 std::vector<int> team_families_in_order(GameWorld& world, int team)
 {
@@ -823,10 +861,13 @@ TEST_F(ModesSoccer, fair_teams_auto_with_a_solo_roster_fields_four_teams)
 TEST_F(ModesSoccer, wheel_values_never_move_the_mask)
 {
     // The D26/D33 mask-invariance restated for the wheel (B2/B8): WEAK
-    // and BRUTAL stage the identical mask and fill sites — the multiplier
-    // moves only the solved LEVELS. Sequentially scoped worlds — script
-    // bindings resolve against the last-constructed live world (the
-    // two-live-fixtures trap).
+    // and BRUTAL stage the identical mask and the identical fill SITES.
+    // What the wheel moves differs by game (#305): on the brawl modes it
+    // is the solved LEVELS alone, on the ball games above FAIR it is the
+    // BODIES — soccer's H = 1 side fields one bot at WEAK and three at
+    // BRUTAL, and the solved level still climbs with the wheel.
+    // Sequentially scoped worlds — script bindings resolve against the
+    // last-constructed live world (the two-live-fixtures trap).
     std::int32_t weak_mask = 0;
     std::vector<int> weak_levels;
     std::int32_t brutal_mask = 0;
@@ -863,7 +904,8 @@ TEST_F(ModesSoccer, wheel_values_never_move_the_mask)
         brutal_mask = brutal.var(kSocTeamMask);
         for (int team = 1; team < 4; ++team)
         {
-            EXPECT_EQ(1, alive_on_team(brutal.world(), team));
+            EXPECT_EQ(3, alive_on_team(brutal.world(), team))
+                << "BRUTAL on a pitch is H + 2 bodies (#305), team " << team;
             brutal_levels.push_back(
                 matched_plan_code(brutal.var(kSlotMatchedPlan), team) / 10);
         }
@@ -871,8 +913,18 @@ TEST_F(ModesSoccer, wheel_values_never_move_the_mask)
     EXPECT_EQ(weak_mask, brutal_mask) << "the wheel never moves the mask";
     for (std::size_t i = 0; i < weak_levels.size(); ++i)
     {
-        EXPECT_LT(weak_levels[i], brutal_levels[i])
-            << "the multiplier moves the solved level, team " << (i + 1);
+        // On a PITCH the step above FAIR lands on bodies (#305), not on
+        // the multiplier, so the solved per-body level need not climb --
+        // but it may never fall, and the side the wheel fields is
+        // strictly stronger all the same: one bot at WEAK against three
+        // at BRUTAL, each solved to the FAIR per-fighter figure. (On the
+        // brawl modes the level itself still climbs;
+        // StagedRules.fill_wheel_scales_the_solved_level_monotonically
+        // is that pin.)
+        EXPECT_LE(weak_levels[i], brutal_levels[i])
+            << "a wheel step never buys a WEAKER body, team " << (i + 1);
+        EXPECT_LT(1 * weak_levels[i], 3 * brutal_levels[i])
+            << "the wheel always buys MORE, team " << (i + 1);
     }
 }
 
@@ -2690,18 +2742,7 @@ TEST_F(ModesSoccer, goal_kickoff_reprovisions_a_wiped_bot_team)
     // BOT_MARK provenance (#218 staged preview): the revive spawns go
     // through the same add_squad_member choke point as the init squads, so
     // every refielded bot carries the mark (mode_caps BOT_MARK_BIT).
-    int marked = 0;
-    for (const auto& uptr : fx.world().oblist)
-    {
-        const walker* w = uptr.get();
-        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
-            continue;
-        if (w->team_num() != 1 || w->stats() == nullptr)
-            continue;
-        if ((w->stats()->bit_flags() & 65536) != 0)
-            ++marked;
-    }
-    EXPECT_EQ(5, marked)
+    EXPECT_EQ(5, marked_bots_on(fx.world(), 1))
         << "every wiped-team revive spawn carries the bot mark";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
@@ -3260,6 +3301,53 @@ TEST_F(ModesSoccer, lone_bot_keeps_goal_while_a_human_teammate_plays_on)
         << "the human is never commanded";
 }
 
+// #305, the defect the reporter filed: a solo fighter on a pitch met ONE
+// bot, and D38 sent that singleton chasing, so the bot goal stood empty
+// all match. STRONG now buys a BODY on the ball games, so the same solo
+// faces a keeper AND a striker. The human is on GREEN (team 1) and the
+// STRONG squad on RED (team 0) so the keeper pin is team 0's own mouth,
+// the x = 64 standoff line goalie_holds_the_intercept_line_and_blocks_a_shot
+// already asserts.
+TEST_F(ModesSoccer, strong_solo_fighter_faces_a_keeper_and_a_striker)
+{
+    SoccerPitch fx(kSoccerLevelA);
+    fx.spawn_anchor(0, 96, 448);
+    fx.spawn_anchor(0, 96, 480);
+    fx.spawn_anchor(1, 528, 448);
+    fx.spawn_anchor(1, 528, 480);
+    fx.world().ctf_requested_fill[0] = og::sim::kFillStrong;
+    // One L1 roster fighter, parked out of the way: H = 1.
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 1, 528, 96, 1, 1);
+    fx.tick(1);
+    ASSERT_TRUE(fx.soccer_active());
+    ASSERT_EQ(1, fx.var(kSlotMatchedSize)) << "the solo roster sets H = 1";
+
+    const std::vector<walker*> bots = marked_bots_in_order(fx.world(), 0);
+    ASSERT_EQ(2u, bots.size())
+        << "STRONG on a pitch fields H + 1 = two bots, not the lone chaser";
+
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+
+    // Ball at the kickoff spot (320, 464): the keeper's objective is the
+    // mouth intercept line x = 64 with the ball's cross-axis clamped into
+    // the mouth span; the other bot chases instead.
+    int keepers = 0;
+    int afield = 0;
+    for (walker* w : bots)
+    {
+        if (front_command_is(w, COMMAND_GOTO, 64, 464))
+            ++keepers;
+        else if (front_type(w) == COMMAND_GOTO)
+            ++afield;
+    }
+    EXPECT_EQ(1, keepers)
+        << "one of the two holds the goal-mouth intercept — the empty net "
+           "the solo 1v1 left open";
+    EXPECT_EQ(1, afield) << "and the other plays the ball";
+}
+
 // ===========================================================================
 // Director: the two-phase striker (drive through the ball) + engage gate
 // ===========================================================================
@@ -3555,6 +3643,33 @@ TEST_F(ModesSoccer, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
     fx.tick(45);  // 3 director cadences + kicks + flight + HUD
     EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
         << "a 10x-reduced budget must never trip";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+// R17 MEASURED, not assumed: the #305 body rule's worst shipped shape is
+// FOURSQUARE at BRUTAL — three solved squads of three (H = 1 + 2) in one
+// init, then the four-mouth director every cadence.
+TEST_F(ModesSoccer,
+       full_mode_tick_fits_a_tenth_of_the_instruction_budget_at_brutal_on_foursquare)
+{
+    const BudgetOverride budget(500000);
+    ModesCtfWorld fx(kSoccerLevelB);
+    for (int team = 0; team < 4; ++team)
+        fx.spawn_anchor(team, static_cast<short>(96 + 96 * team), 700);
+    for (int team = 1; team < 4; ++team)
+        fx.world().ctf_requested_fill[static_cast<std::size_t>(team)] =
+            og::sim::kFillBrutal;
+    fx.spawn_leveled_hero(FAMILY_SOLDIER, 0, 300, 100, 1, 1);
+    fx.tick(1);  // init (three three-bot squads + ball) under the budget
+    ASSERT_TRUE(fx.world().mode.active);
+    for (int team = 1; team < 4; ++team)
+    {
+        ASSERT_EQ(3, marked_bots_on(fx.world(), team))
+            << "BRUTAL fields H + 2 per empty side, team " << team;
+    }
+    fx.tick(45);  // 3 director cadences + kicks + flight + HUD
+    EXPECT_FALSE(has_script_error(fx.world(), "instruction budget"))
+        << "a 10x-reduced budget must never trip at BRUTAL either";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

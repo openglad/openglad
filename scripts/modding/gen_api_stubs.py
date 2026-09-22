@@ -628,6 +628,9 @@ CAMPAIGN_HOOK_SIGS: Dict[str, str] = {
     "picker_menu": "fun(page_id: string): og.CampaignPage?",
     "picker_action": "fun(entry_id: string): og.CampaignActionResult?",
     "base_camp": "fun(): og.CampaignZone?",
+    # One table of seven keys; the shape is enforced C++-side by
+    # parse_campaign_match_knobs in world_scripts.cpp.
+    "match_knobs": "fun(): og.CampaignMatchKnobs?",
     # The one hook that is a TABLE, not a function (docs/lineup-design.md
     # §3.3): the LINEUP page's bot-squad names and its fighter pricer.
     "lineup": "og.CampaignLineup",
@@ -1355,6 +1358,22 @@ def generate(repo_root: Path) -> str:
     out.append("-- on every map now, so nothing resolves).")
     out.append("---@class og.CampaignLineup")
     out.append("---@field power? fun(row: og.LineupPowerRow): integer")
+    out.append("")
+    out.append("-- The match_knobs hook's answer: which knobs the SETUP")
+    out.append("-- wizard shows for this game, the campaign's own lines on")
+    out.append("-- the TEAMS step, the ROOT ROW whose page lists the")
+    out.append("-- cursor's arena, and the FILL word a fresh arena deals to")
+    out.append("-- its authored teams. Defaults: everything on, no lines, no")
+    out.append("-- arena page, FAIR. A malformed answer falls back to those")
+    out.append("-- defaults with a script error naming the key.")
+    out.append("---@class og.CampaignMatchKnobs")
+    out.append("---@field teams? boolean")
+    out.append('---@field fill? "macro"|"band"|false')
+    out.append("---@field score? boolean")
+    out.append("---@field time? boolean")
+    out.append("---@field lines? string[]")
+    out.append("---@field arena_page? string")
+    out.append('---@field deal? "none"|"weak"|"fair"|"strong"|"brutal"')
     out.append("")
     out.append("-- Hook table for og.register_campaign_hooks. `vars` names")
     out.append("-- the campaign state keys (max 64, each 1-32 chars of")

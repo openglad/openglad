@@ -182,39 +182,9 @@ static int hold_q_key_for_picker(void* data)
     return 0;
 }
 
-struct CampaignPickerInputGuard
-{
-    CampaignPickerInputGuard()
-    {
-        campaign_picker_testing_input_reset();
-        if (SDL_HasEvents(
-                SDL_EVENT_MOUSE_BUTTON_DOWN,
-                SDL_EVENT_MOUSE_BUTTON_UP))
-        {
-            ADD_FAILURE()
-                << "campaign picker inherited stale mouse-button events";
-        }
-    }
-
-    ~CampaignPickerInputGuard()
-    {
-        campaign_picker_testing_input_reset();
-        SDL_FlushEvents(
-            SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
-    }
-
-    void reset()
-    {
-        if (SDL_HasEvents(
-                SDL_EVENT_MOUSE_BUTTON_DOWN,
-                SDL_EVENT_MOUSE_BUTTON_UP))
-        {
-            ADD_FAILURE()
-                << "previous campaign picker left mouse-button events queued";
-        }
-        campaign_picker_testing_input_reset();
-    }
-};
+// CampaignPickerInputGuard moved to tests/test_campaign_picker_drive.h
+// when the uxshot probe grew a visit of its own: the browser's input
+// hygiene is one rule, and it belongs beside the waiters it brackets.
 
 struct ViewportGuard
 {
@@ -850,9 +820,19 @@ TEST(CampaignAndLevelPicker,
 // (LIGHT_GREEN).
 TEST(CampaignAndLevelPicker, campaign_entry_draws_real_metadata_states)
 {
+    trace_clear();
     EXPECT_EQ(0, campaign_picker_testing_exercise_entry_draw_paths())
         << "the detail pane must ink exactly the metadata rows its state calls "
            "for";
+    // R2-4, arm 5: the card's completion line asks the ENTRY's campaign id,
+    // never the current save, because the browser composes a card for every
+    // campaign on disk while the save sits on one of them.
+    EXPECT_TRUE(trace_contains("campaign_card", "line modes 40 arenas"))
+        << "Multiplayer Arenas has no progress to report on its card";
+    EXPECT_TRUE(trace_contains("campaign_card",
+                               "line test.draw-entry-does-not-exist "
+                               "1 out of 2 completed"))
+        << "and a classic campaign still counts what the company cleared";
 }
 
 
@@ -2126,4 +2106,60 @@ TEST(CampaignAndLevelPicker, campaign_picker_keyboard_row_highlight_moves_cursor
     EXPECT_EQ(0, thread_result);
     EXPECT_EQ(expected, result.id)
         << "the arrowed-to row must be the one OK chooses";
+}
+
+// ---------------------------------------------------------------------------
+// R2-4 on SET LEVEL: the browser's status column.
+//
+// The row status is the one place the level browser speaks progress, and
+// on a Multiplayer Arenas campaign it must not: an arena is set, never
+// earned. [CURRENT] is not progress vocabulary and stays. The oracle is
+// the derivation trace each BrowserEntry writes as it is built, on a save
+// that HAS a completed arena -- without that the pin would pass on a
+// campaign with nothing to mark.
+TEST(CampaignAndLevelPicker, versus_level_browser_rows_carry_no_cleared_word)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_campaign = save.current_campaign;
+    const short old_scen = save.scen_num;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    save.completed_levels.clear();
+    save.add_level_completed("modes", 821);
+
+    trace_clear();
+    char old_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    (void)pick_level(og::runtime::current_session->myscreen_, 820, false);
+    og::runtime::current_session->myscreen_->world().end = old_end;
+
+    EXPECT_TRUE(trace_contains("levelpick", "status 820 CURRENT"))
+        << "the cursor's arena still says which one GO would launch";
+    EXPECT_TRUE(trace_contains("levelpick", "status 821  locked=0"))
+        << "the played arena wears the BLANK status cell — the word between "
+           "'821' and 'locked' is the one R2-4 removes";
+    EXPECT_FALSE(trace_contains("levelpick", "status 821 CLEARED"))
+        << "R2-4: no CLEARED mark on a Multiplayer Arenas row";
+
+    // The classic campaign keeps the word: the predicate removed the
+    // vocabulary from versus surfaces, not from the game.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save.current_campaign = "gladiator";
+    save.scen_num = 2;
+    save.completed_levels.clear();
+    save.add_level_completed("gladiator", 1);
+    trace_clear();
+    old_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    (void)pick_level(og::runtime::current_session->myscreen_, 1, false);
+    og::runtime::current_session->myscreen_->world().end = old_end;
+    EXPECT_TRUE(trace_contains("levelpick", "status 1 CLEARED"))
+        << "a cleared gladiator level still wears the word";
+
+    save.completed_levels.clear();
+    save.current_campaign = old_campaign;
+    save.scen_num = old_scen;
 }

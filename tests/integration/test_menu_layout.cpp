@@ -6,6 +6,10 @@
 #include <openglad/interface/device_seats.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/match_setup_session.h>
+#include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/resources/campaign_state_providers.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -422,6 +426,550 @@ TEST(MenuLayout, cloud_save_screen_layout_states_and_nav)
 // #206 zone submenu: static table pins, the empty (null-state) shape,
 // and the pattern-b rewire's visibility variants — a partial page and a
 // full 24-entry page whose PageModel window shows the pagers.
+// ---------------------------------------------------------------------------
+// The SETUP wizard (docs/match-setup-design.md §2.0): the chassis grid, the
+// five step shapes, and the pattern-b rewire's full graph.
+//
+// Every assertion below is a RELATION, not a coordinate: an exact-table pin
+// (test_menu_pins) proves self-consistency and would happily pin a crooked
+// screen. What must hold is that the tabs, the cell column and the pagers
+// share ONE right edge, that the rows share one left edge and one pitch,
+// that the rows never leave the panel whatever the step's line count, and
+// that the footer's two step buttons sit on one gutter.
+namespace
+{
+
+constexpr const char* kSetupLayoutPack = "test.setuplayout";
+
+// The synthetic book: a GAMES root of seven page rows, a four-arena SOCCER
+// page (unpaged) and a TEN-arena CTF page (the paged case). The same shape
+// tests/unit/test_match_setup_session.cpp drives the session over.
+const char* setup_layout_book_script()
+{
+    return R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    if page_id == "" then
+      return { title = "GAMES", lines = { "Cleared: 0 of 40." }, entries = {
+        { id = "tdm",        label = "TEAM DEATHMATCH",  note = "0/6 cleared",  kind = "page" },
+        { id = "ctf",        label = "CAPTURE THE FLAG", note = "0/10 cleared", kind = "page" },
+        { id = "onslaught",  label = "ONSLAUGHT",        note = "0/4 cleared",  kind = "page" },
+        { id = "mutant",     label = "MUTANT",           note = "0/4 cleared",  kind = "page" },
+        { id = "soccer",     label = "SOCCER",           note = "0/4 cleared",  kind = "page" },
+        { id = "basketball", label = "BASKETBALL",       note = "0/6 cleared",  kind = "page" },
+        { id = "ffa",        label = "FREE FOR ALL",     note = "0/6 cleared",  kind = "page" },
+      } }
+    end
+    if page_id == "soccer" then
+      return { title = "SOCCER",
+               lines = { "Kick the ball into their goal.", "Next uncleared: THE PITCH." },
+               entries = {
+        { id = "820", label = "THE PITCH",    note = "2 sides, 3 goals", kind = "level", level = 820 },
+        { id = "821", label = "THE MUDBOWL",  note = "2 sides, 3 goals", kind = "level", level = 821 },
+        { id = "822", label = "FOURSQUARE",   note = "4 sides, 3 goals", kind = "level", level = 822 },
+        { id = "823", label = "BONEYARD CUP", note = "2 sides, 3 goals", kind = "level", level = 823 },
+      } }
+    end
+    if page_id == "ctf" then
+      local rows = {}
+      for i = 0, 9 do
+        rows[#rows + 1] = { id = tostring(500 + i), label = "FIELD " .. i,
+                            note = "4 sides, 20 min", kind = "level", level = 500 + i }
+      end
+      return { title = "CAPTURE THE FLAG",
+               lines = { "Take their flag home.", "Next uncleared: FIELD 0." },
+               entries = rows }
+    end
+    return nil
+  end,
+  match_knobs = function()
+    return { arena_page = "soccer", deal = "strong",
+             lines = { "STRONG adds a fighter, BRUTAL two." } }
+  end,
+}))LUA";
+}
+
+// A versus campaign with NO book: match_knobs alone is a legal
+// registration, so the wizard shows four tabs over the mount's manifest.
+const char* setup_layout_knobs_only_script()
+{
+    return R"LUA(og.register_campaign_hooks({
+  match_knobs = function()
+    return { arena_page = "soccer" }
+  end,
+}))LUA";
+}
+
+struct SetupLayoutDriver
+{
+    button* buttons = nullptr;
+    int count = 0;
+    int highlighted = og::ui::kMatchSetupBackIndex;
+    std::vector<og::ui::RowState> states;
+
+    // The runner's own two passes, in the runner's own order: the generic
+    // gate pass (state_override) and then the screen's rewire.
+    void frame(bool is_host)
+    {
+        const og::ui::MenuScreenSpec& spec =
+            og::ui::match_setup_menu_screen_spec();
+        buttons = spec.buttons_accessor();
+        count = spec.count_accessor();
+        const std::vector<const og::ui::MenuButtonSpec*> rows =
+            og::ui::materialized_spec_rows(spec);
+        states.assign(static_cast<std::size_t>(count),
+                      og::ui::RowState::Visible);
+        og::ui::MenuLabelContext context;
+        context.save = &og::runtime::current_session->myscreen_->save_data;
+        context.is_host = is_host;
+        for (int i = 0; i < count; ++i)
+        {
+            const og::ui::MenuButtonSpec& row =
+                *rows[static_cast<std::size_t>(i)];
+            const og::ui::RowState state = row.state_override != nullptr
+                ? row.state_override(context)
+                : og::ui::gate_state(row.gate, context);
+            states[static_cast<std::size_t>(i)] = state;
+            buttons[i].hidden = (state == og::ui::RowState::Hidden);
+        }
+        ASSERT_NE(nullptr, spec.nav.rewire);
+        spec.nav.rewire(buttons, count, highlighted);
+    }
+};
+
+// Every relation the grid promises, over whatever the step left visible.
+void check_setup_grid(const SetupLayoutDriver& driver, const char* variant)
+{
+    button* const b = driver.buttons;
+    const int count = driver.count;
+    ASSERT_EQ(og::ui::kMatchSetupButtonCount, count) << variant;
+
+    // Rows: one left edge, one width, one pitch, inside the panel.
+    int previous_row_y = -1;
+    int visible_rows = 0;
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        const button& row = b[og::ui::kMatchSetupRowBase + r];
+        if (row.hidden)
+            continue;
+        ++visible_rows;
+        EXPECT_EQ(og::ui::kSetupRowX, row.x) << variant << " row " << r;
+        EXPECT_EQ(og::ui::kSetupRowW, row.sizex) << variant << " row " << r;
+        EXPECT_EQ(og::ui::kSetupRowH, row.sizey) << variant << " row " << r;
+        EXPECT_EQ(og::ui::kSetupRightEdge, row.x + row.sizex)
+            << variant << ": a row runs the panel's whole width and closes "
+                          "on the one right edge (310)";
+        EXPECT_GE(row.y, og::ui::kSetupContentY0) << variant << " row " << r;
+        EXPECT_LE(row.y + row.sizey, og::ui::kSetupPanelBottomY)
+            << variant << ": row " << r << " spills out of the panel";
+        if (previous_row_y >= 0)
+        {
+            EXPECT_EQ(og::ui::kSetupRowPitch, row.y - previous_row_y)
+                << variant << ": rows must keep one pitch";
+        }
+        previous_row_y = row.y;
+    }
+
+    // The tab strip: one band, one pitch, closing on the right edge when
+    // the campaign has all five steps.
+    int tabs = 0;
+    int first_tab_x = -1;
+    int previous_tab_x = -1;
+    int last_tab_right = -1;
+    for (int k = 0; k < og::ui::kSetupTabCount; ++k)
+    {
+        const button& tab = b[og::ui::kMatchSetupTabBase + k];
+        if (tab.hidden)
+            continue;
+        ++tabs;
+        EXPECT_EQ(og::ui::kSetupTabY, tab.y) << variant << " tab " << k;
+        EXPECT_EQ(og::ui::kSetupTabH, tab.sizey) << variant << " tab " << k;
+        EXPECT_EQ(og::ui::kSetupTabW, tab.sizex) << variant << " tab " << k;
+        if (first_tab_x < 0)
+            first_tab_x = tab.x;
+        if (previous_tab_x >= 0)
+        {
+            EXPECT_EQ(og::ui::kSetupTabW + og::ui::kSetupTabGap,
+                      tab.x - previous_tab_x)
+                << variant << ": the tab pitch is 61";
+        }
+        previous_tab_x = tab.x;
+        last_tab_right = tab.x + tab.sizex;
+        EXPECT_LE(tab.y + tab.sizey + og::ui::kSetupLineToRowGap,
+                  og::ui::kSetupContentY0)
+            << variant << ": the tab -> content gap is the line -> row gap";
+    }
+    if (tabs > 0)
+    {
+        EXPECT_EQ(og::ui::kSetupLeftX, first_tab_x)
+            << variant << ": the strip re-bands from the one left edge";
+    }
+    if (tabs == og::ui::kSetupTabCount)
+    {
+        EXPECT_EQ(og::ui::kSetupRightEdge, last_tab_right)
+            << variant << ": five tabs close on the one right edge";
+    }
+
+    // The footer's two step buttons share a band on one gutter.
+    const button& prev = b[og::ui::kMatchSetupPrevIndex];
+    const button& next = b[og::ui::kMatchSetupNextIndex];
+    EXPECT_EQ(prev.y, next.y) << variant;
+    EXPECT_EQ(prev.sizex, next.sizex) << variant;
+    EXPECT_EQ(prev.sizey, next.sizey) << variant;
+    EXPECT_EQ(46, next.x - prev.x)
+        << variant << ": PREV mirrors NEXT across the 6px footer gutter";
+    EXPECT_FALSE(b[og::ui::kMatchSetupBackIndex].hidden)
+        << variant << ": BACK always closes the wizard";
+
+    // No two VISIBLE rows overlap, and no link points at a hidden one.
+    for (int i = 0; i < count; ++i)
+    {
+        if (b[i].hidden)
+            continue;
+        for (int j = i + 1; j < count; ++j)
+        {
+            if (b[j].hidden)
+                continue;
+            const bool overlap = b[i].x < b[j].x + b[j].sizex &&
+                b[j].x < b[i].x + b[i].sizex &&
+                b[i].y < b[j].y + b[j].sizey &&
+                b[j].y < b[i].y + b[i].sizey;
+            EXPECT_FALSE(overlap) << variant << ": " << b[i].id
+                                  << " overlaps " << b[j].id;
+        }
+    }
+    check_nav_closed_and_reachable(b, count, og::ui::kMatchSetupBackIndex,
+                                   variant);
+    (void)visible_rows;
+}
+
+// The entered-step landing. SPEC §2.0 wrote the rule for GAME; the lead's
+// read-back of the wave-3 captures extended it to every step, because a
+// step reached by clicking its tab left the keyboard ON that tab — and the
+// current tab is inert by design (D36), so Enter did nothing at all. This
+// is the rule seen from OUTSIDE the rewire: whatever the step, the landing
+// is a live row (or, where a step has none, the footer's way on), never a
+// tab.
+void check_setup_entry_highlight(const SetupLayoutDriver& driver,
+                                 og::ui::MatchSetupSession::Step step,
+                                 const char* variant)
+{
+    using Step = og::ui::MatchSetupSession::Step;
+    const int h = driver.highlighted;
+    ASSERT_GE(h, 0) << variant << ": no highlight at all";
+    ASSERT_LT(h, driver.count) << variant;
+    EXPECT_FALSE(driver.buttons[h].hidden)
+        << variant << ": the landing is a hidden button";
+    EXPECT_LT(h, og::ui::kMatchSetupTabBase)
+        << variant << ": the current tab is inert (D36) — a landing there "
+                      "means Enter does nothing until the player arrows away";
+
+    int live_rows = 0;
+    int first_live = -1;
+    int current_row = -1;
+    int live_go = -1;
+    int view_level = -1;
+    for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+    {
+        const int ordinal = og::ui::kMatchSetupRowBase + r;
+        const std::string& label = driver.buttons[ordinal].label;
+        if (driver.buttons[ordinal].hidden)
+            continue;
+        if (label.find("[CURRENT]") != std::string::npos && current_row < 0)
+            current_row = ordinal;
+        if (label.starts_with("VIEW LEVEL") && view_level < 0)
+            view_level = ordinal;
+        if (driver.states[static_cast<std::size_t>(ordinal)] ==
+            og::ui::RowState::Disabled)
+        {
+            continue;
+        }
+        ++live_rows;
+        if (first_live < 0)
+            first_live = ordinal;
+        if (label.starts_with("GO") && live_go < 0)
+            live_go = ordinal;
+    }
+
+    if (live_rows == 0)
+    {
+        EXPECT_TRUE(h == og::ui::kMatchSetupNextIndex ||
+                    h == og::ui::kMatchSetupBackIndex)
+            << variant << ": a step with no live row at all hands the "
+                          "keyboard to the footer, not to the tab";
+        return;
+    }
+
+    EXPECT_LT(h, og::ui::kMatchSetupRowBase + og::ui::kSetupRowsMax)
+        << variant << ": a step WITH live rows lands on one";
+    const std::string& landed = driver.buttons[h].label;
+    switch (step)
+    {
+    case Step::Game:
+        // The synthetic book's match_knobs names the SOCCER page.
+        EXPECT_TRUE(landed.starts_with("SOCCER"))
+            << variant << ": GAME lands on match_knobs.arena_page, not on "
+                          "row 0 — '" << landed << "'";
+        break;
+    case Step::Arena:
+        if (current_row >= 0)
+        {
+            EXPECT_EQ(current_row, h)
+                << variant << ": ARENA lands on the [CURRENT] arena — '"
+                << landed << "'";
+        }
+        else
+        {
+            EXPECT_EQ(first_live, h) << variant;
+        }
+        break;
+    case Step::Match:
+        if (live_go >= 0)
+        {
+            EXPECT_EQ(live_go, h)
+                << variant << ": a live GO is what MATCH is for";
+        }
+        else
+        {
+            EXPECT_EQ(view_level, h)
+                << variant << ": a gated GO hands MATCH to VIEW LEVEL, the "
+                              "row that still does something — '"
+                << landed << "'";
+        }
+        break;
+    case Step::Teams:
+    case Step::Rules:
+        EXPECT_EQ(first_live, h)
+            << variant << ": the first cycler or door — '" << landed << "'";
+        break;
+    }
+}
+
+
+} // namespace
+
+TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
+{
+    // The STATIC table first: the grid's own arithmetic, before any state.
+    button* buttons = picker_match_setup_buttons();
+    const int count = picker_match_setup_button_count();
+    ASSERT_EQ(og::ui::kMatchSetupButtonCount, count);
+    check_bounds(buttons, count, "match_setup");
+    EXPECT_EQ(47, og::ui::kSetupContentY0);
+    EXPECT_EQ(og::ui::kSetupRightEdge,
+              og::ui::setup_tab_x(og::ui::kSetupTabCount - 1) +
+                  og::ui::kSetupTabW);
+    // Round 4: ONE right edge for rows AND tabs, and no cell column left
+    // between them.
+    EXPECT_EQ(310, og::ui::kSetupRowX + og::ui::kSetupRowW);
+    EXPECT_EQ(og::ui::kSetupRightEdge, og::ui::kSetupRowX + og::ui::kSetupRowW);
+    EXPECT_EQ(static_cast<std::size_t>(48), og::ui::kSetupRowLabelChars);
+    // The TEAMS/MATCH line columns (the LINEUP band grammar), and the
+    // census cell's right edge on the text line's own.
+    EXPECT_EQ(12, og::ui::kSetupSwatchX);
+    EXPECT_EQ(26, og::ui::kSetupTeamLabelX);
+    EXPECT_EQ(70, og::ui::kSetupTeamSeatX);
+    EXPECT_EQ(188, og::ui::kSetupTeamCensusX);
+    EXPECT_EQ(308, og::ui::kSetupTeamCensusX +
+                       6 * og::ui::kSetupTeamCensusChars);
+
+    // The empty shape: no state installed, BACK alone.
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    {
+        SetupLayoutDriver driver;
+        driver.frame(/*is_host=*/true);
+        for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+        {
+            EXPECT_TRUE(driver.buttons[og::ui::kMatchSetupRowBase + r].hidden)
+                << "null state hides row " << r;
+        }
+        for (int k = 0; k < og::ui::kSetupTabCount; ++k)
+            EXPECT_TRUE(driver.buttons[og::ui::kMatchSetupTabBase + k].hidden);
+        check_nav_closed_and_reachable(driver.buttons, driver.count,
+                                       og::ui::kMatchSetupBackIndex,
+                                       "setup_empty");
+    }
+
+    // The live shapes, over a synthetic versus book.
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string previous_campaign = save.current_campaign;
+    const short previous_scen = save.scen_num;
+    const std::string previous_mount = get_mounted_campaign();
+    const std::vector<og::script::PackScript> saved_scripts =
+        og::script::pack_scripts();
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    og::script::unregister_pack_scripts("modes.core");
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    og::script::hooks::install_campaign_providers(
+        og::data::make_campaign_providers(save));
+
+    using Step = og::ui::MatchSetupSession::Step;
+    struct StepVariant {
+        Step step;
+        const char* name;
+    };
+    constexpr StepVariant kSteps[] = {
+        {Step::Game, "game"},   {Step::Arena, "arena"},
+        {Step::Teams, "teams"}, {Step::Rules, "rules"},
+        {Step::Match, "match"},
+    };
+
+    // {book, no-book} x {host, joiner} x {820 two-side, 822 four-side}
+    // x every present step. The paged case (the CTF page's ten arenas)
+    // rides the book axis below.
+    for (const bool book : {true, false})
+    {
+        og::script::clear_pack_scripts();
+        og::script::register_pack_script(
+            {kSetupLayoutPack, "setuplayout/scripts/book.lua",
+             book ? setup_layout_book_script()
+                  : setup_layout_knobs_only_script()});
+        for (const bool host : {true, false})
+        {
+            for (const std::uint8_t mask :
+                 {std::uint8_t{0b0011}, std::uint8_t{0b1111}})
+            {
+                og::ui::MatchSetupScreenState state(save);
+                og::ui::MatchSetupSession::Inputs in;
+                in.save = &save;
+                in.is_host = host;
+                in.my_team = 0;
+                in.authored_mask = mask;
+                ASSERT_TRUE(state.session.open(in))
+                    << "the wizard must open on a versus campaign";
+                EXPECT_EQ(book ? 5u : 4u, state.session.steps().size())
+                    << "a bookless campaign drops the GAME step";
+                og::ui::install_match_setup_state_for_screen(&state);
+
+                for (const StepVariant& variant : kSteps)
+                {
+                    if (!book && variant.step == Step::Game)
+                        continue;
+                    (void)state.session.goto_step(variant.step, in);
+                    const std::string name = std::format(
+                        "setup_{}_{}_{}_{}", variant.name,
+                        book ? "book" : "nobook", host ? "host" : "joiner",
+                        mask == 0b0011 ? "2side" : "4side");
+                    SetupLayoutDriver driver;
+                    driver.frame(host);
+                    ASSERT_NO_FATAL_FAILURE(
+                        check_setup_grid(driver, name.c_str()));
+                    ASSERT_NO_FATAL_FAILURE(check_setup_entry_highlight(
+                        driver, variant.step, name.c_str()));
+
+                    // The CURRENT tab is the pressed-in one: Disabled, and
+                    // its neighbours plainly Visible (D36).
+                    int current_tabs = 0;
+                    for (int k = 0; k < og::ui::kSetupTabCount; ++k)
+                    {
+                        const int ordinal = og::ui::kMatchSetupTabBase + k;
+                        if (driver.states[static_cast<std::size_t>(ordinal)]
+                            == og::ui::RowState::Disabled)
+                        {
+                            ++current_tabs;
+                            EXPECT_EQ("[" + std::string(
+                                          og::ui::MatchSetupSession::step_word(
+                                              variant.step)) + "]",
+                                      driver.buttons[ordinal].label)
+                                << name;
+                        }
+                        else if (!driver.buttons[ordinal].hidden)
+                        {
+                            EXPECT_EQ(og::ui::RowState::Visible,
+                                      driver.states[static_cast<std::size_t>(
+                                          ordinal)])
+                                << name << ": a neighbour tab is live";
+                        }
+                    }
+                    EXPECT_EQ(1, current_tabs)
+                        << name << ": exactly one tab wears the pressed-in "
+                                   "face";
+                }
+                og::ui::install_match_setup_state_for_screen(nullptr);
+            }
+        }
+    }
+
+    // The PAGED shape: the CTF page's ten arenas over a window of seven.
+    {
+        og::script::clear_pack_scripts();
+        og::script::register_pack_script(
+            {kSetupLayoutPack, "setuplayout/scripts/book.lua",
+             setup_layout_book_script()});
+        og::ui::MatchSetupScreenState state(save);
+        og::ui::MatchSetupSession::Inputs in;
+        in.save = &save;
+        in.is_host = true;
+        in.authored_mask = 0b1111;
+        ASSERT_TRUE(state.session.open(in, "ctf"));
+        EXPECT_EQ(Step::Arena, state.session.step());
+        ASSERT_TRUE(state.session.page().page.multi_page())
+            << "ten arenas over a seven-row window must page";
+        ASSERT_TRUE(state.session.page().more_row)
+            << "a multi-window step spends its last slot on the pager row";
+        og::ui::install_match_setup_state_for_screen(&state);
+        SetupLayoutDriver driver;
+        driver.frame(/*is_host=*/true);
+        // The pager row is an ORDINARY row: same rect, same chain, last
+        // slot of the window, and the BFS below walks it like any other.
+        int last_visible = -1;
+        for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+        {
+            if (!driver.buttons[og::ui::kMatchSetupRowBase + r].hidden)
+                last_visible = r;
+        }
+        ASSERT_GE(last_visible, 0);
+        EXPECT_TRUE(driver.buttons[og::ui::kMatchSetupRowBase + last_visible]
+                        .label.starts_with("MORE ARENAS - "))
+            << "the window's last row is the pager row: '"
+            << driver.buttons[og::ui::kMatchSetupRowBase + last_visible].label
+            << "'";
+        ASSERT_NO_FATAL_FAILURE(check_setup_grid(driver, "setup_arena_paged"));
+        og::ui::install_match_setup_state_for_screen(nullptr);
+    }
+
+    // The GAME-entry highlight: on entering GAME the keyboard lands on the
+    // row the campaign named in match_knobs.arena_page — the game the
+    // cursor's arena belongs to, not row 0.
+    {
+        og::ui::MatchSetupScreenState state(save);
+        og::ui::MatchSetupSession::Inputs in;
+        in.save = &save;
+        in.is_host = true;
+        in.authored_mask = 0b0011;
+        ASSERT_TRUE(state.session.open(in));
+        ASSERT_EQ(Step::Game, state.session.step());
+        og::ui::install_match_setup_state_for_screen(&state);
+        SetupLayoutDriver driver;
+        driver.frame(/*is_host=*/true);
+        int soccer_row = -1;
+        for (int r = 0; r < og::ui::kSetupRowsMax; ++r)
+        {
+            if (driver.buttons[og::ui::kMatchSetupRowBase + r].label.starts_with(
+                    "SOCCER"))
+            {
+                soccer_row = r;
+                break;
+            }
+        }
+        ASSERT_GE(soccer_row, 0) << "the synthetic book lists SOCCER";
+        EXPECT_EQ(og::ui::kMatchSetupRowBase + soccer_row, driver.highlighted)
+            << "entering GAME must highlight the CURRENT game's row";
+        og::ui::install_match_setup_state_for_screen(nullptr);
+    }
+
+    og::script::hooks::clear_campaign_providers();
+    og::script::clear_pack_scripts();
+    for (const og::script::PackScript& script : saved_scripts)
+        og::script::register_pack_script(script);
+    save.current_campaign = previous_campaign;
+    save.scen_num = previous_scen;
+    if (!previous_mount.empty() && previous_mount != "modes")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
 TEST(MenuLayout, zone_submenu_screen_layout_states_and_nav)
 {
     button* buttons = picker_zone_submenu_buttons();
@@ -794,17 +1342,17 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         {
             const button& got = buttons[i];
             std::string want_id;
-            if (i < kBaseCampZonePagerBase)
+            if (i < kBaseCampZoneRetiredPagerBase)
             {
                 want_id = std::format("zone_action_{}",
                                       i - kBaseCampZoneActionBase);
             }
             else if (i < kBaseCampZoneSpareBase)
             {
-                const int pager = i - kBaseCampZonePagerBase;
-                want_id = std::format("zone_pager_{}_{}",
-                                      pager % 2 == 0 ? "prev" : "next",
-                                      pager / 2);
+                // Round 4: the four docket pager ordinals are RETIRED and
+                // parked for good — the window's last row pages now.
+                want_id = std::format("zone_pager_spare_{}",
+                                      i - kBaseCampZoneRetiredPagerBase);
             }
             else
             {
@@ -848,6 +1396,7 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
             EXPECT_EQ(kCreateMenuBackIndex, diff.nav.left);
             EXPECT_EQ(kCreateMenuScenarioIndex, diff.nav.right);
             EXPECT_EQ(10, static_cast<int>(diff.label.size()));
+
             EXPECT_LE(static_cast<int>(diff.label.size()),
                       (diff.sizex - 8) / 6)
                 << "the full word must ink inside the bevel";
@@ -899,8 +1448,8 @@ TEST(MenuLayout, createmenu_basecamp_geometry_and_nav)
         EXPECT_EQ(kBaseCampZoneActionBase, 49);
         EXPECT_EQ(kBaseCampZoneActionsPerWidget, 8);
         EXPECT_EQ(kBaseCampZoneActionRows, 16);
-        EXPECT_EQ(kBaseCampZonePagerBase, 65);
-        EXPECT_EQ(kBaseCampZonePagerCount, 4);
+        EXPECT_EQ(kBaseCampZoneRetiredPagerBase, 65);
+        EXPECT_EQ(kBaseCampZoneRetiredPagerCount, 4);
         EXPECT_EQ(kBaseCampZoneSpareBase, 69);
         EXPECT_EQ(kBaseCampZoneSpareCount, 3);
         EXPECT_EQ(kCreateMenuDifficultyIndex, 72);
@@ -1168,29 +1717,30 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
     int highlighted = kBaseCampRowBodyBase;
     spec.nav.rewire(buttons, count, highlighted);
 
-    // The actions band: 2 visible windows of the 5 entries at the band's
-    // units, labels composed, pagers shown on the band's first row.
+    // The actions band: 5 entries over a 2-unit band, so the window holds
+    // ONE entry and the second slot is the MORE pager row (round 4). Both
+    // rows run the panel's whole width, 12..310.
     EXPECT_FALSE(buttons[kBaseCampZoneActionBase].hidden);
     EXPECT_FALSE(buttons[kBaseCampZoneActionBase + 1].hidden);
     EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 2].hidden)
         << "a 2-unit band shows 2 window rows";
     EXPECT_EQ("ACT 0", buttons[kBaseCampZoneActionBase].label);
-    EXPECT_EQ("ACT 1", buttons[kBaseCampZoneActionBase + 1].label);
+    EXPECT_EQ("MORE - 1/5  >", buttons[kBaseCampZoneActionBase + 1].label)
+        << "the window's last slot is the pager row";
     EXPECT_EQ(12, buttons[kBaseCampZoneActionBase].x);
+    EXPECT_EQ(298, buttons[kBaseCampZoneActionBase].sizex);
+    EXPECT_EQ(310, buttons[kBaseCampZoneActionBase].x +
+                       buttons[kBaseCampZoneActionBase].sizex)
+        << "a docket row closes the panel's inner right rail itself";
     EXPECT_EQ(45 + 14 * 1, buttons[kBaseCampZoneActionBase].y)
         << "the band anchors on its start unit";
     EXPECT_EQ(45 + 14 * 2, buttons[kBaseCampZoneActionBase + 1].y);
-    EXPECT_FALSE(buttons[kBaseCampZonePagerBase].hidden)
-        << "5 entries over 2 rows page in place";
-    EXPECT_FALSE(buttons[kBaseCampZonePagerBase + 1].hidden);
-    EXPECT_EQ("<", buttons[kBaseCampZonePagerBase].label);
-    EXPECT_EQ(">", buttons[kBaseCampZonePagerBase + 1].label);
-    EXPECT_EQ(310, buttons[kBaseCampZonePagerBase + 1].x +
-                       buttons[kBaseCampZonePagerBase + 1].sizex)
-        << "the widget pagers close the panel's inner right rail";
-    // The second widget's pager pair stays parked.
-    EXPECT_TRUE(buttons[kBaseCampZonePagerBase + 2].hidden);
-    EXPECT_TRUE(buttons[kBaseCampZonePagerBase + 3].hidden);
+    // The four retired pager ordinals stay parked, every frame.
+    for (int p = 0; p < kBaseCampZoneRetiredPagerCount; ++p)
+    {
+        EXPECT_TRUE(buttons[kBaseCampZoneRetiredPagerBase + p].hidden)
+            << "retired docket pager " << p;
+    }
 
     // The roster re-bands below the actions: rows at the band's units, the
     // capability gates hide the chip/move-up columns.
@@ -1229,13 +1779,33 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
     EXPECT_EQ(kBaseCampSeatCardBase, buttons[3].nav.down)
         << "the roster's last row bottoms out on the seat rail";
 
-    // Pager stepping through the production dispatch windows the band.
+    // Pager stepping through the production dispatch windows the band:
+    // the MORE ROW is the thing that is clicked now.
     ASSERT_NE(nullptr, spec.on_spec_row);
     EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(kBaseCampZonePagerBase + 1, &state));
+              spec.on_spec_row(kBaseCampZoneActionBase + 1, &state));
     spec.nav.rewire(buttons, count, highlighted);
-    EXPECT_EQ("ACT 2", buttons[kBaseCampZoneActionBase].label)
-        << "the widget's own pager steps its window";
+    EXPECT_EQ("ACT 1", buttons[kBaseCampZoneActionBase].label)
+        << "the widget's own pager row steps its window";
+    EXPECT_EQ("MORE - 2/5  >", buttons[kBaseCampZoneActionBase + 1].label);
+    // ...all the way to the LAST window, and then home: a pager ROW has
+    // one direction, so the fifth press wraps instead of saturating.
+    for (int step = 0; step < 3; ++step)
+    {
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(kBaseCampZoneActionBase + 1, &state))
+            << "step " << step;
+        spec.nav.rewire(buttons, count, highlighted);
+    }
+    EXPECT_EQ("ACT 4", buttons[kBaseCampZoneActionBase].label)
+        << "the last window holds the fifth entry alone";
+    EXPECT_EQ("MORE - 5/5  >", buttons[kBaseCampZoneActionBase + 1].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 1, &state));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ACT 0", buttons[kBaseCampZoneActionBase].label)
+        << "the pager row WRAPS home from the last window";
+    EXPECT_EQ("MORE - 1/5  >", buttons[kBaseCampZoneActionBase + 1].label);
 
     // A capability-gated composition with a frozen assign shows chips on
     // own rows even networked (the visibility fork is pinned by the zone
@@ -1261,6 +1831,122 @@ TEST(MenuLayout, createmenu_basecamp_scripted_zone_bands_and_nav)
         save.team_list[static_cast<std::size_t>(i)] =
             std::move(saved_team[static_cast<std::size_t>(i)]);
     save.team_size = old_team_size;
+    (void)picker_createmenu_buttons();
+}
+
+// The window a paged docket OPENS on, drawn: the one holding the [CURRENT]
+// row (og::ui::open_row_window, 2026-09-22, PR #307). Six rows over a
+// three-slot band window two at a time behind a pager ROW, and the row the
+// cursor sits on is the FOURTH — so the panel comes up on window 2 with
+// that row on it, instead of showing a home window the player has no
+// business on and hiding the job they are about to launch behind "MORE".
+TEST(MenuLayout, createmenu_basecamp_docket_opens_on_the_current_row)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> saved_team;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        saved_team[static_cast<std::size_t>(i)] =
+            std::move(save.team_list[static_cast<std::size_t>(i)]);
+    const unsigned char old_team_size = save.team_size;
+    const short old_scen = save.scen_num;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Z0";
+    save.team_size = 1;
+    save.scen_num = 3;
+
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::TeamBuild).spec;
+    ASSERT_NE(nullptr, spec.nav.rewire);
+
+    og::script::hooks::CampaignZone raw;
+    {
+        og::script::hooks::CampaignZoneWidget actions;
+        actions.kind = og::script::hooks::CampaignZoneWidget::Kind::Actions;
+        actions.weight = 3;
+        for (int i = 0; i < 6; ++i)
+        {
+            og::script::hooks::CampaignPageEntry entry;
+            entry.id = std::format("act{}", i);
+            entry.label = std::format("ACT {}", i);
+            entry.kind = og::script::hooks::CampaignPageEntry::Kind::Action;
+            if (i == 3)
+            {
+                // The row the camp is pointing at: the level the save's
+                // cursor already stands on decorates as [CURRENT].
+                entry.id = "road";
+                entry.label = "THE ROAD";
+                entry.kind =
+                    og::script::hooks::CampaignPageEntry::Kind::Level;
+                entry.level = save.scen_num;
+            }
+            actions.entries.push_back(std::move(entry));
+        }
+        raw.widgets.push_back(actions);
+        og::script::hooks::CampaignZoneWidget roster;
+        roster.kind = og::script::hooks::CampaignZoneWidget::Kind::Roster;
+        raw.widgets.push_back(roster);
+    }
+    og::ui::CampaignZoneSession zone(save);
+    ASSERT_TRUE(zone.adopt(raw));
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ(6u, zone.actions()[0].rows.size());
+    ASSERT_TRUE(zone.actions()[0].rows[3].current)
+        << "the fourth row is the [CURRENT] one";
+    EXPECT_EQ(2, zone.actions()[0].page.rows_per_page)
+        << "a three-slot band spends one slot on the pager row";
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    int highlighted = kBaseCampRowBodyBase;
+    spec.nav.rewire(buttons, count, highlighted);
+
+    // The band as the player finds it: the row before the cursor, the
+    // cursor's own row, and the pager row LAST, counting window 2 of 3.
+    EXPECT_EQ("ACT 2", buttons[kBaseCampZoneActionBase].label);
+    EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 1].label.starts_with(
+        "THE ROAD"))
+        << "the [CURRENT] row is ON the window the camp opens: '"
+        << buttons[kBaseCampZoneActionBase + 1].label << "'";
+    EXPECT_EQ("MORE - 2/3  >", buttons[kBaseCampZoneActionBase + 2].label)
+        << "the pager row is the window's last slot and counts it";
+    EXPECT_TRUE(buttons[kBaseCampZoneActionBase + 3].hidden)
+        << "a 3-unit band draws 3 slots";
+    for (int slot = 0; slot < 3; ++slot)
+    {
+        const button& row = buttons[kBaseCampZoneActionBase + slot];
+        EXPECT_FALSE(row.hidden) << "docket slot " << slot;
+        EXPECT_EQ(12, row.x) << "docket slot " << slot;
+        EXPECT_EQ(310, row.x + row.sizex) << "docket slot " << slot;
+    }
+    check_no_overlaps(buttons, count, "basecamp_docket_on_current");
+    check_bounds(buttons, count, "basecamp_docket_on_current");
+
+    // And the player's own browsing survives the rewire: the pager row
+    // wraps home through the production dispatch, window by window.
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 2, &state));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ACT 4", buttons[kBaseCampZoneActionBase].label);
+    EXPECT_EQ("MORE - 3/3  >", buttons[kBaseCampZoneActionBase + 2].label);
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampZoneActionBase + 2, &state));
+    spec.nav.rewire(buttons, count, highlighted);
+    EXPECT_EQ("ACT 0", buttons[kBaseCampZoneActionBase].label)
+        << "the pager row WRAPS home from the last window";
+    EXPECT_EQ("MORE - 1/3  >", buttons[kBaseCampZoneActionBase + 2].label);
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[static_cast<std::size_t>(i)] =
+            std::move(saved_team[static_cast<std::size_t>(i)]);
+    save.team_size = old_team_size;
+    save.scen_num = old_scen;
     (void)picker_createmenu_buttons();
 }
 
@@ -2184,8 +2870,14 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
     // The local lobby client reports host_controls_visible()==true; the
     // joiner variant hides GO directly and closes the links into it (the
     // production rewire does the same from the lobby host flag).
+    // The campaign axis is the strip twin's (§2.1): a versus campaign
+    // carries SETUP where every other carries DIFFICULTY.
+    const std::string old_campaign = save.current_campaign;
+    int roster_index = -1;
     for (const int roster_size : {0, 5, 12, 15, 24})
     {
+        ++roster_index;
+        save.current_campaign = (roster_index % 2 == 0) ? "gladiator" : "modes";
         for (int i = 0; i < MAX_TEAM_SIZE; ++i)
             save.team_list[static_cast<std::size_t>(i)].reset();
         for (int i = 0; i < roster_size; ++i)
@@ -2247,8 +2939,32 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
                     }
                 }
                 const std::string variant = std::format(
-                    "basecamp roster={} page={} {}", roster_size, page,
-                    host_visible ? "host" : "joiner");
+                    "basecamp roster={} page={} {} {}", roster_size, page,
+                    host_visible ? "host" : "joiner",
+                    og::ui::is_versus_campaign(save) ? "versus" : "classic");
+                // R2-3: DIFFICULTY is the strip's SECOND DOOR on every
+                // campaign kind — no twin to choose between any more —
+                // and the three links that pointed at it in round 1's
+                // versus half point at it here too. The campaign axis
+                // stays in the sweep so a rewire that started hiding the
+                // door again on versus saves would strand BACK's right
+                // link (the BFS below) instead of sailing through.
+                {
+                    EXPECT_FALSE(buttons[kCreateMenuDifficultyIndex].hidden)
+                        << variant << ": the strip's second door";
+                    EXPECT_EQ(kCreateMenuDifficultyIndex,
+                              buttons[kCreateMenuBackIndex].nav.right)
+                        << variant << ": BACK routes onto DIFFICULTY";
+                    EXPECT_EQ(kCreateMenuDifficultyIndex,
+                              buttons[kCreateMenuScenarioIndex].nav.left)
+                        << variant << ": SCENARIO routes back onto it";
+                    if (!buttons[kBaseCampSeatCardBase].hidden) {
+                        EXPECT_EQ(kCreateMenuDifficultyIndex,
+                                  buttons[kBaseCampSeatCardBase].nav.down)
+                            << variant
+                            << ": seat slot one drops onto DIFFICULTY";
+                    }
+                }
                 check_no_overlaps(buttons, count, variant.c_str());
                 check_bounds(buttons, count, variant.c_str());
                 check_nav_closed_and_reachable(buttons, count,
@@ -2301,6 +3017,7 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_keyboard_reachable)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         save.team_list[static_cast<std::size_t>(i)] = std::move(saved_team[static_cast<std::size_t>(i)]);
     save.team_size = old_team_size;
+    save.current_campaign = old_campaign;
     (void)picker_createmenu_buttons();
 }
 
@@ -2538,13 +3255,12 @@ TEST(MenuLayout, createmenu_basecamp_nav_matrix_networked_ownership)
 
 // SCENARIO subscreen static table: the x=30 column stacks the host-gated
 // SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
-// always-visible VIEW LEVEL | PROGRESS | LINEUP row and the y=140 knob row
-// SCORE alone at (30,140) (#218 — ctf_caps re-homed from MATCHUP;
-// docs/lineup-design.md A5 relabelled it SCORE, B5 retired the TROOPS
-// cycler beside it into the LINEUP band's MAP UNITS box — its ordinal 6 is
-// a parked spare like the TEAMS cell at 7, so every index kept its value);
-// BACK sits at (30,170) so no other screen's "back" shares its geometry.
-// Static nav encodes the host+versus (all-visible) variant.
+// always-visible VIEW LEVEL | PROGRESS | LINEUP row, and the y=140 knob
+// row is EMPTY — all three cyclers that ever sat there are retired and
+// parked (TROOPS at 6, B5; TEAMS at 7, A1/A3; SCORE at 8, #304, whose one
+// home is the SETUP wizard's RULES step), so every index kept its value
+// and the count is still 9. BACK sits at (30,170) so no other screen's
+// "back" shares its geometry. Static nav encodes the host variant.
 TEST(MenuLayout, scenariomenu_static_layout)
 {
     button* buttons = picker_scenariomenu_buttons();
@@ -2560,15 +3276,15 @@ TEST(MenuLayout, scenariomenu_static_layout)
         bool hidden = false;
     };
     static const ExpectedButton kExpected[] = {
-        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 8}},
+        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 3}},
         {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
         {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
-        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 8, .right = 5}},
-        {"lineup", "LINEUP", 210, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 5}},
-        {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 3, .right = 4}},
+        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 0, .right = 5}},
+        {"lineup", "LINEUP", 210, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 5}},
+        {"progress", "PROGRESS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 3, .right = 4}},
         {"scenario_troops_spare", "", 0, 0, 0, 0, MenuNav{}, true},
         {"scenario_spare", "", 0, 0, 0, 0, MenuNav{}, true},
-        {"ctf_caps", "SCORE: MAP", 30, 140, 80, 15, MenuNav{.up = 3, .down = 0}},
+        {"scenario_score_spare", "", 0, 0, 0, 0, MenuNav{}, true},
     };
 
     for (int i = 0; i < count; ++i)
@@ -2617,33 +3333,33 @@ TEST(MenuLayout, scenariomenu_static_layout)
 
     // Grid RELATIONS (the menus discipline: exact tables pin
     // self-consistency, relations pin alignment). Declared columns
-    // x=30/120/210; the x=30 column stacks five faces (BACK, SET CAMPAIGN,
-    // SET LEVEL, VIEW LEVEL, SCORE); the y=100 row shares one baseline;
-    // SCORE keeps the knob row's 40px pitch under it; all four grid faces
-    // are 80x15. Both parked spares have no geometry at all.
+    // x=30/120/210; the x=30 column stacks four faces (BACK, SET CAMPAIGN,
+    // SET LEVEL, VIEW LEVEL) since SCORE retired into the SETUP wizard
+    // (#304) and left the y=140 knob row empty; the y=100 row shares one
+    // baseline; all three grid faces are 80x15. All THREE parked spares
+    // have no geometry at all.
     for (const int left_col : {kScenarioMenuBackIndex,
                                kScenarioMenuSetCampaignIndex,
                                kScenarioMenuSetLevelIndex,
-                               kScenarioMenuViewScenarioIndex,
-                               kScenarioMenuCtfCapsIndex})
+                               kScenarioMenuViewScenarioIndex})
         EXPECT_EQ(30, buttons[left_col].x) << buttons[left_col].id;
     EXPECT_EQ(120, buttons[kScenarioMenuProgressIndex].x);
     EXPECT_EQ(buttons[kScenarioMenuViewScenarioIndex].y,
               buttons[kScenarioMenuProgressIndex].y);
-    EXPECT_EQ(buttons[kScenarioMenuCtfCapsIndex].y,
-              buttons[kScenarioMenuViewScenarioIndex].y +
-                  buttons[kScenarioMenuViewScenarioIndex].sizey + 25)
-        << "the knob row keeps its 40px pitch under the y=100 row";
+    // Nothing stands between the y=100 row and BACK any more.
+    EXPECT_LT(buttons[kScenarioMenuViewScenarioIndex].y +
+                  buttons[kScenarioMenuViewScenarioIndex].sizey,
+              buttons[kScenarioMenuBackIndex].y);
     for (const int face : {kScenarioMenuViewScenarioIndex,
                            kScenarioMenuLineupIndex,
-                           kScenarioMenuProgressIndex,
-                           kScenarioMenuCtfCapsIndex})
+                           kScenarioMenuProgressIndex})
     {
         EXPECT_EQ(80, buttons[face].sizex) << buttons[face].id;
         EXPECT_EQ(15, buttons[face].sizey) << buttons[face].id;
     }
-    for (const int spare :
-         {kScenarioMenuTroopsIndex, kScenarioMenuSpareIndex})
+    for (const int spare : {kScenarioMenuTroopsIndex,
+                            kScenarioMenuSpareIndex,
+                            kScenarioMenuCtfCapsIndex})
     {
         EXPECT_TRUE(buttons[spare].hidden) << buttons[spare].id;
         EXPECT_EQ(0, buttons[spare].sizex) << buttons[spare].id;
@@ -2664,7 +3380,7 @@ TEST(MenuLayout, scenariomenu_static_layout)
     {
         const int strip_top = buttons[strip_index].y + 3;
         for (const int row_index : {kScenarioMenuProgressIndex,
-                                    kScenarioMenuCtfCapsIndex})
+                                    kScenarioMenuLineupIndex})
         {
             const button& row = buttons[row_index];
             const bool vertically_clear = row.y + row.sizey <= strip_top ||
@@ -2722,51 +3438,44 @@ TEST(MenuLayout, view_scenario_staged_band_geometry)
               kViewScenarioFrameY + kViewScenarioFrameH);
 }
 
-// Two visibility axes since the MATCHUP re-home (#218): SET CAMPAIGN /
-// SET LEVEL hide on the host axis, SCORE on the versus-campaign axis
-// (visible to joiners as a read-only label). Every {host} x {versus}
-// combination must leave the visible graph closed and fully
-// keyboard-reachable. Both parked spares (TROOPS at 6 — B5 — and TEAMS at
-// 7) are hidden in all four and never linked; DOWN from the y=100 row
-// lands on SCORE when it shows, else BACK.
+// ONE visibility axis is left on this screen: SET CAMPAIGN / SET LEVEL
+// hide for a joiner. The versus axis went with the SCORE cycler (#304 —
+// its one home is the SETUP wizard's RULES step), so the graph no longer
+// changes shape with the campaign. Both host variants must leave the
+// visible graph closed and fully keyboard-reachable; all THREE parked
+// spares (TROOPS at 6, TEAMS at 7, SCORE at 8) are hidden in both and
+// never linked, and DOWN from the y=100 row always lands on BACK.
 TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
 {
     for (const bool host_visible : {true, false})
     {
-        for (const bool match_visible : {true, false})
-        {
-            button* buttons = picker_scenariomenu_buttons();
-            const int count = picker_scenariomenu_button_count();
-            buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
-            buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
-            buttons[kScenarioMenuCtfCapsIndex].hidden = !match_visible;
-            picker_wire_scenario_menu_nav(buttons, count, host_visible,
-                                          match_visible);
-            check_nav_closed_and_reachable(
-                buttons, count, kScenarioMenuBackIndex,
-                std::format("scenariomenu_{}_{}",
-                            host_visible ? "host" : "joiner",
-                            match_visible ? "versus" : "classic")
-                    .c_str());
-            EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
-                << "the LINEUP door is never gated (§2.3)";
-            EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden)
-                << "the retired TROOPS cell stays parked (B5)";
-            EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
-                << "the retired TEAMS cell stays parked";
-            const int expect_down = match_visible
-                ? kScenarioMenuCtfCapsIndex
-                : kScenarioMenuBackIndex;
-            EXPECT_EQ(expect_down, buttons[kScenarioMenuLineupIndex].nav.down)
-                << "LINEUP drops onto SCORE, else BACK";
-            EXPECT_EQ(expect_down,
-                      buttons[kScenarioMenuProgressIndex].nav.down);
-            const int expect_up = match_visible
-                ? kScenarioMenuCtfCapsIndex
-                : kScenarioMenuViewScenarioIndex;
-            EXPECT_EQ(expect_up, buttons[kScenarioMenuBackIndex].nav.up)
-                << "BACK climbs into SCORE, else VIEW LEVEL";
-        }
+        button* buttons = picker_scenariomenu_buttons();
+        const int count = picker_scenariomenu_button_count();
+        buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
+        buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
+        buttons[kScenarioMenuCtfCapsIndex].hidden = true;
+        picker_wire_scenario_menu_nav(buttons, count, host_visible);
+        check_nav_closed_and_reachable(
+            buttons, count, kScenarioMenuBackIndex,
+            std::format("scenariomenu_{}",
+                        host_visible ? "host" : "joiner")
+                .c_str());
+        EXPECT_FALSE(buttons[kScenarioMenuLineupIndex].hidden)
+            << "the LINEUP door is never gated (§2.3)";
+        EXPECT_TRUE(buttons[kScenarioMenuTroopsIndex].hidden)
+            << "the retired TROOPS cell stays parked (B5)";
+        EXPECT_TRUE(buttons[kScenarioMenuSpareIndex].hidden)
+            << "the retired TEAMS cell stays parked";
+        EXPECT_TRUE(buttons[kScenarioMenuCtfCapsIndex].hidden)
+            << "the retired SCORE cell stays parked (#304)";
+        EXPECT_EQ(kScenarioMenuBackIndex,
+                  buttons[kScenarioMenuLineupIndex].nav.down)
+            << "with the knob row empty, the y=100 row drops onto BACK";
+        EXPECT_EQ(kScenarioMenuBackIndex,
+                  buttons[kScenarioMenuProgressIndex].nav.down);
+        EXPECT_EQ(kScenarioMenuViewScenarioIndex,
+                  buttons[kScenarioMenuBackIndex].nav.up)
+            << "and BACK climbs into VIEW LEVEL";
     }
 }
 
@@ -3278,7 +3987,7 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
         {"permadeath", "Permadeath: On", 90, 104},
         {"generator_rate", "Generators: Normal", 90, 127},
         {"infinite_gold", "Infinite Gold: Off", 90, 150},
-        {"cross_control", "CTRL: OWN", 90, 173},
+        {"cross_control", "CROSS CONTROL: OWN", 90, 173},
     };
     button* buttons = picker_difficulty_menu_buttons();
     const int count = picker_difficulty_menu_button_count();

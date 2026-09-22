@@ -1,4 +1,4 @@
-/* Multiplayer Game Modes campaign generator — shared declarations.
+/* Multiplayer Arenas campaign generator — shared declarations.
  *
  * Builds builtin/modes.glad: the 40-scenario seven-mode campaign (Team
  * Deathmatch 300-305, CTF 500-509, Onslaught 800-803, Soccer 820-823,
@@ -14,6 +14,8 @@
  * (at your option) any later version.
  */
 #pragma once
+
+#include "briefing_lint.h"
 
 #include <openglad/core/order.h>
 
@@ -140,7 +142,8 @@ struct ExpectedLevel
     // exits sealed) is never waivable, and a listed anchor that stops
     // producing a pocket FAILS so the list cannot rot.
     std::vector<TilePos> spawn_pocket_ok;
-    std::vector<std::string> briefing;   // <=33 chars/line, Gamesmaster sign-off
+    std::vector<std::string> briefing;   // <=33 chars/line, upper case,
+                                         // no sign-off
 };
 
 // ---------------------------------------------------------------------------

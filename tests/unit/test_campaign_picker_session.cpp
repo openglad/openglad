@@ -136,7 +136,7 @@ TEST_F(CampaignPickerSessionTest, root_fetch_decorates_rows_from_the_save)
   picker_menu = function(page_id)
     return {
       title = "CHOOSE A GAME",
-      lines = { "The Gamesmaster opens the book." },
+      lines = { "The index opens." },
       entries = {
         { id = "300", label = "THE CIRCLE", kind = "level", level = 300, note = "4 teams" },
         { id = "301", label = "THE PIT", kind = "level", level = 301 },
@@ -510,6 +510,57 @@ TEST_F(CampaignPickerSessionTest, set_level_outcome_carries_id_writes_nothing)
 // Row text composition (shared by the surfaces)
 // ---------------------------------------------------------------------------
 
+// The paged-row window rule (docs/match-setup-design.md §12): ONE
+// arithmetic and ONE face for every chassis that pages scripted rows. The
+// pager is a ROW, so it costs the window a slot — and only when there is
+// something behind it to reach.
+TEST(CampaignPickerSessionRows, the_pager_row_costs_a_slot_only_when_it_pages)
+{
+    using og::ui::make_more_row;
+    using og::ui::make_row_window;
+    using og::ui::PageModel;
+    using og::ui::step_row_window;
+
+    // Everything fits: the band keeps all its slots and there is no row.
+    const PageModel whole = make_row_window(8, 9);
+    EXPECT_EQ(9, whole.rows_per_page);
+    EXPECT_FALSE(whole.multi_page());
+    EXPECT_EQ(8, whole.end_index());
+
+    // Exactly full is still one window (the shipped GAME step's shape).
+    EXPECT_FALSE(make_row_window(9, 9).multi_page());
+
+    // One row too many, and the LAST slot goes to the pager row: the
+    // shipped CTF arena page, eleven rows over eight slots.
+    PageModel paged = make_row_window(11, 8);
+    EXPECT_EQ(7, paged.rows_per_page);
+    EXPECT_TRUE(paged.multi_page());
+    EXPECT_EQ(2, paged.page_count());
+    EXPECT_EQ(7, paged.end_index()) << "window 1 draws seven arenas";
+
+    // The face is the shared row grammar's, note and door marker and all.
+    EXPECT_EQ("MORE ARENAS - 1/2  >",
+              og::ui::campaign_picker_row_text(
+                  make_more_row("MORE ARENAS", paged), 48));
+
+    // One direction, and it wraps home from the last window.
+    step_row_window(paged);
+    EXPECT_EQ(1, paged.page);
+    EXPECT_EQ("MORE - 2/2  >",
+              og::ui::campaign_picker_row_text(
+                  make_more_row(og::ui::kMoreRowLabel, paged), 48));
+    EXPECT_EQ(11, paged.end_index()) << "window 2 draws the remaining four";
+    step_row_window(paged);
+    EXPECT_EQ(0, paged.page) << "a row has no way back, so it wraps";
+
+    // A one-slot band cannot spend its only slot on the pager row and
+    // still show anything: the window clamps to one item and the row
+    // rides beside it rather than replacing the list.
+    const PageModel tiny = make_row_window(3, 1);
+    EXPECT_EQ(1, tiny.rows_per_page);
+    EXPECT_EQ(3, tiny.page_count());
+}
+
 TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
 {
     CampaignPickerSession::Row row;
@@ -541,14 +592,14 @@ TEST_F(CampaignPickerSessionTest, row_text_composes_markers_costs_and_clips)
     // stamp, because a clip that eats those turns a door into a dead label
     // and hides the state the row exists to state.
     CampaignPickerSession::Row wide;
-    wide.label = "FIELD: DUNGEON OF STARS";
+    wide.label = "ARENA: DUNGEON OF STARS";
     wide.note = "4 sides, 20 min";
     wide.kind = CampaignPickerSession::Kind::Page;
-    EXPECT_EQ("FIELD: DUNGEON OF STARS - 4 sides,..  >",
+    EXPECT_EQ("ARENA: DUNGEON OF STARS - 4 sides,..  >",
               og::ui::campaign_picker_row_text(wide, 39));
     wide.kind = CampaignPickerSession::Kind::Level;
     wide.current = true;
-    EXPECT_EQ("FIELD: DUNGEON OF..  [CURRENT]",
+    EXPECT_EQ("ARENA: DUNGEON OF..  [CURRENT]",
               og::ui::campaign_picker_row_text(wide, 30));
 
     // A retired purchase stops quoting its price and says so.
@@ -1418,6 +1469,98 @@ TEST_F(CampaignPickerSessionTest, terminal_camp_replay_rows_arm_when_cleared)
         (void)mount_campaign_package_with_error(previous_mount);
 }
 
+// D3 through the CAMP's own action arm — the twin, one surface up, of
+// terminal_driver_routes_acted_levels: a DOCKET action row that answers
+// with a level runs the same gated tail as a level row's click, and the
+// camp's own rows have to re-derive once it lands. zone.act() already
+// refetched, but it did so BEFORE the cursor moved, so only the tail's own
+// refetch can carry [CURRENT] onto the road the action picked; without it
+// the next camp screen keeps pointing at the road the player just left.
+// Reachable on any terminal client that binds no wizard door and any camp
+// whose docket carries a level-answering action.
+TEST_F(CampaignPickerSessionTest, terminal_camp_routes_an_acted_level_and_refetches)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("westlands"));
+    og::script::unregister_pack_scripts("westlands.fire");
+    og::script::unregister_pack_lib_modules("westlands.fire");
+    save_.current_campaign = "westlands";
+    save_.completed_levels.clear();
+    save_.scen_num = 1;
+    save_.add_level_completed("westlands", 1);
+    save_.add_level_completed("westlands", 5);
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "1", label = "THE FIRST ROAD", kind = "level", level = 1 },
+          { id = "5", label = "UNDER THE MOUNTAIN", kind = "level", level = 5 },
+          { id = "wheel", label = "SPIN THE WHEEL", kind = "action" },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+  picker_action = function(entry_id)
+    return { level = 5, message = "The wheel settles." }
+  end,
+}))LUA");
+
+    // The Acted arm autosaves the active company slot; isolate and reap.
+    ASSERT_TRUE(og::data::set_active_company_slot("campwheel"));
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {
+        "3",  // SPIN THE WHEEL -> Acted carrying level 5 -> the gated tail
+        "0",  // close the camp; prompt 1 is the docket the tail refetched
+    };
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    std::string scen5_title;
+    ASSERT_EQ(og::data::LevelFileIoError::None,
+              og::data::load_scenario_title_with_error("scen5", scen5_title));
+    const std::vector<std::string> expected_notices = {
+        "Level set to " + scen5_title + ".",
+    };
+    EXPECT_EQ(expected_notices, scripted.notices)
+        << "the engine's set toast is the whole answer: an action's own "
+           "message is dropped behind a landed set";
+    EXPECT_EQ(5, scripted.applied_level);
+    EXPECT_EQ(5, save_.scen_num);
+    EXPECT_TRUE(user_file_exists("save/campwheel.gtl"))
+        << "the routed camp action still runs the 3.8 autosave tail";
+
+    // The teeth: the docket the player reads NEXT. Before the click the
+    // cursor road wears [CURRENT]; after it, the road the action picked
+    // does — and that only happens because the tail refetched the zone
+    // once the cursor had moved.
+    ASSERT_EQ(2u, scripted.prompts.size());
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find("   1. THE FIRST ROAD  [CURRENT]\n"))
+        << scripted.page_text(0);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(0).find(
+                  "   2. UNDER THE MOUNTAIN  [CLEARED]\n"))
+        << scripted.page_text(0);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(1).find(
+                  "   2. UNDER THE MOUNTAIN  [CURRENT]\n"))
+        << "the tail's refetch must carry [CURRENT] onto the picked road:\n"
+        << scripted.page_text(1);
+    EXPECT_NE(std::string::npos,
+              scripted.page_text(1).find("   1. THE FIRST ROAD  [CLEARED]\n"))
+        << "and off the road the player left:\n"
+        << scripted.page_text(1);
+
+    (void)remove_user_file("save/campwheel.gtl");
+    (void)og::data::set_active_company_slot("save0");
+    (void)unmount_campaign_package_with_error("westlands");
+    if (!previous_mount.empty() && previous_mount != "westlands")
+        (void)mount_campaign_package_with_error(previous_mount);
+}
+
 // #207: the same routing through the BOOK page loop (the other terminal
 // tail), and the Row decoration carries the mark: replay_arms() = mark AND
 // cleared.
@@ -1499,6 +1642,85 @@ TEST_F(CampaignPickerSessionTest, replay_reentry_restore_shapes)
     // Unarmed: nothing to do.
     EXPECT_FALSE(og::ui::replay_reentry_restore(save_));
     EXPECT_EQ(6, save_.scen_num);
+}
+
+// The hoisted SET LEVEL gate (docs/match-setup-design.md §3.4): four arms,
+// one notice each, and io.apply_level on Applied alone. The three terminal
+// blocks that used to spell this inline — and the SETUP wizard's driver —
+// all run THIS, so a fourth surface cannot skip a check.
+TEST_F(CampaignPickerSessionTest, terminal_level_set_gate_prints_each_arm_once)
+{
+    const std::string previous_mount = get_mounted_campaign();
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    save_.current_campaign = "gladiator";
+    save_.scen_num = 1;
+
+    // DeniedHost: the host gate is first, so nothing else is even asked.
+    ScriptedTerminalIo joiner;
+    joiner.save = &save_;
+    joiner.host = false;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::DeniedHost,
+              og::ui::terminal_level_set_gate(joiner.io(), save_, 2, true, true,
+                                              false));
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kCampaignPickerHostGuardMessage)}),
+              joiner.notices);
+    EXPECT_EQ(-1, joiner.applied_level);
+
+    // Closed: the campaign's own voice, never the loader's.
+    ScriptedTerminalIo closed;
+    closed.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Closed,
+              og::ui::terminal_level_set_gate(closed.io(), save_, 2, true,
+                                              false, false));
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kCampaignLevelClosedMessage)}),
+              closed.notices);
+    EXPECT_EQ(-1, closed.applied_level);
+
+    // Unchanged: the cursor is already parked here.
+    ScriptedTerminalIo here;
+    here.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Unchanged,
+              og::ui::terminal_level_set_gate(here.io(), save_, 1, false, true,
+                                              false));
+    EXPECT_EQ((std::vector<std::string>{
+                  std::string(og::ui::kCampaignLevelUnchangedMessage)}),
+              here.notices);
+    EXPECT_EQ(-1, here.applied_level);
+
+    // Applied: the tail runs and the gate says nothing — the CALLER owns
+    // the confirmation, because the label differs per surface.
+    ScriptedTerminalIo applied;
+    applied.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Applied,
+              og::ui::terminal_level_set_gate(applied.io(), save_, 2, false,
+                                              false, false));
+    EXPECT_TRUE(applied.notices.empty());
+    EXPECT_EQ(2, applied.applied_level);
+    EXPECT_FALSE(applied.applied_replay_arm);
+
+    // A replay row is exempt from Unchanged (#207): arming is a real state
+    // change even on the current level.
+    save_.scen_num = 2;
+    save_.add_level_completed("gladiator", 2);
+    ScriptedTerminalIo replay;
+    replay.save = &save_;
+    EXPECT_EQ(og::ui::TerminalLevelSetGate::Applied,
+              og::ui::terminal_level_set_gate(replay.io(), save_, 2, false,
+                                              true, true));
+    EXPECT_TRUE(replay.notices.empty());
+    EXPECT_EQ(2, replay.applied_level);
+    EXPECT_TRUE(replay.applied_replay_arm);
+
+    if (previous_mount != "gladiator")
+    {
+        (void)unmount_campaign_package_with_error("gladiator");
+        if (!previous_mount.empty())
+            (void)mount_campaign_package_with_error(previous_mount);
+    }
 }
 
 // A versus campaign is exempt: an arena picker's whole point is free field

@@ -125,6 +125,77 @@ local function squad_room(cap, roster)
   return og.max(cap - roster, 0)
 end
 
+-- The SHAPE of one squad: how many bodies it fields, at what percent of
+-- the reference, and against what baseline the solve divides (issue
+-- #305). ONE helper, so the decision (mode_match.fills) and the apply
+-- (spawn_bots below) can never disagree about a count.
+--
+-- The baseline is the headcount rule (D34/D39): a generated squad never
+-- outnumbers the roster it was measured against, so the count is
+-- min(H, #families) -- soldier-first for the standard tables (D35) --
+-- inside the room a hard shape leaves. H = 0 (no census ran, or no human
+-- power anywhere) keeps the whole table, so the legacy arm and the
+-- direct spawn-probe arms stay byte-identical.
+--
+-- On the BALL games only (the mode's shape carries bodies = true; the
+-- modes campaign's lib/mode_shape.lua is the one table that says which
+-- games those are), and on the EMPTY-team arm only, each wheel step
+-- above FAIR buys one more BODY at roughly one human's power instead of
+-- 25 % more power on the same bodies:
+--
+--   H    WEAK       FAIR        STRONG          BRUTAL
+--   1    1 @ 75 %   1 @ 100 %   2 @ 100 % each  3 @ 100 % each
+--   2    2 @ 75 %   2 @ 100 %   3               4
+--   3    3 @ 75 %   3 @ 100 %   4               5
+--   4    4 @ 75 %   4 @ 100 %   5               5 @ 125 %
+--   >=5  5 @ 75 %   5 @ 100 %   5 @ 125 %       5 @ 150 %
+--   0    the legacy difficulty squad of five, unchanged
+--
+-- A step the shape cannot absorb as a body (the five-family table, or
+-- the room beside the occupants) falls back to today's power step, so
+-- the wheel is never a no-op and a full roster plays byte-identically.
+-- One wheel step per absorbed body, read off the table's own spacing
+-- (FILL_PERCENT[knob] - FILL_PERCENT[knob - 1]) -- never a second
+-- constant.
+--
+-- Allies (a squad beside a company) and troops (a squad beside standing
+-- map units) keep the baseline count (D14): #305 is about the opponent
+-- the reporter faces, and B3's "allies field the gap" is a ruling of its
+-- own. Their callers pass fielded_is_empty = false.
+--
+-- Returns count, pct, base. Every caller gates on squad_off first, so
+-- FILL_PERCENT[knob] is non-nil by contract (fill_percent above); room
+-- is nil where no hard shape bounds the squad.
+local function squad_shape(knob, headcount, room, table_size,
+                           fielded_is_empty, bodies_allowed)
+  local base = table_size
+  if headcount > 0 then
+    base = og.min(headcount, table_size)
+  end
+  if room ~= nil then
+    base = og.min(base, room)
+  end
+  local count = base
+  local steps = knob - FILL_FAIR
+  local buys_bodies = bodies_allowed and fielded_is_empty
+  if buys_bodies then
+    if steps > 0 then
+      if headcount > 0 then
+        count = og.min(headcount + steps, table_size)
+        if room ~= nil then
+          count = og.min(count, room)
+        end
+      end
+    end
+  end
+  local absorbed = count - base
+  local pct = FILL_PERCENT[knob]
+  if absorbed > 0 then
+    pct = pct - (FILL_PERCENT[knob] - FILL_PERCENT[knob - 1]) * absorbed
+  end
+  return count, pct, base
+end
+
 -- Difficulty tuples — a COPY of pack data (D13), guarded by the model-pin
 -- test in test_modes_tdm.cpp, which iterates EVERY row here. The table
 -- carries a row for every core family that declares an
@@ -538,42 +609,21 @@ local function place_at_anchor(w, team, cursor_slot, allow_teleport)
   return false
 end
 
--- The headcount rule (D34/D39): a generated squad never outnumbers the
--- roster it was measured against. A latched SIZE truncates the mode's
--- squad table to its first min(SIZE, #families) members — soldier-first
--- for the standard tables (D35); SIZE = 0 (no census, or no human power)
--- keeps the full table, so the legacy arm and the direct spawn-probe arms
--- stay byte-identical.
-local function matched_families(families)
-  local size = og.mode_get(MATCHED.SIZE)
-  if size <= 0 then
-    return families
-  end
-  if size >= #families then
+-- The families a team's squad actually fields (amendment B2): the first
+-- `count` entries of the mode's own stock table, the whole table when the
+-- count covers it. Pure -- squad_shape above owns every rule about what
+-- the count IS (the D34/D39 headcount prefix and the #305 bodies alike),
+-- so neither this prefix nor its callers can grow an arithmetic of their
+-- own. NONE never reaches here: spawn_bots returns first.
+local function squad_prefix(families, count)
+  if count >= #families then
     return families
   end
   local prefix = {}
-  for k = 1, size do
+  for k = 1, count do
     prefix[k] = families[k]
   end
   return prefix
-end
-
--- The families a team's squad actually fields (amendment B2): the mode's
--- own stock table through the headcount rule, then the caller's hard
--- shape. NONE never reaches here — spawn_bots returns first.
-local function squad_families(families, cap)
-  local squad = matched_families(families)
-  if cap ~= nil then
-    if #squad > cap then
-      local capped = {}
-      for k = 1, cap do
-        capped[k] = squad[k]
-      end
-      squad = capped
-    end
-  end
-  return squad
 end
 
 -- The FILL solve target (amendment B3), nil where no solve governs: an
@@ -582,12 +632,24 @@ end
 -- gap at or below zero is NO SQUAD (nil; the old B(1) clamp is retired
 -- for allies). An empty team targets the weakest human team's f-sum
 -- times the wheel. No human power anywhere = nil = the legacy formula.
-local function fill_target(reference, sums, team, pct)
+-- count/base is squad_shape's body ratio (#305): a squad standing in for
+-- a smaller baseline asks for proportionally more total power, so each
+-- body lands on the baseline's own per-fighter figure. It is 1 in every
+-- shape that came before this rule, and the formula then reduces to
+-- today's div(P * pct, 100) exactly (the floor is invariant under a
+-- common positive factor), so there is no fast-path twin.
+local function fill_target(reference, sums, team, pct, count, base)
   if reference <= 0 then
     return nil
   end
+  -- A full hard shape leaves no body to solve for, and no baseline to
+  -- divide by: the same "spawns nothing, banks nothing" an empty squad
+  -- produced before (review R4).
+  if base <= 0 then
+    return nil
+  end
   if sums[team + 1] <= 0 then
-    return og.div(reference * pct, 100)
+    return og.div(reference * pct * count, 100 * base)
   end
   local best = 0
   for t = 1, C.SCORE_TEAM_COUNT do
@@ -597,7 +659,8 @@ local function fill_target(reference, sums, team, pct)
       end
     end
   end
-  local target = og.div((best - sums[team + 1]) * pct, 100)
+  local target = og.div((best - sums[team + 1]) * pct * count,
+                        100 * base)
   if target <= 0 then
     return nil
   end
@@ -728,24 +791,37 @@ end
 -- placer is an optional placement override, placer(w, team,
 -- allow_teleport) (matched-teams D16): CTF passes its own anchor
 -- rotation, which falls back to the flag-home square before the teleport
--- draw; nil keeps the rotation over cursor_slot. cap is the
--- caller's hard shape (basketball's 5v5). announce is the modes' solved-
+-- draw; nil keeps the rotation over cursor_slot. shape is the caller's
+-- squad shape, nil or { cap = n|nil, bodies = bool }: cap is the hard
+-- shape (basketball's 5v5) and bodies arms the #305 body rule on the
+-- empty-team arm (squad_shape above). announce is the modes' solved-
 -- squad signal, handed through to spawn_matched_bots (nil = silent).
 -- The knob is read HERE, raw (E1: the stored code IS the fill — 0 is
 -- NONE and fields nothing, no resolution intervenes), so every caller
 -- obeys the wheel through one read.
-local function spawn_bots(team, families, cursor_slot, placer, cap, announce)
+local function spawn_bots(team, families, cursor_slot, placer, shape,
+                          announce)
   local knob = fill_knob(team)
   if squad_off(knob) then
     return
   end
   local obs = og.oblist()
-  local squad = squad_families(families,
-                               squad_room(cap, live_fielded_on(obs, team)))
+  local fielded = live_fielded_on(obs, team)
+  local cap = nil
+  if shape ~= nil then
+    cap = shape.cap
+  end
+  local bodies_allowed = shape ~= nil and shape.bodies == true
+  local count, pct, base = squad_shape(knob, og.mode_get(MATCHED.SIZE),
+                                       squad_room(cap, fielded),
+                                       #families, fielded == 0,
+                                       bodies_allowed)
+  local squad = squad_prefix(families, count)
   if plan_code(team) == 0 then
     local reference, sums = census_power(obs)
     if reference > 0 then
-      local target = fill_target(reference, sums, team, fill_percent(knob))
+      local target = fill_target(reference, sums, team, pct, count,
+                                 base)
       if target == nil then
         -- Allies with no gap to close (B3): no squad at all.
         return
@@ -870,6 +946,8 @@ return {
   fill_percent = fill_percent,
   map_units_fielded = map_units_fielded,
   squad_room = squad_room,
+  squad_shape = squad_shape,
+  squad_prefix = squad_prefix,
   fill_target = fill_target,
   stat_power = stat_power,
   measured_base = measured_base,

@@ -401,7 +401,10 @@ bool is_allied_mode(const SaveData& save);
 // authored team — is the LINEUP band's BOTS: OFF, so there is no cycler and
 // no label. ctf_team_count survives only as an inert save/wire field.
 
-// Cycle the capture limit: 0 (map default) -> 1 -> 3 -> 5 -> 10 -> 0.
+// Step the capture limit along {0, 1, 3, 5, 10} — 0 is the map's own
+// target. One step FORWARD, wrapping, like every other cycler in the
+// picker; a stored value the wheel has no slot for rejoins at the head
+// (see the SETUP wizard block below, which owns that rule for every knob).
 void cycle_ctf_capture_limit(SaveData& save);
 
 // True when the save's current campaign is the CTF campaign.
@@ -412,6 +415,19 @@ void cycle_ctf_capture_limit(SaveData& save);
 // settings gate, the lobby shared-teams rule) stay untouched until
 // the CTF engine retirement swaps them over.
 bool is_versus_campaign(const SaveData& save);
+// The same question of a campaign id: the SET CAMPAIGN card composes a line
+// for EVERY entry, not for the current save.
+bool is_versus_campaign(std::string_view campaign_id);
+
+// The ONE statement of "Multiplayer Arenas carries no progress vocabulary"
+// (PR #307 round 2, R2-4). False on a versus campaign: no CLEARED mark, no
+// "n cleared of m", no REPLAY affordance, no "must be cleared" prompt —
+// an arena is set, never earned. Readers: the SETUP wizard's [CLEARED]
+// seam, SET LEVEL's row status, the PROGRESS screen's derivation and
+// header, the SET CAMPAIGN card line and the terminal Replay Level gate.
+// [CURRENT] is not progress vocabulary and stays everywhere.
+bool progress_marks_shown(std::string_view campaign_id);
+bool progress_marks_shown(const SaveData& save);
 
 // Authored flag-team mask for a level known to match this save. Returns zero
 // when campaign/mount/scenario metadata is not yet synchronized; lobby
@@ -451,7 +467,11 @@ bool arena_lineup_deal_pending(const SaveData& save);
 // memo whenever the mask names a team (a mask of 0 — nothing authored, or
 // metadata not yet synchronized — neither deals nor stamps, so the next
 // synchronized reload gets its turn).
-bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask);
+// `code` is what an authored NONE band is lifted TO: arena_deal_fill_code
+// (below) is the one place that answers it, and every reader fetches it
+// there.
+bool deal_arena_lineup_fill(SaveData& save, std::uint8_t authored_mask,
+                            std::int16_t code = og::sim::kFillFair);
 
 // The deal over a level already loaded to match the save (the SDL picker
 // world, the demo's display world).
@@ -492,6 +512,18 @@ void cycle_generator_rate(SaveData& save);
 // Toggle infinite gold: infinite_gold 0 (classic economy) <-> 1 (free
 // purchases). SESSION-ONLY, so no company autosave follows a toggle.
 void toggle_infinite_gold(SaveData& save);
+
+// Toggle cross control: cross_control 0 (own seats) <-> 1 (all seats).
+// The pure save write behind change_cross_control()'s popup/sync tail, so
+// the SETUP wizard's RULES row and the DIFFICULTY panel's row step the same
+// field by the same rule. SESSION-ONLY (never in the GTL file), so no
+// company autosave follows — the infinite-gold precedent. Any stored junk
+// counts as ON and lands on 0, exactly as the SDL callback sanitizes it.
+// Wave-3 debt (#304): two inline spellings of this toggle are still out
+// there and must collapse onto this one — picker.cpp's
+// change_cross_control() (WP7's file) and curses_network.cpp's lobby
+// TOGGLE arm (WP8's file). Neither may grow a third rule in the meantime.
+void toggle_cross_control(SaveData& save);
 
 // True when hire/train purchases are free for this session.
 [[nodiscard]] bool gold_is_infinite(const SaveData& save) noexcept;
@@ -846,10 +878,11 @@ StartDenialNotice describe_start_denial(
     og::sim::StartDenialReason reason,
     const std::vector<og::sim::LobbyPlayer>& players);
 
-// §2.7 cross-control toggle label: "CTRL: OWN" (only the owner machine
-// controls its characters) / "CTRL: ALL" (players may control others'
-// characters in-level). Shared by the SDL DIFFICULTY row and the curses
-// lobby status line.
+// §2.7 cross-control toggle label: "CROSS CONTROL: OWN" (only the owner
+// machine controls its characters) / "CROSS CONTROL: ALL" (players may
+// control others' characters in-level). Shared by the SDL DIFFICULTY row,
+// the SETUP wizard's RULES row and the curses lobby status line, which
+// prints it bare: the noun belongs to the label, not to each caller.
 std::string format_cross_control_label(bool cross_control_enabled);
 
 // One §2.5 roster row's text columns, networked shape (U7: CLASS dropped,
@@ -1772,6 +1805,210 @@ std::vector<NetworkingMachineRow> build_networking_machine_rows(
     std::span<const og::sim::LobbyPlayer> players,
     std::span<const std::uint8_t> local_player_indices,
     int label_chars = 39);
+
+// --- SETUP wizard rules (docs/match-setup-design.md) --------------------
+//
+// ONE home for every rule the SETUP wizard renders: the SIDES/FILL macros
+// (moved verbatim out of campaigns/modes/.../campaign_picker.lua, plus the
+// authored-side clamp the Lua never had), the TIME LIMIT and SCORE wheels
+// with their faces and toasts, the staged census cell, the seat run, the
+// report's team line, the packed RULES faces, and the hoists three
+// renderers share. Nothing here draws, blocks, or reads a lobby: the local
+// seat's team and the arena's authored-side mask arrive as ARGUMENTS, so
+// the same call answers identically on SDL, in openglad_text and in curses.
+//
+// Every wheel below steps through one rule: a value ON the wheel steps
+// FORWARD and wraps; a value the wheel has no slot for — a derived face
+// (SIDES: 1, FILL: MIXED), a number settled from a lobby, an older save —
+// rejoins at the HEAD rather than pretending to know where it was. There
+// is no reverse: every cycler in the picker turns one way, and the
+// longest wheel here is five stops.
+// (cycle_lineup_fill keeps its own documented rule: junk enters at NONE,
+// the slot the clamp lands it on, not at the head.)
+
+// How many sides the loaded arena AUTHORS: popcount(authored_mask). A mask
+// of 0 — no arena loaded, or campaign/mount metadata not yet synchronized
+// — answers 4: the as-built four-team wheel the macros ran on before the
+// clamp existed, so an unsynchronized frame never narrows the host's
+// choices. The SIDES row is hidden by its renderer when this is <= 2 (one
+// legal value is not a wheel).
+int match_sides_count(std::uint8_t authored_mask);
+
+// The SIDES row's note: the wheel spelled out — "2, 3, 4" on a four-side
+// arena, "2, 3" on a three-side one, "2" on a two-side one (where the row
+// is hidden).
+std::string match_sides_note(std::uint8_t authored_mask);
+
+// "SIDES: n" — n = 1 (the local seat's own side) + the authored opponents
+// whose band is ON (fill != kFillNone). campaign_picker.lua's teams_face,
+// with the word SIDES: the row counts bot sides and cannot reseat anybody,
+// and "TEAMS: 2" on a step called TEAMS read as the number of teams.
+std::string match_sides_face(const SaveData& save, int my_team,
+                             std::uint8_t authored_mask);
+
+// "FILL: NONE/WEAK/FAIR/STRONG/BRUTAL" — the common code of the face bands
+// (the ON opponents plus the local seat's own band where it holds a word)
+// — or "FILL: MIXED" where LINEUP diverged them. campaign_picker.lua's
+// fill_face over face_bands (amendment 6, H2).
+std::string match_fill_face(const SaveData& save, int my_team,
+                            std::uint8_t authored_mask);
+
+// Turn SIDES (amendment 5 G2, as built, with the F6 clamp): field `next`
+// sides in all — the local seat's team plus next-1 AUTHORED opponents in
+// ascending order — each dealt the FILL row's effective value (the face's
+// own word, FAIR where the face reads NONE or MIXED), the remaining
+// authored opponents turned NONE. The wheel runs 2..N where N is
+// match_sides_count, so a two-side arena has exactly one legal value and
+// never deals a side the map authors no markers for. Writes save.fill[]
+// directly (the caller runs the sync + autosave tail) and says nothing:
+// the redrawn face is the answer (R2-1).
+void turn_match_sides(SaveData& save, int my_team,
+                      std::uint8_t authored_mask);
+
+// Turn FILL (amendment 5 G3 / amendment 6 H1-H3, corrected by R2-2's fix
+// B): one step along {WEAK, FAIR, STRONG, BRUTAL}, written to every ON
+// authored opponent — or to EVERY authored opponent when none is on (fix
+// B) — AND the local seat's own band. NONE and MIXED faces are off the
+// wheel and rejoin at WEAK, so the wizard's FILL can never empty an
+// arena; LINEUP keeps per-team NONE. Writes save.fill[] directly and says
+// nothing (R2-1).
+void turn_match_fill(SaveData& save, int my_team,
+                     std::uint8_t authored_mask);
+
+// The TIME LIMIT wheel over save.time_limit: {0, 3600, 7200, 10800, 14400}
+// sim ticks (720 per minute — 12/s, the manifest's own unit). 0 is the
+// MATCHUP sentinel: whatever the map itself authored.
+void cycle_time_limit(SaveData& save);
+// "TIME LIMIT: MAP" / "TIME LIMIT: 5 MIN" ... "TIME LIMIT: 20 MIN". The
+// minutes are spelled out because "5M" reads as five million on a 6px
+// font. An off-wheel value wears the minutes it holds (2160 -> "3 MIN").
+std::string format_time_limit_label(const SaveData& save);
+// The joiner caption every rules surface shows where the host's rows were
+// (the DIFFICULTY panel and the SETUP wizard: one sentence, one home).
+inline constexpr std::string_view kHostSetsForEveryoneCaption =
+    "The host sets these for everyone.";
+// The M4 refusal's title: the strip GO pops it, the wizard's GO wears it.
+inline constexpr std::string_view kDeployForEveryPlayerTitle =
+    "DEPLOY FOR EVERY PLAYER";
+// The MACRO wheel's note (WEAK..BRUTAL), worn by the wizard's TEAMS FILL
+// row. It names the WHEEL, not the face: an off-wheel face (NONE, MIXED)
+// rejoins the wheel at WEAK, so the note is the same bytes on every face.
+inline constexpr std::string_view kMatchFillNote = "weak to brutal";
+// The LINEUP band wheel's note (kLineupFillWheel, NONE..BRUTAL), worn by
+// the wizard's BandFill row on the campaigns whose match_knobs ask for the
+// band wheel instead of the macro. One note per wheel.
+inline constexpr std::string_view kLineupFillNote = "none to brutal";
+
+// The M4 GO predicate, hoisted out of the Base Camp strip GO handler so
+// the two GO surfaces cannot disagree: true (nothing to refuse) for a
+// networked session — every machine answers for its own seats — and for a
+// spectator save (numplayers == 0); otherwise the lobby's seats are sorted
+// by player_index and their teams checked against the deployed roster,
+// falling back to derive_local_gameplay_seat_teams when the lobby has not
+// produced one seat per player yet. The popup and the dimmed face stay the
+// caller's; only the question is shared.
+bool local_seats_deployed_for_go(const SaveData& save,
+                                 std::span<const og::sim::LobbyPlayer> players,
+                                 bool networked);
+
+// The lobby-synced knobs an applied settings change rewrites under an open
+// screen: the 12 scalars plus the eight per-team band knobs. scen_num is
+// deliberately EXCLUDED: level changes already refetch through the frame-
+// tick reload guard, and double-triggering would hide a broken guard from
+// the tests. Every surface that watches for "the settings moved" hashes
+// THIS, so the field list exists once.
+std::uint64_t match_settings_fingerprint(const SaveData& save);
+
+// The seat run both LINEUP and the wizard's TEAMS line draw, in three
+// tiers (docs/match-setup-design.md §2.4): (1) every "P# owner" label
+// joined by two spaces when they all fit; else (2) every bare "P#" token
+// joined by ONE space when those all fit ("P1 P2 P3 P4"); else (3) the
+// whole labels that fit plus " +k" for what did not — and the bare "+k"
+// when not even one label fits. A label is never cut mid-word: a clipped
+// owner name is a different owner. seat_count == 0 answers "" (each
+// caller spells its own NO SEAT).
+std::string format_lineup_seat_run(std::span<const std::string> labels,
+                                   int seat_count, int budget);
+
+// The TEAMS step's census cell, and LINEUP's census column (§3.8.4):
+// (1) a band diagnostic outranks everything, because it mirrors GO's
+// refusal ("NEEDS 2 FIGHTERS" / "NO SEAT: AI"); (2) with a STAGED report
+// that censused a mode, the picture the launch would adopt —
+// "2 FIGHTERS", "12 MAP UNITS", "3 BOTS", "1 GENERATOR", "EMPTY", plus
+// " +m BOT(S)" where a squad fields bots BESIDE the occupants; (3) with no
+// usable report (not staged yet, stage failed, mirror unavailable) the
+// band's own census, so the cell never goes blank. Worst case
+// "12 MAP UNITS +5 BOTS" = 20 glyphs; nothing here clips.
+std::string format_match_preview(const LineupTeamBand& band,
+                                 const ScenarioRosterReport* report, int team);
+
+// The three text cells behind a TEAMS-step team line's colour swatch.
+struct SetupTeamLineCells {
+    std::string label;   // "TEAM 3" — the rail's and the roster's vocabulary
+    std::string seats;   // format_lineup_seat_run; "" when the team has none
+    std::string census;  // format_match_preview
+    bool diag = false;   // the census cell is a diagnostic (the pointer line)
+};
+// Compose one team line. `seat_chars` is the seat column's budget (18 on
+// the wizard, 26 on LINEUP); `census_chars` is the column the caller
+// reserves for the census, which is never clipped here — a clipped census
+// is a different number, and the tests assert the fit instead.
+SetupTeamLineCells compose_setup_team_line(const LineupTeamBand& band,
+                                           const ScenarioRosterReport* report,
+                                           int team, int seat_chars,
+                                           int census_chars);
+
+// ONE active team's line of the scenario report, hoisted out of
+// format_scenario_report_lines' per-team loop so the MATCH step knows
+// which team each line belongs to and can ink its swatch. "" for a team
+// the report does not list. The formatter's own loop calls this.
+std::string format_scenario_report_team_line(const ScenarioRosterReport& report,
+                                             int team);
+
+// The RULES rows, in row order. Every renderer gets the SAME string: the
+// shared formatters are upper-cased HERE, at the one composer, instead of
+// three surfaces each upper-casing (or forgetting to).
+struct MatchRulesInputs {
+    const SaveData* save = nullptr;
+    bool show_score = true;   // the campaign's match_knobs
+    bool show_time = true;
+    int difficulty = 0;       // the session's value, not a save field
+    bool networked = false;   // CROSS CONTROL is a networked-only row
+};
+struct MatchRuleFace {
+    std::string_view id;   // the wizard's ROW ID (kRulesRow* below)
+    std::string face;
+};
+// The row ids, shared with the wizard so no surface re-derives which knob
+// a face belongs to.
+inline constexpr std::string_view kRulesRowScore = "score";
+inline constexpr std::string_view kRulesRowTime = "time";
+inline constexpr std::string_view kRulesRowRespawns = "respawns";
+inline constexpr std::string_view kRulesRowSpawnDelay = "spawn_delay";
+inline constexpr std::string_view kRulesRowPermadeath = "permadeath";
+inline constexpr std::string_view kRulesRowGenerators = "generators";
+inline constexpr std::string_view kRulesRowDifficulty = "difficulty";
+inline constexpr std::string_view kRulesRowInfiniteGold = "infinite_gold";
+inline constexpr std::string_view kRulesRowCrossControl = "cross_control";
+std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs);
+
+// The same faces packed two per line, greedy in order, joined by two
+// spaces — the joiner's read-only RULES recap and the MATCH step's rules
+// lines, so no abbreviated recap spelling can ever exist. A pair that
+// would exceed `budget` splits across two lines.
+std::vector<std::string> format_match_rules_lines(
+    const MatchRulesInputs& inputs, std::size_t budget = 48);
+// The same packer over a face list the caller has already filtered — the
+// wizard's joiner RULES prints only the rows that step owns, and the MATCH
+// recap prints them all, out of ONE packing loop.
+std::vector<std::string> format_match_rules_lines(
+    const std::vector<MatchRuleFace>& faces, std::size_t budget = 48);
+
+// What a fresh arena deals its authored bands. One override point for the
+// FAIR literal, read by the two deal readers when (and only when) a deal
+// is pending, so the campaign's answer costs one call per cursor change
+// and never one per frame.
+std::int16_t arena_deal_fill_code(const SaveData& save);
 
 // --- Template implementations ---
 

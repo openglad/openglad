@@ -991,15 +991,33 @@ og::ui::cloud::CloudHooks curses_cloud_hooks(Menu& menu, bool& notified)
     return hooks;
 }
 
-// #206 CAMP, curses projection: the shared terminal driver over this
-// client's save. The camp renders as prompt context lines (the Company List
-// "dynamic rows + prompt" shape — never Menu::choose, whose digit jump
-// stops at row 9) and notices ride show_text; every camp line, docket
-// ordinal and roster row is composed by the driver, byte-identical with the
-// text client.
-void campaign_camp_flow(Menu& menu, SaveData& save,
-                        TextPickerConfig& config,
-                        const CursesPickerOptions& options)
+// The curses "Set level" tail: session config + save cursor. The replay arm
+// (#207) re-checks cleared at the write choke — the row decoration is
+// fetch-time state. A plain write abandons any excursion in flight (a stale
+// arm must never skip a purge). ONE tail: the camp flow and the SETUP
+// wizard's ARENA step both bind it, so a level set from either door writes
+// exactly the same three fields.
+void apply_level_tail(TextPickerConfig& config, SaveData& save, int level,
+                      bool replay_arm)
+{
+    config.level = level;
+    if (replay_arm && save.is_level_completed(level))
+        save.arm_replay(static_cast<short>(level));
+    else
+    {
+        save.clear_replay_arm();
+        save.scen_num = static_cast<short>(level);
+    }
+}
+
+// The four callbacks every terminal driver on this client shares. Written
+// once so the camp and the wizard cannot answer differently; `title` is the
+// banner a notice rides under, which is the only word the two flows differ
+// in.
+og::ui::TerminalCampaignPickerIo make_camp_io(Menu& menu, SaveData& save,
+                                              TextPickerConfig& config,
+                                              const CursesPickerOptions& options,
+                                              std::string_view notice_title)
 {
     og::ui::TerminalCampaignPickerIo io;
     io.prompt = [&menu](const std::string& title,
@@ -1013,8 +1031,9 @@ void campaign_camp_flow(Menu& menu, SaveData& save,
             return std::nullopt;
         return entered;
     };
-    io.notice = [&menu](const std::string& line) {
-        menu.show_text("Camp", {line});
+    io.notice = [&menu, title = std::string(notice_title)](
+                    const std::string& line) {
+        menu.show_text(title, {line});
     };
     // The SET LEVEL host predicate: this picker screen is only reachable
     // locally (the curses network lobby is a separate flow), so the shared
@@ -1023,19 +1042,33 @@ void campaign_camp_flow(Menu& menu, SaveData& save,
         return label_context(config, options, save).is_host;
     };
     io.apply_level = [&config, &save](int level, bool replay_arm) {
-        // The curses "Set level" tail: session config + save cursor. The
-        // replay arm (#207) re-checks cleared at the write choke — the row
-        // decoration is fetch-time state. A plain write abandons any
-        // excursion in flight (a stale arm must never skip a purge).
-        config.level = level;
-        if (replay_arm && save.is_level_completed(level))
-            save.arm_replay(static_cast<short>(level));
-        else
-        {
-            save.clear_replay_arm();
-            save.scen_num = static_cast<short>(level);
-        }
+        apply_level_tail(config, save, level, replay_arm);
     };
+    return io;
+}
+
+// The SETUP wizard's curses face, defined below: the camp's docket row is
+// its ONE door (R2-D11), and the camp flow is written first.
+void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
+                const CursesPickerOptions& options);
+
+// #206 CAMP, curses projection: the shared terminal driver over this
+// client's save. The camp renders as prompt context lines (the Company List
+// "dynamic rows + prompt" shape — never Menu::choose, whose digit jump
+// stops at row 9) and notices ride show_text; every camp line, docket
+// ordinal and roster row is composed by the driver, byte-identical with the
+// text client.
+void campaign_camp_flow(Menu& menu, SaveData& save,
+                        TextPickerConfig& config,
+                        const CursesPickerOptions& options)
+{
+    // R2-D11: the camp's SETUP row is the terminals' ONE wizard door.
+    // Bound HERE and never inside make_camp_io(): the wizard's own io.base
+    // is make_camp_io() too, and a door wired there would let the wizard
+    // re-enter itself from its own ARENA page.
+    og::ui::TerminalCampaignPickerIo io =
+        make_camp_io(menu, save, config, options, "Camp");
+    io.open_match_setup = [&] { setup_flow(menu, save, config, options); };
     og::ui::run_terminal_campaign_camp(save, io);
 }
 
@@ -1075,10 +1108,18 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         .host_company_save = &save,
     });
     std::array<int, 4> map_unit_counts{};
+    og::ui::ScenarioRosterReport report;
 
     for (;;) {
-        const bool censused = og::ui::census_staged_lineup_map_units(
-            stage, save, options.difficulty, config.seed, map_unit_counts);
+        // §3.8.4: ONE census answers both questions — the MAP UNITS counts
+        // the hint reads and the staged report the census column reads.
+        // Staged is the only arm whose numbers describe THIS level, so the
+        // report reaches the model only then.
+        const bool censused =
+            og::ui::census_staged_match_report(
+                stage, save, options.difficulty, config.seed, map_unit_counts,
+                report) ==
+            og::ui::IPickerLobbyClient::StagedPreviewHealth::Staged;
         const std::vector<og::sim::LobbyPlayer> seats =
             og::ui::synthesize_local_lobby_players(save);
 
@@ -1091,6 +1132,9 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         // about the map's units rather than inventing a fact.
         if (censused) {
             inputs.map_unit_counts = map_unit_counts;
+            // §3.8.4: the census column is the shared preview formatter over
+            // this same staged world.
+            inputs.report = &report;
         }
         // The curses picker screen is local-only (its network lobby is a
         // separate flow), so the bands census THIS save and the host gate
@@ -1168,6 +1212,60 @@ void lineup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
             return;
         }
     }
+}
+
+// The value-taking difficulty tail. Its one caller is the DIFFICULTY
+// submenu's row, which hands it cycle_difficulty(current); R2-3 took
+// DIFFICULTY off the wizard's RULES step, so the second caller is gone.
+void apply_options_difficulty(Menu& menu, CursesPickerOptions& options,
+                              SaveData& save, int value)
+{
+    options.difficulty = value;
+    const int difficulty_index =
+        ((options.difficulty % DIFFICULTY_SETTINGS) + DIFFICULTY_SETTINGS) %
+        DIFFICULTY_SETTINGS;
+    menu.show_text("Difficulty",
+        {std::format("Difficulty set to {}.",
+            og::ui::kDifficultyNames[difficulty_index])});
+    autosave_company_after_mutation(save); // §3.8 settings tail
+}
+
+// #304: the SETUP wizard's curses face, reached from the camp's SETUP row.
+// Every line, row, guard and dispatch arm belongs to the shared driver
+// (og::ui::run_terminal_match_setup) — this function only says which tails
+// are the curses client's. The options are CONST: R2-3 moved DIFFICULTY off
+// the RULES step, so no wizard row writes the session any more.
+void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
+                const CursesPickerOptions& options)
+{
+    // W7-G: ONE stage for the whole wizard, on the same three inputs
+    // lineup_flow() and view_scenario_locally_staged() stage with, so the
+    // TEAMS lines, the MATCH report and VIEW LEVEL can never split.
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save,
+    });
+
+    og::ui::TerminalMatchSetupIo io;
+    io.base = make_camp_io(menu, save, config, options, "Setup");
+    io.level_hooks = []() -> const LevelDataHooks& {
+        return headless_level_data_hooks();
+    };
+    io.autosave = [&save] { autosave_company_after_mutation(save); };
+    io.difficulty = [&options] { return options.difficulty; };
+    // The TEAMS seat cell names the seat's CONTROLLER, the way LINEUP's
+    // band header does. Every seat this client synthesizes is local, so the
+    // seat index IS the local slot.
+    io.seat_short_name = [](std::uint8_t player_index) {
+        return og::ui::terminal_seat_short_name(player_index);
+    };
+    io.census = [&](std::array<int, 4>& counts,
+                    og::ui::ScenarioRosterReport& report) {
+        return og::ui::census_staged_match_report(
+            stage, save, options.difficulty, config.seed, counts, report);
+    };
+    og::ui::run_terminal_match_setup(save, io);
 }
 
 } // namespace
@@ -1355,16 +1453,10 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     if (menu_id == PickerMenuId::Difficulty) {
         switch (item.command) {
         case PickerMenuCommand::SetDifficulty:
-        {
-            options_.difficulty = og::ui::cycle_difficulty(options_.difficulty);
-            const int difficulty_index =
-                ((options_.difficulty % DIFFICULTY_SETTINGS) + DIFFICULTY_SETTINGS) % DIFFICULTY_SETTINGS;
-            menu.show_text("Difficulty",
-                {std::format("Difficulty set to {}.",
-                    og::ui::kDifficultyNames[difficulty_index])});
-            autosave_company_after_mutation(save_data_); // §3.8 settings tail
+            apply_options_difficulty(
+                menu, options_, save_data_,
+                og::ui::cycle_difficulty(options_.difficulty));
             break;
-        }
         case PickerMenuCommand::CycleRespawnMode:
             og::ui::cycle_respawn_mode(save_data_);
             menu.show_text("Respawns",

@@ -8,6 +8,7 @@ local anchors = og.use("mode_anchors")
 local caps = og.use("mode_caps")
 local items = og.use("mode_items")
 local match = og.use("mode_match")
+local shape = og.use("mode_shape")
 local strip = og.use("mode_strip")
 local surface = og.use("mode_ball_surface")
 
@@ -228,7 +229,9 @@ local T = {
   point_score = 100, -- og.award_score delta per point (200/2pt, 300/3pt)
   time_limit_ticks = 7200,
   respawn_ticks = 60,
-  squad_cap = 5, -- the court's hard shape: five on five (lineup §3.2)
+  -- The court's hard shape, five on five, and the #305 body rule — one
+  -- table (lineup §3.2), read by the picker's match_knobs too.
+  squad_shape = shape.of("basketball"),
 
   -- Respawning pickups (lib/mode_items): fallback interval when the
   -- manifest row carries none. mode_items refills ONE pad per interval
@@ -526,7 +529,7 @@ local function center_reset(ball)
   og.mode_set(S.BALL_PY, jy * 256)
   ball:setxy(jx - og.div(ball:sizex(), 2), jy - og.div(ball:sizey(), 2))
   og.mode_set(S.JUMP_UNTIL, og.world_tick() + T.jump_freeze)
-  match.revive_wiped_teams(anchors, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS), S.ANCHOR_CURSOR, T.squad_cap)
+  match.revive_wiped_teams(anchors, og.mode_get(S.TEAM_MASK), og.mode_get(S.RESPAWN_TICKS), S.ANCHOR_CURSOR, T.squad_shape)
 end
 
 -- Park the ball as a FREE dead ball at a pixel center: the landing-
@@ -2341,9 +2344,9 @@ local function decide(level, inputs, row)
     matched = matched,
     matched_size = matched_size,
     -- The court's hard shape (review R2): five on five, so a squad
-    -- fills only the room the roster leaves. The same cap rides every
+    -- fills only the room the roster leaves. The same shape rides every
     -- spawn call below, so the preview's count IS the spawned count.
-    squad_cap = T.squad_cap,
+    squad_shape = T.squad_shape,
   })
   -- The NONE knob can empty a backfilled team outright (lineup §3.2):
   -- the fills' narrowed mask is the decision's, and starts recounts it.
@@ -2433,10 +2436,10 @@ local function on_mode_init(level, row)
   strip.strip_authored_troops()
   -- FILL squads where the decision said so (the empty active teams,
   -- plus any company row with an allies gap — amendment B2/B3), capped
-  -- at the court's five (the decide fold's squad_cap twinned).
+  -- at the court's five (the decide fold's squad_shape twinned).
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     if match.wants_squad(decision.teams[team + 1]) then
-      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR, T.squad_cap)
+      anchors.spawn_bot_squad(team, S.ANCHOR_CURSOR, T.squad_shape)
     end
   end
   -- og.add_ob for the ball, not og.add_fx_ob: the fx list never acts,

@@ -235,6 +235,40 @@ std::string campaign_picker_row_text(const CampaignPickerSession::Row& row,
 // same click.
 std::string campaign_oath_toast(const std::string& label, bool stood_down);
 
+// --- The paged-row window rule (docs/match-setup-design.md §2.0) ----------
+//
+// A band of row slots that cannot hold every row spends its LAST slot on a
+// pager ROW — "MORE - 2/3  >" — and never on a column of side arrows. One
+// arithmetic and one face for every chassis that pages scripted rows: the
+// Base Camp docket, the SETUP wizard, and the terminals' projection of
+// both. The row is a Kind::Page row, so it wears the door grammar every
+// other "there is more behind this" row wears, and the note is the window
+// the player is standing on.
+inline constexpr std::string_view kMoreRowId = "__more";
+inline constexpr std::string_view kMoreRowLabel = "MORE";
+
+// The window over `count` rows in a band of `fit` slots: all of them when
+// they fit, otherwise one slot per window given up to the pager row.
+[[nodiscard]] PageModel make_row_window(int count, int fit);
+// The pager row for the window `page` is on.
+[[nodiscard]] CampaignPickerSession::Row make_more_row(
+    std::string_view label, const PageModel& page);
+// What the pager row's click does: the next window, wrapping home from the
+// last one. A row has one direction, so there is no step back to write.
+void step_row_window(PageModel& page);
+// The index of the row marked [CURRENT] in `rows`, or -1 when none is.
+[[nodiscard]] int current_row_index(
+    const std::vector<CampaignPickerSession::Row>& rows);
+// The window a band OPENS on: the one holding the row at `current_index`
+// (the [CURRENT] row), or window 0 when there is none (`current_index` < 0).
+// A paged band that opened at home hid the row the player is standing on
+// behind the pager — the one row a camp exists to point at — so entry
+// resolves the window instead of assuming it. Browsing is the player's:
+// the pager row moves the window and a refetch keeps it, and only a NEW
+// [CURRENT] row re-opens the band (CampaignZoneSession::refetch,
+// MatchSetupSession::compose).
+void open_row_window(PageModel& page, int current_index);
+
 // --- Base Camp gameplay-zone session (docs/basecamp-zones-design.md) -------
 //
 // The SDL-free sibling of CampaignPickerSession behind the Base Camp's
@@ -313,6 +347,16 @@ public:
         PageModel page{};
         int start_unit = 0;
         int units = 0;
+        // A docket whose rows outrun its band spends the window's LAST
+        // slot on the pager ROW (make_more_row): "MORE - 2/3  >". False
+        // when everything fits, and then `more` is not drawn.
+        bool more_row = false;
+        Row more;
+        // The id of the [CURRENT] row the window was opened on ("" when
+        // the docket marks none). A refetch keeps the window the player
+        // browsed to and re-opens on the current row only when this
+        // changes — a level set through the docket or the wizard.
+        std::string current_id;
     };
     // One zone row of up to 3 label/value cells (fetch-composed strings;
     // staleness bound = the fetch cadence). `in_header_band` hoists it out
@@ -368,9 +412,13 @@ public:
     {
         return actions_;
     }
-    // Mutable window access for the widget's pager dispatch (null when out
-    // of range — stale clicks stay inert).
+    // Mutable window access for the widget's dispatch (null when out of
+    // range — stale clicks stay inert).
     ActionsLayout* actions_widget(int index);
+    // The docket pager ROW's click: widget `index` steps to its next
+    // window, wrapping, and its pager row re-composes with the new count.
+    // False when the widget does not page (a stale click on a parked row).
+    bool step_actions_window(int index);
     // Null when the composition carries no readout.
     [[nodiscard]] const ReadoutLayout* readout() const
     {
@@ -529,7 +577,69 @@ struct TerminalCampaignPickerIo {
     // instead of the plain cursor write; arm_replay moves scen_num itself
     // so everything downstream of the tail behaves identically.
     std::function<void(int, bool replay_arm)> apply_level;
+    // Optional: opens the SETUP wizard for a versus campaign's docket page
+    // row (the terminals' one wizard door). Unset = the page loop (a
+    // fixture, or a classic camp).
+    std::function<void()> open_match_setup;
 };
+
+// The SET LEVEL gate every terminal surface runs before it moves the
+// cursor, hoisted out of the three inline copies (the camp's level row, the
+// book loop's SetLevel arm, and D3's acted-level route) so a fourth surface
+// — the SETUP wizard — cannot skip a check or word one differently.
+//
+// The arms, in order, are the three refusals those blocks spoke verbatim:
+//
+//   DeniedHost  the SET LEVEL host gate: level rows publish scenario_id and
+//               are host-only; pages and actions are open to every machine.
+//               The session stays policy-free, so the gate asks here.
+//   Closed      the campaign's own voice, never the loader's. The terminal
+//               tail only moves the cursor, so a road that is not in the
+//               campaign has to be refused HERE — the SDL surface's
+//               load-with-rollback would have caught it at the click, and a
+//               row that already reads [CLOSED] must never answer "Level
+//               set to".
+//   Unchanged   the row the cursor is already parked on. The SDL surfaces
+//               refuse this click rather than reload the level under the
+//               player; a terminal that answered "Level set to ..." instead
+//               would be telling one player two stories about one click. A
+//               replay row is exempt (#207): arming is a real state change
+//               even on the current level — the one-level dream log's only
+//               replay row IS the current row.
+//   Applied     io.apply_level(level, replay) has run.
+//
+// The CALLER prints its own confirmation on Applied (the label differs per
+// surface) and refetches its own session.
+enum class TerminalLevelSetGate : std::uint8_t {
+    DeniedHost,
+    Closed,
+    Unchanged,
+    Applied,
+};
+TerminalLevelSetGate terminal_level_set_gate(const TerminalCampaignPickerIo& io,
+                                             const SaveData& save, int level,
+                                             bool closed, bool current,
+                                             bool replay);
+
+// D3: an Acted outcome that carries a level (the action answered
+// `{ level = id }`) runs the SAME gated tail as a level-row click — host
+// gate first, then the closed-road check (missing file or the earned-roads
+// gate), then the already-here answer — so a scripted roll can never move
+// the cursor anywhere a click on a level row could not. On success the
+// ENGINE speaks ("Level set to <arena>." — the confirmation names something
+// playable) and the action's own message is dropped; a refused set speaks
+// the refusal first and then the Lua message, which keeps its slot only to
+// explain a roll that changed nothing. A terminal prints the two as two
+// notices because it has the room; the SDL toast is one slot, so its tails
+// compose them into a single line and drop a message that will not fit
+// (menu_screen_specs.cpp refusal_with_lua_message).
+//
+// The SETUP wizard's terminal driver calls it for the same reason the camp
+// does (R2-5): a RANDOM row is an action that answers with a level.
+void terminal_route_acted_level(SaveData& save,
+                                const TerminalCampaignPickerIo& io, int level,
+                                const std::string& toast,
+                                const std::function<void()>& refetch);
 
 // Drive the whole BOOK flow over `save` rooted at `page_id` — a camp page
 // row's door, and the only way into a book on a terminal ("" is the book's

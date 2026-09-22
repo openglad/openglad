@@ -196,6 +196,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_switch_guard_tripwire.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_campaign_zone_ui.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_match_setup_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_lineup_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_mode_ui.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_tower_run.cpp
@@ -676,6 +677,7 @@ og_add_test_group(og_test_matchup FILES
     test_ctf_ui.cpp
     test_mode_ui.cpp
     test_campaign_zone_ui.cpp
+    test_match_setup_ui.cpp
 )
 
 # The LINEUP flows live in their own binary. They are injector-driven
@@ -938,6 +940,7 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_ledger.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_book.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_match_setup_session.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_dream_log.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_builtin_archives.cpp

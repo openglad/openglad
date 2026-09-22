@@ -18,15 +18,21 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #     name entry); blank keeps the campaign. Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
 #   Base camp / Team Build (12 items, §2.5 substitution + the #206 Camp door
-#     inserted before Back; the flat CTF trio left for the camp's MATCH SETUP
-#     page and 11=Difficulty was appended in its place —
+#     inserted before Back; the flat CTF trio left for the SETUP wizard's
+#     RULES step and 11=Difficulty was appended in its place —
 #     docs/camp-controls-design.md — with 12=Lineup appended below it,
-#     docs/lineup-design.md §8, so no ordinal above moved): 3=Hire Troops
-#     (n/h/b — the hire AUTOSAVES the company, §3.8), 1=Roster (deploy 2
-#     toggles + blank exits), 4=Deploy (prompt re-deploys row 2), 7=Camp
-#     (gladiator composes no camp, so the guard line prints and Team Build
-#     re-presents without consuming further input), 10=Scenario,
-#     11=Difficulty, 12=Lineup, 6=GO!, 8=Back.
+#     docs/lineup-design.md §8): 3=Hire Troops (n/h/b — the hire AUTOSAVES
+#     the company, §3.8), 1=Roster (deploy 2 toggles + blank exits),
+#     4=Deploy (prompt re-deploys row 2), 7=Camp (gladiator composes no
+#     camp, so the guard line prints and Team Build re-presents without
+#     consuming further input), 10=Scenario, 11=Difficulty, 12=Lineup,
+#     6=GO!, 8=Back.
+#     There is no Setup item (R2-D11): the SETUP wizard's terminal door is
+#     the CAMP's row 1, and this script runs on GLADIATOR, whose camp
+#     composes nothing at all — so the versus door cannot be exercised
+#     here. It is pinned in C++ instead, by
+#     tests/unit/test_platform_headless.cpp's one-door walk and
+#     tests/curses/test_curses_picker_client.cpp's camp-row flows.
 #   Lineup page (host rows: 1..8 the four teams' FILL/MAP UNITS knobs,
 #     9=Split even, 10=Split fair, 11=Unite, 12=Back — amendment B6 deleted
 #     the FIGHTERS row, so the strip moved up one): 1 steps TEAM 1's FILL
@@ -230,6 +236,13 @@ if not any('FILL: WEAK' in l for l in lines):
 if any('--- Fighters ---' in l for l in lines):
     print('FAIL: the retired FIGHTERS page leaked into the Lineup strip',
           file=sys.stderr)
+    sys.exit(1)
+
+# R2-D11: Team Build has no Setup item on any campaign, so nothing this
+# whole drive types can compose a wizard step. The versus door -- the
+# camp's own SETUP row -- is pinned in C++ (see the header note).
+if any('--- SETUP: ' in l for l in lines):
+    print('FAIL: Team Build has no wizard door left to open', file=sys.stderr)
     sys.exit(1)
 
 # View Scenario: the shared roster report from a scratch headless load.

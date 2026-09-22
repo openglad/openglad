@@ -1,5 +1,5 @@
 format_version:  1
-title:           Multiplayer Game Modes
+title:           Multiplayer Arenas
 version:         1
 first_level:     300
 suggested_power: 60
@@ -8,13 +8,13 @@ authors:         OpenGlad
 contributors:    Forgotten Sages (arena grids)
 
 description:     |
-    One arena, seven games, one
-    book. The Gamesmaster calls
-    team deathmatch, capture the
-    flag, onslaught, mutant,
-    soccer, basketball, and free
-    for all across forty fields
-    old and new. The bots know
-    the rules. Respawns honor your
-    difficulty. First to the
-    target score takes the purse.
+    Seven games, forty arenas:
+    team deathmatch, capture
+    the flag, onslaught,
+    mutant, soccer, basketball
+    and free for all. Pick a
+    game and an arena, set the
+    teams and the rules, then
+    GO. Bots fill the empty
+    sides. Find SETUP on the
+    Base Camp.
