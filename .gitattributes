@@ -23,3 +23,8 @@ pix/*.json linguist-generated
 # trailing newline included. A checkout that rewrote them to CRLF would red
 # every SemanticParity row at the first line ending, so no eol conversion here.
 tests/parity/golden/*.json -text
+
+# Shell scripts run through bash on every host, the Windows CI runner
+# included (the lint targets in CMakeLists.txt invoke them by interpreter).
+# A CRLF checkout turns every line into "...\r: command not found".
+*.sh text eol=lf

@@ -5,19 +5,25 @@
 #   scripts/ci/build_with_stall_watchdog.sh <build-dir> [cmake --build args...]
 #
 # Why this exists (#309): roughly one Windows release build in three froze for
-# good on the MSYS2/mingw64 runner. Every capture looks the same — ninja
-# prints "Linking CXX static library libog_interface.a" (once
-# libog_platform_ws_transport.a), then nothing, ever: not the three or four
-# compiles that were already in flight, not a single new edge, until the
-# job's 30-minute cap cancels it. Ninja prints an edge when it FINISHES on a
-# piped stdout, so the archive itself completed; whatever ran next never
-# returned. The stall is timing-dependent (a rerun of the same commit passes)
-# and it cannot be reproduced off the runner, so the only place the stuck
-# state can be looked at is on the runner, at the moment it is stuck.
+# good on the MSYS2/mingw64 runner, at "Linking CXX static library ..." and
+# then nothing until the job's 30-minute cap. The cause was found with this
+# watchdog's second live capture and fixed in CMakeLists.txt: the shell-script
+# lint targets ran a bare `scripts/x.sh`, which on Windows means
+# `cmd.exe /C "... && x.sh"`, which means ShellExecuteEx and the "How do you
+# want to open this file?" picker; usually it returned at once (the lints
+# never ran on Windows), and sometimes its COM handshake never came back and
+# ninja waited on that one edge forever once every other edge was done.
+#
+# The watchdog stays because the class of failure is real on this runner:
+# a build that stops making progress dies at the cap with nothing to read.
+# Now it dies in OG_BUILD_STALL_SECS with the stuck tree, its threads' wait
+# reasons and their stacks in the log - and it FAILS, because after #309 a
+# stall is a new bug, not a flake to retry (OG_BUILD_ATTEMPTS is 1 unless a
+# capture hunt sets it higher).
 #
 # What this does:
 #   1. Runs `cmake --build` in the FOREGROUND, exactly as the workflow did
-#      before — same stdin, same stdout, same signal disposition, same place
+#      before - same stdin, same stdout, same signal disposition, same place
 #      in the process tree. The watchdog is the background job, not the
 #      build: bash hands a background job /dev/null as stdin, and a build
 #      that hangs on some pipe or console interaction must not be run under
@@ -29,15 +35,15 @@
 #      build prints.
 #   3. On a stall: dumps the process tree under this shell, minus the
 #      watchdog's own subtree (per-process CPU, thread wait reasons, stacks
-#      where a debugger is present, crash reports, memory, disk — see
+#      where a debugger is present, crash reports, memory, disk - see
 #      win_build_stall.ps1), lists the edges that were in flight (outputs on
 #      disk that .ninja_log never recorded), kills the build's tree, and
 #      leaves a marker. The shell then deletes those half-written outputs so
-#      ninja cannot mistake a truncated .obj for a finished one, and runs
-#      the build again. Ninja resumes from the edges it recorded.
-#   4. Gives up after OG_BUILD_ATTEMPTS builds. Every stall is reported as a
-#      workflow warning and in the step summary, so a "green" job that
-#      needed the watchdog is never mistaken for a clean one.
+#      ninja cannot mistake a truncated .obj for a finished one, and either
+#      fails (the default) or, when OG_BUILD_ATTEMPTS allows, runs the build
+#      again; ninja resumes from the edges it recorded.
+#   4. Every stall is a workflow warning and a step-summary entry, so a job
+#      that stalled is never mistaken for a clean one whatever its colour.
 #
 # Portable bash: the dump and the tree kill have a PowerShell path (the
 # runner) and a procps path (everything else), so the wrapper can be
@@ -55,7 +61,7 @@ shift
 
 stall_secs=${OG_BUILD_STALL_SECS:-180}
 poll_secs=${OG_BUILD_POLL_SECS:-10}
-max_attempts=${OG_BUILD_ATTEMPTS:-3}
+max_attempts=${OG_BUILD_ATTEMPTS:-1}
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ninja_log="$build_dir/.ninja_log"
 stall_marker=$(mktemp)
@@ -179,6 +185,10 @@ watchdog() {
         fi
         [ $((SECONDS - last_change)) -ge "$stall_secs" ] || continue
 
+        # The marker goes down first: the moment the build dies below, the
+        # foreground shell resumes, and it must find the marker and wait for
+        # this dump to finish instead of reading the kill as a plain failure.
+        : > "$stall_marker"
         local last_edge inflight
         last_edge=$(recorded_outputs | tail -n 1)
         inflight=$(unrecorded_outputs)
@@ -224,7 +234,7 @@ report_stall() {
     # A workflow annotation is one line; the in-flight list is joined.
     local inflight_line
     inflight_line=$(printf '%s\n' "$inflight" | paste -sd, - | sed 's/,/, /g')
-    echo "::warning title=${title}::attempt ${attempt}: no edge finished for ${stall_secs}s after \"${last_edge}\"; in flight: ${inflight_line:-<none recorded>}. The stuck tree was dumped above and the build resumed."
+    echo "::warning title=${title}::attempt ${attempt}: no edge finished for ${stall_secs}s after \"${last_edge}\"; in flight: ${inflight_line:-<none recorded>}. The stuck tree is dumped above."
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
         {
             echo "### ${title}"
@@ -258,10 +268,18 @@ build_once() {
     cmake --build "$build_dir" "$@"
     local status=$?
 
-    kill "$wd" 2>/dev/null
-    wait "$wd" 2>/dev/null
-
-    [ -e "$stall_marker" ] || return "$status"
+    if [ -e "$stall_marker" ]; then
+        # The watchdog is mid-capture: let it finish the dump and the kill.
+        wait "$wd" 2>/dev/null
+    else
+        kill "$wd" 2>/dev/null
+        wait "$wd" 2>/dev/null
+        [ -e "$stall_marker" ] || return "$status"
+        # It flagged a stall in the instant between the build ending and
+        # the kill; the build is complete, so this is a plain exit.
+        rm -f "$stall_marker"
+        return "$status"
+    fi
 
     local last_edge inflight
     last_edge=$(head -n 1 "$stall_marker")
@@ -287,7 +305,7 @@ while :; do
         exit "$status"
     fi
     if [ "$attempt" -ge "$max_attempts" ]; then
-        echo "::error title=Windows build stall (#309)::every one of ${max_attempts} build attempt(s) stalled; giving up. See the stall diagnostics groups in this log."
+        echo "::error title=Windows build stall (#309)::every one of ${max_attempts} build attempt(s) stalled. A stall is a bug, not a flake: read the stall diagnostics group in this log."
         exit 1
     fi
     attempt=$((attempt + 1))
