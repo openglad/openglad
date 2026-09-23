@@ -29,6 +29,7 @@ static_assert(og::input::kBackScancodeBackspace == SDL_SCANCODE_BACKSPACE);
 // Backspace-as-Escape remap so text fields keep Backspace = delete-character.
 bool s_text_input_active = false;
 bool s_text_cancel_requested = false;
+bool s_text_input_cursor_was_visible = false;
 
 #ifdef __EMSCRIPTEN__
 // keystates_ consumers (button hotkeys, menu loops, gameplay bindings) read a
@@ -676,6 +677,11 @@ void start_text_input(const char* initial_value, int max_bytes,
     (void)prompt;
     (void)multiline;
 #endif
+    // Text prompts have pointer controls even when their caller hid the
+    // cursor. Repeated starts must retain the state from before editing.
+    if (!s_text_input_active)
+        s_text_input_cursor_was_visible = SDL_CursorVisible();
+    SDL_ShowCursor();
     // Gate the web Backspace-as-Escape remap off for the whole text-entry
     // window, even when no SDL window exists (dummy driver in tests).
     s_text_input_active = true;
@@ -713,6 +719,8 @@ void start_text_input(const char* initial_value, int max_bytes,
 
 void stop_text_input()
 {
+    if (s_text_input_active)
+        show_cursor(s_text_input_cursor_was_visible);
     s_text_input_active = false;
     s_text_cancel_requested = false;
 #ifdef TESTING
