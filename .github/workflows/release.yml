@@ -147,7 +147,7 @@ jobs:
             libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev \
             libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev liburing-dev
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         if: matrix.platform == 'linux'
         with:
           key: release-linux
