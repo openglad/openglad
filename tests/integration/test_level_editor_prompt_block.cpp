@@ -1,12 +1,17 @@
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_escape_tail.h"
+#include "test_prompt_hover.h"
+#include "test_frame_capture.h"
 
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <list>
 #include <string>
 
@@ -41,6 +46,257 @@ struct PromptBlockInjectData
     // branches are indistinguishable.
     const char* type_text = nullptr;
 };
+
+struct PromptBlockHoverState
+{
+    bool click_done = true;
+    PromptHoverProbe probe;
+    std::vector<PromptHoverRect> buttons;
+    PromptWindowPoint outside;
+    PromptWindowPoint done_point;
+    PromptWindowPoint cancel_point;
+    std::vector<PromptHoverPixel> baseline;
+    std::atomic<bool> main_returned{false};
+    std::atomic<bool> pointer_closed{false};
+    std::atomic<bool> handshake_failed{false};
+    bool baseline_ready = false;
+    bool faces_and_bevels_ready = false;
+    bool arbitrary_backdrop_ready = false;
+    bool moved_done = false;
+    bool moved_cancel = false;
+    bool moved_outside = false;
+    bool moved_back = false;
+    bool field_changed = false;
+    bool stationary_ring = false;
+    bool capture_failed = false;
+};
+
+bool wait_for_counter_advance(std::uint64_t (*counter)(),
+                              std::uint64_t baseline);
+bool inject_prompt_text(const char* text);
+
+bool prompt_block_hover_faces_ready(const PromptHoverProbe& probe,
+                                    const std::vector<PromptHoverRect>& buttons)
+{
+    const PromptHoverPixel yellow = prompt_hover_yellow_rgb();
+    const auto pixel_at = [&probe](int x, int y) -> const PromptHoverPixel* {
+        for (size_t i = 0; i < probe.points.size(); ++i)
+            if (probe.points[i].x == x && probe.points[i].y == y)
+                return &probe.pixels[i];
+        return nullptr;
+    };
+    for (const PromptHoverRect& button : buttons)
+    {
+        const PromptHoverPixel* const face =
+            pixel_at(button.x + 2, button.y + 2);
+        const PromptHoverPixel* const bevel = pixel_at(button.x + 2, button.y);
+        if (face == nullptr || bevel == nullptr || *face == yellow ||
+            *bevel == yellow || *face == *bevel)
+            return false;
+    }
+    return true;
+}
+
+bool prompt_block_hover_arbitrary_backdrop_ready(
+    const PromptHoverProbe& probe)
+{
+    constexpr std::array<PromptHoverPoint, 6> kSeedPoints{{
+        {267, 1}, {267, 5}, {267, 10}, {267, 14}, {215, 0}, {319, 0},
+    }};
+    std::array<PromptHoverPixel, kSeedPoints.size()> sampled{};
+    bool saw_off_palette = false;
+    const auto& prompt_palette = og::runtime::current_session->myscreen_->ourpalette;
+    for (size_t i = 0; i < kSeedPoints.size(); ++i)
+    {
+        bool found = false;
+        for (size_t j = 0; j < probe.points.size(); ++j)
+            if (probe.points[j].x == kSeedPoints[i].x &&
+                probe.points[j].y == kSeedPoints[i].y)
+            {
+                sampled[i] = probe.pixels[j];
+                found = true;
+                break;
+            }
+        if (!found)
+            return false;
+        bool palette_match = false;
+        for (size_t color = 0; color < 256; ++color)
+        {
+            const size_t offset = color * 3;
+            const PromptHoverPixel palette_rgb{
+                static_cast<Uint8>(prompt_palette[offset] * 4),
+                static_cast<Uint8>(prompt_palette[offset + 1] * 4),
+                static_cast<Uint8>(prompt_palette[offset + 2] * 4)};
+            if (sampled[i] == palette_rgb)
+            {
+                palette_match = true;
+                break;
+            }
+        }
+        saw_off_palette = saw_off_palette || !palette_match;
+    }
+    for (size_t i = 0; i < sampled.size(); ++i)
+        for (size_t j = i + 1; j < sampled.size(); ++j)
+            if (sampled[i] == sampled[j])
+                return false;
+    return saw_off_palette;
+}
+
+bool prompt_block_hover_capture_and_match(PromptBlockHoverState& state,
+                                         int hovered_button,
+                                         float canvas_x, float canvas_y)
+{
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (!state.capture_failed && SDL_GetTicks() < deadline)
+    {
+        if (!prompt_hover_capture(state.probe, true))
+        {
+            state.capture_failed = true;
+            return false;
+        }
+        if (prompt_hover_pointer_at(state.probe, canvas_x, canvas_y) &&
+            prompt_hover_matches(state.probe, state.baseline, state.buttons,
+                                 hovered_button))
+            return true;
+        SDL_Delay(5);
+    }
+    return false;
+}
+
+int prompt_block_hover_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<PromptBlockHoverState*>(data);
+    bool ok = wait_for_counter_advance(
+        level_editor_testing_prompt_block_entered_count, 0);
+    if (ok)
+        inject_mouse_motion(state->outside.x, state->outside.y);
+    const Uint64 ready_deadline = SDL_GetTicks() + 5000;
+    while (ok && SDL_GetTicks() < ready_deadline)
+    {
+        if (!prompt_hover_capture(state->probe, true))
+        {
+            state->capture_failed = true;
+            break;
+        }
+        if (prompt_hover_pointer_at(state->probe, 10.0f, 180.0f) &&
+            prompt_block_hover_faces_ready(state->probe, state->buttons))
+        {
+            state->baseline_ready = true;
+            state->faces_and_bevels_ready = true;
+            state->arbitrary_backdrop_ready =
+                prompt_block_hover_arbitrary_backdrop_ready(state->probe);
+            state->baseline = state->probe.pixels;
+            break;
+        }
+        SDL_Delay(5);
+    }
+    ok = ok && state->baseline_ready && state->faces_and_bevels_ready &&
+        state->arbitrary_backdrop_ready;
+    if (ok)
+    {
+        inject_mouse_motion(state->done_point.x, state->done_point.y);
+        state->moved_done = ok && prompt_block_hover_capture_and_match(
+            *state, 0, 293.0f, 6.0f);
+        ok = state->moved_done;
+        if (ok)
+        {
+            const char* const output_dir =
+                std::getenv("OG_PROMPT_HOVER_CAPTURE_DIR");
+            capture_presented_frame(
+                state->click_done ? "editor_prompt_done_hover_done_test"
+                                  : "editor_prompt_done_hover_cancel_test",
+                output_dir);
+        }
+        inject_mouse_motion(state->cancel_point.x, state->cancel_point.y);
+        state->moved_cancel = ok && prompt_block_hover_capture_and_match(
+            *state, 1, 241.0f, 6.0f);
+        ok = state->moved_cancel;
+        if (ok)
+        {
+            const char* const output_dir =
+                std::getenv("OG_PROMPT_HOVER_CAPTURE_DIR");
+            capture_presented_frame(
+                state->click_done ? "editor_prompt_cancel_hover_done_test"
+                                  : "editor_prompt_cancel_hover_cancel_test",
+                output_dir);
+        }
+        inject_mouse_motion(state->outside.x, state->outside.y);
+        state->moved_outside = ok && prompt_block_hover_capture_and_match(
+            *state, -1, 10.0f, 180.0f);
+        ok = state->moved_outside;
+
+        const bool click_done = state->click_done;
+        const int final_button = click_done ? 0 : 1;
+        const PromptWindowPoint final_point = click_done
+            ? state->done_point : state->cancel_point;
+        const float final_x = click_done ? 293.0f : 241.0f;
+        inject_mouse_motion(final_point.x, final_point.y);
+        state->moved_back = ok && prompt_block_hover_capture_and_match(
+            *state, final_button, final_x, 6.0f);
+        ok = state->moved_back;
+
+        const std::vector<PromptHoverPixel> before_text = state->baseline;
+        if (ok)
+            ok = inject_prompt_text("Z");
+        bool edit_capture_acknowledged = false;
+        const Uint64 edit_deadline = SDL_GetTicks() + 5000;
+        while (ok && SDL_GetTicks() < edit_deadline)
+        {
+            if (!prompt_hover_capture(state->probe, true))
+            {
+                state->capture_failed = true;
+                ok = false;
+                break;
+            }
+            edit_capture_acknowledged = true;
+            if (prompt_hover_pointer_at(state->probe, final_x, 6.0f) &&
+                prompt_hover_field_changed(state->probe, before_text))
+                break;
+            SDL_Delay(5);
+        }
+        state->field_changed = edit_capture_acknowledged &&
+            !state->capture_failed &&
+            prompt_hover_field_changed(state->probe, before_text);
+        state->stationary_ring = state->field_changed &&
+            !state->capture_failed &&
+            prompt_hover_matches(state->probe, state->baseline,
+                                 state->buttons, final_button);
+        ok = ok && state->field_changed && state->stationary_ring;
+
+        if (ok)
+        {
+            const std::uint64_t completed_before =
+                level_editor_testing_prompt_block_input_completed_count();
+            inject_mouse_down(final_point.x, final_point.y);
+            ok = wait_for_counter_advance(
+                level_editor_testing_prompt_block_input_completed_count,
+                completed_before);
+            inject_mouse_up(final_point.x, final_point.y);
+            const Uint64 close_deadline = SDL_GetTicks() + 5000;
+            while (ok && og::input_native::text_input_is_active() &&
+                   SDL_GetTicks() < close_deadline)
+                SDL_Delay(5);
+            ok = ok && !og::input_native::text_input_is_active();
+        }
+        state->pointer_closed.store(ok, std::memory_order_release);
+    }
+    state->handshake_failed.store(!ok, std::memory_order_release);
+
+    const auto hold_prompt = [state] {
+        if (!state->handshake_failed.load(std::memory_order_acquire) ||
+            state->main_returned.load(std::memory_order_acquire))
+            return false;
+        level_editor_testing_prompt_block_set_held_key(KEYSTATE_ESCAPE);
+        SDL_Delay(10);
+        level_editor_testing_prompt_block_set_held_key(-1);
+        return true;
+    };
+    return escape_to_the_main_thread(
+        state->main_returned, state->handshake_failed.load() ? 1 : 0,
+        "hover sequence or pointer action did not complete",
+        std::span<const EscapeDoor>{}, hold_prompt);
+}
 
 bool wait_for_counter_advance(std::uint64_t (*counter)(),
                               std::uint64_t baseline)
@@ -251,6 +507,72 @@ int prompt_block_physical_navigation_injector(void* data)
                                std::memory_order_release);
     st->finished.store(true, std::memory_order_release);
     return 0;
+}
+
+bool run_prompt_hover_flow(bool click_done, PromptBlockHoverState& state,
+                           std::list<std::string>& edited)
+{
+    (void)take_captured_frames();
+    state.click_done = click_done;
+    state.buttons = {{268, 0, 50, 14}, {216, 0, 50, 14}};
+    init_prompt_hover_probe(state.probe, state.buttons, {40, 60, 240, 80});
+    state.outside = prompt_hover_window_point(10.0f, 180.0f);
+    state.done_point = prompt_hover_window_point(293.0f, 6.0f);
+    state.cancel_point = prompt_hover_window_point(241.0f, 6.0f);
+
+    inject_mouse_motion(state.outside.x, state.outside.y);
+    get_input_events(POLL);
+    const MouseState& outside_mouse = query_mouse_no_poll();
+    EXPECT_NEAR(10.0f, outside_mouse.x, 0.01f)
+        << "the multiline prompt must enter with the pointer outside its buttons";
+    EXPECT_NEAR(180.0f, outside_mouse.y, 0.01f);
+
+    // Put several distinct non-palette RGB values under the two top-row
+    // outlines. The overlapping x=267 column and clipped y=0 edge are part
+    // of the sample and must survive both hover transitions exactly.
+    screen* const target = og::runtime::current_session->myscreen_;
+    target->pointb(267, 1, 37, 91, 143);
+    target->pointb(267, 5, 181, 47, 109);
+    target->pointb(267, 10, 73, 157, 29);
+    target->pointb(267, 14, 211, 83, 53);
+    target->pointb(215, 0, 19, 137, 223);
+    target->pointb(319, 0, 149, 31, 197);
+
+    SDL_Thread* const thread = SDL_CreateThread(
+        prompt_block_hover_injector, "prompt_block_hover", &state);
+    if (thread == nullptr)
+        return false;
+    const bool accepted = prompt_for_string_block("Hover prompt", edited);
+    state.main_returned.store(true, std::memory_order_release);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    SDL_PumpEvents();
+    escape_tail_join_hygiene();
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_FALSE(state.handshake_failed.load(std::memory_order_acquire));
+    EXPECT_TRUE(state.pointer_closed.load(std::memory_order_acquire))
+        << "the held pointer click must be consumed by the hovered action";
+    EXPECT_TRUE(state.baseline_ready)
+        << "capture waits for both action buttons after outside motion";
+    EXPECT_TRUE(state.faces_and_bevels_ready);
+    EXPECT_TRUE(state.arbitrary_backdrop_ready)
+        << "the sampled overlap and clipped edges must retain varied RGB pixels";
+    EXPECT_TRUE(state.moved_done)
+        << "DONE motion must paint its exact yellow outline";
+    EXPECT_TRUE(state.moved_cancel)
+        << "CANCEL motion must restore the shared outline and paint its ring";
+    EXPECT_TRUE(state.moved_outside)
+        << "outside motion must restore every sampled outline pixel";
+    EXPECT_TRUE(state.moved_back)
+        << "the selected action must repaint after leaving both buttons";
+    EXPECT_TRUE(state.field_changed)
+        << "the prompt must render Z before it accepts the pointer click";
+    EXPECT_TRUE(state.stationary_ring)
+        << "text editing must preserve the hovered ring and action labels";
+    verify_captured_frames(click_done ? "editor_prompt_hover_done"
+                                      : "editor_prompt_hover_cancel", 2);
+    return accepted;
 }
 } // namespace
 
@@ -479,4 +801,28 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_multiline_edit
         << "thirteen pushed keys + one DONE click were consumed";
     EXPECT_EQ((std::list<std::string>{"", "", "", "", "", "abc"}), edited)
         << "RETURN splits at the cursor and BACKSPACE merges/no-ops exactly";
+}
+
+TEST(LevelEditorPromptBlock, hovered_done_redraws_and_commits_edited_text)
+{
+    level_editor_testing_prompt_block_input_reset();
+    std::list<std::string> edited{"seed"};
+    PromptBlockHoverState state;
+    const bool accepted = run_prompt_hover_flow(true, state, edited);
+    EXPECT_TRUE(accepted)
+        << "DONE preserves the prompt's existing successful return value";
+    EXPECT_EQ((std::list<std::string>{"Zseed"}), edited)
+        << "the stationary-hover edit must be committed by DONE";
+}
+
+TEST(LevelEditorPromptBlock, hovered_cancel_redraws_and_restores_original_text)
+{
+    level_editor_testing_prompt_block_input_reset();
+    std::list<std::string> edited{"seed"};
+    PromptBlockHoverState state;
+    const bool accepted = run_prompt_hover_flow(false, state, edited);
+    EXPECT_TRUE(accepted)
+        << "CANCEL preserves the prompt's existing successful return value";
+    EXPECT_EQ((std::list<std::string>{"seed"}), edited)
+        << "CANCEL restores original text after the stationary-hover edit";
 }

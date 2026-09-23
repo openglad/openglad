@@ -154,6 +154,9 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons);
 unsigned int allbuttons_generation();
 void draw_backdrop();
 void draw_buttons(button * buttons, Sint32 numbuttons);
+// Draw the yellow hover ring around a button face. Width and height are the
+// face dimensions (exclusive right/bottom edges).
+void draw_button_hover(screen& target, int x, int y, int width, int height);
 
 // These are for picker ..
 Sint32 score_panel(screen *scr);

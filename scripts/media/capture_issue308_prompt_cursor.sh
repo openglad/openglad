@@ -66,6 +66,19 @@ sleep 3
 
 # Hire Troops on Team Build, then HIRE ME. That invokes the same blocking
 # production text prompt used in normal play (not the TESTING shortcut).
+capture_frame() {
+    local name="$1"
+    scrot --pointer "$WORK_DIR/$name-full.png"
+    magick "$WORK_DIR/$name-full.png" -crop 640x400+0+0 +repage \
+        "$OUT_DIR/$name.png"
+}
+
+# Keep a standard Team Build button as the known yellow-hover reference for
+# the prompt-specific ACCEPT/CANCEL controls below.
+xdotool mousemove --sync 60 360
+sleep 0.5
+capture_frame reference-back-hover
+
 click_at 460 40 3
 click_at 250 360 2
 sleep 1
@@ -73,11 +86,29 @@ sleep 1
 # Set a stable name and move onto ACCEPT. SDL text input replaces the generated
 # value on its first character. scrot captures the actual XFixes cursor.
 xdotool type --clearmodifiers --delay 80 CURSORHIRE
+xdotool mousemove --sync 320 195
+sleep 0.5
+capture_frame prompt-hover-outside
+
 xdotool mousemove --sync 425 158
 sleep 0.5
-scrot --pointer "$WORK_DIR/prompt-full.png"
-magick "$WORK_DIR/prompt-full.png" -crop 640x400+0+0 +repage \
-    "$OUT_DIR/prompt.png"
+capture_frame prompt-hover-accept
+# Keep the original artifact name and default output behavior for existing
+# consumers of this capture script.
+cp "$OUT_DIR/prompt-hover-accept.png" "$OUT_DIR/prompt.png"
+
+xdotool mousemove --sync 196 158
+sleep 0.5
+capture_frame prompt-hover-cancel
+
+# Capture the off state again, then return to ACCEPT. These settled frames make
+# it easy to see whether an outline lingers after the cursor leaves a button.
+xdotool mousemove --sync 320 195
+sleep 0.5
+capture_frame prompt-hover-outside-after-cancel
+xdotool mousemove --sync 425 158
+sleep 0.5
+capture_frame prompt-hover-accept-return
 
 # Click ACCEPT with a held pointer, then record the returned hire screen.
 click_at 425 158 3
