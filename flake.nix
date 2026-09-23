@@ -244,6 +244,9 @@
             # frames into the shipped GIFs and PNGs.
             xvfb-run
             ffmpeg
+            # Drive native menus and include the OS cursor in screenshots.
+            xdotool
+            scrot
             # scripts/media/make_lua_ownership_overlays.py draws the Lua/engine
             # ownership rectangles over the captured stills; it shells out to
             # `magick` for the compositing and needs a real TrueType file for

@@ -192,6 +192,7 @@ void show_cursor(bool show);
 // active prompt to the DOM keyboard affordance. `max_bytes` is the usable
 // payload limit (excluding the C string terminator); multiline prompts keep
 // their canvas-native editor instead of showing the single-line DOM field.
+// Text entry shows the mouse cursor; stop restores its prior visibility.
 void start_text_input(const char* initial_value = nullptr,
                       int max_bytes = 0,
                       const char* prompt = nullptr,

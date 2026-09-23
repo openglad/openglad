@@ -2,6 +2,7 @@
 #include <array>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
@@ -10,11 +11,13 @@
 #include "test_input_helpers.h"
 #include "test_company_cleanup.h"
 #include "test_interact.h"
+#include "test_escape_tail.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/gameplay/guy.h>
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -25,6 +28,7 @@
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+void level_editor_testing_prompt_force_real(bool enabled);
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -249,8 +253,8 @@ TEST(HireTeam, hire_menu_browsing) {
 // §2.9 flow 7 + §3.8: HIRE re-enters from the base-camp command strip, a
 // successful hire lands as a roster row that is DEPLOYED BY DEFAULT, and the
 // hire mutation autosaves the company (the new member is on disk without any
-// manual save). Under TESTING the hire name prompt accepts the generated
-// name without blocking.
+// manual save). This flow opts into the real blocking name prompt and accepts
+// it through the pointer.
 //
 // Flow: Main Menu -> Continue -> base camp -> HIRE -> hire_me -> Back ->
 //       base camp shows the new row -> Back
@@ -261,22 +265,67 @@ struct HireDeployState {
     bool saw_hire_menu;
     bool hired;
     bool saw_new_row;
+    std::atomic<bool> cursor_observed{false};
+    std::atomic<bool> cursor_seen_during_prompt{false};
+    std::atomic<bool> prompt_closed{false};
+    std::atomic<bool> cursor_visible_in_prompt{false};
+    std::atomic<bool> picker_returned{false};
+    int prompt_x = 0;
+    int prompt_y = 0;
 };
+
+constexpr EscapeDoor kHireEscapeDoors[] = {
+    {"hire_me", "back"},
+    {"hire_troops", "back"},
+    {"continue_game", "continue_game"},
+};
+
+static void SDLCALL observe_hire_prompt_cursor(void* data)
+{
+    auto* const state = static_cast<HireDeployState*>(data);
+    if (!og::input_native::text_input_is_active())
+        return;
+    const auto [x, y] = ui_canvas_to_window(191.0f, 81.0f);
+    state->prompt_x = static_cast<int>(x);
+    state->prompt_y = static_cast<int>(y);
+    state->cursor_visible_in_prompt.store(SDL_CursorVisible(),
+                                          std::memory_order_relaxed);
+    state->cursor_observed.store(true, std::memory_order_release);
+}
+
+static bool wait_for_text_input_state(bool want, int timeout_ms = 5000)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
+    while (SDL_GetTicks() < deadline) {
+        if (og::input_native::text_input_is_active() == want)
+            return true;
+        SDL_Delay(5);
+    }
+    return og::input_native::text_input_is_active() == want;
+}
 
 static int hire_deployed_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<HireDeployState*>(data);
     state->started = true;
+    const auto prompt_hold = [] {
+        if (!og::input_native::text_input_is_active())
+            return false;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return true;
+    };
 
     wait_for_interactable("continue_game", 5000);
     wait_for_menu_frames(2);
     interact("continue_game");
 
     if (!wait_for_interactable("hire_troops", 10000)) {
+        const int result = escape_to_the_main_thread(
+            state->picker_returned, 1, "the hire door never appeared",
+            kHireEscapeDoors, prompt_hold);
         state->finished = true;
-        inject_key_press(SDLK_ESCAPE, 10);
-        return 0;
+        return result;
     }
     wait_for_menu_frames(2);
     interact("hire_troops");
@@ -286,6 +335,48 @@ static int hire_deployed_injector(void* data)
         wait_for_menu_frames(2);
         fprintf(stderr, "  [test] clicking hire_me\n");
         state->hired = interact("hire_me");
+        if (wait_for_text_input_state(true)) {
+            const bool callback_queued =
+                SDL_RunOnMainThread(observe_hire_prompt_cursor, state, false);
+            const Uint64 observation_deadline = SDL_GetTicks() + 5000;
+            while (callback_queued &&
+                   !state->cursor_observed.load(std::memory_order_acquire) &&
+                   SDL_GetTicks() < observation_deadline)
+                SDL_Delay(5);
+            const bool observed_during_prompt = callback_queued &&
+                state->cursor_observed.load(std::memory_order_acquire);
+            state->cursor_seen_during_prompt.store(observed_during_prompt,
+                                                  std::memory_order_release);
+            if (observed_during_prompt) {
+                inject_text_input("CURSORHIRE");
+                const Uint64 click_deadline = SDL_GetTicks() + 5000;
+                while (og::input_native::text_input_is_active() &&
+                       SDL_GetTicks() < click_deadline) {
+                    inject_mouse_motion(state->prompt_x, state->prompt_y);
+                    inject_mouse_down(state->prompt_x, state->prompt_y);
+                    inject_mouse_up(state->prompt_x, state->prompt_y);
+                    const Uint64 settle_deadline = SDL_GetTicks() + 300;
+                    while (og::input_native::text_input_is_active() &&
+                           SDL_GetTicks() < settle_deadline)
+                        SDL_Delay(5);
+                }
+                state->prompt_closed.store(
+                    !og::input_native::text_input_is_active(),
+                    std::memory_order_release);
+            } else {
+                state->prompt_closed.store(false, std::memory_order_release);
+            }
+            if (!state->prompt_closed.load(std::memory_order_acquire)) {
+                const int result = escape_to_the_main_thread(
+                    state->picker_returned, 1,
+                    "the hire name prompt did not close after pointer ACCEPT",
+                    kHireEscapeDoors, prompt_hold);
+                state->finished = true;
+                return result;
+            }
+        } else {
+            state->prompt_closed.store(false, std::memory_order_release);
+        }
         settle_pointer_between_clicks();
     }
 
@@ -302,8 +393,35 @@ static int hire_deployed_injector(void* data)
     if (wait_for_interactable("back", 5000))
         interact("back");
 
+    const int result = escape_to_the_main_thread(
+        state->picker_returned, 0, "", kHireEscapeDoors, prompt_hold);
     state->finished = true;
-    return 0;
+    return result;
+}
+
+static void run_hire_deploy_flow(HireDeployState& state)
+{
+    SDL_Thread* thread = SDL_CreateThread(hire_deployed_injector, "hire_deploy_test", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    level_editor_testing_prompt_force_real(true);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+    state.picker_returned.store(true, std::memory_order_release);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+    SDL_PumpEvents();
+    escape_tail_join_hygiene();
+    level_editor_testing_prompt_force_real(false);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result);
 }
 
 TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
@@ -334,30 +452,28 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
                                   "save0", newest_company_stamp() + 1))
         << "the company under test must be written as the most recent one";
 
-    HireDeployState state = { false, false, false, false, false };
-    SDL_Thread* thread = SDL_CreateThread(hire_deployed_injector, "hire_deploy_test", &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-
-    picker_main(0, nullptr);
-
-    int thread_result;
-    SDL_WaitThread(thread, &thread_result);
-
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    HireDeployState state{};
+    run_hire_deploy_flow(state);
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_hire_menu) << "HIRE strip button should open the hire screen";
     ASSERT_TRUE(state.hired) << "hire_me should be clickable";
+    ASSERT_TRUE(state.prompt_closed.load(std::memory_order_acquire))
+        << "the actual hire flow should open and close the blocking name prompt";
+    EXPECT_TRUE(state.cursor_observed.load(std::memory_order_acquire))
+        << "the prompt cursor callback should be observed on the main thread";
+    EXPECT_TRUE(state.cursor_seen_during_prompt.load(std::memory_order_acquire))
+        << "the cursor must be observed before the prompt accepts or cancels";
+    EXPECT_TRUE(state.cursor_visible_in_prompt.load(std::memory_order_relaxed))
+        << "the native cursor should be visible while naming the hire";
     ASSERT_TRUE(state.saw_new_row)
         << "the hired member must appear as a base-camp roster row on re-entry";
 
     // In memory: the hire landed and defaults to deployed (§2.5).
     ASSERT_EQ(2, static_cast<int>(og::runtime::current_session->myscreen_->save_data.team_size));
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.team_list[1] != nullptr);
+    EXPECT_EQ("CURSORHIRE", og::runtime::current_session->myscreen_->save_data.team_list[1]->name)
+        << "the name entered through the visible pointer prompt should be saved";
     EXPECT_TRUE(og::runtime::current_session->myscreen_->save_data.team_list[1]->deployed)
         << "new hires default to deployed=true";
 
@@ -372,6 +488,8 @@ TEST(HireTeam, hire_from_base_camp_lands_deployed_and_autosaves) {
     EXPECT_TRUE(reloaded.team_list[1]->deployed)
         << "the hired member must persist deployed via the mutation autosave";
     EXPECT_EQ("VETERAN", reloaded.team_list[0]->name) << "slot 0 untouched";
+    EXPECT_EQ("CURSORHIRE", reloaded.team_list[1]->name)
+        << "the accepted prompt name should persist with the autosaved hire";
 }
 
 // §3.8, order-free: the hire autosave lands in the company the flow actually
@@ -430,21 +548,8 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
     ASSERT_TRUE(seed_open_company(save_data, "hireopen", base_s + 2000))
         << "the company under test must be written as the most recent one";
 
-    HireDeployState state = { false, false, false, false, false };
-    SDL_Thread* thread =
-        SDL_CreateThread(hire_deployed_injector, "hire_stray_test", &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
-
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-
-    picker_main(0, nullptr);
-
-    int thread_result;
-    SDL_WaitThread(thread, &thread_result);
-
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
+    HireDeployState state{};
+    run_hire_deploy_flow(state);
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_EQ("hireopen", og::data::active_company_slot())

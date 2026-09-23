@@ -421,6 +421,62 @@ TEST(InputKeybinds, native_input_push_text_cancel_key_requires_active_text_input
     while (og::input_native::poll_event() != nullptr) {}
 }
 
+TEST(InputKeybinds, native_text_input_shows_cursor_and_restores_hidden_state)
+{
+    struct CursorRestore final
+    {
+        bool visible = SDL_CursorVisible();
+        ~CursorRestore()
+        {
+            og::input_native::stop_text_input();
+            og::input_native::show_cursor(visible);
+        }
+    } restore;
+
+    og::input_native::show_cursor(false);
+    og::input_native::start_text_input("seed", 16, "NAME");
+    ASSERT_TRUE(og::input_native::text_input_is_active());
+    EXPECT_TRUE(SDL_CursorVisible())
+        << "starting text entry should show the native cursor";
+
+    // A repeated start must not replace the hidden entry state with the
+    // temporary visible state established by the first start.
+    og::input_native::start_text_input("seed", 16, "NAME");
+    EXPECT_TRUE(SDL_CursorVisible());
+    og::input_native::stop_text_input();
+    EXPECT_FALSE(og::input_native::text_input_is_active());
+    EXPECT_FALSE(SDL_CursorVisible())
+        << "stop should restore the visibility saved by the first start";
+
+    // Stopping an already idle session must leave the restored state alone.
+    og::input_native::show_cursor(true);
+    og::input_native::stop_text_input();
+    EXPECT_TRUE(SDL_CursorVisible())
+        << "an idle stop must not change cursor visibility";
+}
+
+TEST(InputKeybinds, native_text_input_restores_visible_cursor_state)
+{
+    struct CursorRestore final
+    {
+        bool visible = SDL_CursorVisible();
+        ~CursorRestore()
+        {
+            og::input_native::stop_text_input();
+            og::input_native::show_cursor(visible);
+        }
+    } restore;
+
+    og::input_native::show_cursor(true);
+    og::input_native::start_text_input("seed", 16, "NAME");
+    ASSERT_TRUE(og::input_native::text_input_is_active());
+    EXPECT_TRUE(SDL_CursorVisible());
+    og::input_native::stop_text_input();
+    EXPECT_FALSE(og::input_native::text_input_is_active());
+    EXPECT_TRUE(SDL_CursorVisible())
+        << "stop should restore a cursor that was visible before entry";
+}
+
 TEST(InputKeybinds, input_didPlayerPressKey_matches_keydown_and_ignores_repeats)
 {
     disablePlayerJoystick(0);

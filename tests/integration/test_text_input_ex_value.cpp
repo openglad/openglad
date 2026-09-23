@@ -1,13 +1,17 @@
 #include <openglad/interface/render/text.h>
+#include <openglad/interface/native_input.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
+#include "test_escape_tail.h"
 
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
+#include <atomic>
 #include <string>
 
 namespace
@@ -107,6 +111,121 @@ static int injector_thread_cancel_click(void* data)
     ev.button.y = 162.0f;
     SDL_PushEvent(&ev);
     return 0;
+}
+
+struct PromptCursorInjector
+{
+    bool accept = true;
+    bool saw_text_input = false;
+    bool saw_cursor_during_prompt = false;
+    std::atomic<bool> pointer_closed{false};
+    std::atomic<bool> main_returned{false};
+    std::atomic<bool> cursor_observed{false};
+    std::atomic<bool> cursor_visible{false};
+    int pointer_x = 0;
+    int pointer_y = 0;
+};
+
+static void SDLCALL observe_cursor_on_main_thread(void* data)
+{
+    auto* const state = static_cast<PromptCursorInjector*>(data);
+    if (!og::input_native::text_input_is_active())
+        return;
+    const auto [x, y] = ui_canvas_to_window(state->accept ? 191.0f : 98.0f, 81.0f);
+    state->pointer_x = static_cast<int>(x);
+    state->pointer_y = static_cast<int>(y);
+    state->cursor_visible.store(SDL_CursorVisible(), std::memory_order_relaxed);
+    state->cursor_observed.store(true, std::memory_order_release);
+}
+
+static int injector_thread_prompt_cursor(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<PromptCursorInjector*>(data);
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (SDL_GetTicks() < deadline &&
+           !og::input_native::text_input_is_active())
+        SDL_Delay(5);
+
+    state->saw_text_input = og::input_native::text_input_is_active();
+    // The prompt's event loop services this callback while it is active. The
+    // injector keeps its state alive until the test thread joins it and pumps
+    // any callback that remained queued after the modal returned.
+    const bool callback_queued =
+        SDL_RunOnMainThread(observe_cursor_on_main_thread, state, false);
+    const Uint64 cursor_deadline = SDL_GetTicks() + 5000;
+    while (callback_queued &&
+           !state->cursor_observed.load(std::memory_order_acquire) &&
+           SDL_GetTicks() < cursor_deadline)
+        SDL_Delay(5);
+    state->saw_cursor_during_prompt =
+        state->cursor_observed.load(std::memory_order_acquire);
+
+    if (state->saw_cursor_during_prompt)
+    {
+        if (state->accept)
+            inject_text_input("POINTERNAME");
+        // Map the prompt action through the current viewport on the main thread,
+        // then move onto the action before clicking.
+        const Uint64 click_deadline = SDL_GetTicks() + 5000;
+        while (og::input_native::text_input_is_active() &&
+               SDL_GetTicks() < click_deadline)
+        {
+            inject_mouse_motion(state->pointer_x, state->pointer_y);
+            inject_mouse_down(state->pointer_x, state->pointer_y);
+            inject_mouse_up(state->pointer_x, state->pointer_y);
+            const Uint64 settle_deadline = SDL_GetTicks() + 300;
+            while (og::input_native::text_input_is_active() &&
+                   SDL_GetTicks() < settle_deadline)
+                SDL_Delay(5);
+        }
+        state->pointer_closed.store(!og::input_native::text_input_is_active(),
+                                    std::memory_order_release);
+    }
+    const auto prompt_hold = [] {
+        if (!og::input_native::text_input_is_active())
+            return false;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return true;
+    };
+    return escape_to_the_main_thread(
+        state->main_returned, state->pointer_closed.load() ? 0 : 1,
+        "pointer action did not close the text prompt",
+        std::span<const EscapeDoor>{}, prompt_hold);
+}
+
+static std::optional<std::string> run_prompt_with_cursor(bool initially_visible,
+                                                         bool accept,
+                                                         bool& saw_text_input,
+                                                         bool& cursor_observed_in_prompt,
+                                                         bool& cursor_visible_in_prompt)
+{
+    og::input_native::show_cursor(initially_visible);
+    PromptCursorInjector state;
+    state.accept = accept;
+    SDL_Thread* const thread = SDL_CreateThread(injector_thread_prompt_cursor,
+                                                "text_prompt_cursor", &state);
+    if (thread == nullptr) {
+        og::input_native::show_cursor(initially_visible);
+        return std::nullopt;
+    }
+
+    text t(TEXT_1);
+    std::optional<std::string> result =
+        t.input_string_ex_value(58, 60, 29, "NAME THIS CHARACTER", "seed");
+    state.main_returned.store(true, std::memory_order_release);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    SDL_PumpEvents();
+    escape_tail_join_hygiene();
+    EXPECT_EQ(0, thread_result);
+    EXPECT_TRUE(state.pointer_closed.load(std::memory_order_acquire))
+        << "the pointer action must close the prompt without Escape fallback";
+    saw_text_input = state.saw_text_input;
+    cursor_observed_in_prompt = state.saw_cursor_during_prompt;
+    cursor_visible_in_prompt =
+        state.cursor_visible.load(std::memory_order_acquire);
+    return result;
 }
 } // namespace
 
@@ -214,4 +333,46 @@ TEST(TextInputExValue, text_input_string_ex_value_cancel_button_returns_nullopt)
 
     ASSERT_FALSE(v.has_value())
         << "the on-canvas CANCEL affordance should preserve cancellation";
+}
+
+TEST(TextInputExValue, prompt_pointer_accepts_text_and_restores_hidden_cursor)
+{
+    bool saw_text_input = false;
+    bool cursor_observed_in_prompt = false;
+    bool cursor_visible_in_prompt = false;
+    const std::optional<std::string> value =
+        run_prompt_with_cursor(false, true, saw_text_input,
+                               cursor_observed_in_prompt,
+                               cursor_visible_in_prompt);
+
+    ASSERT_TRUE(saw_text_input) << "injector must wait for the real prompt loop";
+    EXPECT_TRUE(cursor_observed_in_prompt)
+        << "main-thread cursor inspection callback should run during the prompt";
+    ASSERT_TRUE(value.has_value()) << "pointer ACCEPT should commit the name";
+    EXPECT_EQ("POINTERNAME", *value)
+        << "text must be committed before the pointer accepts the prompt";
+    EXPECT_TRUE(cursor_visible_in_prompt)
+        << "the prompt must show the native cursor while text entry is active";
+    EXPECT_FALSE(SDL_CursorVisible())
+        << "the prompt should restore the cursor state that preceded entry";
+}
+
+TEST(TextInputExValue, prompt_cancel_restores_visible_cursor)
+{
+    bool saw_text_input = false;
+    bool cursor_observed_in_prompt = false;
+    bool cursor_visible_in_prompt = false;
+    const std::optional<std::string> value =
+        run_prompt_with_cursor(true, false, saw_text_input,
+                               cursor_observed_in_prompt,
+                               cursor_visible_in_prompt);
+
+    ASSERT_TRUE(saw_text_input) << "injector must wait for the real prompt loop";
+    EXPECT_TRUE(cursor_observed_in_prompt)
+        << "main-thread cursor inspection callback should run during the prompt";
+    EXPECT_FALSE(value.has_value()) << "pointer CANCEL should preserve cancellation";
+    EXPECT_TRUE(cursor_visible_in_prompt)
+        << "the prompt must show the native cursor while text entry is active";
+    EXPECT_TRUE(SDL_CursorVisible())
+        << "cancel should restore the cursor state that preceded entry";
 }
