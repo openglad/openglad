@@ -18,6 +18,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/button.h>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -159,6 +160,41 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     
     UiRect done_button = {320 - 52, 0, 50, 14};
     UiRect cancel_button = {320 - 104, 0, 50, 14};
+
+    struct SavedPixel
+    {
+        int x;
+        int y;
+        Uint8 r;
+        Uint8 g;
+        Uint8 b;
+    };
+    std::vector<SavedPixel> button_outline_backdrop;
+    const auto save_button_outline = [&](const UiRect& rect) {
+        const int left = rect.x - 1;
+        const int right = rect.x + rect.w + 1;
+        const int top = rect.y - 1;
+        const int bottom = rect.y + rect.h + 1;
+        const auto save_pixel = [&](int px, int py) {
+            if (px < 0 || px >= 320 || py < 0 || py >= 200)
+                return;
+            SavedPixel pixel{px, py, 0, 0, 0};
+            screen_ctx->get_pixel(px, py, &pixel.r, &pixel.g, &pixel.b);
+            button_outline_backdrop.push_back(pixel);
+        };
+        for (int px = left; px <= right; ++px)
+        {
+            save_pixel(px, top);
+            save_pixel(px, bottom);
+        }
+        for (int py = top + 1; py < bottom; ++py)
+        {
+            save_pixel(left, py);
+            save_pixel(right, py);
+        }
+    };
+    save_button_outline(done_button);
+    save_button_outline(cancel_button);
     
     std::list<std::string> original_text = result;
 
@@ -433,10 +469,18 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
         mytext.write_xy(x, y - 13, message.c_str(), BLACK, 1);
         screen_ctx->hor_line(x, y - 5, w, BLACK);
         
+        for (const SavedPixel& pixel : button_outline_backdrop)
+            screen_ctx->pointb(pixel.x, pixel.y, pixel.r, pixel.g, pixel.b);
         screen_ctx->draw_button(done_button.x, done_button.y, done_button.x + done_button.w, done_button.y + done_button.h, 1);
         mytext.write_xy(done_button.x + done_button.w/2 - 12, done_button.y + done_button.h/2 - 3, "DONE", DARK_BLUE, 1);
         screen_ctx->draw_button(cancel_button.x, cancel_button.y, cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
         mytext.write_xy(cancel_button.x + cancel_button.w/2 - 18, cancel_button.y + cancel_button.h/2 - 3, "CANCEL", DARK_BLUE, 1);
+        if (mymouse.in(done_button))
+            draw_button_hover(*screen_ctx, done_button.x, done_button.y,
+                              done_button.w + 1, done_button.h + 1);
+        if (mymouse.in(cancel_button))
+            draw_button_hover(*screen_ctx, cancel_button.x, cancel_button.y,
+                              cancel_button.w + 1, cancel_button.h + 1);
         
         
 	        int offset = 0;

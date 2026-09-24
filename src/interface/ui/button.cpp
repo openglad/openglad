@@ -514,6 +514,11 @@ void draw_backdrop()
             pks().backdrops[static_cast<size_t>(i)]->draw(og::runtime::current_session->myscreen_->viewob[0].get());
 }
 
+void draw_button_hover(screen& target, int x, int y, int width, int height)
+{
+    target.draw_box(x - 1, y - 1, x + width, y + height, YELLOW, 0, 1);
+}
+
 void draw_buttons(button * buttons, Sint32 numbuttons)
 {
     Sint32 i;
@@ -529,13 +534,11 @@ void draw_buttons(button * buttons, Sint32 numbuttons)
         {
             // Draw hover highlight after button draw so it survives
             // per-frame clearbuffer/redraw.
-            og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->xloc - 1,
-                               og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->yloc - 1,
-                               og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->xend,
-                               og::runtime::current_session->allbuttons_[static_cast<size_t>(i)]->yend,
-                               YELLOW,
-                               0,
-                               1);
+            vbutton& live_button = *og::runtime::current_session->allbuttons_[static_cast<size_t>(i)];
+            draw_button_hover(*og::runtime::current_session->myscreen_,
+                              live_button.xloc, live_button.yloc,
+                              live_button.xend - live_button.xloc,
+                              live_button.yend - live_button.yloc);
         }
     }
 }

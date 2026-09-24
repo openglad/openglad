@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/interface/render/text.h>
+#include <openglad/interface/button.h>
 #include <algorithm>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
@@ -649,27 +650,46 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	// Own the complete modal geometry here, where the real font height is
 	// known. Callers must not size a frame around a guessed text metric: that
 	// was how the action row escaped the hiring dialog in the first place.
-	og::runtime::current_session->myscreen_->draw_button(
-	    layout.frame.x, layout.frame.y,
-	    layout.frame.x + layout.frame.w,
-	    layout.frame.y + layout.frame.h, 1);
-	og::runtime::current_session->myscreen_->draw_box(x, y, x + field_width, y + sizey, backcolor, 1, 1);
-	og::runtime::current_session->myscreen_->draw_button(x, y, x + field_width, y + sizey, 1);
-	if (begin && begin[0] != '\0')
-		og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
-	write_xy(x, y - 10, message, DARK_GREEN, 1);
-	write_xy(x, y, editstring, WHITE, 1);
-	og::runtime::current_session->myscreen_->draw_button(
-	    accept_button.x, accept_button.y,
-	    accept_button.x + accept_button.w, accept_button.y + accept_button.h, 1);
-	write_xy(accept_button.x + (accept_button.w - query_width("ACCEPT")) / 2,
-	         accept_button.y + 3, "ACCEPT", DARK_BLUE, 1);
-	og::runtime::current_session->myscreen_->draw_button(
-	    cancel_button.x, cancel_button.y,
-	    cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
-	write_xy(cancel_button.x + (cancel_button.w - query_width("CANCEL")) / 2,
-	         cancel_button.y + 3, "CANCEL", DARK_BLUE, 1);
-	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+	screen& prompt_screen = *og::runtime::current_session->myscreen_;
+	const auto draw_prompt = [&](bool accept_hover, bool cancel_hover) {
+		prompt_screen.draw_button(
+		    layout.frame.x, layout.frame.y,
+		    layout.frame.x + layout.frame.w,
+		    layout.frame.y + layout.frame.h, 1);
+		prompt_screen.draw_box(x, y, x + field_width, y + sizey, backcolor, 1, 1);
+		prompt_screen.draw_button(x, y, x + field_width, y + sizey, 1);
+		if (!has_typed && begin && begin[0] != '\0')
+			prompt_screen.draw_box(x, y, x + query_width(editstring), y + sizey - 2, forecolor, 1, 1);
+		write_xy(x, y - 10, message, DARK_GREEN, 1);
+		write_xy(x, y, editstring, has_typed ? forecolor : WHITE, 1);
+		prompt_screen.draw_button(
+		    accept_button.x, accept_button.y,
+		    accept_button.x + accept_button.w, accept_button.y + accept_button.h, 1);
+		write_xy(accept_button.x + (accept_button.w - query_width("ACCEPT")) / 2,
+		         accept_button.y + 3, "ACCEPT", DARK_BLUE, 1);
+		prompt_screen.draw_button(
+		    cancel_button.x, cancel_button.y,
+		    cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
+		write_xy(cancel_button.x + (cancel_button.w - query_width("CANCEL")) / 2,
+		         cancel_button.y + 3, "CANCEL", DARK_BLUE, 1);
+		if (accept_hover)
+			draw_button_hover(prompt_screen, accept_button.x, accept_button.y,
+			                  accept_button.w + 1, accept_button.h + 1);
+		if (cancel_hover)
+			draw_button_hover(prompt_screen, cancel_button.x, cancel_button.y,
+			                  cancel_button.w + 1, cancel_button.h + 1);
+		prompt_screen.buffer_to_screen(0, 0, 320, 200);
+	};
+	MouseState& prompt_mouse = query_mouse_no_poll();
+	const auto hover_action = [&]() {
+		if (prompt_mouse.in(accept_button))
+			return 1;
+		if (prompt_mouse.in(cancel_button))
+			return 2;
+		return 0;
+	};
+	int rendered_hover = hover_action();
+	draw_prompt(rendered_hover == 1, rendered_hover == 2);
 
 	clear_keyboard();
 	clear_key_press_event();
@@ -677,7 +697,6 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	// A prompt entered from a button can inherit that button's held pointer.
 	// Establish a clean baseline before accepting a new prompt click.
 	reset_mouse_click_tracking();
-	MouseState& prompt_mouse = query_mouse_no_poll();
 	prompt_mouse.left = 0;
 	
     og::input_native::start_text_input(
@@ -691,7 +710,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
         
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event() && !query_text_input_event() &&
-		       !prompt_mouse.left)
+		       !prompt_mouse.left && hover_action() == rendered_hover)
 			//dumbcount++;
 			get_input_events(WAIT);
         
@@ -778,17 +797,10 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 
 		if (prompt_mouse.left)
 		{
-			const int click_x = static_cast<int>(prompt_mouse.x);
-			const int click_y = static_cast<int>(prompt_mouse.y);
 			prompt_mouse.left = 0;
-			const auto inside =
-			    [click_x, click_y](const og::ui::PromptButtonRect& rect) {
-				return click_x >= rect.x && click_x < rect.x + rect.w &&
-				       click_y >= rect.y && click_y < rect.y + rect.h;
-			};
-			if (inside(accept_button))
+			if (prompt_mouse.in(accept_button))
 				string_done = 1;
-			else if (inside(cancel_button))
+			else if (prompt_mouse.in(cancel_button))
 			{
 				snprintf(editstring, sizeof(editstring), "%s", firststring);
 				string_done = 1;
@@ -796,24 +808,8 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 			}
 		}
 		
-		og::runtime::current_session->myscreen_->draw_button(x, y, x + field_width, y + sizey + 1, 1);
-        write_xy(x, y - 10, message, DARK_GREEN, 1);
-        if(!has_typed && strlen(editstring) > 0)
-        {
-            og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
-            write_xy(x, y, editstring, WHITE, 1);
-        }
-		else
-            write_xy(x, y, editstring, forecolor, 1);
-		og::runtime::current_session->myscreen_->draw_button(
-		    accept_button.x, accept_button.y,
-		    accept_button.x + accept_button.w, accept_button.y + accept_button.h, 1);
-		write_xy(accept_button.x + 7, accept_button.y + 3, "ACCEPT", DARK_BLUE, 1);
-		og::runtime::current_session->myscreen_->draw_button(
-		    cancel_button.x, cancel_button.y,
-		    cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
-		write_xy(cancel_button.x + 7, cancel_button.y + 3, "CANCEL", DARK_BLUE, 1);
-		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+		rendered_hover = hover_action();
+		draw_prompt(rendered_hover == 1, rendered_hover == 2);
 	}
 
     og::input_native::stop_text_input();
