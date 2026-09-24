@@ -428,7 +428,7 @@ test.describe('Browser networking happy path (local relay stub)', () => {
   /** @type {RelayStub} */
   let relayStub;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     relayStub = new RelayStub({
       roomCode: 'GLAD-E2E1',
       ownerToken: 'tok-e2e-owner',
@@ -436,7 +436,7 @@ test.describe('Browser networking happy path (local relay stub)', () => {
     await relayStub.start();
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     if (relayStub) {
       await relayStub.stop();
     }
