@@ -2614,6 +2614,15 @@ public:
         stage_broadcast_ = {};
         match_seed_ = og::server::draw_match_seed();
         server_->set_start_gate([this] {
+#ifdef __EMSCRIPTEN__
+            // Browser E2E exercises the real server denial echo without
+            // corrupting a shipped campaign or changing the normal stage.
+            if (EM_ASM_INT({ return globalThis.__opengladFailStartStageForTests === true; }))
+            {
+                Log("web_e2e_start_gate_denied=StageFailed\n");
+                return og::sim::StartDenialReason::StageFailed;
+            }
+#endif
             refresh_stage_inputs();
             return stage_ != nullptr &&
                     stage_->ensure_current(og::server::stage_clock_now_ms())

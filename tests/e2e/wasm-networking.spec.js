@@ -1,5 +1,7 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
 const {
   clickCanvasGameCoord,
   continueToTeamBuildMenu,
@@ -505,6 +507,87 @@ test.describe('Browser networking happy path (local relay stub)', () => {
 
     await expectNoWasmAbort(page, errors, 'HOST against the local relay stub');
     assertNoRuntimeErrors(errors, 'relay stub HOST happy path');
+  });
+
+  test('denied web GO shows the server verdict and can be retried', async ({ page }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    const gateLogs = [];
+    const popupLogs = [];
+    attachRuntimeErrorCollectors(page, errors);
+    page.on('console', (message) => {
+      if (message.type() === 'log' && message.text().includes('web_e2e_start_gate_denied=StageFailed')) {
+        gateLogs.push(message.text());
+      }
+      if (message.type() === 'log' && message.text().startsWith('STAGING FAILED,')) {
+        popupLogs.push(message.text());
+      }
+    });
+
+    await loadPickerWithSkippedIntro(page, relayStub.baseUrl);
+    await continueToTeamBuildMenu(page);
+    await openNetworkingFromTeamBuild(page);
+    const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.host.x,
+      NETWORKING_MENU_BUTTONS.host.y,
+    );
+    await expect.poll(() => relayStub.roomConnections.length, {
+      message: 'the browser should host a real networked lobby',
+      timeout: 20_000,
+    }).toBe(1);
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'HOST should return to Base Camp',
+    );
+
+    const campBeforeGo = await captureSettledRegion(
+      page, POPUP_REGION, 'Base Camp before the denied GO',
+    );
+    await page.evaluate(() => { window.__opengladFailStartStageForTests = true; });
+    await clickCanvasGameCoord(page, GO_READY_BUTTON.x, GO_READY_BUTTON.y);
+    await expect.poll(() => gateLogs.length, {
+      message: 'the server should reject this GO with StageFailed',
+      timeout: 10_000,
+    }).toBe(1);
+    await page.waitForTimeout(700);
+
+    if (process.env.OG_PR_MEDIA_DIR) {
+      fs.mkdirSync(process.env.OG_PR_MEDIA_DIR, { recursive: true });
+      await page.locator('#canvas').screenshot({
+        path: path.join(process.env.OG_PR_MEDIA_DIR, 'stage-denial.png'),
+      });
+    }
+    await expect.poll(() => popupLogs.length, {
+      message: 'the denied GO should open the same STAGING FAILED popup as native',
+      timeout: 10_000,
+    }).toBe(1);
+    expect(popupLogs[0]).toContain(
+      'STAGING FAILED, The level could\nnot be staged.\nChange the level',
+    );
+    expect((await captureRegion(page, POPUP_REGION)).equals(campBeforeGo)).toBe(false);
+    expect(await page.evaluate(() => window.__opengladGameState)).not.toBe(2);
+
+    await page.evaluate(() => { window.__opengladFailStartStageForTests = false; });
+    await clickCanvasGameCoord(page, POPUP_OK_BUTTON.x, POPUP_OK_BUTTON.y);
+    await waitForRegionToShow(
+      page, POPUP_REGION, campBeforeGo,
+      'dismissing the verdict should restore Base Camp',
+    );
+    if (process.env.OG_PR_MEDIA_DIR) {
+      await page.locator('#canvas').screenshot({
+        path: path.join(process.env.OG_PR_MEDIA_DIR, 'base-camp-restored.png'),
+      });
+    }
+    await clickCanvasGameCoord(page, GO_READY_BUTTON.x, GO_READY_BUTTON.y);
+    await page.waitForFunction(() => window.__opengladGameState === 2, null, {
+      timeout: 45_000,
+    });
+    await expectNoWasmAbort(page, errors, 'denial, retry, and accepted GO');
+    assertNoRuntimeErrors(errors, 'denial, retry, and accepted GO');
   });
 });
 

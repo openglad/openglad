@@ -2552,6 +2552,39 @@ Sint32 delete_all()
 	return counter;
 }
 
+// Both the browser and native menu poll the request to its verdict. One
+// renderer keeps the timeout, link-loss and server-denial copy identical.
+static void picker_show_go_start_failure(std::uint64_t wait_iterations)
+{
+    (void)wait_iterations; // TRACE is compiled out of shipping builds.
+    const og::ui::StartRequestOutcome outcome =
+        picker_lobby_start_request_outcome();
+    switch (outcome)
+    {
+    case og::ui::StartRequestOutcome::NoAnswer:
+        TRACE("basecamp", "go_wait_timeout iterations=%llu",
+              static_cast<unsigned long long>(wait_iterations));
+        popup_dialog("NO ANSWER FROM HOST",
+                     "The host did not\nanswer the start\nrequest");
+        return;
+    case og::ui::StartRequestOutcome::LinkLost:
+        TRACE("basecamp", "go_wait_link_lost iterations=%llu",
+              static_cast<unsigned long long>(wait_iterations));
+        popup_dialog("CONNECTION LOST",
+                     "The link dropped\nbefore the host\nanswered");
+        return;
+    case og::ui::StartRequestOutcome::None:
+        break;
+    }
+
+    const og::sim::StartDenialReason reason =
+        picker_lobby_last_start_denial();
+    const og::ui::StartDenialNotice notice =
+        og::ui::describe_start_denial(reason, picker_lobby_players());
+    TRACE("basecamp", "go_denied reason=%d", static_cast<int>(reason));
+    popup_dialog(notice.title.c_str(), notice.body.c_str());
+}
+
 Sint32 go_menu(Sint32 arg1)
 {
 	// Save the current team in memory to save0.gtl, and
@@ -2665,6 +2698,18 @@ Sint32 go_menu(Sint32 arg1)
 
 #ifdef __EMSCRIPTEN__
     picker_prepare_async_team_build_start_request();
+    std::uint64_t wait_iterations = 0;
+    while (!g_start_game_requested && picker_lobby_start_request_pending())
+    {
+        picker_lobby_poll();
+        og::input_native::sleep_ms(10);
+        ++wait_iterations;
+    }
+    if (!g_start_game_requested)
+    {
+        picker_show_go_start_failure(wait_iterations);
+        return MENU_REDRAW;
+    }
     og::runtime::current_session->myscreen_->save_data.save(
         og::data::active_company_slot());
     og::runtime::current_session->current_guy_.reset();
@@ -2677,6 +2722,7 @@ Sint32 go_menu(Sint32 arg1)
         g_start_game_requested && picker_lobby_has_game_start_config();
     if (!start_already_requested)
         g_start_game_requested = false;
+    std::uint64_t wait_iterations = 0;
     if (!start_already_requested && !picker_lobby_request_start())
     {
         // The host's StartGame handoff or denial echo releases this wait,
@@ -2690,7 +2736,6 @@ Sint32 go_menu(Sint32 arg1)
         // start_request_outcome(); the menu says which and hands itself
         // back, instead of bouncing to a redraw with no popup at all.
         const auto wait_started = std::chrono::steady_clock::now();
-        std::uint64_t wait_iterations = 0;
         while (!g_start_game_requested && picker_lobby_start_request_pending())
         {
             picker_lobby_poll();
@@ -2706,52 +2751,11 @@ Sint32 go_menu(Sint32 arg1)
                 .count(),
             g_start_game_requested,
             static_cast<int>(wait_outcome));
-        // Exhaustive by design (no `default:`): -Wswitch under -Werror makes
-        // a new StartRequestOutcome a build error rather than a silent exit.
-        switch (wait_outcome)
-        {
-        case og::ui::StartRequestOutcome::NoAnswer:
-            TRACE("basecamp", "go_wait_timeout iterations=%llu",
-                  static_cast<unsigned long long>(wait_iterations));
-            popup_dialog("NO ANSWER FROM HOST",
-                         "The host did not\nanswer the start\nrequest");
-            return MENU_REDRAW;
-        case og::ui::StartRequestOutcome::LinkLost:
-            // Same notice the per-frame revert shows when the session is
-            // declared over, said here because the GO is what the player is
-            // waiting on. The link may still come back inside the reconnect
-            // window; the request cannot, so the retry is the player's.
-            TRACE("basecamp", "go_wait_link_lost iterations=%llu",
-                  static_cast<unsigned long long>(wait_iterations));
-            popup_dialog("CONNECTION LOST",
-                         "The link dropped\nbefore the host\nanswered");
-            return MENU_REDRAW;
-        case og::ui::StartRequestOutcome::None:
-            // The host answered (accept or denial); the denial block below
-            // renders the verdict.
-            break;
-        }
     }
 
     if (!g_start_game_requested)
     {
-        // §2.6: the GO was refused, and the refusal is answered — never
-        // swallowed. `picker_lobby_last_start_denial()` is the correlated
-        // verdict of THIS start request (the client latches the server's
-        // reason at the point its own pending request drops), so the reason
-        // rendered here belongs to the press the player just made, including
-        // the no-verdict case (None: the request never went out at all).
-        // The text comes from the one shared reason->text mapping, which the
-        // curses lobby band reads too.
-        if (picker_lobby_is_networked())
-        {
-            const og::sim::StartDenialReason reason =
-                picker_lobby_last_start_denial();
-            const og::ui::StartDenialNotice notice =
-                og::ui::describe_start_denial(reason, picker_lobby_players());
-            TRACE("basecamp", "go_denied reason=%d", static_cast<int>(reason));
-            popup_dialog(notice.title.c_str(), notice.body.c_str());
-        }
+        picker_show_go_start_failure(wait_iterations);
         return MENU_REDRAW;
     }
 
