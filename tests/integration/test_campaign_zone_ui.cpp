@@ -798,6 +798,7 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
 
     g_click_ladder_trace_click_retries = 0;
     g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_injected_ack_retries = 0;
     g_click_ladder_ack_drops = 0;
     g_click_ladder_click_drops = 1;
 
@@ -847,6 +848,7 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
 
     g_click_ladder_trace_click_retries = 0;
     g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_injected_ack_retries = 0;
     g_click_ladder_click_drops = 0;
     g_click_ladder_ack_drops = 1;
 
@@ -870,7 +872,7 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
         << "the injected cancellation must be consumed";
     EXPECT_TRUE(state.deploy_edges_acknowledged)
         << "a cancelled acknowledge must cost a re-post, not the toggle";
-    EXPECT_EQ(1, g_click_ladder_ack_post_retries)
+    EXPECT_EQ(1, g_click_ladder_injected_ack_retries)
         << "exactly one acknowledge post was re-sent";
     EXPECT_EQ(0, g_click_ladder_trace_click_retries)
         << "the press itself registered: it must never be re-pressed";

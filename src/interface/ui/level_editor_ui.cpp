@@ -59,6 +59,7 @@ std::atomic<bool> s_prompt_block_click_pending{false};
 std::atomic<bool> s_prompt_force_real{false};
 std::atomic<bool> s_prompt_real_active{false};
 std::atomic<std::uint64_t> s_prompt_real_entered_count{0};
+std::atomic<std::uint64_t> s_prompt_testing_call_count{0};
 
 void prompt_block_testing_input_observed()
 {
@@ -516,6 +517,7 @@ bool prompt_for_string(const std::string& message, std::string& result)
     // If the queue is empty, accept the existing value without blocking. A
     // visual-flow test can explicitly opt into the production modal below.
     if (!s_prompt_force_real.load(std::memory_order_acquire)) {
+        s_prompt_testing_call_count.fetch_add(1, std::memory_order_release);
         (void)message;
         auto& q = level_editor_testing_prompt_queue_ref();
         if (!q.empty()) {
@@ -559,6 +561,11 @@ void level_editor_testing_prompt_queue_clear()
 void level_editor_testing_prompt_queue_push(const char* s)
 {
     level_editor_testing_prompt_queue_ref().push_back(s ? std::string(s) : std::string());
+}
+
+std::uint64_t level_editor_testing_prompt_call_count()
+{
+    return s_prompt_testing_call_count.load(std::memory_order_acquire);
 }
 
 // Provide access to the prompt queue without exposing it globally in non-test builds.

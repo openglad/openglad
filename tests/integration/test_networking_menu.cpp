@@ -16,6 +16,7 @@
 
 #include <cstdlib>
 #include <atomic>
+#include <cstdint>
 #include <format>
 #include <functional>
 #include <initializer_list>
@@ -37,6 +38,7 @@ extern int g_picker_max_mainmenu_calls;
 
 void level_editor_testing_prompt_queue_clear();
 void level_editor_testing_prompt_queue_push(const char* s);
+std::uint64_t level_editor_testing_prompt_call_count();
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 
@@ -245,19 +247,25 @@ bool interact_until_label_contains(const std::string& id,
             continue;
         }
 
+        const std::uint64_t prompts_before =
+            level_editor_testing_prompt_call_count();
         interact(id);
-        // Generous confirmation wait: each interact() on a text field consumes
-        // one queued prompt. If the label-update lags past this (e.g. the slow,
-        // instrumented coverage-CI runner — ~12x slower than local), the loop
-        // re-interacts and eats the NEXT field's prompt, starving a later step
-        // (this is what flaked NetworkingMenu.submenu_validation_errors: the port
-        // edit re-interacted, consumed the blank-IP prompt, and set_valid_port
-        // never reached "24567"). Wait long enough to confirm before re-interacting.
-        if (wait_for_interactable_label_contains(
-                id, expected_substring, 5000))
+        // These fields consume a queued answer. A slow label refresh must not
+        // turn a confirmed prompt into a second click that takes the next
+        // field's answer. Retry only when no prompt ran at all.
+        if (id != "network_room_toggle")
         {
-            return true;
+            const Uint64 prompt_deadline = SDL_GetTicks() + 5000;
+            while (SDL_GetTicks() < prompt_deadline &&
+                   level_editor_testing_prompt_call_count() == prompts_before)
+                SDL_Delay(50);
+            if (level_editor_testing_prompt_call_count() != prompts_before)
+                return wait_for_interactable_label_contains(
+                    id, expected_substring, 5000);
         }
+        else if (wait_for_interactable_label_contains(
+                     id, expected_substring, 5000))
+            return true;
 
         SDL_Delay(100);
     }
