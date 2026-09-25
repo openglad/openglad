@@ -2985,6 +2985,8 @@ TEST(PickerNetworkClient,
         EXPECT_TRUE(trace_contains(
             "popup", "staged world exceeds the wire message size cap"))
             << "the popup must report the real stage's recorded cause";
+        EXPECT_TRUE(trace_contains("popup", "author or OpenGlad"))
+            << "the popup must direct the player to report the failure";
         EXPECT_TRUE(trace_contains("basecamp", "go_denied reason=4"))
             << "go_menu traces the reason it rendered (StageFailed == 4)";
         EXPECT_EQ(og::sim::StartDenialReason::StageFailed,

@@ -2104,8 +2104,8 @@ StartDenialNotice describe_start_denial(
         // "STAGING FAILED" is the established vocabulary (the VIEW LEVEL band
         // and the scenario report say the same words about the same state).
         notice.title = "STAGING FAILED";
-        notice.body = "The level could\nnot be staged.\nChange the level\n"
-                      "or roster, then\ntry GO again";
+        notice.body = "The match could\nnot be prepared.\nPlease report this\n"
+                      "to the scenario\nauthor or OpenGlad";
         if (!stage_failure_detail.empty())
         {
             // Exception text can contain line breaks or arbitrarily long
@@ -2137,10 +2137,11 @@ StartDenialNotice describe_start_denial(
                     }
                     notice.body += line + '\n';
                 }
-                notice.body += "Fix the cause, then\ntry GO again";
+                notice.body += "Please report this\nto the scenario\n"
+                               "author or OpenGlad";
             }
         }
-        notice.line = "Staging failed: change the level or roster";
+        notice.line = "Staging failed: report to author or OpenGlad";
         break;
     }
     return notice;

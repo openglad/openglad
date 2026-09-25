@@ -3659,7 +3659,7 @@ TEST(CursesNetwork, host_start_on_a_failed_stage_names_the_stage)
         started = lobby->poll(term, clock) || started;
     EXPECT_FALSE(started) << "a stage that cannot be built must not launch";
     EXPECT_TRUE(status_contains(
-        *lobby, "Staging failed: change the level or roster"))
+        *lobby, "Staging failed: report to author or OpenGlad"))
         << "the StageFailed verdict must reach the band in the shared "
            "words:\n"
         << term.dump();

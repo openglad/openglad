@@ -570,6 +570,9 @@ test.describe('Browser networking happy path (local relay stub)', () => {
     expect(popupLogs[0]).toContain(
       'STAGING FAILED, Cause:\nstaged world exceeds the wire message size cap',
     );
+    expect(popupLogs[0]).toContain(
+      'Please report this\nto the scenario\nauthor or OpenGlad',
+    );
     expect((await captureRegion(page, POPUP_REGION)).equals(campBeforeGo)).toBe(false);
     expect(await page.evaluate(() => window.__opengladGameState)).not.toBe(2);
 
