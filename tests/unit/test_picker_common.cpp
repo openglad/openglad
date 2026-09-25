@@ -2985,6 +2985,39 @@ TEST(PickerCommon, start_denial_notice_maps_every_reason)
     }
 }
 
+TEST(PickerCommon, stage_failure_notice_shows_bounded_recorded_cause)
+{
+    const std::vector<og::sim::LobbyPlayer> no_players;
+    const auto reason = og::sim::StartDenialReason::StageFailed;
+    const og::ui::StartDenialNotice notice =
+        og::ui::describe_start_denial(
+            reason, no_players,
+            "staged world exceeds the wire message size cap");
+    EXPECT_EQ("STAGING FAILED", notice.title);
+    EXPECT_EQ("Cause:\nstaged world exceeds the wire message size cap\n"
+              "Fix the cause, then\ntry GO again", notice.body);
+
+    const og::ui::StartDenialNotice long_notice =
+        og::ui::describe_start_denial(
+            reason, no_players, std::string(200, 'x') + "\nmore");
+    const std::vector<std::string> lines =
+        split_denial_lines(long_notice.body);
+    ASSERT_EQ(6u, lines.size());
+    EXPECT_EQ("Cause:", lines.front());
+    EXPECT_EQ("try GO again", lines.back());
+    EXPECT_EQ("...", lines[3].substr(lines[3].size() - 3));
+    for (const std::string& line : lines)
+        EXPECT_LE(line.size(), 46u);
+
+    // A stale stage detail must never overwrite an unrelated verdict.
+    const og::ui::StartDenialNotice unrelated =
+        og::ui::describe_start_denial(
+            og::sim::StartDenialReason::NoDeployedCharacters,
+            no_players, "staged world exceeds the wire message size cap");
+    EXPECT_EQ("Deploy at least\none character\nbefore starting",
+              unrelated.body);
+}
+
 
 // --- Player seats in the View Level report (#218 seat block) ----------------
 

@@ -859,16 +859,18 @@ std::string format_go_blockers(
     const std::vector<og::sim::LobbyPlayer>& players);
 
 // The ONE reason->text mapping for a refused GO. `title`/`body` are the SDL
-// popup_dialog arguments (body lines <= 19 chars so the 46-char dialog never
-// wraps); `line` is the single-row form the curses lobby band prints. Every
-// client renders the verdict of its own start request from here, so the two
+// popup_dialog arguments (fixed body lines <= 19 chars; stage detail lines
+// <= 46 chars, the dialog's width); `line` is the single-row form the curses
+// lobby band prints. Every client renders the verdict of its own start request
+// from here, so the two
 // front ends can never drift apart or leave a reason silent.
 //
 // The switch inside is exhaustive BY DESIGN: it has no `default:` arm, so
 // -Wswitch (an error on the ci-test/ci-asan/ci-tsan lanes) is the tripwire
 // that makes a sixth StartDenialReason a build failure instead of a silent
 // swallow. MachinesNotReady consults `players` for the blocker roster; the
-// other reasons ignore it.
+// other reasons ignore it. A StageFailed notice uses the owner's recorded
+// cause when supplied, with a bounded fallback for missing detail.
 struct StartDenialNotice {
     std::string title;
     std::string body;
@@ -876,7 +878,8 @@ struct StartDenialNotice {
 };
 StartDenialNotice describe_start_denial(
     og::sim::StartDenialReason reason,
-    const std::vector<og::sim::LobbyPlayer>& players);
+    const std::vector<og::sim::LobbyPlayer>& players,
+    std::string_view stage_failure_detail = {});
 
 // §2.7 cross-control toggle label: "CROSS CONTROL: OWN" (only the owner
 // machine controls its characters) / "CROSS CONTROL: ALL" (players may

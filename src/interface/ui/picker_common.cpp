@@ -2066,7 +2066,8 @@ std::string format_go_blockers(
 
 StartDenialNotice describe_start_denial(
     og::sim::StartDenialReason reason,
-    const std::vector<og::sim::LobbyPlayer>& players)
+    const std::vector<og::sim::LobbyPlayer>& players,
+    std::string_view stage_failure_detail)
 {
     // No `default:` arm, and none may be added: -Wswitch under -Werror is the
     // tripwire that turns a sixth StartDenialReason into a build error here
@@ -2105,6 +2106,40 @@ StartDenialNotice describe_start_denial(
         notice.title = "STAGING FAILED";
         notice.body = "The level could\nnot be staged.\nChange the level\n"
                       "or roster, then\ntry GO again";
+        if (!stage_failure_detail.empty())
+        {
+            // Exception text can contain line breaks or arbitrarily long
+            // paths. Keep the recorded cause legible inside the 320px dialog
+            // while retaining the full error in MatchStage for diagnostics.
+            std::string clean;
+            clean.reserve(stage_failure_detail.size());
+            for (const char ch : stage_failure_detail)
+            {
+                if (ch >= 32 && ch <= 126)
+                    clean.push_back(ch);
+                else if (ch == '\n' || ch == '\r' || ch == '\t')
+                    clean.push_back(' ');
+            }
+            const std::vector<std::string> lines =
+                og::core::wrap_text(clean, 46);
+            if (!lines.empty())
+            {
+                notice.body = "Cause:\n";
+                constexpr std::size_t kMaxCauseLines = 3;
+                const std::size_t shown = std::min(lines.size(), kMaxCauseLines);
+                for (std::size_t i = 0; i < shown; ++i)
+                {
+                    std::string line = lines[i];
+                    if (i + 1 == shown && lines.size() > shown)
+                    {
+                        line.resize(std::min(line.size(), std::size_t{43}));
+                        line += "...";
+                    }
+                    notice.body += line + '\n';
+                }
+                notice.body += "Fix the cause, then\ntry GO again";
+            }
+        }
         notice.line = "Staging failed: change the level or roster";
         break;
     }

@@ -2580,7 +2580,9 @@ static void picker_show_go_start_failure(std::uint64_t wait_iterations)
     const og::sim::StartDenialReason reason =
         picker_lobby_last_start_denial();
     const og::ui::StartDenialNotice notice =
-        og::ui::describe_start_denial(reason, picker_lobby_players());
+        og::ui::describe_start_denial(
+            reason, picker_lobby_players(),
+            picker_lobby_last_start_failure_detail());
     TRACE("basecamp", "go_denied reason=%d", static_cast<int>(reason));
     popup_dialog(notice.title.c_str(), notice.body.c_str());
 }

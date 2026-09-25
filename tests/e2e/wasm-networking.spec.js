@@ -514,7 +514,9 @@ test.describe('Browser networking happy path (local relay stub)', () => {
     const errors = [];
     const gateLogs = [];
     const popupLogs = [];
-    attachRuntimeErrorCollectors(page, errors);
+    attachRuntimeErrorCollectors(page, errors, [
+      /match_stage_failed error=staged world exceeds the wire message size cap/,
+    ]);
     page.on('console', (message) => {
       if (message.type() === 'log' && message.text().includes('web_e2e_start_gate_denied=StageFailed')) {
         gateLogs.push(message.text());
@@ -566,7 +568,7 @@ test.describe('Browser networking happy path (local relay stub)', () => {
       timeout: 10_000,
     }).toBe(1);
     expect(popupLogs[0]).toContain(
-      'STAGING FAILED, The level could\nnot be staged.\nChange the level',
+      'STAGING FAILED, Cause:\nstaged world exceeds the wire message size cap',
     );
     expect((await captureRegion(page, POPUP_REGION)).equals(campBeforeGo)).toBe(false);
     expect(await page.evaluate(() => window.__opengladGameState)).not.toBe(2);

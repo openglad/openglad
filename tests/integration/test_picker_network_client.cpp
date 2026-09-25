@@ -2982,13 +2982,16 @@ TEST(PickerNetworkClient,
             << "a GO the server denies must hand the menu back, not launch";
         EXPECT_TRUE(trace_contains("popup", "STAGING FAILED"))
             << "the StageFailed verdict must be SAID, not swallowed";
-        EXPECT_TRUE(trace_contains("popup", "The level could"))
-            << "the notice body names what the player has to change";
+        EXPECT_TRUE(trace_contains(
+            "popup", "staged world exceeds the wire message size cap"))
+            << "the popup must report the real stage's recorded cause";
         EXPECT_TRUE(trace_contains("basecamp", "go_denied reason=4"))
             << "go_menu traces the reason it rendered (StageFailed == 4)";
         EXPECT_EQ(og::sim::StartDenialReason::StageFailed,
                   host_client->last_start_denial())
             << "last_start_denial() is THIS request's correlated verdict";
+        EXPECT_EQ("staged world exceeds the wire message size cap",
+                  host_client->last_start_failure_detail());
         EXPECT_FALSE(g_start_game_requested)
             << "a Failed stage must never launch";
         EXPECT_FALSE(host_client->start_request_pending())
@@ -3011,6 +3014,8 @@ TEST(PickerNetworkClient,
               host_client->last_start_denial())
         << "an ACCEPTED request clears the verdict: the StageFailed the "
            "player already fixed must not linger on the next press";
+    EXPECT_TRUE(host_client->last_start_failure_detail().empty())
+        << "the previous failure detail must not leak into the next GO";
     EXPECT_FALSE(host_client->start_request_pending());
 
     g_start_game_requested = false;
