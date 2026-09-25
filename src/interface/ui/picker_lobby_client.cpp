@@ -1417,6 +1417,13 @@ og::sim::StartDenialReason picker_lobby_last_start_denial()
     return og::sim::StartDenialReason::None;
 }
 
+std::string picker_lobby_last_start_failure_detail()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->last_start_failure_detail();
+    return {};
+}
+
 std::vector<og::sim::LobbyPlayer> picker_lobby_players()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())

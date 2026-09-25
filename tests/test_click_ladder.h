@@ -81,6 +81,10 @@ inline int g_click_ladder_ack_post_retries = 0;
 // TESTING-only fault injection for that half: make the next N acknowledge
 // posts come back cancelled the way a starved menu thread cancels them.
 inline int g_click_ladder_ack_drops = 0;
+// Count only re-posts caused by the injected cancellation. A real stalled
+// pump can require another post as well, so total retries are not a stable
+// oracle for the fault-injection tests.
+inline int g_click_ladder_injected_ack_retries = 0;
 
 // The ceiling every POST in this file is sent with, and never the caller's
 // own wait. run_on_main_thread's ceiling is a CANCELLATION deadline for a
@@ -102,8 +106,10 @@ inline bool acknowledge_press(int timeout_ms = kAckPostCeilingMs,
                        int attempts = 3, bool injectable = false)
 {
     for (int attempt = 0; attempt < attempts; ++attempt) {
+        bool injected_drop = false;
         if (injectable && g_click_ladder_ack_drops > 0) {
             --g_click_ladder_ack_drops;
+            injected_drop = true;
             fprintf(stderr,
                     "  [ladder] cancelling the acknowledge post (injected)\n");
         } else if (run_on_main_thread([] { reset_mouse_click_tracking(); },
@@ -114,8 +120,11 @@ inline bool acknowledge_press(int timeout_ms = kAckPostCeilingMs,
                     "  [interact] acknowledge post did not run within %d ms\n",
                     timeout_ms);
         }
-        if (attempt + 1 < attempts)
+        if (attempt + 1 < attempts) {
             ++g_click_ladder_ack_post_retries;
+            if (injected_drop)
+                ++g_click_ladder_injected_ack_retries;
+        }
     }
     // Last resort, for the stall that outlives the whole ladder: the menu
     // thread pumped NOTHING for the full budget (a >15 s gap has been seen
@@ -147,12 +156,24 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
         if (!run_on_main_thread([] { reset_mouse_click_tracking(); },
                                 kAckPostCeilingMs))
             return false;
-        if (g_click_ladder_click_drops > 0) {
-            --g_click_ladder_click_drops;
-            fprintf(stderr, "  [ladder] dropping the press on '%s' (injected)\n",
-                    id.c_str());
-        } else {
-            (void)interact(id);
+        // The reset task runs at frame top. If a prior press still has no
+        // trace, wait for that frame to consume input before considering a
+        // second press; otherwise a late first press can cycle twice.
+        if (attempt > 0 &&
+            count_trace_containing(category, trace_substring) <= before &&
+            !wait_for_menu_frames(1, kAckPostCeilingMs))
+            return false;
+        if (count_trace_containing(category, trace_substring) <= before) {
+            if (attempt > 0)
+                ++g_click_ladder_trace_click_retries;
+            if (g_click_ladder_click_drops > 0) {
+                --g_click_ladder_click_drops;
+                fprintf(stderr,
+                        "  [ladder] dropping the press on '%s' (injected)\n",
+                        id.c_str());
+            } else {
+                (void)interact(id);
+            }
         }
         int elapsed = 0;
         while (elapsed < timeout_ms &&
@@ -167,10 +188,8 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
             fprintf(stderr,
                     "  [interact] TIMEOUT waiting for new %s trace '%s'\n",
                     category, trace_substring);
-            if (attempt + 1 < attempts) {
-                ++g_click_ladder_trace_click_retries;
+            if (attempt + 1 < attempts)
                 continue;  // nothing registered: the press may be re-sent
-            }
             (void)run_on_main_thread([] { reset_mouse_click_tracking(); },
                                      kAckPostCeilingMs);
             return false;

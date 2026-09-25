@@ -529,6 +529,7 @@ struct TeamsFlowState
     bool score_map_seen = false;
     bool teams_cell_gone = false;
     bool score_relabelled = false;
+    int score_click_retries = -1;
     bool viewer_opened = false;
     bool viewer_back_seen = false;
     // TROOPS retired (B5): both flows record that its cell never shows.
@@ -621,8 +622,11 @@ int teams_ctf_settings_flow_injector(void* data)
         // Each label can flip while the previous click's press is still
         // held; the ladder's own acknowledgement carries that, with the
         // wizard's "turned" witness (knob and written value).
+        const int retries_before = g_click_ladder_click_retries;
         state->score_relabelled = click_until_label_containing(
             "setup_row_0", "SCORE: 1", 3, 10000, "turned", "setup");
+        state->score_click_retries =
+            g_click_ladder_click_retries - retries_before;
         (void)click_until_edge("setup_back", [](int wait_ms) {
             return wait_for_interactable("scenario", wait_ms);
         }, nullptr, kCtfDoorAttempts, 10000);
@@ -1020,6 +1024,7 @@ TEST(CtfUi, settings_cycler_is_not_charged_for_a_starved_acknowledge)
 
     g_click_ladder_ack_drops = 1;
     g_click_ladder_ack_post_retries = 0;
+    g_click_ladder_injected_ack_retries = 0;
     g_click_ladder_click_retries = 0;
 
     TeamsFlowState state;
@@ -1040,9 +1045,9 @@ TEST(CtfUi, settings_cycler_is_not_charged_for_a_starved_acknowledge)
         << "the press itself landed: the knob cycled and the flow autosaved";
     EXPECT_EQ(0, g_click_ladder_ack_drops)
         << "the injected stall must be consumed";
-    EXPECT_EQ(1, g_click_ladder_ack_post_retries)
+    EXPECT_EQ(1, g_click_ladder_injected_ack_retries)
         << "exactly one acknowledge post was re-sent";
-    EXPECT_EQ(0, g_click_ladder_click_retries)
+    EXPECT_EQ(0, state.score_click_retries)
         << "the press itself registered: it must never be re-pressed";
 
     (void)unmount_campaign_package_with_error(get_mounted_campaign());

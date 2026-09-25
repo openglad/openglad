@@ -2907,9 +2907,9 @@ TEST(PickerCommon, start_denial_notice_maps_every_reason)
          "No one is deployed"},
         {og::sim::StartDenialReason::StageFailed,
          "STAGING FAILED",
-         "The level could\nnot be staged.\nChange the level\nor roster, then\n"
-         "try GO again",
-         "Staging failed: change the level or roster"},
+         "The match could\nnot be prepared.\nPlease report this\n"
+         "to the scenario\nauthor or OpenGlad",
+         "Staging failed: report to author or OpenGlad"},
     };
     ASSERT_EQ(5u, std::size(expected))
         << "every StartDenialReason enumerator needs a row here; the formatter "
@@ -2983,6 +2983,40 @@ TEST(PickerCommon, start_denial_notice_maps_every_reason)
             << "reason " << static_cast<int>(row.reason)
             << " must not consult the roster";
     }
+}
+
+TEST(PickerCommon, stage_failure_notice_shows_bounded_recorded_cause)
+{
+    const std::vector<og::sim::LobbyPlayer> no_players;
+    const auto reason = og::sim::StartDenialReason::StageFailed;
+    const og::ui::StartDenialNotice notice =
+        og::ui::describe_start_denial(
+            reason, no_players,
+            "staged world exceeds the wire message size cap");
+    EXPECT_EQ("STAGING FAILED", notice.title);
+    EXPECT_EQ("Cause:\nstaged world exceeds the wire message size cap\n"
+              "Please report this\nto the scenario\nauthor or OpenGlad",
+              notice.body);
+
+    const og::ui::StartDenialNotice long_notice =
+        og::ui::describe_start_denial(
+            reason, no_players, std::string(200, 'x') + "\nmore");
+    const std::vector<std::string> lines =
+        split_denial_lines(long_notice.body);
+    ASSERT_EQ(7u, lines.size());
+    EXPECT_EQ("Cause:", lines.front());
+    EXPECT_EQ("author or OpenGlad", lines.back());
+    EXPECT_EQ("...", lines[3].substr(lines[3].size() - 3));
+    for (const std::string& line : lines)
+        EXPECT_LE(line.size(), 46u);
+
+    // A stale stage detail must never overwrite an unrelated verdict.
+    const og::ui::StartDenialNotice unrelated =
+        og::ui::describe_start_denial(
+            og::sim::StartDenialReason::NoDeployedCharacters,
+            no_players, "staged world exceeds the wire message size cap");
+    EXPECT_EQ("Deploy at least\none character\nbefore starting",
+              unrelated.body);
 }
 
 

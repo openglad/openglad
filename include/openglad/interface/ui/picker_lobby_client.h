@@ -345,6 +345,12 @@ public:
         return staged_world() != nullptr ? StagedPreviewHealth::Staged
                                          : StagedPreviewHealth::None;
     }
+    // The owner-side detail latched for the most recent GO verdict. Only a
+    // StageFailed denial has one; an unrelated or unsent request returns empty.
+    [[nodiscard]] virtual std::string last_start_failure_detail() const
+    {
+        return {};
+    }
     // The serialized generation-paired StagedMatchSetup/StagedMatchKeyframe
     // inner bytes (host/local: MatchStage's cached broadcast pair; joiner:
     // the retained newest received pair — retained so a preview pane opened
@@ -437,6 +443,7 @@ bool picker_lobby_session_lost();
 bool picker_lobby_set_ready(bool ready);
 bool picker_lobby_local_ready();
 og::sim::StartDenialReason picker_lobby_last_start_denial();
+std::string picker_lobby_last_start_failure_detail();
 std::vector<og::sim::LobbyPlayer> picker_lobby_players();
 std::optional<std::uint8_t> picker_lobby_authoritative_team_mask();
 std::vector<std::uint8_t> picker_lobby_local_player_indices();

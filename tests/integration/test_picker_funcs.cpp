@@ -2107,8 +2107,10 @@ TEST(PickerFuncs, go_menu_surfaces_each_authoritative_start_denial)
     trace_clear();
     EXPECT_EQ(MENU_REDRAW, go_menu(0));
     EXPECT_TRUE(trace_contains(
-        "popup", "STAGING FAILED: The level could"))
+        "popup", "STAGING FAILED: The match could"))
         << "an owner stage failure is the reason the old default arm swallowed";
+    EXPECT_TRUE(trace_contains("popup", "author or OpenGlad"))
+        << "a player-facing stage refusal must say where to report it";
     EXPECT_TRUE(trace_contains("basecamp", "go_denied reason=4"))
         << "the refused GO names its reason";
 

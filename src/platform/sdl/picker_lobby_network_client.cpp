@@ -2614,11 +2614,23 @@ public:
         stage_broadcast_ = {};
         match_seed_ = og::server::draw_match_seed();
         server_->set_start_gate([this] {
+#ifdef __EMSCRIPTEN__
+            // Browser E2E exercises the real server denial echo without
+            // corrupting a shipped campaign or changing the normal stage.
+            if (EM_ASM_INT({ return globalThis.__opengladFailStartStageForTests === true; }))
+            {
+                stage_->mark_failed("staged world exceeds the wire message size cap");
+                last_start_stage_error_ = stage_->error();
+                Log("web_e2e_start_gate_denied=StageFailed\n");
+                return og::sim::StartDenialReason::StageFailed;
+            }
+#endif
             refresh_stage_inputs();
-            return stage_ != nullptr &&
-                    stage_->ensure_current(og::server::stage_clock_now_ms())
-                ? og::sim::StartDenialReason::None
-                : og::sim::StartDenialReason::StageFailed;
+            if (stage_ != nullptr &&
+                stage_->ensure_current(og::server::stage_clock_now_ms()))
+                return og::sim::StartDenialReason::None;
+            last_start_stage_error_ = stage_ != nullptr ? stage_->error() : "";
+            return og::sim::StartDenialReason::StageFailed;
         });
 
         og::ui::detail::send_lobby_message(
@@ -2657,6 +2669,7 @@ public:
         local_seat_teams_.clear();
         start_request_pending_ = false;
         pending_start_request_id_ = 0;
+        last_start_stage_error_.clear();
         direct_address_.clear();
         relay_room_code_.clear();
         relay_status_message_.clear();
@@ -2894,6 +2907,7 @@ public:
         // sent, too -- an earlier attempt's reason must not blip back as this
         // press's answer.
         last_start_verdict_ = og::sim::StartDenialReason::None;
+        last_start_stage_error_.clear();
         if (start_request_pending_ ||
             !local_client_transport_ || !state_.has_value() ||
             server_ == nullptr)
@@ -3197,6 +3211,13 @@ public:
         const noexcept override
     {
         return last_start_verdict_;
+    }
+
+    [[nodiscard]] std::string last_start_failure_detail() const override
+    {
+        return last_start_verdict_ == og::sim::StartDenialReason::StageFailed
+            ? last_start_stage_error_
+            : std::string{};
     }
 
     // Constant by contract: this answers "is a NETWORK client installed",
@@ -3606,6 +3627,7 @@ private:
     // The correlated verdict of the most recent GO (last_start_denial()).
     og::sim::StartDenialReason last_start_verdict_ =
         og::sim::StartDenialReason::None;
+    std::string last_start_stage_error_;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
     std::string relay_room_code_;
     std::string relay_status_message_;
