@@ -9410,7 +9410,12 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
 
     // Teeth for the two RNG pins: from kMidgameAuthorityRngPin these 420
     // ticks of real two-seat play end with BOTH seats' heroes standing, the
-    // single re-teamed walker still alive, and twelve livings on the board.
+    // single re-teamed walker still alive, and seventeen livings on the board.
+    // #294 makes guards intercept hostile projectiles from weaplist, changing
+    // this fight's final census from 12 to 17. Three isolated runs of each
+    // build reproduce those counts; restoring only guard_tail's old oblist
+    // scan in the fixed build returns 12 on all three runs. Keep both RNG
+    // seeds and the surviving-player checks while pinning the new outcome.
     // Unpinned, this census is a coin flip on the process's stream position
     // (at authority state 9 the heroes are cut down, the sim raises
     // EndGame(1) -- "YOUR MEN ARE CRUSHED!" -- and world.end below reads 1),
@@ -9441,7 +9446,7 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
             << "the lead team is the two heroes and nothing else";
         EXPECT_EQ(1, living[empty_team])
             << "the walker this case re-teamed must still be on the board";
-        EXPECT_EQ(12, total_living)
+        EXPECT_EQ(17, total_living)
             << "the pinned stream no longer produces the fight this case was "
                "written around";
     }

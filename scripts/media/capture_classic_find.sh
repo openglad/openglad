@@ -169,6 +169,30 @@ for scene in "${SCENES[@]}"; do
     verify_frames "$after" "$scene"
 done
 
+# The guard's visible arrow is only 3x7 native pixels. Require a real pixel
+# difference in both hostile scenes and an unchanged friendly control before
+# the montage can claim either result. The yell pointer assertions are in the
+# test log; its frame-16 difference only says the actors moved differently.
+for scene in "${SCENES[@]}"; do
+    frame=001
+    [[ "$scene" == classic_yell ]] && frame=016
+    difference="$(magick compare -metric AE \
+        "$(frame_path "$before" "$scene" "$((10#$frame))")" \
+        "$(frame_path "$after" "$scene" "$((10#$frame))")" \
+        null: 2>&1 || true)"
+    differing_pixels="${difference%% *}"
+    case "$scene" in
+        classic_shield_friendly|classic_boomerang_friendly)
+            [[ "$differing_pixels" -eq 0 ]] \
+                || die "$scene: friendly control changed by $differing_pixels pixels" ;;
+        *)
+            [[ "$differing_pixels" -gt 0 ]] \
+                || die "$scene: no visible before/after difference at frame $frame" ;;
+    esac
+    printf '%s: frame %s differs by %s native pixels\n' \
+        "$scene" "$frame" "$differing_pixels"
+done
+
 font="${OG_OVERLAY_FONT:-}"
 if [[ -z "$font" ]]; then
     roots="${XDG_DATA_DIRS:-}:$HOME/.nix-profile/share:/usr/local/share:/usr/share"
@@ -232,9 +256,13 @@ for scene in "${SCENES[@]}"; do
             "$scene_work/after-close-panel.png" +append \
             "$scene_work/close-$num.png"
     done
-    # Frame 1 is the first tick after the staged guard act or hit response.
-    cp -- "$scene_work/001.png" "$final/$scene.png"
-    cp -- "$scene_work/close-001.png" "$final/$scene-close.png"
+    # Guard frame 1 shows the shot just after interception. The yell's
+    # back-reference takes several ticks to affect movement, so its still is
+    # the last frame; the exact pointer result remains a test assertion.
+    still_frame=001
+    [[ "$scene" == classic_yell ]] && still_frame=016
+    cp -- "$scene_work/$still_frame.png" "$final/$scene.png"
+    cp -- "$scene_work/close-$still_frame.png" "$final/$scene-close.png"
     ffmpeg -hide_banner -loglevel error -y -framerate 8 \
         -i "$scene_work/close-%03d.png" -vf 'format=yuv420p' \
         -c:v libx264 -movflags +faststart "$final/$scene.mp4"
@@ -249,6 +277,33 @@ for scene in "${SCENES[@]}"; do
     ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
         -of csv=p=0:s=x "$final/$scene-close.png" >/dev/null \
         || die "$scene close PNG does not decode"
+    case "$scene" in
+        classic_shield_hostile) detail_crop=32x32+133+62 ;;
+        classic_boomerang_hostile) detail_crop=32x32+148+78 ;;
+        *) detail_crop="" ;;
+    esac
+    if [[ -n "$detail_crop" ]]; then
+        for phase in before after; do
+            magick "$(frame_path "$MEDIA/$phase" "$scene" 1)" \
+                -crop "$detail_crop" +repage -filter point -resize 1200% \
+                "$scene_work/$phase-detail-up.png"
+            magick -background '#202028' -fill '#f0f0f0' -font "$font" \
+                -pointsize 15 -size 384x28 -gravity center \
+                "label:${phase^^} $([[ "$phase" == before ]] && \
+                    printf '%s' "${before_rev:0:8}" || \
+                    printf '%s' "${after_rev:0:8}")" \
+                "$scene_work/$phase-detail-label.png"
+            magick "$scene_work/$phase-detail-label.png" \
+                "$scene_work/$phase-detail-up.png" -append \
+                "$scene_work/$phase-detail-panel.png"
+        done
+        magick "$scene_work/before-detail-panel.png" \
+            "$scene_work/after-detail-panel.png" +append \
+            "$final/$scene-detail.png"
+        ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
+            -of csv=p=0:s=x "$final/$scene-detail.png" >/dev/null \
+            || die "$scene detail PNG does not decode"
+    fi
     printf '%s: full PNG + close PNG + close MP4 (%s frames)\n' \
         "$scene" "$video_frames"
 done
