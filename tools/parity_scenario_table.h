@@ -3472,14 +3472,18 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5200, 5200),
+    // #294: the guard now intercepts hostile projectiles from weaplist.
+    // Fixed-branch tick-150 capture: caster 59 HP, opposing soldier 98 HP;
+    // before absorption worked they finished on 52 and 97 respectively.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5900, 5900,
+        "consequence: the boomerang's projectile interception leaves the caster on exactly 59 HP after the duel"),
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
     "packs/core/families/living-00-soldier.lua", 24,
     "local boomerang = og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
     "local boomerang = nil and og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
-    "Short-circuits BOOMERANG's returning-blade summon; the 'nil and' keeps the multi-line argument table part of an unevaluated call so the chunk still parses. throw_boomerang takes its 'if not boomerang' exit and no FX_BOOMERANG ever flies, flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6500, 6500)."
+    "Short-circuits BOOMERANG's returning-blade summon; the 'nil and' keeps the multi-line argument table part of an unevaluated call so the chunk still parses. throw_boomerang takes its 'if not boomerang' exit and no FX_BOOMERANG ever flies or intercepts hostile projectiles, flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5900, 5900)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_3_scen99[] = {
@@ -4573,14 +4577,18 @@ inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
         "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0)"),
     // rng_drift: boomerang return timing may leave two to four team-0 bodies while the mutation removes extras; commit 244d4bcf
     pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9500, 9500),
+    // #294: absorbing the archer's shots changes the tick-80 caster HP
+    // from 95 to 102 and the blade's HP from 90 to 80. Keep an exact caster
+    // value so a blade that loses its owner-centred orbit still has teeth.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10200, 10200,
+        "consequence: the returning blade intercepts hostile arrows and the soldier finishes on exactly 102 HP"),
 };
 
 inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
     "packs/core/lib/effect_shield.lua", 96,
     "  self:center_on(owner)  -- each arc starts at the owner; offsets do not accumulate",
     "  local _ = owner  -- each arc starts at the owner; offsets do not accumulate",
-    "Removes boomerang_on_act's center_on(owner) anchor. The drawcycle-scaled orbit offset then accumulates from the prior position, making the boomerang drift and changing the captured trajectory, so SemanticParity flips."
+    "Removes boomerang_on_act's center_on(owner) anchor. The drawcycle-scaled orbit offset then accumulates from the prior position, making the boomerang drift away from its owner's arrow lane. WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10200, 10200) pins the protected caster's final HP as well as the golden's trajectory."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_exploding_boulder_scen99[] = {
@@ -7092,9 +7100,9 @@ inline constexpr FactPredicate kFacts_effect_boomerang_contact_scen99[] = {
     // excursion never exceeds ~3px, the victim at Manhattan 21+ is never inside
     // the 11px contact radius, and it finishes at its full 13000 cents.
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3600, 3800,
-        "consequence: core:boomerang's guard tail strikes the stationary TOWER1 each time the widening orbit sweeps across it, taking it from 13000 cents to 3700; the mutation shrinks the orbit's x excursion tenfold so the blade never reaches the victim and it ends untouched"),
+        "consequence: core:boomerang's guard tail strikes the stationary TOWER1 each time the widening orbit sweeps across it, taking it from 13000 cents to 3800; the mutation shrinks the orbit's x excursion tenfold so the blade never reaches the victim and it ends untouched"),
     pred::WalkerOfTeamAlive(0, 2, 2,
-        "consequence: BOOMERANG adds the FAMILY_BOOMERANG FX to the caster's team; the zero-damage victim never drains it, so it survives its 78-act lifetime through the 85-tick budget"),
+        "consequence: BOOMERANG adds the FAMILY_BOOMERANG FX to the caster's team; the tower's body damage is zero, while its intercepted arrows drain the blade from 98 to 73 HP, leaving both caster and blade alive at tick 85"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 
