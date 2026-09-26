@@ -92,9 +92,10 @@ if [[ "$mode" != compose ]]; then
             || die 'before checkout already has the Lua weapon-list fix'
         weapon_lookup="$(sed -n '/GameWorld::find_foe_weapons_in_range/,/^}/p' \
             src/gameplay/game_world.cpp)"
-        [[ -n "$weapon_lookup" &&
-           "$weapon_lookup" == *'ob->is_friendly(w) &&'* ]] \
-            || die 'before checkout already has the hostile-weapon fix'
+        if [[ -z "$weapon_lookup" ]] ||
+           ! rg -q '^[[:space:]]+ob->is_friendly\(w\) &&$' <<< "$weapon_lookup"; then
+            die 'before checkout already has the hostile-weapon fix'
+        fi
     fi
     phase_dir="$MEDIA/$mode"
     mkdir -p "$phase_dir"

@@ -646,7 +646,9 @@ The exact caster-health facts move from 5200 to 5900 cents for
 `weapon_boomerang_return_scen99`; their original summon-suppression and
 missing-orbit-anchor mutations remain. The contact row keeps its 3600–3800
 cent tower-health band and orbit-shrink mutation. The two new rows share the
-wrong-list mutation described above.
+wrong-list mutation described above. All five targeted canaries each flipped
+one predicate and the gtest verdict, then returned to green after restoration;
+none relied on the byte comparison alone.
 
 Outside the parity corpus, the pinned pause/add-player/resume fight in
 `GameLoop.midgame_add_player_resume_play_repause_keeps_transport_alive` ends
@@ -654,3 +656,23 @@ with 17 living actors instead of 12. Three isolated runs each reproduce 12
 on the merge base, 17 with the fix, and 12 with only the guard list reverted.
 Its exact census is updated; the RNG seeds, both surviving player seats,
 re-teamed survivor and transport checks are preserved.
+
+The #295 hit-response ordering also changes longer simulations outside the
+parity corpus. On the merge base, moving only the retarget block ahead of the
+yell reproduces the fixed branch's basketball results and both campaign
+survival changes. Westlands L2 now keeps 3/4/4 crew members on seeds
+42/1337/2025; all three runs kill the picket, cross mid-road by tick 986 and
+sweep the road by tick 2623, within the unchanged 3000/8000 deadlines.
+Long Season L9 keeps 7/8/8 mixed-crew members at tick 600. Its full 18-run
+bracket (crew levels 4/5/6, three seeds, two rosters) still meets the original
+curve-level defense requirement: at least four team-0 actors at tick 3000 on
+every seed. The basketball replay pins retain a score within regulation on
+all six courts and zero watchdog resets on the reference court. The updated
+basketball test fails on the original engine and passes when only the retarget
+ordering is changed.
+
+The recalibrated Westlands check still fails when the F1 facing correction is
+replaced with the old walk step. The new Ashfall Fair defense check fails with
+only three defenders when team-0 attacks are suppressed; restoring attacks
+returns it to green. Campaign layouts, crew levels and defense bands are
+unchanged.

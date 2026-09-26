@@ -249,6 +249,35 @@ A cheap CI test pins this table (crew-power column + gate type per
 level), westlands-style; the longseason_mapgen ExpectedLevel rows and the
 committed .glad move in lockstep with any retune.
 
+### Ashfall Fair recalibration (2026-09-26)
+
+The #295 hit-response fix retargets before calling for help, preserving
+any flee command issued by that call. A native isolation run applying
+only this ordering change reproduces the new L9 census; self-exclusion
+alone and the #294 projectile absorption fix do not. No campaign
+placements, stats, crew curve, or defense band changed.
+
+Re-ran the full L9 bracket with `scripts/longseason_playtest.sh`: crew
+levels 4/5/6, seeds 42/1337/2025, both rosters, 6000 ticks per run. Every
+run clears the foes. The defense contract remains team-0 alive at tick
+3000 >= 4 on all three mixed-roster seeds at curve (level 5).
+
+| roster | crew level | team-0 alive at tick 3000 (42 / 1337 / 2025) |
+|--------|------------|--------------------------------------------|
+| 8-mixed | 4 | 8 / 11 / 11 |
+| 8-mixed | 5 | 8 / 8 / 10 |
+| 8-mixed | 6 | 11 / 11 / 10 |
+| 4-soldier | 4 | 7 / 3 / 3 |
+| 4-soldier | 5 | 4 / 5 / 4 |
+| 4-soldier | 6 | 6 / 7 / 7 |
+
+The same bracket on the original build (`b1412cab`) measured 11/11/9
+mixed-roster defenders at curve. The cheap CI census at tick 600 changes
+from 8/8/8 to 7/8/8, so its measured minimum moves from 8 to 7. The
+separate `ashfall_fair_holds_defense_band_at_curve` test now checks the
+3000-tick defense contract on all three seeds. The table below preserves
+the original shipped measurements.
+
 ### F4 CALIBRATION TABLE (measured 2026-07-09 — the contract as shipped)
 
 Method: scripts/longseason_playtest.sh (openglad_text --protocol; since
@@ -277,7 +306,7 @@ measured minima across the three pinned seeds — no dead slack).
 | 6 | The Hay War | kill | 3 | PASS | clears 3/3 @3 (2582-3563, all 3 tents torn out), 3/3 @4 |
 | 7 | Grey Tolls (opt) | defense+kill | 4 | PASS | t0@3000 [7,6,6] vs band 5 (4-sold [6,6,4]); kill 2/3 @4, 3/3 @5 |
 | 8 | The Paymaster Vanishes | kill | 4 | TRADE | 0/10 wide @4 AND @5; crews reach the hollow and kill 17-19 of 23 (foes 23->4-6), then park — the last remnant set always contains the INVISIBLE lvl-7 Long Tom. The westlands L8 precedent, accepted |
-| 9 | Ashfall Fair | defense | 5 | PASS | t0@3000 [8,10,10] vs band 4; kill 3/3 @5 (~1220), 3/3 @6 |
+| 9 | Ashfall Fair | defense | 5 | PASS | t0@3000 [8,10,10] vs band 4; kill 3/3 @5 (~1220), 3/3 @6. **Update (2026-09-26, issue #295):** t0@3000 [8,8,10], band 4 and clear 3/3 retained; see the recalibration above. |
 | 10 | The Ledger Debt | kill | 5 | PARTIAL | clears 5/10 wide @5, 6/10 @6 (2/3 pinned @6); crew survives 10/10 both brackets — the coin-flip is the parked-remnant lottery, not the fight |
 | 11 | Cold Seams | kill | 5 | PASS* | 2/3 pinned @5 (gate met); 9/10 wide @5 AND @6 — the pinned @6 triplet (2/3 vs the 3/3 letter) is one unlucky draw |
 | 12 | The Old Count's Vault (opt) | kill | 6 | TRADE | crew-alive@900 @6 3/3 (its own documented survival gate; 8/8 alive in most runs); clears 0/10 — the ACT_GUARD giant wall + the lvl-9 Count park the AI floor by design ("the giants HOLD their posts" is the doc's pin) |
