@@ -83,7 +83,7 @@ fields, new SCEN_TYPE bits, MATCHUP layout changes, two-tone sprite colors
 - Engine AI deathmatches automatically (`find_far_foe` targets any non-equal
   team, `game_world.cpp:1199-1236`) — this is exactly what Mutant's FFA phase
   already relies on. The Lua director only repairs broken foes (§5).
-  **Update (2026-09-26, issue #293):** This native scan is now named
+  **Update (2026-09-26, PR #315):** This native scan is now named
   `find_nearest_foe`; it still selects the nearest eligible foe by 2D distance.
 
 ## 3. Seat seams (the four places a seat meets a band byte)

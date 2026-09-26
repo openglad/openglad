@@ -306,7 +306,7 @@ measured minima across the three pinned seeds — no dead slack).
 | 6 | The Hay War | kill | 3 | PASS | clears 3/3 @3 (2582-3563, all 3 tents torn out), 3/3 @4 |
 | 7 | Grey Tolls (opt) | defense+kill | 4 | PASS | t0@3000 [7,6,6] vs band 5 (4-sold [6,6,4]); kill 2/3 @4, 3/3 @5 |
 | 8 | The Paymaster Vanishes | kill | 4 | TRADE | 0/10 wide @4 AND @5; crews reach the hollow and kill 17-19 of 23 (foes 23->4-6), then park — the last remnant set always contains the INVISIBLE lvl-7 Long Tom. The westlands L8 precedent, accepted |
-| 9 | Ashfall Fair | defense | 5 | PASS | t0@3000 [8,10,10] vs band 4; kill 3/3 @5 (~1220), 3/3 @6. **Update (2026-09-26, issue #295):** t0@3000 [8,8,10], band 4 and clear 3/3 retained; see the recalibration above. |
+| 9 | Ashfall Fair | defense | 5 | PASS | t0@3000 [8,10,10] vs band 4; kill 3/3 @5 (~1220), 3/3 @6. **Update (2026-09-26, PR #315):** t0@3000 [8,8,10], band 4 and clear 3/3 retained; see the recalibration above. |
 | 10 | The Ledger Debt | kill | 5 | PARTIAL | clears 5/10 wide @5, 6/10 @6 (2/3 pinned @6); crew survives 10/10 both brackets — the coin-flip is the parked-remnant lottery, not the fight |
 | 11 | Cold Seams | kill | 5 | PASS* | 2/3 pinned @5 (gate met); 9/10 wide @5 AND @6 — the pinned @6 triplet (2/3 vs the 3/3 letter) is one unlucky draw |
 | 12 | The Old Count's Vault (opt) | kill | 6 | TRADE | crew-alive@900 @6 3/3 (its own documented survival gate; 8/8 alive in most runs); clears 0/10 — the ACT_GUARD giant wall + the lvl-9 Count park the AI floor by design ("the giants HOLD their posts" is the doc's pin) |

@@ -304,7 +304,7 @@ byte-identical; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md for the full audit):
   upper-floor walkers blind to adjacent foes and latching ground-floor foes
   under their 2D position). Cross-floor acquisition intentionally remains via
   `find_far_foe`.
-  **Update (2026-09-26, issue #293):** The native fallback is now named
+  **Update (2026-09-26, PR #315):** The native fallback is now named
   `find_nearest_foe`; its floor-blind nearest-distance behavior is unchanged.
 
 ## Projectiles
@@ -325,13 +325,13 @@ byte-identical; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md for the full audit):
 - **No same-floor foe filter** (decision 4). Foe acquisition
   (`find_near_foe`/`find_far_foe`/`find_*_in_range`/`find_nearest_player`) stays
   floor-agnostic → byte-identical to today on single-floor.
-  **Update (2026-09-26, issue #293):** `find_far_foe` is now named
+  **Update (2026-09-26, PR #315):** `find_far_foe` is now named
   `find_nearest_foe`; `find_near_foe` still searches its own floor first.
 - `fire_check` raymarch + LOS query the shooter's floor grid (cannot shoot through
   solid floors; air/glass let sight/fire pass downward where appropriate).
 - `distance_to_ob`/`distance_to_ob_center` stay **pure 2D** (a z term would
   reorder `find_far_foe` selection and break parity).
-  **Update (2026-09-26, issue #293):** The selector is now named
+  **Update (2026-09-26, PR #315):** The selector is now named
   `find_nearest_foe`; it still uses the same 2D distance.
 - Cross-floor chase emerges from the A\* stair-edges: an enemy acquires a foe on
   another floor, can't shoot it (different floor), paths to a stair, climbs, engages.
