@@ -15,9 +15,9 @@
 //   3. each valid namespace gets its own persistence store, those stores
 //      coexist, and using one namespace never disturbs another
 //
-// They deliberately do NOT assert the IndexedDB database name (an Emscripten
-// IDBFS implementation detail). The behavioral gate is: distinct namespaces
-// produce distinct, coexisting, reload-surviving stores.
+// The behavioral gate is: distinct namespaces produce distinct, coexisting,
+// reload-surviving stores. IndexedDB names are only checked for the caller's
+// token portion; the "/persist" prefix is Emscripten's IDBFS mount path.
 const { test, expect } = require('@playwright/test');
 const { waitForGameLoad, waitForPickerReady } = require('./wasm_helpers');
 
@@ -72,8 +72,13 @@ async function inspectStores(page) {
     const dbs = await indexedDB.databases();
     return {
       count: dbs.length,
-      // A token can never introduce a path separator or a traversal segment.
-      unsafe: dbs.some((db) => /[\\/\s]|\.\./.test(db.name || '')),
+      // IDBFS names each store after its mount point: the Emscripten-owned
+      // "/persist" prefix, plus "_<token>" when a namespace is in effect. Only
+      // the caller's token is checked, against the [A-Za-z0-9_-]{1,64} law, so
+      // it can never introduce a path separator, whitespace or "..".
+      unsafe: dbs.some(
+        (db) => !/^\/persist(?:_[A-Za-z0-9_-]{1,64})?$/.test(db.name || ''),
+      ),
     };
   });
 }
