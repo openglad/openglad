@@ -737,7 +737,7 @@ TEST_F(GameWorldEntityIdsFixture, an_owner_loop_is_cut_and_legal_chains_survive)
     ASSERT_EQ(a, pet->owner());
 
     // The scan still does its job: the only hostile is the answer.
-    EXPECT_EQ(orc, world.find_far_foe(a));
+    EXPECT_EQ(orc, world.find_nearest_foe(a));
 
     EXPECT_EQ(nullptr, a->owner())
         << "the loop must be cut at the hop the walk gave up on";

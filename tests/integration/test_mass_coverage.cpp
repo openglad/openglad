@@ -95,18 +95,6 @@ walker* add_fx_treasure(unsigned char family, short x, short y)
     return w;
 }
 
-walker* add_weapon(unsigned char family = FAMILY_KNIFE, unsigned char team = 1)
-{
-    walker* w = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, family);
-    if (!w)
-        return nullptr;
-    w->set_team_num(team);
-    w->set_real_team_num(team);
-    w->set_dead(0);
-    w->setxy(105, 100);
-    return w;
-}
-
 std::array<unsigned char, 64> sample_pixels(unsigned char base = 32)
 {
     std::array<unsigned char, 64> p{};
@@ -594,13 +582,13 @@ TEST(MassCoverage, screen_endgame_two_args_short_circuits_without_touching_save_
 // find_near_foe(ob): nullptr for a null searcher; otherwise an obmap spiral
 // around the searcher's OWN floor that starts one cell out -- a foe sharing the
 // searcher's cell is invisible to it -- and only falls back to the full-list
-// find_far_foe scan once the spiral leaves the map
+// find_nearest_foe scan once the spiral leaves the map
 // (src/gameplay/game_world.cpp GameWorld::find_near_foe).
 TEST(MassCoverage, screen_find_near_foe_returns_the_obmap_spiral_hit) {
     reset_level_state();
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     ASSERT_NE(nullptr, world.myobmap.get()) << "setup: the collision map must exist";
-    // The spiral abandons itself to find_far_foe the moment it steps off the
+    // The spiral abandons itself to find_nearest_foe the moment it steps off the
     // map, so the arena has to be wider than its first probe at x=132.
     world.create_new_grid();
     ASSERT_LT(132, world.pixmaxx) << "setup: the map must outreach the spiral's first probe";
@@ -618,7 +606,7 @@ TEST(MassCoverage, screen_find_near_foe_returns_the_obmap_spiral_hit) {
     // (140,100) is the very first cell the spiral probes; (101,100) shares the
     // searcher's own cell, which the spiral steps over and never probes. So the
     // two functions must disagree here, and that disagreement is the only proof
-    // the spiral ran at all (find_near_foe falls back to find_far_foe).
+    // the spiral ran at all (find_near_foe falls back to find_nearest_foe).
     walker* spiral_foe = add_sized_living(1, 140, 100, FAMILY_ORC);
     ASSERT_NE(nullptr, spiral_foe) << "setup: the spiral foe must exist";
     walker* own_cell_foe = add_sized_living(1, 101, 100, FAMILY_ORC);
@@ -626,43 +614,43 @@ TEST(MassCoverage, screen_find_near_foe_returns_the_obmap_spiral_hit) {
 
     ASSERT_EQ(spiral_foe, world.find_near_foe(w))
         << "find_near_foe must answer from the obmap spiral, not the full-list scan";
-    ASSERT_EQ(own_cell_foe, world.find_far_foe(w))
+    ASSERT_EQ(own_cell_foe, world.find_nearest_foe(w))
         << "control: the full-list scan does see the closer own-cell foe";
 
     reset_level_state();
 }
 
-// find_far_foe(ob): despite the name, the full-list scan returns the CLOSEST
+// find_nearest_foe(ob): the full-list scan returns the CLOSEST
 // non-friendly, live, non-dormant Living/Generator -- the minimum of
 // distance_to_ob -- and nullptr when there is none; it also stamps the 10000
-// sentinel on the searcher (src/gameplay/game_world.cpp GameWorld::find_far_foe).
-TEST(MassCoverage, screen_find_far_foe_scans_the_list_for_the_closest_live_foe) {
+// sentinel on the searcher (src/gameplay/game_world.cpp GameWorld::find_nearest_foe).
+TEST(MassCoverage, screen_find_nearest_foe_scans_the_list_for_the_closest_live_foe) {
     reset_level_state();
     GameWorld& world = og::runtime::current_session->myscreen_->world();
 
-    ASSERT_EQ(nullptr, world.find_far_foe(nullptr)) << "a null searcher has no foe";
+    ASSERT_EQ(nullptr, world.find_nearest_foe(nullptr)) << "a null searcher has no foe";
 
     walker* w = add_living(0);
     ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
-    ASSERT_EQ(nullptr, world.find_far_foe(w)) << "an empty level has no foe";
+    ASSERT_EQ(nullptr, world.find_nearest_foe(w)) << "an empty level has no foe";
 
     walker* distant_foe = add_sized_living(1, 200, 100, FAMILY_ORC);
     ASSERT_NE(nullptr, distant_foe) << "setup: the distant foe must exist";
-    ASSERT_EQ(distant_foe, world.find_far_foe(w)) << "the only foe must be returned";
+    ASSERT_EQ(distant_foe, world.find_nearest_foe(w)) << "the only foe must be returned";
 
     walker* close_foe = add_sized_living(1, 110, 100, FAMILY_ORC);
     ASSERT_NE(nullptr, close_foe) << "setup: the close foe must exist";
-    ASSERT_EQ(close_foe, world.find_far_foe(w))
+    ASSERT_EQ(close_foe, world.find_nearest_foe(w))
         << "the scan keeps the smallest distance_to_ob, not the largest";
     ASSERT_EQ(10000u, w->stats()->last_distance())
         << "the scan stamps the 10000 sentinel on the searcher";
 
     close_foe->set_dormant(true);
-    ASSERT_EQ(distant_foe, world.find_far_foe(w)) << "a dormant foe is skipped";
+    ASSERT_EQ(distant_foe, world.find_nearest_foe(w)) << "a dormant foe is skipped";
     close_foe->set_dormant(false);
 
     close_foe->set_dead(1);
-    ASSERT_EQ(distant_foe, world.find_far_foe(w)) << "a dead foe is skipped";
+    ASSERT_EQ(distant_foe, world.find_nearest_foe(w)) << "a dead foe is skipped";
 
     reset_level_state();
 }
@@ -915,9 +903,9 @@ TEST(MassCoverage, screen_find_foes_in_range_excludes_allies_and_distant_foes) {
 }
 
 // find_friends_in_range: live, non-dormant Living walkers the searcher IS
-// friendly to -- itself included -- within range (src/gameplay/game_world.cpp
+// friendly to, excluding the searcher itself, within range (src/gameplay/game_world.cpp
 // GameWorld::find_friends_in_range).
-TEST(MassCoverage, screen_find_friends_in_range_counts_allies_and_the_searcher) {
+TEST(MassCoverage, screen_find_friends_in_range_counts_allies_but_not_searcher) {
     reset_level_state();
     GameWorld& world = og::runtime::current_session->myscreen_->world();
 
@@ -933,28 +921,28 @@ TEST(MassCoverage, screen_find_friends_in_range_counts_allies_and_the_searcher) 
 
     n = 0;
     found = world.find_friends_in_range(world.oblist, 64, &n, w);
-    ASSERT_EQ(2, n) << "the searcher is friendly to itself, so it and the ally both count";
-    ASSERT_NE(found.end(), std::find(found.begin(), found.end(), ally))
-        << "the ally must be in the returned list";
+    ASSERT_EQ(1, n) << "only the ally counts";
+    ASSERT_EQ(std::list<walker*>({ally}), found)
+        << "the searcher must not appear in the result";
 
     ASSERT_NE(nullptr, add_sized_living(1, 105, 100, FAMILY_ORC))
         << "setup: the foe must exist";
     n = 0;
     found = world.find_friends_in_range(world.oblist, 64, &n, w);
-    ASSERT_EQ(2, n) << "a hostile walker in range is not a friend";
+    ASSERT_EQ(1, n) << "a hostile walker in range is not a friend";
+    ASSERT_EQ(std::list<walker*>({ally}), found);
 
     ally->setxy(300, 100);
     n = 0;
     found = world.find_friends_in_range(world.oblist, 64, &n, w);
-    ASSERT_EQ(1, n) << "an ally past the range must be excluded";
+    ASSERT_EQ(0, n) << "an ally past the range leaves no friends";
+    ASSERT_TRUE(found.empty());
 
     reset_level_state();
 }
 
-// find_foe_weapons_in_range: despite the name, the kept branch is the FRIENDLY
-// one -- live Order::Weapon walkers the searcher is friendly to, within range
-// (src/gameplay/game_world.cpp GameWorld::find_foe_weapons_in_range).
-TEST(MassCoverage, screen_find_foe_weapons_in_range_keeps_friendly_weapons_in_range) {
+// The finder selects live hostile weapons in range from the normal weaplist.
+TEST(MassCoverage, screen_find_foe_weapons_in_range_keeps_hostile_weapons_in_range) {
     reset_level_state();
     GameWorld& world = og::runtime::current_session->myscreen_->world();
 
@@ -965,24 +953,65 @@ TEST(MassCoverage, screen_find_foe_weapons_in_range_keeps_friendly_weapons_in_ra
 
     walker* w = add_living(0);
     ASSERT_NE(nullptr, w) << "setup: the searcher must exist";
-    walker* knife = add_weapon(FAMILY_KNIFE, 0);
+    walker* knife = world.add_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, knife) << "setup: the knife must exist";
+    knife->set_team_num(0);
+    knife->setxy(105, 100);
+    ASSERT_EQ(1u, world.weaplist.size()) << "normal add_ob routes a weapon to weaplist";
 
     n = 0;
     found = world.find_foe_weapons_in_range(world.weaplist, 64, &n, w);
-    ASSERT_EQ(1, n) << "a same-team weapon in range is the one this filter keeps";
-    ASSERT_EQ(knife, found.front()) << "and it is that knife";
+    ASSERT_EQ(0, n) << "a same-team weapon is excluded";
+    ASSERT_TRUE(found.empty());
 
     knife->set_team_num(1);
     n = 0;
     found = world.find_foe_weapons_in_range(world.weaplist, 64, &n, w);
-    ASSERT_EQ(0, n) << "a weapon the searcher is not friendly to is excluded";
+    ASSERT_EQ(1, n) << "a hostile weapon in range is selected";
+    ASSERT_EQ(std::list<walker*>({knife}), found) << "and it is that knife";
 
-    knife->set_team_num(0);
     knife->setxy(300, 100);
     n = 0;
     found = world.find_foe_weapons_in_range(world.weaplist, 64, &n, w);
-    ASSERT_EQ(0, n) << "a friendly weapon past the range is excluded";
+    ASSERT_EQ(0, n) << "a hostile weapon past the range is excluded";
+    ASSERT_TRUE(found.empty());
+
+    reset_level_state();
+}
+
+TEST(MassCoverage, screen_foe_weapon_finder_follows_owner_chain_allegiance) {
+    reset_level_state();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+
+    walker* searcher = add_living(1);
+    walker* ally_owner = add_living(1);
+    walker* hostile_owner = add_living(2, FAMILY_ORC);
+    ASSERT_TRUE(searcher && ally_owner && hostile_owner);
+
+    walker* ally_projectile = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* hostile_relay = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* hostile_projectile = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_TRUE(ally_projectile && hostile_relay && hostile_projectile);
+    ASSERT_EQ(3u, world.weaplist.size()) << "normal spawns are in weaplist";
+
+    // The projectile colors deliberately disagree with their living owners.
+    // Following the entire chain, including a weapon owned by another weapon,
+    // must take precedence over each projectile's stale team number.
+    ally_projectile->set_owner(ally_owner);
+    ally_projectile->set_team_num(2);
+    ally_projectile->setxy(105, 100);
+    hostile_relay->set_owner(hostile_owner);
+    hostile_relay->set_team_num(1);
+    hostile_relay->setxy(300, 100);
+    hostile_projectile->set_owner(hostile_relay);
+    hostile_projectile->set_team_num(1);
+    hostile_projectile->setxy(106, 100);
+
+    std::int32_t count = -1;
+    const auto found = world.find_foe_weapons_in_range(world.weaplist, 64, &count, searcher);
+    EXPECT_EQ(1, count);
+    EXPECT_EQ(std::list<walker*>({hostile_projectile}), found)
+        << "the hostile owner's team decides weapon allegiance";
 
     reset_level_state();
 }

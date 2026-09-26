@@ -695,13 +695,13 @@ TEST(ScreenExtended, screen_do_notify_with_walker)
 
 // find_near_foe walks the obmap spiral around the seeker and returns the
 // first hostile Living it meets; a friendly body at the same spot is not a
-// foe (and the find_far_foe fallback finds none either).
+// foe (and the find_nearest_foe fallback finds none either).
 TEST(ScreenExtended, screen_find_near_foe_with_enemies)
 {
     GameWorld& world = test_world();
     world.delete_objects();
     // pixmaxx/pixmaxy bound the spiral: with a 0-sized level the very first
-    // probe is out of range and find_near_foe degrades to find_far_foe.
+    // probe is out of range and find_near_foe degrades to find_nearest_foe.
     world.create_new_grid();
 
     auto seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
@@ -725,23 +725,23 @@ TEST(ScreenExtended, screen_find_near_foe_with_enemies)
 }
 
 
-// find_far_foe scans oblist and returns the CLOSEST non-dead hostile Living
-// (the name is historical: distance starts at 10000 and takes the minimum).
-TEST(ScreenExtended, screen_find_far_foe_with_enemies)
+// find_nearest_foe scans oblist and returns the CLOSEST non-dead hostile Living
+// (distance starts at 10000 and takes the minimum).
+TEST(ScreenExtended, screen_find_nearest_foe_with_enemies)
 {
     GameWorld& world = test_world();
     world.delete_objects();
 
     auto seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
     ASSERT_NE(nullptr, seeker) << "the seeker must be created";
-    ASSERT_EQ(nullptr, world.find_far_foe(seeker.get()))
+    ASSERT_EQ(nullptr, world.find_nearest_foe(seeker.get()))
         << "an empty oblist holds no foe";
 
     auto far_enemy = make_walker_at(FAMILY_ORC, 200, 150, 1);
     ASSERT_NE(nullptr, far_enemy) << "the far enemy must be created";
     walker* far_ptr = far_enemy.get();
     world.oblist.push_back(std::move(far_enemy));
-    ASSERT_EQ(far_ptr, world.find_far_foe(seeker.get()))
+    ASSERT_EQ(far_ptr, world.find_nearest_foe(seeker.get()))
         << "the only hostile living in oblist is the answer";
 
     // Pushed AFTER the far one, so list order cannot explain the result.
@@ -749,11 +749,11 @@ TEST(ScreenExtended, screen_find_far_foe_with_enemies)
     ASSERT_NE(nullptr, near_enemy) << "the near enemy must be created";
     walker* near_ptr = near_enemy.get();
     world.oblist.push_back(std::move(near_enemy));
-    ASSERT_EQ(near_ptr, world.find_far_foe(seeker.get()))
-        << "find_far_foe keeps the MINIMUM distance_to_ob";
+    ASSERT_EQ(near_ptr, world.find_nearest_foe(seeker.get()))
+        << "find_nearest_foe keeps the MINIMUM distance_to_ob";
 
     near_ptr->set_dead(1);
-    ASSERT_EQ(far_ptr, world.find_far_foe(seeker.get()))
+    ASSERT_EQ(far_ptr, world.find_nearest_foe(seeker.get()))
         << "a dead hostile is skipped";
 
     world.delete_objects();
@@ -1082,6 +1082,6 @@ TEST_F(ScreenExtendedFixture, screen_get_scen_title_paths_and_null_foe_guards)
 
     ASSERT_EQ(nullptr, s->world().find_near_foe(nullptr))
         << "find_near_foe must guard nullptr";
-    ASSERT_EQ(nullptr, s->world().find_far_foe(nullptr))
-        << "find_far_foe must guard nullptr";
+    ASSERT_EQ(nullptr, s->world().find_nearest_foe(nullptr))
+        << "find_nearest_foe must guard nullptr";
 }

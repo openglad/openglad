@@ -117,7 +117,7 @@ TEST(LevelDataUnit, level_data_passable_and_range_queries)
     (void)fx.level.query_passable(self->xpos(), self->ypos(), self);
 
     ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
-    ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_foe(self) != nullptr);
     ASSERT_TRUE(fx.level.find_nearest_blood(self) == stain);
     ASSERT_TRUE(fx.level.find_nearest_player(self) == player);
 
@@ -125,8 +125,8 @@ TEST(LevelDataUnit, level_data_passable_and_range_queries)
     // (GameWorld::find_*_in_range): find_in_range takes every live entity in
     // the list, find_foes_in_range only Living/Generator entries that are NOT
     // is_friendly, find_foe_weapons_in_range only Order::Weapon entries that
-    // ARE is_friendly (the legacy name; the predicate is friendliness), and
-    // find_friends_in_range only Living entries that ARE is_friendly. The
+    // are NOT friendly, and
+    // find_friends_in_range only other Living entries that ARE is_friendly. The
     // oblist here holds self(team 0), foe(team 1) and player(team 0), so each
     // finder has a different exact answer -- a predicate that is dropped,
     // negated or copied from a sibling changes at least one of these lists.
@@ -144,13 +144,13 @@ TEST(LevelDataUnit, level_data_passable_and_range_queries)
     count = -1;
     auto foe_weapons =
         fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &count, self);
-    EXPECT_EQ(0, count) << "the team-1 knife is not friendly to self, so this finder skips it";
-    EXPECT_TRUE(foe_weapons.empty()) << "and returns no weapon";
+    EXPECT_EQ(1, count) << "the team-1 knife is hostile to self";
+    EXPECT_EQ(std::list<walker*>({weapon}), foe_weapons) << "and returns that knife";
 
     count = -1;
     auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &count, self);
-    EXPECT_EQ(2, count) << "self and the other team-0 soldier are friends";
-    EXPECT_EQ(std::list<walker*>({self, player}), friends)
+    EXPECT_EQ(1, count) << "only the other team-0 soldier is a friend";
+    EXPECT_EQ(std::list<walker*>({player}), friends)
         << "the team-1 orc must not appear among friends";
 
     // Range really is a range: nothing but self is within 8 pixels.
@@ -290,7 +290,7 @@ TEST(LevelDataUnit, level_data_r11_basic_construction_remove_and_helpers)
     ASSERT_TRUE(none1.empty() && none2.empty() && none3.empty() && none4.empty());
 
     ASSERT_TRUE(fx.level.find_near_foe(nullptr) == nullptr);
-    ASSERT_TRUE(fx.level.find_far_foe(nullptr) == nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_foe(nullptr) == nullptr);
     ASSERT_TRUE(fx.level.find_nearest_blood(nullptr) == nullptr);
     ASSERT_TRUE(fx.level.find_nearest_player(nullptr) == nullptr);
 }
@@ -363,7 +363,7 @@ TEST(LevelDataUnit, level_data_r11_object_passability_and_search_sets)
     (void)fx.level.query_passable(self->xpos(), self->ypos(), self);
 
     ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
-    ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_foe(self) != nullptr);
     ASSERT_TRUE(fx.level.find_nearest_blood(self) == stain);
     ASSERT_TRUE(fx.level.find_nearest_player(self) == ally);
 
@@ -377,12 +377,12 @@ TEST(LevelDataUnit, level_data_r11_object_passability_and_search_sets)
     EXPECT_EQ(std::list<walker*>({foe}), foes) << "and it is exactly that orc";
     c = -1;
     auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &c, self);
-    EXPECT_EQ(0, c) << "the team-1 arrow is not friendly to self, so this finder skips it";
-    EXPECT_TRUE(foe_weapons.empty()) << "and returns no weapon";
+    EXPECT_EQ(1, c) << "the team-1 arrow is hostile to self";
+    EXPECT_EQ(std::list<walker*>({weapon}), foe_weapons) << "and returns that arrow";
     c = -1;
     auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &c, self);
-    EXPECT_EQ(2, c) << "self and the team-0 ally are friends";
-    EXPECT_EQ(std::list<walker*>({self, ally}), friends) << "the orc must not appear";
+    EXPECT_EQ(1, c) << "only the team-0 ally is a friend";
+    EXPECT_EQ(std::list<walker*>({ally}), friends) << "self and the orc must not appear";
 
     // helper functions
     // level_file_io's documented failure sentinel for an unreadable scenario
@@ -636,9 +636,9 @@ TEST(LevelDataUnit, level_data_r12_find_helpers_null_and_ranges)
     walker* self = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     walker* foe = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
     walker* ally = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_ARCHER, 0, 96, 64);
-    walker* enemy_weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 70, 64);
+    walker* friendly_weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 70, 64);
     walker* blood = add_to(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
-    ASSERT_TRUE(self && foe && ally && enemy_weapon && blood);
+    ASSERT_TRUE(self && foe && ally && friendly_weapon && blood);
 
     ally->set_user(0);
 
@@ -652,13 +652,16 @@ TEST(LevelDataUnit, level_data_r12_find_helpers_null_and_ranges)
     ASSERT_TRUE(fx.level.find_nearest_player(nullptr) == nullptr);
 
     ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
-    ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_foe(self) != nullptr);
     ASSERT_TRUE(fx.level.find_nearest_blood(self) == blood);
     ASSERT_TRUE(fx.level.find_nearest_player(self) == ally);
 
     // Same four predicates as LevelDataUnit.level_data_passable_and_range_queries,
-    // but with a team-0 ARROW in the weaplist so the foe-weapon finder (which
-    // keeps the entries that ARE is_friendly) has a non-empty answer too.
+    // but with a team-0 arrow and team-1 arrow in weaplist, so the weapon
+    // finder must select only the hostile one.
+    walker* enemy_weapon = add_to(fx, fx.level.world().weaplist,
+                                  Order::Weapon, FAMILY_ARROW, 1, 72, 64);
+    ASSERT_NE(nullptr, enemy_weapon);
     howmany = -1;
     auto inr = fx.level.find_in_range(fx.level.world().oblist, 200, &howmany, self);
     EXPECT_EQ(3, howmany) << "self, the orc and the archer are all live obs in range";
@@ -671,13 +674,13 @@ TEST(LevelDataUnit, level_data_r12_find_helpers_null_and_ranges)
 
     howmany = -1;
     auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &howmany, self);
-    EXPECT_EQ(1, howmany) << "the weaplist holds one team-0 arrow";
+    EXPECT_EQ(1, howmany) << "only the team-1 arrow is hostile";
     EXPECT_EQ(std::list<walker*>({enemy_weapon}), foe_weapons) << "and it is exactly that arrow";
 
     howmany = -1;
     auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &howmany, self);
-    EXPECT_EQ(2, howmany) << "self and the team-0 archer are friends";
-    EXPECT_EQ(std::list<walker*>({self, ally}), friends) << "the orc must not appear";
+    EXPECT_EQ(1, howmany) << "only the team-0 archer is a friend";
+    EXPECT_EQ(std::list<walker*>({ally}), friends) << "self and the orc must not appear";
 
     // A dead entity drops out of every finder (the shared !dead() guard).
     foe->set_dead(1);

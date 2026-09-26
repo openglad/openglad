@@ -53,20 +53,16 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     return w;
 }
 
-// An arrow parked at (x, y) in the OBLIST — the list
-// GameWorld::find_foe_weapons_in_range scans.
+// A normal spawned arrow is routed to weaplist by add_ob(Order::Weapon).
 static walker* add_parked_arrow(LevelRuntimeData& level, unsigned char team,
                                 float damage, short x, short y)
 {
-    auto weap = og::runtime::current_session->myscreen_->myloader
-                    ->create_walker_owned(Order::Weapon, FAMILY_ARROW);
-    if (!weap)
+    walker* raw = level.add_ob(Order::Weapon, FAMILY_ARROW);
+    if (!raw)
         return nullptr;
-    walker* raw = weap.get();
     raw->set_team_num(team);
     raw->set_damage(damage);
     raw->setxy(x, y);
-    level.world().oblist.push_back(std::move(weap));
     return raw;
 }
 
@@ -85,7 +81,7 @@ static walker* add_parked_orc(LevelRuntimeData& level, short x, short y)
 }
 
 // guard_tail (packs/core/lib/effect_shield.lua), shared by the magic shield and
-// the boomerang: weapons FRIENDLY to the guard inside its weapon radius are
+// the boomerang: hostile weapons inside the guard's weapon radius are
 // destroyed and each costs the guard its damage in hitpoints; enemy livings
 // inside the body radius are attacked and cost the guard theirs; a guard
 // drained to 0 hp (or past its lifetime) dies, and a surviving guard burns one
@@ -95,7 +91,7 @@ static walker* add_parked_orc(LevelRuntimeData& level, short x, short y)
 // drawcycle's orbit offset). drawcycle only advances in the renderer, so one
 // dry act — nothing in range — parks the guard where every later act will also
 // land it, and the targets go there.
-TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enemies)
+TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_hostile_weapons_and_hit_enemies)
 {
     ASSERT_NE(nullptr, og::runtime::current_session->myscreen_) << "myscreen exists";
 
@@ -118,6 +114,7 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     shield->set_team_num(1);
     shield->stats()->set_hitpoints(100.0f);
     shield->set_lifetime(5);
+    shield->set_damage(1.0f);
     shield->setxy(100, 100);
     // effect::act advances drawcycle before dispatching on_act, so the orbit
     // slot is re-pinned before EVERY act to keep the post fixed.
@@ -129,13 +126,15 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
         << "a dry act with nothing in range neither drains nor expires the guard";
 
     walker* friendly_arrow =
-        add_parked_arrow(level, /*team=*/1, /*damage=*/2.0f, shield_x, shield_y);
+        add_parked_arrow(level, /*team=*/1, /*damage=*/40.0f, shield_x, shield_y);
     ASSERT_NE(nullptr, friendly_arrow) << "friendly arrow created";
     walker* enemy_arrow =
-        add_parked_arrow(level, /*team=*/2, /*damage=*/40.0f, shield_x, shield_y);
+        add_parked_arrow(level, /*team=*/2, /*damage=*/2.0f, shield_x, shield_y);
     ASSERT_NE(nullptr, enemy_arrow) << "enemy arrow created";
     walker* orc = add_parked_orc(level, shield_x, shield_y);
     ASSERT_NE(nullptr, orc) << "enemy orc created";
+    orc->stats()->set_armor(0.0f);
+    const float orc_hp_before = orc->stats()->hitpoints();
 
     shield->stats()->set_hitpoints(1.0f); // low enough that the drain kills it
     shield->set_lifetime(1);
@@ -145,12 +144,13 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     EXPECT_EQ(shield_x, shield->xpos())
         << "the orbit post does not move while drawcycle is frozen";
     EXPECT_EQ(shield_y, shield->ypos());
-    EXPECT_EQ(1, friendly_arrow->dead())
-        << "a weapon friendly to the guard inside the guard radius is absorbed";
-    EXPECT_EQ(0, enemy_arrow->dead())
-        << "an ENEMY weapon is not the guard's to absorb";
+    EXPECT_EQ(0, friendly_arrow->dead()) << "the guard leaves its own team's shot alive";
+    EXPECT_EQ(1, enemy_arrow->dead()) << "the hostile shot in weaplist is absorbed";
     EXPECT_FLOAT_EQ(1.0f - 2.0f - 1.0f, shield->stats()->hitpoints())
         << "the guard pays the absorbed arrow's damage and the orc's damage";
+    EXPECT_FLOAT_EQ(orc_hp_before - 1.0f, orc->stats()->hitpoints())
+        << "the body strike deals exactly one hit point";
+    EXPECT_EQ(1, shield->lifetime()) << "hitpoint exhaustion skips the lifetime tick";
     EXPECT_EQ(1, shield->dead())
         << "a guard drained to 0 hp or below dies";
 
@@ -158,6 +158,7 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     // Park the shield's orc out of every radius so only the boomerang's own
     // foe pays into the boomerang's drain.
     orc->setxy(600, 600);
+    friendly_arrow->setxy(600, 600);
 
     walker* boomerang = level.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     ASSERT_NE(nullptr, boomerang) << "boomerang created";
@@ -165,6 +166,7 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     boomerang->set_team_num(1);
     boomerang->stats()->set_hitpoints(100.0f);
     boomerang->set_lifetime(5);
+    boomerang->set_damage(1.0f);
     boomerang->set_drawcycle(1); // below the >253 early-kill branch
     boomerang->setxy(100, 100);
     (void)boomerang->act(); // dry act: park the blade on its arc (drawcycle 2)
@@ -172,12 +174,16 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     const short blade_y = boomerang->ypos();
     ASSERT_EQ(0, boomerang->dead()) << "the dry act leaves the blade flying";
 
-    // A FRESH friendly arrow: the shield's is dead and filtered out.
-    walker* arrow2 =
-        add_parked_arrow(level, /*team=*/1, /*damage=*/2.0f, blade_x, blade_y);
-    ASSERT_NE(nullptr, arrow2) << "second friendly arrow created";
+    walker* friendly_arrow2 =
+        add_parked_arrow(level, /*team=*/1, /*damage=*/40.0f, blade_x, blade_y);
+    ASSERT_NE(nullptr, friendly_arrow2) << "second friendly arrow created";
+    walker* enemy_arrow2 =
+        add_parked_arrow(level, /*team=*/2, /*damage=*/2.0f, blade_x, blade_y);
+    ASSERT_NE(nullptr, enemy_arrow2) << "second hostile arrow created";
     walker* orc2 = add_parked_orc(level, blade_x, blade_y);
     ASSERT_NE(nullptr, orc2) << "second enemy orc created";
+    orc2->stats()->set_armor(0.0f);
+    const float orc2_hp_before = orc2->stats()->hitpoints();
 
     boomerang->stats()->set_hitpoints(5.0f); // survives this round's drain
     boomerang->set_lifetime(2);
@@ -187,10 +193,12 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     EXPECT_EQ(blade_x, boomerang->xpos())
         << "the arc post does not move while drawcycle is re-pinned";
     EXPECT_EQ(blade_y, boomerang->ypos());
-    EXPECT_EQ(1, arrow2->dead())
-        << "the boomerang absorbs friendly weapons on the same rule";
+    EXPECT_EQ(0, friendly_arrow2->dead()) << "the friendly shot survives the blade";
+    EXPECT_EQ(1, enemy_arrow2->dead()) << "the blade absorbs the hostile shot";
     EXPECT_FLOAT_EQ(5.0f - 2.0f - 1.0f, boomerang->stats()->hitpoints())
         << "the blade pays the arrow's and the orc's damage";
+    EXPECT_FLOAT_EQ(orc2_hp_before - 1.0f, orc2->stats()->hitpoints())
+        << "the blade's body strike deals exactly one hit point";
     EXPECT_EQ(1, boomerang->lifetime())
         << "a surviving guard burns exactly one lifetime tick";
     EXPECT_EQ(0, boomerang->dead())

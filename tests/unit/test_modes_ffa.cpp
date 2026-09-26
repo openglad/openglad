@@ -1166,7 +1166,7 @@ TEST_F(ModesFfa, midjoin_with_no_bots_keeps_the_seat_team)
 
 TEST_F(ModesFfa, director_repairs_backstop_wildlife_onto_the_nearest_fighter)
 {
-    // The engine's pre-act backstop (find_far_foe) refills empty and dead
+    // The engine's pre-act backstop (find_nearest_foe) refills empty and dead
     // foes before the post-act director runs, and it happily hands out
     // wildlife and other non-band livings — those are the broken foes the
     // repair arm exists for.

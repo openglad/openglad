@@ -1175,6 +1175,7 @@ TEST_F(WalkerSpecials, mage_freeze_time_off_team_grants_bonus_rounds_not_a_globa
     mage->set_busy(0);
     mage->set_team_num(3);
     mage->clear_myguy();
+    mage->set_bonus_rounds(3);
     ASSERT_NE(3, static_cast<int>(world.my_team))
         << "the arm under test is the one where the caster is NOT the player's side";
 
@@ -1184,14 +1185,24 @@ TEST_F(WalkerSpecials, mage_freeze_time_off_team_grants_bonus_rounds_not_a_globa
     ally->set_team_num(3);
     ally->stats()->set_level(2);
     ally->setxy(static_cast<Sint32>(mage->xpos() + 6), static_cast<Sint32>(mage->ypos() + 6));
-    ally->set_bonus_rounds(0);
+    ally->set_bonus_rounds(4);
+
+    walker* enemy = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, enemy) << "enemy created";
+    enemy->set_team_num(4);
+    enemy->setxy(static_cast<Sint32>(mage->xpos() + 8), mage->ypos());
+    enemy->set_bonus_rounds(2);
 
     world.enemy_freeze = 0;
     ASSERT_TRUE(mage->special()) << "freeze time fires";
     EXPECT_EQ(0, world.enemy_freeze)
         << "an off-team mage banks no global time stop";
-    EXPECT_EQ(5 + 2 * 6, static_cast<int>(ally->bonus_rounds()))
-        << "it grants bonus_rounds_base + per_level * level rounds to its own side";
+    EXPECT_EQ(3 + 5 + 2 * 6, static_cast<int>(mage->bonus_rounds()))
+        << "the off-team caster receives the bonus exactly once";
+    EXPECT_EQ(4 + 5 + 2 * 6, static_cast<int>(ally->bonus_rounds()))
+        << "its ally also receives the bonus exactly once";
+    EXPECT_EQ(2, static_cast<int>(enemy->bonus_rounds()))
+        << "the other team receives no bonus";
 
     delete mage;
     world.delete_objects();
@@ -1451,10 +1462,8 @@ TEST_F(WalkerSpecials, druid_protection_tops_up_an_existing_circle)
     druid->set_current_special(4);
     druid->stats()->set_magicpoints(2000);
 
-    // find_friends_in_range scans oblist, and the cast is refused unless it
-    // counts more than one friend there -- and the caster itself is NOT in
-    // oblist, so two allies are the minimum. One of them already owns a ring
-    // (the branch under test), the other does not (the control).
+    // find_friends_in_range scans oblist and excludes the caster. These two
+    // allies exercise both the refresh arm and the new-circle arm together.
     walker* protected_ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* bare_ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, protected_ally) << "already-protected ally created";

@@ -6620,6 +6620,315 @@ void record_cleric_low_magic_heal(ClericClinicResult& out, float pinned_mp,
 
 } // namespace gameplay_rec
 
+// Issues #293, #294, and #295 capture scenes. These use the normal level bootstrap, server
+// tick, transport mirror, and gameplay_rec's real-pixel viewport writer. A
+// weapon created with add_ob(Order::Weapon) enters weaplist; putting a fake
+// arrow in oblist would conceal the second half of the guard bug.
+namespace classic_find_rec {
+
+constexpr int kFrames = 16;
+
+void clear_to_hero_and_sentinel(GameWorld& world, std::uint32_t hero_id)
+{
+    walker* sentinel = nullptr;
+    std::vector<walker*> remove;
+    for (auto& up : world.oblist) {
+        walker* body = up.get();
+        if (body == nullptr || body->entity_id() == hero_id)
+            continue;
+        if (sentinel == nullptr && !body->dead() && !body->dormant() &&
+            body->query_order() == Order::Living && body->team_num() != 0) {
+            sentinel = body;
+            continue;
+        }
+        remove.push_back(body);
+    }
+    for (walker* body : remove)
+        world.remove_ob(body);
+    remove.clear();
+    for (auto& up : world.weaplist)
+        if (up != nullptr)
+            remove.push_back(up.get());
+    for (auto& up : world.fxlist)
+        if (up != nullptr)
+            remove.push_back(up.get());
+    for (walker* body : remove)
+        world.remove_ob(body);
+    ASSERT_NE(nullptr, sentinel) << "level 1 needs a hostile level sentinel";
+    sentinel->set_spawn_delay(65535);
+    sentinel->set_dormant(true);
+    world.type = static_cast<char>(world.type & ~SCEN_TYPE_SAVE_ALL);
+}
+
+screen* setup(std::uint32_t& hero_id)
+{
+    screen* display = og::runtime::current_session->myscreen_;
+    if (display == nullptr)
+        return nullptr;
+    gameplay_rec::build_save(display, "gladiator", 1, 1,
+                             {FAMILY_SOLDIER}, 4);
+    display->world().rng_.state_ = 0x29329495u;
+    std::srand(29329495u);
+    glad_init();
+    gameplay_rec::force_weather(WeatherKind::None);
+    screen* server = og::runtime::local_transport_shadow_testing_server_screen(
+        *og::runtime::current_game_session);
+    if (server == nullptr)
+        return nullptr;
+    walker* hero = gameplay_rec::find_seat_control(server->world());
+    if (hero == nullptr)
+        return nullptr;
+    hero_id = hero->entity_id();
+    for (screen* target : {server, display}) {
+        ScopedServerWorldContext context(*target);
+        GameWorld& world = target->world();
+        clear_to_hero_and_sentinel(world, hero_id);
+        walker* local_hero = world.find_by_id(hero_id);
+        if (local_hero == nullptr)
+            return nullptr;
+        local_hero->set_specials_disabled(true);
+        local_hero->setxy(120, 105);
+    }
+    return server;
+}
+
+void render_frame(screen& display, const char* scene, int frame)
+{
+    if (display.viewob[0] != nullptr)
+        display.viewob[0]->following_ = true;
+    display.redraw();
+    display.swap();
+    if (std::getenv("OG_FX_CAPTURE_DIR") != nullptr)
+        gameplay_rec::dump_viewport(&display, scene, frame);
+}
+
+// Shield and boomerang use different orbit/range math, so film each with a
+// hostile arrow and a same-team control. The arrows use the regular weapon
+// list and stay at their authored post until the guard's first act.
+void guard(const char* scene, int family, bool hostile_arrow)
+{
+    screen* display = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, display);
+    std::uint32_t hero_id = 0;
+    screen* server = setup(hero_id);
+    ASSERT_NE(nullptr, server);
+
+    std::uint32_t arrow_id = 0;
+    std::uint32_t guard_id = 0;
+    for (screen* target : {server, display}) {
+        ScopedServerWorldContext context(*target);
+        GameWorld& world = target->world();
+        walker* hero = world.find_by_id(hero_id);
+        ASSERT_NE(nullptr, hero);
+        walker* fx = world.add_ob(Order::FX, family);
+        ASSERT_NE(nullptr, fx);
+        fx->set_owner(hero);
+        fx->set_team_num(0);
+        fx->stats()->set_hitpoints(100.0f);
+        fx->set_lifetime(40);
+        fx->set_damage(1.0f);
+        fx->set_drawcycle(static_cast<unsigned char>(
+            family == FAMILY_BOOMERANG ? 12 : 0));
+        fx->setxy(hero->xpos(), hero->ypos());
+        // effect::act increments drawcycle first. These are the orbit points
+        // pinned by EffectMorePaths, calculated from the actual sprite sizes.
+        const int center_x = hero->xpos() + hero->sizex() / 2 - fx->sizex() / 2;
+        const int center_y = hero->ypos() + hero->sizey() / 2 - fx->sizey() / 2;
+        const int arrow_x = family == FAMILY_BOOMERANG
+            ? static_cast<int>(static_cast<float>(center_x) + 22.0f * 17.0f / 48.0f)
+            : center_x - 9;
+        const int arrow_y = family == FAMILY_BOOMERANG
+            ? static_cast<int>(static_cast<float>(center_y) - 9.0f * 17.0f / 48.0f)
+            : center_y - 22;
+        walker* arrow = world.add_ob(Order::Weapon, FAMILY_ARROW);
+        ASSERT_NE(nullptr, arrow);
+        arrow->set_team_num(hostile_arrow ? 2 : 0);
+        arrow->set_act_type(ACT_GUARD); // no projectile step before guard act
+        arrow->set_damage(2.0f);
+        arrow->setxy(static_cast<short>(arrow_x),
+                     static_cast<short>(arrow_y));
+        ASSERT_EQ(1u, world.weaplist.size())
+            << "the capture must stage a normal weapon, in weaplist";
+        if (target == server) {
+            arrow_id = arrow->entity_id();
+            guard_id = fx->entity_id();
+        } else {
+            ASSERT_EQ(arrow_id, arrow->entity_id());
+            ASSERT_EQ(guard_id, fx->entity_id());
+        }
+    }
+
+    render_frame(*display, scene, 0);
+    GameLoopFrameState state;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    int frames = 0;
+    for (int f = 1; f <= kFrames; ++f) {
+        ASSERT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*display, state, deps));
+        render_frame(*display, scene, f);
+        ++frames;
+    }
+    EXPECT_EQ(kFrames, frames);
+    const bool arrow_survived = server->world().find_by_id(arrow_id) != nullptr;
+    EXPECT_EQ(!hostile_arrow, arrow_survived)
+        << "CLASSIC_GUARD_WRONG_ARROW_FATE " << scene
+        << ": hostile arrow must be absorbed, friendly arrow kept";
+    EXPECT_NE(nullptr, server->world().find_by_id(guard_id))
+        << scene << ": the guard itself must remain active";
+    printf("classic guard: scene=%s frames=%d arrow_survived=%d\n",
+           scene, frames + 1, arrow_survived ? 1 : 0);
+    display->world().end = 0;
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    display->world().delete_objects();
+}
+
+void yell()
+{
+    constexpr const char* scene = "classic_yell";
+    screen* display = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, display);
+    std::uint32_t hero_id = 0;
+    screen* server = setup(hero_id);
+    ASSERT_NE(nullptr, server);
+    std::uint32_t yeller_id = 0, ally_id = 0, attacker_id = 0;
+    for (screen* target : {server, display}) {
+        ScopedServerWorldContext context(*target);
+        GameWorld& world = target->world();
+        walker* yeller = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* attacker = world.add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, yeller);
+        ASSERT_NE(nullptr, ally);
+        ASSERT_NE(nullptr, attacker);
+        yeller->set_team_num(0);
+        ally->set_team_num(0);
+        attacker->set_team_num(2);
+        yeller->setxy(120, 100);
+        ally->setxy(104, 116);
+        attacker->setxy(148, 100);
+        yeller->set_act_type(ACT_RANDOM);
+        ally->set_act_type(ACT_GUARD);
+        attacker->set_act_type(ACT_RANDOM);
+        yeller->set_specials_disabled(true);
+        yeller->stats()->set_max_hitpoints(100.0f);
+        yeller->stats()->set_hitpoints(1.0f);
+        gameplay_rec::stop_hp_regen(yeller);
+        yeller->set_yo_delay(0);
+        attacker->set_damage(0.0f);
+        yeller->set_foe(nullptr);
+        yeller->set_leader(nullptr);
+        ally->set_foe(nullptr);
+        ally->set_leader(nullptr);
+        attacker->set_foe(nullptr);
+        // A pre-existing squad leader is a normal AI state. It also keeps
+        // the world's idle-acquisition fallback from immediately filling in
+        // the missing hit_response back-reference on the defective tree.
+        // The fixed hit_response must redirect this attacker to the yeller.
+        walker* captain = nullptr;
+        for (auto& up : world.oblist) {
+            if (walker* body = up.get(); body != nullptr && body->dormant() &&
+                body->team_num() != 0) {
+                captain = body;
+                break;
+            }
+        }
+        ASSERT_NE(nullptr, captain);
+        attacker->set_leader(captain);
+        if (target == server) {
+            yeller_id = yeller->entity_id();
+            ally_id = ally->entity_id();
+            attacker_id = attacker->entity_id();
+        } else {
+            ASSERT_EQ(yeller_id, yeller->entity_id());
+            ASSERT_EQ(ally_id, ally->entity_id());
+            ASSERT_EQ(attacker_id, attacker->entity_id());
+        }
+    }
+
+    render_frame(*display, scene, 0);
+    bool self_leads_self = false, attacker_targets_yeller = false;
+    bool ally_follows_yeller = false, flee_queued = false;
+    {
+        ScopedServerWorldContext context(*server);
+        walker* yeller = server->world().find_by_id(yeller_id);
+        walker* ally = server->world().find_by_id(ally_id);
+        walker* attacker = server->world().find_by_id(attacker_id);
+        ASSERT_NE(nullptr, yeller);
+        ASSERT_NE(nullptr, ally);
+        ASSERT_NE(nullptr, attacker);
+        yeller->stats()->hit_response(attacker);
+        self_leads_self = yeller->leader() == yeller;
+        attacker_targets_yeller = attacker->foe() == yeller;
+        ally_follows_yeller = ally->leader() == yeller && ally->foe() == attacker;
+        flee_queued = !yeller->stats()->commands.empty() &&
+            yeller->stats()->commands.front().commandtype == COMMAND_WALK &&
+            yeller->stats()->commands.front().forced;
+    }
+
+    GameLoopFrameState state;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    int frames = 0;
+    for (int f = 1; f <= kFrames; ++f) {
+        ASSERT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*display, state, deps));
+        render_frame(*display, scene, f);
+        ++frames;
+    }
+    EXPECT_EQ(kFrames, frames);
+    EXPECT_FALSE(self_leads_self)
+        << "CLASSIC_YELL_SELF_RECRUITED: yell must not recruit its caller";
+    EXPECT_TRUE(attacker_targets_yeller)
+        << "CLASSIC_YELL_ATTACKER_BACKREF_MISSING: hit_response must set "
+           "the attacker's back-reference";
+    EXPECT_TRUE(ally_follows_yeller)
+        << "the nearby ally must target the attacker and follow the yeller";
+    EXPECT_TRUE(flee_queued)
+        << "the retarget must leave the yeller's forced flee queued";
+    printf("classic yell: scene=%s frames=%d self_leads_self=%d "
+           "attacker_targets_yeller=%d ally_follows_yeller=%d flee_queued=%d\n",
+           scene, frames + 1, self_leads_self ? 1 : 0,
+           attacker_targets_yeller ? 1 : 0,
+           ally_follows_yeller ? 1 : 0, flee_queued ? 1 : 0);
+    display->world().end = 0;
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    display->world().delete_objects();
+}
+
+} // namespace classic_find_rec
+
+TEST(GameLoop, zz_classic_guard_shield_hostile)
+{
+    classic_find_rec::guard("classic_shield_hostile", FAMILY_MAGIC_SHIELD, true);
+}
+
+TEST(GameLoop, zz_classic_guard_shield_friendly)
+{
+    classic_find_rec::guard("classic_shield_friendly", FAMILY_MAGIC_SHIELD, false);
+}
+
+TEST(GameLoop, zz_classic_guard_boomerang_hostile)
+{
+    classic_find_rec::guard("classic_boomerang_hostile", FAMILY_BOOMERANG, true);
+}
+
+TEST(GameLoop, zz_classic_guard_boomerang_friendly)
+{
+    classic_find_rec::guard("classic_boomerang_friendly", FAMILY_BOOMERANG, false);
+}
+
+TEST(GameLoop, zz_classic_yell)
+{
+    classic_find_rec::yell();
+}
+
 TEST(GameLoop, zz_capture_real_gameplay)
 {
     if (!getenv("OG_FX_CAPTURE_DIR"))

@@ -244,8 +244,10 @@ public:
     bool query_grid_passable(std::int32_t x, std::int32_t y, walker* ob) { return query_grid_passable(static_cast<float>(x), static_cast<float>(y), ob); }
 
     // Entity search (moved from screen)
+    // Return the first foe met by the obmap spiral, with a nearest-scan fallback.
     walker* find_near_foe(walker* ob);
-    walker* find_far_foe(walker* ob);
+    // Return the nearest live foe from the floor-blind full-list scan.
+    walker* find_nearest_foe(walker* ob);
     walker* find_nearest_blood(walker* who);
     walker* find_nearest_player(walker* ob);
     std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);

@@ -1289,7 +1289,7 @@ TEST(ZAxis, misaligned_walker_aligns_and_turns_a_one_lane_corner)
 // default to 0, so upper-floor walkers were blind to foes standing beside
 // them and latched whatever stood on the GROUND floor beneath their 2D
 // position instead. It must probe the searcher's own floor. (Cross-floor
-// acquisition intentionally remains available via find_far_foe.)
+// acquisition intentionally remains available via find_nearest_foe.)
 TEST(ZAxis, find_near_foe_probes_the_searchers_floor)
 {
     TestGameWorld tw;
