@@ -1303,7 +1303,7 @@ inline constexpr Mutation kMut_family_archer_init = {
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "packs/core/families/living-03-mage.lua", 281,
+    "packs/core/families/living-03-mage.lua", 282,
     "hp = 90",
     "hp = 9000",
     "Cranks MAGE descriptor HP x100 "
@@ -1414,7 +1414,7 @@ inline constexpr Mutation kMut_family_thief_init = {
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "packs/core/families/living-13-druid.lua", 159,
+    "packs/core/families/living-13-druid.lua", 154,
     "hp = 110",
     "hp = 11000",
     "Cranks DRUID descriptor HP x100 "
@@ -2495,7 +2495,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "packs/core/families/living-03-mage.lua", 224,
+    "packs/core/families/living-03-mage.lua", 225,
     "  wave:set_lastx(bolt:lastx())",
     "  wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
     "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
@@ -3733,7 +3733,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "packs/core/families/living-03-mage.lua", 212,
+    "packs/core/families/living-03-mage.lua", 213,
     "local bolt = self:fire()",
     "local bolt = nil",
     "Suppresses the seed bolt ENERGY WAVE rides on, so energy_wave takes its 'if not bolt' exit and no FAMILY_WAVE weapon is ever placed. WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400) flips.",
@@ -3754,7 +3754,7 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "packs/core/families/living-03-mage.lua", 236,
+    "packs/core/families/living-03-mage.lua", 237,
     "if foe_count == 0 then",
     "if true then",
     "Makes HEARTBURST report 'no foes in range' unconditionally, so mage slot 5 returns false before draining the MP pool or summoning one explosion per foe. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8600, 8700) both fail."
@@ -4077,7 +4077,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "packs/core/families/living-13-druid.lua", 159,
+    "packs/core/families/living-13-druid.lua", 154,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4096,7 +4096,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "packs/core/families/living-13-druid.lua", 159,
+    "packs/core/families/living-13-druid.lua", 154,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4306,7 +4306,7 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "packs/core/families/living-03-mage.lua", 328,
+    "packs/core/families/living-03-mage.lua", 329,
     "freeze_per_level = 11",
     "freeze_per_level = 0",
     "Cuts the freeze grant from 20+11*level to a flat 20 ticks in the mage's tuning block, which the mage declaration reads through og.tuning(self).freeze_per_level each cast. At mage level 5 the banked enemy_freeze drops 75 -> 20, enemies act normally for most of the 150-tick window, the level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor."
@@ -4721,7 +4721,7 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
     "packs/core/families/living-13-druid.lua", 102,
-    "        local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
+    "      local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
     "        do return false, 'MUTATION REFUSAL' end",
     "Replaces the PROTECTION circle summon with `do return false, 'MUTATION REFUSAL' end`, so protection_circle declines on the first uncircled friend before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole druid.lua load and takes plant-tree, the bolt, and summon faerie down with it; the row would then flip on collateral damage rather than on the circle. With the wrapper this is the only row in the corpus that moves."
 };
@@ -5141,7 +5141,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
     pred::WalkerAliveAtFinal(FAMILY_BIG_ORC, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 41200, 41400,
-        "consequence: cleric slot-1 HEAL adds mp/4 + rand(mp/4) + 5*level to the in-range team-0 ally with NO max_hitpoints clamp, so the 180-max big orc finishes at 413 HP (41300 cents), 2.3x its own cap; collapsing heal_range makes find_friends_in_range return friend_count<=1, heal_or_mace returns false, and the ally keeps its wounded 172 HP (17200) -- far below this floor. The 200-cent window is the one-regen-tick spread between the branch dump (41300) and a companion recapture (41200), not an RNG band: the heal draw itself is fixed by the 0x42 seed."),
+        "consequence: cleric slot-1 HEAL adds mp/4 + rand(mp/4) + 5*level to the in-range team-0 ally with NO max_hitpoints clamp, so the 180-max big orc finishes at 413 HP (41300 cents), 2.3x its own cap; collapsing heal_range makes find_friends_in_range return friend_count==0, heal_or_mace returns false, and the ally keeps its wounded 172 HP (17200) -- far below this floor. The 200-cent window is the one-regen-tick spread between the branch dump (41300) and a companion recapture (41200), not an RNG band: the heal draw itself is fixed by the 0x42 seed."),
     pred::EventKindAtLeast(/*play_sound*/1, 14,
         "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
 };
@@ -5149,7 +5149,7 @@ inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
     "packs/core/families/living-05-cleric.lua", 348,
     "heal_range = 60",
     "heal_range = 1",
-    "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count<=1 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
+    "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count==0 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
 };
 
 // --- cleric_raise_skeleton_scen99 ------------------------------------------
@@ -5414,7 +5414,7 @@ inline constexpr FloorPaint kZFall2Paints[] = {
 // and a determinate 0 once a hook marks it dead. That is the flip direction
 // TreasureFamilyOfOrderRemovedFromOblist structurally cannot express (it goes
 // indeterminate for a live survivor). Team 2 is inert: sim_find_next_control
-// and master's find_player_walker both require Order::Living, and find_far_foe
+// and master's find_player_walker both require Order::Living, and find_nearest_foe
 // only accepts ORDER_LIVING/ORDER_GENERATOR, so a team-2 treasure neither
 // steals player control nor becomes anybody's foe.
 
@@ -6610,7 +6610,7 @@ inline constexpr Mutation kMut_elemental_death_starburst_scen99 = {
 };
 
 // ai_slime_split_scen99: a LONE team-1 FAMILY_SLIME with no walker anywhere
-// else in the arena. find_near_foe/find_far_foe return nothing, so
+// else in the arena. find_near_foe/find_nearest_foe return nothing, so
 // living::act's ACT_RANDOM never arms the 300-tick COMMAND_SEARCH that
 // starves the special roll in every other slime row — the 1-in-5 roll gets a
 // fresh chance every tick and drives living::check_special ->
@@ -6726,9 +6726,9 @@ inline constexpr Mutation kMut_generator_owner_cascade_scen99 = {
 //   * walker::attack refuses friendly targets (is_friendly walks the owner
 //     chain to its head before comparing team_num), so every FX inherits its
 //     owner's team for that test and no friendly-tier damage is observable.
-//   * find_foe_weapons_in_range scans oblist while add_ob(Order::Weapon, ...)
-//     diverts weapons to weaplist, so guard_tail's weapon-absorb arm is
-//     structurally unreachable on BOTH arms. No row below asserts it.
+//   * Guard effects scan weaplist for hostile projectiles. The classic
+//     oblist scan never reached normal shots; issues #294/#295 deliberately
+//     change the branch's guard absorption and wounded-actor responses.
 //   * FAMILY_TOWER1 (living-20-beast.lua) is the corpus's only stationary
 //     living family: is_stationary, hp 130, damage 0, stepsize 0, identical to
 //     master's guy.cpp:261 entry. It is the fixed-geometry victim in six rows
@@ -6939,6 +6939,73 @@ inline constexpr Mutation kMut_bomb_l10_vs_cleric_l9_scen99 = {
     "  bomb.damage = og.combat.bomb_damage(self.level)",
     "  bomb.damage = og.combat.bomb_damage(1)",
     "Severs the caster-level -> bomb-damage mapping: a level-10 thief arms a level-1 bomb (raw 30, rolled 27..31 landed). The blast still fires, still shoves and still emits SOUND_EXPLODE, but the level-9 cleric survives it at 91 of 120, so WalkerDiedByFinal(FAMILY_CLERIC) fails, the exact ScoreDelta fails with it (439 -> 38, the hit XP alone) and the sound track drops from four play_sounds to three (the cleric's DIE2 never fires). Measured: 3 predicate flips."
+};
+
+// Issue #294: guard_tail must scan the real weapon list. These short
+// arenas place a hostile arrow and a friendly fire arrow at the guard's first
+// orbit stop, plus a second hostile arrow outside the guard radius. SpawnSpec
+// uses add_ob(Order::Weapon), so all three enter weaplist. Their initial
+// velocity is zero and their twelve-act range outlasts the two-tick budget;
+// only absorption can remove one here. A distant stationary foe keeps the
+// level open so the dead-weapon sweep runs.
+//
+// The two surviving families are separate controls: scanning oblist leaves
+// both hostile arrows, reversing allegiance removes the friendly fire arrow,
+// and ignoring range removes the distant hostile arrow too.
+inline constexpr InputEvent kInputsShieldProjectileAbsorb[] = {
+    { 0, 0, K_SPECIAL | K_SHIFT},
+    { 1, 0, K_NONE},
+};
+
+inline constexpr InputEvent kInputsBoomerangProjectileAbsorb[] = {
+    { 0, 0, K_SPECIAL_SWITCH | K_SPECIAL},
+    { 1, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_shield_projectile_absorb_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 500, 500, 0, 0 },
+    { FAMILY_ARROW, 1, kOrderWeapon, 115, 100, 0, 0 },
+    { FAMILY_ARROW, 1, kOrderWeapon, 200, 100, 0, 0 },
+    { FAMILY_FIRE_ARROW, 0, kOrderWeapon, 115, 100, 0, 0 },
+    { FAMILY_CLERIC, 0, kOrderLiving, 120, 120, 0, 0, 1, 80 },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_boomerang_projectile_absorb_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 500, 500, 0, 0 },
+    // Just outside the soldier's body, inside the blade's doubled radius.
+    { FAMILY_ARROW, 1, kOrderWeapon, 140, 120, 0, 0 },
+    { FAMILY_ARROW, 1, kOrderWeapon, 200, 120, 0, 0 },
+    { FAMILY_FIRE_ARROW, 0, kOrderWeapon, 140, 120, 0, 0 },
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 4, 300 },
+};
+
+inline constexpr FactPredicate kFacts_shield_projectile_absorb_scen99[] = {
+    pred::TickReached(2),
+    pred::WalkerAliveAtFinal(FAMILY_CLERIC, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1,
+        "structural: the cleric summons one guard through the normal alternate special"),
+    pred::WeaponFamilyCount(FAMILY_ARROW, 1, 1,
+        "consequence: the shield absorbs the hostile arrow on its orbit and leaves the distant hostile arrow; scanning oblist instead leaves both"),
+    pred::WeaponFamilyCount(FAMILY_FIRE_ARROW, 1, 1,
+        "consequence: the friendly projectile at the absorption post survives"),
+};
+
+inline constexpr FactPredicate kFacts_boomerang_projectile_absorb_scen99[] = {
+    pred::TickReached(2),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "structural: the soldier summons one blade through special slot two"),
+    pred::WeaponFamilyCount(FAMILY_ARROW, 1, 1,
+        "consequence: the blade absorbs the hostile arrow inside its doubled weapon radius and leaves the distant hostile arrow; scanning oblist instead leaves both"),
+    pred::WeaponFamilyCount(FAMILY_FIRE_ARROW, 1, 1,
+        "consequence: the friendly projectile at the absorption post survives"),
+};
+
+inline constexpr Mutation kMut_guard_projectile_absorb_scen99 = {
+    "packs/core/lib/effect_shield.lua", 27,
+    "  local weapons = og.find_foe_weapons_in_range(\"weap\", weapon_range, self)",
+    "  local weapons = og.find_foe_weapons_in_range(\"ob\", weapon_range, self)",
+    "Restores the classic guard scan of oblist. Normal projectiles live in weaplist, so the hostile arrow inside the guard radius survives alongside the distant control: WeaponFamilyCount(FAMILY_ARROW, 1, 1) sees two. The friendly fire arrow and the guard still exist."
 };
 
 // effect_shield_absorb_scen99: guard_tail's foe arm
@@ -7718,7 +7785,7 @@ inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_freeze_time_offteam_scen99 = {
-    "packs/core/families/living-03-mage.lua", 331,
+    "packs/core/families/living-03-mage.lua", 332,
     "bonus_rounds_per_level = 2",
     "bonus_rounds_per_level = 0",
     "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the trailing orc stops at (471,439) instead of (387,523))."
@@ -7887,7 +7954,7 @@ inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
-    "packs/core/families/living-03-mage.lua", 334,
+    "packs/core/families/living-03-mage.lua", 335,
     "heartburst_range_base = 80",
     "heartburst_range_base = 0",
     "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 8 -> 4, and the surviving orc finishes on 14000 cents instead of 5600."
@@ -8135,8 +8202,8 @@ inline constexpr FactPredicate kFacts_druid_protection_refresh_scen99[] = {
 
 inline constexpr Mutation kMut_druid_protection_refresh_scen99 = {
     "packs/core/families/living-13-druid.lua", 92,
-    "      local circles = og.find_in_range(\"weap\", 100, friend)",
-    "      local circles = og.find_in_range(\"ob\", 100, friend)",
+    "    local circles = og.find_in_range(\"weap\", 100, friend)",
+    "    local circles = og.find_in_range(\"ob\", 100, friend)",
     "Points the existing-circle scan back at oblist, resurrecting the bug this row exists to pin. oblist holds livings, generators and FX; a summoned circle lives in weaplist, so the scan finds nothing, `existing` stays nil and the recast takes the mint arm instead of the top-up arm. The friendly ends the run wearing TWO rings and WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1) reads 2. Everything else holds: both casts still succeed, both still charge 200 magicpoints and emit SOUND_HEAL, so the play_sound floor and WeaponFamilyEmitted stay green and the flip is isolated to the stacking."
 };
 
@@ -9792,6 +9859,22 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_bomb_l10_vs_cleric_l9_scen99, std::size(kFacts_bomb_l10_vs_cleric_l9_scen99),
       kMut_bomb_l10_vs_cleric_l9_scen99 },
+
+    { "shield_projectile_absorb_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsShieldProjectileAbsorb, std::size(kInputsShieldProjectileAbsorb), 2,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_shield_projectile_absorb_scen99, std::size(kFamilySpawns_shield_projectile_absorb_scen99),
+      0, false, true, Exercises::None,
+      kFacts_shield_projectile_absorb_scen99, std::size(kFacts_shield_projectile_absorb_scen99),
+      kMut_guard_projectile_absorb_scen99 },
+
+    { "boomerang_projectile_absorb_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsBoomerangProjectileAbsorb, std::size(kInputsBoomerangProjectileAbsorb), 2,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_boomerang_projectile_absorb_scen99, std::size(kFamilySpawns_boomerang_projectile_absorb_scen99),
+      0, false, true, Exercises::None,
+      kFacts_boomerang_projectile_absorb_scen99, std::size(kFacts_boomerang_projectile_absorb_scen99),
+      kMut_guard_projectile_absorb_scen99 },
 
     { "effect_shield_absorb_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsMagicShieldNoFire, std::size(kInputsMagicShieldNoFire), 45,

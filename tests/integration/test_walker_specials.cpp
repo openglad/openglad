@@ -1190,7 +1190,8 @@ TEST_F(WalkerSpecials, mage_freeze_time_off_team_grants_bonus_rounds_not_a_globa
     walker* enemy = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, enemy) << "enemy created";
     enemy->set_team_num(4);
-    enemy->setxy(static_cast<Sint32>(mage->xpos() + 8), mage->ypos());
+    enemy->setxy(static_cast<Sint32>(mage->xpos() + 8),
+                 static_cast<Sint32>(mage->ypos()));
     enemy->set_bonus_rounds(2);
 
     world.enemy_freeze = 0;
