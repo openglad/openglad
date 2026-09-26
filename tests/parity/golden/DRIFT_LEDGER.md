@@ -604,3 +604,75 @@ in place as the guard against re-attaching a save pin to a row that never saves.
 Teaching the runner a real save round-trip is a harness feature (new runner
 behaviour on both arms, a new row, a new golden, a companion capture against
 e761-era save code), not a pin fix.
+
+## Classic finder fixes (#293–#295, 2026-09-26)
+
+Captures from fixed source `8a4ac0c47fd7f4d965baf38bda3f5735d6dec3fa`
+were compared with the 222-row before capture from merge base `b1412cab`.
+A wrong-list probe kept the fixes but changed the shared shield/boomerang
+call in `packs/core/lib/effect_shield.lua:27` back from `"weap"` to `"ob"`.
+All 222 existing before and wrong-list dumps are **byte-identical**. Thus the
+#293 native rename and #295 ally/hit-response fixes preserve the existing
+corpus; the three changes below require the #294 hostile-weapon fix *and* the
+real weapon list. The fixed set has 224 captures: those 222 plus two new arenas.
+
+| existing id | measured fixed-source change from the before capture |
+|---|---|
+| `special_soldier_2_scen99` | The two soldiers finish on 59/98 HP instead of 52/97; team-0 score is 24 instead of 25. Knife, knife-back and hit tracks fall from 48/47/38 to 42/43/32 while boomerang tracks stay at 79; RNG state also moves. |
+| `weapon_boomerang_return_scen99` | The soldier finishes on 102 instead of 95 HP and the boomerang on 80 instead of 90. Arrow and hit tracks fall from 6/18 to 4/12; the archer ends at (164,164) instead of (160,160), and RNG state moves. |
+| `effect_boomerang_contact_scen99` | The soldier finishes on 108 instead of 98 HP; the boomerang falls from 98 to 73 HP and the tower ends on 38 instead of 37. Two surviving weapons become none, arrow tracks fall from 89 to 46, events from 16 to 15 and team-0 score from 97 to 96; RNG state moves. |
+
+The new `shield_projectile_absorb_scen99` and
+`boomerang_projectile_absorb_scen99` each place a nearby hostile `ARROW`,
+a distant hostile `ARROW` and a nearby friendly `FIRE_ARROW` in `weaplist`.
+In each fixed dump the nearby hostile arrow is gone, the distant hostile and
+friendly projectiles remain, and the guard loses 5 HP. The wrong-list probe
+leaves both hostile arrows alive and the guard undamaged. Only the fourth fact
+(index 3, hostile arrow count) fails there; all five facts pass with the
+`"weap"` selector. The two new dumps keep the same events and RNG state across
+that probe.
+
+The three replacement goldens and the two new goldens are fixed-source
+captures from `8a4ac0c4`. A forced clean rebuild with the retuned fact table
+reproduced all 224 fixed dumps byte for byte. The companion at `e3f05b65`,
+with its table byte-identical to this branch and its dumper rebuilt, produced
+five dumps byte-identical to the wrong-list probe: it retains both hostile
+arrows in the new arenas and the old outcomes in the three existing arenas.
+Thus these five fixed-source goldens deliberately replace classic behavior;
+no other existing scenario golden changes.
+
+The exact caster-health facts move from 5200 to 5900 cents for
+`special_soldier_2_scen99` and from 9500 to 10200 for
+`weapon_boomerang_return_scen99`; their original summon-suppression and
+missing-orbit-anchor mutations remain. The contact row keeps its 3600–3800
+cent tower-health band and orbit-shrink mutation. The two new rows share the
+wrong-list mutation described above. All five targeted canaries each flipped
+one predicate and the gtest verdict, then returned to green after restoration;
+none relied on the byte comparison alone.
+
+Outside the parity corpus, the pinned pause/add-player/resume fight in
+`GameLoop.midgame_add_player_resume_play_repause_keeps_transport_alive` ends
+with 17 living actors instead of 12. Three isolated runs each reproduce 12
+on the merge base, 17 with the fix, and 12 with only the guard list reverted.
+Its exact census is updated; the RNG seeds, both surviving player seats,
+re-teamed survivor and transport checks are preserved.
+
+The #295 hit-response ordering also changes longer simulations outside the
+parity corpus. On the merge base, moving only the retarget block ahead of the
+yell reproduces the fixed branch's basketball results and both campaign
+survival changes. Westlands L2 now keeps 3/4/4 crew members on seeds
+42/1337/2025; all three runs kill the picket, cross mid-road by tick 986 and
+sweep the road by tick 2623, within the unchanged 3000/8000 deadlines.
+Long Season L9 keeps 7/8/8 mixed-crew members at tick 600. Its full 18-run
+bracket (crew levels 4/5/6, three seeds, two rosters) still meets the original
+curve-level defense requirement: at least four team-0 actors at tick 3000 on
+every seed. The basketball replay pins retain a score within regulation on
+all six courts and zero watchdog resets on the reference court. The updated
+basketball test fails on the original engine and passes when only the retarget
+ordering is changed.
+
+The recalibrated Westlands check still fails when the F1 facing correction is
+replaced with the old walk step. The new Ashfall Fair defense check fails with
+only three defenders when team-0 attacks are suppressed; restoring attacks
+returns it to green. Campaign layouts, crew levels and defense bands are
+unchanged.

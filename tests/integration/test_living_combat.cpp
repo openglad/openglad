@@ -905,12 +905,12 @@ TEST(LivingCombat, living_round7_act_random_and_do_action_targeted_branches)
         << "the 4-of-5 search is queued for 300 iterations";
 
     // Same arm with no foe at all: seed 1's third draw is odd, so it takes the
-    // random-walk branch rather than the find_far_foe branch.
+    // random-walk branch rather than the find_nearest_foe branch.
     actor->set_act_type(ACT_RANDOM);
     actor->stats()->clear_command();
     actor->set_foe(nullptr);
     actor->set_ani_type(ANI_WALK);
-    foe->set_team_num(0);  // friendly => find_near_foe/find_far_foe find nobody
+    foe->set_team_num(0);  // friendly => find_near_foe/find_nearest_foe find nobody
     world.rng_.state_ = 1;
     ok = actor->act();
     ASSERT_TRUE(ok) << "the foeless 4-of-5 arm returns 1";

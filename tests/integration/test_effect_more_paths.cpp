@@ -94,13 +94,11 @@ static walker* find_spawned_fx(GameWorld& world, int family, int* out_count)
 } // namespace
 
 
-// The shield orbits its owner, then sweeps: FRIENDLY weapons inside the guard
+// The shield orbits its owner, then sweeps: hostile weapons inside the guard
 // radius are absorbed (they die and cost the shield their damage), foes inside
 // it are attacked and cost theirs, and a surviving guard spends one tick of
-// lifetime. find_foe_weapons_in_range keeps weapons for which the guard's
-// is_friendly() holds (game_world.cpp:1370) -- the helper's "foe" name is a
-// heritage misnomer -- so a hostile arrow is NOT a candidate.
-TEST(EffectMorePaths, effect_magic_shield_absorbs_friendly_weapon_and_strikes_foe)
+// lifetime. Normal add_ob(Order::Weapon) puts both arrows in weaplist.
+TEST(EffectMorePaths, effect_magic_shield_absorbs_hostile_weapon_and_strikes_foe)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     world.delete_objects();
@@ -131,23 +129,18 @@ TEST(EffectMorePaths, effect_magic_shield_absorbs_friendly_weapon_and_strikes_fo
     const short land_x = static_cast<short>(centered_x(shield, owner.get()) - 9);
     const short land_y = static_cast<short>(centered_y(shield, owner.get()) - 22);
 
-    auto friendly_owned =
-        og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
-    ASSERT_NE(nullptr, friendly_owned) << "friendly weapon created";
-    walker* friendly = friendly_owned.get();
+    walker* friendly = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, friendly) << "friendly weapon created";
     friendly->set_team_num(owner->team_num());
-    friendly->set_damage(7.0f);
+    friendly->set_damage(100.0f);
     friendly->setxy(land_x, land_y);
-    world.oblist.push_back(std::move(friendly_owned));
 
-    auto hostile_owned =
-        og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
-    ASSERT_NE(nullptr, hostile_owned) << "hostile weapon created";
-    walker* hostile = hostile_owned.get();
+    walker* hostile = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, hostile) << "hostile weapon created";
     hostile->set_team_num(2);
-    hostile->set_damage(100.0f);
+    hostile->set_damage(7.0f);
     hostile->setxy(land_x, land_y);
-    world.oblist.push_back(std::move(hostile_owned));
+    ASSERT_EQ(2u, world.weaplist.size()) << "normal weapon spawns enter the weapon list";
 
     walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, foe) << "foe created";
@@ -163,10 +156,8 @@ TEST(EffectMorePaths, effect_magic_shield_absorbs_friendly_weapon_and_strikes_fo
         << "the shield is re-centred on its owner and offset by orbit step 1";
     EXPECT_EQ(land_y, shield->ypos())
         << "the shield is re-centred on its owner and offset by orbit step 1";
-    EXPECT_EQ(1, friendly->dead())
-        << "a weapon on the guard's own owner chain is absorbed and killed";
-    EXPECT_EQ(0, hostile->dead())
-        << "the weapon sweep keeps only is_friendly() weapons, never hostile shots";
+    EXPECT_EQ(0, friendly->dead()) << "the guard leaves its own team's shot alive";
+    EXPECT_EQ(1, hostile->dead()) << "the hostile shot in weaplist is absorbed";
     EXPECT_FLOAT_EQ(50.0f - 7.0f - 5.0f, shield->stats()->hitpoints())
         << "each absorbed weapon and each struck foe costs the guard its damage";
     EXPECT_FLOAT_EQ(foe_hp_before - 1.0f, foe->stats()->hitpoints())
@@ -183,7 +174,7 @@ TEST(EffectMorePaths, effect_magic_shield_absorbs_friendly_weapon_and_strikes_fo
 // The boomerang runs the same guard tail on a drawcycle-scaled orbit: the
 // weapon sweep uses sizex*2, the foe sweep sizex, and the arc radius is
 // ORBIT[drawcycle] * (drawcycle + 4) / 48 from the owner's centre.
-TEST(EffectMorePaths, effect_boomerang_orbit_absorbs_friendly_weapon_and_strikes_foe)
+TEST(EffectMorePaths, effect_boomerang_orbit_absorbs_hostile_weapon_and_strikes_foe)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     world.delete_objects();
@@ -213,14 +204,18 @@ TEST(EffectMorePaths, effect_boomerang_orbit_absorbs_friendly_weapon_and_strikes
     const short land_y = static_cast<short>(
         static_cast<float>(centered_y(fx, owner.get())) + -9.0f * 17.0f / 48.0f);
 
-    auto friendly_owned =
-        og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
-    ASSERT_NE(nullptr, friendly_owned) << "friendly weapon created";
-    walker* friendly = friendly_owned.get();
+    walker* friendly = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, friendly) << "friendly weapon created";
     friendly->set_team_num(owner->team_num());
-    friendly->set_damage(3.0f);
+    friendly->set_damage(30.0f);
     friendly->setxy(land_x, land_y);
-    world.oblist.push_back(std::move(friendly_owned));
+
+    walker* hostile = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, hostile) << "hostile weapon created";
+    hostile->set_team_num(2);
+    hostile->set_damage(3.0f);
+    hostile->setxy(land_x, land_y);
+    ASSERT_EQ(2u, world.weaplist.size()) << "normal weapon spawns enter the weapon list";
 
     walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, foe) << "foe created";
@@ -238,8 +233,8 @@ TEST(EffectMorePaths, effect_boomerang_orbit_absorbs_friendly_weapon_and_strikes
         << "the blade re-centres on its owner and takes the scaled orbit offset";
     EXPECT_EQ(land_y, fx->ypos())
         << "the blade re-centres on its owner and takes the scaled orbit offset";
-    EXPECT_EQ(1, friendly->dead())
-        << "a friendly weapon inside the doubled weapon radius is absorbed";
+    EXPECT_EQ(0, friendly->dead()) << "the friendly shot survives the blade";
+    EXPECT_EQ(1, hostile->dead()) << "the hostile shot is absorbed by the blade";
     EXPECT_FLOAT_EQ(50.0f - 3.0f - 4.0f, fx->stats()->hitpoints())
         << "the absorbed weapon and the struck foe each cost the blade their damage";
     EXPECT_FLOAT_EQ(foe_hp_before - 1.0f, foe->stats()->hitpoints())
@@ -580,14 +575,11 @@ TEST(EffectMorePaths, effect_batch3_guard_dies_when_collisions_drain_its_hitpoin
     const short shield_x = static_cast<short>(centered_x(shield, owner.get()) - 9);
     const short shield_y = static_cast<short>(centered_y(shield, owner.get()) - 22);
 
-    auto incoming_owned =
-        og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
-    ASSERT_NE(nullptr, incoming_owned) << "incoming weapon created";
-    walker* incoming = incoming_owned.get();
-    incoming->set_team_num(owner->team_num()); // friendly: absorbable by the sweep
+    walker* incoming = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, incoming) << "incoming weapon created";
+    incoming->set_team_num(2);
     incoming->set_damage(2.0f);
     incoming->setxy(shield_x, shield_y);
-    world.oblist.push_back(std::move(incoming_owned));
 
     walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, foe) << "foe created";
@@ -597,7 +589,7 @@ TEST(EffectMorePaths, effect_batch3_guard_dies_when_collisions_drain_its_hitpoin
 
     ASSERT_TRUE(shield->act()) << "magic_shield_on_act consumes the tick";
 
-    EXPECT_EQ(1, incoming->dead()) << "the friendly weapon is absorbed";
+    EXPECT_EQ(1, incoming->dead()) << "the hostile weapon is absorbed";
     EXPECT_FLOAT_EQ(1.0f - 2.0f - 2.0f, shield->stats()->hitpoints())
         << "the absorbed weapon and the struck foe each drain the guard";
     EXPECT_EQ(0, shield->lifetime())

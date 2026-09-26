@@ -119,9 +119,17 @@ struct CurvePin
 // upper garrison now fires down the stair line). Re-sweep the F4 gates on
 // 3/10/18 with scripts/longseason_playtest.sh before the next balance
 // pass — their shipped balance was measured under ghost physics.)
+// Recalibrated 2026-09-26 for #295: retarget-before-yell preserves the
+// flee command and changes Ashfall Fair's battle. The isolated ordering
+// change reproduces scen9's 8->7; self-exclusion and #294 do not. Full
+// {4,5,6} crew x three seeds x two rosters x 6000-tick brackets preserve
+// its defense contract: mixed crew at curve has team0 [8,8,10] at tick
+// 3000, above band 4 on every seed. Crew survivors at 600 are [7,8,8],
+// so 7 is the measured minimum. See the dated README calibration update;
+// the dedicated defense test below also pins the actual F4 contract.
 constexpr CurvePin kCurve[] = {
     {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 1},  {5, 3, 5},
-    {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 8},  {10, 5, 1},
+    {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 7},  {10, 5, 1},
     {11, 5, 5}, {12, 6, 2}, {13, 6, 2}, {14, 7, 7}, {15, 7, 8},
     {16, 7, 2}, {17, 8, 0}, {18, 8, 0}, {19, 8, 8},
 };
@@ -200,5 +208,29 @@ TEST_F(LongSeasonCalibration, curve_crew_survival_floors_at_600_ticks)
             << "a curve-level fresh crew fell below its F4 survival floor — "
                "the level got meaningfully hotter; re-run the F4 bracket "
                "sweeps before touching this pin";
+    }
+}
+
+TEST_F(LongSeasonCalibration, ashfall_fair_holds_defense_band_at_curve)
+{
+    // F4 defense contract: the curve-level mixed crew and allied garrison
+    // retain at least four defenders at tick 3000 on all three seeds.
+    // This measures the campaign objective alongside the cheap 600-tick
+    // crew floor.
+    for (std::uint32_t seed : {42u, 1337u, 2025u})
+    {
+        SCOPED_TRACE("seed " + std::to_string(seed));
+        LoadedWestlandsLevel fx(9, seed);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+        const auto crew = deploy_crew(
+            fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
+                              FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
+                              FAMILY_CLERIC, FAMILY_BARBARIAN}, 5);
+        ASSERT_EQ(8u, crew.size());
+        for (int tick = 0; tick < 3000; ++tick)
+            world.tick();
+        EXPECT_GE(westlands_fixture::alive_livings_on_team(world, 0), 4)
+            << "Ashfall Fair fell below its F4 defense band at curve";
     }
 }

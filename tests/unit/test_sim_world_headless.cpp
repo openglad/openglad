@@ -997,16 +997,16 @@ FoeTick foe_lock_tick(short invisibility, std::uint32_t pin_state)
 
 struct FoeSearch
 {
-    bool far_found = false;
+    bool nearest_found = false;
     bool near_found = false;
-    std::uint32_t state_after_far = 0;
+    std::uint32_t state_after_nearest = 0;
     std::uint32_t state_after_near = 0;
 };
 
-// Acquisition from a clean pin, once through find_far_foe and once through
+// Acquisition from a clean pin, once through find_nearest_foe and once through
 // find_near_foe. The seeker is friendly to itself, and `is_friendly(w) == 0`
 // short-circuits ahead of the roll, so the only walker that can reach next()
-// is `hidden`: find_far_foe costs exactly one draw of bound invisibility/20.
+// is `hidden`: find_nearest_foe costs exactly one draw of bound invisibility/20.
 FoeSearch search_for_foe(short invisibility, std::uint32_t pin_state)
 {
     TestGameWorld t;
@@ -1027,8 +1027,8 @@ FoeSearch search_for_foe(short invisibility, std::uint32_t pin_state)
 
     FoeSearch out;
     t.world().rng_.state_ = pin_state;
-    out.far_found = (t.world().find_far_foe(seeker) == hidden);
-    out.state_after_far = t.world().rng_.state_;
+    out.nearest_found = (t.world().find_nearest_foe(seeker) == hidden);
+    out.state_after_nearest = t.world().rng_.state_;
 
     t.world().rng_.state_ = pin_state; // each search judged from the same pin
     out.near_found = (t.world().find_near_foe(seeker) == hidden);
@@ -1174,22 +1174,22 @@ TEST(SimWorldHeadless, foe_lock_unchanged_for_non_negative_invisibility)
 }
 
 // (c) game_world.cpp foe acquisition, both the obmap spiral (find_near_foe) and
-// the full-list scan (find_far_foe). The same wrapped bound made the roll
+// the full-list scan (find_nearest_foe). The same wrapped bound made the roll
 // non-zero, so a foe carrying a negative cloak counter was permanently
 // invisible to every searcher.
 //
 // RED-BEFORE, exactly: the bound wraps to 0xFFFFFFFB and the draw from kPin is
-// 12444 != 0, so find_far_foe skips the only candidate and returns nullptr;
+// 12444 != 0, so find_nearest_foe skips the only candidate and returns nullptr;
 // find_near_foe's spiral rejects it in every cell it appears in and ends up in
-// the same find_far_foe. Post-fix both searches see it, and neither touches
+// the same find_nearest_foe. Post-fix both searches see it, and neither touches
 // state_ — the seeker is friendly to itself (short-circuit, no draw) and the
 // clamped span short-circuits inside next().
 TEST(SimWorldHeadless, negative_invisibility_does_not_hide_a_foe_from_search)
 {
     const rng_bound::FoeSearch found = rng_bound::search_for_foe(-100, rng_bound::kPin);
-    EXPECT_TRUE(found.far_found)
-        << "find_far_foe must see a foe whose cloak counter is negative";
-    EXPECT_EQ(rng_bound::kPin, found.state_after_far)
+    EXPECT_TRUE(found.nearest_found)
+        << "find_nearest_foe must see a foe whose cloak counter is negative";
+    EXPECT_EQ(rng_bound::kPin, found.state_after_nearest)
         << "no acquisition draw may run against a wrapped ~4-billion bound";
     EXPECT_TRUE(found.near_found)
         << "find_near_foe must see a foe whose cloak counter is negative";
@@ -1204,29 +1204,29 @@ TEST(SimWorldHeadless, negative_invisibility_does_not_hide_a_foe_from_search)
 TEST(SimWorldHeadless, foe_search_unchanged_for_non_negative_invisibility)
 {
     const rng_bound::FoeSearch uncloaked = rng_bound::search_for_foe(0, rng_bound::kPin);
-    EXPECT_TRUE(uncloaked.far_found) << "an uncloaked foe is always acquirable";
+    EXPECT_TRUE(uncloaked.nearest_found) << "an uncloaked foe is always acquirable";
     EXPECT_TRUE(uncloaked.near_found);
-    EXPECT_EQ(rng_bound::kPin, uncloaked.state_after_far) << "0 / 20 == 0: no draw";
+    EXPECT_EQ(rng_bound::kPin, uncloaked.state_after_nearest) << "0 / 20 == 0: no draw";
     EXPECT_EQ(rng_bound::kPin, uncloaked.state_after_near);
 
     const rng_bound::FoeSearch sub_step = rng_bound::search_for_foe(19, rng_bound::kPin);
-    EXPECT_TRUE(sub_step.far_found) << "below one full step the span is still 0";
+    EXPECT_TRUE(sub_step.nearest_found) << "below one full step the span is still 0";
     EXPECT_TRUE(sub_step.near_found);
-    EXPECT_EQ(rng_bound::kPin, sub_step.state_after_far) << "19 / 20 == 0: no draw";
+    EXPECT_EQ(rng_bound::kPin, sub_step.state_after_nearest) << "19 / 20 == 0: no draw";
     EXPECT_EQ(rng_bound::kPin, sub_step.state_after_near);
 
-    // 300 / 20 == 15. Only find_far_foe has a pinnable draw count (one draw,
+    // 300 / 20 == 15. Only find_nearest_foe has a pinnable draw count (one draw,
     // for the single non-friendly candidate); the spiral's is geometry-bound.
     const rng_bound::FoeSearch cloaked = rng_bound::search_for_foe(300, rng_bound::kPin);
-    EXPECT_FALSE(cloaked.far_found) << "a real cloak must still hide its bearer";
-    EXPECT_EQ(rng_bound::kPinStepped, cloaked.state_after_far)
+    EXPECT_FALSE(cloaked.nearest_found) << "a real cloak must still hide its bearer";
+    EXPECT_EQ(rng_bound::kPinStepped, cloaked.state_after_nearest)
         << "the cloak roll is exactly one draw";
 
     const rng_bound::FoeSearch lucky =
         rng_bound::search_for_foe(300, rng_bound::kZeroRollPin);
-    EXPECT_TRUE(lucky.far_found)
+    EXPECT_TRUE(lucky.nearest_found)
         << "a cloak roll of 0 acquires the bearer; that is the legacy 1-in-15";
-    EXPECT_EQ(rng_bound::kZeroRollPinStepped, lucky.state_after_far);
+    EXPECT_EQ(rng_bound::kZeroRollPinStepped, lucky.state_after_nearest);
 }
 
 // --- The sim RNG override reaches og_gameplay-compiled draws ----------------

@@ -414,7 +414,7 @@ bool living::act()
 					//else if (foe)
 					//  stats_->try_command(COMMAND_RIGHT_WALK,40,0,0);
 					else if (!current_game->world->rng_.next(2))
-						set_foe(current_game->world->find_far_foe(this));
+						set_foe(current_game->world->find_nearest_foe(this));
 					else
 						stats_->try_command(COMMAND_RANDOM_WALK,20);
 

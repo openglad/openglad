@@ -144,8 +144,8 @@ TEST(StatsMorePaths, follow_walks_one_unit_step_toward_the_leader_and_drops_it_i
 
 // Being hit under half health is the panic rule: the victim yells (a flat 80
 // ticks of yo_delay, which is what stops it yelling every single tick), and a
-// hit from a NEW attacker retargets both bodies at each other, wiping the
-// flee walk the yell just queued.
+// hit from a NEW attacker retargets both bodies at each other before the
+// yell queues the flee walk.
 TEST(StatsMorePaths, hit_response_yells_once_below_half_hp_and_retargets_both_bodies)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -179,8 +179,13 @@ TEST(StatsMorePaths, hit_response_yells_once_below_half_hp_and_retargets_both_bo
         << "yell_for_help adds exactly 80 to yo_delay";
     EXPECT_EQ(attacker.get(), target->foe()) << "a new attacker becomes our foe";
     EXPECT_EQ(target.get(), attacker->foe()) << "and we become its foe";
-    EXPECT_FALSE(target->stats()->has_commands())
-        << "the new-foe branch clear_command()s, wiping the flee walk the yell queued";
+    ASSERT_EQ(1u, target->stats()->commands.size());
+    const command& flee = target->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, flee.commandtype);
+    EXPECT_EQ(16, flee.commandcount);
+    EXPECT_EQ(-1, flee.com1);
+    EXPECT_EQ(0, flee.com2);
+    EXPECT_TRUE(flee.forced);
 
     // Control: the same hit at full health takes the retarget branch but not
     // the yell, so yo_delay stays where it was.
@@ -1107,4 +1112,3 @@ TEST(StatsMorePaths, force_fright_clamps_a_merged_direction_to_the_unit_square)
     EXPECT_EQ(1, static_cast<int>(fresh.com1));
     EXPECT_EQ(-1, static_cast<int>(fresh.com2));
 }
-
