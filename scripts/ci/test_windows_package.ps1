@@ -59,7 +59,9 @@ function Assert-PackageHelp([string]$package, [string]$stage) {
             throw "ZIP is missing $name"
         }
         $result = Invoke-Help $exe $package
-        if ($result.ExitCode -ne 0 -or $result.Output -notmatch '(?m)^Usage: openglad \[-d -f \.\.\.\]\r?$' -or
+        # Startup debug messages can omit their trailing newline, so Usage
+        # need not start a line even though the help text itself is present.
+        if ($result.ExitCode -ne 0 -or -not $result.Output.Contains('Usage: openglad [-d -f ...]') -or
             $result.Output -notmatch '(?m)^\s+-h\s+Print a summary of the options') {
             throw "$name -h failed ($stage): exit=$($result.ExitCode); output=$($result.Output)"
         }

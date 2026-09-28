@@ -1,6 +1,9 @@
 # Run with -DPACKAGE_DIR=<staged openglad directory> and
 # -DDEPENDENCY_DIR=<MSYS2 mingw64/bin directory> before creating the archive.
 cmake_minimum_required(VERSION 3.25)
+if(POLICY CMP0207)
+  cmake_policy(SET CMP0207 NEW)
+endif()
 
 foreach(_dir IN ITEMS PACKAGE_DIR DEPENDENCY_DIR)
   if(NOT DEFINED ${_dir} OR NOT IS_ABSOLUTE "${${_dir}}" OR
