@@ -1,48 +1,26 @@
 name: Release
 
-# One GitHub release per master commit whose WASM E2E run completed
-# successfully, named for the version the build stamps on its own main menu:
-# 2.<commit count> (see cmake/OpenGladVersion.cmake).
-#
-# Trigger chain: a push to master runs "WASM E2E Tests" (wasm-e2e.yml), which
-# validates the web build, archives it at https://v2-<count>.openglad.pages.dev
-# and deploys production. Only when that run concludes successfully does this
-# file wake up (workflow_run) and cut the release, so a release tag never names
-# a commit whose web build failed. The converse is the deliberate cost: a burst
-# of master pushes cancels the older WASM runs (wasm-e2e.yml shares one master
-# concurrency group with cancel-in-progress: true), and a cancelled run is not
-# a successful one — those middle commits get no alias, no release, and the
-# next commit's release notes cover their changes. Because workflow_run always
-# runs the copy of this file that is on master, edits here take effect after
-# they merge — a pull request can only validate the three-platform build matrix
-# (the `pull_request` trigger below), never cut a release.
-#
-# History: this file was .github/workflows/nightly.yml, a 2am cron that
-# rewrote a rolling prerelease tag and ran its own relay/web deploys as a
-# backstop. Per-commit releases replaced the cadence (#253) and wasm-e2e.yml
-# is now the single deployer (one deployer, one /versions generator).
+# Each master push starts native packaging and the reusable WASM workflow.
+# Publish only after both pass for the same commit. The web workflow tests,
+# archives and deploys that commit before the release links to its versioned
+# URL. PRs validate native packages and the reusable web preview workflow;
+# neither PRs nor pushes to other branches can publish a release.
 
 on:
-  workflow_run:
-    workflows: ["WASM E2E Tests"]
-    types: [completed]
+  push:
     branches: [master]
-  workflow_dispatch:        # Manual re-release of the current master tip (master only)
-  pull_request:             # Validate multi-platform builds on PRs
+  workflow_dispatch:        # Retry a missing master release (master only)
+  pull_request:             # Validate native packages and web previews
 
 permissions:
   contents: read
 
-# Releases are cut in commit order, never cancelled: `queue: max` lets up to
-# 100 runs sit pending in the group, so every release run that IS triggered
-# survives its wait (the default, `queue: single`, keeps only ONE pending run
-# and cancels the older pending one). It cannot resurrect a commit whose WASM
-# run was cancelled upstream — see the header — it only stops a backlog here
-# from eating already-triggered releases. Pull requests get their own per-PR
-# group so a validation build can never evict a pending master release, nor
-# another PR's build.
+# Serialize the full master pipeline, including web deployment, without
+# cancelling earlier pushes. `queue: max` keeps up to 100 pending runs instead
+# of replacing the previous pending run. PR runs have independent groups; the
+# reusable web workflow cancels superseded previews for the same PR.
 concurrency:
-  group: release-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'master' }}
+  group: release-${{ github.event_name == 'pull_request' && github.run_id || 'master' }}
   cancel-in-progress: false
   queue: max
 
@@ -50,11 +28,8 @@ jobs:
   # ── Resolve the commit being released and its version ─────────────────
   meta:
     if: >-
-      (github.event_name == 'workflow_dispatch' &&
-       github.ref == 'refs/heads/master') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.v.outputs.sha }}
@@ -65,9 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # The commit whose web build just passed — not the master tip, which
-          # may already have moved on while this run was queued.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Keep the triggering commit even when newer pushes are queued.
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -95,6 +69,20 @@ jobs:
           else
             echo "already_released=false" >> "$GITHUB_OUTPUT"
           fi
+
+  web:
+    needs: [meta]
+    if: >-
+      always() &&
+      (github.event_name == 'pull_request' ||
+       (needs.meta.result == 'success' &&
+        needs.meta.outputs.already_released == 'false'))
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+    uses: ./.github/workflows/wasm-e2e.yml
+    secrets: inherit
 
   # ── Multi-platform native builds ──────────────────────────────────────
   build:
@@ -172,6 +160,7 @@ jobs:
             mingw-w64-x86_64-libzip
             mingw-w64-x86_64-libyaml
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-openssl
             mingw-w64-x86_64-pkg-config
             p7zip
 
@@ -203,10 +192,12 @@ jobs:
         if: matrix.platform == 'windows'
         shell: msys2 {0}
         run: |
+          # Resolve TLS from the same prefix whose DLLs we bundle below.
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DBUILD_TESTING=OFF \
             -DBUILD_EDITOR=ON \
+            -DOPENSSL_ROOT_DIR="$(cygpath -am /mingw64)"
 
           # About one build in three used to freeze for good right after a
           # static library linked and sit there until the job cap: a lint
@@ -226,7 +217,7 @@ jobs:
         run: |
           mkdir -p staging/openglad
           cp build/openglad build/openscen staging/openglad/
-          cp -r pix cfg sound staging/openglad/
+          cp -r pix cfg sound packs staging/openglad/
           # builtin/*.glad are BUILD outputs composed from campaigns/
           # What lands in build/builtin is exactly what ships, so assert both
           # sides of that here rather than trusting the compose step: the
@@ -245,7 +236,7 @@ jobs:
         run: |
           mkdir -p staging/openglad
           cp build/openglad build/openscen staging/openglad/
-          cp -r pix cfg sound staging/openglad/
+          cp -r pix cfg sound packs staging/openglad/
           # builtin/*.glad are BUILD outputs composed from campaigns/
           cp -r build/builtin staging/openglad/
           cd staging && zip -r "../${{ matrix.artifact_name }}.zip" openglad
@@ -256,15 +247,19 @@ jobs:
         run: |
           mkdir -p staging/openglad
           cp build/openglad.exe build/openscen.exe staging/openglad/
-          # Bundle MinGW runtime DLLs
-          MINGW_BIN="/mingw64/bin"
-          for dll in SDL3.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-            [ -f "$MINGW_BIN/$dll" ] && cp "$MINGW_BIN/$dll" staging/openglad/
-          done
-          cp -r pix cfg sound staging/openglad/
+          cmake \
+            -DPACKAGE_DIR="$(cygpath -am staging/openglad)" \
+            -DDEPENDENCY_DIR="$(cygpath -am /mingw64/bin)" \
+            -P scripts/ci/bundle_windows_runtime.cmake
+          cp -r pix cfg sound packs staging/openglad/
           # builtin/*.glad are BUILD outputs composed from campaigns/
           cp -r build/builtin staging/openglad/
           cd staging && 7z a "../${{ matrix.artifact_name }}.zip" openglad
+
+      - name: Test extracted Windows package
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./scripts/ci/test_windows_package.ps1 -ZipPath '${{ matrix.artifact_name }}.zip'
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -274,10 +269,11 @@ jobs:
 
   # ── Create the GitHub Release for this master commit ──────────────────
   release:
-    needs: [meta, build]
+    needs: [meta, build, web]
     if: >-
-      github.event_name != 'pull_request' &&
-      needs.build.result == 'success'
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/master' &&
+      needs.build.result == 'success' && needs.web.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -291,6 +287,7 @@ jobs:
       - name: Download all build artifacts
         uses: actions/download-artifact@v8
         with:
+          pattern: openglad-*
           path: artifacts
 
       - name: Create the release

@@ -138,9 +138,9 @@ sign-off, quoted.
 
 | URL | Built by | Trigger |
 |---|---|---|
-| openglad.pages.dev | wasm-e2e.yml (production deploy step) | master pushes only |
-| pr-<n>.openglad.pages.dev | wasm-e2e.yml (PR preview step) | every push to an open same-repo PR |
-| v2-<n>.openglad.pages.dev | wasm-e2e.yml (archive alias step) | every master push, permanent |
+| openglad.pages.dev | wasm-e2e.yml, called by release.yml | master pushes and manual master recovery |
+| pr-<n>.openglad.pages.dev | wasm-e2e.yml, called by release.yml (PR preview step) | every push to an open same-repo PR |
+| v2-<n>.openglad.pages.dev | wasm-e2e.yml, called by release.yml | every master push (or manual master recovery), permanent |
 | openglad.pages.dev/versions/ | versions_index.py in wasm-e2e.yml | regenerated on every production deploy |
 | local tunnel | scripts/refresh_web_preview.sh + cloudflared | manual |
 

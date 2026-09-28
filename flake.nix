@@ -201,6 +201,7 @@
         in
         pkgs.mkShell {
           packages = with pkgs; [
+            actionlint
             sdl3
             bash
             binutils

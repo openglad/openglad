@@ -2,22 +2,20 @@ name: WASM E2E Tests
 
 on:
   push:
-    branches: ['**']
-  pull_request:
+    branches-ignore: [master]
+  workflow_call:
 
 permissions:
   contents: read
   deployments: write
   pull-requests: write
 
-# Only the newest revision of a PR should be able to update its stable preview
-# alias, and only the newest master push should be able to update production —
-# without a shared group, an older master run finishing late could overwrite a
-# newer deploy. Pushes to other branches keep their unique run IDs and are not
-# cancelled here.
+# PR previews follow their newest revision. Master runs are called by Release,
+# which queues the entire pipeline; give each called run its own group so no
+# intermediate master push loses its web archive or production deployment.
 concurrency:
-  group: wasm-e2e-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/master' && 'master') || github.run_id }}
-  cancel-in-progress: true
+  group: wasm-e2e-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   wasm-e2e:
@@ -103,9 +101,9 @@ jobs:
       # 0 on API trouble by design: a missing index must never block a deploy.
       - name: Generate /versions index
         env:
-          CLOUDFLARE_API_TOKEN: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && secrets.CLOUDFLARE_API_TOKEN || '' }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && secrets.CLOUDFLARE_ACCOUNT_ID || '' }}
-          OG_VERSIONS_LIVE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && '1' || '0' }}
+          CLOUDFLARE_API_TOKEN: ${{ ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && secrets.CLOUDFLARE_API_TOKEN || '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && secrets.CLOUDFLARE_ACCOUNT_ID || '' }}
+          OG_VERSIONS_LIVE: ${{ ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master' && github.repository == 'openglad/openglad') && '1' || '0' }}
         run: |
           mode=--offline
           if [ "$OG_VERSIONS_LIVE" = "1" ]; then
@@ -270,7 +268,7 @@ jobs:
               core.warning(`Unable to create/update the preview comment: ${error.message}`);
             }
 
-      # Production deploy: every same-repository push to master ships the
+      # Production deploy: master pushes (and manual master recovery) ship the
       # exact dist/ the Playwright suite above just validated, and this
       # workflow is the only thing that deploys production. The relay worker
       # (rooms + cloud-save vault) deploys first so a Durable Object migration
@@ -281,7 +279,7 @@ jobs:
       # (relay/package.json engines), hence the second setup-node.
       - name: Set up Node.js for relay deploy
         if: >-
-          github.event_name == 'push' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/master' &&
           github.repository == 'openglad/openglad'
         uses: actions/setup-node@v7
@@ -292,7 +290,7 @@ jobs:
 
       - name: Install relay npm dependencies
         if: >-
-          github.event_name == 'push' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/master' &&
           github.repository == 'openglad/openglad'
         working-directory: relay
@@ -300,7 +298,7 @@ jobs:
 
       - name: Deploy relay worker
         if: >-
-          github.event_name == 'push' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/master' &&
           github.repository == 'openglad/openglad'
         uses: cloudflare/wrangler-action@v4
@@ -312,7 +310,7 @@ jobs:
 
       - name: Archive this version at a stable alias
         if: >-
-          github.event_name == 'push' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/master' &&
           github.repository == 'openglad/openglad'
         uses: cloudflare/wrangler-action@v4
@@ -332,7 +330,7 @@ jobs:
       # would silently stop updating while the run stayed green.
       - name: Deploy production to Cloudflare Pages
         if: >-
-          github.event_name == 'push' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/master' &&
           github.repository == 'openglad/openglad'
         uses: cloudflare/wrangler-action@v4
