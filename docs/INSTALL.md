@@ -218,10 +218,18 @@ Openglad versions are `2.<commit count>`: the major is hand-edited, the minor is
 master commit. `openglad -v`, `openglad_curses --version` and the main-menu
 stamp all print the same number, next to the commit hash.
 
-`.github/workflows/release.yml` creates one GitHub release per master commit
-whose web build passed — tag `v2.<n>`, marked `latest`, with Linux, Windows and
-macOS archives named by platform, so
+Every push to `master` starts `.github/workflows/release.yml`. It builds the
+three native packages and calls the web test/deploy workflow for the same
+commit, then publishes only after both pass — tag `v2.<n>`, marked `latest`,
+with Linux, Windows and macOS archives named by platform, so
 `releases/latest/download/openglad-linux-x86_64.tar.gz` is a stable URL.
+Master pipelines queue without cancelling earlier pushes. PRs validate native
+packages and web previews; other branch pushes cannot publish releases.
+
+The Windows ZIP includes the recursively discovered non-system DLLs for both
+executables. Before upload, CI extracts the ZIP, runs both programs with the
+build tools removed from `PATH`, and verifies that removing a required DLL
+makes those launches fail. Desktop archives include the core class pack.
 
 A build without git history — a source tarball, a shallow clone — reports `2.0`,
 which can never be a real release. Packagers who need a real number pass it in:

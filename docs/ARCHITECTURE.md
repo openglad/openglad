@@ -1038,12 +1038,12 @@ Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
 touched plus the whole free Lua arm, nightly and on `workflow_dispatch` it
 mutates all of them, and it is red when a scenario's own predicates fail to
 notice their pin's mutation; see `.claude/skills/openglad-parity/SKILL.md`),
-`release.yml` (one versioned GitHub release per master commit, triggered by
-`workflow_run` when that commit's `wasm-e2e.yml` finishes successfully; on pull
-requests it only validates the three-platform build matrix), and `wasm-e2e.yml`
-(Playwright WebAssembly end-to-end tests, PR preview deploys with a sticky
-preview comment, and on every push to master: relay worker → the permanent
-`v2-<n>` archive alias → the production Pages deploy, with `/versions/`
+`release.yml` (triggered directly by pushes to master, queuing native packaging
+and the reusable `wasm-e2e.yml` workflow for each commit; publication requires
+both to succeed, while pull requests validate packages and web previews), and
+`wasm-e2e.yml` (Playwright WebAssembly end-to-end tests, PR preview deploys with
+a sticky preview comment, and when called by Release on master: relay worker →
+the permanent `v2-<n>` archive alias → the production Pages deploy, with `/versions/`
 regenerated from the Cloudflare Pages deployment list).
 
 ---
