@@ -3186,7 +3186,7 @@ TEST(WorldSnapshot, install_seed_apply_keeps_dormant_walkers_out_of_the_obmap)
         << "its spawn cell must read as free to a walker crossing it";
     walker* rehero = world.find_by_id(hero->entity_id());
     ASSERT_NE(nullptr, rehero);
-    EXPECT_EQ(nullptr, world.find_far_foe(rehero))
+    EXPECT_EQ(nullptr, world.find_nearest_foe(rehero))
         << "a dormant walker must not be targetable";
 
     // WAVE HUD inputs are untouched by intangibility: the walker is
@@ -3206,7 +3206,7 @@ TEST(WorldSnapshot, install_seed_apply_keeps_dormant_walkers_out_of_the_obmap)
         static_cast<float>(survivor->xpos()),
         static_cast<float>(survivor->ypos()), rehero))
         << "an awakened walker is solid again";
-    EXPECT_EQ(survivor, world.find_far_foe(rehero));
+    EXPECT_EQ(survivor, world.find_nearest_foe(rehero));
 }
 
 // The difficulty-submenu world scalars (respawn_mode / generator_rate) are

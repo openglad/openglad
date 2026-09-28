@@ -1996,7 +1996,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     ally->set_act_type(ACT_CONTROL);
     hostile->set_act_type(ACT_CONTROL);
 
-    // Force find_far_foe path by clearing references.
+    // Force find_nearest_foe path by clearing references.
     ally->set_foe(nullptr);
     ally->set_leader(nullptr);
 

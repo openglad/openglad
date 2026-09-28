@@ -1071,6 +1071,7 @@ int og_summon_configured(lua_State* L)
     return 1;
 }
 
+// og.find_near_foe(self) returns the first foe met by the searcher's floor-specific obmap spiral, or the nearest foe if the spiral finds none or leaves the map.
 int og_find_near_foe(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -1100,6 +1101,7 @@ int og_find_foes_in_range(lua_State* L)
     return 2;
 }
 
+// og.find_friends_in_range(list, range, self) returns other live friendly Living actors in range, excluding self.
 int og_find_friends_in_range(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -1125,6 +1127,7 @@ int og_find_in_range(lua_State* L)
     return 2;
 }
 
+// og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap", and allegiance follows the owner chain.
 int og_find_foe_weapons_in_range(lua_State* L)
 {
     GameWorld* world = world_arg(L);

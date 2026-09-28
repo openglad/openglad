@@ -460,10 +460,10 @@ TEST(ScreenFuncs, screen_query_grid_passable_out_of_bounds)
 
 
 // ---------------------------------------------------------------------------
-// find_far_foe tests
+// find_nearest_foe tests
 // ---------------------------------------------------------------------------
 
-TEST(ScreenFuncs, screen_find_far_foe_smoke)
+TEST(ScreenFuncs, screen_find_nearest_foe_smoke)
 {
     world().delete_objects();
 
@@ -472,8 +472,8 @@ TEST(ScreenFuncs, screen_find_far_foe_smoke)
     seeker->set_team_num(0);
     seeker->setxy(100, 100);
 
-    ASSERT_EQ(nullptr, world().find_far_foe(seeker.get()))
-        << "with no hostile in the world find_far_foe must return nullptr";
+    ASSERT_EQ(nullptr, world().find_nearest_foe(seeker.get()))
+        << "with no hostile in the world find_nearest_foe must return nullptr";
 
     walker* near_foe = spawn_in_world(FAMILY_SOLDIER, 1, 140, 100);   // distance 40
     walker* far_foe = spawn_in_world(FAMILY_SOLDIER, 1, 400, 100);    // distance 300
@@ -482,11 +482,11 @@ TEST(ScreenFuncs, screen_find_far_foe_smoke)
     ASSERT_EQ(40, seeker->distance_to_ob(near_foe)) << "near foe is 40 away";
     ASSERT_EQ(300, seeker->distance_to_ob(far_foe)) << "far foe is 300 away";
 
-    ASSERT_EQ(near_foe, world().find_far_foe(seeker.get()))
-        << "find_far_foe returns the CLOSEST hostile, despite its name";
+    ASSERT_EQ(near_foe, world().find_nearest_foe(seeker.get()))
+        << "find_nearest_foe returns the closest hostile";
 
     near_foe->set_team_num(0); // now an ally
-    ASSERT_EQ(far_foe, world().find_far_foe(seeker.get()))
+    ASSERT_EQ(far_foe, world().find_nearest_foe(seeker.get()))
         << "an ally is never a foe, however close - the is_friendly filter";
 
     seeker.reset();
@@ -499,7 +499,7 @@ TEST(ScreenFuncs, screen_find_far_foe_smoke)
 // ---------------------------------------------------------------------------
 
 // find_near_foe walks the obmap in an outward spiral and returns the first
-// hostile it MEETS. That is a different rule from find_far_foe, which scans the
+// hostile it MEETS. That is a different rule from find_nearest_foe, which scans the
 // whole oblist and returns the NEAREST hostile -- so the two disagree, and the
 // disagreement is what this test pins.
 TEST(ScreenFuncs, screen_find_near_foe_returns_the_spirals_first_hostile_not_the_nearest)
@@ -530,14 +530,14 @@ TEST(ScreenFuncs, screen_find_near_foe_returns_the_spirals_first_hostile_not_the
     // The discriminator. `decoy` stands 24px from the seeker, `other` 40px --
     // but the decoy's obmap cell is north-west of the seeker and the spiral
     // starts due east, so the spiral meets `other` first. A find_near_foe that
-    // had quietly become `return find_far_foe(ob);` would answer `decoy` here.
+    // had quietly become `return find_nearest_foe(ob);` would answer `decoy` here.
     walker* decoy = spawn_in_world(FAMILY_SOLDIER, 1, 88, 88);
     ASSERT_NE(nullptr, decoy) << "create decoy should succeed";
     ASSERT_EQ(24, seeker->distance_to_ob(decoy)) << "the decoy really is the nearer foe";
     ASSERT_EQ(40, seeker->distance_to_ob(other)) << "and the spiral's first hit is farther";
 
-    ASSERT_EQ(decoy, world().find_far_foe(seeker.get()))
-        << "find_far_foe, the distance oracle, picks the nearer foe";
+    ASSERT_EQ(decoy, world().find_nearest_foe(seeker.get()))
+        << "find_nearest_foe, the distance oracle, picks the nearer foe";
     ASSERT_EQ(other, world().find_near_foe(seeker.get()))
         << "find_near_foe picks by spiral order, not by distance";
 

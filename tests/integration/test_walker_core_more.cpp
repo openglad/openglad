@@ -1469,7 +1469,7 @@ TEST(WalkerCoreMore, living_act_search_arm_without_a_foe_queues_a_random_walk)
     // Every scripted draw is 1, so the arm is pinned without depending on how
     // many draws the pre-switch housekeeping makes: next(5) != 0 skips the
     // special roll, next(5) != 0 skips the act_random roll (so the 4-of-5
-    // search arm runs), next(2) != 0 skips the find_far_foe retry, and
+    // search arm runs), next(2) != 0 skips the find_nearest_foe retry, and
     // try_command's two next(3) unit-step rolls both yield 1 - 1 == 0.
     SequenceRandom search_rng_values({1, 1, 1, 1, 1, 1, 1, 1});
     ScopedSimRandom search_rng(&search_rng_values);
@@ -1746,7 +1746,7 @@ TEST(WalkerCoreMore, walker_round16_act_random_no_foe_far_search_fallback_path)
     actor->set_foe(nullptr);
     actor->stats()->clear_command();
 
-    // With no foes in the level, find_far_foe should return nullptr and no search command is queued.
+    // With no foes in the level, find_nearest_foe should return nullptr and no search command is queued.
     ASSERT_TRUE(actor->act()) << "ACT_RANDOM no-foe fallback should still return true";
     ASSERT_TRUE(actor->foe() == nullptr) << "ACT_RANDOM should keep foe null when far-foe search finds nothing";
 }

@@ -776,7 +776,7 @@ TEST(LevelDataOps, level_data_find_foe_helpers_return_null_without_valid_targets
     dead_enemy->set_dead(1);
     dead_enemy->setxy(128, 64);
 
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) == nullptr) << "find_far_foe should return null when no valid foes exist";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_foe(actor) == nullptr) << "find_nearest_foe should return null when no valid foes exist";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_near_foe(actor) == nullptr) << "find_near_foe should return null when no valid foes exist";
 
     og::runtime::current_session->myscreen_->world().delete_objects();

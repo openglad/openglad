@@ -67,13 +67,13 @@ local function heal_or_mace(self)
     local friends, friend_count =
       og.find_friends_in_range("ob", t.heal_range, self)
     -- no friends, so don't charge us
-    if friend_count <= 1 then
+    if friend_count == 0 then
       return false, "NO ALLY IN RANGE"
     end
     local healed, reason = 0, "NO ALLY NEEDS HEALING"
     for i = 1, #friends do
       local ally = friends[i]
-      if ally.hp < ally.max_hp and ally ~= self then
+      if ally.hp < ally.max_hp then
         -- og.heal_amount draws the same rng compute_heal_amount drew;
         -- its mp argument is the C++ (int) cast of the float pool.
         local amount, cost =
@@ -269,7 +269,7 @@ local function check_special_ai(self)
     local _, friend_count = og.find_friends_in_range(
       "ob", og.tuning(self).heal_range, self)
     -- other than ourselves?
-    if friend_count > 1 then
+    if friend_count > 0 then
       self:set_shifter_down(0) -- we're HEALING
       return true
     -- max_magicpoints is a C++ float: fdiv is a genuine float half

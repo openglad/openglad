@@ -622,7 +622,7 @@ TEST(LevelDataCoverage, level_data_batch2_misc_uncovered_paths_smoke)
 
     // entity search null-protected paths.
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_near_foe(nullptr) == nullptr) << "find_near_foe null should return null";
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(nullptr) == nullptr) << "find_far_foe null should return null";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_foe(nullptr) == nullptr) << "find_nearest_foe null should return null";
 }
 
 
@@ -745,7 +745,7 @@ TEST(LevelDataCoverage, level_data_range_helpers_positive_selection_paths)
     foe_generator->setxy(112, 64);
     foe_generator->set_dead(0);
 
-    friend_weapon->set_team_num(0);
+    friend_weapon->set_team_num(1);
     friend_weapon->setxy(72, 64);
     friend_weapon->set_dead(0);
 
@@ -763,10 +763,12 @@ TEST(LevelDataCoverage, level_data_range_helpers_positive_selection_paths)
     ASSERT_TRUE((int)foes.size() >= 2 && howmany >= 2) << "find_foes_in_range should include living + generator foes";
 
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 80, &howmany, actor);
-    ASSERT_TRUE(foe_weapons.size() == 1 && howmany == 1) << "find_foe_weapons_in_range should include friendly weapon";
+    ASSERT_EQ(1, howmany) << "find_foe_weapons_in_range selects one hostile weapon";
+    ASSERT_EQ(std::list<walker*>({friend_weapon}), foe_weapons);
 
     auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 80, &howmany, actor);
-    ASSERT_TRUE(!friends.empty() && howmany >= 1) << "find_friends_in_range should include friendly living walkers";
+    ASSERT_EQ(1, howmany) << "only the nearby archer is a friend";
+    ASSERT_EQ(std::list<walker*>({friend_living}), friends);
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -882,7 +884,7 @@ TEST(LevelDataCoverage, level_data_round5_find_helpers_contiguous_block_paths)
 
     blood->setxy(68, 64);
 
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) != nullptr) << "find_far_foe should return nearest visible living/generator foe";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_foe(actor) != nullptr) << "find_nearest_foe should return nearest visible living/generator foe";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_blood(actor) == blood) << "find_nearest_blood should return stain target";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_player(actor) == nullptr) << "find_nearest_player should return null when no controlled walkers exist";
 
@@ -894,14 +896,17 @@ TEST(LevelDataCoverage, level_data_round5_find_helpers_contiguous_block_paths)
     ASSERT_TRUE(!foes.empty() && howmany > 0) << "find_foes_in_range should include living/generator enemies";
 
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 128, &howmany, actor);
-    ASSERT_TRUE(foe_weapons.empty()) << "enemy weapon should be excluded because helper accepts friendly weapons";
+    ASSERT_EQ(1, howmany) << "the hostile weapon should be selected";
+    ASSERT_EQ(std::list<walker*>({foe_weapon}), foe_weapons);
 
     foe_weapon->set_team_num(actor->team_num());
     foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 128, &howmany, actor);
-    ASSERT_TRUE(!foe_weapons.empty() && howmany > 0) << "friendly weapon should be included by helper predicate";
+    ASSERT_EQ(0, howmany) << "the friendly weapon should be excluded";
+    ASSERT_TRUE(foe_weapons.empty());
 
     auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 128, &howmany, actor);
-    ASSERT_TRUE(!friends.empty() && howmany > 0) << "find_friends_in_range should include friendly living";
+    ASSERT_EQ(1, howmany) << "only the nearby archer is a friend";
+    ASSERT_EQ(std::list<walker*>({friend_living}), friends);
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_blood(nullptr) == nullptr) << "find_nearest_blood nullptr guard should return null";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_player(nullptr) == nullptr) << "find_nearest_player nullptr guard should return null";
@@ -1260,7 +1265,7 @@ TEST(LevelDataCoverage, level_data_round6_find_near_foe_boundary_fallback_path)
     actor->setxy(GRID_SIZE * 3, og::runtime::current_session->myscreen_->world().pixmaxy - 1);
     foe->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
 
-    // Near-search spiral should hit the y-boundary and fall back to find_far_foe().
+    // Near-search spiral should hit the y-boundary and fall back to find_nearest_foe().
     walker* picked = og::runtime::current_session->myscreen_->world().find_near_foe(actor);
     ASSERT_TRUE(picked == foe) << "find_near_foe should boundary-fallback to far foe selection";
 
@@ -1472,13 +1477,14 @@ TEST(LevelDataCoverage, level_data_round13_find_helpers_selection_and_filters)
     blood_far->setxy(180, 64);
     player_near->set_user(0);
     player_far->set_user(1);
+    player_near->set_team_num(0);
     player_near->setxy(78, 64);
     player_far->setxy(200, 64);
 
     foe_far->set_invisibility_left(0);
     foe_near->set_invisibility_left(0);
 
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) == foe_near) << "find_far_foe should return nearest visible living/generator foe";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_foe(actor) == foe_near) << "find_nearest_foe should return nearest visible living/generator foe";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_blood(actor) == blood_near) << "find_nearest_blood should return nearest alive stain";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_player(actor) == player_near) << "find_nearest_player should return nearest controlled walker";
 
@@ -1490,14 +1496,12 @@ TEST(LevelDataCoverage, level_data_round13_find_helpers_selection_and_filters)
     ASSERT_TRUE(!foes.empty() && howmany > 0) << "find_foes_in_range should include nearby non-friendly living/generator";
 
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 64, &howmany, actor);
-    ASSERT_TRUE(!foe_weapons.empty() && howmany > 0) << "find_foe_weapons_in_range should include friendly weapons only";
-    for (walker* w : foe_weapons)
-        ASSERT_EQ((int)actor->team_num(), (int)w->team_num()) << "returned weapon should be on friendly team";
+    ASSERT_EQ(1, howmany) << "only the hostile weapon in range is selected";
+    ASSERT_EQ(std::list<walker*>({enemy_weapon}), foe_weapons);
 
     auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &howmany, actor);
-    ASSERT_TRUE(!friends.empty() && howmany > 0) << "find_friends_in_range should include friendly living walkers";
-    for (walker* w : friends)
-        ASSERT_EQ((int)Order::Living, (int)w->query_order()) << "friend results should be living walkers";
+    ASSERT_EQ(2, howmany) << "the nearby archer and elf are friends, excluding the actor";
+    ASSERT_EQ(std::list<walker*>({friend_living, player_near}), friends);
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -1523,7 +1527,7 @@ TEST(LevelDataCoverage, level_data_round14_find_helper_exclusion_branches)
 
     hidden_foe->set_team_num(1);
     hidden_foe->setxy(72, 64);
-    hidden_foe->set_invisibility_left(40); // divisor branch in find_far_foe
+    hidden_foe->set_invisibility_left(40); // divisor branch in find_nearest_foe
 
     near_friend->set_team_num(0);
     near_friend->setxy(70, 64);
@@ -1539,7 +1543,7 @@ TEST(LevelDataCoverage, level_data_round14_find_helper_exclusion_branches)
     dead_blood->set_dead(1);
 
     og::runtime::current_session->myscreen_->world().rng_.state_ = 3;
-    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) == nullptr) << "find_far_foe should skip hidden foes when rng check blocks visibility";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_foe(actor) == nullptr) << "find_nearest_foe should skip hidden foes when rng check blocks visibility";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_blood(actor) == nullptr) << "find_nearest_blood should ignore dead blood stains";
 
     std::int32_t howmany = -1;
@@ -1555,7 +1559,8 @@ TEST(LevelDataCoverage, level_data_round14_find_helper_exclusion_branches)
     }
 
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 32, &howmany, actor);
-    ASSERT_TRUE(foe_weapons.empty()) << "find_foe_weapons_in_range should exclude enemy-team weapons";
+    ASSERT_EQ(1, howmany) << "find_foe_weapons_in_range should include the hostile weapon";
+    ASSERT_EQ(std::list<walker*>({enemy_weapon}), foe_weapons);
 }
 
 

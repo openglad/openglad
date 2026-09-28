@@ -1263,7 +1263,7 @@ TEST(CoverageMisc, coverage_r19_walker_animate_attack_completion_branch)
 // sim stream by seeding the LCG state, which is the idiom when you want the
 // REAL generator at a known point: state 1 answers next(5) = 3, next(5) = 1,
 // next(2) = 1, which is the "4 of 5" arm followed (when no foe is findable) by
-// the RANDOM_WALK branch. find_near_foe / find_far_foe draw only next(0),
+// the RANDOM_WALK branch. find_near_foe / find_nearest_foe draw only next(0),
 // which never advances the state.
 //
 // A scripted stream is available in this binary too (the override hook is
@@ -1297,7 +1297,7 @@ TEST(CoverageMisc, coverage_r19_living_act_random_acquires_a_foe_and_queues_a_co
         << "COMMAND_SEARCH 300 is queued";
 
     // With the only hostile dead, the foe is dropped at the top of act and
-    // cannot be re-acquired (find_far_foe skips dead walkers), so the arm
+    // cannot be re-acquired (find_nearest_foe skips dead walkers), so the arm
     // falls to the RANDOM_WALK branch instead.
     foe->set_dead(1);
     self->set_foe(foe);
@@ -1545,7 +1545,7 @@ void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,
 } // namespace
 
 // walker::act's own ACT_RANDOM arm (a plain walker, so living::act's richer
-// version does not run): 3 of 4 times it adopts find_far_foe's answer and, IF
+// version does not run): 3 of 4 times it adopts find_nearest_foe's answer and, IF
 // it has a foe, queues COMMAND_SEARCH 500 -- otherwise it queues nothing at
 // all. The sim draws from world.rng_ (see the r19 note above); state 1 answers
 // next(4) = 2, which is the 3-of-4 arm.

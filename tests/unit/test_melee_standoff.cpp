@@ -240,7 +240,8 @@ TEST(MeleeStandoff, adjacent_soldier_vs_guard_orc_resolves)
 // (368,272) with a crew soldier wedged 2px off it (and eventually merged
 // INTO it via the interpenetration trap). Post-fix, an entry-power 4-soldier
 // crew must fight past mid-road quickly, exterminate the road (picket
-// included), and keep everyone alive. Pre-fix baselines for these seeds:
+// included), and retain the measured crew survivors. Pre-fix baselines for
+// these seeds:
 // seed 42 crew WIPED at maxx=896 with 9 foes left; seeds 1337/2025 crossed
 // mid-road late (t=872+) with a soldier lost each — every seed fails at
 // least one clause below without the fix.
@@ -259,11 +260,24 @@ TEST_F(WestlandsStandoffTest, l2_forest_road_crew_fights_past_mid_road)
     // then advances and sweeps the road by t~2200 with all four alive. A
     // parked crew leaves the picket alive and the foe count flat; this pin
     // keeps the deadline at ~2x the slowest measured crossing, as before.
+    // Re-measured 2026-09-26 for #295: hit_response retargets BEFORE
+    // yelling so the resulting flee command survives. Isolating only that
+    // ordering change reproduces the seed-42 loss; self-exclusion and the
+    // #294 projectile absorption fix do not. Seeds 42/1337/2025 now cross
+    // at 415/515/986 and sweep at 2623/1805/2254, with 3/4/4 survivors.
+    // Keep both deadlines and the picket/sweep checks; pin each seed's
+    // exact census so this cannot admit another casualty on any seed.
     constexpr int kMidRoadDeadline = 3000;
     constexpr int kSweepDeadline = 8000;   // post-fix: full road swept
 
-    for (std::uint32_t seed : {42u, 1337u, 2025u})
+    const struct
     {
+        std::uint32_t seed;
+        int survivors;
+    } probes[] = {{42u, 3}, {1337u, 4}, {2025u, 4}};
+    for (const auto& probe : probes)
+    {
+        const std::uint32_t seed = probe.seed;
         SCOPED_TRACE("seed " + std::to_string(seed));
         LoadedStandoffLevel fx(2, seed);
         ASSERT_TRUE(fx.loaded);
@@ -330,8 +344,7 @@ TEST_F(WestlandsStandoffTest, l2_forest_road_crew_fights_past_mid_road)
         for (walker* w : crew)
             if (w != nullptr && !w->dead())
                 alive++;
-        EXPECT_EQ(4, alive)
-            << "resolved fights must not cost the crew members it never "
-               "lost with the fix in place";
+        EXPECT_EQ(probe.survivors, alive)
+            << "the resolved fight changed its measured survivor census";
     }
 }

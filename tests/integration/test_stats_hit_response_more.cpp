@@ -6,6 +6,77 @@
 
 #include <cstdint>
 
+TEST(StatsHitResponseMore, wounded_world_member_recruits_allies_and_keeps_its_escape)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    world.create_new_grid();
+    walker* victim = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* attacker = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, victim);
+    ASSERT_NE(nullptr, attacker);
+    ASSERT_NE(nullptr, ally);
+    victim->set_specials_disabled(true);
+    victim->set_team_num(0);
+    ally->set_team_num(0);
+    attacker->set_team_num(1);
+    ASSERT_TRUE(victim->setxy(160, 160));
+    ASSERT_TRUE(attacker->setxy(180, 180));
+    ASSERT_TRUE(ally->setxy(120, 160));
+    victim->stats()->set_hitpoints(1.0f);
+    victim->set_yo_delay(0);
+    victim->set_foe(nullptr);
+    victim->set_leader(nullptr);
+    attacker->set_foe(nullptr);
+    ally->set_foe(nullptr);
+    ally->set_leader(nullptr);
+    victim->stats()->set_last_distance(7);
+    victim->stats()->set_current_distance(7);
+    ally->stats()->set_last_distance(9);
+    ally->stats()->set_current_distance(9);
+    victim->stats()->force_command(COMMAND_WALK, 3, 1, 1);
+
+    victim->stats()->hit_response(attacker);
+
+    EXPECT_EQ(nullptr, victim->leader()) << "the yeller must not recruit itself";
+    EXPECT_EQ(attacker, victim->foe());
+    EXPECT_EQ(victim, attacker->foe()) << "a new attacker gets the reciprocal target";
+    EXPECT_EQ(victim, ally->leader());
+    EXPECT_EQ(attacker, ally->foe());
+    EXPECT_EQ(32000u, victim->stats()->last_distance());
+    EXPECT_EQ(32000, victim->stats()->current_distance());
+    EXPECT_EQ(32000u, ally->stats()->last_distance());
+    EXPECT_EQ(32000, ally->stats()->current_distance());
+    EXPECT_EQ(80, victim->yo_delay());
+    ASSERT_EQ(1u, victim->stats()->commands.size());
+    const command& escape = victim->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, escape.commandtype);
+    EXPECT_EQ(16, escape.commandcount);
+    EXPECT_EQ(-1, escape.com1);
+    EXPECT_EQ(-1, escape.com2);
+    EXPECT_TRUE(escape.forced);
+
+    // The same attacker during the yell cooldown must neither recruit again
+    // nor replace the walk the caller has already queued.
+    victim->stats()->clear_command();
+    victim->stats()->force_command(COMMAND_WALK, 7, 1, 0);
+    ally->set_foe(nullptr);
+    ally->set_leader(nullptr);
+    victim->stats()->hit_response(attacker);
+    EXPECT_EQ(80, victim->yo_delay());
+    EXPECT_EQ(nullptr, ally->foe());
+    EXPECT_EQ(nullptr, ally->leader());
+    ASSERT_EQ(1u, victim->stats()->commands.size());
+    const command& retained = victim->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, retained.commandtype);
+    EXPECT_EQ(7, retained.commandcount);
+    EXPECT_EQ(1, retained.com1);
+    EXPECT_EQ(0, retained.com2);
+    EXPECT_TRUE(retained.forced);
+    world.delete_objects();
+}
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // The archer's hit_response (packs/core/families/living-02-archer.lua:64-79)
@@ -72,4 +143,3 @@ TEST(StatsHitResponseMore, statistics_hit_response_archer_runs_away_and_queues_w
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-

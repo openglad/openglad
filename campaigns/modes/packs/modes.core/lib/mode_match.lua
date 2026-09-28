@@ -647,7 +647,7 @@ local function revive_wiped_teams(anchors, mask, ticks, cursor_slot, shape)
 end
 
 -- A foe worth having: a live Living on an active enemy team. The engine's
--- pre-act backstop (find_far_foe) fills empty foes before any post-act
+-- pre-act backstop (find_nearest_foe) fills empty foes before any post-act
 -- director runs, and it happily hands out wildlife — so director repair
 -- arms treat nil, dead AND non-scoring foes as broken.
 local function foe_scores(foe, mask, team)

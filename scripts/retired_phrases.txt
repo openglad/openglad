@@ -84,3 +84,4 @@ setup_page_(prev|next)	click setup_page_next to step the window	the wizard pages
 zone_pager_(prev|next)_[01]	interact("zone_pager_next_0")	the docket pages on its last ROW, MORE - n/m  >; ordinals 65..68 are parked as zone_pager_spare_0..3 (PR #307 round 4)
 pager.s gutter carries	the pager's gutter carries the p/N count	the window count is the MORE pager ROW own note (PR #307 round 4)
 level rows and GO wear the GO green	level rows and GO wear the GO green	inside the SETUP wizard green is GO alone: ARENA level rows are plain (PR #307 round 4). Classic campaigns keep the green, so a sentence about THEM must say so
+find_far_foe	The engine calls find_far_foe to acquire a target.	issue #293 renamed the native full-list nearest-distance scan to find_nearest_foe; dated design snapshots annotate historical references.

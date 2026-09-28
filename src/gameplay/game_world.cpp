@@ -1136,7 +1136,7 @@ walker* GameWorld::find_near_foe(walker* ob)
     }
 
     if (!myobmap)
-        return find_far_foe(ob);
+        return find_nearest_foe(ob);
 
     short targx = ob->xpos();
     short targy = ob->ypos();
@@ -1152,13 +1152,13 @@ walker* GameWorld::find_near_foe(walker* ob)
             {
                 targx += resolution;
                 if (targx <= 0 || targx >= pixmaxx)
-                    return find_far_foe(ob);
+                    return find_nearest_foe(ob);
             }
             else
             {
                 targy += resolution;
                 if (targy <= 0 || targy >= pixmaxy)
-                    return find_far_foe(ob);
+                    return find_nearest_foe(ob);
             }
 
             // Probe the SEARCHER's floor. obmap_get_list's floor parameter
@@ -1166,7 +1166,7 @@ walker* GameWorld::find_near_foe(walker* ob)
             // piles no matter where `ob` stood: upper-floor walkers were
             // blind to foes standing beside them and latched whatever was on
             // the ground floor beneath their 2D position instead. Cross-floor
-            // acquisition stays available via find_far_foe (the floor-blind
+            // acquisition stays available via find_nearest_foe (the floor-blind
             // full-list scan). ob->floor()==0 on single-floor levels, so
             // legacy behavior is byte-identical.
             std::list<walker*>& ls =
@@ -1205,14 +1205,14 @@ walker* GameWorld::find_near_foe(walker* ob)
         }
     }
 
-    return find_far_foe(ob);
+    return find_nearest_foe(ob);
 }
 
-walker* GameWorld::find_far_foe(walker* ob)
+walker* GameWorld::find_nearest_foe(walker* ob)
 {
     if (!ob)
     {
-        Log("no ob in find far foe.\n");
+        Log("no ob in find nearest foe.\n");
         return nullptr;
     }
 
@@ -1368,7 +1368,7 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(const std::list<std::uni
         walker* w = uptr.get();
         if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Weapon &&
-            ob->is_friendly(w) &&
+            !ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
         {
             result.push_back(w);
@@ -1393,7 +1393,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() &&
+        if (w && w != ob && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Living &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1806,7 +1806,7 @@ void GameWorld::tick()
                         level_done = 0; // an awake foe holds the level open
                     // Testing .. trying to FORCE foes :)
                     if (ob->foe() == nullptr && ob->leader() == nullptr)
-                        ob->set_foe(find_far_foe(ob));
+                        ob->set_foe(find_nearest_foe(ob));
                 }
             }
         }

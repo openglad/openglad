@@ -197,6 +197,7 @@ local function freeze_time(self)
     og.emit_notification(
       string.format("TIME IS FROZEN! (%d rounds)", rounds), 2)
     og.emit_event(C.EVENT_REQUEST_REDRAW)
+    self:set_bonus_rounds(self:bonus_rounds() + rounds)
     local friends = og.find_friends_in_range("ob", 30000, self)
     for i = 1, #friends do
       local w = friends[i]

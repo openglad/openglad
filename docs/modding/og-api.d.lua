@@ -695,11 +695,11 @@
 ---@field family_id fun(order_str: og.OrderName, family_str: string): integer? # og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets scripts compare walker:family() against named families).
 ---@field fdiv fun(a: number, b: number): number
 ---@field find_by_id fun(id: integer): og.Walker? # og.find_by_id(id) — entity id -> handle; nil for 0, absent, or dead-and-swept ids.
----@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
+---@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap", and allegiance follows the owner chain.
 ---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
----@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
+---@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_friends_in_range(list, range, self) returns other live friendly Living actors in range, excluding self.
 ---@field find_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
----@field find_near_foe fun(entity: og.Walker): og.Walker?
+---@field find_near_foe fun(entity: og.Walker): og.Walker? # og.find_near_foe(self) returns the first foe met by the searcher's floor-specific obmap spiral, or the nearest foe if the spiral finds none or leaves the map.
 ---@field find_nearest_blood fun(entity: og.Walker): og.Walker?
 ---@field fmul fun(a: number, b: number): number
 ---@field foes_in_range fun(entity: og.Walker, range: integer): og.Walker[] # og.foes_in_range(self, range) → array (for_each_foe_in_range order)

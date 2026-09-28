@@ -470,7 +470,7 @@ TEST(WalkerCombat, ai_targeting_range_queries_and_victory_use_the_same_team_rule
     {
         world.allied_mode = allied_mode;
         SCOPED_TRACE(::testing::Message() << "allied=" << allied_mode);
-        EXPECT_EQ(yellow, world.find_far_foe(red))
+        EXPECT_EQ(yellow, world.find_nearest_foe(red))
             << "AI must skip a nearer same-team hero and acquire yellow";
 
         std::int32_t foe_count = 0;
@@ -483,9 +483,9 @@ TEST(WalkerCombat, ai_targeting_range_queries_and_victory_use_the_same_team_rule
         std::int32_t friend_count = 0;
         const std::list<walker*> friends = world.find_friends_in_range(
             world.oblist, 1000, &friend_count, red);
-        EXPECT_EQ(2, friend_count);
-        EXPECT_NE(friends.end(),
-                  std::find(friends.begin(), friends.end(), red_friend));
+        EXPECT_EQ(1, friend_count);
+        EXPECT_EQ(std::list<walker*>({red_friend}), friends)
+            << "the range finder returns the ally and excludes red itself";
         EXPECT_EQ(2, world.remaining_foes(red))
             << "different-color company heroes must block extermination";
     }
@@ -1399,7 +1399,7 @@ TEST(WalkerCombat, walker_act_random_generator_paths)
     auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
     ASSERT_NE(nullptr, gen) << "generator created";
     walker* genp = gen.get();
-    // The foe has to live in oblist: find_far_foe scans that list, and the
+    // The foe has to live in oblist: find_nearest_foe scans that list, and the
     // whole point of both branches below is that they ACQUIRE it.
     walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, foe) << "foe created";
@@ -1417,14 +1417,14 @@ TEST(WalkerCombat, walker_act_random_generator_paths)
 
     {
         // act(): rng(4)==0, rng(20)!=0 -> act_random().
-        // act_random(): rng(70)==0 -> find_far_foe, in range, and a
+        // act_random(): rng(70)==0 -> find_nearest_foe, in range, and a
         // Generator's fire_check always passes -> COMMAND_FIRE.
         SequenceRandomCombat rng1({0, 1, 0, 0, 0});
         ScopedSimRandom sim(&rng1);
         ASSERT_FALSE(genp->act())
             << "act() reports 0 on the act_random arm: act_random's 1 is dropped by the break";
     }
-    ASSERT_EQ(foe, genp->foe()) << "act_random acquires the foe through find_far_foe";
+    ASSERT_EQ(foe, genp->foe()) << "act_random acquires the foe through find_nearest_foe";
     ASSERT_TRUE(genp->stats()->has_commands()) << "act_random queues COMMAND_FIRE";
 
     genp->set_foe(nullptr);

@@ -230,7 +230,7 @@ TEST(FamilyCleric, r11_check_ai_and_heal_fail_paths)
     cleric->stats()->set_level(5);
     cleric->stats()->set_magicpoints(20.0f);
 
-    // only cleric in range => howmany <= 1 path
+    // No other living ally is in range.
     ASSERT_TRUE(!og::test::do_special(desc, cleric));
 
     // ally at full HP => didheal remains 0 path
@@ -703,22 +703,20 @@ TEST(FamilyCleric, r12_shoved_ai_and_turn_undead_guard_paths)
     // on_shoved callback path.
     og::test::on_shoved(desc, cleric);
 
-    // check_special_ai healing branch with >1 friends nearby.
+    // A single ally is enough for the healing branch.
     cleric->set_current_special(1);
     living* friend1 = add_living(fx, 0, FAMILY_SOLDIER);
-    living* friend2 = add_living(fx, 0, FAMILY_ARCHER);
+    ASSERT_NE(nullptr, friend1);
     friend1->setxy(82, 80);
-    friend2->setxy(84, 80);
     ASSERT_TRUE(og::test::check_special_ai(desc, cleric));
-    ASSERT_TRUE(cleric->shifter_down() == 0);
+    ASSERT_EQ(0, cleric->shifter_down()) << "one ally selects HEAL";
 
-    // check_special_ai mace branch with high MP and not enough heal targets.
-    friend2->setxy(300, 300);
+    // With no allies and enough MP, the AI chooses the mace instead.
     friend1->setxy(300, 300);
     cleric->stats()->set_max_magicpoints(100.0f);
     cleric->stats()->set_magicpoints(80.0f);
     ASSERT_TRUE(og::test::check_special_ai(desc, cleric));
-    ASSERT_TRUE(cleric->shifter_down() == 1);
+    ASSERT_EQ(1, cleric->shifter_down()) << "no ally selects MYSTIC MACE";
 
     // Mystic mace INT guard message path.
     cleric->set_current_special(1);
@@ -1244,6 +1242,8 @@ TEST(FamilyCleric, heal_refusal_distinguishes_absent_and_healthy_allies)
     cleric->stats()->set_level(1);
     cleric->stats()->set_special_cost(1, desc.special_cost[1]);
     cleric->stats()->set_magicpoints(3.0f);
+    cleric->stats()->set_max_hitpoints(100.0f);
+    cleric->stats()->set_hitpoints(40.0f);
     cleric->set_current_special(1);
     cleric->set_shifter_down(0);
 
@@ -1253,6 +1253,8 @@ TEST(FamilyCleric, heal_refusal_distinguishes_absent_and_healthy_allies)
     EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
     EXPECT_EQ("NO ALLY IN RANGE", reason);
     EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(40.0f, cleric->stats()->hitpoints())
+        << "the caster is never its own healing target";
 
     living* ally = add_living(fx, 0, FAMILY_SOLDIER, 100, 80);
     ASSERT_NE(nullptr, ally);
@@ -1263,6 +1265,7 @@ TEST(FamilyCleric, heal_refusal_distinguishes_absent_and_healthy_allies)
     EXPECT_EQ("NO ALLY NEEDS HEALING", reason);
     EXPECT_FLOAT_EQ(100.0f, ally->stats()->hitpoints());
     EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(40.0f, cleric->stats()->hitpoints());
 
     // The same ally and MP pool work once there is a wound to heal.
     ally->stats()->set_hitpoints(40.0f);
@@ -1271,6 +1274,7 @@ TEST(FamilyCleric, heal_refusal_distinguishes_absent_and_healthy_allies)
     EXPECT_EQ("", reason);
     EXPECT_FLOAT_EQ(45.0f, ally->stats()->hitpoints());
     EXPECT_FLOAT_EQ(1.0f, cleric->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(40.0f, cleric->stats()->hitpoints());
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

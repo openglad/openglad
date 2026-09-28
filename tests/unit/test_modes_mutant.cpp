@@ -1186,7 +1186,7 @@ TEST_F(ModesMutant, skeleton_tunnel_clamps_to_160_only_past_its_own_range)
 
 TEST_F(ModesMutant, ffa_director_repairs_backstop_wildlife_onto_a_competitor)
 {
-    // The engine's pre-act backstop (find_far_foe) refills empty foes
+    // The engine's pre-act backstop (find_nearest_foe) refills empty foes
     // before the post-act director runs, and it happily hands out
     // wildlife — those broken foes are what the repair arm exists for.
     MutantRig rig(kMutantLevelA, ACT_RANDOM);

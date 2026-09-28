@@ -378,7 +378,7 @@ TEST(NpcScenarioFlags, dormant_walker_hidden_until_spawn_tick_then_enters_world)
     EXPECT_TRUE(w.query_object_passable(spot_x, spot_y, hero))
         << "a dormant walker must be absent from the obmap";
     // Untargetable: foe scans skip it.
-    EXPECT_EQ(nullptr, w.find_far_foe(hero))
+    EXPECT_EQ(nullptr, w.find_nearest_foe(hero))
         << "a dormant walker must not be targetable";
     // Unsnapshotted: capture excludes it (mirrors/replays never see it).
     EXPECT_FALSE(snapshot_has_entity(og::sim::capture_keyframe_snapshot(w),
@@ -407,7 +407,7 @@ TEST(NpcScenarioFlags, dormant_walker_hidden_until_spawn_tick_then_enters_world)
                                          hero))
         << "an activated walker must be back in the obmap";
     // ...targetable...
-    EXPECT_EQ(invader, w.find_far_foe(hero));
+    EXPECT_EQ(invader, w.find_nearest_foe(hero));
     // ...and captured by snapshots.
     EXPECT_TRUE(snapshot_has_entity(og::sim::capture_keyframe_snapshot(w),
                                     invader_id));

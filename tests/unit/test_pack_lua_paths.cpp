@@ -371,10 +371,36 @@ TEST(PackLuaDruid, a_lone_druid_cannot_cast_circle_of_protection)
     druid->stats()->set_level(5);
     druid->set_current_special(4);
     druid->set_busy(0);
+    const float magic_before = druid->stats()->magicpoints();
 
     EXPECT_FALSE(og::test::do_special(desc, druid));
     EXPECT_EQ(0u, count_family(tw.world(), Order::Weapon,
                                FAMILY_CIRCLE_PROTECTION));
+    EXPECT_FLOAT_EQ(magic_before, druid->stats()->magicpoints());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+TEST(PackLuaDruid, one_ally_receives_one_circle_and_caster_receives_none)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_DRUID);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& world = tw.world();
+    walker* druid = spawn(world, Order::Living, FAMILY_DRUID, 10, 10, 1);
+    walker* ally = spawn(world, Order::Living, FAMILY_SOLDIER, 10, 11, 1);
+    ASSERT_TRUE(druid && ally);
+    druid->stats()->set_level(5);
+    druid->set_current_special(4);
+    druid->set_busy(0);
+
+    ASSERT_TRUE(og::test::do_special(desc, druid))
+        << "one ally in range is enough to cast protection";
+    ASSERT_EQ(1u, count_family(world, Order::Weapon, FAMILY_CIRCLE_PROTECTION));
+    walker* circle = find_family(world, Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    ASSERT_NE(nullptr, circle);
+    EXPECT_EQ(ally, circle->owner()) << "the sole ring protects the ally";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

@@ -437,16 +437,22 @@ public:
     // RNG-free; cross-floor pairs are never in sight.
     bool clear_sight_line(const walker* from, const walker* to);
 
+    // Search the obmap spiral for the first foe met; fall back to the
+    // floor-blind nearest-foe scan when it finds none or leaves the map.
     walker* find_near_foe(walker* ob);
-    walker* find_far_foe(walker* ob);
+    // Scan all live, non-dormant foes and return the nearest by 2D distance.
+    walker* find_nearest_foe(walker* ob);
     walker* find_nearest_blood(walker* who);
     walker* find_nearest_player(walker* ob);
     std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                      std::int32_t range, std::int32_t* howmany, walker* ob);
     std::list<walker*> find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                           std::int32_t range, std::int32_t* howmany, walker* ob);
+    // Live hostile weapons in range; normal projectiles use weaplist, and
+    // allegiance follows the owner chain.
     std::list<walker*> find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                  std::int32_t range, std::int32_t* howmany, walker* ob);
+    // Other live friendly Living actors in range; excludes the searcher.
     std::list<walker*> find_friends_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                              std::int32_t range, std::int32_t* howmany, walker* ob);
 

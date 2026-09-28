@@ -73,60 +73,55 @@ local function protection_circle(self)
     return false, "SPECIAL BUSY"
   end
   local friends, friend_count = og.find_friends_in_range("ob", 60, self)
-  if friend_count <= 1 then
+  if friend_count == 0 then
+    -- Everyone was okay; don't charge us.
     return false, "NO ALLY IN RANGE"
   end
   local protected_count = 0
   for i = 1, #friends do
     local friend = friends[i]
-    if friend ~= self then
-      -- Historic slow path, now looking where circles actually live. The
-      -- C++ walked oblist (openglad-master/src/walker.cpp:3813), but
-      -- add_ob routes ORDER_WEAPON to add_weap_ob and the circle lands in
-      -- weaplist, so the scan never matched once between the 2002 import
-      -- and 2026 and every recast minted a second circle. Range 100 is a
-      -- loose bound on a ring that circle_protection_on_animate re-centres
-      -- on its owner every tick, so the true distance is ~0; the owner
-      -- filter, not the radius, is what selects the friend's own circle.
-      local existing = nil
-      local circles = og.find_in_range("weap", 100, friend)
-      for j = 1, #circles do
-        local ob = circles[j]
-        if ob:owner() == friend
-            and ob:family() == WEAP_CIRCLE_PROTECTION then
-          existing = ob
-          break
-        end
-      end
-      if not existing then
-        local circle = og.summon(friend, "weapon", WEAP_CIRCLE_PROTECTION)
-        if not circle then
-          return false, "COULD NOT PROTECT"
-        end
-        protected_count = protected_count + 1
-      else
-        -- A fresh circle is minted only to read a full charge off it;
-        -- its hitpoints top up the existing circle and it dies unused.
-        local fresh = og.add_ob("weapon", WEAP_CIRCLE_PROTECTION)
-        if not fresh then
-          return false, "COULD NOT PROTECT"
-        end
-        -- shim kept: hitpoints is a C++ float: per-op float rounding.
-        existing.hp = og.fadd(existing.hp, fresh.hp)
-        fresh.dead = 1
-        protected_count = protected_count + 1
-        -- TODO: Should we show healing numbers here?
-      end
-      -- Get experience either way
-      if self:has_guy() then
-        self:g_set_exp(self:g_exp() +
-                       og.exp_from_action(self, friend, "protection", 0))
+    -- Historic slow path, now looking where circles actually live. The
+    -- C++ walked oblist (openglad-master/src/walker.cpp:3813), but
+    -- add_ob routes ORDER_WEAPON to add_weap_ob and the circle lands in
+    -- weaplist, so the scan never matched once between the 2002 import
+    -- and 2026 and every recast minted a second circle. Range 100 is a
+    -- loose bound on a ring that circle_protection_on_animate re-centres
+    -- on its owner every tick, so the true distance is ~0; the owner
+    -- filter, not the radius, is what selects the friend's own circle.
+    local existing = nil
+    local circles = og.find_in_range("weap", 100, friend)
+    for j = 1, #circles do
+      local ob = circles[j]
+      if ob:owner() == friend
+          and ob:family() == WEAP_CIRCLE_PROTECTION then
+        existing = ob
+        break
       end
     end
-  end
-  if protected_count == 0 then
-    -- Everyone was okay; don't charge us.
-    return false, "NO ALLY IN RANGE"
+    if not existing then
+      local circle = og.summon(friend, "weapon", WEAP_CIRCLE_PROTECTION)
+      if not circle then
+        return false, "COULD NOT PROTECT"
+      end
+      protected_count = protected_count + 1
+    else
+      -- A fresh circle is minted only to read a full charge off it;
+      -- its hitpoints top up the existing circle and it dies unused.
+      local fresh = og.add_ob("weapon", WEAP_CIRCLE_PROTECTION)
+      if not fresh then
+        return false, "COULD NOT PROTECT"
+      end
+      -- shim kept: hitpoints is a C++ float: per-op float rounding.
+      existing.hp = og.fadd(existing.hp, fresh.hp)
+      fresh.dead = 1
+      protected_count = protected_count + 1
+      -- TODO: Should we show healing numbers here?
+    end
+    -- Get experience either way
+    if self:has_guy() then
+      self:g_set_exp(self:g_exp() +
+                     og.exp_from_action(self, friend, "protection", 0))
+    end
   end
   local message
   if protected_count == 1 then

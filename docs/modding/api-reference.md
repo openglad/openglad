@@ -627,13 +627,13 @@ which accepts either a guy handle or a walker.
 
 | Function | Result |
 |---|---|
-| `og.find_near_foe(self)` | Handle or `nil`. |
+| `og.find_near_foe(self)` | Handle or `nil`. First foe met by the searcher's floor-specific obmap spiral; nearest foe if the spiral finds none or leaves the map. |
 | `og.find_nearest_blood(self)` | Handle or `nil`. |
 | `og.foes_in_range(self, range)` | Array — the `for_each_foe_in_range` traversal. |
 | `og.find_foes_in_range(list, range, self)` | Array, count. |
-| `og.find_friends_in_range(list, range, self)` | Array, count. |
+| `og.find_friends_in_range(list, range, self)` | Array, count. Other live friendly Living actors in range; excludes `self`. |
 | `og.find_in_range(list, range, self)` | Array, count. |
-| `og.find_foe_weapons_in_range(list, range, self)` | Array, count. |
+| `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`, and allegiance follows the owner chain. |
 | `og.oblist()` | Array of every entity in the ob list, in list order. |
 | `og.living_count()` | The world's living head-count field. NOT derivable from an `og.oblist()` scan — the counter can legitimately drift (an editor map resize erases livings without decrementing), and scripts must read the same field the C++ read. |
 | `og.remaining_foes(self)` | `int`. |

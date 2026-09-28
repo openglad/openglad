@@ -970,7 +970,7 @@ bool walker::act()
 				{
 					if (!foe())
 					{
-						set_foe(current_game->world->find_far_foe(this));
+						set_foe(current_game->world->find_nearest_foe(this));
 					}
 					if (foe())
 						//stats_->try_command(COMMAND_SEARCH, 60, 0, 0);
@@ -1759,7 +1759,7 @@ walker::act_random()
 
 	// Find our foe
 	if (!current_game->world->rng_.next(70) || (!foe()))
-		set_foe(current_game->world->find_far_foe(this));
+		set_foe(current_game->world->find_nearest_foe(this));
 	if (!foe())
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
 

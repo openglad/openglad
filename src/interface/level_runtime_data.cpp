@@ -1005,9 +1005,9 @@ walker *LevelRuntimeData::find_near_foe(walker  *ob)
     return world().find_near_foe(ob);
 }
 
-walker  *LevelRuntimeData::find_far_foe(walker  *ob)
+walker  *LevelRuntimeData::find_nearest_foe(walker  *ob)
 {
-    return world().find_far_foe(ob);
+    return world().find_nearest_foe(ob);
 }
 
 walker  * LevelRuntimeData::find_nearest_blood(walker  *who)

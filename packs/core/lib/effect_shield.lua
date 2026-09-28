@@ -24,7 +24,7 @@ end
 -- lifetime. Kept as one local helper because the two C++ bodies are literally
 -- identical from here down apart from the weapon-scan range.
 local function guard_tail(self, weapon_range)
-  local weapons = og.find_foe_weapons_in_range("ob", weapon_range, self)
+  local weapons = og.find_foe_weapons_in_range("weap", weapon_range, self)
   for i = 1, #weapons do
     local weapon = weapons[i]
     -- hp is a C++ float: per-op rounding.
