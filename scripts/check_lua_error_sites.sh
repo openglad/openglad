@@ -32,7 +32,11 @@ done
 cd "${ROOT}"
 
 # Collect the scanned files first: an empty list would be a vacuous pass.
-mapfile -t files < <(find src include -type f \
+# (A read loop, not mapfile: the macOS release lane runs /bin/bash 3.2.)
+files=()
+while IFS= read -r f; do
+    files+=("${f}")
+done < <(find src include -type f \
     \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' -o -name '*.inc' -o -name '*.c' \) \
     | LC_ALL=C sort)
 if [[ ${#files[@]} -eq 0 ]]; then
@@ -70,7 +74,7 @@ FNR == 1 { in_block = 0; in_raw = 0; raw_end = "" }
                 in_raw = 1; i += 2 + p; continue
             }
         }
-        if (c == "\"" || c == "\x27") {
+        if (c == "\"" || c == "\047") {
             q = c; i++
             while (i <= n) {
                 d = substr(line, i, 1)
