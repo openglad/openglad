@@ -1736,9 +1736,11 @@ std::string format_base_camp_scen_line(const SaveData& save,
         dep_part.size() < budget ? budget - dep_part.size() : 0;
     // The level's NAME is the one piece of story on this screen, so the
     // title takes the ellipsis cut ("SCEN 1: THE RASPBERRY..") instead of
-    // stopping mid-word; the SCEN id itself never loses digits.
-    if (prefix.size() >= scen_budget)
-        return clip_chars(prefix, scen_budget) + dep_part;
+    // stopping mid-word; the SCEN id itself never loses digits: the prefix
+    // is at most 13 chars ("SCEN -32768: ") and the DEP part at most 11
+    // ("  DEP 24/24"), so scen_budget >= 34 - 11 = 23 always fits it.
+    static_assert(MAX_TEAM_SIZE <= 99 &&
+                  kBaseCampLineBCharsHireVisible - 11 > 13);
     return prefix +
         clip_with_ellipsis(std::string(level_title),
                            scen_budget - prefix.size()) +
