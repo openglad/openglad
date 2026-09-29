@@ -749,18 +749,6 @@ int CampaignZoneSession::next_assign_tag(int tag)
     return tag == 1 ? 2 : 1;
 }
 
-char CampaignZoneSession::assign_glyph(
-    const hooks::CampaignAssignSpec& spec, int tag)
-{
-    if (tag < 1 || tag > static_cast<int>(spec.labels.size()))
-        return '-';
-    const std::string& label = spec.labels[static_cast<std::size_t>(tag - 1)];
-    if (label.empty())
-        return '-';
-    return static_cast<char>(
-        std::toupper(static_cast<unsigned char>(label.front())));
-}
-
 namespace {
 
 std::string upper_clipped(std::string value, std::size_t budget)

@@ -618,16 +618,6 @@ TEST_F(CampaignZoneSessionTest, assign_cycle_never_returns_to_unset)
     EXPECT_EQ(1, CampaignZoneSession::next_assign_tag(255)) << "junk -> 1";
 }
 
-TEST_F(CampaignZoneSessionTest, assign_glyph_takes_the_label_first_letter)
-{
-    hooks::CampaignAssignSpec spec;
-    spec.labels = {"war", "Burden"};
-    EXPECT_EQ('-', CampaignZoneSession::assign_glyph(spec, 0));
-    EXPECT_EQ('W', CampaignZoneSession::assign_glyph(spec, 1));
-    EXPECT_EQ('B', CampaignZoneSession::assign_glyph(spec, 2));
-    EXPECT_EQ('-', CampaignZoneSession::assign_glyph(spec, 3));
-}
-
 // The roster's oath column spells the choice out and heads itself with
 // the script's own channel key. A lone letter on a coloured chip is the
 // TEAM widget, and the oath has to stay readable after its toast expires.

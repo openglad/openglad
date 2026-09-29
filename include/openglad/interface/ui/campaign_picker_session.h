@@ -446,12 +446,6 @@ public:
 
     // The assign cycle: unset(0) -> 1 -> 2 -> 1, never back to unset.
     static int next_assign_tag(int tag);
-    // Chip glyph: '-' unassigned, else the label's first letter (upper).
-    // Kept for the one-cell terminal listings; the SDL roster spells the
-    // oath out (assign_cell_text) — a lone letter on a team-coloured chip
-    // reads as a team number, and the word has to outlive the toast.
-    static char assign_glyph(const og::script::hooks::CampaignAssignSpec& spec,
-                             int tag);
     // The roster's oath CELL: "-" while unsworn, else the label in words,
     // uppercased and ellipsis-cut to `budget` characters.
     static std::string assign_cell_text(
