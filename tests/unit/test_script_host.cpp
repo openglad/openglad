@@ -1542,6 +1542,35 @@ TEST(ScriptCoverage, one_chunk_name_carrying_two_sources_keeps_both)
     std::filesystem::remove_all(dir);
 }
 
+// The honest-denominator invariant (openglad-test-integrity): the Lua half's
+// denominator is the set of pack sources the recorder inventories, so it
+// must not depend on whether recording happens to be on. A DISABLED recorder
+// inventories nothing (the production default: OPENGLAD_LUA_COVERAGE unset),
+// and neither does an enabled one handed an empty chunk name. Positive
+// control: the same declaration while enabled makes exactly one record.
+TEST(ScriptCoverage, a_disabled_recorder_never_moves_the_lua_denominator)
+{
+    cov::ScopedRecording recording;  // private, empty inventory
+    const std::string chunk = "packs/denominator/scripts/a.lua";
+    const std::string body = "return 1\n";
+
+    cov::set_enabled_for_testing(false);
+    cov::declare_pack_source(chunk, body, "probe/disabled");
+    cov::set_enabled_for_testing(true);
+    EXPECT_EQ(0u, cov::pack_sources().size())
+        << "a declaration made while recording was off entered the inventory";
+
+    cov::declare_pack_source("", body, "probe/unnamed");
+    EXPECT_EQ(0u, cov::pack_sources().size())
+        << "an unnamed chunk entered the inventory";
+
+    cov::declare_pack_source(chunk, body, "probe/enabled");
+    const std::vector<cov::PackSourceRecord> records = cov::pack_sources();
+    ASSERT_EQ(1u, records.size());
+    EXPECT_EQ(chunk, records[0].chunk);
+    EXPECT_EQ(cov::sha256_hex(body), records[0].digest);
+}
+
 // THE GENERATION BINDING. When one chunk name carries two sources in one
 // process, every hit is stored under the generation whose COMPILED CODE
 // executed — each compile binds its prototype tree to the (chunk, digest)
