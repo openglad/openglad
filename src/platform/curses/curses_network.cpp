@@ -1700,10 +1700,10 @@ public:
                 const short base = request_pending_for_selected
                     ? last_team_request_
                     : selected->team;
-                const short target = state_.has_value()
-                    ? og::sim::lobby_next_selectable_team(
-                          state_->settings, base)
-                    : static_cast<short>((base + 1) % MAX_PLAYERS);
+                // `selected` came from selected_local_player(), which
+                // answers nullptr without a lobby state.
+                const short target = og::sim::lobby_next_selectable_team(
+                    state_->settings, base);
                 if (target < 0)
                     continue;
 
@@ -2231,10 +2231,10 @@ private:
     // The MACHINE row label the Networking submenu shows for the same
     // machine (§6) — one formatter, so the two surfaces name a peer
     // identically.
+    // Its one caller, kick_selected_seat(), runs it only after
+    // local_player_is_host(), which is false without a lobby state.
     std::string machine_row_label(og::sim::LobbyMachineId machine_id) const
     {
-        if (!state_.has_value())
-            return {};
         const std::vector<std::uint8_t> local = local_player_indices();
         for (const og::ui::NetworkingMachineRow& row :
              og::ui::build_networking_machine_rows(state_->players, local))
@@ -2460,7 +2460,7 @@ private:
 
         // Staged lobby (#218, C9): apply the joiner's retained pair into the
         // headless preview mirror on the pump cadence. The negotiated state's
-        // campaign is the local level-load source (build_join_save_equivalent
+        // campaign is the local level-load source (build_join_save_equivalent_from_state
         // reads the same field at session build).
         if (role_ == LobbyRole::Join && state_.has_value())
         {
@@ -2516,8 +2516,11 @@ private:
                 session_built_failed_ = true;
                 return;
             }
-            // Build the equivalent the joiner will spawn from the negotiated state.
-            og::sim::LobbySaveDataEquivalent lobby_save = build_join_save_equivalent();
+            // The joiner spawns the same world the host negotiated:
+            // reconstruct the lobby-equivalent from the last LobbyState
+            // (campaign/scenario + full roster).
+            og::sim::LobbySaveDataEquivalent lobby_save =
+                build_join_save_equivalent_from_state(*state_);
             std::size_t join_index = 0;
             if (const og::sim::LobbyPlayer* const local =
                     find_local_player(*state_)) {
@@ -2529,15 +2532,6 @@ private:
         }
         if (session_ == nullptr)
             session_built_failed_ = true;
-    }
-
-    // The joiner spawns the same world the host negotiated. Reconstruct the
-    // lobby-equivalent from the last LobbyState (campaign/scenario + full roster).
-    og::sim::LobbySaveDataEquivalent build_join_save_equivalent() const
-    {
-        if (!state_.has_value())
-            return {};
-        return build_join_save_equivalent_from_state(*state_);
     }
 
     void teardown()
