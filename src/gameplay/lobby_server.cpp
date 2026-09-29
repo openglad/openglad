@@ -683,8 +683,6 @@ void LobbyServer::rebuild_state()
                 host_peer_id_.has_value() && *host_peer_id_ == peer_id;
             if (player.is_host)
                 state_.host_player_id = player.player_index;
-            if (player.name.empty())
-                player.name = default_player_name(index + 1);
             state_.players.push_back(player);
             ++index;
         }
