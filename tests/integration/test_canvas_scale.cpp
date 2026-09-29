@@ -1707,6 +1707,62 @@ TEST(CanvasScale, nearest_zoom_overlay_allocation_failure_safely_aliases_world)
     EXPECT_EQ(200, E_Screen->gameplay_ui_overlay_surface()->h);
 }
 
+// When the fixed gameplay-UI overlay cannot be allocated, the HUD is drawn
+// straight into the World canvas (the fallback above). Its touch targets must
+// then map through the World canvas's own aspect-fitted rectangle -- the
+// rectangle those HUD pixels are actually presented in -- not through the
+// fixed 320x200 overlay rectangle nothing is drawn into.
+TEST(CanvasScale, hud_touch_targets_follow_the_world_fit_when_overlay_allocation_fails)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_TRUE(s);
+    const float old_overscan =
+        og::runtime::current_session->overscan_percentage_;
+
+    // Zoom 0.9 on a 640x400 viewport: the scaler-safe World canvas is 352x222
+    // and fits at x=3..636, while the 320x200 overlay fills x=0..639
+    // (CanvasScale.fractional_zoom_aspect_fits_hud_and_touch_independently).
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(9, og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(352, E_Screen->world_w());
+    ASSERT_EQ(222, E_Screen->world_h());
+    ASSERT_EQ(320, s->gameplay_ui_canvas_w());
+    ASSERT_EQ(200, s->gameplay_ui_canvas_h());
+    E_Screen->set_active_canvas(CanvasTarget::World);
+
+    // Positive control: with the overlay live, touch maps through the
+    // overlay's own full-width rectangle.
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(s->gameplay_ui_canvas_available());
+    const og::CanvasViewport overlay_dest = gameplay_ui_canvas_viewport();
+    EXPECT_EQ(0, overlay_dest.x);
+    EXPECT_EQ(0, overlay_dest.y);
+    EXPECT_EQ(640, overlay_dest.w);
+    EXPECT_EQ(400, overlay_dest.h);
+
+    // The overlay allocation fails: HUD pixels now live in the World canvas.
+    E_Screen->fail_next_gameplay_ui_allocation_for_testing();
+    E_Screen->begin_gameplay_frame();
+    ASSERT_FALSE(s->gameplay_ui_canvas_available());
+    const og::CanvasViewport world_dest = active_canvas_viewport();
+    ASSERT_EQ(3, world_dest.x);
+    ASSERT_EQ(634, world_dest.w);
+    const og::CanvasViewport fallback_dest = gameplay_ui_canvas_viewport();
+    EXPECT_EQ(3, fallback_dest.x)
+        << "fallback HUD touch must use the World canvas's fitted rectangle";
+    EXPECT_EQ(0, fallback_dest.y);
+    EXPECT_EQ(634, fallback_dest.w)
+        << "fallback HUD touch must use the World canvas's fitted rectangle";
+    EXPECT_EQ(400, fallback_dest.h);
+
+    og::runtime::current_session->overscan_percentage_ = old_overscan;
+}
+
 TEST(CanvasScale, gameplay_overlay_allocation_failure_presents_complete_frame_nearest)
 {
     ASSERT_TRUE(E_Screen);
@@ -2430,6 +2486,83 @@ TEST(CanvasScale, native_world_destination_reaches_present_and_capture)
     EXPECT_EQ(scenery_rgb, surface_rgb(composed, 300, 180));
     SDL_DestroySurface(composed);
     SDL_DestroySurface(scenery);
+
+    E_Screen->discard_native_world_views_for_testing();
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+}
+
+// One native-world plane can carry insets declared in different coordinate
+// spaces. A capture composites only the insets declared in ITS space: a
+// UI-canvas capture (a menu screenshot) never paints a World-coordinate
+// inset, and a World capture never paints a UI-coordinate one.
+TEST(CanvasScale, capture_composites_only_the_insets_declared_in_its_canvas)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(320, E_Screen->world_w());
+    ASSERT_EQ(200, E_Screen->world_h());
+    E_Screen->set_active_canvas(CanvasTarget::World);
+
+    // Disjoint rectangles: the UI inset at the top-left, the World inset
+    // lower right. Both canvases are 320x200 here, so each inset lands on the
+    // same pixels in either capture if it is (wrongly) composited there.
+    const std::array<NativeWorldViewDestination, 2> destinations = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 40, .h = 25},
+        {.canvas = CanvasTarget::World, .x = 200, .y = 120, .w = 40,
+         .h = 25}}};
+    const NativeWorldViewSource source = s->begin_native_world_view(destinations);
+    ASSERT_TRUE(source);
+    SDL_Surface* const plane = E_Screen->render;
+    ASSERT_TRUE(SDL_FillSurfaceRect(plane, nullptr,
+                                    SDL_MapSurfaceRGB(plane, 220, 40, 220)));
+    const std::array<int, 3> inset_rgb = surface_rgb(plane, 5, 5);
+    ASSERT_TRUE(s->end_native_world_view());
+
+    const auto make_base = [](Uint8 r, Uint8 g, Uint8 b) {
+        SDL_Surface* const base =
+            SDL_CreateSurface(320, 200, SDL_PIXELFORMAT_XRGB8888);
+        if (base != nullptr)
+            SDL_FillSurfaceRect(base, nullptr, SDL_MapSurfaceRGB(base, r, g, b));
+        return base;
+    };
+    const int ui_px = 20;    // inside the UI inset (0..40 x 0..25)
+    const int ui_py = 12;
+    const int world_px = 220; // inside the World inset (200..240 x 120..145)
+    const int world_py = 132;
+
+    // UI capture: the UI inset composites, the World inset does not.
+    SDL_Surface* const ui_base = make_base(20, 180, 20);
+    ASSERT_NE(nullptr, ui_base);
+    const std::array<int, 3> ui_base_rgb = surface_rgb(ui_base, 100, 100);
+    SDL_Surface* const ui_capture =
+        E_Screen->compose_native_world_views_for_capture(ui_base,
+                                                         CanvasTarget::UI);
+    ASSERT_NE(nullptr, ui_capture);
+    EXPECT_EQ(inset_rgb, surface_rgb(ui_capture, ui_px, ui_py))
+        << "the UI-coordinate inset belongs in a UI capture";
+    EXPECT_EQ(ui_base_rgb, surface_rgb(ui_capture, world_px, world_py))
+        << "a World-coordinate inset must never paint into a UI capture";
+    SDL_DestroySurface(ui_capture);
+    SDL_DestroySurface(ui_base);
+
+    // World capture: the reverse.
+    SDL_Surface* const world_base = make_base(20, 40, 180);
+    ASSERT_NE(nullptr, world_base);
+    const std::array<int, 3> world_base_rgb = surface_rgb(world_base, 100, 100);
+    SDL_Surface* const world_capture =
+        E_Screen->compose_native_world_views_for_capture(world_base,
+                                                         CanvasTarget::World);
+    ASSERT_NE(nullptr, world_capture);
+    EXPECT_EQ(inset_rgb, surface_rgb(world_capture, world_px, world_py))
+        << "the World-coordinate inset belongs in a World capture";
+    EXPECT_EQ(world_base_rgb, surface_rgb(world_capture, ui_px, ui_py))
+        << "a UI-coordinate inset must never paint into a World capture";
+    SDL_DestroySurface(world_capture);
+    SDL_DestroySurface(world_base);
 
     E_Screen->discard_native_world_views_for_testing();
     E_Screen->set_active_canvas(CanvasTarget::UI);

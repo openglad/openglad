@@ -64,6 +64,7 @@ void ready_screen_for_game_start(
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
+Sint32 change_game_speed();
 
 
 struct KeyBindingGuard
@@ -4530,6 +4531,141 @@ static void install_network_client_shadow_for_link_tests(
         0u);
     ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
     game_screen.world().end = 0;
+}
+
+// The SPEED button (change_game_speed) leaves its timer_wait request in the
+// session for the next input sample. A frame that samples it but runs no sim
+// tick (a render-only frame: the pacer's or the browser wrapper's) must carry
+// the request in the latched input to the next frame that does tick; dropping
+// it with the tickless frame's input would lose the player's speed change.
+TEST(GameLoop, speed_request_sampled_on_a_tickless_frame_reaches_the_next_tick)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_speed_latch"));
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    const std::string saved_speed = cfg.get_setting("gameplay", "timer_wait");
+
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    GameLoopFrameState st;
+    const auto frame = [&](bool run_tick) {
+        deps.enable_tick = run_tick;
+        return game_frame_with_result(*game_screen, st, deps);
+    };
+
+    // Paired control: two tickless frames and a ticking one with no request
+    // leave the authoritative speed where it stands.
+    const int standing = server_screen->world().timer_wait;
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    ASSERT_EQ(GameFrameResult::Continue, frame(true));
+    EXPECT_EQ(standing, static_cast<int>(server_screen->world().timer_wait));
+
+    // A tickless frame latches an empty sample first; the button is pressed
+    // before the NEXT tickless frame, which samples the request into the
+    // already-latched input.
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    int requested = standing;
+    for (int presses = 0; presses < 8 && requested == standing; ++presses)
+    {
+        (void)change_game_speed();
+        requested = game_screen->world().timer_wait;
+    }
+    ASSERT_NE(standing, requested) << "the speed cycle must offer another speed";
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    EXPECT_EQ(standing, static_cast<int>(server_screen->world().timer_wait))
+        << "no tick has run since the press";
+    ASSERT_EQ(GameFrameResult::Continue, frame(true));
+    EXPECT_EQ(requested, static_cast<int>(server_screen->world().timer_wait))
+        << "the request latched on the tickless frame must reach the server";
+
+    cfg.apply_setting("gameplay", "timer_wait", saved_speed);
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
+// A networked client whose link is past the loss timeout presses Esc. The
+// pause menu's first pump finds the session over (the dead link ends the
+// world), so it answers SessionEnded before drawing a frame. The frame must
+// then end Done WITHOUT running a sim tick on the finished session.
+TEST(GameLoop, session_ending_as_the_pause_menu_opens_ends_the_frame_without_a_tick)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
+    auto transport = std::make_shared<ToggleConnectedTransport>();
+    install_network_client_shadow_for_link_tests(
+        *game_screen, gameplay_session, transport);
+
+    int escapes_to_deliver = 0;
+    int ticks = 0;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_frame_timing = false;
+    deps.enable_event_poll = true;
+    deps.handle_event = [](const SDL_Event&) {};
+    deps.poll_event = [&escapes_to_deliver](SDL_Event* event) {
+        if (escapes_to_deliver == 0)
+            return 0;
+        --escapes_to_deliver;
+        *event = SDL_Event{};
+        event->type = SDL_EVENT_KEY_DOWN;
+        event->key.key = SDLK_ESCAPE;
+        event->key.repeat = false;
+        return 1;
+    };
+    deps.after_act = [&ticks](screen&) { ++ticks; };
+    GameLoopFrameState st;
+
+    // Paired control: live link, no key -- the frame runs exactly one tick.
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(1, ticks);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+    EXPECT_FALSE(st.done);
+
+    // The link dies and stays dead past the loss timeout; then Esc.
+    transport->set_connected(false);
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    const_cast<og::sim::GameClient*>(display_client)
+        ->testing_set_transport_disconnect_elapsed_ms(
+            static_cast<float>(og::sim::CLIENT_CONNECTION_LOST_TIMEOUT_MS + 1u));
+    ASSERT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "nothing has pumped the shadow since the link died";
+    escapes_to_deliver = 1;
+    trace_clear();
+    EXPECT_EQ(GameFrameResult::Done,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, escapes_to_deliver) << "the Esc must have been polled";
+    EXPECT_TRUE(trace_contains("pause_menu", "open"));
+    EXPECT_EQ(1, static_cast<int>(game_screen->world().end))
+        << "the menu's pump must have ended the dead session";
+    EXPECT_EQ(1, ticks)
+        << "no sim tick may run on a session that ended under the menu";
+    EXPECT_TRUE(st.done);
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
 }
 
 // #278: a networked client's QUIT is a withdraw round trip through the
@@ -9291,6 +9427,157 @@ TEST(GameLoop, midgame_seat_gating_networked_and_count_limits)
     midgame_pump(session, 6, tick);
     EXPECT_EQ(0, static_cast<int>(game_screen->world().end))
         << "the display session must survive removing seat 0";
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+// Mid-game seat add when the joiner has nowhere to stand: no respawn anchor
+// is published for the team and every tile of the three rings around the
+// team's player-held walker is blocked. The add is refused cleanly -- the
+// stock soldier it spawned for the seat is taken back out of the world, the
+// seat count does not move -- instead of dropping the joiner on top of the
+// anchor or teleporting it (place_stock_seat_walker never draws the world
+// RNG). Paired control: the same add from the walker's real spot succeeds.
+TEST(GameLoop, midgame_add_player_refused_when_every_ring_tile_is_blocked)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+    const short lead_team = game_screen->viewob[0]->my_team;
+    ASSERT_EQ(0, static_cast<int>(
+                     server_world.respawn.anchor_count[lead_team]))
+        << "a classic level publishes no respawn anchors";
+
+    // Every unclaimed lead-team walker moves to a team no seat plays, so the
+    // add must SPAWN its stock joiner and place it by the ring probe.
+    short parking_team = -1;
+    for (short t = 0; t < 4 && parking_team < 0; ++t)
+    {
+        if (t != lead_team &&
+            midgame_find_living_on_team(server_screen, t) == nullptr)
+        {
+            parking_team = t;
+        }
+    }
+    ASSERT_NE(-1, static_cast<int>(parking_team));
+    for (const auto& uptr : server_world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living && entity->user() == -1 &&
+            static_cast<short>(entity->team_num()) == lead_team)
+        {
+            entity->set_team_num(static_cast<unsigned char>(parking_team));
+        }
+    }
+    walker* const anchor = midgame_find_walker_by_user(server_screen, 0);
+    ASSERT_NE(nullptr, anchor);
+    const std::uint32_t anchor_id = anchor->entity_id();
+    const short home_x = anchor->xpos();
+    const short home_y = anchor->ypos();
+    const int floor = anchor->floor();
+
+    // A spot on this level where all 24 ring tiles (radius 1..3, the eight
+    // directions) are wall or off the map.
+    static constexpr short kRing[8][2] = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+        {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+    };
+    const auto ring_blocked = [&](short cx, short cy) {
+        for (short radius = 1; radius <= 3; ++radius)
+        {
+            for (const auto& dir : kRing)
+            {
+                const short x = static_cast<short>(cx + dir[0] * radius * GRID_SIZE);
+                const short y = static_cast<short>(cy + dir[1] * radius * GRID_SIZE);
+                if (og::sim::respawn_spot_clear(server_world, anchor, x, y, floor))
+                    return false;
+            }
+        }
+        return true;
+    };
+    short pocket_x = -1;
+    short pocket_y = -1;
+    for (std::int32_t y = 0; y < server_world.pixmaxy && pocket_x < 0;
+         y += GRID_SIZE)
+    {
+        for (std::int32_t x = 0; x < server_world.pixmaxx; x += GRID_SIZE)
+        {
+            if (ring_blocked(static_cast<short>(x), static_cast<short>(y)))
+            {
+                pocket_x = static_cast<short>(x);
+                pocket_y = static_cast<short>(y);
+                break;
+            }
+        }
+    }
+    ASSERT_GE(pocket_x, 0) << "gladiator scen 1 has no fully walled spot";
+    ASSERT_FALSE(ring_blocked(home_x, home_y))
+        << "the control needs a clear ring tile at the walker's own spot";
+
+    // walker::setxy files the move in current_game's obmap, so the move runs
+    // against the authoritative world, where the ring probe reads it.
+    const auto move_anchor = [&](short x, short y) {
+        GameplayContext* const previous = current_game;
+        GameplayContext server_context;
+        server_context.world = &server_world;
+        current_game = &server_context;
+        anchor->setxy(x, y);
+        current_game = previous;
+    };
+
+    const std::size_t oblist_before = server_world.oblist.size();
+    move_anchor(pocket_x, pocket_y);
+    trace_clear();
+    EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session))
+        << "no clear tile within three rings: the add must be refused";
+    EXPECT_TRUE(trace_contains("seats", "add_player_failed"));
+    EXPECT_EQ(1u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(1, static_cast<int>(game_screen->numviews));
+    EXPECT_EQ(oblist_before, server_world.oblist.size())
+        << "the refused joiner's stock soldier must not stay in the world";
+    EXPECT_EQ(nullptr, midgame_find_walker_by_user(server_screen, 1));
+    ASSERT_EQ(anchor, server_world.find_by_id(anchor_id));
+    EXPECT_EQ(pocket_x, anchor->xpos());
+    EXPECT_EQ(pocket_y, anchor->ypos());
+
+    // Paired control: back on its own spot the same add succeeds.
+    move_anchor(home_x, home_y);
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    EXPECT_TRUE(trace_contains("seats", "source=spawned"));
+    EXPECT_EQ(2u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(oblist_before + 1u, server_world.oblist.size());
 
     reset_default_player_controls();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);

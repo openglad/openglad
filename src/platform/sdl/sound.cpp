@@ -221,8 +221,6 @@ void sdl_soundob::play_sound(short whichnum)
 	{
 		channel = channels_[next_steal_];
 		next_steal_ = (next_steal_ + 1) % NUM_SOUND_CHANNELS;
-		if (channel == nullptr)
-			return;
 		SDL_ClearAudioStream(channel);
 	}
 

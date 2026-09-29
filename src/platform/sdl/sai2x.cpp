@@ -796,8 +796,6 @@ SDL_Renderer* Screen::create_presenting_renderer(std::string& failure_reason)
 
 void Screen::log_render_driver_diagnostics()
 {
-	if (window == nullptr)
-		return;
 	// SDL only reports the winning driver's error. Name every render driver's
 	// own reason so a user who cannot start the game (issue #248) can hand
 	// back the diagnosis without setting SDL_LOGGING.
@@ -827,11 +825,8 @@ bool Screen::switch_boot_video_driver(const char* driver, int w, int h,
 	// force for the rest of the process: any later SDL video (re)init lands
 	// on the same driver as the window the player is looking at.
 	const auto restore_previous = [&previous]() {
-		if (previous.empty())
-			SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
-		else
-			SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, previous.c_str(),
-			                        SDL_HINT_OVERRIDE);
+		SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, previous.c_str(),
+		                        SDL_HINT_OVERRIDE);
 		(void)SDL_InitSubSystem(SDL_INIT_VIDEO);
 	};
 
@@ -1439,12 +1434,6 @@ void Screen::set_world_present_slices(std::span<const WorldPresentSlice> slices)
 
 bool Screen::world_smoothing_supported() const
 {
-	if (world_w_ <= 0 || world_h_ <= 0 ||
-	    world_w_ > std::numeric_limits<int>::max() / 2 ||
-	    world_h_ > std::numeric_limits<int>::max() / 2)
-	{
-		return false;
-	}
 	const int target_w = world_w_ * 2;
 	const int target_h = world_h_ * 2;
 	const int max_texture_dimension = renderer_max_texture_dimension();
@@ -1722,8 +1711,6 @@ NativeWorldViewSource Screen::begin_native_world_view(
 		const int coordinate_h = destination.canvas == CanvasTarget::UI
 			? kUiCanvasH : (destination.canvas == CanvasTarget::GameplayUI
 				? gameplay_ui_h() : world_h_);
-		if (coordinate_w <= 0 || coordinate_h <= 0)
-			continue;
 
 		og::CanvasViewport viewport{0, 0, coordinate_w, coordinate_h};
 		if (og::runtime::current_session != nullptr)
@@ -2024,8 +2011,6 @@ SDL_Surface* Screen::compose_native_world_views_for_capture(
 	                         i < native_world_view_planes_.size(); ++i)
 	{
 		const NativeWorldViewPlane& plane = native_world_view_planes_[i];
-		if (plane.surface == nullptr)
-			continue;
 		for (const NativeWorldViewDestination& destination : plane.destinations)
 		{
 			const bool matches = base_canvas == CanvasTarget::UI
