@@ -2264,8 +2264,7 @@ std::optional<std::string> detect_lan_ipv4_via_udp_route()
     sockaddr_in remote = {};
     remote.sin_family = AF_INET;
     remote.sin_port = htons(9);
-    if (inet_pton(AF_INET, "198.18.0.1", &remote.sin_addr) != 1)
-        return std::nullopt;
+    remote.sin_addr.s_addr = htonl(0xC6120001u); // 198.18.0.1
 
     const int connect_result = connect(
         descriptor,
