@@ -3932,16 +3932,7 @@ public:
             local_player_count_);
         local_team_ = local_seat_teams_.front();
         save->my_team = local_team_;
-        if (!prepare_pending_join_from_save())
-        {
-            spectator_mode_ = previous_spectator;
-            local_player_count_ = previous_player_count;
-            save->numplayers = previous_numplayers;
-            local_team_ = previous_local_team;
-            local_seat_teams_ = previous_seat_teams;
-            save->my_team = local_team_;
-            return false;
-        }
+        (void)prepare_pending_join_from_save();
 
         const bool accepted =
             og::ui::detail::wait_for_authoritative_lobby_outcome(
@@ -4076,8 +4067,7 @@ public:
             return true;
         }
 
-        if (!prepare_pending_join_from_save())
-            return true;
+        (void)prepare_pending_join_from_save();
 
         // Re-declare the private roster after the exact removal so fighters
         // carried by that seat move to a surviving stable seat. The exact
