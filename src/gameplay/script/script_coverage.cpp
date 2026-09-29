@@ -447,13 +447,10 @@ void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
     // map maintenance only: erasures on a map that stays empty in a process
     // that never enabled recording — no digesting, no allocation.
     //
-    // The slot must hold the Lua closure luaL_loadbuffer just produced; a C
-    // function (or anything else) has no prototype tree to bind.
-    if (lua_type(L, index) != LUA_TFUNCTION || lua_iscfunction(L, index))
-        return;
+    // The slot holds the Lua closure luaL_loadbuffer just produced (every
+    // caller binds only after LUA_OK): lua_topointer answers the LClosure
+    // itself, never null for a collectable value.
     const auto* cl = static_cast<const LClosure*>(lua_topointer(L, index));
-    if (cl == nullptr)
-        return;
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
     // Declared bytes bind; undeclared bytes scrub. The scrub is load-bearing
