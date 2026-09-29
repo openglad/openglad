@@ -32,6 +32,9 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);
@@ -1446,6 +1449,117 @@ TEST(RuntimeCoveragePaths,
             << "a withdraw event without its confirmation must not move "
                "the campaign cursor";
         EXPECT_EQ(0, static_cast<int>(s->world().end));
+    }
+
+    expect_ambient_prompt_flow_state(ambient_before);
+    EXPECT_EQ(campaign_before, get_mounted_campaign());
+    expect_physical_file_image(save0_path, save0_before);
+    expect_physical_file_image(staging_path, staging_before);
+}
+
+// A withdraw whose company save cannot be written is abandoned, not half
+// applied: the world keeps playing (end stays 0), both withdraw flags clear,
+// the in-memory save cursor goes back to the world's level, and the file on
+// disk is untouched. The write is made to fail the way a real read-only save
+// does: the file's write permission is removed for the duration of the
+// dispatch.
+TEST(RuntimeCoveragePaths, screen_abandons_a_withdraw_whose_save_cannot_be_written)
+{
+#ifndef _WIN32
+    ASSERT_NE(0u, static_cast<unsigned>(geteuid()))
+        << "run the tests as a non-root user (CI's ubuntu-latest is non-root)";
+#endif
+    const AmbientPromptFlowState ambient_before =
+        capture_ambient_prompt_flow_state();
+    const std::string campaign_before = get_mounted_campaign();
+    const std::filesystem::path save0_path =
+        prompt_flow_save_path("save0.gtl");
+    const std::filesystem::path staging_path =
+        prompt_flow_save_path("save0.tmp.gtl");
+    const PhysicalFileImage save0_before =
+        read_physical_file_image(save0_path);
+    const PhysicalFileImage staging_before =
+        read_physical_file_image(staging_path);
+
+    {
+        PromptFlowTestSession context;
+        ASSERT_TRUE(context.ready())
+            << "save0 snapshot: " << context.save0_error().message()
+            << "; staging snapshot: "
+            << context.staging_error().message();
+        screen* const s = context.game_screen();
+        ASSERT_NE(nullptr, s);
+
+        s->save_data.reset();
+        s->save_data.scen_num = 1;
+        ASSERT_EQ(SaveDataIoError::None,
+                  s->save_data.save_with_error("save0"));
+        const PhysicalFileImage valid_image =
+            read_physical_file_image(save0_path);
+        ASSERT_TRUE(valid_image.exists);
+
+        // Read-only for the dispatch; write permission comes back before the
+        // context restores the original file, even if an assertion fires.
+        struct ReadOnlyFile
+        {
+            std::filesystem::path path;
+            std::filesystem::perms saved;
+            explicit ReadOnlyFile(std::filesystem::path p)
+                : path(std::move(p)),
+                  saved(std::filesystem::status(path).permissions())
+            {
+                std::filesystem::permissions(
+                    path,
+                    std::filesystem::perms::owner_write |
+                        std::filesystem::perms::group_write |
+                        std::filesystem::perms::others_write,
+                    std::filesystem::perm_options::remove);
+            }
+            ~ReadOnlyFile()
+            {
+                std::error_code ignored;
+                std::filesystem::permissions(
+                    path, saved, std::filesystem::perm_options::replace,
+                    ignored);
+            }
+            ReadOnlyFile(const ReadOnlyFile&) = delete;
+            ReadOnlyFile& operator=(const ReadOnlyFile&) = delete;
+        } read_only(save0_path);
+
+        // The fixture must actually reach the typed write failure.
+        SaveData probe;
+        ASSERT_EQ(SaveDataIoError::None, probe.load_with_error("save0"));
+        ASSERT_EQ(SaveDataIoError::OpenWriteFailed,
+                  probe.save_with_error("save0"))
+            << "a read-only save file must refuse the write";
+
+        s->sync_world_from_save_data();
+        s->world().end = 0;
+        s->world().retry = false;
+        s->world().withdraw_requested = true;
+        s->world().withdraw_level = 4;
+        og::runtime::current_session->networked_session_ = false;
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);
+
+        og::sim::GameFlowEventBatch batch;
+        batch.events.push_back(og::sim::Event{
+            .kind = og::sim::EventKind::RequestExitConfirmation,
+            .a = 4,
+            .b = 1,
+            .text = {},
+        });
+
+        EXPECT_TRUE(s->dispatch_game_flow_events(batch));
+        EXPECT_EQ(0, static_cast<int>(s->world().end))
+            << "an unsaved withdraw must not end the level";
+        EXPECT_FALSE(s->world().withdraw_requested)
+            << "the abandoned withdraw clears its request";
+        EXPECT_EQ(-1, static_cast<int>(s->world().withdraw_level));
+        EXPECT_EQ(1, static_cast<int>(s->save_data.scen_num))
+            << "the save cursor goes back to the world's level, not the "
+               "withdraw destination";
+        expect_physical_file_image(save0_path, valid_image);
     }
 
     expect_ambient_prompt_flow_state(ambient_before);
