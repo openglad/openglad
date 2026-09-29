@@ -2891,9 +2891,15 @@ TEST(PickerNetworkClient, host_stage_failure_reports_honest_preview_health)
     EXPECT_EQ(Health::None, host_client->staged_preview_health());
     EXPECT_EQ(nullptr, host_client->staged_world());
     host_client->initialize_from_save();
+    // The stage now EXISTS but has not staged (only drive_stage, from
+    // poll_and_apply, stages): an Empty stage is still honest-empty, never
+    // Failed and never Staged.
+    EXPECT_EQ(Health::None, host_client->staged_preview_health())
+        << "an initialized host whose stage has not staged yet reports None";
 
     og::server::MatchStage* const host_stage = host_client->take_match_stage();
     ASSERT_NE(nullptr, host_stage);
+    EXPECT_EQ(og::server::StageStatus::Empty, host_stage->status());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
         return host_client->staged_preview_health() == Health::Staged;
