@@ -825,11 +825,8 @@ bool Screen::switch_boot_video_driver(const char* driver, int w, int h,
 	// force for the rest of the process: any later SDL video (re)init lands
 	// on the same driver as the window the player is looking at.
 	const auto restore_previous = [&previous]() {
-		if (previous.empty())
-			SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
-		else
-			SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, previous.c_str(),
-			                        SDL_HINT_OVERRIDE);
+		SDL_SetHintWithPriority(SDL_HINT_VIDEO_DRIVER, previous.c_str(),
+		                        SDL_HINT_OVERRIDE);
 		(void)SDL_InitSubSystem(SDL_INIT_VIDEO);
 	};
 
