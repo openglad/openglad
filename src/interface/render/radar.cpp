@@ -122,11 +122,9 @@ bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
                        });
 }
 
+// candidate is non-null: the sole caller (sanitize_radar_control) checks.
 bool control_pointer_is_live(LevelRuntimeData& level, const walker* candidate)
 {
-    if (candidate == nullptr)
-        return false;
-
     return contains_walker_ptr(level.world().oblist, candidate)
         || contains_walker_ptr(level.world().fxlist, candidate)
         || contains_walker_ptr(level.world().weaplist, candidate)
