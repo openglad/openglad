@@ -71,9 +71,6 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 
 float get_base_damage(walker* w)
 {
-    if (w == nullptr)
-        return 0.0f;
-
     return compute_base_damage(w->damage(), combat_rng());
 }
 
