@@ -496,13 +496,8 @@ EM_JS(void, publish_relay_room_snapshot_js,
 
 std::string picker_networking_campaign_tag()
 {
-    if (og::runtime::current_session != nullptr &&
-        og::runtime::current_session->myscreen_ != nullptr)
-    {
-        return og::runtime::current_session->myscreen_->save_data
-            .current_campaign;
-    }
-    return {};
+    return og::runtime::current_session->myscreen_->save_data
+        .current_campaign;
 }
 
 // The relay base URL the NETWORKING view keys on: the normalized default,
@@ -2140,13 +2135,14 @@ button* picker_networking_buttons()
 // Deterministic rewire (teams-menu pattern): nav never links to a hidden
 // row, and every visible button stays reachable from BACK. Session modes
 // (LINEUP §6) share one graph on both builds — the LAN fields, HOST and
-// JOIN are hidden there and never linked.
-void picker_wire_networking_menu_nav(button* buttons, int count,
+// JOIN are hidden there and never linked. `buttons` holds at least
+// kNetworkingMenuButtonCount rows: the one boundary guard is the caller's
+// (picker_apply_networking_menu_mode), and the layout test passes the full
+// table.
+void picker_wire_networking_menu_nav(button* buttons, int /*count*/,
                                      int visible_rooms,
                                      bool networked_session)
 {
-    if (buttons == nullptr || count < kNetworkingMenuButtonCount)
-        return;
     visible_rooms = std::clamp(visible_rooms, 0, kNetworkingMenuRoomSlots);
 
     for (int index = 0; index < kNetworkingMenuButtonCount; ++index)
@@ -2449,9 +2445,6 @@ void quit(Sint32 arg1)
 // is active, red when it is off, label centered on the face.
 static void draw_effect_button_state(button& b, bool active)
 {
-    if(b.hidden || b.no_draw)
-        return;
-
     if(active)
         og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
     else
@@ -2475,8 +2468,6 @@ void draw_cycle_effect_button(button& b, const std::string& category, const std:
 
 void draw_sprite_sheet_button(button& b)
 {
-    if (b.hidden || b.no_draw)
-        return;
     if (cfg.get_setting("graphics", "sprite_sheet").empty())
         return;
     og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
