@@ -4509,3 +4509,158 @@ TEST(CursesPickerClient, host_game_on_a_busy_port_reports_the_direct_failure)
     EXPECT_NE(dump.find("Direct: "), std::string::npos) << dump;
     EXPECT_TRUE(f.t().input_exhausted());
 }
+
+// #155 cloud flows, the explicit NO: both overwrite confirms are NO-first,
+// and answering No is the one outcome the shared flow reports only through
+// its return value (every other outcome already put up its own notice). The
+// curses client must still SAY it: "Upload cancelled." after a declined
+// cloud overwrite, "Download cancelled." after a declined local overwrite.
+// Control: nothing moved — one POST only (no retry at the conflict
+// revision), and the local company still holds its own name.
+TEST(CursesPickerClient, cloud_declined_overwrites_still_report_the_cancel)
+{
+    cfg.data.erase("cloud");
+    cfg.apply_setting("cloud", "key", "feedfacefeedface");
+    const auto* upload = og::ui::find_picker_menu_item(
+        PickerMenuId::CloudSave, PickerMenuCommand::CloudUpload);
+    const auto* download = og::ui::find_picker_menu_item(
+        PickerMenuId::CloudSave, PickerMenuCommand::CloudDownload);
+    ASSERT_NE(upload, nullptr);
+    ASSERT_NE(download, nullptr);
+
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+
+    int posts = 0;
+    std::string get_body;
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_post = [&posts](const std::string&, const std::string&) {
+        ++posts;
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 409;
+        result.body = R"({"revision":7,"uploaded_at":1754200000000,)"
+                      R"("slot":"elsewhere","save_name":"OTHER DEVICE",)"
+                      R"("scen_num":4,"last_played":9400})";
+        return result;
+    };
+    faked.cloud_http_get = [&get_body](const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    {
+        PickerFixture f;
+        ASSERT_TRUE(seed_curses_company(f.config.save_name, "LOCAL BAND", 9200));
+        f.t().push_special(KeyCode::Enter); // the confirm opens on No
+        dismiss(f.t());                     // the cancel notice
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *upload);
+        EXPECT_NE(f.t().dump().find("Upload cancelled."), std::string::npos)
+            << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+        EXPECT_EQ(1, posts) << "a declined overwrite never re-posts";
+    }
+
+    {
+        const std::string slot =
+            unique_curses_company_slot("curses-cloud-decline");
+        ASSERT_TRUE(seed_curses_company(slot, "LOCAL BAND", 9200));
+        const std::vector<std::uint8_t> remote_raw = {'x'};
+        get_body = std::format(
+            R"({{"revision":5,"uploaded_at":1754200000000,"slot":"{}",)"
+            R"("save_name":"CLOUD BAND","scen_num":1,"last_played":9300,)"
+            R"("data_hex":"{}"}})",
+            slot, og::ui::cloud::hex_encode(remote_raw));
+
+        PickerFixture f;
+        f.t().push_special(KeyCode::Enter); // the confirm opens on No
+        dismiss(f.t());                     // the cancel notice
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *download);
+        EXPECT_NE(f.t().dump().find("Download cancelled."), std::string::npos)
+            << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+        const std::optional<og::data::CompanyInfo> local =
+            og::data::read_company_header(slot);
+        ASSERT_TRUE(local.has_value());
+        EXPECT_EQ("LOCAL BAND", local->display_name)
+            << "a declined download leaves the local company alone";
+    }
+    cfg.data.erase("cloud");
+}
+
+// §2.3 Company List with nothing on disk says so in words and hands control
+// back (false: the state machine stays on the main menu) instead of drawing
+// an empty chooser. The harness reaps every company between tests
+// ([SAVE-R9]) and this suite's baseline is empty, so the list starts bare.
+// Control: with one company on disk the same call draws the list instead.
+TEST(CursesPickerClient, company_list_with_no_companies_says_so)
+{
+    ASSERT_TRUE(og::data::list_companies().empty())
+        << "the curses suite's per-PID save dir starts every test bare";
+    {
+        PickerFixture f;
+        dismiss(f.t());
+        EXPECT_FALSE(f.client.show_company_list());
+        EXPECT_NE(f.t().dump().find("No companies yet."), std::string::npos)
+            << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+
+    ASSERT_TRUE(seed_curses_company("wpleftone", "ONLY BAND", 9100));
+    PickerFixture f;
+    f.t().push_special(KeyCode::Escape); // back out of the list
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_EQ(f.t().dump().find("No companies yet."), std::string::npos);
+    EXPECT_NE(f.t().dump().find("ONLY BAND"), std::string::npos) << f.t().dump();
+}
+
+// [SAVE-R2] Opening a company that fails to load (its campaign is not
+// installed) must leave this client's slot authority where it was: the
+// failed open repointed config.save_name at the broken slot to try it, and
+// has to put it back — or the next autosave would write the broken slot.
+// Control: opening an intact company repoints the slot and proceeds.
+TEST(CursesPickerClient, failed_company_open_restores_the_previous_slot)
+{
+    MountRestore mount_restore;
+    {
+        SaveData broken;
+        broken.reset();
+        broken.save_name = "LOST BAND";
+        broken.current_campaign = "wpleftnosuchcampaign";
+        broken.last_played_unix_s = 9500;
+        ASSERT_EQ(SaveDataIoError::None, broken.save_with_error("wpleftlost"));
+    }
+    ASSERT_EQ(1u, og::data::list_companies().size());
+
+    {
+        PickerFixture f;
+        const std::string slot_before = f.config.save_name;
+        pick(f.t(), 0);                      // chrome: Open Company...
+        f.t().push_special(KeyCode::Enter);  //   accept the pre-filled "1"
+        dismiss(f.t());                      //   the "Load failed" notice
+        f.t().push_special(KeyCode::Escape); // back out of the list
+        EXPECT_FALSE(f.client.show_company_list());
+        EXPECT_TRUE(f.t().input_exhausted());
+        EXPECT_EQ(slot_before, f.config.save_name)
+            << "a failed open must restore the previous slot";
+        EXPECT_EQ(slot_before, og::data::active_company_slot())
+            << "and re-assert it as the active company";
+    }
+
+    ASSERT_TRUE(seed_curses_company("wpleftgood", "GOOD BAND", 9600));
+    const int good_row = company_row_number("wpleftgood");
+    ASSERT_GT(good_row, 0);
+    PickerFixture f;
+    pick(f.t(), 0);                          // chrome: Open Company...
+    f.t().push_special(KeyCode::Backspace);  //   clear the pre-filled "1"
+    for (const char ch : std::to_string(good_row))
+        f.t().push_char(static_cast<char32_t>(ch));
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());                          // the "Loaded" screen
+    EXPECT_TRUE(f.client.show_company_list());
+    EXPECT_EQ("wpleftgood", f.config.save_name);
+}
