@@ -1770,6 +1770,46 @@ struct ScriptedSetupIo {
 
 }  // namespace
 
+// Rule: choosing the wizard's BACK row leaves the terminal setup wizard at
+// once -- no further prompt is read and nothing is autosaved.
+TEST_F(MatchSetupSessionTest, terminal_driver_back_row_leaves_immediately)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 300;
+    save_.numplayers = 1;
+    put(save_, 0, 0, true);
+    save_.team_size = 1;
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save_,
+    });
+
+    ScriptedSetupIo backing;
+    backing.save = &save_;
+    backing.stage = &stage;
+    backing.answers = {"@Back", "1"};
+    og::ui::run_terminal_match_setup(save_, backing.io());
+    EXPECT_EQ(1u, backing.prompts.size())
+        << "BACK is the last prompt the wizard shows";
+    EXPECT_EQ(1u, backing.cursor)
+        << "the answer after BACK must never be read";
+    EXPECT_EQ(0, backing.autosaves) << "leaving by BACK saves nothing";
+    EXPECT_TRUE(backing.notices.empty());
+
+    // Paired control: a navigation row keeps the wizard prompting, so the
+    // answer after it IS read (the wizard then leaves on "0").
+    ScriptedSetupIo stepping;
+    stepping.save = &save_;
+    stepping.stage = &stage;
+    stepping.answers = {"@Next: TEAMS", "0"};
+    og::ui::run_terminal_match_setup(save_, stepping.io());
+    EXPECT_EQ(2u, stepping.prompts.size())
+        << "Next: TEAMS moves on and prompts again";
+    EXPECT_EQ(2u, stepping.cursor);
+}
+
 // 19. Every dispatch arm of the loop, in one walk.
 TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
 {
