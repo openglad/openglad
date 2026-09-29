@@ -675,10 +675,9 @@ void generate_glow_kernel()
 }
 
 // Fire-family (order, family) pairs — families are per-order namespaces.
+// Callers skip dead walkers (view.cpp's fire-glow entity loop).
 bool glows(const walker& w)
 {
-	if (w.dead())
-		return false;
 	const int fam = w.family();
 	switch (w.query_order())
 	{
