@@ -9,6 +9,8 @@
 
 #include <openglad/core/pixdefs.h>
 #include <openglad/interface/render/video.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/og_file.h>
 
 #include <algorithm>
 #include <array>
@@ -338,3 +340,76 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_redraw_negative_scroll_fills_the_margin
     vs->control = saved_control;
 }
 
+
+namespace
+{
+// Read-only view of the product's per-seat table (filled by options()).
+struct OptionsSeatTable : options
+{
+    const signed char* seat(int i) const { return prefs[i]; }
+};
+
+// Owns the legacy keyprefs.dat for one test: the harness does not reap it,
+// and every later GameSession/viewscreen ctor would read it.
+struct KeyprefsFileGuard
+{
+    static constexpr const char* kName = "keyprefs.dat";
+    ~KeyprefsFileGuard()
+    {
+        EXPECT_TRUE(remove_user_file(kName))
+            << "the test's keyprefs.dat must be removed again";
+        EXPECT_FALSE(user_file_exists(kName));
+    }
+};
+} // namespace
+
+// Legacy keyprefs.dat: four seat blocks of (16 ints of retired key codes,
+// skipped) + 10 HUD pref bytes. options() seeds each seat's prefs from its
+// block, and options::load copies a view's seat row into the view.
+TEST(ViewInputPrefsAndRedraw, legacy_keyprefs_file_seeds_each_seats_hud_prefs)
+{
+    ASSERT_FALSE(user_file_exists(KeyprefsFileGuard::kName))
+        << "precondition: no keyprefs.dat in the test user dir";
+
+    // Paired control first: without the file every seat keeps the defaults.
+    {
+        const OptionsSeatTable defaults;
+        for (int i = 0; i < 4; ++i)
+        {
+            EXPECT_EQ(PREF_RADAR_ON, defaults.seat(i)[PREF_RADAR]) << i;
+            EXPECT_EQ(PREF_VIEW_FULL, defaults.seat(i)[PREF_VIEW]) << i;
+        }
+    }
+
+    std::vector<unsigned char> bytes;
+    for (int i = 0; i < 4; ++i)
+    {
+        bytes.insert(bytes.end(), 16 * sizeof(int), 0xEE); // retired keys
+        for (int k = 0; k < 10; ++k)
+            bytes.push_back(static_cast<unsigned char>(10 * i + k + 1));
+    }
+    KeyprefsFileGuard file_guard;
+    {
+        og::io::OgFilePtr out = og::io::og_open_write(KeyprefsFileGuard::kName);
+        ASSERT_NE(nullptr, out);
+        ASSERT_TRUE(og::io::og_write_exact(*out, bytes.data(), 1, bytes.size()));
+    }
+    ASSERT_TRUE(user_file_exists(KeyprefsFileGuard::kName));
+
+    OptionsSeatTable seeded;
+    for (int i = 0; i < 4; ++i)
+        for (int k = 0; k < 10; ++k)
+            EXPECT_EQ(10 * i + k + 1, seeded.seat(i)[k])
+                << "seat " << i << " pref " << k;
+
+    // The seat-0 view receives exactly its row.
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    ASSERT_EQ(0, vs->mynum);
+    std::array<signed char, 10> saved{};
+    std::copy_n(vs->prefs, 10, saved.begin());
+    ASSERT_EQ(1, seeded.load(vs));
+    for (int k = 0; k < 10; ++k)
+        EXPECT_EQ(k + 1, vs->prefs[k]) << "view pref " << k;
+    std::copy_n(saved.begin(), 10, vs->prefs);
+}
