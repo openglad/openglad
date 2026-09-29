@@ -2208,11 +2208,6 @@ Sint32 create_train_menu(Sint32 arg1)
     }
     pks().train_session = &train_session;
     sync_current_guy_from_train();
-    if (pks().train_session->empty()) {
-        pks().train_session = nullptr;
-        show_need_team_to_train_popup();
-        return MENU_OK;
-    }
 
     TrainEngineState state;
     state.start_time = query_timer();
