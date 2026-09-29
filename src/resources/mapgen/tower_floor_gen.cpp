@@ -598,19 +598,51 @@ void carve_warren(GameWorld& w, const BuildPlan& plan, Layout& lay,
 // shrinking by an inset, AIR everywhere beyond it, so every walk-off drops
 // exactly one story onto the platform below. Band 4 punches an AIR ring
 // (shaft) inside the platform edge with two solid bridges.
+// Shrink per story, capped so the TOP platform keeps >= 16 tiles of
+// span: its core must still seat the exit pad, both stair pads of the
+// last boundary, the boss squad and their mutual clearances.
+constexpr int spire_inset_step(int tw, int th, int stories)
+{
+    int inset_step = std::min(tw, th) / (2 * std::max(1, stories));
+    if (stories > 1)
+        inset_step = std::min(inset_step,
+                              (std::min(tw, th) - 16) / (2 * (stories - 1)));
+    return std::max(3, inset_step);
+}
+
+// Every band that can roll T4 keeps a platform of at least 7x7 tiles on
+// every story it can have (the Bailey's boss floor grows to 2 stories; the
+// attempt-3 fallback never carves a spire). The spire carve relies on it.
+constexpr bool spire_platforms_fit_every_band()
+{
+    for (std::size_t b = 0; b < kBands.size(); ++b)
+    {
+        const BandSpec& band = kBands[b];
+        if (band.tmpl_weights[T4_SPIRE] == 0)
+            continue;
+        const int max_stories =
+            (b == 0) ? std::max(2, band.stories_max) : band.stories_max;
+        for (int stories = band.stories_min; stories <= max_stories; ++stories)
+        {
+            const int step = spire_inset_step(band.tw, band.th, stories);
+            for (int f = 1; f < stories; ++f)
+            {
+                const int in = step * f;
+                if ((band.tw - 1 - in) - in < 7 || (band.th - 1 - in) - in < 7)
+                    return false;
+            }
+        }
+    }
+    return true;
+}
+static_assert(spire_platforms_fit_every_band(),
+              "a spire story's platform shrank below 7x7 tiles");
+
 void carve_spire(GameWorld& w, const BuildPlan& plan, Layout& lay,
                  SeedStream& s, bool air_rings)
 {
-    // Shrink per story, capped so the TOP platform keeps >= 16 tiles of
-    // span: its core must still seat the exit pad, both stair pads of the
-    // last boundary, the boss squad and their mutual clearances.
-    int inset_step =
-        std::min(plan.tw, plan.th) / (2 * std::max(1, plan.stories));
-    if (plan.stories > 1)
-        inset_step = std::min(
-            inset_step,
-            (std::min(plan.tw, plan.th) - 16) / (2 * (plan.stories - 1)));
-    inset_step = std::max(3, inset_step);
+    const int inset_step =
+        spire_inset_step(plan.tw, plan.th, plan.stories);
     border_walls(w, 0);
     quadrant_rooms(lay, 0, plan.tw, plan.th);
     for (int f = 1; f < plan.stories; ++f)
@@ -619,14 +651,6 @@ void carve_spire(GameWorld& w, const BuildPlan& plan, Layout& lay,
         paint_rect(g, 0, 0, plan.tw - 1, plan.th - 1, PIX_AIR);
         const int in = inset_step * f;
         const Rect plat = {in, in, plan.tw - 1 - in, plan.th - 1 - in};
-        if (plat.x1 - plat.x0 < 7 || plat.y1 - plat.y0 < 7)
-        {
-            // Degenerate platform (tiny grid): keep the story solid instead.
-            paint_rect(g, 1, 1, plan.tw - 2, plan.th - 2,
-                       plan.band->base_tile);
-            lay.rooms.push_back({f, {2, 2, plan.tw - 3, plan.th - 3}});
-            continue;
-        }
         paint_rect(g, plat.x0, plat.y0, plat.x1, plat.y1,
                    plan.band->base_tile);
         if (air_rings)
