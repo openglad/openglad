@@ -1162,4 +1162,53 @@ TEST(MapgenSpawnExits, z_stair_edge_joins_the_floors)
         << join_errors(without_stair);
 }
 
+// The spawn-exit audit treats another generator's BODY as solid: a
+// generator walled in on three sides whose only open side is filled by a
+// neighbouring generator has no usable exit and is reported. Without the
+// neighbour (the paired control) the same opening is a working exit and the
+// map is clean.
+TEST(MapgenSpawnExits, neighbouring_generator_body_blocks_the_only_exit)
+{
+    for (const bool neighbour : {false, true})
+    {
+        GameWorld w(39u);
+        init_world(w, 1, 24, 20);
+        wire_entity_services(w);
+        place_start(w, 0, 2, 2);
+        ASSERT_NE(nullptr, place_generator(w, FAMILY_TENT, 3, 0, 6, 6, 2));
+        // The sealed-alcove ring, with its east side (column 8, rows 6..7)
+        // left open.
+        wall_rect(w, 5, 5, 8, 5);
+        wall_rect(w, 5, 8, 8, 8);
+        wall_rect(w, 5, 5, 5, 8);
+        paint(w.grid, 8, 5, PIX_H_WALL1);
+        paint(w.grid, 8, 8, PIX_H_WALL1);
+        if (neighbour)
+        {
+            ASSERT_NE(nullptr,
+                      place_generator(w, FAMILY_TENT, 3, 0, 8, 6, 2));
+        }
+
+        GameWorld* const ambient_world = current_game->world;
+        const auto errors = audit_generator_spawn_exits(w);
+        current_game->world = ambient_world;
+
+        std::vector<std::string> sealed;
+        for (const std::string& e : errors)
+            if (e.find("at tile (6, 6)") != std::string::npos)
+                sealed.push_back(e);
+        if (neighbour)
+        {
+            ASSERT_EQ(1u, sealed.size()) << join_errors(errors);
+            EXPECT_NE(std::string::npos,
+                      sealed.front().find("no usable spawn exit"))
+                << join_errors(errors);
+        }
+        else
+        {
+            EXPECT_TRUE(errors.empty()) << join_errors(errors);
+        }
+    }
+}
+
 } // namespace
