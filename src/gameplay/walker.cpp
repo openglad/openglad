@@ -1775,27 +1775,13 @@ walker::act_random()
 	}
 
 	// Otherwise, try to walk toward foe
-	newx = 0;
-	newy = 0;
+	newx = xdist;    // total horizontal distance..
+	if (newx)                      // If it's not 0, then get
+		newx = (newx > 0) ? 1 : -1;       // the normal of it..
 
-	if (foe())
-	{
-			newx = xdist;    // total horizontal distance..
-			if (newx)                      // If it's not 0, then get
-				newx = (newx > 0) ? 1 : -1;       // the normal of it..
-
-			newy = ydist;
-			if (newy)
-				newy = (newy > 0) ? 1 : -1;
-	}  // end of if we had a foe ..
-		else
-		{
-			while ( !newx && !newy)
-			{
-				newx = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // Walk in some random direction
-				newy = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // other than 0,0 :)
-			}
-		}
+	newy = ydist;
+	if (newy)
+		newy = (newy > 0) ? 1 : -1;
 
 	// If blocked
 	set_collide_ob(nullptr);
