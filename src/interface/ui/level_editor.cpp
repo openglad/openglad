@@ -3861,8 +3861,6 @@ Sint32 level_editor()
 			eds().rowsdown--;
 			if (eds().rowsdown < 0)
 				eds().rowsdown += eds().maxrows;
-			if (eds().rowsdown <0 || eds().rowsdown >= eds().maxrows) // bad case
-				eds().rowsdown = 0;
             
             eds().redraw = 1;
             
