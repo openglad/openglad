@@ -758,9 +758,10 @@ bool write_raw_report(const std::string& path)
     // complete dump, never a prefix.
     const std::filesystem::path tmp_path = temp_sibling(dump_path, &hits);
     {
+        // An open failure needs no arm of its own: a stream that failed to
+        // open stays failed, every insertion below is a no-op, and the
+        // post-flush check reports it.
         std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
-        if (!out)
-            return false;
         // Version 5: L and F records carry the digest of the generation
         // whose compiled prototype recorded the hit ("-" when the executing
         // code was compiled from undeclared bytes), so a hit belongs to
