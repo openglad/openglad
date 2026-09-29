@@ -323,12 +323,6 @@ GameFrameResult run_game_tick(screen& s,
     if (s.cyclemode)
         s.do_cycle(st.currentcycle++, st.cycletime);
 
-    if (st.done)
-    {
-        og::runtime::finish_replay_recording();
-        return GameFrameResult::Done;
-    }
-
     return GameFrameResult::Continue;
 }
 } // namespace
