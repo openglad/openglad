@@ -2444,8 +2444,6 @@ std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
 bool generator_customize_spawn(int generator_family, walker* generator,
                                walker* spawn)
 {
-    if (generator == nullptr || spawn == nullptr)
-        return false;
     return try_script_hook(Order::Generator, generator_family,
                            FamilyHook::GeneratorCustomizeSpawn, false,
                            generator, spawn)
