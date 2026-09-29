@@ -2736,8 +2736,6 @@ const guy* HireSession::current_recruit() const
 
 std::uint32_t HireSession::current_cost() const
 {
-    if (!recruit_)
-        return 0;
     return calculate_hire_cost(*recruit_);
 }
 
