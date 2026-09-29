@@ -603,9 +603,9 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config,
     }
 
     for (;;) {
+        // HireSession always holds a recruit: the ctor and both family
+        // steps make one, and hire() refills it before it returns.
         const guy* r = session.current_recruit();
-        if (!r)
-            break;
 
         const std::string title = std::format("Hire: {} ({}/{})",
             og::ui::family_display_name(r->family),
