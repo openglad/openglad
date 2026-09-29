@@ -7679,12 +7679,10 @@ int match_setup_visible_rows()
 // The windowed row a display slot shows this frame, or null past the end
 // AND on the pager slot (whose face is page().more — a caller that treated
 // it as an ordinary row would dispatch a row the campaign never wrote).
+// The one caller walks [0, match_setup_visible_rows()) under a live state.
 const SetupRow* match_setup_window_row(int slot)
 {
-    const MatchSetupScreenState* const st = g_match_setup_state;
-    if (st == nullptr || slot < 0 || slot >= match_setup_visible_rows())
-        return nullptr;
-    return st->session.window_row(slot);
+    return g_match_setup_state->session.window_row(slot);
 }
 
 // The face a display slot draws: its windowed row, or the pager row.
