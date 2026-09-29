@@ -291,20 +291,17 @@ og::ui::PauseMenuResult run_gameplay_pause_menu(
 GameFrameResult run_game_tick(screen& s,
                               GameLoopFrameState& st,
                               const GameLoopDeps& deps,
-                              const InputState& input)
+                              const InputState& input,
+                              og::runtime::GameSession& gameplay_session)
 {
     og::runtime::record_replay_input(s, input);
-    og::runtime::GameSession* const gameplay_session =
-        require_local_transport_session();
-    if (gameplay_session == nullptr)
-        return finish_done(st);
 
     // The per-frame order is:
     // 1-2. sample input in game_frame_with_result(), then enqueue it here;
     // 3-14. local_transport_shadow_finish_tick() runs the authoritative
     // server step and then drains the client mirror before render.
     og::runtime::local_transport_shadow_send_input(
-        *gameplay_session,
+        gameplay_session,
         input,
         s.world().tick_count_ + 1);
 
@@ -314,7 +311,7 @@ GameFrameResult run_game_tick(screen& s,
     if (s.world().end)
         return finish_done(st);
 
-    og::runtime::local_transport_shadow_finish_tick(*gameplay_session);
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
     s.framecount++;
 #ifdef TESTING
     picker_testing_mark_frame_advance();
@@ -544,7 +541,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     for (std::uint32_t tick = 0; tick < ticks_to_run; ++tick)
     {
         const GameFrameResult tick_result =
-            run_game_tick(s, st, deps, st.pending_input);
+            run_game_tick(s, st, deps, st.pending_input, *gameplay_session);
         if (tick_result != GameFrameResult::Continue)
         {
             clear_pending_input(st);
