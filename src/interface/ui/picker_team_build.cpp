@@ -321,14 +321,13 @@ void ensure_highlighted_button_visible(const button* buttons,
 // to joiners as a read-only label. LINEUP (docs/lineup-design.md §2) is
 // always visible, like its row-mates; the parked spare (ordinal 7, the
 // retired TEAMS cell) is never linked. Every link is written on every call
-// so no variant inherits a stale one.
+// so no variant inherits a stale one. `buttons` holds at least
+// kScenarioMenuButtonCount rows: the caller
+// (sync_scenario_menu_host_control_visibility) owns the boundary guard.
 void picker_wire_scenario_menu_nav(button* buttons,
-                                   int count,
+                                   int /*count*/,
                                    bool host_controls_visible)
 {
-    if (buttons == nullptr || count < kScenarioMenuButtonCount)
-        return;
-
     const bool host = host_controls_visible;
 
     // Host column: SET CAMPAIGN over SET LEVEL over VIEW LEVEL.
