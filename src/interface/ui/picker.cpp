@@ -381,8 +381,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         default:
             return false;
         }
-        if (!menu_item)
-            return false;
         pks().selected_menu_item = menu_item;
         retvalue = MENU_EXIT;
         return true;
