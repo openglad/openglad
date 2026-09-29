@@ -558,8 +558,6 @@ std::size_t compute_local_player_count(const screen& gameplay_screen)
 void prepare_server_session_for_gameplay(og::runtime::GameSession& server_session)
 {
     screen* const server_screen = server_session.myscreen_;
-    if (server_screen == nullptr)
-        return;
 
     server_screen->world().tick_count_ = 0;
     server_screen->world().reset_level_progress();
@@ -1925,8 +1923,6 @@ bool local_transport_shadow_abort_level(GameSession& session)
         // world.end=1 propagates to every display via the broadcast snapshot, so
         // all peers return to the team-build menu.
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr)
-            return true;
 
         auto server_scope = runtime->server_session->activate();
         GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
@@ -1981,8 +1977,6 @@ bool local_transport_shadow_restart_level(GameSession& session)
     }
 
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return false;
 
     auto server_scope = runtime->server_session->activate();
     GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
@@ -2156,8 +2150,6 @@ bool local_transport_shadow_remove_local_player(GameSession& session,
     const auto runtime = session.local_transport_runtime_;
     screen& gameplay_screen = *session.myscreen_;
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return false;
 
     const std::size_t old_count = compute_local_player_count(gameplay_screen);
     const std::size_t removed = static_cast<std::size_t>(player_index);
@@ -2385,8 +2377,6 @@ void reset_local_transport_shadow(GameSession& session,
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr)
-            return;
         // A GTL no longer owns the local player count. This fresh
         // authoritative screen must inherit the live launch configuration
         // before the install uses that runtime projection to build views.
@@ -2502,8 +2492,6 @@ void reset_local_transport_shadow(GameSession& session,
     }
 
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return;
 
     runtime->server = std::make_unique<og::sim::GameServer>(
         server_screen->world(),
@@ -2736,8 +2724,6 @@ void reset_network_host_transport_shadow(
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr)
-            return;
         // A GTL no longer owns the local player count. This fresh
         // authoritative screen must inherit the live launch configuration
         // before the install uses that runtime projection to build views.
@@ -2816,8 +2802,6 @@ void reset_network_host_transport_shadow(
     }
 
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return;
 
     // §4.4 control-policy install: derive owner-locked from the game-start
     // config (the display save carries cross_control + the deploy-filtered
