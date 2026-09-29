@@ -62,6 +62,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <ixwebsocket/IXGetFreePort.h>
+#include <openglad/platform/net_transport_websocket_server.h>
+
 #include "curses_mount_restore.h"
 
 using namespace og::curses;
@@ -4287,3 +4290,222 @@ TEST(CursesPickerClient, view_scenario_refuses_an_unmounted_campaign)
     }
 }
 
+
+// --- cov97 WP-TERM: footer cuts, prompt scroll, Back rows, refusals -------
+
+// show_text never draws over its footer: when a WRAPPED line would cross
+// the footer row, the continuation is cut (the whole-line break above it
+// only fires between source lines). At 6x40 the third help line wraps into
+// two pieces and only the first fits above the footer. Control: that first
+// piece lands on the last body row.
+TEST(CursesPickerClient, show_text_cuts_a_wrapped_line_at_the_footer)
+{
+    PickerFixture f({}, /*rows=*/6, /*cols=*/40);
+    f.t().push_special(KeyCode::Enter);
+    f.client.show_help();
+
+    EXPECT_EQ(0u, f.t().text_row(4).find("Begin New Game"))
+        << "the wrapped line's head fills the last body row:\n"
+        << f.t().dump();
+    EXPECT_EQ("[ press any key ]" + std::string(40 - 17, ' '),
+              f.t().text_row(5))
+        << "the continuation must not be drawn under the footer:\n"
+        << f.t().dump();
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The camp prompt's context block scrolls with the Down arrow: one press
+// moves the window one line, and the overflow marker says where it is now.
+TEST(CursesPickerClient, camp_prompt_down_arrow_scrolls_one_line)
+{
+    PickerFixture f({}, 24, 80);
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local docket = {}
+    for i = 1, 14 do
+      docket[i] = { id = "job" .. i, label = "JOB " .. i, kind = "action" }
+    end
+    return {
+      widgets = {
+        { kind = "text", weight = 2, lines = {
+            "The company waits at the fire.",
+            "The road east is open.",
+            "The bearer keeps the coin.",
+          } },
+        { kind = "actions", weight = 2, entries = docket },
+        { kind = "roster",
+          assign = { key = "muster", labels = { "WAR", "BURDEN" } } },
+      },
+    }
+  end,
+}))LUA");
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Down);
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("-- 2-"), std::string::npos)
+        << "one Down press starts the window at line 2:\n" << dump;
+    EXPECT_EQ(dump.find("-- 1-"), std::string::npos)
+        << "the window must have moved off line 1:\n" << dump;
+}
+
+// A digit jump past the last selectable row leaves the highlight where it
+// was: '9' on the 8-row Main menu selects nothing, and the Enter after it
+// confirms the row the cursor started on. Control: '2' does jump.
+TEST(CursesPickerClient, digit_past_the_last_row_keeps_the_cursor)
+{
+    PickerFixture f;
+    const auto& def = og::ui::picker_menu_definition(PickerMenuId::Main);
+    ASSERT_EQ(8u, def.items.size()) << "'9' must address no row";
+
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);
+    const auto* control = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(control, nullptr);
+    EXPECT_EQ(PickerMenuCommand::ContinueGame, control->command);
+
+    f.t().push_char(U'9');
+    f.t().push_special(KeyCode::Enter);
+    const auto* item = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(PickerMenuCommand::BeginNewGame, item->command)
+        << "an out-of-range digit must not move the highlight";
+}
+
+// The roster's 'd' key obeys the camp's deploy lock exactly like the Deploy
+// row: the lock's reason is shown and the benched hero stays benched.
+TEST(CursesPickerClient, roster_d_key_obeys_the_camps_deploy_lock)
+{
+    PickerFixture f;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      locks = { { unset = true, reason = "Swear first." } } } } }
+  end,
+}))LUA");
+    for (std::unique_ptr<guy>& member : f.save().team_list)
+        if (member != nullptr)
+            member->deployed = false;
+    const auto* roster = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(roster, nullptr);
+
+    f.t().push_char(U'd');               // deploy row 1 from the roster
+    dismiss(f.t());                      // the refusal screen
+    f.t().push_special(KeyCode::Escape); // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *roster);
+
+    EXPECT_EQ(0, og::ui::count_deployed_members(f.save()))
+        << "a refused 'd' must not deploy";
+    // The roster redraws over the refusal, so dump() cannot show it; the
+    // frame ledger does: roster ('d'), the refusal screen, roster (Esc).
+    EXPECT_EQ(3, f.t().present_count());
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The Train screen's Back row leaves at once: the keys queued after it
+// belong to the caller. Were Back to fall through to the loop, the trailing
+// Enter / '7' / Enter would raise STR and accept the training.
+TEST(CursesPickerClient, train_back_row_leaves_without_training)
+{
+    PickerFixture f;
+    const short strength_before = f.save().team_list[0]->strength;
+    const std::uint32_t gold_before = f.save().m_totalcash[0];
+    const auto* train = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(train, nullptr);
+
+    f.t().push_special(KeyCode::Up);     // wrap to the last row: Back
+    f.t().push_special(KeyCode::Enter);  // Back
+    f.t().push_special(KeyCode::Enter);  // (would be +1 STR)
+    f.t().push_char(U'7');               // (would jump to Accept)
+    f.t().push_special(KeyCode::Enter);  // (would accept)
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *train);
+
+    EXPECT_EQ(strength_before, f.save().team_list[0]->strength);
+    EXPECT_EQ(gold_before, f.save().m_totalcash[0]);
+    EXPECT_FALSE(f.t().input_exhausted())
+        << "the keys after Back are not the Train screen's to consume";
+}
+
+// The Lineup page's Back row returns to Team Build at once; a trailing Enter
+// that would step TEAM 1's FILL wheel is left for the caller.
+TEST(CursesPickerClient, lineup_back_row_returns_without_touching_a_knob)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    const short fill_before = f.save().fill[0];
+
+    f.t().push_special(KeyCode::Up);     // wrap to the last row: Back
+    f.t().push_special(KeyCode::Enter);  // Back
+    f.t().push_special(KeyCode::Enter);  // (would step TEAM 1 FILL)
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    EXPECT_EQ(fill_before, f.save().fill[0]);
+    EXPECT_FALSE(f.t().input_exhausted())
+        << "the Enter after Back is not the Lineup page's to consume";
+}
+
+// Cloud passphrase: a cancelled prompt and an empty entry both leave the
+// stored key untouched and say so. Control: the same screen still accepts a
+// valid passphrase.
+TEST(CursesPickerClient, cloud_passphrase_cancel_or_empty_keeps_the_key)
+{
+    cfg.data.erase("cloud");
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::CloudSave, PickerMenuCommand::CloudSetPassphrase);
+    ASSERT_NE(item, nullptr);
+    cfg.apply_setting("cloud", "key", "feedfacefeedface");
+
+    {
+        PickerFixture f;
+        f.t().push_special(KeyCode::Escape); // cancel the prompt
+        dismiss(f.t());
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *item);
+        EXPECT_NE(f.t().dump().find("Passphrase unchanged."),
+                  std::string::npos) << f.t().dump();
+        EXPECT_EQ("feedfacefeedface", cfg.get_setting("cloud", "key"));
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {
+        PickerFixture f;
+        f.t().push_special(KeyCode::Enter);  // accept an empty entry
+        dismiss(f.t());
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *item);
+        EXPECT_NE(f.t().dump().find("Passphrase unchanged."),
+                  std::string::npos) << f.t().dump();
+        EXPECT_EQ("feedfacefeedface", cfg.get_setting("cloud", "key"));
+    }
+    cfg.data.erase("cloud");
+}
+
+// Host Game on a port somebody else already holds, with no relay to fall
+// back on, refuses on the "Networking unavailable" screen with the direct
+// listener's reason, and reports that no lobby ran.
+TEST(CursesPickerClient, host_game_on_a_busy_port_reports_the_direct_failure)
+{
+    MountRestore mount_restore;
+    const int busy_port = ix::getFreePort();
+    og::sim::WebSocketServerTransport blocker(busy_port);
+    blocker.accept_connections();
+
+    CursesPickerOptions options;
+    options.host_port = busy_port;
+    PickerFixture f(options);
+    f.t().push_special(KeyCode::Enter);  // Networking: Host Game
+    dismiss(f.t());                      // the refusal screen
+    EXPECT_FALSE(f.client.configure_networking())
+        << "no lobby ran, so networking was not configured";
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Networking unavailable"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Direct: "), std::string::npos) << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
