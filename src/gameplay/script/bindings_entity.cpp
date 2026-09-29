@@ -1156,8 +1156,6 @@ int og_oblist(lua_State* L)
     lua_newtable(L);
     lua_Integer i = 1;
     for (const auto& uptr : world->oblist) {
-        if (uptr == nullptr)
-            continue;
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
     }
@@ -2791,8 +2789,6 @@ int og_fxlist(lua_State* L)
     lua_newtable(L);
     lua_Integer i = 1;
     for (const auto& uptr : world->fxlist) {
-        if (uptr == nullptr)
-            continue;
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
     }
@@ -2806,8 +2802,6 @@ int og_weaplist(lua_State* L)
     lua_newtable(L);
     lua_Integer i = 1;
     for (const auto& uptr : world->weaplist) {
-        if (uptr == nullptr)
-            continue;
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
     }
