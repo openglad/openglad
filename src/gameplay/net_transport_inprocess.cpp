@@ -206,9 +206,9 @@ void copy_delta_entity_field(og::sim::EntitySnapshot& destination,
         [bit_index](const og::sim::EntitySnapshotFieldDesc& desc) {
             return desc.bit_index == bit_index;
         });
-    if (field == std::end(og::sim::kEntitySnapshotFields))
-        return;
-
+    // Always found: the caller passes bit_index < FIELD_COUNT, the manual
+    // bits returned above, and entity_snapshot_field_table_is_valid()
+    // (static_assert) puts every other bit in the table.
     std::memcpy(reinterpret_cast<std::uint8_t*>(&destination) + field->snap_offset,
                 reinterpret_cast<const std::uint8_t*>(&source) + field->snap_offset,
                 field->size);

@@ -203,12 +203,10 @@ void append_u32_le(std::vector<std::uint8_t>& bytes, std::uint32_t value)
     bytes.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
 }
 
-std::optional<std::uint32_t> read_u32_le(std::span<const std::uint8_t> bytes,
-                                         std::size_t offset)
+// Callers guarantee offset + 4 <= bytes.size().
+std::uint32_t read_u32_le(std::span<const std::uint8_t> bytes,
+                          std::size_t offset)
 {
-    if (offset + sizeof(std::uint32_t) > bytes.size())
-        return std::nullopt;
-
     return static_cast<std::uint32_t>(bytes[offset]) |
         (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
         (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
@@ -250,12 +248,12 @@ std::optional<ReceivedMessage> decode_incoming_relay_payload(
         return std::nullopt;
     }
 
-    const auto peer_id = read_u32_le(bytes, 1u);
-    if (!peer_id.has_value() || *peer_id == 0)
+    const std::uint32_t peer_id = read_u32_le(bytes, 1u);
+    if (peer_id == 0)
         return std::nullopt;
 
     ReceivedMessage message;
-    message.peer_id = *peer_id;
+    message.peer_id = peer_id;
     message.data.assign(bytes.begin() + static_cast<std::ptrdiff_t>(kRelayPeerHeaderSize),
                         bytes.end());
     return message;
@@ -437,11 +435,11 @@ struct RelayWebSocketTransport::Impl
         }
 
         std::vector<ReceivedMessage> received;
+        // `started` is never reset, so accept_connections assigns
+        // active_generation once and the single socket stamps every entry
+        // with it: there is no stale generation to skip.
         for (auto& entry : queued_entries)
         {
-            if (entry.generation != active_generation)
-                continue;
-
             switch (entry.kind)
             {
             case QueueEntryKind::Connect:
@@ -681,8 +679,10 @@ private:
     bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
-        if (queue.size() >= kMaxQueuedMessages)
-            return false;
+        // Only frames are capped (count and bytes). A Connect/Disconnect
+        // transition must always get through: capping the whole queue here
+        // dropped the very Disconnect the queue-full path enqueues, leaving a
+        // closed link reading Connected forever.
         if (entry.kind == QueueEntryKind::TextMessage ||
             entry.kind == QueueEntryKind::BinaryMessage)
         {

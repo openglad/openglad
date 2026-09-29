@@ -13,6 +13,10 @@
 #include <string_view>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
 #include "test_game_world_fixture.h"
 
 namespace {
@@ -446,6 +450,17 @@ TEST(Replay, deserialize_rejects_each_malformed_replay_section)
                  static_cast<std::uint32_t>(
                      og::script::hooks::kCampaignVarsMax) + 1u);
     expect_rejection(oversized_var_count,
+                     og::sim::ReplayIoError::MalformedData);
+
+    // One var promised, but the file ends right after the count: the var's
+    // name length itself is missing, which is malformed data (not a
+    // header error, not success with zero vars).
+    std::vector<std::uint8_t> var_count_without_name_length(
+        bytes.begin(),
+        bytes.begin() + static_cast<std::ptrdiff_t>(vars_offset));
+    var_count_without_name_length.insert(
+        var_count_without_name_length.end(), {1u, 0u, 0u, 0u});
+    expect_rejection(var_count_without_name_length,
                      og::sim::ReplayIoError::MalformedData);
 
     // One declared var whose name length runs off the end of the file.
@@ -957,6 +972,38 @@ TEST(Replay, file_errors_report_the_failed_operation)
     EXPECT_FALSE(recorder.write_file(dev_full, &io_error));
     EXPECT_EQ(og::sim::ReplayIoError::OpenWriteFailed, io_error)
         << "a stream that opens but rejects bytes is a write failure";
+#endif
+
+#if !defined(_WIN32)
+    // An EXISTING regular file that cannot be opened for reading is an
+    // open failure, and load_file reports that error as-is instead of going
+    // on to parse zero bytes as malformed data.
+    ASSERT_NE(0u, ::geteuid())
+        << "run the tests as a non-root user (CI's ubuntu-latest is non-root)";
+    const std::filesystem::path unreadable =
+        std::filesystem::temp_directory_path() /
+        "openglad_test_replay_unreadable.ogr";
+    std::filesystem::remove(unreadable, ec);
+    og::sim::ReplayRecorder readable_recorder(header);
+    readable_recorder.set_initial_snapshot(make_initial_snapshot());
+    ASSERT_TRUE(readable_recorder.write_file(unreadable, &io_error));
+    std::filesystem::permissions(unreadable, std::filesystem::perms::none, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    io_error = og::sim::ReplayIoError::None;
+    EXPECT_FALSE(player.load_file(unreadable, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::OpenReadFailed, io_error)
+        << "an unreadable replay is an open failure, not malformed data";
+
+    // Paired control: the very same file loads once it is readable again.
+    std::filesystem::permissions(unreadable,
+                                 std::filesystem::perms::owner_read |
+                                     std::filesystem::perms::owner_write,
+                                 ec);
+    ASSERT_FALSE(ec) << ec.message();
+    io_error = og::sim::ReplayIoError::None;
+    EXPECT_TRUE(player.load_file(unreadable, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::None, io_error);
+    std::filesystem::remove(unreadable, ec);
 #endif
 }
 

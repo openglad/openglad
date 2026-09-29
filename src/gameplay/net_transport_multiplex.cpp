@@ -62,11 +62,11 @@ void MultiplexTransport::sync_endpoint_peers(EndpointState& endpoint) const
             removed_native_peers.push_back(native_peer_id);
     }
 
+    // Every id here is a distinct key of native_to_public (collected above),
+    // so each lookup hits.
     for (const PeerId native_peer_id : removed_native_peers)
     {
         const auto public_it = endpoint.native_to_public.find(native_peer_id);
-        if (public_it == endpoint.native_to_public.end())
-            continue;
         endpoint.public_to_native.erase(public_it->second);
         endpoint.native_to_public.erase(public_it);
     }
@@ -382,10 +382,9 @@ void MultiplexTransport::disconnect(PeerId peer_id)
     if (endpoint == nullptr)
         return;
 
+    // find_endpoint_for_public_peer only returns an endpoint whose
+    // public_to_native holds peer_id.
     const auto native_it = endpoint->public_to_native.find(peer_id);
-    if (native_it == endpoint->public_to_native.end())
-        return;
-
     endpoint->transport->disconnect(native_it->second);
     endpoint->native_to_public.erase(native_it->second);
     endpoint->public_to_native.erase(native_it);
