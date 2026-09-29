@@ -707,8 +707,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 	    case ButtonAction::QuitMenu:
 	        quit(call_arg);
 	        return 1;
-	    case ButtonAction::CreateTrainMenu:
-	        return create_train_menu(call_arg);
 	    case ButtonAction::CreateHireMenu:
 	        return create_hire_menu(call_arg);
 	    // CreateLoadMenu reaches do_call only when the MainMenu-scope
