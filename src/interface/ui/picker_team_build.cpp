@@ -2577,8 +2577,7 @@ Sint32 go_menu(Sint32 arg1)
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
 
-	if (arg1)
-		arg1 = 1;
+	(void)arg1;
 
     // Make sure the launched match has a valid team. Networked picker saves
     // remain private, so a spectator/empty-local peer must consult the
