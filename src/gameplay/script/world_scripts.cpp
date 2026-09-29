@@ -2619,8 +2619,6 @@ void level_entity_death(walker* self)
 
 void level_entity_spawn(walker* spawned)
 {
-    if (spawned == nullptr)
-        return;
     VmState* st =
         level_vm_state(1u << static_cast<unsigned>(LevelHook::EntitySpawn));
     if (st == nullptr)
