@@ -525,7 +525,8 @@ TEST(NetTransportWebSocketServer,
 {
     // Mirrors kMaxInboundFrameBytes in
     // src/platform/sdl/net_transport_websocket_server.cpp (file-local).
-    
+    constexpr std::size_t kServerMaxInboundFrameBytes = 128u * 1024u;
+
     IxNetSystemScope net_system;
     const int port = ix::getFreePort();
     og::sim::WebSocketServerTransport::Options options;
@@ -750,6 +751,7 @@ TEST(NetTransportWebSocketServer,
 // Mirrors the receive-queue caps in
 // src/platform/sdl/net_transport_websocket_server.cpp (file-local).
 constexpr std::size_t kServerMaxQueuedMessages = 1024u;
+constexpr std::size_t kServerMaxInboundFrameBytes = 128u * 1024u;
 
 // Drains the server until only `survivor` remains connected (bounded), and
 // returns every frame delivered on the way.
@@ -843,5 +845,37 @@ TEST(NetTransportWebSocketServer,
     EXPECT_EQ(7u, decode_client_ready_tick(after_flood.front().data));
 }
 
+// Rule (net_transport_websocket_server.cpp enqueue): the 16 MiB queued-byte
+// budget caps a flooder long before the frame-count cap: 128 maximum-size
+// frames (exactly 16 MiB) are held, the 129th closes the sender 1008.
+TEST(NetTransportWebSocketServer,
+     a_byte_flood_past_16_mib_closes_the_flooder_under_the_count_cap)
+{
+    FloodedServer fx;
+    fx.transport.accept_connections();
+    fx.good_client.start();
+    ASSERT_TRUE(fx.good_client.wait_until_open()) << fx.good_client.error();
+    ASSERT_TRUE(poll_until_peer_count(fx.transport, 1u));
+    const og::sim::PeerId good_peer = fx.transport.connected_peers().front();
+    fx.flooder.start();
+    ASSERT_TRUE(fx.flooder.wait_until_open()) << fx.flooder.error();
+    ASSERT_TRUE(poll_until_peer_count(fx.transport, 2u));
+
+    constexpr std::size_t kFramesInBudget = 128u;
+    const std::vector<std::uint8_t> max_frame(kServerMaxInboundFrameBytes, 0x3cu);
+    for (std::size_t frame = 0; frame <= kFramesInBudget; ++frame)
+    {
+        if (!fx.flooder.send_binary(max_frame))
+            break;
+    }
+    ASSERT_TRUE(fx.flooder.wait_until_closed(20s));
+    EXPECT_EQ(1008, fx.flooder.close_code());
+    EXPECT_EQ("receive queue full", fx.flooder.close_reason());
+
+    const std::vector<og::sim::ReceivedMessage> delivered =
+        drain_until_only(fx.transport, good_peer);
+    EXPECT_EQ(kFramesInBudget, delivered.size())
+        << "exactly the frames within the 16 MiB budget are delivered";
+}
 
 } // namespace

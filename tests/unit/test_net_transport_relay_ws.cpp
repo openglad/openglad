@@ -1214,6 +1214,7 @@ TEST(NetTransportRelayWs, live_cloudflare_relay_end_to_end)
 // Mirrors the receive-queue caps in
 // src/platform/sdl/net_transport_relay_ws.cpp (file-local).
 constexpr std::size_t kRelayMaxQueuedMessages = 1024u;
+constexpr std::size_t kRelayMaxInboundFrameBytes = 128u * 1024u;
 
 std::vector<std::uint8_t> relay_frame_from(og::sim::PeerId source,
                                            std::span<const std::uint8_t> payload)
@@ -1291,5 +1292,41 @@ TEST(NetTransportRelayWs, a_frame_flood_past_the_queue_count_cap_loses_the_link)
         << "the game must see the flood-closed relay link as lost";
 }
 
+// Rule (net_transport_relay_ws.cpp enqueue): the 16 MiB queued-byte budget
+// closes the relay link long before the frame-count cap: 128 maximum-size
+// frames (exactly 16 MiB) are held, the 129th closes the link 1008.
+TEST(NetTransportRelayWs, a_byte_flood_past_16_mib_loses_the_link)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport transport(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-BYTES", port), options);
+    transport.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(transport));
+
+    constexpr std::size_t kFramesInBudget = 128u;
+    const std::vector<std::uint8_t> payload(kRelayMaxInboundFrameBytes - 5u,
+                                            0x3cu);
+    const std::vector<std::uint8_t> max_frame = relay_frame_from(17u, payload);
+    ASSERT_EQ(kRelayMaxInboundFrameBytes, max_frame.size());
+    for (std::size_t frame = 0; frame <= kFramesInBudget; ++frame)
+    {
+        if (!server.send_binary_message(1u, max_frame))
+            break;
+    }
+    FakeRelayServer::ClosedPeer closed;
+    ASSERT_TRUE(wait_for_close_of(server, 1u, closed, 20s))
+        << "the flooded link must close";
+    EXPECT_EQ(1008, closed.code);
+    EXPECT_EQ("receive queue full", closed.reason);
+
+    const std::vector<og::sim::ReceivedMessage> delivered = transport.poll();
+    EXPECT_EQ(kFramesInBudget, delivered.size())
+        << "exactly the frames within the 16 MiB budget are delivered";
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, transport.link_state());
+}
 
 } // namespace
