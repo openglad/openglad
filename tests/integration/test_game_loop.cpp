@@ -9433,6 +9433,157 @@ TEST(GameLoop, midgame_seat_gating_networked_and_count_limits)
     game_screen->world().delete_objects();
 }
 
+// Mid-game seat add when the joiner has nowhere to stand: no respawn anchor
+// is published for the team and every tile of the three rings around the
+// team's player-held walker is blocked. The add is refused cleanly -- the
+// stock soldier it spawned for the seat is taken back out of the world, the
+// seat count does not move -- instead of dropping the joiner on top of the
+// anchor or teleporting it (place_stock_seat_walker never draws the world
+// RNG). Paired control: the same add from the walker's real spot succeeds.
+TEST(GameLoop, midgame_add_player_refused_when_every_ring_tile_is_blocked)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    reset_default_player_controls();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    std::uint32_t tick = 0;
+    midgame_pump(session, 8, tick);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+    const short lead_team = game_screen->viewob[0]->my_team;
+    ASSERT_EQ(0, static_cast<int>(
+                     server_world.respawn.anchor_count[lead_team]))
+        << "a classic level publishes no respawn anchors";
+
+    // Every unclaimed lead-team walker moves to a team no seat plays, so the
+    // add must SPAWN its stock joiner and place it by the ring probe.
+    short parking_team = -1;
+    for (short t = 0; t < 4 && parking_team < 0; ++t)
+    {
+        if (t != lead_team &&
+            midgame_find_living_on_team(server_screen, t) == nullptr)
+        {
+            parking_team = t;
+        }
+    }
+    ASSERT_NE(-1, static_cast<int>(parking_team));
+    for (const auto& uptr : server_world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living && entity->user() == -1 &&
+            static_cast<short>(entity->team_num()) == lead_team)
+        {
+            entity->set_team_num(static_cast<unsigned char>(parking_team));
+        }
+    }
+    walker* const anchor = midgame_find_walker_by_user(server_screen, 0);
+    ASSERT_NE(nullptr, anchor);
+    const std::uint32_t anchor_id = anchor->entity_id();
+    const short home_x = anchor->xpos();
+    const short home_y = anchor->ypos();
+    const int floor = anchor->floor();
+
+    // A spot on this level where all 24 ring tiles (radius 1..3, the eight
+    // directions) are wall or off the map.
+    static constexpr short kRing[8][2] = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+        {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+    };
+    const auto ring_blocked = [&](short cx, short cy) {
+        for (short radius = 1; radius <= 3; ++radius)
+        {
+            for (const auto& dir : kRing)
+            {
+                const short x = static_cast<short>(cx + dir[0] * radius * GRID_SIZE);
+                const short y = static_cast<short>(cy + dir[1] * radius * GRID_SIZE);
+                if (og::sim::respawn_spot_clear(server_world, anchor, x, y, floor))
+                    return false;
+            }
+        }
+        return true;
+    };
+    short pocket_x = -1;
+    short pocket_y = -1;
+    for (std::int32_t y = 0; y < server_world.pixmaxy && pocket_x < 0;
+         y += GRID_SIZE)
+    {
+        for (std::int32_t x = 0; x < server_world.pixmaxx; x += GRID_SIZE)
+        {
+            if (ring_blocked(static_cast<short>(x), static_cast<short>(y)))
+            {
+                pocket_x = static_cast<short>(x);
+                pocket_y = static_cast<short>(y);
+                break;
+            }
+        }
+    }
+    ASSERT_GE(pocket_x, 0) << "gladiator scen 1 has no fully walled spot";
+    ASSERT_FALSE(ring_blocked(home_x, home_y))
+        << "the control needs a clear ring tile at the walker's own spot";
+
+    // walker::setxy files the move in current_game's obmap, so the move runs
+    // against the authoritative world, where the ring probe reads it.
+    const auto move_anchor = [&](short x, short y) {
+        GameplayContext* const previous = current_game;
+        GameplayContext server_context;
+        server_context.world = &server_world;
+        current_game = &server_context;
+        anchor->setxy(x, y);
+        current_game = previous;
+    };
+
+    const std::size_t oblist_before = server_world.oblist.size();
+    move_anchor(pocket_x, pocket_y);
+    trace_clear();
+    EXPECT_TRUE(og::runtime::local_transport_shadow_can_add_player(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_add_local_player(session))
+        << "no clear tile within three rings: the add must be refused";
+    EXPECT_TRUE(trace_contains("seats", "add_player_failed"));
+    EXPECT_EQ(1u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(1, static_cast<int>(game_screen->numviews));
+    EXPECT_EQ(oblist_before, server_world.oblist.size())
+        << "the refused joiner's stock soldier must not stay in the world";
+    EXPECT_EQ(nullptr, midgame_find_walker_by_user(server_screen, 1));
+    ASSERT_EQ(anchor, server_world.find_by_id(anchor_id));
+    EXPECT_EQ(pocket_x, anchor->xpos());
+    EXPECT_EQ(pocket_y, anchor->ypos());
+
+    // Paired control: back on its own spot the same add succeeds.
+    move_anchor(home_x, home_y);
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(session));
+    EXPECT_TRUE(trace_contains("seats", "source=spawned"));
+    EXPECT_EQ(2u, og::runtime::local_transport_client_count(session));
+    EXPECT_EQ(oblist_before + 1u, server_world.oblist.size());
+
+    reset_default_player_controls();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
 // PR #198 user report: local game, pause menu ADD PLAYER, resume, play, then
 // re-pause into the added seat's player screen — the app died with
 // "InProcessTransport peer 1 is not connected" (throw at resolve_peer, caught
