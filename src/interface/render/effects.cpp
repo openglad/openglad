@@ -1482,10 +1482,9 @@ static bool single_floor_reads_outdoor(GameWorld& world)
 	return outdoor_memo;
 }
 
+// vs is non-null: both callers (the redraw overloads) pass `this`.
 void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 {
-	if (!vs)
-		return;
 	// The kind is WORLD state (rolled by the authoritative side, synced via
 	// snapshot); this is a render-only READ. cfg "effects" weather is the
 	// CLIENT-side display opt-out on top of it.
