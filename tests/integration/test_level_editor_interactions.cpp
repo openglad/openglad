@@ -13,6 +13,7 @@
 #include <openglad/core/terrain_types.h>
 #include "test_input_helpers.h"
 
+#include <array>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -1717,4 +1718,150 @@ TEST(LevelEditorInteractions, one_wheel_notch_wraps_the_tile_selector_both_ways)
         << "one notch up from the first row wraps to the last row";
     EXPECT_EQ(0, rowsdown_after_down)
         << "one notch down from the last row wraps to the first";
+}
+
+// ---------------------------------------------------------------------------
+// Held pan keys. The editor samples WASD from keystates_ every frame (not from
+// key events), and a pushed SDL key event never moves SDL's keyboard-state
+// array, so the session's keystates_ is pointed at a test-owned array BEFORE
+// level_editor() is entered and restored after it returns (the injector
+// thread never touches it). While a key is held the camera moves one
+// SCROLLSIZE (8 px) step per frame and stops at the first step past its pan
+// limit (level_editor.cpp PAN_LIMIT_*), so after enough frames the position
+// is pinned to an 8-pixel window, whatever the entry position.
+//
+// The editor resets the camera to (0,0) on exit, so the position is sampled
+// by the injector inside the session, after the last fence frame. Every
+// fence round trip passes through the SDL event-queue lock on both threads,
+// and once the camera sits past its limit the editor stops writing it, so
+// the sample reads a value last written several synchronised frames earlier.
+// ---------------------------------------------------------------------------
+namespace
+{
+class HeldEditorKeys
+{
+public:
+    HeldEditorKeys()
+        : saved_(og::runtime::current_session->keystates_)
+    {
+        keys_.fill(false);
+        og::runtime::current_session->keystates_ = keys_.data();
+    }
+    ~HeldEditorKeys()
+    {
+        og::runtime::current_session->keystates_ = saved_;
+    }
+    HeldEditorKeys(const HeldEditorKeys&) = delete;
+    HeldEditorKeys& operator=(const HeldEditorKeys&) = delete;
+
+    void hold(int key) { keys_[static_cast<std::size_t>(key)] = true; }
+
+private:
+    const bool* saved_;
+    std::array<bool, SDL_SCANCODE_COUNT> keys_{};
+};
+
+// More editor frames than any accepted pan distance needs: a limit of
+// kMaxPanTiles tiles is at most (GRID_SIZE * kMaxPanTiles + 60) / 8 steps
+// from any on-map start.
+constexpr int kPanFrames = 400;
+constexpr int kMaxPanTiles = 180;
+
+struct EditorPanSample
+{
+    int frames = 0;
+    bool sampled = false;
+    Sint32 topx = 0;
+    Sint32 topy = 0;
+    int grid_w = 0;
+    int grid_h = 0;
+};
+
+// Drives `frames` editor frames (each inert fence key is consumed by exactly
+// one pump, so every drained fence is one more completed frame), samples the
+// camera, then ends the session.
+int editor_pan_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& state = *static_cast<EditorPanSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic", 10000u);
+    for (int i = 0; ok && i < state.frames; ++i)
+    {
+        ok = push_checked_key_press_mod(SDLK_F12, SDL_KMOD_NONE) &&
+             wait_for_drained_event_queue(10000u);
+    }
+    if (ok)
+    {
+        LevelRuntimeData* level = level_editor_testing_level();
+        if (level != nullptr)
+        {
+            state.topx = level->level_visuals().topx;
+            state.topy = level->level_visuals().topy;
+            state.grid_w = level->world().grid.w;
+            state.grid_h = level->world().grid.h;
+            state.sampled = true;
+        }
+    }
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+int run_editor_pan_session(EditorPanSample& sample)
+{
+    trace_clear();
+    og::runtime::current_session->myscreen_->world().end = 0;
+    SDL_Thread* thread =
+        SDL_CreateThread(editor_pan_injector, "editor_pan", &sample);
+    if (thread == nullptr)
+        return 1;
+    (void)level_editor();
+    int result = 1;
+    SDL_WaitThread(thread, &result);
+    SDL_FlushEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP);
+    return result;
+}
+} // namespace
+
+TEST(LevelEditorInteractions, held_pan_keys_scroll_the_camera_to_each_pan_limit)
+{
+    EditorPanSample right_down;
+    right_down.frames = kPanFrames;
+    {
+        EditorDecorStateGuard state_guard;
+        picker_testing_yes_or_no_queue_clear();
+        HeldEditorKeys keys;
+        keys.hold(KEYSTATE_d);
+        keys.hold(KEYSTATE_s);
+        ASSERT_EQ(0, run_editor_pan_session(right_down));
+    }
+    EditorPanSample left_up;
+    left_up.frames = kPanFrames;
+    {
+        EditorDecorStateGuard state_guard;
+        picker_testing_yes_or_no_queue_clear();
+        HeldEditorKeys keys;
+        keys.hold(KEYSTATE_a);
+        keys.hold(KEYSTATE_w);
+        ASSERT_EQ(0, run_editor_pan_session(left_up));
+    }
+    ASSERT_TRUE(right_down.sampled && left_up.sampled);
+    ASSERT_GT(right_down.grid_w, 0);
+    ASSERT_LE(right_down.grid_w, kMaxPanTiles) << "kPanFrames would not reach the limit";
+    ASSERT_GT(right_down.grid_h, 0);
+    ASSERT_LE(right_down.grid_h, kMaxPanTiles) << "kPanFrames would not reach the limit";
+
+    // PAN_LIMIT_RIGHT = GRID_SIZE*w - 320 + 80 and PAN_LIMIT_DOWN =
+    // GRID_SIZE*h - 200 + 80; PAN_LIMIT_LEFT = PAN_LIMIT_UP = -60. A step is
+    // taken while the position is still at or inside the limit, so the camera
+    // comes to rest within one 8-px step past it.
+    const Sint32 limit_right = GRID_SIZE * right_down.grid_w - 320 + 80;
+    const Sint32 limit_down = GRID_SIZE * right_down.grid_h - 200 + 80;
+    EXPECT_GT(right_down.topx, limit_right) << "holding D pans right to the limit";
+    EXPECT_LE(right_down.topx, limit_right + 8) << "and stops one step past it";
+    EXPECT_GT(right_down.topy, limit_down) << "holding S pans down to the limit";
+    EXPECT_LE(right_down.topy, limit_down + 8) << "and stops one step past it";
+    EXPECT_LT(left_up.topx, -60) << "holding A pans left to the limit";
+    EXPECT_GE(left_up.topx, -60 - 8) << "and stops one step past it";
+    EXPECT_LT(left_up.topy, -60) << "holding W pans up to the limit";
+    EXPECT_GE(left_up.topy, -60 - 8) << "and stops one step past it";
 }
