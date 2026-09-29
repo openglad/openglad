@@ -72,6 +72,22 @@ screen* test_screen()
     return og::runtime::current_session->myscreen_;
 }
 
+// FNV-1a over the palette index of every pixel in [x0,x1) x [y0,y1): the
+// pixel oracle the direct draw_content pins compare against a reference.
+std::uint64_t zone_region_hash(screen& output, int x0, int y0, int x1, int y1)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            int pixel = 0;
+            output.get_pixel(x, y, &pixel);
+            hash ^= static_cast<std::uint8_t>(pixel);
+            hash *= 1099511628211ULL;
+        }
+    }
+    return hash;
+}
+
 void cleanup_picker_state()
 {
     PickerState& state = *og::runtime::current_session->picker_;
@@ -1712,6 +1728,57 @@ TEST(CampaignZoneUi, zone_submenu_pagers_step_and_saturate)
     EXPECT_EQ(0, st.page.first_index());
     EXPECT_EQ(2, count_trace_containing("zone", "submenu_page"));
     EXPECT_TRUE(trace_contains("zone", "submenu_page 1/2"));
+
+    // The "p/N" strip at (140,176) is the only place a player reads which
+    // window of a long shelf he is on. A multi-page window inks it exactly
+    // as the camp's shared strip spells it (2px pad, 150-alpha black
+    // backing, WHITE text) and follows the page; a one-page shelf leaves
+    // the band untouched.
+    screen& output = *test_screen();
+    const auto indicator_band = [&output] {
+        return zone_region_hash(output, 130, 170, 200, 186);
+    };
+    const auto reference_strip = [&output, &indicator_band](
+                                     const std::string& value) {
+        output.clearbuffer();
+        const int width = static_cast<int>(value.size()) * 6;
+        output.draw_rect_filled(138, 175, static_cast<Uint32>(width + 4), 8,
+                                PURE_BLACK, 150);
+        output.text_normal.write_xy(140, 176, WHITE, "%s", value.c_str());
+        return indicator_band();
+    };
+    output.clearbuffer();
+    const std::uint64_t blank_band = indicator_band();
+    const std::uint64_t page_one = reference_strip("1/2");
+    const std::uint64_t page_two = reference_strip("2/2");
+    ASSERT_NE(blank_band, page_one) << "the oracle strip must ink the band";
+    ASSERT_NE(page_one, page_two);
+
+    ASSERT_EQ(0, st.page.first_index());
+    output.clearbuffer();
+    spec.draw_content(&st);
+    EXPECT_EQ(page_one, indicator_band())
+        << "a multi-page shelf shows 1/2 on its first window";
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuNextIndex, &st));
+    output.clearbuffer();
+    spec.draw_content(&st);
+    EXPECT_EQ(page_two, indicator_band()) << "and 2/2 once NEXT moved it";
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuPrevIndex, &st));
+
+    // Paired control: the five-row STORES shelf fits one window, and its
+    // band stays blank.
+    og::ui::CampaignPickerSession short_session(save);
+    ASSERT_TRUE(short_session.open_at("stores"));
+    og::ui::ZoneSubmenuScreenState one_page;
+    one_page.session = &short_session;
+    one_page.page = og::ui::PageModel::make(
+        static_cast<int>(short_session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    ASSERT_FALSE(one_page.page.multi_page());
+    output.clearbuffer();
+    spec.draw_content(&one_page);
+    EXPECT_EQ(blank_band, indicator_band())
+        << "a one-page shelf draws no page indicator";
 
     og::ui::install_zone_submenu_state_for_screen(nullptr);
 }
