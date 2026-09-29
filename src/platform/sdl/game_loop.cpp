@@ -565,9 +565,6 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (deps.on_render && render_this_frame)
         deps.on_render(s);
 
-    if (s.world().end || st.done)
-        return finish_done(st);
-
     return GameFrameResult::Continue;
 }
 
