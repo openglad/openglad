@@ -2313,11 +2313,6 @@ std::string format_difficulty_label(int difficulty)
     return std::format("Difficulty: {}", kDifficultyNames[normalized]);
 }
 
-std::string format_allied_mode_label(const SaveData& save)
-{
-    return is_allied_mode(save) ? "SEATS: TOGETHER" : "SEATS: SPLIT";
-}
-
 std::string format_ctf_score_label(const SaveData& save)
 {
     // 80px face = 12 chars; "SCORE: MAP" is 10, "SCORE: 10" 9.

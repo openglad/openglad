@@ -1223,11 +1223,6 @@ short spectator_view_count(const SaveData& save);
 // Format the difficulty button label (e.g. "Difficulty: Battle").
 std::string format_difficulty_label(int difficulty);
 
-// Compatibility formatter for the retired AlliedMode binding
-// ("SEATS: TOGETHER" / "SEATS: SPLIT"). It is not exposed by current menus;
-// combat allegiance always comes from character colors.
-std::string format_allied_mode_label(const SaveData& save);
-
 // Format the score-limit label ("SCORE: MAP" for the level's own target,
 // "SCORE: N" otherwise — captures, goals, kills; amendment A5). The old
 // "Limit:" word answered the maintainer's "what is LIMIT?" with nothing.

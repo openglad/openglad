@@ -1853,18 +1853,6 @@ TEST(PickerCommon, format_difficulty_label)
     ASSERT_TRUE(og::ui::format_difficulty_label(2) == "Difficulty: Slaughter");
 }
 
-// --- format_allied_mode_label ---
-
-TEST(PickerCommon, format_allied_mode_label)
-{
-    SaveData save;
-    save.allied_mode = 0;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: SPLIT");
-
-    save.allied_mode = 1;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: TOGETHER");
-}
-
 // --- collect_team_families ---
 
 TEST(PickerCommon, collect_team_families)
