@@ -2538,6 +2538,106 @@ TEST(CampaignZoneUi, retired_roster_controls_are_inert_for_a_stale_click)
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
 
+namespace {
+
+// An oath roster whose book has FROZEN the question: the chip still shows,
+// but the campaign has closed the oaths and says why.
+constexpr const char* kFrozenOathScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "roster",
+          assign = { key = "road", labels = { "WAR", "BURDEN" },
+                     frozen = "The oaths are sealed." } },
+      },
+    }
+  end,
+}))LUA";
+
+} // namespace
+
+// The oath chip answers a click it may not honour in words, and writes no
+// tag: a book that froze the oaths refuses with its own reason, and a slot
+// this machine may not edit says LOCKED. Either click that swore the hero
+// anyway would put a campaign_tag in the company file the book (or the
+// owning machine) never agreed to.
+TEST(CampaignZoneUi, oath_chip_refuses_a_frozen_oath_and_a_locked_slot)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    struct EditableCallbackGuard {
+        og::ui::PickerSaveSlotEditableCallback saved =
+            og::ui::g_picker_save_slot_editable_callback;
+        ~EditableCallbackGuard()
+        {
+            og::ui::g_picker_save_slot_editable_callback = saved;
+        }
+    } editable_guard;
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // --- Frozen: the book's reason is the answer. ---
+    SyntheticCampaignScriptGuard::install(kFrozenOathScript);
+    og::ui::CampaignZoneSession frozen(save);
+    frozen.fetch();
+    ASSERT_TRUE(frozen.scripted());
+    ASSERT_TRUE(frozen.roster().assign.active);
+    ASSERT_EQ("The oaths are sealed.", frozen.roster().assign.frozen);
+
+    og::ui::BaseCampScreenState frozen_state;
+    frozen_state.zone = &frozen;
+    og::ui::base_camp_refresh_rows(frozen_state);
+    og::ui::install_base_camp_state_for_screen(&frozen_state);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &frozen_state));
+    EXPECT_EQ("The oaths are sealed.", frozen_state.toast);
+    EXPECT_EQ(0, save.team_list[0]->campaign_tag)
+        << "a frozen oath writes no tag";
+    EXPECT_TRUE(trace_contains("zone", "assign_frozen slot=0"));
+    EXPECT_FALSE(trace_contains("zone", "assign slot="));
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    // --- Live oath, but slot 0 is not this machine's to edit. ---
+    SyntheticCampaignScriptGuard::install(kRosterEchoScript);
+    og::ui::CampaignZoneSession live(save);
+    live.fetch();
+    ASSERT_TRUE(live.scripted());
+    ASSERT_TRUE(live.roster().assign.active);
+    ASSERT_TRUE(live.roster().assign.frozen.empty());
+
+    og::ui::BaseCampScreenState live_state;
+    live_state.zone = &live;
+    og::ui::base_camp_refresh_rows(live_state);
+    og::ui::install_base_camp_state_for_screen(&live_state);
+    og::ui::g_picker_save_slot_editable_callback =
+        [](int slot) { return slot != 0; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &live_state));
+    EXPECT_EQ("LOCKED", live_state.toast);
+    EXPECT_EQ(0, save.team_list[0]->campaign_tag)
+        << "a locked slot writes no tag";
+    EXPECT_FALSE(trace_contains("zone", "assign slot="));
+
+    // Paired control: the SAME live chip on the editable neighbour swears
+    // its hero, so the two refusals above are the rules and not a dead chip.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase + 1, &live_state));
+    EXPECT_EQ(1, save.team_list[1]->campaign_tag);
+    EXPECT_TRUE(trace_contains("zone", "assign slot=1 tag=1"));
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
 // The fifth roster site: the CLASSIC team-color cycler (reachable only
 // when the composition ships no assign spec — the assign fork owns the
 // chip cell otherwise).
