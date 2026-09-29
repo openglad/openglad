@@ -1434,12 +1434,6 @@ void Screen::set_world_present_slices(std::span<const WorldPresentSlice> slices)
 
 bool Screen::world_smoothing_supported() const
 {
-	if (world_w_ <= 0 || world_h_ <= 0 ||
-	    world_w_ > std::numeric_limits<int>::max() / 2 ||
-	    world_h_ > std::numeric_limits<int>::max() / 2)
-	{
-		return false;
-	}
 	const int target_w = world_w_ * 2;
 	const int target_h = world_h_ * 2;
 	const int max_texture_dimension = renderer_max_texture_dimension();
