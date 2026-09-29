@@ -133,16 +133,13 @@ void DamageNumberRenderContext::trim_owner(std::uint32_t owner_entity_id,
         state_by_owner_.erase(owner_it);
 }
 
+// The sole caller (draw_walker) erases only while it holds the render_state
+// prepare_state just returned for this owner (owner id != 0), so the owner's
+// entry exists.
 void DamageNumberRenderContext::erase_index(std::uint32_t owner_entity_id,
                                             std::size_t index)
 {
-    if (owner_entity_id == 0u)
-        return;
-
     const auto owner_it = state_by_owner_.find(owner_entity_id);
-    if (owner_it == state_by_owner_.end())
-        return;
-
     auto& owner_state = owner_it->second;
     if (index < owner_state.size())
         owner_state.erase(owner_state.begin() + static_cast<std::ptrdiff_t>(index));
