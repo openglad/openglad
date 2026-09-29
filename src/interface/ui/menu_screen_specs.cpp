@@ -8401,9 +8401,6 @@ Sint32 match_setup_dispatch(MatchSetupScreenState& st,
         TRACE("setup", "refused %s", outcome.message.c_str());
         match_setup_show_toast(st, outcome.message);
         return MENU_REDRAW;
-    case Kind::Closed:
-        st.exit = MatchSetupExit::Closed;
-        return MENU_EXIT;
     case Kind::SetLevel:
         return match_setup_level_tail(st, outcome.level, outcome.replay_arm);
     case Kind::Turned:
