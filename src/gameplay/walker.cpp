@@ -1753,7 +1753,7 @@ walker::act_random()
 	if (!current_game->world->rng_.next(70) || (!foe()))
 		set_foe(current_game->world->find_nearest_foe(this));
 	if (!foe())
-		return stats_->try_command(COMMAND_RANDOM_WALK,20);
+		return stats_->try_random_walk(20);
 
 	xdist = foe()->xpos() - xpos();
 	ydist = foe()->ypos() - ypos();
@@ -1768,10 +1768,6 @@ walker::act_random()
 			stats_->set_command(COMMAND_FIRE, static_cast<std::int32_t>(current_game->world->rng_.next(24)), xdist, ydist);
 			return 1;
 		}
-		else
-			// Nearest foe is blocked
-			//foe = nullptr;
-			turn(facing(xdist,ydist));
 	}
 
 	// Otherwise, try to walk toward foe

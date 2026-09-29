@@ -214,7 +214,6 @@ void reset_integration_ui_state()
     og::runtime::current_session->replay_recorder_.reset();
     og::runtime::current_session->replay_output_path_.clear();
     og::runtime::current_session->gameplay_active_ = false;
-    og::runtime::current_session->help_end_of_file_ = 0;
 
     if (og::runtime::current_session->myscreen_ != nullptr) {
         // Preserve the world grid across the inter-test reset; PR #28 added

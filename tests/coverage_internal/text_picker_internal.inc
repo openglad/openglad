@@ -1714,3 +1714,54 @@ int text_picker_testing_camp_level_row(bool cleared, short& scen_num,
     save.clear_replay_arm();
     return state_restore.restore() ? 0 : -4;
 }
+
+// #207 design point 5 through run_game: arm the camp's replay row on a
+// cleared level (the product's own set-level tail), then GO. The protocol
+// session folds nothing back, so run_game itself resolves the excursion on
+// return. Returns 0 with the config's level and the save's cursor and arm
+// after the game.
+int text_picker_testing_run_game_resolves_replay_arm(int& level_after,
+                                                     short& scen_after,
+                                                     short& replay_level_after,
+                                                     int& level_armed)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.level = 3;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    SaveData& save = client.testing_save_data_mutable();
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+    save.add_level_completed("gladiator", 1);
+    std::string output;
+    if (!text_picker_run_menu_command(client, PickerMenuCommand::CampaignCamp,
+                                      "1\n\n", output))
+        return -3;
+    level_armed = config.level;
+    {
+        ScopedTextPickerStdoutCapture capture;
+        if (!capture.ready())
+            return -4;
+        {
+            ScopedCinRedirect cin_input("");
+            client.run_game();
+        }
+        (void)capture.finish();
+        if (!capture.finish_ok())
+            return -5;
+    }
+    level_after = config.level;
+    scen_after = save.scen_num;
+    replay_level_after = save.replay_level;
+    save.clear_replay_arm();
+    return state_restore.restore() ? 0 : -6;
+}

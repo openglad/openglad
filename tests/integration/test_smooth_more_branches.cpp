@@ -624,3 +624,50 @@ TEST(SmoothMoreBranches, smooth_round9_dark_grass_single_neighbor_branch_pairs)
     ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)run(0, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1)) << "no neighbors should use dark-grass default";
 }
 
+
+// Dark grass under a tree line (trees up and up-left) is a bottom-middle
+// edge, and what it becomes depends on the tile below it. Only an open
+// ground tile below (grass, water, trees, dirt, cobble) earns the fuzzy
+// bottom edge; anything else below — here more dark grass, the shadow
+// continuing south — keeps a plain dark-grass variant, grass_dark_variants
+// indexed by the draw. Control: the same neighbourhood over grass takes the
+// bottom edge, so the tile below is what decides.
+TEST(SmoothMoreBranches, dark_grass_under_trees_over_more_shadow_stays_plain_dark)
+{
+    static constexpr unsigned char kDarkVariants[4] = {
+        PIX_GRASS_DARK_1, PIX_GRASS_DARK_2, PIX_GRASS_DARK_3, PIX_GRASS_DARK_4
+    };
+
+    for (int fixed = 0; fixed < 4; fixed++)
+    {
+        SCOPED_TRACE(fixed);
+        FixedRandom rng(static_cast<std::uint32_t>(fixed));
+        GameContext c;
+        c.rng = &rng;
+        GlobalContextGuard guard(&c);
+
+        PixieData grid = make_grid(3, 3, PIX_GRASS_DARK_1);
+        smoother s;
+        s.set_target(grid);
+        at(grid, 0, 0) = PIX_TREE_M1; // up-left: trees
+        at(grid, 1, 0) = PIX_TREE_M1; // up: trees
+        // below (1, 2) stays dark grass: not an open-ground type
+        ASSERT_EQ(1, s.smooth(1, 1));
+        ASSERT_EQ((int)kDarkVariants[fixed], (int)at(grid, 1, 1))
+            << "rng " << fixed << " must select grass_dark_variants[" << fixed << "]";
+    }
+
+    FixedRandom rng1(1);
+    GameContext c;
+    c.rng = &rng1;
+    GlobalContextGuard guard(&c);
+    PixieData grid = make_grid(3, 3, PIX_GRASS_DARK_1);
+    smoother s;
+    s.set_target(grid);
+    at(grid, 0, 0) = PIX_TREE_M1;
+    at(grid, 1, 0) = PIX_TREE_M1;
+    at(grid, 1, 2) = PIX_GRASS1; // open ground below
+    ASSERT_EQ(1, s.smooth(1, 1));
+    ASSERT_EQ((int)PIX_GRASS_DARK_B2, (int)at(grid, 1, 1))
+        << "over open grass the same tile is the fuzzy bottom edge B2 under rng 1";
+}

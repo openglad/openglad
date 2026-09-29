@@ -3700,3 +3700,78 @@ TEST(CursesNetwork, host_start_on_a_failed_stage_names_the_stage)
     EXPECT_NE(nullptr, lobby->take_session())
         << "and the accepted start must yield the session";
 }
+
+namespace {
+
+// Types 's' (GO) on the lobby's first painted frame, then nothing until
+// `escape_frame` frames have been painted, then Esc once. The level loop
+// paints a frame per tick, so the Esc lands inside whichever loop is running
+// at that point: in the level it is the withdraw key, in a lobby that has
+// not started it would be cancel.
+class GoThenWithdrawTerminal final : public ITerminal
+{
+public:
+    explicit GoThenWithdrawTerminal(int escape_frame)
+        : escape_frame_(escape_frame)
+    {
+    }
+
+    int rows() const override { return 24; }
+    int cols() const override { return 80; }
+    bool supports_unicode() const override { return false; }
+    bool supports_color() const override { return false; }
+    void clear() override {}
+    void put(int, int, char32_t, Color, Color, bool) override {}
+    void put_str(int, int, std::string_view, Color, Color, bool) override {}
+    void present() override { ++frames_; }
+    Key poll_key(bool) override
+    {
+        if (!sent_go_ && frames_ >= 1) {
+            sent_go_ = true;
+            return Key::character(U's');
+        }
+        if (!sent_escape_ && frames_ >= escape_frame_) {
+            sent_escape_ = true;
+            return Key::special(KeyCode::Escape);
+        }
+        return Key::none();
+    }
+    void set_cursor_visible(bool) override {}
+    void beep() override {}
+
+private:
+    int escape_frame_ = 0;
+    int frames_ = 0;
+    bool sent_go_ = false;
+    bool sent_escape_ = false;
+};
+
+} // namespace
+
+// run_curses_lobby is the whole networked door: once a start is negotiated
+// it takes the session and hands it to the level loop, returning the LEVEL's
+// verdict — here the player's Esc withdraw, which only the level loop can
+// report (a lobby that backed out answers a default result with
+// withdrew == false). Control: the lobby really did hand its session over.
+TEST(CursesNetwork, run_curses_lobby_plays_the_negotiated_level)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client, kPinnedCursesMatchSeed);
+    ASSERT_NE(lobby, nullptr);
+
+    GoThenWithdrawTerminal term(/*escape_frame=*/60);
+    FakeClock clock;
+    const GameRunResult result = run_curses_lobby(*lobby, term, clock);
+    EXPECT_TRUE(result.withdrew)
+        << "the Esc withdraw is the level loop's verdict, passed back";
+    EXPECT_FALSE(result.ended);
+    EXPECT_FALSE(lobby->cancelled()) << "the lobby started instead of backing out";
+    EXPECT_EQ(nullptr, lobby->take_session())
+        << "the session was taken by run_curses_lobby itself";
+}

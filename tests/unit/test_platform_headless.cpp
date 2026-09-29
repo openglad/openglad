@@ -230,6 +230,10 @@ int text_picker_testing_run_team_command(int command, const std::string& input,
 int text_picker_testing_camp_level_row(bool cleared, short& scen_num,
                                        short& replay_level,
                                        short& replay_origin);
+int text_picker_testing_run_game_resolves_replay_arm(int& level_after,
+                                                     short& scen_after,
+                                                     short& replay_level_after,
+                                                     int& level_armed);
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -4826,6 +4830,11 @@ TEST(PlatformHeadless, text_picker_camp_replay_row_arms_a_cleared_level)
 {
     restore_default_campaigns();
     RemountGladiatorGuard remount;
+    // Mount BEFORE registering the synthetic book: a mount that actually
+    // changes the package rebuilds the pack-script registry and would drop
+    // it (the helper's own mount is then a no-op), whatever ran before.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
     ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
   base_camp = function()
     return { widgets = {
@@ -5021,4 +5030,40 @@ TEST(PlatformHeadless, text_staged_session_refuses_a_campaign_it_cannot_mount)
                        "org.example.no-such-campaign\n"))
         << err;
     EXPECT_EQ(std::string::npos, err.find("Failed to load level")) << err;
+}
+
+// #207: the text client's GO on an armed replay excursion resolves it when
+// the game returns — the save's cursor goes back to the origin, the arm is
+// cleared, and the session's level follows the cursor home. The arm comes
+// from the camp's replay row on a cleared level (the product tail).
+TEST(PlatformHeadless, text_picker_run_game_resolves_an_armed_replay)
+{
+    restore_default_campaigns();
+    RemountGladiatorGuard remount;
+    // Mount BEFORE registering the synthetic book: a mount that actually
+    // changes the package rebuilds the pack-script registry and would drop
+    // it (the helper's own mount is then a no-op), whatever ran before.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "1", label = "THE FIRST ROAD", kind = "level", level = 1, replay = true },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+    int level_after = 0;
+    short scen_after = 0;
+    short replay_level_after = 0;
+    int level_armed = 0;
+    ASSERT_EQ(0, og::ui::text_picker_testing_run_game_resolves_replay_arm(
+                     level_after, scen_after, replay_level_after, level_armed));
+    ASSERT_EQ(1, level_armed) << "the arm put the session on the replay level";
+    EXPECT_EQ(3, scen_after) << "the cursor returns to the origin";
+    EXPECT_EQ(0, replay_level_after) << "and the arm is cleared";
+    EXPECT_EQ(3, level_after)
+        << "the session level follows the restored cursor home";
 }

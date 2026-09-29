@@ -267,8 +267,6 @@ Status parse_raw_char(std::string_view b, std::size_t& consumed, Key& key)
 
 Status parse_one(std::string_view b, std::size_t& consumed, Key& key)
 {
-    if (b.empty())
-        return Status::NeedMore;
     if (static_cast<unsigned char>(b[0]) != kEsc)
         return parse_raw_char(b, consumed, key);
     if (b.size() < 2)
