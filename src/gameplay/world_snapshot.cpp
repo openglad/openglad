@@ -448,7 +448,7 @@ constexpr bool entity_field_wire_plan_is_valid()
         {
             const EntityFieldWriteStep& step =
                 kEntityFieldWirePlan.steps[kEntityFieldWirePlan.step_start[bit] + i];
-            if (step.size != 1 && step.size != 2 && step.size != 4 && step.size != 8)
+            if (step.size != 1 && step.size != 2 && step.size != 4)
                 return false;
             if (static_cast<std::size_t>(step.offset) + step.size >
                 sizeof(og::sim::EntitySnapshot))
@@ -465,7 +465,7 @@ constexpr bool entity_field_wire_plan_is_valid()
 
 static_assert(entity_field_wire_plan_is_valid(),
               "entity field wire plan drift -- every step must be an in-bounds "
-              "1/2/4/8-byte EntitySnapshot read");
+              "1/2/4-byte EntitySnapshot read");
 
 std::uint8_t* write_u32_le(std::uint8_t* out, std::uint32_t value)
 {
@@ -484,7 +484,9 @@ std::uint8_t* write_u64_le(std::uint8_t* out, std::uint64_t value)
 }
 
 // Host byte order never reaches the wire: every scalar is composed
-// little-endian byte by byte, exactly as the append_* writers do.
+// little-endian byte by byte, exactly as the append_* writers do. `size` is
+// 1, 2 or 4: entity_field_wire_plan_is_valid() (static_assert above) admits
+// no other step width, so the 4-byte write is the remaining case.
 std::uint8_t* write_field_le(std::uint8_t* out,
                              const std::uint8_t* src,
                              std::uint8_t size)
@@ -502,21 +504,12 @@ std::uint8_t* write_field_le(std::uint8_t* out,
         out[1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
         return out + 2;
     }
-    case 4:
-    {
-        std::uint32_t value = 0;
-        std::memcpy(&value, src, sizeof(value));
-        return write_u32_le(out, value);
-    }
-    case 8:
-    {
-        std::uint64_t value = 0;
-        std::memcpy(&value, src, sizeof(value));
-        return write_u64_le(out, value);
-    }
     default:
-        throw std::runtime_error("snapshot serialization: unsupported field size");
+        break;
     }
+    std::uint32_t value = 0;
+    std::memcpy(&value, src, sizeof(value));
+    return write_u32_le(out, value);
 }
 
 void read_raw_trivial_field(ByteReader& reader,
@@ -538,21 +531,12 @@ void read_raw_trivial_field(ByteReader& reader,
         std::memcpy(dst, &value, sizeof(value));
         return;
     }
-    case 4:
-    {
-        const std::uint32_t value = reader.read_u32(field_name);
-        std::memcpy(dst, &value, sizeof(value));
-        return;
-    }
-    case 8:
-    {
-        const std::uint64_t value = reader.read_u64(field_name);
-        std::memcpy(dst, &value, sizeof(value));
-        return;
-    }
     default:
-        throw std::runtime_error("snapshot deserialization: unsupported field size");
+        break;
     }
+    // 4 bytes: the only width left (see write_field_le).
+    const std::uint32_t value = reader.read_u32(field_name);
+    std::memcpy(dst, &value, sizeof(value));
 }
 
 void deserialize_entity_field(ByteReader& reader,
