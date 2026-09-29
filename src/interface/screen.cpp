@@ -1498,8 +1498,6 @@ void screen::draw_camera_view_world()
 	    og::view_layout::compute_view_layout(
 	        layout_pane_count(), 3, og::view_layout::kModeFull,
 	        gameplay_ui_canvas_w(), gameplay_ui_canvas_h());
-	if (!r.applies)
-		return;
 	// Minimal bevel, drawn INSIDE the pane so a corner quadrant never clips:
 	// a light frame with the seat chrome's dark inner outline.
 	draw_box(r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, GREY, 0, 1);
