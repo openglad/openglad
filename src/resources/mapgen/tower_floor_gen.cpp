@@ -828,8 +828,9 @@ void place_stairs(GameWorld& w, BuildPlan& plan, const Layout& lay)
 
 // Post-smooth fall repair: any AIR cell a walker can step into must land on
 // standable ground within 4 stories (spec step 11's fall audit, made true by
-// construction). Landings the dressing broke are re-grounded; air columns
-// past floor 0 are pit deaths and stay legal.
+// construction). Landings the dressing broke are re-grounded. Story 0 never
+// holds air (carve_spire paints PIX_AIR on stories >= 1 only), so every air
+// column bottoms out on a real landing cell.
 void repair_fall_landings(GameWorld& w, const BuildPlan& plan)
 {
     for (int f = 1; f < plan.stories; ++f)
@@ -852,8 +853,6 @@ void repair_fall_landings(GameWorld& w, const BuildPlan& plan)
                 while (lf > 0 &&
                        w.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     --lf;
-                if (w.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
-                    continue; // pit: designed death
                 if (!cell_standable(w, lf, tx, ty))
                     paint(w.grid_for_floor(lf), tx, ty, plan.band->base_tile);
             }
