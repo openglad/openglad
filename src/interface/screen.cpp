@@ -260,8 +260,6 @@ void dispatch_cosmetic_screen_events(screen& self,
                     const PlatformBridge& bridge = platform_bridge();
                     if (bridge.play_sound)
                         bridge.play_sound(static_cast<int>(ev.a));
-                    else if (self.soundp)
-                        self.soundp->play_sound(static_cast<short>(ev.a));
                 }
                 break;
             case og::sim::EventKind::Notification:
