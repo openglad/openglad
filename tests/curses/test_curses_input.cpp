@@ -272,6 +272,33 @@ TEST(CursesInput, unbound_key_produces_no_action)
         EXPECT_FALSE(s.players[0].held[a]);
 }
 
+// A text key with no SDL keycode (anything past ASCII, e.g. U+00E9) maps to
+// KEYCODE_UNKNOWN and drives nothing -- not even a slot whose binding is
+// itself KEYCODE_UNKNOWN (the fixture leaves KEY_PREFS unbound that way).
+// Positive control: 'a' maps to its keycode and moves left.
+TEST(CursesInput, non_ascii_text_key_maps_to_unknown_and_drives_nothing)
+{
+    const Bindings b;
+    ASSERT_EQ(KEYCODE_UNKNOWN, b.k[KEY_PREFS]);
+
+    EXPECT_EQ(KEYCODE_a, CursesInput::keycode_for_key(press(U'a')));
+    CursesInput control(b.k);
+    control.feed(press(U'a'));
+    EXPECT_EQ(-1, control.sample().players[0].move_x());
+
+    EXPECT_EQ(KEYCODE_UNKNOWN,
+              CursesInput::keycode_for_key(press(U'\u00e9')));
+    CursesInput input(b.k);
+    input.feed(press(U'\u00e9'));
+    const InputState s = input.sample();
+    EXPECT_EQ(0, s.players[0].move_x());
+    EXPECT_EQ(0, s.players[0].move_y());
+    for (int a = 0; a < kInputActionCount; ++a) {
+        EXPECT_FALSE(s.players[0].held[a]) << "action " << a;
+        EXPECT_FALSE(s.players[0].pressed[a]) << "action " << a;
+    }
+}
+
 TEST(CursesInput, reset_clears_state)
 {
     const Bindings b;

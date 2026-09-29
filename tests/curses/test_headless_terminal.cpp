@@ -13,6 +13,7 @@
 #include <iterator>
 #include <string>
 #include <system_error>
+#include <utility>
 
 using namespace og::curses;
 
@@ -55,6 +56,37 @@ TEST(HeadlessTerminal, out_of_bounds_put_is_ignored)
     term.put(0, 99, U'Y', Color::Red, Color::Default, false);
     EXPECT_EQ(term.find_char(U'X').first, -1);
     EXPECT_EQ(term.find_char(U'Y').first, -1);
+}
+
+// cell_at off the grid answers the empty cell; it never reads the buffer
+// (a written (0,0) glyph must not leak through). Control: in-bounds reads
+// see what was written.
+TEST(HeadlessTerminal, cell_at_out_of_bounds_reads_the_empty_cell)
+{
+    HeadlessTerminal term(3, 4);
+    term.put(0, 0, U'X', Color::Red, Color::Blue, true);
+    EXPECT_EQ(U'X', term.cell_at(0, 0).ch);
+    for (const auto& [row, col] : {std::pair{-1, 0}, std::pair{0, -1},
+                                   std::pair{3, 0}, std::pair{0, 4}}) {
+        const Cell& cell = term.cell_at(row, col);
+        EXPECT_EQ(U' ', cell.ch) << row << "," << col;
+        EXPECT_EQ(Color::Default, cell.fg) << row << "," << col;
+        EXPECT_EQ(Color::Default, cell.bg) << row << "," << col;
+        EXPECT_FALSE(cell.bold) << row << "," << col;
+    }
+}
+
+// text_row keeps its columns: a NUL glyph written into a cell renders as a
+// space (never dropped, never a stray byte), so the text after it stays in
+// its column. Control: ASCII and non-ASCII glyphs around it.
+TEST(HeadlessTerminal, text_row_renders_a_nul_cell_as_a_space)
+{
+    HeadlessTerminal term(1, 5);
+    term.put(0, 0, U'a', Color::Default, Color::Default, false);
+    term.put(0, 1, U'\0', Color::Default, Color::Default, false);
+    term.put(0, 2, U'b', Color::Default, Color::Default, false);
+    term.put(0, 3, U'\u00e9', Color::Default, Color::Default, false);
+    EXPECT_EQ("a b? ", term.text_row(0));
 }
 
 TEST(HeadlessTerminal, scripted_keys_are_returned_in_order)
