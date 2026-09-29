@@ -4591,6 +4591,83 @@ TEST(GameLoop, speed_request_sampled_on_a_tickless_frame_reaches_the_next_tick)
     game_screen->world().delete_objects();
 }
 
+// A networked client whose link is past the loss timeout presses Esc. The
+// pause menu's first pump finds the session over (the dead link ends the
+// world), so it answers SessionEnded before drawing a frame. The frame must
+// then end Done WITHOUT running a sim tick on the finished session.
+TEST(GameLoop, session_ending_as_the_pause_menu_opens_ends_the_frame_without_a_tick)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
+    auto transport = std::make_shared<ToggleConnectedTransport>();
+    install_network_client_shadow_for_link_tests(
+        *game_screen, gameplay_session, transport);
+
+    int escapes_to_deliver = 0;
+    int ticks = 0;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_frame_timing = false;
+    deps.enable_event_poll = true;
+    deps.handle_event = [](const SDL_Event&) {};
+    deps.poll_event = [&escapes_to_deliver](SDL_Event* event) {
+        if (escapes_to_deliver == 0)
+            return 0;
+        --escapes_to_deliver;
+        *event = SDL_Event{};
+        event->type = SDL_EVENT_KEY_DOWN;
+        event->key.key = SDLK_ESCAPE;
+        event->key.repeat = false;
+        return 1;
+    };
+    deps.after_act = [&ticks](screen&) { ++ticks; };
+    GameLoopFrameState st;
+
+    // Paired control: live link, no key -- the frame runs exactly one tick.
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(1, ticks);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+    EXPECT_FALSE(st.done);
+
+    // The link dies and stays dead past the loss timeout; then Esc.
+    transport->set_connected(false);
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    const_cast<og::sim::GameClient*>(display_client)
+        ->testing_set_transport_disconnect_elapsed_ms(
+            static_cast<float>(og::sim::CLIENT_CONNECTION_LOST_TIMEOUT_MS + 1u));
+    ASSERT_EQ(0, static_cast<int>(game_screen->world().end))
+        << "nothing has pumped the shadow since the link died";
+    escapes_to_deliver = 1;
+    trace_clear();
+    EXPECT_EQ(GameFrameResult::Done,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, escapes_to_deliver) << "the Esc must have been polled";
+    EXPECT_TRUE(trace_contains("pause_menu", "open"));
+    EXPECT_EQ(1, static_cast<int>(game_screen->world().end))
+        << "the menu's pump must have ended the dead session";
+    EXPECT_EQ(1, ticks)
+        << "no sim tick may run on a session that ended under the menu";
+    EXPECT_TRUE(st.done);
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
 // #278: a networked client's QUIT is a withdraw round trip through the
 // server (returns false, the display waits for the terminal broadcast). On a
 // DEAD link that broadcast can never arrive, so the abort has to end the
