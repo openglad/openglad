@@ -925,3 +925,67 @@ TEST(Replay, unsafe_current_campaign_never_arms_the_recorder)
     og::runtime::current_session->replay_recorder_.reset();
     og::runtime::current_session->replay_output_path_.clear();
 }
+
+// A finished recording that cannot be written is REPORTED, never dropped in
+// silence: the error log names the output path and the ReplayIoError, and
+// the recorder is released either way so the next level records afresh.
+// The unwritable target is a directory standing where replays/latest goes
+// (opening a directory for writing fails for every user, root included).
+// Control: the same recording to the cleared path writes the file and logs
+// no failure.
+TEST(Replay, unwritable_recording_is_reported_with_path_and_error)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored before replay test";
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    configure_replay_team(game_screen.save_data, 1);
+    game_screen.save_data.current_campaign = "gladiator";
+
+    og::runtime::begin_replay_recording(game_screen);
+    ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
+    const std::filesystem::path target =
+        og::runtime::current_session->replay_output_path_;
+    ASSERT_FALSE(target.empty());
+
+    // Park whatever an earlier recording left at the target, then stand a
+    // directory in its place.
+    std::error_code ec;
+    const std::filesystem::path parked = target.string() + ".wpleft-parked";
+    const bool had_file = std::filesystem::is_regular_file(target, ec);
+    ec.clear(); // a missing target is the common case, not an error
+    if (had_file)
+        std::filesystem::rename(target, parked, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    ASSERT_TRUE(std::filesystem::create_directory(target, ec)) << ec.message();
+
+    testing::internal::CaptureStderr();
+    og::runtime::finish_replay_recording();
+    const std::string failed_log = testing::internal::GetCapturedStderr();
+    EXPECT_NE(std::string::npos,
+              failed_log.find(std::format(
+                  "[ERROR] replay_record_write_failed path={} error={}\n",
+                  target.string(),
+                  static_cast<int>(og::sim::ReplayIoError::OpenWriteFailed))))
+        << failed_log;
+    EXPECT_FALSE(og::runtime::current_session->replay_recorder_.has_value())
+        << "a failed write still releases the recorder";
+
+    std::filesystem::remove(target, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    // Control: a writable target records cleanly.
+    og::runtime::begin_replay_recording(game_screen);
+    ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
+    testing::internal::CaptureStderr();
+    og::runtime::finish_replay_recording();
+    const std::string ok_log = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(std::string::npos, ok_log.find("replay_record_write_failed"))
+        << ok_log;
+    EXPECT_TRUE(std::filesystem::is_regular_file(target, ec));
+    EXPECT_FALSE(og::runtime::current_session->replay_recorder_.has_value());
+
+    std::filesystem::remove(target, ec);
+    if (had_file)
+        std::filesystem::rename(parked, target, ec);
+    og::runtime::current_session->replay_output_path_.clear();
+}
