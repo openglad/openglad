@@ -2223,7 +2223,7 @@ TEST_F(CoverageReportGate, an_empty_cpp_half_is_an_error_not_a_smaller_union)
 TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
 {
     // Lua: one fully-covered file out of the whole inventory — far below
-    // 95% for the half.
+    // the bar for the half.
     const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
@@ -2233,12 +2233,14 @@ TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
     // UNION clears the line bar on C++ slack alone (and the completeness
     // check has nothing to say — this test is about the bars). The forged
     // slack must dominate the REAL Lua inventory (the denominator is the
-    // live repo): at 95% each uncovered Lua line needs ~19 covered C++
-    // lines, so size generously — 2000/TU held ~2x headroom over the
-    // ~9.7k-line inventory when the basketball mode landed.
+    // live repo): at 97% each uncovered Lua line needs ~32 covered C++
+    // lines, so size generously — 4000/TU over ~187 TUs is ~748k lines,
+    // 1.7x the ~437k the 13.6k-line inventory needs at 97 (2000/TU cleared
+    // 96 with 2x headroom and failed the day the bar moved to 97; 4000
+    // still clears a 98 bar).
     ASSERT_FALSE(tracked_src_cpp().empty());
     const std::string cpp_args =
-        forge_cpp_tracefile({}, {}, /*lines_per_file=*/2000);
+        forge_cpp_tracefile({}, {}, /*lines_per_file=*/4000);
 
     const ReportRun run =
         run_report(manifest_args({"og_unit_script"}) + fixtures_args() +
