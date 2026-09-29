@@ -1409,6 +1409,12 @@ constexpr MenuButtonSpec kZoneSubmenuRows[] = {
 
 #undef OG_ZONE_SUBMENU_ROW
 
+// The rewire indexes every ordinal up to NEXT without a count check: the
+// runner hands it the materialized spec array, whose size IS this table's.
+static_assert(static_cast<int>(std::size(kZoneSubmenuRows))
+                  == kZoneSubmenuButtonCount,
+              "zone submenu ordinals are the layout contract");
+
 // The rows' band inside the panel: the narrative lines take the top of the
 // panel's face and the rows take what is left, so a wordy page shows fewer
 // rows per window instead of spilling out of the frame.
@@ -1545,8 +1551,6 @@ void zone_submenu_reset_page(ZoneSubmenuScreenState& state,
 // composed row text to BOTH label surfaces (descriptor + live vbutton).
 void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
 {
-    if (count < kZoneSubmenuButtonCount)
-        return;
     const ZoneSubmenuScreenState* st = g_zone_submenu_state;
     const og::ui::CampaignPickerSession* session =
         st != nullptr ? st->session : nullptr;
@@ -3373,9 +3377,6 @@ void seat_settings_rewire(button* buttons, int count,
                           int& highlighted_button)
 {
     if (buttons == nullptr || g_seat_settings_state == nullptr)
-        return;
-    const int expected = kSeatSettingsButtonCount;
-    if (count < expected)
         return;
 
     og::sim::LobbyPlayer player;
@@ -5956,14 +5957,16 @@ constexpr MenuButtonSpec kCompanyListRows[] = {
 #undef OG_COMPANY_LIST_BAK
 #undef OG_COMPANY_LIST_DEL
 
+static_assert(static_cast<int>(std::size(kCompanyListRows))
+                  == kCompanyListNextIndex + 1,
+              "company list ordinals are the layout contract");
+
 // Per-frame visibility + nav over the live list state (pattern b: full-graph
 // rewire recomputed every frame; BFS-pinned per visibility variant). Also
 // stamps the §2.3 active-company marker — red do_outline (U4) — on the live
 // row vbuttons, and re-asserts the pagers on both surfaces.
 void company_list_rewire(button* buttons, int count, int& /*highlighted*/)
 {
-    if (count < kCompanyListNextIndex + 1)
-        return;
     const CompanyListScreenState* st = g_company_list_state;
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
@@ -6316,13 +6319,15 @@ constexpr MenuButtonSpec kCompanyBackupsRows[] = {
 
 #undef OG_COMPANY_BACKUP_ROW
 
+static_assert(static_cast<int>(std::size(kCompanyBackupsRows))
+                  == kCompanyBackupsNextIndex + 1,
+              "company backups ordinals are the layout contract");
+
 // Per-frame visibility + nav over the live snapshot state (pattern b, like
 // the Company List): page-window the rows, chain them vertically into BACK,
 // close BACK/pager side links over pager visibility.
 void company_backups_rewire(button* buttons, int count, int& /*highlighted*/)
 {
-    if (count < kCompanyBackupsNextIndex + 1)
-        return;
     const CompanyBackupsScreenState* st = g_company_backups_state;
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
@@ -7591,8 +7596,6 @@ void lineup_on_reset(void* screen_state)
 // gated on this machine holding a second seat, and the full graph rewired.
 void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
 {
-    if (buttons == nullptr || count < kLineupButtonCount)
-        return;
     const SaveData& save =
         og::runtime::current_session->myscreen_->save_data;
     const bool knobs = picker_lobby_host_controls_visible();
@@ -7998,8 +8001,6 @@ int match_setup_entry_highlight(const MatchSetupScreenState& st,
 // surfaces, and rewires every link over what the gates left standing.
 void match_setup_rewire(button* buttons, int count, int& highlighted_button)
 {
-    if (buttons == nullptr || count < kMatchSetupButtonCount)
-        return;
     MatchSetupScreenState* const st = g_match_setup_state;
     const bool host = picker_lobby_host_controls_visible();
 
