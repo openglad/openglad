@@ -1194,17 +1194,11 @@ bool reload_picker_level_and_sync_settings(screen& myscreen, short level_id)
 
 void level_reload_guard_on_reset(void* screen_state)
 {
-    if (screen_state == nullptr)
-        return;
     static_cast<LevelReloadGuardState*>(screen_state)->was_reset = true;
 }
 
 bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 {
-    // Null state = a caller that never reaches the guard in practice (the
-    // G5 remote-start sweep exits before any frame tick); stay inert.
-    if (screen_state == nullptr)
-        return true;
     auto* const guard = static_cast<LevelReloadGuardState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
     if (guard->last_level_id != myscreen->save_data.scen_num ||
@@ -1907,8 +1901,6 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 {
     ZoneSubmenuScreenState* st =
         static_cast<ZoneSubmenuScreenState*>(screen_state);
-    if (st == nullptr || st->session == nullptr)
-        return row == kZoneSubmenuBackIndex ? MENU_EXIT : 0;
     og::ui::CampaignPickerSession& session = *st->session;
     // One click, one answer (the Base Camp rule).
     st->toast.clear();
@@ -3581,9 +3573,6 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
 {
     auto* const state =
         static_cast<SeatSettingsScreenState*>(screen_state);
-    if (state == nullptr)
-        return MENU_OK;
-
     og::sim::LobbyPlayer player;
     if (!resolve_seat_settings_player(*state, player))
         return MENU_REDRAW;
@@ -5096,8 +5085,6 @@ Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
 // positional refresh of the roster rows.
 bool base_camp_frame_tick(void* screen_state, int /*frame*/)
 {
-    if (screen_state == nullptr)
-        return true;
     auto* const state = static_cast<BaseCampScreenState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
     if (state->last_level_id != myscreen->save_data.scen_num ||
@@ -5146,8 +5133,6 @@ bool base_camp_frame_tick(void* screen_state, int /*frame*/)
 
 void base_camp_on_reset(void* screen_state)
 {
-    if (screen_state == nullptr)
-        return;
     auto* const state = static_cast<BaseCampScreenState*>(screen_state);
     state->was_reset = true;
     // A nested screen (hire/train/zone submenu) may have changed the
@@ -5190,8 +5175,6 @@ Sint32 base_camp_open_match_setup(BaseCampScreenState& st,
 Sint32 base_camp_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<BaseCampScreenState*>(screen_state);
-    if (st == nullptr)
-        return 0;
     // One click, one answer: the previous action's message never survives
     // into this one's frame.
     base_camp_clear_toast(*st);
@@ -6169,8 +6152,6 @@ Sint32 company_list_on_spec_row(int row, void* screen_state)
 {
     CompanyListScreenState* st =
         static_cast<CompanyListScreenState*>(screen_state);
-    if (st == nullptr)
-        return 0;
 
     if (row == kCompanyListBackIndex) {
         TRACE("company_list", "back");
@@ -6432,8 +6413,6 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
 {
     CompanyBackupsScreenState* st =
         static_cast<CompanyBackupsScreenState*>(screen_state);
-    if (st == nullptr)
-        return 0;
 
     if (row == kCompanyBackupsBackIndex) {
         TRACE("company_backups", "back");
@@ -6665,8 +6644,6 @@ Sint32 cloud_save_on_spec_row(int row, void* screen_state)
 {
     CloudSaveScreenState* st =
         static_cast<CloudSaveScreenState*>(screen_state);
-    if (st == nullptr)
-        return row == kCloudSaveBackIndex ? MENU_EXIT : 0;
 
     switch (row)
     {
@@ -7570,8 +7547,6 @@ void lineup_draw_content(void* screen_state)
 
 bool lineup_frame_tick(void* screen_state, int /*frame*/)
 {
-    if (screen_state == nullptr)
-        return true;
     auto* const st = static_cast<LineupScreenState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
     bool restage = false;
@@ -7605,8 +7580,6 @@ bool lineup_frame_tick(void* screen_state, int /*frame*/)
 
 void lineup_on_reset(void* screen_state)
 {
-    if (screen_state == nullptr)
-        return;
     static_cast<LineupScreenState*>(screen_state)->was_reset = true;
     lineup_power_cache_clear();
 }
@@ -8306,8 +8279,6 @@ void match_setup_draw_content(void* screen_state)
 bool match_setup_frame_tick(void* screen_state, int /*frame*/)
 {
     auto* const st = static_cast<MatchSetupScreenState*>(screen_state);
-    if (st == nullptr)
-        return true;
     screen* const game = og::runtime::current_session->myscreen_;
     const SaveData& save = game->save_data;
     const LineupSeatView seats = picker_lineup_seat_view();
@@ -8523,8 +8494,6 @@ Sint32 match_setup_choose(MatchSetupScreenState& st, int slot,
 Sint32 match_setup_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<MatchSetupScreenState*>(screen_state);
-    if (st == nullptr)
-        return row == kMatchSetupBackIndex ? MENU_EXIT : 0;
     // One click, one answer (the Base Camp rule).
     st->toast.clear();
     st->toast_until_ms = 0;
