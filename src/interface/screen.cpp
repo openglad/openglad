@@ -1370,11 +1370,9 @@ CameraPaneRect screen::camera_minimap_block_for_seat(int seat, int ui_w,
 	    : og::view_layout::kModeFull;
 	// The seat's UI pane — the rectangle the radar anchors to, the same
 	// projection ScopedGameplayUiViewLayout applies before it draws.
-	og::view_layout::ViewLayout pane =
+	const og::view_layout::ViewLayout pane =
 	    og::view_layout::compute_view_layout(
 	        layout_pane_count(), seat, mode, ui_w, ui_h);
-	if (!pane.applies)
-		pane = og::view_layout::ViewLayout{true, 0, 0, ui_w, ui_h};
 	const auto [radar_w, radar_h] = radar_block_extents(
 	    level_runtime_data_.world().grid.w,
 	    level_runtime_data_.world().grid.h);
