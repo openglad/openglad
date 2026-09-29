@@ -1109,18 +1109,6 @@ void GameServer::handle_transport_disconnect(
                 disconnected_players_.push_back(replacement);
         }
     }
-    else if (client.has_player_binding())
-    {
-        for (const BoundPlayer& seat : client.bound_players)
-        {
-            if (seat.control != nullptr &&
-                seat.control->user() == static_cast<int>(seat.player_index))
-            {
-                seat.control->set_user(-1);
-                seat.control->restore_act_type();
-            }
-        }
-    }
     else if (client.spectator_admitted &&
              !is_zero_session_token(client.session_token))
     {
@@ -1433,8 +1421,6 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
             return;
         }
 
-        if (is_zero_session_token(client.session_token))
-            client.session_token = allocate_session_token();
         response.session_token = client.session_token;
         transport_.send_hello(peer_id, std::make_shared<HelloMessage>(response));
         return;
