@@ -7,6 +7,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -35,6 +36,13 @@
 
 // Forward declaration from platform_io.cpp
 bool apply_sprite_sheet_setting();
+void draw_sprite_sheet_button(button& b);
+Sint32 change_resolution();
+bool picker_testing_submit_direct_join(const std::string& ip_address,
+                                       const std::string& port_text,
+                                       int& factory_calls, bool& direct_mode,
+                                       std::string& endpoint);
+bool picker_testing_join_relay_prompt(std::string& stored_room_code);
 
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);
@@ -1938,6 +1946,161 @@ TEST(PickerFuncs, concrete_sdl_client_delegates_host_join_load_and_save)
 TEST(PickerFuncs, concrete_sdl_client_relay_state_machine_paths)
 {
     EXPECT_EQ(0, picker_testing_exercise_sdl_client_internal_paths());
+}
+
+// Rule: a DIRECT (LAN) JOIN composes the endpoint "<ip>:<port>" from the
+// two NETWORKING fields and hands exactly that to the platform join client.
+TEST(PickerFuncs, direct_join_hands_the_platform_ip_colon_port)
+{
+    ScopedTraceBuffer trace_guard;
+    int factory_calls = -1;
+    bool direct_mode = false;
+    std::string endpoint;
+    EXPECT_FALSE(picker_testing_submit_direct_join(
+        "10.1.2.3", "4567", factory_calls, direct_mode, endpoint))
+        << "the stub factory declines, so the join reports failure";
+    EXPECT_EQ(1, factory_calls);
+    EXPECT_TRUE(direct_mode) << "a LAN join asks for PickerJoinMode::Direct";
+    EXPECT_EQ("10.1.2.3:4567", endpoint);
+
+    // Paired control: a blank IP is refused before the factory is asked.
+    trace_clear();
+    EXPECT_FALSE(picker_testing_submit_direct_join(
+        "  ", "4567", factory_calls, direct_mode, endpoint));
+    EXPECT_EQ(0, factory_calls);
+    EXPECT_TRUE(trace_contains("popup", "IP address"));
+}
+
+// Rule: JOIN in relay mode with a room code that is still blank after the
+// room-code prompt stays in the menu and stores no code.
+TEST(PickerFuncs, relay_join_with_a_still_blank_code_stays_in_the_menu)
+{
+    struct PromptQueueRestore
+    {
+        PromptQueueRestore() { level_editor_testing_prompt_queue_clear(); }
+        ~PromptQueueRestore() { level_editor_testing_prompt_queue_clear(); }
+    } prompt_queue_restore;
+
+    std::string stored = "unset";
+    level_editor_testing_prompt_queue_push("   ");
+    EXPECT_FALSE(picker_testing_join_relay_prompt(stored))
+        << "a blank answer must keep the player in the menu";
+    EXPECT_EQ("", stored) << "the blank answer is not stored as the code";
+    EXPECT_TRUE(level_editor_testing_prompt_queue_ref().empty())
+        << "the prompt really ran and consumed the answer";
+
+    // Paired control: a typed code proceeds and is stored.
+    level_editor_testing_prompt_queue_push("GLAD-TYPED");
+    EXPECT_TRUE(picker_testing_join_relay_prompt(stored));
+    EXPECT_EQ("GLAD-TYPED", stored);
+}
+
+namespace
+{
+// get_pixel(x, y, &index) resolves an RGB back to the LOWEST palette index
+// with that colour, so an expected index goes through the same rule.
+int canonical_palette_index(unsigned char color)
+{
+    int wr = 0, wg = 0, wb = 0;
+    query_palette_reg(color, &wr, &wg, &wb);
+    for (int i = 0; i < 256; ++i)
+    {
+        int r = 0, g = 0, b = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &r, &g, &b);
+        if (r == wr && g == wg && b == wb)
+            return i;
+    }
+    return static_cast<int>(color);
+}
+
+struct CfgSettingRestore
+{
+    std::string category;
+    std::string setting;
+    std::string saved;
+    CfgSettingRestore(std::string category_, std::string setting_)
+        : category(std::move(category_)), setting(std::move(setting_)),
+          saved(cfg.get_setting(category, setting))
+    {
+    }
+    ~CfgSettingRestore() { cfg.apply_setting(category, setting, saved); }
+};
+} // namespace
+
+// Rule: the Sprite Sheet options row lights its face LIGHT_GREEN while a
+// custom sprite sheet is active, and leaves the row undrawn otherwise.
+TEST(PickerFuncs, sprite_sheet_row_lights_green_while_a_custom_sheet_is_active)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    const CanvasTarget saved_canvas = scr->active_canvas();
+    scr->set_active_canvas(CanvasTarget::UI);
+    CfgSettingRestore sheet("graphics", "sprite_sheet");
+
+    button row("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 200,
+               100, 90, 15, 0, 0, MenuNav{});
+    const int face_x = row.x + 1;  // inside the bevel, left of the label
+    const int face_y = row.y + 1;
+    const auto face_index = [&] {
+        int index = -1;
+        scr->get_pixel(face_x, face_y, &index);
+        return index;
+    };
+    const int black = canonical_palette_index(BLACK);
+    ASSERT_NE(black, canonical_palette_index(LIGHT_GREEN));
+
+    // Paired control: no custom sheet, nothing is drawn over the canvas.
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    scr->draw_box(row.x - 1, row.y - 1, row.x + row.sizex, row.y + row.sizey,
+                  BLACK, 1);
+    draw_sprite_sheet_button(row);
+    EXPECT_EQ(black, face_index()) << "the default sheet draws no face";
+
+    cfg.apply_setting("graphics", "sprite_sheet", "custom_sheet.png");
+    draw_sprite_sheet_button(row);
+    EXPECT_EQ(canonical_palette_index(LIGHT_GREEN), face_index())
+        << "an active custom sheet lights the row green";
+
+    scr->set_active_canvas(saved_canvas);
+}
+
+// Rule: in borderless desktop mode the Resolution row is inert -- it never
+// rewrites the remembered window size.
+TEST(PickerFuncs, borderless_resolution_row_keeps_the_remembered_size)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    struct DisplayRestore
+    {
+        screen* scr;
+        CfgSettingRestore mode{"graphics", "fullscreen"};
+        CfgSettingRestore width{"graphics", "width"};
+        CfgSettingRestore height{"graphics", "height"};
+        ~DisplayRestore()
+        {
+            cfg.apply_setting("graphics", "fullscreen", mode.saved);
+            cfg.apply_setting("graphics", "width", width.saved);
+            cfg.apply_setting("graphics", "height", height.saved);
+            scr->apply_display_settings_from_cfg();
+            scr->relayout_views();
+        }
+    } display_restore{scr};
+
+    // Paired control: in a window the row DOES step the remembered size.
+    cfg.apply_setting("graphics", "fullscreen", "off");
+    cfg.apply_setting("graphics", "width", "700");
+    cfg.apply_setting("graphics", "height", "450");
+    EXPECT_EQ(MENU_OK, change_resolution());
+    EXPECT_NE("700x450", cfg.get_setting("graphics", "width") + "x" +
+                             cfg.get_setting("graphics", "height"))
+        << "the windowed row cycles to another size";
+
+    cfg.apply_setting("graphics", "fullscreen", "borderless");
+    cfg.apply_setting("graphics", "width", "700");
+    cfg.apply_setting("graphics", "height", "450");
+    EXPECT_EQ(MENU_OK, change_resolution());
+    EXPECT_EQ("700", cfg.get_setting("graphics", "width"));
+    EXPECT_EQ("450", cfg.get_setting("graphics", "height"));
 }
 
 TEST(PickerFuncs, local_lobby_client_without_screen_has_exact_empty_contract)
