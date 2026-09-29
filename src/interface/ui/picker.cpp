@@ -745,13 +745,10 @@ bool picker_revert_lobby_client_if_kicked()
               : "connection lost: reverting to local lobby client");
     try
     {
-        if (!picker_replace_lobby_client(
-                owner, og::ui::create_local_picker_lobby_client(),
-                "NETWORKING", /*show_success_popup=*/false,
-                /*restore_previous_on_failure=*/false))
-        {
-            return false;
-        }
+        (void)picker_replace_lobby_client(
+            owner, og::ui::create_local_picker_lobby_client(),
+            "NETWORKING", /*show_success_popup=*/false,
+            /*restore_previous_on_failure=*/false);
     }
     catch (const std::exception& error)
     {
