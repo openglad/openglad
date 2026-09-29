@@ -326,8 +326,6 @@ static const std::array<const char*, NUM_FAMILIES> kFamilyHudNames = {
 // The follow banner keeps its own blank-skipping variant below.
 static std::string hud_display_name(const walker* control)
 {
-    if (control == nullptr)
-        return {};
     if (control->myguy)
         return control->myguy->name;
     if (!control->stats()->name.empty())
