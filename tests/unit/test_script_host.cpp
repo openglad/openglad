@@ -38,6 +38,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -369,6 +370,36 @@ TEST(ScriptHostBasics, eval_coercions_are_strict)
     auto s = host.eval_string("'x' .. 'y'");
     ASSERT_TRUE(s.has_value());
     EXPECT_EQ("xy", *s);
+}
+
+// An eval expression that does not compile yields NO value and records one
+// 'eval' script error. The optional is what keeps every eval-based assertion
+// in this file honest: a failed eval that answered 0 / false / "" would let
+// `EXPECT_EQ(0, *host.eval_number(...))` pass on a typo.
+TEST(ScriptHostBasics, an_eval_that_does_not_compile_yields_no_value_and_one_error)
+{
+    ScriptHost host;
+    // Positive control: the same shapes compile and answer with no error.
+    ASSERT_EQ(std::optional<double>(0.0), host.eval_number("0"));
+    ASSERT_EQ(std::optional<bool>(false), host.eval_boolean("false"));
+    ASSERT_EQ(std::optional<std::string>(""), host.eval_string("''"));
+    ASSERT_TRUE(host.errors().empty());
+
+    EXPECT_EQ(std::nullopt, host.eval_number("0 +"));
+    EXPECT_EQ(std::nullopt, host.eval_boolean("false and"));
+    EXPECT_EQ(std::nullopt, host.eval_string("'' .."));
+
+    // Each failed eval recorded the parser's error against 'eval'. All
+    // three wrap to `return (<expr>)` and stop at the same ')', so the
+    // store collapses them into one record counted three times.
+    ASSERT_EQ(1u, host.errors().size());
+    const og::script::ScriptError& e = host.errors()[0];
+    EXPECT_EQ("eval", e.where);
+    EXPECT_EQ(3u, e.count);
+    EXPECT_EQ(0u, e.message.rfind("eval:1: unexpected symbol near ')'", 0))
+        << e.message;
+    EXPECT_EQ(std::string::npos, e.message.find("stack traceback"))
+        << "a compile error never ran, so it has no traceback: " << e.message;
 }
 
 TEST(ScriptHostBasics, identical_programs_produce_identical_hosts)
