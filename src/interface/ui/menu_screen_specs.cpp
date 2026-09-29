@@ -5368,8 +5368,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
                 base_camp_show_toast(*st, outcome.reason);
                 return MENU_OK;
             }
-            if (outcome.kind != Outcome::Acted)
-                return 0;
+            // Acted: idx and the Action kind were checked above on the
+            // same rows act() reads, and the action answers Refused or
+            // Acted only.
             // #212: a match knob written through og.campaign_match_set
             // armed the providers' dirty flag; run the settings sync so
             // joiners follow.
