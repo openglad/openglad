@@ -608,10 +608,9 @@ int m_facing(lua_State* L)
 
 statistics* stats_arg(lua_State* L)
 {
-    statistics* st = self_arg(L)->stats();
-    if (st == nullptr)
-        script_raise(L, "entity has no stats");
-    return st;
+    // Never null: every walker constructor makes stats_, and only the
+    // destructor resets it.
+    return self_arg(L)->stats();
 }
 
 #define S_GET_FLT(NAME)                                        \
