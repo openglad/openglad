@@ -2011,8 +2011,6 @@ SDL_Surface* Screen::compose_native_world_views_for_capture(
 	                         i < native_world_view_planes_.size(); ++i)
 	{
 		const NativeWorldViewPlane& plane = native_world_view_planes_[i];
-		if (plane.surface == nullptr)
-			continue;
 		for (const NativeWorldViewDestination& destination : plane.destinations)
 		{
 			const bool matches = base_canvas == CanvasTarget::UI
