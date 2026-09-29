@@ -389,8 +389,6 @@ bool assign_joystick_to_player(int player, int device_index)
 
 void clear_player_joystick(int player)
 {
-    if (player < 0 || player >= 4)
-        return;
     player_joy[player] = JoyData(); // full unbind: device, layout, and claim
     hw().player_joystick_guids[player].clear();
 }
