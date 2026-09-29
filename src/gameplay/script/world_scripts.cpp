@@ -839,8 +839,6 @@ int og_register_hooks(lua_State* L)
                           order_str, family_str);
 
     VmState* st = get_vm_state(L);
-    if (st == nullptr || st->owner == nullptr)
-        return luaL_error(L, "og.register_hooks: no world scripts active");
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->hooks_ref);  // hooks root
     lua_rawgeti(L, -1, hook_table_key(oi->order, family_id));
@@ -1375,8 +1373,6 @@ int og_register_campaign_hooks(lua_State* L)
     // family chunk calling this neither rejects the pack nor registers.
     if (st != nullptr && st->mode == VmMode::Declare)
         return 0;
-    if (st == nullptr || st->owner == nullptr)
-        return luaL_error(L, "og.register_campaign_hooks: no world scripts");
 
     if (st->campaign_registered) {
         // One campaign, one book, or none: never raise (that would kill
@@ -1494,8 +1490,6 @@ int og_register_default_lineup(lua_State* L)
     // Declaration pass: silent no-op, the og.register_hooks precedent.
     if (st != nullptr && st->mode == VmMode::Declare)
         return 0;
-    if (st == nullptr || st->owner == nullptr)
-        return luaL_error(L, "og.register_default_lineup: no world scripts");
 
     // Last registration wins (the og.register_level_hooks wildcard
     // precedent). The table carried a second `default_fill` member for as
