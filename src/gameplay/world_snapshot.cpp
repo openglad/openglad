@@ -225,17 +225,10 @@ bool has_materialized_grid(const og::sim::WorldSnapshot& snapshot) noexcept
            grid_cell_count(snapshot.grid_width, snapshot.grid_height);
 }
 
+// Only called on a baseline that has a materialized grid (apply_delta
+// returns before it otherwise, and only writes elements in between).
 void normalize_materialized_grid(og::sim::WorldSnapshot& snapshot)
 {
-    if (!has_materialized_grid(snapshot))
-    {
-        snapshot.grid_dirty = false;
-        snapshot.grid_full_resend = false;
-        snapshot.full_grid_data.clear();
-        snapshot.grid_dirty_tiles.clear();
-        return;
-    }
-
     snapshot.grid_dirty = true;
     snapshot.grid_full_resend = true;
     snapshot.grid_dirty_tiles.clear();
