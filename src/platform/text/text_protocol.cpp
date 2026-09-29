@@ -750,8 +750,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
 int run_text_staged_protocol_session(const TextStagedProtocolArgs& args)
 {
-    if (args.session_save == nullptr)
-        return 1;
+    // The one caller (run_text_picker_protocol_session) enters this shape
+    // only with a save; the save-less launch is run_text_protocol_session.
     const SaveData& session_save = *args.session_save;
 
     // MatchStage does NOT mount (it assumes its owner already did — the

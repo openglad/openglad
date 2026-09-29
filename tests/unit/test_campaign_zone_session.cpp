@@ -618,16 +618,6 @@ TEST_F(CampaignZoneSessionTest, assign_cycle_never_returns_to_unset)
     EXPECT_EQ(1, CampaignZoneSession::next_assign_tag(255)) << "junk -> 1";
 }
 
-TEST_F(CampaignZoneSessionTest, assign_glyph_takes_the_label_first_letter)
-{
-    hooks::CampaignAssignSpec spec;
-    spec.labels = {"war", "Burden"};
-    EXPECT_EQ('-', CampaignZoneSession::assign_glyph(spec, 0));
-    EXPECT_EQ('W', CampaignZoneSession::assign_glyph(spec, 1));
-    EXPECT_EQ('B', CampaignZoneSession::assign_glyph(spec, 2));
-    EXPECT_EQ('-', CampaignZoneSession::assign_glyph(spec, 3));
-}
-
 // The roster's oath column spells the choice out and heads itself with
 // the script's own channel key. A lone letter on a coloured chip is the
 // TEAM widget, and the oath has to stay readable after its toast expires.
@@ -808,4 +798,34 @@ TEST_F(CampaignZoneSessionTest, settings_fingerprint_seeds_then_detects)
     save_.scen_num = 99;
     EXPECT_FALSE(zone.settings_fingerprint_changed())
         << "scen_num is the reload guard's trigger, not this one";
+}
+
+// Stepping the actions window of a docket that fits on one page is refused
+// and moves nothing (no pager row to step); a stale widget index is refused
+// too. Control: actions_overflow_pages_in_place steps a multi-page docket.
+TEST_F(CampaignZoneSessionTest, single_page_docket_refuses_a_window_step)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "actions", weight = 3, entries = {
+            { id = "a", label = "A", kind = "action" },
+            { id = "b", label = "B", kind = "action" },
+          } },
+        { kind = "roster" },
+      },
+    }
+  end,
+}))LUA");
+    CampaignZoneSession zone(save_);
+    zone.fetch();
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_FALSE(zone.actions()[0].page.multi_page());
+    EXPECT_FALSE(zone.actions()[0].more_row);
+
+    EXPECT_FALSE(zone.step_actions_window(0));
+    EXPECT_EQ(0, zone.actions()[0].page.page);
+    EXPECT_FALSE(zone.actions()[0].more_row);
+    EXPECT_FALSE(zone.step_actions_window(7)) << "no such widget";
 }

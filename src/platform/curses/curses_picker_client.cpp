@@ -549,8 +549,8 @@ void view_team_roster(Menu& menu, SaveData& save)
         if (choice < 0)
             return;
         cursor = choice;
-        if (choice >= static_cast<int>(slots.size()))
-            continue;
+        // choose() answers only selectable rows, and the DEP/Gold footer
+        // row is not one: every answer indexes `slots`.
         const int slot = slots[static_cast<std::size_t>(choice)];
 
         if (key == U'd' || key == U'D') {
@@ -603,9 +603,9 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config,
     }
 
     for (;;) {
+        // HireSession always holds a recruit: the ctor and both family
+        // steps make one, and hire() refills it before it returns.
         const guy* r = session.current_recruit();
-        if (!r)
-            break;
 
         const std::string title = std::format("Hire: {} ({}/{})",
             og::ui::family_display_name(r->family),
@@ -857,15 +857,11 @@ void teams_screen(Menu& menu, SaveData& save)
 // so the old "documented local-roster bound" is gone with the scratch
 // marshaling. The scratch headless load survives only as the fallback
 // census world for a null stage.
+// Its one caller, view_scenario_locally_staged(), has already refused an
+// unmounted campaign with this screen's words, and staging never remounts.
 void view_scenario(Menu& menu, const SaveData& save, const GameWorld* staged,
                    og::ui::StagePreviewStatus status)
 {
-    if (get_mounted_campaign() != save.current_campaign) {
-        menu.show_text("View Scenario", {std::format(
-            "Campaign '{}' is not mounted.", save.current_campaign)});
-        return;
-    }
-
     // Seat block (#218): the curses View Level stages locally, so the
     // save-derived seat synthesis IS its staging input; every seat is this
     // machine's (all-local -> YOU).

@@ -90,6 +90,8 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
 int curses_network_testing_exercise_internal_helpers();
+short curses_network_testing_networked_win_cursor(short finished,
+                                                  int next_level);
 std::string curses_network_testing_session_build_failure(bool host,
                                                         const char* campaign,
                                                         bool* restored_out);
@@ -546,6 +548,17 @@ TEST(CursesNetwork, internal_helpers_cover_message_and_session_paths)
 {
     EXPECT_EQ(0,
               curses_network_testing_exercise_internal_helpers());
+}
+
+// A networked win whose end event names no next level (-1) advances the
+// campaign by one, like the local runtime; an explicit next level is taken
+// as given (the control).
+TEST(CursesNetwork, networked_win_without_a_next_level_advances_by_one)
+{
+    EXPECT_EQ(7, curses_network_testing_networked_win_cursor(3, 7))
+        << "an explicit next level is the cursor's next stop";
+    EXPECT_EQ(4, curses_network_testing_networked_win_cursor(3, -1))
+        << "no next level: the level after the one just won";
 }
 
 TEST(CursesNetwork, roster_reflects_two_players)

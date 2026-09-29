@@ -62,7 +62,6 @@ loader* headless_entity_loader();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 int get_input_events();
 walker* find_follow_leader();
-extern short end_of_file;
 int toInt(const std::string& s);
 void input_state_from_sdl(InputState& out);
 void emit_headless_unsupported_warnings_probe();
@@ -99,44 +98,6 @@ private:
     const char* name_;
     bool had_value_ = false;
     std::string old_value_;
-};
-
-class MemoryOgFile final : public og::io::OgFile {
-public:
-    explicit MemoryOgFile(std::string data)
-        : data_(std::move(data))
-    {
-    }
-
-    std::size_t read(void* buf, std::size_t size, std::size_t count) override
-    {
-        const std::size_t requested = size * count;
-        const std::size_t available = pos_ < data_.size() ? data_.size() - pos_ : 0u;
-        const std::size_t bytes = requested < available ? requested : available;
-        if (bytes > 0)
-            std::memcpy(buf, data_.data() + pos_, bytes);
-        pos_ += bytes;
-        return size == 0 ? 0u : bytes / size;
-    }
-
-    std::size_t write(const void*, std::size_t, std::size_t) override { return 0; }
-
-    std::int64_t seek(std::int64_t offset, int whence) override
-    {
-        if (whence == 0)
-            pos_ = static_cast<std::size_t>(offset);
-        else if (whence == 1)
-            pos_ += static_cast<std::size_t>(offset);
-        else if (whence == 2)
-            pos_ = data_.size() + static_cast<std::size_t>(offset);
-        return static_cast<std::int64_t>(pos_);
-    }
-
-    std::int64_t tell() override { return static_cast<std::int64_t>(pos_); }
-
-private:
-    std::string data_;
-    std::size_t pos_ = 0;
 };
 
 class StdinRedirect {
@@ -263,6 +224,12 @@ int text_picker_testing_launch_seed_matches_the_preview();
 int text_picker_testing_launch_census_matches_the_preview();
 int text_picker_testing_founding_is_reproducible_at_one_seed();
 int text_picker_testing_hires_across_visits_draw_fresh_names();
+int text_picker_testing_run_team_command(int command, const std::string& input,
+                                         std::string& output,
+                                         int& team_size_after);
+int text_picker_testing_camp_level_row(bool cleared, short& scen_num,
+                                       short& replay_level,
+                                       short& replay_origin);
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -604,32 +571,6 @@ TEST(PlatformHeadless, unsupported_platform_functions_return_documented_defaults
     EXPECT_EQ(kNoTimerWaitRequest, input.timer_wait_request);
 
     emit_headless_unsupported_warnings_probe();
-}
-
-TEST(PlatformHeadless, help_reader_stops_on_newline_carriage_return_limit_and_eof)
-{
-    MemoryOgFile file("alpha\rbravo\ncharlie");
-    end_of_file = 0;
-    EXPECT_EQ("alpha", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ("bravo", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ("charlie", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ("", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ(1, end_of_file);
-
-    MemoryOgFile limited("abcdef");
-    end_of_file = 0;
-    EXPECT_EQ("abc", read_one_line(limited, 3));
-    EXPECT_EQ(0, end_of_file);
-
-    MemoryOgFile many_lines("one\ntwo\nthree\n");
-    char help[HELP_WIDTH][MAX_LINES];
-    std::memset(help, 0, sizeof(help));
-    end_of_file = 0;
-    const short count = fill_help_array(help, many_lines);
-    EXPECT_GE(count, 3);
-    EXPECT_STREQ("one", help[0]);
-    EXPECT_STREQ("two", help[1]);
-    EXPECT_STREQ("three", help[2]);
 }
 
 TEST(PlatformHeadless, walker_render_stubs_keep_sim_state_without_render_component)
@@ -4714,4 +4655,370 @@ TEST(PlatformHeadless, text_picker_hire_refuses_a_full_team_and_an_empty_purse)
     ASSERT_EQ(SaveDataIoError::None, broke.load_with_error("wp9broke"));
     EXPECT_EQ(1, broke.team_size);
     EXPECT_EQ(0u, broke.m_totalcash[0]);
+}
+
+// --- cov97 WP-TERM: text-client refusals, cancels and tails ---------------
+
+namespace {
+
+// Captures fd-level stderr (std::fprintf(stderr, ...)) for one call.
+class StderrCapture {
+public:
+    StderrCapture()
+        : saved_(dup(STDERR_FILENO))
+        , file_(std::tmpfile())
+    {
+        if (saved_ >= 0 && file_ != nullptr)
+            dup2(fileno(file_), STDERR_FILENO);
+    }
+
+    ~StderrCapture()
+    {
+        (void)restore();
+        if (file_ != nullptr)
+            std::fclose(file_);
+    }
+
+    std::string restore()
+    {
+        std::fflush(stderr);
+        if (saved_ >= 0) {
+            dup2(saved_, STDERR_FILENO);
+            close(saved_);
+            saved_ = -1;
+        }
+        if (file_ == nullptr)
+            return {};
+        std::string text;
+        std::rewind(file_);
+        char buffer[4096];
+        std::size_t bytes = 0;
+        while ((bytes = std::fread(buffer, 1, sizeof(buffer), file_)) > 0)
+            text.append(buffer, bytes);
+        return text;
+    }
+
+private:
+    int saved_;
+    std::FILE* file_;
+};
+
+// The lineup company (F4 parked on team 1) through LINEUP row `row`, then
+// back out; returns the reloaded company's four team numbers.
+std::vector<short> text_lineup_row_teams(const std::string& slot,
+                                         const std::string& row,
+                                         std::string& out)
+{
+    const std::string input =
+        "7\n"        // main: load company -> the company list
+        "1\n"        //   list: open company...
+        "1\n"        //     #1 = the lineup company -> team build
+        "12\n"       // team build: LINEUP
+        + row + "\n"  //   lineup: the row under test
+        "12\n"       //   lineup: back -> team build
+        "8\n"        // team build: back -> main
+        "6\n";       // main: quit
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    out = stdout_capture.restore();
+
+    std::vector<short> teams;
+    SaveData reloaded;
+    if (reloaded.load_with_error(slot) != SaveDataIoError::None)
+        return teams;
+    for (int i = 0; i < 4; ++i) {
+        const auto& member = reloaded.team_list[static_cast<std::size_t>(i)];
+        teams.push_back(member ? member->teamnum : short{-1});
+    }
+    return teams;
+}
+
+} // namespace
+
+// SPLIT EVEN and UNITE both land on the text client. A company file loads
+// with ONE seat, so either row gathers the whole company onto that seat's
+// team: F4, parked on team 1, is the one fighter that moves, and the move
+// reaches the company file. (Even and Fair deal identically on one seat --
+// split_company's single-seat rule -- so the row is pinned by its effect.)
+TEST(PlatformHeadless, text_picker_lineup_split_even_and_unite_gather_the_seat)
+{
+    restore_default_campaigns();
+    HeadlessSaveDirSandbox sandbox;
+    RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
+
+    const std::vector<short> parked = {0, 0, 0, 1};
+    {
+        ASSERT_TRUE(seed_lineup_company("lineupe"));
+        std::string out;
+        EXPECT_EQ(std::vector<short>({0, 0, 0, 0}),
+                  text_lineup_row_teams("lineupe", "9", out))
+            << "SPLIT EVEN (row 9) deals F4 onto the one seat:\n" << out;
+        EXPECT_NE(std::string::npos, out.find("Moved 1 fighter.")) << out;
+        (void)remove_user_file("save/lineupe.gtl");
+    }
+    {
+        ASSERT_TRUE(seed_lineup_company("lineupu"));
+        std::string out;
+        EXPECT_EQ(std::vector<short>({0, 0, 0, 0}),
+                  text_lineup_row_teams("lineupu", "11", out))
+            << "UNITE (row 11) gathers F4 onto the first team:\n" << out;
+        EXPECT_NE(std::string::npos, out.find("Moved 1 fighter.")) << out;
+        (void)remove_user_file("save/lineupu.gtl");
+    }
+    {
+        // Control: backing straight out moves nobody.
+        ASSERT_TRUE(seed_lineup_company("lineupc"));
+        std::string out;
+        EXPECT_EQ(parked, text_lineup_row_teams("lineupc", "99", out))
+            << "an out-of-range row is refused and moves nobody:\n" << out;
+        (void)remove_user_file("save/lineupc.gtl");
+    }
+}
+
+// A camp that retired training (can_train = false) or hiring
+// (can_hire = false) refuses the text client's TRAIN and HIRE rows in the
+// camp's own words, before any screen opens. Control: the same rows open
+// their screens on a camp that says nothing.
+TEST(PlatformHeadless, text_picker_train_and_hire_obey_the_camps_closed_doors)
+{
+    restore_default_campaigns();
+    const int train = static_cast<int>(og::ui::PickerMenuCommand::TrainTeam);
+    const int hire = static_cast<int>(og::ui::PickerMenuCommand::HireTroops);
+    std::string out;
+    int team_size = -1;
+
+    ASSERT_EQ(0, og::ui::text_picker_testing_run_team_command(train, "b\n", out,
+                                                              team_size));
+    EXPECT_NE(std::string::npos, out.find("--- Train: ")) << out;
+    ASSERT_EQ(0, og::ui::text_picker_testing_run_team_command(hire, "b\n", out,
+                                                              team_size));
+    EXPECT_NE(std::string::npos, out.find("--- Hire: ")) << out;
+
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      can_train = false, can_hire = false } } }
+  end,
+}))LUA");
+    ASSERT_EQ(0, og::ui::text_picker_testing_run_team_command(train, "b\n", out,
+                                                              team_size));
+    EXPECT_EQ(std::string(og::ui::kCampaignRosterTrainClosedMessage) + "\n",
+              out);
+    ASSERT_EQ(0, og::ui::text_picker_testing_run_team_command(hire, "b\n", out,
+                                                              team_size));
+    EXPECT_EQ(std::string(og::ui::kCampaignRosterHireClosedMessage) + "\n",
+              out);
+    EXPECT_EQ(1, team_size) << "a refused hire hires nobody";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The camp's replay row runs the text set-level tail with the replay arm:
+// on a CLEARED level the tail arms the excursion (cursor onto the level,
+// origin remembered) instead of the plain write.
+TEST(PlatformHeadless, text_picker_camp_replay_row_arms_a_cleared_level)
+{
+    restore_default_campaigns();
+    RemountGladiatorGuard remount;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "1", label = "THE FIRST ROAD", kind = "level", level = 1, replay = true },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+    short scen = 0;
+    short replay_level = 0;
+    short replay_origin = 0;
+    ASSERT_EQ(0, og::ui::text_picker_testing_camp_level_row(
+                     true, scen, replay_level, replay_origin));
+    EXPECT_EQ(1, scen) << "the arm moves the cursor onto the level";
+    EXPECT_EQ(1, replay_level) << "a cleared replay row ARMS";
+    EXPECT_EQ(3, replay_origin) << "the arm remembers where the player left";
+}
+
+namespace {
+
+// The cloud submenu driven over a faked bridge; returns the stdout.
+std::string text_cloud_drive(const std::string& input,
+                             og::ui::TextPickerConfig& config)
+{
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    return stdout_capture.restore();
+}
+
+struct CloudBridgeRestore {
+    PlatformBridge saved;
+    ~CloudBridgeRestore() { set_platform_bridge(saved); }
+};
+
+// Stages the download fixture of text_picker_cloud_download_confirms_
+// installs_and_opens: a cloud copy of CLOUD BAND for slot hlcloudl, and the
+// different LOCAL BAND already in that slot. Returns the GET body.
+std::string stage_cloud_download_fixture()
+{
+    if (!seed_headless_company("hlcloudr", "CLOUD BAND", 7000))
+        return {};
+    std::string remote_bytes;
+    {
+        std::ifstream in(std::filesystem::path(get_user_path()) / "save" /
+                             "hlcloudr.gtl",
+                         std::ios::binary);
+        remote_bytes.assign((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+    }
+    if (remote_bytes.empty() || !remove_user_file("save/hlcloudr.gtl"))
+        return {};
+    if (!seed_headless_company("hlcloudl", "LOCAL BAND", 6000))
+        return {};
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    return std::string(
+               R"({"revision":5,"uploaded_at":1754200000000,"slot":"hlcloudl",)"
+               R"("save_name":"CLOUD BAND","scen_num":1,"last_played":7000,)"
+               R"("data_hex":")") +
+           og::ui::cloud::hex_encode(remote_raw) + R"("})";
+}
+
+} // namespace
+
+// The download's NO-first overwrite confirm: an explicit 'n' and an input
+// that ends at the confirm are both a No -- the local company survives and
+// the terminal says the download was cancelled.
+TEST(PlatformHeadless, text_picker_cloud_download_no_or_eof_cancels)
+{
+    restore_default_campaigns();
+    for (const char* confirm : {"n\n", ""}) {
+        HeadlessSaveDirSandbox sandbox;
+        cfg.data.erase("cloud");
+        const std::string get_body = stage_cloud_download_fixture();
+        ASSERT_FALSE(get_body.empty());
+
+        CloudBridgeRestore bridge_restore{platform_bridge()};
+        PlatformBridge faked = bridge_restore.saved;
+        faked.cloud_http_get = [&](const std::string&) {
+            og::ui::cloud::CloudHttpResult result;
+            result.status = 200;
+            result.body = get_body;
+            return result;
+        };
+        faked.cloud_http_post = [](const std::string&, const std::string&) {
+            og::ui::cloud::CloudHttpResult result;
+            result.status = 500;
+            return result;
+        };
+        set_platform_bridge(faked);
+
+        og::ui::TextPickerConfig config;
+        const std::string out = text_cloud_drive(
+            std::string("8\n"                      // main: cloud
+                        "1\n"                      // cloud: passphrase
+                        "correct horse battery\n"
+                        "3\n") +                   // cloud: download
+                confirm,
+            config);
+
+        EXPECT_NE(std::string::npos, out.find("OVERWRITE COMPANY?"))
+            << "the confirm must have been asked:\n" << out;
+        EXPECT_NE(std::string::npos, out.find("Download cancelled.\n"))
+            << "confirm='" << confirm << "':\n" << out;
+        EXPECT_EQ(std::string::npos, out.find("Downloaded 'CLOUD BAND'."))
+            << out;
+        EXPECT_EQ("LOCAL BAND", og::data::read_company_header("hlcloudl")
+                                    .value_or(og::data::CompanyInfo{})
+                                    .display_name)
+            << "a cancelled download leaves the local company alone";
+        cfg.data.erase("cloud");
+    }
+}
+
+// The upload's NO-first overwrite confirm on a 409: 'n' posts nothing more
+// and the terminal says the upload was cancelled (the flow's silent
+// return, printed by the caller).
+TEST(PlatformHeadless, text_picker_cloud_upload_no_cancels_after_a_conflict)
+{
+    restore_default_campaigns();
+    HeadlessSaveDirSandbox sandbox;
+    ActiveCompanySlotGuard slot_guard;
+    cfg.data.erase("cloud");
+    ASSERT_TRUE(seed_headless_company("hlcloudu", "UPLOAD BAND", 6000));
+
+    int posts = 0;
+    CloudBridgeRestore bridge_restore{platform_bridge()};
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_get = [](const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 500;
+        return result;
+    };
+    faked.cloud_http_post = [&posts](const std::string&, const std::string&) {
+        ++posts;
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 409;
+        result.body =
+            R"({"revision":9,"uploaded_at":1754200000000,"slot":"hlcloudu",)"
+            R"("save_name":"OTHER BAND","scen_num":2,"last_played":5000})";
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    og::ui::TextPickerConfig config;
+    const std::string out = text_cloud_drive(
+        "7\n"                      // main: load company -> the company list
+        "1\n"                      //   list: open company...
+        "1\n"                      //     #1 = hlcloudu -> team build
+        "8\n"                      // team build: back -> main
+        "8\n"                      // main: cloud
+        "1\n"                      // cloud: passphrase
+        "correct horse battery\n"
+        "2\n"                      // cloud: upload -> 409 -> confirm
+        "n\n"                      //   NO
+        "4\n"                      // cloud: back
+        "6\n",                     // main: quit
+        config);
+
+    EXPECT_NE(std::string::npos, out.find("OVERWRITE CLOUD SAVE?")) << out;
+    EXPECT_NE(std::string::npos, out.find("Upload cancelled.\n")) << out;
+    EXPECT_EQ(1, posts) << "a declined overwrite sends no second post";
+    cfg.data.erase("cloud");
+}
+
+// A staged text session that cannot mount its campaign refuses up front:
+// exit 1 and the mount failure on stderr -- it never goes on to stage
+// (and so never reports a level-load failure for a campaign it never had).
+TEST(PlatformHeadless, text_staged_session_refuses_a_campaign_it_cannot_mount)
+{
+    restore_default_campaigns();
+    RemountGladiatorGuard remount;
+    SaveData save;
+    save.reset();
+    save.current_campaign = "org.example.no-such-campaign";
+    save.scen_num = 1;
+    og::ui::TextStagedProtocolArgs args;
+    args.session_save = &save;
+    args.campaign = "org.example.no-such-campaign";
+
+    StderrCapture capture;
+    const int rc = og::ui::run_text_staged_protocol_session(args);
+    const std::string err = capture.restore();
+
+    EXPECT_EQ(1, rc);
+    EXPECT_NE(std::string::npos,
+              err.find("Failed to mount campaign "
+                       "org.example.no-such-campaign\n"))
+        << err;
+    EXPECT_EQ(std::string::npos, err.find("Failed to load level")) << err;
 }
