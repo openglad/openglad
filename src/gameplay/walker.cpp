@@ -1271,8 +1271,6 @@ bool footprint_touches_water(GameWorld& world, const walker& mover,
 bool water_blocks_mover(const walker& mover)
 {
 	const statistics* stats = mover.stats();
-	if (stats == nullptr)
-		return true;
 	if (stats->query_bit_flags(BIT_ETHEREAL))
 		return false;
 	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
