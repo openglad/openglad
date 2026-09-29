@@ -1555,9 +1555,9 @@ private:
         std::string line;
 
         for (;;) {
+            // HireSession always holds a recruit (its ctor, the family steps
+            // and hire() all leave one in place).
             const guy* r = session.current_recruit();
-            if (!r)
-                break;
             std::printf("\n--- Hire: %s (%d/%d) ---\n",
                 family_display_name(r->family),
                 session.family_index() + 1,
