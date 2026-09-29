@@ -41,7 +41,6 @@
 #include <string>
 
 #include <cstdio>
-#include <sys/stat.h>
 #include <dirent.h>
 #include <cstring>
 
@@ -221,53 +220,6 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
     
     exits.sort();
     exits.unique();
-}
-
-
-bool isDir(const std::string& filename)
-{
-    struct stat status;
-    if (stat(filename.c_str(), &status) != 0)
-        return false;
-
-    return (status.st_mode & S_IFDIR);
-}
-
-
-bool sort_scen(const std::string& first, const std::string& second)
-{
-    std::string s1;
-    std::string s1num;
-    std::string s2;
-    std::string s2num;
-    
-    bool gotNum = false;
-    for(std::string::const_iterator e = first.begin(); e != first.end(); e++)
-    {
-        if(!gotNum && std::isalpha(static_cast<unsigned char>(*e)))
-            s1 += *e;
-        else
-            s1num += *e;
-    }
-    
-    gotNum = false;
-    for(std::string::const_iterator e = second.begin(); e != second.end(); e++)
-    {
-        if(!gotNum && std::isalpha(static_cast<unsigned char>(*e)))
-            s2 += *e;
-        else
-            s2num += *e;
-    }
-    
-    if(s1 == s2)
-    {
-        const auto n1 = parse_int_strict(s1num);
-        const auto n2 = parse_int_strict(s2num);
-        if (n1 && n2)
-            return *n1 < *n2;
-        return first < second;
-    }
-    return (first < second);
 }
 
 
