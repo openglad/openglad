@@ -1396,10 +1396,11 @@ public:
     // Offer this host's mounted non-core class packs (protocol v10). The
     // shared memo keys on the MOUNTED campaign, so the announcement follows
     // the staging remount instead of being snapshotted at construction.
+    // Every caller runs with a live server_: init_host / init_host_over_
+    // transport call it right after creating one, and pump_once only inside
+    // its `role_ == Host && server_ != nullptr` block.
     void sync_hosted_packs()
     {
-        if (server_ == nullptr)
-            return;
         if (std::optional<std::vector<og::sim::HostedPack>> packs =
                 hosted_packs_.refresh())
         {
@@ -2378,10 +2379,10 @@ private:
     // (the SAME functions build_session_if_needed consumes at GO). Also run
     // by the start gate at StartGame time so a same-batch roster edit
     // reaches the launched world.
+    // Callers: the start gate installed ON *server_ (so server_ exists
+    // whenever it runs) and pump_once's `server_ != nullptr` host block.
     void refresh_stage_inputs()
     {
-        if (server_ == nullptr)
-            return;
         try
         {
             og::server::MatchStageInputs inputs;
