@@ -1128,15 +1128,13 @@ private:
                 }
                 const short current =
                     save_data_.team_list[static_cast<std::size_t>(slot - 1)]->teamnum;
-                const short moved = cycle_guy_team(save_data_, slot - 1,
+                // The checks above are every refusal cycle_guy_team has (a
+                // bad slot, an empty slot; its wrap always lands in 0-3).
+                (void)cycle_guy_team(save_data_, slot - 1,
                     (value - 1) - static_cast<int>(current));
-                if (moved < 0) {
-                    std::printf("Invalid slot or team.\n");
-                } else {
-                    std::printf("Moved slot %d to %s.\n", slot,
-                        og::sim::team_color_name(value - 1));
-                    autosave_company_after_mutation();  // §3.8 team cycle
-                }
+                std::printf("Moved slot %d to %s.\n", slot,
+                    og::sim::team_color_name(value - 1));
+                autosave_company_after_mutation();  // §3.8 team cycle
                 continue;
             }
             std::printf("Unrecognized command.\n");
