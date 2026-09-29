@@ -2273,8 +2273,6 @@ Sint32 cycle_guy(Sint32 whichway)
         // Fallback: create recruit directly (for any code calling this outside a session)
         constexpr auto& guys = og::ui::kAllowableGuys;
         og::runtime::current_session->current_type_ = (og::runtime::current_session->current_type_ + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
-        if (og::runtime::current_session->current_type_ < 0)
-            og::runtime::current_session->current_type_ = static_cast<Sint32>(guys.size()) - 1;
         og::runtime::current_session->current_guy_ = og::ui::create_recruit(guys[static_cast<std::size_t>(og::runtime::current_session->current_type_)], og::runtime::current_session->current_team_num_, og::runtime::current_session->myscreen_->save_data);
         show_guy(0, 0);
         grab_mouse();
