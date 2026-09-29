@@ -1353,9 +1353,7 @@ walker* GameServer::player_control(std::size_t player_index) const noexcept
 
 InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
 {
-    const auto client_it = clients_.find(peer_id);
-    if (client_it == clients_.end())
-        throw std::runtime_error("GameServer missing client for initial setup");
+    const ConnectedClientState& client = clients_.at(peer_id);
 
     InitialSetupMessage message;
     message.level_id = world_.id;
@@ -1367,9 +1365,9 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.pixmaxx = world_.pixmaxx;
     message.pixmaxy = world_.pixmaxy;
     // A multi-seat peer's display team follows its first seat (lowest slot).
-    message.my_team = client_it->second.bound_players.empty()
+    message.my_team = client.bound_players.empty()
         ? 0
-        : client_it->second.bound_players.front().team_num;
+        : client.bound_players.front().team_num;
     message.allied_mode = world_.allied_mode;
     message.current_scenario = world_.current_scenario;
     message.respawn_mode = world_.respawn_mode;
