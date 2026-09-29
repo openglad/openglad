@@ -1753,7 +1753,7 @@ walker::act_random()
 	if (!current_game->world->rng_.next(70) || (!foe()))
 		set_foe(current_game->world->find_nearest_foe(this));
 	if (!foe())
-		return stats_->try_command(COMMAND_RANDOM_WALK,20);
+		return stats_->try_random_walk(20);
 
 	xdist = foe()->xpos() - xpos();
 	ydist = foe()->ypos() - ypos();
