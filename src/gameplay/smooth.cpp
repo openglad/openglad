@@ -275,8 +275,6 @@ void smoother::set_target(const PixieData& data)
 
 Uint32 smoother::next_random(Uint32 max_exclusive) const
 {
-    if (max_exclusive == 0)
-        return 0;
     if (IRandom* override_rng = gameplay_rng_override())
         return override_rng->next(max_exclusive);
     assert(rng_ != nullptr);
