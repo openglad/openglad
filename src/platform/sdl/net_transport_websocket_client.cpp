@@ -371,8 +371,10 @@ private:
     bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
-        if (queue.size() >= kMaxQueuedMessages)
-            return false;
+        // Only frames are capped (count and bytes). A Connect/Disconnect
+        // transition must always get through: capping the whole queue here
+        // dropped the very Disconnect the queue-full path enqueues, leaving a
+        // closed link reading Connected forever.
         if (entry.kind == QueueEntryKind::Message)
         {
             if (queued_message_count >= kMaxQueuedMessages ||

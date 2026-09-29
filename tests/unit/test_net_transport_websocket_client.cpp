@@ -1144,4 +1144,75 @@ TEST(NetTransportWebSocketClient, a_healthy_link_survives_a_ping_interval)
     client.disconnect(1u);
 }
 
+// Mirrors the receive-queue caps in
+// src/platform/sdl/net_transport_websocket_client.cpp (file-local).
+constexpr std::size_t kClientMaxQueuedMessages = 1024u;
+
+struct DirectLink
+{
+    int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport server;
+    og::sim::WebSocketClientTransport client;
+
+    DirectLink()
+        : server(port, server_options()),
+          client(std::format("ws://127.0.0.1:{}", port), client_options())
+    {
+    }
+
+    static og::sim::WebSocketServerTransport::Options server_options()
+    {
+        og::sim::WebSocketServerTransport::Options options;
+        options.host = "127.0.0.1";
+        return options;
+    }
+
+    static og::sim::WebSocketClientTransport::Options client_options()
+    {
+        og::sim::WebSocketClientTransport::Options options;
+        options.remote_peer_id = 73u;
+        options.automatic_reconnection = false;
+        return options;
+    }
+};
+
+
+// Rule (net_transport_websocket_client.cpp handle_message/enqueue): a server
+// flooding frames faster than the game thread polls is capped at 1024 queued
+// frames; the frame past the cap closes the link 1008 and the game sees the
+// link Lost after the 1024 queued frames are delivered in order.
+TEST(NetTransportWebSocketClient,
+     a_frame_flood_past_the_queue_count_cap_closes_the_link_as_lost)
+{
+    DirectLink link;
+    link.server.accept_connections();
+    link.client.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(link.client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(link.server, 1u));
+    const og::sim::PeerId server_peer = link.server.connected_peers().front();
+
+    for (std::uint32_t tick = 0; tick <= kClientMaxQueuedMessages; ++tick)
+    {
+        const std::vector<std::uint8_t> frame =
+            og::sim::serialize_keyframe_request_message(
+                og::sim::KeyframeRequestMessage{.last_seen_tick = tick});
+        link.server.send(server_peer, frame.data(), frame.size());
+    }
+    // The client's close reaches the server; the client is not polled yet.
+    ASSERT_TRUE(poll_until_peer_count(link.server, 0u))
+        << "the flooded client must close its link";
+
+    const std::vector<og::sim::ReceivedMessage> delivered = link.client.poll();
+    ASSERT_EQ(kClientMaxQueuedMessages, delivered.size());
+    for (std::size_t index = 0; index < delivered.size(); ++index)
+    {
+        ASSERT_EQ(index, decode_keyframe_request_tick(delivered[index].data))
+            << "queued frames keep their order";
+    }
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, link.client.link_state())
+        << "the game must see the flood-closed link as lost";
+    EXPECT_TRUE(link.client.connected_peers().empty());
+}
+
+
 } // namespace
