@@ -1581,9 +1581,10 @@ void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
             fd->declared_id != nullptr ? fd->declared_id : fd->name;
         for (int slot = 1; slot < FD_NUM_SPECIALS; slot++) {
             const char* name = fd->special_names[slot];
+            // The name alone decides: a slot's name and cost travel as the
+            // kSpecialNameNone / kSpecialCostDisabled pair (packs.cpp
+            // install_specials), and a declared cost is always below it.
             if (name == nullptr || std::strcmp(name, kSpecialNameNone) == 0)
-                continue;
-            if (fd->special_cost[slot] >= kSpecialCostDisabled)
                 continue;
             lua_rawgeti(L, -1, slot);
             // A stored `false` is the declaration's explicit charged no-op,
