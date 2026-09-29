@@ -541,11 +541,9 @@ int og_use(lua_State* L)
 {
     const char* spec = luaL_checkstring(L, 1);
     VmState* st = get_vm_state(L);
-    // host_impl, not owner: a lib module is pure by contract, so og.use is
-    // one of the few entry points the declaration VM — which has a host but
-    // no WorldScripts — is allowed to serve.
-    if (st == nullptr || st->host_impl == nullptr)
-        return luaL_error(L, "og.use: no script host active");
+    // No null check: og.use is installed only by install_vm_scaffolding,
+    // which registers 'og.vmstate' and sets host_impl first, so every VM
+    // that can call this has both (the declaration VM included).
     if (st->current_pack.empty())
         return luaL_error(L, "og.use: only callable while a pack chunk "
                              "loads (bind modules to locals at load time)");
