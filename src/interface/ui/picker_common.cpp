@@ -1460,8 +1460,7 @@ short cycle_guy_team(SaveData& save, int slot_index, int dir)
     // The wrap is this helper's own rule; the WRITE is the one setter every
     // team-assignment surface shares (docs/lineup-design.md §5).
     const int next = ((member->teamnum + dir) % 4 + 4) % 4;
-    if (!set_guy_team(save, slot_index, static_cast<short>(next)))
-        return -1;
+    (void)set_guy_team(save, slot_index, static_cast<short>(next));
     return static_cast<short>(next);
 }
 
