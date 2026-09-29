@@ -225,6 +225,57 @@ TEST_F(GladHud, glad_remaining_counts)
     og::runtime::current_session->myscreen_->world().oblist.clear();
 }
 
+// The magic bar's colour is the readable signal for "how much mana is left":
+// the MID band (a third to two thirds) and the HIGH band (two thirds to full)
+// are separate ramps and separate lengths, and one bleeding into the other
+// would misreport the pool at a glance. new_draw_value_bar is the live
+// split-screen HUD bar; it paints through draw_percentage_bar, whose L-long
+// bar is (L-4) + 3*(L-2) + (L-4) == 5L-14 coloured pixels.
+TEST_F(GladHud, glad_mp_bar_paints_the_mid_and_high_bands_at_their_lengths)
+{
+    ASSERT_NE(canonical_palette_index(MID_MP_COLOR),
+              canonical_palette_index(HIGH_MP_COLOR))
+        << "the two bands must be distinguishable in the captured frame";
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    screen* const s = og::runtime::current_session->myscreen_;
+    controlp->stats()->set_max_magicpoints(80);
+
+    // The bar is 60 wide and 7 tall at (left, top); count only inside it.
+    constexpr int kLeft = 10;
+    constexpr int kTop = 20;
+    const auto band_pixels = [](const std::array<unsigned char, 64000>& frame,
+                                unsigned char color) {
+        const unsigned char want = canonical_palette_index(color);
+        int count = 0;
+        for (int y = kTop; y < kTop + 7; ++y)
+            for (int x = kLeft; x < kLeft + 60; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] == want)
+                    ++count;
+        return count;
+    };
+
+    // 40 of 80: past the LOW third, short of the HIGH two thirds.
+    // ceil(40 * 60 / 80) == 30 columns -> 5*30-14 pixels.
+    s->clearbuffer();
+    controlp->stats()->set_magicpoints(40);
+    new_draw_value_bar(kLeft, kTop, controlp, 1, s);
+    const auto mid_frame = capture_rendered_frame(*s);
+    EXPECT_EQ(5 * 30 - 14, band_pixels(mid_frame, MID_MP_COLOR));
+    EXPECT_EQ(0, band_pixels(mid_frame, HIGH_MP_COLOR));
+
+    // 70 of 80: past two thirds, still short of full.
+    // ceil(70 * 60 / 80) == 53 columns -> 5*53-14 pixels.
+    s->clearbuffer();
+    controlp->stats()->set_magicpoints(70);
+    new_draw_value_bar(kLeft, kTop, controlp, 1, s);
+    const auto high_frame = capture_rendered_frame(*s);
+    EXPECT_EQ(5 * 53 - 14, band_pixels(high_frame, HIGH_MP_COLOR));
+    EXPECT_EQ(0, band_pixels(high_frame, MID_MP_COLOR));
+}
+
 // The radar gems are static chrome: they change only when the watched team
 // does. Redrawing them every frame would be four gem blits of pure waste, so
 // the draw is memoized on the team it last painted.
@@ -327,6 +378,7 @@ TEST_F(GladHud, glad_hp_bars_paint_their_band_colour_at_their_exact_length)
     // lands on the 5L-14 geometry.
     const Band pct_bands[] = {
         {20.0f, LOW_HP_COLOR, 5 * 12 - 14, "percentage bar, LOW band, 12 columns"},
+        {60.0f, MID_HP_COLOR, 5 * 36 - 14, "percentage bar, MID band, 36 columns"},
         {80.0f, HIGH_HP_COLOR, 5 * 48 - 14, "percentage bar, HIGH band, 48 columns"},
         {100.0f, MAX_HP_COLOR, 5 * 60 - 14, "percentage bar, MAX band, full length"},
     };
@@ -339,6 +391,14 @@ TEST_F(GladHud, glad_hp_bars_paint_their_band_colour_at_their_exact_length)
         const auto frame = capture_rendered_frame(*s);
         EXPECT_EQ(band.pixels, count_in(frame, kLeft, kTop, 60, 7, band.color))
             << band.why;
+        // ... and no other band bleeds in.
+        for (unsigned char other : {MAX_HP_COLOR, LOW_HP_COLOR, MID_HP_COLOR, HIGH_HP_COLOR})
+        {
+            if (canonical_palette_index(other) == canonical_palette_index(band.color))
+                continue;
+            EXPECT_EQ(0, count_in(frame, kLeft, kTop, 60, 7, other))
+                << "band " << (int)other << " must not appear at hp " << band.hp;
+        }
     }
 
     // draw_percentage_bar on its own: a 30-wide bar is 5*30-14 coloured pixels
