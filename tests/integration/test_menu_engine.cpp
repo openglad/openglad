@@ -169,6 +169,12 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     {
         return local_seats;
     }
+    [[nodiscard]] StagedPreviewHealth staged_preview_health() const override
+    {
+        return staged_health;
+    }
+
+    StagedPreviewHealth staged_health = StagedPreviewHealth::None;
     int settings_syncs = 0;
     short synced_save_level = -1;
     int synced_world_level = -1;
@@ -4977,6 +4983,43 @@ TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
     EXPECT_EQ("SECOND", save.team_list[0]->name);
     EXPECT_EQ("VISIBLE", save.team_list[1]->name);
     EXPECT_FALSE(trace_contains("popup", "LOCKED"));
+}
+
+// A staged preview that FAILED on the owner must reach the LINEUP census
+// as a failure (the formatter leads with STAGING FAILED), never as the
+// silent count-only fallback a machine with no staged world shows.
+TEST(MenuEngine, lineup_census_reports_a_failed_staged_preview)
+{
+    EngineTestGuard engine_guard;
+    MenuCallbackStateGuard callback_guard;
+    FakeLobbyClient lobby;
+    lobby.networked = true;
+    lobby.host = false;
+    lobby.players = {make_menu_lobby_player(0, "LOCAL COMPANY")};
+    lobby.local_indices = {0};
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    const og::ui::MenuScreenSpec& spec = og::ui::lineup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.frame_tick);
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto census_failed =
+        [&](og::ui::IPickerLobbyClient::StagedPreviewHealth health) {
+            lobby.staged_health = health;
+            og::ui::LineupScreenState st;
+            // Entered on the loaded level: the tick seeds the report only.
+            st.last_level_id = save.scen_num;
+            og::ui::install_lineup_state_for_screen(&st);
+            EXPECT_TRUE(spec.frame_tick(&st, 0));
+            og::ui::install_lineup_state_for_screen(nullptr);
+            EXPECT_TRUE(st.report_valid);
+            return st.report.stage_failed;
+        };
+    EXPECT_TRUE(census_failed(
+        og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed))
+        << "a failed staged preview is reported as failed";
+    EXPECT_FALSE(census_failed(
+        og::ui::IPickerLobbyClient::StagedPreviewHealth::None))
+        << "no staged preview is not a failure";
 }
 
 TEST(MenuEngine, company_dispatch_surfaces_invalid_open_delete_and_restore)
