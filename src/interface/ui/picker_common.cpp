@@ -1514,8 +1514,6 @@ std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save)
             teams.push_back(candidate);
     }
 
-    if (teams.empty())
-        teams.push_back(0);
     if (save.allied_mode != 0)
         teams.assign(static_cast<std::size_t>(required_players), teams.front());
     return teams;
