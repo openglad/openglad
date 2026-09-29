@@ -98,10 +98,10 @@ text::~text()
 // a dialog header drawn through such a text came out blank while the body
 // text -- a different text object, built after the load -- painted fine
 // (issue #259). Called from every measuring and drawing entry point.
+// letters is never null here: the only constructor points it at letters1 or
+// letters_big before any member can run, and nothing else assigns it.
 void text::sync_geometry()
 {
-    if (letters == nullptr)
-        return;
     sizex = static_cast<short>(letters->w);
     sizey = static_cast<short>(letters->h);
 }
