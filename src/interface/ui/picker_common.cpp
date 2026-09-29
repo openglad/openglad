@@ -4418,8 +4418,6 @@ std::string format_lineup_power_cell(std::optional<long long> power, int width)
             }
         }
     }
-    if (static_cast<int>(text.size()) > field)
-        text.resize(static_cast<std::size_t>(field));
     return std::format("{:>{}}", text, field);
 }
 
