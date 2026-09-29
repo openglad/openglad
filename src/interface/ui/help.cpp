@@ -59,11 +59,6 @@ constexpr int help_char_budget(int box_width) { return (box_width - 2) / 6; }
 
 namespace
 {
-inline short& help_end_of_file()
-{
-    return og::runtime::current_session->help_end_of_file_;
-}
-
 // Edge-trigger with hold-repeat over a polled key state (issue #156). The
 // old `(now - start_time) % N` phase gate was open only ~13.6ms out of
 // every 136ms, so a short PageDown tap did nothing about half the time.
@@ -467,7 +462,6 @@ static short scroll_campaign_description(screen *s,
 	if (!data.load())
 		return 1;
 
-	help_end_of_file() = 0;
 	return scroll_text_view(s,
 		static_cast<int>(data.description.size()), 240,
 		data.title.c_str(), HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8, 244, 119,
