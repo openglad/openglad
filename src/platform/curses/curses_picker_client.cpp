@@ -857,15 +857,11 @@ void teams_screen(Menu& menu, SaveData& save)
 // so the old "documented local-roster bound" is gone with the scratch
 // marshaling. The scratch headless load survives only as the fallback
 // census world for a null stage.
+// Its one caller, view_scenario_locally_staged(), has already refused an
+// unmounted campaign with this screen's words, and staging never remounts.
 void view_scenario(Menu& menu, const SaveData& save, const GameWorld* staged,
                    og::ui::StagePreviewStatus status)
 {
-    if (get_mounted_campaign() != save.current_campaign) {
-        menu.show_text("View Scenario", {std::format(
-            "Campaign '{}' is not mounted.", save.current_campaign)});
-        return;
-    }
-
     // Seat block (#218): the curses View Level stages locally, so the
     // save-derived seat synthesis IS its staging input; every seat is this
     // machine's (all-local -> YOU).
