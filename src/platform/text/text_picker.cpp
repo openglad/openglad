@@ -1359,11 +1359,6 @@ private:
         for (;;) {
             std::printf("\n--- Team Roster ---\n");
             const std::vector<int> slots = collect_base_camp_slots(save_data_);
-            if (slots.empty()) {
-                std::printf("(empty)\n");
-                wait_for_enter();
-                return;
-            }
 
             for (std::size_t i = 0; i < slots.size(); ++i) {
                 const guy& member =
@@ -1434,10 +1429,6 @@ private:
     void deploy_prompt()
     {
         const std::vector<int> slots = collect_base_camp_slots(save_data_);
-        if (slots.empty()) {
-            std::printf("(empty roster - hire someone first)\n");
-            return;
-        }
         std::printf("Toggle deploy for roster row [1-%d]: ",
             static_cast<int>(slots.size()));
         std::fflush(stdout);
@@ -1470,10 +1461,6 @@ private:
             return;
         }
         TrainSession session(save_data_);
-        if (session.empty()) {
-            std::printf("No team members available to train.\n");
-            return;
-        }
         if (seed_slot >= 0)
             (void)session.seek_slot(seed_slot);  // §2.5 'train N' direct-open
 
