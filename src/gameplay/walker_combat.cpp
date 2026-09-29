@@ -152,10 +152,10 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 // harness's libc-rand cosmetic override (when installed) matches
                 // master's dual-RNG-stream behavior. combat_rng (damage/xp)
                 // deliberately does NOT consult this override.
+                // Non-null here: with a live world cosmetic_rng() answers
+                // the override or &world->rng_ (gameplay_context.cpp).
                 IRandom* ani_rng = cosmetic_rng();
-                newob->set_ani_type(static_cast<char>(
-                    1 + (ani_rng != nullptr ? ani_rng->next(3)
-                                            : current_game->world->rng_.next(3))));
+                newob->set_ani_type(static_cast<char>(1 + ani_rng->next(3)));
                 if(attacker == this)
                 {
                     newob->center_on(target);
