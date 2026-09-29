@@ -3556,8 +3556,6 @@ private:
     // the same poll batch already applied).
     void refresh_stage_inputs()
     {
-        if (!stage_ || !server_)
-            return;
         try
         {
             og::server::MatchStageInputs inputs;
