@@ -108,28 +108,20 @@ static inline float active_canvas_h()
     return s ? static_cast<float>(s->canvas_h()) : static_cast<float>(kUiCanvasH);
 }
 
-static inline float gameplay_ui_canvas_w()
+// Only gameplay_ui_canvas_viewport() calls these, after it has returned for
+// a null screen and for the UI canvas: the World canvas is active here.
+static inline float gameplay_ui_canvas_w(const ::screen& s)
 {
-    const ::screen* s = og::runtime::current_session->myscreen_;
-    return s ? static_cast<float>(
-                   s->active_canvas() == CanvasTarget::UI
-                       ? s->canvas_w()
-                       : (s->gameplay_ui_canvas_available()
-                              ? s->gameplay_ui_canvas_w()
-                              : s->world_canvas_w()))
-             : static_cast<float>(kUiCanvasW);
+    if (s.gameplay_ui_canvas_available())
+        return static_cast<float>(s.gameplay_ui_canvas_w());
+    return static_cast<float>(s.world_canvas_w());
 }
 
-static inline float gameplay_ui_canvas_h()
+static inline float gameplay_ui_canvas_h(const ::screen& s)
 {
-    const ::screen* s = og::runtime::current_session->myscreen_;
-    return s ? static_cast<float>(
-                   s->active_canvas() == CanvasTarget::UI
-                       ? s->canvas_h()
-                       : (s->gameplay_ui_canvas_available()
-                              ? s->gameplay_ui_canvas_h()
-                              : s->world_canvas_h()))
-             : static_cast<float>(kUiCanvasH);
+    if (s.gameplay_ui_canvas_available())
+        return static_cast<float>(s.gameplay_ui_canvas_h());
+    return static_cast<float>(s.world_canvas_h());
 }
 
 static og::CanvasViewport canvas_viewport(float canvas_w, float canvas_h)
@@ -161,7 +153,7 @@ og::CanvasViewport gameplay_ui_canvas_viewport()
     // Fractional World dimensions round to scaler-safe integers and can have
     // a slightly different aspect; inheriting their fitted rectangle would
     // distort the fixed overlay and offset its touch hit targets.
-    return canvas_viewport(gameplay_ui_canvas_w(), gameplay_ui_canvas_h());
+    return canvas_viewport(gameplay_ui_canvas_w(*s), gameplay_ui_canvas_h(*s));
 }
 
 bool window_point_in_active_canvas(float x, float y)
