@@ -867,6 +867,20 @@ struct FoePick
     int count;
 };
 
+// Every band's anchor foe (mix[0]) is always allowed and carries a real
+// share, so composition_for's divisor is positive on every floor >= 1 (the
+// only floors the tower builds: every caller guards scen_num > the Gate).
+constexpr bool every_band_anchor_is_always_allowed()
+{
+    for (const BandSpec& band : kBands)
+        if (band.mix[0].family < 0 || band.mix[0].min_floor > 1 ||
+            band.mix[0].percent <= 0)
+            return false;
+    return true;
+}
+static_assert(every_band_anchor_is_always_allowed(),
+              "a band's mix[0] anchor must be allowed on every floor");
+
 std::vector<FoePick> composition_for(const BandSpec& band, int floor_number,
                                      int total)
 {
@@ -875,8 +889,6 @@ std::vector<FoePick> composition_for(const BandSpec& band, int floor_number,
     for (const FoeMix& m : band.mix)
         if (m.family >= 0 && floor_number >= m.min_floor)
             allowed_total_pct += m.percent;
-    if (allowed_total_pct <= 0)
-        return picks;
     int placed = 0;
     for (const FoeMix& m : band.mix)
     {
