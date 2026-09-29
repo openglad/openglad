@@ -1862,9 +1862,6 @@ void GameWorld::tick()
     // --- Check background for exits ---
     for (auto& uptr : fxlist)
     {
-        if (withdraw_requested)
-            break;
-
         walker* ob = uptr.get();
         if (ob && !ob->dead())
         {
@@ -1876,9 +1873,6 @@ void GameWorld::tick()
             }
         }
     }
-
-    if (withdraw_requested)
-        return;
 
     // --- Level completion check ---
     // A TYPE_SCRIPTED map whose campaign pack registered no on_mode_init
