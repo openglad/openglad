@@ -580,19 +580,11 @@ void LevelRuntimeData::attach_world(GameWorld* world)
 {
     GameWorld* old_world = world_;
     GameWorld* next_world = world ? world : &owned_world_;
+    // Re-attaching the attached world is a no-op; no caller does it (the
+    // screen attaches its world once, the detach callback only ever swaps an
+    // external world back to the owned one).
     if (next_world == old_world)
-    {
-        if (old_world != nullptr)
-        {
-            old_world->set_detach_callback({});
-            wire_world_entity_services(old_world, this, hooks_);
-            old_world->set_gameplay_context_bindings(
-                sim_context_save_, sim_context_events_, sim_context_config_);
-            if (old_world != &owned_world_)
-                install_world_detach_callback(old_world, this);
-        }
         return;
-    }
 
     if (old_world != nullptr)
     {
