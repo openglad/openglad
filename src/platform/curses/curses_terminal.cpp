@@ -322,11 +322,10 @@ Key CursesTerminal::poll_key(bool block)
                 continue; // interrupted (likely SIGWINCH): loop and re-check
             return Key::none();
         }
-        if (pr == 0) {
-            if (!block)
-                return Key::none(); // nothing ready and not blocking
-            continue;               // blocking: keep waiting
-        }
+        // poll() answers 0 only when its timeout expires, and only the
+        // non-blocking call (timeout 0) has one: nothing ready.
+        if (pr == 0)
+            return Key::none();
         std::array<char, 256> tmp;
         const ssize_t n = ::read(impl_->in_fd, tmp.data(), tmp.size());
         if (n > 0) {
