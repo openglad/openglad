@@ -9112,6 +9112,9 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     // A constructed client has a useful, non-throwing pre-initialization
     // contract. Exercise both implementations through the public interface so
     // menu code can inspect or poll them before a transport is installed.
+    // set_player_mode below writes numplayers/my_team into the live save.
+    SaveData& pre_init_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard pre_init_save_guard(pre_init_save);
     og::ui::PickerHostGameOptions host_options;
     host_options.port = ix::getFreePort();
     auto host_client = og::ui::create_host_picker_lobby_client(host_options);
@@ -9124,6 +9127,14 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_FALSE(host_client->set_ready(true));
     host_client->sync_from_save();
     EXPECT_TRUE(host_client->status_lines().empty());
+    // No lobby state yet: the host is not ready, and choosing spectator
+    // (player mode 0) declares ZERO local seats (the 1u above is the
+    // non-spectator control).
+    EXPECT_FALSE(host_client->local_ready())
+        << "a host with no lobby state is not ready";
+    host_client->set_player_mode(0);
+    EXPECT_EQ(0u, host_client->local_seat_count())
+        << "a spectator host declares no seats before any lobby state";
 
     og::ui::PickerJoinGameOptions join_options;
     join_options.mode = og::ui::PickerJoinMode::Direct;
@@ -9135,6 +9146,9 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_FALSE(join_client->request_start_game());
     EXPECT_FALSE(join_client->request_seat_team_change(0, 0));
     EXPECT_FALSE(join_client->set_ready(true));
+    join_client->set_player_mode(0);
+    EXPECT_EQ(0u, join_client->local_seat_count())
+        << "a spectator joiner declares no seats before any lobby state";
     join_client->poll_and_apply();
     ASSERT_TRUE(join_client->connection_alert().has_value());
     EXPECT_EQ("Status: connecting", *join_client->connection_alert());
