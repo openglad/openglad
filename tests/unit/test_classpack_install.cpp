@@ -367,22 +367,8 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     ASSERT_EQ(after->description, before.description)
         << "absent description must keep the exact current pointer";
     ASSERT_EQ(after->default_weapon, before.default_weapon);
-    // ...and EVERY behavior callback pointer is preserved unchanged.
+    // ...and the promotion callback pointer is preserved unchanged.
     ASSERT_EQ(after->promotion_new_level, before.promotion_new_level);
-    ASSERT_EQ(after->do_special, before.do_special);
-    ASSERT_EQ(after->check_special_ai, before.check_special_ai);
-    ASSERT_EQ(after->hit_response, before.hit_response);
-    ASSERT_EQ(after->set_difficulty, before.set_difficulty);
-    ASSERT_EQ(after->level_up, before.level_up);
-    ASSERT_EQ(after->on_death, before.on_death);
-    ASSERT_EQ(after->on_act_living, before.on_act_living);
-    ASSERT_EQ(after->on_shoved, before.on_shoved);
-    ASSERT_EQ(after->on_fire_weapon, before.on_fire_weapon);
-    ASSERT_EQ(after->handle_teleport, before.handle_teleport);
-    ASSERT_EQ(after->on_create, before.on_create);
-    ASSERT_EQ(after->customize_weapon, before.customize_weapon);
-    ASSERT_EQ(after->on_ani_complete, before.on_ani_complete);
-    ASSERT_EQ(after->on_melee_hit, before.on_melee_hit);
 }
 
 // #209: `radar_ping = true` rides the presentation fold onto the
@@ -425,7 +411,6 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
 {
     init_all_registries();
     CorePinGuard pin_mage(FAMILY_MAGE);
-    const FamilyDescriptor before_mage = *get_family_descriptor(FAMILY_MAGE);
     const GeneratorFamilyDescriptor before_tent =
         *get_generator_family_descriptor(FAMILY_TENT);
 
@@ -452,7 +437,6 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
     ASSERT_EQ(mage->default_weapon, FAMILY_ROCK)
         << "default_weapon resolves through the weapon registry";
     ASSERT_EQ(mage->promotes_to, -1) << "explicit ~ clears the promotion";
-    ASSERT_EQ(mage->do_special, before_mage.do_special);
 
     const GeneratorFamilyDescriptor* tent =
         get_generator_family_descriptor(FAMILY_TENT);
@@ -485,7 +469,6 @@ TEST(ClasspackInstall, a_declaration_installs_and_skips_bad_refs)
         get_weapon_family_descriptor(FAMILY_ROCK);
     ASSERT_EQ(rock->fire_sound, 42);
     ASSERT_EQ(rock->init_bit_flags, BIT_MAGICAL | BIT_FIRE);
-    ASSERT_EQ(rock->on_death, before_rock.on_death);
     ASSERT_EQ(rock->on_animate, before_rock.on_animate);
     ASSERT_EQ(rock->on_hit_target, before_rock.on_hit_target);
 

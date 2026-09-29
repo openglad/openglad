@@ -209,8 +209,7 @@ inline bool has_on_death(const WeaponFamilyDescriptor& wfd)
     mount_core_pack();
     return og::script::active_world_scripts().has_hook(
                Order::Weapon, wfd.family_id,
-               og::script::FamilyHook::WeaponOnDeath) ||
-           wfd.on_death != nullptr;
+               og::script::FamilyHook::WeaponOnDeath);
 }
 
 inline bool has_on_hit_target(const WeaponFamilyDescriptor& wfd)
@@ -227,8 +226,7 @@ inline bool has_on_death(const EffectFamilyDescriptor& efd)
     mount_core_pack();
     return og::script::active_world_scripts().has_hook(
                Order::FX, efd.family_id,
-               og::script::FamilyHook::EffectOnDeath) ||
-           efd.on_death != nullptr;
+               og::script::FamilyHook::EffectOnDeath);
 }
 
 inline bool has_on_act(const EffectFamilyDescriptor& efd)

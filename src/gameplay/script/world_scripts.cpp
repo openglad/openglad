@@ -2156,8 +2156,8 @@ std::optional<bool> try_script_hook(Order order, int family_id,
 
 // DoSpecial dispatch, honoring both slot forms (stub generator reads this
 // separate funnel and its call_special contract).
-// Returns nullopt when no script hook ran (the caller may use an optional
-// descriptor callback), and the hook's validated cast result otherwise.
+// Returns nullopt when no script hook ran, and the hook's validated cast
+// result otherwise.
 // The specials-table form implements the class-pack dispatch contract:
 // self:current_special() selects, a missing index falls to `default`, and a
 // table with neither is the ladder's fall-through — result true, no call.
@@ -2207,11 +2207,6 @@ std::optional<SpecialResult> do_special(const FamilyDescriptor* fd, walker* self
         return std::nullopt;
     if (auto r = try_script_do_special(fd->family_id, self, error_reason))
         return r;
-    if (fd->do_special != nullptr) {
-        if (error_reason)
-            error_reason->clear();
-        return fd->do_special(self);
-    }
     return std::nullopt;
 }
 
@@ -2223,8 +2218,6 @@ std::optional<bool> check_special_ai(const FamilyDescriptor* fd, living* self)
                                  FamilyHook::CheckSpecialAi, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (fd->check_special_ai != nullptr)
-        return fd->check_special_ai(self);
     return std::nullopt;
 }
 
@@ -2236,10 +2229,6 @@ bool hit_response(const FamilyDescriptor* fd, statistics* stats, walker* who)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::HitResponse,
                         false, stats->controller(), who))
         return true;
-    if (fd->hit_response != nullptr) {
-        fd->hit_response(stats, who);
-        return true;
-    }
     return false;
 }
 
@@ -2253,10 +2242,6 @@ bool set_difficulty(const FamilyDescriptor* fd, living* self,
                         static_cast<walker*>(self),
                         static_cast<lua_Integer>(level)))
         return true;
-    if (fd->set_difficulty != nullptr) {
-        fd->set_difficulty(self, level);
-        return true;
-    }
     return false;
 }
 
@@ -2267,10 +2252,6 @@ bool level_up(const FamilyDescriptor* fd, guy* self, std::int32_t level_diff)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::LevelUp,
                         false, self, static_cast<lua_Integer>(level_diff)))
         return true;
-    if (fd->level_up != nullptr) {
-        fd->level_up(self, level_diff);
-        return true;
-    }
     return false;
 }
 
@@ -2281,8 +2262,6 @@ std::optional<bool> on_death(const FamilyDescriptor* fd, walker* self)
     if (auto r = try_script_hook(Order::Living, fd->family_id,
                                  FamilyHook::OnDeath, true, self))
         return r;
-    if (fd->on_death != nullptr)
-        return fd->on_death(self);
     return std::nullopt;
 }
 
@@ -2293,10 +2272,6 @@ bool on_act_living(const FamilyDescriptor* fd, living* self)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnActLiving,
                         false, static_cast<walker*>(self)))
         return true;
-    if (fd->on_act_living != nullptr) {
-        fd->on_act_living(self);
-        return true;
-    }
     return false;
 }
 
@@ -2318,10 +2293,6 @@ bool on_shoved(const FamilyDescriptor* fd, walker* target)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnShoved,
                         false, target))
         return true;
-    if (fd->on_shoved != nullptr) {
-        fd->on_shoved(target);
-        return true;
-    }
     return false;
 }
 
@@ -2334,8 +2305,6 @@ std::optional<bool> on_fire_weapon(const FamilyDescriptor* fd, walker* self,
                                  FamilyHook::OnFireWeapon, true, self,
                                  weapon))
         return r;
-    if (fd->on_fire_weapon != nullptr)
-        return fd->on_fire_weapon(self, weapon);
     return std::nullopt;
 }
 
@@ -2346,8 +2315,6 @@ std::optional<bool> handle_teleport(const FamilyDescriptor* fd, walker* self)
     if (auto r = try_script_hook(Order::Living, fd->family_id,
                                  FamilyHook::HandleTeleport, true, self))
         return r;
-    if (fd->handle_teleport != nullptr)
-        return fd->handle_teleport(self);
     return std::nullopt;
 }
 
@@ -2358,10 +2325,6 @@ bool on_create(const FamilyDescriptor* fd, walker* self)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnCreate,
                         false, self))
         return true;
-    if (fd->on_create != nullptr) {
-        fd->on_create(self);
-        return true;
-    }
     return false;
 }
 
@@ -2372,10 +2335,6 @@ bool customize_weapon(const FamilyDescriptor* fd, walker* self, walker* weapon)
     if (try_script_hook(Order::Living, fd->family_id,
                         FamilyHook::CustomizeWeapon, false, self, weapon))
         return true;
-    if (fd->customize_weapon != nullptr) {
-        fd->customize_weapon(self, weapon);
-        return true;
-    }
     return false;
 }
 
@@ -2386,8 +2345,6 @@ std::optional<bool> on_ani_complete(const FamilyDescriptor* fd, walker* self)
     if (auto r = try_script_hook(Order::Living, fd->family_id,
                                  FamilyHook::OnAniComplete, true, self))
         return r;
-    if (fd->on_ani_complete != nullptr)
-        return fd->on_ani_complete(self);
     return std::nullopt;
 }
 
@@ -2398,10 +2355,6 @@ bool on_melee_hit(const FamilyDescriptor* fd, walker* self, walker* target)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnMeleeHit,
                         false, self, target))
         return true;
-    if (fd->on_melee_hit != nullptr) {
-        fd->on_melee_hit(self, target);
-        return true;
-    }
     return false;
 }
 
@@ -2414,8 +2367,6 @@ std::optional<bool> weapon_on_death(const WeaponFamilyDescriptor* wfd,
                                  FamilyHook::WeaponOnDeath, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (wfd->on_death != nullptr)
-        return wfd->on_death(self);
     return std::nullopt;
 }
 
@@ -2472,8 +2423,6 @@ std::optional<bool> effect_on_death(const EffectFamilyDescriptor* efd,
                                  FamilyHook::EffectOnDeath, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (efd->on_death != nullptr)
-        return efd->on_death(self);
     return std::nullopt;
 }
 

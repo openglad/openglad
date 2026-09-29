@@ -75,8 +75,6 @@ TEST_F(ScriptHooksTest, lua_hook_is_the_only_family_behavior)
 
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
-    ASSERT_EQ(nullptr, fd->do_special)
-        << "pack-installed family behavior must have no C++ callback";
 
     // No world context → dispatch goes through the shared UI instance.
     auto result = hooks::do_special(fd, nullptr);
@@ -131,8 +129,6 @@ TEST_F(ScriptHooksTest, erroring_hook_is_latched_loudly)
          "{ on_death = function(self) error('boom') return true end })\n"});
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
-    ASSERT_EQ(nullptr, fd->on_death)
-        << "pack-installed family behavior must have no C++ fallback";
 
     hooks::reset_hook_failures();
     ASSERT_EQ(0u, hooks::hook_failures().count);
@@ -558,7 +554,7 @@ og.register_hooks('living', 'core:soldier', {
     EXPECT_TRUE(vm_errors().empty());
 }
 
-TEST_F(SpecialsDispatchTest, cast_reason_length_boundary_and_native_callbacks)
+TEST_F(SpecialsDispatchTest, cast_reason_length_boundary_and_null_descriptor)
 {
     register_chunk("og.register_hooks('living', 'core:soldier', {\n"
                    "  do_special = function(self)\n"
@@ -570,34 +566,9 @@ TEST_F(SpecialsDispatchTest, cast_reason_length_boundary_and_native_callbacks)
     EXPECT_EQ(std::string(24, 'X'), result->reason());
     EXPECT_TRUE(vm_errors().empty());
 
-    clear_pack_scripts();
-    FamilyDescriptor native = *get_family_descriptor(FAMILY_SOLDIER);
-    native.do_special = [](walker*) {
-        return SpecialResult::failure("NATIVE REFUSAL");
-    };
-    std::string error_reason = "STALE";
-    const auto refused = hooks::do_special(&native, self, &error_reason);
-    ASSERT_TRUE(refused.has_value());
-    EXPECT_FALSE(refused->succeeded());
-    EXPECT_EQ("NATIVE REFUSAL", refused->reason());
-    EXPECT_EQ("", error_reason);
-    native.do_special = [](walker*) { return SpecialResult::success(); };
-    const auto accepted = hooks::do_special(&native, self, &error_reason);
-    ASSERT_TRUE(accepted.has_value());
-    EXPECT_TRUE(accepted->succeeded());
-    EXPECT_EQ("", accepted->reason());
     EXPECT_THROW(SpecialResult::failure(""), std::invalid_argument);
 
-    register_chunk("og.register_hooks('living', 'core:soldier', {\n"
-                   "  do_special = function(self) error('broken cast') end,\n"
-                   "})\n");
-    hooks::reset_hook_failures();
-    const auto fallback = hooks::do_special(&native, self, &error_reason);
-    ASSERT_TRUE(fallback.has_value());
-    EXPECT_TRUE(fallback->succeeded());
-    EXPECT_EQ("", error_reason);
-    EXPECT_EQ(1u, hooks::hook_failures().count);
-    error_reason = "STALE";
+    std::string error_reason = "STALE";
     EXPECT_FALSE(hooks::do_special(nullptr, self, &error_reason).has_value());
     EXPECT_EQ("", error_reason);
 }

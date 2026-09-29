@@ -1435,8 +1435,6 @@ TEST_F(ModesSoccer, recovery_range_matches_every_ranged_core_class_profile)
         const og::script::WorldScripts& scripts =
             og::script::active_world_scripts();
         const bool requires_hook =
-            descriptor->customize_weapon != nullptr ||
-            descriptor->on_fire_weapon != nullptr ||
             scripts.has_hook(Order::Living, family,
                              og::script::FamilyHook::CustomizeWeapon) ||
             scripts.has_hook(Order::Living, family,

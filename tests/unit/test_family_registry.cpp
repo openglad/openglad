@@ -141,33 +141,6 @@ TEST(FamilyRegistry, registry_bloodspot_flags)
     ASSERT_TRUE(get_family_descriptor(FAMILY_GIANT_SKELETON)->leaves_bloodspot == false);
 }
 
-TEST(FamilyRegistry, registry_carries_no_cpp_behavior_callbacks)
-{
-    init_family_registry();
-    // Family behavior lives in class-pack Lua. Every descriptor behavior
-    // slot is nullptr, for core and mod families alike, so the engine has no
-    // family-specific C++ fallback.
-    for (int i = 0; i < NUM_FAMILIES; i++)
-    {
-        const FamilyDescriptor* d = get_family_descriptor(i);
-        ASSERT_TRUE(d != nullptr);
-        EXPECT_EQ(nullptr, d->do_special) << d->name;
-        EXPECT_EQ(nullptr, d->check_special_ai) << d->name;
-        EXPECT_EQ(nullptr, d->hit_response) << d->name;
-        EXPECT_EQ(nullptr, d->set_difficulty) << d->name;
-        EXPECT_EQ(nullptr, d->level_up) << d->name;
-        EXPECT_EQ(nullptr, d->on_death) << d->name;
-        EXPECT_EQ(nullptr, d->on_act_living) << d->name;
-        EXPECT_EQ(nullptr, d->on_shoved) << d->name;
-        EXPECT_EQ(nullptr, d->on_fire_weapon) << d->name;
-        EXPECT_EQ(nullptr, d->handle_teleport) << d->name;
-        EXPECT_EQ(nullptr, d->on_create) << d->name;
-        EXPECT_EQ(nullptr, d->customize_weapon) << d->name;
-        EXPECT_EQ(nullptr, d->on_ani_complete) << d->name;
-        EXPECT_EQ(nullptr, d->on_melee_hit) << d->name;
-    }
-}
-
 TEST(FamilyRegistry, registry_behavior_lives_in_pack_lua)
 {
     using og::script::FamilyHook;
