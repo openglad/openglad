@@ -45,6 +45,11 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#if defined(__unix__) || defined(__APPLE__)
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -8864,6 +8869,71 @@ TEST(PickerNetworkClient,
 
     join_client->shutdown();
 }
+
+#if defined(__unix__) || defined(__APPLE__)
+// §2.5 line-B alert while the direct link is still dialling: a peer that
+// completes TCP (the kernel backlog accepts it) but never answers the
+// WebSocket upgrade keeps the joiner's transport in its handshake, and the
+// alert says so. Closing the listener resets that pending connection, and the
+// same alert then reports the failure (the control that the first read was
+// a live link state, not a constant).
+TEST(PickerNetworkClient,
+     join_direct_alert_says_connecting_while_the_handshake_is_pending)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Direct Joiner");
+
+    struct ListenerGuard
+    {
+        int fd = -1;
+        ~ListenerGuard()
+        {
+            if (fd != -1)
+                close(fd);
+        }
+    } listener;
+    listener.fd = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_NE(-1, listener.fd) << "a loopback listener socket is available";
+    const int reuse = 1;
+    ASSERT_EQ(0, setsockopt(listener.fd, SOL_SOCKET, SO_REUSEADDR,
+                            &reuse, sizeof(reuse)));
+    const int port = ix::getFreePort();
+    sockaddr_in address = {};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(static_cast<std::uint16_t>(port));
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(0, bind(listener.fd,
+                      reinterpret_cast<const sockaddr*>(&address),
+                      sizeof(address)));
+    ASSERT_EQ(0, listen(listener.fd, 4));
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+    join_client->poll_and_apply();
+    ASSERT_TRUE(join_client->connection_alert().has_value());
+    EXPECT_EQ("Status: connecting", *join_client->connection_alert())
+        << "a dialled link whose upgrade is unanswered is still connecting";
+
+    close(listener.fd);
+    listener.fd = -1;
+    EXPECT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        const std::optional<std::string> alert =
+            join_client->connection_alert();
+        return alert.has_value() && *alert == "Status: connection failed";
+    },
+    10s)) << "a reset handshake that never connected must read as failed";
+
+    join_client->shutdown();
+}
+#endif
 
 TEST(PickerNetworkClient,
      join_relay_flow_reports_connection_lost_after_relay_drops)
