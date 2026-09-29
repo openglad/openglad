@@ -1192,8 +1192,6 @@ struct CampChoice {
 
 std::string terminal_camp_oath_prompt_label(std::size_t rows)
 {
-    if (rows == 0)
-        return "Swear # (0 = done): ";
     return std::format("Swear # [1-{}] (0 = done): ", rows);
 }
 
