@@ -214,8 +214,6 @@ AStar& AStar::operator=(AStar&&) noexcept = default;
 
 void AStar::reset()
 {
-    if (!impl_)
-        return;
     // Drop the buckets entirely (not just clear()) so reset() truly returns the
     // retained memory, then restore the working reserve for the next solve.
     std::unordered_map<State, Node>().swap(impl_->nodes);
