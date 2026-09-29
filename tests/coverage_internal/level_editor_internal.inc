@@ -850,6 +850,11 @@ int level_editor_test_campaign_menu_flows()
     LevelEditorTestingPromptGuard prompt_guard;
     LevelEditorTestingMouseEventGuard mouse_event_guard;
 
+    // Earlier tests may leave either dirty flag set (the state guard restores
+    // whatever it found); every door below asks about unsaved work first.
+    eds().levelchanged = 0;
+    eds().campaignchanged = 0;
+
     const std::string helper_id = "coverage.campaign_menu";
     const std::string created_id = "coverage.campaign_menu_new";
     const std::string broken_id = "coverage.campaign_menu_bad";
