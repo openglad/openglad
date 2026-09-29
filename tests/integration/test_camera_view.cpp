@@ -665,6 +665,51 @@ TEST_F(CameraView, unresolvable_id_keeps_pane_on_free_camera)
               game_->camera_view_->control);
 }
 
+// H7b: the pane follows only a LIVE, awake target. A corpse or a dormant
+// delayed spawn behind the declared id is treated like an unresolvable id:
+// the pane stays alive on the free camera (control == nullptr), and the
+// retarget-every-frame rule picks the target up again once it is awake.
+TEST_F(CameraView, corpse_or_dormant_target_falls_back_to_free_camera)
+{
+    game_->ready_for_battle(3);
+    arm_seats();
+    const std::int32_t id = spawn_target();
+    ASSERT_NE(0, id);
+    walker* const target =
+        game_->world().find_by_id(static_cast<std::uint32_t>(id));
+    ASSERT_NE(nullptr, target);
+    declare_camera(id);
+
+    // Positive control: a live, awake target is followed.
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    EXPECT_EQ(target, game_->camera_view_->control)
+        << "a live target is the camera's control";
+
+    // A corpse is never followed.
+    target->set_dead(1);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get())
+        << "a dead target keeps the pane alive";
+    EXPECT_EQ(nullptr, game_->camera_view_->control)
+        << "a corpse must fall back to the free camera";
+
+    // Back alive: followed again on the next frame.
+    target->set_dead(0);
+    ASSERT_TRUE(game_->redraw());
+    EXPECT_EQ(target, game_->camera_view_->control);
+
+    // A dormant (not yet woken) delayed spawn is never followed either.
+    target->set_dormant(true);
+    ASSERT_TRUE(game_->redraw());
+    ASSERT_NE(nullptr, game_->camera_view_.get());
+    EXPECT_EQ(nullptr, game_->camera_view_->control)
+        << "a dormant delayed spawn must fall back to the free camera";
+    target->set_dormant(false);
+    ASSERT_TRUE(game_->redraw());
+    EXPECT_EQ(target, game_->camera_view_->control);
+}
+
 // H8: OFF-state byte-identity — with no declaration, layout_pane_count() ==
 // numviews, no camera exists, seat geometry does not move, and every seat
 // window fills its slot (no present slice can exist for it).
