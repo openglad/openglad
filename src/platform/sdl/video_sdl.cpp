@@ -706,7 +706,7 @@ Uint32 get_Uint32_color(unsigned char color)
 }
 
 // This is the version which writes to the buffer..
-void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag)
+void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char /*flag*/)
 {
 	SDL_Rect rect;
 	int r,g,b;
@@ -714,12 +714,6 @@ void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 	// Zardus: FIX: small check to make sure we're not trying to put in antimatter or something
 	if (xsize < 0 || ysize < 0 || startx < 0 || starty < 0)
 		return;
-
-	if (!flag) // then write to screen directly
-	{
-		fastbox(startx, starty, xsize, ysize, color);
-		return ;
-	}
 
 	//buffers: create the rect to fill with SDL_FillSurfaceRect
 	rect.x = startx;
