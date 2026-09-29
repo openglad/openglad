@@ -235,12 +235,8 @@ protected:
     {
         const int ui_w = game_->gameplay_ui_canvas_w();
         const int ui_h = game_->gameplay_ui_canvas_h();
-        int w = ui_w * 3 / 10;
-        int h = ui_h * 3 / 10;
-        if (w < 96)
-            w = 96;
-        if (h < 60)
-            h = 60;
+        const int w = ui_w * 3 / 10;
+        const int h = ui_h * 3 / 10;
         return SeatRect{(ui_w - w) / 2, (ui_h - h) / 2, w, h};
     }
 

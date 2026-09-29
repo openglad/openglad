@@ -1329,16 +1329,15 @@ void screen::relayout_camera_view()
 	default:
 	{
 		// Inset at 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
-		// min 96x60, centered — the canvas centre is a pane boundary there, and
-		// the bottom-right corner belongs to another seat's radar.
+		// centered — the canvas centre is a pane boundary there, and
+		// the bottom-right corner belongs to another seat's radar. The
+		// GameplayUI canvas is never below kMinWorldCanvasW x kMinWorldCanvasH
+		// (320x200, compute_gameplay_ui_canvas_dims), so the inset is always
+		// at least 96x60.
 		// GameplayUI coordinates; the World canvas and the seat layout
 		// never see it, so layout_pane_count() stays == numviews.
-		int w = ui_w * 3 / 10;
-		int h = ui_h * 3 / 10;
-		if (w < 96)
-			w = 96;
-		if (h < 60)
-			h = 60;
+		const int w = ui_w * 3 / 10;
+		const int h = ui_h * 3 / 10;
 		camera_pane_rects_.push_back(
 		    CameraPaneRect{(ui_w - w) / 2, (ui_h - h) / 2, w, h});
 		break;
