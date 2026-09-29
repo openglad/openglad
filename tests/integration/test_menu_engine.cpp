@@ -169,7 +169,6 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     {
         return local_seats;
     }
-
     int settings_syncs = 0;
     short synced_save_level = -1;
     int synced_world_level = -1;
@@ -4791,6 +4790,28 @@ TEST(MenuEngine, seat_settings_rows_refuse_a_seat_that_has_left_the_roster)
     EXPECT_TRUE(lobby.removed_seats.empty())
         << "nor ask authority to drop anybody on its behalf";
 
+    // A seat the roster still lists, but under ANOTHER machine: it is not
+    // among this machine's local seats, so no controller profile here
+    // drives it and the editor must not touch profile one on its behalf.
+    lobby.players.push_back(make_menu_lobby_player(1, "FOREIGN COMPANY"));
+    ASSERT_EQ(std::vector<std::uint8_t>{0}, lobby.local_indices);
+    og::ui::SeatSettingsScreenState foreign{
+        .seat_id = lobby.players.back().seat_id,
+        .player_index = lobby.players.back().player_index,
+        .local_slot = -1,
+    };
+    og::ui::install_seat_settings_state_for_screen(&foreign);
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsModeIndex, &foreign));
+    EXPECT_EQ(-1, foreign.local_slot)
+        << "another machine's seat claims no local controller profile";
+    EXPECT_EQ(flipped, get_player_control_mode(0))
+        << "and must not flip this machine's profile one";
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsRemoveIndex, &foreign));
+    EXPECT_TRUE(lobby.removed_seats.empty())
+        << "nor ask authority to drop another machine's seat";
+
     og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
@@ -4830,6 +4851,7 @@ TEST(MenuEngine, networked_seat_editor_and_scenario_propagate_remote_start)
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
               pks().selected_menu_item->command);
+
 }
 
 TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
@@ -4921,6 +4943,7 @@ TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
               spec.on_spec_row(kBaseCampTeamChipBase, &state));
     EXPECT_EQ(old_team, save.team_list[0]->teamnum);
     EXPECT_TRUE(trace_contains("popup", "LOCKED"));
+
 }
 
 TEST(MenuEngine, company_dispatch_surfaces_invalid_open_delete_and_restore)
