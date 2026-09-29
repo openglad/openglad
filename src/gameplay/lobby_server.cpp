@@ -601,13 +601,7 @@ std::int16_t LobbyServer::resolve_team(
     if (current_team.has_value() && seat_available(*current_team))
         return *current_team;
 
-    for (std::int16_t candidate = 0; candidate < SCORE_TEAM_COUNT; ++candidate)
-    {
-        if (seat_available(candidate))
-            return candidate;
-    }
-
-    return current_team.value_or(static_cast<std::int16_t>(-1));
+    return lobby_first_selectable_team(state_.settings);
 }
 
 std::int16_t LobbyServer::resolve_seat_team(
