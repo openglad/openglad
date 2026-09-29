@@ -4830,6 +4830,11 @@ TEST(PlatformHeadless, text_picker_camp_replay_row_arms_a_cleared_level)
 {
     restore_default_campaigns();
     RemountGladiatorGuard remount;
+    // Mount BEFORE registering the synthetic book: a mount that actually
+    // changes the package rebuilds the pack-script registry and would drop
+    // it (the helper's own mount is then a no-op), whatever ran before.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
     ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
   base_camp = function()
     return { widgets = {
