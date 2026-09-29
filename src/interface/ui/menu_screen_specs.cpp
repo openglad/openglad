@@ -5128,9 +5128,9 @@ Sint32 base_camp_open_match_setup(BaseCampScreenState& st,
         st.pending_setup_go = 2;
         return MENU_REDRAW;
     case og::ui::MatchSetupExit::RemoteStart:
-        if (team_build_start_selected())
-            return MENU_EXIT;
-        return MENU_REDRAW;
+        // run_match_setup_screen answers RemoteStart only when
+        // team_build_start_selected() already holds.
+        return MENU_EXIT;
     case og::ui::MatchSetupExit::Closed:
         break;
     }
