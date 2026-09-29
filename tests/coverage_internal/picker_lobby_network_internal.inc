@@ -724,6 +724,20 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         og::sim::kLobbyStateMessageType,
         0);
     raw_transport.incoming.push_back({3, malformed_state});
+    // Undecodable class-pack and staged-preview frames (a bare header, no
+    // body) are dropped, never forwarded as empty typed messages: the size
+    // check below still sees only the two decodable frames.
+    for (const std::uint8_t undecodable_type :
+         {og::sim::kPackManifestMessageType,
+          og::sim::kPackFileChunkMessageType,
+          og::sim::kPackTransferDoneMessageType,
+          og::sim::kStagedMatchSetupMessageType,
+          og::sim::kStagedMatchKeyframeMessageType})
+    {
+        std::vector<std::uint8_t> header_only;
+        og::sim::append_transport_header(header_only, undecodable_type, 0);
+        raw_transport.incoming.push_back({6, std::move(header_only)});
+    }
     raw_transport.incoming.push_back(
         {4, og::sim::serialize_lobby_message(join_message)});
     raw_transport.incoming.push_back(
