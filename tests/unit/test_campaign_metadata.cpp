@@ -274,6 +274,38 @@ TEST_F(CampaignMetadataTest, campaign_first_level_reads_the_yaml)
     EXPECT_EQ(1, og::data::campaign_first_level(""));
 }
 
+// A mountable package that ships no campaign.yaml answers the classic
+// defaults: no mode, no matchup, entry level 1. Paired control: the shipped
+// modes package's yaml answers its declared matchup and first level.
+TEST_F(CampaignMetadataTest, package_without_campaign_yaml_answers_classic_defaults)
+{
+    namespace fs = std::filesystem;
+    const std::string id = "test_yamlless_pkg";
+    const fs::path staging =
+        fs::path(get_user_path()) / "meta_test_staging" / id;
+    std::error_code ec;
+    fs::create_directories(staging / "scen", ec);
+    {
+        // Any file keeps the archive non-empty (libzip will not write an
+        // empty zip); campaign.yaml is deliberately absent.
+        std::ofstream out(staging / "scen" / "readme.txt");
+        out << "no campaign.yaml here\n";
+    }
+    const fs::path archive =
+        fs::path(get_user_path()) / "campaigns" / (id + ".glad");
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(staging.string(), archive.string()));
+
+    EXPECT_EQ("", og::data::campaign_mode(id));
+    EXPECT_EQ("", og::data::campaign_matchup(id));
+    EXPECT_EQ(1, og::data::campaign_first_level(id));
+
+    EXPECT_EQ("versus", og::data::campaign_matchup(kModesId));
+    EXPECT_EQ(300, og::data::campaign_first_level(kModesId));
+
+    remove_fake_package(id);
+}
+
 TEST_F(CampaignMetadataTest, gating_exempts_versus_and_tower)
 {
     SaveData save;
