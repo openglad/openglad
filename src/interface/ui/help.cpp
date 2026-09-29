@@ -676,9 +676,8 @@ static const char* get_content_line(const TabContent& content, int index)
 		return "";
 	if (content.is_dynamic && content.dynamic_lines)
 		return (*content.dynamic_lines)[static_cast<std::size_t>(index)].c_str();
-	else if (content.static_lines)
-		return content.static_lines[index];
-	return "";
+	// Every get_tab_content() arm that is not dynamic sets static_lines.
+	return content.static_lines[index];
 }
 
 // ---------------------------------------------------------------------------
