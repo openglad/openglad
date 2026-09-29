@@ -149,6 +149,44 @@ TEST(ScriptSandbox, tostring_is_address_free)
     EXPECT_EQ("X", *m);
 }
 
+// sandbox_has walks TABLES only: a dotted path that runs through a non-table
+// value (a function, a number) is absent — never a Lua index error and never
+// a false "present". Paired with the same prefixes answering present.
+TEST(ScriptSandbox, a_dotted_path_through_a_non_table_is_absent)
+{
+    ScriptHost host;
+    ASSERT_TRUE(host.sandbox_has("og.div"));
+    ASSERT_TRUE(host.sandbox_has("math.maxinteger"));
+    EXPECT_FALSE(host.sandbox_has("og.div.x")) << "og.div is a function";
+    EXPECT_FALSE(host.sandbox_has("math.maxinteger.huge"))
+        << "math.maxinteger is a number";
+    EXPECT_TRUE(host.errors().empty());
+}
+
+// Deterministic tostring: a __tostring metamethod that answers a non-string
+// is a script error, never a value passed through to the caller. Numbers
+// ARE strings to lua_isstring, so the offending answer here is a table.
+TEST(ScriptSandbox, a_tostring_metamethod_returning_a_non_string_is_an_error)
+{
+    ScriptHost host;
+    // Positive control: a string answer passes through untouched.
+    ASSERT_EQ(std::optional<std::string>("ok"),
+              host.eval_string(
+                  "tostring(setmetatable({}, {__tostring = function() "
+                  "return 'ok' end}))"));
+    ASSERT_TRUE(host.errors().empty());
+
+    EXPECT_EQ(std::nullopt,
+              host.eval_string(
+                  "tostring(setmetatable({}, {__tostring = function() "
+                  "return {} end}))"));
+    ASSERT_EQ(1u, host.errors().size());
+    EXPECT_NE(std::string::npos,
+              host.errors()[0].message.find(
+                  "'__tostring' must return a string"))
+        << host.errors()[0].message;
+}
+
 TEST(ScriptSandbox, print_and_og_log_capture_lines_in_order)
 {
     ScriptHost host;
