@@ -2184,8 +2184,6 @@ inline constexpr std::int32_t kWakeNudgeRadius = 4;
 
 bool GameWorld::dormant_occupies_spot(const walker* probe) const
 {
-    if (probe == nullptr)
-        return false;
     return dormant_overlaps_box(*this, probe, probe->xpos(), probe->ypos(),
                                 probe->floor());
 }
