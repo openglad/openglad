@@ -2008,8 +2008,9 @@ GameplayUiProjector::GameplayUiProjector(const viewscreen& view)
 		og::view_layout::compute_view_layout(
 			output->layout_pane_count(), view.mynum, view.prefs[PREF_VIEW],
 			output->gameplay_ui_canvas_w(), output->gameplay_ui_canvas_h());
-	if (!ui.applies)
-		return;
+	// ui.applies always holds: projectors are built only for seat views
+	// (viewob[i], mynum == i < numviews <= layout_pane_count()), and
+	// compute_view_layout has an arm for every such mynum.
 	ui_x_ = ui.x;
 	ui_y_ = ui.y;
 	ui_w_ = ui.w;
@@ -2075,8 +2076,8 @@ ScopedGameplayUiViewLayout::ScopedGameplayUiViewLayout(
 			active_screen()->layout_pane_count(), view_.mynum,
 			view_.prefs[PREF_VIEW],
 			output.gameplay_ui_canvas_w(), output.gameplay_ui_canvas_h());
-	if (!ui.applies)
-		return;
+	// ui.applies always holds for the seat views this scope is built for
+	// (see GameplayUiProjector).
 
 	xloc_ = view_.xloc;
 	yloc_ = view_.yloc;
