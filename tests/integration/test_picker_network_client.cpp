@@ -9305,6 +9305,16 @@ TEST(PickerNetworkClient,
         EXPECT_FALSE(join_client->request_seat_team_change(0xffu, 3));
         EXPECT_EQ(1, join_session.myscreen_->save_data.my_team);
     }
+    // The host is held to the same rule: it retargets only its OWN seats, so
+    // naming the joiner's player id is refused client-side, and the refusal
+    // does not fall back to the host's own seat (the host's own-seat change
+    // above is the accepted control).
+    EXPECT_FALSE(host_client->request_seat_team_change(join_indices.front(), 2))
+        << "the host must not retarget a joiner's seat";
+    host_client->poll_and_apply();
+    EXPECT_EQ(std::optional<std::int16_t>(0),
+              team_for(host_client->lobby_players(), host_indices.front()))
+        << "a refused foreign-seat change must not move the host's own seat";
 
     // Target only the joiner's second seat. Team 3 has no local hero, but it
     // remains a valid authored control assignment; the first seat and my_team
