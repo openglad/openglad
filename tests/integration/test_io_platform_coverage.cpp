@@ -1626,6 +1626,26 @@ TEST(IoPlatformCoverage, new_file_error_paths_report_write_failures)
               create_new_scen_file_with_error(scen_blocker.string(), "scen0001"))
         << "scenario write should map open-write failure";
 
+#if defined(__linux__)
+    // PLATFORM GUARD (Linux only): /dev/full opens for writing and then
+    // fails every write with ENOSPC — the "disk filled mid-write" case. A
+    // target that opened but could not take its payload must report
+    // WriteFailed, never success and never OpenWriteFailed.
+    ASSERT_EQ(NewFileIoError::WriteFailed,
+              create_new_campaign_descriptor_with_error("/dev/full"))
+        << "a campaign descriptor whose payload cannot be written";
+    ASSERT_EQ(NewFileIoError::WriteFailed,
+              create_new_scen_file_with_error("/dev/full", "scen0001"))
+        << "a scenario whose payload cannot be written";
+    // Paired control: the same writers succeed on a writable target.
+    const fs::path campaign_ok = base / "ok_campaign.yaml";
+    const fs::path scen_ok = base / "ok_scen.fss";
+    ASSERT_EQ(NewFileIoError::None,
+              create_new_campaign_descriptor_with_error(campaign_ok.string()));
+    ASSERT_EQ(NewFileIoError::None,
+              create_new_scen_file_with_error(scen_ok.string(), "scen0001"));
+#endif
+
     fs::remove_all(base, ec);
 }
 
