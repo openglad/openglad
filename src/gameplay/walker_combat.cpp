@@ -63,9 +63,6 @@ bool positional_sound_visible(const walker* source, std::uint32_t sound_id)
 // Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 {
-    if (w == nullptr || w->stats() == nullptr)
-        return 0;
-
     const std::int32_t target_level =
         (target != nullptr && target->stats() != nullptr) ? target->stats()->level() : 0;
 

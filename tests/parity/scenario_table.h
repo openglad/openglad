@@ -1144,14 +1144,14 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
 // family-specific behavior and data.
 
 inline constexpr Mutation kMut_combat_damage = {
-    "src/gameplay/walker_combat.cpp", 218,
+    "src/gameplay/walker_combat.cpp", 215,
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
     "Zeroes the per-hit damage applied to combat targets in walker::do_combat_damage; for any scenario that actually exercises melee combat this leaves the target alive and flips WalkerDiedByFinal and team-alive predicates."
 };
 
 inline constexpr Mutation kMut_walker_ai_wander = {
-    "src/gameplay/walker_combat.cpp", 330,
+    "src/gameplay/walker_combat.cpp", 327,
     "do_combat_damage(attacker, target, tempdamage_i);",
     "do_combat_damage(attacker, target, 0);",
     "Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damage body."
@@ -3269,7 +3269,7 @@ inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_hit_emission = {
-    "src/gameplay/walker_combat.cpp", 147,
+    "src/gameplay/walker_combat.cpp", 144,
     "            walker* newob = current_game->world->add_ob(Order::FX, FAMILY_HIT);",
     "            walker* newob = current_game->world->add_fx_ob(Order::FX, FAMILY_HIT);",
     "do_hit_effects() emits the combat HIT animation via add_ob(Order::FX, FAMILY_HIT), which routes the object into world.oblist (game_world.cpp:564) where it is dumped as a team-0 walker. Repointing add_ob -> add_fx_ob (game_world.cpp:567, public, identical 2-arg signature) routes the HIT into world.fxlist instead, so it is no longer an oblist walker and no longer counted by WalkerOfTeamAlive(team 0). This is a genuine break of HIT-effect emission routing."
@@ -3374,7 +3374,7 @@ inline constexpr FactPredicate kFacts_event_notification_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_notification_emission = {
-    "src/gameplay/walker_combat.cpp", 100,
+    "src/gameplay/walker_combat.cpp", 97,
     "og::sim::EventKind::ScoreChange,",
     "og::sim::EventKind::None,",
     "Replaces the ScoreChange event kind emitted on combat damage with EventKind::None at walker_combat.cpp:89; the resulting score_change drop cascades into the downstream notification chain (death messages, level-end notifications) flipping the notification count."
@@ -3390,7 +3390,7 @@ inline constexpr FactPredicate kFacts_event_set_palette_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_palette_emission = {
-    "src/gameplay/walker_combat.cpp", 100,
+    "src/gameplay/walker_combat.cpp", 97,
     "og::sim::EventKind::ScoreChange,",
     "og::sim::EventKind::None,",
     "Same line as kMut_event_notification_emission; the score_change drop indirectly suppresses the downstream palette-set event triggered on certain combat / score milestones."
@@ -3406,7 +3406,7 @@ inline constexpr FactPredicate kFacts_event_request_redraw_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_request_redraw_emission = {
-    "src/gameplay/walker_combat.cpp", 100,
+    "src/gameplay/walker_combat.cpp", 97,
     "og::sim::EventKind::ScoreChange,",
     "og::sim::EventKind::None,",
     "Same line as kMut_event_notification_emission; score_change ultimately drives HUD request_redraw counts which fall when the line is neutered."
@@ -3421,7 +3421,7 @@ inline constexpr FactPredicate kFacts_event_end_game_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_end_game_emission = {
-    "src/gameplay/walker_combat.cpp", 218,
+    "src/gameplay/walker_combat.cpp", 215,
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
     "target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
     "Zeroes per-hit damage in walker::do_combat_damage; the lone-player-vs-three-enemies arena no longer kills the player so end_game (which fires when the last team-0 walker dies) is never reached."
@@ -5067,7 +5067,7 @@ inline constexpr FactPredicate kFacts_midcombat_partial_hp_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 4),
 };
 inline constexpr Mutation kMut_midcombat_partial_hp_scen99 = {
-    "src/gameplay/walker_combat.cpp", 218,
+    "src/gameplay/walker_combat.cpp", 215,
     "    target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
     "    target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
     "Zeroes the central per-hit combat-damage write in walker::do_combat_damage; neither soldier takes damage and both finish at full HP (12000), leaving no FAMILY_SOLDIER in the WalkerHpRangeAtFinalTick band -- flipping it."
