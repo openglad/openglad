@@ -2364,13 +2364,10 @@ void reset_local_transport_shadow(GameSession& session,
     runtime->server_session = std::make_unique<GameSession>(server_cfg);
     runtime->server_session->isolated_company_session_ =
         runtime->isolated_company;
-    runtime->server_transport = og::sim::InProcessTransport::create_server();
+    const std::shared_ptr<og::sim::InProcessTransport>
+        inprocess_server_transport = og::sim::InProcessTransport::create_server();
+    runtime->server_transport = inprocess_server_transport;
     runtime->server_transport->accept_connections();
-    const auto inprocess_server_transport =
-        std::dynamic_pointer_cast<og::sim::InProcessTransport>(
-            runtime->server_transport);
-    if (!inprocess_server_transport)
-        return;
 
     {
         auto server_scope = runtime->server_session->activate();
