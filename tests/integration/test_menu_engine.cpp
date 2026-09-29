@@ -4852,6 +4852,13 @@ TEST(MenuEngine, networked_seat_editor_and_scenario_propagate_remote_start)
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
               pks().selected_menu_item->command);
 
+    pks().selected_menu_item = nullptr;
+    EXPECT_EQ(MENU_EXIT, create_lineup_menu(0))
+        << "the LINEUP wrapper must preserve a remote structural exit, not "
+           "fold it into its own BACK's MENU_REDRAW";
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
+              pks().selected_menu_item->command);
 }
 
 TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
