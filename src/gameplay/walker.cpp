@@ -1229,8 +1229,6 @@ std::int32_t finalized_weapon_reach(const walker& weapon)
 
 bool weapon_profile_requires_hook(const walker& owner)
 {
-	if (owner.query_order() != Order::Living)
-		return false;
 	const FamilyDescriptor* descriptor =
 		get_family_descriptor(owner.family());
 	if (descriptor == nullptr || descriptor->customize_weapon != nullptr ||
