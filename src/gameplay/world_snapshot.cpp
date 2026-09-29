@@ -561,11 +561,10 @@ void deserialize_entity_field(ByteReader& reader,
         break;
     }
 
+    // Non-null: bit_index < FIELD_COUNT (for_each_dirty_field_bit masks with
+    // kDirtyMaskValidBits), the manual bits returned above, and
+    // entity_snapshot_field_table_is_valid() gives every other bit a desc.
     const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
-    if (field == nullptr)
-    {
-        throw std::runtime_error("snapshot deserialization: unknown entity field bit");
-    }
 
     std::uint8_t* const dst =
         reinterpret_cast<std::uint8_t*>(&snapshot) + field->snap_offset;
@@ -629,11 +628,8 @@ void copy_entity_field(og::sim::EntitySnapshot& dst,
         break;
     }
 
+    // Non-null for the same reason as in deserialize_entity_field.
     const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
-    if (field == nullptr)
-    {
-        throw std::runtime_error("apply_delta: unknown entity field bit");
-    }
 
     std::memcpy(reinterpret_cast<std::uint8_t*>(&dst) + field->snap_offset,
                 reinterpret_cast<const std::uint8_t*>(&src) + field->snap_offset,
