@@ -1288,16 +1288,10 @@ bool statistics::walk_to_foe()
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
 			if (howmany > 0)
 			{
-			    walker* firstfoe = foelist.front();
 				clear_command();
 				controller_->turn(controller_->facing(xdelta, ydelta));
 				controller_->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
 				current_game->world->find_near_foe(controller_);
-				if (!controller_->foe() && firstfoe)
-				{
-					controller_->set_foe(firstfoe);
-					set_last_distance(static_cast<Uint32>(controller_->distance_to_ob(foe)));
-				}
 				controller_->init_fire();
 				return 1;
 			}
