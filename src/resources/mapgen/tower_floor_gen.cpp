@@ -1250,8 +1250,6 @@ void clear_stair_cross_blocking_decor(GameWorld& w, const BuildPlan& plan)
             {
                 const int nx = sc.tx + off[0];
                 const int ny = sc.ty + off[1];
-                if (nx < 0 || ny < 0 || nx >= dec.w || ny >= dec.h)
-                    continue;
                 const unsigned char d = dec.data[static_cast<std::size_t>(nx + ny * dec.w)];
                 if (d < DECOR_MAX &&
                     kDecorRegistry[d].pass == DecorPassability::BlocksGround)
