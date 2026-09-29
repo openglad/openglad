@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -545,6 +546,55 @@ TEST_F(PackTransferIoErrorTest, a_content_mismatch_is_not_locally_available)
     shorter.files.pop_back();
     EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(shorter))
         << "an extra local file is a difference too";
+
+    // Same COUNT, different file SET: the manifest names an empty file the
+    // mount does not have in place of one it does. Reading a missing file
+    // yields zero bytes, which would match an empty entry's size and hash,
+    // so only the presence check can tell the sets apart.
+    og::sim::PackManifestMessage renamed = exact;
+    renamed.files.back().path = "scripts/absent.lua";
+    renamed.files.back().size_bytes = 0;
+    renamed.files.back().hash64 = og::core::fnv1a64(nullptr, 0);
+    ASSERT_EQ(exact.files.size(), renamed.files.size());
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(renamed))
+        << "a manifest file the mount lacks must not pass as empty";
+}
+
+// The pack walk bounds what it collects: it stops once it holds more than
+// twice kMaxPackManifestFiles paths (so the caller can reject the oversized
+// pack explicitly without reading an unbounded tree), and a subdirectory
+// visited after the bound is not entered at all.
+TEST_F(PackTransferIoErrorTest, the_pack_walk_stops_past_twice_the_manifest_cap)
+{
+    constexpr std::size_t kBound = 2 * og::sim::kMaxPackManifestFiles;
+    std::vector<std::pair<std::string, std::string>> files;
+    for (std::size_t i = 0; i <= kBound; ++i)
+    {
+        char name[32];
+        std::snprintf(name, sizeof(name), "a/f%04zu.txt", i);
+        files.emplace_back(name, "x");
+    }
+    files.emplace_back("b/late.txt", "x"); // sorts after every a/ entry
+    const fs::path dir = stage_pack("huge", files);
+    mount_pack(dir, "org.test.huge");
+
+    const std::vector<og::sim::HostedPack> offer =
+        og::resources::build_transferable_packs();
+    const auto found = std::find_if(
+        offer.begin(), offer.end(), [](const og::sim::HostedPack& p) {
+            return p.manifest.pack_id == "org.test.huge";
+        });
+    ASSERT_NE(offer.end(), found);
+    ASSERT_EQ(kBound + 1, found->manifest.files.size())
+        << "the walk keeps exactly one path past the bound, then stops";
+    EXPECT_EQ("a/f0000.txt", found->manifest.files.front().path);
+    EXPECT_EQ(files[kBound].first, found->manifest.files.back().path);
+    EXPECT_TRUE(std::none_of(found->manifest.files.begin(),
+                             found->manifest.files.end(),
+                             [](const og::sim::PackManifestFileEntry& f) {
+                                 return f.path.starts_with("b/");
+                             }))
+        << "a directory reached after the bound must not be walked";
 }
 
 // Pack ids reach the filesystem as one path component of the cache
