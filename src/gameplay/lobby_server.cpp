@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string_view>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -310,7 +311,6 @@ poll_lobby_messages(og::sim::ITransport& transport)
 struct OrderedLobbySlot {
     std::uint8_t slot_index = 0;
     std::size_t player_order = 0;
-    std::size_t slot_order = 0;
     const og::sim::LobbyCharacterSlot* slot = nullptr;
 };
 
@@ -1397,7 +1397,6 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
             ordered_slots.push_back(OrderedLobbySlot{
                 .slot_index = player.character_slots[slot_order].slot_index,
                 .player_order = player_index,
-                .slot_order = slot_order,
                 .slot = &player.character_slots[slot_order],
             });
         }
@@ -1411,11 +1410,11 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
 
     std::sort(ordered_slots.begin(), ordered_slots.end(),
               [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
-                  if (lhs.slot_index != rhs.slot_index)
-                      return lhs.slot_index < rhs.slot_index;
-                  if (lhs.player_order != rhs.player_order)
-                      return lhs.player_order < rhs.player_order;
-                  return lhs.slot_order < rhs.slot_order;
+                  // (slot_index, player_order) is unique: player_order is
+                  // the player's own index and sanitize_character_slots
+                  // de-duplicates slot_index within a player.
+                  return std::tie(lhs.slot_index, lhs.player_order) <
+                      std::tie(rhs.slot_index, rhs.player_order);
               });
 
     const bool slots_are_dense = std::all_of(
@@ -1478,9 +1477,9 @@ std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
 
     std::sort(bindings.begin(), bindings.end(),
               [](const LobbyPlayerBinding& lhs, const LobbyPlayerBinding& rhs) {
-                  if (lhs.player_index != rhs.player_index)
-                      return lhs.player_index < rhs.player_index;
-                  return lhs.peer_id < rhs.peer_id;
+                  // rebuild_state numbers every seat densely, so the global
+                  // player index alone is a unique key.
+                  return lhs.player_index < rhs.player_index;
               });
 
     return bindings;
