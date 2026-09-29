@@ -31,6 +31,7 @@
 
 #include "script_host_impl.h"
 #include "script_internal.h"
+#include "script_raise.h"
 
 #include <algorithm>
 #include <cstring>
@@ -54,7 +55,7 @@ char g_og_nil_tag = 0;
 
 int family_ref_use_error(lua_State* L)
 {
-    return luaL_error(
+    script_raise(
         L, "og.family_id: a family byte cannot be READ while families are "
            "being declared — the ids are assigned by the install this "
            "declaration feeds. The call answers a truthy placeholder so the "
@@ -1564,7 +1565,7 @@ int bind_family(lua_State* L, VmState* st, const OrderInfo* oi, int tbl)
 // with ordinary destructors.
 int raise_harvest_error(lua_State* L, const Harvest& h)
 {
-    return luaL_error(L, "%s", h.err.c_str());
+    script_raise(L, "%s", h.err.c_str());
 }
 
 // og.family / og.anims / og.pack all describe DATA, and data installs from
@@ -1575,12 +1576,11 @@ bool require_families_chunk(lua_State* L, const VmState* st, const char* what)
 {
     if (st != nullptr && st->current_chunk == ChunkKind::Family)
         return true;
-    luaL_error(L,
-               "%s: only a packs/<id>/families/*.lua chunk may declare pack "
-               "data — families/ is what the installer evaluates, so a "
-               "declaration anywhere else would never install",
-               what);
-    return false;  // unreachable; luaL_error does not return
+    script_raise(L,
+                 "%s: only a packs/<id>/families/*.lua chunk may declare pack "
+                 "data — families/ is what the installer evaluates, so a "
+                 "declaration anywhere else would never install",
+                 what);
 }
 
 }  // namespace
@@ -1594,8 +1594,8 @@ int og_family(lua_State* L)
         return 0;
     const OrderInfo* oi = find_order(order_str);
     if (oi == nullptr)
-        return luaL_error(L, "og.family: unknown order '%s' (living, weapon, "
-                             "effect, treasure, generator)", order_str);
+        script_raise(L, "og.family: unknown order '%s' (living, weapon, "
+                        "effect, treasure, generator)", order_str);
     if (st->mode != VmMode::Declare) {
         // BIND pass: the same call binds hooks and specials casts against
         // the descriptors this declaration already installed, and touches no

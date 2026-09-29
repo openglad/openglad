@@ -25,6 +25,7 @@ set(OG_SCRIPT_SOURCES
     ${SRC_DIR}/gameplay/script/bindings_entity.cpp
     ${SRC_DIR}/gameplay/script/campaign_hooks.cpp
     ${SRC_DIR}/gameplay/script/family_decl.cpp
+    ${SRC_DIR}/gameplay/script/script_raise.cpp
 )
 
 # Component source lists. These are the single source of truth: each component
