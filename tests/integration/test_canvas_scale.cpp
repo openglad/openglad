@@ -2491,6 +2491,83 @@ TEST(CanvasScale, native_world_destination_reaches_present_and_capture)
     E_Screen->set_active_canvas(CanvasTarget::UI);
 }
 
+// One native-world plane can carry insets declared in different coordinate
+// spaces. A capture composites only the insets declared in ITS space: a
+// UI-canvas capture (a menu screenshot) never paints a World-coordinate
+// inset, and a World capture never paints a UI-coordinate one.
+TEST(CanvasScale, capture_composites_only_the_insets_declared_in_its_canvas)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(320, E_Screen->world_w());
+    ASSERT_EQ(200, E_Screen->world_h());
+    E_Screen->set_active_canvas(CanvasTarget::World);
+
+    // Disjoint rectangles: the UI inset at the top-left, the World inset
+    // lower right. Both canvases are 320x200 here, so each inset lands on the
+    // same pixels in either capture if it is (wrongly) composited there.
+    const std::array<NativeWorldViewDestination, 2> destinations = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 40, .h = 25},
+        {.canvas = CanvasTarget::World, .x = 200, .y = 120, .w = 40,
+         .h = 25}}};
+    const NativeWorldViewSource source = s->begin_native_world_view(destinations);
+    ASSERT_TRUE(source);
+    SDL_Surface* const plane = E_Screen->render;
+    ASSERT_TRUE(SDL_FillSurfaceRect(plane, nullptr,
+                                    SDL_MapSurfaceRGB(plane, 220, 40, 220)));
+    const std::array<int, 3> inset_rgb = surface_rgb(plane, 5, 5);
+    ASSERT_TRUE(s->end_native_world_view());
+
+    const auto make_base = [](Uint8 r, Uint8 g, Uint8 b) {
+        SDL_Surface* const base =
+            SDL_CreateSurface(320, 200, SDL_PIXELFORMAT_XRGB8888);
+        if (base != nullptr)
+            SDL_FillSurfaceRect(base, nullptr, SDL_MapSurfaceRGB(base, r, g, b));
+        return base;
+    };
+    const int ui_px = 20;    // inside the UI inset (0..40 x 0..25)
+    const int ui_py = 12;
+    const int world_px = 220; // inside the World inset (200..240 x 120..145)
+    const int world_py = 132;
+
+    // UI capture: the UI inset composites, the World inset does not.
+    SDL_Surface* const ui_base = make_base(20, 180, 20);
+    ASSERT_NE(nullptr, ui_base);
+    const std::array<int, 3> ui_base_rgb = surface_rgb(ui_base, 100, 100);
+    SDL_Surface* const ui_capture =
+        E_Screen->compose_native_world_views_for_capture(ui_base,
+                                                         CanvasTarget::UI);
+    ASSERT_NE(nullptr, ui_capture);
+    EXPECT_EQ(inset_rgb, surface_rgb(ui_capture, ui_px, ui_py))
+        << "the UI-coordinate inset belongs in a UI capture";
+    EXPECT_EQ(ui_base_rgb, surface_rgb(ui_capture, world_px, world_py))
+        << "a World-coordinate inset must never paint into a UI capture";
+    SDL_DestroySurface(ui_capture);
+    SDL_DestroySurface(ui_base);
+
+    // World capture: the reverse.
+    SDL_Surface* const world_base = make_base(20, 40, 180);
+    ASSERT_NE(nullptr, world_base);
+    const std::array<int, 3> world_base_rgb = surface_rgb(world_base, 100, 100);
+    SDL_Surface* const world_capture =
+        E_Screen->compose_native_world_views_for_capture(world_base,
+                                                         CanvasTarget::World);
+    ASSERT_NE(nullptr, world_capture);
+    EXPECT_EQ(inset_rgb, surface_rgb(world_capture, world_px, world_py))
+        << "the World-coordinate inset belongs in a World capture";
+    EXPECT_EQ(world_base_rgb, surface_rgb(world_capture, ui_px, ui_py))
+        << "a UI-coordinate inset must never paint into a World capture";
+    SDL_DestroySurface(world_capture);
+    SDL_DestroySurface(world_base);
+
+    E_Screen->discard_native_world_views_for_testing();
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+}
+
 // The per-view zoom selector. GAME (1.0x) is the baseline every machine can
 // show, so it must stay selectable whatever the GPU says; a deeper override
 // that needs a canvas the GPU cannot hold must not be offered. And if the
