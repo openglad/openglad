@@ -50,7 +50,9 @@
 #include <array>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace og::tower {
@@ -956,9 +958,6 @@ std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan,
             "maxobs: worst-case population {} exceeds the {} budget "
             "(Frenzy generators modeled at 8 spawns, slimes split 2x)",
             worst, kMaxobsBudget));
-    if (w.title.size() > 30)
-        errors.push_back(std::format("title '{}' overflows the 30-char field",
-                                     w.title));
     for (const std::string& line : description)
         if (line.size() > kBriefingLineBudget)
             errors.push_back(std::format(
@@ -1478,6 +1477,13 @@ std::vector<std::string> build_tower_floor(GameWorld& world,
 
     // (10) Identity, title, briefing, par/limit.
     world.id = og::kTowerGateLevel + floor_number;
+    // "Floor " + the longest int ("-2147483648", digits10 + 2 chars) fits
+    // the .fss 30-char title field.
+    static_assert(std::string_view("Floor ").size() +
+                          static_cast<std::size_t>(
+                              std::numeric_limits<int>::digits10 + 2) <=
+                      30,
+                  "a tower floor title can overflow the 30-char field");
     world.title = std::format("Floor {}", floor_number);
     description.clear();
     description.push_back(plan.band->briefing1);
