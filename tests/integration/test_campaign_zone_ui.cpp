@@ -2836,6 +2836,135 @@ TEST(CampaignZoneUi, host_start_unwinds_a_joiner_parked_in_a_book_page)
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
 
+namespace {
+
+// A header readout of two cells, spelled by the caller.
+std::string readout_script(const char* label0, const char* value0,
+                           const char* label1, const char* value1)
+{
+    return std::format(R"LUA(og.register_campaign_hooks({{
+  base_camp = function()
+    return {{
+      widgets = {{
+        {{ kind = "readout",
+          items = {{
+            {{ label = "{}", value = "{}" }},
+            {{ label = "{}", value = "{}" }},
+          }} }},
+        {{ kind = "roster" }},
+      }},
+    }}
+  end,
+}}))LUA",
+                       label0, value0, label1, value1);
+}
+
+// The Base Camp content pass over one scripted composition, hashed over
+// the readout's header band (y=33, three 100px cells from x=12).
+std::uint64_t camp_readout_band(SaveData& save, const std::string& script)
+{
+    SyntheticCampaignScriptGuard::install(script.c_str());
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    EXPECT_TRUE(zone.scripted());
+    EXPECT_NE(nullptr, zone.readout());
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    // The values ink PURE_BLACK on the panel face; a cleared (black)
+    // buffer would hide them, so the pass draws over a WHITE field.
+    screen& output = *test_screen();
+    output.draw_box(0, 0, 319, 199, WHITE, 1, 1);
+    team_build_spec().draw_content(&state);
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    return zone_region_hash(output, 0, 31, 320, 42);
+}
+
+} // namespace
+
+// A readout cell has a 16-character budget shared by its label and value
+// (label, one space, value). A label past the budget is clipped to it and
+// evicts the value; a value that would run past the budget is clipped to
+// what the label left. Each overlong composition must draw EXACTLY what its
+// pre-clipped spelling draws: an unclipped cell runs into its neighbour.
+TEST(CampaignZoneUi, readout_cells_share_one_sixteen_character_budget)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    // Cell 0: a 19-char label (clipped to 16, value evicted). Cell 1: a
+    // 4-char label + space leaves 11 for an 18-char value.
+    const std::uint64_t overlong = camp_readout_band(
+        save, readout_script("ABCDEFGHIJKLMNOPQRS", "77", "GOLD",
+                             "0123456789ABCDEFGH"));
+    const std::uint64_t preclipped = camp_readout_band(
+        save, readout_script("ABCDEFGHIJKLMNOP", "", "GOLD", "0123456789A"));
+    EXPECT_EQ(preclipped, overlong)
+        << "an overlong cell must draw exactly its clipped spelling";
+
+    // Paired controls: the band sees the LAST glyph each budget keeps, so
+    // the equality above is not a band too coarse to notice a clip.
+    EXPECT_NE(preclipped,
+              camp_readout_band(save, readout_script("ABCDEFGHIJKLMNOX", "",
+                                                     "GOLD", "0123456789A")))
+        << "the 16th label glyph is inside the band";
+    EXPECT_NE(preclipped,
+              camp_readout_band(save, readout_script("ABCDEFGHIJKLMNOP", "",
+                                                     "GOLD", "0123456789X")))
+        << "the 11th value glyph is inside the band";
+}
+
+// With can_deploy off the own rows lose their deploy BUTTONS, but the
+// player still reads each hero's deploy state as the X/- glyph the foreign
+// rows use. With the buttons live the content pass leaves that cell to
+// them.
+TEST(CampaignZoneUi, retired_deploy_buttons_still_show_deploy_state)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    // The deploy column (x 23..37) of the whole roster band, drawn by the
+    // content pass for one composition and one deploy state of row 0.
+    const auto deploy_column = [&save](const char* controls, bool deployed) {
+        save.team_list[0]->deployed = deployed;
+        SyntheticCampaignScriptGuard::install(
+            roster_lock_script(controls).c_str());
+        og::ui::CampaignZoneSession zone(save);
+        zone.fetch();
+        EXPECT_TRUE(zone.scripted());
+        og::ui::BaseCampScreenState state;
+        state.zone = &zone;
+        og::ui::base_camp_refresh_rows(state);
+        og::ui::install_base_camp_state_for_screen(&state);
+        screen& output = *test_screen();
+        output.clearbuffer();
+        team_build_spec().draw_content(&state);
+        og::ui::install_base_camp_state_for_screen(nullptr);
+        return zone_region_hash(output, 23, 44, 37, 200);
+    };
+
+    EXPECT_NE(deploy_column("false", false), deploy_column("false", true))
+        << "with the deploy buttons retired, X and - still tell the state";
+    EXPECT_EQ(deploy_column("true", false), deploy_column("true", true))
+        << "with live buttons the content pass draws no deploy glyph";
+    save.team_list[0]->deployed = false;
+}
+
 // The fifth roster site: the CLASSIC team-color cycler (reachable only
 // when the composition ships no assign spec — the assign fork owns the
 // chip cell otherwise).
