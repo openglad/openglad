@@ -78,8 +78,6 @@ static void wire_world_loader(GameWorld& world,
     };
 
     world.entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
-        if (entity == nullptr || !game_loader)
-            return;
         game_loader->set_derived_stats(entity, order, family);
     };
 }
