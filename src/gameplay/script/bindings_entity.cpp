@@ -1608,9 +1608,7 @@ int og_scare_radius(lua_State* L)
 int og_tuning(lua_State* L)
 {
     walker* w = resolve_walker(L, 1, /*required=*/true);
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        script_raise(L, "og.tuning: no world scripts active");
+    VmState* st = &vm_state(L);
     if (st->tuning_cache_gen != family_tuning_generation()) {
         luaL_unref(L, LUA_REGISTRYINDEX, st->tuning_cache_ref);
         lua_newtable(L);

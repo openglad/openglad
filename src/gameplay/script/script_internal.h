@@ -166,6 +166,9 @@ enum class LevelHook : int {
 };
 
 VmState* get_vm_state(lua_State* L);
+// get_vm_state for a VM install_vm_scaffolding built (every og.* binding runs
+// in one): never null there. Defined in world_scripts.cpp, which says why.
+VmState& vm_state(lua_State* L);
 
 // Resolve a walker handle at stack idx. Prefers the entity-id index of the
 // current world; falls back to the raw pointer when the handle was minted

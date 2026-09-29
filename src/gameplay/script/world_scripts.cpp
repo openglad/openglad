@@ -137,8 +137,6 @@ VmState* get_vm_state(lua_State* L)
     return st;
 }
 
-namespace {
-
 // The VmState of a VM that install_vm_scaffolding built. 'og.vmstate' is
 // written only there (its two callers: the WorldScripts ctor and the
 // declaration VM in family_decl.cpp), and the sandbox has no debug library
@@ -150,8 +148,6 @@ VmState& vm_state(lua_State* L)
     assert(st != nullptr);
     return *st;
 }
-
-}  // namespace
 
 walker* resolve_walker(lua_State* L, int idx, bool required)
 {
