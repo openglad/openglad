@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "test_family_hook_dispatch.h"
+#include "../../src/gameplay/family_registry_base.h"
 
 TEST(FamilyRegistry, registry_returns_non_null_for_valid_ids)
 {
@@ -287,4 +288,36 @@ TEST(FamilyRegistry, promotion_formula_survives_the_pack_install)
     ASSERT_NE(nullptr, orc->promotion_new_level);
     EXPECT_EQ(1, static_cast<int>(orc->promotion_new_level(42)));
     EXPECT_EQ(nullptr, get_family_descriptor(FAMILY_SOLDIER)->promotion_new_level);
+}
+
+namespace {
+
+struct GapProbeDescriptor
+{
+    int family_id = -1;
+};
+
+} // namespace
+
+// first_unpopulated_core_slot names the LOWEST core slot no pack installed:
+// it is the input of the missing-core-pack diagnostic
+// (require_core_families_installed), which must name the first gap, not
+// just report that one exists. Mod slots above the core span never count.
+TEST(FamilyRegistryBase, first_unpopulated_core_slot_names_the_lowest_gap)
+{
+    FamilyRegistryBase<GapProbeDescriptor, 3, 4> registry;
+    registry.init([](GapProbeDescriptor&) {});
+    EXPECT_EQ(0, registry.first_unpopulated_core_slot()) << "nothing installed";
+
+    ASSERT_TRUE(registry.set(1, GapProbeDescriptor{}));
+    ASSERT_TRUE(registry.set(3, GapProbeDescriptor{})); // mod slot
+    EXPECT_EQ(0, registry.first_unpopulated_core_slot())
+        << "slot 0 is still free although 1 (and mod slot 3) are installed";
+
+    ASSERT_TRUE(registry.set(0, GapProbeDescriptor{}));
+    EXPECT_EQ(2, registry.first_unpopulated_core_slot());
+
+    // Paired control: the whole core span installed reads as no gap.
+    ASSERT_TRUE(registry.set(2, GapProbeDescriptor{}));
+    EXPECT_EQ(-1, registry.first_unpopulated_core_slot());
 }
