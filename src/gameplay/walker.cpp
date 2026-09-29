@@ -1388,8 +1388,6 @@ bool walker::can_approach_weapon_range(const walker* objective)
 				return false;
 			}
 		}
-		if (next_x == x && next_y == y)
-			return false;
 		x = next_x;
 		y = next_y;
 	}
