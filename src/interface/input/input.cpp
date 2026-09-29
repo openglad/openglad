@@ -732,18 +732,19 @@ bool query_key_event(int key, const void* native_event)
 
 bool isKeyboardEvent(const void* native_event)
 {
+    // decode_event fails only for nullptr and then leaves `event` at its
+    // defaults (EventType::Unknown), which the check below rejects.
     og::input_native::EventData event;
-    if (!as_event_data(native_event, event))
-        return false;
+    (void)as_event_data(native_event, event);
     // does not handle key up events
     return (event.type == og::input_native::EventType::KeyDown);
 }
 
 bool isJoystickEvent(const void* native_event)
 {
+    // Same nullptr-only failure as isKeyboardEvent: Unknown matches nothing.
     og::input_native::EventData event;
-    if (!as_event_data(native_event, event))
-        return false;
+    (void)as_event_data(native_event, event);
     // does not handle button up, hats, or balls
     return (event.type == og::input_native::EventType::JoyAxisMotion
             || event.type == og::input_native::EventType::JoyHatMotion
@@ -771,9 +772,10 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
             return nullptr;
         while(const void* event = og::input_native::poll_event())
         {
+            // poll_event never hands out nullptr, the only input
+            // decode_event rejects.
             og::input_native::EventData event_data;
-            if (!as_event_data(event, event_data))
-                continue;
+            (void)as_event_data(event, event_data);
             if(event_data.type == og::input_native::EventType::Quit
                     || event_data.type == og::input_native::EventType::KeyDown
                     || (event_data.type == og::input_native::EventType::JoyAxisMotion
@@ -820,9 +822,9 @@ bool assignKeyFromWaitEventPolling(
         clear_events();
         return false;
     }
+    // event is non-null here, so decode_event cannot fail.
     og::input_native::EventData event_data;
-    if (!as_event_data(event, event_data))
-        return true;
+    (void)as_event_data(event, event_data);
     quit_if_quit_event(event);
     if(isKeyboardEvent(event))
     {
