@@ -236,9 +236,6 @@ private:
 
 void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world)
 {
-    if (level == nullptr)
-        return;
-
     GameWorld& dst = level->world();
 
     level->delete_objects();
