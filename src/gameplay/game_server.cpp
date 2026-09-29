@@ -1583,10 +1583,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
 
 void GameServer::handle_heartbeat(PeerId peer_id)
 {
-    const auto client_it = clients_.find(peer_id);
-    if (client_it == clients_.end())
-        return;
-    client_it->second.last_received_input_ms = now_ms();
+    clients_.at(peer_id).last_received_input_ms = now_ms();
 }
 
 void GameServer::update_disconnected_players(std::uint64_t now)
