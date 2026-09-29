@@ -1678,16 +1678,6 @@ void zone_submenu_draw_content(void* screen_state)
     text& mytext = game->text_normal;
     const SaveData& save = game->save_data;
 
-    const auto strip_text = [game](int x, int y, const std::string& value,
-                                   unsigned char color) {
-        if (value.empty())
-            return;
-        const int width = static_cast<int>(value.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
-                               8, PURE_BLACK, 150);
-        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
-    };
-
     // Header line A, byte-for-byte the Base Camp's: COMPANY + the gold
     // block. Prices with no purse on screen are unreadable.
     draw_camp_line_a(save);
@@ -1700,10 +1690,10 @@ void zone_submenu_draw_content(void* screen_state)
             std::chrono::steady_clock::now().time_since_epoch())
             .count();
     if (st != nullptr && !st->toast.empty() && now_ms < st->toast_until_ms) {
-        strip_text(10, 17, st->toast, YELLOW);
+        camp_strip_text(10, 17, st->toast, YELLOW);
     } else {
         std::string title = session != nullptr ? session->page().title : "CAMP";
-        strip_text(
+        camp_strip_text(
             10, 17,
             og::ui::clip_with_ellipsis(
                 "CAMP: " + title,
@@ -1725,7 +1715,7 @@ void zone_submenu_draw_content(void* screen_state)
     }
 
     if (st->page.multi_page())
-        strip_text(140, 176, st->page.indicator(), WHITE);
+        camp_strip_text(140, 176, st->page.indicator(), WHITE);
 }
 
 // The ONE gated scripted level set behind every SDL campaign-book level
@@ -4617,15 +4607,6 @@ void base_camp_draw_content(void* screen_state)
     const bool hire_visible =
         roster_layout == nullptr || roster_layout->can_hire;
 
-    const auto strip_text = [game](int x, int y, const std::string& value,
-                                   unsigned char color) {
-        if (value.empty())
-            return;
-        const int width = static_cast<int>(value.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
-        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
-    };
-
     // Line A (§9.10.3, G3): one spelling for the whole camp — see
     // draw_camp_line_a above for the budget it holds to.
     draw_camp_line_a(save);
@@ -4671,13 +4652,14 @@ void base_camp_draw_content(void* screen_state)
     // line_b_budget above, the solo header and the toast are pre-clipped to
     // the conservative kBaseCampLineBCharsHireVisible. A clip at the draw
     // site would only cut mid-word after the fact.
-    strip_text(10, 17, line_b, line_b_color);
+    camp_strip_text(10, 17, line_b, line_b_color);
 
     // The "p/N" strip sits in the pager cluster's reserved middle slot;
-    // strip_text backs its text with a 2px pad, so the text starts there.
+    // camp_strip_text backs its text with a 2px pad, so the text starts
+    // there.
     if (st != nullptr && st->page.multi_page())
-        strip_text(kBaseCampPageIndicatorX + 2, 17, st->page.indicator(),
-                   WHITE);
+        camp_strip_text(kBaseCampPageIndicatorX + 2, 17,
+                        st->page.indicator(), WHITE);
 
     // The zone composition: the roster band (default: the whole panel,
     // header at the classic y=33) plus any text/readout widget ink. The
@@ -8172,16 +8154,6 @@ void match_setup_draw_content(void* screen_state)
     text& mytext = game->text_normal;
     const SaveData& save = game->save_data;
 
-    const auto strip_text = [game](int x, int y, const std::string& value,
-                                   unsigned char color) {
-        if (value.empty())
-            return;
-        const int width = static_cast<int>(value.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
-                               8, PURE_BLACK, 150);
-        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
-    };
-
     // Header line A, byte-for-byte the Base Camp's (draw_camp_line_a is
     // the one spelling): COMPANY + the gold block. The purse stays on
     // screen while the match is set up.
@@ -8194,7 +8166,7 @@ void match_setup_draw_content(void* screen_state)
             st != nullptr ? st->toast : std::string(),
             st != nullptr ? st->toast_until_ms : 0,
             static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
-        strip_text(10, 17, slot.text, slot.color);
+        camp_strip_text(10, 17, slot.text, slot.color);
     }
 
     if (st == nullptr)
