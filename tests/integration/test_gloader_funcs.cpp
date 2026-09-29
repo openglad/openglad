@@ -583,6 +583,17 @@ TEST(GloaderFuncs, gore_toggle_repoints_blood_already_on_the_ground)
     ASSERT_EQ(gory, blood->bmp_data())
         << "a fresh splat should draw the gory sprite while gore is on";
 
+    // The lasting bloodstain lives in fxlist as a treasure (walker.cpp
+    // spawns it with add_fx_ob(Order::Treasure, FAMILY_STAIN)).
+    const int stain_idx = PIX(Order::Treasure, FAMILY_STAIN);
+    const unsigned char* gory_stain =
+        game_loader->graphics[stain_idx].data.get();
+    walker* stain = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_TRUE(stain != nullptr);
+    stain->set_frame(0);
+    ASSERT_EQ(gory_stain, stain->bmp_data())
+        << "a fresh stain should draw the gory stain sprite while gore is on";
+
     vbutton gore_row(0, 0, 10, 10,
                      static_cast<Sint32>(ButtonAction::ToggleGore), 0, "", 0);
     gore_row.do_call(static_cast<Sint32>(ButtonAction::ToggleGore), 0);
@@ -593,7 +604,16 @@ TEST(GloaderFuncs, gore_toggle_repoints_blood_already_on_the_ground)
     blood->set_frame(0);
     EXPECT_EQ(friendly, blood->bmp_data())
         << "blood already on the ground must be re-pointed at the friendly sprite";
+    const unsigned char* friendly_stain =
+        game_loader->graphics[stain_idx].data.get();
+    ASSERT_NE(gory_stain, friendly_stain)
+        << "the loader should have swapped the stain variants too";
+    stain->set_frame(0);
+    EXPECT_EQ(friendly_stain, stain->bmp_data())
+        << "a bloodstain already on the floor must be re-skinned with the "
+           "friendly stain sprite, not only fresh splats";
 
+    world.remove_ob(stain);
     world.remove_ob(blood);
     cfg.apply_setting("effects", "gore", prev_gore);
     game_loader->sync_gore_graphics();
