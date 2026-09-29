@@ -441,8 +441,7 @@ bool take_radar_color(Harvest& h, const std::string& where,
 {
     if (lua_type(h.L, -1) == LUA_TSTRING) {
         std::string text;
-        if (!h.take_string(where, text))
-            return false;
+        (void)h.take_string(where, text);  // a string: cannot fail
         if (text == og::kRadarColorNoneName)
             out = og::kRadarColorNone;
         else if (text == og::kRadarColorTeamName)
