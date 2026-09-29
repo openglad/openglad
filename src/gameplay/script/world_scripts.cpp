@@ -136,6 +136,22 @@ VmState* get_vm_state(lua_State* L)
     return st;
 }
 
+namespace {
+
+// The VmState of a VM that install_vm_scaffolding built. 'og.vmstate' is
+// written only there (its two callers: the WorldScripts ctor and the
+// declaration VM in family_decl.cpp), and the sandbox has no debug library
+// (script_host.cpp), so Lua cannot clear the key: for these VMs the state is
+// never null, and callers that only ever see them take it by reference.
+VmState& vm_state(lua_State* L)
+{
+    VmState* st = get_vm_state(L);
+    assert(st != nullptr);
+    return *st;
+}
+
+}  // namespace
+
 walker* resolve_walker(lua_State* L, int idx, bool required)
 {
     auto* h = static_cast<WalkerHandle*>(
@@ -206,9 +222,7 @@ std::uint64_t current_dispatch_gen(lua_State* L)
 
 std::uint64_t push_dispatch_gen(lua_State* L)
 {
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        return 0;
+    VmState* st = &vm_state(L);
     st->dispatch_gen++;
     st->live_gens.push_back(st->dispatch_gen);
     return st->dispatch_gen;
@@ -216,9 +230,7 @@ std::uint64_t push_dispatch_gen(lua_State* L)
 
 void pop_dispatch_gen(lua_State* L, std::uint64_t gen)
 {
-    VmState* st = get_vm_state(L);
-    if (st == nullptr || gen == 0)
-        return;
+    VmState* st = &vm_state(L);
     // Erase this frame's generation wherever it sits: a Lua error unwinding
     // through pcall can skip an inner frame's pop, so do not assume LIFO.
     auto it = std::find(st->live_gens.begin(), st->live_gens.end(), gen);
@@ -1142,9 +1154,7 @@ int og_set_entity_hooks(lua_State* L)
     luaL_checktype(L, 2, LUA_TTABLE);
     if (h->entity_id == 0)
         return luaL_error(L, "og.set_entity_hooks: entity is untracked");
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        return luaL_error(L, "og.set_entity_hooks: no world scripts");
+    VmState* st = &vm_state(L);
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->entity_hooks_ref);
     lua_newtable(L);
@@ -2497,9 +2507,7 @@ std::uint32_t level_hook_kinds_for(int level_id)
         return 0;
     WorldScripts& ws = active_world_scripts();
     lua_State* L = ws.host().impl().L;
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        return 0;
+    VmState* st = &vm_state(L);
     std::uint32_t kinds = 0;
     for (const auto& h : kLevelHookNames) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
@@ -2548,9 +2556,7 @@ void level_entity_death(walker* self)
     if (self == nullptr || pack_scripts().empty())
         return;
     WorldScripts& ws = active_world_scripts();
-    VmState* st = get_vm_state(ws.host().impl().L);
-    if (st == nullptr)
-        return;
+    VmState* st = &vm_state(ws.host().impl().L);
     ScriptHost::Impl& impl = ws.host().impl();
     lua_State* L = impl.L;
 
