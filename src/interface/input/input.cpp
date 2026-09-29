@@ -108,28 +108,20 @@ static inline float active_canvas_h()
     return s ? static_cast<float>(s->canvas_h()) : static_cast<float>(kUiCanvasH);
 }
 
-static inline float gameplay_ui_canvas_w()
+// Only gameplay_ui_canvas_viewport() calls these, after it has returned for
+// a null screen and for the UI canvas: the World canvas is active here.
+static inline float gameplay_ui_canvas_w(const ::screen& s)
 {
-    const ::screen* s = og::runtime::current_session->myscreen_;
-    return s ? static_cast<float>(
-                   s->active_canvas() == CanvasTarget::UI
-                       ? s->canvas_w()
-                       : (s->gameplay_ui_canvas_available()
-                              ? s->gameplay_ui_canvas_w()
-                              : s->world_canvas_w()))
-             : static_cast<float>(kUiCanvasW);
+    if (s.gameplay_ui_canvas_available())
+        return static_cast<float>(s.gameplay_ui_canvas_w());
+    return static_cast<float>(s.world_canvas_w());
 }
 
-static inline float gameplay_ui_canvas_h()
+static inline float gameplay_ui_canvas_h(const ::screen& s)
 {
-    const ::screen* s = og::runtime::current_session->myscreen_;
-    return s ? static_cast<float>(
-                   s->active_canvas() == CanvasTarget::UI
-                       ? s->canvas_h()
-                       : (s->gameplay_ui_canvas_available()
-                              ? s->gameplay_ui_canvas_h()
-                              : s->world_canvas_h()))
-             : static_cast<float>(kUiCanvasH);
+    if (s.gameplay_ui_canvas_available())
+        return static_cast<float>(s.gameplay_ui_canvas_h());
+    return static_cast<float>(s.world_canvas_h());
 }
 
 static og::CanvasViewport canvas_viewport(float canvas_w, float canvas_h)
@@ -161,7 +153,7 @@ og::CanvasViewport gameplay_ui_canvas_viewport()
     // Fractional World dimensions round to scaler-safe integers and can have
     // a slightly different aspect; inheriting their fitted rectangle would
     // distort the fixed overlay and offset its touch hit targets.
-    return canvas_viewport(gameplay_ui_canvas_w(), gameplay_ui_canvas_h());
+    return canvas_viewport(gameplay_ui_canvas_w(*s), gameplay_ui_canvas_h(*s));
 }
 
 bool window_point_in_active_canvas(float x, float y)
@@ -397,8 +389,6 @@ bool assign_joystick_to_player(int player, int device_index)
 
 void clear_player_joystick(int player)
 {
-    if (player < 0 || player >= 4)
-        return;
     player_joy[player] = JoyData(); // full unbind: device, layout, and claim
     hw().player_joystick_guids[player].clear();
 }
@@ -742,18 +732,19 @@ bool query_key_event(int key, const void* native_event)
 
 bool isKeyboardEvent(const void* native_event)
 {
+    // decode_event fails only for nullptr and then leaves `event` at its
+    // defaults (EventType::Unknown), which the check below rejects.
     og::input_native::EventData event;
-    if (!as_event_data(native_event, event))
-        return false;
+    (void)as_event_data(native_event, event);
     // does not handle key up events
     return (event.type == og::input_native::EventType::KeyDown);
 }
 
 bool isJoystickEvent(const void* native_event)
 {
+    // Same nullptr-only failure as isKeyboardEvent: Unknown matches nothing.
     og::input_native::EventData event;
-    if (!as_event_data(native_event, event))
-        return false;
+    (void)as_event_data(native_event, event);
     // does not handle button up, hats, or balls
     return (event.type == og::input_native::EventType::JoyAxisMotion
             || event.type == og::input_native::EventType::JoyHatMotion
@@ -781,9 +772,10 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
             return nullptr;
         while(const void* event = og::input_native::poll_event())
         {
+            // poll_event never hands out nullptr, the only input
+            // decode_event rejects.
             og::input_native::EventData event_data;
-            if (!as_event_data(event, event_data))
-                continue;
+            (void)as_event_data(event, event_data);
             if(event_data.type == og::input_native::EventType::Quit
                     || event_data.type == og::input_native::EventType::KeyDown
                     || (event_data.type == og::input_native::EventType::JoyAxisMotion
@@ -830,9 +822,9 @@ bool assignKeyFromWaitEventPolling(
         clear_events();
         return false;
     }
+    // event is non-null here, so decode_event cannot fail.
     og::input_native::EventData event_data;
-    if (!as_event_data(event, event_data))
-        return true;
+    (void)as_event_data(event, event_data);
     quit_if_quit_event(event);
     if(isKeyboardEvent(event))
     {
