@@ -690,6 +690,18 @@ TEST(InputLatch, resolver_x_axis_is_symmetric)
         << "fresh RIGHT must suppress the stale LEFT";
     ASSERT_EQ(kLeftBit, resolve_opposing_directions(kLeftBit, state))
         << "releasing RIGHT restores the surviving LEFT";
+
+    // The mirror: a fresh LEFT beats a latched RIGHT for as long as both
+    // are held, and releasing LEFT hands the axis back to RIGHT.
+    state = DirectionConflictState{};
+    resolve_opposing_directions(bit_of(KEY_RIGHT), state); // RIGHT latches
+    EXPECT_EQ(kLeftBit, resolve_opposing_directions(both, state))
+        << "fresh LEFT must suppress the stale RIGHT";
+    EXPECT_EQ(kLeftBit, resolve_opposing_directions(both, state))
+        << "and keep suppressing it while both stay held";
+    EXPECT_EQ(bit_of(KEY_RIGHT),
+              resolve_opposing_directions(bit_of(KEY_RIGHT), state))
+        << "releasing LEFT restores the surviving RIGHT";
 }
 
 // ---------------------------------------------------------------------------

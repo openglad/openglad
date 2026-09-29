@@ -29,7 +29,6 @@ short remaining_foes(screen* scr, walker* myguy);
 short remaining_team(screen* scr, char myteam);
 void draw_radar_gems(screen* scr);
 void draw_gem(short x, short y, short color, screen* scr);
-void draw_value_bar(short left, short top, walker* control, short mode, screen* scr);
 void new_draw_value_bar(Sint32 left, Sint32 top, walker* control, short mode, screen* scr);
 void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor, short somelength, screen* scr);
 short score_panel(screen* scr);
@@ -226,11 +225,12 @@ TEST_F(GladHud, glad_remaining_counts)
     og::runtime::current_session->myscreen_->world().oblist.clear();
 }
 
-
 // The magic bar's colour is the readable signal for "how much mana is left":
 // the MID band (a third to two thirds) and the HIGH band (two thirds to full)
 // are separate ramps and separate lengths, and one bleeding into the other
-// would misreport the pool at a glance.
+// would misreport the pool at a glance. new_draw_value_bar is the live
+// split-screen HUD bar; it paints through draw_percentage_bar, whose L-long
+// bar is (L-4) + 3*(L-2) + (L-4) == 5L-14 coloured pixels.
 TEST_F(GladHud, glad_mp_bar_paints_the_mid_and_high_bands_at_their_lengths)
 {
     ASSERT_NE(canonical_palette_index(MID_MP_COLOR),
@@ -243,37 +243,36 @@ TEST_F(GladHud, glad_mp_bar_paints_the_mid_and_high_bands_at_their_lengths)
     screen* const s = og::runtime::current_session->myscreen_;
     controlp->stats()->set_max_magicpoints(80);
 
-    // The bar box is 62x7 at (left, top); count only inside it.
+    // The bar is 60 wide and 7 tall at (left, top); count only inside it.
     constexpr int kLeft = 10;
     constexpr int kTop = 20;
     const auto band_pixels = [](const std::array<unsigned char, 64000>& frame,
                                 unsigned char color) {
         const unsigned char want = canonical_palette_index(color);
         int count = 0;
-        for (int y = kTop; y <= kTop + 6; ++y)
-            for (int x = kLeft; x <= kLeft + 61; ++x)
+        for (int y = kTop; y < kTop + 7; ++y)
+            for (int x = kLeft; x < kLeft + 60; ++x)
                 if (frame[static_cast<std::size_t>(y * 320 + x)] == want)
                     ++count;
         return count;
     };
 
     // 40 of 80: past the LOW third, short of the HIGH two thirds.
-    // ceil(40 * 60 / 80) == 30 columns, 5 rows, less the two rounded corners
-    // the mask paints back over at x == left + 1.
+    // ceil(40 * 60 / 80) == 30 columns -> 5*30-14 pixels.
     s->clearbuffer();
     controlp->stats()->set_magicpoints(40);
-    draw_value_bar(kLeft, kTop, controlp, 1, s);
+    new_draw_value_bar(kLeft, kTop, controlp, 1, s);
     const auto mid_frame = capture_rendered_frame(*s);
-    EXPECT_EQ(148, band_pixels(mid_frame, MID_MP_COLOR));
+    EXPECT_EQ(5 * 30 - 14, band_pixels(mid_frame, MID_MP_COLOR));
     EXPECT_EQ(0, band_pixels(mid_frame, HIGH_MP_COLOR));
 
     // 70 of 80: past two thirds, still short of full.
-    // ceil(70 * 60 / 80) == 53 columns.
+    // ceil(70 * 60 / 80) == 53 columns -> 5*53-14 pixels.
     s->clearbuffer();
     controlp->stats()->set_magicpoints(70);
-    draw_value_bar(kLeft, kTop, controlp, 1, s);
+    new_draw_value_bar(kLeft, kTop, controlp, 1, s);
     const auto high_frame = capture_rendered_frame(*s);
-    EXPECT_EQ(263, band_pixels(high_frame, HIGH_MP_COLOR));
+    EXPECT_EQ(5 * 53 - 14, band_pixels(high_frame, HIGH_MP_COLOR));
     EXPECT_EQ(0, band_pixels(high_frame, MID_MP_COLOR));
 }
 
@@ -334,14 +333,10 @@ TEST_F(GladHud, glad_radar_gems_skip_the_redraw_for_an_unchanged_team)
 // over-max cases painted *some* ramp pixel, so a bar that used one colour for
 // every band, or drew the wrong length, stayed green.
 //
-// Counting arithmetic, from the two painters:
-//   draw_value_bar (glad.cpp:646) fills a 5-row box `bar_length` wide, then
-//   rounds the corners with masks that re-black (left+1, top+1) and
-//   (left+1, top+5) -- and, once the bar reaches the full 60 columns, the
-//   mirrored pair at left+60 too. So bar_length*5 - 2, or -4 at full length.
-//   draw_percentage_bar (score_panel.cpp:1114), which new_draw_value_bar
-//   uses, paints (L-4) + 3*(L-2) + (L-4) == 5L-14.
-//   bar_length itself is ceil(points * 60 / max), capped at 60 over max.
+// Counting arithmetic: draw_percentage_bar (score_panel.cpp:1114), which
+// new_draw_value_bar uses, paints (L-4) + 3*(L-2) + (L-4) == 5L-14 pixels
+// for an L-long bar; L itself is ceil(points * 60 / max), capped at 60
+// over max.
 TEST_F(GladHud, glad_hp_bars_paint_their_band_colour_at_their_exact_length)
 {
     auto control = make_player(0);
@@ -379,41 +374,11 @@ TEST_F(GladHud, glad_hp_bars_paint_their_band_colour_at_their_exact_length)
     controlp->stats()->set_max_hitpoints(100);
 
     struct Band { float hp; unsigned char color; int pixels; const char* why; };
-    const Band bands[] = {
-        // 20/100: points*3 < max -> the LOW band, ceil(12) columns.
-        {20.0f, LOW_HP_COLOR, 12 * 5 - 2, "a fifth of the pool is the LOW band, 12 columns"},
-        // 60/100: past a third, short of two thirds -> MID, ceil(36) columns.
-        {60.0f, MID_HP_COLOR, 36 * 5 - 2, "three fifths is the MID band, 36 columns"},
-        // 90/100: past two thirds, short of full -> HIGH, ceil(54) columns.
-        {90.0f, HIGH_HP_COLOR, 54 * 5 - 2, "nine tenths is the HIGH band, 54 columns"},
-        // exactly full -> MAX, all 60 columns (and four masked corners).
-        {100.0f, MAX_HP_COLOR, 60 * 5 - 4, "a full pool is the MAX band at full length"},
-    };
-
-    for (const Band& band : bands)
-    {
-        SCOPED_TRACE(band.why);
-        s->clearbuffer();
-        controlp->stats()->set_hitpoints(band.hp);
-        draw_value_bar(kLeft, kTop, controlp, 0, s);
-        const auto frame = capture_rendered_frame(*s);
-
-        EXPECT_EQ(band.pixels, count_in(frame, kLeft, kTop, 62, 7, band.color))
-            << band.why;
-        // ... and no other band bleeds in.
-        for (unsigned char other : {MAX_HP_COLOR, LOW_HP_COLOR, MID_HP_COLOR, HIGH_HP_COLOR})
-        {
-            if (canonical_palette_index(other) == canonical_palette_index(band.color))
-                continue;
-            EXPECT_EQ(0, count_in(frame, kLeft, kTop, 62, 7, other))
-                << "band " << (int)other << " must not appear at hp " << band.hp;
-        }
-    }
-
-    // new_draw_value_bar goes through draw_percentage_bar, so the same bands
-    // land on the 5L-14 geometry instead.
+    // new_draw_value_bar goes through draw_percentage_bar, so each band
+    // lands on the 5L-14 geometry.
     const Band pct_bands[] = {
         {20.0f, LOW_HP_COLOR, 5 * 12 - 14, "percentage bar, LOW band, 12 columns"},
+        {60.0f, MID_HP_COLOR, 5 * 36 - 14, "percentage bar, MID band, 36 columns"},
         {80.0f, HIGH_HP_COLOR, 5 * 48 - 14, "percentage bar, HIGH band, 48 columns"},
         {100.0f, MAX_HP_COLOR, 5 * 60 - 14, "percentage bar, MAX band, full length"},
     };
@@ -426,6 +391,14 @@ TEST_F(GladHud, glad_hp_bars_paint_their_band_colour_at_their_exact_length)
         const auto frame = capture_rendered_frame(*s);
         EXPECT_EQ(band.pixels, count_in(frame, kLeft, kTop, 60, 7, band.color))
             << band.why;
+        // ... and no other band bleeds in.
+        for (unsigned char other : {MAX_HP_COLOR, LOW_HP_COLOR, MID_HP_COLOR, HIGH_HP_COLOR})
+        {
+            if (canonical_palette_index(other) == canonical_palette_index(band.color))
+                continue;
+            EXPECT_EQ(0, count_in(frame, kLeft, kTop, 60, 7, other))
+                << "band " << (int)other << " must not appear at hp " << band.hp;
+        }
     }
 
     // draw_percentage_bar on its own: a 30-wide bar is 5*30-14 coloured pixels

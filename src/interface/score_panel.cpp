@@ -326,8 +326,6 @@ static const std::array<const char*, NUM_FAMILIES> kFamilyHudNames = {
 // The follow banner keeps its own blank-skipping variant below.
 static std::string hud_display_name(const walker* control)
 {
-    if (control == nullptr)
-        return {};
     if (control->myguy)
         return control->myguy->name;
     if (!control->stats()->name.empty())
@@ -993,8 +991,6 @@ short new_score_panel(screen* s, short /*do_it*/)
                         scorecountup[team_num]++;
                         scorecountup[team_num] += static_cast<Uint32>(rng((myscore - scorecountup[team_num]))/12);
                     }
-                    if (scorecountup[team_num] > myscore)
-                        scorecountup[team_num] = myscore;
 
                     // above should count up the score towards the current amount
                     if (!compact_score_panel)

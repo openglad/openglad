@@ -308,14 +308,8 @@ bool reset_default_player_controls_for_player(int player_index, bool web_mode)
     if (player_index < 0 || player_index >= 4)
         return false;
 
-    int default_profile =
+    const int default_profile =
         hw().player_control_default_profiles[player_index];
-    if (default_profile < 0 || default_profile >= 4)
-    {
-        default_profile = player_index;
-        hw().player_control_default_profiles[player_index] =
-            default_profile;
-    }
     for (int k = 0; k < NUM_KEYS; ++k)
     {
         hw().player_mode_keys[player_index][kModeFourIndex][k] =

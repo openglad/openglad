@@ -855,6 +855,188 @@ TEST(ModeUi, score_panel_truncates_the_row_to_the_pane)
     s->initialize_views();
 }
 
+// #210 compact tier: a team whose slot has no leading score (the text starts
+// at its '/' or a space) contributes NOTHING to the compact row -- no empty
+// cell and no dangling dash -- while every team that has a score still shows
+// it. Positive control: with a leading score on both slots, both appear.
+TEST(ModeUi, compact_row_drops_a_team_with_no_leading_score)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* const old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    const int tm = v->yloc;
+    const ModeRowWindow win = mode_row_window(v);
+    // Two 25-char slots (the binding's maximum) join to 53 characters, too
+    // long for the single pane; their bare scores fit easily.
+    ASSERT_LT(win.budget, 53) << "the joined row must overflow the pane";
+    ASSERT_GE(win.budget, 3);
+
+    // Positive control: both slots lead with a score -> "5-7".
+    mode.set_hud(0, "5/999999999999999999999 X", 0);
+    mode.set_hud(1, "7/999999999999999999999 Y", 2);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget={} text=5-7", tm + 4, win.left,
+                    win.budget).c_str()))
+        << "both leading scores join with a dash";
+
+    // Team 0's slot now starts at its '/': it has no score to show.
+    mode.set_hud(0, "/9999999999999999999999 X", 0);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget={} text=7", tm + 4, win.left,
+                    win.budget).c_str()))
+        << "a scoreless team drops out of the compact row entirely";
+    EXPECT_EQ(2, trace_count("mode_hud"))
+        << "exactly one segment (team 2's score) and the row line";
+    EXPECT_FALSE(trace_contains("mode_hud", "text=-"))
+        << "no dangling dash where the scoreless team would have been";
+
+    v->control = old_control;
+}
+
+// The row never draws past its character budget: once the drawn text reaches
+// the budget, the remaining segments are not drawn at all (not even as empty
+// pieces). Here the local-team fallback leaves three team-0 slots whose first
+// two (plus their separator) fill the budget exactly.
+TEST(ModeUi, mode_row_stops_drawing_segments_at_the_budget)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* const old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    const int tm = v->yloc;
+    const ModeRowWindow win = mode_row_window(v);
+    // first + " - " + second == budget, each a single score-like token (no
+    // '/' or space) so the compact tier is the full text again and too long.
+    const int first_len = (win.budget - 3) / 2;
+    const int second_len = win.budget - 3 - first_len;
+    ASSERT_GE(first_len, 1);
+    ASSERT_LE(second_len, 25) << "each slot holds at most 25 characters";
+    const std::string first(static_cast<std::size_t>(first_len), '1');
+    const std::string second(static_cast<std::size_t>(second_len), '2');
+
+    mode.set_hud(0, first.c_str(), 0);
+    mode.set_hud(1, second.c_str(), 0);
+    mode.set_hud(2, "3", 0);
+    mode.set_hud(3, "4", 2);
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget={} text={} - {}", tm + 4, win.left,
+                    win.budget, first, second).c_str()))
+        << "the local team's first two slots fill the budget exactly";
+    EXPECT_EQ(4, trace_count("mode_hud"))
+        << "three drawn segments (first, separator, second) and the row "
+           "line; the third slot and its separator are never drawn";
+
+    v->control = old_control;
+}
+
+// The mode row is suppressed outright when the pane leaves it fewer than
+// kModeRowMinChars (3) characters. A single player in the VIEW_2 inset pane
+// with FOES on has exactly 3 characters between the caption column and the
+// counter box; an 11-character hero name (the lobby's maximum) pushes the
+// row's start past the caption and leaves 2.
+TEST(ModeUi, mode_row_is_suppressed_below_three_characters)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, control->myguy);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "the 1p VIEW_2 geometry below assumes the single-view layout";
+    walker* const old_control = v->control;
+    struct Restore {
+        viewscreen* view; walker* control;
+        char foes, overlay, life, score, view_pref;
+        ~Restore()
+        {
+            view->control = control;
+            view->prefs[PREF_FOES] = foes;
+            view->prefs[PREF_OVERLAY] = overlay;
+            view->prefs[PREF_LIFE] = life;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_VIEW] = view_pref;
+            view->resize(view_pref);
+        }
+    } restore{v, old_control, v->prefs[PREF_FOES], v->prefs[PREF_OVERLAY],
+              v->prefs[PREF_LIFE], v->prefs[PREF_SCORE], v->prefs[PREF_VIEW]};
+
+    v->control = control.get();
+    silence_hud_prefs(v);
+    v->prefs[PREF_VIEW] = PREF_VIEW_2;
+    v->resize(static_cast<char>(PREF_VIEW_2));
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    mode.set_hud(0, "RED 5", 0);
+    mode.set_hud(1, "", 255);
+    mode.set_hud(2, "", 255);
+    mode.set_hud(3, "", 255);
+    const int tm = v->yloc;
+
+    // Positive control: a short name leaves exactly the 3-character minimum,
+    // and the row draws.
+    control->myguy->name = "AL";
+    const ModeRowWindow roomy = mode_row_window(v);
+    ASSERT_EQ(3, roomy.budget) << "VIEW_2 with FOES on leaves 3 characters";
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains(
+        "mode_hud",
+        std::format("row y={} x={} budget=3 text=5", tm + 4, roomy.left)
+            .c_str()))
+        << "a 3-character budget still draws the row";
+    EXPECT_FALSE(trace_contains("mode_hud", "row_suppressed"));
+
+    // The 11-character name leaves 2: the row is suppressed, not squeezed.
+    control->myguy->name = "BARTHOLOMEW";
+    const ModeRowWindow tight = mode_row_window(v);
+    ASSERT_EQ(2, tight.budget);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(trace_contains("mode_hud", "row_suppressed budget=2"))
+        << "a budget below kModeRowMinChars suppresses the row";
+    EXPECT_FALSE(trace_contains("mode_hud", "row y="))
+        << "a suppressed row draws nothing";
+}
+
 // THE reason the row was condensed. viewscreen::display_text writes the
 // announcement banner at viewport-local y = 30, 36, 42, 48, 54; the retired
 // slot rows sat at tm+28 and tm+36 and shredded it. Render each channel
@@ -1057,6 +1239,72 @@ TEST(ModeUi, beacon_edge_arrows_point_at_offscreen_beacons)
     v->control = old_control;
 }
 
+// Two radar rules the edge arrows share: on a multi-floor map a beacon whose
+// target stands on another floor draws nothing (it would project at a
+// meaningless spot), and a beacon with no scoring team (255) borrows the
+// target's own team colour.
+TEST(ModeUi, beacon_edge_arrows_follow_the_floor_and_borrow_the_target_colour)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    walker* old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    GameWorld& world = s->world();
+    struct FloorCountRestore {
+        GameWorld& world; int saved;
+        ~FloorCountRestore() { world.set_floor_count(saved); }
+    } floor_restore{world, world.floor_count()};
+    world.set_floor_count(2);
+    control->set_floor(0);
+
+    walker* east = mode.spawn_living(2000, 96, 2);
+    ASSERT_NE(nullptr, east);
+    v->topx = 0;
+    v->topy = 0;
+    world.mode.beacons[1].entity_id =
+        static_cast<std::int32_t>(east->entity_id());
+    world.mode.beacons[1].team = 255;
+
+    const unsigned char target_color = east->query_team_color();
+    ASSERT_NE(og::sim::team_ramp_base(0), target_color)
+        << "the target's colour must differ from team 0's ramp";
+    const int rm = v->endx;
+    const int cy = 96 + east->sizey() / 2;
+
+    // Same floor: the arrow draws, in the TARGET's team colour.
+    east->set_floor(0);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto same_floor = capture_rendered_frame(*s);
+    EXPECT_TRUE(trace_contains("mode_hud", "beacon_edge slot=1 dx=1 dy=0"));
+    EXPECT_TRUE(box_pixels_all_colored(same_floor, rm - 8, cy - 3,
+                                       rm - 4, cy + 4, target_color))
+        << "an unteamed beacon's arrow takes the target's team colour";
+
+    // Target on the other floor: no arrow at all.
+    east->set_floor(1);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    const auto other_floor = capture_rendered_frame(*s);
+    EXPECT_FALSE(trace_contains("mode_hud", "beacon_edge"))
+        << "a beacon on another floor draws no edge arrow";
+    EXPECT_FALSE(box_has_pixels(other_floor, rm - 8, cy - 3, rm - 4, cy + 4))
+        << "and paints nothing at the edge";
+
+    east->set_floor(0);
+    world.mode.beacons[1] = og::sim::ModeBeacon{};
+    v->control = old_control;
+}
+
 TEST(ModeUi, respawn_countdown_draws_on_scripted_worlds)
 {
     ClassicModeHudCanvasGuard classic_canvas;
@@ -1098,6 +1346,73 @@ TEST(ModeUi, respawn_countdown_draws_on_scripted_worlds)
     s->world().mode.active = true;
 
     s->world().respawn.respawn_queue.clear();
+    v->control = old_control;
+}
+
+// The RESPAWN IN countdown reads the control's OWN queue entry: another
+// fighter's entry queued ahead of it (here a 9 s wait) must not leak into
+// this seat's countdown (3 s). Compared as pixels against a queue holding
+// only the control's entry, with a 9 s own-entry frame as the paired
+// control that proves the digit shows up in the band at all.
+TEST(ModeUi, respawn_countdown_reads_the_controls_own_entry)
+{
+    ClassicModeHudCanvasGuard classic_canvas;
+    ModeScreenWorld mode;
+    screen* s = mode.s;
+
+    // Both fighters live in the world, so each carries its own entity id
+    // (a walker outside the world has id 0 and would match any id-0 entry).
+    walker* const control = mode.spawn_living(100, 100, 0);
+    walker* const other = mode.spawn_living(140, 100, 0);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, other);
+    ASSERT_NE(0u, control->entity_id());
+    ASSERT_NE(0u, other->entity_id());
+    ASSERT_NE(control->entity_id(), other->entity_id());
+    viewscreen* v = s->viewob[0].get();
+    walker* old_control = v->control;
+    v->control = control;
+    silence_hud_prefs(v);
+    control->set_user(0);
+    control->set_dead(1);
+    other->set_dead(1);
+
+    const auto entry_for = [](const walker& w, std::uint16_t ticks) {
+        og::sim::RespawnEntry entry;
+        entry.kind = 0;
+        entry.team = 0;
+        entry.ticks_left = ticks;
+        entry.walker_entity_id = w.entity_id();
+        return entry;
+    };
+    const int tm = v->yloc;
+    const int lm = v->xloc;
+    const auto countdown_band = [&]() {
+        s->clearbuffer();
+        EXPECT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+        const auto frame = capture_rendered_frame(*s);
+        std::vector<unsigned char> band;
+        for (int y = tm + 11; y < tm + 20; ++y)
+            for (int x = lm + 4; x < lm + 4 + 13 * 6; ++x)
+                band.push_back(frame[static_cast<std::size_t>(y * 320 + x)]);
+        return band;
+    };
+    auto& queue = s->world().respawn.respawn_queue;
+
+    queue = {entry_for(*control, 36)}; // 3 s
+    const auto own_three = countdown_band();
+    queue = {entry_for(*control, 108)}; // 9 s
+    const auto own_nine = countdown_band();
+    ASSERT_NE(own_three, own_nine)
+        << "the countdown digit must be visible in the band";
+
+    // Another fighter's 9 s entry queued FIRST; the control's own is 3 s.
+    queue = {entry_for(*other, 108), entry_for(*control, 36)};
+    EXPECT_EQ(own_three, countdown_band())
+        << "the countdown must read the control's own entry (3 s), not the "
+           "first queued one (9 s)";
+
+    queue.clear();
     v->control = old_control;
 }
 
