@@ -1571,10 +1571,10 @@ int raise_harvest_error(lua_State* L, const Harvest& h)
 // families/ (format spec V1). Elsewhere a declaration would bind behavior in
 // every VM while its data half never installed — the split-brain family this
 // whole two-context design exists to make impossible.
-bool require_families_chunk(lua_State* L, const VmState* st, const char* what)
+void require_families_chunk(lua_State* L, const VmState* st, const char* what)
 {
     if (st != nullptr && st->current_chunk == ChunkKind::Family)
-        return true;
+        return;
     script_raise(L,
                  "%s: only a packs/<id>/families/*.lua chunk may declare pack "
                  "data — families/ is what the installer evaluates, so a "
@@ -1589,8 +1589,7 @@ int og_family(lua_State* L)
     const char* order_str = luaL_checkstring(L, 1);
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
-    if (!require_families_chunk(L, st, "og.family"))
-        return 0;
+    require_families_chunk(L, st, "og.family");
     const OrderInfo* oi = find_order(order_str);
     if (oi == nullptr)
         script_raise(L, "og.family: unknown order '%s' (living, weapon, "
@@ -1618,8 +1617,7 @@ int og_anims(lua_State* L)
     const char* name = luaL_checklstring(L, 1, &name_len);
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
-    if (!require_families_chunk(L, st, "og.anims"))
-        return 0;
+    require_families_chunk(L, st, "og.anims");
     if (st->mode != VmMode::Declare)
         return 0;  // frame tables are data; the bind replay wants none of it
     if (st->harvest == nullptr)
@@ -1636,8 +1634,7 @@ int og_pack(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
     VmState* st = get_vm_state(L);
-    if (!require_families_chunk(L, st, "og.pack"))
-        return 0;
+    require_families_chunk(L, st, "og.pack");
     if (st->mode != VmMode::Declare)
         return 0;
     if (st->harvest == nullptr)
