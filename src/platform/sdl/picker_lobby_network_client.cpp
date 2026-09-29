@@ -1606,8 +1606,7 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     {
         og::sim::LobbyCharacterSlot compacted = *slot.slot;
         compacted.slot_index = slot.save_slot_index;
-        compacted.owner_player_index =
-            slot.player != nullptr ? slot.player->player_index : 0xffu;
+        compacted.owner_player_index = slot.player->player_index;
         // slot_index is the owner's ORIGINAL private-save slot. The applied
         // save_slot_index may be a compacted position in the combined roster
         // and must never be used for owner-filtered persistence.
