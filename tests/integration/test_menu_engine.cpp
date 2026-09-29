@@ -4944,6 +4944,32 @@ TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
     EXPECT_EQ(old_team, save.team_list[0]->teamnum);
     EXPECT_TRUE(trace_contains("popup", "LOCKED"));
 
+    // MOVE UP on a slot this machine may not edit answers ORDER LOCKED and
+    // leaves the company order as it was.
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->name = "SECOND";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.slots.size());
+    og::ui::g_picker_save_slot_editable_callback =
+        [](int slot) { return slot != 1; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+    EXPECT_TRUE(trace_contains("popup", "ORDER: LOCKED"));
+    EXPECT_EQ("VISIBLE", save.team_list[0]->name);
+    EXPECT_EQ("SECOND", save.team_list[1]->name)
+        << "a locked slot must not be reordered";
+    EXPECT_FALSE(trace_contains("basecamp", "move_up"));
+
+    // Paired control: the same click on an editable slot moves it up.
+    og::ui::g_picker_save_slot_editable_callback = [](int) { return true; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
+    EXPECT_EQ("SECOND", save.team_list[0]->name);
+    EXPECT_EQ("VISIBLE", save.team_list[1]->name);
+    EXPECT_FALSE(trace_contains("popup", "LOCKED"));
 }
 
 TEST(MenuEngine, company_dispatch_surfaces_invalid_open_delete_and_restore)
