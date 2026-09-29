@@ -2639,11 +2639,12 @@ og::ui::SeatClaimability base_camp_seat_claimability()
 }
 
 // The rail's seats: this machine's own, in local-slot order, capped at the
-// four slots. The inverse of base_camp_seat_local_slot — slot k is the seat
-// whose player_index is local_seat_indices[k]. A local index the roster does
-// not (yet) carry stops the list rather than leaving a hole: the rail never
-// shows a card it cannot name, and the slots after it fall back to ADD
-// PLAYER, which is what the lobby is about to say anyway.
+// four slots: slot k is the seat whose player_index is
+// local_seat_indices[k], so the slot IS the seat's local controller slot.
+// A local index the roster does not (yet) carry stops the list rather
+// than leaving a hole: the rail never shows a card it cannot name, and the
+// slots after it fall back to ADD PLAYER, which is what the lobby is about
+// to say anyway.
 struct BaseCampRailSeats {
     std::array<const og::sim::LobbyPlayer*, kBaseCampSeatCardsPerPage> seat{};
     int count = 0;
@@ -3045,22 +3046,6 @@ static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
               "base camp spec ordinals are the layout contract");
 
-// A card's controller profile is its POSITION in this machine's local seat
-// list, never the card index and never the global P# (menu_system.md §3.1 —
-// displayed P1 once drove profile 3). Seat settings resolves it the same way
-// off the same list, so the card and the editor always name one profile.
-int base_camp_seat_local_slot(const BaseCampScreenState& state,
-                              std::uint8_t player_index)
-{
-    const auto local = std::find(state.local_seat_indices.begin(),
-                                 state.local_seat_indices.end(),
-                                 player_index);
-    if (local == state.local_seat_indices.end())
-        return -1;
-    return static_cast<int>(
-        std::distance(state.local_seat_indices.begin(), local));
-}
-
 // The owner-short-name half of base_camp_seat_label, factored so the LINEUP
 // bands' seat run names a local seat's controller the same way the rail card
 // does (docs/lineup-design.md §2.1). Empty when the seat is not local (the
@@ -3087,14 +3072,17 @@ std::string local_seat_owner_short_name(int local_slot)
     return local_slot >= 0 ? std::string("SPEC") : std::string();
 }
 
-std::string base_camp_seat_label(const BaseCampScreenState& state,
+// A card's controller profile is its POSITION in this machine's local seat
+// list, never the global P# (menu_system.md §3.1 — displayed P1 once drove
+// profile 3). Seat settings resolves it the same way off the same list, so
+// the card and the editor always name one profile. The rail's slot k IS
+// that position (base_camp_rail_seats builds slot k from
+// local_seat_indices[k]), so every card is a local seat and its owner is
+// never empty: the screen, a mapping short name, or SPEC.
+std::string base_camp_seat_label(int local_slot,
                                  const og::sim::LobbyPlayer& seat)
 {
-    const int local_slot =
-        base_camp_seat_local_slot(state, seat.player_index);
     std::string owner = local_seat_owner_short_name(local_slot);
-    if (owner.empty())
-        owner = company_abbreviation(seat.company);
     // TWO trailing visual pads shift the visible centered ink a full cell
     // left, which centers it over the chip-free zone (the face minus the last
     // ten pixels, which the chip owns) instead of over the whole face. One pad
@@ -3848,7 +3836,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             rail_seats.seat[static_cast<std::size_t>(slot)] != nullptr)
         {
             slot_button.label = base_camp_seat_label(
-                *st, *rail_seats.seat[static_cast<std::size_t>(slot)]);
+                slot, *rail_seats.seat[static_cast<std::size_t>(slot)]);
         }
         else
         {
