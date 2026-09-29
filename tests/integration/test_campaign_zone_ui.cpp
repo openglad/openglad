@@ -2965,6 +2965,90 @@ TEST(CampaignZoneUi, retired_deploy_buttons_still_show_deploy_state)
     save.team_list[0]->deployed = false;
 }
 
+namespace {
+
+// A versus campaign's book, reduced to its two answers that are neither a
+// level nor a page: an action that acts and SPEAKS, and one the company
+// cannot afford.
+constexpr const char* kSetupBookScript = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "GAMES",
+      entries = {
+        { id = "drums", label = "DRUMS", kind = "action" },
+        { id = "crown", label = "CROWN", kind = "action", cost = 900000 },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "The drums roll." }
+  end,
+}))LUA";
+
+} // namespace
+
+// The SETUP wizard hosts the book's own rows on its GAME step. A book
+// action that acts without answering a level speaks its Lua message on
+// line B — the one message channel (R2-1) — and stays on the step; a
+// refused one (not enough gold) is toasted and traced and does not
+// advance either. A wizard that swallowed either would leave the player
+// clicking a row that visibly did nothing.
+TEST(CampaignZoneUi, setup_book_actions_speak_and_refusals_hold_the_step)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // Saved BEFORE the modes mount, so the guard hands back the gladiator
+    // registry the test remounts at its end.
+    SyntheticCampaignScriptGuard script_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // The modes pack registers its own book; one campaign carries one book
+    // (a second registration is a conflict), so this book stands alone.
+    og::script::clear_pack_scripts();
+    SyntheticCampaignScriptGuard::install(kSetupBookScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    for (int t = 0; t < 4; ++t)
+        save.m_totalcash[t] = 0;
+    ASSERT_TRUE(og::ui::is_versus_campaign(save));
+
+    og::ui::MatchSetupScreenState state(save);
+    og::ui::MatchSetupSession::Inputs in;
+    in.save = &save;
+    in.is_host = true;
+    ASSERT_TRUE(state.session.open(in));
+    ASSERT_EQ(og::ui::MatchSetupSession::Step::Game, state.session.step());
+    ASSERT_EQ(2u, state.session.page().rows.size());
+    ASSERT_EQ("drums", state.session.page().rows[0].base.id);
+    ASSERT_EQ("crown", state.session.page().rows[1].base.id);
+    og::ui::install_match_setup_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = og::ui::match_setup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(og::ui::kMatchSetupRowBase + 0, &state));
+    EXPECT_EQ("The drums roll.", state.toast)
+        << "the book's own voice lands on line B";
+    EXPECT_TRUE(trace_contains("setup", "toast The drums roll."));
+    EXPECT_EQ(og::ui::MatchSetupSession::Step::Game, state.session.step());
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(og::ui::kMatchSetupRowBase + 1, &state));
+    EXPECT_EQ("Not enough gold.", state.toast);
+    EXPECT_TRUE(trace_contains("setup", "refused Not enough gold."));
+    EXPECT_EQ(og::ui::MatchSetupSession::Step::Game, state.session.step())
+        << "a refusal never advances the step";
+    EXPECT_EQ(0u, save.m_totalcash[0]) << "and spends nothing";
+
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 // The fifth roster site: the CLASSIC team-color cycler (reachable only
 // when the composition ships no assign spec — the assign fork owns the
 // chip cell otherwise).
