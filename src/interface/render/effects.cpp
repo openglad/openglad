@@ -988,6 +988,18 @@ void advance_frame_if_due(std::uint32_t now_ms)
 		advance_frame_state();
 }
 
+// The one advance rule: one effects tick per call when the cadence is off,
+// else one tick per elapsed kWallClockCadenceIntervalMs of now_ms.
+void advance_frame_at(std::uint32_t now_ms)
+{
+	if (!wall_clock_cadence)
+	{
+		advance_frame_state();
+		return;
+	}
+	advance_frame_if_due(now_ms);
+}
+
 } // namespace
 
 void effects_set_wall_clock_cadence(bool on)
@@ -997,12 +1009,7 @@ void effects_set_wall_clock_cadence(bool on)
 
 void effects_advance_frame()
 {
-	if (!wall_clock_cadence)
-	{
-		advance_frame_state();
-		return;
-	}
-	advance_frame_if_due(static_cast<std::uint32_t>(
+	advance_frame_at(static_cast<std::uint32_t>(
 	    std::chrono::duration_cast<std::chrono::milliseconds>(
 	        std::chrono::steady_clock::now().time_since_epoch())
 	        .count()));
@@ -1011,12 +1018,7 @@ void effects_advance_frame()
 #ifdef TESTING
 void effects_advance_frame_at(std::uint32_t now_ms)
 {
-	if (!wall_clock_cadence)
-	{
-		advance_frame_state();
-		return;
-	}
-	advance_frame_if_due(now_ms);
+	advance_frame_at(now_ms);
 }
 #endif
 
