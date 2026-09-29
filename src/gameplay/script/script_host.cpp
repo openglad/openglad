@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include "script_host_impl.h"
+#include "script_raise.h"
 
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/script/script_coverage.h>
@@ -62,7 +63,7 @@ void budget_hook(lua_State* L, lua_Debug* /*ar*/)
     ScriptHost::Impl* impl = *extra_slot(L);
     impl->instructions_remaining -= kBudgetCheckInterval;
     if (impl->instructions_remaining <= 0)
-        luaL_error(L, "instruction budget exceeded");
+        script_raise(L, "instruction budget exceeded");
 }
 
 // Coverage variant: the SAME budget hook with LUA_MASKLINE folded in, so
@@ -99,9 +100,9 @@ int og_div(lua_State* L)
     const lua_Integer a = luaL_checkinteger(L, 1);
     const lua_Integer b = luaL_checkinteger(L, 2);
     if (b == 0)
-        return luaL_error(L, "og.div: division by zero");
+        script_raise(L, "og.div: division by zero");
     if (a == std::numeric_limits<lua_Integer>::min() && b == -1)
-        return luaL_error(L, "og.div: overflow");
+        script_raise(L, "og.div: overflow");
     lua_pushinteger(L, a / b);  // C truncation toward zero
     return 1;
 }
@@ -111,9 +112,9 @@ int og_mod(lua_State* L)
     const lua_Integer a = luaL_checkinteger(L, 1);
     const lua_Integer b = luaL_checkinteger(L, 2);
     if (b == 0)
-        return luaL_error(L, "og.mod: division by zero");
+        script_raise(L, "og.mod: division by zero");
     if (a == std::numeric_limits<lua_Integer>::min() && b == -1)
-        return luaL_error(L, "og.mod: overflow");
+        script_raise(L, "og.mod: overflow");
     lua_pushinteger(L, a % b);  // C remainder (sign of dividend)
     return 1;
 }
@@ -167,7 +168,7 @@ int og_trunc(lua_State* L)
     const lua_Number x = luaL_checknumber(L, 1);
     // Reject values whose truncation cannot be represented (and NaN).
     if (!(std::fabs(x) < 9223372036854775808.0))
-        return luaL_error(L, "og.trunc: value out of integer range");
+        script_raise(L, "og.trunc: value out of integer range");
     lua_pushinteger(L, static_cast<lua_Integer>(std::trunc(x)));
     return 1;
 }
@@ -180,7 +181,7 @@ void push_det_tostring(lua_State* L, int idx)
     idx = lua_absindex(L, idx);
     if (luaL_callmeta(L, idx, "__tostring")) {
         if (!lua_isstring(L, -1))
-            luaL_error(L, "'__tostring' must return a string");
+            script_raise(L, "'__tostring' must return a string");
         return;
     }
     switch (lua_type(L, idx)) {

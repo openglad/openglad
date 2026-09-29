@@ -16,6 +16,7 @@
 // lua_Number → float (og.f* results are doubles carrying exact floats).
 
 #include "script_internal.h"
+#include "script_raise.h"
 
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
@@ -81,7 +82,7 @@ walker* self_arg(lua_State* L)
 GameWorld* world_arg(lua_State* L)
 {
     if (current_game == nullptr || current_game->world == nullptr)
-        luaL_error(L, "no active world");
+        script_raise(L, "no active world");
     return current_game->world;
 }
 
@@ -90,7 +91,7 @@ living* living_arg(lua_State* L, int idx = 1)
     walker* w = resolve_walker(L, idx, /*required=*/true);
     living* lv = dynamic_cast<living*>(w);
     if (lv == nullptr)
-        luaL_error(L, "entity is not a living");
+        script_raise(L, "entity is not a living");
     return lv;
 }
 
@@ -101,7 +102,7 @@ guy* guy_arg(lua_State* L, int idx)
         return resolve_guy(L, idx, /*required=*/true);
     walker* w = resolve_walker(L, idx, /*required=*/true);
     if (w->myguy == nullptr)
-        luaL_error(L, "walker has no guy record");
+        script_raise(L, "walker has no guy record");
     return w->myguy;
 }
 
@@ -135,8 +136,7 @@ Order order_from_string(lua_State* L, int idx)
     if (std::strcmp(s, "generator") == 0) return Order::Generator;
     if (std::strcmp(s, "fx") == 0 || std::strcmp(s, "effect") == 0)
         return Order::FX;
-    luaL_error(L, "unknown order '%s'", s);
-    return Order::Living;  // unreachable
+    script_raise(L, "unknown order '%s'", s);
 }
 
 const std::list<std::unique_ptr<walker>>& list_from_selector(lua_State* L,
@@ -147,8 +147,7 @@ const std::list<std::unique_ptr<walker>>& list_from_selector(lua_State* L,
     if (std::strcmp(s, "ob") == 0) return world->oblist;
     if (std::strcmp(s, "weap") == 0) return world->weaplist;
     if (std::strcmp(s, "fx") == 0) return world->fxlist;
-    luaL_error(L, "unknown list selector '%s' (ob|weap|fx)", s);
-    return world->oblist;  // unreachable
+    script_raise(L, "unknown list selector '%s' (ob|weap|fx)", s);
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +302,7 @@ int m_do_bounce(lua_State* L)
 {
     weap* wp = dynamic_cast<weap*>(self_arg(L));
     if (wp == nullptr)
-        return luaL_error(L, "do_bounce: entity is not a weapon");
+        script_raise(L, "do_bounce: entity is not a weapon");
     lua_pushinteger(L, static_cast<lua_Integer>(wp->do_bounce()));
     return 1;
 }
@@ -312,7 +311,7 @@ int m_set_do_bounce(lua_State* L)
 {
     weap* wp = dynamic_cast<weap*>(self_arg(L));
     if (wp == nullptr)
-        return luaL_error(L, "set_do_bounce: entity is not a weapon");
+        script_raise(L, "set_do_bounce: entity is not a weapon");
     wp->set_do_bounce(static_cast<std::int32_t>(luaL_checkinteger(L, 2)));
     return 0;
 }
@@ -447,7 +446,7 @@ int m_find_teleport_target(lua_State* L)
 {
     treasure* t = dynamic_cast<treasure*>(self_arg(L));
     if (t == nullptr)
-        return luaL_error(L, "find_teleport_target: entity is not a treasure");
+        script_raise(L, "find_teleport_target: entity is not a treasure");
     push_walker_here(L, t->find_teleport_target());
     return 1;
 }
@@ -609,10 +608,9 @@ int m_facing(lua_State* L)
 
 statistics* stats_arg(lua_State* L)
 {
-    statistics* st = self_arg(L)->stats();
-    if (st == nullptr)
-        luaL_error(L, "entity has no stats");
-    return st;
+    // Never null: every walker constructor makes stats_, and only the
+    // destructor resets it.
+    return self_arg(L)->stats();
 }
 
 #define S_GET_FLT(NAME)                                        \
@@ -698,7 +696,7 @@ int s_special_cost(lua_State* L)
 {
     const int idx = static_cast<int>(luaL_checkinteger(L, 2));
     if (idx < 0 || idx >= NUM_SPECIALS)
-        return luaL_error(L, "special_cost index out of range");
+        script_raise(L, "special_cost index out of range");
     lua_pushinteger(L, static_cast<lua_Integer>(
                            stats_arg(L)->special_cost(idx)));
     return 1;
@@ -708,7 +706,7 @@ int s_set_special_cost(lua_State* L)
 {
     const int idx = static_cast<int>(luaL_checkinteger(L, 2));
     if (idx < 0 || idx >= NUM_SPECIALS)
-        return luaL_error(L, "special_cost index out of range");
+        script_raise(L, "special_cost index out of range");
     stats_arg(L)->set_special_cost(
         idx, static_cast<unsigned short>(
                  static_cast<std::uint64_t>(luaL_checkinteger(L, 3))));
@@ -802,7 +800,7 @@ int s_refresh_front(lua_State* L)
 {
     statistics* stats = stats_arg(L);
     if (!stats->has_commands())
-        return luaL_error(L, "s_refresh_front: command queue is empty");
+        script_raise(L, "s_refresh_front: command queue is empty");
     command& front = stats->commands.front();
     front.commandcount = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
     front.com1 = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
@@ -997,7 +995,7 @@ int og_summon_configured(lua_State* L)
     if (lua_getfield(L, 4, "ani_type") != LUA_TNIL) {
         ani_type = lua_tointegerx(L, -1, &isnum);
         if (isnum == 0)
-            return luaL_error(
+            script_raise(
                 L, "og.summon_configured: 'ani_type' must be an integer");
         has_ani_type = true;
         recognized++;
@@ -1006,7 +1004,7 @@ int og_summon_configured(lua_State* L)
     if (lua_getfield(L, 4, "lifetime") != LUA_TNIL) {
         lifetime = lua_tointegerx(L, -1, &isnum);
         if (isnum == 0)
-            return luaL_error(
+            script_raise(
                 L, "og.summon_configured: 'lifetime' must be an integer");
         has_lifetime = true;
         recognized++;
@@ -1015,7 +1013,7 @@ int og_summon_configured(lua_State* L)
     if (lua_getfield(L, 4, "hp_add") != LUA_TNIL) {
         hp_add = lua_tonumberx(L, -1, &isnum);
         if (isnum == 0)
-            return luaL_error(
+            script_raise(
                 L, "og.summon_configured: 'hp_add' must be a number");
         has_hp_add = true;
         recognized++;
@@ -1030,7 +1028,7 @@ int og_summon_configured(lua_State* L)
     if (lua_getfield(L, 4, "damage_add") != LUA_TNIL) {
         damage_add = lua_tonumberx(L, -1, &isnum);
         if (isnum == 0)
-            return luaL_error(
+            script_raise(
                 L, "og.summon_configured: 'damage_add' must be a number");
         has_damage_add = true;
         recognized++;
@@ -1045,10 +1043,10 @@ int og_summon_configured(lua_State* L)
         total++;
     }
     if (total != recognized)
-        return luaL_error(L,
-                          "og.summon_configured: unknown option key "
-                          "(allowed: ani_type, lifetime, hp_add, "
-                          "max_hp_from_hp, damage_add)");
+        script_raise(L,
+                     "og.summon_configured: unknown option key "
+                     "(allowed: ani_type, lifetime, hp_add, "
+                     "max_hp_from_hp, damage_add)");
 
     walker* w = summon_entity(summoner, order, fam);
     if (w == nullptr) {
@@ -1158,8 +1156,6 @@ int og_oblist(lua_State* L)
     lua_newtable(L);
     lua_Integer i = 1;
     for (const auto& uptr : world->oblist) {
-        if (uptr == nullptr)
-            continue;
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
     }
@@ -1244,10 +1240,10 @@ int og_cosmetic_rand(lua_State* L)
 {
     const lua_Integer n = luaL_checkinteger(L, 1);
     if (n <= 0)
-        return luaL_error(L, "og.cosmetic_rand: n must be positive");
+        script_raise(L, "og.cosmetic_rand: n must be positive");
     if (n > kMaxRandBound)
-        return luaL_error(L,
-                          "og.cosmetic_rand: n out of range [1, 2147483647]");
+        script_raise(L,
+                     "og.cosmetic_rand: n out of range [1, 2147483647]");
     if (IRandom* cos = cosmetic_rng_override()) {
         lua_pushinteger(L, static_cast<lua_Integer>(
                                cos->next(static_cast<std::uint32_t>(n))));
@@ -1313,7 +1309,7 @@ int og_set_enemy_freeze(lua_State* L)
 int og_emit_sound(lua_State* L)
 {
     if (current_game == nullptr)
-        return luaL_error(L, "no active context");
+        script_raise(L, "no active context");
     og::sim::emit_sound(current_game->sim_events,
                         static_cast<std::uint32_t>(luaL_checkinteger(L, 1)));
     return 0;
@@ -1322,7 +1318,7 @@ int og_emit_sound(lua_State* L)
 int og_emit_positional_sound(lua_State* L)
 {
     if (current_game == nullptr)
-        return luaL_error(L, "no active context");
+        script_raise(L, "no active context");
     walker* w = resolve_walker(L, 1, /*required=*/true);
     og::sim::emit_positional_sound(
         current_game->sim_events, w,
@@ -1339,7 +1335,7 @@ int og_emit_positional_sound(lua_State* L)
 int og_emit_notification(lua_State* L)
 {
     if (current_game == nullptr)
-        return luaL_error(L, "no active context");
+        script_raise(L, "no active context");
     size_t len = 0;
     const char* s = luaL_checklstring(L, 1, &len);
     const auto duration =
@@ -1369,7 +1365,7 @@ int og_emit_notification(lua_State* L)
 int og_emit_event(lua_State* L)
 {
     if (current_game == nullptr)
-        return luaL_error(L, "no active context");
+        script_raise(L, "no active context");
     og::sim::emit_event(
         current_game->sim_events,
         static_cast<og::sim::EventKind>(luaL_checkinteger(L, 1)),
@@ -1397,7 +1393,7 @@ int og_family_flag(lua_State* L)
     const int fam = static_cast<int>(luaL_checkinteger(L, 2));
     const char* flag = luaL_checkstring(L, 3);
     if (order != Order::Living)
-        return luaL_error(L, "og.family_flag: only 'living' supported");
+        script_raise(L, "og.family_flag: only 'living' supported");
     const FamilyDescriptor* fd = get_family_descriptor(fam);
     if (fd == nullptr) {
         lua_pushnil(L);
@@ -1413,7 +1409,7 @@ int og_family_flag(lua_State* L)
     else if (std::strcmp(flag, "is_stationary") == 0)
         value = fd->is_stationary;
     else
-        return luaL_error(L, "og.family_flag: unknown flag '%s'", flag);
+        script_raise(L, "og.family_flag: unknown flag '%s'", flag);
     lua_pushboolean(L, value ? 1 : 0);
     return 1;
 }
@@ -1542,7 +1538,7 @@ int og_exp_from_action(lua_State* L)
     else if (std::strcmp(action_name, "resurrect_penalty") == 0) action = ExpAction::ResurrectPenalty;
     else if (std::strcmp(action_name, "protection") == 0) action = ExpAction::Protection;
     else if (std::strcmp(action_name, "eat_corpse") == 0) action = ExpAction::EatCorpse;
-    else return luaL_error(L, "og.exp_from_action: unknown action '%s'", action_name);
+    else script_raise(L, "og.exp_from_action: unknown action '%s'", action_name);
     lua_pushinteger(L, static_cast<lua_Integer>(
                            exp_from_action(action, w, target, value)));
     return 1;
@@ -1612,9 +1608,7 @@ int og_scare_radius(lua_State* L)
 int og_tuning(lua_State* L)
 {
     walker* w = resolve_walker(L, 1, /*required=*/true);
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        return luaL_error(L, "og.tuning: no world scripts active");
+    VmState* st = &vm_state(L);
     if (st->tuning_cache_gen != family_tuning_generation()) {
         luaL_unref(L, LUA_REGISTRYINDEX, st->tuning_cache_ref);
         lua_newtable(L);
@@ -1799,7 +1793,7 @@ int og_set_withdraw_request(lua_State* L)
 int og_emit_exit_confirmation(lua_State* L)
 {
     if (current_game == nullptr)
-        return luaL_error(L, "no active context");
+        script_raise(L, "no active context");
     size_t len = 0;
     const char* prompt = luaL_checklstring(L, 1, &len);
     const auto dest = static_cast<std::uint32_t>(
@@ -1816,7 +1810,7 @@ int og_emit_exit_confirmation(lua_State* L)
 int og_emit_withdraw_to_level(lua_State* L)
 {
     if (current_game == nullptr)
-        return luaL_error(L, "no active context");
+        script_raise(L, "no active context");
     og::sim::emit_event(
         current_game->sim_events, og::sim::EventKind::WithdrawToLevel,
         static_cast<std::uint32_t>(
@@ -1877,8 +1871,8 @@ VmState* campaign_dispatch_arg(lua_State* L, const char* name)
 {
     VmState* st = get_vm_state(L);
     if (st == nullptr || !st->campaign_dispatch)
-        luaL_error(L, "og.%s: campaign bindings are campaign-hook only",
-                   name);
+        script_raise(L, "og.%s: campaign bindings are campaign-hook only",
+                     name);
     return st;
 }
 
@@ -1888,7 +1882,7 @@ int og_campaign_state_get(lua_State* L)
     const char* key = luaL_checkstring(L, 1);
     const auto& p = campaign_providers();
     if (!p.state_get)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_state_get: no campaign provider installed");
     lua_pushinteger(L, static_cast<lua_Integer>(p.state_get(key)));
     return 1;
@@ -1905,22 +1899,22 @@ int og_campaign_state_set(lua_State* L)
     const char* key = luaL_checklstring(L, 1, &len);
     const lua_Integer value = luaL_checkinteger(L, 2);
     if (!hooks::valid_campaign_var_name({key, len}))
-        return luaL_error(
+        script_raise(
             L, "og.campaign_state_set: bad key '%s' (1-%d chars of "
-               "[a-z0-9_])",
+          "[a-z0-9_])",
             key, hooks::kCampaignVarNameMax);
     if (value < std::numeric_limits<std::int32_t>::min() ||
         value > std::numeric_limits<std::int32_t>::max())
-        return luaL_error(L,
-                          "og.campaign_state_set: value out of int32 range");
+        script_raise(L,
+                     "og.campaign_state_set: value out of int32 range");
     const auto& p = campaign_providers();
     if (!p.state_set)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_state_set: no campaign provider installed");
     if (!p.state_set(key, static_cast<std::int32_t>(value)))
-        return luaL_error(
+        script_raise(
             L, "og.campaign_state_set: the campaign store rejected '%s' "
-               "(entry bounds)",
+          "(entry bounds)",
             key);
     return 0;
 }
@@ -1930,8 +1924,8 @@ int og_campaign_gold(lua_State* L)
     campaign_dispatch_arg(L, "campaign_gold");
     const auto& p = campaign_providers();
     if (!p.gold_get)
-        return luaL_error(L,
-                          "og.campaign_gold: no campaign provider installed");
+        script_raise(L,
+                     "og.campaign_gold: no campaign provider installed");
     lua_pushinteger(L, static_cast<lua_Integer>(p.gold_get()));
     return 1;
 }
@@ -1944,10 +1938,10 @@ int og_campaign_spend_gold(lua_State* L)
     campaign_dispatch_arg(L, "campaign_spend_gold");
     const lua_Integer amount = luaL_checkinteger(L, 1);
     if (amount < 0)
-        return luaL_error(L, "og.campaign_spend_gold: negative amount");
+        script_raise(L, "og.campaign_spend_gold: negative amount");
     const auto& p = campaign_providers();
     if (!p.gold_spend)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_spend_gold: no campaign provider installed");
     lua_pushboolean(L, p.gold_spend(amount) ? 1 : 0);
     return 1;
@@ -1958,10 +1952,10 @@ int og_campaign_grant_gold(lua_State* L)
     campaign_dispatch_arg(L, "campaign_grant_gold");
     const lua_Integer amount = luaL_checkinteger(L, 1);
     if (amount < 0)
-        return luaL_error(L, "og.campaign_grant_gold: negative amount");
+        script_raise(L, "og.campaign_grant_gold: negative amount");
     const auto& p = campaign_providers();
     if (!p.gold_grant)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_grant_gold: no campaign provider installed");
     p.gold_grant(amount);
     return 0;
@@ -1974,8 +1968,8 @@ int og_campaign_team(lua_State* L)
     campaign_dispatch_arg(L, "campaign_team");
     const auto& p = campaign_providers();
     if (!p.team_snapshot)
-        return luaL_error(L,
-                          "og.campaign_team: no campaign provider installed");
+        script_raise(L,
+                     "og.campaign_team: no campaign provider installed");
     const std::vector<hooks::CampaignRosterEntry> team = p.team_snapshot();
     lua_createtable(L, static_cast<int>(team.size()), 0);
     for (std::size_t i = 0; i < team.size(); i++) {
@@ -2025,7 +2019,7 @@ int og_campaign_level_completed(lua_State* L)
     const auto id = static_cast<int>(luaL_checkinteger(L, 1));
     const auto& p = campaign_providers();
     if (!p.level_completed)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_level_completed: no campaign provider installed");
     lua_pushboolean(L, p.level_completed(id) ? 1 : 0);
     return 1;
@@ -2036,7 +2030,7 @@ int og_campaign_current_level(lua_State* L)
     campaign_dispatch_arg(L, "campaign_current_level");
     const auto& p = campaign_providers();
     if (!p.current_level)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_current_level: no campaign provider installed");
     lua_pushinteger(L, static_cast<lua_Integer>(p.current_level()));
     return 1;
@@ -2049,7 +2043,7 @@ int og_campaign_scenario_title(lua_State* L)
     const auto id = static_cast<int>(luaL_checkinteger(L, 1));
     const auto& p = campaign_providers();
     if (!p.scenario_title)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_scenario_title: no campaign provider installed");
     const std::string title = p.scenario_title(id);
     lua_pushlstring(L, title.data(), title.size());
@@ -2081,11 +2075,11 @@ int og_campaign_match_get(lua_State* L)
     campaign_dispatch_arg(L, "campaign_match_get");
     const char* name = luaL_checkstring(L, 1);
     if (!known_match_setting(name))
-        return luaL_error(L, "og.campaign_match_get: unknown setting '%s'",
-                          name);
+        script_raise(L, "og.campaign_match_get: unknown setting '%s'",
+                     name);
     const auto& p = campaign_providers();
     if (!p.match_get)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_match_get: no campaign provider installed");
     lua_pushinteger(L, static_cast<lua_Integer>(p.match_get(name)));
     return 1;
@@ -2102,11 +2096,11 @@ int og_campaign_match_set(lua_State* L)
     const lua_Integer value = luaL_checkinteger(L, 2);
     if (value < std::numeric_limits<std::int32_t>::min() ||
         value > std::numeric_limits<std::int32_t>::max())
-        return luaL_error(L,
-                          "og.campaign_match_set: value out of int32 range");
+        script_raise(L,
+                     "og.campaign_match_set: value out of int32 range");
     const auto& p = campaign_providers();
     if (!p.match_set)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_match_set: no campaign provider installed");
     lua_pushboolean(L, p.match_set(name, static_cast<std::int32_t>(value))
                            ? 1
@@ -2121,7 +2115,7 @@ int og_campaign_is_host(lua_State* L)
     campaign_dispatch_arg(L, "campaign_is_host");
     const auto& p = campaign_providers();
     if (!p.is_host)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_is_host: no campaign provider installed");
     lua_pushboolean(L, p.is_host() ? 1 : 0);
     return 1;
@@ -2139,7 +2133,7 @@ int og_campaign_my_team(lua_State* L)
     campaign_dispatch_arg(L, "campaign_my_team");
     const auto& p = campaign_providers();
     if (!p.my_team)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_my_team: no campaign provider installed");
     lua_pushinteger(L, std::clamp(p.my_team(), 0, SCORE_TEAM_COUNT - 1));
     return 1;
@@ -2155,12 +2149,12 @@ int og_campaign_random(lua_State* L)
     campaign_dispatch_arg(L, "campaign_random");
     const lua_Integer n = luaL_checkinteger(L, 1);
     if (n < 1)
-        return luaL_error(L, "og.campaign_random: n must be >= 1");
+        script_raise(L, "og.campaign_random: n must be >= 1");
     if (n > std::numeric_limits<std::int32_t>::max())
-        return luaL_error(L, "og.campaign_random: n out of int32 range");
+        script_raise(L, "og.campaign_random: n out of int32 range");
     const auto& p = campaign_providers();
     if (!p.random_pick)
-        return luaL_error(
+        script_raise(
             L, "og.campaign_random: no campaign provider installed");
     lua_pushinteger(L,
                     static_cast<lua_Integer>(p.random_pick(static_cast<int>(n))));
@@ -2219,7 +2213,7 @@ int og_rand0(lua_State* L)
         return 1;
     }
     if (n > kMaxRandBound)
-        return luaL_error(L, "og.rand0: n out of range [1, 2147483647]");
+        script_raise(L, "og.rand0: n out of range [1, 2147483647]");
     lua_pushinteger(L, static_cast<lua_Integer>(
                            world->rng_.next(static_cast<std::uint32_t>(n))));
     return 1;
@@ -2260,7 +2254,7 @@ int og_clamp(lua_State* L)
     check_number_arg(L, 2);
     check_number_arg(L, 3);
     if (lua_compare(L, 3, 2, LUA_OPLT))
-        return luaL_error(L, "og.clamp: hi < lo (empty range)");
+        script_raise(L, "og.clamp: hi < lo (empty range)");
     int answer = 1;
     if (lua_compare(L, 1, 2, LUA_OPLT))
         answer = 2;
@@ -2413,7 +2407,7 @@ int m_add_frozen_stun(lua_State* L)
 // self.ani_type runs m_set_ani_type's char narrowing) and handle validity
 // included (a stale handle raises the identical "stale or dead entity
 // handle" error, because it IS the same code). The accessor is invoked
-// DIRECTLY rather than through lua_call so luaL_error's level-1 position
+// DIRECTLY rather than through lua_call so script_raise's level-1 position
 // names the accessing Lua line exactly as a method call would; an
 // interposed C frame would erase it.
 //
@@ -2509,14 +2503,14 @@ int walker_newindex(lua_State* L)
         lua_rawget(L, lua_upvalueindex(2)) == LUA_TFUNCTION;
     lua_pop(L, 1);
     if (read_only)
-        return luaL_error(L, "walker property '%s' is read-only", key);
+        script_raise(L, "walker property '%s' is read-only", key);
     lua_pushvalue(L, 2);
     const bool is_method = lua_rawget(L, lua_upvalueindex(3)) != LUA_TNIL;
     lua_pop(L, 1);
     if (is_method)
-        return luaL_error(L, "'%s' is a walker method, not a writable "
-                             "property", key);
-    return luaL_error(L, "cannot assign unknown walker field '%s'", key);
+        script_raise(L, "'%s' is a walker method, not a writable "
+                        "property", key);
+    script_raise(L, "cannot assign unknown walker field '%s'", key);
 }
 
 // ---------------------------------------------------------------------------
@@ -2535,12 +2529,12 @@ int og_end_level(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer ending = luaL_checkinteger(L, 1);
     if (ending != 0 && ending != 1)
-        return luaL_error(L, "og.end_level: ending must be 0 (win) or 1 "
-                             "(loss)");
+        script_raise(L, "og.end_level: ending must be 0 (win) or 1 "
+                        "(loss)");
     const lua_Integer next_level = luaL_checkinteger(L, 2);
     if (next_level < -1 || next_level > 32767)
-        return luaL_error(L, "og.end_level: next_level out of range "
-                             "[-1, 32767]");
+        script_raise(L, "og.end_level: next_level out of range "
+                        "[-1, 32767]");
     og::sim::mode_end_level(*world, static_cast<int>(ending),
                             static_cast<int>(next_level));
     return 0;
@@ -2557,9 +2551,9 @@ int og_declare_winner(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
     if (team < 0 || !og::sim::is_scoring_identity(static_cast<int>(team)))
-        return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1,
-                          kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
+        script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
+                     static_cast<int>(team), SCORE_TEAM_COUNT - 1,
+                     kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
     og::sim::mode_declare_winner(*world, static_cast<int>(team));
     return 0;
 }
@@ -2579,8 +2573,8 @@ int og_mode_get(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer i = luaL_checkinteger(L, 1);
     if (i < 0 || i >= og::sim::kModeVarCount)
-        return luaL_error(L, "mode var index %d out of range [0, %d]",
-                          static_cast<int>(i), og::sim::kModeVarCount - 1);
+        script_raise(L, "mode var index %d out of range [0, %d]",
+                     static_cast<int>(i), og::sim::kModeVarCount - 1);
     lua_pushinteger(L, static_cast<lua_Integer>(
                            world->mode.vars[static_cast<std::size_t>(i)]));
     return 1;
@@ -2593,8 +2587,8 @@ int og_mode_set(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer i = luaL_checkinteger(L, 1);
     if (i < 0 || i >= og::sim::kModeVarCount)
-        return luaL_error(L, "mode var index %d out of range [0, %d]",
-                          static_cast<int>(i), og::sim::kModeVarCount - 1);
+        script_raise(L, "mode var index %d out of range [0, %d]",
+                     static_cast<int>(i), og::sim::kModeVarCount - 1);
     const lua_Integer v = luaL_checkinteger(L, 2);
     world->mode.vars[static_cast<std::size_t>(i)] =
         static_cast<std::int32_t>(v);
@@ -2624,17 +2618,17 @@ int og_set_hud_line(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
     if (slot < 0 || slot >= og::sim::kModeHudLines)
-        return luaL_error(L, "slot %d out of range [0, %d]",
-                          static_cast<int>(slot), og::sim::kModeHudLines - 1);
+        script_raise(L, "slot %d out of range [0, %d]",
+                     static_cast<int>(slot), og::sim::kModeHudLines - 1);
     size_t len = 0;
     const char* s = luaL_checklstring(L, 2, &len);
     std::uint8_t team = 255;
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
         if (t < 0 || !og::sim::is_scoring_identity(static_cast<int>(t)))
-            return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
-                              static_cast<int>(t), SCORE_TEAM_COUNT - 1,
-                              kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
+            script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
+                         static_cast<int>(t), SCORE_TEAM_COUNT - 1,
+                         kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
         team = static_cast<std::uint8_t>(t);
     }
     og::sim::ModeHudLine& line =
@@ -2653,8 +2647,8 @@ int og_clear_hud_line(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
     if (slot < 0 || slot >= og::sim::kModeHudLines)
-        return luaL_error(L, "slot %d out of range [0, %d]",
-                          static_cast<int>(slot), og::sim::kModeHudLines - 1);
+        script_raise(L, "slot %d out of range [0, %d]",
+                     static_cast<int>(slot), og::sim::kModeHudLines - 1);
     world->mode.hud[static_cast<std::size_t>(slot)] = og::sim::ModeHudLine{};
     return 0;
 }
@@ -2667,8 +2661,8 @@ int og_set_beacon(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
     if (slot < 0 || slot >= og::sim::kModeBeacons)
-        return luaL_error(L, "slot %d out of range [0, %d]",
-                          static_cast<int>(slot), og::sim::kModeBeacons - 1);
+        script_raise(L, "slot %d out of range [0, %d]",
+                     static_cast<int>(slot), og::sim::kModeBeacons - 1);
     og::sim::ModeBeacon& beacon =
         world->mode.beacons[static_cast<std::size_t>(slot)];
     walker* w = resolve_walker_or_nil(L, 2);
@@ -2680,9 +2674,9 @@ int og_set_beacon(lua_State* L)
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
         if (t < 0 || !og::sim::is_scoring_identity(static_cast<int>(t)))
-            return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
-                              static_cast<int>(t), SCORE_TEAM_COUNT - 1,
-                              kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
+            script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
+                         static_cast<int>(t), SCORE_TEAM_COUNT - 1,
+                         kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
         team = static_cast<std::uint8_t>(t);
     }
     beacon.entity_id = static_cast<std::int32_t>(w->entity_id());
@@ -2706,9 +2700,9 @@ int og_set_camera_view(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
     if (slot < 0 || slot >= og::sim::kModeCameraViews)
-        return luaL_error(L, "slot %d out of range [0, %d]",
-                          static_cast<int>(slot),
-                          og::sim::kModeCameraViews - 1);
+        script_raise(L, "slot %d out of range [0, %d]",
+                     static_cast<int>(slot),
+                     og::sim::kModeCameraViews - 1);
     walker* w = resolve_walker_or_nil(L, 2);
     std::uint8_t style = og::sim::kCameraStyleAuto;
     if (!lua_isnoneornil(L, 3)) {
@@ -2719,7 +2713,7 @@ int og_set_camera_view(lua_State* L)
             // would mutate the table the lua_next walk below is about to
             // traverse.
             if (lua_type(L, -1) != LUA_TSTRING)
-                return luaL_error(
+                script_raise(
                     L, "og.set_camera_view: 'style' must be a string");
             const char* s = lua_tostring(L, -1);
             if (std::strcmp(s, "auto") == 0)
@@ -2727,10 +2721,10 @@ int og_set_camera_view(lua_State* L)
             else if (std::strcmp(s, "inset") == 0)
                 style = og::sim::kCameraStyleInset;
             else
-                return luaL_error(L,
-                                  "og.set_camera_view: unknown style '%s' "
-                                  "(allowed: auto, inset)",
-                                  s);
+                script_raise(L,
+                             "og.set_camera_view: unknown style '%s' "
+                             "(allowed: auto, inset)",
+                             s);
             recognized++;
         }
         lua_pop(L, 1);
@@ -2741,9 +2735,9 @@ int og_set_camera_view(lua_State* L)
             total++;
         }
         if (total != recognized)
-            return luaL_error(L,
-                              "og.set_camera_view: unknown option key "
-                              "(allowed: style)");
+            script_raise(L,
+                         "og.set_camera_view: unknown option key "
+                         "(allowed: style)");
     }
     og::sim::ModeCameraView& cam =
         world->mode.cameras[static_cast<std::size_t>(slot)];
@@ -2763,8 +2757,8 @@ int og_team_score(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
     if (team < 0 || team >= SCORE_TEAM_COUNT)
-        return luaL_error(L, "team %d out of range [0, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+        script_raise(L, "team %d out of range [0, %d]",
+                     static_cast<int>(team), SCORE_TEAM_COUNT - 1);
     lua_pushinteger(L, static_cast<lua_Integer>(
                            world->m_score[static_cast<std::size_t>(team)]));
     return 1;
@@ -2793,8 +2787,6 @@ int og_fxlist(lua_State* L)
     lua_newtable(L);
     lua_Integer i = 1;
     for (const auto& uptr : world->fxlist) {
-        if (uptr == nullptr)
-            continue;
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
     }
@@ -2808,8 +2800,6 @@ int og_weaplist(lua_State* L)
     lua_newtable(L);
     lua_Integer i = 1;
     for (const auto& uptr : world->weaplist) {
-        if (uptr == nullptr)
-            continue;
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
     }
@@ -2832,9 +2822,9 @@ int og_team_color_name(lua_State* L)
 {
     const lua_Integer team = luaL_checkinteger(L, 1);
     if (team < 0 || !og::sim::is_scoring_identity(static_cast<int>(team)))
-        return luaL_error(L, "team %d not in [0, %d] or band [%d, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1,
-                          kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
+        script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
+                     static_cast<int>(team), SCORE_TEAM_COUNT - 1,
+                     kFfaTeamBase, kFfaTeamBase + kFfaTeamCount - 1);
     lua_pushstring(L, og::sim::team_color_name(static_cast<int>(team)));
     return 1;
 }
@@ -2894,7 +2884,7 @@ int og_match_setting(lua_State* L)
     else if (std::strcmp(s, "difficulty") == 0)
         value = world->difficulty;
     else
-        return luaL_error(L, "og.match_setting: unknown setting '%s'", s);
+        script_raise(L, "og.match_setting: unknown setting '%s'", s);
     lua_pushinteger(L, value);
     return 1;
 }
@@ -2933,8 +2923,8 @@ int og_respawn_schedule(lua_State* L)
     if (!lua_isnoneornil(L, 2)) {
         const lua_Integer ticks = luaL_checkinteger(L, 2);
         if (ticks <= 0 || ticks > 65535)
-            return luaL_error(L, "og.respawn_schedule: ticks out of range "
-                                 "[1, 65535]");
+            script_raise(L, "og.respawn_schedule: ticks out of range "
+                            "[1, 65535]");
         ticks_override = static_cast<int>(ticks);
     }
     lua_pushboolean(
@@ -2960,8 +2950,8 @@ int og_respawn_pending_count(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
     if (team < 0 || team >= SCORE_TEAM_COUNT)
-        return luaL_error(L, "team %d out of range [0, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+        script_raise(L, "team %d out of range [0, %d]",
+                     static_cast<int>(team), SCORE_TEAM_COUNT - 1);
     lua_pushinteger(L,
                     static_cast<lua_Integer>(og::sim::respawn_pending_count(
                         *world, static_cast<int>(team))));
@@ -2975,8 +2965,8 @@ int og_respawn_anchor_count(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
     if (team < 0 || team >= SCORE_TEAM_COUNT)
-        return luaL_error(L, "team %d out of range [0, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+        script_raise(L, "team %d out of range [0, %d]",
+                     static_cast<int>(team), SCORE_TEAM_COUNT - 1);
     lua_pushinteger(
         L, static_cast<lua_Integer>(
                world->respawn.anchor_count[static_cast<std::size_t>(team)]));
@@ -2990,15 +2980,15 @@ int og_respawn_anchor(lua_State* L)
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
     if (team < 0 || team >= SCORE_TEAM_COUNT)
-        return luaL_error(L, "team %d out of range [0, %d]",
-                          static_cast<int>(team), SCORE_TEAM_COUNT - 1);
+        script_raise(L, "team %d out of range [0, %d]",
+                     static_cast<int>(team), SCORE_TEAM_COUNT - 1);
     const lua_Integer i = luaL_checkinteger(L, 2);
     const int count = static_cast<int>(
         world->respawn.anchor_count[static_cast<std::size_t>(team)]);
     if (i < 0 || i >= count)
-        return luaL_error(L, "og.respawn_anchor: index %d out of range "
-                             "[0, %d]",
-                          static_cast<int>(i), count - 1);
+        script_raise(L, "og.respawn_anchor: index %d out of range "
+                        "[0, %d]",
+                     static_cast<int>(i), count - 1);
     lua_pushinteger(L, static_cast<lua_Integer>(
                            world->respawn.anchor_x[team][i]));
     lua_pushinteger(L, static_cast<lua_Integer>(
@@ -3047,8 +3037,8 @@ int m_set_act_type(lua_State* L)
     walker* w = self_arg(L);
     const lua_Integer n = luaL_checkinteger(L, 2);
     if (n == ACT_CONTROL)
-        return luaL_error(L, "set_act_type: ACT_CONTROL is reserved for "
-                             "player seats");
+        script_raise(L, "set_act_type: ACT_CONTROL is reserved for "
+                        "player seats");
     w->set_act_type(static_cast<short>(n));
     return 0;
 }
@@ -3579,12 +3569,12 @@ int load_fenced_call(lua_State* L)
     // menu script from silently perturbing the sim
     // (docs/campaign-scripting-design.md).
     if (st != nullptr && st->campaign_dispatch) {
-        return luaL_error(
+        script_raise(
             L, "og.%s: the world API is not available during campaign hooks",
             lua_tostring(L, lua_upvalueindex(3)));
     }
     if (st != nullptr && st->loading) {
-        return luaL_error(
+        script_raise(
             L,
             "og.%s: the world API is dispatch-time only — a pack chunk's top "
             "level runs before there is a world to ask (bind hooks here and "
