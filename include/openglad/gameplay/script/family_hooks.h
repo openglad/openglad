@@ -9,13 +9,10 @@
 
 // Scripted family-hook dispatch. Call sites in the sim use the og::script::hooks
 // helpers below instead of invoking descriptor function pointers directly:
-// each helper tries the current world's registered Lua hook first, then the
-// descriptor's optional C++ callback, and returns nullopt when neither exists
-// (the caller keeps its default path). A Lua hook that ERRORS counts as absent
-// for that dispatch, so an optional descriptor callback runs next. Identical
-// on every peer, but it means a hook must fail BEFORE mutating sim state or
-// not at all: a partial script run followed by a callback double-executes
-// side effects.
+// each helper tries the current world's registered Lua hook and returns
+// nullopt when there is none (the caller keeps its default path). A Lua hook
+// that ERRORS counts as absent for that dispatch, identically on every peer,
+// so a hook must fail BEFORE mutating sim state or not at all.
 // Script errors therefore belong at branch entry (design doc R9).
 //
 // Pack-installed descriptors carry no C++ callbacks: their Lua hooks are the
