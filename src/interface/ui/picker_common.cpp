@@ -1338,8 +1338,6 @@ std::vector<std::pair<int, int>> fallback_resolutions(std::pair<int, int> deskto
         if (w >= 640 && h >= 400)
             out.emplace_back(w, h);
     }
-    if (out.empty())
-        out.emplace_back(desktop);
     return out;
 }
 
