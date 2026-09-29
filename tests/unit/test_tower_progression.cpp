@@ -491,6 +491,36 @@ TEST_F(TowerProgressionTest, run_end_keeps_deeper_disk_best)
         << "the live save mirrors the merged best";
 }
 
+// A run-end loss with no readable checkpoint (SetUp removed save0) still
+// writes the reset live save, so a relaunch starts at the Gate with the
+// best floor kept. Paired control: the checkpoint-present shape is
+// run_end_resets_cursor_with_one_field_merge_write above.
+TEST_F(TowerProgressionTest, run_end_without_a_checkpoint_writes_the_reset_live_save)
+{
+    SaveData probe;
+    ASSERT_FALSE(probe.load("save0")) << "precondition: no checkpoint on disk";
+
+    SaveData live;
+    init_tower_save(live, og::kTowerGateLevel + 4, 777u, /*best=*/4);
+    GameWorld world(0);
+    world.id = og::kTowerGateLevel + 4;
+    LevelOutcome outcome;
+    outcome.ending = 1;
+    outcome.next_level = -1;
+
+    tower().on_run_ended(live, world, outcome);
+
+    EXPECT_EQ(og::kTowerGateLevel, live.scen_num);
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load("save0"))
+        << "the reset live save must be written when no checkpoint exists";
+    EXPECT_EQ(og::kTowerGateLevel, reloaded.scen_num)
+        << "relaunch must start at the Gate, not the death floor";
+    EXPECT_EQ(og::kTowerGateLevel, reloaded.current_levels[kTowerId]);
+    EXPECT_EQ(4, reloaded.tower_best_floor) << "best retained";
+    EXPECT_EQ(777u, reloaded.tower_run_seed);
+}
+
 TEST_F(TowerProgressionTest, run_end_is_a_noop_at_the_gate_and_off_campaign)
 {
     {
