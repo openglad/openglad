@@ -1247,8 +1247,6 @@ void screen::relayout_views()
 	for (Sint32 i = 0; i < numviews && i < MAX_VIEWS; i++)
 	{
 		const viewscreen* const v = viewob[i].get();
-		if (v == nullptr)
-			continue;
 		if (v->xloc == v->slot_x_ && v->yloc == v->slot_y_ &&
 		    v->xview == v->slot_w_ && v->yview == v->slot_h_)
 			continue; // window fills the slot: the plain present covers it
