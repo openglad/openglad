@@ -381,8 +381,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         default:
             return false;
         }
-        if (!menu_item)
-            return false;
         pks().selected_menu_item = menu_item;
         retvalue = MENU_EXIT;
         return true;
@@ -498,13 +496,26 @@ EM_JS(void, publish_relay_room_snapshot_js,
 
 std::string picker_networking_campaign_tag()
 {
-    if (og::runtime::current_session != nullptr &&
-        og::runtime::current_session->myscreen_ != nullptr)
+    return og::runtime::current_session->myscreen_->save_data
+        .current_campaign;
+}
+
+// The relay base URL the NETWORKING view keys on: the normalized default,
+// or an empty URL plus the reason it is unusable. One rule for both the view
+// (re)build and the per-frame currency check, which compare its results.
+void resolve_default_relay_base_url(std::string& base_url,
+                                    std::string& error)
+{
+    try
     {
-        return og::runtime::current_session->myscreen_->save_data
-            .current_campaign;
+        base_url = og::ui::default_relay_base_url();
+        error.clear();
     }
-    return {};
+    catch (const std::exception& failure)
+    {
+        base_url.clear();
+        error = failure.what();
+    }
 }
 
 bool is_blank_text(std::string_view value)
@@ -747,13 +758,10 @@ bool picker_revert_lobby_client_if_kicked()
               : "connection lost: reverting to local lobby client");
     try
     {
-        if (!picker_replace_lobby_client(
-                owner, og::ui::create_local_picker_lobby_client(),
-                "NETWORKING", /*show_success_popup=*/false,
-                /*restore_previous_on_failure=*/false))
-        {
-            return false;
-        }
+        (void)picker_replace_lobby_client(
+            owner, og::ui::create_local_picker_lobby_client(),
+            "NETWORKING", /*show_success_popup=*/false,
+            /*restore_previous_on_failure=*/false);
     }
     catch (const std::exception& error)
     {
@@ -887,19 +895,10 @@ public:
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
         }
 
-        if (menu_id == og::ui::PickerMenuId::Scenario) {
-            // The SDL client never dispatches the shared state machine's
-            // Scenario menu: the SCENARIO subscreen runs inside the blocking
-            // create_team_menu loop (ButtonAction::CreateScenarioMenu), so
-            // show_team_build never selects the Scenario item here. The
-            // TeamBuild fall-through below would re-enter create_team_menu
-            // and nest a second team-build screen — answer the inherited
-            // show_submenu(Scenario) loop with a safe no-op Back instead.
-            return og::ui::find_picker_menu_item(
-                og::ui::PickerMenuId::Scenario,
-                og::ui::PickerMenuCommand::Back);
-        }
-
+        // Only TeamBuild reaches here: this client's TeamBuild answer is
+        // StartGame, Networking or Back (the SCENARIO subscreen runs inside
+        // create_team_menu), so show_team_build never opens the shared
+        // show_submenu(Scenario) loop against it.
         set_intercept_scope(PickerInterceptScope::TeamBuild);
         create_team_menu(0);
         set_intercept_scope(PickerInterceptScope::None);
@@ -1675,22 +1674,8 @@ private:
         cancel_relay_room_list_request();
         ++relay_rooms_.view_generation;
         relay_rooms_.view_campaign_tag = picker_networking_campaign_tag();
-        try
-        {
-            relay_rooms_.view_base_url = og::ui::default_relay_base_url();
-            relay_rooms_.view_base_url_error.clear();
-        }
-        catch (const std::exception& error)
-        {
-            relay_rooms_.view_base_url.clear();
-            relay_rooms_.view_base_url_error = error.what();
-        }
-        catch (...)
-        {
-            relay_rooms_.view_base_url.clear();
-            relay_rooms_.view_base_url_error =
-                "Relay base URL is invalid.";
-        }
+        resolve_default_relay_base_url(relay_rooms_.view_base_url,
+                                       relay_rooms_.view_base_url_error);
 
         relay_rooms_.rooms.clear();
         relay_rooms_.error.clear();
@@ -1717,18 +1702,7 @@ private:
         const std::string campaign_tag = picker_networking_campaign_tag();
         std::string base_url;
         std::string base_url_error;
-        try
-        {
-            base_url = og::ui::default_relay_base_url();
-        }
-        catch (const std::exception& error)
-        {
-            base_url_error = error.what();
-        }
-        catch (...)
-        {
-            base_url_error = "Relay base URL is invalid.";
-        }
+        resolve_default_relay_base_url(base_url, base_url_error);
         if (campaign_tag != relay_rooms_.view_campaign_tag ||
             base_url != relay_rooms_.view_base_url ||
             base_url_error != relay_rooms_.view_base_url_error)
@@ -1859,12 +1833,6 @@ private:
             relay_rooms_.request = og::ui::begin_list_relay_rooms(
                 relay_rooms_.view_base_url,
                 relay_rooms_.view_campaign_tag);
-            if (!relay_rooms_.request)
-            {
-                stage_relay_room_list_error(
-                    "Relay room listing could not be started.");
-                return;
-            }
             relay_rooms_.request_generation = relay_rooms_.view_generation;
             relay_rooms_.request_campaign_tag =
                 relay_rooms_.view_campaign_tag;
@@ -2167,13 +2135,14 @@ button* picker_networking_buttons()
 // Deterministic rewire (teams-menu pattern): nav never links to a hidden
 // row, and every visible button stays reachable from BACK. Session modes
 // (LINEUP §6) share one graph on both builds — the LAN fields, HOST and
-// JOIN are hidden there and never linked.
-void picker_wire_networking_menu_nav(button* buttons, int count,
+// JOIN are hidden there and never linked. `buttons` holds at least
+// kNetworkingMenuButtonCount rows: the one boundary guard is the caller's
+// (picker_apply_networking_menu_mode), and the layout test passes the full
+// table.
+void picker_wire_networking_menu_nav(button* buttons, int /*count*/,
                                      int visible_rooms,
                                      bool networked_session)
 {
-    if (buttons == nullptr || count < kNetworkingMenuButtonCount)
-        return;
     visible_rooms = std::clamp(visible_rooms, 0, kNetworkingMenuRoomSlots);
 
     for (int index = 0; index < kNetworkingMenuButtonCount; ++index)
@@ -2476,9 +2445,6 @@ void quit(Sint32 arg1)
 // is active, red when it is off, label centered on the face.
 static void draw_effect_button_state(button& b, bool active)
 {
-    if(b.hidden || b.no_draw)
-        return;
-
     if(active)
         og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
     else
@@ -2502,8 +2468,6 @@ void draw_cycle_effect_button(button& b, const std::string& category, const std:
 
 void draw_sprite_sheet_button(button& b)
 {
-    if (b.hidden || b.no_draw)
-        return;
     if (cfg.get_setting("graphics", "sprite_sheet").empty())
         return;
     og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
@@ -3419,8 +3383,6 @@ Sint32 change_teamnum(Sint32 arg)
        const short old_team =
            save.team_list[static_cast<std::size_t>(slot)]->teamnum;
        const short cycled = og::ui::cycle_guy_team(save, slot, arg);
-       if (cycled < 0)
-           return 0;
        current_team = cycled;
        roster_changed = cycled != old_team;
        pks().train_session->set_team(current_team);
