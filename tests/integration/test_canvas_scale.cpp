@@ -1707,6 +1707,62 @@ TEST(CanvasScale, nearest_zoom_overlay_allocation_failure_safely_aliases_world)
     EXPECT_EQ(200, E_Screen->gameplay_ui_overlay_surface()->h);
 }
 
+// When the fixed gameplay-UI overlay cannot be allocated, the HUD is drawn
+// straight into the World canvas (the fallback above). Its touch targets must
+// then map through the World canvas's own aspect-fitted rectangle -- the
+// rectangle those HUD pixels are actually presented in -- not through the
+// fixed 320x200 overlay rectangle nothing is drawn into.
+TEST(CanvasScale, hud_touch_targets_follow_the_world_fit_when_overlay_allocation_fails)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_TRUE(s);
+    const float old_overscan =
+        og::runtime::current_session->overscan_percentage_;
+
+    // Zoom 0.9 on a 640x400 viewport: the scaler-safe World canvas is 352x222
+    // and fits at x=3..636, while the 320x200 overlay fills x=0..639
+    // (CanvasScale.fractional_zoom_aspect_fits_hud_and_touch_independently).
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(9, og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(352, E_Screen->world_w());
+    ASSERT_EQ(222, E_Screen->world_h());
+    ASSERT_EQ(320, s->gameplay_ui_canvas_w());
+    ASSERT_EQ(200, s->gameplay_ui_canvas_h());
+    E_Screen->set_active_canvas(CanvasTarget::World);
+
+    // Positive control: with the overlay live, touch maps through the
+    // overlay's own full-width rectangle.
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(s->gameplay_ui_canvas_available());
+    const og::CanvasViewport overlay_dest = gameplay_ui_canvas_viewport();
+    EXPECT_EQ(0, overlay_dest.x);
+    EXPECT_EQ(0, overlay_dest.y);
+    EXPECT_EQ(640, overlay_dest.w);
+    EXPECT_EQ(400, overlay_dest.h);
+
+    // The overlay allocation fails: HUD pixels now live in the World canvas.
+    E_Screen->fail_next_gameplay_ui_allocation_for_testing();
+    E_Screen->begin_gameplay_frame();
+    ASSERT_FALSE(s->gameplay_ui_canvas_available());
+    const og::CanvasViewport world_dest = active_canvas_viewport();
+    ASSERT_EQ(3, world_dest.x);
+    ASSERT_EQ(634, world_dest.w);
+    const og::CanvasViewport fallback_dest = gameplay_ui_canvas_viewport();
+    EXPECT_EQ(3, fallback_dest.x)
+        << "fallback HUD touch must use the World canvas's fitted rectangle";
+    EXPECT_EQ(0, fallback_dest.y);
+    EXPECT_EQ(634, fallback_dest.w)
+        << "fallback HUD touch must use the World canvas's fitted rectangle";
+    EXPECT_EQ(400, fallback_dest.h);
+
+    og::runtime::current_session->overscan_percentage_ = old_overscan;
+}
+
 TEST(CanvasScale, gameplay_overlay_allocation_failure_presents_complete_frame_nearest)
 {
     ASSERT_TRUE(E_Screen);
