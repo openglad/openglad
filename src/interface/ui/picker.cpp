@@ -3414,8 +3414,6 @@ Sint32 change_teamnum(Sint32 arg)
        const short old_team =
            save.team_list[static_cast<std::size_t>(slot)]->teamnum;
        const short cycled = og::ui::cycle_guy_team(save, slot, arg);
-       if (cycled < 0)
-           return 0;
        current_team = cycled;
        roster_changed = cycled != old_team;
        pks().train_session->set_team(current_team);
