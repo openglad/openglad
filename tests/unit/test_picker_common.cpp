@@ -634,6 +634,73 @@ TEST(PickerCommon, get_random_name_without_a_pool_borrows_the_soldier_pool)
     }
 }
 
+namespace
+{
+// Patch one family descriptor for the length of a scope, exactly as a pack
+// install would, and put the shipped one back even when an assertion fails.
+struct FamilyDescriptorPatch
+{
+    int family;
+    FamilyDescriptor saved;
+
+    explicit FamilyDescriptorPatch(int family_)
+        : family(family_), saved(*get_family_descriptor(family_))
+    {
+    }
+    ~FamilyDescriptorPatch() { (void)set_family_descriptor(family, saved); }
+};
+} // namespace
+
+// Rule: with no name pool anywhere -- the family has none AND the soldier
+// fallback has none (a pack that redeclares soldier without `names`) -- a
+// recruit is named "Nameless" rather than drawing from a null list.
+TEST(PickerCommon, get_random_name_with_no_pool_anywhere_is_nameless)
+{
+    ASSERT_NE(nullptr, get_family_descriptor(FAMILY_SOLDIER));
+    FamilyDescriptorPatch soldier_patch(FAMILY_SOLDIER);
+    ASSERT_TRUE(name_pool_of(FAMILY_GOLEM).empty())
+        << "the golem ships no names of its own";
+
+    // Paired control: with the shipped soldier pool the golem borrows it.
+    const std::vector<std::string> soldier = name_pool_of(FAMILY_SOLDIER);
+    ASSERT_FALSE(soldier.empty());
+    std::srand(3);
+    const std::string borrowed = og::ui::get_random_name(FAMILY_GOLEM);
+    EXPECT_NE(soldier.end(),
+              std::find(soldier.begin(), soldier.end(), borrowed))
+        << "a poolless family borrows the soldier pool: " << borrowed;
+
+    FamilyDescriptor poolless = soldier_patch.saved;
+    poolless.name_pool = nullptr;
+    poolless.name_pool_size = 0;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, poolless));
+    EXPECT_STREQ("Nameless", og::ui::get_random_name(FAMILY_GOLEM))
+        << "no pool on the family and none on the soldier fallback";
+}
+
+// Rule: a class whose declared hire price nets negative (a pack's
+// costs.hire < 0; the decl reader accepts any int32) prices at 0 -- the
+// unpriced/refused cost -- never as a wrapped ~4-billion price.
+TEST(PickerCommon, calculate_hire_cost_of_a_negative_price_is_zero_not_wrapped)
+{
+    ASSERT_NE(nullptr, get_family_descriptor(FAMILY_SOLDIER));
+    FamilyDescriptorPatch soldier_patch(FAMILY_SOLDIER);
+    guy base_recruit(FAMILY_SOLDIER);
+    const std::uint32_t shipped = og::ui::calculate_hire_cost(base_recruit);
+
+    // Paired control: a positive price change moves the cost one for one.
+    FamilyDescriptor dearer = soldier_patch.saved;
+    dearer.hiring_cost = soldier_patch.saved.hiring_cost + 7;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, dearer));
+    EXPECT_EQ(shipped + 7u, og::ui::calculate_hire_cost(base_recruit));
+
+    FamilyDescriptor negative = soldier_patch.saved;
+    negative.hiring_cost = -1000000;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, negative));
+    EXPECT_EQ(0u, og::ui::calculate_hire_cost(base_recruit))
+        << "a price that nets negative is 0, not 2^32 - n";
+}
+
 TEST(PickerCommon, get_unique_name_falls_back_to_numbered_duplicate)
 {
     SaveData save;
@@ -2398,6 +2465,42 @@ bool any_line_contains(const std::vector<std::string>& lines,
 }
 
 } // namespace
+
+// Rule: the VIEW LEVEL roster report stops at kMaxScenarioReportRows (200)
+// rows, so a huge authored level cannot blow up the pager. Named livings are
+// one row each, which makes the cap exact to observe.
+TEST(PickerCommon, scenario_report_caps_at_two_hundred_rows)
+{
+    SaveData save;
+    save.my_team = 0;
+    const auto report_rows = [&save](ReportWorld& fx) {
+        return og::ui::build_scenario_roster_report(
+                   nullptr, og::ui::StagePreviewStatus::None, save,
+                   &fx.world())
+            .rows.size();
+    };
+
+    // Paired control: below the cap every named fighter gets its row.
+    ReportWorld small(false);
+    const std::size_t empty_rows = report_rows(small);
+    for (int i = 0; i < 150; ++i)
+    {
+        const std::string name = "R" + std::to_string(i);
+        small.spawn_living_named(FAMILY_SOLDIER, 0, 1, name.c_str());
+    }
+    ASSERT_EQ(empty_rows + 150u, report_rows(small));
+
+    ReportWorld huge(false);
+    std::vector<std::string> names;
+    names.reserve(250);
+    for (int i = 0; i < 250; ++i)
+    {
+        names.push_back("H" + std::to_string(i));
+        huge.spawn_living_named(FAMILY_SOLDIER, 0, 1, names.back().c_str());
+    }
+    EXPECT_EQ(200u, report_rows(huge))
+        << "250 named livings report exactly kMaxScenarioReportRows rows";
+}
 
 TEST(PickerCommon, scenario_report_groups_classic_roster)
 {
