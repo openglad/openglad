@@ -66,6 +66,8 @@
 #include <openglad/resources/win_shares.h>
 #include <openglad/server/headless_server_runtime.h>
 
+#include "curses_game_flow_internal.h"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -103,53 +105,6 @@ std::string make_network_player_name()
         std::chrono::steady_clock::now().time_since_epoch().count());
     const std::uint64_t seq = counter.fetch_add(1, std::memory_order_relaxed);
     return std::format("curses-{:016x}-{:x}", now, seq);
-}
-
-// Pull human-readable notification text out of an event batch into `out`.
-// A targeted line (target_player >= 0) is addressed to one global player and
-// is dropped by every other seat.
-void collect_notifications(const og::sim::SimEventBatch& batch,
-                           std::vector<std::string>& out, int local_player)
-{
-    for (const og::sim::Event& ev : batch.events) {
-        if (ev.kind == og::sim::EventKind::Notification && !ev.text.empty() &&
-            (ev.target_player < 0 || ev.target_player == local_player))
-            out.push_back(ev.text);
-    }
-}
-
-// Latched level-end state (see curses_game_runtime.cpp for the rationale: the
-// authoritative end arrives as an EndGame/SetEnd event and must NOT be stored in
-// the mirror world, since the next delta snapshot would clobber it).
-struct PendingEnd {
-    bool ended = false;
-    short ending = 0;
-    short next_level = -1;
-};
-
-// Apply terminal game-flow events: latch any level end and collect notifications.
-void apply_game_flow_batch(const og::sim::SimEventBatch& batch, PendingEnd& end,
-                           std::vector<std::string>& messages, int local_player)
-{
-    for (const og::sim::Event& ev : batch.events) {
-        switch (ev.kind) {
-        case og::sim::EventKind::EndGame:
-            end.ended = true;
-            end.ending = static_cast<short>(static_cast<std::int32_t>(ev.a));
-            end.next_level = static_cast<short>(static_cast<std::int32_t>(ev.b));
-            break;
-        case og::sim::EventKind::SetEnd:
-            end.ended = true;
-            break;
-        case og::sim::EventKind::Notification:
-            if (!ev.text.empty() &&
-                (ev.target_player < 0 || ev.target_player == local_player))
-                messages.push_back(ev.text);
-            break;
-        default:
-            break;
-        }
-    }
 }
 
 // --- lobby message construction (replicated from the SDL lobby helpers) ------
