@@ -1861,8 +1861,6 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         switch (message.kind)
         {
         case TypedReceivedMessageKind::Input:
-            if (!message.input)
-                break;
             if (!client.has_player_binding() && !client.spectator_admitted)
                 break;
             // A zero-seat display still sends the shared InputState envelope
