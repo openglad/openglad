@@ -515,8 +515,6 @@ void LobbyServer::connect_client(PeerId peer_id)
         it->second.connection_order = it->second.connection_order == 0
             ? next_connection_order_++
             : it->second.connection_order;
-        if (it->second.machine_id == kInvalidLobbyMachineId)
-            it->second.machine_id = allocate_machine_id();
     }
     else
     {
