@@ -445,6 +445,26 @@ std::unique_ptr<viewscreen> viewscreen::make_camera(screen* screenp)
 // Destruct the viewscreen and its variables
 viewscreen::~viewscreen() = default;
 
+// A fall glide's n is kGlideFallBaseFrames + kGlideFallPerStory*(stories-1)
+// capped at kGlideFallMaxFrames, stories = min(|floor delta|, 3) >= 1, so
+// n is 9, 12 or 14; the ease-in segment m = round(0.7*n) is 6, 8 or 10 and
+// always leaves >= 3 settle frames (n - m >= 3).
+static constexpr bool fall_glide_keeps_three_settle_frames()
+{
+	for (Sint32 stories = 1; stories <= 3; ++stories)
+	{
+		const Sint32 n = std::min(
+		    kGlideFallBaseFrames + kGlideFallPerStory * (stories - 1),
+		    kGlideFallMaxFrames);
+		const Sint32 m = (7 * n + 5) / 10; // round(0.7*n), no .5 ties here
+		if (m > n - 3)
+			return false;
+	}
+	return true;
+}
+static_assert(fall_glide_keeps_three_settle_frames(),
+              "a fall glide must keep >= 3 settle frames");
+
 // Fractional camera height at render frame i of n (i in 1..n-1; t = 1 is
 // never evaluated — the final frame takes the untouched integer path, so
 // endpoint exactness is structural, not numeric).
@@ -456,9 +476,8 @@ static float floor_glide_z_at(Sint32 i, Sint32 n, float from_eff, float to,
 		// Two segments: gravity-shaped ease-in quadratic into an overshoot
 		// kGlideFallOvershoot floors PAST the destination (downward), then an
 		// ease-out settle back up to it — the landing "thud" squash.
-		Sint32 m = static_cast<Sint32>(std::lround(0.7 * static_cast<double>(n)));
-		if (m > n - 3)
-			m = n - 3; // always >= 3 settle frames
+		// Always >= 3 settle frames (fall_glide_keeps_three_settle_frames).
+		const Sint32 m = static_cast<Sint32>(std::lround(0.7 * static_cast<double>(n)));
 		const float z_ov = to - kGlideFallOvershoot;
 		if (i <= m)
 		{
