@@ -428,6 +428,65 @@ TEST(WinShares, persist_networked_win_without_a_prelevel_save_writes_nothing)
     (void)remove_user_file("save/netwinnosave.gtl");
 }
 
+// A networked win whose company write fails (here: the atomic-save staging
+// path save/<slot>.tmp.gtl is occupied by a directory) reports false, and
+// the company file keeps its pre-level contents. Paired control: with the
+// staging path free the same persist succeeds and advances the cursor.
+TEST(WinShares, persist_networked_win_reports_a_failed_company_write)
+{
+    ScopedMountRestore mount_guard;
+    restore_default_campaigns();
+    og::data::ScopedActiveCompany active("netwinfail");
+    ASSERT_TRUE(active.applied());
+    {
+        SaveData disk;
+        disk.save_name = "NET FAIL CO";
+        disk.current_campaign = "gladiator";
+        disk.scen_num = 1;
+        ASSERT_TRUE(disk.save("netwinfail"));
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path staging =
+        fs::path(get_user_path()) / "save" / "netwinfail.tmp.gtl";
+    std::error_code ec;
+    fs::create_directories(staging, ec);
+    ASSERT_TRUE(fs::is_directory(staging)) << ec.message();
+
+    SaveData session;
+    session.current_campaign = "gladiator";
+    session.scen_num = 2;
+    TestGameWorld fx;
+    NetWinFoldCapture capture;
+    add_contributors(capture, /*owner=*/0, /*team=*/0, /*count=*/1);
+    const std::array<std::uint8_t, 1> own = {0};
+
+    EXPECT_FALSE(og::progression::persist_networked_win(
+        "netwinfail", session, fx.world(), std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/1));
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("netwinfail"));
+        EXPECT_EQ(1, reloaded.scen_num) << "the failed write left the company as it was";
+    }
+
+    fs::remove_all(staging, ec);
+    fs::remove(fs::path("save") / "netwinfail.tmp.gtl", ec); // cwd fallback
+    EXPECT_TRUE(og::progression::persist_networked_win(
+        "netwinfail", session, fx.world(), std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/1));
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("netwinfail"));
+        EXPECT_EQ(2, reloaded.scen_num) << "the control write carries the cursor";
+    }
+
+    for (const og::data::CompanyBackupInfo& info :
+         og::data::list_company_backups("netwinfail"))
+        (void)remove_user_file("save/backups/" + info.filename);
+    (void)remove_user_file("save/netwinfail.gtl");
+}
+
 // #207: the networked cursor restore. The session fold (progression.cpp
 // step 5b) has already restored an armed replay's cursor before any
 // persist runs, so persist_networked_win writes the RESTORED cursor into
