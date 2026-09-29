@@ -231,9 +231,8 @@ void publish_primary_render_sample(const viewscreen& view,
         return;
     }
 
+    // Both callers (the redraw overloads) already dereferenced active_screen().
     screen* const game_screen = active_screen();
-    if (game_screen == nullptr)
-        return;
 
     og::runtime::RuntimeRenderSample sample;
     sample.view_index = view.mynum;
