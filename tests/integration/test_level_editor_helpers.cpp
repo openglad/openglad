@@ -42,6 +42,7 @@ int level_editor_test_exercise_internal_helpers();
 int level_editor_test_decor_migrated_roundtrip();
 int level_editor_test_mouse_release_workflows();
 int level_editor_test_save_failure_reporting();
+int level_editor_test_campaign_menu_flows();
 int level_editor_test_nameless_selection_panel_rows();
 enum class EventType;
 EventType handle_basic_editor_event(const void* native_event);
@@ -241,6 +242,17 @@ TEST(LevelEditorHelpers, failed_saves_report_and_keep_the_level_dirty)
 {
     ASSERT_EQ(0, level_editor_test_save_failure_reporting())
         << "save-failure reporting failed at the negated check index";
+}
+
+// File > Campaign > New, Load and Save As through the real menu clicks,
+// each refusal/failure beside the same door succeeding.
+TEST(LevelEditorHelpers, campaign_menu_new_load_and_save_as_report_and_switch_exactly)
+{
+    ASSERT_EQ(0, level_editor_test_campaign_menu_flows())
+        << "File > Campaign > New/Load/Save As: a refused or failed step must "
+           "say so and switch nothing; a confirmed one must load/save, remount "
+           "and clear exactly the dirty flags it owns (the value is minus the "
+           "first failing internal check)";
 }
 
 // A guy with no name must not push his family label onto the name row: the
