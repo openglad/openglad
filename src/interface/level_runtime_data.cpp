@@ -69,14 +69,10 @@ static void wire_world_loader(GameWorld& world,
                               const std::shared_ptr<loader>& game_loader)
 {
     world.entity_factory = [game_loader](Order order, std::int32_t family) -> std::unique_ptr<walker> {
-        if (!game_loader)
-            return nullptr;
         return game_loader->create_walker_owned(order, family);
     };
 
     world.entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
-        if (!game_loader)
-            return nullptr;
         game_loader->set_walker(&entity, order, family);
         return game_loader->graphics_for(entity.query_order(), entity.family());
     };
