@@ -308,9 +308,6 @@ GameFrameResult run_game_tick(screen& s,
     s.process_input(input);
     s.continuous_input();
 
-    if (s.world().end)
-        return finish_done(st);
-
     og::runtime::local_transport_shadow_finish_tick(gameplay_session);
     s.framecount++;
 #ifdef TESTING
