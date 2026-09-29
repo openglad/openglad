@@ -166,14 +166,12 @@ private:
         PeerId peer_id,
         std::int16_t requested_team,
         std::optional<std::int16_t> current_team) const noexcept;
-    // Seat-aware resolve. sibling_teams is retained for source compatibility
-    // with the legacy distinct-seat callers, but no longer excludes duplicate
-    // assignments.
+    // Seat-level resolve. A machine's other seats never exclude a team:
+    // explicit assignments deliberately permit duplicate teams.
     [[nodiscard]] std::int16_t resolve_seat_team(
         PeerId peer_id,
         std::int16_t requested_team,
-        std::optional<std::int16_t> current_team,
-        const std::vector<std::int16_t>& sibling_teams) const noexcept;
+        std::optional<std::int16_t> current_team) const noexcept;
     [[nodiscard]] std::size_t remaining_team_capacity(PeerId peer_id) const noexcept;
     // Server-authoritative StartGame gate (§4.3), evaluated in order:
     //   1. local_session_ lobbies pass unconditionally (solo/split-screen GO);
