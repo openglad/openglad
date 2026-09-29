@@ -33,11 +33,10 @@
 static PixieData letters1;
 static PixieData letters_big;
 
+// value is a prompt's static edit buffer and length > 0: both callers run
+// only under `tempchar == KEYCODE_BACKSPACE && current_length > 0`.
 static void erase_last_utf8_codepoint(char* value, std::size_t length)
 {
-    if (value == nullptr || length == 0)
-        return;
-
     std::size_t erase_at = length - 1;
     while (erase_at > 0 &&
            (static_cast<unsigned char>(value[erase_at]) & 0xc0u) == 0x80u)
