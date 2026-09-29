@@ -1919,48 +1919,37 @@ public:
     HookFrame(const HookFrame&) = delete;
     HookFrame& operator=(const HookFrame&) = delete;
 
-    bool begin(Order order, int family_id, FamilyHook hook)
+    // Callers have already seen WorldScripts::has_hook(order, family_id,
+    // hook), and the mask bit is set only by note_hook right after a
+    // lua_rawseti of a FUNCTION into that family's hook table
+    // (og.register_hooks, family_decl.cpp bind_one_hook), with nothing that
+    // writes nil back. So the family table and the function are both there.
+    void begin(Order order, int family_id, FamilyHook hook)
     {
-        VmState* st = get_vm_state(L_);
-        if (st == nullptr)
-            return false;
+        VmState* st = &vm_state(L_);
         gen_ = push_dispatch_gen(L_);
         lua_rawgeti(L_, LUA_REGISTRYINDEX, st->hooks_ref);
         lua_rawgeti(L_, -1, hook_table_key(order, family_id));
-        if (!lua_istable(L_, -1)) {
-            lua_pop(L_, 2);
-            return false;
-        }
         lua_rawgeti(L_, -1, static_cast<lua_Integer>(hook));
-        if (!lua_isfunction(L_, -1)) {
-            lua_pop(L_, 3);
-            return false;
-        }
         lua_remove(L_, -2);  // family table
         lua_remove(L_, -2);  // hooks root
         nargs_ = 0;
-        return true;
     }
 
     // begin() for the DoSpecial slot, which may hold either the classic
     // do_special function or a specials table (its declared-id keys were
     // resolved to slots at registration). For a table this selects [sp],
-    // then "default". When the table holds neither, sets
-    // *no_special_handler and returns false with a clean stack: the
-    // dispatch is consumed as a successful no-op, with nothing called.
-    bool begin_special(int family_id, lua_Integer sp,
-                       bool* no_special_handler)
+    // then "default". When the table holds neither, returns false with a
+    // clean stack: the dispatch is consumed as a successful no-op, with
+    // nothing called. Same has_hook precondition as begin(): the slot holds
+    // the function or the specials table (both writers store one of the
+    // two), so there is no other way to come back empty.
+    bool begin_special(int family_id, lua_Integer sp)
     {
-        VmState* st = get_vm_state(L_);
-        if (st == nullptr)
-            return false;
+        VmState* st = &vm_state(L_);
         gen_ = push_dispatch_gen(L_);
         lua_rawgeti(L_, LUA_REGISTRYINDEX, st->hooks_ref);
         lua_rawgeti(L_, -1, hook_table_key(Order::Living, family_id));
-        if (!lua_istable(L_, -1)) {
-            lua_pop(L_, 2);
-            return false;
-        }
         lua_rawgeti(L_, -1,
                     static_cast<lua_Integer>(FamilyHook::DoSpecial));
         if (lua_istable(L_, -1)) {
@@ -1970,7 +1959,6 @@ public:
             // through to it: the slot was written to do nothing, on purpose.
             if (lua_isboolean(L_, -1) && !lua_toboolean(L_, -1)) {
                 lua_pop(L_, 4);  // entry + specials + family + hooks root
-                *no_special_handler = true;
                 return false;
             }
             if (!lua_isfunction(L_, -1)) {
@@ -1981,14 +1969,9 @@ public:
             if (!lua_isfunction(L_, -1)) {
                 // entry + specials table + family table + hooks root
                 lua_pop(L_, 4);
-                *no_special_handler = true;
                 return false;
             }
             lua_remove(L_, -2);  // specials table
-        }
-        if (!lua_isfunction(L_, -1)) {
-            lua_pop(L_, 3);
-            return false;
         }
         lua_remove(L_, -2);  // family table
         lua_remove(L_, -2);  // hooks root
@@ -2149,8 +2132,7 @@ std::optional<bool> try_script_hook(Order order, int family_id,
     if (!ws.has_hook(order, family_id, hook))
         return std::nullopt;
     HookFrame f(ws);
-    if (!f.begin(order, family_id, hook))
-        return std::nullopt;
+    f.begin(order, family_id, hook);
     (f.arg(args), ...);
     return f.call(hook_where(hook), wants_result);
 }
@@ -2175,12 +2157,8 @@ std::optional<SpecialResult> try_script_do_special(int family_id, walker* self,
         (self != nullptr) ? static_cast<lua_Integer>(self->current_special())
                           : 0;
     HookFrame f(ws);
-    bool no_special_handler = false;
-    if (!f.begin_special(family_id, sp, &no_special_handler)) {
-        if (no_special_handler)
-            return SpecialResult::success();
-        return std::nullopt;
-    }
+    if (!f.begin_special(family_id, sp))
+        return SpecialResult::success();
     f.arg(self);
     return f.call_special(hook_where(FamilyHook::DoSpecial), error_reason);
 }
