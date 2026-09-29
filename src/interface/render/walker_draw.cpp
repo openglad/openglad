@@ -772,13 +772,12 @@ inline constexpr Uint8 SHADOW_ALPHA = 90;
 inline constexpr Uint8 REFLECTION_ALPHA = 80;
 
 // Alive Living/Weapon walkers cast shadows and reflections; phantoms and
-// invisible units cast neither (their FX must not give them away).
+// invisible units cast neither (their FX must not give them away). Every
+// caller's entity loop already skips dead walkers.
 static bool casts_ground_effects(const walker& w)
 {
     const Order order = w.query_order();
     if (order != Order::Living && order != Order::Weapon)
-        return false;
-    if (w.dead())
         return false;
     if (w.dormant()) // delayed spawn: not in the world yet
         return false;
