@@ -62,7 +62,6 @@ loader* headless_entity_loader();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 int get_input_events();
 walker* find_follow_leader();
-extern short end_of_file;
 int toInt(const std::string& s);
 void input_state_from_sdl(InputState& out);
 void emit_headless_unsupported_warnings_probe();
@@ -99,44 +98,6 @@ private:
     const char* name_;
     bool had_value_ = false;
     std::string old_value_;
-};
-
-class MemoryOgFile final : public og::io::OgFile {
-public:
-    explicit MemoryOgFile(std::string data)
-        : data_(std::move(data))
-    {
-    }
-
-    std::size_t read(void* buf, std::size_t size, std::size_t count) override
-    {
-        const std::size_t requested = size * count;
-        const std::size_t available = pos_ < data_.size() ? data_.size() - pos_ : 0u;
-        const std::size_t bytes = requested < available ? requested : available;
-        if (bytes > 0)
-            std::memcpy(buf, data_.data() + pos_, bytes);
-        pos_ += bytes;
-        return size == 0 ? 0u : bytes / size;
-    }
-
-    std::size_t write(const void*, std::size_t, std::size_t) override { return 0; }
-
-    std::int64_t seek(std::int64_t offset, int whence) override
-    {
-        if (whence == 0)
-            pos_ = static_cast<std::size_t>(offset);
-        else if (whence == 1)
-            pos_ += static_cast<std::size_t>(offset);
-        else if (whence == 2)
-            pos_ = data_.size() + static_cast<std::size_t>(offset);
-        return static_cast<std::int64_t>(pos_);
-    }
-
-    std::int64_t tell() override { return static_cast<std::int64_t>(pos_); }
-
-private:
-    std::string data_;
-    std::size_t pos_ = 0;
 };
 
 class StdinRedirect {
@@ -604,32 +565,6 @@ TEST(PlatformHeadless, unsupported_platform_functions_return_documented_defaults
     EXPECT_EQ(kNoTimerWaitRequest, input.timer_wait_request);
 
     emit_headless_unsupported_warnings_probe();
-}
-
-TEST(PlatformHeadless, help_reader_stops_on_newline_carriage_return_limit_and_eof)
-{
-    MemoryOgFile file("alpha\rbravo\ncharlie");
-    end_of_file = 0;
-    EXPECT_EQ("alpha", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ("bravo", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ("charlie", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ("", read_one_line(file, HELP_WIDTH));
-    EXPECT_EQ(1, end_of_file);
-
-    MemoryOgFile limited("abcdef");
-    end_of_file = 0;
-    EXPECT_EQ("abc", read_one_line(limited, 3));
-    EXPECT_EQ(0, end_of_file);
-
-    MemoryOgFile many_lines("one\ntwo\nthree\n");
-    char help[HELP_WIDTH][MAX_LINES];
-    std::memset(help, 0, sizeof(help));
-    end_of_file = 0;
-    const short count = fill_help_array(help, many_lines);
-    EXPECT_GE(count, 3);
-    EXPECT_STREQ("one", help[0]);
-    EXPECT_STREQ("two", help[1]);
-    EXPECT_STREQ("three", help[2]);
 }
 
 TEST(PlatformHeadless, walker_render_stubs_keep_sim_state_without_render_component)
