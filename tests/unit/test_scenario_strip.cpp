@@ -259,3 +259,44 @@ TEST(ScenarioStripClassic, scripted_maps_are_left_to_their_mode_script)
     EXPECT_EQ(1, fx.count_order(Order::Living));
     EXPECT_EQ(1, fx.count_order(Order::Generator));
 }
+
+// The strip scrubs references into the removed troops from EVERY list, not
+// just oblist: an effect owned by a doomed troop, a weapon aimed at one and
+// a corpse (dead_list) led by one all read nullptr afterwards. An effect
+// owned by the surviving roster fighter is the paired control: it keeps its
+// owner.
+TEST(ScenarioStripClassic, strip_clears_references_held_by_effects_weapons_and_corpses)
+{
+    StripFixture fx;
+    walker* const survivor = fx.spawn_roster_member(FAMILY_SOLDIER, 0);
+    walker* const doomed = fx.spawn_living(FAMILY_ORC, 1);
+    walker* const follower = fx.spawn_living(FAMILY_ORC, 1);
+    ASSERT_TRUE(survivor && doomed && follower);
+
+    // The corpse: a follower of the doomed troop dies and the tick's reap
+    // moves it to dead_list (the product's own path there).
+    follower->set_leader(doomed);
+    follower->set_dead(1);
+    const std::uint32_t follower_id = follower->entity_id();
+    fx.world().tick();
+    ASSERT_FALSE(fx.world().dead_list.empty());
+    walker* const corpse = fx.world().dead_list.back().get();
+    ASSERT_EQ(follower_id, corpse->entity_id());
+    ASSERT_EQ(doomed, corpse->leader());
+
+    walker* const doomed_fx = fx.world().add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* const kept_fx = fx.world().add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* const weapon = fx.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_TRUE(doomed_fx && kept_fx && weapon);
+    doomed_fx->set_owner(doomed);
+    kept_fx->set_owner(survivor);
+    weapon->set_foe(doomed);
+
+    EXPECT_EQ(1, og::sim::classic_strip_authored_troops(fx.world()));
+
+    EXPECT_EQ(nullptr, doomed_fx->owner()) << "fxlist reference cleared";
+    EXPECT_EQ(nullptr, weapon->foe()) << "weaplist reference cleared";
+    EXPECT_EQ(nullptr, corpse->leader()) << "dead_list reference cleared";
+    EXPECT_EQ(survivor, kept_fx->owner())
+        << "a reference to a surviving walker is left alone";
+}

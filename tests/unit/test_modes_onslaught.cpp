@@ -2168,3 +2168,33 @@ TEST_F(ModesOnslaught, turn_undead_gate_cancel_spares_the_victim)
     EXPECT_EQ(0u, undead->last_attacker_id()) << "a cancel never stamps";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
+
+// The scripted arm stamps the owner-chain ROOT, like walker::attack's score
+// and kill credit: a raised (owned) cleric's partial turn-undead hit credits
+// the cleric that raised it, not the cleric that cast.
+TEST_F(ModesOnslaught, turn_undead_partial_hit_credits_the_owner_chain_root)
+{
+    GateScript gate;
+    ModesCtfWorld fx(kGateLevel);
+    fx.tick(1);
+    ASSERT_TRUE(fx.world().mode.active);
+    walker* raiser = fx.spawn_living(FAMILY_CLERIC, 0, 120, 264);
+    walker* cleric = fx.spawn_living(FAMILY_CLERIC, 0, 200, 264);
+    walker* undead = fx.spawn_living(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_NE(nullptr, raiser);
+    ASSERT_NE(nullptr, cleric);
+    ASSERT_NE(nullptr, undead);
+    cleric->set_owner(raiser);
+    undead->stats()->set_level(1);
+    const float hp_before = undead->stats()->hitpoints();
+    ASSERT_GT(hp_before, 7.0f);
+    fx.world().mode.vars[kGateVerdictSlot] = 7;
+
+    const int killed = cast_turn_until_it_lands(cleric, undead, hp_before);
+    EXPECT_EQ(0, killed);
+    EXPECT_EQ(hp_before - 7.0f, undead->stats()->hitpoints())
+        << "the partial hit landed";
+    EXPECT_EQ(raiser->entity_id(), undead->last_attacker_id())
+        << "the stamp names the owner-chain root, not the owned caster";
+    EXPECT_NE(cleric->entity_id(), raiser->entity_id());
+}

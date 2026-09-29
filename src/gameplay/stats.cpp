@@ -122,14 +122,10 @@ void statistics::mark_dirty(std::uint8_t bit_index)
 void statistics::set_controller(walker* value)
 {
 	walker* dirty_owner = owner_;
-	if (dirty_owner == nullptr)
-		dirty_owner = controller_ ? controller_ : value;
 
 	controller_ = value;
 	controller_id_ = (value != nullptr) ? value->entity_id() : 0;
 
-	if (owner_ == nullptr)
-		owner_ = dirty_owner;
 	if (dirty_owner != nullptr)
 		dirty_owner->mark_dirty(og::dirty::BIT_CONTROLLER_ID);
 }

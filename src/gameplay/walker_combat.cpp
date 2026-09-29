@@ -63,9 +63,6 @@ bool positional_sound_visible(const walker* source, std::uint32_t sound_id)
 // Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 {
-    if (w == nullptr || w->stats() == nullptr)
-        return 0;
-
     const std::int32_t target_level =
         (target != nullptr && target->stats() != nullptr) ? target->stats()->level() : 0;
 
@@ -74,9 +71,6 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 
 float get_base_damage(walker* w)
 {
-    if (w == nullptr)
-        return 0.0f;
-
     return compute_base_damage(w->damage(), combat_rng());
 }
 
@@ -158,10 +152,10 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 // harness's libc-rand cosmetic override (when installed) matches
                 // master's dual-RNG-stream behavior. combat_rng (damage/xp)
                 // deliberately does NOT consult this override.
+                // Non-null here: with a live world cosmetic_rng() answers
+                // the override or &world->rng_ (gameplay_context.cpp).
                 IRandom* ani_rng = cosmetic_rng();
-                newob->set_ani_type(static_cast<char>(
-                    1 + (ani_rng != nullptr ? ani_rng->next(3)
-                                            : current_game->world->rng_.next(3))));
+                newob->set_ani_type(static_cast<char>(1 + ani_rng->next(3)));
                 if(attacker == this)
                 {
                     newob->center_on(target);

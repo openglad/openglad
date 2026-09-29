@@ -590,3 +590,81 @@ TEST(WalkerSpecialsUnit, special_reports_why_it_refused)
     EXPECT_FALSE(arrow->special(&why));
     EXPECT_EQ(walker::SpecialFailure::NotLiving, why);
 }
+
+// walker::special() rewrites an out-of-range current_special (the Lua setter
+// and the snapshot field carry any char) to special 1 BEFORE the family hook
+// runs: the mage casts in slot 1 and pays special 1's price.
+// The in-range request is the paired control: same slot, same price.
+TEST(WalkerSpecialsUnit, out_of_range_special_is_cast_as_special_one)
+{
+    for (const char requested : {static_cast<char>(1),
+                                 static_cast<char>(NUM_SPECIALS + 3)})
+    {
+        SpecialsFixture fx;
+        GameWorld& w = fx.level.world();
+        paint_floor(w, 0, PIX_GRASS1);
+        living* mage = add_actor(fx, FAMILY_MAGE, 0, 96, 96);
+        ASSERT_NE(nullptr, mage);
+        mage->stats()->set_magicpoints(500.0f);
+        mage->stats()->set_special_cost(1, 15);
+        mage->stats()->set_special_cost(2, 40);
+        mage->set_current_special(requested);
+        w.rng_.state_ = 0xC0FFEEu;
+
+        walker::SpecialFailure why = walker::SpecialFailure::Disabled;
+        ASSERT_TRUE(mage->special(&why))
+            << "requested special " << static_cast<int>(requested);
+        EXPECT_EQ(1, static_cast<int>(mage->current_special()))
+            << "requested " << static_cast<int>(requested)
+            << ": the cast slot is special 1";
+        EXPECT_EQ(485.0f, mage->stats()->magicpoints())
+            << "requested " << static_cast<int>(requested)
+            << ": special 1's cost (15) is charged";
+    }
+}
+
+// Only a PLAYER-controlled caster (user() != -1) is told why its marker
+// blink fell through: "Marker is Blocked!" goes to that player alone, and an
+// AI mage in the same spot gets no line at all.
+TEST(WalkerSpecialsUnit, blocked_marker_notice_goes_only_to_the_casting_player)
+{
+    for (const signed char user : {static_cast<signed char>(2),
+                                   static_cast<signed char>(-1)})
+    {
+        SpecialsFixture fx;
+        GameWorld& w = fx.level.world();
+        paint_floor(w, 0, PIX_BOULDER_1);
+        paint_cell(w, 0, 20, 20, PIX_GRASS1);
+        living* mage = add_actor(fx, FAMILY_MAGE, 0, 96, 96);
+        ASSERT_NE(nullptr, mage);
+        mage->set_user(user);
+        walker* marker = add_marker(fx, mage, 320, 320, 5);
+        ASSERT_NE(nullptr, marker);
+        ASSERT_NE(nullptr, add_actor(fx, FAMILY_SOLDIER, 1, 320, 320));
+        fx.events.clear();
+
+        w.rng_.state_ = 42;
+        EXPECT_FALSE(mage->teleport());
+
+        int notices = 0;
+        std::int32_t addressee = -99;
+        for (const auto& ev : fx.events.events())
+        {
+            if (ev.kind == og::sim::EventKind::Notification &&
+                ev.text == "Marker is Blocked!")
+            {
+                ++notices;
+                addressee = ev.target_player;
+            }
+        }
+        if (user == -1)
+        {
+            EXPECT_EQ(0, notices) << "an AI caster is never told";
+        }
+        else
+        {
+            EXPECT_EQ(1, notices) << "the casting player is told once";
+            EXPECT_EQ(2, addressee) << "addressed to the caster's player";
+        }
+    }
+}

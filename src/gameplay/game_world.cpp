@@ -52,9 +52,6 @@ bool is_tracked_entity(const GameWorld& world, const walker* candidate)
 
 void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
 {
-    if (entity == nullptr)
-        return;
-
     constexpr int kMaxOwnerDepth = 16;
     walker* current = entity;
     for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
@@ -2187,8 +2184,6 @@ inline constexpr std::int32_t kWakeNudgeRadius = 4;
 
 bool GameWorld::dormant_occupies_spot(const walker* probe) const
 {
-    if (probe == nullptr)
-        return false;
     return dormant_overlaps_box(*this, probe, probe->xpos(), probe->ypos(),
                                 probe->floor());
 }
@@ -2222,8 +2217,6 @@ bool GameWorld::wake_spot_blocked(walker* ob)
 
 bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
 {
-    if (ob == nullptr)
-        return false;
     const PixieData& g = grid_for_floor(ob->floor());
     if (!g.valid())
         return false;

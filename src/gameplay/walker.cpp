@@ -92,8 +92,6 @@ std::uint32_t query_difficulty_percent()
 
 std::uint32_t query_generator_rate_percent()
 {
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 100u;
     const int rate = current_game->world->generator_rate;
     if (rate <= 0)
         return 100u;
@@ -1231,8 +1229,6 @@ std::int32_t finalized_weapon_reach(const walker& weapon)
 
 bool weapon_profile_requires_hook(const walker& owner)
 {
-	if (owner.query_order() != Order::Living)
-		return false;
 	const FamilyDescriptor* descriptor =
 		get_family_descriptor(owner.family());
 	if (descriptor == nullptr || descriptor->customize_weapon != nullptr ||
@@ -1275,8 +1271,6 @@ bool footprint_touches_water(GameWorld& world, const walker& mover,
 bool water_blocks_mover(const walker& mover)
 {
 	const statistics* stats = mover.stats();
-	if (stats == nullptr)
-		return true;
 	if (stats->query_bit_flags(BIT_ETHEREAL))
 		return false;
 	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
@@ -1394,8 +1388,6 @@ bool walker::can_approach_weapon_range(const walker* objective)
 				return false;
 			}
 		}
-		if (next_x == x && next_y == y)
-			return false;
 		x = next_x;
 		y = next_y;
 	}
@@ -1783,27 +1775,13 @@ walker::act_random()
 	}
 
 	// Otherwise, try to walk toward foe
-	newx = 0;
-	newy = 0;
+	newx = xdist;    // total horizontal distance..
+	if (newx)                      // If it's not 0, then get
+		newx = (newx > 0) ? 1 : -1;       // the normal of it..
 
-	if (foe())
-	{
-			newx = xdist;    // total horizontal distance..
-			if (newx)                      // If it's not 0, then get
-				newx = (newx > 0) ? 1 : -1;       // the normal of it..
-
-			newy = ydist;
-			if (newy)
-				newy = (newy > 0) ? 1 : -1;
-	}  // end of if we had a foe ..
-		else
-		{
-			while ( !newx && !newy)
-			{
-				newx = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // Walk in some random direction
-				newy = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // other than 0,0 :)
-			}
-		}
+	newy = ydist;
+	if (newy)
+		newy = (newy > 0) ? 1 : -1;
 
 	// If blocked
 	set_collide_ob(nullptr);
@@ -2576,8 +2554,6 @@ std::string_view entity_display_name(const walker* w, std::string_view fallback)
 // (server-only transient, the z_stair_latched_ precedent).
 void walker::latch_exit_contact(const walker* pad)
 {
-	if (pad == nullptr)
-		return;
 	exit_latched_ = true;
 	exit_latch_x_ = static_cast<std::int16_t>(pad->xpos());
 	exit_latch_y_ = static_cast<std::int16_t>(pad->ypos());

@@ -10,12 +10,15 @@
 
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/effect.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/summon.h>
 #include <openglad/gameplay/families/effect_family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/constants.h>
+
+#include <string>
 
 #include <gtest/gtest.h>
 #include "test_family_hook_dispatch.h"
@@ -199,4 +202,68 @@ TEST(ZAxisFxFloor, delayed_spawn_wake_flash_inherits_wakers_floor)
     ASSERT_NE(flash, nullptr) << "activation must emit the teleport-in flash";
     EXPECT_EQ(1, flash->floor())
         << "the wake flash must appear on the waking walker's floor";
+}
+
+// Own-team kill wording (walker::attack's same-team arm). An explosion is
+// set_dead before its on_death blast, so is_friendly() answers 0 for it and
+// its half-damage ally tier can finish off a teammate; the announcement then
+// names a summon "<name> Dispelled!", a named NPC "<name> DIED!" and an
+// unnamed company hero by its guy's name, "<name> Died!".
+TEST(ZAxisFxFloor, own_team_blast_kills_are_announced_by_victim_kind)
+{
+    guy hero_guy(FAMILY_SOLDIER);
+    hero_guy.name = "BRAN";
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+
+    walker* owner = w.add_ob(Order::Living, FAMILY_THIEF);
+    ASSERT_NE(owner, nullptr);
+    owner->setxy(20 * GRID_SIZE, 20 * GRID_SIZE); // outside the blast
+    owner->stats()->set_level(3);
+    owner->set_team_num(0);
+
+    auto ally = [&w](int dx) {
+        walker* v = w.add_ob(Order::Living, FAMILY_SOLDIER);
+        if (v != nullptr)
+        {
+            v->setxy(6 * GRID_SIZE + dx, 6 * GRID_SIZE);
+            v->set_team_num(0);
+            v->stats()->set_hitpoints(1.0f);
+            v->stats()->name.clear();
+        }
+        return v;
+    };
+    walker* summon = ally(2);
+    walker* npc = ally(4);
+    walker* hero = ally(6);
+    ASSERT_TRUE(summon && npc && hero);
+    summon->stats()->name = "IMP";
+    summon->set_lifetime(50);
+    npc->stats()->name = "REEVE";
+    hero->myguy = &hero_guy;
+
+    walker* boom = w.add_ob(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_NE(boom, nullptr);
+    boom->set_owner(owner);
+    boom->setxy(6 * GRID_SIZE, 6 * GRID_SIZE);
+    boom->set_damage(20.0f);
+    boom->set_team_num(0);
+    tw.events.clear();
+
+    boom->set_dead(1); // effect::act's order: dead first, then death()
+    boom->death();
+
+    auto count = [&tw](const std::string& text) {
+        int n = 0;
+        for (const auto& ev : tw.events.events())
+            if (ev.kind == og::sim::EventKind::Notification && ev.text == text)
+                ++n;
+        return n;
+    };
+    EXPECT_TRUE(summon->dead() && npc->dead() && hero->dead())
+        << "the half-damage ally tier finished all three 1-hp teammates";
+    EXPECT_EQ(1, count("IMP Dispelled!")) << "a summon is dispelled";
+    EXPECT_EQ(1, count("REEVE DIED!")) << "a named NPC dies loudly";
+    EXPECT_EQ(1, count("BRAN Died!")) << "a company hero is named by its guy";
+    hero->myguy = nullptr;
 }

@@ -690,6 +690,36 @@ TEST(StatsUnit, stats_r12_extra_command_switch_and_null_controller_paths)
     ASSERT_EQ(1, self->stats()->do_command()) << "an unknown command type still succeeds";
     EXPECT_FALSE(self->stats()->has_commands()) << "and is consumed";
 }
+// COMMAND_RIGHT_WALK outside the (120, 240) band tries direct_walk() first
+// and falls back to right-hand wall following only when the direct step
+// fails. Here the foe is 34 px east behind a wall tile and a second wall
+// tile closes the north, so the direct step is blocked and right_walk()'s
+// boxed-in signature — a left turn on the spot — is what the round leaves.
+TEST(StatsUnit, right_walk_command_falls_back_to_wall_following_when_the_direct_step_is_blocked)
+{
+    StatsR12Fixture fx;
+    walker* self = add_living(fx, 0);
+    walker* foe = add_living(fx, 1);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, foe);
+    set_grid_tile(fx, 7, 6, PIX_H_WALL1); // east of tile (6,6)
+    set_grid_tile(fx, 6, 5, PIX_H_WALL1); // north of tile (6,6)
+    self->setxy(96, 96);
+    self->set_curdir(FACE_UP);
+    self->set_enddir(FACE_UP);
+    self->set_foe(foe);
+    foe->setxy(130, 96);
+    ASSERT_EQ(34, self->distance_to_ob(foe)) << "below the band: direct first";
+
+    self->stats()->commands.clear();
+    self->stats()->force_command(COMMAND_RIGHT_WALK, 2, 0, 0);
+    ASSERT_EQ(1, self->stats()->do_command()) << "RIGHT_WALK reports success";
+    EXPECT_EQ((FACE_UP + 6) % 8, static_cast<int>(self->enddir()))
+        << "blocked direct step: right_walk's boxed-in left turn";
+    EXPECT_EQ(96, self->xpos()) << "nobody walked through the wall";
+    EXPECT_EQ(96, self->ypos());
+}
+
 } // namespace detail_stats_r12
 
 // --- From test_stats_r14.cpp ---

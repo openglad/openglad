@@ -32,8 +32,6 @@ bool is_authored_troop(const walker* w)
 // use-after-free on the next tick.
 void clear_refs_into(const std::vector<walker*>& doomed, walker* ob)
 {
-    if (ob == nullptr)
-        return;
     const auto is_doomed = [&doomed](const walker* target) {
         return target != nullptr &&
                std::find(doomed.begin(), doomed.end(), target) != doomed.end();
