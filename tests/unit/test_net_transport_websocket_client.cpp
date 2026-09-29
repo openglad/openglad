@@ -1147,6 +1147,7 @@ TEST(NetTransportWebSocketClient, a_healthy_link_survives_a_ping_interval)
 // Mirrors the receive-queue caps in
 // src/platform/sdl/net_transport_websocket_client.cpp (file-local).
 constexpr std::size_t kClientMaxQueuedMessages = 1024u;
+constexpr std::size_t kClientMaxInboundFrameBytes = 128u * 1024u;
 
 struct DirectLink
 {
@@ -1176,6 +1177,45 @@ struct DirectLink
     }
 };
 
+// Rule (net_transport_websocket_client.cpp accept_connections): calling
+// accept_connections on a client that already started is a no-op: it neither
+// re-dials (the server keeps exactly its one peer) nor drops frames already
+// queued for the game thread.
+TEST(NetTransportWebSocketClient,
+     accept_connections_on_a_started_client_neither_redials_nor_drops_frames)
+{
+    DirectLink link;
+    link.server.accept_connections();
+    link.client.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(link.client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(link.server, 1u));
+    const og::sim::PeerId server_peer = link.server.connected_peers().front();
+
+    const auto send_tick = [&](std::uint32_t tick) {
+        link.server.send_keyframe_request(
+            server_peer,
+            std::make_shared<og::sim::KeyframeRequestMessage>(
+                og::sim::KeyframeRequestMessage{.last_seen_tick = tick}));
+    };
+    // One frame in flight to (or already in) the client's queue, the repeated
+    // accept, then one frame on the original connection after it. Both must
+    // arrive: a re-dial would clear the queue and orphan the old connection.
+    send_tick(41u);
+    link.client.accept_connections();
+    send_tick(42u);
+
+    const auto delivered = poll_until_messages(link.client, 2u);
+    ASSERT_EQ(2u, delivered.size())
+        << "frames on the original connection must survive a repeated "
+           "accept_connections";
+    EXPECT_EQ(41u, decode_keyframe_request_tick(delivered[0].data));
+    EXPECT_EQ(42u, decode_keyframe_request_tick(delivered[1].data));
+    EXPECT_EQ(og::sim::TransportLinkState::Connected, link.client.link_state());
+    (void)link.server.poll();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{server_peer}),
+              link.server.connected_peers())
+        << "a started client must not dial a second connection";
+}
 
 // Rule (net_transport_websocket_client.cpp handle_message/enqueue): a server
 // flooding frames faster than the game thread polls is capped at 1024 queued
@@ -1214,5 +1254,31 @@ TEST(NetTransportWebSocketClient,
     EXPECT_TRUE(link.client.connected_peers().empty());
 }
 
+// Rule (net_transport_websocket_client.cpp enqueue): the 16 MiB queued-byte
+// budget closes the link well under the frame-count cap: 128 maximum-size
+// frames (exactly 16 MiB) are held, the 129th closes it 1008 and the game
+// sees Lost.
+TEST(NetTransportWebSocketClient,
+     a_byte_flood_past_16_mib_closes_the_link_as_lost)
+{
+    DirectLink link;
+    link.server.accept_connections();
+    link.client.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(link.client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(link.server, 1u));
+    const og::sim::PeerId server_peer = link.server.connected_peers().front();
+
+    constexpr std::size_t kFramesInBudget = 128u;
+    const std::vector<std::uint8_t> max_frame(kClientMaxInboundFrameBytes, 0x3cu);
+    for (std::size_t frame = 0; frame <= kFramesInBudget; ++frame)
+        link.server.send(server_peer, max_frame.data(), max_frame.size());
+    ASSERT_TRUE(poll_until_peer_count(link.server, 0u, 20s))
+        << "the flooded client must close its link";
+
+    const std::vector<og::sim::ReceivedMessage> delivered = link.client.poll();
+    EXPECT_EQ(kFramesInBudget, delivered.size())
+        << "exactly the frames within the 16 MiB budget are delivered";
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, link.client.link_state());
+}
 
 } // namespace
