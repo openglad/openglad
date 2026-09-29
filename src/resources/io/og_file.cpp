@@ -880,11 +880,6 @@ PixieData read_pixie_file(const char* filename)
         }
     }
 
-    if (pixels.size() != static_cast<std::size_t>(png_w) * static_cast<std::size_t>(png_h)) {
-        LogError("Unexpected indexed PNG size for {}\n", path);
-        return result;
-    }
-
     // Look up frame metadata from per-PNG Aseprite JSON sidecar; absent
     // sidecar means single-frame sprite.
     int frames = 1;
