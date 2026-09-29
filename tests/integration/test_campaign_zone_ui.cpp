@@ -58,6 +58,7 @@
 #include <vector>
 
 // Picker entry points for the injector-driven flows.
+extern bool g_start_game_requested;
 void picker_testing_set_force_real_dialogs(bool enabled);
 void picker_main(Sint32 argc, char** argv);
 extern int g_picker_mainmenu_calls;
@@ -2634,6 +2635,203 @@ TEST(CampaignZoneUi, oath_chip_refuses_a_frozen_oath_and_a_locked_slot)
               spec.on_spec_row(kBaseCampTeamChipBase + 1, &live_state));
     EXPECT_EQ(1, save.team_list[1]->campaign_tag);
     EXPECT_TRUE(trace_contains("zone", "assign slot=1 tag=1"));
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// The echo roster with its TRAIN affordance (the row body) switched by the
+// composition: the only difference between the two fixtures below.
+std::string roster_train_script(const char* can_train)
+{
+    return std::string(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "roster", can_train = )LUA") +
+        can_train + R"LUA( },
+      },
+    }
+  end,
+}))LUA";
+}
+
+// A joiner whose host has already pressed GO: the lobby holds a launchable
+// start config, so any nested screen the click opens returns at its first
+// frame (the remote-start preemption) instead of blocking the test.
+struct HostStartedLobbyClient final : og::ui::IPickerLobbyClient
+{
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return og::ui::PickerLobbyGameStartConfig{};
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return og::ui::PickerLobbyGameStartConfig{};
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return false;
+    }
+};
+
+// Installs the started lobby and ARMS the host's GO before any click (both
+// halves of every flow below: a nested screen with nothing to preempt it
+// would block forever), and restores all of it on the way out.
+struct HostStartedScope
+{
+    HostStartedLobbyClient lobby;
+    og::ui::IPickerLobbyClient* saved = og::ui::active_picker_lobby_client();
+
+    HostStartedScope()
+    {
+        og::ui::install_active_picker_lobby_client(&lobby);
+        g_start_game_requested = true;
+        og::runtime::current_session->picker_->selected_menu_item = nullptr;
+    }
+
+    ~HostStartedScope()
+    {
+        g_start_game_requested = false;
+        og::runtime::current_session->picker_->selected_menu_item = nullptr;
+        og::ui::install_active_picker_lobby_client(saved);
+        clear_allbuttons();
+        og::runtime::current_session->localbuttons_ = nullptr;
+    }
+};
+
+bool start_game_selected()
+{
+    const auto* const item =
+        og::runtime::current_session->picker_->selected_menu_item;
+    return item != nullptr &&
+           item->command == og::ui::PickerMenuCommand::StartGame;
+}
+
+} // namespace
+
+// A row-body click is the TRAIN door. A composition that retired can_train
+// hides that door, and the click already in flight must be inert: no train
+// screen, no seed. The same click on a composition that keeps TRAIN opens
+// the screen — and a host GO reaching this joiner there unwinds Base Camp
+// as MENU_EXIT, so the launch is not swallowed by the nested screen.
+TEST(CampaignZoneUi, retired_train_door_is_inert_and_a_live_one_carries_the_start)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    HostStartedScope started;
+
+    // --- Retired: the stale row-body click does nothing at all. ---
+    SyntheticCampaignScriptGuard::install(roster_train_script("false").c_str());
+    og::ui::CampaignZoneSession locked(save);
+    locked.fetch();
+    ASSERT_TRUE(locked.scripted());
+    ASSERT_FALSE(locked.roster().can_train);
+    og::ui::BaseCampScreenState locked_state;
+    locked_state.zone = &locked;
+    og::ui::base_camp_refresh_rows(locked_state);
+    og::ui::install_base_camp_state_for_screen(&locked_state);
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampRowBodyBase + 0, &locked_state));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot"))
+        << "a retired TRAIN door must not open the train screen";
+    EXPECT_FALSE(start_game_selected());
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    // --- Paired control: the live door opens TRAIN, which the armed GO
+    // preempts; Base Camp returns the launch. ---
+    SyntheticCampaignScriptGuard::install(roster_train_script("true").c_str());
+    og::ui::CampaignZoneSession open_roster(save);
+    open_roster.fetch();
+    ASSERT_TRUE(open_roster.scripted());
+    ASSERT_TRUE(open_roster.roster().can_train);
+    og::ui::BaseCampScreenState open_state;
+    open_state.zone = &open_roster;
+    og::ui::base_camp_refresh_rows(open_state);
+    og::ui::install_base_camp_state_for_screen(&open_state);
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT,
+              spec.on_spec_row(kBaseCampRowBodyBase + 0, &open_state))
+        << "a host GO reaching a joiner in TRAIN must unwind Base Camp";
+    EXPECT_TRUE(trace_contains("basecamp", "train slot=0"));
+    EXPECT_TRUE(start_game_selected());
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// A classic campaign's book page row opens the zone submenu. A host GO that
+// reaches a joiner parked in that submenu must come back out of BOTH
+// screens as MENU_EXIT with START GAME selected — a MENU_REDRAW here would
+// leave the joiner standing in Base Camp while the host's match launches.
+TEST(CampaignZoneUi, host_start_unwinds_a_joiner_parked_in_a_book_page)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    ASSERT_FALSE(og::ui::is_versus_campaign(save))
+        << "a classic book: the page row is the submenu door, not SETUP";
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ("stores", zone.actions()[0].rows[0].id);
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    HostStartedScope started;
+
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT,
+              spec.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_TRUE(start_game_selected());
+    EXPECT_FALSE(trace_contains("zone", "page_row stores"))
+        << "the remote start leaves before the ordinary page-row close";
+    EXPECT_TRUE(state.toast.empty())
+        << "the page opened: no unreadable-page toast";
 
     og::ui::install_base_camp_state_for_screen(nullptr);
 }
