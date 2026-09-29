@@ -146,8 +146,6 @@ CampaignPickerLayout campaign_picker_layout()
     const int left_room = layout.title_center_x - layout.detail.x;
     const int half_room = right_room < left_room ? right_room : left_room;
     layout.title_max_chars = (2 * half_room) / kGlyphAdvance;
-    if (layout.title_max_chars < 0)
-        layout.title_max_chars = 0;
     return layout;
 }
 
