@@ -45,6 +45,11 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#if defined(__unix__) || defined(__APPLE__)
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -2891,9 +2896,15 @@ TEST(PickerNetworkClient, host_stage_failure_reports_honest_preview_health)
     EXPECT_EQ(Health::None, host_client->staged_preview_health());
     EXPECT_EQ(nullptr, host_client->staged_world());
     host_client->initialize_from_save();
+    // The stage now EXISTS but has not staged (only drive_stage, from
+    // poll_and_apply, stages): an Empty stage is still honest-empty, never
+    // Failed and never Staged.
+    EXPECT_EQ(Health::None, host_client->staged_preview_health())
+        << "an initialized host whose stage has not staged yet reports None";
 
     og::server::MatchStage* const host_stage = host_client->take_match_stage();
     ASSERT_NE(nullptr, host_stage);
+    EXPECT_EQ(og::server::StageStatus::Empty, host_stage->status());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
         return host_client->staged_preview_health() == Health::Staged;
@@ -8859,6 +8870,71 @@ TEST(PickerNetworkClient,
     join_client->shutdown();
 }
 
+#if defined(__unix__) || defined(__APPLE__)
+// §2.5 line-B alert while the direct link is still dialling: a peer that
+// completes TCP (the kernel backlog accepts it) but never answers the
+// WebSocket upgrade keeps the joiner's transport in its handshake, and the
+// alert says so. Closing the listener resets that pending connection, and the
+// same alert then reports the failure (the control that the first read was
+// a live link state, not a constant).
+TEST(PickerNetworkClient,
+     join_direct_alert_says_connecting_while_the_handshake_is_pending)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Direct Joiner");
+
+    struct ListenerGuard
+    {
+        int fd = -1;
+        ~ListenerGuard()
+        {
+            if (fd != -1)
+                close(fd);
+        }
+    } listener;
+    listener.fd = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_NE(-1, listener.fd) << "a loopback listener socket is available";
+    const int reuse = 1;
+    ASSERT_EQ(0, setsockopt(listener.fd, SOL_SOCKET, SO_REUSEADDR,
+                            &reuse, sizeof(reuse)));
+    const int port = ix::getFreePort();
+    sockaddr_in address = {};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(static_cast<std::uint16_t>(port));
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(0, bind(listener.fd,
+                      reinterpret_cast<const sockaddr*>(&address),
+                      sizeof(address)));
+    ASSERT_EQ(0, listen(listener.fd, 4));
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+    join_client->poll_and_apply();
+    ASSERT_TRUE(join_client->connection_alert().has_value());
+    EXPECT_EQ("Status: connecting", *join_client->connection_alert())
+        << "a dialled link whose upgrade is unanswered is still connecting";
+
+    close(listener.fd);
+    listener.fd = -1;
+    EXPECT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        const std::optional<std::string> alert =
+            join_client->connection_alert();
+        return alert.has_value() && *alert == "Status: connection failed";
+    },
+    10s)) << "a reset handshake that never connected must read as failed";
+
+    join_client->shutdown();
+}
+#endif
+
 TEST(PickerNetworkClient,
      join_relay_flow_reports_connection_lost_after_relay_drops)
 {
@@ -9106,6 +9182,9 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     // A constructed client has a useful, non-throwing pre-initialization
     // contract. Exercise both implementations through the public interface so
     // menu code can inspect or poll them before a transport is installed.
+    // set_player_mode below writes numplayers/my_team into the live save.
+    SaveData& pre_init_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard pre_init_save_guard(pre_init_save);
     og::ui::PickerHostGameOptions host_options;
     host_options.port = ix::getFreePort();
     auto host_client = og::ui::create_host_picker_lobby_client(host_options);
@@ -9118,6 +9197,14 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_FALSE(host_client->set_ready(true));
     host_client->sync_from_save();
     EXPECT_TRUE(host_client->status_lines().empty());
+    // No lobby state yet: the host is not ready, and choosing spectator
+    // (player mode 0) declares ZERO local seats (the 1u above is the
+    // non-spectator control).
+    EXPECT_FALSE(host_client->local_ready())
+        << "a host with no lobby state is not ready";
+    host_client->set_player_mode(0);
+    EXPECT_EQ(0u, host_client->local_seat_count())
+        << "a spectator host declares no seats before any lobby state";
 
     og::ui::PickerJoinGameOptions join_options;
     join_options.mode = og::ui::PickerJoinMode::Direct;
@@ -9129,6 +9216,9 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_FALSE(join_client->request_start_game());
     EXPECT_FALSE(join_client->request_seat_team_change(0, 0));
     EXPECT_FALSE(join_client->set_ready(true));
+    join_client->set_player_mode(0);
+    EXPECT_EQ(0u, join_client->local_seat_count())
+        << "a spectator joiner declares no seats before any lobby state";
     join_client->poll_and_apply();
     ASSERT_TRUE(join_client->connection_alert().has_value());
     EXPECT_EQ("Status: connecting", *join_client->connection_alert());
@@ -9146,12 +9236,12 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
 // Seven of those check( sites (the inet_pton/usable_lan_ipv4_string address
 // matrix and the two LAN-detection probes) live inside the .inc's
 // `#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))`
-// block, so the expectation carries the SAME guard: a Windows lane runs 130
-// checks and must pin 130, not fail against a POSIX-only literal.
+// block, so the expectation carries the SAME guard: a Windows lane runs 133
+// checks and must pin 133, not fail against a POSIX-only literal.
 #if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
-inline constexpr int kExpectedInternalHelperChecks = 137;
+inline constexpr int kExpectedInternalHelperChecks = 140;
 #else
-inline constexpr int kExpectedInternalHelperChecks = 130;
+inline constexpr int kExpectedInternalHelperChecks = 133;
 #endif
 
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
@@ -9285,6 +9375,16 @@ TEST(PickerNetworkClient,
         EXPECT_FALSE(join_client->request_seat_team_change(0xffu, 3));
         EXPECT_EQ(1, join_session.myscreen_->save_data.my_team);
     }
+    // The host is held to the same rule: it retargets only its OWN seats, so
+    // naming the joiner's player id is refused client-side, and the refusal
+    // does not fall back to the host's own seat (the host's own-seat change
+    // above is the accepted control).
+    EXPECT_FALSE(host_client->request_seat_team_change(join_indices.front(), 2))
+        << "the host must not retarget a joiner's seat";
+    host_client->poll_and_apply();
+    EXPECT_EQ(std::optional<std::int16_t>(0),
+              team_for(host_client->lobby_players(), host_indices.front()))
+        << "a refused foreign-seat change must not move the host's own seat";
 
     // Target only the joiner's second seat. Team 3 has no local hero, but it
     // remains a valid authored control assignment; the first seat and my_team
