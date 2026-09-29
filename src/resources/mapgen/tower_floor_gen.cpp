@@ -265,6 +265,26 @@ constexpr std::array<BandSpec, 6> kBands = {{
      "Snow crowns the last rampart.", nullptr},
 }};
 
+// Every briefing line the tower writes is a literal: the band voices and
+// kOpenStairsLine. Checked here, where they are authored.
+constexpr bool briefing_lines_fit_the_budget()
+{
+    if (std::char_traits<char>::length(kOpenStairsLine) > kBriefingLineBudget)
+        return false;
+    for (const BandSpec& band : kBands)
+    {
+        if (band.briefing1 == nullptr ||
+            std::char_traits<char>::length(band.briefing1) > kBriefingLineBudget)
+            return false;
+        if (band.briefing2 != nullptr &&
+            std::char_traits<char>::length(band.briefing2) > kBriefingLineBudget)
+            return false;
+    }
+    return true;
+}
+static_assert(briefing_lines_fit_the_budget(),
+              "a tower briefing line overflows kBriefingLineBudget");
+
 // Foe team assignments. Foes sit on team 2 (NOT team 1: the builder lib's
 // hold-post rule treats teams <= 1 as allied garrisons, and tower guards
 // must be wake-on-sight ambush posts — the tower has no allies). The rival
@@ -930,8 +950,7 @@ constexpr int kMaxobsBudget = 120;
 
 // --- Audits (spec step 11). -------------------------------------------------------
 
-std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan,
-                                    const std::list<std::string>& description)
+std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan)
 {
     std::vector<std::string> errors = og::mapgen::audit_footing(w);
     {
@@ -958,11 +977,6 @@ std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan,
             "maxobs: worst-case population {} exceeds the {} budget "
             "(Frenzy generators modeled at 8 spawns, slimes split 2x)",
             worst, kMaxobsBudget));
-    for (const std::string& line : description)
-        if (line.size() > kBriefingLineBudget)
-            errors.push_back(std::format(
-                "briefing line '{}' overflows the {}-char budget", line,
-                kBriefingLineBudget));
     (void)plan;
     return errors;
 }
@@ -1497,7 +1511,7 @@ std::vector<std::string> build_tower_floor(GameWorld& world,
         static_cast<short>(4 + 2 * plan.band_idx + 3 * plan.lap);
 
     // (11) Audits.
-    return run_audits(world, plan, description);
+    return run_audits(world, plan);
 }
 
 TowerFloorReport generate_tower_floor_to_user_dir(std::uint32_t run_seed,
