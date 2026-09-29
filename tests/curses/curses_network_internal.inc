@@ -1068,3 +1068,42 @@ std::string curses_network_testing_session_build_failure(bool host,
     current_game = before;
     return error;
 }
+
+// The campaign cursor a networked win leaves in the session save, for a
+// level `finished` that ends with `next_level` (-1 = the level named no
+// successor). The disk half of the fold writes a throwaway company slot
+// that is removed again. Returns -100 when the probe slot could not be
+// owned (a collision with real user data), so the caller fails loudly.
+short curses_network_testing_networked_win_cursor(short finished,
+                                                  int next_level)
+{
+    MountRestore mount_restore;  // the save sync reloads the campaign
+
+    SaveData save;
+    save.current_campaign = "gladiator";
+    save.scen_num = finished;
+    save.my_team = 0;
+    og::ui::initialize_starting_team(save, {FAMILY_SOLDIER});
+
+    GameWorld world(0);
+    world.entity_factory = [](Order, std::int32_t) {
+        return std::make_unique<walker>();
+    };
+    world.my_team = 0;
+    world.current_scenario = finished;
+
+    const std::string slot = make_network_player_name() + "-wincursor";
+    const std::string file = "save/" + slot + ".gtl";
+    const std::string temp = "save/" + slot + ".tmp.gtl";
+    if (user_file_exists(file) || user_file_exists(temp))
+        return -100;
+    {
+        og::data::ScopedActiveCompany company(slot);
+        if (!company.applied())
+            return -100;
+        persist_curses_networked_win(save, world, 0, next_level);
+    }
+    (void)remove_user_file(file);
+    (void)remove_user_file(temp);
+    return save.scen_num;
+}
