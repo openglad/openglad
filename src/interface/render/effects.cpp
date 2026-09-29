@@ -1285,9 +1285,9 @@ bool draw_fall_cues(viewscreen* vs, int floor)
 		(void)id;
 		if (static_cast<int>(cue.to_floor) != floor)
 			continue;
+		// age < kFallCueFrames: advance_frame_state (the only frame_tick
+		// writer) erases a cue in the same call its age reaches it.
 		const std::uint32_t age = frame_tick - cue.start_tick;
-		if (age >= kFallCueFrames)
-			continue; // expired; effects_advance_frame prunes it
 
 		auto plot2 = [&](Sint32 sx, Sint32 sy, unsigned char alpha)
 		{
