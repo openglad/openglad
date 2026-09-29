@@ -1336,8 +1336,6 @@ std::vector<short> resolve_local_seat_declaration_teams(
         if (std::find(teams.begin(), teams.end(), candidate) == teams.end())
             teams.push_back(candidate);
     }
-    if (teams.size() > seat_count)
-        teams.resize(seat_count);
     return teams;
 }
 
