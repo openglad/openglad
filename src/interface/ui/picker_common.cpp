@@ -2395,8 +2395,6 @@ std::string format_played_date_utc(std::int64_t unix_s)
     const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
     const std::chrono::year_month_day ymd{
         std::chrono::floor<std::chrono::days>(when)};
-    if (!ymd.ok())
-        return {};
     return std::format("{:04}-{:02}-{:02}", static_cast<int>(ymd.year()),
                        static_cast<unsigned>(ymd.month()),
                        static_cast<unsigned>(ymd.day()));
@@ -2462,8 +2460,6 @@ std::string format_saved_datetime_utc(std::int64_t unix_s)
     const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
     const auto day = std::chrono::floor<std::chrono::days>(when);
     const std::chrono::year_month_day ymd{day};
-    if (!ymd.ok())
-        return {};
     const std::chrono::hh_mm_ss<std::chrono::seconds> tod{when - day};
     return std::format("{:02}-{:02} {:02}:{:02}",
                        static_cast<unsigned>(ymd.month()),
