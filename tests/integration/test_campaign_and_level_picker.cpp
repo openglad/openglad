@@ -31,9 +31,6 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-// level_picker.cpp helpers
-bool isDir(const std::string& filename);
-bool sort_scen(const std::string& first, const std::string& second);
 // campaign_picker.cpp helper
 int toInt(const std::string& s);
 int campaign_picker_testing_exercise_entry_draw_paths();
@@ -752,15 +749,6 @@ TEST(CampaignAndLevelPicker,
 {
     cleanup_leftover_test_campaigns();
 
-    ASSERT_TRUE(isDir(".")) << "isDir should report current directory as directory";
-    ASSERT_TRUE(!isDir("./definitely_missing_openglad_path")) << "isDir should report missing path as not directory";
-
-    ASSERT_TRUE(sort_scen("level2", "level10")) << "sort_scen should order numeric suffixes";
-    ASSERT_TRUE(!sort_scen("abc9", "abc2")) << "sort_scen should not invert numeric suffix ordering";
-    ASSERT_TRUE(!sort_scen("levelx", "level2"))
-        << "a malformed numeric suffix should use deterministic lexical ordering";
-    ASSERT_TRUE(sort_scen("alpha1", "beta1"))
-        << "different prefixes should use deterministic lexical ordering";
     ASSERT_EQ(42, toInt("42")) << "toInt should parse decimal text";
     ASSERT_EQ(0, toInt("not-an-integer"))
         << "toInt should reject malformed input instead of accepting a prefix";

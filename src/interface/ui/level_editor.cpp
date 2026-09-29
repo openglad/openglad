@@ -3350,18 +3350,10 @@ EventType handle_basic_editor_event(const void* native_event)
         return EventType::MouseMotion;
     }
     case og::input_native::EventType::FingerUp:
-        {
-            MouseState& mymouse = query_mouse_no_poll();
-            int left_state = mymouse.left;
-            int right_state = mymouse.right;
-            handle_mouse_event(native_event);
-            if(left_state != mymouse.left)
-                eds().mouse_up_button = MOUSE_LEFT;
-            else if(right_state != mymouse.right)
-                eds().mouse_up_button = MOUSE_RIGHT;
-            else
-                eds().mouse_up_button = 0;
-        }
+        // handle_mouse_event() ignores finger events, so a finger lift never
+        // changes the mouse buttons and names no released button.
+        handle_mouse_event(native_event);
+        eds().mouse_up_button = 0;
         return EventType::MouseUp;
     case og::input_native::EventType::FingerDown:
         handle_mouse_event(native_event);
@@ -3869,8 +3861,6 @@ Sint32 level_editor()
 			eds().rowsdown--;
 			if (eds().rowsdown < 0)
 				eds().rowsdown += eds().maxrows;
-			if (eds().rowsdown <0 || eds().rowsdown >= eds().maxrows) // bad case
-				eds().rowsdown = 0;
             
             eds().redraw = 1;
             

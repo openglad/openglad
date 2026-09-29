@@ -707,8 +707,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 	    case ButtonAction::QuitMenu:
 	        quit(call_arg);
 	        return 1;
-	    case ButtonAction::CreateTrainMenu:
-	        return create_train_menu(call_arg);
 	    case ButtonAction::CreateHireMenu:
 	        return create_hire_menu(call_arg);
 	    // CreateLoadMenu reaches do_call only when the MainMenu-scope
@@ -838,19 +836,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::ToggleRenderingEngine:
         toggle_rendering_engine();
-        return REDRAW;
-    case ButtonAction::ToggleFullscreen:
-        // Legacy binding (no button uses it since the DISPLAY subscreen):
-        // any fullscreen mode drops to windowed, windowed goes borderless,
-        // through the modern apply path. (cfg.is_on would only match the
-        // legacy literal "on" and latch forever against the tri-state
-        // values change_display_mode writes.)
-        cfg.apply_setting("graphics", "fullscreen",
-                          og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) !=
-                                  og::ui::DisplayMode::Windowed
-                              ? "off"
-                              : "borderless");
-        og::runtime::current_session->myscreen_->apply_display_settings_from_cfg();
         return REDRAW;
     case ButtonAction::OverscanAdjust:
         return overscan_adjust(arg);
