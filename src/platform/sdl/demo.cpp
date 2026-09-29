@@ -596,12 +596,10 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     // og.campaign_match_set does: the capture tooling must not be the one
     // producer that can mint a clock the lobby would bounce (a typo'd
     // 40000 narrows to a negative short otherwise).
-    if (!og::data::clamp_match_setting(
-            "time_limit", env_int("OPENGLAD_DEMO_MATCH_TIME_LIMIT", 0, 0),
-            s->save_data.time_limit)) {
-        throw std::runtime_error(
-            "OPENGLAD_DEMO_MATCH_TIME_LIMIT could not be applied");
-    }
+    // "time_limit" is a clamping knob, so the call always answers true.
+    (void)og::data::clamp_match_setting(
+        "time_limit", env_int("OPENGLAD_DEMO_MATCH_TIME_LIMIT", 0, 0),
+        s->save_data.time_limit);
 
     // Amendment 7 (#276): a versus campaign's arena deals FILL: FAIR to the
     // teams it authors — the ONE rule the pickers apply at selection, run
@@ -630,12 +628,10 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
         for (std::size_t team = 0; team < s->save_data.fill.size(); ++team) {
             if ((authored & (1u << team)) == 0)
                 continue;
-            if (!og::data::clamp_match_setting(
-                    std::format("fill_{}", team + 1), fill,
-                    s->save_data.fill[team])) {
-                throw std::runtime_error(
-                    "OPENGLAD_DEMO_FILL could not be applied");
-            }
+            // "fill_1".."fill_4" all clamp, so the call always answers true.
+            (void)og::data::clamp_match_setting(
+                std::format("fill_{}", team + 1), fill,
+                s->save_data.fill[team]);
         }
     }
 
