@@ -18,6 +18,7 @@
 // hand-owned difficulty kExpected table remains the independent oracle over
 // the spec transcription (G11).
 
+#include <openglad/core/irandom.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
@@ -45,6 +46,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -2245,6 +2247,65 @@ TEST(MenuEngine, base_camp_scripted_zone_gate_lattice_sweep)
     }
     save.team_size = old_team_size;
     (void)picker_createmenu_buttons();
+}
+
+namespace
+{
+
+// Replays one fixed (adjective, noun, group) pick through the generator's
+// three draws, so a test can walk every bank combination through the REAL
+// generate_company_name instead of re-spelling its format.
+class BankPickRandom final : public IRandom
+{
+public:
+    BankPickRandom(std::uint32_t adjective, std::uint32_t noun,
+                   std::uint32_t group)
+        : picks_{adjective, noun, group}
+    {
+    }
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        const std::uint32_t pick = picks_[calls_ % picks_.size()];
+        ++calls_;
+        return max_exclusive == 0 ? 0 : pick % max_exclusive;
+    }
+
+private:
+    std::array<std::uint32_t, 3> picks_;
+    std::size_t calls_ = 0;
+};
+
+} // namespace
+
+// The name-entry face draws the company name unclipped, so every name the
+// screen can hold must fit kCompanyNameMaxLen: a typed name is capped by
+// the editor's maxlength, and a generated one by the word banks. Walk EVERY
+// bank combination through the generator: the longest is exactly the cap —
+// one longer word and the face would ink past its box.
+TEST(MenuEngine, name_entry_generated_names_fit_the_cap)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+    std::size_t longest = 0;
+    std::size_t combinations = 0;
+    for (std::uint32_t a = 0; a < banks.adjectives.size(); ++a) {
+        for (std::uint32_t n = 0; n < banks.nouns.size(); ++n) {
+            for (std::uint32_t g = 0; g < banks.groups.size(); ++g) {
+                BankPickRandom rng(a, n, g);
+                const std::string name = og::ui::generate_company_name(rng);
+                ASSERT_EQ(std::format("{} {} {}", banks.adjectives[a],
+                                      banks.nouns[n], banks.groups[g]),
+                          name);
+                longest = std::max(longest, name.size());
+                ++combinations;
+            }
+        }
+    }
+    EXPECT_EQ(banks.adjectives.size() * banks.nouns.size() *
+                  banks.groups.size(),
+              combinations);
+    EXPECT_EQ(og::ui::kCompanyNameMaxLen, longest)
+        << "the longest generated company name is exactly the face's cap";
 }
 
 // §2.2 new-company name entry: a Layer-F engine screen entered directly from

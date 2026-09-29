@@ -5778,9 +5778,10 @@ void name_entry_draw_content(void* screen_state)
     // Match name_guy's classic modal exactly: prompt at face+2,+4 and the
     // editable value eight pixels below it, both left-aligned DARK_BLUE.
     game->text_normal.write_xy(96, 74, "FOUND YOUR COMPANY:", DARK_BLUE, 1);
-    std::string name = st != nullptr ? st->name : std::string();
-    if (name.size() > kCompanyNameMaxLen)
-        name.resize(kCompanyNameMaxLen);
+    // The name is never longer than kCompanyNameMaxLen: the generator's
+    // banks cap it (MenuEngine.name_entry_generated_names_fit_the_cap) and
+    // the editor's maxlength caps a typed one.
+    const std::string name = st != nullptr ? st->name : std::string();
     game->text_normal.write_xy(96, 82, name.c_str(), DARK_BLUE, 1);
     // §9.3: the slug preview is gone (F2 — the filename teaches nothing);
     // the freed slot carries a GREY hint on a U2 black strip teaching the
