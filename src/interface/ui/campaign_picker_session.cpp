@@ -1408,21 +1408,13 @@ std::vector<std::string> terminal_camp_lines(const SaveData& save,
 std::vector<std::string> terminal_camp_oath_legend(
     const hooks::CampaignAssignSpec& assign)
 {
+    // An active assign spec always carries exactly two non-empty labels:
+    // world_scripts.cpp's assign parse refuses anything else before it
+    // sets `active`, and the one caller returns on an inactive spec.
     std::vector<std::string> lines;
     std::string cycle = "A row number swears that hero: ";
-    if (assign.labels.size() >= 2)
-    {
-        cycle += std::format("- -> {} -> {} -> {}", assign.labels[0],
-                             assign.labels[1], assign.labels[0]);
-    }
-    else if (assign.labels.size() == 1)
-    {
-        cycle += std::format("- -> {}", assign.labels[0]);
-    }
-    else
-    {
-        return lines;
-    }
+    cycle += std::format("- -> {} -> {} -> {}", assign.labels[0],
+                         assign.labels[1], assign.labels[0]);
     // The cycle string carries the "never back to unset" rule on its own:
     // the "-" appears only at the head, never again.
     lines.push_back(
@@ -1458,11 +1450,8 @@ void run_terminal_camp_oath(SaveData& save, CampaignZoneSession& zone,
             terminal_camp_roster_lines(save, zone, slots, true);
         const std::vector<std::string> legend =
             terminal_camp_oath_legend(assign);
-        if (!legend.empty())
-        {
-            lines.emplace_back();
-            lines.insert(lines.end(), legend.begin(), legend.end());
-        }
+        lines.emplace_back();
+        lines.insert(lines.end(), legend.begin(), legend.end());
         const std::optional<std::string> answer =
             io.prompt(std::string(kTerminalCampOathTitle), lines,
                       terminal_camp_oath_prompt_label(slots.size()));
@@ -1503,17 +1492,11 @@ void run_terminal_camp_oath(SaveData& save, CampaignZoneSession& zone,
             continue;
         }
         // The full-word toast: the cycle must never be a silent glyph flip —
-        // and neither may the un-deploy it rides on.
+        // and neither may the un-deploy it rides on. next_assign_tag()
+        // answers 1 or 2, and the spec holds exactly two labels.
         const std::size_t label_index = static_cast<std::size_t>(next_tag - 1);
-        if (label_index < assign.labels.size())
-        {
-            io.notice(campaign_oath_toast(assign.labels[label_index],
-                                          stood_down));
-        }
-        else if (stood_down)
-        {
-            io.notice(std::string(kCampaignOathStoodDownMessage));
-        }
+        io.notice(campaign_oath_toast(assign.labels[label_index],
+                                      stood_down));
         (void)company_autosave_after_mutation(save,
                                               kTerminalNetworkedLobbyActive);
         zone.refetch();  // own mutation: the locks and the column re-derive
