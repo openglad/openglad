@@ -1534,15 +1534,10 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
          ++entry_index)
     {
         const DisconnectedPlayer& seat_entry = matching_seats[entry_index];
-        const auto seat_it = std::find_if(
-            reconnected.bound_players.begin(),
-            reconnected.bound_players.end(),
-            [&seat_entry](const BoundPlayer& seat) {
-                return seat.local_slot == seat_entry.local_slot;
-            });
-        if (seat_it == reconnected.bound_players.end())
-            continue;
-        BoundPlayer& seat = *seat_it;
+        // bind_player above upserted exactly these slots into a client that
+        // had no seats (a bound client never reaches this path), and both
+        // lists are sorted by local_slot, so the indices line up.
+        BoundPlayer& seat = reconnected.bound_players[entry_index];
         seat.resume_in_dead_state =
             seat.control != nullptr && seat.control->dead();
         seat.pending_inputs.clear();
