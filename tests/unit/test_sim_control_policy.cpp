@@ -775,4 +775,28 @@ TEST(SimControlPolicy, install_helpers_build_machine_map_from_bindings_and_roste
     EXPECT_EQ(kControlPolicyLegacy, fx.world().control_policy);
 }
 
+// next_follow_target_id with no current target (the seat's follow subject
+// died and was reaped) starts over at the first eligible walker in oblist
+// order, preferring a hero/seat body over an anonymous troop; with a current
+// target it advances past that target instead.
+TEST(SimControlPolicy, next_follow_target_without_a_current_target_restarts_at_the_first_hero)
+{
+    ControlPolicyFixture fx;
+    ControlPolicyFixture::WalkerSpec troop_spec;
+    troop_spec.team = 1;
+    ControlPolicyFixture::WalkerSpec hero_spec;
+    hero_spec.hero = true;
+    walker* const troop = fx.add(troop_spec);
+    walker* const hero_a = fx.add(hero_spec);
+    walker* const hero_b = fx.add(hero_spec);
+    ASSERT_TRUE(troop && hero_a && hero_b);
+
+    EXPECT_EQ(hero_a->entity_id(),
+              og::sim::next_follow_target_id(fx.world(), nullptr, false))
+        << "no current target: the first preferred body, past the troop";
+    EXPECT_EQ(hero_b->entity_id(),
+              og::sim::next_follow_target_id(fx.world(), hero_a, false))
+        << "control: with a current target the cycle advances past it";
+}
+
 } // namespace
