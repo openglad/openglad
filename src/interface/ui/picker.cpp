@@ -882,19 +882,10 @@ public:
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
         }
 
-        if (menu_id == og::ui::PickerMenuId::Scenario) {
-            // The SDL client never dispatches the shared state machine's
-            // Scenario menu: the SCENARIO subscreen runs inside the blocking
-            // create_team_menu loop (ButtonAction::CreateScenarioMenu), so
-            // show_team_build never selects the Scenario item here. The
-            // TeamBuild fall-through below would re-enter create_team_menu
-            // and nest a second team-build screen — answer the inherited
-            // show_submenu(Scenario) loop with a safe no-op Back instead.
-            return og::ui::find_picker_menu_item(
-                og::ui::PickerMenuId::Scenario,
-                og::ui::PickerMenuCommand::Back);
-        }
-
+        // Only TeamBuild reaches here: this client's TeamBuild answer is
+        // StartGame, Networking or Back (the SCENARIO subscreen runs inside
+        // create_team_menu), so show_team_build never opens the shared
+        // show_submenu(Scenario) loop against it.
         set_intercept_scope(PickerInterceptScope::TeamBuild);
         create_team_menu(0);
         set_intercept_scope(PickerInterceptScope::None);
