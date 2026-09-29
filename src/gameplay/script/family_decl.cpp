@@ -1600,8 +1600,6 @@ int og_family(lua_State* L)
         // registry.
         return bind_family(L, st, oi, 2);
     }
-    if (st->harvest == nullptr)
-        script_raise(L, "og.family: no declaration in progress");
     Harvest h{L, {}};
     // Argument 2 is the declaration table; every reader indexes it directly
     // rather than copying, so the caller's stack is untouched on the way
@@ -1620,8 +1618,6 @@ int og_anims(lua_State* L)
     require_families_chunk(L, st, "og.anims");
     if (st->mode != VmMode::Declare)
         return 0;  // frame tables are data; the bind replay wants none of it
-    if (st->harvest == nullptr)
-        script_raise(L, "og.anims: no declaration in progress");
     Harvest h{L, {}};
     og::data::ClasspackAnimSet set;
     if (!harvest_anim_set(h, std::string(name, name_len), 2, set))
@@ -1637,8 +1633,6 @@ int og_pack(lua_State* L)
     require_families_chunk(L, st, "og.pack");
     if (st->mode != VmMode::Declare)
         return 0;
-    if (st->harvest == nullptr)
-        script_raise(L, "og.pack: no declaration in progress");
     Harvest h{L, {}};
     if (!harvest_pack_header(h, 1, *st->harvest))
         return raise_harvest_error(L, h);
