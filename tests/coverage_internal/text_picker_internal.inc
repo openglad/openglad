@@ -1619,3 +1619,98 @@ int text_picker_testing_hires_across_visits_draw_fresh_names()
     check(state_restore.restore());
     return failed ? -failed_check : 0;
 }
+
+namespace {
+
+// Dispatches `command` from whichever menu carries it (Team Build first,
+// then the Scenario submenu) with `input` on stdin; returns the stdout the
+// handler printed, or false when the item or the capture is unavailable.
+bool text_picker_run_menu_command(TextPickerClient& client,
+                                  PickerMenuCommand command,
+                                  const std::string& input,
+                                  std::string& output)
+{
+    PickerMenuId menu_id = PickerMenuId::TeamBuild;
+    const PickerMenuItem* item =
+        find_picker_menu_item(PickerMenuId::TeamBuild, command);
+    if (item == nullptr) {
+        menu_id = PickerMenuId::Scenario;
+        item = find_picker_menu_item(PickerMenuId::Scenario, command);
+    }
+    if (item == nullptr)
+        return false;
+    ScopedTextPickerStdoutCapture capture;
+    if (!capture.ready())
+        return false;
+    {
+        ScopedCinRedirect cin_input(input);
+        client.handle_menu_item(menu_id, *item);
+    }
+    output = capture.finish();
+    return capture.finish_ok();
+}
+
+} // namespace
+
+// One Team Build / Scenario command on a fresh gladiator client (the
+// default one-soldier company), stdin = `input`. Returns 0 with the
+// printed text and the post-command team size, or a negative setup error.
+int text_picker_testing_run_team_command(int command, const std::string& input,
+                                         std::string& output,
+                                         int& team_size_after)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    if (!text_picker_run_menu_command(
+            client, static_cast<PickerMenuCommand>(command), input, output))
+        return -3;
+    team_size_after = client.testing_save_data().team_size;
+    return state_restore.restore() ? 0 : -4;
+}
+
+// The camp's level row through the text set-level tail. The caller
+// registers a camp whose first docket row is level 1 (replay = true); the
+// company stands on level 3 with level 1 cleared (`cleared`) or not.
+// Returns 0 with the save's cursor, replay arm and replay origin.
+int text_picker_testing_camp_level_row(bool cleared, short& scen_num,
+                                       short& replay_level,
+                                       short& replay_origin)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.level = 3;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    SaveData& save = client.testing_save_data_mutable();
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+    if (cleared)
+        save.add_level_completed("gladiator", 1);
+    std::string output;
+    if (!text_picker_run_menu_command(client, PickerMenuCommand::CampaignCamp,
+                                      "1\n\n", output))
+        return -3;
+    scen_num = save.scen_num;
+    replay_level = save.replay_level;
+    replay_origin = save.replay_origin;
+    save.clear_replay_arm();
+    return state_restore.restore() ? 0 : -4;
+}
