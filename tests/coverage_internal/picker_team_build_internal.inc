@@ -932,6 +932,91 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         client.players.clear();
     }
 
+    // VIEW LEVEL parked under a restage (the per-frame refresh over a real
+    // loaded level; pure calls, no menu loop). Rules:
+    //  - an authored level title longer than the frame is clipped to 48
+    //    characters ("SCEN n: <title>") when a lobby knob restages;
+    //  - if the campaign is unmounted while the screen is parked, the
+    //    report becomes the single line "CAMPAIGN NOT MOUNTED" with a bare
+    //    "SCEN n:" title and the render copy unhealed -- never a stale
+    //    report of the previous campaign.
+    {
+        client.networked = false;
+        client.players.clear();
+        client.local_indices.clear();
+        save.current_campaign = get_mounted_campaign();
+        save.scen_num = 1;
+        const short saved_time_limit = save.time_limit;
+        ViewScenarioEngineState parked;
+        parked.scenario = std::make_unique<LevelRuntimeData>(
+            save.scen_num, false, &sdl_level_data_hooks());
+        const bool loaded = parked.scenario->load();
+        check(loaded);
+        if (loaded)
+        {
+            parked.key = view_scenario_current_key(save);
+            ViewScenarioEngineState* const saved_state =
+                g_view_scenario_engine_state;
+            g_view_scenario_engine_state = &parked;
+
+            parked.scenario->world().title = std::string(60, 'T');
+            save.time_limit = static_cast<short>(saved_time_limit + 1);
+            check(picker_view_scenario_engine_frame_tick(nullptr, 0));
+            const std::string prefix =
+                std::format("SCEN {}: ", save.scen_num);
+            check(parked.title ==
+                  prefix + std::string(48 - prefix.size(), 'T'));
+            check(!parked.lines.empty() &&
+                  parked.lines.front() != "CAMPAIGN NOT MOUNTED");
+
+            parked.render_healed = true;
+            save.current_campaign = "org.openglad.cov97.not-mounted";
+            check(picker_view_scenario_engine_frame_tick(nullptr, 0));
+            check(parked.lines ==
+                  std::vector<std::string>{"CAMPAIGN NOT MOUNTED"});
+            check(parked.title == std::format("SCEN {}:", save.scen_num));
+            check(!parked.render_healed && parked.pager.page_count() == 1);
+
+            g_view_scenario_engine_state = saved_state;
+        }
+        save.time_limit = saved_time_limit;
+        save.current_campaign = get_mounted_campaign();
+    }
+
+    // Remote-start preemption: a host GO launches a peer parked in VIEW
+    // LEVEL, PROGRESS or TRAIN -- each subscreen returns the remote
+    // MENU_EXIT instead of its ordinary MENU_REDRAW. HANG TRAP: the
+    // screens block in their menu loop unless the preemption is armed, so
+    // the arm is asserted first and the screens run only when it holds.
+    {
+        client.networked = false;
+        client.host_visible = true;
+        client.editable = true;
+        client.has_start_config = true;
+        save.current_campaign = get_mounted_campaign();
+        save.scen_num = 1;
+        save.numplayers = 1;
+        save.my_team = 0;
+        for (auto& member : save.team_list)
+            member.reset();
+        save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[0]->teamnum = 0;
+        save.team_size = 1;
+        g_start_game_requested = true;
+        Sint32 armed_value = 0;
+        const bool armed = team_build_remote_start_requested(armed_value);
+        check(armed && armed_value == MENU_EXIT);
+        if (armed)
+        {
+            check(create_view_scenario_menu(0) == MENU_EXIT);
+            check(create_progress_menu(0) == MENU_EXIT);
+            check(create_train_menu(0) == MENU_EXIT);
+        }
+        g_start_game_requested = false;
+        pks().selected_menu_item = nullptr;
+        pks().train_session = nullptr;
+    }
+
     g_start_game_requested = false;
     pks().selected_menu_item = nullptr;
     pks().train_session = nullptr;
