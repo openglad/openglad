@@ -1251,11 +1251,13 @@ std::vector<std::string> terminal_camp_roster_lines(
     if (assign.active)
     {
         // Pad the summary out to the oath column so the channel's name is a
-        // COLUMN HEADING, not a third fact in the strip.
-        if (header.size() + 1 < kCampRosterOathColumn)
-            header.resize(kCampRosterOathColumn, ' ');
-        else
-            header += "  ";
+        // COLUMN HEADING, not a third fact in the strip. The strip is at
+        // most 31 chars -- "COMPANY  DEP " (13), two counts of at most
+        // MAX_TEAM_SIZE around '/', two spaces, and the gold label
+        // clip_chars() cuts to 11 -- so it always ends short of the column.
+        static_assert(MAX_TEAM_SIZE < 100);
+        static_assert(13 + 2 + 1 + 2 + 2 + 11 + 1 < kCampRosterOathColumn);
+        header.resize(kCampRosterOathColumn, ' ');
         header += CampaignZoneSession::assign_header_text(
             assign, kCampaignOathCellChars);
     }
