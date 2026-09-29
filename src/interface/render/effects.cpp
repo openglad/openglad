@@ -1318,12 +1318,13 @@ bool draw_fall_cues(viewscreen* vs, int floor)
 		const Sint32 head_wx = static_cast<Sint32>(
 		    hole_cx + (land_cx - hole_cx) * static_cast<float>(step) /
 		        static_cast<float>(kFallCueFrames));
+		static_assert(kFallCueAlphaHead -
+		                  (kFallCueStreakLen - 1) * kFallCueAlphaStep > 0,
+		              "every streak pixel keeps a positive alpha");
 		for (Sint32 t = 0; t < kFallCueStreakLen; t++)
 		{
 			const int a = kFallCueAlphaHead - static_cast<int>(t) *
 			    kFallCueAlphaStep;
-			if (a <= 0)
-				break;
 			plot2(head_wx - 1 - vs->topx + vs->xloc,
 			      head_wy - t - vs->topy + vs->yloc,
 			      static_cast<unsigned char>(a));
