@@ -430,4 +430,76 @@ TEST(LivingUnit, living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate
     self->stats()->set_bit_flags(BIT_ANIMATE, 1);
     (void)self->walk(1.0f, 0.0f);
 }
+
+// living::act caps banked bonus rounds at 50 per call (living.cpp: the
+// "prevent stack overflow" clamp): each round is one recursive act() that
+// advances drawcycle once, so a single act() runs at most 51 rounds and the
+// surplus is discarded, not carried to the next call.
+TEST(LivingUnit, act_runs_at_most_fifty_bonus_rounds_per_call)
+{
+    LivingR14Fixture fx;
+    living* self = add_living(fx, FAMILY_SOLDIER, 0, 64, 64);
+    ASSERT_NE(nullptr, self);
+    self->set_act_type(ACT_CONTROL);
+
+    // Control below the cap: every banked round runs (10 + this one).
+    self->set_bonus_rounds(10);
+    const unsigned char before_small = self->drawcycle();
+    ASSERT_TRUE(self->act());
+    EXPECT_EQ(static_cast<unsigned char>(before_small + 11), self->drawcycle());
+    EXPECT_EQ(0, self->bonus_rounds());
+
+    // Over the cap: 60 banked rounds run as 50 + this one.
+    self->set_bonus_rounds(60);
+    const unsigned char before = self->drawcycle();
+    ASSERT_TRUE(self->act());
+    EXPECT_EQ(static_cast<unsigned char>(before + 51), self->drawcycle())
+        << "one act() runs at most 51 rounds";
+    EXPECT_EQ(0, self->bonus_rounds())
+        << "the 10 rounds over the cap are dropped, not banked";
+}
+
+// An AI ally in ACTION_FOLLOW with no foe, whose nearest player has no foe
+// either, spends its act() queueing the follow command (living::do_action)
+// and returns there: its act_type AI does not also run that tick. ACT_RANDOM
+// draws the sim RNG on every run, so an unchanged rng_ proves it was skipped.
+TEST(LivingUnit, follow_ally_spends_its_act_on_the_follow_command_not_its_ai)
+{
+    LivingR14Fixture fx;
+    living* player = add_living(fx, FAMILY_SOLDIER, 0, 200, 64);
+    living* ally = add_living(fx, FAMILY_SOLDIER, 0, 64, 64);
+    ASSERT_TRUE(player && ally);
+    player->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    player->set_user(0);
+    player->set_act_type(ACT_CONTROL);
+
+    const auto ready = [&](char action) {
+        ally->stats()->clear_command();
+        ally->set_leader(nullptr);
+        ally->set_foe(nullptr);
+        ally->set_user(-1);
+        ally->set_act_type(ACT_RANDOM);
+        ally->set_action(action);
+        ally->set_ani_type(ANI_WALK);
+        ally->set_curdir(FACE_UP);
+        ally->set_enddir(FACE_UP);
+        fx.level.world().rng_.state_ = 0x1234567u;
+    };
+
+    ready(ACTION_FOLLOW);
+    EXPECT_TRUE(ally->act()) << "do_action's follow result is act()'s";
+    EXPECT_EQ(0x1234567u, fx.level.world().rng_.state_)
+        << "the ACT_RANDOM AI must not run on a follow tick";
+    EXPECT_EQ(player, ally->leader());
+    ASSERT_EQ(1u, ally->stats()->commands.size());
+    EXPECT_EQ(COMMAND_FOLLOW, ally->stats()->commands.front().commandtype);
+    EXPECT_EQ(5, ally->stats()->commands.front().commandcount);
+
+    // Control: the same ally with no follow action runs its AI, which draws.
+    ready(0);
+    (void)ally->act();
+    EXPECT_NE(0x1234567u, fx.level.world().rng_.state_)
+        << "control: ACT_RANDOM draws the sim RNG whenever it runs";
+    EXPECT_EQ(nullptr, ally->leader()) << "control: nothing followed";
+}
 } // namespace detail_living_r14

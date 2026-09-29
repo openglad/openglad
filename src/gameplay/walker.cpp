@@ -1231,8 +1231,8 @@ bool weapon_profile_requires_hook(const walker& owner)
 {
 	const FamilyDescriptor* descriptor =
 		get_family_descriptor(owner.family());
-	if (descriptor == nullptr || descriptor->customize_weapon != nullptr ||
-	    descriptor->on_fire_weapon != nullptr)
+	// Family weapon behaviour is Lua-only: the registration mask below says it all.
+	if (descriptor == nullptr)
 		return true;
 
 	// This predicate is reached from a Lua method, so the current world's VM

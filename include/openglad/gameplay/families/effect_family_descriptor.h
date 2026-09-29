@@ -44,5 +44,4 @@ struct EffectFamilyDescriptor {
     const char* declared_id = nullptr;
 
     bool (*on_act)(effect* self);
-    bool (*on_death)(effect* self);
 };

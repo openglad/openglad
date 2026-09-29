@@ -136,6 +136,22 @@ VmState* get_vm_state(lua_State* L)
     return st;
 }
 
+namespace {
+
+// The VmState of a VM that install_vm_scaffolding built. 'og.vmstate' is
+// written only there (its two callers: the WorldScripts ctor and the
+// declaration VM in family_decl.cpp), and the sandbox has no debug library
+// (script_host.cpp), so Lua cannot clear the key: for these VMs the state is
+// never null, and callers that only ever see them take it by reference.
+VmState& vm_state(lua_State* L)
+{
+    VmState* st = get_vm_state(L);
+    assert(st != nullptr);
+    return *st;
+}
+
+}  // namespace
+
 walker* resolve_walker(lua_State* L, int idx, bool required)
 {
     auto* h = static_cast<WalkerHandle*>(
@@ -206,9 +222,7 @@ std::uint64_t current_dispatch_gen(lua_State* L)
 
 std::uint64_t push_dispatch_gen(lua_State* L)
 {
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        return 0;
+    VmState* st = &vm_state(L);
     st->dispatch_gen++;
     st->live_gens.push_back(st->dispatch_gen);
     return st->dispatch_gen;
@@ -216,9 +230,7 @@ std::uint64_t push_dispatch_gen(lua_State* L)
 
 void pop_dispatch_gen(lua_State* L, std::uint64_t gen)
 {
-    VmState* st = get_vm_state(L);
-    if (st == nullptr || gen == 0)
-        return;
+    VmState* st = &vm_state(L);
     // Erase this frame's generation wherever it sits: a Lua error unwinding
     // through pcall can skip an inner frame's pop, so do not assume LIFO.
     auto it = std::find(st->live_gens.begin(), st->live_gens.end(), gen);
@@ -541,11 +553,9 @@ int og_use(lua_State* L)
 {
     const char* spec = luaL_checkstring(L, 1);
     VmState* st = get_vm_state(L);
-    // host_impl, not owner: a lib module is pure by contract, so og.use is
-    // one of the few entry points the declaration VM — which has a host but
-    // no WorldScripts — is allowed to serve.
-    if (st == nullptr || st->host_impl == nullptr)
-        return luaL_error(L, "og.use: no script host active");
+    // No null check: og.use is installed only by install_vm_scaffolding,
+    // which registers 'og.vmstate' and sets host_impl first, so every VM
+    // that can call this has both (the declaration VM included).
     if (st->current_pack.empty())
         return luaL_error(L, "og.use: only callable while a pack chunk "
                              "loads (bind modules to locals at load time)");
@@ -829,8 +839,6 @@ int og_register_hooks(lua_State* L)
                           order_str, family_str);
 
     VmState* st = get_vm_state(L);
-    if (st == nullptr || st->owner == nullptr)
-        return luaL_error(L, "og.register_hooks: no world scripts active");
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->hooks_ref);  // hooks root
     lua_rawgeti(L, -1, hook_table_key(oi->order, family_id));
@@ -1144,9 +1152,7 @@ int og_set_entity_hooks(lua_State* L)
     luaL_checktype(L, 2, LUA_TTABLE);
     if (h->entity_id == 0)
         return luaL_error(L, "og.set_entity_hooks: entity is untracked");
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        return luaL_error(L, "og.set_entity_hooks: no world scripts");
+    VmState* st = &vm_state(L);
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->entity_hooks_ref);
     lua_newtable(L);
@@ -1367,8 +1373,6 @@ int og_register_campaign_hooks(lua_State* L)
     // family chunk calling this neither rejects the pack nor registers.
     if (st != nullptr && st->mode == VmMode::Declare)
         return 0;
-    if (st == nullptr || st->owner == nullptr)
-        return luaL_error(L, "og.register_campaign_hooks: no world scripts");
 
     if (st->campaign_registered) {
         // One campaign, one book, or none: never raise (that would kill
@@ -1486,8 +1490,6 @@ int og_register_default_lineup(lua_State* L)
     // Declaration pass: silent no-op, the og.register_hooks precedent.
     if (st != nullptr && st->mode == VmMode::Declare)
         return 0;
-    if (st == nullptr || st->owner == nullptr)
-        return luaL_error(L, "og.register_default_lineup: no world scripts");
 
     // Last registration wins (the og.register_level_hooks wildcard
     // precedent). The table carried a second `default_fill` member for as
@@ -1579,9 +1581,10 @@ void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
             fd->declared_id != nullptr ? fd->declared_id : fd->name;
         for (int slot = 1; slot < FD_NUM_SPECIALS; slot++) {
             const char* name = fd->special_names[slot];
+            // The name alone decides: a slot's name and cost travel as the
+            // kSpecialNameNone / kSpecialCostDisabled pair (packs.cpp
+            // install_specials), and a declared cost is always below it.
             if (name == nullptr || std::strcmp(name, kSpecialNameNone) == 0)
-                continue;
-            if (fd->special_cost[slot] >= kSpecialCostDisabled)
                 continue;
             lua_rawgeti(L, -1, slot);
             // A stored `false` is the declaration's explicit charged no-op,
@@ -1916,48 +1919,37 @@ public:
     HookFrame(const HookFrame&) = delete;
     HookFrame& operator=(const HookFrame&) = delete;
 
-    bool begin(Order order, int family_id, FamilyHook hook)
+    // Callers have already seen WorldScripts::has_hook(order, family_id,
+    // hook), and the mask bit is set only by note_hook right after a
+    // lua_rawseti of a FUNCTION into that family's hook table
+    // (og.register_hooks, family_decl.cpp bind_one_hook), with nothing that
+    // writes nil back. So the family table and the function are both there.
+    void begin(Order order, int family_id, FamilyHook hook)
     {
-        VmState* st = get_vm_state(L_);
-        if (st == nullptr)
-            return false;
+        VmState* st = &vm_state(L_);
         gen_ = push_dispatch_gen(L_);
         lua_rawgeti(L_, LUA_REGISTRYINDEX, st->hooks_ref);
         lua_rawgeti(L_, -1, hook_table_key(order, family_id));
-        if (!lua_istable(L_, -1)) {
-            lua_pop(L_, 2);
-            return false;
-        }
         lua_rawgeti(L_, -1, static_cast<lua_Integer>(hook));
-        if (!lua_isfunction(L_, -1)) {
-            lua_pop(L_, 3);
-            return false;
-        }
         lua_remove(L_, -2);  // family table
         lua_remove(L_, -2);  // hooks root
         nargs_ = 0;
-        return true;
     }
 
     // begin() for the DoSpecial slot, which may hold either the classic
     // do_special function or a specials table (its declared-id keys were
     // resolved to slots at registration). For a table this selects [sp],
-    // then "default". When the table holds neither, sets
-    // *no_special_handler and returns false with a clean stack: the
-    // dispatch is consumed as a successful no-op, with nothing called.
-    bool begin_special(int family_id, lua_Integer sp,
-                       bool* no_special_handler)
+    // then "default". When the table holds neither, returns false with a
+    // clean stack: the dispatch is consumed as a successful no-op, with
+    // nothing called. Same has_hook precondition as begin(): the slot holds
+    // the function or the specials table (both writers store one of the
+    // two), so there is no other way to come back empty.
+    bool begin_special(int family_id, lua_Integer sp)
     {
-        VmState* st = get_vm_state(L_);
-        if (st == nullptr)
-            return false;
+        VmState* st = &vm_state(L_);
         gen_ = push_dispatch_gen(L_);
         lua_rawgeti(L_, LUA_REGISTRYINDEX, st->hooks_ref);
         lua_rawgeti(L_, -1, hook_table_key(Order::Living, family_id));
-        if (!lua_istable(L_, -1)) {
-            lua_pop(L_, 2);
-            return false;
-        }
         lua_rawgeti(L_, -1,
                     static_cast<lua_Integer>(FamilyHook::DoSpecial));
         if (lua_istable(L_, -1)) {
@@ -1967,7 +1959,6 @@ public:
             // through to it: the slot was written to do nothing, on purpose.
             if (lua_isboolean(L_, -1) && !lua_toboolean(L_, -1)) {
                 lua_pop(L_, 4);  // entry + specials + family + hooks root
-                *no_special_handler = true;
                 return false;
             }
             if (!lua_isfunction(L_, -1)) {
@@ -1978,14 +1969,9 @@ public:
             if (!lua_isfunction(L_, -1)) {
                 // entry + specials table + family table + hooks root
                 lua_pop(L_, 4);
-                *no_special_handler = true;
                 return false;
             }
             lua_remove(L_, -2);  // specials table
-        }
-        if (!lua_isfunction(L_, -1)) {
-            lua_pop(L_, 3);
-            return false;
         }
         lua_remove(L_, -2);  // family table
         lua_remove(L_, -2);  // hooks root
@@ -1999,17 +1985,15 @@ public:
         nargs_++;
     }
 
+    // The only guy* hook argument is hooks::level_up's self, and its one
+    // caller (guy::level_up, guy.cpp) passes `this`: never null.
     void arg(guy* g)
     {
-        if (g == nullptr) {
-            lua_pushnil(L_);
-        } else {
-            auto* h = static_cast<GuyHandle*>(
-                lua_newuserdatauv(L_, sizeof(GuyHandle), 0));
-            h->raw = g;
-            h->gen = gen_;
-            luaL_setmetatable(L_, kGuyMeta);
-        }
+        auto* h = static_cast<GuyHandle*>(
+            lua_newuserdatauv(L_, sizeof(GuyHandle), 0));
+        h->raw = g;
+        h->gen = gen_;
+        luaL_setmetatable(L_, kGuyMeta);
         nargs_++;
     }
 
@@ -2148,16 +2132,15 @@ std::optional<bool> try_script_hook(Order order, int family_id,
     if (!ws.has_hook(order, family_id, hook))
         return std::nullopt;
     HookFrame f(ws);
-    if (!f.begin(order, family_id, hook))
-        return std::nullopt;
+    f.begin(order, family_id, hook);
     (f.arg(args), ...);
     return f.call(hook_where(hook), wants_result);
 }
 
 // DoSpecial dispatch, honoring both slot forms (stub generator reads this
 // separate funnel and its call_special contract).
-// Returns nullopt when no script hook ran (the caller may use an optional
-// descriptor callback), and the hook's validated cast result otherwise.
+// Returns nullopt when no script hook ran, and the hook's validated cast
+// result otherwise.
 // The specials-table form implements the class-pack dispatch contract:
 // self:current_special() selects, a missing index falls to `default`, and a
 // table with neither is the ladder's fall-through — result true, no call.
@@ -2174,12 +2157,8 @@ std::optional<SpecialResult> try_script_do_special(int family_id, walker* self,
         (self != nullptr) ? static_cast<lua_Integer>(self->current_special())
                           : 0;
     HookFrame f(ws);
-    bool no_special_handler = false;
-    if (!f.begin_special(family_id, sp, &no_special_handler)) {
-        if (no_special_handler)
-            return SpecialResult::success();
-        return std::nullopt;
-    }
+    if (!f.begin_special(family_id, sp))
+        return SpecialResult::success();
     f.arg(self);
     return f.call_special(hook_where(FamilyHook::DoSpecial), error_reason);
 }
@@ -2207,11 +2186,6 @@ std::optional<SpecialResult> do_special(const FamilyDescriptor* fd, walker* self
         return std::nullopt;
     if (auto r = try_script_do_special(fd->family_id, self, error_reason))
         return r;
-    if (fd->do_special != nullptr) {
-        if (error_reason)
-            error_reason->clear();
-        return fd->do_special(self);
-    }
     return std::nullopt;
 }
 
@@ -2223,8 +2197,6 @@ std::optional<bool> check_special_ai(const FamilyDescriptor* fd, living* self)
                                  FamilyHook::CheckSpecialAi, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (fd->check_special_ai != nullptr)
-        return fd->check_special_ai(self);
     return std::nullopt;
 }
 
@@ -2236,10 +2208,6 @@ bool hit_response(const FamilyDescriptor* fd, statistics* stats, walker* who)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::HitResponse,
                         false, stats->controller(), who))
         return true;
-    if (fd->hit_response != nullptr) {
-        fd->hit_response(stats, who);
-        return true;
-    }
     return false;
 }
 
@@ -2253,10 +2221,6 @@ bool set_difficulty(const FamilyDescriptor* fd, living* self,
                         static_cast<walker*>(self),
                         static_cast<lua_Integer>(level)))
         return true;
-    if (fd->set_difficulty != nullptr) {
-        fd->set_difficulty(self, level);
-        return true;
-    }
     return false;
 }
 
@@ -2267,10 +2231,6 @@ bool level_up(const FamilyDescriptor* fd, guy* self, std::int32_t level_diff)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::LevelUp,
                         false, self, static_cast<lua_Integer>(level_diff)))
         return true;
-    if (fd->level_up != nullptr) {
-        fd->level_up(self, level_diff);
-        return true;
-    }
     return false;
 }
 
@@ -2281,8 +2241,6 @@ std::optional<bool> on_death(const FamilyDescriptor* fd, walker* self)
     if (auto r = try_script_hook(Order::Living, fd->family_id,
                                  FamilyHook::OnDeath, true, self))
         return r;
-    if (fd->on_death != nullptr)
-        return fd->on_death(self);
     return std::nullopt;
 }
 
@@ -2293,10 +2251,6 @@ bool on_act_living(const FamilyDescriptor* fd, living* self)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnActLiving,
                         false, static_cast<walker*>(self)))
         return true;
-    if (fd->on_act_living != nullptr) {
-        fd->on_act_living(self);
-        return true;
-    }
     return false;
 }
 
@@ -2318,10 +2272,6 @@ bool on_shoved(const FamilyDescriptor* fd, walker* target)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnShoved,
                         false, target))
         return true;
-    if (fd->on_shoved != nullptr) {
-        fd->on_shoved(target);
-        return true;
-    }
     return false;
 }
 
@@ -2334,8 +2284,6 @@ std::optional<bool> on_fire_weapon(const FamilyDescriptor* fd, walker* self,
                                  FamilyHook::OnFireWeapon, true, self,
                                  weapon))
         return r;
-    if (fd->on_fire_weapon != nullptr)
-        return fd->on_fire_weapon(self, weapon);
     return std::nullopt;
 }
 
@@ -2346,8 +2294,6 @@ std::optional<bool> handle_teleport(const FamilyDescriptor* fd, walker* self)
     if (auto r = try_script_hook(Order::Living, fd->family_id,
                                  FamilyHook::HandleTeleport, true, self))
         return r;
-    if (fd->handle_teleport != nullptr)
-        return fd->handle_teleport(self);
     return std::nullopt;
 }
 
@@ -2358,10 +2304,6 @@ bool on_create(const FamilyDescriptor* fd, walker* self)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnCreate,
                         false, self))
         return true;
-    if (fd->on_create != nullptr) {
-        fd->on_create(self);
-        return true;
-    }
     return false;
 }
 
@@ -2372,10 +2314,6 @@ bool customize_weapon(const FamilyDescriptor* fd, walker* self, walker* weapon)
     if (try_script_hook(Order::Living, fd->family_id,
                         FamilyHook::CustomizeWeapon, false, self, weapon))
         return true;
-    if (fd->customize_weapon != nullptr) {
-        fd->customize_weapon(self, weapon);
-        return true;
-    }
     return false;
 }
 
@@ -2386,8 +2324,6 @@ std::optional<bool> on_ani_complete(const FamilyDescriptor* fd, walker* self)
     if (auto r = try_script_hook(Order::Living, fd->family_id,
                                  FamilyHook::OnAniComplete, true, self))
         return r;
-    if (fd->on_ani_complete != nullptr)
-        return fd->on_ani_complete(self);
     return std::nullopt;
 }
 
@@ -2398,10 +2334,6 @@ bool on_melee_hit(const FamilyDescriptor* fd, walker* self, walker* target)
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnMeleeHit,
                         false, self, target))
         return true;
-    if (fd->on_melee_hit != nullptr) {
-        fd->on_melee_hit(self, target);
-        return true;
-    }
     return false;
 }
 
@@ -2414,8 +2346,6 @@ std::optional<bool> weapon_on_death(const WeaponFamilyDescriptor* wfd,
                                  FamilyHook::WeaponOnDeath, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (wfd->on_death != nullptr)
-        return wfd->on_death(self);
     return std::nullopt;
 }
 
@@ -2472,8 +2402,6 @@ std::optional<bool> effect_on_death(const EffectFamilyDescriptor* efd,
                                  FamilyHook::EffectOnDeath, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (efd->on_death != nullptr)
-        return efd->on_death(self);
     return std::nullopt;
 }
 
@@ -2494,8 +2422,6 @@ std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
 bool generator_customize_spawn(int generator_family, walker* generator,
                                walker* spawn)
 {
-    if (generator == nullptr || spawn == nullptr)
-        return false;
     return try_script_hook(Order::Generator, generator_family,
                            FamilyHook::GeneratorCustomizeSpawn, false,
                            generator, spawn)
@@ -2550,9 +2476,7 @@ std::uint32_t level_hook_kinds_for(int level_id)
         return 0;
     WorldScripts& ws = active_world_scripts();
     lua_State* L = ws.host().impl().L;
-    VmState* st = get_vm_state(L);
-    if (st == nullptr)
-        return 0;
+    VmState* st = &vm_state(L);
     std::uint32_t kinds = 0;
     for (const auto& h : kLevelHookNames) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
@@ -2601,9 +2525,7 @@ void level_entity_death(walker* self)
     if (self == nullptr || pack_scripts().empty())
         return;
     WorldScripts& ws = active_world_scripts();
-    VmState* st = get_vm_state(ws.host().impl().L);
-    if (st == nullptr)
-        return;
+    VmState* st = &vm_state(ws.host().impl().L);
     ScriptHost::Impl& impl = ws.host().impl();
     lua_State* L = impl.L;
 
@@ -2675,8 +2597,6 @@ void level_entity_death(walker* self)
 
 void level_entity_spawn(walker* spawned)
 {
-    if (spawned == nullptr)
-        return;
     VmState* st =
         level_vm_state(1u << static_cast<unsigned>(LevelHook::EntitySpawn));
     if (st == nullptr)
@@ -2786,10 +2706,7 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
         return amount;
     const std::uint64_t gen = push_dispatch_gen(L);
     push_walker_handle(L, target, gen);
-    if (attacker != nullptr)
-        push_walker_handle(L, attacker, gen);
-    else
-        lua_pushnil(L);
+    push_walker_handle(L, attacker, gen);  // nil for an unattributed hit
     lua_pushinteger(L, static_cast<lua_Integer>(amount));
     short result = amount;
     // A hook ERROR keeps the authored amount (R9: the hook counts as absent
@@ -3921,12 +3838,10 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
         if (st == nullptr)
             return false;
         lua_State* default_L = st->owner->host().impl().L;
+        // Always a function: og.register_default_lineup refs the value only
+        // after checking lua_isfunction, and nothing else writes the ref.
         lua_rawgeti(default_L, LUA_REGISTRYINDEX,
                     st->default_lineup_power_ref);
-        if (!lua_isfunction(default_L, -1)) {
-            lua_pop(default_L, 1);
-            return false;
-        }
         who = "default";
     }
     ScriptHost::Impl& impl = st->owner->host().impl();

@@ -344,13 +344,6 @@ bool living::act()
 
 				//break;
 			}
-			// We are a generator
-		case ACT_GENERATE:
-			{
-				Log("LIVING Generator?\n");
-				//              act_generate();
-				break;
-			}
 			// We are a weapon
 		case ACT_FIRE:
 			{
