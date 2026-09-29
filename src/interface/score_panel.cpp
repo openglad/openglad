@@ -991,8 +991,6 @@ short new_score_panel(screen* s, short /*do_it*/)
                         scorecountup[team_num]++;
                         scorecountup[team_num] += static_cast<Uint32>(rng((myscore - scorecountup[team_num]))/12);
                     }
-                    if (scorecountup[team_num] > myscore)
-                        scorecountup[team_num] = myscore;
 
                     // above should count up the score towards the current amount
                     if (!compact_score_panel)
