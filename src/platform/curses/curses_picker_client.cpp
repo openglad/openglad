@@ -549,8 +549,8 @@ void view_team_roster(Menu& menu, SaveData& save)
         if (choice < 0)
             return;
         cursor = choice;
-        if (choice >= static_cast<int>(slots.size()))
-            continue;
+        // choose() answers only selectable rows, and the DEP/Gold footer
+        // row is not one: every answer indexes `slots`.
         const int slot = slots[static_cast<std::size_t>(choice)];
 
         if (key == U'd' || key == U'D') {
