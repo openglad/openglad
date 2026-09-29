@@ -1818,8 +1818,6 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
     for (const std::uint32_t tick : pending_ticks)
     {
         const auto input_it = seat.pending_inputs.find(tick);
-        if (input_it == seat.pending_inputs.end())
-            continue;
 
         const PlayerInput& received = input_it->second;
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
