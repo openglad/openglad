@@ -8804,9 +8804,9 @@ Sint32 create_team_menu(Sint32 arg1)
     const Sint32 retvalue =
         og::ui::run_menu_screen(og::ui::team_build_menu_screen_spec(), &state);
     og::ui::install_base_camp_state_for_screen(nullptr);
-    if (retvalue & MENU_EXIT)
-        return retvalue;
-    return MENU_REDRAW;
+    // Every exit of the team_build spec carries MENU_EXIT (its exit_value,
+    // the TeamBuildScope remote start, a row's structural exit).
+    return retvalue;
 }
 
 button* picker_scenariomenu_buttons()
