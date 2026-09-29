@@ -39,7 +39,12 @@ public:
 
     std::vector<og::sim::PeerId> connected_peers() const override
     {
-        return {};
+        return connected_;
+    }
+
+    void set_connected(std::vector<og::sim::PeerId> peers)
+    {
+        connected_ = std::move(peers);
     }
 
     void queue(og::sim::PeerId peer_id, std::vector<std::uint8_t> bytes)
@@ -58,6 +63,7 @@ public:
     }
 
 private:
+    std::vector<og::sim::PeerId> connected_;
     std::vector<og::sim::ReceivedMessage> queued_;
     std::vector<og::sim::ReceivedMessage> sent_;
     std::vector<og::sim::PeerId> disconnected_;
@@ -413,4 +419,81 @@ TEST(GameClientCoverage, hash_check_waits_for_the_keyframe_after_setup)
         }
     }
     EXPECT_EQ((std::vector<std::uint32_t>{41u}), hash_check_ticks);
+}
+
+// Rule (game_client.cpp notify_connection_lost_once): the connection-lost
+// callback fires exactly once per connection loss, however many loss signals
+// arrive while the link stays down; a link that comes back re-arms it.
+TEST(GameClientCoverage, connection_lost_callback_fires_once_per_loss)
+{
+    constexpr og::sim::PeerId kServerPeer = 7u;
+    RawTransport transport;
+    og::sim::GameClient client(transport, kServerPeer);
+    int lost_count = 0;
+    client.set_connection_lost_callback([&lost_count] { ++lost_count; });
+
+    transport.set_connected({kServerPeer});
+    client.poll_messages();
+    transport.set_connected({});
+    client.poll_messages();
+    ASSERT_TRUE(client.transport_lost());
+    EXPECT_EQ(0, lost_count) << "the reconnect window has not expired";
+
+    // Two abort requests on the dead link: two loss signals, one callback.
+    client.request_level_abort();
+    EXPECT_EQ(1, lost_count);
+    client.request_level_abort();
+    EXPECT_EQ(1, lost_count)
+        << "a second loss signal on the same loss must not re-notify";
+
+    // Paired control: the link returns and drops again; that NEW loss fires.
+    transport.set_connected({kServerPeer});
+    client.poll_messages();
+    transport.set_connected({});
+    client.poll_messages();
+    client.request_level_abort();
+    EXPECT_EQ(2, lost_count) << "a fresh connection loss must notify again";
+}
+
+// Rule (game_client.cpp apply_delta_snapshot): while a requested keyframe is
+// pending, incoming deltas are dropped: nothing is applied and no second
+// keyframe request goes out. The keyframe then restores normal delta flow.
+TEST(GameClientCoverage, deltas_are_dropped_while_a_keyframe_is_pending)
+{
+    constexpr og::sim::PeerId kServerPeer = 7u;
+    RawTransport transport;
+    og::sim::GameClient client(transport, kServerPeer);
+
+    og::sim::WorldSnapshot early_delta;
+    early_delta.tick_count = 6u;
+    transport.queue(kServerPeer, og::sim::serialize_delta(early_delta));
+    client.poll_messages();
+    ASSERT_TRUE(client.waiting_for_keyframe());
+    ASSERT_EQ(1u, client.keyframe_request_count());
+
+    og::sim::WorldSnapshot later_delta;
+    later_delta.tick_count = 7u;
+    transport.queue(kServerPeer, og::sim::serialize_delta(later_delta));
+    client.poll_messages();
+    EXPECT_EQ(1u, client.keyframe_request_count())
+        << "a delta that arrives while a keyframe is owed must not re-request";
+    EXPECT_TRUE(client.waiting_for_keyframe());
+    EXPECT_FALSE(client.baseline().has_value());
+    EXPECT_EQ(0u, client.last_seen_server_tick());
+
+    // Paired control: the keyframe lands, and the next contiguous delta is
+    // applied.
+    og::sim::WorldSnapshot keyframe;
+    keyframe.tick_count = 10u;
+    transport.queue(kServerPeer, og::sim::serialize_snapshot(keyframe));
+    client.poll_messages();
+    ASSERT_FALSE(client.waiting_for_keyframe());
+    og::sim::WorldSnapshot next_delta;
+    next_delta.tick_count = 11u;
+    transport.queue(kServerPeer, og::sim::serialize_delta(next_delta));
+    client.poll_messages();
+    ASSERT_TRUE(client.baseline().has_value());
+    EXPECT_EQ(11u, client.baseline()->tick_count);
+    EXPECT_EQ(11u, client.last_seen_server_tick());
+    EXPECT_EQ(1u, client.keyframe_request_count());
 }
