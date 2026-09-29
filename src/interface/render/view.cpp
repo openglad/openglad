@@ -1812,18 +1812,23 @@ void viewscreen::draw_floor_entities(LevelRuntimeData* data, int floor,
 	const bool direct_faded_fallback = alpha < 255 && !layer_active;
 	if (!direct_faded_fallback)
 		draw_floor_effects(data, floor);
+	// First draw the special effects
 	for (auto& uptr : data->world().fxlist)
 	{
 		walker* w = uptr.get();
 		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
 			draw_walker(*w, this, alpha, layer_active);
 	}
+
+	// Now do real objects
 	for (auto& uptr : data->world().oblist)
 	{
 		walker* w = uptr.get();
 		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
 			draw_walker(*w, this, alpha, layer_active);
 	}
+
+	// Finally draw the weapons
 	for (auto& uptr : data->world().weaplist)
 	{
 		walker* w = uptr.get();
@@ -1832,51 +1837,6 @@ void viewscreen::draw_floor_entities(LevelRuntimeData* data, int floor,
 	}
 	if (!direct_faded_fallback)
 		draw_floor_effects_post(data, floor);
-}
-
-bool viewscreen::draw_obs()
-{
-    return draw_obs(&active_screen()->level_runtime_data());
-}
-
-bool viewscreen::draw_obs(LevelRuntimeData* data)
-{
-	const bool multifloor = data->world().floor_count() > 1;
-	const Sint32 cf = current_floor_;
-	// Layer entities bottom-up to the camera floor so lower-floor entities show
-	// through air holes and the camera floor draws on top. Single-floor levels
-	// (multifloor==false) draw every entity in one pass, exactly as before.
-	for (Sint32 f = 0; f <= cf; ++f)
-	{
-		draw_floor_effects(data, static_cast<int>(f));
-		// First draw the special effects
-		for (auto& uptr : data->world().fxlist)
-		{
-		    walker* w = uptr.get();
-			if(w && !w->dead() && (!multifloor || w->floor() == f))
-				draw_walker(*w, this);
-		}
-
-		// Now do real objects
-		for (auto& uptr : data->world().oblist)
-		{
-		    walker* w = uptr.get();
-			if(w && !w->dead() && (!multifloor || w->floor() == f))
-				draw_walker(*w, this);
-		}
-
-		// Finally draw the weapons
-		for (auto& uptr : data->world().weaplist)
-		{
-		    walker* w = uptr.get();
-			if(w && !w->dead() && (!multifloor || w->floor() == f))
-				draw_walker(*w, this);
-		}
-
-		draw_floor_effects_post(data, static_cast<int>(f));
-	}
-
-	return 1;
 }
 
 void viewscreen::resize(short x, short y, short length, short height)

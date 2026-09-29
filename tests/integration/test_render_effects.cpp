@@ -1,7 +1,7 @@
 // Render-pass tests for the multifloor FX pre-pass: ground shadows under
 // living units / weapons-in-flight and glass reflections on the camera floor
-// (draw_walker_shadow / draw_walker_reflection wired into draw_floor_entities
-// and draw_obs). Effects OFF must render byte-identically, so every test
+// (draw_walker_shadow / draw_walker_reflection wired into
+// draw_floor_entities). Effects OFF must render byte-identically, so every test
 // compares an off-run against an on-run of the same scene.
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/platform/sai2x.h>
@@ -431,31 +431,6 @@ TEST_F(RenderEffects, weapon_shadow_stays_at_ground_when_raised_by_worldz)
     const RGB on = px(probe_x, probe_y);
     ASSERT_TRUE(darkened(on, off))
         << "airborne weapon's shadow must stay on the ground plane";
-
-    restore_world(vs);
-}
-
-TEST_F(RenderEffects, draw_obs_legacy_path_draws_shadow_prepass)
-{
-    viewscreen* vs = view0();
-    ASSERT_NE(nullptr, vs);
-    prepare_world();
-    EffectsCfgGuard guard;
-    cfg.apply_setting("effects", "reflections", "off");
-    cfg.apply_setting("effects", "weather", "off");
-    cfg.apply_setting("effects", "shadows", "on");
-
-    walker* w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, w);
-    w->setxy(160, 120);
-    vs->control = w;
-    ASSERT_TRUE(do_redraw(vs)); // establish camera + current_floor_
-
-    // The level-editor entity path shares the same pre-pass per floor.
-    trace_clear();
-    ASSERT_TRUE(vs->draw_obs(&scr()->level_runtime_data()));
-    ASSERT_TRUE(trace_contains("effects", "shadows floor=0 n=1"))
-        << "draw_obs must run the shadow pre-pass";
 
     restore_world(vs);
 }
