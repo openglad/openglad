@@ -3141,8 +3141,6 @@ void TrainSession::select_current_slot()
 
 guy* TrainSession::original_member()
 {
-    if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
-        return nullptr;
     if (!picker_lobby_save_slot_editable(edit_slot_))
         return nullptr;
     return save_.team_list[static_cast<std::size_t>(edit_slot_)].get();
@@ -3150,8 +3148,6 @@ guy* TrainSession::original_member()
 
 const guy* TrainSession::original_member() const
 {
-    if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
-        return nullptr;
     if (!picker_lobby_save_slot_editable(edit_slot_))
         return nullptr;
     return save_.team_list[static_cast<std::size_t>(edit_slot_)].get();
