@@ -115,8 +115,6 @@ const std::vector<int>& level_exits(int level_id)
         for (auto& uptr : world.fxlist)
         {
             walker* ob = uptr.get();
-            if (!ob)
-                continue;
             if (ob->query_order() == Order::Treasure &&
                 ob->family() == FAMILY_EXIT)
             {

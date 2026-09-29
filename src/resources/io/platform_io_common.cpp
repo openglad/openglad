@@ -145,17 +145,6 @@ std::string& mounted_campaign_state()
     static std::string mounted_campaign;
     return mounted_campaign;
 }
-
-const char* campaign_io_error_string(CampaignPackageIoError err)
-{
-    switch (err) {
-        case CampaignPackageIoError::None: return "none";
-        case CampaignPackageIoError::EmptyId: return "empty_id";
-        case CampaignPackageIoError::MountFailed: return "mount_failed";
-        case CampaignPackageIoError::UnmountFailed: return "unmount_failed";
-    }
-    return "unknown";
-}
 } // namespace
 
 bool is_safe_campaign_id(std::string_view id)
@@ -297,7 +286,7 @@ static CampaignPackageIoError mount_campaign_package_impl(const std::string& id,
     if(!og::resources::mount(filename.c_str(), nullptr, 0))
     {
         LogError("campaign_mount_failed id={} path={} code={} physfs={}\n",
-            id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), og::resources::filesystem_last_error());
+            id, filename, "mount_failed", og::resources::filesystem_last_error());
         mounted_campaign_state().clear();
         return CampaignPackageIoError::MountFailed;
     }
@@ -339,7 +328,7 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
     if(!og::resources::unmount(filename.c_str()))
     {
         LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
-            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), og::resources::filesystem_last_error());
+            id, filename, "unmount_failed", og::resources::filesystem_last_error());
         return CampaignPackageIoError::UnmountFailed;
     }
     mounted_campaign_state().clear();
@@ -367,7 +356,7 @@ CampaignPackageIoError remount_campaign_package_with_error()
         if (physfs_error.find("files still open") != std::string::npos)
             return CampaignPackageIoError::None;
         LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
-            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), physfs_error);
+            id, filename, "unmount_failed", physfs_error);
         return CampaignPackageIoError::UnmountFailed;
     }
     mounted_campaign_state().clear();

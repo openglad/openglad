@@ -1208,6 +1208,27 @@ TEST(CompanyBackups, delete_backup_and_delete_company_reap_files)
         << "a company with no file left reports false";
 }
 
+// Backup deletion refuses a slot name that is not a safe virtual basename,
+// even when a file of that exact shape sits in save/backups (a user can put
+// one there; the scan would match it). Paired control: the same file shape
+// under a safe slot name is deleted.
+TEST(CompanyBackups, delete_backup_refuses_an_unsafe_slot_name)
+{
+    SaveDirSandbox sandbox;
+    std::error_code ec;
+    std::filesystem::create_directories(sandbox.dir() / "backups", ec);
+    sandbox.write_raw("backups/bad slot.001.gtl", "UNSAFE NAMED BACKUP");
+    sandbox.write_raw("backups/goodslot.001.gtl", "SAFE NAMED BACKUP");
+
+    EXPECT_FALSE(og::data::delete_company_backup("bad slot", 1))
+        << "an unsafe slot name must be refused";
+    EXPECT_TRUE(user_file_exists("save/backups/bad slot.001.gtl"))
+        << "the refused delete must leave the file alone";
+
+    EXPECT_TRUE(og::data::delete_company_backup("goodslot", 1));
+    EXPECT_FALSE(user_file_exists("save/backups/goodslot.001.gtl"));
+}
+
 TEST(CompanyBackups, restore_aborts_on_corrupt_or_missing_backup)
 {
     SaveDirSandbox sandbox;

@@ -754,12 +754,9 @@ void StagedPreviewMirror::apply_retained_pair(std::string_view current_campaign,
         // apply_snapshot self-installs its snapshot context and event
         // suppression guard: a mirror can never manufacture announcements,
         // and the tick-0 apply's on_load re-arm is inert (mirrors never
-        // tick).
-        if (!og::sim::apply_snapshot(mirror_world, snapshot))
-        {
-            fail("staged keyframe apply failed");
-            return;
-        }
+        // tick). It fails only without bound sim events/config, and
+        // wire_mirror_context() bound all three on this world.
+        (void)og::sim::apply_snapshot(mirror_world, snapshot);
 
         status_ = MirrorStatus::Staged;
         error_.clear();

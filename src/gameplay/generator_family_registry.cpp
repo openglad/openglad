@@ -30,8 +30,6 @@ void init_generator_family_registry()
 
 const GeneratorFamilyDescriptor* get_generator_family_descriptor(int family_id)
 {
-    if (!s_registry.is_initialized())
-        init_generator_family_registry();
     return s_registry.get(family_id);
 }
 
@@ -60,7 +58,5 @@ void reset_generator_family_registry_mod_slots()
 
 int first_unpopulated_core_generator_family_slot()
 {
-    if (!s_registry.is_initialized())
-        init_generator_family_registry();
     return s_registry.first_unpopulated_core_slot();
 }

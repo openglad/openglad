@@ -29,8 +29,6 @@ void init_effect_family_registry()
 
 const EffectFamilyDescriptor* get_effect_family_descriptor(int family_id)
 {
-    if (!s_registry.is_initialized())
-        init_effect_family_registry();
     return s_registry.get(family_id);
 }
 
@@ -59,7 +57,5 @@ void reset_effect_family_registry_mod_slots()
 
 int first_unpopulated_core_effect_family_slot()
 {
-    if (!s_registry.is_initialized())
-        init_effect_family_registry();
     return s_registry.first_unpopulated_core_slot();
 }

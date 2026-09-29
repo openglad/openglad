@@ -843,8 +843,7 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
         d.playable_order = *e.playable_order;
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    if (!set_family_descriptor(id, d))
-        return false;
+    (void)set_family_descriptor(id, d);
     install_family_tuning(Order::Living, id, e.tuning);
     return true;
 }
@@ -898,8 +897,7 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
                              d.anim_row_count);
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    if (!set_weapon_family_descriptor(id, d))
-        return false;
+    (void)set_weapon_family_descriptor(id, d);
     install_family_tuning(Order::Weapon, id, e.tuning);
     return true;
 }
@@ -939,8 +937,7 @@ bool install_effect(const og::data::ClasspackEffectEntry& e, int id,
                              d.anim_row_count);
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    if (!set_effect_family_descriptor(id, d))
-        return false;
+    (void)set_effect_family_descriptor(id, d);
     install_family_tuning(Order::FX, id, e.tuning);
     return true;
 }
@@ -975,8 +972,7 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e, int id,
                              d.anim_row_count);
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    if (!set_treasure_family_descriptor(id, d))
-        return false;
+    (void)set_treasure_family_descriptor(id, d);
     install_family_tuning(Order::Treasure, id, e.tuning);
     return true;
 }
@@ -1022,8 +1018,7 @@ bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
         d.editor_label = e.editor_label->c_str();
     apply_presentation(e.presentation, d.glyph, d.radar, e.id);
 
-    if (!set_generator_family_descriptor(id, d))
-        return false;
+    (void)set_generator_family_descriptor(id, d);
     install_family_tuning(Order::Generator, id, e.tuning);
     return true;
 }

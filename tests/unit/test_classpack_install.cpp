@@ -46,6 +46,7 @@
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/packs.h>
 
@@ -2245,6 +2246,22 @@ TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
     ASSERT_NE(quiet, nullptr);
     EXPECT_EQ(0.0f, quiet->hp) << "absent hp keeps the copied core row";
     EXPECT_EQ(44, quiet->init_lifetime);
+
+    // The loader carries a declared hp into the entity tables every spawned
+    // walker reads its hitpoints from (gloader install_pack_entity); the
+    // undeclared sibling keeps the zero a pack slot starts from.
+    const loader ld;
+    EXPECT_EQ(7.0f, ld.hitpoints[static_cast<std::size_t>(
+                        loader::slot_for(Order::Weapon, 21))]);
+    EXPECT_EQ(9.0f, ld.hitpoints[static_cast<std::size_t>(
+                        loader::slot_for(Order::FX, 21))]);
+    EXPECT_EQ(11.0f, ld.hitpoints[static_cast<std::size_t>(
+                         loader::slot_for(Order::Treasure, 21))]);
+    EXPECT_EQ(13.0f, ld.hitpoints[static_cast<std::size_t>(
+                         loader::slot_for(Order::Generator, 21))]);
+    EXPECT_EQ(0.0f, ld.hitpoints[static_cast<std::size_t>(
+                        loader::slot_for(Order::Weapon, 22))])
+        << "an undeclared hp leaves the loader row at zero";
 }
 
 namespace {
