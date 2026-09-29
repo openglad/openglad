@@ -1768,10 +1768,6 @@ walker::act_random()
 			stats_->set_command(COMMAND_FIRE, static_cast<std::int32_t>(current_game->world->rng_.next(24)), xdist, ydist);
 			return 1;
 		}
-		else
-			// Nearest foe is blocked
-			//foe = nullptr;
-			turn(facing(xdist,ydist));
 	}
 
 	// Otherwise, try to walk toward foe
