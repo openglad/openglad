@@ -170,14 +170,6 @@ static void clear_world_entity_services(GameWorld* world)
 
 static void install_world_detach_callback(GameWorld* world, LevelRuntimeData* level)
 {
-    if (world == nullptr)
-        return;
-    if (level == nullptr)
-    {
-        world->set_detach_callback({});
-        return;
-    }
-
     world->set_detach_callback([level, world] {
         if (&level->world() == world)
             level->attach_world(nullptr);
