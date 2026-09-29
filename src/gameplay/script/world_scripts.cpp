@@ -2728,10 +2728,7 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
         return amount;
     const std::uint64_t gen = push_dispatch_gen(L);
     push_walker_handle(L, target, gen);
-    if (attacker != nullptr)
-        push_walker_handle(L, attacker, gen);
-    else
-        lua_pushnil(L);
+    push_walker_handle(L, attacker, gen);  // nil for an unattributed hit
     lua_pushinteger(L, static_cast<lua_Integer>(amount));
     short result = amount;
     // A hook ERROR keeps the authored amount (R9: the hook counts as absent
