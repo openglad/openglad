@@ -2810,9 +2810,6 @@ walker* GameServer::find_match_reclaim_control(std::size_t player_index) const
 
 void GameServer::maybe_send_control_change(std::size_t player_index, walker* control)
 {
-    if (player_index >= kMaxGlobalPlayers)
-        return;
-
     ControlChangeMessage message;
     message.player_index = static_cast<std::uint8_t>(player_index);
     message.entity_id = control != nullptr ? control->entity_id() : 0U;
