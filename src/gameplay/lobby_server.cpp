@@ -883,22 +883,10 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                     ? std::optional<std::int16_t>(
                           previous_seats[seat_order].team)
                     : std::nullopt;
+            // resolve_team always lands on a selectable team: the effective
+            // team mask is never empty (lobby_effective_team_mask).
             const std::int16_t team = resolve_seat_team(
                 peer_id, requested_seat.team, current_team, sibling_teams);
-            if (team < 0)
-            {
-                // No valid in-range team exists. Seat 0: reject the whole
-                // join (matching the historic full-lobby echo). Later seats:
-                // truncate — the client adopts the echoed authoritative seat
-                // count. Duplicate assignments never reach this path.
-                if (seat_order == 0)
-                {
-                    peer_it->second.seats = previous_seats;
-                    send_state(peer_id);
-                    return;
-                }
-                break;
-            }
 
             LobbyPlayer seat = requested_seat;
             if (seat.name.empty())
@@ -1250,8 +1238,6 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                         first_team,
                         std::nullopt,
                         sibling_teams);
-                    if (reteamed < 0)
-                        continue;
                     seat.team = reteamed;
                     rebuild_needed = true;
                 }
