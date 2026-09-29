@@ -64,6 +64,7 @@ void ready_screen_for_game_start(
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
+Sint32 change_game_speed();
 
 
 struct KeyBindingGuard
@@ -4530,6 +4531,64 @@ static void install_network_client_shadow_for_link_tests(
         0u);
     ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
     game_screen.world().end = 0;
+}
+
+// The SPEED button (change_game_speed) leaves its timer_wait request in the
+// session for the next input sample. A frame that samples it but runs no sim
+// tick (a render-only frame: the pacer's or the browser wrapper's) must carry
+// the request in the latched input to the next frame that does tick; dropping
+// it with the tickless frame's input would lose the player's speed change.
+TEST(GameLoop, speed_request_sampled_on_a_tickless_frame_reaches_the_next_tick)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_speed_latch"));
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    const std::string saved_speed = cfg.get_setting("gameplay", "timer_wait");
+
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    GameLoopFrameState st;
+    const auto frame = [&](bool run_tick) {
+        deps.enable_tick = run_tick;
+        return game_frame_with_result(*game_screen, st, deps);
+    };
+
+    // Paired control: two tickless frames and a ticking one with no request
+    // leave the authoritative speed where it stands.
+    const int standing = server_screen->world().timer_wait;
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    ASSERT_EQ(GameFrameResult::Continue, frame(true));
+    EXPECT_EQ(standing, static_cast<int>(server_screen->world().timer_wait));
+
+    // A tickless frame latches an empty sample first; the button is pressed
+    // before the NEXT tickless frame, which samples the request into the
+    // already-latched input.
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    int requested = standing;
+    for (int presses = 0; presses < 8 && requested == standing; ++presses)
+    {
+        (void)change_game_speed();
+        requested = game_screen->world().timer_wait;
+    }
+    ASSERT_NE(standing, requested) << "the speed cycle must offer another speed";
+    ASSERT_EQ(GameFrameResult::Continue, frame(false));
+    EXPECT_EQ(standing, static_cast<int>(server_screen->world().timer_wait))
+        << "no tick has run since the press";
+    ASSERT_EQ(GameFrameResult::Continue, frame(true));
+    EXPECT_EQ(requested, static_cast<int>(server_screen->world().timer_wait))
+        << "the request latched on the tickless frame must reach the server";
+
+    cfg.apply_setting("gameplay", "timer_wait", saved_speed);
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
 }
 
 // #278: a networked client's QUIT is a withdraw round trip through the
