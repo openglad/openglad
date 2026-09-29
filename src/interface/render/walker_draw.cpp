@@ -179,8 +179,6 @@ static bool float_eq(float a, float b)
 #ifdef TESTING
 std::size_t damage_number_render_state_count(const screen* screen_ctx)
 {
-    if (screen_ctx == nullptr)
-        return 0u;
     return screen_ctx->damage_number_render_context().state_count();
 }
 #endif
