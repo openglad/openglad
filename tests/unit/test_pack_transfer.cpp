@@ -605,6 +605,25 @@ TEST(PackTransferClient, requests_receives_verifies_and_installs)
     EXPECT_TRUE(harness.client->status_text().empty());
 }
 
+// A client never serves packs: a host-bound PackRequest that reaches it is
+// consumed (handled, nothing sent, no transfer state touched). Paired
+// control: a message outside the pack family is not the client's to eat.
+TEST(PackTransferClient, a_host_bound_request_is_eaten_and_changes_nothing)
+{
+    ClientHarness harness;
+    EXPECT_TRUE(harness.feed(
+        og::sim::serialize_pack_request_message({.pack_id = "clientpack"})))
+        << "the client must consume a stray PackRequest";
+    EXPECT_TRUE(harness.transport.sent_messages().empty());
+    EXPECT_FALSE(harness.client->busy());
+    EXPECT_FALSE(harness.client->failed());
+    EXPECT_TRUE(harness.installed.empty());
+    EXPECT_TRUE(harness.client->status_text().empty());
+
+    EXPECT_FALSE(harness.feed(og::sim::serialize_heartbeat_message({})))
+        << "a non-pack message is left for the session to handle";
+}
+
 TEST(PackTransferClient, skips_locally_available_packs)
 {
     ClientHarness harness;
