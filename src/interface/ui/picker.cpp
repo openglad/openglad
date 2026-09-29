@@ -505,6 +505,24 @@ std::string picker_networking_campaign_tag()
     return {};
 }
 
+// The relay base URL the NETWORKING view keys on: the normalized default,
+// or an empty URL plus the reason it is unusable. One rule for both the view
+// (re)build and the per-frame currency check, which compare its results.
+void resolve_default_relay_base_url(std::string& base_url,
+                                    std::string& error)
+{
+    try
+    {
+        base_url = og::ui::default_relay_base_url();
+        error.clear();
+    }
+    catch (const std::exception& failure)
+    {
+        base_url.clear();
+        error = failure.what();
+    }
+}
+
 bool is_blank_text(std::string_view value)
 {
     return std::all_of(
@@ -1661,16 +1679,8 @@ private:
         cancel_relay_room_list_request();
         ++relay_rooms_.view_generation;
         relay_rooms_.view_campaign_tag = picker_networking_campaign_tag();
-        try
-        {
-            relay_rooms_.view_base_url = og::ui::default_relay_base_url();
-            relay_rooms_.view_base_url_error.clear();
-        }
-        catch (const std::exception& error)
-        {
-            relay_rooms_.view_base_url.clear();
-            relay_rooms_.view_base_url_error = error.what();
-        }
+        resolve_default_relay_base_url(relay_rooms_.view_base_url,
+                                       relay_rooms_.view_base_url_error);
 
         relay_rooms_.rooms.clear();
         relay_rooms_.error.clear();
@@ -1697,14 +1707,7 @@ private:
         const std::string campaign_tag = picker_networking_campaign_tag();
         std::string base_url;
         std::string base_url_error;
-        try
-        {
-            base_url = og::ui::default_relay_base_url();
-        }
-        catch (const std::exception& error)
-        {
-            base_url_error = error.what();
-        }
+        resolve_default_relay_base_url(base_url, base_url_error);
         if (campaign_tag != relay_rooms_.view_campaign_tag ||
             base_url != relay_rooms_.view_base_url ||
             base_url_error != relay_rooms_.view_base_url_error)
