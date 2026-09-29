@@ -2217,8 +2217,6 @@ bool GameWorld::wake_spot_blocked(walker* ob)
 
 bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
 {
-    if (ob == nullptr)
-        return false;
     const PixieData& g = grid_for_floor(ob->floor());
     if (!g.valid())
         return false;
