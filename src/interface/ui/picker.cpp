@@ -1838,12 +1838,6 @@ private:
             relay_rooms_.request = og::ui::begin_list_relay_rooms(
                 relay_rooms_.view_base_url,
                 relay_rooms_.view_campaign_tag);
-            if (!relay_rooms_.request)
-            {
-                stage_relay_room_list_error(
-                    "Relay room listing could not be started.");
-                return;
-            }
             relay_rooms_.request_generation = relay_rooms_.view_generation;
             relay_rooms_.request_campaign_tag =
                 relay_rooms_.view_campaign_tag;
