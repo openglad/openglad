@@ -723,8 +723,15 @@ viewscreen::FloorPassParams viewscreen::compute_floor_pass(
 // layer exists solely for multifloor fade/parallax, and gameplay pixels are
 // resampled exactly once, by the presentation path.
 
+// The session screen's own level, radar included: the one render path.
 bool viewscreen::redraw()
 {
+	return redraw(&active_screen()->level_runtime_data(), true);
+}
+
+bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
+{
+    if (!data) return false;
 	if (active_screen()->active_canvas() != CanvasTarget::World &&
 	    !active_screen()->native_world_view_active())
 	{
@@ -740,11 +747,10 @@ bool viewscreen::redraw()
     float control_render_y = 0.0f;
     float camera_topx_float = static_cast<float>(topx);
     float camera_topy_float = static_cast<float>(topy);
-    LevelRuntimeData& level = active_screen()->level_runtime_data();
-	walker  *controlob = sanitize_control_pointer(*this, level);
-	auto* renderer = active_screen()->level_visuals_.renderer_.get();
+	walker  *controlob = sanitize_control_pointer(*this, *data);
+	auto* renderer = data->level_visuals().renderer_.get();
 	if (!renderer) return false;
-	GameWorld& vworld = active_screen()->world();
+	GameWorld& vworld = data->world();
     interpolation_alpha = query_render_interpolation_alpha();
 
 	// check if we are partially into a grid square and require
@@ -772,8 +778,8 @@ bool viewscreen::redraw()
 	}
 	else // no control object now ..
 	{
-		topx = active_screen()->level_visuals_.topx;
-		topy = active_screen()->level_visuals_.topy;
+		topx = data->level_visuals().topx;
+		topy = data->level_visuals().topy;
         camera_topx_float = static_cast<float>(topx);
         camera_topy_float = static_cast<float>(topy);
 	}
@@ -954,7 +960,7 @@ bool viewscreen::redraw()
 					}
 			}
 			if (fp.entities)
-				draw_floor_entities(&level, static_cast<int>(f), falpha,
+				draw_floor_entities(data, static_cast<int>(f), falpha,
 				                    layer_active); //radar drawn after
 			if (layer_active)
 			{
@@ -1005,289 +1011,6 @@ bool viewscreen::redraw()
 	// Camera panes skip the whole chrome scope (no radar, no text feed): the
 	// UI-layout swap must not be entered on the mynum=-1 default-arm clamp
 	// coincidence (docs/camera-views-design.md §4, design-review ruling).
-	if (!camera_view_)
-	{
-		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
-		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
-		//moved here to put the radar on top of obs
-		if (!following_ && controlob && !controlob->dead() &&
-		    global_player_index_ >= 0 &&
-		    controlob->user() == global_player_index_ &&
-		    prefs[PREF_RADAR] == PREF_RADAR_ON)
-			myradar->draw();
-		display_text();
-	}
-    publish_primary_render_sample(*this,
-                                  controlob,
-                                  interpolation_alpha,
-                                  control_worldx,
-                                  control_worldy,
-                                  control_render_x,
-                                  control_render_y,
-                                  camera_topx_float,
-                                  camera_topy_float);
-	return 1;
-
-}
-
-bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
-{
-    if (!data) return false;
-	if (active_screen()->active_canvas() != CanvasTarget::World &&
-	    !active_screen()->native_world_view_active())
-	{
-		LogError("Refusing to rasterize a live world into a fixed UI canvas.\n");
-		return false;
-	}
-	Sint32 i,j;
-	Sint32 xneg = 0;
-	Sint32 yneg = 0;
-    float control_worldx = 0.0f;
-    float control_worldy = 0.0f;
-    float control_render_x = 0.0f;
-    float control_render_y = 0.0f;
-    float camera_topx_float = static_cast<float>(topx);
-    float camera_topy_float = static_cast<float>(topy);
-	walker  *controlob = sanitize_control_pointer(*this, *data);
-	auto* renderer = data->level_visuals().renderer_.get();
-	if (!renderer) return false;
-	GameWorld& vworld = data->world();
-    interpolation_alpha = query_render_interpolation_alpha();
-
-	// check if we are partially into a grid square and require
-	//   extra row
-	if (controlob)
-	{
-        const WalkerRenderPosition control_pos =
-            resolve_walker_render_position(*controlob, interpolation_alpha);
-        const std::optional<ClassicRespawnCameraFocus> respawn_focus =
-            classic_respawn_camera_focus(vworld, controlob);
-        control_worldx = control_pos.worldx;
-        control_worldy = control_pos.worldy;
-        control_render_x = control_pos.xpos;
-        control_render_y = control_pos.ypos;
-        const float camera_x =
-            respawn_focus.has_value() ? respawn_focus->x : control_pos.xpos;
-        const float camera_y =
-            respawn_focus.has_value() ? respawn_focus->y : control_pos.ypos;
-		camera_topx_float =
-		    camera_x - static_cast<float>(xview - controlob->sizex()) / 2.0f;
-		camera_topy_float =
-		    camera_y - static_cast<float>(yview - controlob->sizey()) / 2.0f;
-		topx = static_cast<Sint32>(camera_topx_float);
-		topy = static_cast<Sint32>(camera_topy_float);
-	}
-	else // no control object now ..
-	{
-		topx = data->level_visuals().topx;
-		topy = data->level_visuals().topy;
-        camera_topx_float = static_cast<float>(topx);
-        camera_topy_float = static_cast<float>(topy);
-	}
-
-	// See the no-arg redraw(): shake the whole draw on nearby detonations,
-	// restored after the weather draw so the radar and the published render
-	// sample report the UNSHAKEN camera (the floats above are pre-shake).
-	const Sint32 unshaken_topx = topx, unshaken_topy = topy;
-	apply_screen_shake(*this, vworld, controlob);
-
-	if (topx < 0)
-		xneg = 1;
-	if (topy < 0)
-		yneg = 1;
-
-	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
-	//likewise <<4 is equivalent to *16, but faster
-
-	const std::optional<ClassicRespawnCameraFocus> respawn_focus =
-	    classic_respawn_camera_focus(vworld, controlob);
-	update_floor_glide(
-	    vworld, controlob,
-	    respawn_focus.has_value() ? respawn_focus->floor : Sint32{-1});
-	// Multi-floor: draw stacked floors bottom-up with per-floor opacity and
-	// interleaved entities (see the no-arg redraw() for the rationale). Single-
-	// floor draws one opaque pass (byte-identical).
-	{
-		// See the no-arg redraw(): clear this view's viewport to black before the
-		// stacked-floor alpha blends so multi-floor composites against a stable
-		// base (else the OOB border / air holes shimmer). Gated floor_count>1.
-		if (vworld.floor_count() > 1)
-			active_screen()->clearbuffer(xloc, yloc, xview, yview);
-		// Floors below the camera always render through the fade layer
-		// (depth fade + the depth-fx treatment — see floor_render_alpha), so
-		// air holes read as height in normal play. HOLDING the look-up key
-		// ADDS the floors above as faint ghosts for this frame (recomputed
-		// every redraw; the hold gates only the floor_top extension below).
-		ghost_hold_override_ = look_up_key_held(*this);
-		const bool ghosts_on = ghost_hold_override_;
-		// Depth effect (cfg effects/depth_fx): floors below composite through
-		// the selected treatment; camera floor / ghosts pass mode Off.
-		const DepthFxMode depth_mode =
-		    depth_fx_mode_from_setting(cfg.get_setting("effects", "depth_fx"));
-		const Sint32 steady_top = (vworld.floor_count() > 1 && ghosts_on)
-		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
-		// Floor glide: keep the departing floor in the loop exactly while its
-		// dz < 1 (alpha > 0) — the falpha==0 skip rule covers the boundary;
-		// up-glides never extend (ceil(z) <= current_floor_).
-		const Sint32 floor_top = (glide_frames_left_ > 0)
-		    ? std::max(steady_top,
-		               std::min(static_cast<Sint32>(vworld.floor_count() - 1),
-		                        static_cast<Sint32>(std::ceil(glide_camera_z_))))
-		    : steady_top;
-		for (Sint32 f = 0; f <= floor_top; ++f)
-		{
-			// Per-floor presentation (alpha/scale/scroll + the skip and
-			// terrain-only gates) comes from compute_floor_pass: the integer
-			// parallax math verbatim while no glide is active, the continuous
-			// dz laws mid-glide.
-			const FloorPassParams fp = compute_floor_pass(f, vworld, ghosts_on);
-			if (fp.skip)
-				continue; // alpha 0 — BEFORE any topx/topy shift
-			const unsigned char falpha = fp.falpha;
-			const bool base_floor = (f == 0);
-			// Vertical parallax: non-camera floors scroll at a slightly different
-			// rate (shift, via topx/topy) AND, when faded, composite at a per-floor
-			// scale about the viewport centre (shrink below / zoom above) through the
-			// off-screen layer below, so they slide + recede as the player moves.
-			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
-			const Sint32 par_topx = topx, par_topy = topy;
-			const float fscale = fp.fscale;
-			const Sint32 fcx = xloc + xview / 2;
-			const Sint32 fcy = yloc + yview / 2;
-			if (fp.shift)
-			{
-				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * fp.pf);
-				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * fp.pf);
-			}
-			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
-			// off-screen layer, then composites back smoothly scaled about the
-			// viewport centre + faded (seam-free). The camera floor and opaque
-			// (ghosting-off) floors draw straight to the screen, byte-identical.
-			const bool use_layer = vworld.floor_count() > 1 && falpha < 255;
-			// A below-camera floor (fscale<1) shrunk about the centre from a
-			// viewport-sized layer would leave a black ring around the
-			// composite: instead draw a 1/fscale-larger world window (pad on
-			// each side, on top of the parallax scroll shift) into a padded
-			// layer, which floor_layer_end squeezes onto the FULL viewport.
-			Sint32 pad_x = 0, pad_y = 0;
-			if (use_layer && fscale < 1.0f)
-			{
-				const float grow = (1.0f / fscale - 1.0f) * 0.5f;
-				pad_x = static_cast<Sint32>(std::ceil(static_cast<float>(xview) * grow));
-				pad_y = static_cast<Sint32>(std::ceil(static_cast<float>(yview) * grow));
-			}
-			const bool layer_active = use_layer && active_screen()->floor_layer_begin(
-			    xloc, yloc, xview + 2 * pad_x, yview + 2 * pad_y);
-			if (!layer_active)
-				pad_x = pad_y = 0; // direct-alpha fallback keeps the plain viewport clip
-			const unsigned char tile_alpha = layer_active ? 255 : falpha;
-			if (pad_x > 0 || pad_y > 0)
-			{
-				// Widen this pass's world window + clip so the tile loop, the
-				// OOB wall border, decor and draw_floor_entities naturally
-				// cover the padded window; restored after the pass below
-				// (topx/topy come back via the par_topx/par_topy restore).
-				topx -= pad_x;      topy -= pad_y;
-				xview += 2 * pad_x; yview += 2 * pad_y;
-				endx += 2 * pad_x;  endy += 2 * pad_y;
-			}
-			// The pad shift can push topx/topy newly negative mid-pass; the
-			// parallax shift alone preserves sign, so unpadded passes keep the
-			// camera's xneg/yneg (byte-identical).
-			const Sint32 pass_xneg = (topx < 0) ? 1 : xneg;
-			const Sint32 pass_yneg = (topy < 0) ? 1 : yneg;
-			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
-			// Decor plane (BASE+DECOR layering): gated on validity + matching
-			// dims, so a level without decor renders through exactly the
-			// legacy tile loop below.
-			const PixieData& decorp = vworld.decor_for_floor(static_cast<int>(f));
-			if (gridp.valid())
-			{
-				const unsigned short maxx = gridp.w;
-				const unsigned short maxy = gridp.h;
-				const bool has_decor = decorp.valid()
-				    && static_cast<unsigned short>(decorp.w) == maxx
-				    && static_cast<unsigned short>(decorp.h) == maxy;
-				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
-					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
-					{
-						// NOTE: back is a PIXIEN.
-						// background graphic [grid(x,y)] -> put in buffer
-						if (i<0 || j<0 || i>=maxx || j>=maxy)
-						{
-							if (!base_floor) continue; // upper floors: transparent border
-							if (j == -1 && i>-1 && i<maxx)  // show side of wall
-								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
-							else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
-								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
-							else                                 // show only top of wall
-								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
-						}
-						else
-						{
-						const int tile = static_cast<int>(gridp.data[static_cast<std::size_t>(i + maxx * j)]);
-						// On a layer the composite fades the whole floor, so tiles draw
-						// opaque (full coverage); glass stays faint only on the directly
-						// drawn camera floor (so the floor below shows through it).
-						const unsigned char talpha = layer_active
-						    ? 255
-						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
-						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
-						// Decor rides right on top of its base tile, through the
-						// TRANSPARENT sprite path, at the FLOOR alpha — deliberately
-						// not talpha: decor on glass draws at floor alpha, not the
-						// glass clamp. On the layer path the composite applies
-						// fade/tint/parallax to base+decor together.
-						if (has_decor)
-						{
-							const int d = static_cast<int>(decorp.data[static_cast<std::size_t>(i + maxx * j)]);
-							if (d != DECOR_NONE)
-								renderer->draw_decor(d, i*GRID_SIZE, j*GRID_SIZE, this,
-									                     layer_active ? 255 : falpha);
-						}
-					}
-					}
-			}
-			if (fp.entities)
-				draw_floor_entities(data, static_cast<int>(f), falpha,
-				                    layer_active);
-			if (layer_active)
-			{
-				// A floor d levels below the camera composites through the
-				// depth treatment; defaults (off / ghosts above) composite
-				// bit-identically.
-				DepthFxParams fx;
-				if (depth_mode != DepthFxMode::Off && f < current_floor_)
-				{
-					fx.mode = depth_mode;
-					fx.stories = static_cast<int>(current_floor_) -
-					    static_cast<int>(f);
-					fx.frame = effects_frame_tick();
-					TRACE("effects", "depth_fx mode=%d floor=%d",
-					      static_cast<int>(depth_mode), static_cast<int>(f));
-				}
-				if (pad_x > 0 || pad_y > 0)
-				{
-					// Un-widen before compositing: the (x,y,w,h) passed to
-					// floor_layer_end is the real viewport (the dst rect);
-					// the pads name the extra source ring on the layer.
-					xview -= 2 * pad_x; yview -= 2 * pad_y;
-					endx -= 2 * pad_x;  endy -= 2 * pad_y;
-				}
-				active_screen()->floor_layer_end(xloc, yloc, xview, yview,
-				                                 fscale, fcx, fcy, falpha, fx,
-				                                 pad_x, pad_y);
-			}
-			topx = par_topx; topy = par_topy; // undo the parallax (+ pad) shift
-		}
-		// See the no-arg redraw(): the ghosts-off upper-floor shadow pass.
-		if (!ghosts_on && !editor_authoring_view_)
-			draw_upper_floor_shadows(this, vworld);
-	}
-	// See the no-arg redraw(): open-sky weather overlay, before radar/text.
-	draw_cloud_overlay(this, vworld);
-	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
-	// See the no-arg redraw(): camera panes skip the chrome scope entirely.
 	if (!camera_view_)
 	{
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
