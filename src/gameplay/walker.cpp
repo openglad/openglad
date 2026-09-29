@@ -2568,8 +2568,6 @@ std::string_view entity_display_name(const walker* w, std::string_view fallback)
 // (server-only transient, the z_stair_latched_ precedent).
 void walker::latch_exit_contact(const walker* pad)
 {
-	if (pad == nullptr)
-		return;
 	exit_latched_ = true;
 	exit_latch_x_ = static_cast<std::int16_t>(pad->xpos());
 	exit_latch_y_ = static_cast<std::int16_t>(pad->ypos());
