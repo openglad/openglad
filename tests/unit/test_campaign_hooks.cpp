@@ -31,6 +31,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 #include "unit_pack_store_guard.h"
 
@@ -1134,6 +1135,32 @@ TEST_F(CampaignHooksTest, action_without_registration_answers_false)
     hooks::CampaignActionResult result;
     EXPECT_FALSE(hooks::campaign_picker_action("x", result));
     EXPECT_TRUE(hooks::campaign_picker_registered());
+}
+
+// The assign chip's dispatch tail (campaign_hooks.h): campaign_assign_set
+// forwards (slot, tag) to the installed provider and answers its verdict;
+// with no provider installed (no campaign session owns the save surface) it
+// answers false and reaches nothing — the chip must not report an oath that
+// no save recorded.
+TEST_F(CampaignHooksTest, assign_set_forwards_to_the_provider_and_refuses_without_one)
+{
+    std::vector<std::pair<int, int>> writes;
+    hooks::CampaignProviders providers;
+    providers.assign_set = [&](int save_slot, int tag) {
+        writes.emplace_back(save_slot, tag);
+        return tag != 7;  // the provider's own refusal passes through
+    };
+    hooks::install_campaign_providers(std::move(providers));
+    EXPECT_TRUE(hooks::campaign_assign_set(3, 2));
+    EXPECT_FALSE(hooks::campaign_assign_set(4, 7));
+    ASSERT_EQ(2u, writes.size());
+    EXPECT_EQ(std::make_pair(3, 2), writes[0]);
+    EXPECT_EQ(std::make_pair(4, 7), writes[1]);
+
+    hooks::clear_campaign_providers();
+    EXPECT_FALSE(hooks::campaign_assign_set(3, 2))
+        << "no provider installed must answer false";
+    EXPECT_EQ(2u, writes.size()) << "a cleared provider was still reached";
 }
 
 // ---------------------------------------------------------------------------
