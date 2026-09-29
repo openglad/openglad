@@ -52,9 +52,6 @@ bool is_tracked_entity(const GameWorld& world, const walker* candidate)
 
 void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
 {
-    if (entity == nullptr)
-        return;
-
     constexpr int kMaxOwnerDepth = 16;
     walker* current = entity;
     for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
