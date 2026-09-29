@@ -163,8 +163,6 @@ static void wire_world_entity_services(GameWorld* world,
 
 static void clear_world_entity_services(GameWorld* world)
 {
-    if (world == nullptr)
-        return;
     world->entity_factory = {};
     world->entity_configurator = {};
     world->entity_derived_stats = {};
