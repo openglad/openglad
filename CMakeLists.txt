@@ -463,6 +463,14 @@ og_add_shell_check_target(check_fadeblack_sites
     check_fadeblack_sites.sh
 )
 
+# Lua errors are raised through the [[noreturn]] og::script::script_raise,
+# never luaL_error (declared int: every `return luaL_error(...)` left a return
+# path the coverage gate counted and no test can reach). See the script header.
+og_add_shell_check_target(check_lua_error_sites
+    "Checking luaL_error is only called through script_raise"
+    check_lua_error_sites.sh
+)
+
 # --------------------------------------------------------------------------
 # Python-driven repo checks: resolve the interpreter at configure time.
 #
@@ -791,6 +799,8 @@ if(NOT EMSCRIPTEN)
     if(Python3_Interpreter_FOUND AND GIT_FOUND)
         add_dependencies(og_gameplay check_lua_statement_lines)
     endif()
+    # Every build also refuses a luaL_error call outside script_raise.
+    add_dependencies(og_gameplay check_lua_error_sites)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
