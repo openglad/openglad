@@ -2002,17 +2002,15 @@ public:
         nargs_++;
     }
 
+    // The only guy* hook argument is hooks::level_up's self, and its one
+    // caller (guy::level_up, guy.cpp) passes `this`: never null.
     void arg(guy* g)
     {
-        if (g == nullptr) {
-            lua_pushnil(L_);
-        } else {
-            auto* h = static_cast<GuyHandle*>(
-                lua_newuserdatauv(L_, sizeof(GuyHandle), 0));
-            h->raw = g;
-            h->gen = gen_;
-            luaL_setmetatable(L_, kGuyMeta);
-        }
+        auto* h = static_cast<GuyHandle*>(
+            lua_newuserdatauv(L_, sizeof(GuyHandle), 0));
+        h->raw = g;
+        h->gen = gen_;
+        luaL_setmetatable(L_, kGuyMeta);
         nargs_++;
     }
 
