@@ -2394,35 +2394,32 @@ void capture_world_grid(const GameWorld& world,
     }
 }
 
-void capture_entity_stats(const statistics* entity_stats,
+void capture_entity_stats(const statistics& entity_stats,
                           og::sim::EntitySnapshot& snapshot)
 {
-    if (entity_stats == nullptr)
-        return;
-
-    snapshot.hitpoints = entity_stats->hitpoints();
-    snapshot.max_hitpoints = entity_stats->max_hitpoints();
-    snapshot.magicpoints = entity_stats->magicpoints();
-    snapshot.max_magicpoints = entity_stats->max_magicpoints();
-    snapshot.max_heal_delay = entity_stats->max_heal_delay();
-    snapshot.current_heal_delay = entity_stats->current_heal_delay();
-    snapshot.max_magic_delay = entity_stats->max_magic_delay();
-    snapshot.current_magic_delay = entity_stats->current_magic_delay();
-    snapshot.magic_per_round = entity_stats->magic_per_round();
-    snapshot.heal_per_round = entity_stats->heal_per_round();
-    snapshot.armor = entity_stats->armor();
-    snapshot.level = entity_stats->level();
-    snapshot.bit_flags = entity_stats->bit_flags();
-    snapshot.delete_me = entity_stats->delete_me();
-    snapshot.frozen_delay = entity_stats->frozen_delay();
-    snapshot.weapon_cost = entity_stats->weapon_cost();
+    snapshot.hitpoints = entity_stats.hitpoints();
+    snapshot.max_hitpoints = entity_stats.max_hitpoints();
+    snapshot.magicpoints = entity_stats.magicpoints();
+    snapshot.max_magicpoints = entity_stats.max_magicpoints();
+    snapshot.max_heal_delay = entity_stats.max_heal_delay();
+    snapshot.current_heal_delay = entity_stats.current_heal_delay();
+    snapshot.max_magic_delay = entity_stats.max_magic_delay();
+    snapshot.current_magic_delay = entity_stats.current_magic_delay();
+    snapshot.magic_per_round = entity_stats.magic_per_round();
+    snapshot.heal_per_round = entity_stats.heal_per_round();
+    snapshot.armor = entity_stats.armor();
+    snapshot.level = entity_stats.level();
+    snapshot.bit_flags = entity_stats.bit_flags();
+    snapshot.delete_me = entity_stats.delete_me();
+    snapshot.frozen_delay = entity_stats.frozen_delay();
+    snapshot.weapon_cost = entity_stats.weapon_cost();
     for (int i = 0; i < NUM_SPECIALS; ++i)
-        snapshot.special_cost[i] = entity_stats->special_cost(i);
-    snapshot.old_order = entity_stats->old_order();
-    snapshot.old_family = entity_stats->old_family();
-    snapshot.last_distance = entity_stats->last_distance();
-    snapshot.current_distance = entity_stats->current_distance();
-    snapshot.controller_id = entity_stats->controller_id();
+        snapshot.special_cost[i] = entity_stats.special_cost(i);
+    snapshot.old_order = entity_stats.old_order();
+    snapshot.old_family = entity_stats.old_family();
+    snapshot.last_distance = entity_stats.last_distance();
+    snapshot.current_distance = entity_stats.current_distance();
+    snapshot.controller_id = entity_stats.controller_id();
 }
 
 og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
@@ -2518,7 +2515,7 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.owner_id = entity.owner_id();
     snapshot.collide_ob_id = entity.collide_ob_id();
 
-    capture_entity_stats(entity.stats(), snapshot);
+    capture_entity_stats(*entity.stats(), snapshot);
 
     if (const auto* weapon = dynamic_cast<const weap*>(&entity);
         weapon != nullptr)
