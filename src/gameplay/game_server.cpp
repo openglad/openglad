@@ -2080,9 +2080,6 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
             }
             break;
 
-        case TypedReceivedMessageKind::Malformed:
-            break;
-
         case TypedReceivedMessageKind::Snapshot:
         case TypedReceivedMessageKind::DeltaSnapshot:
         case TypedReceivedMessageKind::SimEventBatch:
@@ -2102,6 +2099,9 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         // an upstream client cannot stage anything on the server.
         case TypedReceivedMessageKind::StagedMatchSetup:
         case TypedReceivedMessageKind::StagedMatchKeyframe:
+        // poll_server_messages turns a Malformed marker into a disconnect
+        // and never forwards it, so none reaches this loop.
+        case TypedReceivedMessageKind::Malformed:
             break;
         }
     }
