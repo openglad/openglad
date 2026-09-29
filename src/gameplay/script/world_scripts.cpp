@@ -3860,12 +3860,10 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
         if (st == nullptr)
             return false;
         lua_State* default_L = st->owner->host().impl().L;
+        // Always a function: og.register_default_lineup refs the value only
+        // after checking lua_isfunction, and nothing else writes the ref.
         lua_rawgeti(default_L, LUA_REGISTRYINDEX,
                     st->default_lineup_power_ref);
-        if (!lua_isfunction(default_L, -1)) {
-            lua_pop(default_L, 1);
-            return false;
-        }
         who = "default";
     }
     ScriptHost::Impl& impl = st->owner->host().impl();
