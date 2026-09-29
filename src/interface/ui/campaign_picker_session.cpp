@@ -1549,13 +1549,11 @@ void run_terminal_campaign_camp(SaveData& save,
             continue;
         }
 
+        // `choices` was built from this zone's actions this iteration and
+        // only io.prompt (which never sees the zone) ran since, so the
+        // pick names a live row.
         const CampaignZoneSession::ActionsLayout* actions =
             zone.actions_widget(picked.widget);
-        if (actions == nullptr ||
-            picked.row >= static_cast<int>(actions->rows.size()))
-        {
-            continue;  // defensive: the composition moved under the answer
-        }
         // Copy: an Acted refetch replaces the rows under the one we read.
         const CampaignZoneSession::Row row =
             actions->rows[static_cast<std::size_t>(picked.row)];
@@ -1601,8 +1599,9 @@ void run_terminal_campaign_camp(SaveData& save,
                     io.notice(outcome.reason);
                     break;
                 }
-                if (outcome.kind != Outcome::Acted)
-                    break;
+                // Not Refused means Acted: the row is a live Action row
+                // (act()'s None arms are its bad-index/non-Action guards),
+                // and the executor answers only Refused or Acted.
                 // The session already debited and refetched; persist it.
                 (void)company_autosave_after_mutation(
                     save, kTerminalNetworkedLobbyActive);
