@@ -600,15 +600,13 @@ void GameClient::send_pause_response()
 
 std::uint32_t GameClient::compute_local_snapshot_hash() const
 {
+    // The sole caller (send_snapshot_hash_check) returns early unless a
+    // world or a baseline exists.
     if (world_ != nullptr)
     {
         return compute_snapshot_hash(peek_keyframe_snapshot(*world_));
     }
-    if (baseline_.has_value())
-    {
-        return compute_snapshot_hash(*baseline_);
-    }
-    return 0;
+    return compute_snapshot_hash(*baseline_);
 }
 
 void GameClient::send_snapshot_hash_check()
