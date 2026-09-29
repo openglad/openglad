@@ -787,8 +787,6 @@ void place_stairs(GameWorld& w, BuildPlan& plan, const Layout& lay)
                     best_d = d;
                 }
             }
-            if (best == nullptr)
-                continue;
             // Candidate anchors, ALL clamped inside the chosen room (a pad
             // outside it could float in a spire story's open air): the
             // ideal-biased point first, then the room corners, so the two
@@ -1422,16 +1420,9 @@ std::vector<std::string> build_tower_floor(GameWorld& world,
                 best_d = d;
             }
         }
-        if (exit_room != nullptr)
-        {
-            const Rect& rr = exit_room->r;
-            plan.exit_pad = {std::max(rr.x0 + 1, rr.x1 - 4), rr.y0 + 1,
-                             rr.x1 - 1, std::min(rr.y1 - 1, rr.y0 + 4)};
-        }
-        else
-        {
-            plan.exit_pad = {plan.tw - 9, 3, plan.tw - 4, 8};
-        }
+        const Rect& rr = exit_room->r;
+        plan.exit_pad = {std::max(rr.x0 + 1, rr.x1 - 4), rr.y0 + 1,
+                         rr.x1 - 1, std::min(rr.y1 - 1, rr.y0 + 4)};
     }
     force_ground_pad(world, top, plan.exit_pad, plan.band->base_tile);
 
