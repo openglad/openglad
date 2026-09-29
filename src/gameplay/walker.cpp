@@ -92,8 +92,6 @@ std::uint32_t query_difficulty_percent()
 
 std::uint32_t query_generator_rate_percent()
 {
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 100u;
     const int rate = current_game->world->generator_rate;
     if (rate <= 0)
         return 100u;
