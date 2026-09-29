@@ -881,6 +881,42 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           multi_pending.local_team == 3 &&
           multi_pending.state.local_seat_ids.size() == 2 &&
           multi_pending.state.players.back().team == 3);
+    // A pending local seat list never pushes the optimistic lobby past the
+    // global cap: with one free place left, only the FIRST of two pending
+    // seats is merged (the two-seat merge above is the room-to-spare control).
+    og::sim::LobbyState crowded_state;
+    crowded_state.settings = pending_base_state.settings;
+    for (og::sim::LobbySeatId seat_id = 1;
+         crowded_state.players.size() <
+             static_cast<std::size_t>(og::sim::kMaxGlobalPlayers) - 1u;
+         ++seat_id)
+    {
+        og::sim::LobbyPlayer crowd_player;
+        crowd_player.player_index = static_cast<std::uint8_t>(seat_id);
+        crowd_player.seat_id = seat_id;
+        crowd_player.name = std::format("crowd-{}", seat_id);
+        crowded_state.players.push_back(std::move(crowd_player));
+    }
+    const auto crowded_pending = build_pending_local_lobby_state(
+        crowded_state,
+        {pending_player, pending_seat1},
+        3);
+    check(crowded_pending.state.players.size() ==
+              static_cast<std::size_t>(og::sim::kMaxGlobalPlayers) &&
+          crowded_pending.state.local_seat_ids.size() == 1 &&
+          crowded_pending.state.players.back().name == "pending-player");
+
+    // The invalid seat id (0) never resolves to a seat, even though every
+    // seat the product declares locally carries it until the server assigns
+    // one; an assigned id still resolves (control).
+    og::sim::LobbyState unassigned_state;
+    unassigned_state.players = declared_seats;
+    check(declared_seats.size() == 2 &&
+          declared_seats[0].seat_id == og::sim::kInvalidLobbySeatId &&
+          find_player_by_seat_id(unassigned_state,
+                                 og::sim::kInvalidLobbySeatId) == nullptr);
+    check(find_player_by_seat_id(state, remote_player.seat_id) ==
+          &state.players.front());
 
     check(build_host_transport_failure_message("direct failed", "relay failed") ==
           "Direct: direct failed\nRelay: relay failed");
