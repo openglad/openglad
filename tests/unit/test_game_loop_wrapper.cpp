@@ -358,7 +358,9 @@ struct RestoreSdlVideoAfterDisplay
     ~RestoreSdlVideoAfterDisplay()
     {
         if ((SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0)
+        {
             EXPECT_TRUE(SDL_Init(SDL_INIT_VIDEO)) << SDL_GetError();
+        }
     }
 };
 } // namespace
