@@ -1954,11 +1954,6 @@ Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
     {
         return MENU_OK;
     }
-    if (!picker_lobby_save_slot_editable(
-            pks().train_session->current_slot()))
-    {
-        return MENU_OK;
-    }
 
     const guy& member = pks().train_session->original();
     const int sold_team = std::clamp(
@@ -2437,8 +2432,6 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 {
 	if (!pks().train_session || pks().train_session->empty())
 		return -1;
-	if (!picker_lobby_save_slot_editable(pks().train_session->current_slot()))
-		return MENU_OK;
 
 	// This is for cheating! Only CHEAT :)
 	// SDL-specific: cheat mode (hold right mouse → free changes)
