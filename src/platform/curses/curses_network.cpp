@@ -1702,10 +1702,9 @@ public:
                     : selected->team;
                 // `selected` came from selected_local_player(), which
                 // answers nullptr without a lobby state.
+                // Never -1: lobby_effective_team_mask() is never empty.
                 const short target = og::sim::lobby_next_selectable_team(
                     state_->settings, base);
-                if (target < 0)
-                    continue;
 
                 last_team_request_ = target;
                 last_team_request_seat_id_ = selected->seat_id;
