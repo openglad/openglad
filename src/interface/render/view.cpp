@@ -1375,11 +1375,10 @@ walker* viewscreen::find_next_control()
     return sim_find_next_control(active_screen()->world(), my_team);
 }
 
+// native_event is non-null: screen::input returns on nullptr before fanning
+// out, and the template overload passes the address of a live event.
 short viewscreen::input(const void* native_event)
 {
-	if (native_event == nullptr)
-		return 1;
-
 	// Gameplay input (movement, fire, special, switch, yell, etc.) is now
 	// handled by process_input() via the SDL-independent InputState snapshot.
 	// This method only handles raw SDL events that cannot go through InputState:
