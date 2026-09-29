@@ -406,13 +406,12 @@ void note_label(FnEntry& entry, std::string_view label)
 // Walk one compiled prototype tree. With a binding: register every
 // prototype against it. Without: scrub — erase whatever stale entry each
 // address may have inherited from a collected generation, so undeclared
-// test Lua can never execute under a dead binding.
+// test Lua can never execute under a dead binding. `p` is never null: see
+// collect_protos.
 void bind_protos(const Proto* p,
                  const std::shared_ptr<const SourceKey>& binding,
                  std::map<const void*, std::shared_ptr<const SourceKey>>& map)
 {
-    if (p == nullptr)
-        return;
     if (binding != nullptr)
         map[p] = binding;
     else
@@ -839,11 +838,15 @@ namespace {
 // unique: `local a, b = f(function() end), f(function()\n...\nend)` puts two
 // prototypes on one start line, and the runtime hook that reports only that
 // line would mark both covered when either ran.
+//
+// `p` is never null: a main closure from lua_load always carries its Proto
+// (lparser.c luaY_parser: `cl->p = luaF_newproto(L)`), and a text compile's
+// tree has no null child slots (close_func shrinks f->p to exactly the np
+// prototypes addprototype created). Binary chunks, whose loader builds the
+// tree differently, are refused at every compile site (mode "t").
 void collect_protos(const Proto* p, std::vector<int>& lines,
                     std::vector<FunctionSpan>& functions)
 {
-    if (p == nullptr)
-        return;
     functions.push_back({p->linedefined, p->lastlinedefined});
     int i = (p->is_vararg != 0) ? 1 : 0;
     for (; i < p->sizelineinfo; i++) {
