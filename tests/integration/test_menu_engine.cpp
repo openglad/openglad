@@ -18,6 +18,7 @@
 // hand-owned difficulty kExpected table remains the independent oracle over
 // the spec transcription (G11).
 
+#include <openglad/core/irandom.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
@@ -45,6 +46,7 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -167,7 +169,12 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     {
         return local_seats;
     }
+    [[nodiscard]] StagedPreviewHealth staged_preview_health() const override
+    {
+        return staged_health;
+    }
 
+    StagedPreviewHealth staged_health = StagedPreviewHealth::None;
     int settings_syncs = 0;
     short synced_save_level = -1;
     int synced_world_level = -1;
@@ -2245,6 +2252,65 @@ TEST(MenuEngine, base_camp_scripted_zone_gate_lattice_sweep)
     }
     save.team_size = old_team_size;
     (void)picker_createmenu_buttons();
+}
+
+namespace
+{
+
+// Replays one fixed (adjective, noun, group) pick through the generator's
+// three draws, so a test can walk every bank combination through the REAL
+// generate_company_name instead of re-spelling its format.
+class BankPickRandom final : public IRandom
+{
+public:
+    BankPickRandom(std::uint32_t adjective, std::uint32_t noun,
+                   std::uint32_t group)
+        : picks_{adjective, noun, group}
+    {
+    }
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        const std::uint32_t pick = picks_[calls_ % picks_.size()];
+        ++calls_;
+        return max_exclusive == 0 ? 0 : pick % max_exclusive;
+    }
+
+private:
+    std::array<std::uint32_t, 3> picks_;
+    std::size_t calls_ = 0;
+};
+
+} // namespace
+
+// The name-entry face draws the company name unclipped, so every name the
+// screen can hold must fit kCompanyNameMaxLen: a typed name is capped by
+// the editor's maxlength, and a generated one by the word banks. Walk EVERY
+// bank combination through the generator: the longest is exactly the cap —
+// one longer word and the face would ink past its box.
+TEST(MenuEngine, name_entry_generated_names_fit_the_cap)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+    std::size_t longest = 0;
+    std::size_t combinations = 0;
+    for (std::uint32_t a = 0; a < banks.adjectives.size(); ++a) {
+        for (std::uint32_t n = 0; n < banks.nouns.size(); ++n) {
+            for (std::uint32_t g = 0; g < banks.groups.size(); ++g) {
+                BankPickRandom rng(a, n, g);
+                const std::string name = og::ui::generate_company_name(rng);
+                ASSERT_EQ(std::format("{} {} {}", banks.adjectives[a],
+                                      banks.nouns[n], banks.groups[g]),
+                          name);
+                longest = std::max(longest, name.size());
+                ++combinations;
+            }
+        }
+    }
+    EXPECT_EQ(banks.adjectives.size() * banks.nouns.size() *
+                  banks.groups.size(),
+              combinations);
+    EXPECT_EQ(og::ui::kCompanyNameMaxLen, longest)
+        << "the longest generated company name is exactly the face's cap";
 }
 
 // §2.2 new-company name entry: a Layer-F engine screen entered directly from
@@ -4730,6 +4796,28 @@ TEST(MenuEngine, seat_settings_rows_refuse_a_seat_that_has_left_the_roster)
     EXPECT_TRUE(lobby.removed_seats.empty())
         << "nor ask authority to drop anybody on its behalf";
 
+    // A seat the roster still lists, but under ANOTHER machine: it is not
+    // among this machine's local seats, so no controller profile here
+    // drives it and the editor must not touch profile one on its behalf.
+    lobby.players.push_back(make_menu_lobby_player(1, "FOREIGN COMPANY"));
+    ASSERT_EQ(std::vector<std::uint8_t>{0}, lobby.local_indices);
+    og::ui::SeatSettingsScreenState foreign{
+        .seat_id = lobby.players.back().seat_id,
+        .player_index = lobby.players.back().player_index,
+        .local_slot = -1,
+    };
+    og::ui::install_seat_settings_state_for_screen(&foreign);
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsModeIndex, &foreign));
+    EXPECT_EQ(-1, foreign.local_slot)
+        << "another machine's seat claims no local controller profile";
+    EXPECT_EQ(flipped, get_player_control_mode(0))
+        << "and must not flip this machine's profile one";
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsRemoveIndex, &foreign));
+    EXPECT_TRUE(lobby.removed_seats.empty())
+        << "nor ask authority to drop another machine's seat";
+
     og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
@@ -4766,6 +4854,14 @@ TEST(MenuEngine, networked_seat_editor_and_scenario_propagate_remote_start)
     pks().selected_menu_item = nullptr;
     EXPECT_EQ(MENU_EXIT, create_scenario_menu(0))
         << "the SCENARIO wrapper must preserve a remote structural exit";
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
+              pks().selected_menu_item->command);
+
+    pks().selected_menu_item = nullptr;
+    EXPECT_EQ(MENU_EXIT, create_lineup_menu(0))
+        << "the LINEUP wrapper must preserve a remote structural exit, not "
+           "fold it into its own BACK's MENU_REDRAW";
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
               pks().selected_menu_item->command);
@@ -4860,6 +4956,70 @@ TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
               spec.on_spec_row(kBaseCampTeamChipBase, &state));
     EXPECT_EQ(old_team, save.team_list[0]->teamnum);
     EXPECT_TRUE(trace_contains("popup", "LOCKED"));
+
+    // MOVE UP on a slot this machine may not edit answers ORDER LOCKED and
+    // leaves the company order as it was.
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->name = "SECOND";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.slots.size());
+    og::ui::g_picker_save_slot_editable_callback =
+        [](int slot) { return slot != 1; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+    EXPECT_TRUE(trace_contains("popup", "ORDER: LOCKED"));
+    EXPECT_EQ("VISIBLE", save.team_list[0]->name);
+    EXPECT_EQ("SECOND", save.team_list[1]->name)
+        << "a locked slot must not be reordered";
+    EXPECT_FALSE(trace_contains("basecamp", "move_up"));
+
+    // Paired control: the same click on an editable slot moves it up.
+    og::ui::g_picker_save_slot_editable_callback = [](int) { return true; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
+    EXPECT_EQ("SECOND", save.team_list[0]->name);
+    EXPECT_EQ("VISIBLE", save.team_list[1]->name);
+    EXPECT_FALSE(trace_contains("popup", "LOCKED"));
+}
+
+// A staged preview that FAILED on the owner must reach the LINEUP census
+// as a failure (the formatter leads with STAGING FAILED), never as the
+// silent count-only fallback a machine with no staged world shows.
+TEST(MenuEngine, lineup_census_reports_a_failed_staged_preview)
+{
+    EngineTestGuard engine_guard;
+    MenuCallbackStateGuard callback_guard;
+    FakeLobbyClient lobby;
+    lobby.networked = true;
+    lobby.host = false;
+    lobby.players = {make_menu_lobby_player(0, "LOCAL COMPANY")};
+    lobby.local_indices = {0};
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    const og::ui::MenuScreenSpec& spec = og::ui::lineup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.frame_tick);
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto census_failed =
+        [&](og::ui::IPickerLobbyClient::StagedPreviewHealth health) {
+            lobby.staged_health = health;
+            og::ui::LineupScreenState st;
+            // Entered on the loaded level: the tick seeds the report only.
+            st.last_level_id = save.scen_num;
+            og::ui::install_lineup_state_for_screen(&st);
+            EXPECT_TRUE(spec.frame_tick(&st, 0));
+            og::ui::install_lineup_state_for_screen(nullptr);
+            EXPECT_TRUE(st.report_valid);
+            return st.report.stage_failed;
+        };
+    EXPECT_TRUE(census_failed(
+        og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed))
+        << "a failed staged preview is reported as failed";
+    EXPECT_FALSE(census_failed(
+        og::ui::IPickerLobbyClient::StagedPreviewHealth::None))
+        << "no staged preview is not a failure";
 }
 
 TEST(MenuEngine, company_dispatch_surfaces_invalid_open_delete_and_restore)

@@ -45,6 +45,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -3602,6 +3603,61 @@ TEST(LineupUi, a_long_toast_clips_to_the_title_band)
               state.toast);
     EXPECT_FALSE(trace_contains("lineup", "OVERRUN"))
         << "the trace carries the clipped text, not the raw one";
+
+    // A live toast wins the title band's right slot, in YELLOW, ending on
+    // the panel edge; once it expires the slot is the band's own again.
+    // Oracle: the expired frame plus the toast inked by hand is exactly the
+    // live frame.
+    const og::ui::MenuScreenSpec& spec = og::ui::lineup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.draw_content);
+    screen& output = *og::runtime::current_session->myscreen_;
+    const int band_y1 = 8 + output.text_normal.sizey;
+    const auto title_band = [&output, band_y1] {
+        std::uint64_t hash = 1469598103934665603ULL;
+        for (int y = 8; y < band_y1; ++y) {
+            for (int x = 0; x < 320; ++x) {
+                int pixel = 0;
+                output.get_pixel(x, y, &pixel);
+                hash ^= static_cast<std::uint8_t>(pixel);
+                hash *= 1099511628211ULL;
+            }
+        }
+        return hash;
+    };
+    const std::string live_toast = state.toast;
+    // A deadline a minute out (the screen's own steady-clock ms), so a slow
+    // instrumented run cannot expire the "live" toast mid-test.
+    const std::int64_t live_until =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count() +
+        60000;
+    state.toast.clear();
+    output.clearbuffer();
+    spec.draw_content(&state);
+    const std::uint64_t no_toast = title_band();
+
+    // Paired control: an EXPIRED toast gives the slot back.
+    state.toast = live_toast;
+    state.toast_until_ms = 0;
+    output.clearbuffer();
+    spec.draw_content(&state);
+    EXPECT_EQ(no_toast, title_band())
+        << "an expired toast no longer holds the title band";
+
+    output.clearbuffer();
+    spec.draw_content(&state);
+    output.text_normal.write_xy(
+        kLineupPanelX2 - static_cast<int>(live_toast.size()) * 6, 8,
+        live_toast.c_str(), YELLOW, 1);
+    const std::uint64_t expected = title_band();
+    ASSERT_NE(no_toast, expected) << "the oracle toast must ink the band";
+
+    state.toast_until_ms = live_until;
+    output.clearbuffer();
+    spec.draw_content(&state);
+    EXPECT_EQ(expected, title_band())
+        << "a live toast is drawn in YELLOW, right-aligned on the panel edge";
 
     og::ui::install_lineup_state_for_screen(nullptr);
 }

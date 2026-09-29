@@ -217,7 +217,7 @@ public:
 
     enum class OutcomeKind : std::uint8_t {
         Stayed, Advanced, SetLevel, Turned, OpenLineup, OpenViewLevel, Go,
-        Refused, Closed
+        Refused
     };
 
     struct Outcome {
