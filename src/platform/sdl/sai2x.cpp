@@ -1711,8 +1711,6 @@ NativeWorldViewSource Screen::begin_native_world_view(
 		const int coordinate_h = destination.canvas == CanvasTarget::UI
 			? kUiCanvasH : (destination.canvas == CanvasTarget::GameplayUI
 				? gameplay_ui_h() : world_h_);
-		if (coordinate_w <= 0 || coordinate_h <= 0)
-			continue;
 
 		og::CanvasViewport viewport{0, 0, coordinate_w, coordinate_h};
 		if (og::runtime::current_session != nullptr)
