@@ -7402,13 +7402,9 @@ void lineup_draw_content(void* screen_state)
             picker_lobby_session_room_code(), players,
             kLineupTitleCensusChars);
     }
+    // Both sources are clipped at the source: lineup_show_toast and the
+    // census's own kLineupTitleCensusChars budget.
     if (!right_line.empty()) {
-        if (right_line.size() >
-            static_cast<std::size_t>(kLineupTitleCensusChars))
-        {
-            right_line.resize(
-                static_cast<std::size_t>(kLineupTitleCensusChars));
-        }
         const int x =
             kLineupPanelX2 - static_cast<int>(right_line.size()) * 6;
         mytext.write_xy(x, 8, right_line.c_str(), right_color, 1);
