@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <set>
 
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
@@ -1015,6 +1016,129 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         g_start_game_requested = false;
         pks().selected_menu_item = nullptr;
         pks().train_session = nullptr;
+    }
+
+    // TRAIN content pass colours and accuracy line (one member, real train
+    // rows materialized through the product accessor, as the engine does).
+    // Rules:
+    //  - with nothing staged every stat value and LEVEL draw in STAT_COLOR;
+    //  - after a staged level-up every stat value draws STAT_LEVELED and the
+    //    LEVEL value STAT_CHANGED;
+    //  - the info box reads "Accuracy: <hits*100/shots>%" once the fighter
+    //    has landed a hit, "Accuracy: N/A" before.
+    // Oracles: the palette indices of the inked pixels in a value cell (the
+    // lowest-index rule get_pixel applies), and "re-rendering the expected
+    // accuracy line over the drawn one changes no pixel".
+    {
+        screen* const scr = og::runtime::current_session->myscreen_;
+        const auto canonical = [](unsigned char color) {
+            int wr = 0, wg = 0, wb = 0;
+            query_palette_reg(color, &wr, &wg, &wb);
+            for (int i = 0; i < 256; ++i)
+            {
+                int r = 0, g = 0, b = 0;
+                query_palette_reg(static_cast<unsigned char>(i), &r, &g, &b);
+                if (r == wr && g == wg && b == wb)
+                    return i;
+            }
+            return static_cast<int>(color);
+        };
+        // The 6px font shades each glyph row one palette step: a glyph in
+        // `color` inks color+0 .. color+4 top to bottom.
+        const auto shaded = [&canonical](unsigned char color) {
+            std::set<int> inks;
+            for (int step = 0; step < 5; ++step)
+                inks.insert(canonical(static_cast<unsigned char>(color + step)));
+            return inks;
+        };
+        // Inked indices of the value cell at row y (x 88..111, 7 rows),
+        // against the text bar's own index sampled at its right edge.
+        const auto value_ink = [scr](int y) {
+            int background = -1;
+            scr->get_pixel(114, y + 3, &background);
+            std::set<int> inks;
+            for (int yy = y; yy < y + 7; ++yy)
+            {
+                for (int xx = 88; xx < 112; ++xx)
+                {
+                    int index = -1;
+                    scr->get_pixel(xx, yy, &index);
+                    if (index != background)
+                        inks.insert(index);
+                }
+            }
+            return inks;
+        };
+        const auto grab = [scr](int x0, int y0, int x1, int y1) {
+            std::vector<int> pixels;
+            for (int yy = y0; yy <= y1; ++yy)
+                for (int xx = x0; xx <= x1; ++xx)
+                {
+                    int index = -1;
+                    scr->get_pixel(xx, yy, &index);
+                    pixels.push_back(index);
+                }
+            return pixels;
+        };
+        // Accuracy is info line 1: x 180, y = 34 + 4 + 10.
+        constexpr int kAccuracyY = 48;
+        const auto accuracy_line_reads = [&](const char* expected) {
+            const std::vector<int> drawn = grab(176, kAccuracyY, 303,
+                                                kAccuracyY + 7);
+            scr->text_normal.write_xy(180, kAccuracyY, expected,
+                                      static_cast<unsigned char>(DARK_BLUE),
+                                      1);
+            return grab(176, kAccuracyY, 303, kAccuracyY + 7) == drawn;
+        };
+
+        client.networked = false;
+        client.editable = true;
+        for (auto& member : save.team_list)
+            member.reset();
+        save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[0]->teamnum = 0;
+        save.team_list[0]->total_hits = 0;
+        save.team_list[0]->total_shots = 0;
+        save.team_size = 1;
+        og::runtime::current_session->localbuttons_ = init_buttons(
+            picker_trainmenu_buttons(), picker_trainmenu_button_count());
+        TrainEngineState colour_state;
+
+        // Nothing staged; the fighter has never hit anything.
+        {
+            og::ui::TrainSession plain_session(save);
+            pks().train_session = &plain_session;
+            sync_current_guy_from_train();
+            picker_train_menu_engine_draw_content(&colour_state);
+            check(value_ink(DOWN(0)) ==
+                      shaded(STAT_COLOR) &&
+                  value_ink(DOWN(5)) ==
+                      shaded(STAT_COLOR));
+            check(!accuracy_line_reads("   Accuracy: 50% ") &&
+                  accuracy_line_reads("   Accuracy: N/A "));
+            pks().train_session = nullptr;
+        }
+
+        // A staged level-up; the fighter landed 1 of 2 shots.
+        save.team_list[0]->total_hits = 1;
+        save.team_list[0]->total_shots = 2;
+        {
+            og::ui::TrainSession levelled_session(save);
+            pks().train_session = &levelled_session;
+            sync_current_guy_from_train();
+            check(increase_stat(BUT_LEVEL, 1) == MENU_OK &&
+                  levelled_session.level_increased());
+            picker_train_menu_engine_draw_content(&colour_state);
+            check(value_ink(DOWN(0)) ==
+                      shaded(STAT_LEVELED) &&
+                  value_ink(DOWN(4)) ==
+                      shaded(STAT_LEVELED));
+            check(value_ink(DOWN(5)) ==
+                  shaded(STAT_CHANGED));
+            check(accuracy_line_reads("   Accuracy: 50% "));
+            pks().train_session = nullptr;
+        }
+        og::runtime::current_session->current_guy_.reset();
     }
 
     g_start_game_requested = false;
