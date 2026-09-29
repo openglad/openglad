@@ -796,8 +796,6 @@ SDL_Renderer* Screen::create_presenting_renderer(std::string& failure_reason)
 
 void Screen::log_render_driver_diagnostics()
 {
-	if (window == nullptr)
-		return;
 	// SDL only reports the winning driver's error. Name every render driver's
 	// own reason so a user who cannot start the game (issue #248) can hand
 	// back the diagnosis without setting SDL_LOGGING.
