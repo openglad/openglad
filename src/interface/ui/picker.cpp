@@ -1671,12 +1671,6 @@ private:
             relay_rooms_.view_base_url.clear();
             relay_rooms_.view_base_url_error = error.what();
         }
-        catch (...)
-        {
-            relay_rooms_.view_base_url.clear();
-            relay_rooms_.view_base_url_error =
-                "Relay base URL is invalid.";
-        }
 
         relay_rooms_.rooms.clear();
         relay_rooms_.error.clear();
@@ -1710,10 +1704,6 @@ private:
         catch (const std::exception& error)
         {
             base_url_error = error.what();
-        }
-        catch (...)
-        {
-            base_url_error = "Relay base URL is invalid.";
         }
         if (campaign_tag != relay_rooms_.view_campaign_tag ||
             base_url != relay_rooms_.view_base_url ||
