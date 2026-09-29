@@ -2171,11 +2171,10 @@ void rebind_guys(GameWorld& world,
 
             if (claimed_ids.insert(guy_id).second)
             {
-                auto owned_it = guy_storage.find(guy_id);
-                if (owned_it != guy_storage.end() && owned_it->second != nullptr)
-                    entity->set_owned_myguy(std::move(owned_it->second));
-                else
-                    entity->set_myguy_view(guy_it->second);
+                // guy_storage and guy_lookup are filled together with the
+                // same keys, every stored guy is a fresh make_unique, and
+                // claimed_ids lets each id move out exactly once.
+                entity->set_owned_myguy(std::move(guy_storage.at(guy_id)));
             }
             else
             {
