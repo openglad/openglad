@@ -553,6 +553,38 @@ TEST_F(LevelFileIoCoverage, tower_skim_rejects_every_torn_record_shape)
     EXPECT_TRUE(og::data::tower_floor_files_exist(two_floor_id));
 }
 
+// A tower floor whose .fss is present and non-empty but cannot be opened
+// (no read permission) reads as ABSENT, so ensure_floor_files regenerates
+// it instead of trusting a floor count it could not read. Paired control:
+// the same bytes, readable, read as a complete one-floor set.
+TEST_F(LevelFileIoCoverage, tower_skim_treats_an_unreadable_fss_as_absent)
+{
+    ASSERT_NE(0u, ::geteuid())
+        << "run the tests as a non-root user (CI's ubuntu-latest is non-root)";
+    const int id = 9290;
+    const std::string stem = "scen" + std::to_string(id);
+    const fs::path fss = user_ / "scen" / (stem + ".fss");
+    const fs::path base = user_ / "pix" / (stem + ".png");
+    ScopedFilesAbsent files({fss, base});
+    ASSERT_TRUE(files.ready());
+
+    std::vector<std::uint8_t> bytes = tower_v10_header();
+    append_native(bytes, std::int16_t{0}); // no objects
+    bytes.push_back(0);                    // no description lines
+    bytes.push_back(1);                    // one floor
+    ASSERT_TRUE(write_bytes(fss, bytes));
+    ASSERT_TRUE(write_bytes(base, {0x89}));
+    EXPECT_TRUE(og::data::tower_floor_files_exist(id)) << "readable control";
+
+    std::error_code ec;
+    fs::permissions(fss, fs::perms::none, fs::perm_options::replace, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    EXPECT_FALSE(og::data::tower_floor_files_exist(id))
+        << "an unopenable .fss must read as absent";
+    fs::permissions(fss, fs::perms::owner_read | fs::perms::owner_write,
+                    fs::perm_options::replace, ec);
+}
+
 TEST_F(LevelFileIoCoverage, writer_failures_report_the_exact_partial_file_set)
 {
     {
