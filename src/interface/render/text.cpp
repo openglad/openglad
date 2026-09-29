@@ -413,12 +413,11 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	if (!whereto)
-		og::runtime::current_session->myscreen_->putdatatext(x, y, sizex, sizey, char_span, color);
-	else
-				og::runtime::current_session->myscreen_->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
-				                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-				                       char_span, color);
+	// whereto is non-null: write_xy's null-view case takes the flat
+	// write_char_xy(x, y, letter, color) instead.
+	og::runtime::current_session->myscreen_->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+	                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
+	                       char_span, color);
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
