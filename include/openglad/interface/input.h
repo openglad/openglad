@@ -26,6 +26,7 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/web_control_defaults.h>
 #include <cctype>
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -561,12 +562,16 @@ inline void quit_if_quit_event(const EventT& event)
 }
 
 bool isKeyboardEvent(const void* native_event);
+// A bare nullptr would bind the EventT adapter below and test the address of
+// a std::nullptr_t temporary; pass a typed `const void*` null instead.
+bool isKeyboardEvent(std::nullptr_t) = delete;
 template <typename EventT>
 inline bool isKeyboardEvent(const EventT& event)
 {
     return isKeyboardEvent(to_native_event_ptr(event));
 }
 bool isJoystickEvent(const void* native_event);
+bool isJoystickEvent(std::nullptr_t) = delete;
 template <typename EventT>
 inline bool isJoystickEvent(const EventT& event)
 {
