@@ -3139,6 +3139,74 @@ TEST(CampaignZoneUi, setup_book_actions_speak_and_refusals_hold_the_step)
               mount_campaign_package_with_error("gladiator"));
 }
 
+namespace {
+
+// The same one-action book, speaking a 59-character sentence (the short
+// "The drums roll." above is the paired control: kept whole).
+constexpr const char* kLongSpeechBookScript = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "GAMES",
+      entries = {
+        { id = "drums", label = "DRUMS", kind = "action" },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "The drums roll across the whole arena and the crowd roars!!" }
+  end,
+}))LUA";
+
+} // namespace
+
+// The wizard's toast is clipped AT SOURCE to line B's hire-hidden budget
+// (41 characters): a book sentence longer than the line is cut to exactly
+// the budget before it is stored or traced, never drawn past the strip.
+TEST(CampaignZoneUi, setup_toast_is_clipped_to_the_line_b_budget)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SyntheticCampaignScriptGuard script_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    og::script::clear_pack_scripts();
+    SyntheticCampaignScriptGuard::install(kLongSpeechBookScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    ASSERT_TRUE(og::ui::is_versus_campaign(save));
+
+    og::ui::MatchSetupScreenState state(save);
+    og::ui::MatchSetupSession::Inputs in;
+    in.save = &save;
+    in.is_host = true;
+    ASSERT_TRUE(state.session.open(in));
+    ASSERT_EQ(1u, state.session.page().rows.size());
+    og::ui::install_match_setup_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = og::ui::match_setup_menu_screen_spec();
+
+    const std::string sentence =
+        "The drums roll across the whole arena and the crowd roars!!";
+    ASSERT_EQ(59u, sentence.size());
+    const std::string clipped = sentence.substr(
+        0, static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
+    ASSERT_EQ(41u, clipped.size());
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(og::ui::kMatchSetupRowBase + 0, &state));
+    EXPECT_EQ(clipped, state.toast)
+        << "the toast keeps exactly the line's 41 characters";
+    EXPECT_TRUE(trace_contains("setup", ("toast " + clipped).c_str()));
+    EXPECT_FALSE(trace_contains("setup", sentence.substr(0, 42).c_str()))
+        << "no 42nd character reaches the trace";
+
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
 // The fifth roster site: the CLASSIC team-color cycler (reachable only
 // when the composition ships no assign spec — the assign fork owns the
 // chip cell otherwise).
