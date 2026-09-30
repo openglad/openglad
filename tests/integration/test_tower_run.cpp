@@ -1057,4 +1057,44 @@ TEST_F(TowerRunE2E, shadow_networked_win_refuses_when_netsession_cannot_be_writt
     fs::remove(user_save_path("netsession.gtl"), ec);
 }
 
+TEST_F(TowerRunE2E, shadow_local_win_refuses_when_the_company_autosave_fails)
+{
+    arm_classic_session();
+    ASSERT_TRUE(scr().save_data.save("save0"));
+    const std::string save0_before = read_file_bytes(save0_path());
+    ASSERT_FALSE(save0_before.empty());
+
+    // atomic_company_save stages at save/save0.tmp.gtl and removes a failed
+    // EMPTY staging entry; an occupied directory survives the cleanup, so the
+    // staging write itself fails.
+    ScopedSaveSquatter squatter(user_save_path("save0.tmp.gtl"),
+                                /*with_occupant=*/true);
+    ASSERT_TRUE(squatter.created());
+
+    ::testing::internal::CaptureStderr();
+    const bool finalized =
+        og::runtime::local_transport_shadow_testing_finalize_win(
+            scr(), /*next_level=*/2, /*networked=*/false, 0u);
+    const std::string stderr_text = ::testing::internal::GetCapturedStderr();
+
+    EXPECT_FALSE(finalized)
+        << "a local win whose company autosave fails must refuse the finalize";
+    EXPECT_NE(std::string::npos,
+              stderr_text.find(
+                  "[ERROR] local_transport_shadow_save_failed "
+                  "action=complete_level slot=save0 error=2\n"))
+        << stderr_text;
+    EXPECT_EQ(save0_before, read_file_bytes(save0_path()))
+        << "the failed autosave must leave the company file byte-unchanged";
+
+    // Control: staging unobstructed, the same local win persists save0.
+    squatter.remove();
+    arm_classic_session();
+    EXPECT_TRUE(og::runtime::local_transport_shadow_testing_finalize_win(
+        scr(), /*next_level=*/2, /*networked=*/false, 0u));
+    SaveData disk;
+    ASSERT_EQ(SaveDataIoError::None, disk.load_with_error("save0"));
+    EXPECT_EQ(2, static_cast<int>(disk.scen_num));
+}
+
 } // namespace
