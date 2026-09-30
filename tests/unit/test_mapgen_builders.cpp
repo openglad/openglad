@@ -1212,3 +1212,32 @@ TEST(MapgenSpawnExits, neighbouring_generator_body_blocks_the_only_exit)
 }
 
 } // namespace
+
+// CONTRACT test — scatter_decor contract: modulus 0 scatters nothing. The
+// product's only callers (tower_floor_gen.cpp, the four dressing passes)
+// pass literal moduli 19/23/27/29, so a non-positive modulus is a builder
+// contract input, not a product state: the pass is disabled, succeeds, and
+// leaves the decor plane unallocated. Control: modulus 1 dresses every
+// eligible cell of the same world.
+TEST(MapgenDecor, scatter_decor_contract_modulus_zero_scatters_nothing)
+{
+    GameWorld w(23u);
+    init_world(w, 1, 12, 10);
+
+    EXPECT_TRUE(scatter_decor(w, 11u, 0, 0, 0, 11, 9, 0, DECOR_PEBBLES,
+                              {ScatterGround::Grass}))
+        << "a disabled scatter still reports success";
+    EXPECT_FALSE(w.decor_for_floor(0).valid())
+        << "modulus 0 must not allocate or dress the decor plane";
+
+    ASSERT_TRUE(scatter_decor(w, 11u, 0, 0, 0, 11, 9, 1, DECOR_PEBBLES,
+                              {ScatterGround::Grass}));
+    const PixieData& dec = w.decor_for_floor(0);
+    ASSERT_TRUE(dec.valid());
+    int dressed = 0;
+    for (int i = 0; i < dec.w * dec.h; ++i)
+        if (dec.data[static_cast<std::size_t>(i)] == DECOR_PEBBLES)
+            ++dressed;
+    EXPECT_EQ(12 * 10, dressed)
+        << "control: modulus 1 dresses every cell of the all-grass 12x10 world";
+}
