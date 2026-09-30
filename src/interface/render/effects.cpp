@@ -597,10 +597,10 @@ struct UpperFloorCoverageMask
 			return static_cast<Sint32>(std::min<std::int64_t>(
 			    source_coord / GRID_SIZE, limit));
 		};
+		// No <= 0 clamp: a non-positive bound (0 for [-15, 0], negative
+		// below) leaves the `g < end` loops empty exactly as 0 would.
 		auto tile_end = [](std::int64_t source_coord, Sint32 limit)
 		{
-			if (source_coord <= 0)
-				return Sint32{0};
 			return static_cast<Sint32>(std::min<std::int64_t>(
 			    (source_coord + GRID_SIZE - 1) / GRID_SIZE, limit));
 		};
