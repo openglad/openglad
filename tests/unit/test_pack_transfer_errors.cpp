@@ -703,3 +703,51 @@ TEST_F(PackTransferIoErrorTest, reinstalling_a_pack_id_replaces_its_mount)
     EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(m1))
         << "the superseded generation must not still be answering";
 }
+
+// A chunk or a TransferDone for a pack the client never requested (or has
+// already finished) is stale: it is dropped quietly, never latched as a
+// transfer failure, and a legitimate transfer around it still installs.
+TEST(PackTransferClientErrors, stale_chunks_and_done_for_unrequested_packs_are_dropped)
+{
+    ClientHarness harness;
+    const char* content = "-- a\n";
+    ASSERT_TRUE(harness.feed_manifest(
+        one_file_manifest("org.test.a", 0, 1, content)));
+
+    og::sim::PackFileChunkMessage ghost_chunk;
+    ghost_chunk.pack_id = "org.test.ghost";
+    ghost_chunk.file_index = 0;
+    ghost_chunk.offset = 0;
+    ghost_chunk.data = {'x'};
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_file_chunk_message(ghost_chunk)));
+    og::sim::PackTransferDoneMessage ghost_done;
+    ghost_done.pack_id = "org.test.ghost";
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_transfer_done_message(ghost_done)));
+    EXPECT_FALSE(harness.failed())
+        << "an unsolicited pack's chunk/done must not fail the client: "
+        << harness.reason();
+
+    // The legitimate transfer still completes and installs.
+    og::sim::PackFileChunkMessage chunk;
+    chunk.pack_id = "org.test.a";
+    chunk.file_index = 0;
+    chunk.offset = 0;
+    chunk.data.assign(content, content + std::string(content).size());
+    ASSERT_TRUE(harness.feed(og::sim::serialize_pack_file_chunk_message(chunk)));
+    og::sim::PackTransferDoneMessage done;
+    done.pack_id = "org.test.a";
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_transfer_done_message(done)));
+    EXPECT_EQ(1u, harness.install_calls);
+    EXPECT_FALSE(harness.failed()) << harness.reason();
+
+    // A late duplicate for the finished pack is stale too.
+    ASSERT_TRUE(harness.feed(og::sim::serialize_pack_file_chunk_message(chunk)));
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_transfer_done_message(done)));
+    EXPECT_EQ(1u, harness.install_calls)
+        << "a finished pack must not install twice";
+    EXPECT_FALSE(harness.failed()) << harness.reason();
+}
