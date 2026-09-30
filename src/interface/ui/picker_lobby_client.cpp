@@ -678,9 +678,7 @@ private:
         while (seat_teams_.size() < target_count)
         {
             const std::size_t index = seat_teams_.size();
-            seat_teams_.push_back(index < seed.size()
-                    ? seed[index]
-                    : static_cast<short>(index % MAX_PLAYERS));
+            seat_teams_.push_back(seed[index]);
         }
     }
 
