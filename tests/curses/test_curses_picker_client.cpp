@@ -64,6 +64,7 @@
 
 #include <arpa/inet.h>
 #include <cstdint>
+#include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -1619,6 +1620,65 @@ void enter_prompt_number(HeadlessTerminal& term, int number)
     term.push_special(KeyCode::Enter);
 }
 
+// A transient notice is overwritten by the next screen the flow draws, so a
+// test that must READ one wraps the HeadlessTerminal and keeps the text of
+// every presented frame. Pure delegation: the scripted keys and the grid are
+// the wrapped terminal's.
+class PresentedFrameLog final : public ITerminal
+{
+public:
+    explicit PresentedFrameLog(HeadlessTerminal& inner) : inner_(inner) {}
+
+    int rows() const override { return inner_.rows(); }
+    int cols() const override { return inner_.cols(); }
+    bool supports_unicode() const override { return inner_.supports_unicode(); }
+    bool supports_color() const override { return inner_.supports_color(); }
+    void clear() override { inner_.clear(); }
+    void put(int row, int col, char32_t ch, Color fg, Color bg,
+             bool bold) override
+    {
+        inner_.put(row, col, ch, fg, bg, bold);
+    }
+    void put_str(int row, int col, std::string_view utf8, Color fg, Color bg,
+                 bool bold) override
+    {
+        inner_.put_str(row, col, utf8, fg, bg, bold);
+    }
+    void present() override
+    {
+        inner_.present();
+        frames_.push_back(inner_.dump());
+    }
+    Key poll_key(bool block) override { return inner_.poll_key(block); }
+    void set_cursor_visible(bool visible) override
+    {
+        inner_.set_cursor_visible(visible);
+    }
+    void beep() override { inner_.beep(); }
+
+    // Every presented frame whose text contains `needle`.
+    std::vector<std::string> frames_containing(std::string_view needle) const
+    {
+        std::vector<std::string> out;
+        for (const std::string& frame : frames_)
+            if (frame.find(needle) != std::string::npos)
+                out.push_back(frame);
+        return out;
+    }
+
+private:
+    HeadlessTerminal& inner_;
+    std::vector<std::string> frames_;
+};
+
+std::string read_user_file_bytes(const std::string& relative)
+{
+    std::ifstream in(std::filesystem::path(get_user_path()) / relative,
+                     std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)),
+                       std::istreambuf_iterator<char>());
+}
+
 } // namespace
 
 TEST(CursesPickerClient,
@@ -1789,6 +1849,83 @@ TEST(CursesPickerClient, company_backups_restore_no_first_then_yes)
     ASSERT_EQ(2u, backups.size());
     EXPECT_EQ("NEW BAND", backups.front().header.display_name)
         << "the pre-restore state must be snapshotted first (§3.7 step 1)";
+}
+
+// [SAVE-R2]/[SAVE-R3] a curses Restore Backup whose rewind FAILS names the
+// failure and puts the terminal slot back on the company that was open
+// before. The backup is torn exactly like CompanyIo's
+// restore_reload_failure_rolls_back_disk_and_memory: the 164-byte header with
+// listsize patched to 2 passes the step-0 header check (so the row is not
+// marked damaged and the confirm is reached) and fails the step-3 full
+// reload. The paired control is company_backups_restore_no_first_then_yes,
+// where the same Yes rewinds and the slot is repointed.
+TEST(CursesPickerClient, company_backup_restore_failure_names_it_and_keeps_the_slot)
+{
+    MountRestore mount_restore;
+    const std::string slot =
+        unique_curses_company_slot("curses-torn-restore");
+    ASSERT_TRUE(seed_curses_company(slot, "TORN BAND", 9400));
+    const std::string good_bytes =
+        read_user_file_bytes("save/" + slot + ".gtl");
+    ASSERT_GE(good_bytes.size(), 164u);
+    std::string torn = good_bytes.substr(0, 164);
+    const std::int16_t fake_listsize = 2;
+    std::memcpy(torn.data() + 130, &fake_listsize, sizeof(fake_listsize));
+    {
+        const std::filesystem::path backups_dir =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code ec;
+        std::filesystem::create_directories(backups_dir, ec);
+        std::ofstream out(backups_dir / (slot + ".005.gtl"),
+                          std::ios::binary | std::ios::trunc);
+        out.write(torn.data(), static_cast<std::streamsize>(torn.size()));
+        ASSERT_TRUE(out.good());
+    }
+    {
+        const std::vector<og::data::CompanyBackupInfo> backups =
+            og::data::list_company_backups(slot);
+        ASSERT_EQ(1u, backups.size());
+        ASSERT_TRUE(backups.front().header.valid)
+            << "the torn backup must pass the header check, or the flow "
+               "stops at the 'damaged' refusal instead of the rewind";
+    }
+    const int company_row = company_row_number(slot);
+    ASSERT_GT(company_row, 0);
+
+    HeadlessTerminal term{40, 100};
+    PresentedFrameLog log{term};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client(log, clock, config, options);
+    const std::string slot_before = config.save_name;
+    ASSERT_NE(slot, slot_before);
+
+    pick(term, 1);                         // chrome: Backups...
+    enter_prompt_number(term, company_row);
+    pick(term, 0);                         // backups chrome: Restore Backup
+    term.push_special(KeyCode::Enter);     // the only backup: row "1"
+    term.push_char(U'2');                  // digit-jump to Yes
+    term.push_special(KeyCode::Enter);
+    dismiss(term);                         // the failure notice
+    term.push_special(KeyCode::Escape);    // back out of the backups view
+    term.push_special(KeyCode::Escape);    // back out of the list
+
+    EXPECT_FALSE(client.show_company_list())
+        << "a failed rewind opens nothing (no team build)";
+    EXPECT_TRUE(term.input_exhausted());
+    EXPECT_EQ(slot_before, config.save_name)
+        << "[SAVE-R2] a failed restore must put the terminal slot back";
+    EXPECT_EQ(slot_before, og::data::active_company_slot())
+        << "[SAVE-R2] the active company slot follows the terminal slot";
+    const std::string notice = std::format(
+        "Restore failed ({}).",
+        og::ui::company_restore_error_string(
+            og::data::CompanyRestoreError::ReloadFailed));
+    EXPECT_EQ(1u, log.frames_containing(notice).size())
+        << "the failure is named on exactly one notice: " << notice;
+    EXPECT_EQ(good_bytes, read_user_file_bytes("save/" + slot + ".gtl"))
+        << "[SAVE-R3] the rollback leaves the company file byte-identical";
 }
 
 // §2.4 delete-backup round trip (curses projection): NO-first keeps the
