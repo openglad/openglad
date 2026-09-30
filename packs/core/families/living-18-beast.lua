@@ -1,8 +1,8 @@
--- core:beast (golem) — set_difficulty only (cookbook: docs/lua-classpacks-design.md §3).
+-- core:#18 (golem) — set_difficulty only (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
--- The descriptor .name is "BEAST"; "core:beast" resolves to FAMILY_GOLEM
--- (id 18), the first BEAST-named family in registry scan order (giant
--- skeleton and tower1 share the display name but later ids).
+-- The descriptor .name is "GOLEM", the word the HUD always showed for it
+-- (ruling R14); "core:#18" is its exact id. Giant skeleton and tower1 carry
+-- their own display names (GIANT SKEL, TOWER), so no name is shared.
 
 local function set_difficulty(self, level)
   og.apply_difficulty_scaling(self, level, 18.0, 5.0, 7.0, 4.0)
@@ -11,7 +11,7 @@ end
 og.family("living", {
   id = "core:#18",
   wire_id = 18,
-  name = "BEAST",
+  name = "GOLEM",
   short_name = og.NIL,
   stats  = { strength = 12, dexterity = 6, constitution = 12,
              intelligence = 8, armor = 6, level = 1 },

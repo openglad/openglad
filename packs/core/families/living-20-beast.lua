@@ -10,13 +10,13 @@
 -- og.register_hooks with an empty hook table is a load error, so this file
 -- deliberately makes no registration call.
 --
--- The registry name "BEAST" is shared with ids 18 and 19. core:beast falls
--- back to the first name match (the golem); core:#20 is tower1's exact id.
+-- The registry name is "TOWER", the HUD's word for it (ruling R14); the
+-- generator TOWER is another order. core:#20 is tower1's exact id.
 
 og.family("living", {
   id = "core:#20",
   wire_id = 20,
-  name = "BEAST",
+  name = "TOWER",
   short_name = og.NIL,
   stats  = { strength = 12, dexterity = 6, constitution = 12,
              intelligence = 8, armor = 6, level = 1 },
