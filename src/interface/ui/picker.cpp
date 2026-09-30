@@ -1384,6 +1384,9 @@ public:
             const Sint32 instruction_y =
                 buttons[kNetworkingMenuJoinIndex].y -
                 PICKER_NETWORKING_INSTRUCTION_GAP - instruction_height;
+            // Web-only copy: kNetworkingMenuInstructionLines is empty on
+            // native (picker_lobby_network_client.cpp).
+#ifdef __EMSCRIPTEN__
             if (!session_view)
             {
                 // The HOST/JOIN guidance describes buttons a session hides.
@@ -1402,6 +1405,7 @@ public:
                         DARK_BLUE);
                 }
             }
+#endif
 
             // Message-line toast ("KICKED <machine>"), drawn in the
             // instruction band until its stamp expires.
