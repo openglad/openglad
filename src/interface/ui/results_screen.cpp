@@ -1055,6 +1055,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	                          troops[troop_idx].get_name().c_str(), gain,
 	                          row_special.empty()? "none" : row_special.c_str());
 	                    END_IF_IN_SCROLL_AREA;
+	                    // The row's " the <class>" word, traced for every
+	                    // troop on every troops frame (scrolled out or not).
+	                    TRACE("results", "troop_class %s the %s",
+	                          troops[troop_idx].get_name().c_str(),
+	                          troops[troop_idx].get_class_name().c_str());
 	                }
 #endif
 	                

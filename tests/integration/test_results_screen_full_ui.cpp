@@ -20,6 +20,7 @@
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -1403,6 +1404,27 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
     hexer->stats()->set_hitpoints(9);
     after[3] = hexer;
 
+    // R14: three new recruits of the core families 18-20, the ones the
+    // registry once named BEAST. They sit below the scroll area (this flow
+    // never scrolls), so their rows are pinned by the per-troop class trace.
+    const std::array<std::pair<const char*, int>, 3> beasts = {{
+        {"Golem", FAMILY_GOLEM},
+        {"Skel", FAMILY_GIANT_SKELETON},
+        {"Tower", FAMILY_TOWER1},
+    }};
+    for (std::size_t b = 0; b < beasts.size(); ++b)
+    {
+        auto* beast = screen_ref.world().add_ob(Order::Living, beasts[b].second);
+        ASSERT_TRUE(beast != nullptr) << "expected walker for " << beasts[b].first;
+        beast->set_owned_myguy(std::make_unique<guy>(beasts[b].second));
+        beast->myguy->name = beasts[b].first;
+        beast->myguy->family = static_cast<char>(beasts[b].second);
+        beast->myguy->exp = calculate_exp(2);
+        beast->stats()->set_max_hitpoints(10);
+        beast->stats()->set_hitpoints(10);
+        after[static_cast<int>(4 + b)] = beast;
+    }
+
     results_screen_testing_set_force_full(true);
 
     int bows = 0;
@@ -1456,6 +1478,19 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
               count_result_traces("special=HEXFIRE"))
         << "every drawn Hex row must name HEXFIRE, the slot-2 special its own "
            "pack family (id 21, past the core table) declares";
+    // R14: every troop's class word is its family's registry display name;
+    // 18-20 read GOLEM, GIANT SKEL and TOWER (the HUD's words), never BEAST.
+    const int troop_frames = count_result_traces("troop_row Bruise ");
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Bruise the SOLDIER"))
+        << "control: a core SOLDIER's class word is unchanged";
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Golem the GOLEM"))
+        << "core family 18 reads GOLEM on the results screen";
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Skel the GIANT SKEL"))
+        << "core family 19 reads GIANT SKEL on the results screen";
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Tower the TOWER"))
+        << "core family 20 reads TOWER on the results screen";
+    EXPECT_EQ(0, count_result_traces(" the BEAST"))
+        << "no registered core family reads the unknown-family word BEAST";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))
         << "the OK button is what ends the troop page";
     EXPECT_FALSE(trace_contains("results", "exit world_end"))
