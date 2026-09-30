@@ -767,58 +767,101 @@ TEST_F(EmscriptenWebSocketTransportTest,
     EXPECT_EQ(og::sim::TransportLinkState::Connected, relay.link_state());
 }
 
+// Rule (enqueue, both browser transports): only FRAMES are capped (1024 by
+// count, 16 MiB by bytes). A flood past the count cap takes the queue-full
+// path — close(1008, "receive queue full") plus a queued Disconnect — and that
+// Disconnect must reach the game: the one poll() drains the 1024 queued frames
+// in arrival order and then reports the link Lost with no peers. (The browser
+// twin of the native 7f9c58ae/83f88dba fix: a whole-queue cap used to drop the
+// very Disconnect the queue-full path enqueues, leaving a closed link reading
+// Connected until the browser's own close event happened to arrive.)
 TEST_F(EmscriptenWebSocketTransportTest,
-       receive_queues_are_bounded_and_close_before_accepting_more_messages)
+       receive_queues_are_bounded_and_the_queue_full_close_reaches_the_game)
 {
     constexpr std::size_t kMaximumQueuedMessages = 1024u;
-    const std::span<const std::uint8_t> empty_payload;
+    const auto index_bytes = [](std::size_t index) {
+        return std::vector<std::uint8_t>{
+            static_cast<std::uint8_t>(index & 0xffu),
+            static_cast<std::uint8_t>((index >> 8u) & 0xffu),
+        };
+    };
 
     EmscriptenWebSocketTransport direct(
         "ws://example.test/queue-limit", make_options());
     const WebSocketHandle direct_socket = connect_transport(direct);
+    ASSERT_EQ((std::vector<PeerId>{42u}), direct.connected_peers());
     for (std::size_t index = 0; index <= kMaximumQueuedMessages; ++index)
     {
-        ASSERT_TRUE(backend_.emit_message(direct_socket, empty_payload))
+        const std::vector<std::uint8_t> payload = index_bytes(index);
+        ASSERT_TRUE(backend_.emit_message(direct_socket, payload))
             << "message " << index;
     }
 
-    ASSERT_FALSE(backend_.close_requests(direct_socket).empty());
+    ASSERT_EQ(1u, backend_.close_requests(direct_socket).size())
+        << "exactly the 1025th frame trips the queue-full close";
     EXPECT_EQ(1008u, backend_.close_requests(direct_socket).front().first);
     EXPECT_EQ("receive queue full",
               backend_.close_requests(direct_socket).front().second);
     const std::vector<og::sim::ReceivedMessage> direct_messages = direct.poll();
     ASSERT_EQ(kMaximumQueuedMessages, direct_messages.size());
-    EXPECT_TRUE(std::all_of(
-        direct_messages.begin(),
-        direct_messages.end(),
-        [](const og::sim::ReceivedMessage& message) {
-            return message.peer_id == 42u && message.data.empty();
-        }));
-    EXPECT_EQ(og::sim::TransportLinkState::Connected, direct.link_state());
+    for (std::size_t index = 0; index < direct_messages.size(); ++index)
+    {
+        ASSERT_EQ(42u, direct_messages[index].peer_id) << "frame " << index;
+        ASSERT_EQ(index_bytes(index), direct_messages[index].data)
+            << "frame " << index << " out of order";
+    }
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, direct.link_state())
+        << "the queue-full Disconnect must reach the game in the same poll";
+    EXPECT_TRUE(direct.connected_peers().empty());
+    // Draining the Disconnect disposes the socket: one destroy, and
+    // dispose_socket's own normal (1000) close request after the 1008 one.
+    EXPECT_EQ(1, backend_.destroy_calls(direct_socket));
+    EXPECT_EQ(2u, backend_.close_requests(direct_socket).size());
+    EXPECT_EQ(1000u, backend_.close_requests(direct_socket).back().first);
 
-    ASSERT_TRUE(backend_.emit_close(direct_socket));
+    // The browser's own close event arrives later for the retired socket: it
+    // changes nothing (still Lost, nothing to drain, no second destroy).
+    (void)backend_.emit_close(direct_socket);
     EXPECT_TRUE(direct.poll().empty());
     EXPECT_EQ(og::sim::TransportLinkState::Lost, direct.link_state());
     EXPECT_EQ(1, backend_.destroy_calls(direct_socket));
 
+    // Relay: frames from a live remote peer 9 (kind 2 = binary relay frame,
+    // then the u32 LE source peer id, then the payload).
     RelayWebSocketTransport relay(
         "ws://relay.example/api/room/GLAD-QUEUE-LIMIT",
         make_relay_options());
-    const WebSocketHandle relay_socket = connect_transport(relay);
+    const WebSocketHandle relay_socket = connect_relay_with_peer(relay);
     for (std::size_t index = 0; index <= kMaximumQueuedMessages; ++index)
     {
-        ASSERT_TRUE(backend_.emit_message(relay_socket, empty_payload))
+        std::vector<std::uint8_t> frame{2u, 9u, 0u, 0u, 0u};
+        const std::vector<std::uint8_t> payload = index_bytes(index);
+        frame.insert(frame.end(), payload.begin(), payload.end());
+        ASSERT_TRUE(backend_.emit_message(relay_socket, frame))
             << "message " << index;
     }
 
-    ASSERT_FALSE(backend_.close_requests(relay_socket).empty());
+    ASSERT_EQ(1u, backend_.close_requests(relay_socket).size())
+        << "exactly the 1025th frame trips the queue-full close";
     EXPECT_EQ(1008u, backend_.close_requests(relay_socket).front().first);
     EXPECT_EQ("receive queue full",
               backend_.close_requests(relay_socket).front().second);
-    EXPECT_TRUE(relay.poll().empty());
-    EXPECT_EQ(og::sim::TransportLinkState::Connected, relay.link_state());
+    const std::vector<og::sim::ReceivedMessage> relay_messages = relay.poll();
+    ASSERT_EQ(kMaximumQueuedMessages, relay_messages.size());
+    for (std::size_t index = 0; index < relay_messages.size(); ++index)
+    {
+        ASSERT_EQ(9u, relay_messages[index].peer_id) << "frame " << index;
+        ASSERT_EQ(index_bytes(index), relay_messages[index].data)
+            << "frame " << index << " out of order";
+    }
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, relay.link_state())
+        << "the queue-full Disconnect must reach the game in the same poll";
+    EXPECT_TRUE(relay.connected_peers().empty());
+    EXPECT_EQ(1, backend_.destroy_calls(relay_socket));
+    EXPECT_EQ(2u, backend_.close_requests(relay_socket).size());
+    EXPECT_EQ(1000u, backend_.close_requests(relay_socket).back().first);
 
-    ASSERT_TRUE(backend_.emit_close(relay_socket));
+    (void)backend_.emit_close(relay_socket);
     EXPECT_TRUE(relay.poll().empty());
     EXPECT_EQ(og::sim::TransportLinkState::Lost, relay.link_state());
     EXPECT_EQ(1, backend_.destroy_calls(relay_socket));
