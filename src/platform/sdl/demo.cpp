@@ -238,8 +238,6 @@ static void apply_capture_focus(screen& s, const CaptureSettings& capture)
     if (focus == CaptureFocus::Player)
         return;
     viewscreen* view = s.viewob[0].get();
-    if (view == nullptr)
-        return;
 
     if (focus == CaptureFocus::Center) {
         // viewscreen::redraw falls back to the LevelVisuals camera whenever it
