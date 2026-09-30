@@ -28,6 +28,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
@@ -2498,6 +2499,88 @@ TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
     term.push_char(U't');
     lobby->poll(term, clock);
     EXPECT_EQ(0, local_team()) << "and the walk wraps at the end of it";
+}
+
+// Lobby team cycling on a JOINER: a second 't' while the first request is
+// still unechoed cycles from the last REQUESTED team, not from the stale
+// replicated one. Only the joiner is polled between the presses, so the host
+// never processes the first request and the echo check in
+// request_seat_team_change fails, leaving it pending. The band is read BEFORE
+// the host is pumped (pumping first would echo the request and clear the
+// pending state, and the stale-team path would be the one exercised). The
+// paired control is the host's own echo-per-press walk,
+// lobby_team_key_walks_the_domain_no_band_can_narrow.
+TEST(CursesNetwork, joiner_second_team_press_cycles_from_the_pending_request)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_NE(host_lobby, nullptr);
+    ASSERT_NE(join_lobby, nullptr);
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+    bool converged = false;
+    for (int i = 0; i < 200 && !converged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        converged = host_lobby->players().size() == 2 &&
+            join_lobby->players().size() == 2;
+    }
+    ASSERT_TRUE(converged);
+
+    const std::vector<std::uint8_t> local = join_lobby->local_player_indices();
+    ASSERT_EQ(1u, local.size());
+    const auto team_of = [&local](const CursesLobby& lobby) -> short {
+        for (const og::sim::LobbyPlayer& player : lobby.players()) {
+            if (player.player_index == local.front())
+                return static_cast<short>(player.team);
+        }
+        return -1;
+    };
+    ASSERT_EQ(1, team_of(*join_lobby));
+    const std::string seat_label =
+        std::format("Requested P{} -> ", local.front() + 1);
+
+    join_term.push_char(U't');
+    join_lobby->poll(join_term, clock);
+    ASSERT_TRUE(status_contains(
+        *join_lobby, seat_label + og::sim::team_color_name(2)))
+        << "the first press requests one step on and stays pending";
+    ASSERT_EQ(1, team_of(*join_lobby)) << "no echo: the host was not polled";
+
+    join_term.push_char(U't');
+    join_lobby->poll(join_term, clock);
+    EXPECT_TRUE(status_contains(
+        *join_lobby, seat_label + og::sim::team_color_name(3)))
+        << "the second press must cycle from the pending request (team 2), "
+           "not from the stale replicated team 1";
+    EXPECT_FALSE(status_contains(
+        *join_lobby, seat_label + og::sim::team_color_name(2)));
+
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_EQ(3, team_of(*host_lobby))
+        << "the authoritative roster lands on the second request";
+    EXPECT_EQ(3, team_of(*join_lobby));
+    EXPECT_FALSE(status_contains(*join_lobby, seat_label))
+        << "the echo clears the pending band";
+
+    host_lobby->cancel();
+    join_lobby->cancel();
 }
 
 // The lobby "Level:" line reads scenario titles off the LOCAL mount, so when
