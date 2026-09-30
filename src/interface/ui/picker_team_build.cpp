@@ -1756,9 +1756,6 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         return;
     const HireMenuLayout l;
 
-    if (!og::runtime::current_session->current_guy_)
-        sync_current_guy_from_hire();
-
     // Name box
     og::runtime::current_session->myscreen_->draw_button(
         l.name_box.x, l.name_box.y, l.name_box.x + l.name_box.w - 1,
