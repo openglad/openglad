@@ -411,10 +411,7 @@ const char* level_row_status_label(bool cleared, bool current)
 
 const char* family_display_name(int family)
 {
-    const auto* fd = get_family_descriptor(family);
-    if (fd)
-        return fd->name;
-    return "BEAST";
+    return get_family_display_name(family);
 }
 
 const char* family_short_name(short family)

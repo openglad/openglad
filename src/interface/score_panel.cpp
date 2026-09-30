@@ -421,8 +421,6 @@ static std::vector<ModeRowSegment> compose_mode_row(
             continue;
         const std::string_view body =
             strip_team_color_word(line.text.data(), line.team);
-        if (body.empty())
-            continue;
         if (!segments.empty())
             segments.push_back({std::string(kModeRowSeparator),
                                 mode_hud_color(255), 255});
@@ -733,12 +731,12 @@ short new_score_panel(screen* s, short /*do_it*/)
             // below, but it is an *unsigned* byte and remaining_team() takes a
             // signed char: a mirrored team above 127 narrows to a negative
             // value that matches no walker, so the HUD would report zero
-            // allies. Clamp to the legal team range first, exactly as the
-            // scenario loader does (sanitize_loaded_team_num). Every team the
-            // game actually produces is 0..MAX_TEAM and passes through
-            // unchanged.
+            // allies. Junk bytes above MAX_TEAM clamp to team 0, as the
+            // scenario loader does (sanitize_loaded_team_num). The FFA band
+            // (kFfaTeamBase + c, 16..31) is a real scoring identity above
+            // MAX_TEAM and passes through, so a fighter counts its own band.
             int hud_team = static_cast<int>(control->team_num());
-            if (hud_team > MAX_TEAM)
+            if (hud_team > MAX_TEAM && !og::sim::is_scoring_identity(hud_team))
                 hud_team = 0;
             tempallies = remaining_team(s, static_cast<char>(hud_team));
 

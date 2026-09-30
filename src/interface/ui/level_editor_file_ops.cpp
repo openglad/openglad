@@ -38,6 +38,10 @@ bool does_campaign_exist(const std::string& campaign_id)
 
 bool create_new_campaign(const std::string& campaign_id)
 {
+    // An id the package layer would refuse builds nothing.
+    if (!is_safe_campaign_id(campaign_id))
+        return false;
+
     // Delete the temp directory
     cleanup_unpacked_campaign();
 
@@ -53,9 +57,6 @@ bool create_new_campaign(const std::string& campaign_id)
     (void)create_new_map_pix_with_error(get_user_path() + "temp/pix/scen0001.png", 40, 60);
 
     bool result = repack_campaign(campaign_id);
-    if(!result)
-        return result;
-
     cleanup_unpacked_campaign();
-    return true;
+    return result;
 }

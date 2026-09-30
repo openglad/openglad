@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:438 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:424 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -167,8 +167,8 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
-// Cycling gate: src/gameplay/sim_input_handler.cpp:313 `(control->current_special() - 1) * 3 + 1` must be <= stats()->level().
-// Firing gate: src/gameplay/living.cpp:594 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
+// Cycling gate: src/gameplay/sim_input_handler.cpp:302 `(control->current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Firing gate: src/gameplay/living.cpp:585 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
 struct SpawnSpec
@@ -1198,7 +1198,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 // keyframe + delta merge, so the canary's per-row `Parity.<scenario_id>`
 // filter sees this break.
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/world_snapshot.cpp", 2441,
+    "src/gameplay/world_snapshot.cpp", 2446,
     "snapshot.dirty_mask[i] = entity.dirty_mask_word(i);",
     "snapshot.dirty_mask[i] = 0;",
     "Captures an all-zero dirty mask for every entity of a non-keyframe snapshot. A zero mask is apply_delta's REMOVAL sentinel, so merging the delta over the keyframe baseline drops every live entity and the merged snapshot no longer matches a full capture.",
@@ -1265,14 +1265,14 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 // canary's rebuild instead of being measured.
 
 inline constexpr Mutation kMut_family_spawn_identity = {
-    "src/resources/gloader.cpp", 822,
+    "src/resources/gloader.cpp", 818,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>((family + 1) % 21));",
     "Rotates every dumped living-family identity at loader binding time; each phase-05 family row loses its exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
 };
 
 inline constexpr Mutation kMut_family_spawn_identity_elf = {
-    "src/resources/gloader.cpp", 822,
+    "src/resources/gloader.cpp", 818,
     "ob->set_order_family(order, static_cast<char>(family));",
     "ob->set_order_family(order, static_cast<char>(family == 0 ? 2 : 0));",
     "Maps the player SOLDIER away from ELF and maps the target ELF away from ELF; family_elf_scen99 loses its exact WalkerFamilyCount(FAMILY_ELF,1,1) predicate."
@@ -2076,7 +2076,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 512.0f) / 256.0f);",
     "Inflates the cardinal-facing projectile stepsize multiplier (walker.cpp:1190, applied in create_weapon() for FACE_UP/RIGHT/DOWN/LEFT). FAMILY_KNIFE fires FACE_RIGHT at the adjacent target; base stepsize 5 normally scales by 362/256 (~1.414) to ~7 giving a constant dx=7,dy=waver step of hypot(7,1)*100 = 707 centi-px/tick. Changing 362->512 scales to 10, raising the per-tick step to ~1005 centi-px/tick, which exceeds the WeaponSpeed(FAMILY_KNIFE,600,800) upper bound and flips that trajectory predicate. The only travelling weaplist family in this arena is the knife (FAMILY_BLOOD stays stationary), so the speed flip is unambiguous. WeaponNetTravel STRAIGHT stays satisfied because the path is still straight, but WeaponSpeed alone flipping satisfies the >=1-predicate canary requirement."
@@ -2099,7 +2099,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize scale. FAMILY_ROCK remains emitted and travels straight, but its per-tick step falls below the exact 800-centipixel speed pin, flipping WeaponSpeed."
@@ -2122,7 +2122,7 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "walker::create_weapon scales every fired projectile's stepsize by 362/256 (~1.414) for the cardinal/diagonal facing cases; FAMILY_ARROW is a data-only weapon family (descriptor installed from packs/core/families/weapon-02-arrow.lua, no script movement hook) so its per-tick speed is exactly this scaled stepsize. Dropping the scale (362->256) cuts the arrow's step from ~11.3px/tick to 8px/tick, so weapon_tracks seq=0 max_step_centi falls from 1105 to ~800, below WeaponSpeed(FAMILY_ARROW,1000,1250)'s lower bound, flipping that predicate. The path stays straight so WeaponNetTravel(STRAIGHT) is unaffected, demonstrating the speed teeth are independent of the path-class teeth."
@@ -2152,7 +2152,7 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "(weapon->stepsize() * 362.0f)",
     "(weapon->stepsize() * 256.0f)",
     "Removes the sqrt(2)=362/256 cardinal-fire velocity scale applied to the fired FIREBALL's stepsize in walker::create_weapon(); the projectile's per-tick step drops from ~922 to ~600-667 centi-px/tick, so WeaponSpeed(FAMILY_FIREBALL,850,1000) observes a max consecutive step below 850 and flips pass->fail. Path stays straight so WeaponNetTravel(STRAIGHT) is unaffected (>=1 trajectory predicate flips, as required)."
@@ -2231,7 +2231,7 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "362.0f",
     "181.0f",
     "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_METEOR is fired RIGHT (cardinal), so its per-tick stepsize halves: max_step_centi drops from ~1020 to ~510 centi-px/tick, falling below the 950 floor of WeaponSpeed(FAMILY_METEOR,950,1100), which flips pass->fail."
@@ -2255,7 +2255,7 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-fire stepsize boost. FAMILY_SPRINKLE fires right, so its speed drops below WeaponSpeed's 900 floor and its net displacement drops below WeaponNetTravel's 2500 threshold; both trajectory predicates flip."
@@ -2280,7 +2280,7 @@ inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_bone_emission = {
-    "src/resources/gloader.cpp", 573,
+    "src/resources/gloader.cpp", 571,
     "{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni.data(),          6,  6,  5, 0},",
     "{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni.data(),          3,  6,  5, 0},",
     "Halves FAMILY_BONE's base stepsize (7th column, the loaded weapon step) from 6 to 3. The cardinal firing path (walker.cpp:1190 stepsize*362/256) then yields 3*1.414=4.24 px/tick, so the seq-0 BONE projectile's max consecutive-tick step drops from 900 to ~500 centi-px, OUTSIDE WeaponSpeed(FAMILY_BONE,850,950) -> that predicate FLIPS. BONE is still emitted (WeaponFamilyEmitted stays green) and still travels straight, so the flip is isolated to the speed teeth."
@@ -2334,7 +2334,7 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "Neutralizes the cardinal-facing 1.414x stepsize boost (362/256) applied to weapons fired straight (FACE_UP/RIGHT/DOWN/LEFT) in create_weapon(). The FAMILY_BLOB the slime fires FACE_RIGHT now keeps its base stepsize (~2.12 px/tick instead of ~3 px/tick), so its max consecutive-tick step drops from 316 to ~224 centi-px/tick, below the WeaponSpeed(FAMILY_BLOB, 280, 360) floor of 280 -> WeaponSpeed flips pass->fail. BLOB is still emitted and still tracked with consecutive samples (no Indeterminate), and the path stays straight so WeaponNetTravel still holds. The from/to omit the line's leading TABs and match as the unique substring of walker.cpp:1190 (the canary's _apply_mutation does a substring str.replace, and the lint parser transports the from-text through a tab-delimited line, so embedded tabs would corrupt the canary's IFS parse — identical convention to the sibling kMut_weapon_knife_emission/_rock/_arrow which target the same line)."
@@ -2392,7 +2392,7 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
-    "src/resources/gloader.cpp", 567,
+    "src/resources/gloader.cpp", 565,
     "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        8, 12,  7, 0},",
     "{Order::Weapon, FAMILY_FIRE_ARROW,        \"farrow.png\",   7, ACT_FIRE, aniarrow.data(),        3, 12,  7, 0},",
     "Lowers FAMILY_FIRE_ARROW's base stepsize from 8 to 3. The bolt's per-tick step falls to about 510 centipixels, outside WeaponSpeed's [1000,1250] bracket, and the same slowdown reduces its straight-line travel."
@@ -2416,7 +2416,7 @@ inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_lightning_emission = {
-    "src/resources/gloader.cpp", 575,
+    "src/resources/gloader.cpp", 573,
     "aniarrow.data(),        9, 13,  6, 0",
     "aniarrow.data(),        2, 13,  6, 0",
     "Halves+ the FAMILY_LIGHTNING base stepsize (column 'step' 9 -> 2) in the EntityDef weapon-defaults table; the cardinal-fired bolt's per-tick step collapses from ~12.7 px (max_step 1304 centi-px/tick) to ~2.8 px (~283 centi-px/tick), so WeaponSpeed(FAMILY_LIGHTNING,1250,1360) flips (and seq0 net falls below the WeaponNetTravel STRAIGHT threshold 2000 too)."
@@ -2703,7 +2703,7 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
-    "src/gameplay/walker.cpp", 1204,
+    "src/gameplay/walker.cpp", 1198,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize multiplier. HAMMER fires right, so its per-tick step falls from about 922 to 460 centipixels, below WeaponSpeed's 850 floor; emission and straight-path predicates remain satisfied."
@@ -2781,7 +2781,7 @@ inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_boulder_emission = {
-    "src/resources/gloader.cpp", 583,
+    "src/resources/gloader.cpp", 581,
     "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone.data(),        10,  9, 25, 0}",
     "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone.data(),         4,  9, 25, 0}",
     "Cuts FAMILY_BOULDER's base stepsize from 10 to 4 in the gloader weapon table; after the cardinal-direction *1.414 scaling (walker.cpp:1190) the boulder now moves ~5.66px/tick instead of ~14.14, so its seq-0 per-tick step drops to ~566 centi-px/tick — outside WeaponSpeed's [1350,1600] window — flipping WeaponSpeed(FAMILY_BOULDER) pass->fail. The boulder still emits (WeaponFamilyEmitted stays green) and still travels straight, isolating the speed-trajectory tooth. The from/to omit line 430's two leading TABs and match the unique substring of that line (the canary's lookup_mutation emits a TAB-separated record consumed by `IFS=$'\\t' read`, so embedded tabs would corrupt the field split — identical convention to the sibling kMut_weapon_knife/_rock/_arrow which target a TAB-indented line)."
@@ -4438,7 +4438,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_decrement_faerie_scen99[] 
 };
 
 inline constexpr Mutation kMut_summon_lifetime_decrement_faerie_scen99 = {
-    "src/gameplay/living.cpp", 124,
+    "src/gameplay/living.cpp", 115,
     "const auto remaining_lifetime = lifetime() - 1;",
     "const auto remaining_lifetime = lifetime();",
     "Removes the `- 1` so remaining_lifetime == lifetime() every tick; `if (remaining_lifetime < 1)` at line 106 is permanently false and the lifetime-expiry kill at 108-109 never fires. With the druid kept alive (off-map enemy), owner-death cascades at 87/98 also never fire, so the faerie is still alive at tick 650 and WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Exercises the decrement path rather than initialisation."
@@ -4483,7 +4483,7 @@ inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
-    "src/gameplay/walker.cpp", 1595,
+    "src/gameplay/walker.cpp", 1589,
     "if ( current_game->world->living_count < MAXOBS &&",
     "if ( false &&",
     "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
@@ -4847,7 +4847,7 @@ inline constexpr FactPredicate kFacts_input_hold_fire_search_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_hold_fire_search_scen99 = {
-    "src/gameplay/walker.cpp", 498,
+    "src/gameplay/walker.cpp", 499,
     "set_busy(busy() + fire_frequency());",
     "set_busy(busy() + fire_frequency() * 100.0f);",
     "Inflates walker::init_fire's post-throw busy pause by 100x. The first throw blocks later held-fire re-arms, collapsing the sustained knife stream and dropping play_sound below five."
@@ -5005,7 +5005,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2512,
+    "src/gameplay/walker.cpp", 2506,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -7688,7 +7688,7 @@ inline constexpr FactPredicate kFacts_weapon_ranged_impact_hp_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_ranged_impact_hp_scen99 = {
-    "src/resources/gloader.cpp", 566,
+    "src/resources/gloader.cpp", 564,
     "{Order::Weapon, FAMILY_ARROW,             \"arrow.png\",    5, ACT_FIRE, aniarrow.data(),        8, 12,  5, 0},",
     "{Order::Weapon, FAMILY_ARROW,             \"arrow.png\",    5, ACT_FIRE, aniarrow.data(),        8, 12,  0, 0},",
     "Zeroes FAMILY_ARROW's damage column in the EntityDef weapon-defaults table."

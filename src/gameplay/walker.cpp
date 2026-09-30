@@ -43,6 +43,7 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/core/util.h>
 #include <openglad/core/sound_ids.h>
+#include "sim_difficulty.h"
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <algorithm>
 #include <cassert>
@@ -68,6 +69,14 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 short collide(short x, short y, short xsize, short ysize,
               short x2, short y2, short xsize2, short ysize2);
 
+std::uint32_t query_difficulty_percent()
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 100u;
+    const int difficulty = current_game->world->difficulty;
+    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
+}
+
 namespace
 {
 std::int32_t scale_los_circular(std::int32_t value)
@@ -80,14 +89,6 @@ std::int32_t scale_los_circular(std::int32_t value)
         scaled,
         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())));
-}
-
-std::uint32_t query_difficulty_percent()
-{
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 100u;
-    const int difficulty = current_game->world->difficulty;
-    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
 }
 
 std::uint32_t query_generator_rate_percent()
@@ -1143,13 +1144,6 @@ bool walker::set_frame_from_current_walk_animation()
 	int seq_len = 0;
 	while (seq_len < 128 && seq[seq_len] != -1)
 		seq_len++;
-
-	if (seq_len <= 0)
-	{
-		set_cycle(0);
-		set_frame(seq[0]);
-		return true;
-	}
 
 	int c = static_cast<int>(cycle());
 	if (c < 0 || c >= seq_len)

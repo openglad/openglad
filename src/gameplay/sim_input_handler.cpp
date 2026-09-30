@@ -67,25 +67,14 @@ void emit_throttled_cue(SimInputDebounce& debounce, short player_num,
 // because the family is still on its own cooldown is answering a key the
 // player never pressed again, so ScriptDeclined stays silent there — the
 // running special IS the answer.
-//
-// cast_succeeded latches a success for this seat's tick. More than one cast
-// arm can run in a tick (the touch build's shifter-press cast beside the
-// press arm; until #228 the held arm ran on the press frame too), and a
-// refusal that follows a working cast may not call that cast a failure.
-// Every failure cue below the latch is dropped for the rest of the tick.
 bool player_cast_special(walker* control, SimInputDebounce& debounce,
                          short player_num, og::sim::SimEventLog* sim_events,
-                         bool press_edge, bool& cast_succeeded)
+                         bool press_edge)
 {
     walker::SpecialFailure why = walker::SpecialFailure::None;
     std::string reason;
     if (control->special(&why, &reason))
-    {
-        cast_succeeded = true;
         return true;
-    }
-    if (cast_succeeded)
-        return false;
     if (why == walker::SpecialFailure::ScriptDeclined && !press_edge)
         return false;
     emit_throttled_cue(debounce, player_num, sim_events,
@@ -432,16 +421,12 @@ SimInputResult sim_process_player_input(
     // Make sure we're not performing some queued action ..
     if (control->stats()->commands.empty())
     {
-        // One tick, one verdict per seat: set by whichever cast below works.
-        bool cast_succeeded = false;
-
         control->set_shifter_down(pi.is_held(InputAction::Shift) ? 1 : 0);
 
         if (pi.was_pressed(InputAction::Special))
         {
             const bool cast = player_cast_special(control, debounce, player_num,
-                                                  sim_events, true,
-                                                  cast_succeeded);
+                                                  sim_events, true);
             // #222 alliance act-freeze: a hostile-to-my_team caster is
             // skipped by the act phase (game_world.cpp), so whatever the cast
             // left on the command queue never runs. Voice that only when
@@ -471,8 +456,8 @@ SimInputResult sim_process_player_input(
         // fires once per tick from the next tick on.
         if (pi.is_held(InputAction::Special) &&
             !pi.was_pressed(InputAction::Special))
-            player_cast_special(control, debounce, player_num, sim_events, false,
-                                cast_succeeded);
+            player_cast_special(control, debounce, player_num, sim_events,
+                                false);
 
         int walkx = pi.move_x();
         int walky = pi.move_y();

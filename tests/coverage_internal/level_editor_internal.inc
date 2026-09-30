@@ -944,10 +944,37 @@ int level_editor_test_campaign_menu_flows()
     };
 
     // --- File > Campaign > New ------------------------------------------
-    // Positive control: a valid new id creates, loads and mounts it.
+    // Unsaved campaign details (a Campaign > Profile title edit dirties only
+    // campaignchanged) are protected like a dirty level: New asks first, and
+    // NO keeps the open campaign and its edit; no id is ever asked for.
+    check(eds().levelchanged == 0 && eds().campaignchanged == 0);
+    level_editor_testing_prompt_queue_push("Unsaved Title");
+    data.current_menu.clear();
+    click_button(data.campaignButton);
+    click_button(data.campaignProfileButton);
+    click_button(data.campaignProfileTitleButton);
+    check(data.campaign->title == "Unsaved Title");
+    check(eds().campaignchanged == 1 && eds().levelchanged == 0);
+    level_editor_testing_prompt_queue_push(created_id.c_str());
+    picker_testing_yes_or_no_queue_push(false);
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 1);
+    check(trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(data.campaign->id == helper_id);
+    check(data.campaign->title == "Unsaved Title");
+    check(eds().campaignchanged == 1);
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+    check(level_editor_testing_prompt_queue_ref().size() == 1);
+    level_editor_testing_prompt_queue_clear();
+    picker_testing_yes_or_no_queue_clear();
+
+    // Positive control: a valid new id creates, loads and mounts it. The
+    // campaign is dirty, so New asks to discard first: YES.
     eds().campaignchanged = 1;
     level_editor_testing_prompt_queue_push(created_id.c_str());
+    picker_testing_yes_or_no_queue_push(true);
     check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
+    check(trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
     check(trace_contains("dialog", "timed_dialog_open Campaign created."));
     check(data.campaign->id == created_id);
     check(get_mounted_campaign() == created_id);
@@ -958,6 +985,8 @@ int level_editor_test_campaign_menu_flows()
     check(data.loadCampaign(helper_id));
     eds().campaignchanged = 1;
     level_editor_testing_prompt_queue_push("bad id!");
+    picker_testing_yes_or_no_queue_push(true); // discard the dirty campaign
+    check(!std::filesystem::exists(get_user_path() + "temp"));
     check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
     check(trace_contains(
         "dialog", "timed_dialog_open Failed to create new campaign."));
@@ -966,8 +995,21 @@ int level_editor_test_campaign_menu_flows()
     check(get_mounted_campaign() == helper_id);
     check(eds().campaignchanged == 1);
     check(level_editor_testing_prompt_queue_ref().empty());
-    // create_new_campaign leaves the scratch tree behind on this refusal.
-    cleanup_unpacked_campaign();
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+    // The refusal builds and leaves no scratch tree behind.
+    check(!std::filesystem::exists(get_user_path() + "temp"));
+
+    // Control: with nothing unsaved New asks no discard question (an empty
+    // yes/no queue would answer NO and cancel before the id prompt).
+    eds().campaignchanged = 0;
+    eds().levelchanged = 0;
+    level_editor_testing_prompt_queue_push("bad id!");
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
+    check(!trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(trace_contains(
+        "dialog", "timed_dialog_open Failed to create new campaign."));
+    check(level_editor_testing_prompt_queue_ref().empty());
+    check(!std::filesystem::exists(get_user_path() + "temp"));
 
     // --- File > Campaign > Load ---------------------------------------------
     // Declining to discard unsaved changes never opens the browser.
@@ -1027,6 +1069,20 @@ int level_editor_test_campaign_menu_flows()
     check(trace_contains("dialog", "timed_dialog_open Failed to load campaign."));
     check(!trace_contains("dialog", "timed_dialog_open Campaign loaded."));
     check(!trace_contains("confirm", "Load first level?"));
+
+    // A load that fails leaves the open campaign exactly as it was: its id
+    // (which every later Save writes to) and its details.
+    check(mount_guard.switch_to(helper_id));
+    check(data.loadCampaign(helper_id));
+    const std::string helper_title = data.campaign->title;
+    check(!data.loadCampaign(broken_id));
+    check(data.campaign->id == helper_id);
+    check(data.campaign->title == helper_title);
+    // Positive control: a loadable id replaces both.
+    check(data.loadCampaign("gladiator"));
+    check(data.campaign->id == "gladiator");
+    check(data.campaign->title == packaged_title("gladiator"));
+    check(data.campaign->title != helper_title);
 
     // A campaign whose declared first level does not exist.
     check(mount_guard.switch_to(helper_id));
@@ -2486,6 +2542,36 @@ int level_editor_test_nameless_selection_panel_rows()
     data.level->delete_objects();
     mount_guard.restore();
     return passed;
+}
+
+// The generated-scenario warning latch, driven through the editor's own load
+// path on a scratch LevelEditorData -- the File > Campaign > Load sequence
+// (mount, loadCampaign, loadLevel), then File > Level > Reload. One character
+// per step: 'W' the "Generated scenario" popup fired, '.' it stayed silent,
+// 'x' the step's load failed. Steps: open first_id's level 1, reload it, open
+// second_id's level 1.
+std::string level_editor_testing_generated_warnings(
+    const std::string& first_id, const std::string& second_id)
+{
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    LevelEditorData data;
+    std::string steps;
+    const auto step = [&steps](bool loaded) {
+        steps += !loaded ? 'x'
+                 : trace_contains("popup", "Generated scenario") ? 'W'
+                                                                 : '.';
+        trace_clear();
+    };
+    trace_clear();
+    step(mount_guard.switch_to(first_id) && data.loadCampaign(first_id) &&
+         data.loadLevel(1));
+    step(data.reloadLevel());
+    step(mount_guard.switch_to(second_id) && data.loadCampaign(second_id) &&
+         data.loadLevel(1));
+    data.level->delete_objects();
+    mount_guard.restore();
+    return steps;
 }
 
 // Issue #12 seams. The editor's LevelEditorData is a function-local static

@@ -26,6 +26,12 @@ std::string get_user_path();
 // handle on the level it loaded. Read it only after level_editor() returns.
 LevelRuntimeData* level_editor_testing_level();
 
+// Declared in tests/coverage_internal/level_editor_internal.inc: the warning
+// latch's per-step verdicts on a scratch LevelEditorData ("W" warned, "."
+// silent, "x" load failed) for open first_id/1, reload, open second_id/1.
+std::string level_editor_testing_generated_warnings(
+    const std::string& first_id, const std::string& second_id);
+
 // The world().end shortcut is the editor's whole startup path minus the event
 // loop: it pins the world canvas classic, remounts the gladiator campaign and
 // loads list_levels().front() into the static LevelEditorData BEFORE the loop
@@ -55,13 +61,13 @@ TEST(LevelEditorSmoke, end_flag_exits_after_full_editor_startup)
 
 namespace {
 
-// Builds <user>/campaigns/gladiator.glad from a scratch tree
+// Builds <user>/campaigns/<campaign_id>.glad from a scratch tree
 // whose only level is a scen1 written with the given provenance mark. The
 // editor hardcodes the gladiator campaign, mounts the archive fresh on
 // every entry (unmount + prepend-mount), and loads list_levels().front()
-// at startup — so this puts a marked/unmarked scen1 on the exact
-// LevelEditorData::loadLevel path the warning hangs off.
-bool install_scratch_gladiator(bool generated)
+// at startup — so for "gladiator" this puts a marked/unmarked scen1 on the
+// exact LevelEditorData::loadLevel path the warning hangs off.
+bool install_scratch_campaign(const std::string& campaign_id, bool generated)
 {
     namespace fs = std::filesystem;
     const fs::path user{get_user_path()};
@@ -118,7 +124,7 @@ bool install_scratch_gladiator(bool generated)
         return false;
     }
 
-    const fs::path archive = user / "campaigns/gladiator.glad";
+    const fs::path archive = user / "campaigns" / (campaign_id + ".glad");
     fs::remove(archive, ec);
     const ArchiveIoError zip_err =
         zip_contents_with_error(staging.string(), archive.string());
@@ -127,6 +133,11 @@ bool install_scratch_gladiator(bool generated)
                       << static_cast<int>(zip_err);
     fs::remove_all(staging, ec);
     return zip_err == ArchiveIoError::None;
+}
+
+bool install_scratch_gladiator(bool generated)
+{
+    return install_scratch_campaign("gladiator", generated);
 }
 
 } // namespace
@@ -177,3 +188,71 @@ TEST(LevelEditorSmoke, generated_scen_warns_on_open_and_classic_does_not)
     (void)mount_campaign_package_with_error("gladiator");
 }
 
+
+// The warning is one per level per editor VISIT: leaving the editor and
+// coming back to the same generated scen warns again (the latch lived in the
+// process-static LevelEditorData and never reset, so the second visit -- or a
+// later test's first -- was silent).
+TEST(LevelEditorSmoke, generated_scen_warns_on_every_editor_entry)
+{
+    namespace fs = std::filesystem;
+    const fs::path user{get_user_path()};
+    const fs::path archive = user / "campaigns/gladiator.glad";
+    og::test::ScopedPhysicalFileState fss_guard(user / "scen/scen1.fss");
+    og::test::ScopedPhysicalFileState pix_guard(user / "pix/scen0001.png");
+    ASSERT_TRUE(fss_guard.ready());
+    ASSERT_TRUE(pix_guard.ready());
+    const char old_end = og::runtime::current_session->myscreen_->world().end;
+
+    {
+        og::test::ScopedPhysicalFileState glad_guard(archive);
+        ASSERT_TRUE(glad_guard.ready());
+        ASSERT_TRUE(install_scratch_gladiator(/*generated=*/true));
+
+        for (int visit = 1; visit <= 2; ++visit)
+        {
+            trace_clear();
+            og::runtime::current_session->myscreen_->world().end = 1;
+            (void)level_editor();
+            og::runtime::current_session->myscreen_->world().end = old_end;
+            EXPECT_TRUE(trace_contains("popup", "Generated scenario"))
+                << "editor visit " << visit
+                << " opened a marked scen and must warn";
+        }
+    }
+
+    (void)unmount_campaign_package_with_error("gladiator");
+    (void)mount_campaign_package_with_error("gladiator");
+}
+
+// Within one editor session the latch keys on (campaign, level): a reload of
+// the level already warned about stays silent (the positive control), but a
+// DIFFERENT campaign's generated level with the same number warns -- File >
+// Campaign > Load swaps the editor's campaign under an unchanged level id.
+TEST(LevelEditorSmoke, generated_scen_warning_keys_on_campaign_and_level)
+{
+    namespace fs = std::filesystem;
+    const fs::path user{get_user_path()};
+    const std::string first_id = "coverage.generated_warn_a";
+    const std::string second_id = "coverage.generated_warn_b";
+    og::test::ScopedPhysicalFileState fss_guard(user / "scen/scen1.fss");
+    og::test::ScopedPhysicalFileState pix_guard(user / "pix/scen0001.png");
+    ASSERT_TRUE(fss_guard.ready());
+    ASSERT_TRUE(pix_guard.ready());
+    struct ArchiveCleanup {
+        fs::path a, b;
+        ~ArchiveCleanup()
+        {
+            std::error_code ec;
+            fs::remove(a, ec);
+            fs::remove(b, ec);
+        }
+    } cleanup{user / "campaigns" / (first_id + ".glad"),
+              user / "campaigns" / (second_id + ".glad")};
+    ASSERT_TRUE(install_scratch_campaign(first_id, /*generated=*/true));
+    ASSERT_TRUE(install_scratch_campaign(second_id, /*generated=*/true));
+
+    EXPECT_EQ("W.W",
+              level_editor_testing_generated_warnings(first_id, second_id))
+        << "open A/1 warns, reload A/1 stays silent, open B/1 warns";
+}

@@ -637,9 +637,11 @@ public:
     bool reloadLevel();
     void warn_if_generated();
 
-    // Latch for warn_if_generated: the last level id already warned about
-    // this session (-1 = none). One popup per generated level per session.
+    // Latch for warn_if_generated: the (campaign id, level id) already
+    // warned about this editor visit (-1 = none). One popup per generated
+    // level per campaign per visit; level_editor() resets it on entry.
     int generated_warned_level = -1;
+    std::string generated_warned_campaign;
 
     bool saveCampaignAs(const std::string& id);
     bool saveCampaign();
@@ -791,8 +793,14 @@ LevelEditorData::~LevelEditorData()
 
 bool LevelEditorData::loadCampaign(const std::string& id)
 {
-    campaign->id = id;
-    return campaign->load();
+    // Load into a fresh object and adopt it only on success: a failed load
+    // (no package, no campaign.yaml, or a YAML that parsed only part-way)
+    // must not rename or half-overwrite the campaign the editor has open.
+    auto loaded = std::make_unique<CampaignData>(id);
+    if (!loaded->load())
+        return false;
+    campaign = std::move(loaded);
+    return true;
 }
 
 bool LevelEditorData::reloadCampaign()
@@ -801,16 +809,18 @@ bool LevelEditorData::reloadCampaign()
 }
 
 
-// One warning per editor session per level id: a scen carrying the
+// One warning per editor visit per (campaign, level): a scen carrying the
 // SCEN_TYPE_GENERATED provenance mark is campaign-generator output, so
 // hand edits are doomed to be overwritten on the next regeneration. Warn
 // on open (warning only — saving stays allowed; the CI drift check is the
 // enforcement).
 void LevelEditorData::warn_if_generated()
 {
-    if (!level->generated || generated_warned_level == level->world().id)
+    if (!level->generated || (generated_warned_level == level->world().id &&
+                              generated_warned_campaign == campaign->id))
         return;
     generated_warned_level = level->world().id;
+    generated_warned_campaign = campaign->id;
     popup_dialog("Generated Scenario",
                  "Generated scenario - edits will be overwritten by the "
                  "campaign generator. Port changes into the generator "
@@ -2160,7 +2170,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Confirm if unsaved
             bool cancel = false;
-            if (eds().levelchanged)
+            if (eds().levelchanged || eds().campaignchanged)
             {
                 cancel = !yes_or_no_prompt("New Campaign", "Discard unsaved changes?", false);
             }
@@ -3440,6 +3450,10 @@ Sint32 level_editor()
     // since this static was first constructed (avoids a dangling viewscreen*).
     data.myradar.viewscreenp = og::runtime::current_session->myscreen_->viewob[0].get();
     data.myradar.screenp = og::runtime::current_session->myscreen_;
+    // The generated-scenario warning is once per level per VISIT: the latch
+    // lives in this process-static object, so forget the last visit's.
+    data.generated_warned_level = -1;
+    data.generated_warned_campaign.clear();
 
     // The editor is gameplay-view + chrome: it renders the map through the
     // standard viewscreen machinery, so it lives on the WORLD canvas (shared
