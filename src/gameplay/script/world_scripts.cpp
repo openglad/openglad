@@ -1110,6 +1110,12 @@ int og_register_level_hooks(lua_State* L)
                         "not available during campaign hooks");
     const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
     luaL_checktype(L, 2, LUA_TTABLE);
+    // Declaration pass: silent no-op, the og.register_hooks precedent — a
+    // family chunk calling this neither rejects the pack nor registers; the
+    // bind replay is where it lands.
+    if (const VmState* declare_st = get_vm_state(L);
+        declare_st != nullptr && declare_st->mode == VmMode::Declare)
+        return 0;
     VmState* st = get_vm_state(L);
     if (st == nullptr || st->owner == nullptr)
         script_raise(L, "og.register_level_hooks: no world scripts");
