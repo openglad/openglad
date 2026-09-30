@@ -986,6 +986,7 @@ int level_editor_test_campaign_menu_flows()
     eds().campaignchanged = 1;
     level_editor_testing_prompt_queue_push("bad id!");
     picker_testing_yes_or_no_queue_push(true); // discard the dirty campaign
+    check(!std::filesystem::exists(get_user_path() + "temp"));
     check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
     check(trace_contains(
         "dialog", "timed_dialog_open Failed to create new campaign."));
@@ -995,8 +996,8 @@ int level_editor_test_campaign_menu_flows()
     check(eds().campaignchanged == 1);
     check(level_editor_testing_prompt_queue_ref().empty());
     check(picker_testing_yes_or_no_queue_remaining() == 0);
-    // create_new_campaign leaves the scratch tree behind on this refusal.
-    cleanup_unpacked_campaign();
+    // The refusal builds and leaves no scratch tree behind.
+    check(!std::filesystem::exists(get_user_path() + "temp"));
 
     // Control: with nothing unsaved New asks no discard question (an empty
     // yes/no queue would answer NO and cancel before the id prompt).
@@ -1008,7 +1009,7 @@ int level_editor_test_campaign_menu_flows()
     check(trace_contains(
         "dialog", "timed_dialog_open Failed to create new campaign."));
     check(level_editor_testing_prompt_queue_ref().empty());
-    cleanup_unpacked_campaign();
+    check(!std::filesystem::exists(get_user_path() + "temp"));
 
     // --- File > Campaign > Load ---------------------------------------------
     // Declining to discard unsaved changes never opens the browser.
