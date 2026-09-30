@@ -2199,3 +2199,58 @@ TEST(CompanyCloudBytes, install_refuses_unsafe_slots_and_netsession)
     std::error_code ec;
     EXPECT_FALSE(std::filesystem::exists(sandbox.dir() / "netsession.gtl", ec));
 }
+
+// The ambient-mount guard reports a campaign it cannot put back. The merge
+// load unmounts the ambient campaign (A) before failing on the private
+// company's missing package; when A's own package has meanwhile gone from
+// disk, the remount on the way out fails too, and the guard names it on
+// stderr instead of pretending the host's campaign is still mounted.
+// Control: networked_merge_load_failure_restores_ambient_mount (A present,
+// remounted, no complaint).
+TEST(CompanyAutosave, networked_merge_reports_an_ambient_campaign_it_cannot_remount)
+{
+    SaveDirSandbox sandbox;
+    og::test::ScopedCampaignMountState mount_state;
+    ScopedMountRestore mount_guard;
+    ScopedCompanyClock clock(889);
+
+    restore_default_campaigns();
+    namespace fs = std::filesystem;
+    const std::string ambient = "test.co896";
+    const fs::path campaigns = fs::path(get_user_path()) / "campaigns";
+    const fs::path ambient_package = campaigns / (ambient + ".glad");
+    std::error_code ec;
+    fs::copy_file(campaigns / "gladiator.glad", ambient_package,
+                  fs::copy_options::overwrite_existing, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    {
+        SaveData priv;
+        priv.save_name = "Broken Mount Co";
+        priv.current_campaign = "deleted-package";
+        ASSERT_TRUE(priv.save("save0"));
+    }
+
+    // The ambient mount is campaign A; then A's package leaves the disk.
+    std::map<std::string, int> scratch;
+    ASSERT_GE(load_campaign(ambient, scratch), 0);
+    ASSERT_EQ(ambient, get_mounted_campaign());
+    ASSERT_TRUE(fs::remove(ambient_package, ec)) << ec.message();
+
+    SaveData session;
+    session.current_campaign = ambient;
+    og::data::CompanyAutosaveContext context;
+    context.networked_lobby = true;
+    context.owned_teams[0] = true;
+
+    testing::internal::CaptureStderr();
+    const SaveDataIoError result = og::data::company_autosave(
+        session, og::data::CompanyAutosaveKind::BaseCampMutation, context);
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(SaveDataIoError::CampaignLoadFailed, result);
+    EXPECT_NE(std::string::npos,
+              err.find("company_autosave_remount_failed campaign=" + ambient))
+        << "stderr was: " << err;
+    EXPECT_NE(ambient, get_mounted_campaign())
+        << "a package that is gone cannot still be the mounted campaign";
+}
