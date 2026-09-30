@@ -1097,4 +1097,43 @@ TEST_F(TowerRunE2E, shadow_local_win_refuses_when_the_company_autosave_fails)
     EXPECT_EQ(2, static_cast<int>(disk.scen_num));
 }
 
+TEST_F(TowerRunE2E, shadow_withdraw_refuses_a_company_slot_with_no_file)
+{
+    arm_classic_session();
+    {
+        og::data::ScopedActiveCompany missing("wp4covnetnocompany");
+        ASSERT_TRUE(missing.applied());
+        std::error_code ec;
+        ASSERT_FALSE(fs::exists(user_save_path("wp4covnetnocompany.gtl"), ec))
+            << "the probe slot must start with no company file";
+
+        ::testing::internal::CaptureStderr();
+        const bool finalized =
+            og::runtime::local_transport_shadow_testing_finalize_withdraw(
+                scr(), /*destination_level=*/3, /*networked=*/false);
+        const std::string stderr_text =
+            ::testing::internal::GetCapturedStderr();
+
+        EXPECT_FALSE(finalized)
+            << "a withdraw with no readable store must refuse the finalize";
+        EXPECT_NE(std::string::npos,
+                  stderr_text.find(
+                      "[ERROR] local_transport_shadow_withdraw_load_failed "
+                      "level=3 slot=wp4covnetnocompany error=1\n"))
+            << stderr_text;
+        EXPECT_FALSE(fs::exists(user_save_path("wp4covnetnocompany.gtl"), ec))
+            << "a refused withdraw must not invent the company file";
+    }
+
+    // Control: with the company on disk the same withdraw reloads it and
+    // points its cursor at the destination.
+    arm_classic_session();
+    ASSERT_TRUE(scr().save_data.save("save0"));
+    EXPECT_TRUE(og::runtime::local_transport_shadow_testing_finalize_withdraw(
+        scr(), /*destination_level=*/3, /*networked=*/false));
+    SaveData disk;
+    ASSERT_EQ(SaveDataIoError::None, disk.load_with_error("save0"));
+    EXPECT_EQ(3, static_cast<int>(disk.scen_num));
+}
+
 } // namespace
