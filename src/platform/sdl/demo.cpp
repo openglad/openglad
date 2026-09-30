@@ -1152,6 +1152,29 @@ int main(int argc, char* argv[])
                 worker_thread_func,
                 std::ref(sync), std::ref(demos[static_cast<size_t>(i)]), i);
         }
+        // Every way out of this scope must stop and join the workers: the
+        // normal end of the run calls join_all() below, and a throw from the
+        // main loop (a capture frame that cannot be written) runs it from the
+        // destructor. Unwinding past a joinable std::thread is std::terminate,
+        // which turned the "Unrecoverable error" report into a core dump. The
+        // workers park on start_cv, so shutdown is raised and broadcast BEFORE
+        // the join, or the join waits forever.
+        struct WorkerJoiner {
+            WorkerSync& sync_;
+            std::vector<std::thread>& workers_;
+            void join_all()
+            {
+                {
+                    std::lock_guard lock(sync_.mtx);
+                    sync_.shutdown = true;
+                }
+                sync_.start_cv.notify_all();
+                for (auto& w : workers_) {
+                    if (w.joinable()) w.join();
+                }
+            }
+            ~WorkerJoiner() { join_all(); }
+        } worker_joiner{sync, workers};
 
         // --- Main loop ---
         constexpr int TIMER_WAIT_TICKS = 6;
@@ -1510,15 +1533,7 @@ int main(int argc, char* argv[])
         }
 
         // --- Shutdown worker threads ---
-        {
-            std::lock_guard lock(sync.mtx);
-            sync.shutdown = true;
-        }
-        sync.start_cv.notify_all();
-
-        for (auto& w : workers) {
-            if (w.joinable()) w.join();
-        }
+        worker_joiner.join_all();
 
         // Cleanup (the unique_ptr deleters also free on any early-return/throw path)
         cell_tex.clear();
