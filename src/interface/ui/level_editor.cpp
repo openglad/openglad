@@ -637,9 +637,11 @@ public:
     bool reloadLevel();
     void warn_if_generated();
 
-    // Latch for warn_if_generated: the last level id already warned about
-    // this session (-1 = none). One popup per generated level per session.
+    // Latch for warn_if_generated: the (campaign id, level id) already
+    // warned about this editor visit (-1 = none). One popup per generated
+    // level per campaign per visit; level_editor() resets it on entry.
     int generated_warned_level = -1;
+    std::string generated_warned_campaign;
 
     bool saveCampaignAs(const std::string& id);
     bool saveCampaign();
@@ -801,16 +803,18 @@ bool LevelEditorData::reloadCampaign()
 }
 
 
-// One warning per editor session per level id: a scen carrying the
+// One warning per editor visit per (campaign, level): a scen carrying the
 // SCEN_TYPE_GENERATED provenance mark is campaign-generator output, so
 // hand edits are doomed to be overwritten on the next regeneration. Warn
 // on open (warning only — saving stays allowed; the CI drift check is the
 // enforcement).
 void LevelEditorData::warn_if_generated()
 {
-    if (!level->generated || generated_warned_level == level->world().id)
+    if (!level->generated || (generated_warned_level == level->world().id &&
+                              generated_warned_campaign == campaign->id))
         return;
     generated_warned_level = level->world().id;
+    generated_warned_campaign = campaign->id;
     popup_dialog("Generated Scenario",
                  "Generated scenario - edits will be overwritten by the "
                  "campaign generator. Port changes into the generator "
@@ -3440,6 +3444,10 @@ Sint32 level_editor()
     // since this static was first constructed (avoids a dangling viewscreen*).
     data.myradar.viewscreenp = og::runtime::current_session->myscreen_->viewob[0].get();
     data.myradar.screenp = og::runtime::current_session->myscreen_;
+    // The generated-scenario warning is once per level per VISIT: the latch
+    // lives in this process-static object, so forget the last visit's.
+    data.generated_warned_level = -1;
+    data.generated_warned_campaign.clear();
 
     // The editor is gameplay-view + chrome: it renders the map through the
     // standard viewscreen machinery, so it lives on the WORLD canvas (shared
