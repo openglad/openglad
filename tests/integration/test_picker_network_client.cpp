@@ -13560,3 +13560,98 @@ TEST(PickerNetworkClient, spectator_leave_names_no_player_until_seated)
                   .player_index)
         << "a seated joiner's Leave must name its real index";
 }
+
+// A spectating host's ADD PLAYER that the 16-seat global cap refuses leaves
+// the host a spectator (zero seats, numplayers 0, no half-claimed seat).
+// Four crafted guests fill all sixteen seats; control: once one guest leaves,
+// the same [+] seats the host.
+TEST(PickerNetworkClient, spectator_host_add_seat_refused_by_global_cap_stays_spectator)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Cap Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host = og::ui::create_host_picker_lobby_client(host_options);
+    host->initialize_from_save();
+    host->set_player_mode(0);
+    ASSERT_EQ(0u, host->local_seat_count())
+        << "the host must start as a zero-seat spectator";
+
+    constexpr og::sim::PeerId kServerPeer = 1u;
+    std::vector<std::unique_ptr<og::sim::WebSocketClientTransport>> guests;
+    struct Cleanup
+    {
+        og::ui::IPickerLobbyClient* host = nullptr;
+        std::vector<std::unique_ptr<og::sim::WebSocketClientTransport>>*
+            guests = nullptr;
+        ~Cleanup()
+        {
+            og::ui::IPickerLobbyClient* owning_host = host;
+            shutdown_owning_host_before_join(owning_host);
+            if (guests != nullptr)
+                guests->clear();
+        }
+    } cleanup{host.get(), &guests};
+
+    const auto pump_all = [&] {
+        host->poll_and_apply();
+        for (const auto& guest : guests)
+            (void)guest->poll_typed();
+    };
+
+    for (int index = 0; index < 4; ++index)
+    {
+        og::sim::WebSocketClientTransport::Options guest_options;
+        guest_options.remote_peer_id = kServerPeer;
+        guest_options.automatic_reconnection = false;
+        guests.push_back(std::make_unique<og::sim::WebSocketClientTransport>(
+            std::format("ws://127.0.0.1:{}", host_options.port),
+            guest_options));
+        guests.back()->accept_connections();
+        ASSERT_TRUE(wait_until([&] {
+            pump_all();
+            return guests.back()->link_state() ==
+                og::sim::TransportLinkState::Connected;
+        })) << "crafted guest " << index << " must connect";
+
+        SaveData guest_save;
+        const std::string name = std::format("Cap Guest {}", index);
+        prepare_single_member_network_save(
+            guest_save, static_cast<short>(index % MAX_PLAYERS), name.c_str());
+        send_lobby_message(
+            *guests.back(),
+            kServerPeer,
+            og::ui::detail::make_join_message(
+                guest_save, name, static_cast<short>(index % MAX_PLAYERS),
+                nullptr, 4u));
+        const std::size_t wanted = static_cast<std::size_t>(index + 1) * 4u;
+        ASSERT_TRUE(wait_until([&] {
+            pump_all();
+            return host->lobby_players().size() == wanted;
+        })) << "guest " << index << " must hold four seats";
+    }
+
+    EXPECT_FALSE(host->add_local_seat())
+        << "the sixteen-seat cap must refuse the host's seat";
+    EXPECT_EQ(0u, host->local_seat_count());
+    EXPECT_EQ(0, static_cast<int>(save.numplayers))
+        << "a refused spectator must be restored to zero players";
+    EXPECT_EQ(16u, host->lobby_players().size());
+
+    // Control: one guest leaves; the same ADD PLAYER now seats the host.
+    guests.back().reset();
+    guests.pop_back();
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return host->lobby_players().size() == 12u;
+    })) << "the departed guest's four seats must free up";
+    EXPECT_TRUE(host->add_local_seat());
+    EXPECT_EQ(1u, host->local_seat_count());
+    EXPECT_EQ(1, static_cast<int>(save.numplayers));
+}
