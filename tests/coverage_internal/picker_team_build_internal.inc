@@ -1273,6 +1273,62 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         client.staged_keyframe.clear();
     }
 
+    // The VIEW LEVEL band with nothing staged names WHO it is waiting on: a
+    // networked joiner waits for the host's preview (24 characters of ink),
+    // the host itself has no preview to show (27). Text is centred in the
+    // band, so the ink span pins which string drew.
+    {
+        ViewScenarioEngineState band_state;
+        ViewScenarioEngineState* const saved_band_state =
+            g_view_scenario_engine_state;
+        g_view_scenario_engine_state = &band_state;
+        screen* const scr = og::runtime::current_session->myscreen_;
+        const auto band_ink_span = [scr]() {
+            const int y0 = kViewScenarioPreviewBandY +
+                           kViewScenarioPreviewBandH / 2 - 3;
+            int left = 10000;
+            int right = -1;
+            // Ink = any pixel on the text rows that differs from the band's
+            // own ground at its left edge (the text never reaches x+2).
+            for (int y = y0; y < y0 + 8; ++y)
+            {
+                Uint8 gr = 0, gg = 0, gb = 0;
+                scr->get_pixel(kViewScenarioPreviewBandX + 2, y, &gr, &gg, &gb);
+                for (int x = kViewScenarioPreviewBandX + 2;
+                     x < kViewScenarioPreviewBandX + kViewScenarioPreviewBandW - 2;
+                     ++x)
+                {
+                    Uint8 r = 0, g = 0, b = 0;
+                    scr->get_pixel(x, y, &r, &g, &b);
+                    if (r != gr || g != gg || b != gb)
+                    {
+                        left = std::min(left, x);
+                        right = std::max(right, x);
+                    }
+                }
+            }
+            return right < left ? 0 : right - left + 1;
+        };
+        const auto spans_chars = [](int span, int chars) {
+            return span > 6 * (chars - 1) && span <= 6 * chars;
+        };
+        client.networked = true;
+        client.host_visible = false;
+        picker_view_scenario_staged_draw_background(nullptr);
+        const int joiner_span = band_ink_span();
+        client.host_visible = true;
+        picker_view_scenario_staged_draw_background(nullptr);
+        const int host_span = band_ink_span();
+        if (!spans_chars(joiner_span, 24) || !spans_chars(host_span, 27))
+            std::fprintf(stderr, "  [view band] joiner span %d, host span %d\n",
+                         joiner_span, host_span);
+        check(spans_chars(joiner_span, 24));
+        check(spans_chars(host_span, 27));
+        client.networked = false;
+        client.host_visible = false;
+        g_view_scenario_engine_state = saved_band_state;
+    }
+
     // Remote-start preemption: a host GO launches a peer parked in VIEW
     // LEVEL, PROGRESS or TRAIN -- each subscreen returns the remote
     // MENU_EXIT instead of its ordinary MENU_REDRAW. HANG TRAP: the
