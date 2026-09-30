@@ -470,8 +470,6 @@ TEST(ClasspackInstall, a_declaration_installs_and_skips_bad_refs)
         get_weapon_family_descriptor(FAMILY_ROCK);
     ASSERT_EQ(rock->fire_sound, 42);
     ASSERT_EQ(rock->init_bit_flags, BIT_MAGICAL | BIT_FIRE);
-    ASSERT_EQ(rock->on_animate, before_rock.on_animate);
-    ASSERT_EQ(rock->on_hit_target, before_rock.on_hit_target);
 
     const FamilyDescriptor* elf = get_family_descriptor(FAMILY_ELF);
     ASSERT_EQ(elf->hiring_cost, 7) << "good fields apply";

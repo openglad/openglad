@@ -289,8 +289,6 @@ void dump_weapons(std::string& out)
         dump_anims(out, fd->anim_table, fd->anim_row_count);
         dump_glyph(out, fd->glyph);
         dump_radar(out, fd->radar);
-        field(out, "cb.on_animate", callback(fd->on_animate));
-        field(out, "cb.on_hit_target", callback(fd->on_hit_target));
         dump_tuning(out, Order::Weapon, id);
     }
 }
@@ -312,7 +310,6 @@ void dump_effects(std::string& out)
         dump_anims(out, fd->anim_table, fd->anim_row_count);
         dump_glyph(out, fd->glyph);
         dump_radar(out, fd->radar);
-        field(out, "cb.on_act", callback(fd->on_act));
         dump_tuning(out, Order::FX, id);
     }
 }
@@ -334,7 +331,6 @@ void dump_treasures(std::string& out)
         dump_anims(out, fd->anim_table, fd->anim_row_count);
         dump_glyph(out, fd->glyph);
         dump_radar(out, fd->radar);
-        field(out, "cb.on_eat", callback(fd->on_eat));
         dump_tuning(out, Order::Treasure, id);
     }
 }

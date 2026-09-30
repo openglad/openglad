@@ -754,12 +754,11 @@ TEST_F(ModesCtf, enemy_touch_picks_up_and_carry_visual_follows)
 
 TEST_F(ModesCtf, pickup_fires_through_obmap_collision)
 {
-    // modes:flag must have NO C++ on_eat callback: the whole touch rule is
-    // the pack hook (the surviving half of the retired boundary pin).
+    // modes:flag is a registered treasure family whose whole touch rule is
+    // the pack hook: treasure descriptors carry no C++ on_eat callback.
     const TreasureFamilyDescriptor* tfd =
         get_treasure_family_descriptor(flag_family_);
     ASSERT_NE(nullptr, tfd);
-    ASSERT_EQ(nullptr, tfd->on_eat);
 
     ModesCtfWorld fx;
     walker* flag1 = fx.spawn_flag(flag_family_, 1, 544, 800);

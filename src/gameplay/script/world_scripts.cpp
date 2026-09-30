@@ -2361,8 +2361,6 @@ std::optional<bool> weapon_on_animate(const WeaponFamilyDescriptor* wfd,
                                  FamilyHook::WeaponOnAnimate, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (wfd->on_animate != nullptr)
-        return wfd->on_animate(self);
     return std::nullopt;
 }
 
@@ -2375,10 +2373,6 @@ bool weapon_on_hit_target(const WeaponFamilyDescriptor* wfd, walker* weapon,
                         FamilyHook::WeaponOnHitTarget, false, weapon, target,
                         owner))
         return true;
-    if (wfd->on_hit_target != nullptr) {
-        wfd->on_hit_target(weapon, target, owner);
-        return true;
-    }
     return false;
 }
 
@@ -2391,8 +2385,6 @@ std::optional<bool> effect_on_act(const EffectFamilyDescriptor* efd,
                                  FamilyHook::EffectOnAct, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (efd->on_act != nullptr)
-        return efd->on_act(self);
     return std::nullopt;
 }
 
@@ -2417,8 +2409,6 @@ std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
                                  FamilyHook::TreasureOnEat, true,
                                  static_cast<walker*>(self), eater))
         return r;
-    if (tfd->on_eat != nullptr)
-        return tfd->on_eat(self, eater);
     return std::nullopt;
 }
 
