@@ -5019,6 +5019,67 @@ TEST_F(SpriteSheetPicker, scrollbar_trough_pages_the_list_both_ways)
         << "a trough click above the thumb must page back exactly one row";
 }
 
+// A folder under extra_pix/ whose name is not UTF-8 (a Latin-1 "caf\xE9") is
+// not offered: once stored in cfg, libyaml refuses the scalar and EVERY later
+// settings save fails. The UTF-8 twin "cafe" is the positive control: listed,
+// picked, stored, and the settings still save.
+TEST_F(SpriteSheetPicker, a_folder_name_that_is_not_utf8_is_never_offered)
+{
+    namespace fs = std::filesystem;
+    const std::string bad_name = "000_wp4_caf\xE9";
+    const std::string good_name = "000_wp4_cafe";
+    struct Dirs
+    {
+        std::vector<fs::path> paths;
+        ~Dirs()
+        {
+            cfg.apply_setting("graphics", "sprite_sheet", "");
+            (void)apply_sprite_sheet_setting();
+            std::error_code ec;
+            for (const fs::path& path : paths)
+                fs::remove_all(path, ec);
+        }
+    } dirs;
+    for (const std::string& name : {good_name, bad_name})
+    {
+        const fs::path dir = fs::path(get_user_path()) / "extra_pix" / name;
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        ASSERT_TRUE(fs::is_directory(dir)) << "could not create " << dir;
+        dirs.paths.push_back(dir);
+    }
+
+    // Where each name sorts among EVERY folder on disk (the unfiltered
+    // listing): "cafe" < "caf\xE9" byte-wise, so the bad name sits on the
+    // row right under the good one.
+    const std::vector<std::string> on_disk = spritesheet_pack_list();
+    const auto good_it = std::find(on_disk.begin(), on_disk.end(), good_name);
+    const auto bad_it = std::find(on_disk.begin(), on_disk.end(), bad_name);
+    ASSERT_NE(on_disk.end(), good_it);
+    ASSERT_NE(on_disk.end(), bad_it);
+    const int good_row = 1 + static_cast<int>(good_it - on_disk.begin());
+    const int bad_row = 1 + static_cast<int>(bad_it - on_disk.begin());
+    ASSERT_EQ(good_row + 1, bad_row);
+    ASSERT_LT(bad_row, kSheetVisibleRows) << "both rows visible unscrolled";
+
+    ScopedTraceBuffer trace_scope;
+
+    // The row the bad name would occupy: it is not there to be picked.
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(bad_row)}));
+    EXPECT_NE(bad_name, cfg.get_setting("graphics", "sprite_sheet"))
+        << "a non-UTF-8 folder name must never become the stored setting";
+    EXPECT_FALSE(trace_contains("sheet", ("sel=" + bad_name).c_str()))
+        << "and the list must never have offered it";
+    EXPECT_TRUE(cfg.save_settings()) << "the settings still save";
+
+    // Control: the UTF-8 folder is listed, picked and saved.
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(good_row)}));
+    EXPECT_EQ(good_name, cfg.get_setting("graphics", "sprite_sheet"));
+    EXPECT_TRUE(cfg.save_settings());
+}
+
 // A pack that disappears between the click and the BACK cannot be mounted, so
 // the picker must roll the selection back to the sheet that was working and
 // say so — otherwise the player leaves the menu with a broken sprite mount.
