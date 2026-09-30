@@ -39,6 +39,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/company.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
 #include "test_interact.h"
@@ -51,6 +53,8 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <format>
 #include <map>
 #include <memory>
@@ -5087,4 +5091,109 @@ TEST(MenuEngine, company_wrappers_reject_a_missing_screen_without_mutation)
     EXPECT_FALSE(og::ui::run_company_backups_screen(
         "missing", "MISSING COMPANY"));
     EXPECT_EQ(MENU_EXIT, mainmenu(0));
+}
+
+// The CLOUD SAVE screen names the company it would upload. When the active
+// company's file is present but its header cannot be read, the screen still
+// names it -- by its SLOT -- rather than claiming there is no company or
+// printing a blank name.
+void picker_testing_cloud_passphrase_queue_clear();
+void picker_testing_cloud_passphrase_queue_push(const char* value);
+
+TEST(MenuEngine, cloud_save_names_the_company_by_slot_when_its_header_is_unreadable)
+{
+    EngineTestGuard guard;
+    namespace fs = std::filesystem;
+    const std::string slot = og::data::active_company_slot();
+    ASSERT_FALSE(slot.empty());
+    const fs::path company_file =
+        fs::path(get_user_path()) / "save" / (slot + ".gtl");
+
+    // Stand an unreadable company file in the active slot; put back
+    // whatever was there (and the cloud key cfg) on the way out.
+    struct CompanyFileRestore
+    {
+        fs::path path;
+        bool existed = false;
+        std::string bytes;
+        ~CompanyFileRestore()
+        {
+            std::error_code ec;
+            if (existed)
+            {
+                std::ofstream out(path, std::ios::binary | std::ios::trunc);
+                out << bytes;
+            }
+            else
+            {
+                fs::remove(path, ec);
+            }
+            cfg.data.erase("cloud");
+            picker_testing_cloud_passphrase_queue_clear();
+            og::ui::install_cloud_save_state_for_screen(nullptr);
+        }
+    } restore{company_file, fs::exists(company_file), {}};
+    if (restore.existed)
+    {
+        std::ifstream in(company_file, std::ios::binary);
+        restore.bytes.assign(std::istreambuf_iterator<char>(in),
+                             std::istreambuf_iterator<char>());
+    }
+    std::error_code ec;
+    fs::create_directories(company_file.parent_path(), ec);
+    {
+        std::ofstream out(company_file, std::ios::binary | std::ios::trunc);
+        out << "this is not a company file";
+    }
+    cfg.data.erase("cloud");
+    picker_testing_cloud_passphrase_queue_clear();
+
+    const og::ui::MenuScreenSpec& spec = og::ui::cloud_save_menu_screen_spec();
+    Sint32 passphrase_row = -1;
+    for (int i = 0; i < spec.row_count; ++i)
+    {
+        if (std::string(spec.rows[i].id) == "cloud_passphrase")
+            passphrase_row = spec.rows[i].arg;
+    }
+    ASSERT_NE(-1, passphrase_row);
+
+    // The accepted passphrase is the dispatch that refreshes the screen's
+    // company state from disk.
+    og::ui::CloudSaveScreenState state;
+    og::ui::install_cloud_save_state_for_screen(&state);
+    picker_testing_cloud_passphrase_queue_push("correct horse battery");
+    ASSERT_EQ(MENU_REDRAW, spec.on_spec_row(passphrase_row, &state));
+    ASSERT_TRUE(state.company_present) << "the file is there";
+    ASSERT_EQ("", state.company_name) << "and its header is unreadable";
+
+    // The company line (y 126..133, from x=80), hashed off the drawn frame.
+    screen& output = *og::runtime::current_session->myscreen_;
+    const auto company_line = [&output](const og::ui::CloudSaveScreenState& s) {
+        output.clearbuffer();
+        og::ui::cloud_save_menu_screen_spec().draw_content(
+            const_cast<og::ui::CloudSaveScreenState*>(&s));
+        std::uint64_t hash = 1469598103934665603ull;
+        for (int y = 124; y <= 135; ++y)
+        {
+            for (int x = 76; x < 320; ++x)
+            {
+                Uint8 r = 0, g = 0, b = 0;
+                output.get_pixel(x, y, &r, &g, &b);
+                hash = (hash ^ ((std::uint64_t{r} << 16) |
+                                (std::uint64_t{g} << 8) | b)) *
+                       1099511628211ull;
+            }
+        }
+        return hash;
+    };
+    og::ui::CloudSaveScreenState named_by_slot = state;
+    named_by_slot.company_name = slot;
+    og::ui::CloudSaveScreenState named_otherwise = state;
+    named_otherwise.company_name = "ZZ OTHER BAND";
+
+    const std::uint64_t drawn = company_line(state);
+    EXPECT_EQ(company_line(named_by_slot), drawn)
+        << "an unreadable header reads COMPANY: <slot>";
+    EXPECT_NE(company_line(named_otherwise), drawn)
+        << "control: the hashed band does see the company's name";
 }
