@@ -3392,8 +3392,6 @@ Sint32 change_teamnum(Sint32 arg)
    bool roster_changed = false;
    if (pks().train_session && !pks().train_session->empty()) {
        const int slot = pks().train_session->current_slot();
-       if (!picker_lobby_save_slot_editable(slot))
-           return 0;
        SaveData& save = og::runtime::current_session->myscreen_->save_data;
        const short old_team =
            save.team_list[static_cast<std::size_t>(slot)]->teamnum;
