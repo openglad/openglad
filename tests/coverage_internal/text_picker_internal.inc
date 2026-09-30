@@ -1765,3 +1765,45 @@ int text_picker_testing_run_game_resolves_replay_arm(int& level_after,
     save.clear_replay_arm();
     return state_restore.restore() ? 0 : -6;
 }
+
+// Campaign Select on a client whose configured campaign is `campaign`, stdin
+// = `input` (an empty string is EOF at the prompt). The caller arranges the
+// filesystem (which campaign packages list_campaigns can see) and the mount.
+// Returns 0 with the printed text, the value show_campaign_select returned,
+// the config's and the save's campaign after the call, and the recorded
+// error code; a negative value is a setup error.
+int text_picker_testing_campaign_select(const std::string& campaign,
+                                        const std::string& input,
+                                        std::string& output,
+                                        std::string& returned,
+                                        std::string& config_campaign_after,
+                                        std::string& save_campaign_after,
+                                        int& error_code)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    TextPickerConfig config;
+    config.campaign = campaign;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    client.testing_save_data_mutable().current_campaign = campaign;
+    {
+        ScopedTextPickerStdoutCapture capture;
+        if (!capture.ready())
+            return -2;
+        {
+            ScopedCinRedirect cin_input(input);
+            returned = client.show_campaign_select();
+        }
+        output = capture.finish();
+        if (!capture.finish_ok())
+            return -3;
+    }
+    config_campaign_after = config.campaign;
+    save_campaign_after = client.testing_save_data().current_campaign;
+    error_code = static_cast<int>(error.code);
+    return state_restore.restore() ? 0 : -4;
+}

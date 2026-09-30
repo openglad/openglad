@@ -234,6 +234,13 @@ int text_picker_testing_run_game_resolves_replay_arm(int& level_after,
                                                      short& scen_after,
                                                      short& replay_level_after,
                                                      int& level_armed);
+int text_picker_testing_campaign_select(const std::string& campaign,
+                                        const std::string& input,
+                                        std::string& output,
+                                        std::string& returned,
+                                        std::string& config_campaign_after,
+                                        std::string& save_campaign_after,
+                                        int& error_code);
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -1897,6 +1904,40 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
     EXPECT_EQ("gladiator", config.campaign);
     EXPECT_EQ("gladiator", get_mounted_campaign())
         << "campaign selection must re-point the mount, not just strings";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// EOF at Campaign Select keeps the CURRENT campaign. The configured campaign
+// is deliberately NOT the first listed one (order_campaigns_for_select puts
+// gladiator first), so "keep" and "fall back to the first entry" differ.
+// The paired control is text_picker_campaign_select_mounts_selection, where
+// an answered prompt switches the campaign.
+TEST(PlatformHeadless, text_picker_campaign_select_eof_keeps_the_current_campaign)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    std::string output;
+    std::string returned;
+    std::string config_after;
+    std::string save_after;
+    int error_code = -1;
+    ASSERT_EQ(0, og::ui::text_picker_testing_campaign_select(
+                     "modes", "", output, returned, config_after, save_after,
+                     error_code));
+
+    EXPECT_NE(std::string::npos, output.find("--- Campaign Select ---"))
+        << "the list was offered (entries exist): " << output;
+    EXPECT_NE(std::string::npos, output.find("  1. Gladiator"))
+        << "gladiator is listed first, so keep != first entry: " << output;
+    EXPECT_EQ("modes", returned) << "EOF keeps the current campaign";
+    EXPECT_EQ("modes", config_after);
+    EXPECT_EQ("modes", save_after);
+    EXPECT_EQ(static_cast<int>(og::ui::TextPickerErrorCode::None), error_code);
+    EXPECT_EQ("modes", get_mounted_campaign());
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
