@@ -808,8 +808,6 @@ bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
                                             int /*frame*/)
 {
     ViewScenarioEngineState* const state = g_view_scenario_engine_state;
-    if (state == nullptr || state->scenario == nullptr)
-        return true;
     const SaveData& save =
         og::runtime::current_session->myscreen_->save_data;
     ViewScenarioKey key = view_scenario_current_key(save);
