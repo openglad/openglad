@@ -1850,8 +1850,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 1]
   declared_id = "core:rock"
@@ -1877,8 +1875,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 2]
   declared_id = "core:arrow"
@@ -1904,8 +1900,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 3]
   declared_id = "core:fireball"
@@ -1931,8 +1925,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 4]
   declared_id = "core:tree"
@@ -1958,8 +1950,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 5]
   declared_id = "core:meteor"
@@ -1985,8 +1975,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 6]
   declared_id = "core:sprinkle"
@@ -2012,8 +2000,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 7]
   declared_id = "core:bone"
@@ -2039,8 +2025,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 8]
   declared_id = "core:blood"
@@ -2066,8 +2050,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 9]
   declared_id = "core:blob"
@@ -2093,8 +2075,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 10]
   declared_id = "core:fire_arrow"
@@ -2120,8 +2100,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 11]
   declared_id = "core:lightning"
@@ -2147,8 +2125,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 12]
   declared_id = "core:glow"
@@ -2174,8 +2150,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 13]
   declared_id = "core:wave"
@@ -2201,8 +2175,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 14]
   declared_id = "core:wave2"
@@ -2228,8 +2200,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 15]
   declared_id = "core:wave3"
@@ -2255,8 +2225,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 16]
   declared_id = "core:circle_protection"
@@ -2282,8 +2250,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 17]
   declared_id = "core:hammer"
@@ -2309,8 +2275,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 18]
   declared_id = "core:door"
@@ -2336,8 +2300,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [weapon 19]
   declared_id = "core:boulder"
@@ -2363,8 +2325,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_animate = none
-  cb.on_hit_target = none
   tuning = ~
 [effect 0]
   declared_id = "core:expand"
@@ -2383,7 +2343,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 1]
   declared_id = "core:ghost_scare"
@@ -2402,7 +2361,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 2]
   declared_id = "core:bomb"
@@ -2421,7 +2379,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 3]
   declared_id = "core:explosion"
@@ -2440,7 +2397,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 4]
   declared_id = "core:flash"
@@ -2459,7 +2415,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 5]
   declared_id = "core:magic_shield"
@@ -2478,7 +2433,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 6]
   declared_id = "core:knife_back"
@@ -2497,7 +2451,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 7]
   declared_id = "core:boomerang"
@@ -2516,7 +2469,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 8]
   declared_id = "core:cloud"
@@ -2535,7 +2487,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 9]
   declared_id = "core:marker"
@@ -2554,7 +2505,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 10]
   declared_id = "core:chain"
@@ -2573,7 +2523,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning.count = 4
   tuning[fork_damage_mult] = num 0.5
   tuning[fork_min_damage] = int 20
@@ -2596,7 +2545,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [effect 12]
   declared_id = "core:hit"
@@ -2615,7 +2563,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_act = none
   tuning = ~
 [treasure 0]
   declared_id = "core:stain"
@@ -2633,7 +2580,6 @@
   glyph.transparent = true
   radar.color = -1
   radar.jitter = 0
-  cb.on_eat = none
   tuning = ~
 [treasure 1]
   declared_id = "core:drumstick"
@@ -2651,7 +2597,6 @@
   glyph.transparent = false
   radar.color = 136
   radar.jitter = 2
-  cb.on_eat = none
   tuning.count = 1
   tuning[heal_per_level] = int 10
 [treasure 2]
@@ -2670,7 +2615,6 @@
   glyph.transparent = false
   radar.color = 88
   radar.jitter = 5
-  cb.on_eat = none
   tuning.count = 1
   tuning[score_per_level] = int 200
 [treasure 3]
@@ -2689,7 +2633,6 @@
   glyph.transparent = false
   radar.color = 23
   radar.jitter = 5
-  cb.on_eat = none
   tuning.count = 1
   tuning[score_per_level] = int 50
 [treasure 4]
@@ -2708,7 +2651,6 @@
   glyph.transparent = false
   radar.color = 72
   radar.jitter = 5
-  cb.on_eat = none
   tuning.count = 1
   tuning[mana_overfill_per_level] = int 50
 [treasure 5]
@@ -2727,7 +2669,6 @@
   glyph.transparent = false
   radar.color = 72
   radar.jitter = 5
-  cb.on_eat = none
   tuning.count = 1
   tuning[duration_per_level] = int 150
 [treasure 6]
@@ -2746,7 +2687,6 @@
   glyph.transparent = false
   radar.color = 72
   radar.jitter = 5
-  cb.on_eat = none
   tuning.count = 1
   tuning[duration_per_level] = int 150
 [treasure 7]
@@ -2765,7 +2705,6 @@
   glyph.transparent = false
   radar.color = 72
   radar.jitter = 5
-  cb.on_eat = none
   tuning.count = 1
   tuning[duration_per_level] = int 150
 [treasure 8]
@@ -2784,7 +2723,6 @@
   glyph.transparent = false
   radar.color = 120
   radar.jitter = 7
-  cb.on_eat = none
   tuning = ~
 [treasure 9]
   declared_id = "core:teleporter"
@@ -2802,7 +2740,6 @@
   glyph.transparent = false
   radar.color = 120
   radar.jitter = 7
-  cb.on_eat = none
   tuning = ~
 [treasure 10]
   declared_id = "core:life_gem"
@@ -2820,7 +2757,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_eat = none
   tuning = ~
 [treasure 11]
   declared_id = "core:key"
@@ -2838,7 +2774,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_eat = none
   tuning = ~
 [treasure 12]
   declared_id = "core:speed_potion"
@@ -2856,7 +2791,6 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  cb.on_eat = none
   tuning.count = 1
   tuning[duration_per_level] = int 50
 [generator 0]

@@ -1110,6 +1110,12 @@ int og_register_level_hooks(lua_State* L)
                         "not available during campaign hooks");
     const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
     luaL_checktype(L, 2, LUA_TTABLE);
+    // Declaration pass: silent no-op, the og.register_hooks precedent — a
+    // family chunk calling this neither rejects the pack nor registers; the
+    // bind replay is where it lands.
+    if (const VmState* declare_st = get_vm_state(L);
+        declare_st != nullptr && declare_st->mode == VmMode::Declare)
+        return 0;
     VmState* st = get_vm_state(L);
     if (st == nullptr || st->owner == nullptr)
         script_raise(L, "og.register_level_hooks: no world scripts");
@@ -2355,8 +2361,6 @@ std::optional<bool> weapon_on_animate(const WeaponFamilyDescriptor* wfd,
                                  FamilyHook::WeaponOnAnimate, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (wfd->on_animate != nullptr)
-        return wfd->on_animate(self);
     return std::nullopt;
 }
 
@@ -2369,10 +2373,6 @@ bool weapon_on_hit_target(const WeaponFamilyDescriptor* wfd, walker* weapon,
                         FamilyHook::WeaponOnHitTarget, false, weapon, target,
                         owner))
         return true;
-    if (wfd->on_hit_target != nullptr) {
-        wfd->on_hit_target(weapon, target, owner);
-        return true;
-    }
     return false;
 }
 
@@ -2385,8 +2385,6 @@ std::optional<bool> effect_on_act(const EffectFamilyDescriptor* efd,
                                  FamilyHook::EffectOnAct, true,
                                  static_cast<walker*>(self)))
         return r;
-    if (efd->on_act != nullptr)
-        return efd->on_act(self);
     return std::nullopt;
 }
 
@@ -2411,8 +2409,6 @@ std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
                                  FamilyHook::TreasureOnEat, true,
                                  static_cast<walker*>(self), eater))
         return r;
-    if (tfd->on_eat != nullptr)
-        return tfd->on_eat(self, eater);
     return std::nullopt;
 }
 
