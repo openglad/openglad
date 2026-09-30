@@ -1136,4 +1136,94 @@ TEST_F(TowerRunE2E, shadow_withdraw_refuses_a_company_slot_with_no_file)
     EXPECT_EQ(3, static_cast<int>(disk.scen_num));
 }
 
+TEST_F(TowerRunE2E, shadow_withdraw_refuses_when_a_read_only_store_cannot_be_written)
+{
+    ASSERT_NE(0u, geteuid())
+        << "run the tests as a non-root user (CI's ubuntu-latest is non-root)";
+
+    // Restores a file's mode even when an assertion fails.
+    struct ScopedMode
+    {
+        fs::path path;
+        fs::perms saved;
+        ~ScopedMode()
+        {
+            std::error_code ec;
+            fs::permissions(path, saved, ec);
+        }
+    };
+
+    // (1) Local withdraw: the company loads but its write-back is refused.
+    arm_classic_session();
+    ASSERT_TRUE(scr().save_data.save("save0"));
+    const std::string save0_before = read_file_bytes(save0_path());
+    {
+        std::error_code ec;
+        ScopedMode mode{save0_path(), fs::status(save0_path(), ec).permissions()};
+        fs::permissions(save0_path(),
+                        fs::perms::owner_read | fs::perms::group_read |
+                            fs::perms::others_read,
+                        ec);
+        ASSERT_FALSE(ec) << ec.message();
+
+        ::testing::internal::CaptureStderr();
+        const bool finalized =
+            og::runtime::local_transport_shadow_testing_finalize_withdraw(
+                scr(), /*destination_level=*/3, /*networked=*/false);
+        const std::string stderr_text =
+            ::testing::internal::GetCapturedStderr();
+        EXPECT_FALSE(finalized)
+            << "a withdraw whose store cannot be rewritten must refuse";
+        EXPECT_NE(std::string::npos,
+                  stderr_text.find(
+                      "[ERROR] local_transport_shadow_save_failed "
+                      "action=withdraw slot=save0 error=2\n"))
+            << stderr_text;
+        EXPECT_EQ(save0_before, read_file_bytes(save0_path()));
+    }
+
+    // (2) Networked withdraw: the transient roster reloads and rewrites, but
+    // the private company's cursor write is refused.
+    arm_classic_session();
+    ASSERT_TRUE(scr().save_data.save("netsession"));
+    ASSERT_TRUE(scr().save_data.save("save0"));
+    const std::string private_before = read_file_bytes(save0_path());
+    {
+        std::error_code ec;
+        ScopedMode mode{save0_path(), fs::status(save0_path(), ec).permissions()};
+        fs::permissions(save0_path(),
+                        fs::perms::owner_read | fs::perms::group_read |
+                            fs::perms::others_read,
+                        ec);
+        ASSERT_FALSE(ec) << ec.message();
+
+        ::testing::internal::CaptureStderr();
+        const bool finalized =
+            og::runtime::local_transport_shadow_testing_finalize_withdraw(
+                scr(), /*destination_level=*/3, /*networked=*/true);
+        const std::string stderr_text =
+            ::testing::internal::GetCapturedStderr();
+        EXPECT_FALSE(finalized)
+            << "a networked withdraw whose private cursor cannot be written "
+               "must refuse";
+        EXPECT_NE(std::string::npos,
+                  stderr_text.find(
+                      "[ERROR] net_cursor_persist_save_failed level=3 "
+                      "error=2\n"))
+            << stderr_text;
+        EXPECT_EQ(private_before, read_file_bytes(save0_path()));
+    }
+
+    // Control: writable again, the networked withdraw advances the cursor.
+    arm_classic_session();
+    ASSERT_TRUE(scr().save_data.save("netsession"));
+    EXPECT_TRUE(og::runtime::local_transport_shadow_testing_finalize_withdraw(
+        scr(), /*destination_level=*/3, /*networked=*/true));
+    SaveData disk;
+    ASSERT_EQ(SaveDataIoError::None, disk.load_with_error("save0"));
+    EXPECT_EQ(3, static_cast<int>(disk.scen_num));
+    std::error_code ec;
+    fs::remove(user_save_path("netsession.gtl"), ec);
+}
+
 } // namespace
