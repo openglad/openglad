@@ -3,6 +3,12 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/families/classpack_data.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/resources/packs.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/pal32.h>
@@ -2872,4 +2878,252 @@ TEST_F(GladHud, counter_box_widens_for_a_two_digit_floor_label)
     // rm-57; nothing may sit left of the widened box on the floor row.
     expect_band_clean(actual, lm + 64, box_left - 1, tm + 17, tm + 24,
                       "two-digit floor counter box");
+}
+
+// ---------------------------------------------------------------------------
+// R6: the HUD names a class-pack family past slot 21 from the family registry
+// ---------------------------------------------------------------------------
+namespace {
+
+// The five registries are process-global: the pack family this suite installs
+// must be gone on EVERY exit path, or a later test in a shuffled order meets
+// a living family 21 it never declared. The harness mounts only gladiator, so
+// the mod span starts empty; it is freed on the way in and on the way out.
+struct HudPackFamilyGuard
+{
+    HudPackFamilyGuard() { reset_all_registry_mod_slots(); }
+    ~HudPackFamilyGuard() { reset_all_registry_mod_slots(); }
+    HudPackFamilyGuard(const HudPackFamilyGuard&) = delete;
+    HudPackFamilyGuard& operator=(const HudPackFamilyGuard&) = delete;
+};
+
+// One living family, declared the way a class pack's C++ harvest arrives:
+// a 13-character name unlike any core word, and a slot-2 special with an
+// alternate. The installer takes `slot` as given (the Lua parser is what
+// derives it from list order), so it is spelled out.
+int install_hexknight_pack()
+{
+    og::data::ClasspackData data;
+    data.pack = "hudtest";
+    og::data::ClasspackLivingEntry e;
+    e.id = "test:hexknight";
+    e.wire_id = "auto";
+    e.name = "HEXKNIGHT-XII";
+    og::data::ClasspackCostsBlock costs;
+    costs.hire = 250;
+    e.costs = costs;
+    e.default_weapon = "core:knife";
+    og::data::ClasspackSpecialEntry fire;
+    fire.id = "hexfire";
+    fire.name = "HEXFIRE";
+    fire.mp_cost = 20;
+    fire.alternate_name = "HEXWARD";
+    fire.slot = 2;
+    e.specials = std::vector<og::data::ClasspackSpecialEntry>{fire};
+    data.living.push_back(std::move(e));
+    return og::resources::install_classpack_data(std::move(data));
+}
+
+} // namespace
+
+// The HUD caption's family word (new_score_panel, lm+3 on the tm+4 row) and
+// the FOLLOWING banner's fallback name are the registry display name of the
+// control's OWN family for any registered family — a pack hero at family id
+// >= NUM_FAMILIES used to be clamped to family 0 and read "SOLDIER". The
+// oracle needs no text decoding: the same walker drawn once through the
+// family-word fallback (no guy, no stats name) and once with the registry's
+// name as its stats name (the known-good path) must render IDENTICAL frames.
+// Paired controls: core families whose word did not move (SOLDIER,
+// ORC CAPTAIN, and — ruling R14 — GOLEM, GIANT SKEL and TOWER for ids 18-20)
+// render equal the same way, and the pack frame differs from a frame
+// captioned "SOLDIER" (so equality is never two blank captions).
+TEST_F(GladHud, hud_family_word_is_the_registry_name_for_a_pack_family_past_slot_21)
+{
+    HudPackFamilyGuard pack_guard;
+    ASSERT_EQ(1, install_hexknight_pack());
+    ASSERT_EQ(NUM_FAMILIES, og::families::resolve_family_string_id(
+                                Order::Living, "test:hexknight"))
+        << "the first living mod slot is the one past the 21 core families";
+    const FamilyDescriptor* hex = get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(nullptr, hex);
+    ASSERT_STREQ("HEXKNIGHT-XII", hex->name);
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(80);
+    controlp->stats()->set_max_magicpoints(80);
+    // The loader has no art for a pack id, so add_ob would hand back a
+    // SOLDIER; the family byte is set on a live walker instead (the mirror
+    // path the existing set_family(127) test takes).
+    controlp->clear_myguy();
+
+    struct ViewRestore
+    {
+        screen* scr;
+        viewscreen* view;
+        walker* control;
+        bool following;
+        std::string company;
+        char overlay, life, score, foes;
+        ~ViewRestore()
+        {
+            view->following_ = following;
+            view->follow_company_ = std::move(company);
+            view->prefs[PREF_OVERLAY] = overlay;
+            view->prefs[PREF_LIFE] = life;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_FOES] = foes;
+            view->control = control_pointer_is_live(
+                scr->level_runtime_data(), control) ? control : nullptr;
+        }
+    } restore{s, v, v->control, v->following_, v->follow_company_,
+              v->prefs[PREF_OVERLAY], v->prefs[PREF_LIFE],
+              v->prefs[PREF_SCORE], v->prefs[PREF_FOES]};
+    v->control = controlp;
+    v->follow_company_.clear();
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    v->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    // following == false: the live HUD (caption at lm+3/tm+4);
+    // following == true with user -1: the FOLLOWING banner alone.
+    const auto render = [&](int family, const char* stats_name, bool following) {
+        controlp->set_family(static_cast<char>(family));
+        controlp->set_current_special(1);
+        controlp->set_shifter_down(0);
+        controlp->stats()->name = stats_name;
+        controlp->set_user(following ? -1 : 0);
+        controlp->set_team_num(0);
+        v->following_ = following;
+        s->clearbuffer();
+        EXPECT_EQ(1, new_score_panel(s, 1));
+        return capture_rendered_frame(*s);
+    };
+
+    for (const bool following : {false, true})
+    {
+        SCOPED_TRACE(following ? "FOLLOWING banner" : "HUD caption");
+        const auto pack_word = render(NUM_FAMILIES, "", following);
+        dump_frame_ppm(pack_word, following ? "hud_pack_family_follow"
+                                            : "hud_pack_family_caption");
+        EXPECT_EQ(render(NUM_FAMILIES, "HEXKNIGHT-XII", following), pack_word)
+            << "a pack family past slot 21 must read its registry name, "
+               "HEXKNIGHT-XII, not the family-0 word";
+        EXPECT_NE(render(NUM_FAMILIES, "SOLDIER", following), pack_word)
+            << "control: the pack frame is not the SOLDIER-captioned frame";
+
+        // Positive controls: the core words are unchanged by the rule.
+        EXPECT_EQ(render(FAMILY_SOLDIER, "SOLDIER", following),
+                  render(FAMILY_SOLDIER, "", following))
+            << "a core SOLDIER still reads SOLDIER";
+        EXPECT_EQ(render(FAMILY_BIG_ORC, "ORC CAPTAIN", following),
+                  render(FAMILY_BIG_ORC, "", following))
+            << "a core ORC CAPTAIN still reads ORC CAPTAIN";
+        // R14: the three core families the registry once called BEAST keep
+        // the words the HUD always showed for them.
+        EXPECT_EQ(render(FAMILY_GOLEM, "GOLEM", following),
+                  render(FAMILY_GOLEM, "", following))
+            << "core family 18 reads GOLEM";
+        EXPECT_EQ(render(FAMILY_GIANT_SKELETON, "GIANT SKEL", following),
+                  render(FAMILY_GIANT_SKELETON, "", following))
+            << "core family 19 reads GIANT SKEL";
+        EXPECT_EQ(render(FAMILY_TOWER1, "TOWER", following),
+                  render(FAMILY_TOWER1, "", following))
+            << "core family 20 reads TOWER";
+
+        // An unregistered family byte (a hostile mirror's 127) has no
+        // descriptor: it takes the display-name rule's own fallback, BEAST.
+        EXPECT_EQ(render(127, "BEAST", following), render(127, "", following))
+            << "an unregistered family reads the registry fallback BEAST";
+    }
+}
+
+// The SPC row names the CURRENT special of the control's OWN family, read
+// from its registry descriptor, for any registered family: the pack hero's
+// slot 2 reads "SPC: HEXFIRE" (and its alternate "SPC: HEXWARD" under the
+// shifter), where the family-0 clamp used to show a SOLDIER special. The
+// "spc_row" trace carries the exact string the row draws. Positive control:
+// a core MAGE at slot 2 reads its descriptor's name, which is exactly what
+// the screen's copy of that table held before. An unregistered family reads
+// SPC: NONE.
+TEST_F(GladHud, hud_special_row_names_the_pack_familys_own_special)
+{
+    HudPackFamilyGuard pack_guard;
+    ASSERT_EQ(1, install_hexknight_pack());
+    ASSERT_EQ(NUM_FAMILIES, og::families::resolve_family_string_id(
+                                Order::Living, "test:hexknight"));
+
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    auto control = make_player(0);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    controlp->clear_myguy();
+    controlp->stats()->name = "Hex";
+    controlp->stats()->set_magicpoints(80);
+    controlp->stats()->set_max_magicpoints(80);
+
+    walker* const old_control = v->control;
+    const bool old_following = v->following_;
+    struct Restore
+    {
+        screen* scr;
+        viewscreen* view;
+        walker* control;
+        bool following;
+        ~Restore()
+        {
+            view->following_ = following;
+            view->control = control_pointer_is_live(
+                scr->level_runtime_data(), control) ? control : nullptr;
+        }
+    } restore{s, v, old_control, old_following};
+    v->control = controlp;
+    v->following_ = false;
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+
+    const auto spc_row_for = [&](int family, int special, short shifter) {
+        controlp->set_family(static_cast<char>(family));
+        controlp->set_current_special(static_cast<char>(special));
+        controlp->set_shifter_down(shifter);
+        trace_clear();
+        s->clearbuffer();
+        EXPECT_EQ(1, new_score_panel(s, 1));
+    };
+
+    spc_row_for(NUM_FAMILIES, 2, 0);
+    EXPECT_TRUE(trace_contains("hud", "spc_row fam=21 text=SPC: HEXFIRE"))
+        << "the pack family's slot-2 special is HEXFIRE";
+    EXPECT_FALSE(trace_contains("hud", "spc_row fam=0 "))
+        << "the pack family is never read as family 0";
+    spc_row_for(NUM_FAMILIES, 2, 1);
+    EXPECT_TRUE(trace_contains("hud", "spc_row fam=21 text=SPC: HEXWARD"))
+        << "the shifter shows the pack special's alternate name";
+    spc_row_for(NUM_FAMILIES, 1, 1);
+    EXPECT_TRUE(trace_contains("hud", "spc_row fam=21 text=SPC: NONE"))
+        << "an undeclared pack slot reads NONE even under the shifter";
+
+    // Positive control: core MAGE slot 2, the string the row always showed.
+    const FamilyDescriptor* mage = get_family_descriptor(FAMILY_MAGE);
+    ASSERT_NE(nullptr, mage);
+    spc_row_for(FAMILY_MAGE, 2, 0);
+    const std::string mage_expected =
+        std::string("spc_row fam=3 text=SPC: ") + mage->special_names[2];
+    EXPECT_TRUE(trace_contains("hud", mage_expected.c_str()))
+        << "expected '" << mage_expected << "'";
+    EXPECT_STREQ("WARP SPACE", mage->special_names[2]);
+
+    // An unregistered family byte has no descriptor and no specials.
+    spc_row_for(127, 2, 0);
+    EXPECT_TRUE(trace_contains("hud", "spc_row fam=127 text=SPC: NONE"))
+        << "an unregistered family names no special";
 }

@@ -1020,6 +1020,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 message = std::format("SPC: {}", s->alternate_name[fam][spc]);
             else
                 message = std::format("SPC: {}", s->special_name[fam][spc]);
+            TRACE("hud", "spc_row fam=%d text=%s", fam, message.c_str());
 
             // Disabled-special signifier: a walker whose specials are
             // switched off (the level's NPC flag) can NEVER fire the
