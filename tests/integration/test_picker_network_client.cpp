@@ -13655,3 +13655,47 @@ TEST(PickerNetworkClient, spectator_host_add_seat_refused_by_global_cap_stays_sp
     EXPECT_EQ(1u, host->local_seat_count());
     EXPECT_EQ(1, static_cast<int>(save.numplayers));
 }
+
+// A campaign archive path that exists but cannot be read as a file (here a
+// DIRECTORY named <id>.glad) has no content hash: the room listing carries
+// no campaign filter at all, never the CRC of zero bytes "00000000".
+// Control: a real archive file is filtered by its crc32.
+TEST(PickerNetworkClient, unreadable_campaign_archive_has_no_content_hash)
+{
+    IxNetSystemScope net_system;
+
+    const std::string campaign_id = "wp4 dir archive";
+    const std::filesystem::path archive_dir =
+        campaign_archive_path_for_testing(campaign_id);
+    std::error_code ec;
+    std::filesystem::remove_all(archive_dir, ec);
+    std::filesystem::create_directories(archive_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    struct DirCleanup
+    {
+        std::filesystem::path path;
+        ~DirCleanup()
+        {
+            std::error_code cleanup_ec;
+            std::filesystem::remove_all(path, cleanup_ec);
+        }
+    } dir_cleanup{archive_dir};
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(
+        relay_port, 200, R"({"code":"glad-xkcd"})", "[]", 200);
+    const std::string base = std::format("http://127.0.0.1:{}", relay_port);
+
+    EXPECT_TRUE(og::ui::list_relay_rooms(base, campaign_id).empty());
+    const std::string dir_uri = relay_server.last_room_list_uri();
+    EXPECT_EQ(std::nullopt, extract_query_param(dir_uri, "campaign"))
+        << "an unreadable archive must not be filtered by a hash: " << dir_uri;
+
+    // Control: a readable archive is filtered by its crc32.
+    const std::string file_campaign_id = "wp4 file archive";
+    ScopedCampaignArchive archive(file_campaign_id);
+    archive.write("hash control");
+    EXPECT_TRUE(og::ui::list_relay_rooms(base, file_campaign_id).empty());
+    EXPECT_EQ(std::optional<std::string>(crc32_hex_for_bytes("hash control")),
+              extract_query_param(relay_server.last_room_list_uri(), "campaign"));
+}
