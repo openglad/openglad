@@ -2694,6 +2694,67 @@ TEST(CursesNetwork, classic_lobby_allows_shared_team_request)
     join_lobby->cancel();
 }
 
+// A peer attached to the hosting lobby's transport that never took a lobby
+// seat enters the level as a SPECTATOR: the host's GameServer admits it at GO
+// and seeds it with the initial setup and a keyframe, while the host plays on
+// its own seat. (The LobbyServer keeps an unjoined peer attached until GO:
+// "connected but not joined" never blocks a start.)
+TEST(CursesNetwork, unjoined_peer_on_the_host_transport_enters_as_a_spectator)
+{
+    SaveData host_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto watcher = server->create_client_transport();
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, /*difficulty=*/1, server, host_client,
+        kPinnedCursesMatchSeed);
+    ASSERT_NE(host_lobby, nullptr);
+
+    HeadlessTerminal host_term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 20; ++i)
+        host_lobby->poll(host_term, clock);
+    ASSERT_EQ(1u, host_lobby->players().size())
+        << "the watcher never joined, so the roster is the host alone";
+
+    host_lobby->request_start();
+    bool host_ready = false;
+    for (int i = 0; i < 200 && !host_ready; ++i)
+        host_ready = host_lobby->poll(host_term, clock);
+    ASSERT_TRUE(host_ready);
+    std::unique_ptr<CursesGameSession> host_session =
+        host_lobby->take_session();
+    ASSERT_NE(host_session, nullptr);
+
+    bool saw_setup = false;
+    bool saw_snapshot = false;
+    for (int i = 0; i < 60 && !(saw_setup && saw_snapshot); ++i) {
+        host_session->send_input(InputState{});
+        host_session->advance();
+        for (const og::sim::TypedReceivedMessage& message :
+             watcher->poll_typed()) {
+            if (message.kind ==
+                    og::sim::TypedReceivedMessageKind::InitialSetup &&
+                message.initial_setup) {
+                saw_setup = true;
+                EXPECT_EQ(1, message.initial_setup->current_scenario);
+            }
+            if (message.kind == og::sim::TypedReceivedMessageKind::Snapshot &&
+                message.snapshot)
+                saw_snapshot = true;
+        }
+    }
+    EXPECT_TRUE(saw_setup)
+        << "an unseated attached peer must be admitted as a spectator and "
+           "seeded with the initial setup";
+    EXPECT_TRUE(saw_snapshot) << "and a keyframe";
+    EXPECT_NE(0u, host_session->followed_entity_id())
+        << "the host still plays its own seat";
+}
+
 // The terminal lobby exposes the same exact-seat operation as SDL Base Camp:
 // a client may target its current global P#, but a foreign P# is rejected
 // locally and never turns into a first-seat fallback on the server.
