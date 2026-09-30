@@ -2164,7 +2164,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Confirm if unsaved
             bool cancel = false;
-            if (eds().levelchanged)
+            if (eds().levelchanged || eds().campaignchanged)
             {
                 cancel = !yes_or_no_prompt("New Campaign", "Discard unsaved changes?", false);
             }

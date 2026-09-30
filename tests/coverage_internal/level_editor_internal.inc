@@ -967,10 +967,14 @@ int level_editor_test_campaign_menu_flows()
     level_editor_testing_prompt_queue_clear();
     picker_testing_yes_or_no_queue_clear();
 
-    // Positive control: a valid new id creates, loads and mounts it.
+    // Positive control: a valid new id creates, loads and mounts it. The
+    // campaign is dirty, so New asks to discard first: YES.
     eds().campaignchanged = 1;
     level_editor_testing_prompt_queue_push(created_id.c_str());
+    picker_testing_yes_or_no_queue_push(true);
     check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
+    check(trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
     check(trace_contains("dialog", "timed_dialog_open Campaign created."));
     check(data.campaign->id == created_id);
     check(get_mounted_campaign() == created_id);
@@ -981,6 +985,7 @@ int level_editor_test_campaign_menu_flows()
     check(data.loadCampaign(helper_id));
     eds().campaignchanged = 1;
     level_editor_testing_prompt_queue_push("bad id!");
+    picker_testing_yes_or_no_queue_push(true); // discard the dirty campaign
     check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
     check(trace_contains(
         "dialog", "timed_dialog_open Failed to create new campaign."));
@@ -989,7 +994,20 @@ int level_editor_test_campaign_menu_flows()
     check(get_mounted_campaign() == helper_id);
     check(eds().campaignchanged == 1);
     check(level_editor_testing_prompt_queue_ref().empty());
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
     // create_new_campaign leaves the scratch tree behind on this refusal.
+    cleanup_unpacked_campaign();
+
+    // Control: with nothing unsaved New asks no discard question (an empty
+    // yes/no queue would answer NO and cancel before the id prompt).
+    eds().campaignchanged = 0;
+    eds().levelchanged = 0;
+    level_editor_testing_prompt_queue_push("bad id!");
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
+    check(!trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(trace_contains(
+        "dialog", "timed_dialog_open Failed to create new campaign."));
+    check(level_editor_testing_prompt_queue_ref().empty());
     cleanup_unpacked_campaign();
 
     // --- File > Campaign > Load ---------------------------------------------
