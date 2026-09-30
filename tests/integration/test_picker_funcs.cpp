@@ -599,7 +599,9 @@ std::string expected_training_stars(std::int32_t cost)
     if (cost == 0)
         return std::string();
     const int rating = ((55 / cost) * 5) / 11;
-    if (rating < 0 || rating > 5)
+    if (rating > 5)
+        return std::string(5, '*');
+    if (rating < 0)
         return std::string();
     return std::string(static_cast<std::size_t>(rating), '*');
 }

@@ -1642,7 +1642,10 @@ std::string get_class_description(unsigned char family)
     case 5:
         return "*****";
     default:
-        return "";
+        // A class pack may price an axis below 5 (cost 1-3 rates 25/12/8):
+        // anything past five stars is five stars. A negative price rates
+        // below zero and shows none.
+        return rating > 5 ? "*****" : "";
     }
 }
 

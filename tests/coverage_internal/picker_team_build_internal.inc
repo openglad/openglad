@@ -519,23 +519,42 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
 
     check(!get_class_description(FAMILY_SOLDIER).empty());
     check(get_class_description(250).empty());
-    for (int family : og::ui::kAllowableGuys)
+    // The HIRE/TRAIN star faces of every hireable family, spelled out from
+    // the core pack's train prices (STR, DEX, CON, INT, ARMOR) rather than
+    // recomputed from the product's own ((55 / cost) * 5) / 11 -- a test that
+    // shares the formula shares its bugs (the cost 1-3 blank-stars bug hid
+    // behind exactly that twin).
+    struct FamilyStars
     {
-        const FamilyDescriptor* const descriptor =
-            get_family_descriptor(family);
-        check(descriptor != nullptr);
-        if (descriptor == nullptr)
-            continue;
+        int family;
+        std::array<const char*, 5> stars;
+    };
+    static constexpr std::array<FamilyStars, 14> kHireableStars = {{
+        {FAMILY_SOLDIER, {"****", "**", "****", "", ""}},         // 6 10 6 25 50
+        {FAMILY_BARBARIAN, {"*****", "", "*****", "", ""}},       // 5 35 5 35 50
+        {FAMILY_ELF, {"", "****", "*", "**", ""}},                // 25 6 12 8 50
+        {FAMILY_ARCHER, {"*", "****", "**", "**", ""}},           // 15 6 9 10 50
+        {FAMILY_MAGE, {"", "*", "*", "****", ""}},                // 20 15 16 6 50
+        {FAMILY_CLERIC, {"*", "*", "**", "****", ""}},            // 15 15 9 6 50
+        {FAMILY_THIEF, {"*", "****", "**", "**", ""}},            // 15 6 9 10 50
+        {FAMILY_DRUID, {"*", "*", "***", "****", ""}},            // 15 15 7 6 50
+        {FAMILY_ORC, {"****", "*", "*****", "", ""}},             // 6 15 5 40 50
+        {FAMILY_SKELETON, {"*", "****", "*", "", ""}},            // 15 6 16 25 50
+        {FAMILY_FIREELEMENTAL, {"***", "**", "*", "*", ""}},      // 7 10 14 12 50
+        {FAMILY_SMALL_SLIME, {"", "", "**", "*", ""}},            // 20 20 8 14 50
+        {FAMILY_FAERIE, {"", "****", "*", "**", ""}},             // 25 6 12 8 50
+        {FAMILY_GHOST, {"*", "*", "*", "*", ""}},                 // 16 16 16 16 45
+    }};
+    static_assert(kHireableStars.size() == og::ui::kAllowableGuys.size());
+    for (const FamilyStars& row : kHireableStars)
+    {
+        const int family = row.family;
+        check(get_family_descriptor(family) != nullptr);
         for (int stat = 0; stat < 5; ++stat)
         {
-            const int cost = descriptor->stat_costs[stat];
-            const int stars = cost == 0 ? 0 : ((55 / cost) * 5) / 11;
-            const std::string expected =
-                stars >= 1 && stars <= 5
-                    ? std::string(static_cast<std::size_t>(stars), '*')
-                    : std::string();
-            check(get_training_cost_rating(
-                      static_cast<unsigned char>(family), stat) == expected);
+            check(std::string(get_training_cost_rating(
+                      static_cast<unsigned char>(family), stat)) ==
+                  row.stars[static_cast<std::size_t>(stat)]);
         }
         check(std::strlen(get_training_cost_rating(
                   static_cast<unsigned char>(family), -1)) == 0);
