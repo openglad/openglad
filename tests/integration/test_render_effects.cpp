@@ -7459,3 +7459,49 @@ TEST_F(RenderEffects, trails_skip_effects_parked_in_the_weapon_list)
     effects_reset_for_testing();
     restore_world(vs);
 }
+
+// Rule: dust shakes loose only from LIVING movers on the floor above. A
+// life gem lying on floor 1 sits in the object list next to a living; with
+// every other store writer (shadows/reflections/ripples/trails) off, only
+// the living may enter the dust store.
+TEST_F(RenderEffects, dust_tracks_only_living_movers_on_the_floor_above)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "dust", "on");
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, mover);
+    mover->set_floor(1);
+    mover->setxy(200, 120);
+    walker* gem = world.add_ob(Order::Treasure, FAMILY_LIFE_GEM);
+    ASSERT_NE(nullptr, gem);
+    ASSERT_EQ(Order::Treasure, gem->query_order());
+    gem->set_floor(1);
+    gem->setxy(120, 80);
+    const std::uint32_t mover_id = mover->entity_id();
+    const std::uint32_t gem_id = gem->entity_id();
+    ASSERT_NE(0u, gem_id);
+
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_EQ(1u, effects_store_depth(mover_id))
+        << "control: the living overhead is tracked for dust";
+    ASSERT_EQ(0u, effects_store_depth(gem_id))
+        << "a life gem overhead must never enter the dust store";
+    ASSERT_EQ(1u, effects_store_size());
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
