@@ -19,6 +19,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/pack_transfer_io.h>
+#include <openglad/core/fnv1a.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -292,6 +294,43 @@ struct ActivePickerLobbyClientGuard
     {
         og::ui::install_active_picker_lobby_client(saved);
     }
+};
+
+// A lobby client whose only property is whether it is a networked session.
+class SessionFlagPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    explicit SessionFlagPickerLobbyClient(bool networked) : networked_(networked) {}
+    void initialize_from_save() override {}
+    void shutdown() override { ++shutdowns; }
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return networked_;
+    }
+    int shutdowns = 0;
+
+private:
+    bool networked_;
 };
 
 struct PlatformBridgeGuard
@@ -2033,6 +2072,58 @@ TEST(PickerFuncs, relay_join_with_a_still_blank_code_stays_in_the_menu)
     level_editor_testing_prompt_queue_push("GLAD-TYPED");
     EXPECT_TRUE(picker_testing_join_relay_prompt(stored));
     EXPECT_EQ("GLAD-TYPED", stored);
+}
+
+// Rule: shutting the lobby down ends a NETWORKED session, so the class packs
+// that session downloaded are unmounted; a local lobby's shutdown leaves the
+// session packs alone (the between-levels resume shape).
+TEST(PickerFuncs, networked_lobby_shutdown_ends_the_pack_transfer_session)
+{
+    const std::string pack_script = "og.log('wp4 session pack')\n";
+    const std::vector<std::uint8_t> pack_bytes(pack_script.begin(),
+                                               pack_script.end());
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = "org.wp4.shutdownpack";
+    manifest.version = "1";
+    manifest.files.push_back(og::sim::PackManifestFileEntry{
+        .path = "scripts/session.lua",
+        .size_bytes = static_cast<std::uint32_t>(pack_bytes.size()),
+        .hash64 = og::core::fnv1a64(pack_bytes.data(), pack_bytes.size())});
+    struct PackCleanup
+    {
+        ~PackCleanup()
+        {
+            og::resources::unmount_session_packs();
+            std::error_code ec;
+            std::filesystem::remove_all(
+                std::filesystem::path(get_user_path()) / "packs_cache", ec);
+        }
+    } cleanup;
+    ASSERT_TRUE(og::resources::install_received_pack(manifest, {pack_bytes}));
+    ASSERT_TRUE(og::resources::mounted_pack_matches_manifest(manifest));
+
+    // Control: a LOCAL lobby shuts down and the session pack stays mounted.
+    {
+        SessionFlagPickerLobbyClient local(false);
+        ActivePickerLobbyClientGuard guard(&local);
+        picker_lobby_shutdown();
+        EXPECT_EQ(1, local.shutdowns);
+    }
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "a local lobby's shutdown is not the end of a networked session";
+
+    // The rule: the NETWORKED lobby's shutdown ends the session and drops
+    // the pack it downloaded.
+    {
+        SessionFlagPickerLobbyClient networked(true);
+        ActivePickerLobbyClientGuard guard(&networked);
+        picker_lobby_shutdown();
+        EXPECT_EQ(1, networked.shutdowns);
+    }
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "the networked session's downloaded pack must be unmounted";
 }
 
 namespace
