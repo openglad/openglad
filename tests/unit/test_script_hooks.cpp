@@ -1644,3 +1644,68 @@ TEST_F(ScriptHooksTest, level_up_guy_handle_is_dispatch_scoped)
     EXPECT_NE(std::string::npos,
               hooks::hook_failures().message.find("stale guy handle"));
 }
+
+// ---------------------------------------------------------------------------
+// The bind pass refuses an id-less og.family. The declaration pass already
+// refuses one, so the only way a chunk reaches the bind pass without an id is
+// by answering the two passes differently: og.family_id is a deferred,
+// userdata placeholder while declaring and a plain number when binding
+// (test_classpack_lua_decl.cpp, family_id_defers_during_a_declaration), and
+// a chunk can branch on that. The bind pass then names the missing id with
+// the declaration pass's own diagnostic instead of binding into a void.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string bind_errors_after_install(const std::string& pack,
+                                      const std::string& chunk,
+                                      std::size_t* declared)
+{
+    og::data::ClasspackData data;
+    register_pack_family_chunk({pack, pack + "/families/shifty.lua", chunk});
+    const DeclareResult declared_result = declare_pack_families(pack, data);
+    EXPECT_TRUE(declared_result.ok) << declared_result.error;
+    *declared = data.living.size();
+    EXPECT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    // The chunk stays registered: the world VM replays it for behavior.
+    GameWorld world(12);
+    std::string all;
+    for (const ScriptError& e : world.scripts().host().errors()) {
+        all += e.message;
+        all += '\n';
+    }
+    return all;
+}
+
+}  // namespace
+
+TEST_F(ScriptHooksTest, bind_pass_refuses_a_declaration_that_drops_its_id)
+{
+    std::size_t declared = 0;
+    const std::string errors = bind_errors_after_install(
+        "fdshifty",
+        "local declaring =\n"
+        "  type(og.family_id('living', 'core:soldier')) == 'userdata'\n"
+        "og.family('living', { id = declaring and 'fdshifty:shifty' or nil,\n"
+        "                      name = 'SHIFTY' })\n",
+        &declared);
+    EXPECT_EQ(1u, declared) << "the declaration pass saw the id";
+    EXPECT_NE(std::string::npos,
+              errors.find("og.family living: a declaration needs an id "
+                          "(id = \"<pack>:<family>\")"))
+        << "the bind pass must name the dropped id; errors: " << errors;
+}
+
+// Control: the same chunk shape with the id in both passes binds clean.
+TEST_F(ScriptHooksTest, bind_pass_accepts_a_declaration_that_keeps_its_id)
+{
+    std::size_t declared = 0;
+    const std::string errors = bind_errors_after_install(
+        "fdsteady",
+        "local declaring =\n"
+        "  type(og.family_id('living', 'core:soldier')) == 'userdata'\n"
+        "og.family('living', { id = 'fdsteady:shifty', name = 'SHIFTY' })\n",
+        &declared);
+    EXPECT_EQ(1u, declared);
+    EXPECT_EQ("", errors) << "a stable id binds without a load error";
+}
