@@ -28,6 +28,7 @@
 #include <openglad/resources/zip_api.h>
 
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -550,14 +551,19 @@ protected:
         CampaignPacksTest::TearDown();
     }
 
-    void write_probe_pack(const char* text) const
+    // `run` is folded into the text as a fixed-width trailing comment, so
+    // A and B written in one run keep the same length, while a later run
+    // (--gtest_repeat) writes bytes no earlier run memoized: the pack memo
+    // is process-global and keyed by pack id, and an unmount does not erase
+    // an entry.
+    void write_probe_pack(const char* text, unsigned run) const
     {
         std::error_code ec;
         fs::create_directories(staging_ / "families", ec);
         ASSERT_FALSE(ec) << ec.message();
         std::ofstream out(staging_ / "families" / "probe.lua",
                           std::ios::binary);
-        out << text;
+        out << text << std::format("-- run {:06}\n", run % 1000000u);
         ASSERT_TRUE(out.good());
     }
 
@@ -660,7 +666,9 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
 {
     // The teeth for the memo. Everything above only proves it skips work;
     // this proves it skips work for the right reason.
-    write_probe_pack(kMemoDeclA);
+    static unsigned s_run = 0;
+    const unsigned run = ++s_run;
+    write_probe_pack(kMemoDeclA, run);
     ASSERT_TRUE(og::resources::mount(staging_.string().c_str(),
                                      kMemoPackMount, 1));
     og::resources::reset_pack_install_stats();
@@ -672,7 +680,7 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
     ASSERT_STREQ("Probe One", probe_pooled_name());
 
     // Same path, same length, same second — different bytes.
-    write_probe_pack(kMemoDeclB);
+    write_probe_pack(kMemoDeclB, run);
     og::resources::reset_pack_install_stats();
     og::resources::refresh_pack_scripts();
     const og::resources::PackInstallStats second =
@@ -691,14 +699,16 @@ TEST_F(PackInstallCostTest, changed_pack_bytes_are_reparsed_not_served_stale)
         << "a genuine reparse is what may grow the store — one pack, one "
            "name pool";
 
-    // Unmounting the probe pack takes its family back out, and the memo
-    // entry with it: remounting the ORIGINAL text must parse again rather
-    // than resurrect anything.
+    // Unmounting the probe pack takes its family back out. Its memo entry
+    // stays (an unmount erases nothing; only a pack enumerated with no
+    // family chunks, or rejected, drops one) and now holds the B bytes, so
+    // remounting the ORIGINAL text must parse again rather than resurrect
+    // anything.
     ASSERT_TRUE(og::resources::unmount(staging_.string().c_str()));
     og::resources::refresh_pack_scripts();
     EXPECT_EQ(nullptr, probe_family_name())
         << "an unmounted pack leaves no family behind";
-    write_probe_pack(kMemoDeclA);
+    write_probe_pack(kMemoDeclA, run);
     ASSERT_TRUE(og::resources::mount(staging_.string().c_str(),
                                      kMemoPackMount, 1));
     og::resources::reset_pack_install_stats();
