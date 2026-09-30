@@ -39,7 +39,7 @@ jobs:
         working-directory: relay
         run: npm ci
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: ci-test
 
@@ -116,7 +116,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: native-build
 
@@ -143,7 +143,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: headless-server
 
@@ -181,7 +181,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: ci-test
 
@@ -238,7 +238,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: ci-asan
           max-size: 2G
@@ -280,7 +280,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang pkg-config libpng-dev libgtest-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: ci-tsan
 
