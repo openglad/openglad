@@ -708,9 +708,6 @@ private:
 
     void send_host_settings()
     {
-        if (peers_.empty())
-            return;
-
         const SaveData& save = og::runtime::current_session->myscreen_->save_data;
         og::sim::LobbySettings settings;
         settings.campaign_id = save.current_campaign;
