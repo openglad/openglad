@@ -816,8 +816,6 @@ private:
 
     void sync_seat_teams_from_state()
     {
-        if (!state_.has_value())
-            return;
         for (std::size_t peer_index = 0; peer_index < peers_.size();
              ++peer_index)
         {
