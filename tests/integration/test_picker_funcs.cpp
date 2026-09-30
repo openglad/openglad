@@ -1,4 +1,6 @@
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/button.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
@@ -717,6 +719,42 @@ TEST(PickerFuncs, get_training_cost_rating_returns_stars)
         << "INT costs 25: the rating rounds to no star at all";
     EXPECT_STREQ("", get_training_cost_rating(FAMILY_SOLDIER, BUT_ARMOR))
         << "ARMOR costs 50: no star";
+}
+
+
+// A class pack may price an axis below the core pack's cheapest (5): the
+// rating arithmetic ((55 / cost) * 5) / 11 then overshoots five (cost 1 -> 25,
+// 2 -> 12, 3 -> 8) and the old switch fell into `default: ""`, so the HIRE
+// screen showed NO stars for the very cheapest stat. Anything that rates past
+// five is five stars; the core prices keep their faces.
+TEST(PickerFuncs, get_training_cost_rating_caps_a_pack_s_cheapest_price_at_five_stars)
+{
+    const FamilyDescriptor* original = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, original);
+    struct DescriptorRestore
+    {
+        FamilyDescriptor saved;
+        ~DescriptorRestore() { (void)set_family_descriptor(FAMILY_SOLDIER, saved); }
+    } restore{*original};
+
+    const auto rating_at_cost = [&](std::int32_t cost) {
+        FamilyDescriptor patched = restore.saved;
+        patched.stat_costs[StatAxis::Strength] = cost;
+        EXPECT_TRUE(set_family_descriptor(FAMILY_SOLDIER, patched));
+        return std::string(
+            get_training_cost_rating(FAMILY_SOLDIER, StatAxis::Strength));
+    };
+
+    EXPECT_EQ("*****", rating_at_cost(1)) << "cost 1 rates 25: five stars";
+    EXPECT_EQ("*****", rating_at_cost(2)) << "cost 2 rates 12: five stars";
+    EXPECT_EQ("*****", rating_at_cost(3)) << "cost 3 rates 8: five stars";
+    // Positive controls: the core pack's prices keep their exact faces.
+    EXPECT_EQ("*****", rating_at_cost(5)) << "cost 5 rates exactly 5";
+    EXPECT_EQ("****", rating_at_cost(6)) << "cost 6 rates 4";
+    EXPECT_EQ("", rating_at_cost(25)) << "cost 25 rates 0";
+    EXPECT_EQ("", rating_at_cost(0)) << "an unpriced axis has no rating";
+    EXPECT_EQ("", rating_at_cost(-2))
+        << "a negative price (opt_int accepts it) rates below zero: no stars";
 }
 
 
