@@ -13699,3 +13699,53 @@ TEST(PickerNetworkClient, unreadable_campaign_archive_has_no_content_hash)
     EXPECT_EQ(std::optional<std::string>(crc32_hex_for_bytes("hash control")),
               extract_query_param(relay_server.last_room_list_uri(), "campaign"));
 }
+
+// A second room-list discovery never waits for an in-flight one: the worker
+// owner reaps only FINISHED workers, so starting request B while request A's
+// response is held returns at once. The latch is released on every exit path.
+TEST(PickerNetworkClient, second_room_list_discovery_never_joins_an_in_flight_worker)
+{
+    IxNetSystemScope net_system;
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(
+        relay_port, 200, R"({"code":"glad-xkcd"})", "[]", 200);
+    const std::string base = std::format("http://127.0.0.1:{}", relay_port);
+
+    const std::size_t completed = relay_server.block_room_list_responses();
+    struct ReleaseLatch
+    {
+        FakeRelayServer& server;
+        ~ReleaseLatch() { server.release_room_list_responses(); }
+    } release_latch{relay_server};
+
+    auto first = og::ui::begin_list_relay_rooms(base, "gladiator");
+    ASSERT_NE(nullptr, first);
+    ASSERT_TRUE(relay_server.wait_for_room_list_request_after(completed))
+        << "request A must be in flight, held by the latch";
+
+    auto second_future = std::async(std::launch::async, [&] {
+        return og::ui::begin_list_relay_rooms(base, "gladiator");
+    });
+    const bool second_started =
+        second_future.wait_for(10s) == std::future_status::ready;
+    EXPECT_TRUE(second_started)
+        << "starting B must not join A's still-blocked worker";
+    EXPECT_FALSE(first->poll().has_value())
+        << "A is still held when B starts";
+
+    relay_server.release_room_list_responses();
+    auto second = second_future.get();
+    ASSERT_NE(nullptr, second);
+    std::optional<og::ui::PickerRelayRoomListResult> first_result;
+    std::optional<og::ui::PickerRelayRoomListResult> second_result;
+    ASSERT_TRUE(wait_until([&] {
+        if (!first_result)
+            first_result = first->poll();
+        if (!second_result)
+            second_result = second->poll();
+        return first_result.has_value() && second_result.has_value();
+    }));
+    EXPECT_TRUE(first_result->error.empty()) << first_result->error;
+    EXPECT_TRUE(second_result->error.empty()) << second_result->error;
+}
