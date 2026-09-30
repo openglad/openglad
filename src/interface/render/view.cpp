@@ -145,28 +145,10 @@ inline options* active_prefs()
     return og::runtime::current_session->theprefs_;
 }
 
-template <typename WalkerList>
-bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
-{
-    return std::any_of(list.begin(), list.end(),
-                       [candidate](const auto& entry) {
-                           return entry.get() == candidate;
-                       });
-}
-
-// candidate is non-null: the sole caller (sanitize_control_pointer) checks.
-bool control_pointer_is_live(LevelRuntimeData& level, const walker* candidate)
-{
-    return contains_walker_ptr(level.world().oblist, candidate)
-        || contains_walker_ptr(level.world().fxlist, candidate)
-        || contains_walker_ptr(level.world().weaplist, candidate)
-        || contains_walker_ptr(level.world().dead_list, candidate);
-}
-
 walker* sanitize_control_pointer(viewscreen& view, LevelRuntimeData& level)
 {
     walker* candidate = view.control;
-    if (candidate != nullptr && !control_pointer_is_live(level, candidate))
+    if (candidate != nullptr && !level.world().tracks(candidate))
         view.control = nullptr;
     return view.control;
 }

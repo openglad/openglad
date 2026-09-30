@@ -368,6 +368,10 @@ public:
     walker* find_by_id(std::uint32_t entity_id);
     const walker* find_by_id(std::uint32_t entity_id) const;
     std::uint32_t tracked_entity_id(const walker* entity) const;
+    // True when `candidate` is an entity this world still owns (oblist,
+    // fxlist, weaplist or dead_list); false for nullptr and for any pointer
+    // the world has already freed or never held.
+    bool tracks(const walker* candidate) const noexcept;
     std::uint32_t level_tick_count() const noexcept { return level_tick_count_; }
     // An explicit tick count always belongs to the current level, so align the
     // level-change latch too; otherwise the first tick after applying a
