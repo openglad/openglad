@@ -4741,8 +4741,6 @@ private:
 
     void send_settings_from_save()
     {
-        if (!transport_ || !state_.has_value())
-            return;
         SaveData* const save = current_picker_save();
         if (save == nullptr)
             return;
