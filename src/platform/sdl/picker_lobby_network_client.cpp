@@ -4812,8 +4812,6 @@ private:
 
     bool send_join_from_save()
     {
-        if (!transport_)
-            return false;
         if (spectator_mode_)
         {
             og::sim::LobbyMessage message;
