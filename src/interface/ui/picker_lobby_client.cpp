@@ -762,8 +762,6 @@ private:
         {
             LocalLobbyPeer& peer = peers_[peer_index];
             peer.team = seat_teams_[peer_index];
-            if (peer.name.empty())
-                peer.name = std::format("Player {}", peer_index + 1);
 
             og::sim::LobbyPlayer& player = players[peer_index];
             // Writer-side label clamps mirror read_lobby_player's, keeping
