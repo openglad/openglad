@@ -1598,7 +1598,7 @@
 [living 18]
   declared_id = "core:#18"
   family_id = 18
-  name = "BEAST"
+  name = "GOLEM"
   short_name = ~
   base_stats.strength = 12
   stat_costs.strength = 0
@@ -1675,7 +1675,7 @@
 [living 19]
   declared_id = "core:#19"
   family_id = 19
-  name = "BEAST"
+  name = "GIANT SKEL"
   short_name = ~
   base_stats.strength = 12
   stat_costs.strength = 0
@@ -1752,7 +1752,7 @@
 [living 20]
   declared_id = "core:#20"
   family_id = 20
-  name = "BEAST"
+  name = "TOWER"
   short_name = ~
   base_stats.strength = 12
   stat_costs.strength = 0

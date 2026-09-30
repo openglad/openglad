@@ -1061,9 +1061,16 @@ TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
     // The escapes the core pack ships for its own name collisions.
     EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "core:#19"),
               FAMILY_GIANT_SKELETON);
-    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "beast"),
-              FAMILY_GOLEM)
-        << "the shared display name still lands on the lowest byte";
+    // Ruling R14: 18-20 carry their own display names, so each bare name
+    // resolves to its own byte and the retired shared name BEAST to none.
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "golem"),
+              FAMILY_GOLEM);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "giant_skel"),
+              FAMILY_GIANT_SKELETON);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "tower"),
+              FAMILY_TOWER1);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "beast"), -1)
+        << "no core living family is named BEAST any more";
 }
 
 // A mod family may reuse a CORE display name without shadowing the core
