@@ -13485,3 +13485,38 @@ TEST(PickerNetworkClient, unapplyable_staged_pair_reports_preview_unavailable)
                                "error=staged setup decode failed\n"))
         << stderr_text;
 }
+
+// The joiner refuses an out-of-range team (4 or -1) itself: no TeamChange
+// ever reaches the authority. Control: team 2 sends exactly one, naming the
+// joiner's seat.
+TEST(PickerNetworkClient, joiner_refuses_out_of_range_team_client_side)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u));
+    raw.seat_joiner(1u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    }));
+
+    EXPECT_FALSE(raw.joiner().request_seat_team_change(1u, MAX_PLAYERS));
+    EXPECT_FALSE(raw.joiner().request_seat_team_change(1u, -1));
+
+    // Control (and ordering fence): the silent authority never echoes, so the
+    // bounded wait returns false, but the request itself is on the wire.
+    EXPECT_FALSE(raw.joiner().request_seat_team_change(1u, 2));
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::TeamChange, 1u));
+    EXPECT_EQ(1u, raw.count(og::sim::LobbyMessageKind::TeamChange))
+        << "out-of-range teams must never leave the joiner";
+    const auto& change = std::get<og::sim::LobbyTeamChangeMessage>(
+        raw.last(og::sim::LobbyMessageKind::TeamChange)->payload);
+    EXPECT_EQ(2, change.team);
+    EXPECT_EQ(101u, change.seat_id);
+}
