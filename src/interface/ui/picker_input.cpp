@@ -33,7 +33,6 @@
 
 namespace {
 constexpr Sint32 OK_VALUE = 4;
-constexpr Sint32 REDRAW_VALUE = 2;
 
 constexpr bool MENU_NAV_DEFAULT = false;
 } // namespace
@@ -256,16 +255,4 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     }
 
     return activated;
-}
-
-bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue)
-{
-    if(local_btns && (retvalue == OK_VALUE || retvalue == REDRAW_VALUE))
-    {
-        local_btns = init_buttons(buttons, num_buttons);
-
-        retvalue = 0;
-        return true;
-    }
-    return false;
 }

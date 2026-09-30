@@ -111,7 +111,6 @@ Sint32 leftmouse(button* buttons);
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
