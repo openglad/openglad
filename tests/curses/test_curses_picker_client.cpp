@@ -27,6 +27,7 @@
 #include <openglad/platform/curses/headless_terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -40,6 +41,7 @@
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -4780,4 +4782,56 @@ TEST(CursesPickerClient, run_game_solo_win_folds_autosaves_and_reports)
     EXPECT_TRUE(disk.is_level_completed(kLevel))
         << "the autosaved company carries the win";
     EXPECT_EQ(kLevel + 1, static_cast<int>(disk.scen_num));
+}
+
+// R3 (route T): the solo "Mission complete" dialog carries the MOUNTED
+// mode's results summary after the verdict, as the SDL results screen does.
+// A tower floor win reads "Victory! Floor 1 conquered - best 2": floor 1 is
+// the finished world's id - 700, and best is the post-fold value
+// (advance_cursor records the floor REACHED, 2). The floor is fixture
+// content: the product's own tower writer (save_level_to_user_dir, the
+// generator's writer) puts a clear, exit-less floor 701 where the generator
+// would; tower_floor_files_exist accepts it (it checks presence, not seed
+// provenance), and the classic clear-level rule wins it on the first tick.
+// The non-tower half of the rule is run_game_solo_win_folds_autosaves_and_reports:
+// the same dialog on a Classic level reads exactly "Victory!".
+TEST(CursesPickerClient, run_game_tower_floor_win_shows_the_mode_summary)
+{
+    MountRestore mount_restore;
+    struct PruneFloors
+    {
+        ~PruneFloors()
+        {
+            for (int id = og::kTowerFirstFloorLevel; id <= 760; ++id)
+                (void)og::data::delete_tower_floor_files(id);
+        }
+    } prune_floors;
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(
+                  std::string(og::kTowerCampaignId)));
+    ASSERT_EQ(og::mode::ProgressionKind::Tower,
+              og::mode::current_progression().kind());
+    ASSERT_TRUE(author_clear_user_level(og::kTowerFirstFloorLevel, "Floor 1"));
+    ASSERT_TRUE(og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel));
+
+    PickerFixture f;
+    f.config.campaign = std::string(og::kTowerCampaignId);
+    f.config.level = og::kTowerFirstFloorLevel;
+    f.config.team_families.clear();
+    f.save().tower_best_floor = 1;
+    f.client.run_game();
+
+    const std::vector<std::string> rows = trimmed_rows(f.t());
+    EXPECT_TRUE(has_row(rows, "Victory! Floor 1 conquered - best 2"))
+        << f.t().dump();
+    EXPECT_FALSE(has_row(rows, "Victory!"))
+        << "the tower verdict must carry its summary:\n" << f.t().dump();
+    EXPECT_TRUE(has_row(rows, "Next level: 702. Floor 2")) << f.t().dump();
+    EXPECT_EQ(2, static_cast<int>(f.save().tower_best_floor));
+    EXPECT_EQ(og::kTowerFirstFloorLevel + 1,
+              static_cast<int>(f.save().scen_num));
+
+    EXPECT_TRUE(mount_restore.restore());
 }
