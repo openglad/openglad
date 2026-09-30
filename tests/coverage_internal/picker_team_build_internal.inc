@@ -745,6 +745,77 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     check(og::runtime::current_session->current_guy_ != nullptr &&
           og::runtime::current_session->current_guy_->family ==
               og::ui::kAllowableGuys[1]);
+
+    // HIRE content pixels, read back from the drawn frame.
+    {
+        screen* const scr = og::runtime::current_session->myscreen_;
+        const auto region = [scr](int x0, int y0, int x1, int y1) {
+            std::vector<std::uint32_t> px;
+            for (int y = y0; y <= y1; ++y)
+            {
+                for (int x = x0; x <= x1; ++x)
+                {
+                    Uint8 r = 0, g = 0, b = 0;
+                    scr->get_pixel(x, y, &r, &g, &b);
+                    px.push_back((std::uint32_t{r} << 16) |
+                                 (std::uint32_t{g} << 8) | b);
+                }
+            }
+            return px;
+        };
+        HireEngineState px_state;
+        px_state.last_family = static_cast<unsigned char>(
+            og::runtime::current_session->current_guy_->family);
+        px_state.family_name = get_family_string(px_state.last_family);
+        // (1) The description box holds at most ten 8px lines: a twelve-
+        // line description draws EXACTLY the frame a ten-line one does --
+        // the runaway lines never reach the box's bottom bevel or below.
+        px_state.desc.assign(10, "DESCRIPTION LINE");
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        const std::vector<std::uint32_t> ten_lines = region(0, 0, 319, 199);
+        px_state.desc.assign(12, "DESCRIPTION LINE");
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        check(region(0, 0, 319, 199) == ten_lines);
+
+        // (2) The cost number is inked in STAT_CHANGED when the wallet
+        // cannot cover it and in STAT_COLOR when it can: the two renders of
+        // the cost digits differ, and only in colour.
+        const std::uint32_t saved_cash = save.m_totalcash[0];
+        const short saved_team = og::runtime::current_session->current_team_num_;
+        og::runtime::current_session->current_team_num_ = 0;
+        const Uint32 cost = hire_session.current_cost();
+        save.m_totalcash[0] = cost;  // exactly affordable
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        const std::vector<std::uint32_t> affordable = region(240, 148, 300, 157);
+        save.m_totalcash[0] = 0;
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        const std::vector<std::uint32_t> broke = region(240, 148, 300, 157);
+        // Only the cost digits' ink changes (the font shades each glyph
+        // from its base colour, so a colour is a small ramp): every changed
+        // pixel moves from the affordable ramp to a DISJOINT broke ramp of
+        // the same size.
+        std::set<std::uint32_t> affordable_ink;
+        std::set<std::uint32_t> broke_ink;
+        for (std::size_t i = 0; i < affordable.size(); ++i)
+        {
+            if (affordable[i] != broke[i])
+            {
+                affordable_ink.insert(affordable[i]);
+                broke_ink.insert(broke[i]);
+            }
+        }
+        const bool disjoint = std::none_of(
+            affordable_ink.begin(), affordable_ink.end(),
+            [&broke_ink](std::uint32_t c) { return broke_ink.count(c) != 0; });
+        check(!affordable_ink.empty() &&
+              affordable_ink.size() == broke_ink.size() && disjoint);
+        save.m_totalcash[0] = saved_cash;
+        og::runtime::current_session->current_team_num_ = saved_team;
+    }
     pks().hire_session = nullptr;
 
     og::runtime::current_session->current_guy_.reset();
