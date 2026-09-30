@@ -2488,6 +2488,36 @@ int level_editor_test_nameless_selection_panel_rows()
     return passed;
 }
 
+// The generated-scenario warning latch, driven through the editor's own load
+// path on a scratch LevelEditorData -- the File > Campaign > Load sequence
+// (mount, loadCampaign, loadLevel), then File > Level > Reload. One character
+// per step: 'W' the "Generated scenario" popup fired, '.' it stayed silent,
+// 'x' the step's load failed. Steps: open first_id's level 1, reload it, open
+// second_id's level 1.
+std::string level_editor_testing_generated_warnings(
+    const std::string& first_id, const std::string& second_id)
+{
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    LevelEditorData data;
+    std::string steps;
+    const auto step = [&steps](bool loaded) {
+        steps += !loaded ? 'x'
+                 : trace_contains("popup", "Generated scenario") ? 'W'
+                                                                 : '.';
+        trace_clear();
+    };
+    trace_clear();
+    step(mount_guard.switch_to(first_id) && data.loadCampaign(first_id) &&
+         data.loadLevel(1));
+    step(data.reloadLevel());
+    step(mount_guard.switch_to(second_id) && data.loadCampaign(second_id) &&
+         data.loadLevel(1));
+    data.level->delete_objects();
+    mount_guard.restore();
+    return steps;
+}
+
 // Issue #12 seams. The editor's LevelEditorData is a function-local static
 // inside level_editor() with its own LevelRuntimeData (and therefore its own
 // GameWorld), so a test that drives the real event loop has no other handle on
