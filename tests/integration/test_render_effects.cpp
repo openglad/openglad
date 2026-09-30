@@ -8,6 +8,7 @@
 #include <openglad/interface/render/effects.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -7353,4 +7354,61 @@ TEST(EffectsCadence, wall_clock_gates_frame_advancement)
 	       "and tests rely on";
 
 	effects_reset_for_testing();
+}
+
+// ---- Per-order gates of the render store (trails, dust, fall cue) ----
+
+// Rule: a fall cue plays only in the view of the floor it LANDS on. The
+// camera sits on floor 1 while a second walker drops 1 -> 0: the cue is
+// recorded (8 frames) but the floor-1 pass must not draw it. The TRACE is
+// the oracle (it fires only when a cue pixel was painted), so no pixel
+// occlusion question arises. Positive control: the same cue, same frame,
+// seen from the landing floor 0, paints.
+TEST_F(RenderEffects, fall_cue_draws_only_in_the_view_of_its_landing_floor)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "dust", "on");
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->set_floor(1);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* faller = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, faller);
+    faller->set_floor(1);
+    faller->setxy(200, 120);
+    const std::uint32_t id = faller->entity_id();
+    ASSERT_NE(0u, id);
+
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    faller->set_floor(0); // the instant air fall, straight down
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "fall_cue start id="))
+        << "the drop seen from floor 1 must still record a cue";
+    ASSERT_EQ(8u, effects_fall_cue_frames_left(id));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue floor=1"))
+        << "a cue landing on floor 0 must not paint in the floor-1 view";
+
+    // Control: same frame tick, camera moved to the landing floor.
+    w->set_floor(0);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "fall_cue floor=0"))
+        << "the landing floor's view must paint the cue";
+    ASSERT_EQ(8u, effects_fall_cue_frames_left(id));
+
+    effects_reset_for_testing();
+    restore_world(vs);
 }
