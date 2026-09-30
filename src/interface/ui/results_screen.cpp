@@ -14,6 +14,8 @@
 #include <openglad/interface/sound.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -305,18 +307,21 @@ std::vector<std::string> TroopResult::get_gained_specials() const
 {
     std::vector<std::string> result;
     
-    int family = get_family();
-    if (family < 0 || family >= NUM_FAMILIES)
-        return result;  // bogus family from an untrusted save -> no specials
+    // A troop's specials are the ones its OWN family's registry descriptor
+    // names, for any registered family (class-pack families past the core
+    // span included); a family with no descriptor (an unregistered byte from
+    // an untrusted save) names none.
+    const FamilyDescriptor* fd = get_family_descriptor(get_family());
+    if (fd == nullptr) return result;
 
     Sint32 test1 = get_level() - 1;
     if ( !(test1%3) ) // we're on a special-gaining level
     {
         test1 = (test1 / 3) + 1; // this is the special #
         if ( (test1 <= 4) // raise this when we have more than 4 specials
-                && (og::runtime::current_session->myscreen_->special_name[family][test1] != "NONE") )
+                && (std::strcmp(fd->special_names[test1], kSpecialNameNone) != 0) )
         {
-            result.push_back(og::runtime::current_session->myscreen_->special_name[family][test1]);
+            result.push_back(fd->special_names[test1]);
         }
     }
     
