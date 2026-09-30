@@ -80,6 +80,12 @@ const FamilyDescriptor* get_family_descriptor(int family_id)
     return s_registry.get(family_id);
 }
 
+const char* get_family_display_name(int family_id)
+{
+    const FamilyDescriptor* descriptor = get_family_descriptor(family_id);
+    return descriptor != nullptr ? descriptor->name : "BEAST";
+}
+
 bool set_family_descriptor(int family_id, const FamilyDescriptor& d)
 {
     if (!s_registry.is_initialized())

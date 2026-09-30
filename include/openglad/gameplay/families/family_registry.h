@@ -25,6 +25,11 @@ struct FamilyDescriptor;
 // no pack has claimed — "nullptr means this family does not exist".
 const FamilyDescriptor* get_family_descriptor(int family_id);
 
+// The one display-name rule for a living family: the installed descriptor's
+// name, or "BEAST" for an unknown or unclaimed id. og::ui::family_display_name
+// and the campaign-state roster provider both answer through this.
+const char* get_family_display_name(int family_id);
+
 // Lays down the registry's per-slot defaults. Call once at startup; it
 // installs no family, so a lookup before the class packs are mounted answers
 // nullptr.

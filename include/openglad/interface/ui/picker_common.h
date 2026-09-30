@@ -275,7 +275,8 @@ const char* level_row_status_label(bool cleared, bool current);
 // --- Family display helpers ---
 
 // Full display name from FamilyDescriptor (e.g. "SOLDIER", "ORC CAPTAIN").
-// Returns "BEAST" for unknown families.
+// Returns "BEAST" for unknown families. Forwards to the gameplay rule,
+// get_family_display_name (families/family_registry.h).
 const char* family_display_name(int family);
 
 // Short label for picker UI (e.g. "SOLDIER", "BARBAR.", "ORC CAP.").
