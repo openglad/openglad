@@ -1016,3 +1016,45 @@ TEST(CursesGameRuntimeLocal, solo_exit_win_through_public_keys_folds_into_save)
     EXPECT_EQ(kDestination, static_cast<int>(save.scen_num))
         << "the campaign cursor follows the exit";
 }
+
+// R3: with the finished save/world pair supplied, the verdict carries the
+// MOUNTED mode's results summary, space-joined -- the same line the SDL
+// results screen centres under the scoreboard (results_screen.cpp's
+// mode_summary_drawn). The tower's line names the floor the world IS
+// (world.id - 700) and the post-fold best; Classic adds nothing; the Gate
+// adds nothing; and a caller that passes no pair keeps the bare verdict.
+TEST(CursesGameRuntimeVerdict, mission_verdict_line_appends_the_mounted_mode_summary)
+{
+    MountRestore mount_restore;
+    GameRunResult win;
+    win.ended = true;
+    win.ending = 0;
+    SaveData save;
+    save.tower_best_floor = 2;
+    GameWorld world(0);
+    world.id = og::kTowerFirstFloorLevel;
+
+    ASSERT_EQ(og::mode::ProgressionKind::Classic,
+              og::mode::current_progression().kind())
+        << "the harness default mount is a classic campaign";
+    EXPECT_EQ("Victory!", mission_verdict_line(win, &save, &world))
+        << "Classic has no results summary to append";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(
+                  std::string(og::kTowerCampaignId)));
+    ASSERT_EQ(og::mode::ProgressionKind::Tower,
+              og::mode::current_progression().kind());
+
+    EXPECT_EQ("Victory! Floor 1 conquered - best 2",
+              mission_verdict_line(win, &save, &world));
+    EXPECT_EQ("Victory!", mission_verdict_line(win))
+        << "no pair, no summary: legacy callers are unchanged";
+
+    world.id = og::kTowerGateLevel;
+    EXPECT_EQ("Victory!", mission_verdict_line(win, &save, &world))
+        << "the Gate is not a floor; the tower adds nothing there";
+
+    EXPECT_TRUE(mount_restore.restore());
+}
