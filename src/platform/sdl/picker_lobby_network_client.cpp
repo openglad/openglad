@@ -4292,8 +4292,6 @@ public:
         return og::ui::detail::wait_for_authoritative_lobby_value(
             [this] { poll_and_apply(); },
             [this, target_seat_id, team] {
-                if (!state_.has_value())
-                    return false;
                 const og::sim::LobbyPlayer* const echoed =
                     og::ui::detail::find_player_by_seat_id(
                         *state_, target_seat_id);
