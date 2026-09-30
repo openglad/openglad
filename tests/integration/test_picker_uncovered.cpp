@@ -37,7 +37,7 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run = nullptr)
 extern bool g_start_game_requested;
 // The exact number of check() calls in tests/coverage_internal/
 // picker_team_build_internal.inc. Bump it deliberately when you add one.
-inline constexpr int kPickerTeamBuildInternalCheckCount = 311;
+inline constexpr int kPickerTeamBuildInternalCheckCount = 314;
 
 namespace
 {

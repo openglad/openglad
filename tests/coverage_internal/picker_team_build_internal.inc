@@ -94,6 +94,28 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         {
             return local_indices;
         }
+        // A staged setup/keyframe pair, as the lobby wire hands it to the
+        // VIEW LEVEL pane (off unless a check arms it).
+        bool has_staged_pair = false;
+        std::uint32_t staged_generation = 0;
+        std::vector<std::uint8_t> staged_setup;
+        std::vector<std::uint8_t> staged_keyframe;
+        std::uint32_t stage_generation() const override
+        {
+            return has_staged_pair ? staged_generation : 0;
+        }
+        bool staged_keyframe_bytes(
+            std::uint32_t& generation,
+            const std::vector<std::uint8_t>*& setup_bytes,
+            const std::vector<std::uint8_t>*& keyframe_bytes) const override
+        {
+            if (!has_staged_pair)
+                return false;
+            generation = staged_generation;
+            setup_bytes = &staged_setup;
+            keyframe_bytes = &staged_keyframe;
+            return true;
+        }
     };
 
     struct LobbyGuard
@@ -1206,6 +1228,49 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         }
         save.time_limit = saved_time_limit;
         save.current_campaign = get_mounted_campaign();
+    }
+
+    // VIEW LEVEL render-copy heal from the lobby's staged pair: a keyframe
+    // that does not deserialize leaves the copy UNHEALED at that generation
+    // (the band shows degradation text, never a stale world claiming to be
+    // the stage); a real pair heals it and traces the pane generation.
+    {
+        save.current_campaign = get_mounted_campaign();
+        save.scen_num = 1;
+        ViewScenarioEngineState heal;
+        heal.scenario = std::make_unique<LevelRuntimeData>(
+            save.scen_num, false, &sdl_level_data_hooks());
+        const bool loaded = heal.scenario->load();
+        check(loaded);
+        if (loaded)
+        {
+            GameWorld& staged = heal.scenario->world();
+            og::sim::InitialSetupMessage setup;
+            setup.level_id = staged.id;
+            setup.level_title = staged.title;
+            setup.pixmaxx = staged.pixmaxx;
+            setup.pixmaxy = staged.pixmaxy;
+            setup.my_team = staged.my_team;
+            client.staged_setup = og::sim::serialize_initial_setup_message(setup);
+            client.staged_keyframe = {0xDE, 0xAD, 0xBE, 0xEF};
+            client.staged_generation = 7;
+            client.has_staged_pair = true;
+            trace_clear();
+            view_scenario_heal_render_copy(heal);
+            check(!heal.render_healed && heal.healed_generation == 7 &&
+                  !trace_contains("picker", "view_scenario pane gen="));
+
+            client.staged_keyframe = og::sim::serialize_snapshot(
+                og::sim::capture_keyframe_snapshot(staged));
+            client.staged_generation = 8;
+            view_scenario_heal_render_copy(heal);
+            check(heal.render_healed && heal.healed_generation == 8 &&
+                  trace_contains("picker", "view_scenario pane gen=8"));
+        }
+        client.has_staged_pair = false;
+        client.staged_generation = 0;
+        client.staged_setup.clear();
+        client.staged_keyframe.clear();
     }
 
     // Remote-start preemption: a host GO launches a peer parked in VIEW
