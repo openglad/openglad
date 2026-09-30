@@ -762,11 +762,9 @@ og::ui::RowState help_engine_pager_row_state(
 
 // Nav closure over the hidden pagers, re-asserted per frame over the static
 // base link (the VIEW LEVEL shape).
-void help_engine_rewire(button* buttons, int num_buttons,
+void help_engine_rewire(button* buttons, int /*num_buttons*/,
                         int& /*highlighted_button*/)
 {
-	if (num_buttons <= kHelpMenuBackIndex)
-		return;
 	const HelpScreenState* const state = g_help_screen_state;
 	const bool multi_page = state != nullptr && state->pager.multi_page();
 	buttons[kHelpMenuBackIndex].nav.right =
@@ -832,8 +830,6 @@ bool help_engine_frame_tick(void* /*screen_state*/, int /*frame*/)
 void help_engine_draw_content(void* /*screen_state*/)
 {
 	const HelpScreenState* const state = g_help_screen_state;
-	if (state == nullptr)
-		return;
 	screen* const scr = og::runtime::current_session->myscreen_;
 	text& mytext = scr->text_normal;
 

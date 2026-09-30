@@ -2230,10 +2230,10 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // the PageModel PREV/NEXT pagers in the command band (the VIEW LEVEL footer
 // geometry). Every row dispatches through MenuSpecRow except BACK, so
 // keyboard FIRE, mouse clicks, and the 1/2/3 + PageUp/PageDown hotkeys all
-// route through help_engine_on_spec_row in help.cpp; the pager visibility
-// override and the rewire read the open screen's state through a file-static
-// pointer there (null = the single-page bare-sweep shape: pagers hidden,
-// BACK's right-link closed).
+// route through help_engine_on_spec_row in help.cpp; the pager override and
+// the rewire read the open screen's state through a file-static pointer there
+// (null = the bare-sweep shape: pagers hidden, BACK's right-link closed; the
+// content draw runs only under show_general_help, which installs it first).
 
 constexpr MenuButtonSpec kHelpMenuRows[] = {
     {.id = "help_tab_controls", .label = "CONTROLS", .hotkey = KEYSTATE_1,
