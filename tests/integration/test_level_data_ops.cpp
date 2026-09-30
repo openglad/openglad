@@ -993,3 +993,65 @@ TEST(CampaignDataIo, save_as_to_unwritable_destination_fails_repack_and_keeps_id
     EXPECT_EQ(CampaignData::IoError::None, src.last_io_error());
     EXPECT_EQ(dst_id, src.id);
 }
+
+// A campaign save that unpacks fine but cannot rewrite its package reports
+// PackageRepackFailed, names the reason on stderr and leaves the original
+// package untouched. The obstruction is the user campaigns directory made
+// read-only for the save: the unpack only READS <id>.glad, while the repack
+// must create the rewritten archive beside it (libzip writes a temporary
+// file in that directory and renames it over the package). Lanes: POSIX
+// permissions on Linux and macOS; the Windows lane (release.yml) configures
+// BUILD_TESTING=OFF, so this file (already <unistd.h>-bound) never builds
+// there.
+TEST(CampaignDataIo, save_reports_repack_failed_when_package_cannot_be_rewritten)
+{
+    using namespace detail_campaign_io_failures;
+    ASSERT_NE(0u, ::geteuid())
+        << "run the tests as a non-root user (CI's ubuntu-latest is non-root)";
+    ScopedCampaignPackages packages;
+    const std::string id = unique_campaign_id("repackinplace");
+    packages.ids = {id};
+    write_campaign_package(id, {{"campaign.yaml", kGoodYaml}});
+    const fs::path campaigns_dir = user_campaign_package(id).parent_path();
+
+    // Control: the same package saves in place while the directory is
+    // writable.
+    CampaignData control(id);
+    control.title = "Saved Title";
+    ASSERT_TRUE(control.save());
+    ASSERT_EQ(CampaignData::IoError::None, control.last_io_error());
+
+    const std::string before = read_bytes(user_campaign_package(id));
+    ASSERT_FALSE(before.empty());
+    struct RestoreDirMode
+    {
+        fs::path dir;
+        fs::perms saved;
+        ~RestoreDirMode()
+        {
+            std::error_code ec;
+            fs::permissions(dir, saved, fs::perm_options::replace, ec);
+        }
+    } restore{campaigns_dir, fs::status(campaigns_dir).permissions()};
+    fs::permissions(campaigns_dir,
+                    fs::perms::owner_read | fs::perms::owner_exec |
+                        fs::perms::group_read | fs::perms::group_exec |
+                        fs::perms::others_read | fs::perms::others_exec,
+                    fs::perm_options::replace);
+
+    CampaignData blocked(id);
+    blocked.title = "Never Written";
+    testing::internal::CaptureStderr();
+    const bool saved = blocked.save();
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_FALSE(saved) << "a package that cannot be rewritten fails the save";
+    EXPECT_EQ(CampaignData::IoError::PackageRepackFailed,
+              blocked.last_io_error());
+    EXPECT_NE(std::string::npos,
+              err.find("campaign_save_failed id=" + id + " reason=repack_failed"))
+        << "stderr was: " << err;
+    EXPECT_EQ(before, read_bytes(user_campaign_package(id)))
+        << "the failed repack leaves the original package bytes";
+    EXPECT_FALSE(fs::exists(fs::path(get_user_path()) / "temp"))
+        << "the failed save still cleans its unpack directory";
+}
