@@ -64,7 +64,6 @@ class pixie
 		short xpos = 0, ypos = 0;
 		//buffers: accelerated-surface path on/off, 1/0
 		int accel = 0;
-		short on_screen();                                                                // on ANY viewscreen?
 		short on_screen(viewscreen  *viewp);  // on a specific viewscreen?
 		const unsigned char* bmp_data() const { return bmp; }
 

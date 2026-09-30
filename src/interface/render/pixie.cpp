@@ -181,17 +181,6 @@ short pixie::put_screen(short x, short y)
 	return 1;
 }
 
-short pixie::on_screen()
-{
-	short i;
-	for (i=0; i < og::runtime::current_session->myscreen_->numviews; i++)
-	{
-		if (on_screen(og::runtime::current_session->myscreen_->viewob[i].get()))
-			return 1;
-	}
-	return 0;
-}
-
 short pixie::on_screen(viewscreen  *viewp)
 {
 	Sint32 topx = viewp->topx;
