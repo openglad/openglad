@@ -546,6 +546,53 @@ TEST(PlatformHeadless, io_init_registers_class_pack_scripts)
     std::filesystem::remove_all(config_dir, ec);
 }
 
+// Headless io_init with an unusable user directory fails LOUDLY and stops
+// before mounting anything: OPENGLAD_CONFIG_DIR names a regular file, so
+// create_dir cannot make it a directory and PhysFS refuses it as the write
+// dir. The error names the path, and no pack chunk is registered (nothing
+// was mounted to register from). Paired positive control:
+// io_init_registers_class_pack_scripts, where the same io_init with a real
+// directory registers the core pack.
+TEST(PlatformHeadless, io_init_with_a_file_for_the_user_dir_fails_loudly_and_mounts_nothing)
+{
+    FreshFilesystemForIoInit filesystem_guard;
+    ASSERT_TRUE(og::script::pack_family_chunks().empty());
+
+    EnvGuard config_guard("OPENGLAD_CONFIG_DIR");
+    const std::filesystem::path not_a_dir =
+        std::filesystem::temp_directory_path() / "openglad-headless-notadir";
+    std::error_code ec;
+    std::filesystem::remove_all(not_a_dir, ec);
+    {
+        std::ofstream file(not_a_dir);
+        file << "a regular file where the user directory should be\n";
+        ASSERT_TRUE(file.good());
+    }
+    setenv("OPENGLAD_CONFIG_DIR", not_a_dir.string().c_str(), 1);
+    const std::string user_path = get_user_path();
+    ASSERT_EQ(not_a_dir.string() + "/", user_path);
+
+    char arg0[] = "og_unit_headless_platform";
+    char* argv[] = {arg0, nullptr};
+    testing::internal::CaptureStderr();
+    io_init(1, argv);
+    const std::string err = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(std::string::npos,
+              err.find("io_init(headless): Failed to set write dir: " +
+                       user_path))
+        << err;
+    EXPECT_TRUE(og::script::pack_family_chunks().empty())
+        << "io_init must stop at the write-dir failure: nothing mounted, "
+           "nothing registered";
+    EXPECT_EQ("", get_mounted_campaign())
+        << "no default campaign is mounted after the early stop";
+    EXPECT_TRUE(std::filesystem::is_regular_file(not_a_dir))
+        << "the user's file is left alone";
+
+    std::filesystem::remove_all(not_a_dir, ec);
+}
+
 TEST(PlatformHeadless, unsupported_platform_functions_return_documented_defaults)
 {
     EXPECT_TRUE(yes_or_no_prompt("headless", "default true", true));
