@@ -1943,6 +1943,48 @@ TEST(PlatformHeadless, text_picker_campaign_select_eof_keeps_the_current_campaig
               mount_campaign_package_with_error("gladiator"));
 }
 
+// With no campaign package visible at all, Campaign Select keeps the current
+// campaign, SAYS so, and records CampaignIoError — and it answers the kept id
+// (never empty), which is what sends picker_state on to Team Build instead of
+// back to the main menu. The filesystem is a fresh PhysFS whose only mount is
+// an empty directory (FreshFilesystemForIoInit puts the harness back).
+TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_current_one)
+{
+    FreshFilesystemForIoInit filesystem_guard;
+    const std::filesystem::path empty_root =
+        std::filesystem::temp_directory_path() / "openglad-headless-nocampaigns";
+    std::error_code ec;
+    std::filesystem::remove_all(empty_root, ec);
+    std::filesystem::create_directories(empty_root / "campaigns", ec);
+    ASSERT_FALSE(ec);
+    ASSERT_TRUE(og::resources::init("og_unit_headless_platform"));
+    ASSERT_TRUE(og::resources::set_write_dir(empty_root.string()));
+    ASSERT_TRUE(og::resources::mount(empty_root.string().c_str(), nullptr, 1));
+    ASSERT_TRUE(list_campaigns().empty())
+        << "the arranged filesystem must list no campaign package";
+
+    std::string output;
+    std::string returned;
+    std::string config_after;
+    std::string save_after;
+    int error_code = -1;
+    ASSERT_EQ(0, og::ui::text_picker_testing_campaign_select(
+                     "gladiator", "1\n", output, returned, config_after,
+                     save_after, error_code));
+
+    EXPECT_EQ(std::format("No campaigns found; keeping '{}'.\n",
+                          og::data::campaign_display_title("gladiator")),
+              output)
+        << "the kept campaign is named, and nothing else is printed";
+    EXPECT_EQ("gladiator", returned)
+        << "the kept id, never empty: picker_state routes on emptiness";
+    EXPECT_EQ("gladiator", config_after);
+    EXPECT_EQ(static_cast<int>(og::ui::TextPickerErrorCode::CampaignIoError),
+              error_code);
+
+    std::filesystem::remove_all(empty_root, ec);
+}
+
 // Users must see human titles, never raw campaign ids: "Gladiator" from the
 // package's campaign.yaml and "1. SOUTH OF TALWOOD (BEGINNING)" from the
 // scen1.fss header. The selection state keeps the raw id.
