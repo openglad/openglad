@@ -1979,6 +1979,74 @@ int editor_minimap_injector(void* opaque)
     return ok ? 0 : 1;
 }
 
+struct EditorDecorSample
+{
+    bool ok = false;
+    bool decor_mode = false;
+    int dirty_while_held = -1;
+    int decor_cells = -1;
+    int decor_value = -1;
+    int base_genre = -1;
+};
+
+// Decor mode (B in Terrain mode) paints the current floor's decor plane
+// under the held button and dirties the level; the base grid under the
+// stroke is left alone. The brush is the editor's default, DECOR_TORCH1.
+int editor_decor_brush_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorDecorSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    if (ok)
+        ok = author_new_level();
+    if (ok)
+        ok = enter_terrain_mode();
+    // Warm-up stroke: a "Pick" left armed by an earlier session is consumed
+    // by the first map click (the paint test's discipline).
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX + 3 * GRID_SIZE, kMapCellY);
+    if (ok)
+        ok = key_settled(SDLK_B) &&
+             wait_until([]() { return eds().decor_mode; }, kEditorEditCeilingMs);
+    sample.decor_mode = eds().decor_mode;
+    if (ok)
+    {
+        eds().levelchanged = 0;   // idle: the previous step was acknowledged
+        press_left_game(kMapCellX, kMapCellY);
+        ok = wait_until([]() { return eds().levelchanged == 1; },
+                        kEditorEditCeilingMs);
+        sample.dirty_while_held = eds().levelchanged;
+        LevelRuntimeData* level = level_editor_testing_level();
+        if (ok && level != nullptr)
+        {
+            GameWorld& world = level->world();
+            const PixieData& plane = world.decor_for_floor(0);
+            int cells = 0;
+            if (plane.valid())
+            {
+                for (int y = 0; y < plane.h; ++y)
+                    for (int x = 0; x < plane.w; ++x)
+                    {
+                        const unsigned char d =
+                            plane.data[static_cast<std::size_t>(y * plane.w + x)];
+                        if (d == DECOR_NONE)
+                            continue;
+                        ++cells;
+                        sample.decor_value = d;
+                        sample.base_genre =
+                            world.smoother_for_floor(0).query_genre_x_y(x, y);
+                    }
+            }
+            sample.decor_cells = cells;
+        }
+        ok = release_left_game(kMapCellX, kMapCellY) && ok;
+    }
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
 template <typename Sample>
 int run_editor_with_injector(SDL_ThreadFunction injector, Sample& sample,
                              const char* name)
@@ -2019,4 +2087,26 @@ TEST(LevelEditorInteractions, held_press_on_the_minimap_recentres_the_camera_on_
            "camera centre (x)";
     EXPECT_EQ(sample.expected_topy, sample.topy_held)
         << "and 12 cells down (y)";
+}
+
+TEST(LevelEditorInteractions, held_decor_brush_paints_the_decor_plane_and_dirties_the_level)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    EditorDecorSample sample;
+    const int result = run_editor_with_injector(editor_decor_brush_injector,
+                                                sample, "editor_decor_brush");
+    picker_testing_yes_or_no_queue_clear();
+
+    EXPECT_EQ(0, result);
+    EXPECT_TRUE(sample.decor_mode) << "B switches Terrain mode to decor painting";
+    EXPECT_EQ(1, sample.dirty_while_held)
+        << "the held decor stroke dirties the level before the button is up";
+    EXPECT_EQ(1, sample.decor_cells)
+        << "exactly the pressed cell carries decor on a new level";
+    EXPECT_EQ(static_cast<int>(DECOR_TORCH1), sample.decor_value)
+        << "the default decor brush is the torch";
+    EXPECT_EQ(static_cast<int>(TYPE_GRASS), sample.base_genre)
+        << "control: the decor brush leaves the base tile under it alone";
 }
