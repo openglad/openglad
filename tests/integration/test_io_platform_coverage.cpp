@@ -293,6 +293,96 @@ TEST(IoPlatformCoverage,
     EXPECT_FALSE(fs::exists(invalid_config));
 }
 
+// io_init refuses to start without the default campaign: when the user data
+// tree cannot hold campaigns/gladiator.glad (here `campaigns` is a regular
+// file, so the directory cannot be created and the restore copy fails), the
+// mount fails and io_init throws the named fatal instead of running with no
+// campaign. The canonical re-init tail restores the process for every later
+// test; its success is the paired positive control.
+TEST(IoPlatformCoverage,
+     io_init_reports_unmountable_default_campaign_and_recovers_canonical_state)
+{
+    namespace fs = std::filesystem;
+    ASSERT_TRUE(og::resources::is_initialized());
+    og::test::ScopedCampaignMountState mount_state;
+
+    const fs::path config_root =
+        fs::path(get_user_path()) / "platform_io_mount_pass";
+    std::error_code ec;
+    fs::remove_all(config_root, ec);
+    const fs::path config_dir = config_root / "config";
+    fs::create_directories(config_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    const fs::path campaigns_blocker = config_dir / "campaigns";
+    {
+        std::ofstream out(campaigns_blocker, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.good());
+        out << "campaigns is intentionally a regular file";
+    }
+
+    std::string argv0 =
+        (fs::path(get_asset_path()) / "og_test_io").string();
+    char* argv[] = {argv0.data()};
+    bool threw = false;
+    bool initialized_after_failure = false;
+    std::string failure_message;
+    std::string mounted_after_failure = "<unset>";
+    {
+        ScopedEnvVar config_env("OPENGLAD_CONFIG_DIR");
+        config_env.set(config_dir.string());
+        set_mounted_campaign_for_testing("");
+        io_exit();
+
+        try
+        {
+            io_init(1, argv);
+        }
+        catch (const std::runtime_error& error)
+        {
+            threw = true;
+            failure_message = error.what();
+        }
+        initialized_after_failure = og::resources::is_initialized();
+        mounted_after_failure = get_mounted_campaign();
+        if (initialized_after_failure)
+            io_exit();
+    }
+
+    // Re-establish the integration test process contract before making any
+    // assertions, so even a failed expectation cannot strand sibling tests.
+    set_mounted_campaign_for_testing("");
+    bool recovered = true;
+    std::string recovery_error;
+    try
+    {
+        io_init(1, argv);
+    }
+    catch (const std::runtime_error& error)
+    {
+        recovered = false;
+        recovery_error = error.what();
+    }
+
+    ASSERT_TRUE(recovered) << recovery_error;
+    EXPECT_EQ("gladiator", get_mounted_campaign())
+        << "control: the canonical tree mounts the default campaign";
+    EXPECT_TRUE(threw) << "io_init must not run without its default campaign";
+    EXPECT_EQ(0u, failure_message.find("Fatal: Failed to mount default campaign: "))
+        << failure_message;
+    EXPECT_TRUE(initialized_after_failure)
+        << "the mount is the step that failed, after PhysFS came up";
+    EXPECT_EQ("", mounted_after_failure) << "no campaign is left mounted";
+
+    std::ifstream blocker_in(campaigns_blocker, std::ios::binary);
+    ASSERT_TRUE(blocker_in.good());
+    const std::string blocker_bytes{
+        std::istreambuf_iterator<char>(blocker_in),
+        std::istreambuf_iterator<char>()};
+    EXPECT_EQ("campaigns is intentionally a regular file", blocker_bytes);
+    blocker_in.close();
+    fs::remove_all(config_root, ec);
+}
+
 TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
 {
     namespace fs = std::filesystem;
