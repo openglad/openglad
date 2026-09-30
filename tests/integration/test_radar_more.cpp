@@ -581,7 +581,7 @@ TEST_F(RadarMore, radar_terrain_follows_the_editor_floor_override)
 
 // B2 (robustness): a floor whose grid was never authored falls back to the
 // base grid (no crash, no garbage), and an out-of-range walker floor clamps
-// to the top floor.
+// to the top floor (above) or to the ground floor (below).
 TEST_F(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
 {
     FixedRandom fixed_rng(1);
@@ -619,6 +619,15 @@ TEST_F(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
         << "floor 5 with 2 floors clamps to the top floor";
     EXPECT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0]))
         << "an unauthored floor grid falls back to the base terrain";
+
+    // A negative floor (w:set_floor(-1) is unclamped from a level script)
+    // clamps to the ground floor, and the radar re-bakes floor 0's snow.
+    control->set_floor(-1);
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(0, static_cast<int>(r.bmp_floor_))
+        << "floor -1 clamps to the ground floor";
+    EXPECT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0]))
+        << "the ground floor's snow is re-baked";
 
     vs->control = saved_control;
     vs->radarstart = saved_radarstart;
