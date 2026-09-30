@@ -3094,8 +3094,6 @@ public:
             og::ui::detail::make_team_change_message(
                 player_index, target_seat_id, team));
         poll_and_apply();
-        if (!state_.has_value())
-            return false;
         const og::sim::LobbyPlayer* const echoed =
             og::ui::detail::find_player_by_seat_id(*state_, target_seat_id);
         return echoed != nullptr && echoed->team == team;
