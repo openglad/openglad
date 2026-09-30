@@ -1,6 +1,8 @@
 // The shared state-machine tests normally use mock clients.  Expose only the
 // concrete adapter construction boundary so tests can drive and assert its
 // real IPickerClient operations directly.
+void campaign_picker_testing_abort();  // campaign_picker_internal.inc
+
 std::unique_ptr<og::ui::IPickerClient> picker_testing_create_sdl_client()
 {
     return std::make_unique<SdlPickerClient>();
@@ -432,6 +434,18 @@ struct PickerSdlClientTestAccess
         client.cancel_relay_room_list_request();
         return proceed;
     }
+
+    // SET CAMPAIGN through the real browser: `cancel` leaves it without a
+    // pick (the TESTING abort is the browser's own BACK); otherwise the
+    // un-driven browser accepts the campaign under its cursor.
+    static std::string show_campaign_select(bool cancel)
+    {
+        ProbeRestore restore;
+        SdlPickerClient client;
+        if (cancel)
+            campaign_picker_testing_abort();
+        return client.show_campaign_select();
+    }
 };
 
 bool picker_testing_submit_direct_join(const std::string& ip_address,
@@ -446,6 +460,11 @@ bool picker_testing_submit_direct_join(const std::string& ip_address,
 bool picker_testing_join_relay_prompt(std::string& stored_room_code)
 {
     return PickerSdlClientTestAccess::join_relay_prompt(stored_room_code);
+}
+
+std::string picker_testing_show_campaign_select(bool cancel)
+{
+    return PickerSdlClientTestAccess::show_campaign_select(cancel);
 }
 
 int picker_testing_exercise_sdl_client_internal_paths()

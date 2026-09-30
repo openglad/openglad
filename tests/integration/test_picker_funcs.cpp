@@ -47,6 +47,8 @@ bool picker_testing_submit_direct_join(const std::string& ip_address,
                                        int& factory_calls, bool& direct_mode,
                                        std::string& endpoint);
 bool picker_testing_join_relay_prompt(std::string& stored_room_code);
+std::string picker_testing_show_campaign_select(bool cancel);
+void campaign_picker_testing_set_auto_accept(bool enabled);
 
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);
@@ -2124,6 +2126,31 @@ TEST(PickerFuncs, networked_lobby_shutdown_ends_the_pack_transfer_session)
     }
     EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(manifest))
         << "the networked session's downloaded pack must be unmounted";
+}
+
+// Rule: SET CAMPAIGN cancelled in the browser changes nothing -- the client
+// answers with no campaign, and the save's campaign and level stay put.
+TEST(PickerFuncs, cancelling_set_campaign_changes_nothing)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string campaign = save.current_campaign;
+    const short scen = save.scen_num;
+    ASSERT_EQ(campaign, get_mounted_campaign())
+        << "the browser opens on the mounted campaign";
+
+    EXPECT_EQ("", picker_testing_show_campaign_select(/*cancel=*/true))
+        << "a cancelled browser selects no campaign";
+    EXPECT_EQ(campaign, save.current_campaign);
+    EXPECT_EQ(scen, save.scen_num);
+    EXPECT_EQ(campaign, get_mounted_campaign());
+
+    // Paired control: the un-cancelled browser accepts the campaign under
+    // its cursor -- the current one -- and the client names it.
+    campaign_picker_testing_set_auto_accept(true);
+    EXPECT_EQ(campaign, picker_testing_show_campaign_select(/*cancel=*/false));
+    EXPECT_EQ(campaign, save.current_campaign);
+    EXPECT_EQ(campaign, get_mounted_campaign());
+    save.scen_num = scen;
 }
 
 namespace
