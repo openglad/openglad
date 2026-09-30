@@ -1114,6 +1114,97 @@ TEST(NetTransportRelayWs, link_state_reports_lost_after_relay_drops_connection)
     EXPECT_TRUE(client.connected_peers().empty());
 }
 
+// Rule (net_transport_relay_ws.cpp retire_and_redial): a send or broadcast
+// that ix refuses has already closed the socket on the GAME thread, and if
+// ix's io thread sampled the socket just before, it leaves run() for good
+// with reconnection armed -- nothing would ever fire again, so a queued
+// Disconnect that only poll() turns into link state is not enough. The
+// failed send itself marks the link Lost, the next send returns at the
+// `connected` gate (no dial storm), and the retired socket is replaced by
+// one that dials the relay again. The loop below never calls poll() on the
+// host: the transition must come from the failing send alone.
+enum class RelaySendPath { Targeted, Broadcast };
+
+void expect_failed_send_retires_and_redials(RelaySendPath path)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    auto server = std::make_unique<FakeRelayServer>(port);
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.min_reconnect_wait_ms = 1u;
+    options.max_reconnect_wait_ms = 20u;
+    const std::string url =
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-REDIAL", port);
+    og::sim::RelayWebSocketTransport host(url, options);
+    og::sim::RelayWebSocketTransport joiner(url, options);
+    host.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(host));
+    joiner.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(host, 1u));
+    ASSERT_TRUE(poll_until_peer_count(joiner, 1u));
+    const og::sim::PeerId joiner_id = *joiner.local_peer_id();
+
+    const std::vector<std::uint8_t> payload =
+        og::sim::serialize_client_ready_message(
+            og::sim::ClientReadyMessage{.last_applied_tick = 7u});
+    const auto send_once = [&] {
+        if (path == RelaySendPath::Targeted)
+            host.send(joiner_id, payload.data(), payload.size());
+        else
+            host.broadcast(payload);
+    };
+
+    // Positive control: a send over a healthy link leaves it Connected.
+    send_once();
+    ASSERT_EQ(og::sim::TransportLinkState::Connected, host.link_state())
+        << "a send that succeeded must not move the link";
+
+    server.reset();
+
+    EXPECT_TRUE(wait_until(
+        [&] {
+            send_once();
+            return host.link_state() == og::sim::TransportLinkState::Lost;
+        },
+        10s))
+        << "a send that failed must mark the relay link Lost on the game "
+           "thread, without waiting for a poll() a dead io thread never feeds";
+    EXPECT_TRUE(host.connected_peers().empty());
+    EXPECT_FALSE(host.local_peer_id().has_value())
+        << "the retired socket's room membership is gone";
+
+    // Storm half: the next send returns at the `connected` gate instead of
+    // tearing the replacement socket down and dialling yet again.
+    send_once();
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, host.link_state());
+
+    // The replacement socket still dials: a relay back on the same port is
+    // re-joined and the link reads Connected with a fresh room membership.
+    FakeRelayServer returning_server(port);
+    EXPECT_TRUE(wait_until(
+        [&] {
+            (void)host.poll();
+            (void)joiner.poll();
+            return host.link_state() ==
+                       og::sim::TransportLinkState::Connected &&
+                host.local_peer_id().has_value();
+        },
+        15s))
+        << "the relay transport stopped dialling after the failed send";
+}
+
+TEST(NetTransportRelayWs, a_failed_send_retires_the_link_and_redials_the_relay)
+{
+    expect_failed_send_retires_and_redials(RelaySendPath::Targeted);
+}
+
+TEST(NetTransportRelayWs,
+     a_failed_broadcast_retires_the_link_and_redials_the_relay)
+{
+    expect_failed_send_retires_and_redials(RelaySendPath::Broadcast);
+}
+
 // Live end-to-end check against the DEPLOYED Cloudflare relay: native TLS
 // (https:// room create + wss:// room sockets through ixwebsocket/OpenSSL)
 // plus the full owner/guest handshake and frame forwarding. Opt-in because it
