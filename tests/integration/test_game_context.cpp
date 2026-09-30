@@ -9,11 +9,17 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <gtest/gtest.h>
 
+#include <SDL3/SDL.h>
+
 #include <array>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <set>
 #include <string_view>
 
@@ -79,6 +85,80 @@ TEST(GameContext, default_sdl_sound_initializes_loaded_audio)
     EXPECT_EQ(kBowSampleBytes, sound.sound[SOUND_BOW].len)
         << "the loaded bow sample keeps its full decoded length";
     EXPECT_NE(nullptr, sound.sound[SOUND_BOW].buf);
+}
+
+// The two tests below run the sound object in a death-test child because the
+// defect they pin ended the whole process: every failure arm in sound.cpp used
+// to exit(0). The child re-executes this binary ("threadsafe" style), so it
+// starts from fresh statics, and it reports with std::exit -- never _Exit --
+// so libgcov's exit hook still records the child's coverage.
+namespace {
+// The child's own per-process config dir (integration_main makes one per
+// PID); removed so a death-test child leaves nothing behind in /tmp.
+[[noreturn]] void exit_child(bool rule_held)
+{
+    if (const char* dir = std::getenv("OPENGLAD_CONFIG_DIR"))
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+    }
+    std::exit(rule_held ? 42 : 43);
+}
+} // namespace
+
+// Rule (sound.cpp init): a machine whose audio subsystem will not start runs
+// the game SILENT -- silence == 1, no clip loaded -- instead of quitting at
+// startup with status 0 and nothing on screen. Positive control:
+// default_sdl_sound_initializes_loaded_audio above (a working driver loads
+// bow.wav at full length with silence == 0).
+TEST(GameContext, an_audio_driver_that_will_not_start_leaves_the_game_silent)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_EXIT(
+        {
+            // The harness's global screen already holds the audio subsystem
+            // on the dummy driver; release it through the product's own
+            // shutdown so the next init is a real first open and reads the
+            // override below (the environment's SDL_AUDIODRIVER=dummy would
+            // outrank a normal-priority hint).
+            auto* const global_sound = dynamic_cast<sdl_soundob*>(
+                og::runtime::current_session->myscreen_->soundp.get());
+            if (global_sound == nullptr)
+                std::exit(44);
+            global_sound->shutdown();
+            SDL_SetHintWithPriority(SDL_HINT_AUDIO_DRIVER, "og-no-such-driver",
+                                    SDL_HINT_OVERRIDE);
+            sdl_soundob sound;
+            exit_child(sound.silence == 1 &&
+                       sound.sound[SOUND_BOW].buf == nullptr);
+        },
+        ::testing::ExitedWithCode(42), "");
+}
+
+// Rule (sound.cpp load_sound): one sample that will not decode stays an empty
+// clip (play_sound skips it) and the rest of the bank still loads; it is not
+// a reason to quit. The user data directory is mounted ahead of the stock
+// sound/ directory (io_init), so a corrupt sound/twang.wav there is what the
+// loader reads for SOUND_BOW.
+TEST(GameContext, an_unreadable_sound_file_leaves_only_that_clip_empty)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_EXIT(
+        {
+            const std::filesystem::path dir =
+                std::filesystem::path(get_user_path()) / "sound";
+            std::filesystem::create_directories(dir);
+            {
+                std::ofstream corrupt(dir / "twang.wav", std::ios::binary);
+                corrupt << "not a RIFF/WAVE file";
+            }
+            sdl_soundob sound;
+            exit_child(sound.silence == 0 &&
+                       sound.sound[SOUND_BOW].buf == nullptr &&
+                       sound.sound[SOUND_BOW].len == 0u &&
+                       sound.sound[SOUND_CLANG].buf != nullptr);
+        },
+        ::testing::ExitedWithCode(42), "");
 }
 
 TEST(GameContext, inprocess_mismatch_diagnostics_render_enum_and_signed_byte)
