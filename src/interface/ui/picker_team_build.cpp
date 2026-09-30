@@ -1979,8 +1979,6 @@ Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
         popup_dialog("SELL CHARACTER", "BACKUP FAILED\nCHARACTER NOT SOLD");
         return MENU_REDRAW;
     }
-    if (result != og::ui::TrainSession::SellResult::Sold)
-        return MENU_OK;
 
     picker_base_camp_after_roster_mutation(sold_team);
     if (pks().train_session->empty())
