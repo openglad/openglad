@@ -2788,3 +2788,64 @@ TEST(RuntimeCoveragePaths, window_autosave_networked_lobby_is_a_merge_write)
     s->save_data.last_played_unix_s = saved_last_played;
     s->save_data.m_totalcash[1] = saved_cash1;
 }
+
+// A window-close autosave that cannot write reports
+// 'window_autosave_failed event=close error=<n>' and leaves the company file
+// byte-unchanged. The obstruction is a real filesystem state: an occupied
+// directory squatting on the atomic write's staging name. Control: the
+// minimize autosave in window_autosave_targets_company_and_gates_networked_gameplay.
+TEST(RuntimeCoveragePaths, window_close_autosave_failure_is_reported_and_harmless)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+    WindowAutosaveTestEnv env;
+    const std::int64_t saved_last_played = s->save_data.last_played_unix_s;
+
+    og::runtime::current_session->gameplay_active_ = false;
+    og::runtime::current_session->networked_session_ = false;
+    og::ui::install_active_picker_lobby_client(nullptr);
+    og::data::set_company_clock_for_tests(7070);
+
+    // A company on disk to protect.
+    SDL_Event e{};
+    e.type = SDL_EVENT_WINDOW_MINIMIZED;
+    handle_window_event(e);
+    const std::string bytes_before = read_save0_bytes();
+    ASSERT_FALSE(bytes_before.empty());
+
+    const std::filesystem::path staging =
+        std::filesystem::path(get_user_path()) / "save" / "save0.tmp.gtl";
+    std::error_code ec;
+    std::filesystem::remove_all(staging, ec);
+    std::filesystem::create_directories(staging, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    struct StagingCleanup
+    {
+        std::filesystem::path path;
+        ~StagingCleanup()
+        {
+            std::error_code cleanup_ec;
+            std::filesystem::remove_all(path, cleanup_ec);
+        }
+    } staging_cleanup{staging};
+    {
+        std::ofstream occupant(staging / "occupant");
+        occupant << "x";
+    }
+
+    og::data::set_company_clock_for_tests(8080);
+    ::testing::internal::CaptureStderr();
+    e.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+    handle_window_event(e);
+    const std::string stderr_text = ::testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(std::string::npos,
+              stderr_text.find(
+                  "[ERROR] window_autosave_failed event=close error=2\n"))
+        << stderr_text;
+    EXPECT_EQ(bytes_before, read_save0_bytes())
+        << "a failed close autosave must leave the company byte-unchanged";
+    EXPECT_EQ(7070, og::data::read_company_header("save0")->last_played_unix_s)
+        << "the on-disk timestamp must not be promoted by a failed write";
+    s->save_data.last_played_unix_s = saved_last_played;
+}
