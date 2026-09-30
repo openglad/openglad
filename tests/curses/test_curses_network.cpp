@@ -2183,6 +2183,79 @@ TEST(CursesNetwork, joiner_follows_after_team_wipe_and_switch_char_cycles)
     }
 }
 
+// §4.5 curses follow: when the WATCHED target dies, the camera advances to
+// the next follow target after the corpse (og::sim::next_follow_target_id),
+// never resting on the corpse. A hero's corpse persists in the mirror (an
+// anonymous troop is erased with its death, so only a hero can be watched
+// while dead), which makes the retarget observable. The host plays team 2 so
+// the scenario's awake team-0 troops outlive the kill: the next target is a
+// live troop, which the legacy own-seat resolution (the joiner's wiped seat)
+// can never name. Ids are held across ticks, never walker*. Paired control:
+// joiner_follows_after_team_wipe_and_switch_char_cycles above, where the
+// watched hero stays alive and the camera stays on it.
+TEST(CursesNetwork, joiner_follow_advances_past_a_watched_hero_that_dies)
+{
+    SaveData host_save;
+    SaveData join_save;
+    constexpr short kHostTeam = 2;
+    init_team_save(host_save, kHostTeam, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    ASSERT_GE(og::curses::curses_network_testing_clear_server_team(
+                  *game.host_session, 1),
+              1);
+    bool engaged = false;
+    for (int i = 0; i < 120 && !engaged; ++i) {
+        advance_all(*game.host_session, *game.join_session, 1);
+        engaged = game.join_session->follow_engaged();
+    }
+    ASSERT_TRUE(engaged);
+    const std::uint32_t watched = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, watched);
+    {
+        const walker* w =
+            game.join_session->mirror_world().find_by_id(watched);
+        ASSERT_NE(nullptr, w);
+        ASSERT_FALSE(w->dead());
+        ASSERT_NE(nullptr, w->myguy);
+        ASSERT_EQ("Host", w->myguy->name) << "the joiner watches the host's hero";
+    }
+
+    // Kill the watched hero's team on the authoritative server.
+    ASSERT_GE(og::curses::curses_network_testing_clear_server_team(
+                  *game.host_session, kHostTeam),
+              1);
+    bool watched_dead = false;
+    std::uint32_t expected = 0;
+    for (int i = 0; i < 120 && !watched_dead; ++i) {
+        advance_all(*game.host_session, *game.join_session, 1);
+        walker* const corpse =
+            game.join_session->mirror_world().find_by_id(watched);
+        ASSERT_NE(nullptr, corpse) << "a hero's corpse persists in the mirror";
+        watched_dead = corpse->dead();
+        if (watched_dead)
+            expected = og::sim::next_follow_target_id(
+                game.join_session->mirror_world(), corpse, false);
+    }
+    ASSERT_TRUE(watched_dead) << "the server kill must reach the mirror";
+    ASSERT_NE(0u, expected) << "an awake scenario troop outlives the kill";
+    ASSERT_NE(watched, expected);
+
+    EXPECT_TRUE(game.join_session->follow_engaged());
+    const std::uint32_t followed = game.join_session->followed_entity_id();
+    EXPECT_EQ(expected, followed)
+        << "a dead watched target advances to the next follow target";
+    const walker* const now =
+        game.join_session->mirror_world().find_by_id(followed);
+    ASSERT_NE(nullptr, now);
+    EXPECT_FALSE(now->dead()) << "the camera never rests on a corpse";
+}
+
 TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)
 {
     SaveData host_save;
