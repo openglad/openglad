@@ -609,9 +609,11 @@ void deserialize_entity_fields(ByteReader& reader,
     });
 }
 
-void copy_entity_field(og::sim::EntitySnapshot& dst,
-                       const og::sim::EntitySnapshot& src,
-                       std::uint8_t bit_index)
+} // namespace
+
+void og::sim::copy_entity_field(og::sim::EntitySnapshot& dst,
+                                const og::sim::EntitySnapshot& src,
+                                std::uint8_t bit_index)
 {
     switch (bit_index)
     {
@@ -636,11 +638,14 @@ void copy_entity_field(og::sim::EntitySnapshot& dst,
                 field->size);
 }
 
+namespace
+{
+
 void apply_entity_delta_fields(og::sim::EntitySnapshot& baseline,
                                const og::sim::EntitySnapshot& delta)
 {
     for_each_dirty_field_bit(delta.dirty_mask, [&baseline, &delta](std::uint8_t bit) {
-        copy_entity_field(baseline, delta, bit);
+        og::sim::copy_entity_field(baseline, delta, bit);
     });
 }
 
