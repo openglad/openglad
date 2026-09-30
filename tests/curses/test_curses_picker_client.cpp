@@ -4349,6 +4349,111 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
     cfg.data.erase("cloud");
 }
 
+// [SAVE-R2]/D16: a cloud DOWNLOAD whose company installs but cannot be
+// OPENED (its campaign is not installed here) keeps the company on disk,
+// names the missing campaign, and leaves the curses slot on the company that
+// was open before. install_company_bytes header-validates only, so the
+// install succeeds; load_with_error then fails with CampaignLoadFailed. The
+// paired control is cloud_download_confirms_installs_and_opens_company, where
+// the same DOWNLOAD opens the company and repoints the slot.
+TEST(CursesPickerClient, cloud_download_of_an_unopenable_company_keeps_the_slot)
+{
+    MountRestore mount_restore;
+    cfg.data.erase("cloud");
+
+    const std::string staging_slot =
+        unique_curses_company_slot("curses-cloud-stage");
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "ORPHAN BAND";
+        sd.current_campaign = "wp4nosuchcampaign";
+        sd.last_played_unix_s = 9350;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error(staging_slot));
+    }
+    const std::string remote_bytes =
+        read_user_file_bytes("save/" + staging_slot + ".gtl");
+    ASSERT_FALSE(remote_bytes.empty());
+    ASSERT_TRUE(remove_user_file("save/" + staging_slot + ".gtl"));
+
+    const std::string company_slot =
+        unique_curses_company_slot("curses-cloud-orphan");
+    ASSERT_FALSE(user_file_exists("save/" + company_slot + ".gtl"));
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    const std::string get_body =
+        std::format(
+            R"({{"revision":7,"uploaded_at":1754200000000,"slot":"{}",)"
+            R"("save_name":"ORPHAN BAND","scen_num":1,"last_played":9350,)"
+            R"("data_hex":"{}"}})",
+            company_slot, og::ui::cloud::hex_encode(remote_raw));
+
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_get = [&](const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    faked.cloud_http_post = [](const std::string&, const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 500;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    {
+        HeadlessTerminal term{40, 100};
+        PresentedFrameLog log{term};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client(log, clock, config, options);
+        const std::string slot_before = config.save_name;
+        ASSERT_NE(company_slot, slot_before);
+
+        const int door_idx =
+            main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+        ASSERT_GE(door_idx, 0);
+        ASSERT_LE(door_idx, 8);
+        pick(term, door_idx);
+        pick(term, 0);                     // PASSPHRASE
+        term.push_string("correct horse battery");
+        term.push_special(KeyCode::Enter);
+        dismiss(term);                     // "Passphrase set."
+        pick(term, 2);                     // DOWNLOAD (new slot: no confirm)
+        dismiss(term);                     // the open path's "Load failed"
+        dismiss(term);                     // the campaign-missing notice
+        term.push_special(KeyCode::Escape); // leave the submenu
+        term.push_special(KeyCode::Escape); // Main -> quit
+
+        og::ui::run_picker(client);
+
+        EXPECT_TRUE(term.input_exhausted());
+        EXPECT_EQ(slot_before, config.save_name)
+            << "[SAVE-R2] an install that cannot be opened must leave the "
+               "curses slot on the previous company";
+        EXPECT_EQ(slot_before, og::data::active_company_slot());
+        EXPECT_EQ(1u, log.frames_containing(
+                          std::format("Load failed for '{}'", company_slot))
+                          .size())
+            << "the open attempt was made on the downloaded slot and failed";
+        EXPECT_EQ(1u, log.frames_containing("Downloaded, but campaign").size());
+        EXPECT_EQ(1u, log.frames_containing("'wp4nosuchcampaign' is not").size())
+            << "D16: the notice names the campaign to install";
+    }
+
+    EXPECT_EQ(remote_bytes,
+              read_user_file_bytes("save/" + company_slot + ".gtl"))
+        << "D16: the downloaded company stays installed on disk";
+    EXPECT_EQ("7", cfg.get_setting("cloud", "revision"));
+    cfg.data.erase("cloud");
+}
+
 // Every destructive door in the company list opens with a row prompt, and
 // backing out of that prompt has to be free: no company deleted, no backup
 // deleted, no company opened, no slot repointed. The accepted delete at the
