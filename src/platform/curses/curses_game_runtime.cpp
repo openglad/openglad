@@ -429,8 +429,6 @@ std::string mission_verdict_line(const GameRunResult& result,
         for (const std::string& line :
              og::mode::current_progression().results_summary_lines(*save, *world))
         {
-            if (line.empty())
-                continue;
             verdict += ' ';
             verdict += line;
         }
