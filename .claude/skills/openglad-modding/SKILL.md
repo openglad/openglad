@@ -186,9 +186,9 @@ either pass.
   `mypack:soldier` still finds core's SOLDIER when your pack has no `soldier`,
   which is convenience, not a scope check. Give a new family a
   meaningful `name:` and avoid reuse when bare lookup must be unambiguous;
-  never omit it, since a free living slot defaults to `BEAST`, which three
-  core families already answer to. Genuine core name collisions use
-  `"core:#<id>"`. `og.family_id(order, id_str)` resolves or returns nil; call
+  never omit it, since a free living slot defaults to `BEAST`, which every
+  other nameless family would answer to as well. Genuine core name
+  collisions use `"core:#<id>"`. `og.family_id(order, id_str)` resolves or returns nil; call
   it once at chunk load into a `local`.
 - **The line lints.** One *statement* per line (`if low then flee() end`
   makes the branch body share a coverage point with its guard, so an

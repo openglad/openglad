@@ -726,7 +726,7 @@ block.
   compatibility. Reusing a display name is legal, but its bare form is
   ambiguous and resolves to the lowest byte.
 - The core pack explicitly declares positional ids for historic display-name
-  collisions such as the `BEAST` and `SLIME` groups.
+  collisions such as the `SLIME` group.
 - There is no string-id provenance or remapping in the save, level, or
   snapshot formats. A byte that belongs to a mod must be loaded with the
   compatible pack set. Core ids remain safe across legacy data because the
