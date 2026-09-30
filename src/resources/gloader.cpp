@@ -455,8 +455,6 @@ static void install_pack_entity(loader& l, Order order, int family,
 	if (d == nullptr)
 		return;
 	const int idx = loader::slot_for(order, family);
-	if (idx < 0)
-		return;
 	if (d->pix_filename)
 		l.graphics[static_cast<std::size_t>(idx)] = read_pixie_file(d->pix_filename);
 	// 0 = "keep the EntityDef row", so a pack that declares nothing leaves core
@@ -783,8 +781,6 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 		ob = std::make_unique<effect>();
 	else
 		ob = std::make_unique<walker>();
-	if (!ob)
-		return nullptr;
 
 	if (entity_factory_.attach_render)
 		entity_factory_.attach_render(*ob, pix);
