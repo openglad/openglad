@@ -1671,7 +1671,11 @@ TEST(CampaignAndLevelPicker, set_scen_level_accepts_earned_id_and_abandons_repla
     SDL_Thread* thread = SDL_CreateThread(
         level_picker_enter_id_injector, "level_picker_enter_id_ok", nullptr);
     ASSERT_TRUE(thread != nullptr);
-    const Sint32 ret = do_set_scen_level(0);
+    // Through the button dispatcher -- vbutton::do_call's DoSetScenLevel arm,
+    // the path the SET LEVEL row takes -- not a direct call.
+    vbutton dispatcher;
+    const Sint32 ret = dispatcher.do_call(
+        button_action_id(ButtonAction::DoSetScenLevel), 0);
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 
