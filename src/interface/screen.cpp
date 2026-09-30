@@ -1106,7 +1106,6 @@ void screen::init_common(short howmany, bool has_display)
 		for (j=0; j < NUM_SPECIALS; j++)
 		{
 			special_name[i][j] = fd ? fd->special_names[j] : "NONE";
-			alternate_name[i][j] = fd ? fd->alternate_names[j] : "NONE";
 		}
 	}
 

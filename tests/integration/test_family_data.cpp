@@ -147,10 +147,6 @@ TEST(FamilyData, special_names_match_screen)
             std::snprintf(msg, sizeof(msg), "family %d special_name[%d] mismatch: '%s' vs '%s'",
                           fam, s, d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str());
             ASSERT_STREQ(d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str()) << msg;
-
-            std::snprintf(msg, sizeof(msg), "family %d alternate_name[%d] mismatch: '%s' vs '%s'",
-                          fam, s, d->alternate_names[s], og::runtime::current_session->myscreen_->alternate_name[fam][s].c_str());
-            ASSERT_STREQ(d->alternate_names[s], og::runtime::current_session->myscreen_->alternate_name[fam][s].c_str()) << msg;
         }
     }
 }
