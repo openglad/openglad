@@ -13433,3 +13433,55 @@ TEST(PickerNetworkClient, deferred_go_without_lobby_state_is_cancelled_not_sent)
         raw.last(og::sim::LobbyMessageKind::StartGame)->payload);
     EXPECT_EQ(1u, start.player_index);
 }
+
+// A staged pair the joiner cannot apply (undecodable setup bytes paired by
+// generation with a keyframe) is reported honestly as Unavailable, never as
+// None ("waiting for host preview") and never as a stale world.
+TEST(PickerNetworkClient, unapplyable_staged_pair_reports_preview_unavailable)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u));
+    raw.seat_joiner(1u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    }));
+
+    // Control: nothing staged yet.
+    EXPECT_EQ(og::ui::IPickerLobbyClient::StagedPreviewHealth::None,
+              raw.joiner().staged_preview_health());
+    EXPECT_EQ(0u, raw.joiner().stage_generation());
+
+    const std::vector<std::uint8_t> setup_wire =
+        og::sim::serialize_staged_match_setup_message(
+            {.stage_generation = 7u, .setup_bytes = {1u, 2u, 3u}});
+    const std::vector<std::uint8_t> keyframe_wire =
+        og::sim::serialize_staged_match_keyframe_message(
+            {.stage_generation = 7u, .snapshot_bytes = {4u, 5u, 6u}});
+    ::testing::internal::CaptureStderr();
+    raw.server().send(raw.joiner_peer(), setup_wire.data(), setup_wire.size());
+    raw.server().send(
+        raw.joiner_peer(), keyframe_wire.data(), keyframe_wire.size());
+    const bool refreshed = wait_until([&] {
+        raw.pump();
+        return raw.joiner().stage_generation() == 1u;
+    });
+    const std::string stderr_text = ::testing::internal::GetCapturedStderr();
+    ASSERT_TRUE(refreshed) << "the paired generation must be attempted";
+
+    EXPECT_EQ(og::ui::IPickerLobbyClient::StagedPreviewHealth::Unavailable,
+              raw.joiner().staged_preview_health())
+        << "an unapplyable pair must read STAGING PREVIEW UNAVAILABLE";
+    EXPECT_EQ(nullptr, raw.joiner().staged_world());
+    EXPECT_NE(std::string::npos,
+              stderr_text.find("[ERROR] staged_preview_mirror_unavailable "
+                               "error=staged setup decode failed\n"))
+        << stderr_text;
+}
