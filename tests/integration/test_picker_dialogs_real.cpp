@@ -581,3 +581,93 @@ TEST(PickerDialogsReal, popup_dialog_return_key_dismisses_it)
     EXPECT_TRUE(failsafe_used)
         << "control: a key-press event with no held key must not dismiss";
 }
+
+// --- A held button hotkey (picker_input.cpp leftmouse) ---------------------
+// leftmouse() treats a held hotkey of any visible button as a click, and
+// vbutton::leftclick(1) activates that button and then WAITS for the key to
+// come up before returning (button.cpp: `while (keystates_[hotkey])`), so a
+// held key cannot activate the next screen's button too. The popup's OK
+// carries KEYSTATE_ESCAPE. Holding Escape (no click, no key event) must
+// dismiss the popup, and the popup must return only AFTER the key is up.
+//
+// The release necessarily lands while the product loop spins on the key, so
+// this is the one place the injector writes the test-owned array while the
+// main thread reads it: a plain-bool store against a plain-bool load that the
+// loop re-does every pass (the body calls get_input_events and sleeps —
+// opaque calls, so the load is never hoisted). ci-tsan does not run
+// og_test_picker. The `released` atomic is published BEFORE the store, so
+// "returned after the release" is a happens-before the test can assert.
+namespace
+{
+struct HeldHotkeyDriver
+{
+    bool* key = nullptr;             // the test-owned keystates_ slot
+    std::atomic<bool> released{false};
+    std::atomic<bool> failsafe_used{false};
+    int sentinel = 0;
+};
+
+int held_hotkey_release_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* driver = static_cast<HeldHotkeyDriver*>(data);
+    // leftclick(1) clears the coordinate stamp (menu_click_x = -1) right
+    // before it dispatches the hotkey's action: that is the activation.
+    const Uint64 deadline = SDL_GetTicks() + kDialogFailsafeMs;
+    bool activated = false;
+    while (SDL_GetTicks() < deadline)
+    {
+        if (og::runtime::current_session->picker_->menu_click_x !=
+            driver->sentinel)
+        {
+            activated = true;
+            break;
+        }
+        SDL_Delay(1); // poll tick
+    }
+    driver->released.store(true, std::memory_order_release);
+    *driver->key = false;
+    if (!activated)
+    {
+        driver->failsafe_used.store(true, std::memory_order_release);
+        inject_click(160, 140, 20); // OK
+    }
+    return 0;
+}
+} // namespace
+
+TEST(PickerDialogsReal, held_escape_hotkey_dismisses_popup_after_key_release)
+{
+    ViewportGuard viewport_guard;
+    RealDialogsGuard real_dialogs_guard;
+
+    std::array<bool, SDL_SCANCODE_COUNT> keys{};
+    const bool* const saved = og::runtime::current_session->keystates_;
+    keys[static_cast<std::size_t>(KEYSTATE_ESCAPE)] = true;
+    og::runtime::current_session->keystates_ = keys.data();
+
+    constexpr int kSentinel = 4242;
+    og::runtime::current_session->picker_->menu_click_x = kSentinel;
+    HeldHotkeyDriver driver;
+    driver.key = &keys[static_cast<std::size_t>(KEYSTATE_ESCAPE)];
+    driver.sentinel = kSentinel;
+    SDL_Thread* thread = SDL_CreateThread(held_hotkey_release_injector,
+                                          "held_hotkey_release", &driver);
+    ASSERT_TRUE(thread != nullptr);
+
+    popup_dialog("Information", "A held Escape presses OK.");
+    const bool released_before_return =
+        driver.released.load(std::memory_order_acquire);
+
+    int thread_result = 1;
+    SDL_WaitThread(thread, &thread_result);
+    og::runtime::current_session->keystates_ = saved;
+    SDL_FlushEvents(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+
+    EXPECT_FALSE(driver.failsafe_used.load(std::memory_order_acquire))
+        << "the held Escape (OK's hotkey) must activate OK without a click";
+    EXPECT_EQ(-1, og::runtime::current_session->picker_->menu_click_x)
+        << "a hotkey activation is coordinate-free";
+    EXPECT_TRUE(released_before_return)
+        << "the popup returns only after the hotkey came up";
+}
