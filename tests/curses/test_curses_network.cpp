@@ -28,6 +28,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/sim_control_policy.h>
@@ -39,6 +40,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/headless_tick_interval.h>
 
 #include "curses_mount_restore.h"
 #include "transcript_capture.h"
@@ -2982,6 +2984,157 @@ TEST(CursesNetworkProcess, dedicated_server_transitions_from_lobby_to_gameplay)
               server.output().find("headless_server_listening"));
     EXPECT_NE(std::string::npos,
               server.output().find("headless_server_tick_interval_ms"));
+}
+
+// Two dedicated-server rules in ONE process run (a process test costs
+// seconds, so they share the launch):
+// (a) a peer connected to the server's lobby that never takes a seat enters
+//     the match as a SPECTATOR — admitted at GO and seeded with the initial
+//     setup and a keyframe, not dropped;
+// (b) the lobby host's speed request retimes the server's tick cadence: the
+//     GameServer applies the host peer's timer_wait_request to the world and
+//     the server loop re-derives its frame interval from it, logging the new
+//     interval.
+// The paired control for both is dedicated_server_transitions_from_lobby_to_gameplay
+// (a seated host, no speed request: one interval line).
+TEST(CursesNetworkProcess, dedicated_server_admits_an_unseated_spectator_and_retimes_on_the_host_speed_request)
+{
+    const std::optional<int> port = external_server_free_tcp_port();
+    ASSERT_TRUE(port.has_value());
+
+    ExternalServerProcess server({
+        "--host", "127.0.0.1",
+        "--port", std::to_string(*port),
+        "--lobby-poll-ms", "0",
+    });
+    ASSERT_TRUE(server.launched());
+    ASSERT_TRUE(server.wait_for_output("headless_server_listening", 10s))
+        << server.output();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 1u;
+    client_options.automatic_reconnection = false;
+    og::sim::WebSocketClientTransport host(
+        std::format("ws://127.0.0.1:{}", *port), client_options);
+    host.accept_connections();
+    ASSERT_TRUE(poll_external_client_until(
+        host,
+        [&host](const auto&) {
+            return host.connected_peers() ==
+                std::vector<og::sim::PeerId>{1u};
+        })) << server.output();
+
+    og::sim::LobbyCharacterSlot slot = make_network_roster_slot(
+        0u, 7101, "Process Soldier", FAMILY_SOLDIER);
+    slot.deployed = true;
+    slot.character.strength = 12;
+    slot.character.dexterity = 11;
+    slot.character.constitution = 13;
+    slot.character.intelligence = 10;
+    slot.character.armor = 5;
+    slot.character.level = 1;
+    slot.character.teamnum = 0;
+
+    constexpr std::uint32_t join_request_id = 51u;
+    auto join = std::make_shared<og::sim::LobbyMessage>();
+    join->payload = og::sim::LobbyJoinMessage{
+        .player = og::sim::LobbyPlayer{
+            .name = "Process Host",
+            .company = "Process Company",
+            .team = 0,
+            .character_slots = {slot},
+        },
+        .request_id = join_request_id,
+    };
+    host.send_lobby_message(1u, join);
+    ASSERT_TRUE(poll_external_client_until(
+        host,
+        [](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::LobbyState &&
+                    message.lobby_state &&
+                    message.lobby_state->last_join_request_id ==
+                        join_request_id)
+                    return true;
+            }
+            return false;
+        })) << server.output();
+
+    // The watcher connects AFTER the host joined and never sends a join.
+    og::sim::WebSocketClientTransport watcher(
+        std::format("ws://127.0.0.1:{}", *port), client_options);
+    watcher.accept_connections();
+    ASSERT_TRUE(poll_external_client_until(
+        watcher,
+        [&watcher](const auto&) {
+            return watcher.connected_peers() ==
+                std::vector<og::sim::PeerId>{1u};
+        })) << server.output();
+
+    auto start = std::make_shared<og::sim::LobbyMessage>();
+    start->payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0u,
+        .request_id = 52u,
+    };
+    host.send_lobby_message(1u, start);
+
+    const std::string default_interval = std::format(
+        "headless_server_tick_interval_ms {}\n",
+        og::server::compute_headless_tick_interval_ms(
+            og::sim::DEFAULT_TIMER_WAIT));
+    ASSERT_TRUE(server.wait_for_output(default_interval, 20s))
+        << server.output();
+
+    // (a) the spectator is seeded.
+    bool watcher_setup = false;
+    bool watcher_snapshot = false;
+    EXPECT_TRUE(poll_external_client_until(
+        watcher,
+        [&](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::InitialSetup &&
+                    message.initial_setup) {
+                    watcher_setup = true;
+                    EXPECT_EQ(1, message.initial_setup->current_scenario);
+                }
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::Snapshot &&
+                    message.snapshot)
+                    watcher_snapshot = true;
+            }
+            return watcher_setup && watcher_snapshot;
+        })) << "an unseated lobby peer must be admitted as a spectator and "
+               "seeded with the initial setup and a keyframe\n"
+            << server.output();
+
+    // (b) the host's speed request retimes the server loop.
+    constexpr std::int8_t kRequestedTimerWait = 12;
+    const std::uint32_t requested_ms =
+        og::server::compute_headless_tick_interval_ms(kRequestedTimerWait);
+    ASSERT_NE(requested_ms,
+              og::server::compute_headless_tick_interval_ms(
+                  og::sim::DEFAULT_TIMER_WAIT))
+        << "the request must map to a different cadence to be observable";
+    const std::string requested_interval = std::format(
+        "headless_server_tick_interval_ms {}\n", requested_ms);
+    EXPECT_EQ(std::string::npos, server.output().find(requested_interval))
+        << "nothing retimes the loop before the request";
+    bool retimed = false;
+    for (std::uint32_t tick = 1; tick <= 200 && !retimed; ++tick) {
+        auto input = std::make_shared<InputState>();
+        input->timer_wait_request = kRequestedTimerWait;
+        host.send_input(1u, input, tick);
+        (void)host.poll_typed();
+        (void)watcher.poll_typed();
+        retimed = server.wait_for_output(requested_interval, 50ms);
+    }
+    EXPECT_TRUE(retimed)
+        << "the host's timer_wait_request must retime the server loop\n"
+        << server.output();
+
+    EXPECT_TRUE(server.terminate_cleanly()) << server.output();
 }
 
 // --- LINEUP §6: kick and disconnect from the curses lobby ---------------
