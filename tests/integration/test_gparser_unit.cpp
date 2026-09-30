@@ -495,7 +495,7 @@ TEST(GparserUnit, gparser_save_settings_reports_a_value_libyaml_cannot_emit)
 
 TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
 {
-    // Both flags print and _Exit(0) from inside commandline(), so the child
+    // Both flags print and exit(0) from inside commandline(), so the child
     // process is the only way to exercise them. Log() writes to stderr, so
     // the pipe takes over both standard streams; the parent reads what the
     // child said and holds -v to og::version::cli_line() exactly, the

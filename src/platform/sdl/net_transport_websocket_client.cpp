@@ -74,8 +74,9 @@ struct WebSocketClientTransport::Impl
                         ix::WebSocket& socket,
                         const ix::WebSocketMessagePtr& message)
     {
-        // IXWebSocket 11.4.6 builds every callback message with
-        // ix::make_unique (IXWebSocket.cpp); re-check on any IX bump.
+        if (!message)
+            return;
+
         switch (message->type)
         {
         case ix::WebSocketMessageType::Open:
