@@ -56,6 +56,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <future>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -13245,4 +13246,190 @@ TEST(PickerNetworkClient, joiner_finds_a_returning_host_within_the_redial_cap)
         join_client->shutdown();
     }
     host_client->shutdown();
+}
+
+// --- WP-COV-NET (wave 4): the raw-authority joiner fixture ------------------
+//
+// A bare WebSocketServerTransport standing in for the host: it seats one
+// direct joiner with a crafted LobbyState and records every lobby message the
+// joiner puts on the wire. The real LobbyServer masks the joiner's
+// CLIENT-side guards (it truncates, resolves and answers for them), so only a
+// raw authority shows whether those guards hold. Every flow here answers what
+// it must: a joiner's add/remove seat waits unboundedly for its echo, so no
+// test sends one to this authority.
+
+namespace {
+
+class RawAuthorityJoiner
+{
+public:
+    explicit RawAuthorityJoiner(og::ui::PickerJoinGameOptions options = {})
+        : server_(std::make_shared<og::sim::WebSocketServerTransport>(port_))
+    {
+        server_->accept_connections();
+        options.mode = og::ui::PickerJoinMode::Direct;
+        options.direct_endpoint = std::format("127.0.0.1:{}", port_);
+        joiner_ = og::ui::create_join_picker_lobby_client(options);
+        joiner_->initialize_from_save();
+    }
+
+    ~RawAuthorityJoiner()
+    {
+        if (joiner_)
+            joiner_->shutdown();
+    }
+
+    RawAuthorityJoiner(const RawAuthorityJoiner&) = delete;
+    RawAuthorityJoiner& operator=(const RawAuthorityJoiner&) = delete;
+
+    og::ui::IPickerLobbyClient& joiner() { return *joiner_; }
+    og::sim::WebSocketServerTransport& server() { return *server_; }
+    [[nodiscard]] og::sim::PeerId joiner_peer() const { return joiner_peer_; }
+
+    // One joiner poll plus one drain of what reached the authority.
+    void pump()
+    {
+        joiner_->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_))
+        {
+            joiner_peer_ = peer_id;
+            received_.push_back(std::move(message));
+        }
+    }
+
+    [[nodiscard]] std::size_t count(og::sim::LobbyMessageKind kind) const
+    {
+        return static_cast<std::size_t>(std::count_if(
+            received_.begin(), received_.end(),
+            [kind](const og::sim::LobbyMessage& message) {
+                return message.kind() == kind;
+            }));
+    }
+
+    [[nodiscard]] const og::sim::LobbyMessage* last(
+        og::sim::LobbyMessageKind kind) const
+    {
+        for (auto it = received_.rbegin(); it != received_.rend(); ++it)
+        {
+            if (it->kind() == kind)
+                return &*it;
+        }
+        return nullptr;
+    }
+
+    // Wait until the authority holds `wanted` messages of `kind`.
+    [[nodiscard]] bool wait_for(og::sim::LobbyMessageKind kind,
+                                std::size_t wanted)
+    {
+        return wait_until([&] {
+            pump();
+            return count(kind) >= wanted;
+        });
+    }
+
+    // Seat the joiner as player `index` (seat 100 + index) on `team`,
+    // answering its latest Join by request id; a remote host holds player 0.
+    void seat_joiner(std::uint8_t index, short team)
+    {
+        const og::sim::LobbyMessage* const join =
+            last(og::sim::LobbyMessageKind::Join);
+        ASSERT_NE(nullptr, join) << "seat_joiner answers a received Join";
+        const auto& join_payload =
+            std::get<og::sim::LobbyJoinMessage>(join->payload);
+        og::sim::LobbyPlayer seated = join_payload.player;
+        seated.player_index = index;
+        seated.seat_id = static_cast<og::sim::LobbySeatId>(100u + index);
+        seated.machine_id = 2u;
+        seated.team = team;
+        seated.ready = false;
+        seated.is_host = false;
+
+        og::sim::LobbyState state;
+        state.settings.campaign_id = "gladiator";
+        state.settings.scenario_id = 1;
+        state.players.push_back(og::sim::LobbyPlayer{
+            .player_index = 0u,
+            .seat_id = 100u,
+            .machine_id = 1u,
+            .name = "Raw Host",
+            .company = "Raw Host Company",
+            .team = 0,
+            .character_slots = {make_lobby_slot(0u, "Raw Host", 0)},
+            .ready = false,
+            .is_host = true,
+        });
+        state.players.push_back(seated);
+        state.local_seat_ids = {seated.seat_id};
+        state.last_join_request_id = join_payload.request_id;
+        send_state(state);
+    }
+
+    void send_state(const og::sim::LobbyState& state)
+    {
+        server_->send_lobby_state(
+            joiner_peer_, std::make_shared<og::sim::LobbyState>(state));
+    }
+
+private:
+    int port_ = ix::getFreePort();
+    std::shared_ptr<og::sim::WebSocketServerTransport> server_;
+    std::unique_ptr<og::ui::IPickerLobbyClient> joiner_;
+    og::sim::PeerId joiner_peer_ = 0;
+    std::vector<og::sim::LobbyMessage> received_;
+};
+
+} // namespace
+
+// A GO pressed while the joiner's Join is still unconfirmed is DEFERRED; when
+// no lobby state exists at dispatch time it is CANCELLED, by design: the
+// comment on maybe_dispatch_deferred_start says "Only a link that cannot
+// carry the request (no transport, no lobby state) cancels it here". The
+// cancel leaves nothing pending, no outcome and no denial (the menu reads
+// that as "The start request was not sent. Try GO again"), and no StartGame
+// reaches the wire. Control: once seated, the same GO dispatches exactly one
+// StartGame.
+TEST(PickerNetworkClient, deferred_go_without_lobby_state_is_cancelled_not_sent)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u))
+        << "the joiner must connect and declare its seat";
+
+    // The Join is unanswered, so GO queues behind it.
+    EXPECT_FALSE(raw.joiner().request_start_game());
+    ASSERT_TRUE(raw.joiner().start_request_pending())
+        << "a GO behind an unconfirmed Join is a queued intent";
+
+    raw.joiner().poll_and_apply();
+    EXPECT_FALSE(raw.joiner().start_request_pending())
+        << "with no lobby state the deferred GO must be cancelled";
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              raw.joiner().start_request_outcome());
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              raw.joiner().last_start_denial());
+
+    // Control + ordering fence: seat the joiner, then GO. The socket is
+    // ordered, so a StartGame from the cancelled press would arrive first.
+    raw.seat_joiner(1u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    })) << "the crafted state must seat the joiner";
+    ASSERT_TRUE(wait_until([&] {
+        (void)raw.joiner().request_start_game();
+        raw.pump();
+        return raw.joiner().start_request_pending();
+    })) << "a seated joiner's GO must dispatch";
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::StartGame, 1u));
+    EXPECT_EQ(1u, raw.count(og::sim::LobbyMessageKind::StartGame))
+        << "only the seated GO may reach the wire";
+    const auto& start = std::get<og::sim::LobbyStartGameMessage>(
+        raw.last(og::sim::LobbyMessageKind::StartGame)->payload);
+    EXPECT_EQ(1u, start.player_index);
 }
