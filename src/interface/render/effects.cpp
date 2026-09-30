@@ -1183,9 +1183,8 @@ void effects_track_air_falls(GameWorld& world)
 		if (w == nullptr || w->dead() || w->dormant() ||
 		    w->query_order() != Order::Living)
 			continue;
+		// Never 0: every oblist insertion assigns an id (assign_entity_id).
 		const std::uint32_t id = w->entity_id();
-		if (id == 0)
-			continue;
 		const short f = w->floor();
 		const float wx = static_cast<float>(w->xpos());
 		const float wy = static_cast<float>(w->ypos());
