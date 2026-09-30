@@ -125,12 +125,12 @@ void DamageNumberRenderContext::trim_owner(std::uint32_t owner_entity_id,
     if (owner_it == state_by_owner_.end())
         return;
 
+    // live_count >= 1 here and a stored entry is never empty (prepare_state
+    // grows it to index + 1; erase_index/prune drop whole owners), so the
+    // trimmed entry stays non-empty.
     auto& owner_state = owner_it->second;
     if (owner_state.size() > live_count)
         owner_state.resize(live_count);
-
-    if (owner_state.empty())
-        state_by_owner_.erase(owner_it);
 }
 
 // The sole caller (draw_walker) erases only while it holds the render_state
