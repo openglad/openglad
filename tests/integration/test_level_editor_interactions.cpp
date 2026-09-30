@@ -2110,3 +2110,115 @@ TEST(LevelEditorInteractions, held_decor_brush_paints_the_decor_plane_and_dirtie
     EXPECT_EQ(static_cast<int>(TYPE_GRASS), sample.base_genre)
         << "control: the decor brush leaves the base tile under it alone";
 }
+
+namespace
+{
+struct EditorSaveSample
+{
+    bool ok = false;
+    int levelchanged_before_save = -1;
+    int campaignchanged_before_save = -1;
+    int levelchanged_after_save = -1;
+    int campaignchanged_after_save = -1;
+};
+
+constexpr const char* kSavedCampaignTitle = "Cov98 Ctrl S Title";
+
+// Dirty BOTH the level (a paint stroke) and the campaign (Campaign > Profile
+// > Title... answered from the prompt queue), then Ctrl+S.
+int editor_ctrl_s_both_dirty_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorSaveSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    if (ok)
+        ok = enter_terrain_mode();
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
+    if (ok)
+        ok = retry_until(
+            []() {
+                level_editor_testing_prompt_queue_clear();
+                level_editor_testing_prompt_queue_push(kSavedCampaignTitle);
+                return click_settled(kCampaignX, kCampaignY) &&
+                       click_settled(kCampaignProfileX, kCampaignProfileY) &&
+                       click_settled(kCampaignTitleX, kCampaignTitleY);
+            },
+            []() { return eds().campaignchanged == 1; });
+    sample.levelchanged_before_save = eds().levelchanged;
+    sample.campaignchanged_before_save = eds().campaignchanged;
+    if (ok)
+        ok = push_checked_key_press_mod(SDLK_S, SDL_KMOD_LCTRL) &&
+             wait_for_trace_line("dialog", "timed_dialog_open Saved.", 20000u);
+    // Close the timed dialog with an inert key (its product timeout is 3 s).
+    if (ok)
+        ok = push_checked_key_press_mod(SDLK_F12, SDL_KMOD_NONE) &&
+             wait_for_trace_line("dialog", "timed_dialog_closed Saved.", 10000u);
+    if (ok)
+        ok = wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    sample.levelchanged_after_save = eds().levelchanged;
+    sample.campaignchanged_after_save = eds().campaignchanged;
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+int count_dialog_traces(const std::string& substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int count = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "dialog" &&
+            entry.message.find(substring) != std::string::npos)
+            ++count;
+    }
+    return count;
+}
+} // namespace
+
+// Ctrl+S with BOTH the level and the campaign dirty saves both, clears both
+// dirty flags and says exactly "Saved." once. The editor saves into the
+// user-dir gladiator package, so its bytes are restored afterwards and the
+// campaign remounted (the smoke test's discipline). The negative twin is
+// ctrl_s_with_nothing_dirty_reports_no_changes_and_saves_nothing.
+TEST(LevelEditorInteractions, ctrl_s_with_level_and_campaign_dirty_saves_both_and_says_saved)
+{
+    namespace fs = std::filesystem;
+    const fs::path archive = fs::path(get_user_path()) / "campaigns/gladiator.glad";
+    std::string saved_title;
+    EditorSaveSample sample;
+    int result = 1;
+    {
+        og::test::ScopedPhysicalFileState glad_guard(archive);
+        ASSERT_TRUE(glad_guard.ready());
+        EditorDecorStateGuard state_guard;
+        picker_testing_yes_or_no_queue_clear();
+        level_editor_testing_prompt_queue_clear();
+        result = run_editor_with_injector(editor_ctrl_s_both_dirty_injector,
+                                          sample, "editor_ctrl_s_both");
+        level_editor_testing_prompt_queue_clear();
+        CampaignData reread("gladiator");
+        if (reread.load())
+            saved_title = reread.title;
+        EXPECT_EQ(1, count_dialog_traces("timed_dialog_open Saved."))
+            << "one Ctrl+S reports one save";
+        EXPECT_EQ(0, count_dialog_traces("timed_dialog_open Failed to save"))
+            << "neither save may fail";
+        EXPECT_EQ(0, count_dialog_traces("timed_dialog_open No changes to save."));
+    }
+    (void)unmount_campaign_package_with_error("gladiator");
+    (void)mount_campaign_package_with_error("gladiator");
+
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(1, sample.levelchanged_before_save) << "control: the level was dirty";
+    EXPECT_EQ(1, sample.campaignchanged_before_save)
+        << "control: the campaign was dirty";
+    EXPECT_EQ(0, sample.levelchanged_after_save)
+        << "a successful level save clears the level's dirty flag";
+    EXPECT_EQ(0, sample.campaignchanged_after_save)
+        << "a successful campaign save clears the campaign's dirty flag";
+    EXPECT_EQ(std::string(kSavedCampaignTitle), saved_title)
+        << "the campaign save wrote the new title into the package";
+}
