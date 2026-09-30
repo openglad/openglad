@@ -5111,8 +5111,6 @@ private:
 
     void drain_messages()
     {
-        if (!transport_)
-            return;
 
         for (const og::sim::TypedReceivedMessage& message :
              poll_lobby_transport_messages(*transport_))
