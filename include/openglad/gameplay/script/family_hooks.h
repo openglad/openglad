@@ -146,8 +146,11 @@ void reset_hook_failures();
 // it cannot change behavior. Answers 0 when no packs are loaded.
 std::uint32_t level_hook_kinds_for(int level_id);
 
-// Living-family hooks (FamilyDescriptor). Each returns the hook's result,
-// or nullopt when no hook (script or C++) ran.
+// Living-family hooks (FamilyDescriptor). Pure script hooks: descriptors no
+// longer carry C++ behaviour callbacks (promotion_new_level, a formula the
+// picker calls straight off the descriptor, is the only one left). Each
+// returns the hook's result, or nullopt (false for the bool ones) when no
+// script hook ran.
 // A failed script dispatch remains nullopt, with a deterministic HUD reason
 // in error_reason. A callback that runs successfully clears that reason.
 std::optional<SpecialResult> do_special(const FamilyDescriptor* fd, walker* self,
