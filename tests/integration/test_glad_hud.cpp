@@ -2229,6 +2229,108 @@ TEST_F(GladHud, team_row_sits_at_the_pane_top)
                 << " counter rows belong at the pane top, not 52px down";
 }
 
+// FFA reseats every fighter onto its own band byte, kFfaTeamBase + c
+// (16..31, core/constants.h), which is above MAX_TEAM. The HUD's TEAM row
+// clamps junk mirror bytes (> MAX_TEAM) to team 0, but a scoring identity
+// is not junk: an FFA fighter's TEAM counts its own band, never team 0's
+// roster. Positive control in the same world: a team-0 control counts all
+// three team-0 walkers. (Team 255 -> 0 stays pinned by
+// score_panel_sanitizes_mirrored_identity_and_special_metadata.)
+TEST_F(GladHud, ffa_band_team_row_counts_the_fighter_band_not_team_zero)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    ASSERT_EQ(1, static_cast<int>(s->numviews))
+        << "the pane geometry below assumes the single-view layout";
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    ASSERT_EQ(1, world.floor_count()) << "no FLR row: the box keeps its 16px height";
+
+    constexpr unsigned char kBandTeam =
+        static_cast<unsigned char>(kFfaTeamBase + 1);
+    static_assert(kBandTeam > MAX_TEAM, "the band byte must exceed MAX_TEAM");
+    auto control = make_player(kBandTeam);
+    ASSERT_NE(nullptr, control);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    for (int i = 0; i < 2; ++i)
+    {
+        auto ally = make_living(FAMILY_SOLDIER, 0);
+        ASSERT_NE(nullptr, ally);
+        world.oblist.push_back(std::move(ally));
+    }
+    auto foe = make_living(FAMILY_ORC, 1);
+    ASSERT_NE(nullptr, foe);
+    world.oblist.push_back(std::move(foe));
+
+    struct PrefRestore {
+        viewscreen* view; walker* control;
+        char life, score, foes, overlay;
+        ~PrefRestore()
+        {
+            view->control = control;
+            view->prefs[PREF_LIFE] = life;
+            view->prefs[PREF_SCORE] = score;
+            view->prefs[PREF_FOES] = foes;
+            view->prefs[PREF_OVERLAY] = overlay;
+        }
+    } restore{v, v->control, v->prefs[PREF_LIFE], v->prefs[PREF_SCORE],
+              v->prefs[PREF_FOES], v->prefs[PREF_OVERLAY]};
+
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // the count-up consumes rng()
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    const int tm = v->yloc;
+    const int rm = v->endx;
+    const unsigned char text_color = static_cast<unsigned char>(DARK_BLUE);
+
+    // Draw the HUD, then redraw the counter box by hand with the expected
+    // rows and demand the box pixels match exactly.
+    const auto box_matches = [&](const std::string& team_text) {
+        const std::string foes_text =
+            "FOES: " + std::to_string(
+                static_cast<int>(remaining_foes(s, controlp)));
+        trace_clear();
+        s->clearbuffer();
+        EXPECT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+        const auto actual = capture_rendered_frame(*s);
+        s->clearbuffer();
+        s->draw_button(rm - 57, tm + 1, rm - 2, tm + 16, 1, 1);
+        s->text_normal.write_xy(rm - 55, tm + 2, team_text.c_str(),
+                                text_color, static_cast<short>(1));
+        s->text_normal.write_xy(rm - 55, tm + 10, foes_text.c_str(),
+                                text_color, static_cast<short>(1));
+        const auto expected = capture_rendered_frame(*s);
+        for (int y = tm + 1; y <= tm + 16; ++y)
+            for (int x = rm - 57; x <= rm - 2; ++x)
+            {
+                const std::size_t offset = static_cast<std::size_t>(y * 320 + x);
+                if (actual[offset] != expected[offset])
+                    return false;
+            }
+        return true;
+    };
+
+    ASSERT_EQ(1, static_cast<int>(remaining_team(s, static_cast<char>(kBandTeam))))
+        << "the band holds exactly the control";
+    ASSERT_EQ(3, static_cast<int>(remaining_foes(s, controlp)))
+        << "an FFA fighter's foes: both team-0 soldiers and the orc";
+    EXPECT_TRUE(box_matches("TEAM: 1"))
+        << "an FFA fighter (team byte " << static_cast<int>(kBandTeam)
+        << ") must count its own band, not team 0's two soldiers";
+
+    controlp->set_team_num(0);
+    ASSERT_EQ(1, static_cast<int>(remaining_foes(s, controlp)))
+        << "a team-0 control's foes: the orc";
+    EXPECT_TRUE(box_matches("TEAM: 3"))
+        << "a team-0 control counts itself and both team-0 soldiers";
+}
+
 
 TEST_F(GladHud, fps_overlay_clears_extended_foes_counter)
 {
