@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <set>
+#include <source_location>
 
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
@@ -25,7 +26,26 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         void sync_from_save() override {}
         void sync_roster_from_save() override {}
         void sync_settings_from_save() override {}
-        void poll_and_apply() override {}
+        // PROGRESS held-click spin (picker_progress_menu_engine_frame_tick):
+        // the hook latches the press and spins on picker_lobby_poll() +
+        // get_input_events until the button comes up. A release queued
+        // BEFORE the call would be drained by the hook's own query_mouse()
+        // together with the press (clicked=false), so the release is
+        // delivered from here: the first poll inside the spin queues it and
+        // the spin's next get_input_events consumes it.
+        bool release_on_poll = false;
+        int release_x = 0;
+        int release_y = 0;
+        int releases_sent = 0;
+        void poll_and_apply() override
+        {
+            if (!release_on_poll)
+                return;
+            release_on_poll = false;
+            ++releases_sent;
+            og::input_native::push_mouse_button_event(false, 1, release_x,
+                                                      release_y);
+        }
         void set_player_mode(int) override {}
         bool request_start_game() override
         {
@@ -85,10 +105,19 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
 
     int check_index = 0;
     int failed_check = 0;
-    const auto check = [&check_index, &failed_check](bool condition) {
+    // Every failing check names its line (the returned index is the first):
+    // the index alone sends a reader counting check() calls through loops.
+    const auto check = [&check_index, &failed_check](
+                           bool condition,
+                           std::source_location where =
+                               std::source_location::current()) {
         ++check_index;
-        if (!condition && failed_check == 0)
+        if (condition)
+            return;
+        if (failed_check == 0)
             failed_check = check_index;
+        std::fprintf(stderr, "  [internal paths] check %d failed at line %u\n",
+                     check_index, static_cast<unsigned>(where.line()));
     };
     TestLobbyClient client;
     og::ui::install_active_picker_lobby_client(&client);
@@ -362,6 +391,79 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         client.host_visible = false;
     }
     // ... and the arm leaves the client as it found it.
+
+    // PROGRESS click handling through the real input path: a pressed button
+    // at (x, y) enters the held-click spin, the lobby poll inside it releases
+    // the press, and the hook then scrolls or dispatches the row. Rows are
+    // the host's (host_visible); ids 1..12, ten visible rows.
+    {
+        client.host_visible = true;
+        const std::string saved_campaign = save.current_campaign;
+        const short saved_scen = save.scen_num;
+        save.current_campaign = get_mounted_campaign();
+        // The report is a UI-canvas screen: its coordinates reach the input
+        // layer as WINDOW points through the fixed UI-canvas map.
+        ScopedUiCanvas ui_canvas(*og::runtime::current_session->myscreen_);
+        const auto held_click = [&](int x, int y) {
+            get_input_events(POLL);  // nothing stale in the queue
+            const auto [wx, wy] = ui_canvas_to_window(
+                static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f);
+            client.release_on_poll = true;
+            client.release_x = static_cast<int>(wx);
+            client.release_y = static_cast<int>(wy);
+            og::input_native::push_mouse_button_event(
+                true, 1, static_cast<int>(wx), static_cast<int>(wy));
+            return picker_progress_menu_engine_frame_tick(&progress_state, 0);
+        };
+        // NEXT scrolls one row, PREV scrolls back; both stay on the report.
+        progress_state.scroll_offset = 0;
+        client.releases_sent = 0;
+        check(held_click(100, 180) && progress_state.scroll_offset == 1 &&
+              client.releases_sent == 1);
+        check(held_click(50, 180) && progress_state.scroll_offset == 0 &&
+              client.releases_sent == 2);
+        // A PREV press at the top is inert (the button is disabled there).
+        check(held_click(50, 180) && progress_state.scroll_offset == 0);
+
+        // GO on an uncleared, reachable row (id 1, the campaign's entry
+        // level) writes the cursor and leaves the report (false).
+        trace_clear();
+        save.scen_num = 3;
+        check(!held_click(300, 40) &&
+              trace_contains("picker", "progress_row_go level=1") &&
+              save.scen_num == 1);
+
+        // GO on a row whose road is closed refuses and stays (true): no
+        // cursor write, no dispatch trace, the refusal popup instead.
+        const int saved_id = progress_state.levels[2].id;
+        progress_state.levels[2].id = 99;  // row 2, band y 62..75
+        trace_clear();
+        save.scen_num = 3;
+        check(held_click(300, 66) &&
+              !trace_contains("picker", "progress_row_go") &&
+              trace_contains("picker", "progress_row_denied_gate 99") &&
+              save.scen_num == 3);
+        progress_state.levels[2].id = saved_id;
+
+        // A host GO arriving while the press is held ends the spin and the
+        // hook stays up (true) for the loop-top check to fire the start --
+        // the row under the press is NOT dispatched.
+        trace_clear();
+        g_start_game_requested = true;
+        client.has_start_config = true;
+        check(held_click(300, 40) && !trace_contains("picker", "progress_row_go") &&
+              save.scen_num == 3);
+        g_start_game_requested = false;
+        pks().selected_menu_item = nullptr;
+        client.release_on_poll = false;
+        get_input_events(POLL);  // the release the early return left queued
+        reset_mouse_click_tracking();
+
+        save.scen_num = saved_scen;
+        save.current_campaign = saved_campaign;
+        progress_state.scroll_offset = 0;
+        client.host_visible = false;
+    }
 
     button hire_buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0,
