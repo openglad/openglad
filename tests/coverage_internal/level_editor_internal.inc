@@ -1069,6 +1069,20 @@ int level_editor_test_campaign_menu_flows()
     check(!trace_contains("dialog", "timed_dialog_open Campaign loaded."));
     check(!trace_contains("confirm", "Load first level?"));
 
+    // A load that fails leaves the open campaign exactly as it was: its id
+    // (which every later Save writes to) and its details.
+    check(mount_guard.switch_to(helper_id));
+    check(data.loadCampaign(helper_id));
+    const std::string helper_title = data.campaign->title;
+    check(!data.loadCampaign(broken_id));
+    check(data.campaign->id == helper_id);
+    check(data.campaign->title == helper_title);
+    // Positive control: a loadable id replaces both.
+    check(data.loadCampaign("gladiator"));
+    check(data.campaign->id == "gladiator");
+    check(data.campaign->title == packaged_title("gladiator"));
+    check(data.campaign->title != helper_title);
+
     // A campaign whose declared first level does not exist.
     check(mount_guard.switch_to(helper_id));
     check(data.loadCampaign(helper_id));
