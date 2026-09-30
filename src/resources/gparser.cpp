@@ -437,11 +437,11 @@ void cfg_store::commandline(int &argc, char **&argv)
 				case 'h':
 					Log(helpmsg);
                     std::fflush(nullptr);
-                    std::_Exit(0);
+                    std::exit(0);
 				case 'v':
 					Log(std::string_view{versmsg});
                     std::fflush(nullptr);
-                    std::_Exit(0);
+                    std::exit(0);
 				case 's':
 					data["sound"]["sound"] = "on";
 					Log("Sound is on.");
