@@ -944,6 +944,29 @@ int level_editor_test_campaign_menu_flows()
     };
 
     // --- File > Campaign > New ------------------------------------------
+    // Unsaved campaign details (a Campaign > Profile title edit dirties only
+    // campaignchanged) are protected like a dirty level: New asks first, and
+    // NO keeps the open campaign and its edit; no id is ever asked for.
+    check(eds().levelchanged == 0 && eds().campaignchanged == 0);
+    level_editor_testing_prompt_queue_push("Unsaved Title");
+    data.current_menu.clear();
+    click_button(data.campaignButton);
+    click_button(data.campaignProfileButton);
+    click_button(data.campaignProfileTitleButton);
+    check(data.campaign->title == "Unsaved Title");
+    check(eds().campaignchanged == 1 && eds().levelchanged == 0);
+    level_editor_testing_prompt_queue_push(created_id.c_str());
+    picker_testing_yes_or_no_queue_push(false);
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 1);
+    check(trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(data.campaign->id == helper_id);
+    check(data.campaign->title == "Unsaved Title");
+    check(eds().campaignchanged == 1);
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+    check(level_editor_testing_prompt_queue_ref().size() == 1);
+    level_editor_testing_prompt_queue_clear();
+    picker_testing_yes_or_no_queue_clear();
+
     // Positive control: a valid new id creates, loads and mounts it.
     eds().campaignchanged = 1;
     level_editor_testing_prompt_queue_push(created_id.c_str());
