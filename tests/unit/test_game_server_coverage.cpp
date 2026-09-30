@@ -6,6 +6,7 @@
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -2051,6 +2052,88 @@ TEST(GameServerCoverage, reconnect_to_a_hero_that_died_in_grace_releases_the_cor
     ASSERT_NE(nullptr, released);
     EXPECT_EQ(-1, released->user())
         << "the dead hero's player tag must be released on reconnect";
+}
+
+// Rule (handle_hello reconnect, ruling R5 — INTENDED): a reconnecting seat
+// reclaims its parked hero that the AI holds (user() == -1) UNCONDITIONALLY
+// — player tag and ACT_CONTROL — even when the control policy refuses that
+// seat a fresh claim of the same hero. The fresh-bind half is the positive
+// control: bind_player re-checks an installer-supplied control against
+// control_claim_allowed and leaves it unclaimed (and the reconnect re-runs
+// that same refusing bind before its own loop overrides it). The state is
+// product-reachable: an installer-supplied control under an owner-locked
+// policy whose machine map has no entry for the seat, and a joiner that drops
+// and returns during the level-start handshake. That timing also isolates the
+// rule: no tick has run this level, so the reconnect's own InitialSetup holds
+// the launch gate and the tick's input-handler claim cannot mask the
+// reconnect's claim.
+TEST(GameServerCoverage,
+     reconnect_reclaims_the_ai_held_hero_regardless_of_the_claim_policy)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+
+    walker* const hero = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    auto record = std::make_unique<guy>(FAMILY_SOLDIER);
+    record->name = "Owner";
+    record->owner_player_index = 0;
+    hero->set_owned_myguy(std::move(record));
+    hero->setxy(64, 64);
+    const std::uint32_t hero_id = hero->entity_id();
+    ASSERT_EQ(-1, hero->user()) << "precondition: an AI-held hero";
+    const char ai_act_type = hero->act_type();
+    ASSERT_NE(ACT_CONTROL, ai_act_type);
+
+    // Owner-locked with no machine entry for seat 0: seat 0 claims nothing.
+    std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines;
+    machines.fill(og::sim::kPlayerMachineNone);
+    og::sim::set_control_policy(fixture.world(),
+                                og::sim::kControlPolicyOwnerLocked, machines);
+    ASSERT_EQ(og::sim::kControlPolicyOwnerLocked,
+              fixture.world().control_policy);
+
+    // Positive control: the FRESH bind of the supplied hero is refused.
+    server.bind_player(97u, 0u, fixture.world().my_team, hero);
+    ASSERT_FALSE(og::sim::control_claim_allowed(fixture.world(), hero, 0))
+        << "the policy must refuse seat 0 a fresh claim of this hero";
+    ASSERT_EQ(-1, hero->user())
+        << "a fresh bind honours the policy and leaves the hero unclaimed";
+    ASSERT_EQ(ai_act_type, hero->act_type());
+
+    // The joiner drops before tick 1: its seat parks in the grace window.
+    transport.set_connected({});
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    const og::sim::SessionToken token =
+        server.disconnected_players().front().session_token;
+    ASSERT_FALSE(og::sim::is_zero_session_token(token));
+    ASSERT_EQ(-1, fixture.world().find_by_id(hero_id)->user());
+
+    transport.set_connected({98u});
+    server.poll_incoming_messages();
+    transport.queue_raw(98u, hello_frame(token));
+    server.step();
+
+    ASSERT_EQ(0u, fixture.world().level_tick_count())
+        << "isolation: the reconnect step must not have ticked the world";
+    EXPECT_TRUE(server.disconnected_players().empty())
+        << "the reconnect must have consumed the grace record";
+    const auto resumed = find_hello(transport, 98u);
+    ASSERT_TRUE(resumed.has_value());
+    EXPECT_EQ(token, resumed->session_token)
+        << "the reconnect resumes the same session";
+    walker* const reclaimed = fixture.world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, reclaimed);
+    EXPECT_FALSE(og::sim::control_claim_allowed(fixture.world(), reclaimed, 0))
+        << "the policy still refuses the claim the reconnect just made";
+    EXPECT_EQ(0, reclaimed->user())
+        << "the reconnecting seat reclaims its AI-held hero regardless";
+    EXPECT_EQ(ACT_CONTROL, reclaimed->act_type());
+    EXPECT_EQ(reclaimed, server.player_control(0u));
 }
 
 // Rule (send_forced_keyframe_to_ready_clients): when a mission abort is
