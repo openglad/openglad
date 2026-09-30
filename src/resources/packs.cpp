@@ -721,13 +721,13 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
 bool install_living(const og::data::ClasspackLivingEntry& e, int id,
                     const PackAnims& anims, const PackWireIds& wire_ids)
 {
-    if (id < 0)
-        return false;
     // The install slot: an occupied slot hands back its live descriptor, a
-    // free one the order's defaults. nullptr means the id is past capacity.
+    // free one the order's defaults. nullptr means the id is negative or
+    // past capacity.
     const FamilyDescriptor* current = get_family_descriptor_install_slot(id);
     if (current == nullptr) {
-        LogWarn("classpack {}: no living registry slot {} (capacity)\n",
+        LogWarn("classpack {}: no living registry slot {} "
+                "(negative or past capacity)\n",
                 e.id, id);
         return false;
     }
@@ -851,12 +851,11 @@ bool install_living(const og::data::ClasspackLivingEntry& e, int id,
 bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
                     const PackAnims& anims)
 {
-    if (id < 0)
-        return false;
     const WeaponFamilyDescriptor* current =
         get_weapon_family_descriptor_install_slot(id);
     if (current == nullptr) {
-        LogWarn("classpack {}: no weapon registry slot {} (capacity)\n",
+        LogWarn("classpack {}: no weapon registry slot {} "
+                "(negative or past capacity)\n",
                 e.id, id);
         return false;
     }
@@ -905,12 +904,11 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
 bool install_effect(const og::data::ClasspackEffectEntry& e, int id,
                     const PackAnims& anims)
 {
-    if (id < 0)
-        return false;
     const EffectFamilyDescriptor* current =
         get_effect_family_descriptor_install_slot(id);
     if (current == nullptr) {
-        LogWarn("classpack {}: no effect registry slot {} (capacity)\n",
+        LogWarn("classpack {}: no effect registry slot {} "
+                "(negative or past capacity)\n",
                 e.id, id);
         return false;
     }
@@ -945,12 +943,11 @@ bool install_effect(const og::data::ClasspackEffectEntry& e, int id,
 bool install_treasure(const og::data::ClasspackTreasureEntry& e, int id,
                       const PackAnims& anims)
 {
-    if (id < 0)
-        return false;
     const TreasureFamilyDescriptor* current =
         get_treasure_family_descriptor_install_slot(id);
     if (current == nullptr) {
-        LogWarn("classpack {}: no treasure registry slot {} (capacity)\n",
+        LogWarn("classpack {}: no treasure registry slot {} "
+                "(negative or past capacity)\n",
                 e.id, id);
         return false;
     }
@@ -980,12 +977,11 @@ bool install_treasure(const og::data::ClasspackTreasureEntry& e, int id,
 bool install_generator(const og::data::ClasspackGeneratorEntry& e, int id,
                        const PackAnims& anims, const PackWireIds& wire_ids)
 {
-    if (id < 0)
-        return false;
     const GeneratorFamilyDescriptor* current =
         get_generator_family_descriptor_install_slot(id);
     if (current == nullptr) {
-        LogWarn("classpack {}: no generator registry slot {} (capacity)\n",
+        LogWarn("classpack {}: no generator registry slot {} "
+                "(negative or past capacity)\n",
                 e.id, id);
         return false;
     }
