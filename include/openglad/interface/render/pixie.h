@@ -27,7 +27,6 @@ class pixie
 {
 	public:
 		pixie(const PixieData& data);
-		pixie(const PixieData& data, int doaccel);
 		virtual ~pixie();
 		pixie(const pixie&) = delete;
 		pixie& operator=(const pixie&) = delete;

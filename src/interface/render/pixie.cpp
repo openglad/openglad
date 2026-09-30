@@ -66,17 +66,6 @@ pixie::pixie(const PixieData& data)
 	accel = 0;
 }
 
-//buffers: new constructor that automatically calls init_sdl_surface
-pixie::pixie(const PixieData& data, int doaccel)
-{
-	set_data(data);
-	
-	accel = 0;
-	
-	if(doaccel)
-		init_sdl_surface();
-}
-
 // Destruct the pixie and its variables
 pixie::~pixie()
 {
