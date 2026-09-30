@@ -34,18 +34,9 @@
 #include <openglad/core/util.h>
 #include <cstring>
 
-// RNG now comes from current_game->world->rng_.
-namespace
-{
-std::uint32_t query_difficulty_percent()
-{
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 100u;
-    const int difficulty = current_game->world->difficulty;
-    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
-}
-} // namespace
+#include "sim_difficulty.h"
 
+// RNG now comes from current_game->world->rng_.
 living::living(const PixieData& data)
     : walker(data)
 {
