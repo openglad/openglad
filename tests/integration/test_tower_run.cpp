@@ -48,6 +48,9 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/company.h>
+
+#include <unistd.h>
 
 #include <cstdint>
 #include <filesystem>
@@ -925,6 +928,133 @@ TEST(TowerLobbyGating, sanitize_rejects_tower_campaign_for_networked_sessions)
     state = server.state();
     EXPECT_EQ("ctf", state.settings.campaign_id);
     EXPECT_EQ(500, state.settings.scenario_id);
+}
+
+// --- The shadow finalizers' persist failures (WP-COV-NET, wave 4). ---
+//
+// Every persist arm of the two shadow finalizers returns false with a named
+// [ERROR] line, and a refused write leaves the company file untouched. The
+// obstructions are real filesystem states the product meets (a directory
+// squatting on a save name, a company slot never written, a read-only
+// company file), never a seam.
+
+namespace {
+
+fs::path user_save_path(const std::string& file_name)
+{
+    return fs::path(get_user_path()) / "save" / file_name;
+}
+
+std::string read_file_bytes(const fs::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in),
+            std::istreambuf_iterator<char>()};
+}
+
+// A directory standing where a save file (or its staging file) must be
+// written. `with_occupant` puts a file inside it so no cleanup path can
+// remove it as an empty directory. Removed again on scope exit.
+class ScopedSaveSquatter
+{
+public:
+    ScopedSaveSquatter(fs::path path, bool with_occupant)
+        : path_(std::move(path))
+    {
+        std::error_code ec;
+        fs::remove_all(path_, ec);
+        fs::create_directories(path_, ec);
+        created_ = !ec && fs::is_directory(path_, ec);
+        if (created_ && with_occupant)
+        {
+            std::ofstream occupant(path_ / "occupant");
+            occupant << "x";
+        }
+    }
+    ~ScopedSaveSquatter() { remove(); }
+    ScopedSaveSquatter(const ScopedSaveSquatter&) = delete;
+    ScopedSaveSquatter& operator=(const ScopedSaveSquatter&) = delete;
+
+    void remove()
+    {
+        std::error_code ec;
+        fs::remove_all(path_, ec);
+    }
+    [[nodiscard]] bool created() const { return created_; }
+
+private:
+    fs::path path_;
+    bool created_ = false;
+};
+
+// Classic progression on the shared screen, sitting on gladiator level 1.
+void arm_classic_session()
+{
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    ASSERT_EQ(og::mode::ProgressionKind::Classic,
+              og::mode::current_progression().kind());
+
+    SaveData& save = scr().save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.current_levels["gladiator"] = 1;
+    for (auto& score : save.m_score)
+        score = 0;
+
+    GameWorld& world = scr().world();
+    world.end = 0;
+    world.retry = false;
+    world.id = 1;
+    world.current_scenario = 1;
+    world.completed_levels.clear();
+    world.time_bonus_limit = 0;
+    for (auto& score : world.m_score)
+        score = 0;
+}
+
+} // namespace
+
+TEST_F(TowerRunE2E, shadow_networked_win_refuses_when_netsession_cannot_be_written)
+{
+    arm_classic_session();
+    ASSERT_TRUE(scr().save_data.save("save0"));
+    const std::string save0_before = read_file_bytes(save0_path());
+    ASSERT_FALSE(save0_before.empty());
+
+    // A directory squats on the transient networked slot.
+    ScopedSaveSquatter squatter(user_save_path("netsession.gtl"),
+                                /*with_occupant=*/false);
+    ASSERT_TRUE(squatter.created());
+
+    ::testing::internal::CaptureStderr();
+    const bool finalized =
+        og::runtime::local_transport_shadow_testing_finalize_win(
+            scr(), /*next_level=*/2, /*networked=*/true, 0u);
+    const std::string stderr_text = ::testing::internal::GetCapturedStderr();
+
+    EXPECT_FALSE(finalized)
+        << "a networked win whose netsession slot cannot be written must "
+           "refuse the finalize";
+    EXPECT_NE(std::string::npos,
+              stderr_text.find(
+                  "[ERROR] local_transport_shadow_save_failed "
+                  "action=complete_level slot=netsession error=2\n"))
+        << stderr_text;
+    EXPECT_EQ(save0_before, read_file_bytes(save0_path()))
+        << "a refused networked finalize must never reach the private company";
+
+    // Control: the same win with the slot writable persists the transient
+    // roster and reports success.
+    squatter.remove();
+    arm_classic_session();
+    EXPECT_TRUE(og::runtime::local_transport_shadow_testing_finalize_win(
+        scr(), /*next_level=*/2, /*networked=*/true, 0u));
+    std::error_code ec;
+    EXPECT_TRUE(fs::is_regular_file(user_save_path("netsession.gtl"), ec));
+    fs::remove(user_save_path("netsession.gtl"), ec);
 }
 
 } // namespace
