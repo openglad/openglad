@@ -1838,9 +1838,16 @@ void CursesPickerClient::run_game()
         // rematch shape's "next level" is this same level — say so honestly.
         // The next level's title is read off whatever campaign the session
         // left mounted (the one just played); scenario_display_name falls
-        // back to "N. Level N" if it cannot be read.
+        // back to "N. Level N" if it cannot be read. The verdict carries the
+        // mounted mode's results summary (tower: "Floor N conquered - best
+        // B"), read off the finished pair exactly as the SDL results screen
+        // does: save_data_ already holds the win fold (commit_result_to_save
+        // ran inside run_level_loop) and the mirror world still carries the
+        // finished level's id. (The networked dialog in finish_network_round
+        // has no such pair to pass: the tower is local-only.)
         menu.show_text("Mission complete",
-            {mission_verdict_line(result),
+            {mission_verdict_line(result, &save_data_,
+                                  &session->mirror_world()),
              (result.next_level >= 0 && !result.mode_rematch)
                  ? std::format("Next level: {}",
                        og::data::scenario_display_name(result.next_level))
