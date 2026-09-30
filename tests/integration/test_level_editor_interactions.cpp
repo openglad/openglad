@@ -11,10 +11,18 @@
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/terrain_types.h>
+#include <openglad/core/decordefs.h>
 #include "test_input_helpers.h"
+#include "test_save_state_guard.h"
+#include <openglad/interface/native_input.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/resources/io_common.h>
 
 #include <array>
 #include <atomic>
+#include <cstdint>
+#include <filesystem>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -51,6 +59,11 @@ int level_editor_testing_object_brush_family();
 int level_editor_testing_object_brush_team();
 int level_editor_testing_object_brush_level();
 bool level_editor_testing_object_brush_snap_to_grid();
+
+// From level_editor_ui.cpp (TESTING): opt prompt_for_string() into the real
+// blocking editor, and count its entries.
+void level_editor_testing_prompt_force_real(bool enabled);
+std::uint64_t level_editor_testing_prompt_real_entered_count();
 
 
 struct EditorThreadState {
@@ -1864,4 +1877,146 @@ TEST(LevelEditorInteractions, held_pan_keys_scroll_the_camera_to_each_pan_limit)
     EXPECT_GE(left_up.topx, -60 - 8) << "and stops one step past it";
     EXPECT_LT(left_up.topy, -60) << "holding W pans up to the limit";
     EXPECT_GE(left_up.topy, -60 - 8) << "and stops one step past it";
+}
+
+// ---------------------------------------------------------------------------
+// Held-mouse editor flows. The editor's held-left-button work (minimap
+// recentre, decor brush) runs once per frame WHILE the button is down, and
+// the mouse-up paths that follow are covered on their own, so every sample
+// below is taken with the button still held and only then released: an
+// oracle read after the release could be satisfied by the up path alone.
+// ---------------------------------------------------------------------------
+namespace
+{
+// Menu rows in GAME coordinates (LevelEditorData's constructor: File 0..30,
+// Campaign 30..85, Level 85..125; rows 20 px from y=20; submenus open to the
+// right of their parent).
+constexpr int kCampaignX = 57, kCampaignY = 10;                 // Campaign
+constexpr int kCampaignProfileX = 59, kCampaignProfileY = 50;   // Profile >
+constexpr int kCampaignTitleX = 136, kCampaignTitleY = 50;      // Title...
+constexpr int kMapSizeX = 255, kMapSizeY = 70;                  // Map size...
+
+bool enter_terrain_mode()
+{
+    return retry_until([]() { return key_settled(SDLK_T); },
+                       []() { return level_editor_testing_mode() == 0; });
+}
+
+void press_left_game(int gx, int gy)
+{
+    push_mouse_button_game(true, gx, gy, SDL_BUTTON_LEFT);
+}
+
+bool release_left_game(int gx, int gy)
+{
+    push_mouse_button_game(false, gx, gy, SDL_BUTTON_LEFT);
+    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+}
+
+struct EditorMinimapSample
+{
+    bool ok = false;
+    int grid_w = 0;
+    int grid_h = 0;
+    Sint32 topx_before = 0;
+    Sint32 topy_before = 0;
+    Sint32 topx_held = 0;
+    Sint32 topy_held = 0;
+    Sint32 expected_topx = 0;
+    Sint32 expected_topy = 0;
+};
+
+// A held press on the minimap recentres the camera on the pressed map cell:
+// set_draw_pos(radarx*GRID + rel_x*GRID - 160, radary*GRID + rel_y*GRID - 100)
+// with rel_* the offset into the minimap block. A new level is 40x60, so the
+// radar block is 40x44 (RADAR_X/Y clamp), radarx is pinned to 0 and radary
+// stays 0 for any camera y below 22 tiles.
+int editor_minimap_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorMinimapSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    if (ok)
+        ok = author_new_level();
+    if (ok)
+        ok = enter_terrain_mode();
+    LevelRuntimeData* level = ok ? level_editor_testing_level() : nullptr;
+    if (level == nullptr)
+        ok = false;
+    if (ok)
+    {
+        sample.grid_w = level->world().grid.w;
+        sample.grid_h = level->world().grid.h;
+        sample.topx_before = level->level_visuals().topx;
+        sample.topy_before = level->level_visuals().topy;
+        ok = sample.grid_w == 40 && sample.grid_h == 60;
+    }
+    if (ok)
+    {
+        const viewscreen& view = *og::runtime::current_session->myscreen_->viewob[0];
+        constexpr int kRelX = 20;
+        constexpr int kRelY = 12;
+        const int block_x = static_cast<int>(view.endx) - 40 - 4;
+        const int block_y = static_cast<int>(view.endy) - 44 - 4;
+        const int gx = block_x + kRelX;
+        const int gy = block_y + kRelY;
+        sample.expected_topx = kRelX * GRID_SIZE - 160;
+        sample.expected_topy = kRelY * GRID_SIZE - 100;
+        press_left_game(gx, gy);
+        ok = wait_until(
+            [&]() {
+                return level->level_visuals().topx == sample.expected_topx &&
+                       level->level_visuals().topy == sample.expected_topy;
+            },
+            kEditorEditCeilingMs);
+        sample.topx_held = level->level_visuals().topx;
+        sample.topy_held = level->level_visuals().topy;
+        ok = release_left_game(gx, gy) && ok;
+    }
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+template <typename Sample>
+int run_editor_with_injector(SDL_ThreadFunction injector, Sample& sample,
+                             const char* name)
+{
+    trace_clear();
+    og::runtime::current_session->myscreen_->world().end = 0;
+    SDL_Thread* thread = SDL_CreateThread(injector, name, &sample);
+    if (thread == nullptr)
+        return 1;
+    (void)level_editor();
+    int result = 1;
+    SDL_WaitThread(thread, &result);
+    SDL_FlushEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP);
+    SDL_FlushEvents(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+    return result;
+}
+} // namespace
+
+TEST(LevelEditorInteractions, held_press_on_the_minimap_recentres_the_camera_on_that_cell)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    EditorMinimapSample sample;
+    const int result = run_editor_with_injector(editor_minimap_injector,
+                                                sample, "editor_minimap");
+    picker_testing_yes_or_no_queue_clear();
+
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(40, sample.grid_w) << "File > Level > New builds a 40x60 grid";
+    EXPECT_EQ(60, sample.grid_h);
+    EXPECT_EQ(160, sample.expected_topx);
+    EXPECT_EQ(92, sample.expected_topy);
+    EXPECT_NE(sample.expected_topx, sample.topx_before)
+        << "control: the camera did not already sit on the target";
+    EXPECT_EQ(sample.expected_topx, sample.topx_held)
+        << "a held press 20 cells into the minimap puts that cell at the "
+           "camera centre (x)";
+    EXPECT_EQ(sample.expected_topy, sample.topy_held)
+        << "and 12 cells down (y)";
 }
