@@ -7412,3 +7412,50 @@ TEST_F(RenderEffects, fall_cue_draws_only_in_the_view_of_its_landing_floor)
     effects_reset_for_testing();
     restore_world(vs);
 }
+
+// Rule: trails track WEAPONS only. The weapon list also parks effects: a
+// broken door hands its spot to the core:door_open FX through
+// og.add_weap_ob('fx', ...) (packs/core/lib/weapon_door.lua), and that FX
+// must never enter the trail store, while an arrow beside it does.
+TEST_F(RenderEffects, trails_skip_effects_parked_in_the_weapon_list)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "trails", "on");
+
+    const int door_open = og::families::resolve_family_string_id(
+        Order::FX, "core:door_open");
+    ASSERT_GE(door_open, 0) << "core:door_open must be registered";
+
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    GameWorld& world = scr()->world();
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* opened = world.add_weap_ob(Order::FX, door_open);
+    ASSERT_NE(nullptr, opened);
+    ASSERT_EQ(Order::FX, opened->query_order());
+    opened->setxy(192, 96);
+    walker* arrow = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->setxy(200, 140);
+    const std::uint32_t fx_id = opened->entity_id();
+    const std::uint32_t arrow_id = arrow->entity_id();
+    ASSERT_NE(0u, fx_id);
+    ASSERT_NE(0u, arrow_id);
+
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_EQ(1u, effects_store_depth(arrow_id))
+        << "control: the arrow in the weapon list is tracked";
+    ASSERT_EQ(0u, effects_store_depth(fx_id))
+        << "the door-open FX parked in the weapon list must not be tracked";
+    ASSERT_EQ(1u, effects_store_size());
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
