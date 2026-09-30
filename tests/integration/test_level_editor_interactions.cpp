@@ -2222,3 +2222,130 @@ TEST(LevelEditorInteractions, ctrl_s_with_level_and_campaign_dirty_saves_both_an
     EXPECT_EQ(std::string(kSavedCampaignTitle), saved_title)
         << "the campaign save wrote the new title into the package";
 }
+
+namespace
+{
+struct EditorResizeSample
+{
+    bool ok = false;
+    int w_before = -1, h_before = -1, w_after = -1, h_after = -1;
+};
+
+// Open Level > Details > Map size... with the REAL prompt (the blocking
+// input_string_ex editor, observed through text_input_is_active()).
+bool open_map_size_prompt(std::uint64_t entered_before)
+{
+    if (!(click_settled(kLevelX, kLevelY) &&
+          click_settled(kLevelDetailsX, kLevelDetailsY)))
+        return false;
+    inject_click_game(kMapSizeX, kMapSizeY, 20);
+    return wait_until(
+        [entered_before]() {
+            return level_editor_testing_prompt_real_entered_count() >
+                       entered_before &&
+                   og::input_native::text_input_is_active();
+        },
+        kEditorDrainCeilingMs);
+}
+
+bool answer_real_prompt(SDL_Keycode key, std::uint64_t entered_target)
+{
+    (void)entered_target;
+    return push_checked_key_press_mod(key, SDL_KMOD_NONE);
+}
+
+bool close_resize_canceled_dialog(int expected_total)
+{
+    if (!wait_until(
+            [expected_total]() {
+                return count_dialog_traces("timed_dialog_open Resize canceled.") ==
+                       expected_total;
+            },
+            10000u))
+        return false;
+    return push_checked_key_press_mod(SDLK_F12, SDL_KMOD_NONE) &&
+           wait_until(
+               [expected_total]() {
+                   return count_dialog_traces(
+                              "timed_dialog_closed Resize canceled.") ==
+                          expected_total;
+               },
+               10000u);
+}
+
+// Escape at the WIDTH prompt cancels; then RETURN keeps the width and Escape
+// at the HEIGHT prompt cancels. Both arms say "Resize canceled." and leave
+// the grid alone.
+int editor_resize_cancel_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorResizeSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    LevelRuntimeData* level = ok ? level_editor_testing_level() : nullptr;
+    if (level != nullptr)
+    {
+        sample.w_before = level->world().grid.w;
+        sample.h_before = level->world().grid.h;
+    }
+    // Width prompt: Escape.
+    std::uint64_t entered = level_editor_testing_prompt_real_entered_count();
+    if (ok)
+        ok = open_map_size_prompt(entered) &&
+             answer_real_prompt(SDLK_ESCAPE, entered + 1) &&
+             close_resize_canceled_dialog(1);
+    // Width prompt: RETURN keeps the width; height prompt: Escape.
+    entered = level_editor_testing_prompt_real_entered_count();
+    if (ok)
+        ok = open_map_size_prompt(entered) &&
+             answer_real_prompt(SDLK_RETURN, entered + 1) &&
+             wait_until(
+                 [entered]() {
+                     return level_editor_testing_prompt_real_entered_count() >=
+                                entered + 2 &&
+                            og::input_native::text_input_is_active();
+                 },
+                 kEditorDrainCeilingMs) &&
+             answer_real_prompt(SDLK_ESCAPE, entered + 2) &&
+             close_resize_canceled_dialog(2);
+    if (ok)
+        ok = wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    if (level != nullptr)
+    {
+        sample.w_after = level->world().grid.w;
+        sample.h_after = level->world().grid.h;
+    }
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+struct ForceRealPromptGuard
+{
+    ForceRealPromptGuard() { level_editor_testing_prompt_force_real(true); }
+    ~ForceRealPromptGuard() { level_editor_testing_prompt_force_real(false); }
+};
+} // namespace
+
+TEST(LevelEditorInteractions, map_size_prompt_escape_cancels_the_resize_at_either_prompt)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    EditorResizeSample sample;
+    int result = 1;
+    {
+        ForceRealPromptGuard force_real;
+        result = run_editor_with_injector(editor_resize_cancel_injector,
+                                          sample, "editor_resize_cancel");
+    }
+
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(2, count_dialog_traces("timed_dialog_open Resize canceled."))
+        << "Escape at the width prompt and at the height prompt each cancel";
+    EXPECT_EQ(0, count_dialog_traces("timed_dialog_open Resized map"))
+        << "a canceled resize never resizes";
+    EXPECT_GT(sample.w_before, 0);
+    EXPECT_EQ(sample.w_before, sample.w_after) << "the grid width is unchanged";
+    EXPECT_EQ(sample.h_before, sample.h_after) << "the grid height is unchanged";
+}
