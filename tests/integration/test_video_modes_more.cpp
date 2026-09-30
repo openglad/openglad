@@ -7,6 +7,8 @@
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/platform/game_session.h>
 #include <physfs.h>
 #include <algorithm>
 #include <array>
@@ -1193,4 +1195,68 @@ TEST(VideoModesMore, exclusive_mode_ranking_prefers_exact_desktop_then_density_t
 		mode(1280, 720, 1.0f, 60.0f),
 	};
 	EXPECT_EQ(0, rank(all_equal, &plain_desktop, 1280, 720));
+}
+
+// A display completion EVENT stamped before the latest serialized request
+// cannot confirm that request: a LeaveFullscreen queued before a Borderless
+// apply keeps the confirmed Borderless state (cfg stays "borderless").
+// Control: the same LeaveFullscreen stamped after the request is current and
+// adopts Windowed ("off").
+TEST(VideoModesMore, stale_display_event_cannot_confirm_a_newer_request)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, E_Screen);
+    static constexpr std::array<const char*, 5> kKeys = {
+        "fullscreen", "width", "height", "windowed_width", "windowed_height"};
+    // Hands back the exact window the process had (size, windowed state,
+    // the tracker's confirmed snapshot) and the graphics cfg keys, even when
+    // an assertion fails: later tests in this binary map clicks through the
+    // live window size.
+    struct DisplayRestore
+    {
+        screen* target;
+        std::array<std::string, 5> saved;
+        int window_w = 0;
+        int window_h = 0;
+        ~DisplayRestore()
+        {
+            (void)SDL_SetWindowFullscreen(E_Screen->window, false);
+            (void)SDL_SyncWindow(E_Screen->window);
+            (void)SDL_SetWindowSize(E_Screen->window, window_w, window_h);
+            (void)SDL_SyncWindow(E_Screen->window);
+            target->reflect_display_settings_from_window(
+                DisplayStateConfirmation::Synchronized);
+            for (std::size_t i = 0; i < kKeys.size(); ++i)
+                cfg.apply_setting("graphics", kKeys[i], saved[i]);
+            target->reapply_world_scale();
+        }
+    } restore{s, {}};
+    for (std::size_t i = 0; i < kKeys.size(); ++i)
+        restore.saved[i] = cfg.get_setting("graphics", kKeys[i]);
+    ASSERT_TRUE(SDL_GetWindowSize(
+        E_Screen->window, &restore.window_w, &restore.window_h));
+
+    cfg.apply_setting("graphics", "fullscreen", "borderless");
+    s->apply_display_settings_from_cfg();
+    ASSERT_EQ("borderless", cfg.get_setting("graphics", "fullscreen"))
+        << "the Borderless request must be applied and confirmed first";
+
+    // The window really leaves fullscreen behind the tracker (the state a
+    // queued LEAVE describes), so the SDL window and the confirmed state
+    // agree again once the current event is reflected below.
+    ASSERT_NE(nullptr, E_Screen);
+    ASSERT_TRUE(SDL_SetWindowFullscreen(E_Screen->window, false));
+    (void)SDL_SyncWindow(E_Screen->window);
+
+    // Timestamp 0 is the synthetic bypass; 1 ns predates any real request.
+    s->reflect_display_settings_from_window(
+        DisplayStateConfirmation::LeaveFullscreen, 1u);
+    EXPECT_EQ("borderless", cfg.get_setting("graphics", "fullscreen"))
+        << "a completion event older than the request must not confirm it";
+
+    s->reflect_display_settings_from_window(
+        DisplayStateConfirmation::LeaveFullscreen, SDL_GetTicksNS());
+    EXPECT_EQ("off", cfg.get_setting("graphics", "fullscreen"))
+        << "a current LeaveFullscreen adopts Windowed";
 }
