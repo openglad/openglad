@@ -992,7 +992,8 @@ TEST_F(GladHud, score_panel_sanitizes_mirrored_identity_and_special_metadata)
         << "FOLLOWING plus a capped 12-character name must fit its field";
 
     // With neither guy nor stats name, fall back to the family label.  A raw
-    // signed-byte family from a hostile snapshot is clamped before indexing.
+    // signed-byte family from a hostile snapshot has no registry descriptor
+    // and reads the registry's unknown-family word; it never indexes a table.
     controlp->clear_myguy();
     controlp->stats()->name.clear();
     controlp->set_family(127);
@@ -1037,11 +1038,13 @@ TEST_F(GladHud, score_panel_sanitizes_mirrored_identity_and_special_metadata)
     int alternate_special = -1;
     for (int family = 0; family < NUM_FAMILIES && alternate_family < 0; ++family)
     {
+        const FamilyDescriptor* fd = get_family_descriptor(family);
+        ASSERT_NE(nullptr, fd) << "core family " << family;
         for (int special = 0; special < NUM_SPECIALS; ++special)
         {
-            if (s->alternate_name[family][special] != "NONE" &&
-                s->alternate_name[family][special] !=
-                    s->special_name[family][special])
+            if (std::string(fd->alternate_names[special]) != kSpecialNameNone &&
+                std::string(fd->alternate_names[special]) !=
+                    fd->special_names[special])
             {
                 alternate_family = family;
                 alternate_special = special;
