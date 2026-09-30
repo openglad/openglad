@@ -1046,8 +1046,6 @@ private:
     // preview and the launch adoption; nothing is broadcast (transport null).
     void drive_stage()
     {
-        if (!stage_ || !server_)
-            return;
         const std::uint64_t now = og::server::stage_clock_now_ms();
         try
         {
