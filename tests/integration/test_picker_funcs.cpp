@@ -5050,6 +5050,25 @@ TEST_F(SpriteSheetPicker, wheel_scroll_changes_the_pack_under_the_top_row)
     EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"));
 }
 
+// The wheel scrolls back UP too: two notches down and one up leave the top
+// row on the FIRST pack. An inert wheel-up leaves it on the second pack; a
+// wheel-up that overshot would land on Standard ("").
+TEST_F(SpriteSheetPicker, wheel_up_scrolls_the_list_back_one_row)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_wheelup_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u);
+    ASSERT_GE(1 + static_cast<int>(packs.size()) - kSheetVisibleRows, 2)
+        << "the list must be able to scroll at least two rows";
+
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_wheel(-1), sheet_wheel(-1),
+                                      sheet_wheel(1), sheet_row_click(0)}));
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"))
+        << "one wheel notch up must scroll back exactly one row";
+}
+
 // Teeth for the escape tail: the parting BACK press evaporates exactly the
 // way a frame slower than the 60 ms hold eats it, and the run still ENDS --
 // with one extra press, no other press disturbed, and the same selection.
