@@ -13,6 +13,7 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
@@ -24,6 +25,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/packs.h>
 
 #include <cstdint>
@@ -1708,4 +1710,46 @@ TEST_F(ScriptHooksTest, bind_pass_accepts_a_declaration_that_keeps_its_id)
         &declared);
     EXPECT_EQ(1u, declared);
     EXPECT_EQ("", errors) << "a stable id binds without a load error";
+}
+
+// ---------------------------------------------------------------------------
+// A pack weapon's declared cylinder height reaches every weapon the loader
+// builds of that family: `sizez = 12` in the declaration becomes the spawned
+// walker's sizez. Control: a core weapon declared with sizez = 0 keeps the
+// walker's 0 sentinel ("full height", sim_entity.h).
+// ---------------------------------------------------------------------------
+
+TEST_F(ScriptHooksTest, pack_weapon_sizez_reaches_every_spawned_weapon)
+{
+    og::data::ClasspackData data;
+    register_pack_family_chunk(
+        {"gldz", "gldz/families/tallbolt.lua",
+         "og.family('weapon', { id = 'gldz:tallbolt', name = 'TALLBOLT',\n"
+         "                      sizez = 12 })\n"});
+    const DeclareResult declared = declare_pack_families("gldz", data);
+    clear_pack_family_chunks();
+    ASSERT_TRUE(declared.ok) << declared.error;
+    ASSERT_EQ(1u, data.weapons.size());
+    ASSERT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    const int tallbolt =
+        og::families::resolve_family_string_id(Order::Weapon, "gldz:tallbolt");
+    ASSERT_GE(tallbolt, 0) << "the pack weapon must be installed";
+    const int rock =
+        og::families::resolve_family_string_id(Order::Weapon, "core:rock");
+    ASSERT_GE(rock, 0);
+
+    loader game_loader{EntityFactory{}};
+    for (int spawn = 0; spawn < 2; ++spawn) {
+        std::unique_ptr<walker> bolt =
+            game_loader.create_walker_owned(Order::Weapon, tallbolt);
+        ASSERT_NE(nullptr, bolt);
+        game_loader.set_walker(bolt.get(), Order::Weapon, tallbolt);
+        EXPECT_EQ(12, bolt->sizez()) << "spawn " << spawn;
+    }
+
+    std::unique_ptr<walker> stone =
+        game_loader.create_walker_owned(Order::Weapon, rock);
+    ASSERT_NE(nullptr, stone);
+    game_loader.set_walker(stone.get(), Order::Weapon, rock);
+    EXPECT_EQ(0, stone->sizez()) << "control: sizez = 0 keeps the sentinel";
 }
