@@ -2278,12 +2278,16 @@ private:
             std::to_string(seats[index]->player_index + 1);
     }
 
-    void handle_typed_message(const og::sim::TypedReceivedMessage& message)
+    // Applies one polled message. Returns false when the message tore the
+    // lobby down (a Kicked notice): the caller must stop applying the rest
+    // of that batch, or a trailing LobbyState would resurrect a roster over
+    // the dead links.
+    bool handle_typed_message(const og::sim::TypedReceivedMessage& message)
     {
         if (pack_client_ && transport_ &&
             pack_client_->handle_message(*transport_, server_peer_id_,
                                          message)) {
-            return;
+            return true;
         }
         switch (message.kind) {
         case og::sim::TypedReceivedMessageKind::LobbyState:
@@ -2343,7 +2347,7 @@ private:
                 kicked_ = true;
                 team_status_.clear();
                 teardown();
-                break;
+                return false;
             }
             if (message.lobby_message &&
                 message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
@@ -2372,6 +2376,7 @@ private:
         default:
             break;
         }
+        return true;
     }
 
     // Staged lobby (#218): change-key recompute from the live LobbyServer
@@ -2454,7 +2459,8 @@ private:
 
         for (const og::sim::TypedReceivedMessage& message :
              poll_lobby_transport_messages(*client_link)) {
-            handle_typed_message(message);
+            if (!handle_typed_message(message))
+                break;
         }
 
         // Staged lobby (#218, C9): apply the joiner's retained pair into the
