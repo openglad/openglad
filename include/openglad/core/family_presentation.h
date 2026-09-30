@@ -183,4 +183,29 @@ inline bool glyph_from_utf8(std::string_view text, char32_t& out)
     return true;
 }
 
+// True when ALL of `text` is well-formed UTF-8 (the empty string included):
+// a run of scalar values each of which glyph_from_utf8 accepts, so the
+// overlong/surrogate/range rules live in one place. A scalar is one to four
+// bytes and glyph_from_utf8 accepts only an exact-length slice, so at most
+// one width can match at each position. Used to keep a filesystem name that
+// libyaml would refuse (a Latin-1 folder name) out of anything saved.
+inline bool is_valid_utf8(std::string_view text)
+{
+    std::size_t at = 0;
+    while (at < text.size()) {
+        std::size_t width = 0;
+        char32_t ignored = U'\0';
+        for (std::size_t len = 1; len <= 4 && at + len <= text.size(); len++) {
+            if (glyph_from_utf8(text.substr(at, len), ignored)) {
+                width = len;
+                break;
+            }
+        }
+        if (width == 0)
+            return false;
+        at += width;
+    }
+    return true;
+}
+
 }  // namespace og

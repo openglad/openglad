@@ -1596,6 +1596,26 @@ TEST(FamilyPresentation, glyph_utf8_round_trips)
     EXPECT_FALSE(og::glyph_color_from_name("puce", unknown));
 }
 
+// is_valid_utf8 walks a whole string through glyph_from_utf8, so every scalar
+// rule above applies at every position -- and a Latin-1 byte, the shape of a
+// folder name libyaml refuses to save, fails the string.
+TEST(FamilyPresentation, is_valid_utf8_accepts_only_well_formed_runs)
+{
+    EXPECT_TRUE(og::is_valid_utf8("")) << "the empty run is well-formed";
+    EXPECT_TRUE(og::is_valid_utf8("cafe")) << "plain ASCII";
+    EXPECT_TRUE(og::is_valid_utf8("caf\xC3\xA9")) << "UTF-8 e-acute";
+    EXPECT_TRUE(og::is_valid_utf8("\xE2\x99\xA3 \xF0\x9F\x98\x80!"))
+        << "three- and four-byte scalars mixed with ASCII";
+
+    EXPECT_FALSE(og::is_valid_utf8("caf\xE9")) << "Latin-1 e-acute at the end";
+    EXPECT_FALSE(og::is_valid_utf8("\xE9t\xE9")) << "Latin-1 in the middle";
+    EXPECT_FALSE(og::is_valid_utf8("ab\x80")) << "lone continuation";
+    EXPECT_FALSE(og::is_valid_utf8("a\xC0\x80" "b")) << "overlong NUL";
+    EXPECT_FALSE(og::is_valid_utf8("\xED\xA0\x80")) << "surrogate";
+    EXPECT_FALSE(og::is_valid_utf8("x\xE2\x99")) << "truncated tail";
+    EXPECT_FALSE(og::is_valid_utf8("\xF4\x90\x80\x80")) << "above U+10FFFF";
+}
+
 // ---------------------------------------------------------------------------
 // tuning: maps (read by scripts via og.tuning)
 // ---------------------------------------------------------------------------

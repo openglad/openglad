@@ -33,6 +33,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
+#include <openglad/core/family_presentation.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
@@ -3066,9 +3067,19 @@ static std::string pick_spritesheet()
     std::vector<std::string> packs;
     {
         std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(extra_dir, ec))
-            if (entry.is_directory())
-                packs.push_back(entry.path().filename().string());
+        for (const auto& entry : std::filesystem::directory_iterator(extra_dir, ec)) {
+            if (!entry.is_directory())
+                continue;
+            std::string name = entry.path().filename().string();
+            // The pick is stored in cfg, and libyaml refuses a scalar that
+            // is not UTF-8: one Latin-1 folder name here used to make every
+            // later settings save fail. Such a folder is not offered.
+            if (!og::is_valid_utf8(name)) {
+                LogWarn("Sprite sheet folder name is not valid UTF-8; skipping it.\n");
+                continue;
+            }
+            packs.push_back(std::move(name));
+        }
     }
     std::sort(packs.begin(), packs.end());
 
