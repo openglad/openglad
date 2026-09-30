@@ -640,7 +640,13 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
             "openglad_demo failed to bootstrap save0 for scenario {}",
             scen_id));
     }
-    if (load_saved_game(og::data::active_company_slot().c_str(), s) == 0) {
+    // load_saved_game would answer a failed load with a modal dialog that a
+    // headless demo can never dismiss; take the error code and fail loudly.
+    // A fallback level (UsedFallbackLevel) is still a playable session.
+    const LoadSavedGameError load_error = load_saved_game_with_error(
+        og::data::active_company_slot().c_str(), s);
+    if (load_error != LoadSavedGameError::None &&
+        load_error != LoadSavedGameError::UsedFallbackLevel) {
         throw std::runtime_error(std::format(
             "openglad_demo failed to load bootstrap save0 for scenario {}",
             scen_id));
