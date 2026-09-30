@@ -1051,12 +1051,34 @@ TEST(CursesPickerClient, view_scenario_band_overflow_stops_at_the_footer)
     EXPECT_TRUE(f.t().input_exhausted())
         << "both releases and the fresh press must be consumed";
     EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
-    EXPECT_EQ(0u, f.t().text_row(15).find("[ press any key ]"))
-        << "the footer keeps its prompt when the census overflows:\n"
+    const auto trimmed_row = [](const HeadlessTerminal& term, int row) {
+        std::string text = term.text_row(row);
+        while (!text.empty() && text.back() == ' ')
+            text.pop_back();
+        return text;
+    };
+    EXPECT_EQ("[ press any key ]", trimmed_row(f.t(), 15))
+        << "the footer carries the prompt and nothing else:\n"
         << f.t().dump();
     EXPECT_NE(std::string::npos, f.t().text_row(12).find_first_not_of(' '))
         << "the first census row under the band must be filled:\n"
         << f.t().dump();
+
+    // MID-WRAP: at 20x20 a census line starts on the last row above the
+    // footer and wraps onto it with a tail longer than the 17-cell prompt,
+    // so a continuation written onto the footer row would stay visible past
+    // the prompt. The wrapped-continuation break must stop it.
+    PickerFixture wide({}, /*rows=*/20, /*cols=*/20);
+    wide.t().push_special(KeyCode::Enter);
+    wide.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_TRUE(wide.t().input_exhausted());
+    EXPECT_EQ("[ press any key ]", trimmed_row(wide.t(), 19))
+        << "a census line wrapping onto the footer must stop above it:\n"
+        << wide.t().dump();
+    EXPECT_NE(std::string::npos,
+              wide.t().text_row(18).find_first_not_of(' '))
+        << "the row above the footer holds the start of the wrapped line:\n"
+        << wide.t().dump();
 }
 
 // Solo staged VIEW LEVEL degradation: a local stage that cannot fit the
