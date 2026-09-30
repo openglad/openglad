@@ -421,8 +421,6 @@ static std::vector<ModeRowSegment> compose_mode_row(
             continue;
         const std::string_view body =
             strip_team_color_word(line.text.data(), line.team);
-        if (body.empty())
-            continue;
         if (!segments.empty())
             segments.push_back({std::string(kModeRowSeparator),
                                 mode_hud_color(255), 255});
