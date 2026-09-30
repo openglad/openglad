@@ -3084,6 +3084,107 @@ TEST(CursesNetwork, host_kick_key_removes_the_peer_and_tells_it_why)
         << "the host's own link is healthy";
 }
 
+// R13: a Kicked notice tears the joiner's lobby down, and NOTHING after it
+// in the same polled batch may apply. The LobbyServer sends the courtesy
+// notice and then disconnects the peer, whose rebuild broadcasts a state;
+// over a relay/WebSocket link that broadcast can already sit in the doomed
+// peer's queue, and a joiner that has not polled in between drains both in
+// ONE batch. Applying the trailing state resurrected a roster over the dead
+// links. The test plays the server on a raw InProcessTransport so the batch
+// order is exactly the one the product's server produces.
+TEST(CursesNetwork, kicked_notice_stops_applying_the_rest_of_its_polled_batch)
+{
+    og::sim::LobbyState state;
+    state.host_player_id = 0;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0,
+        .seat_id = 7,
+        .machine_id = 3,
+        .name = "Host",
+        .company = "HOST CO",
+        .team = 0,
+        .character_slots = {},
+        .ready = false,
+        .is_host = true,
+    });
+    // A hand-built state must be one the wire can carry.
+    const std::optional<og::sim::LobbyState> round_trip =
+        og::sim::deserialize_lobby_state_message(
+            og::sim::serialize_lobby_state_message(state));
+    ASSERT_TRUE(round_trip.has_value());
+    ASSERT_EQ(state, *round_trip);
+
+    struct JoinRig {
+        SaveData save;
+        std::shared_ptr<og::sim::InProcessTransport> server;
+        std::shared_ptr<og::sim::InProcessTransport> client;
+        std::unique_ptr<CursesLobby> lobby;
+        og::sim::PeerId joiner = 0;
+    };
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    // One join lobby on a raw server link, polled once so it sends its
+    // settings+join; the server side drains those and learns the joiner's
+    // peer id from them (the messages are otherwise ignored).
+    const auto make_rig = [&](JoinRig& rig) {
+        init_team_save(rig.save, 1, FAMILY_ELF, "Joiner");
+        rig.server = og::sim::InProcessTransport::create_server();
+        rig.server->accept_connections();
+        rig.client = rig.server->create_client_transport();
+        rig.lobby = make_join_lobby_over_transport_for_testing(
+            rig.save, 1, rig.client, rig.client->local_peer_id());
+        EXPECT_FALSE(rig.lobby->poll(term, clock));
+        bool saw_join = false;
+        for (const og::sim::TypedReceivedMessage& message :
+             rig.server->poll_typed()) {
+            rig.joiner = message.peer_id;
+            saw_join = true;
+        }
+        ASSERT_TRUE(saw_join) << "the joiner's first poll sends its join";
+    };
+
+    // Positive control: the same state ALONE is applied -- the roster
+    // appears and nothing is alerted.
+    {
+        JoinRig rig;
+        make_rig(rig);
+        ASSERT_NE(nullptr, rig.lobby);
+        rig.server->send_lobby_state(
+            rig.joiner, std::make_shared<og::sim::LobbyState>(state));
+        rig.lobby->poll(term, clock);
+        ASSERT_EQ(1u, rig.lobby->players().size())
+            << "a lone lobby state must be applied";
+        EXPECT_EQ("Host", rig.lobby->players()[0].name);
+        EXPECT_FALSE(rig.lobby->connection_alert().has_value());
+    }
+
+    // The batch: Kicked, THEN the state, both queued before one poll.
+    JoinRig rig;
+    make_rig(rig);
+    ASSERT_NE(nullptr, rig.lobby);
+    rig.server->send_lobby_message(
+        rig.joiner,
+        std::make_shared<og::sim::LobbyMessage>(
+            og::sim::LobbyMessage{.payload = og::sim::LobbyKickedMessage{}}));
+    rig.server->send_lobby_state(
+        rig.joiner, std::make_shared<og::sim::LobbyState>(state));
+    EXPECT_FALSE(rig.lobby->poll(term, clock));
+
+    ASSERT_TRUE(rig.lobby->connection_alert().has_value())
+        << "the Kicked notice must land";
+    EXPECT_EQ("KICKED BY HOST", *rig.lobby->connection_alert());
+    EXPECT_EQ(0u, rig.lobby->players().size())
+        << "a lobby state behind a Kicked notice in one batch must be "
+           "ignored: the lobby is torn down";
+    EXPECT_FALSE(rig.lobby->is_host());
+
+    // The next poll neither spins nor re-arms anything.
+    EXPECT_FALSE(rig.lobby->poll(term, clock));
+    EXPECT_EQ(0u, rig.lobby->players().size());
+    ASSERT_TRUE(rig.lobby->connection_alert().has_value());
+    EXPECT_EQ("KICKED BY HOST", *rig.lobby->connection_alert());
+}
+
 // LINEUP §6 on the DEDICATED shape: a standalone LobbyServer with two JOIN
 // lobbies on it. The first-connected peer is the ELECTED host — the same
 // machine a host migration would promote — so 'k' has to key on "is host

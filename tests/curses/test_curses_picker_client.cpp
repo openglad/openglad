@@ -27,8 +27,11 @@
 #include <openglad/platform/curses/headless_terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/platform_bridge.h>
@@ -38,8 +41,11 @@
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
 #include <array>
@@ -4663,4 +4669,169 @@ TEST(CursesPickerClient, failed_company_open_restores_the_previous_slot)
     dismiss(f.t());                          // the "Loaded" screen
     EXPECT_TRUE(f.client.show_company_list());
     EXPECT_EQ("wpleftgood", f.config.save_name);
+}
+
+// --- R8: a solo curses WIN through run_game ------------------------------
+//
+// run_game drains every queued key into its first frame, so a keyed exit
+// prompt cannot be answered inside one run_game call from a scripted
+// terminal. The classic rule that needs no key at all is the one a clear
+// level WITHOUT an exit obeys: no hostile Living and no exit pad is
+// level_done == 2, a win with next level = id + 1 on the first tick
+// (game_world.cpp's level completion check). The level is fixture content
+// authored with the product's own writers (mapgen start marker +
+// save_level_to_user_dir) and loaded through the mounted campaign's
+// user-path fall-through.
+namespace {
+
+struct AuthoredUserLevel
+{
+    int id;
+    ~AuthoredUserLevel() { (void)og::data::delete_tower_floor_files(id); }
+};
+
+// A foe-less, exit-less grass level with one team-0 start marker.
+bool author_clear_user_level(int id, const char* title)
+{
+    GameWorld authored(static_cast<std::uint32_t>(id));
+    headless_level_data_hooks().wire_world_entity_services(&authored, nullptr);
+    authored.create_new_grid();
+    authored.title = title;
+    og::mapgen::place_start(authored, 0, 6, 10);
+    og::data::LevelFileMetadata metadata; // grid defaults to scen{id:04}
+    og::data::LevelFileIoError error = og::data::LevelFileIoError::None;
+    const bool written =
+        og::data::save_level_to_user_dir(authored, id, metadata, &error);
+    authored.delete_objects();
+    return written && error == og::data::LevelFileIoError::None;
+}
+
+// Every rendered row of the final frame, trailing/leading blanks trimmed.
+std::vector<std::string> trimmed_rows(const HeadlessTerminal& term)
+{
+    std::vector<std::string> rows;
+    for (int row = 0; row < term.rows(); ++row) {
+        std::string text = term.text_row(row);
+        const std::size_t first = text.find_first_not_of(' ');
+        if (first == std::string::npos) {
+            rows.emplace_back();
+            continue;
+        }
+        const std::size_t last = text.find_last_not_of(' ');
+        rows.push_back(text.substr(first, last - first + 1));
+    }
+    return rows;
+}
+
+bool has_row(const std::vector<std::string>& rows, std::string_view want)
+{
+    return std::find(rows.begin(), rows.end(), want) != rows.end();
+}
+
+} // namespace
+
+// Rule: a solo run_game that WINS folds the win into the picker's save,
+// autosaves it to the active company slot (LevelWin), and shows the
+// "Mission complete" dialog with the classic verdict and the next level.
+// Paired control: a quit run is not a win -- nothing is completed and no
+// Mission complete dialog appears.
+TEST(CursesPickerClient, run_game_solo_win_folds_autosaves_and_reports)
+{
+    constexpr int kLevel = 9998;
+    AuthoredUserLevel files{kLevel};
+    ASSERT_TRUE(author_clear_user_level(kLevel, "CURSES CLEAR"));
+
+    {
+        // Paired control: a run that ends by quitting (Esc before the first
+        // tick on shipped level 1, whose foes hold it open) is no win --
+        // nothing is completed and no Mission complete dialog appears. (The
+        // authored clear level cannot host this control: its win lands on
+        // the same server tick as the abort.)
+        PickerFixture f;
+        f.config.campaign = "gladiator";
+        f.config.level = 1;
+        f.config.team_families.clear();
+        f.t().push_special(KeyCode::Escape);
+        f.client.run_game();
+        EXPECT_FALSE(f.save().is_level_completed(1)) << "a quit is not a win";
+        EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+        const std::vector<std::string> rows = trimmed_rows(f.t());
+        EXPECT_FALSE(has_row(rows, "Victory!")) << f.t().dump();
+        EXPECT_FALSE(has_row(rows, "Mission complete")) << f.t().dump();
+    }
+
+    PickerFixture f;
+    f.config.campaign = "gladiator";
+    f.config.level = kLevel;
+    f.config.team_families.clear();
+    f.client.run_game();
+
+    const std::vector<std::string> rows = trimmed_rows(f.t());
+    EXPECT_TRUE(has_row(rows, "Mission complete")) << f.t().dump();
+    EXPECT_TRUE(has_row(rows, "Victory!"))
+        << "a Classic win's verdict is exactly the bare word:\n"
+        << f.t().dump();
+    EXPECT_TRUE(has_row(rows, "Next level: 9999. Level 9999"))
+        << f.t().dump();
+    EXPECT_TRUE(f.save().is_level_completed(kLevel));
+    EXPECT_EQ(kLevel + 1, static_cast<int>(f.save().scen_num));
+
+    SaveData disk;
+    ASSERT_TRUE(disk.load(og::data::active_company_slot()))
+        << "the LevelWin autosave must have written the active slot";
+    EXPECT_TRUE(disk.is_level_completed(kLevel))
+        << "the autosaved company carries the win";
+    EXPECT_EQ(kLevel + 1, static_cast<int>(disk.scen_num));
+}
+
+// R3 (route T): the solo "Mission complete" dialog carries the MOUNTED
+// mode's results summary after the verdict, as the SDL results screen does.
+// A tower floor win reads "Victory! Floor 1 conquered - best 2": floor 1 is
+// the finished world's id - 700, and best is the post-fold value
+// (advance_cursor records the floor REACHED, 2). The floor is fixture
+// content: the product's own tower writer (save_level_to_user_dir, the
+// generator's writer) puts a clear, exit-less floor 701 where the generator
+// would; tower_floor_files_exist accepts it (it checks presence, not seed
+// provenance), and the classic clear-level rule wins it on the first tick.
+// The non-tower half of the rule is run_game_solo_win_folds_autosaves_and_reports:
+// the same dialog on a Classic level reads exactly "Victory!".
+TEST(CursesPickerClient, run_game_tower_floor_win_shows_the_mode_summary)
+{
+    MountRestore mount_restore;
+    struct PruneFloors
+    {
+        ~PruneFloors()
+        {
+            for (int id = og::kTowerFirstFloorLevel; id <= 760; ++id)
+                (void)og::data::delete_tower_floor_files(id);
+        }
+    } prune_floors;
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(
+                  std::string(og::kTowerCampaignId)));
+    ASSERT_EQ(og::mode::ProgressionKind::Tower,
+              og::mode::current_progression().kind());
+    ASSERT_TRUE(author_clear_user_level(og::kTowerFirstFloorLevel, "Floor 1"));
+    ASSERT_TRUE(og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel));
+
+    PickerFixture f;
+    f.config.campaign = std::string(og::kTowerCampaignId);
+    f.config.level = og::kTowerFirstFloorLevel;
+    f.config.team_families.clear();
+    f.save().tower_best_floor = 1;
+    f.client.run_game();
+
+    const std::vector<std::string> rows = trimmed_rows(f.t());
+    EXPECT_TRUE(has_row(rows, "Victory! Floor 1 conquered - best 2"))
+        << f.t().dump();
+    EXPECT_FALSE(has_row(rows, "Victory!"))
+        << "the tower verdict must carry its summary:\n" << f.t().dump();
+    EXPECT_TRUE(has_row(rows, "Next level: 702. Floor 2")) << f.t().dump();
+    EXPECT_EQ(2, static_cast<int>(f.save().tower_best_floor));
+    EXPECT_EQ(og::kTowerFirstFloorLevel + 1,
+              static_cast<int>(f.save().scen_num));
+
+    EXPECT_TRUE(mount_restore.restore());
 }
