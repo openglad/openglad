@@ -33,6 +33,7 @@
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/pack_transfer_io.h>
+#include <openglad/resources/physfs_api.h>
 #include <openglad/resources/packs.h>
 
 #include <gtest/gtest.h>
@@ -798,3 +799,62 @@ TEST_F(PackTransferIoErrorTest, a_cache_write_that_cannot_flush_fails_the_instal
     EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest));
 }
 #endif
+
+namespace {
+
+void collect_virtual_files(const std::string& root,
+                           const std::string& prefix,
+                           std::vector<std::string>& out)
+{
+    for (const std::string& name : og::io::physfs_enumerate_files_sorted(root))
+    {
+        const std::string relative = prefix.empty() ? name : prefix + "/" + name;
+        if (og::io::physfs_is_directory(root + "/" + name))
+            collect_virtual_files(root + "/" + name, relative, out);
+        else
+            out.push_back(relative);
+    }
+}
+
+// The manifest of whatever is mounted under `root`, exactly as a host would
+// describe it (path, size, fnv1a64).
+og::sim::PackManifestMessage manifest_of_mounted_tree(const std::string& root,
+                                                      const std::string& id)
+{
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = id;
+    std::vector<std::string> paths;
+    collect_virtual_files(root, "", paths);
+    for (const std::string& path : paths)
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::resources::read_file((root + "/" + path).c_str());
+        og::sim::PackManifestFileEntry entry;
+        entry.path = path;
+        entry.size_bytes = static_cast<std::uint32_t>(bytes.size());
+        entry.hash64 = og::core::fnv1a64(bytes.data(), bytes.size());
+        manifest.files.push_back(std::move(entry));
+    }
+    return manifest;
+}
+
+} // namespace
+
+// An empty pack id never names the packs/ ROOT: a manifest describing the
+// whole mounted packs/ tree under id "" is not "locally available".
+// Control: the same description of the mounted core pack under id "core"
+// matches.
+TEST_F(PackTransferIoErrorTest, an_empty_pack_id_never_matches_the_packs_root)
+{
+    const og::sim::PackManifestMessage core =
+        manifest_of_mounted_tree("packs/core", "core");
+    ASSERT_FALSE(core.files.empty()) << "the core pack must be mounted";
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(core));
+
+    const og::sim::PackManifestMessage root = manifest_of_mounted_tree("packs", "");
+    ASSERT_FALSE(root.files.empty());
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(root))
+        << "an empty pack id must not match the packs/ root";
+}
