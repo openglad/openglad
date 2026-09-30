@@ -238,8 +238,6 @@ static void apply_capture_focus(screen& s, const CaptureSettings& capture)
     if (focus == CaptureFocus::Player)
         return;
     viewscreen* view = s.viewob[0].get();
-    if (view == nullptr)
-        return;
 
     if (focus == CaptureFocus::Center) {
         // viewscreen::redraw falls back to the LevelVisuals camera whenever it
@@ -642,7 +640,13 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
             "openglad_demo failed to bootstrap save0 for scenario {}",
             scen_id));
     }
-    if (load_saved_game(og::data::active_company_slot().c_str(), s) == 0) {
+    // load_saved_game would answer a failed load with a modal dialog that a
+    // headless demo can never dismiss; take the error code and fail loudly.
+    // A fallback level (UsedFallbackLevel) is still a playable session.
+    const LoadSavedGameError load_error = load_saved_game_with_error(
+        og::data::active_company_slot().c_str(), s);
+    if (load_error != LoadSavedGameError::None &&
+        load_error != LoadSavedGameError::UsedFallbackLevel) {
         throw std::runtime_error(std::format(
             "openglad_demo failed to load bootstrap save0 for scenario {}",
             scen_id));
@@ -1152,6 +1156,29 @@ int main(int argc, char* argv[])
                 worker_thread_func,
                 std::ref(sync), std::ref(demos[static_cast<size_t>(i)]), i);
         }
+        // Every way out of this scope must stop and join the workers: the
+        // normal end of the run calls join_all() below, and a throw from the
+        // main loop (a capture frame that cannot be written) runs it from the
+        // destructor. Unwinding past a joinable std::thread is std::terminate,
+        // which turned the "Unrecoverable error" report into a core dump. The
+        // workers park on start_cv, so shutdown is raised and broadcast BEFORE
+        // the join, or the join waits forever.
+        struct WorkerJoiner {
+            WorkerSync& sync_;
+            std::vector<std::thread>& workers_;
+            void join_all()
+            {
+                {
+                    std::lock_guard lock(sync_.mtx);
+                    sync_.shutdown = true;
+                }
+                sync_.start_cv.notify_all();
+                for (auto& w : workers_) {
+                    if (w.joinable()) w.join();
+                }
+            }
+            ~WorkerJoiner() { join_all(); }
+        } worker_joiner{sync, workers};
 
         // --- Main loop ---
         constexpr int TIMER_WAIT_TICKS = 6;
@@ -1510,15 +1537,7 @@ int main(int argc, char* argv[])
         }
 
         // --- Shutdown worker threads ---
-        {
-            std::lock_guard lock(sync.mtx);
-            sync.shutdown = true;
-        }
-        sync.start_cv.notify_all();
-
-        for (auto& w : workers) {
-            if (w.joinable()) w.join();
-        }
+        worker_joiner.join_all();
 
         // Cleanup (the unique_ptr deleters also free on any early-return/throw path)
         cell_tex.clear();
