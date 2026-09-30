@@ -766,8 +766,6 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         if (click == 2 && spec.right_click_enabled) {
             const Sint32 click_result =
                 og::runtime::current_session->localbuttons_->rightclick();
-            if (click_result == MENU_EXIT)
-                break;
             if (click_result != 0)
                 retvalue = click_result;
         } else if (click != 0) {
