@@ -15,8 +15,11 @@
 
 #include <SDL3/SDL.h>
 
+#include <unistd.h>
+
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -90,11 +93,18 @@ TEST(GameContext, default_sdl_sound_initializes_loaded_audio)
 // The two tests below run the sound object in a death-test child because the
 // defect they pin ended the whole process: every failure arm in sound.cpp used
 // to exit(0). The child re-executes this binary ("threadsafe" style), so it
-// starts from fresh statics, and it reports with std::exit -- never _Exit --
-// so libgcov's exit hook still records the child's coverage.
+// starts from fresh statics.
+#ifdef ENABLE_COVERAGE
+extern "C" void __gcov_dump(void);
+#endif
 namespace {
-// The child's own per-process config dir (integration_main makes one per
-// PID); removed so a death-test child leaves nothing behind in /tmp.
+// The child leaves through integration_main's own exit idiom, not std::exit:
+// the harness's statics are not exit-safe (std::exit in this child aborts in
+// static teardown with "double free or corruption" on the ci-test preset),
+// which is why main() itself ends in __gcov_dump + _exit. The explicit dump
+// is what keeps the child's coverage -- the reason a bare _Exit is wrong.
+// It also removes the child's own per-PID config dir (integration_main makes
+// one per process) so a death-test child leaves nothing behind in /tmp.
 [[noreturn]] void exit_child(bool rule_held)
 {
     if (const char* dir = std::getenv("OPENGLAD_CONFIG_DIR"))
@@ -102,7 +112,11 @@ namespace {
         std::error_code ec;
         std::filesystem::remove_all(dir, ec);
     }
-    std::exit(rule_held ? 42 : 43);
+#ifdef ENABLE_COVERAGE
+    __gcov_dump();
+#endif
+    std::fflush(nullptr);
+    _exit(rule_held ? 42 : 43);
 }
 } // namespace
 
