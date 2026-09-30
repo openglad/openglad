@@ -13520,3 +13520,43 @@ TEST(PickerNetworkClient, joiner_refuses_out_of_range_team_client_side)
     EXPECT_EQ(2, change.team);
     EXPECT_EQ(101u, change.seat_id);
 }
+
+// An unseated spectator joiner's Leave names no player (0xff) before any
+// lobby state exists; control: once seated, the Leave it sends when it
+// switches to spectating names its real index.
+TEST(PickerNetworkClient, spectator_leave_names_no_player_until_seated)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    save.numplayers = 0;
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Leave, 1u))
+        << "a spectator joiner declares itself with a Leave";
+    EXPECT_EQ(0u, raw.count(og::sim::LobbyMessageKind::Join));
+    EXPECT_EQ(0xffu,
+              std::get<og::sim::LobbyLeaveMessage>(
+                  raw.last(og::sim::LobbyMessageKind::Leave)->payload)
+                  .player_index)
+        << "no lobby state: the Leave must name no player";
+
+    // Control: take a seat, get seated as player 2, then spectate again.
+    raw.joiner().set_player_mode(1);
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u));
+    raw.seat_joiner(2u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    }));
+    raw.joiner().set_player_mode(0);
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Leave, 2u));
+    EXPECT_EQ(2u,
+              std::get<og::sim::LobbyLeaveMessage>(
+                  raw.last(og::sim::LobbyMessageKind::Leave)->payload)
+                  .player_index)
+        << "a seated joiner's Leave must name its real index";
+}
