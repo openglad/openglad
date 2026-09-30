@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <list>
 #include <string>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -826,3 +827,105 @@ TEST(LevelEditorPromptBlock, hovered_cancel_redraws_and_restores_original_text)
     EXPECT_EQ((std::list<std::string>{"seed"}), edited)
         << "CANCEL restores original text after the stationary-hover edit";
 }
+
+namespace
+{
+// One scripted prompt input: a held-key pulse (the TESTING held-key seam), a
+// pushed key event (RETURN/BACKSPACE are event-driven), or typed text.
+struct PromptStep
+{
+    enum class Kind { Pulse, Key, Text } kind;
+    int value = 0;
+    const char* text = nullptr;
+};
+
+struct PromptScriptData
+{
+    PromptBlockInjectState* state = nullptr;
+    std::vector<PromptStep> steps;
+};
+
+int prompt_block_script_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* d = static_cast<PromptScriptData*>(data);
+    PromptBlockInjectState* st = d->state;
+    st->started.store(true, std::memory_order_release);
+
+    bool ok = wait_for_counter_advance(
+        level_editor_testing_prompt_block_entered_count, 0);
+    for (const PromptStep& step : d->steps)
+    {
+        if (!ok)
+            break;
+        switch (step.kind)
+        {
+        case PromptStep::Kind::Pulse:
+            ok = pulse_physical_key(step.value);
+            break;
+        case PromptStep::Kind::Key:
+            ok = inject_prompt_key_press(step.value);
+            break;
+        case PromptStep::Kind::Text:
+            ok = inject_prompt_text(step.text);
+            break;
+        }
+    }
+    const bool click_consumed = ok && click_prompt_button(290, 6);
+    if (!ok || !click_consumed)
+        fail_safe_cancel_prompt();
+    st->handshake_failed.store(!ok || !click_consumed,
+                               std::memory_order_release);
+    st->finished.store(true, std::memory_order_release);
+    return 0;
+}
+
+PromptStep pulse(int key_state) { return {PromptStep::Kind::Pulse, key_state, nullptr}; }
+PromptStep key(int keycode) { return {PromptStep::Kind::Key, keycode, nullptr}; }
+PromptStep typed(const char* t) { return {PromptStep::Kind::Text, 0, t}; }
+} // namespace
+
+// Moving onto a SHORTER line clamps the cursor to that line's end (both
+// directions), and BACKSPACE in the middle of a line deletes the character
+// BEFORE the cursor and moves the cursor back one. Every edit is typed at the
+// cursor, so the final text records exactly where the cursor stood. The
+// shorter line is non-empty on purpose: the clamp is to its end, not to 0.
+TEST(LevelEditorPromptBlock, cursor_clamps_to_shorter_lines_and_backspace_deletes_before_it)
+{
+    level_editor_testing_prompt_block_input_reset();
+    std::list<std::string> edited{"wxyz", "ab", "pqrs"};
+
+    PromptBlockInjectState st{};
+    PromptScriptData script{&st, {
+        pulse(KEYSTATE_RIGHT), pulse(KEYSTATE_RIGHT),
+        pulse(KEYSTATE_RIGHT), pulse(KEYSTATE_RIGHT), // line 0, column 4
+        pulse(KEYSTATE_DOWN),   // "ab" is shorter: column clamps to 2
+        typed("Z"),              // "abZ", column 3
+        pulse(KEYSTATE_DOWN),   // "pqrs", column 3 (no clamp)
+        pulse(KEYSTATE_RIGHT),  // column 4
+        pulse(KEYSTATE_UP),     // "abZ" is shorter: column clamps to 3
+        typed("Y"),              // "abZY", column 4
+        pulse(KEYSTATE_LEFT), pulse(KEYSTATE_LEFT), // column 2
+        key(SDLK_BACKSPACE),    // deletes 'b' (index 1): "aZY", column 1
+        typed("X"),              // "aXZY"
+    }};
+    SDL_Thread* thread = SDL_CreateThread(prompt_block_script_injector,
+                                          "prompt_block_clamp_script", &script);
+    ASSERT_TRUE(thread != nullptr);
+
+    const bool accepted = prompt_for_string_block("Clamp text", edited);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_TRUE(st.finished.load(std::memory_order_acquire));
+    EXPECT_FALSE(st.handshake_failed.load(std::memory_order_acquire));
+    EXPECT_TRUE(accepted);
+    EXPECT_EQ(15u, level_editor_testing_prompt_block_input_completed_count())
+        << "fourteen scripted inputs and the DONE click were consumed";
+    EXPECT_EQ((std::list<std::string>{"wxyz", "aXZY", "pqrs"}), edited)
+        << "DOWN/UP onto a shorter line clamp the cursor to its end; a "
+           "mid-line BACKSPACE deletes the character before the cursor";
+}
+
