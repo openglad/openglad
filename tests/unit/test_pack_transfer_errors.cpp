@@ -751,3 +751,50 @@ TEST(PackTransferClientErrors, stale_chunks_and_done_for_unrequested_packs_are_d
         << "a finished pack must not install twice";
     EXPECT_FALSE(harness.failed()) << harness.reason();
 }
+
+#if defined(__linux__)
+// A cache write that cannot be flushed (the disk is full) fails the install,
+// removes its staging .tmp and never mounts the pack. /dev/full is the
+// faithful stand-in for a full disk: every write to it fails with ENOSPC,
+// which is exactly what a full cache filesystem answers. Control: the same
+// install without the obstruction mounts.
+TEST_F(PackTransferIoErrorTest, a_cache_write_that_cannot_flush_fails_the_install)
+{
+    const std::string content = "-- full disk\n";
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = "org.test.fulldisk";
+    og::sim::PackManifestFileEntry entry;
+    entry.path = "scripts/a.lua";
+    entry.size_bytes = static_cast<std::uint32_t>(content.size());
+    entry.hash64 = og::core::fnv1a64(
+        reinterpret_cast<const std::uint8_t*>(content.data()), content.size());
+    manifest.files.push_back(std::move(entry));
+
+    const fs::path cache_file =
+        fs::path(get_user_path()) / "packs_cache" /
+        (manifest.pack_id + "@" +
+         og::sim::pack_manifest_content_hash_hex(manifest)) /
+        "scripts" / "a.lua";
+    const fs::path tmp = fs::path(cache_file.string() + ".tmp");
+    std::error_code ec;
+    fs::create_directories(cache_file.parent_path(), ec);
+    ASSERT_FALSE(ec) << ec.message();
+    fs::create_symlink("/dev/full", tmp, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    const std::vector<std::vector<std::uint8_t>> bytes = {
+        std::vector<std::uint8_t>(content.begin(), content.end())};
+    EXPECT_FALSE(og::resources::install_received_pack(manifest, bytes))
+        << "an unflushable cache write must fail the install";
+    EXPECT_FALSE(fs::exists(fs::symlink_status(tmp, ec)))
+        << "the failed write must remove its staging file";
+    EXPECT_FALSE(fs::exists(cache_file, ec));
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(manifest));
+
+    // Control: nothing obstructs the staging file now.
+    EXPECT_TRUE(og::resources::install_received_pack(manifest, bytes));
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest));
+}
+#endif
