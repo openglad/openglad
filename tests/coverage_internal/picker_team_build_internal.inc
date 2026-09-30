@@ -1,4 +1,6 @@
 #include <openglad/platform/sai2x.h>
+#include <openglad/core/tower_constants.h>
+#include <openglad/resources/io_common.h>
 
 #include <cstdio>
 #include <filesystem>
@@ -919,6 +921,36 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     }
     client.requested = false;
     check(go_menu(0) == MENU_REDRAW && client.requested);
+    // The same ready, deployed networked host on TOWER CLIMB: the mode's
+    // prepare_launch vetoes a networked session, and the GO says why in the
+    // session's words ("local-only", not the local floor-write failure) and
+    // sends nothing.
+    {
+        const std::string saved_mount = get_mounted_campaign();
+        const std::string saved_campaign = save.current_campaign;
+        const short saved_scen = save.scen_num;
+        (void)unmount_campaign_package_with_error(saved_mount);
+        const bool tower_mounted =
+            mount_campaign_package_with_error(std::string(og::kTowerCampaignId)) ==
+            CampaignPackageIoError::None;
+        check(tower_mounted);
+        if (tower_mounted)
+        {
+            save.current_campaign = std::string(og::kTowerCampaignId);
+            save.scen_num = og::kTowerGateLevel;
+            trace_clear();
+            client.requested = false;
+            check(go_menu(0) == MENU_REDRAW && !client.requested &&
+                  trace_contains("popup",
+                                 "TOWER CLIMB: TOWER CLIMB is local-only") &&
+                  !trace_contains("popup", "Could not prepare"));
+        }
+        (void)unmount_campaign_package_with_error(get_mounted_campaign());
+        check(mount_campaign_package_with_error(saved_mount) ==
+              CampaignPackageIoError::None);
+        save.current_campaign = saved_campaign;
+        save.scen_num = saved_scen;
+    }
     // Joiner shape (states 5-6): READY/UNREADY labels off the lobby flag.
     client.host_visible = false;
     {
