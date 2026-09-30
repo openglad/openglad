@@ -1,11 +1,15 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/sai2x.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/ui/picker_ui_state.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <openglad/core/test_trace.h>
 #include "test_input_helpers.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -381,4 +385,199 @@ TEST(PickerDialogsReal, dialog_header_survives_stale_cached_font_geometry)
     EXPECT_GT(header_red, 40u)
         << "#259: a stale cached glyph box must not blank the dialog header";
     EXPECT_EQ(saved_x, big.sizex) << "the live geometry must match the pixie";
+}
+
+// --- The real dialogs' keyboard answers -------------------------------------
+// yes_or_no_prompt / popup_dialog answer the keyboard from keystates_ (the
+// held-key array), gated by a key-press EVENT: `if (query_key_press_event())`
+// then `keystates_[KEYSTATE_y]`, `[KEYSTATE_n]`, `[KEYSTATE_ESCAPE]`, and for
+// the popup `[KEYSTATE_RETURN]`. A pushed SDL key event never moves SDL's
+// keyboard-state array, so the session's keystates_ is pointed at a
+// test-owned array (the HeldEditorKeys idiom) and the semantic key is held
+// there BEFORE the dialog is entered, on the main thread. The injector only
+// pushes an inert carrier event (F12: no dialog, menu-nav or hotkey binding)
+// on a poll tick until the main thread publishes that the dialog returned;
+// it never writes the array. The carrier's key-press event is what opens the
+// dialog's keyboard read; the held array key is what that read answers.
+//
+// Failsafe: if no answer arrives within kDialogFailsafeMs the injector clicks
+// a button the dialog publishes so the binary cannot hang, and the test
+// asserts that the failsafe was NOT needed.
+namespace
+{
+constexpr Uint32 kDialogFailsafeMs = 5000;
+
+class HeldDialogKeys
+{
+public:
+    HeldDialogKeys() : saved_(og::runtime::current_session->keystates_)
+    {
+        keys_.fill(false);
+        og::runtime::current_session->keystates_ = keys_.data();
+    }
+    ~HeldDialogKeys() { og::runtime::current_session->keystates_ = saved_; }
+    HeldDialogKeys(const HeldDialogKeys&) = delete;
+    HeldDialogKeys& operator=(const HeldDialogKeys&) = delete;
+
+    // Main thread only, and only before the dialog is entered.
+    void hold(int key_state) { keys_[static_cast<std::size_t>(key_state)] = true; }
+
+private:
+    const bool* saved_;
+    std::array<bool, SDL_SCANCODE_COUNT> keys_{};
+};
+
+struct DialogKeyDriver
+{
+    std::atomic<bool> returned{false};
+    std::atomic<bool> failsafe_used{false};
+    int failsafe_x = 0;
+    int failsafe_y = 0;
+    Uint32 failsafe_ms = kDialogFailsafeMs;
+};
+
+int dialog_key_carrier_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* driver = static_cast<DialogKeyDriver*>(data);
+    const Uint64 deadline = SDL_GetTicks() + driver->failsafe_ms;
+    while (!driver->returned.load(std::memory_order_acquire) &&
+           SDL_GetTicks() < deadline)
+    {
+        // A lost carrier is simply repeated on the next tick.
+        inject_key_down(SDLK_F12);
+        inject_key_up(SDLK_F12);
+        SDL_Delay(20); // poll tick
+    }
+    if (driver->returned.load(std::memory_order_acquire))
+        return 0;
+    // Failsafe: the dialog never answered. Click the named button (bounded
+    // re-presses in case one is lost) so the binary cannot hang; the test
+    // asserts this path was not taken.
+    driver->failsafe_used.store(true, std::memory_order_release);
+    for (int attempt = 0;
+         attempt < 50 && !driver->returned.load(std::memory_order_acquire);
+         ++attempt)
+    {
+        inject_click(driver->failsafe_x, driver->failsafe_y, 20);
+        SDL_Delay(100);
+    }
+    return 0;
+}
+
+// Runs `dialog` on the main thread with `held` down in the test-owned
+// keystates_ array (held < 0: nothing held); the failsafe clicks
+// (failsafe_x, failsafe_y) after failsafe_ms.
+template <typename Dialog>
+bool run_dialog_with_held_key(int held, int failsafe_x, int failsafe_y,
+                              Dialog dialog, bool& failsafe_used,
+                              Uint32 failsafe_ms = kDialogFailsafeMs)
+{
+    HeldDialogKeys keys;
+    if (held >= 0)
+        keys.hold(held);
+    DialogKeyDriver driver;
+    driver.failsafe_x = failsafe_x;
+    driver.failsafe_y = failsafe_y;
+    driver.failsafe_ms = failsafe_ms;
+    SDL_Thread* thread = SDL_CreateThread(dialog_key_carrier_injector,
+                                          "dialog_key_carrier", &driver);
+    if (thread == nullptr)
+    {
+        ADD_FAILURE() << "failed to create the carrier injector";
+        failsafe_used = true;
+        return false;
+    }
+    const bool answer = dialog();
+    driver.returned.store(true, std::memory_order_release);
+    int thread_result = 1;
+    SDL_WaitThread(thread, &thread_result);
+    SDL_FlushEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP);
+    SDL_FlushEvents(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+    failsafe_used = driver.failsafe_used.load(std::memory_order_acquire);
+    return answer;
+}
+
+// The YES/NO buttons of the YES-first dialog (95,140) / (225,140).
+constexpr int kYesX = 95, kNoX = 225, kDialogButtonY = 140;
+} // namespace
+
+TEST(PickerDialogsReal, yes_or_no_answers_the_held_y_and_n_keys)
+{
+    ViewportGuard viewport_guard;
+    RealDialogsGuard real_dialogs_guard;
+
+    bool failsafe_used = true;
+    // Y answers YES even when the default is NO; the failsafe clicks NO.
+    const bool yes = run_dialog_with_held_key(
+        KEYSTATE_y, kNoX, kDialogButtonY,
+        [] { return yes_or_no_prompt("Delete", "Held Y answers yes?", false); },
+        failsafe_used);
+    EXPECT_FALSE(failsafe_used) << "the held Y must answer the dialog";
+    EXPECT_TRUE(yes) << "Y is the YES key";
+
+    // N answers NO even when the default is YES; the failsafe clicks YES.
+    failsafe_used = true;
+    const bool no = run_dialog_with_held_key(
+        KEYSTATE_n, kYesX, kDialogButtonY,
+        [] { return yes_or_no_prompt("Delete", "Held N answers no?", true); },
+        failsafe_used);
+    EXPECT_FALSE(failsafe_used) << "the held N must answer the dialog";
+    EXPECT_FALSE(no) << "N is the NO key";
+}
+
+TEST(PickerDialogsReal, yes_or_no_escape_returns_the_callers_default)
+{
+    ViewportGuard viewport_guard;
+    RealDialogsGuard real_dialogs_guard;
+
+    // Both defaults, so a constant answer cannot pass. Each failsafe clicks
+    // the button that would give the OTHER answer.
+    bool failsafe_used = true;
+    const bool default_no = run_dialog_with_held_key(
+        KEYSTATE_ESCAPE, kYesX, kDialogButtonY,
+        [] { return yes_or_no_prompt("Quit", "Escape keeps no?", false); },
+        failsafe_used);
+    EXPECT_FALSE(failsafe_used) << "Escape must close the dialog";
+    EXPECT_FALSE(default_no) << "Escape answers the caller's default (no)";
+
+    failsafe_used = true;
+    const bool default_yes = run_dialog_with_held_key(
+        KEYSTATE_ESCAPE, kNoX, kDialogButtonY,
+        [] { return yes_or_no_prompt("Quit", "Escape keeps yes?", true); },
+        failsafe_used);
+    EXPECT_FALSE(failsafe_used) << "Escape must close the dialog";
+    EXPECT_TRUE(default_yes) << "Escape answers the caller's default (yes)";
+}
+
+TEST(PickerDialogsReal, popup_dialog_return_key_dismisses_it)
+{
+    ViewportGuard viewport_guard;
+    RealDialogsGuard real_dialogs_guard;
+
+    bool failsafe_used = true;
+    // The failsafe clicks OK at (160,140).
+    (void)run_dialog_with_held_key(
+        KEYSTATE_RETURN, 160, kDialogButtonY,
+        [] {
+            popup_dialog("Information", "Held RETURN dismisses this.");
+            return true;
+        },
+        failsafe_used);
+    EXPECT_FALSE(failsafe_used)
+        << "RETURN must dismiss the popup without a click";
+
+    // Paired control: the same carrier events with NO key held never
+    // dismiss the popup -- only the (short) failsafe click ends it. This is
+    // what makes the carrier inert and the held key the answer.
+    failsafe_used = false;
+    (void)run_dialog_with_held_key(
+        -1, 160, kDialogButtonY,
+        [] {
+            popup_dialog("Information", "Carrier alone keeps this open.");
+            return true;
+        },
+        failsafe_used, 300);
+    EXPECT_TRUE(failsafe_used)
+        << "control: a key-press event with no held key must not dismiss";
 }
