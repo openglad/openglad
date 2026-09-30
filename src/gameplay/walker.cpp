@@ -1145,13 +1145,6 @@ bool walker::set_frame_from_current_walk_animation()
 	while (seq_len < 128 && seq[seq_len] != -1)
 		seq_len++;
 
-	if (seq_len <= 0)
-	{
-		set_cycle(0);
-		set_frame(seq[0]);
-		return true;
-	}
-
 	int c = static_cast<int>(cycle());
 	if (c < 0 || c >= seq_len)
 	{
