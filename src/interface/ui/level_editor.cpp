@@ -793,8 +793,14 @@ LevelEditorData::~LevelEditorData()
 
 bool LevelEditorData::loadCampaign(const std::string& id)
 {
-    campaign->id = id;
-    return campaign->load();
+    // Load into a fresh object and adopt it only on success: a failed load
+    // (no package, no campaign.yaml, or a YAML that parsed only part-way)
+    // must not rename or half-overwrite the campaign the editor has open.
+    auto loaded = std::make_unique<CampaignData>(id);
+    if (!loaded->load())
+        return false;
+    campaign = std::move(loaded);
+    return true;
 }
 
 bool LevelEditorData::reloadCampaign()
