@@ -103,10 +103,10 @@ private:
     // build.
     bool show_company_backups(const og::data::CompanyInfo& company);
 
-    // #155 cloud saves: the terminal open path for a freshly downloaded
-    // company (repoint the slot authority + load; restore the previous slot
-    // on failure — the show_company_list discipline).
-    bool open_downloaded_company(const std::string& slot);
+    // §2.3 terminal open sequence, shared by the company list's Open Company
+    // and the #155 cloud download: repoint the slot authority + load; on
+    // failure restore the previous slot and leave the open company in memory.
+    bool open_company_slot(const std::string& slot);
 
     // Drive a host/join lobby to a started game, then run the networked
     // level and hand the result to finish_network_round.

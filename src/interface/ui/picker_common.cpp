@@ -2546,18 +2546,26 @@ ContinueResult open_company_slot(SaveData& save, const std::string& slot,
 
     const std::string previous = og::data::active_company_slot();
     (void)og::data::set_active_company_slot(slot);
-    const SaveDataIoError io = save.load_with_error(slot);
+    // Open into a scratch save, never the open company: load_with_error
+    // reads the whole body before load_campaign can fail (its campaign is
+    // not installed), and the open company may have no file to reload it
+    // from (the §3.4 "save0" default at launch, a NEW GAME whose first
+    // write failed).
+    SaveData opened;
+    const SaveDataIoError io = opened.load_with_error(slot);
     if (io != SaveDataIoError::None) {
         if (io_error != nullptr)
             *io_error = io;
         // The header validated but the body failed (torn file, missing
-        // campaign package). Restore the previous slot and best-effort
-        // reload it so autosaves keep targeting the company that is really
-        // open instead of writing the old save into the broken slot.
+        // campaign package). Restore the previous slot so autosaves keep
+        // targeting the company that is really open, which stays in memory;
+        // the failed load tore its campaign mount down, so put it back.
         (void)og::data::set_active_company_slot(previous);
-        (void)save.load_with_error(previous);
+        (void)sync_campaign_mount_to_save(save);
         return ContinueResult::LoadFailed;
     }
+    // The scratch just loaded the file, so memory now takes it from there.
+    (void)save.load_with_error(slot);
     return ContinueResult::Opened;
 }
 

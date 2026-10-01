@@ -6424,15 +6424,22 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
     if (!no_or_yes_prompt("REWIND TO THIS BACKUP?", message.c_str(), false))
         return MENU_REDRAW;
 
+    // Rewind into a scratch save, never the open company: a ReloadFailed
+    // rollback reloads the TARGET's pre-restore state into the save it is
+    // handed, and the open company may have no file to reload it from (the
+    // §3.4 "save0" default at launch, a NEW GAME whose first write failed).
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    SaveData rewound_save;
     const og::data::CompanyRestoreError error =
-        og::data::restore_company_backup(save, st->slot, info.seq);
+        og::data::restore_company_backup(rewound_save, st->slot, info.seq);
     const bool rewound =
         error == og::data::CompanyRestoreError::None
         || error == og::data::CompanyRestoreError::RestampFailed;
     if (rewound) {
-        // RestampFailed included: the rewind itself finished (disk and
-        // memory hold the restored company; the next autosave re-stamps).
+        // RestampFailed included: the rewind itself finished (disk holds the
+        // restored company; the next autosave re-stamps). The scratch just
+        // loaded the rewound file, so memory now takes it from there.
+        (void)save.load_with_error(st->slot);
         // §2.4: a restored company opens straight into base camp — repoint
         // the active slot at it (restore itself never touches the slot; it
         // may target a non-active company, e.g. a corrupt one being
@@ -6452,14 +6459,9 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
 
     // Failure: popup, stay listed, state rolled back (§3.7 [SAVE-R3]).
     popup_dialog("RESTORE BACKUP", company_restore_error_string(error));
-    if (error == og::data::CompanyRestoreError::ReloadFailed
-        && st->slot != og::data::active_company_slot()) {
-        // The step-3 rollback reloaded the TARGET company's pre-restore
-        // state into memory; put the ambient company back so the slot and
-        // the in-memory save never disagree (the open_company_slot
-        // discipline).
-        (void)save.load_with_error(og::data::active_company_slot());
-    }
+    // The failed reload and its rollback mounted the TARGET's campaign;
+    // the open company stays in memory, so its campaign goes back up.
+    (void)sync_campaign_mount_to_save(save);
     // Steps >= 1 may have produced the pre-restore snapshot even on a later
     // failure: re-scan so the list tells the truth, and clamp the window.
     const int page_before = st->page.page;
