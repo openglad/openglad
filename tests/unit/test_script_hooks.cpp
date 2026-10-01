@@ -29,6 +29,7 @@
 #include <openglad/resources/packs.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1710,6 +1711,131 @@ TEST_F(ScriptHooksTest, bind_pass_accepts_a_declaration_that_keeps_its_id)
         &declared);
     EXPECT_EQ(1u, declared);
     EXPECT_EQ("", errors) << "a stable id binds without a load error";
+}
+
+// ---------------------------------------------------------------------------
+// The bind pass refuses a specials list the declaration pass never saw. The
+// same placeholder branch that can drop a declaration's id can hand the bind
+// pass a different specials list; an entry the bind pass cannot join to a
+// declared special (no id, or not a table at all) used to be skipped without
+// a word, so the pack installed and the special simply had no cast at play
+// time. It now fails the load naming the chunk (the position prefix), the
+// family and the entry. Control: the same shape answering both passes alike
+// binds its cast onto the declared slot.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct SpecialsBind {
+    std::size_t declared = 0;
+    // Every load error's first line (the stored message continues with a
+    // Lua traceback), one per entry.
+    std::string errors;
+    bool cast_bound = false;
+    bool ai_bound = false;
+    std::string slot1_id;
+    bool slot2_empty = false;
+};
+
+// `bind_list` is the Lua expression the BIND pass hands og.family as
+// `specials`; the declaration pass always sees the one well-formed entry.
+SpecialsBind bind_specials_after_install(const std::string& pack,
+                                         const std::string& bind_list)
+{
+    const std::string chunk =
+        "local declaring =\n"
+        "  type(og.family_id('living', 'core:soldier')) == 'userdata'\n"
+        "local function zap(self)\n"
+        "  return true\n"
+        "end\n"
+        "local list = " + bind_list + "\n"
+        "if declaring then\n"
+        "  list = { { id = 'zap', name = 'ZAP', mp_cost = 5, cast = zap } }\n"
+        "end\n"
+        "og.family('living', { id = '" + pack + ":shifty', name = 'SHIFTY',\n"
+        "                      specials = list })\n";
+    SpecialsBind out;
+    og::data::ClasspackData data;
+    register_pack_family_chunk({pack, pack + "/families/shifty.lua", chunk});
+    const DeclareResult declared_result = declare_pack_families(pack, data);
+    EXPECT_TRUE(declared_result.ok) << declared_result.error;
+    out.declared = data.living.size();
+    EXPECT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    const int family_id = og::families::resolve_family_string_id(
+        Order::Living, (pack + ":shifty").c_str());
+    EXPECT_GE(family_id, 0) << "the data half installs either way";
+    const FamilyDescriptor* fd = get_family_descriptor(family_id);
+    if (fd != nullptr) {
+        out.slot1_id = fd->special_ids[1] != nullptr ? fd->special_ids[1] : "";
+        out.slot2_empty = fd->special_ids[2] == nullptr;
+    }
+    GameWorld world(12);
+    for (const ScriptError& e : world.scripts().host().errors()) {
+        out.errors += e.message.substr(0, e.message.find('\n'));
+        out.errors += '\n';
+    }
+    out.cast_bound = world.scripts().has_hook(Order::Living, family_id,
+                                              FamilyHook::DoSpecial);
+    out.ai_bound = world.scripts().has_hook(Order::Living, family_id,
+                                            FamilyHook::CheckSpecialAi);
+    return out;
+}
+
+constexpr const char* kSpecialsDivergence =
+    "[string \"fdspec%s/families/shifty.lua\"]:10: og.family living "
+    "'fdspec%s:shifty': "
+    "specials entry 1 has no id in the bind pass — the declaration pass "
+    "never saw this specials list, so the chunk declares different "
+    "specials in its two passes\n";
+
+std::string divergence_message(const char* pack_suffix)
+{
+    char buf[512];
+    std::snprintf(buf, sizeof buf, kSpecialsDivergence, pack_suffix,
+                  pack_suffix);
+    return buf;
+}
+
+}  // namespace
+
+TEST_F(ScriptHooksTest, bind_pass_refuses_a_specials_entry_that_drops_its_id)
+{
+    const SpecialsBind r = bind_specials_after_install(
+        "fdspecnoid",
+        "{ { name = 'ZAP', mp_cost = 5, cast = zap } }");
+    EXPECT_EQ(1u, r.declared) << "the declaration pass saw the special";
+    EXPECT_EQ("zap", r.slot1_id) << "the data half installed slot 1";
+    EXPECT_EQ(divergence_message("noid"), r.errors)
+        << "the bind pass must name the divergent specials entry";
+    EXPECT_FALSE(r.cast_bound) << "no cast may bind from a refused list";
+    EXPECT_FALSE(r.ai_bound);
+}
+
+TEST_F(ScriptHooksTest, bind_pass_refuses_a_specials_entry_that_is_no_table)
+{
+    const SpecialsBind r = bind_specials_after_install("fdspecbare",
+                                                       "{ 'zap' }");
+    EXPECT_EQ(1u, r.declared);
+    EXPECT_EQ("zap", r.slot1_id);
+    EXPECT_EQ(divergence_message("bare"), r.errors)
+        << "a bare string is not a declared special either";
+    EXPECT_FALSE(r.cast_bound);
+    EXPECT_FALSE(r.ai_bound);
+}
+
+// Control: both passes hand og.family the same list, so the cast binds onto
+// the one declared slot and nothing else is declared.
+TEST_F(ScriptHooksTest, bind_pass_binds_a_specials_list_both_passes_agree_on)
+{
+    const SpecialsBind r = bind_specials_after_install(
+        "fdspecsame",
+        "{ { id = 'zap', name = 'ZAP', mp_cost = 5, cast = zap } }");
+    EXPECT_EQ(1u, r.declared);
+    EXPECT_EQ("zap", r.slot1_id);
+    EXPECT_TRUE(r.slot2_empty) << "exactly one special was declared";
+    EXPECT_EQ("", r.errors) << "an agreeing specials list binds clean";
+    EXPECT_TRUE(r.cast_bound) << "the zap cast must bind";
+    EXPECT_FALSE(r.ai_bound) << "no entry declared an ai";
 }
 
 // ---------------------------------------------------------------------------
