@@ -2956,7 +2956,8 @@ TEST(MenuEngine, company_backups_failed_restore_keeps_the_open_company_in_memory
         {
             SaveData& live = og::runtime::current_session->myscreen_->save_data;
             (void)live.load_with_error(parked_slot);
-            for (const char* slot : {"wpmeparked", "wpmetarget", "wpmegood"})
+            for (const char* slot :
+                 {"wpmeparked", "wpmetarget", "wpmewest", "wpmegood"})
             {
                 for (const og::data::CompanyBackupInfo& info :
                      og::data::list_company_backups(slot))
@@ -3019,6 +3020,42 @@ TEST(MenuEngine, company_backups_failed_restore_keeps_the_open_company_in_memory
             << "[SAVE-R2] a failed restore must leave the in-memory company "
                "on the one that was open before";
         EXPECT_EQ(cash_before, memory.totalcash);
+        og::ui::install_company_backups_state_for_screen(nullptr);
+    }
+
+    // Same failure with an open company that IS on disk, on another
+    // campaign: memory keeps it and the mount follows it back, not the
+    // target campaign the failed reload's rollback mounted.
+    ASSERT_TRUE(seed("wpmewest", "WEST BAND", "westlands", 2222));
+    {
+        og::data::ScopedActiveCompany west_active("wpmewest");
+        ASSERT_EQ(SaveDataIoError::None, memory.load_with_error("wpmewest"));
+        ASSERT_EQ("westlands", get_mounted_campaign());
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wpmetarget";
+        state.company_name = "TARGET BAND";
+        state.backups = og::data::list_company_backups("wpmetarget");
+        int failing_row = -1;
+        for (std::size_t i = 0; i < state.backups.size(); ++i)
+        {
+            if (state.backups[i].seq == 1)
+                failing_row = static_cast<int>(i);
+        }
+        ASSERT_EQ(2u, state.backups.size())
+            << "the first failed restore added its pre-restore snapshot";
+        ASSERT_EQ(1, failing_row) << "seq 1 (the gone campaign) is the older";
+        state.page = og::ui::PageModel::make(2, 10);
+        og::ui::install_company_backups_state_for_screen(&state);
+        trace_clear();
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);  // REWIND? YES
+        EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(failing_row, &state));
+        EXPECT_TRUE(trace_contains("popup", "RELOAD FAILED - REWIND UNDONE"));
+        EXPECT_EQ("wpmewest", og::data::active_company_slot());
+        EXPECT_EQ("WEST BAND", memory.save_name);
+        EXPECT_EQ(2222u, memory.totalcash);
+        EXPECT_EQ("westlands", get_mounted_campaign())
+            << "the mount follows the company left in memory";
         og::ui::install_company_backups_state_for_screen(nullptr);
     }
 
