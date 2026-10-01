@@ -2125,8 +2125,14 @@ bool CursesPickerClient::show_company_backups(
             const std::string previous_slot = config_.save_name;
             config_.save_name = company.slot;
             assert_company_slot_authority(); // [SAVE-R2]
+            // Rewind into a scratch save, never the open company: a
+            // ReloadFailed rollback reloads the TARGET's pre-restore state
+            // into the save it is handed, and the slot goes back to
+            // previous_slot below. The success path loses nothing —
+            // load_game re-reads the rewound file into save_data_.
+            SaveData rewound;
             const og::data::CompanyRestoreError error =
-                og::data::restore_company_backup(save_data_, company.slot,
+                og::data::restore_company_backup(rewound, company.slot,
                                                  backup.seq);
             // RestampFailed included: the rewind itself finished (the next
             // autosave re-stamps).
