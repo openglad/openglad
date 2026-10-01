@@ -2924,6 +2924,130 @@ TEST(MenuEngine, company_backups_spec_shape_and_nav_variants)
     output->clearbuffer();
 }
 
+// [SAVE-R2]/[SAVE-R3] A Restore Backup that fails must leave the IN-MEMORY
+// company on the one that was open, even when that company has no file on
+// disk yet. The product state: the active slot defaults to "save0" (§3.4) and
+// only an explicit selection repoints it, so a launch whose companies all
+// carry derived slugs starts on an active slot with no file (as does a NEW
+// GAME whose first write failed). From there LOAD -> BK -> restore a snapshot
+// taken while the company was on a campaign this machine no longer has: step
+// 3's reload fails, the rollback reloads the TARGET's pre-restore state into
+// the save it is handed, and the arm's best-effort reload of the active slot
+// cannot undo that (no file) -- the target's roster and purse then sat in
+// memory under the active slot, where a minimize/close autosave writes them.
+// Paired control in the same test: a snapshot that DOES reload rewinds, repoints
+// the active slot at the company, and puts the rewound state in memory.
+TEST(MenuEngine, company_backups_failed_restore_keeps_the_open_company_in_memory)
+{
+    EngineTestGuard guard;
+    namespace fs = std::filesystem;
+    const std::string mounted_before = get_mounted_campaign();
+    SaveData& memory = og::runtime::current_session->myscreen_->save_data;
+
+    // Park the live in-memory company in a scratch file so the test can put
+    // it back whatever the restore does to it.
+    const std::string parked_slot = "wpmeparked";
+    ASSERT_EQ(SaveDataIoError::None, memory.save_with_error(parked_slot));
+    struct Cleanup
+    {
+        std::string mounted_before;
+        std::string parked_slot;
+        ~Cleanup()
+        {
+            SaveData& live = og::runtime::current_session->myscreen_->save_data;
+            (void)live.load_with_error(parked_slot);
+            for (const char* slot : {"wpmeparked", "wpmetarget", "wpmegood"})
+            {
+                for (const og::data::CompanyBackupInfo& info :
+                     og::data::list_company_backups(slot))
+                    (void)og::data::delete_company_backup(slot, info.seq);
+                (void)remove_user_file(std::string("save/") + slot + ".gtl");
+            }
+            if (get_mounted_campaign() != mounted_before)
+                (void)mount_campaign_package_with_error(mounted_before);
+            picker_testing_yes_or_no_queue_clear();
+            og::ui::install_company_backups_state_for_screen(nullptr);
+        }
+    } cleanup{mounted_before, parked_slot};
+
+    const std::string open_slot = "wpmeopen";
+    ASSERT_FALSE(user_file_exists("save/" + open_slot + ".gtl"))
+        << "the open company has no file on disk yet";
+    og::data::ScopedActiveCompany active(open_slot);
+    ASSERT_EQ(open_slot, og::data::active_company_slot());
+    const std::string name_before = memory.save_name;
+    const std::uint32_t cash_before = memory.totalcash;
+
+    const auto seed = [](const std::string& slot, const char* name,
+                         const char* campaign, std::uint32_t cash) {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = name;
+        sd.current_campaign = campaign;
+        sd.totalcash = cash;
+        sd.last_played_unix_s = 8100;
+        return sd.save_with_error(slot) == SaveDataIoError::None;
+    };
+    // The snapshot is on a campaign that is gone; the live file is intact.
+    ASSERT_TRUE(seed("wpmetarget", "TARGET BAND", "wpmenosuchcampaign", 4321));
+    ASSERT_TRUE(og::data::backup_company_now("wpmetarget"));
+    ASSERT_TRUE(seed("wpmetarget", "TARGET BAND", "gladiator", 4321));
+    ASSERT_NE("TARGET BAND", name_before)
+        << "the open company must differ from the restore target";
+    ASSERT_NE(4321u, cash_before);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::company_backups_menu_screen_spec();
+    {
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wpmetarget";
+        state.company_name = "TARGET BAND";
+        state.backups = og::data::list_company_backups("wpmetarget");
+        ASSERT_EQ(1u, state.backups.size());
+        state.page = og::ui::PageModel::make(1, 10);
+        og::ui::install_company_backups_state_for_screen(&state);
+        trace_clear();
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);  // REWIND? YES
+        EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(0, &state));
+        EXPECT_TRUE(trace_contains("popup", "RELOAD FAILED - REWIND UNDONE"))
+            << "the restore must fail at the step-3 reload";
+        EXPECT_FALSE(state.opened);
+        EXPECT_EQ(open_slot, og::data::active_company_slot())
+            << "[SAVE-R2] a failed restore keeps the active slot";
+        EXPECT_EQ(name_before, memory.save_name)
+            << "[SAVE-R2] a failed restore must leave the in-memory company "
+               "on the one that was open before";
+        EXPECT_EQ(cash_before, memory.totalcash);
+        og::ui::install_company_backups_state_for_screen(nullptr);
+    }
+
+    // Control: a snapshot that reloads rewinds the company into memory.
+    ASSERT_TRUE(seed("wpmegood", "OLD GOOD BAND", "gladiator", 1234));
+    ASSERT_TRUE(og::data::backup_company_now("wpmegood"));
+    ASSERT_TRUE(seed("wpmegood", "NEW GOOD BAND", "gladiator", 5678));
+    {
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wpmegood";
+        state.company_name = "NEW GOOD BAND";
+        state.backups = og::data::list_company_backups("wpmegood");
+        ASSERT_EQ(1u, state.backups.size());
+        state.page = og::ui::PageModel::make(1, 10);
+        og::ui::install_company_backups_state_for_screen(&state);
+        trace_clear();
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);  // REWIND? YES
+        EXPECT_EQ(MENU_EXIT, spec.on_spec_row(0, &state));
+        EXPECT_TRUE(state.opened);
+        EXPECT_EQ("wpmegood", og::data::active_company_slot())
+            << "a restore repoints the active slot at the rewound company";
+        EXPECT_EQ("OLD GOOD BAND", memory.save_name)
+            << "the in-memory save must hold the rewound state";
+        EXPECT_EQ(1234u, memory.totalcash);
+        og::ui::install_company_backups_state_for_screen(nullptr);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // §1.8 step 3 registry state: the options family migrates in order (FX trio,
 // then display + controls, then main options). Updated in the SAME commit as

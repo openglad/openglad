@@ -4529,6 +4529,24 @@ private:
 
 } // namespace
 
+namespace {
+// The base-camp "Team: ...\nGold: N" headers a text run printed, in order.
+std::vector<std::string> text_base_camp_headers(const std::string& out)
+{
+    std::vector<std::string> headers;
+    for (std::size_t at = out.find("\nTeam: "); at != std::string::npos;
+         at = out.find("\nTeam: ", at + 1)) {
+        const std::size_t gold = out.find("\nGold: ", at + 1);
+        if (gold == std::string::npos)
+            break;
+        headers.push_back(
+            out.substr(at + 1, out.find('\n', gold + 1) - at - 1));
+    }
+    return headers;
+}
+
+} // namespace
+
 // Opening a company whose campaign package is gone must refuse in the file's
 // own words and leave the terminal's slot authority where it was — a picker
 // that kept the failed slot would autosave the NEXT base-camp mutation over a
@@ -4539,14 +4557,31 @@ TEST(PlatformHeadless, text_picker_open_refuses_a_company_whose_campaign_is_gone
     HeadlessSaveDirSandbox sandbox;
     RemountGladiatorGuard remount;
     ActiveCompanySlotGuard slot_guard;
-    ASSERT_TRUE(seed_headless_company_for_campaign(
-        "wp9ghost", "GHOST BAND", "wp9nosuchcampaign", 7000));
+    // The unopenable company has a roster and a purse, so a half-open that
+    // left it in memory would show on the base-camp header.
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "GHOST BAND";
+        sd.current_campaign = "wp9nosuchcampaign";
+        sd.last_played_unix_s = 7000;
+        og::ui::ensure_team_populated(
+            sd, std::vector<int>(4, FAMILY_SOLDIER), 0);
+        ASSERT_EQ(4, sd.team_size);
+        sd.m_totalcash[0] = 4321;
+        sd.totalcash = 4321;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("wp9ghost"));
+    }
 
     const std::string input =
+        "2\n"   // main: continue -> base camp (the pre-open header)
+        "8\n"   //   base camp: back -> main
         "7\n"   // main: load company -> the company list
         "1\n"   //   list: open company...
         "1\n"   //     #1 = wp9ghost -> load fails, the slot rolls back
         "4\n"   //   list: back -> main
+        "2\n"   // main: continue -> base camp on the in-memory company
+        "8\n"   //   base camp: back -> main
         "6\n";  // main: quit
 
     StdinRedirect stdin_redirect(input);
@@ -4568,6 +4603,20 @@ TEST(PlatformHeadless, text_picker_open_refuses_a_company_whose_campaign_is_gone
     EXPECT_EQ("text_quicksave", og::data::active_company_slot());
     EXPECT_TRUE(user_file_exists("save/wp9ghost.gtl"))
         << "a refused open must not delete the company it could not read";
+
+    // The refused open must also leave the IN-MEMORY company alone:
+    // load_with_error reads the whole GHOST BAND save before load_campaign
+    // refuses it, so opening straight into the live save left GHOST BAND's
+    // roster and purse under the text_quicksave slot, where CONTINUE showed
+    // them and the next autosave would write them.
+    const std::vector<std::string> headers = text_base_camp_headers(out);
+    ASSERT_EQ(2u, headers.size())
+        << "one base-camp header per CONTINUE:\n" << out;
+    EXPECT_EQ(std::string::npos, headers[0].find("Gold: 4321"))
+        << "the control: the pre-open company is not GHOST BAND";
+    EXPECT_EQ(headers[0], headers[1])
+        << "[SAVE-R2] a refused open must leave the in-memory company on "
+           "the one that was open before";
 }
 
 // An empty save directory has no company list to show: the LOAD door says so
@@ -4624,24 +4673,6 @@ TEST(PlatformHeadless, text_picker_company_list_backs_out_of_an_empty_save_dir)
     }
     (void)og::data::set_active_company_slot(previous_slot);
 }
-
-namespace {
-// The base-camp "Team: ...\nGold: N" headers a text run printed, in order.
-std::vector<std::string> text_base_camp_headers(const std::string& out)
-{
-    std::vector<std::string> headers;
-    for (std::size_t at = out.find("\nTeam: "); at != std::string::npos;
-         at = out.find("\nTeam: ", at + 1)) {
-        const std::size_t gold = out.find("\nGold: ", at + 1);
-        if (gold == std::string::npos)
-            break;
-        headers.push_back(
-            out.substr(at + 1, out.find('\n', gold + 1) - at - 1));
-    }
-    return headers;
-}
-
-} // namespace
 
 // §3.7 step 3 [SAVE-R3]: a rewind whose bytes will not reload must roll the
 // slot file back to the state it replaced and say why. The player keeps the

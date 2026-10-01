@@ -4931,6 +4931,10 @@ TEST(CursesPickerClient, failed_company_open_restores_the_previous_slot)
     {
         PickerFixture f;
         const std::string slot_before = f.config.save_name;
+        const std::string memory_before = f.save().save_name;
+        const std::string campaign_before = f.save().current_campaign;
+        ASSERT_NE("LOST BAND", memory_before)
+            << "the pre-open company must differ from the broken one";
         pick(f.t(), 0);                      // chrome: Open Company...
         f.t().push_special(KeyCode::Enter);  //   accept the pre-filled "1"
         dismiss(f.t());                      //   the "Load failed" notice
@@ -4941,6 +4945,14 @@ TEST(CursesPickerClient, failed_company_open_restores_the_previous_slot)
             << "a failed open must restore the previous slot";
         EXPECT_EQ(slot_before, og::data::active_company_slot())
             << "and re-assert it as the active company";
+        // load_with_error read the whole LOST BAND save before
+        // load_campaign refused it; the in-memory company must stay on the
+        // one that was open, like the slot, or the next Save writes LOST
+        // BAND's state into the previous slot.
+        EXPECT_EQ(memory_before, f.save().save_name)
+            << "[SAVE-R2] a failed open must leave the in-memory company on "
+               "the one that was open before";
+        EXPECT_EQ(campaign_before, f.save().current_campaign);
     }
 
     ASSERT_TRUE(seed_curses_company("wpleftgood", "GOOD BAND", 9600));
