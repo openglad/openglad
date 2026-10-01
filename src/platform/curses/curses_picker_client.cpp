@@ -1264,6 +1264,15 @@ void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
     og::ui::run_terminal_match_setup(save, io);
 }
 
+// The "Load failed" notice of the terminal open sequence (load_game and the
+// cloud download's scratch open share it).
+void show_load_failed(Menu& menu, const std::string& slot, SaveDataIoError io)
+{
+    menu.show_text("Load failed",
+        {std::format("Load failed for '{}' ({}).",
+            slot, og::ui::save_error_string(io))});
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -1868,9 +1877,7 @@ bool CursesPickerClient::load_game()
     assert_company_slot_authority(); // [SAVE-R2]
     const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
     if (io != SaveDataIoError::None) {
-        menu.show_text("Load failed",
-            {std::format("Load failed for '{}' ({}).",
-                config_.save_name, og::ui::save_error_string(io))});
+        show_load_failed(menu, config_.save_name, io);
         return false;
     }
 
@@ -1897,8 +1904,18 @@ bool CursesPickerClient::open_downloaded_company(const std::string& slot)
 {
     const std::string previous_slot = config_.save_name;
     config_.save_name = slot;
-    if (load_game())
+    // Open the download on a scratch save first: load_with_error reads the
+    // whole company before load_campaign can fail (its campaign is not
+    // installed here), so a failed open straight into save_data_ would leave
+    // the downloaded company in memory under the previous slot.
+    SaveData scratch;
+    const SaveDataIoError io = scratch.load_with_error(slot);
+    if (io == SaveDataIoError::None && load_game())
         return true;
+    if (io != SaveDataIoError::None) {
+        Menu menu(term_, clock_);
+        show_load_failed(menu, slot, io);
+    }
     config_.save_name = previous_slot;
     assert_company_slot_authority(); // [SAVE-R2]
     return false;
@@ -2125,8 +2142,14 @@ bool CursesPickerClient::show_company_backups(
             const std::string previous_slot = config_.save_name;
             config_.save_name = company.slot;
             assert_company_slot_authority(); // [SAVE-R2]
+            // Rewind into a scratch save, never the open company: a
+            // ReloadFailed rollback reloads the TARGET's pre-restore state
+            // into the save it is handed, and the slot goes back to
+            // previous_slot below. The success path loses nothing —
+            // load_game re-reads the rewound file into save_data_.
+            SaveData rewound;
             const og::data::CompanyRestoreError error =
-                og::data::restore_company_backup(save_data_, company.slot,
+                og::data::restore_company_backup(rewound, company.slot,
                                                  backup.seq);
             // RestampFailed included: the rewind itself finished (the next
             // autosave re-stamps).

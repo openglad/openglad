@@ -1922,6 +1922,9 @@ TEST(CursesPickerClient, company_backup_restore_failure_names_it_and_keeps_the_s
     CursesPickerClient client(log, clock, config, options);
     const std::string slot_before = config.save_name;
     ASSERT_NE(slot, slot_before);
+    const std::string memory_before = client.save_data().save_name;
+    ASSERT_NE("TORN BAND", memory_before)
+        << "the pre-open company must differ from the restore target";
 
     pick(term, 1);                         // chrome: Backups...
     enter_prompt_number(term, company_row);
@@ -1948,6 +1951,13 @@ TEST(CursesPickerClient, company_backup_restore_failure_names_it_and_keeps_the_s
         << "the failure is named on exactly one notice: " << notice;
     EXPECT_EQ(good_bytes, read_user_file_bytes("save/" + slot + ".gtl"))
         << "[SAVE-R3] the rollback leaves the company file byte-identical";
+    // BUG-REST-MEM: the step-3 rollback reloads the TARGET's pre-restore
+    // state; the in-memory save must stay on the company that is open (the
+    // slot and the memory never disagree), or the next Save writes the
+    // target's roster into the previous slot.
+    EXPECT_EQ(memory_before, client.save_data().save_name)
+        << "[SAVE-R2] a failed restore must leave the in-memory company on "
+           "the one that was open before";
 }
 
 // §2.4 delete-backup round trip (curses projection): NO-first keeps the
@@ -4437,6 +4447,11 @@ TEST(CursesPickerClient, cloud_download_of_an_unopenable_company_keeps_the_slot)
         CursesPickerClient client(log, clock, config, options);
         const std::string slot_before = config.save_name;
         ASSERT_NE(company_slot, slot_before);
+        const std::string memory_before = client.save_data().save_name;
+        const std::string campaign_before =
+            client.save_data().current_campaign;
+        ASSERT_NE("ORPHAN BAND", memory_before)
+            << "the pre-open company must differ from the download";
 
         const int door_idx =
             main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
@@ -4467,6 +4482,13 @@ TEST(CursesPickerClient, cloud_download_of_an_unopenable_company_keeps_the_slot)
         EXPECT_EQ(1u, log.frames_containing("Downloaded, but campaign").size());
         EXPECT_EQ(1u, log.frames_containing("'wp4nosuchcampaign' is not").size())
             << "D16: the notice names the campaign to install";
+        // BUG-CLOUD-MEM: load_with_error read the whole downloaded save
+        // before load_campaign failed; the in-memory company must stay on
+        // the one that was open, like the slot.
+        EXPECT_EQ(memory_before, client.save_data().save_name)
+            << "[SAVE-R2] an unopenable download must leave the in-memory "
+               "company on the previous one";
+        EXPECT_EQ(campaign_before, client.save_data().current_campaign);
     }
 
     EXPECT_EQ(remote_bytes,

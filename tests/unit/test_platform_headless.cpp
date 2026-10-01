@@ -4625,6 +4625,24 @@ TEST(PlatformHeadless, text_picker_company_list_backs_out_of_an_empty_save_dir)
     (void)og::data::set_active_company_slot(previous_slot);
 }
 
+namespace {
+// The base-camp "Team: ...\nGold: N" headers a text run printed, in order.
+std::vector<std::string> text_base_camp_headers(const std::string& out)
+{
+    std::vector<std::string> headers;
+    for (std::size_t at = out.find("\nTeam: "); at != std::string::npos;
+         at = out.find("\nTeam: ", at + 1)) {
+        const std::size_t gold = out.find("\nGold: ", at + 1);
+        if (gold == std::string::npos)
+            break;
+        headers.push_back(
+            out.substr(at + 1, out.find('\n', gold + 1) - at - 1));
+    }
+    return headers;
+}
+
+} // namespace
+
 // §3.7 step 3 [SAVE-R3]: a rewind whose bytes will not reload must roll the
 // slot file back to the state it replaced and say why. The player keeps the
 // company they had, the pre-restore snapshot survives, and the terminal slot
@@ -4641,10 +4659,24 @@ TEST(PlatformHeadless, text_picker_failed_backup_restore_rolls_back_and_keeps_th
     ASSERT_TRUE(seed_headless_company_for_campaign(
         "wp9res", "GHOST BAND", "wp9nosuchcampaign", 7200));
     ASSERT_TRUE(og::data::backup_company_now("wp9res"));
-    // The live state is a good gladiator company.
-    ASSERT_TRUE(seed_headless_company("wp9res", "GOOD BAND", 7300));
+    // The live state is a good gladiator company with a roster and a purse.
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "GOOD BAND";
+        sd.current_campaign = "gladiator";
+        sd.last_played_unix_s = 7300;
+        og::ui::ensure_team_populated(
+            sd, std::vector<int>(4, FAMILY_SOLDIER), 0);
+        ASSERT_EQ(4, sd.team_size);
+        sd.m_totalcash[0] = 4321;
+        sd.totalcash = 4321;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("wp9res"));
+    }
 
     const std::string input =
+        "2\n"   // main: continue -> base camp (the pre-restore header)
+        "8\n"   //   base camp: back -> main
         "7\n"   // main: load company -> the company list
         "2\n"   //   list: backups...
         "1\n"   //     #1 = wp9res (the only company)
@@ -4653,6 +4685,8 @@ TEST(PlatformHeadless, text_picker_failed_backup_restore_rolls_back_and_keeps_th
         "y\n"   //       explicit yes -> restore runs and fails at reload
         "3\n"   //     backups: back -> the company list
         "4\n"   //   list: back -> main
+        "2\n"   // main: continue -> base camp on the in-memory company
+        "8\n"   //   base camp: back -> main
         "6\n";  // main: quit
 
     StdinRedirect stdin_redirect(input);
@@ -4678,6 +4712,131 @@ TEST(PlatformHeadless, text_picker_failed_backup_restore_rolls_back_and_keeps_th
         << "step 3 must roll the slot file back to the state it replaced";
     // Step 1's pre-restore snapshot of GOOD BAND joins the ghost snapshot.
     EXPECT_EQ(2u, og::data::list_company_backups("wp9res").size());
+
+    // BUG-REST-MEM: step 3's rollback reloads GOOD BAND into the save it is
+    // handed. CONTINUE enters base camp on the IN-MEMORY company, so the
+    // header it prints after the failed rewind must be the one it printed
+    // before (this client's own company), never GOOD BAND's roster and
+    // purse under the text_quicksave slot.
+    const std::vector<std::string> headers = text_base_camp_headers(out);
+    ASSERT_EQ(2u, headers.size())
+        << "one base-camp header per CONTINUE:\n" << out;
+    EXPECT_EQ(std::string::npos, headers[0].find("Gold: 4321"))
+        << "the control: the pre-restore company is not GOOD BAND";
+    EXPECT_EQ(headers[0], headers[1])
+        << "[SAVE-R2] a failed restore must leave the in-memory company on "
+           "the one that was open before";
+}
+
+// BUG-CLOUD-MEM (text twin): a cloud DOWNLOAD whose company installs but
+// cannot be OPENED (its campaign is not installed) keeps the terminal slot
+// AND the in-memory company on the one that was open. load_with_error reads
+// the whole save before load_campaign fails, so opening straight into the
+// live save left the downloaded roster in memory under the previous slot,
+// where CONTINUE then showed it. The paired control is
+// text_picker_cloud_download_confirms_installs_and_opens, where the same
+// DOWNLOAD opens the company and repoints the slot.
+TEST(PlatformHeadless, text_picker_cloud_download_of_an_unopenable_company_keeps_the_company)
+{
+    restore_default_campaigns();
+    HeadlessSaveDirSandbox sandbox;
+    RemountGladiatorGuard remount;
+    ActiveCompanySlotGuard slot_guard;
+    cfg.data.erase("cloud");
+
+    // The company the cloud holds: a roster and a purse, on a campaign this
+    // machine does not have. Real writer bytes, staged through a scratch
+    // slot, so install_company_bytes accepts them.
+    std::string remote_bytes;
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "ORPHAN BAND";
+        sd.current_campaign = "wp9nosuchcampaign";
+        sd.last_played_unix_s = 9350;
+        og::ui::ensure_team_populated(
+            sd, std::vector<int>(4, FAMILY_SOLDIER), 0);
+        ASSERT_EQ(4, sd.team_size);
+        sd.m_totalcash[0] = 4321;
+        sd.totalcash = 4321;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error("hlorphst"));
+        std::ifstream in(std::filesystem::path(get_user_path()) / "save" /
+                             "hlorphst.gtl",
+                         std::ios::binary);
+        remote_bytes.assign((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+    }
+    ASSERT_FALSE(remote_bytes.empty());
+    ASSERT_TRUE(remove_user_file("save/hlorphst.gtl"));
+    ASSERT_FALSE(user_file_exists("save/hlorphan.gtl"));
+
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    const std::string get_body =
+        std::string(
+            R"({"revision":7,"uploaded_at":1754200000000,"slot":"hlorphan",)"
+            R"("save_name":"ORPHAN BAND","scen_num":1,"last_played":9350,)"
+            R"("data_hex":")") +
+        og::ui::cloud::hex_encode(remote_raw) + R"("})";
+
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_get = [&](const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    faked.cloud_http_post = [](const std::string&, const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 500;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    const std::string input =
+        "2\n"                      // main: continue -> base camp (header 1)
+        "8\n"                      //   base camp: back -> main
+        "8\n"                      // main: cloud -> CLOUD submenu
+        "1\n"                      // cloud: passphrase
+        "correct horse battery\n"
+        "3\n"                      // cloud: download (new slot: no confirm)
+        "4\n"                      // cloud: back -> main
+        "2\n"                      // main: continue -> base camp (header 2)
+        "8\n"                      //   base camp: back -> main
+        "6\n";                     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
+    cfg.data.erase("cloud");
+
+    EXPECT_NE(std::string::npos, out.find("Load failed for 'hlorphan'"))
+        << "the open attempt was made on the downloaded slot:\n" << out;
+    EXPECT_NE(std::string::npos, out.find("'wp9nosuchcampaign' is not"))
+        << "D16: the notice names the campaign to install:\n" << out;
+    EXPECT_TRUE(user_file_exists("save/hlorphan.gtl"))
+        << "the install itself landed";
+    EXPECT_EQ("text_quicksave", config.save_name)
+        << "[SAVE-R2] an unopenable download must leave the slot alone";
+
+    const std::vector<std::string> headers = text_base_camp_headers(out);
+    ASSERT_EQ(2u, headers.size())
+        << "one base-camp header per CONTINUE:\n" << out;
+    EXPECT_EQ(std::string::npos, headers[0].find("Gold: 4321"))
+        << "the control: the pre-download company is not ORPHAN BAND";
+    EXPECT_EQ(headers[0], headers[1])
+        << "[SAVE-R2] an unopenable download must leave the in-memory "
+           "company on the one that was open before";
 }
 
 namespace {
