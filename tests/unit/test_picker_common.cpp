@@ -6624,6 +6624,106 @@ TEST(PickerCommon, open_most_recent_company_reports_an_empty_shelf)
     std::filesystem::remove(shelf.save_dir / "wp5damaged.gtl", ec);
 }
 
+// [SAVE-R2] The SDL Open Company row and CONTINUE open through
+// open_company_slot. A company whose campaign is not installed fails in
+// load_campaign AFTER load_with_error has read its whole body, so the
+// in-memory company must stay on the one that was open, like the slot --
+// even when that company has no file on disk to reload it from (the §3.4
+// "save0" default at launch once every company has its own derived slug,
+// or a NEW GAME whose first write failed). Otherwise the next autosave
+// writes the refused company's roster and purse into the active slot.
+// Second failure case: the open company IS on disk, and the campaign mount
+// comes back to its campaign. Paired control: an openable company moves the
+// active slot and loads its roster into memory.
+TEST(PickerCommon, open_company_slot_failure_keeps_the_open_company_in_memory)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ParkedSaveShelf shelf;
+    struct Cleanup
+    {
+        ~Cleanup()
+        {
+            for (const char* slot : {"wpocopen", "wpoclost", "wpocgood"})
+                (void)remove_user_file(std::string("save/") + slot + ".gtl");
+        }
+    } cleanup;
+
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    const auto seed = [](const std::string& slot, const char* name,
+                         const char* campaign, std::uint32_t cash,
+                         int soldiers) {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = name;
+        sd.current_campaign = campaign;
+        sd.totalcash = cash;
+        sd.m_totalcash[0] = cash;
+        sd.last_played_unix_s = 8100;
+        for (int i = 0; i < soldiers; ++i)
+            sd.team_list[static_cast<std::size_t>(i)] =
+                std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_size = static_cast<unsigned char>(soldiers);
+        return sd.save_with_error(slot) == SaveDataIoError::None;
+    };
+    ASSERT_TRUE(seed("wpoclost", "LOST BAND", "wpocnosuchcampaign", 4321, 4));
+    ASSERT_TRUE(seed("wpocgood", "GOOD BAND", "gladiator", 9600, 2));
+
+    og::data::ScopedActiveCompany active("wpocopen");
+    ASSERT_TRUE(active.applied());
+    ASSERT_FALSE(user_file_exists("save/wpocopen.gtl"))
+        << "the open company has no file on disk yet";
+
+    SaveData save;
+    save.reset();
+    save.save_name = "OPEN BAND";
+    save.current_campaign = "gladiator";
+    save.totalcash = 777;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_size = 1;
+
+    SaveDataIoError io = SaveDataIoError::None;
+    EXPECT_EQ(og::ui::ContinueResult::LoadFailed,
+              og::ui::open_company_slot(save, "wpoclost", &io));
+    EXPECT_EQ(SaveDataIoError::CampaignLoadFailed, io);
+    EXPECT_EQ("wpocopen", og::data::active_company_slot())
+        << "a failed open restores the previous slot";
+    EXPECT_EQ("OPEN BAND", save.save_name)
+        << "[SAVE-R2] a failed open must leave the in-memory company on the "
+           "one that was open before";
+    EXPECT_EQ("gladiator", save.current_campaign);
+    EXPECT_EQ(777u, save.totalcash);
+    EXPECT_EQ(1, save.team_size);
+
+    // The open company on disk (on gladiator): memory stays, and the mount
+    // the failed load tore down comes back to the open company's campaign.
+    ASSERT_TRUE(seed("wpocopen", "OPEN BAND", "gladiator", 777, 1));
+    io = SaveDataIoError::None;
+    EXPECT_EQ(og::ui::ContinueResult::LoadFailed,
+              og::ui::open_company_slot(save, "wpoclost", &io));
+    EXPECT_EQ(SaveDataIoError::CampaignLoadFailed, io);
+    EXPECT_EQ("wpocopen", og::data::active_company_slot());
+    EXPECT_EQ("OPEN BAND", save.save_name);
+    EXPECT_EQ(777u, save.totalcash);
+    EXPECT_EQ("gladiator", get_mounted_campaign())
+        << "the open company's campaign is mounted again";
+
+    // Paired control: an openable company moves the slot and its roster
+    // and purse are what memory holds.
+    io = SaveDataIoError::None;
+    EXPECT_EQ(og::ui::ContinueResult::Opened,
+              og::ui::open_company_slot(save, "wpocgood", &io));
+    EXPECT_EQ(SaveDataIoError::None, io);
+    EXPECT_EQ("wpocgood", og::data::active_company_slot());
+    EXPECT_EQ("GOOD BAND", save.save_name);
+    EXPECT_EQ(9600u, save.totalcash);
+    ASSERT_EQ(2, save.team_size);
+    ASSERT_NE(nullptr, save.team_list[1]);
+    EXPECT_EQ(FAMILY_SOLDIER, save.team_list[1]->family);
+    EXPECT_EQ("gladiator", get_mounted_campaign());
+}
+
 // --- SETUP wizard rules hoisted into picker_common (#304/#305) ---------
 
 // The seat run LINEUP and the SETUP wizard's TEAMS line both draw. Tier 1
