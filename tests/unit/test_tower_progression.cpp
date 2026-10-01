@@ -644,7 +644,7 @@ TEST(TowerPopups, held_cursor_win_never_claims_the_next_floor)
               popup->body);
 }
 
-TEST(TowerPopups, summary_lines_win_only_surface)
+TEST(TowerPopups, summary_lines_word_a_win_and_a_loss_apart)
 {
     IProgression& t = og::mode::tower_progression();
     SaveData save;
@@ -652,20 +652,38 @@ TEST(TowerPopups, summary_lines_win_only_surface)
     GameWorld world(0);
 
     world.id = og::kTowerGateLevel + 2;
-    const std::vector<std::string> lines =
-        t.results_summary_lines(save, world);
-    ASSERT_EQ(1u, lines.size());
-    EXPECT_EQ("Floor 2 conquered - best 9", lines[0]);
+    const std::vector<std::string> win =
+        t.results_summary_lines(save, world, /*ending=*/0);
+    ASSERT_EQ(1u, win.size());
+    EXPECT_EQ("Floor 2 conquered - best 9", win[0])
+        << "a won floor keeps the conquered wording";
+
+    // B29: any non-win ending (team wipe 1, protect-fail 4) names the fall,
+    // never "conquered".
+    const std::vector<std::string> wipe =
+        t.results_summary_lines(save, world, /*ending=*/1);
+    ASSERT_EQ(1u, wipe.size());
+    EXPECT_EQ("Fell on Floor 2 - best 9", wipe[0]);
+    const std::vector<std::string> protect_fail =
+        t.results_summary_lines(save, world, /*ending=*/4);
+    ASSERT_EQ(1u, protect_fail.size());
+    EXPECT_EQ("Fell on Floor 2 - best 9", protect_fail[0]);
 
     world.id = og::kTowerGateLevel;
-    EXPECT_TRUE(t.results_summary_lines(save, world).empty())
-        << "the Gate adds no overview line";
+    EXPECT_TRUE(t.results_summary_lines(save, world, 0).empty())
+        << "the Gate adds no overview line on a win";
+    EXPECT_TRUE(t.results_summary_lines(save, world, 1).empty())
+        << "the Gate adds no overview line on a loss";
 }
 
 TEST(TowerFormatters, pure_helpers)
 {
     EXPECT_EQ("Floor 42 conquered - best 42",
-              og::mode::format_tower_summary(og::kTowerGateLevel + 42, 42));
+              og::mode::format_tower_summary(og::kTowerGateLevel + 42, 42,
+                                             /*won=*/true));
+    EXPECT_EQ("Fell on Floor 42 - best 42",
+              og::mode::format_tower_summary(og::kTowerGateLevel + 42, 42,
+                                             /*won=*/false));
     EXPECT_EQ("You fell on Floor 3.\nBest climb: 8.\nSeed 0000002A",
               og::mode::format_tower_loss(og::kTowerGateLevel + 3, 8, 42u,
                                           /*withdrawn=*/false));

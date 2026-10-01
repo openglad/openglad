@@ -130,6 +130,10 @@ mode's results hooks, and both frontends already dispatch on them:
   hidden and its click/nav paths gated on `suppress_retry()`; the overview
   page injects `results_summary_lines` after the CTF banner block.
 
+Both frontends pass the run's ending to `results_summary_lines`, so the
+mode words a win and a loss from one rule (tower: "Floor N conquered - best
+B" after a won floor, "Fell on Floor N - best B" otherwise).
+
 Classic returns nothing everywhere, so legacy surfaces render unchanged.
 Only the CTF popup itself (`show_ctf_ending_popup`) remains hardcoded in the
 dispatch chain — migrating CTF onto `ending_popup` is optional and out of

@@ -885,13 +885,14 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             }
 
             // Tier-B mode summary (tower-triple §2.7): the mounted mode may
-            // add overview lines (tower: "Floor N conquered - best B"),
+            // add overview lines (tower: "Floor N conquered - best B", or
+            // "Fell on Floor N - best B" when `ending` is a loss),
             // centered at the CTF banner's tight 8px pitch so the classic
             // gold/time block stays on the first screen. Classic adds none.
             {
                 const std::vector<std::string> mode_lines =
                     og::mode::current_progression().results_summary_lines(
-                        save_data, ctf_world);
+                        save_data, ctf_world, static_cast<short>(ending));
                 for (const std::string& line : mode_lines)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
