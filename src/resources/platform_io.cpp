@@ -117,37 +117,50 @@ EM_JS(char*, openglad_persist_namespace_js, (), {
     return stringToNewUTF8(value);
 });
 
-// IDBFS mount point for the browser build: "/persist" by default, or
-// "/persist_<token>" when the embedding host supplied a namespace. A valid
-// token is 1..64 characters of [A-Za-z0-9_-]; empty, over-length or otherwise
-// invalid falls back to "/persist" (a non-empty invalid value also logs one
-// warning). The token only selects where data is stored -- it is not
-// authentication and not a secret. Resolved once per run.
+// IDBFS mount point for the browser build, resolved once per run from
+// window.__opengladPersistNamespace through web_persist_root_for_namespace
+// (the rule itself lives there, outside the wasm guard, so a unit test can
+// pin it). A non-empty invalid value also logs one warning. The token only
+// selects where data is stored -- it is not authentication and not a secret.
 const std::string& web_persist_root()
 {
     static const std::string root = [] {
-        const std::string fallback = "/persist";
         const std::unique_ptr<char, decltype(&std::free)> raw(
             openglad_persist_namespace_js(), &std::free);
         const std::string token = raw ? std::string(raw.get()) : std::string();
-        if (token.empty())
-            return fallback;
-        if (token.size() > 64 ||
-            token.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                                    "abcdefghijklmnopqrstuvwxyz"
-                                    "0123456789_-") != std::string::npos)
+        if (!token.empty() && !is_valid_web_persist_namespace(token))
         {
             LogWarn("Ignoring window.__opengladPersistNamespace: expected 1-64 "
                     "characters of [A-Za-z0-9_-]; using the default store\n");
-            return fallback;
         }
-        return fallback + "_" + token;
+        return web_persist_root_for_namespace(token);
     }();
     return root;
 }
 
 }  // namespace
 #endif // __EMSCRIPTEN__
+
+bool is_valid_web_persist_namespace(std::string_view token)
+{
+    if (token.empty() || token.size() > kWebPersistNamespaceMaxLength)
+        return false;
+    constexpr std::string_view allowed =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789_-";
+    return token.find_first_not_of(allowed) == std::string_view::npos;
+}
+
+std::string web_persist_root_for_namespace(std::string_view token)
+{
+    std::string root(kWebPersistRootDefault);
+    if (!is_valid_web_persist_namespace(token))
+        return root;
+    root += '_';
+    root += token;
+    return root;
+}
 
 std::string get_user_path()
 {
