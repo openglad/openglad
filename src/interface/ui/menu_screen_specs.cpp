@@ -107,7 +107,6 @@ void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
                                              void* screen_state);
 void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
                                     int& highlighted_button);
-bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame);
 void picker_hire_menu_engine_on_reset(void* screen_state);
 void picker_hire_menu_engine_draw_content(void* screen_state);
 void picker_train_menu_engine_on_reset(void* screen_state);
@@ -6769,9 +6768,6 @@ const MenuScreenSpec& hire_menu_screen_spec()
         .prepare_buttons = &picker_hire_menu_engine_prepare_buttons,
         .draw_background = &picker_backdrop_draw_background,
         .draw_content = &picker_hire_menu_engine_draw_content,
-        // The new-game intro popup fires after the first presented frame
-        // (legacy loop-bottom arg1 == 1 branch).
-        .frame_tick = &picker_hire_menu_engine_frame_tick,
         // The legacy reset tail: re-derive the hire-team label surfaces.
         .on_reset = &picker_hire_menu_engine_on_reset,
         // Every legacy local exit returned MENU_REDRAW.
