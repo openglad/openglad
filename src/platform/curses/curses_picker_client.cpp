@@ -1440,7 +1440,7 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             const std::string status = og::ui::cloud::run_cloud_download(
                 {}, curses_cloud_hooks(menu, notified),
                 [this](const std::string& slot) {
-                    return open_downloaded_company(slot);
+                    return open_company_slot(slot);
                 });
             if (!notified)
                 menu.show_text("Cloud Save", {status});
@@ -1900,14 +1900,14 @@ bool CursesPickerClient::load_game()
     return true;
 }
 
-bool CursesPickerClient::open_downloaded_company(const std::string& slot)
+bool CursesPickerClient::open_company_slot(const std::string& slot)
 {
     const std::string previous_slot = config_.save_name;
     config_.save_name = slot;
-    // Open the download on a scratch save first: load_with_error reads the
+    // Open the company on a scratch save first: load_with_error reads the
     // whole company before load_campaign can fail (its campaign is not
     // installed here), so a failed open straight into save_data_ would leave
-    // the downloaded company in memory under the previous slot.
+    // the other company in memory under the previous slot.
     SaveData scratch;
     const SaveDataIoError io = scratch.load_with_error(slot);
     if (io == SaveDataIoError::None && load_game())
@@ -2004,13 +2004,8 @@ bool CursesPickerClient::show_company_list()
                      "Restore a backup or delete it."});
                 break;
             }
-            const std::string previous_slot = config_.save_name;
-            config_.save_name = info.slot;
-            if (load_game())
+            if (open_company_slot(info.slot))
                 return true; // -> team build (base camp)
-            // load_game showed the error; restore the slot authority.
-            config_.save_name = previous_slot;
-            assert_company_slot_authority(); // [SAVE-R2]
             break;
         }
         case PickerMenuCommand::OpenCompanyBackups: {

@@ -498,13 +498,8 @@ public:
                                 "backup or delete it.\n", info.slot.c_str());
                     break;
                 }
-                const std::string previous_slot = config_.save_name;
-                config_.save_name = info.slot;
-                if (load_game())
+                if (open_company_slot(info.slot))
                     return true; // -> team build (base camp)
-                // load_game printed the error; restore the slot authority.
-                config_.save_name = previous_slot;
-                assert_company_slot_authority(); // [SAVE-R2]
                 break;
             }
             case PickerMenuCommand::OpenCompanyBackups: {
@@ -829,7 +824,7 @@ private:
             const std::string status = og::ui::cloud::run_cloud_download(
                 {}, text_cloud_hooks(notified),
                 [this](const std::string& slot) {
-                    return open_downloaded_company(slot);
+                    return open_company_slot(slot);
                 });
             if (!notified)
                 std::printf("%s\n", status.c_str());
@@ -874,19 +869,18 @@ private:
         return hooks;
     }
 
-    // #155 download open path: the terminal §2.3 open sequence — repoint
-    // this client's slot authority at the installed company and load it;
-    // restore the previous slot on failure (the show_company_list
-    // discipline).
-    bool open_downloaded_company(const std::string& slot)
+    // The terminal §2.3 open sequence, shared by the company list's Open
+    // Company and the #155 cloud download: repoint this client's slot
+    // authority at the company and load it; on failure restore the previous
+    // slot and leave the open company in memory.
+    bool open_company_slot(const std::string& slot)
     {
         const std::string previous_slot = config_.save_name;
         config_.save_name = slot;
-        // Open the download on a scratch save first: load_with_error reads
+        // Open the company on a scratch save first: load_with_error reads
         // the whole company before load_campaign can fail (its campaign is
         // not installed here), so a failed open straight into save_data_
-        // would leave the downloaded company in memory under the previous
-        // slot.
+        // would leave the other company in memory under the previous slot.
         SaveData scratch;
         const SaveDataIoError io = scratch.load_with_error(slot);
         if (io == SaveDataIoError::None && load_game())
