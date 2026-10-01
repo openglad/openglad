@@ -234,6 +234,13 @@ int text_picker_testing_run_game_resolves_replay_arm(int& level_after,
                                                      short& scen_after,
                                                      short& replay_level_after,
                                                      int& level_armed);
+int text_picker_testing_campaign_select(const std::string& campaign,
+                                        const std::string& input,
+                                        std::string& output,
+                                        std::string& returned,
+                                        std::string& config_campaign_after,
+                                        std::string& save_campaign_after,
+                                        int& error_code);
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
 }
@@ -544,6 +551,53 @@ TEST(PlatformHeadless, io_init_registers_class_pack_scripts)
         << "headless io_init must still install pack descriptor data";
 
     std::filesystem::remove_all(config_dir, ec);
+}
+
+// Headless io_init with an unusable user directory fails LOUDLY and stops
+// before mounting anything: OPENGLAD_CONFIG_DIR names a regular file, so
+// create_dir cannot make it a directory and PhysFS refuses it as the write
+// dir. The error names the path, and no pack chunk is registered (nothing
+// was mounted to register from). Paired positive control:
+// io_init_registers_class_pack_scripts, where the same io_init with a real
+// directory registers the core pack.
+TEST(PlatformHeadless, io_init_with_a_file_for_the_user_dir_fails_loudly_and_mounts_nothing)
+{
+    FreshFilesystemForIoInit filesystem_guard;
+    ASSERT_TRUE(og::script::pack_family_chunks().empty());
+
+    EnvGuard config_guard("OPENGLAD_CONFIG_DIR");
+    const std::filesystem::path not_a_dir =
+        std::filesystem::temp_directory_path() / "openglad-headless-notadir";
+    std::error_code ec;
+    std::filesystem::remove_all(not_a_dir, ec);
+    {
+        std::ofstream file(not_a_dir);
+        file << "a regular file where the user directory should be\n";
+        ASSERT_TRUE(file.good());
+    }
+    setenv("OPENGLAD_CONFIG_DIR", not_a_dir.string().c_str(), 1);
+    const std::string user_path = get_user_path();
+    ASSERT_EQ(not_a_dir.string() + "/", user_path);
+
+    char arg0[] = "og_unit_headless_platform";
+    char* argv[] = {arg0, nullptr};
+    testing::internal::CaptureStderr();
+    io_init(1, argv);
+    const std::string err = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(std::string::npos,
+              err.find("io_init(headless): Failed to set write dir: " +
+                       user_path))
+        << err;
+    EXPECT_TRUE(og::script::pack_family_chunks().empty())
+        << "io_init must stop at the write-dir failure: nothing mounted, "
+           "nothing registered";
+    EXPECT_EQ("", get_mounted_campaign())
+        << "no default campaign is mounted after the early stop";
+    EXPECT_TRUE(std::filesystem::is_regular_file(not_a_dir))
+        << "the user's file is left alone";
+
+    std::filesystem::remove_all(not_a_dir, ec);
 }
 
 TEST(PlatformHeadless, unsupported_platform_functions_return_documented_defaults)
@@ -1853,6 +1907,82 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
+}
+
+// EOF at Campaign Select keeps the CURRENT campaign. The configured campaign
+// is deliberately NOT the first listed one (order_campaigns_for_select puts
+// gladiator first), so "keep" and "fall back to the first entry" differ.
+// The paired control is text_picker_campaign_select_mounts_selection, where
+// an answered prompt switches the campaign.
+TEST(PlatformHeadless, text_picker_campaign_select_eof_keeps_the_current_campaign)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+
+    std::string output;
+    std::string returned;
+    std::string config_after;
+    std::string save_after;
+    int error_code = -1;
+    ASSERT_EQ(0, og::ui::text_picker_testing_campaign_select(
+                     "modes", "", output, returned, config_after, save_after,
+                     error_code));
+
+    EXPECT_NE(std::string::npos, output.find("--- Campaign Select ---"))
+        << "the list was offered (entries exist): " << output;
+    EXPECT_NE(std::string::npos, output.find("  1. Gladiator"))
+        << "gladiator is listed first, so keep != first entry: " << output;
+    EXPECT_EQ("modes", returned) << "EOF keeps the current campaign";
+    EXPECT_EQ("modes", config_after);
+    EXPECT_EQ("modes", save_after);
+    EXPECT_EQ(static_cast<int>(og::ui::TextPickerErrorCode::None), error_code);
+    EXPECT_EQ("modes", get_mounted_campaign());
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// With no campaign package visible at all, Campaign Select keeps the current
+// campaign, SAYS so, and records CampaignIoError — and it answers the kept id
+// (never empty), which is what sends picker_state on to Team Build instead of
+// back to the main menu. The filesystem is a fresh PhysFS whose only mount is
+// an empty directory (FreshFilesystemForIoInit puts the harness back).
+TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_current_one)
+{
+    FreshFilesystemForIoInit filesystem_guard;
+    const std::filesystem::path empty_root =
+        std::filesystem::temp_directory_path() / "openglad-headless-nocampaigns";
+    std::error_code ec;
+    std::filesystem::remove_all(empty_root, ec);
+    std::filesystem::create_directories(empty_root / "campaigns", ec);
+    ASSERT_FALSE(ec);
+    ASSERT_TRUE(og::resources::init("og_unit_headless_platform"));
+    ASSERT_TRUE(og::resources::set_write_dir(empty_root.string()));
+    ASSERT_TRUE(og::resources::mount(empty_root.string().c_str(), nullptr, 1));
+    ASSERT_TRUE(list_campaigns().empty())
+        << "the arranged filesystem must list no campaign package";
+
+    std::string output;
+    std::string returned;
+    std::string config_after;
+    std::string save_after;
+    int error_code = -1;
+    ASSERT_EQ(0, og::ui::text_picker_testing_campaign_select(
+                     "gladiator", "1\n", output, returned, config_after,
+                     save_after, error_code));
+
+    EXPECT_EQ(std::format("No campaigns found; keeping '{}'.\n",
+                          og::data::campaign_display_title("gladiator")),
+              output)
+        << "the kept campaign is named, and nothing else is printed";
+    EXPECT_EQ("gladiator", returned)
+        << "the kept id, never empty: picker_state routes on emptiness";
+    EXPECT_EQ("gladiator", config_after);
+    EXPECT_EQ(static_cast<int>(og::ui::TextPickerErrorCode::CampaignIoError),
+              error_code);
+
+    std::filesystem::remove_all(empty_root, ec);
 }
 
 // Users must see human titles, never raw campaign ids: "Gladiator" from the

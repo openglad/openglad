@@ -775,9 +775,6 @@ private:
 
     void request_close_socket(WebSocketHandle socket_handle) const noexcept
     {
-        if (socket_handle <= 0)
-            return;
-
         const detail::EmscriptenWebSocketApi& api =
             detail::emscripten_websocket_api();
         if (api.close != nullptr)

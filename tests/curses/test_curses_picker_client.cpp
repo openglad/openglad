@@ -64,6 +64,7 @@
 
 #include <arpa/inet.h>
 #include <cstdint>
+#include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -1050,12 +1051,34 @@ TEST(CursesPickerClient, view_scenario_band_overflow_stops_at_the_footer)
     EXPECT_TRUE(f.t().input_exhausted())
         << "both releases and the fresh press must be consumed";
     EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
-    EXPECT_EQ(0u, f.t().text_row(15).find("[ press any key ]"))
-        << "the footer keeps its prompt when the census overflows:\n"
+    const auto trimmed_row = [](const HeadlessTerminal& term, int row) {
+        std::string text = term.text_row(row);
+        while (!text.empty() && text.back() == ' ')
+            text.pop_back();
+        return text;
+    };
+    EXPECT_EQ("[ press any key ]", trimmed_row(f.t(), 15))
+        << "the footer carries the prompt and nothing else:\n"
         << f.t().dump();
     EXPECT_NE(std::string::npos, f.t().text_row(12).find_first_not_of(' '))
         << "the first census row under the band must be filled:\n"
         << f.t().dump();
+
+    // MID-WRAP: at 20x20 a census line starts on the last row above the
+    // footer and wraps onto it with a tail longer than the 17-cell prompt,
+    // so a continuation written onto the footer row would stay visible past
+    // the prompt. The wrapped-continuation break must stop it.
+    PickerFixture wide({}, /*rows=*/20, /*cols=*/20);
+    wide.t().push_special(KeyCode::Enter);
+    wide.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_TRUE(wide.t().input_exhausted());
+    EXPECT_EQ("[ press any key ]", trimmed_row(wide.t(), 19))
+        << "a census line wrapping onto the footer must stop above it:\n"
+        << wide.t().dump();
+    EXPECT_NE(std::string::npos,
+              wide.t().text_row(18).find_first_not_of(' '))
+        << "the row above the footer holds the start of the wrapped line:\n"
+        << wide.t().dump();
 }
 
 // Solo staged VIEW LEVEL degradation: a local stage that cannot fit the
@@ -1619,6 +1642,65 @@ void enter_prompt_number(HeadlessTerminal& term, int number)
     term.push_special(KeyCode::Enter);
 }
 
+// A transient notice is overwritten by the next screen the flow draws, so a
+// test that must READ one wraps the HeadlessTerminal and keeps the text of
+// every presented frame. Pure delegation: the scripted keys and the grid are
+// the wrapped terminal's.
+class PresentedFrameLog final : public ITerminal
+{
+public:
+    explicit PresentedFrameLog(HeadlessTerminal& inner) : inner_(inner) {}
+
+    int rows() const override { return inner_.rows(); }
+    int cols() const override { return inner_.cols(); }
+    bool supports_unicode() const override { return inner_.supports_unicode(); }
+    bool supports_color() const override { return inner_.supports_color(); }
+    void clear() override { inner_.clear(); }
+    void put(int row, int col, char32_t ch, Color fg, Color bg,
+             bool bold) override
+    {
+        inner_.put(row, col, ch, fg, bg, bold);
+    }
+    void put_str(int row, int col, std::string_view utf8, Color fg, Color bg,
+                 bool bold) override
+    {
+        inner_.put_str(row, col, utf8, fg, bg, bold);
+    }
+    void present() override
+    {
+        inner_.present();
+        frames_.push_back(inner_.dump());
+    }
+    Key poll_key(bool block) override { return inner_.poll_key(block); }
+    void set_cursor_visible(bool visible) override
+    {
+        inner_.set_cursor_visible(visible);
+    }
+    void beep() override { inner_.beep(); }
+
+    // Every presented frame whose text contains `needle`.
+    std::vector<std::string> frames_containing(std::string_view needle) const
+    {
+        std::vector<std::string> out;
+        for (const std::string& frame : frames_)
+            if (frame.find(needle) != std::string::npos)
+                out.push_back(frame);
+        return out;
+    }
+
+private:
+    HeadlessTerminal& inner_;
+    std::vector<std::string> frames_;
+};
+
+std::string read_user_file_bytes(const std::string& relative)
+{
+    std::ifstream in(std::filesystem::path(get_user_path()) / relative,
+                     std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)),
+                       std::istreambuf_iterator<char>());
+}
+
 } // namespace
 
 TEST(CursesPickerClient,
@@ -1789,6 +1871,83 @@ TEST(CursesPickerClient, company_backups_restore_no_first_then_yes)
     ASSERT_EQ(2u, backups.size());
     EXPECT_EQ("NEW BAND", backups.front().header.display_name)
         << "the pre-restore state must be snapshotted first (§3.7 step 1)";
+}
+
+// [SAVE-R2]/[SAVE-R3] a curses Restore Backup whose rewind FAILS names the
+// failure and puts the terminal slot back on the company that was open
+// before. The backup is torn exactly like CompanyIo's
+// restore_reload_failure_rolls_back_disk_and_memory: the 164-byte header with
+// listsize patched to 2 passes the step-0 header check (so the row is not
+// marked damaged and the confirm is reached) and fails the step-3 full
+// reload. The paired control is company_backups_restore_no_first_then_yes,
+// where the same Yes rewinds and the slot is repointed.
+TEST(CursesPickerClient, company_backup_restore_failure_names_it_and_keeps_the_slot)
+{
+    MountRestore mount_restore;
+    const std::string slot =
+        unique_curses_company_slot("curses-torn-restore");
+    ASSERT_TRUE(seed_curses_company(slot, "TORN BAND", 9400));
+    const std::string good_bytes =
+        read_user_file_bytes("save/" + slot + ".gtl");
+    ASSERT_GE(good_bytes.size(), 164u);
+    std::string torn = good_bytes.substr(0, 164);
+    const std::int16_t fake_listsize = 2;
+    std::memcpy(torn.data() + 130, &fake_listsize, sizeof(fake_listsize));
+    {
+        const std::filesystem::path backups_dir =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code ec;
+        std::filesystem::create_directories(backups_dir, ec);
+        std::ofstream out(backups_dir / (slot + ".005.gtl"),
+                          std::ios::binary | std::ios::trunc);
+        out.write(torn.data(), static_cast<std::streamsize>(torn.size()));
+        ASSERT_TRUE(out.good());
+    }
+    {
+        const std::vector<og::data::CompanyBackupInfo> backups =
+            og::data::list_company_backups(slot);
+        ASSERT_EQ(1u, backups.size());
+        ASSERT_TRUE(backups.front().header.valid)
+            << "the torn backup must pass the header check, or the flow "
+               "stops at the 'damaged' refusal instead of the rewind";
+    }
+    const int company_row = company_row_number(slot);
+    ASSERT_GT(company_row, 0);
+
+    HeadlessTerminal term{40, 100};
+    PresentedFrameLog log{term};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client(log, clock, config, options);
+    const std::string slot_before = config.save_name;
+    ASSERT_NE(slot, slot_before);
+
+    pick(term, 1);                         // chrome: Backups...
+    enter_prompt_number(term, company_row);
+    pick(term, 0);                         // backups chrome: Restore Backup
+    term.push_special(KeyCode::Enter);     // the only backup: row "1"
+    term.push_char(U'2');                  // digit-jump to Yes
+    term.push_special(KeyCode::Enter);
+    dismiss(term);                         // the failure notice
+    term.push_special(KeyCode::Escape);    // back out of the backups view
+    term.push_special(KeyCode::Escape);    // back out of the list
+
+    EXPECT_FALSE(client.show_company_list())
+        << "a failed rewind opens nothing (no team build)";
+    EXPECT_TRUE(term.input_exhausted());
+    EXPECT_EQ(slot_before, config.save_name)
+        << "[SAVE-R2] a failed restore must put the terminal slot back";
+    EXPECT_EQ(slot_before, og::data::active_company_slot())
+        << "[SAVE-R2] the active company slot follows the terminal slot";
+    const std::string notice = std::format(
+        "Restore failed ({}).",
+        og::ui::company_restore_error_string(
+            og::data::CompanyRestoreError::ReloadFailed));
+    EXPECT_EQ(1u, log.frames_containing(notice).size())
+        << "the failure is named on exactly one notice: " << notice;
+    EXPECT_EQ(good_bytes, read_user_file_bytes("save/" + slot + ".gtl"))
+        << "[SAVE-R3] the rollback leaves the company file byte-identical";
 }
 
 // §2.4 delete-backup round trip (curses projection): NO-first keeps the
@@ -4209,6 +4368,111 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
         << "install_company_bytes snapshots before the swap";
     EXPECT_EQ("5", cfg.get_setting("cloud", "revision"))
         << "the server revision persists for the next optimistic upload";
+    cfg.data.erase("cloud");
+}
+
+// [SAVE-R2]/D16: a cloud DOWNLOAD whose company installs but cannot be
+// OPENED (its campaign is not installed here) keeps the company on disk,
+// names the missing campaign, and leaves the curses slot on the company that
+// was open before. install_company_bytes header-validates only, so the
+// install succeeds; load_with_error then fails with CampaignLoadFailed. The
+// paired control is cloud_download_confirms_installs_and_opens_company, where
+// the same DOWNLOAD opens the company and repoints the slot.
+TEST(CursesPickerClient, cloud_download_of_an_unopenable_company_keeps_the_slot)
+{
+    MountRestore mount_restore;
+    cfg.data.erase("cloud");
+
+    const std::string staging_slot =
+        unique_curses_company_slot("curses-cloud-stage");
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "ORPHAN BAND";
+        sd.current_campaign = "wp4nosuchcampaign";
+        sd.last_played_unix_s = 9350;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error(staging_slot));
+    }
+    const std::string remote_bytes =
+        read_user_file_bytes("save/" + staging_slot + ".gtl");
+    ASSERT_FALSE(remote_bytes.empty());
+    ASSERT_TRUE(remove_user_file("save/" + staging_slot + ".gtl"));
+
+    const std::string company_slot =
+        unique_curses_company_slot("curses-cloud-orphan");
+    ASSERT_FALSE(user_file_exists("save/" + company_slot + ".gtl"));
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    const std::string get_body =
+        std::format(
+            R"({{"revision":7,"uploaded_at":1754200000000,"slot":"{}",)"
+            R"("save_name":"ORPHAN BAND","scen_num":1,"last_played":9350,)"
+            R"("data_hex":"{}"}})",
+            company_slot, og::ui::cloud::hex_encode(remote_raw));
+
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_get = [&](const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    faked.cloud_http_post = [](const std::string&, const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 500;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    {
+        HeadlessTerminal term{40, 100};
+        PresentedFrameLog log{term};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client(log, clock, config, options);
+        const std::string slot_before = config.save_name;
+        ASSERT_NE(company_slot, slot_before);
+
+        const int door_idx =
+            main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+        ASSERT_GE(door_idx, 0);
+        ASSERT_LE(door_idx, 8);
+        pick(term, door_idx);
+        pick(term, 0);                     // PASSPHRASE
+        term.push_string("correct horse battery");
+        term.push_special(KeyCode::Enter);
+        dismiss(term);                     // "Passphrase set."
+        pick(term, 2);                     // DOWNLOAD (new slot: no confirm)
+        dismiss(term);                     // the open path's "Load failed"
+        dismiss(term);                     // the campaign-missing notice
+        term.push_special(KeyCode::Escape); // leave the submenu
+        term.push_special(KeyCode::Escape); // Main -> quit
+
+        og::ui::run_picker(client);
+
+        EXPECT_TRUE(term.input_exhausted());
+        EXPECT_EQ(slot_before, config.save_name)
+            << "[SAVE-R2] an install that cannot be opened must leave the "
+               "curses slot on the previous company";
+        EXPECT_EQ(slot_before, og::data::active_company_slot());
+        EXPECT_EQ(1u, log.frames_containing(
+                          std::format("Load failed for '{}'", company_slot))
+                          .size())
+            << "the open attempt was made on the downloaded slot and failed";
+        EXPECT_EQ(1u, log.frames_containing("Downloaded, but campaign").size());
+        EXPECT_EQ(1u, log.frames_containing("'wp4nosuchcampaign' is not").size())
+            << "D16: the notice names the campaign to install";
+    }
+
+    EXPECT_EQ(remote_bytes,
+              read_user_file_bytes("save/" + company_slot + ".gtl"))
+        << "D16: the downloaded company stays installed on disk";
+    EXPECT_EQ("7", cfg.get_setting("cloud", "revision"));
     cfg.data.erase("cloud");
 }
 
