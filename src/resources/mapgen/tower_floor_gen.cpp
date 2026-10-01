@@ -935,9 +935,7 @@ int maxobs_worst_case(const GameWorld& w)
     int worst = 0;
     for (const auto& uptr : w.oblist)
     {
-        const walker* ob = uptr.get();
-        if (ob == nullptr)
-            continue;
+        const walker* ob = uptr.get(); // add_ob never files a null
         if (ob->query_order() == Order::Living)
             worst += (ob->family() == FAMILY_SLIME) ? 2 : 1;
         else if (ob->query_order() == Order::Generator)

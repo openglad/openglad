@@ -1113,12 +1113,9 @@ int og_register_level_hooks(lua_State* L)
     // Declaration pass: silent no-op, the og.register_hooks precedent — a
     // family chunk calling this neither rejects the pack nor registers; the
     // bind replay is where it lands.
-    if (const VmState* declare_st = get_vm_state(L);
-        declare_st != nullptr && declare_st->mode == VmMode::Declare)
-        return 0;
     VmState* st = get_vm_state(L);
-    if (st == nullptr || st->owner == nullptr)
-        script_raise(L, "og.register_level_hooks: no world scripts");
+    if (st != nullptr && st->mode == VmMode::Declare)
+        return 0;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
     int registered = 0;

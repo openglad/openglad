@@ -597,10 +597,10 @@ struct UpperFloorCoverageMask
 			return static_cast<Sint32>(std::min<std::int64_t>(
 			    source_coord / GRID_SIZE, limit));
 		};
+		// No <= 0 clamp: a non-positive bound (0 for [-15, 0], negative
+		// below) leaves the `g < end` loops empty exactly as 0 would.
 		auto tile_end = [](std::int64_t source_coord, Sint32 limit)
 		{
-			if (source_coord <= 0)
-				return Sint32{0};
 			return static_cast<Sint32>(std::min<std::int64_t>(
 			    (source_coord + GRID_SIZE - 1) / GRID_SIZE, limit));
 		};
@@ -1183,9 +1183,8 @@ void effects_track_air_falls(GameWorld& world)
 		if (w == nullptr || w->dead() || w->dormant() ||
 		    w->query_order() != Order::Living)
 			continue;
+		// Never 0: every oblist insertion assigns an id (assign_entity_id).
 		const std::uint32_t id = w->entity_id();
-		if (id == 0)
-			continue;
 		const short f = w->floor();
 		const float wx = static_cast<float>(w->xpos());
 		const float wy = static_cast<float>(w->ypos());

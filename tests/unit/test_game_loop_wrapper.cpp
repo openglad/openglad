@@ -129,15 +129,16 @@ struct ScopedKeyBinding
     int saved;
 };
 
-// Scripted remap owner. On its first call it queues the events the wait
-// loop will see (in this order: a key release, a key press, a second press
-// behind it); on call `cancel_at` it answers false, and it never answers
-// true more than `budget` times.
+// Scripted remap owner. On call `queue_at` (the first by default) it queues
+// the events the wait loop will see (in this order: a key release, a key
+// press, a second press behind it); on call `cancel_at` it answers false,
+// and it never answers true more than `budget` times.
 struct RemapPollScript
 {
     int calls = 0;
     int budget = 0;
     int cancel_at = 0; // 1-based call that answers false; 0 = never
+    int queue_at = 1;  // 1-based call that queues the scripted events
     SDL_Keycode first_release = SDLK_UNKNOWN;
     SDL_Keycode first_press = SDLK_UNKNOWN;
     SDL_Keycode second_press = SDLK_UNKNOWN;
@@ -148,7 +149,7 @@ bool scripted_remap_poll()
 {
     RemapPollScript& s = g_remap_poll;
     ++s.calls;
-    if (s.calls == 1)
+    if (s.calls == s.queue_at)
     {
         if (s.first_release != SDLK_UNKNOWN)
             push_sdl_key(SDL_EVENT_KEY_UP, s.first_release);
@@ -297,6 +298,103 @@ TEST(RemapWait, joystick_button_press_binds_through_joy_layout)
     EXPECT_EQ(2, player_joy[0].key_index[KEY_SPECIAL]);
     EXPECT_EQ(restore.saved, bound_key(0, KEY_SPECIAL))
         << "a joystick answer leaves the keyboard binding alone";
+}
+
+// An empty poll pass is not an answer: the wait sleeps and polls the owner
+// again. The owner queues nothing on its first call and the J press on its
+// second, so the remap binds J after exactly two wait passes plus the 40
+// debounce passes.
+TEST(RemapWait, empty_poll_pass_waits_and_polls_again)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ensure_game_loop_wrapper_test_runtime();
+    mount_game_loop_wrapper_campaign();
+    auto session = make_wait_loop_session();
+    auto scope = session->activate();
+    ScopedKeyBinding restore(0, KEY_SPECIAL);
+    ASSERT_NE(static_cast<int>(SDLK_J), restore.saved);
+
+    clear_events();
+    g_remap_poll = RemapPollScript{};
+    g_remap_poll.budget = 100;
+    g_remap_poll.queue_at = 2;
+    g_remap_poll.first_press = SDLK_J;
+    EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL, &scripted_remap_poll))
+        << "the press queued on the second pass must end the remap wait";
+    EXPECT_EQ(static_cast<int>(SDLK_J), bound_key(0, KEY_SPECIAL));
+    EXPECT_EQ(42, g_remap_poll.calls)
+        << "two wait passes (the first found nothing), then 40 debounce passes";
+}
+
+// A stick nudged inside the dead zone (JOY_DEAD_ZONE = 8000, input.cpp) is
+// no answer: the button press queued behind it binds. Control: the same
+// axis pushed past the dead zone answers the remap as a positive axis.
+TEST(RemapWait, joystick_axis_inside_dead_zone_is_ignored)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ensure_game_loop_wrapper_test_runtime();
+    mount_game_loop_wrapper_campaign();
+    auto session = make_wait_loop_session();
+    auto scope = session->activate();
+    ScopedKeyBinding restore(0, KEY_SPECIAL);
+
+    ASSERT_TRUE(SDL_InitSubSystem(SDL_INIT_JOYSTICK)) << SDL_GetError();
+    struct JoystickFixture
+    {
+        JoyData saved_layout = player_joy[0];
+        SDL_JoystickID id = 0;
+        SDL_Joystick* pad = nullptr;
+        ~JoystickFixture()
+        {
+            if (pad != nullptr)
+                SDL_CloseJoystick(pad);
+            if (id != 0)
+                SDL_DetachVirtualJoystick(id);
+            player_joy[0] = saved_layout;
+            clear_events();
+            SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
+        }
+    } joy;
+
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = 1;
+    desc.nbuttons = 4;
+    desc.name = "remap dead-zone pad";
+    joy.id = SDL_AttachVirtualJoystick(&desc);
+    ASSERT_NE(0u, joy.id) << SDL_GetError();
+    joy.pad = SDL_OpenJoystick(joy.id);
+    ASSERT_NE(nullptr, joy.pad) << SDL_GetError();
+    ASSERT_NE(JoyData::BUTTON, player_joy[0].key_type[KEY_SPECIAL]);
+
+    clear_events(); // the device-added notice is not part of the answer
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(joy.pad, 0, 4000)) << SDL_GetError();
+    SDL_UpdateJoysticks(); // posts the in-dead-zone axis motion
+    ASSERT_TRUE(SDL_SetJoystickVirtualButton(joy.pad, 2, true)) << SDL_GetError();
+    SDL_UpdateJoysticks(); // posts the button-down behind it
+
+    g_remap_poll = RemapPollScript{};
+    g_remap_poll.budget = 100;
+    EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL, &scripted_remap_poll));
+    EXPECT_EQ(JoyData::BUTTON, player_joy[0].key_type[KEY_SPECIAL])
+        << "the in-dead-zone axis motion must not answer the remap";
+    EXPECT_EQ(2, player_joy[0].key_index[KEY_SPECIAL]);
+
+    // Control: release the button, then push the axis past the dead zone.
+    ASSERT_TRUE(SDL_SetJoystickVirtualButton(joy.pad, 2, false)) << SDL_GetError();
+    SDL_UpdateJoysticks();
+    clear_events();
+    player_joy[0] = joy.saved_layout;
+    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(joy.pad, 0, 9000)) << SDL_GetError();
+    SDL_UpdateJoysticks();
+
+    g_remap_poll = RemapPollScript{};
+    g_remap_poll.budget = 100;
+    EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL, &scripted_remap_poll));
+    EXPECT_EQ(JoyData::POS_AXIS, player_joy[0].key_type[KEY_SPECIAL])
+        << "an axis past the dead zone answers the remap";
+    EXPECT_EQ(0, player_joy[0].key_index[KEY_SPECIAL]);
 }
 
 // The owner's poll saying stop before any press abandons the remap: nothing

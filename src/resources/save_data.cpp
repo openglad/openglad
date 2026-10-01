@@ -497,12 +497,6 @@ bool SaveData::load(const std::string& filename)
             }
 		}
 
-    if (invalid_team_size)
-    {
-        last_io_error_ = SaveDataIoError::ReadFailed;
-        return false;
-    }
-
     // Make sure the default campaign is included
 	completed_levels.insert(std::make_pair(kDefaultCampaign, std::set<int>()));
 	current_levels.insert(std::make_pair(kDefaultCampaign, 1));

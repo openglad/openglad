@@ -174,10 +174,10 @@ std::string derive_company_slot(const std::string& display_name)
         std::string base = collapsed;
         if (base.size() + tail.size() > kMaxVirtualBasenameLength)
             base.resize(kMaxVirtualBasenameLength - tail.size());
+        // Never empties: base keeps >= 22 of collapsed's non-'-'-ended,
+        // no-double-'-' characters (tail <= 42 < 64), so at most one pops.
         while (!base.empty() && base.back() == '-')
             base.pop_back();
-        if (base.empty())
-            base = "company";
 
         const std::string candidate = base + tail;
         if (!taken(candidate))

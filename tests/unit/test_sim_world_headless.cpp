@@ -1489,3 +1489,40 @@ TEST(SimWorldHeadless, world_end_stops_a_scripted_level_without_choosing_a_level
     ASSERT_NE(nullptr, still_fighting);
     EXPECT_FALSE(still_fighting->dead());
 }
+
+// The foe census runs over the weapon list too: a pack can file a hostile
+// LIVING there (og.add_weap_ob('living', family) is a real pack input), and
+// that foe holds the level open exactly like one in the object list.
+// Control: the same world without it completes (no exit pad: kill-all).
+TEST(SimWorldHeadless, hostile_living_in_the_weapon_list_holds_the_level_open)
+{
+    {
+        TestGameWorld t;
+        GameWorld& w = t.world();
+        w.my_team = 0;
+        ASSERT_NE(nullptr, freeze_census::player_hero(t, 120, 120));
+        w.tick();
+        EXPECT_EQ(2, w.level_done) << "control: no foe anywhere clears";
+        EXPECT_TRUE(w.game_ended) << "control: the kill-all level completes";
+    }
+
+    TestGameWorld t;
+    GameWorld& w = t.world();
+    w.my_team = 0;
+    ASSERT_NE(nullptr, freeze_census::player_hero(t, 120, 120));
+    walker* foe = w.add_weap_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe);
+    foe->setxy(200, 200);
+    foe->set_team_num(1);
+    foe->set_act_type(ACT_RANDOM);
+    const std::uint32_t foe_id = foe->entity_id();
+    ASSERT_NE(0u, foe_id);
+
+    w.tick();
+    walker* const live = w.find_by_id(foe_id);
+    ASSERT_NE(nullptr, live) << "the weapon-list orc survives the tick";
+    ASSERT_FALSE(live->dead());
+    EXPECT_EQ(0, w.level_done)
+        << "a hostile living in the weapon list keeps the level unfinished";
+    EXPECT_FALSE(w.game_ended);
+}
