@@ -2922,6 +2922,96 @@ TEST(CampaignZoneUi, readout_cells_share_one_sixteen_character_budget)
         << "the 11th value glyph is inside the band";
 }
 
+namespace {
+
+// The roster FIRST, the readout under it: nothing is hoisted into the
+// header band, so the readout keeps its own grid unit.
+std::string roster_first_readout_script(const char* label)
+{
+    return std::format(R"LUA(og.register_campaign_hooks({{
+  base_camp = function()
+    return {{
+      widgets = {{
+        {{ kind = "roster" }},
+        {{ kind = "readout",
+          items = {{
+            {{ label = "{}", value = "" }},
+          }} }},
+      }},
+    }}
+  end,
+}}))LUA",
+                       label);
+}
+
+struct ReadoutBands
+{
+    std::uint64_t header = 0;  // the y=33 header band
+    std::uint64_t own = 0;     // the readout's own grid band
+    bool in_header_band = false;
+};
+
+ReadoutBands camp_readout_bands(SaveData& save, const std::string& script)
+{
+    SyntheticCampaignScriptGuard::install(script.c_str());
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    EXPECT_TRUE(zone.scripted());
+    ReadoutBands bands;
+    const og::ui::CampaignZoneSession::ReadoutLayout* const readout =
+        zone.readout();
+    EXPECT_NE(nullptr, readout);
+    if (readout == nullptr)
+        return bands;
+    bands.in_header_band = readout->in_header_band;
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    screen& output = *test_screen();
+    output.draw_box(0, 0, 319, 199, WHITE, 1, 1);
+    team_build_spec().draw_content(&state);
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    // Row grid: y0 45, pitch 14 (menu_screen_specs.cpp kBaseCampRowY0/Pitch).
+    const int own_y = 45 + 14 * readout->start_unit;
+    bands.header = zone_region_hash(output, 0, 31, 320, 42);
+    bands.own = zone_region_hash(output, 0, own_y, 320, own_y + 12);
+    return bands;
+}
+
+} // namespace
+
+// A readout is hoisted into the panel's header band (y=33) only when the
+// roster is not the first widget. With the roster first, the readout draws
+// on its OWN grid band: its text moves that band and never the header.
+TEST(CampaignZoneUi, a_readout_under_the_roster_draws_on_its_own_grid_band)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    const ReadoutBands a = camp_readout_bands(
+        save, roster_first_readout_script("GOLD"));
+    const ReadoutBands b = camp_readout_bands(
+        save, roster_first_readout_script("FAME"));
+    EXPECT_FALSE(a.in_header_band) << "a roster-first readout is not hoisted";
+    EXPECT_EQ(a.header, b.header)
+        << "the readout's text must not reach the header band";
+    EXPECT_NE(a.own, b.own) << "it draws on its own grid band instead";
+
+    // Paired control: readout first, roster second -- hoisted, and now the
+    // readout's text moves the header band.
+    EXPECT_NE(camp_readout_band(save, readout_script("GOLD", "", "X", "")),
+              camp_readout_band(save, readout_script("FAME", "", "X", "")))
+        << "a hoisted readout draws in the header band";
+}
+
 // With can_deploy off the own rows lose their deploy BUTTONS, but the
 // player still reads each hero's deploy state as the X/- glyph the foreign
 // rows use. With the buttons live the content pass leaves that cell to
@@ -3043,6 +3133,74 @@ TEST(CampaignZoneUi, setup_book_actions_speak_and_refusals_hold_the_step)
     EXPECT_EQ(og::ui::MatchSetupSession::Step::Game, state.session.step())
         << "a refusal never advances the step";
     EXPECT_EQ(0u, save.m_totalcash[0]) << "and spends nothing";
+
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
+// The same one-action book, speaking a 59-character sentence (the short
+// "The drums roll." above is the paired control: kept whole).
+constexpr const char* kLongSpeechBookScript = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "GAMES",
+      entries = {
+        { id = "drums", label = "DRUMS", kind = "action" },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "The drums roll across the whole arena and the crowd roars!!" }
+  end,
+}))LUA";
+
+} // namespace
+
+// The wizard's toast is clipped AT SOURCE to line B's hire-hidden budget
+// (41 characters): a book sentence longer than the line is cut to exactly
+// the budget before it is stored or traced, never drawn past the strip.
+TEST(CampaignZoneUi, setup_toast_is_clipped_to_the_line_b_budget)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SyntheticCampaignScriptGuard script_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    og::script::clear_pack_scripts();
+    SyntheticCampaignScriptGuard::install(kLongSpeechBookScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    ASSERT_TRUE(og::ui::is_versus_campaign(save));
+
+    og::ui::MatchSetupScreenState state(save);
+    og::ui::MatchSetupSession::Inputs in;
+    in.save = &save;
+    in.is_host = true;
+    ASSERT_TRUE(state.session.open(in));
+    ASSERT_EQ(1u, state.session.page().rows.size());
+    og::ui::install_match_setup_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = og::ui::match_setup_menu_screen_spec();
+
+    const std::string sentence =
+        "The drums roll across the whole arena and the crowd roars!!";
+    ASSERT_EQ(59u, sentence.size());
+    const std::string clipped = sentence.substr(
+        0, static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
+    ASSERT_EQ(41u, clipped.size());
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(og::ui::kMatchSetupRowBase + 0, &state));
+    EXPECT_EQ(clipped, state.toast)
+        << "the toast keeps exactly the line's 41 characters";
+    EXPECT_TRUE(trace_contains("setup", ("toast " + clipped).c_str()));
+    EXPECT_FALSE(trace_contains("setup", sentence.substr(0, 42).c_str()))
+        << "no 42nd character reaches the trace";
 
     og::ui::install_match_setup_state_for_screen(nullptr);
     ASSERT_EQ(CampaignPackageIoError::None,

@@ -33,6 +33,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
+#include <openglad/core/family_presentation.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
@@ -110,7 +111,6 @@ Sint32 leftmouse(button* buttons);
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -3066,9 +3066,19 @@ static std::string pick_spritesheet()
     std::vector<std::string> packs;
     {
         std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(extra_dir, ec))
-            if (entry.is_directory())
-                packs.push_back(entry.path().filename().string());
+        for (const auto& entry : std::filesystem::directory_iterator(extra_dir, ec)) {
+            if (!entry.is_directory())
+                continue;
+            std::string name = entry.path().filename().string();
+            // The pick is stored in cfg, and libyaml refuses a scalar that
+            // is not UTF-8: one Latin-1 folder name here used to make every
+            // later settings save fail. Such a folder is not offered.
+            if (!og::is_valid_utf8(name)) {
+                LogWarn("Sprite sheet folder name is not valid UTF-8; skipping it.\n");
+                continue;
+            }
+            packs.push_back(std::move(name));
+        }
     }
     std::sort(packs.begin(), packs.end());
 
@@ -3381,8 +3391,6 @@ Sint32 change_teamnum(Sint32 arg)
    bool roster_changed = false;
    if (pks().train_session && !pks().train_session->empty()) {
        const int slot = pks().train_session->current_slot();
-       if (!picker_lobby_save_slot_editable(slot))
-           return 0;
        SaveData& save = og::runtime::current_session->myscreen_->save_data;
        const short old_team =
            save.team_list[static_cast<std::size_t>(slot)]->teamnum;

@@ -121,7 +121,6 @@ Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
 void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 std::string get_saved_name(const char* filename);
@@ -809,8 +808,6 @@ bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
                                             int /*frame*/)
 {
     ViewScenarioEngineState* const state = g_view_scenario_engine_state;
-    if (state == nullptr || state->scenario == nullptr)
-        return true;
     const SaveData& save =
         og::runtime::current_session->myscreen_->save_data;
     ViewScenarioKey key = view_scenario_current_key(save);
@@ -1642,7 +1639,10 @@ std::string get_class_description(unsigned char family)
     case 5:
         return "*****";
     default:
-        return "";
+        // A class pack may price an axis below 5 (cost 1-3 rates 25/12/8):
+        // anything past five stars is five stars. A negative price rates
+        // below zero and shows none.
+        return rating > 5 ? "*****" : "";
     }
 }
 
@@ -1755,9 +1755,6 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
     if (state == nullptr)
         return;
     const HireMenuLayout l;
-
-    if (!og::runtime::current_session->current_guy_)
-        sync_current_guy_from_hire();
 
     // Name box
     og::runtime::current_session->myscreen_->draw_button(
@@ -1976,8 +1973,6 @@ Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
         popup_dialog("SELL CHARACTER", "BACKUP FAILED\nCHARACTER NOT SOLD");
         return MENU_REDRAW;
     }
-    if (result != og::ui::TrainSession::SellResult::Sold)
-        return MENU_OK;
 
     picker_base_camp_after_roster_mutation(sold_team);
     if (pks().train_session->empty())

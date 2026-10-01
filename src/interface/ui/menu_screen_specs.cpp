@@ -5514,9 +5514,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
                 base_camp_show_toast(
                     *st, og::ui::campaign_oath_toast(
                              assign.labels[label_index], stood_down));
-            } else if (stood_down) {
-                base_camp_show_toast(
-                    *st, std::string(og::ui::kCampaignOathStoodDownMessage));
             }
             // Undeployed cycles ride the autosave tail only (no ready
             // clear); the tag byte must reach the company file.

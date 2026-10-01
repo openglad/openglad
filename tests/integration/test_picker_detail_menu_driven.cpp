@@ -610,6 +610,46 @@ TEST(PickerDetailMenuDriven, detail_menu_promotes_after_a_lobby_poll_rebuilds_th
 }
 
 
+// The same first-statement poll can EMPTY the slot the menu was opened on
+// (the lobby's cached roster no longer holds that member): the detail screen
+// then has nobody to show and leaves at once with MENU_REDRAW -- it neither
+// draws a freed guy nor blocks waiting for input. The promote test above is
+// the paired control (a member the poll keeps stays on screen).
+TEST(PickerDetailMenuDriven, detail_menu_leaves_when_a_lobby_poll_empties_its_slot)
+{
+    PickerStateGuard guard;
+    TeamSlotGuard slot_guard(0);
+    PickerLobbyShutdownGuard lobby_guard;
+
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    save.current_campaign = "gladiator";
+    for (auto& member : save.team_list)
+        ASSERT_EQ(nullptr, member.get()) << "the roster starts empty";
+    save.team_size = 0;
+
+    // Seed the standalone lobby client from the EMPTY roster, then plant the
+    // member the menu is opened on: the menu's first poll re-applies the
+    // cached (empty) roster and slot 0 is gone.
+    picker_lobby_shutdown();
+    picker_lobby_sync_settings_from_save();
+    picker_lobby_sync_roster_from_save();
+    save.team_list[0].reset(new guy(FAMILY_MAGE));
+    save.team_list[0]->name = "VANISHING_MAGE";
+    save.team_size = 1;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->current_guy_ =
+        std::make_unique<guy>(*save.team_list[0]);
+
+    trace_clear();
+    const Sint32 r = create_detail_menu(save.team_list[0].get());
+
+    EXPECT_EQ(2, static_cast<int>(r))
+        << "an emptied slot leaves the detail screen with MENU_REDRAW (2)";
+    EXPECT_EQ(nullptr, save.team_list[0].get())
+        << "the poll really emptied the slot the menu was opened on";
+}
+
+
 TEST(PickerDetailMenuDriven, train_menu_details_promote_survives_redraw_and_accept)
 {
     PickerStateGuard guard;

@@ -1,8 +1,11 @@
 #include <openglad/platform/sai2x.h>
+#include <openglad/core/tower_constants.h>
+#include <openglad/resources/io_common.h>
 
 #include <cstdio>
 #include <filesystem>
 #include <set>
+#include <source_location>
 
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
@@ -25,7 +28,26 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         void sync_from_save() override {}
         void sync_roster_from_save() override {}
         void sync_settings_from_save() override {}
-        void poll_and_apply() override {}
+        // PROGRESS held-click spin (picker_progress_menu_engine_frame_tick):
+        // the hook latches the press and spins on picker_lobby_poll() +
+        // get_input_events until the button comes up. A release queued
+        // BEFORE the call would be drained by the hook's own query_mouse()
+        // together with the press (clicked=false), so the release is
+        // delivered from here: the first poll inside the spin queues it and
+        // the spin's next get_input_events consumes it.
+        bool release_on_poll = false;
+        int release_x = 0;
+        int release_y = 0;
+        int releases_sent = 0;
+        void poll_and_apply() override
+        {
+            if (!release_on_poll)
+                return;
+            release_on_poll = false;
+            ++releases_sent;
+            og::input_native::push_mouse_button_event(false, 1, release_x,
+                                                      release_y);
+        }
         void set_player_mode(int) override {}
         bool request_start_game() override
         {
@@ -72,6 +94,28 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         {
             return local_indices;
         }
+        // A staged setup/keyframe pair, as the lobby wire hands it to the
+        // VIEW LEVEL pane (off unless a check arms it).
+        bool has_staged_pair = false;
+        std::uint32_t staged_generation = 0;
+        std::vector<std::uint8_t> staged_setup;
+        std::vector<std::uint8_t> staged_keyframe;
+        std::uint32_t stage_generation() const override
+        {
+            return has_staged_pair ? staged_generation : 0;
+        }
+        bool staged_keyframe_bytes(
+            std::uint32_t& generation,
+            const std::vector<std::uint8_t>*& setup_bytes,
+            const std::vector<std::uint8_t>*& keyframe_bytes) const override
+        {
+            if (!has_staged_pair)
+                return false;
+            generation = staged_generation;
+            setup_bytes = &staged_setup;
+            keyframe_bytes = &staged_keyframe;
+            return true;
+        }
     };
 
     struct LobbyGuard
@@ -85,10 +129,19 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
 
     int check_index = 0;
     int failed_check = 0;
-    const auto check = [&check_index, &failed_check](bool condition) {
+    // Every failing check names its line (the returned index is the first):
+    // the index alone sends a reader counting check() calls through loops.
+    const auto check = [&check_index, &failed_check](
+                           bool condition,
+                           std::source_location where =
+                               std::source_location::current()) {
         ++check_index;
-        if (!condition && failed_check == 0)
+        if (condition)
+            return;
+        if (failed_check == 0)
             failed_check = check_index;
+        std::fprintf(stderr, "  [internal paths] check %d failed at line %u\n",
+                     check_index, static_cast<unsigned>(where.line()));
     };
     TestLobbyClient client;
     og::ui::install_active_picker_lobby_client(&client);
@@ -363,6 +416,79 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     }
     // ... and the arm leaves the client as it found it.
 
+    // PROGRESS click handling through the real input path: a pressed button
+    // at (x, y) enters the held-click spin, the lobby poll inside it releases
+    // the press, and the hook then scrolls or dispatches the row. Rows are
+    // the host's (host_visible); ids 1..12, ten visible rows.
+    {
+        client.host_visible = true;
+        const std::string saved_campaign = save.current_campaign;
+        const short saved_scen = save.scen_num;
+        save.current_campaign = get_mounted_campaign();
+        // The report is a UI-canvas screen: its coordinates reach the input
+        // layer as WINDOW points through the fixed UI-canvas map.
+        ScopedUiCanvas ui_canvas(*og::runtime::current_session->myscreen_);
+        const auto held_click = [&](int x, int y) {
+            get_input_events(POLL);  // nothing stale in the queue
+            const auto [wx, wy] = ui_canvas_to_window(
+                static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f);
+            client.release_on_poll = true;
+            client.release_x = static_cast<int>(wx);
+            client.release_y = static_cast<int>(wy);
+            og::input_native::push_mouse_button_event(
+                true, 1, static_cast<int>(wx), static_cast<int>(wy));
+            return picker_progress_menu_engine_frame_tick(&progress_state, 0);
+        };
+        // NEXT scrolls one row, PREV scrolls back; both stay on the report.
+        progress_state.scroll_offset = 0;
+        client.releases_sent = 0;
+        check(held_click(100, 180) && progress_state.scroll_offset == 1 &&
+              client.releases_sent == 1);
+        check(held_click(50, 180) && progress_state.scroll_offset == 0 &&
+              client.releases_sent == 2);
+        // A PREV press at the top is inert (the button is disabled there).
+        check(held_click(50, 180) && progress_state.scroll_offset == 0);
+
+        // GO on an uncleared, reachable row (id 1, the campaign's entry
+        // level) writes the cursor and leaves the report (false).
+        trace_clear();
+        save.scen_num = 3;
+        check(!held_click(300, 40) &&
+              trace_contains("picker", "progress_row_go level=1") &&
+              save.scen_num == 1);
+
+        // GO on a row whose road is closed refuses and stays (true): no
+        // cursor write, no dispatch trace, the refusal popup instead.
+        const int saved_id = progress_state.levels[2].id;
+        progress_state.levels[2].id = 99;  // row 2, band y 62..75
+        trace_clear();
+        save.scen_num = 3;
+        check(held_click(300, 66) &&
+              !trace_contains("picker", "progress_row_go") &&
+              trace_contains("picker", "progress_row_denied_gate 99") &&
+              save.scen_num == 3);
+        progress_state.levels[2].id = saved_id;
+
+        // A host GO arriving while the press is held ends the spin and the
+        // hook stays up (true) for the loop-top check to fire the start --
+        // the row under the press is NOT dispatched.
+        trace_clear();
+        g_start_game_requested = true;
+        client.has_start_config = true;
+        check(held_click(300, 40) && !trace_contains("picker", "progress_row_go") &&
+              save.scen_num == 3);
+        g_start_game_requested = false;
+        pks().selected_menu_item = nullptr;
+        client.release_on_poll = false;
+        get_input_events(POLL);  // the release the early return left queued
+        reset_mouse_click_tracking();
+
+        save.scen_num = saved_scen;
+        save.current_campaign = saved_campaign;
+        progress_state.scroll_offset = 0;
+        client.host_visible = false;
+    }
+
     button hire_buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0,
                MenuNav{}),
@@ -519,23 +645,42 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
 
     check(!get_class_description(FAMILY_SOLDIER).empty());
     check(get_class_description(250).empty());
-    for (int family : og::ui::kAllowableGuys)
+    // The HIRE/TRAIN star faces of every hireable family, spelled out from
+    // the core pack's train prices (STR, DEX, CON, INT, ARMOR) rather than
+    // recomputed from the product's own ((55 / cost) * 5) / 11 -- a test that
+    // shares the formula shares its bugs (the cost 1-3 blank-stars bug hid
+    // behind exactly that twin).
+    struct FamilyStars
     {
-        const FamilyDescriptor* const descriptor =
-            get_family_descriptor(family);
-        check(descriptor != nullptr);
-        if (descriptor == nullptr)
-            continue;
+        int family;
+        std::array<const char*, 5> stars;
+    };
+    static constexpr std::array<FamilyStars, 14> kHireableStars = {{
+        {FAMILY_SOLDIER, {"****", "**", "****", "", ""}},         // 6 10 6 25 50
+        {FAMILY_BARBARIAN, {"*****", "", "*****", "", ""}},       // 5 35 5 35 50
+        {FAMILY_ELF, {"", "****", "*", "**", ""}},                // 25 6 12 8 50
+        {FAMILY_ARCHER, {"*", "****", "**", "**", ""}},           // 15 6 9 10 50
+        {FAMILY_MAGE, {"", "*", "*", "****", ""}},                // 20 15 16 6 50
+        {FAMILY_CLERIC, {"*", "*", "**", "****", ""}},            // 15 15 9 6 50
+        {FAMILY_THIEF, {"*", "****", "**", "**", ""}},            // 15 6 9 10 50
+        {FAMILY_DRUID, {"*", "*", "***", "****", ""}},            // 15 15 7 6 50
+        {FAMILY_ORC, {"****", "*", "*****", "", ""}},             // 6 15 5 40 50
+        {FAMILY_SKELETON, {"*", "****", "*", "", ""}},            // 15 6 16 25 50
+        {FAMILY_FIREELEMENTAL, {"***", "**", "*", "*", ""}},      // 7 10 14 12 50
+        {FAMILY_SMALL_SLIME, {"", "", "**", "*", ""}},            // 20 20 8 14 50
+        {FAMILY_FAERIE, {"", "****", "*", "**", ""}},             // 25 6 12 8 50
+        {FAMILY_GHOST, {"*", "*", "*", "*", ""}},                 // 16 16 16 16 45
+    }};
+    static_assert(kHireableStars.size() == og::ui::kAllowableGuys.size());
+    for (const FamilyStars& row : kHireableStars)
+    {
+        const int family = row.family;
+        check(get_family_descriptor(family) != nullptr);
         for (int stat = 0; stat < 5; ++stat)
         {
-            const int cost = descriptor->stat_costs[stat];
-            const int stars = cost == 0 ? 0 : ((55 / cost) * 5) / 11;
-            const std::string expected =
-                stars >= 1 && stars <= 5
-                    ? std::string(static_cast<std::size_t>(stars), '*')
-                    : std::string();
-            check(get_training_cost_rating(
-                      static_cast<unsigned char>(family), stat) == expected);
+            check(std::string(get_training_cost_rating(
+                      static_cast<unsigned char>(family), stat)) ==
+                  row.stars[static_cast<std::size_t>(stat)]);
         }
         check(std::strlen(get_training_cost_rating(
                   static_cast<unsigned char>(family), -1)) == 0);
@@ -624,6 +769,77 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     check(og::runtime::current_session->current_guy_ != nullptr &&
           og::runtime::current_session->current_guy_->family ==
               og::ui::kAllowableGuys[1]);
+
+    // HIRE content pixels, read back from the drawn frame.
+    {
+        screen* const scr = og::runtime::current_session->myscreen_;
+        const auto region = [scr](int x0, int y0, int x1, int y1) {
+            std::vector<std::uint32_t> px;
+            for (int y = y0; y <= y1; ++y)
+            {
+                for (int x = x0; x <= x1; ++x)
+                {
+                    Uint8 r = 0, g = 0, b = 0;
+                    scr->get_pixel(x, y, &r, &g, &b);
+                    px.push_back((std::uint32_t{r} << 16) |
+                                 (std::uint32_t{g} << 8) | b);
+                }
+            }
+            return px;
+        };
+        HireEngineState px_state;
+        px_state.last_family = static_cast<unsigned char>(
+            og::runtime::current_session->current_guy_->family);
+        px_state.family_name = get_family_string(px_state.last_family);
+        // (1) The description box holds at most ten 8px lines: a twelve-
+        // line description draws EXACTLY the frame a ten-line one does --
+        // the runaway lines never reach the box's bottom bevel or below.
+        px_state.desc.assign(10, "DESCRIPTION LINE");
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        const std::vector<std::uint32_t> ten_lines = region(0, 0, 319, 199);
+        px_state.desc.assign(12, "DESCRIPTION LINE");
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        check(region(0, 0, 319, 199) == ten_lines);
+
+        // (2) The cost number is inked in STAT_CHANGED when the wallet
+        // cannot cover it and in STAT_COLOR when it can: the two renders of
+        // the cost digits differ, and only in colour.
+        const std::uint32_t saved_cash = save.m_totalcash[0];
+        const short saved_team = og::runtime::current_session->current_team_num_;
+        og::runtime::current_session->current_team_num_ = 0;
+        const Uint32 cost = hire_session.current_cost();
+        save.m_totalcash[0] = cost;  // exactly affordable
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        const std::vector<std::uint32_t> affordable = region(240, 148, 300, 157);
+        save.m_totalcash[0] = 0;
+        scr->clearbuffer();
+        picker_hire_menu_engine_draw_content(&px_state);
+        const std::vector<std::uint32_t> broke = region(240, 148, 300, 157);
+        // Only the cost digits' ink changes (the font shades each glyph
+        // from its base colour, so a colour is a small ramp): every changed
+        // pixel moves from the affordable ramp to a DISJOINT broke ramp of
+        // the same size.
+        std::set<std::uint32_t> affordable_ink;
+        std::set<std::uint32_t> broke_ink;
+        for (std::size_t i = 0; i < affordable.size(); ++i)
+        {
+            if (affordable[i] != broke[i])
+            {
+                affordable_ink.insert(affordable[i]);
+                broke_ink.insert(broke[i]);
+            }
+        }
+        const bool disjoint = std::none_of(
+            affordable_ink.begin(), affordable_ink.end(),
+            [&broke_ink](std::uint32_t c) { return broke_ink.count(c) != 0; });
+        check(!affordable_ink.empty() &&
+              affordable_ink.size() == broke_ink.size() && disjoint);
+        save.m_totalcash[0] = saved_cash;
+        og::runtime::current_session->current_team_num_ = saved_team;
+    }
     pks().hire_session = nullptr;
 
     og::runtime::current_session->current_guy_.reset();
@@ -727,6 +943,36 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     }
     client.requested = false;
     check(go_menu(0) == MENU_REDRAW && client.requested);
+    // The same ready, deployed networked host on TOWER CLIMB: the mode's
+    // prepare_launch vetoes a networked session, and the GO says why in the
+    // session's words ("local-only", not the local floor-write failure) and
+    // sends nothing.
+    {
+        const std::string saved_mount = get_mounted_campaign();
+        const std::string saved_campaign = save.current_campaign;
+        const short saved_scen = save.scen_num;
+        (void)unmount_campaign_package_with_error(saved_mount);
+        const bool tower_mounted =
+            mount_campaign_package_with_error(std::string(og::kTowerCampaignId)) ==
+            CampaignPackageIoError::None;
+        check(tower_mounted);
+        if (tower_mounted)
+        {
+            save.current_campaign = std::string(og::kTowerCampaignId);
+            save.scen_num = og::kTowerGateLevel;
+            trace_clear();
+            client.requested = false;
+            check(go_menu(0) == MENU_REDRAW && !client.requested &&
+                  trace_contains("popup",
+                                 "TOWER CLIMB: TOWER CLIMB is local-only") &&
+                  !trace_contains("popup", "Could not prepare"));
+        }
+        (void)unmount_campaign_package_with_error(get_mounted_campaign());
+        check(mount_campaign_package_with_error(saved_mount) ==
+              CampaignPackageIoError::None);
+        save.current_campaign = saved_campaign;
+        save.scen_num = saved_scen;
+    }
     // Joiner shape (states 5-6): READY/UNREADY labels off the lobby flag.
     client.host_visible = false;
     {
@@ -982,6 +1228,105 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         }
         save.time_limit = saved_time_limit;
         save.current_campaign = get_mounted_campaign();
+    }
+
+    // VIEW LEVEL render-copy heal from the lobby's staged pair: a keyframe
+    // that does not deserialize leaves the copy UNHEALED at that generation
+    // (the band shows degradation text, never a stale world claiming to be
+    // the stage); a real pair heals it and traces the pane generation.
+    {
+        save.current_campaign = get_mounted_campaign();
+        save.scen_num = 1;
+        ViewScenarioEngineState heal;
+        heal.scenario = std::make_unique<LevelRuntimeData>(
+            save.scen_num, false, &sdl_level_data_hooks());
+        const bool loaded = heal.scenario->load();
+        check(loaded);
+        if (loaded)
+        {
+            GameWorld& staged = heal.scenario->world();
+            og::sim::InitialSetupMessage setup;
+            setup.level_id = staged.id;
+            setup.level_title = staged.title;
+            setup.pixmaxx = staged.pixmaxx;
+            setup.pixmaxy = staged.pixmaxy;
+            setup.my_team = staged.my_team;
+            client.staged_setup = og::sim::serialize_initial_setup_message(setup);
+            client.staged_keyframe = {0xDE, 0xAD, 0xBE, 0xEF};
+            client.staged_generation = 7;
+            client.has_staged_pair = true;
+            trace_clear();
+            view_scenario_heal_render_copy(heal);
+            check(!heal.render_healed && heal.healed_generation == 7 &&
+                  !trace_contains("picker", "view_scenario pane gen="));
+
+            client.staged_keyframe = og::sim::serialize_snapshot(
+                og::sim::capture_keyframe_snapshot(staged));
+            client.staged_generation = 8;
+            view_scenario_heal_render_copy(heal);
+            check(heal.render_healed && heal.healed_generation == 8 &&
+                  trace_contains("picker", "view_scenario pane gen=8"));
+        }
+        client.has_staged_pair = false;
+        client.staged_generation = 0;
+        client.staged_setup.clear();
+        client.staged_keyframe.clear();
+    }
+
+    // The VIEW LEVEL band with nothing staged names WHO it is waiting on: a
+    // networked joiner waits for the host's preview (24 characters of ink),
+    // the host itself has no preview to show (27). Text is centred in the
+    // band, so the ink span pins which string drew.
+    {
+        ViewScenarioEngineState band_state;
+        ViewScenarioEngineState* const saved_band_state =
+            g_view_scenario_engine_state;
+        g_view_scenario_engine_state = &band_state;
+        screen* const scr = og::runtime::current_session->myscreen_;
+        const auto band_ink_span = [scr]() {
+            const int y0 = kViewScenarioPreviewBandY +
+                           kViewScenarioPreviewBandH / 2 - 3;
+            int left = 10000;
+            int right = -1;
+            // Ink = any pixel on the text rows that differs from the band's
+            // own ground at its left edge (the text never reaches x+2).
+            for (int y = y0; y < y0 + 8; ++y)
+            {
+                Uint8 gr = 0, gg = 0, gb = 0;
+                scr->get_pixel(kViewScenarioPreviewBandX + 2, y, &gr, &gg, &gb);
+                for (int x = kViewScenarioPreviewBandX + 2;
+                     x < kViewScenarioPreviewBandX + kViewScenarioPreviewBandW - 2;
+                     ++x)
+                {
+                    Uint8 r = 0, g = 0, b = 0;
+                    scr->get_pixel(x, y, &r, &g, &b);
+                    if (r != gr || g != gg || b != gb)
+                    {
+                        left = std::min(left, x);
+                        right = std::max(right, x);
+                    }
+                }
+            }
+            return right < left ? 0 : right - left + 1;
+        };
+        const auto spans_chars = [](int span, int chars) {
+            return span > 6 * (chars - 1) && span <= 6 * chars;
+        };
+        client.networked = true;
+        client.host_visible = false;
+        picker_view_scenario_staged_draw_background(nullptr);
+        const int joiner_span = band_ink_span();
+        client.host_visible = true;
+        picker_view_scenario_staged_draw_background(nullptr);
+        const int host_span = band_ink_span();
+        if (!spans_chars(joiner_span, 24) || !spans_chars(host_span, 27))
+            std::fprintf(stderr, "  [view band] joiner span %d, host span %d\n",
+                         joiner_span, host_span);
+        check(spans_chars(joiner_span, 24));
+        check(spans_chars(host_span, 27));
+        client.networked = false;
+        client.host_visible = false;
+        g_view_scenario_engine_state = saved_band_state;
     }
 
     // Remote-start preemption: a host GO launches a peer parked in VIEW
