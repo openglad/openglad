@@ -1431,15 +1431,24 @@ bool bind_specials(lua_State* L, VmState* st, int tbl, int family_idx,
     for (lua_Integer i = 1; i <= n; i++) {
         lua_rawgeti(L, list, i);
         const int entry = lua_gettop(L);
-        if (!lua_istable(L, entry)) {
-            lua_pop(L, 1);
-            continue;  // the declaration pass already refused this pack
-        }
-        lua_getfield(L, entry, "id");
+        if (lua_istable(L, entry))
+            lua_getfield(L, entry, "id");
+        else
+            lua_pushnil(L);
         const char* id = lua_tostring(L, -1);
         if (id == nullptr) {
-            lua_pop(L, 2);
-            continue;  // the declaration pass already refused this pack
+            // The declaration pass refuses an entry that is not a table or
+            // has no id, so reaching here means the chunk handed the two
+            // passes different lists (it branched on og.family_id's
+            // declare-time placeholder). Skipping the entry would install
+            // the special's data with no cast behind it.
+            script_raise(L,
+                         "og.family %s '%s': specials entry %d has no id in "
+                         "the bind pass — the declaration pass never saw "
+                         "this specials list, so the chunk declares "
+                         "different specials in its two passes",
+                         order_str, family_label.c_str(),
+                         static_cast<int>(i));
         }
         const std::string special_id = id;
         lua_pop(L, 1);
