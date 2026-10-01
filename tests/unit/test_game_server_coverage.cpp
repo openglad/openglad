@@ -2209,4 +2209,72 @@ TEST(GameServerCoverage, forced_abort_keyframe_skips_a_client_that_is_not_ready)
         << "an unready client must not be sent the forced keyframe";
 }
 
+// A client in the level-transition limbo (InitialSetup re-sent, keyframe
+// owed, NOT yet ClientReady) gets no keyframe from broadcast_current_state —
+// the direct broadcast the local shadow's Esc-abort / RESTART issue while a
+// reload is still handshaking. Control: once that client readies, the
+// handshake pump serves it exactly one keyframe.
+TEST(GameServerCoverage, unready_limbo_client_gets_no_keyframe_from_a_direct_broadcast)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+
+    walker* const control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    server.bind_player(91u, 0u, fixture.world().my_team, control);
+    server.send_initial_snapshot(91u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    ASSERT_EQ(1u, fixture.world().level_tick_count());
+
+    // Quit-mission reload: the client re-enters the limbo.
+    server.on_withdraw_accepted = [&](int /*destination*/) {
+        fixture.world().tick_count_ = 0;
+        fixture.world().reset_level_progress();
+        return true;
+    };
+    now_ms = 2'000;
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_exit_prompt_response_message(
+            {.accepted = true, .abort_request = true}));
+    server.step();
+    ASSERT_EQ(0u, fixture.world().level_tick_count());
+    ASSERT_TRUE(find_initial_setup(transport, 91u).has_value())
+        << "the reload must have re-sent the InitialSetup";
+
+    const auto count_snapshots = [&] {
+        int count = 0;
+        for (const auto& sent : transport.sent())
+        {
+            if (sent.peer_id == 91u && sent.data.size() > 1 &&
+                sent.data[1] == og::sim::kSnapshotMessageType)
+                ++count;
+        }
+        return count;
+    };
+
+    transport.clear_sent();
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+    EXPECT_EQ(0, count_snapshots())
+        << "an unready limbo client must not be sent its keyframe";
+
+    // Control: the client readies; the pump serves the owed keyframe.
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    EXPECT_EQ(1, count_snapshots())
+        << "a ready limbo client is owed exactly one keyframe";
+}
+
 } // namespace

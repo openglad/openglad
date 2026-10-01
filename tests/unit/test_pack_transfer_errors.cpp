@@ -33,6 +33,7 @@
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/pack_transfer_io.h>
+#include <openglad/resources/physfs_api.h>
 #include <openglad/resources/packs.h>
 
 #include <gtest/gtest.h>
@@ -702,4 +703,158 @@ TEST_F(PackTransferIoErrorTest, reinstalling_a_pack_id_replaces_its_mount)
     EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(m2));
     EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(m1))
         << "the superseded generation must not still be answering";
+}
+
+// A chunk or a TransferDone for a pack the client never requested (or has
+// already finished) is stale: it is dropped quietly, never latched as a
+// transfer failure, and a legitimate transfer around it still installs.
+TEST(PackTransferClientErrors, stale_chunks_and_done_for_unrequested_packs_are_dropped)
+{
+    ClientHarness harness;
+    const char* content = "-- a\n";
+    ASSERT_TRUE(harness.feed_manifest(
+        one_file_manifest("org.test.a", 0, 1, content)));
+
+    og::sim::PackFileChunkMessage ghost_chunk;
+    ghost_chunk.pack_id = "org.test.ghost";
+    ghost_chunk.file_index = 0;
+    ghost_chunk.offset = 0;
+    ghost_chunk.data = {'x'};
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_file_chunk_message(ghost_chunk)));
+    og::sim::PackTransferDoneMessage ghost_done;
+    ghost_done.pack_id = "org.test.ghost";
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_transfer_done_message(ghost_done)));
+    EXPECT_FALSE(harness.failed())
+        << "an unsolicited pack's chunk/done must not fail the client: "
+        << harness.reason();
+
+    // The legitimate transfer still completes and installs.
+    og::sim::PackFileChunkMessage chunk;
+    chunk.pack_id = "org.test.a";
+    chunk.file_index = 0;
+    chunk.offset = 0;
+    chunk.data.assign(content, content + std::string(content).size());
+    ASSERT_TRUE(harness.feed(og::sim::serialize_pack_file_chunk_message(chunk)));
+    og::sim::PackTransferDoneMessage done;
+    done.pack_id = "org.test.a";
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_transfer_done_message(done)));
+    EXPECT_EQ(1u, harness.install_calls);
+    EXPECT_FALSE(harness.failed()) << harness.reason();
+
+    // A late duplicate for the finished pack is stale too.
+    ASSERT_TRUE(harness.feed(og::sim::serialize_pack_file_chunk_message(chunk)));
+    ASSERT_TRUE(
+        harness.feed(og::sim::serialize_pack_transfer_done_message(done)));
+    EXPECT_EQ(1u, harness.install_calls)
+        << "a finished pack must not install twice";
+    EXPECT_FALSE(harness.failed()) << harness.reason();
+}
+
+#if defined(__linux__)
+// A cache write that cannot be flushed (the disk is full) fails the install,
+// removes its staging .tmp and never mounts the pack. /dev/full is the
+// faithful stand-in for a full disk: every write to it fails with ENOSPC,
+// which is exactly what a full cache filesystem answers. Control: the same
+// install without the obstruction mounts.
+TEST_F(PackTransferIoErrorTest, a_cache_write_that_cannot_flush_fails_the_install)
+{
+    const std::string content = "-- full disk\n";
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = "org.test.fulldisk";
+    og::sim::PackManifestFileEntry entry;
+    entry.path = "scripts/a.lua";
+    entry.size_bytes = static_cast<std::uint32_t>(content.size());
+    entry.hash64 = og::core::fnv1a64(
+        reinterpret_cast<const std::uint8_t*>(content.data()), content.size());
+    manifest.files.push_back(std::move(entry));
+
+    const fs::path cache_file =
+        fs::path(get_user_path()) / "packs_cache" /
+        (manifest.pack_id + "@" +
+         og::sim::pack_manifest_content_hash_hex(manifest)) /
+        "scripts" / "a.lua";
+    const fs::path tmp = fs::path(cache_file.string() + ".tmp");
+    std::error_code ec;
+    fs::create_directories(cache_file.parent_path(), ec);
+    ASSERT_FALSE(ec) << ec.message();
+    fs::create_symlink("/dev/full", tmp, ec);
+    ASSERT_FALSE(ec) << ec.message();
+
+    const std::vector<std::vector<std::uint8_t>> bytes = {
+        std::vector<std::uint8_t>(content.begin(), content.end())};
+    EXPECT_FALSE(og::resources::install_received_pack(manifest, bytes))
+        << "an unflushable cache write must fail the install";
+    EXPECT_FALSE(fs::exists(fs::symlink_status(tmp, ec)))
+        << "the failed write must remove its staging file";
+    EXPECT_FALSE(fs::exists(cache_file, ec));
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(manifest));
+
+    // Control: nothing obstructs the staging file now.
+    EXPECT_TRUE(og::resources::install_received_pack(manifest, bytes));
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest));
+}
+#endif
+
+namespace {
+
+void collect_virtual_files(const std::string& root,
+                           const std::string& prefix,
+                           std::vector<std::string>& out)
+{
+    for (const std::string& name : og::io::physfs_enumerate_files_sorted(root))
+    {
+        const std::string relative = prefix.empty() ? name : prefix + "/" + name;
+        if (og::io::physfs_is_directory(root + "/" + name))
+            collect_virtual_files(root + "/" + name, relative, out);
+        else
+            out.push_back(relative);
+    }
+}
+
+// The manifest of whatever is mounted under `root`, exactly as a host would
+// describe it (path, size, fnv1a64).
+og::sim::PackManifestMessage manifest_of_mounted_tree(const std::string& root,
+                                                      const std::string& id)
+{
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = id;
+    std::vector<std::string> paths;
+    collect_virtual_files(root, "", paths);
+    for (const std::string& path : paths)
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::resources::read_file((root + "/" + path).c_str());
+        og::sim::PackManifestFileEntry entry;
+        entry.path = path;
+        entry.size_bytes = static_cast<std::uint32_t>(bytes.size());
+        entry.hash64 = og::core::fnv1a64(bytes.data(), bytes.size());
+        manifest.files.push_back(std::move(entry));
+    }
+    return manifest;
+}
+
+} // namespace
+
+// An empty pack id never names the packs/ ROOT: a manifest describing the
+// whole mounted packs/ tree under id "" is not "locally available".
+// Control: the same description of the mounted core pack under id "core"
+// matches.
+TEST_F(PackTransferIoErrorTest, an_empty_pack_id_never_matches_the_packs_root)
+{
+    const og::sim::PackManifestMessage core =
+        manifest_of_mounted_tree("packs/core", "core");
+    ASSERT_FALSE(core.files.empty()) << "the core pack must be mounted";
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(core));
+
+    const og::sim::PackManifestMessage root = manifest_of_mounted_tree("packs", "");
+    ASSERT_FALSE(root.files.empty());
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(root))
+        << "an empty pack id must not match the packs/ root";
 }

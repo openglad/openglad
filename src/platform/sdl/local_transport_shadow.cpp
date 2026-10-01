@@ -508,8 +508,6 @@ void clear_link_lost_overlay_text(screen& gameplay_screen,
     for (int index = 0; index < gameplay_screen.numviews; ++index)
     {
         viewscreen* const view = gameplay_screen.viewob[index].get();
-        if (view == nullptr)
-            continue;
         view->expire_display_text(kLinkLostOverlayText);
         view->expire_display_text(kPauseOverlayMenuHint);
     }
@@ -1058,8 +1056,6 @@ void refresh_pause_overlay_text(og::runtime::LocalTransportRuntime& runtime,
     for (int index = 0; index < gameplay_screen.numviews; ++index)
     {
         viewscreen* const view = gameplay_screen.viewob[index].get();
-        if (view == nullptr)
-            continue;
 
         if (retire_banner)
             view->expire_display_text(runtime.pause_overlay_banner);
@@ -1125,8 +1121,6 @@ void render_link_lost_overlay(screen& gameplay_screen,
         for (int index = 0; index < gameplay_screen.numviews; ++index)
         {
             viewscreen* const view = gameplay_screen.viewob[index].get();
-            if (view == nullptr)
-                continue;
             view->refresh_display_text(kLinkLostOverlayText, 1);
             view->refresh_display_text(kPauseOverlayMenuHint, 1);
         }
@@ -2038,8 +2032,7 @@ bool local_transport_shadow_add_local_player(GameSession& session)
     // key profile is whatever slot N of the profile pool holds — the rotation
     // seeded it, so nothing is reset here.
     viewscreen* const lead_view = gameplay_screen.viewob[0].get();
-    const short team = lead_view != nullptr ? lead_view->my_team
-                                            : gameplay_screen.world().my_team;
+    const short team = lead_view->my_team;
 
     // --- Server side: resolve the walker, connect + bind the new peer, and
     // broadcast the mapping. This runs between ticks (a pending pause only

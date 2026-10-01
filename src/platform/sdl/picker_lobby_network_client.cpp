@@ -3094,8 +3094,6 @@ public:
             og::ui::detail::make_team_change_message(
                 player_index, target_seat_id, team));
         poll_and_apply();
-        if (!state_.has_value())
-            return false;
         const og::sim::LobbyPlayer* const echoed =
             og::ui::detail::find_player_by_seat_id(*state_, target_seat_id);
         return echoed != nullptr && echoed->team == team;
@@ -4292,8 +4290,6 @@ public:
         return og::ui::detail::wait_for_authoritative_lobby_value(
             [this] { poll_and_apply(); },
             [this, target_seat_id, team] {
-                if (!state_.has_value())
-                    return false;
                 const og::sim::LobbyPlayer* const echoed =
                     og::ui::detail::find_player_by_seat_id(
                         *state_, target_seat_id);
@@ -4741,8 +4737,6 @@ private:
 
     void send_settings_from_save()
     {
-        if (!transport_ || !state_.has_value())
-            return;
         SaveData* const save = current_picker_save();
         if (save == nullptr)
             return;
@@ -4812,8 +4806,6 @@ private:
 
     bool send_join_from_save()
     {
-        if (!transport_)
-            return false;
         if (spectator_mode_)
         {
             og::sim::LobbyMessage message;
@@ -5111,8 +5103,6 @@ private:
 
     void drain_messages()
     {
-        if (!transport_)
-            return;
 
         for (const og::sim::TypedReceivedMessage& message :
              poll_lobby_transport_messages(*transport_))
