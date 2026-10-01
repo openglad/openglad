@@ -513,9 +513,6 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         hire_buttons, static_cast<int>(std::size(hire_buttons)),
         ignored_highlight);
     check(hire_buttons[3].nav.right == 2);
-    HireEngineState hire_state;
-    check(picker_hire_menu_engine_frame_tick(nullptr, 0));
-    check(picker_hire_menu_engine_frame_tick(&hire_state, 1));
     picker_hire_menu_engine_draw_content(nullptr);
     picker_train_menu_engine_draw_content(nullptr);
 

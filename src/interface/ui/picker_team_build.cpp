@@ -1683,10 +1683,6 @@ struct HireEngineState
     std::string description;
     std::vector<std::string> desc;
     const char* family_name = "";
-    // arg1 == 1: show the new-game intro popup after the first presented
-    // frame (no production caller passes 1 today — team build passes -1 —
-    // but the signature contract is preserved).
-    bool pending_new_game_popup = false;
 };
 
 // Entry-time repositioning of PREV/NEXT around the portrait, verbatim from
@@ -1721,27 +1717,6 @@ void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
 void picker_hire_menu_engine_on_reset(void* /*screen_state*/)
 {
     change_hire_teamnum(0);
-}
-
-// The legacy loop-bottom arg1 == 1 branch: one intro popup after the first
-// presented frame (frame 1 draws at the END of iteration 1; the tick for
-// iteration 2 is the first point after that present), then a re-init
-// because the production popup swaps allbuttons_ under the screen.
-bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame)
-{
-    auto* const state = static_cast<HireEngineState*>(screen_state);
-    if (state == nullptr)
-        return true;
-    if (state->pending_new_game_popup && frame >= 2)
-    {
-        state->pending_new_game_popup = false;
-        popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
-        // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-        og::runtime::current_session->localbuttons_ =
-            init_buttons(pks().hiremenu_buttons.data(),
-                         static_cast<int>(pks().hiremenu_buttons.size()));
-    }
-    return true;
 }
 
 // The legacy per-frame content pass, verbatim (runs after draw_buttons):
@@ -1895,7 +1870,7 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
 // MENU_REDRAW (the spec's exit_value); a remote start propagates its
 // MENU_EXIT directly (the slot-menu normalization — the parent breaks with
 // StartGame selected instead of re-detecting the start one loop later).
-Sint32 create_hire_menu(Sint32 arg1)
+Sint32 create_hire_menu(Sint32 /*arg1*/)
 {
 	// No pre-run clear (#237 ownership — see create_view_scenario_menu);
 	// picker_backdrop_draw_background clears.
@@ -1915,7 +1890,6 @@ Sint32 create_hire_menu(Sint32 arg1)
                                      HireMenuLayout{}.description_box_content.w / 6,
                                      og::core::WrapMode::Paragraphs);
     state.family_name = get_family_string(state.last_family);
-    state.pending_new_game_popup = (arg1 == 1);
 
 	grab_mouse();
 
