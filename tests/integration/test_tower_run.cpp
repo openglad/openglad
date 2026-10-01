@@ -678,12 +678,13 @@ int tower_results_ui_injector(void* data)
     return 0;
 }
 
-TEST_F(TowerRunE2E, full_results_ui_hides_retry_and_survives_mode_summary)
+// Drives the full results UI once for a finished floor-1 run (`ending` as
+// screen::endgame hands it to results_screen) and asserts the shared
+// loop contract: the loop went live, every click landed, OK was the exit,
+// and RETRY stayed suppressed. The caller asserts which summary line drew.
+// The caller arms the session first (arm_session is the fixture's).
+void run_tower_floor1_results_ui(int ending, int nextlevel)
 {
-    // A floor-1 win overview under the tower mount: the mode summary line
-    // ("Floor 1 conquered - best 2") is drawn, and the RETRY button is
-    // hidden — with a YES queued, a live button would flip retry to true.
-    arm_session(static_cast<short>(og::kTowerFirstFloorLevel), 313u, 2);
     og::mode::current_progression().ensure_level_available(scr().save_data);
     ASSERT_TRUE(og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel));
     scr().world().id = og::kTowerFirstFloorLevel;
@@ -700,8 +701,7 @@ TEST_F(TowerRunE2E, full_results_ui_hides_retry_and_survives_mode_summary)
                                           "tower_results_ui_injector", &st);
     ASSERT_TRUE(thread != nullptr);
 
-    const bool retry = results_screen(
-        0, static_cast<short>(og::kTowerFirstFloorLevel + 1), before, after);
+    const bool retry = results_screen(ending, nextlevel, before, after);
 
     int rc = 0;
     SDL_WaitThread(thread, &rc);
@@ -722,9 +722,33 @@ TEST_F(TowerRunE2E, full_results_ui_hides_retry_and_survives_mode_summary)
         << "a world_end exit means the clicks missed (vacuous run)";
     EXPECT_FALSE(retry)
         << "RETRY is suppressed under tower: clicks on its face do nothing";
+}
+
+TEST_F(TowerRunE2E, full_results_ui_hides_retry_and_survives_mode_summary)
+{
+    // A floor-1 win overview under the tower mount: the mode summary line
+    // ("Floor 1 conquered - best 2") is drawn, and the RETRY button is
+    // hidden — with a YES queued, a live button would flip retry to true.
+    arm_session(static_cast<short>(og::kTowerFirstFloorLevel), 313u, 2);
+    ASSERT_NO_FATAL_FAILURE(run_tower_floor1_results_ui(
+        0, static_cast<short>(og::kTowerFirstFloorLevel + 1)));
     EXPECT_TRUE(trace_contains("results",
                                "mode_summary_drawn Floor 1 conquered - best 2"))
         << "the mode summary line must actually RENDER in overview mode";
+}
+
+TEST_F(TowerRunE2E, full_results_ui_loss_summary_names_the_fall)
+{
+    // B29: a floor-1 team wipe (ending 1, no withdraw destination) draws
+    // the LOSS summary, never the win line — the results screen hands the
+    // run's ending to the one summary provider.
+    arm_session(static_cast<short>(og::kTowerFirstFloorLevel), 313u, 2);
+    ASSERT_NO_FATAL_FAILURE(run_tower_floor1_results_ui(1, -1));
+    EXPECT_TRUE(trace_contains("results",
+                               "mode_summary_drawn Fell on Floor 1 - best 2"))
+        << "a tower loss summary must name the floor the climb fell on";
+    EXPECT_FALSE(trace_contains("results", "conquered"))
+        << "a tower loss must not draw the win wording";
 }
 
 // --- The local picker settings round-trip (§5.9 locality amendment). --------

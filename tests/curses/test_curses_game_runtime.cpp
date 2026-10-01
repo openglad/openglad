@@ -1049,6 +1049,16 @@ TEST(CursesGameRuntimeVerdict, mission_verdict_line_appends_the_mounted_mode_sum
 
     EXPECT_EQ("Victory! Floor 1 conquered - best 2",
               mission_verdict_line(win, &save, &world));
+
+    // B29: a tower LOSS must not read like a win. The summary names the
+    // floor the climb fell on (format_tower_loss's wording) -- the win line
+    // above is the positive control that the win shape is unchanged.
+    GameRunResult loss;
+    loss.ended = true;
+    loss.ending = 1;
+    EXPECT_EQ("Defeat. Fell on Floor 1 - best 2",
+              mission_verdict_line(loss, &save, &world))
+        << "a tower loss summary must not claim the floor was conquered";
     EXPECT_EQ("Victory!", mission_verdict_line(win))
         << "no pair, no summary: legacy callers are unchanged";
 
