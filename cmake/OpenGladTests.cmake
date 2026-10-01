@@ -554,9 +554,18 @@ og_add_test_group(og_test_menu_ui FILES
     test_results_screen_branches.cpp
     test_results_screen_full_ui.cpp
     test_results_screen_internal_helper.cpp
+    test_level_progress.cpp
+)
+
+# Light menu group (split out of og_test_menu_ui per the coverage-lane
+# rule: a group near its ceiling is SPLIT, never given more clock). The
+# intro pages and the campaign/level browsers are blocking legacy loops
+# driven by short, condition-waited injectors, so they are cheap on their
+# own; hosting them here keeps new flows over those screens out of the
+# heaviest binary.
+og_add_test_group(og_test_menu_light FILES
     test_intro_smoke.cpp
     test_campaign_and_level_picker.cpp
-    test_level_progress.cpp
 )
 
 # WP1 menu-engine group (design §1.9 G10): fast, engine-focused menu

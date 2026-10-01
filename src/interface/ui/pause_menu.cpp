@@ -317,8 +317,6 @@ void pause_menu_draw_background(void* screen_state)
 {
     auto* const state = static_cast<PauseMenuScreenState*>(screen_state);
     screen* const scr = og::runtime::current_session->myscreen_;
-    if (scr == nullptr)
-        return;
 
     // Darkening must never repeat on the same pixels (it accumulates to
     // black), and prepare_ui_canvas_from_world cannot be the per-frame reset:
@@ -382,8 +380,6 @@ void pause_menu_draw_content(void* screen_state)
 {
     auto* const state = static_cast<PauseMenuScreenState*>(screen_state);
     screen* const scr = og::runtime::current_session->myscreen_;
-    if (scr == nullptr)
-        return;
 
     scr->text_big.write_xy_center(160, 8, WHITE, "%s", "P A U S E D");
     const std::string owner =
@@ -730,8 +726,6 @@ void pause_player_draw_background(void* /*screen_state*/)
     // binding grid re-derives per frame, and the remap wizard scribbles
     // full-screen prompts this pass must heal.
     screen* const scr = og::runtime::current_session->myscreen_;
-    if (scr == nullptr)
-        return;
     scr->clear_window();
     scr->draw_button(0, 0, 320, 200, 0);
     scr->draw_button_inverted(4, 4, 312, 192);
@@ -743,8 +737,6 @@ void pause_player_draw_content(void* screen_state)
     if (state == nullptr)
         return;
     screen* const scr = og::runtime::current_session->myscreen_;
-    if (scr == nullptr)
-        return;
 
     text& mytext = scr->text_normal;
     mytext.write_xy_center(

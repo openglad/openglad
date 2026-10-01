@@ -11,10 +11,18 @@
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/terrain_types.h>
+#include <openglad/core/decordefs.h>
 #include "test_input_helpers.h"
+#include "test_save_state_guard.h"
+#include <openglad/interface/native_input.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/resources/io_common.h>
 
 #include <array>
 #include <atomic>
+#include <cstdint>
+#include <filesystem>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -51,6 +59,11 @@ int level_editor_testing_object_brush_family();
 int level_editor_testing_object_brush_team();
 int level_editor_testing_object_brush_level();
 bool level_editor_testing_object_brush_snap_to_grid();
+
+// From level_editor_ui.cpp (TESTING): opt prompt_for_string() into the real
+// blocking editor, and count its entries.
+void level_editor_testing_prompt_force_real(bool enabled);
+std::uint64_t level_editor_testing_prompt_real_entered_count();
 
 
 struct EditorThreadState {
@@ -1864,4 +1877,475 @@ TEST(LevelEditorInteractions, held_pan_keys_scroll_the_camera_to_each_pan_limit)
     EXPECT_GE(left_up.topx, -60 - 8) << "and stops one step past it";
     EXPECT_LT(left_up.topy, -60) << "holding W pans up to the limit";
     EXPECT_GE(left_up.topy, -60 - 8) << "and stops one step past it";
+}
+
+// ---------------------------------------------------------------------------
+// Held-mouse editor flows. The editor's held-left-button work (minimap
+// recentre, decor brush) runs once per frame WHILE the button is down, and
+// the mouse-up paths that follow are covered on their own, so every sample
+// below is taken with the button still held and only then released: an
+// oracle read after the release could be satisfied by the up path alone.
+// ---------------------------------------------------------------------------
+namespace
+{
+// Menu rows in GAME coordinates (LevelEditorData's constructor: File 0..30,
+// Campaign 30..85, Level 85..125; rows 20 px from y=20; submenus open to the
+// right of their parent).
+constexpr int kCampaignX = 57, kCampaignY = 10;                 // Campaign
+constexpr int kCampaignProfileX = 59, kCampaignProfileY = 50;   // Profile >
+constexpr int kCampaignTitleX = 136, kCampaignTitleY = 50;      // Title...
+constexpr int kMapSizeX = 255, kMapSizeY = 70;                  // Map size...
+
+bool enter_terrain_mode()
+{
+    return retry_until([]() { return key_settled(SDLK_T); },
+                       []() { return level_editor_testing_mode() == 0; });
+}
+
+void press_left_game(int gx, int gy)
+{
+    push_mouse_button_game(true, gx, gy, SDL_BUTTON_LEFT);
+}
+
+bool release_left_game(int gx, int gy)
+{
+    push_mouse_button_game(false, gx, gy, SDL_BUTTON_LEFT);
+    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+}
+
+struct EditorMinimapSample
+{
+    bool ok = false;
+    int grid_w = 0;
+    int grid_h = 0;
+    Sint32 topx_before = 0;
+    Sint32 topy_before = 0;
+    Sint32 topx_held = 0;
+    Sint32 topy_held = 0;
+    Sint32 expected_topx = 0;
+    Sint32 expected_topy = 0;
+};
+
+// A held press on the minimap recentres the camera on the pressed map cell:
+// set_draw_pos(radarx*GRID + rel_x*GRID - 160, radary*GRID + rel_y*GRID - 100)
+// with rel_* the offset into the minimap block. A new level is 40x60, so the
+// radar block is 40x44 (RADAR_X/Y clamp), radarx is pinned to 0 and radary
+// stays 0 for any camera y below 22 tiles.
+int editor_minimap_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorMinimapSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    if (ok)
+        ok = author_new_level();
+    if (ok)
+        ok = enter_terrain_mode();
+    LevelRuntimeData* level = ok ? level_editor_testing_level() : nullptr;
+    if (level == nullptr)
+        ok = false;
+    if (ok)
+    {
+        sample.grid_w = level->world().grid.w;
+        sample.grid_h = level->world().grid.h;
+        sample.topx_before = level->level_visuals().topx;
+        sample.topy_before = level->level_visuals().topy;
+        ok = sample.grid_w == 40 && sample.grid_h == 60;
+    }
+    if (ok)
+    {
+        const viewscreen& view = *og::runtime::current_session->myscreen_->viewob[0];
+        constexpr int kRelX = 20;
+        constexpr int kRelY = 12;
+        const int block_x = static_cast<int>(view.endx) - 40 - 4;
+        const int block_y = static_cast<int>(view.endy) - 44 - 4;
+        const int gx = block_x + kRelX;
+        const int gy = block_y + kRelY;
+        sample.expected_topx = kRelX * GRID_SIZE - 160;
+        sample.expected_topy = kRelY * GRID_SIZE - 100;
+        press_left_game(gx, gy);
+        ok = wait_until(
+            [&]() {
+                return level->level_visuals().topx == sample.expected_topx &&
+                       level->level_visuals().topy == sample.expected_topy;
+            },
+            kEditorEditCeilingMs);
+        sample.topx_held = level->level_visuals().topx;
+        sample.topy_held = level->level_visuals().topy;
+        ok = release_left_game(gx, gy) && ok;
+    }
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+struct EditorDecorSample
+{
+    bool ok = false;
+    bool decor_mode = false;
+    int dirty_while_held = -1;
+    int decor_cells = -1;
+    int decor_value = -1;
+    int base_genre = -1;
+};
+
+// Decor mode (B in Terrain mode) paints the current floor's decor plane
+// under the held button and dirties the level; the base grid under the
+// stroke is left alone. The brush is the editor's default, DECOR_TORCH1.
+int editor_decor_brush_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorDecorSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    if (ok)
+        ok = author_new_level();
+    if (ok)
+        ok = enter_terrain_mode();
+    // Warm-up stroke: a "Pick" left armed by an earlier session is consumed
+    // by the first map click (the paint test's discipline).
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX + 3 * GRID_SIZE, kMapCellY);
+    if (ok)
+        ok = key_settled(SDLK_B) &&
+             wait_until([]() { return eds().decor_mode; }, kEditorEditCeilingMs);
+    sample.decor_mode = eds().decor_mode;
+    if (ok)
+    {
+        eds().levelchanged = 0;   // idle: the previous step was acknowledged
+        press_left_game(kMapCellX, kMapCellY);
+        ok = wait_until([]() { return eds().levelchanged == 1; },
+                        kEditorEditCeilingMs);
+        sample.dirty_while_held = eds().levelchanged;
+        LevelRuntimeData* level = level_editor_testing_level();
+        if (ok && level != nullptr)
+        {
+            GameWorld& world = level->world();
+            const PixieData& plane = world.decor_for_floor(0);
+            int cells = 0;
+            if (plane.valid())
+            {
+                for (int y = 0; y < plane.h; ++y)
+                    for (int x = 0; x < plane.w; ++x)
+                    {
+                        const unsigned char d =
+                            plane.data[static_cast<std::size_t>(y * plane.w + x)];
+                        if (d == DECOR_NONE)
+                            continue;
+                        ++cells;
+                        sample.decor_value = d;
+                        sample.base_genre =
+                            world.smoother_for_floor(0).query_genre_x_y(x, y);
+                    }
+            }
+            sample.decor_cells = cells;
+        }
+        ok = release_left_game(kMapCellX, kMapCellY) && ok;
+    }
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+template <typename Sample>
+int run_editor_with_injector(SDL_ThreadFunction injector, Sample& sample,
+                             const char* name)
+{
+    trace_clear();
+    og::runtime::current_session->myscreen_->world().end = 0;
+    SDL_Thread* thread = SDL_CreateThread(injector, name, &sample);
+    if (thread == nullptr)
+        return 1;
+    (void)level_editor();
+    int result = 1;
+    SDL_WaitThread(thread, &result);
+    SDL_FlushEvents(SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP);
+    SDL_FlushEvents(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_EVENT_MOUSE_BUTTON_UP);
+    return result;
+}
+} // namespace
+
+TEST(LevelEditorInteractions, held_press_on_the_minimap_recentres_the_camera_on_that_cell)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    EditorMinimapSample sample;
+    const int result = run_editor_with_injector(editor_minimap_injector,
+                                                sample, "editor_minimap");
+    picker_testing_yes_or_no_queue_clear();
+
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(40, sample.grid_w) << "File > Level > New builds a 40x60 grid";
+    EXPECT_EQ(60, sample.grid_h);
+    EXPECT_EQ(160, sample.expected_topx);
+    EXPECT_EQ(92, sample.expected_topy);
+    EXPECT_NE(sample.expected_topx, sample.topx_before)
+        << "control: the camera did not already sit on the target";
+    EXPECT_EQ(sample.expected_topx, sample.topx_held)
+        << "a held press 20 cells into the minimap puts that cell at the "
+           "camera centre (x)";
+    EXPECT_EQ(sample.expected_topy, sample.topy_held)
+        << "and 12 cells down (y)";
+}
+
+TEST(LevelEditorInteractions, held_decor_brush_paints_the_decor_plane_and_dirties_the_level)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    EditorDecorSample sample;
+    const int result = run_editor_with_injector(editor_decor_brush_injector,
+                                                sample, "editor_decor_brush");
+    picker_testing_yes_or_no_queue_clear();
+
+    EXPECT_EQ(0, result);
+    EXPECT_TRUE(sample.decor_mode) << "B switches Terrain mode to decor painting";
+    EXPECT_EQ(1, sample.dirty_while_held)
+        << "the held decor stroke dirties the level before the button is up";
+    EXPECT_EQ(1, sample.decor_cells)
+        << "exactly the pressed cell carries decor on a new level";
+    EXPECT_EQ(static_cast<int>(DECOR_TORCH1), sample.decor_value)
+        << "the default decor brush is the torch";
+    EXPECT_EQ(static_cast<int>(TYPE_GRASS), sample.base_genre)
+        << "control: the decor brush leaves the base tile under it alone";
+}
+
+namespace
+{
+struct EditorSaveSample
+{
+    bool ok = false;
+    int levelchanged_before_save = -1;
+    int campaignchanged_before_save = -1;
+    int levelchanged_after_save = -1;
+    int campaignchanged_after_save = -1;
+};
+
+constexpr const char* kSavedCampaignTitle = "Cov98 Ctrl S Title";
+
+// Dirty BOTH the level (a paint stroke) and the campaign (Campaign > Profile
+// > Title... answered from the prompt queue), then Ctrl+S.
+int editor_ctrl_s_both_dirty_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorSaveSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    if (ok)
+        ok = enter_terrain_mode();
+    if (ok)
+        ok = stroke_dirties_the_level(kMapCellX, kMapCellY);
+    if (ok)
+        ok = retry_until(
+            []() {
+                level_editor_testing_prompt_queue_clear();
+                level_editor_testing_prompt_queue_push(kSavedCampaignTitle);
+                return click_settled(kCampaignX, kCampaignY) &&
+                       click_settled(kCampaignProfileX, kCampaignProfileY) &&
+                       click_settled(kCampaignTitleX, kCampaignTitleY);
+            },
+            []() { return eds().campaignchanged == 1; });
+    sample.levelchanged_before_save = eds().levelchanged;
+    sample.campaignchanged_before_save = eds().campaignchanged;
+    if (ok)
+        ok = push_checked_key_press_mod(SDLK_S, SDL_KMOD_LCTRL) &&
+             wait_for_trace_line("dialog", "timed_dialog_open Saved.", 20000u);
+    // Close the timed dialog with an inert key (its product timeout is 3 s).
+    if (ok)
+        ok = push_checked_key_press_mod(SDLK_F12, SDL_KMOD_NONE) &&
+             wait_for_trace_line("dialog", "timed_dialog_closed Saved.", 10000u);
+    if (ok)
+        ok = wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    sample.levelchanged_after_save = eds().levelchanged;
+    sample.campaignchanged_after_save = eds().campaignchanged;
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+int count_dialog_traces(const std::string& substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int count = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "dialog" &&
+            entry.message.find(substring) != std::string::npos)
+            ++count;
+    }
+    return count;
+}
+} // namespace
+
+// Ctrl+S with BOTH the level and the campaign dirty saves both, clears both
+// dirty flags and says exactly "Saved." once. The editor saves into the
+// user-dir gladiator package, so its bytes are restored afterwards and the
+// campaign remounted (the smoke test's discipline). The negative twin is
+// ctrl_s_with_nothing_dirty_reports_no_changes_and_saves_nothing.
+TEST(LevelEditorInteractions, ctrl_s_with_level_and_campaign_dirty_saves_both_and_says_saved)
+{
+    namespace fs = std::filesystem;
+    const fs::path archive = fs::path(get_user_path()) / "campaigns/gladiator.glad";
+    std::string saved_title;
+    EditorSaveSample sample;
+    int result = 1;
+    {
+        og::test::ScopedPhysicalFileState glad_guard(archive);
+        ASSERT_TRUE(glad_guard.ready());
+        EditorDecorStateGuard state_guard;
+        picker_testing_yes_or_no_queue_clear();
+        level_editor_testing_prompt_queue_clear();
+        result = run_editor_with_injector(editor_ctrl_s_both_dirty_injector,
+                                          sample, "editor_ctrl_s_both");
+        level_editor_testing_prompt_queue_clear();
+        CampaignData reread("gladiator");
+        if (reread.load())
+            saved_title = reread.title;
+        EXPECT_EQ(1, count_dialog_traces("timed_dialog_open Saved."))
+            << "one Ctrl+S reports one save";
+        EXPECT_EQ(0, count_dialog_traces("timed_dialog_open Failed to save"))
+            << "neither save may fail";
+        EXPECT_EQ(0, count_dialog_traces("timed_dialog_open No changes to save."));
+    }
+    (void)unmount_campaign_package_with_error("gladiator");
+    (void)mount_campaign_package_with_error("gladiator");
+
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(1, sample.levelchanged_before_save) << "control: the level was dirty";
+    EXPECT_EQ(1, sample.campaignchanged_before_save)
+        << "control: the campaign was dirty";
+    EXPECT_EQ(0, sample.levelchanged_after_save)
+        << "a successful level save clears the level's dirty flag";
+    EXPECT_EQ(0, sample.campaignchanged_after_save)
+        << "a successful campaign save clears the campaign's dirty flag";
+    EXPECT_EQ(std::string(kSavedCampaignTitle), saved_title)
+        << "the campaign save wrote the new title into the package";
+}
+
+namespace
+{
+struct EditorResizeSample
+{
+    bool ok = false;
+    int w_before = -1, h_before = -1, w_after = -1, h_after = -1;
+};
+
+// Open Level > Details > Map size... with the REAL prompt (the blocking
+// input_string_ex editor, observed through text_input_is_active()).
+bool open_map_size_prompt(std::uint64_t entered_before)
+{
+    if (!(click_settled(kLevelX, kLevelY) &&
+          click_settled(kLevelDetailsX, kLevelDetailsY)))
+        return false;
+    inject_click_game(kMapSizeX, kMapSizeY, 20);
+    return wait_until(
+        [entered_before]() {
+            return level_editor_testing_prompt_real_entered_count() >
+                       entered_before &&
+                   og::input_native::text_input_is_active();
+        },
+        kEditorDrainCeilingMs);
+}
+
+bool answer_real_prompt(SDL_Keycode key, std::uint64_t entered_target)
+{
+    (void)entered_target;
+    return push_checked_key_press_mod(key, SDL_KMOD_NONE);
+}
+
+bool close_resize_canceled_dialog(int expected_total)
+{
+    if (!wait_until(
+            [expected_total]() {
+                return count_dialog_traces("timed_dialog_open Resize canceled.") ==
+                       expected_total;
+            },
+            10000u))
+        return false;
+    return push_checked_key_press_mod(SDLK_F12, SDL_KMOD_NONE) &&
+           wait_until(
+               [expected_total]() {
+                   return count_dialog_traces(
+                              "timed_dialog_closed Resize canceled.") ==
+                          expected_total;
+               },
+               10000u);
+}
+
+// Escape at the WIDTH prompt cancels; then RETURN keeps the width and Escape
+// at the HEIGHT prompt cancels. Both arms say "Resize canceled." and leave
+// the grid alone.
+int editor_resize_cancel_injector(void* opaque)
+{
+    og::runtime::ensure_thread_session();
+    auto& sample = *static_cast<EditorResizeSample*>(opaque);
+    bool ok = wait_for_trace_line("canvas", "editor_pin_classic",
+                                  kEditorEntryCeilingMs);
+    LevelRuntimeData* level = ok ? level_editor_testing_level() : nullptr;
+    if (level != nullptr)
+    {
+        sample.w_before = level->world().grid.w;
+        sample.h_before = level->world().grid.h;
+    }
+    // Width prompt: Escape.
+    std::uint64_t entered = level_editor_testing_prompt_real_entered_count();
+    if (ok)
+        ok = open_map_size_prompt(entered) &&
+             answer_real_prompt(SDLK_ESCAPE, entered + 1) &&
+             close_resize_canceled_dialog(1);
+    // Width prompt: RETURN keeps the width; height prompt: Escape.
+    entered = level_editor_testing_prompt_real_entered_count();
+    if (ok)
+        ok = open_map_size_prompt(entered) &&
+             answer_real_prompt(SDLK_RETURN, entered + 1) &&
+             wait_until(
+                 [entered]() {
+                     return level_editor_testing_prompt_real_entered_count() >=
+                                entered + 2 &&
+                            og::input_native::text_input_is_active();
+                 },
+                 kEditorDrainCeilingMs) &&
+             answer_real_prompt(SDLK_ESCAPE, entered + 2) &&
+             close_resize_canceled_dialog(2);
+    if (ok)
+        ok = wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    if (level != nullptr)
+    {
+        sample.w_after = level->world().grid.w;
+        sample.h_after = level->world().grid.h;
+    }
+    sample.ok = ok;
+    og::runtime::current_session->myscreen_->world().end = 1;
+    return ok ? 0 : 1;
+}
+
+struct ForceRealPromptGuard
+{
+    ForceRealPromptGuard() { level_editor_testing_prompt_force_real(true); }
+    ~ForceRealPromptGuard() { level_editor_testing_prompt_force_real(false); }
+};
+} // namespace
+
+TEST(LevelEditorInteractions, map_size_prompt_escape_cancels_the_resize_at_either_prompt)
+{
+    EditorDecorStateGuard state_guard;
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    EditorResizeSample sample;
+    int result = 1;
+    {
+        ForceRealPromptGuard force_real;
+        result = run_editor_with_injector(editor_resize_cancel_injector,
+                                          sample, "editor_resize_cancel");
+    }
+
+    EXPECT_EQ(0, result);
+    EXPECT_EQ(2, count_dialog_traces("timed_dialog_open Resize canceled."))
+        << "Escape at the width prompt and at the height prompt each cancel";
+    EXPECT_EQ(0, count_dialog_traces("timed_dialog_open Resized map"))
+        << "a canceled resize never resizes";
+    EXPECT_GT(sample.w_before, 0);
+    EXPECT_EQ(sample.w_before, sample.w_after) << "the grid width is unchanged";
+    EXPECT_EQ(sample.h_before, sample.h_after) << "the grid height is unchanged";
 }

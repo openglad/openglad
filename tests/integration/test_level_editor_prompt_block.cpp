@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <list>
 #include <string>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -825,4 +826,192 @@ TEST(LevelEditorPromptBlock, hovered_cancel_redraws_and_restores_original_text)
         << "CANCEL preserves the prompt's existing successful return value";
     EXPECT_EQ((std::list<std::string>{"seed"}), edited)
         << "CANCEL restores original text after the stationary-hover edit";
+}
+
+namespace
+{
+// One scripted prompt input: a held-key pulse (the TESTING held-key seam), a
+// pushed key event (RETURN/BACKSPACE are event-driven), or typed text.
+struct PromptStep
+{
+    enum class Kind { Pulse, Key, Text } kind;
+    int value = 0;
+    const char* text = nullptr;
+};
+
+struct PromptScriptData
+{
+    PromptBlockInjectState* state = nullptr;
+    std::vector<PromptStep> steps;
+};
+
+int prompt_block_script_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* d = static_cast<PromptScriptData*>(data);
+    PromptBlockInjectState* st = d->state;
+    st->started.store(true, std::memory_order_release);
+
+    bool ok = wait_for_counter_advance(
+        level_editor_testing_prompt_block_entered_count, 0);
+    for (const PromptStep& step : d->steps)
+    {
+        if (!ok)
+            break;
+        switch (step.kind)
+        {
+        case PromptStep::Kind::Pulse:
+            ok = pulse_physical_key(step.value);
+            break;
+        case PromptStep::Kind::Key:
+            ok = inject_prompt_key_press(step.value);
+            break;
+        case PromptStep::Kind::Text:
+            ok = inject_prompt_text(step.text);
+            break;
+        }
+    }
+    const bool click_consumed = ok && click_prompt_button(290, 6);
+    if (!ok || !click_consumed)
+        fail_safe_cancel_prompt();
+    st->handshake_failed.store(!ok || !click_consumed,
+                               std::memory_order_release);
+    st->finished.store(true, std::memory_order_release);
+    return 0;
+}
+
+PromptStep pulse(int key_state) { return {PromptStep::Kind::Pulse, key_state, nullptr}; }
+PromptStep key(int keycode) { return {PromptStep::Kind::Key, keycode, nullptr}; }
+PromptStep typed(const char* t) { return {PromptStep::Kind::Text, 0, t}; }
+} // namespace
+
+// Moving onto a SHORTER line clamps the cursor to that line's end (both
+// directions), and BACKSPACE in the middle of a line deletes the character
+// BEFORE the cursor and moves the cursor back one. Every edit is typed at the
+// cursor, so the final text records exactly where the cursor stood. The
+// shorter line is non-empty on purpose: the clamp is to its end, not to 0.
+TEST(LevelEditorPromptBlock, cursor_clamps_to_shorter_lines_and_backspace_deletes_before_it)
+{
+    level_editor_testing_prompt_block_input_reset();
+    std::list<std::string> edited{"wxyz", "ab", "pqrs"};
+
+    PromptBlockInjectState st{};
+    PromptScriptData script{&st, {
+        pulse(KEYSTATE_RIGHT), pulse(KEYSTATE_RIGHT),
+        pulse(KEYSTATE_RIGHT), pulse(KEYSTATE_RIGHT), // line 0, column 4
+        pulse(KEYSTATE_DOWN),   // "ab" is shorter: column clamps to 2
+        typed("Z"),              // "abZ", column 3
+        pulse(KEYSTATE_DOWN),   // "pqrs", column 3 (no clamp)
+        pulse(KEYSTATE_RIGHT),  // column 4
+        pulse(KEYSTATE_UP),     // "abZ" is shorter: column clamps to 3
+        typed("Y"),              // "abZY", column 4
+        pulse(KEYSTATE_LEFT), pulse(KEYSTATE_LEFT), // column 2
+        key(SDLK_BACKSPACE),    // deletes 'b' (index 1): "aZY", column 1
+        typed("X"),              // "aXZY"
+    }};
+    SDL_Thread* thread = SDL_CreateThread(prompt_block_script_injector,
+                                          "prompt_block_clamp_script", &script);
+    ASSERT_TRUE(thread != nullptr);
+
+    const bool accepted = prompt_for_string_block("Clamp text", edited);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_TRUE(st.finished.load(std::memory_order_acquire));
+    EXPECT_FALSE(st.handshake_failed.load(std::memory_order_acquire));
+    EXPECT_TRUE(accepted);
+    EXPECT_EQ(15u, level_editor_testing_prompt_block_input_completed_count())
+        << "fourteen scripted inputs and the DONE click were consumed";
+    EXPECT_EQ((std::list<std::string>{"wxyz", "aXZY", "pqrs"}), edited)
+        << "DOWN/UP onto a shorter line clamp the cursor to its end; a "
+           "mid-line BACKSPACE deletes the character before the cursor";
+}
+
+// The prompt's navigation keys are read from the REAL held-key array
+// (keystates_) as well as from the TESTING held-key seam. With the seam idle,
+// a DOWN held in keystates_ (a test-owned array, the HeldEditorKeys idiom,
+// set on the main thread before the prompt is entered) must move the cursor
+// to the next line; the typed Z records where it went.
+//
+// The navigation branch waits for the key to come up
+// (`while (prompt_key_down(KEYSTATE_DOWN))`), so the release necessarily
+// lands while that loop spins: the injector publishes `released` and then
+// stores false into the test-owned slot. That store races the loop's plain
+// load (the loop body calls sleep_ms and get_input_events — opaque calls, so
+// the load is re-done each pass); ci-tsan does not run og_test_level.
+namespace
+{
+struct RealHeldDownData
+{
+    PromptBlockInjectState* state = nullptr;
+    bool* down_key = nullptr;
+    std::atomic<bool> released{false};
+};
+
+int prompt_block_real_held_down_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* d = static_cast<RealHeldDownData*>(data);
+    PromptBlockInjectState* st = d->state;
+    st->started.store(true, std::memory_order_release);
+
+    bool ok = wait_for_counter_advance(
+        level_editor_testing_prompt_block_entered_count, 0);
+    // The held DOWN is observed by the prompt's own counter.
+    if (ok)
+        ok = wait_for_counter_advance(
+            level_editor_testing_prompt_block_input_observed_count, 0);
+    d->released.store(true, std::memory_order_release);
+    *d->down_key = false;
+    if (ok)
+        ok = wait_for_counter_advance(
+            level_editor_testing_prompt_block_input_completed_count, 0);
+    if (ok)
+        ok = inject_prompt_text("Z");
+    const bool click_consumed = ok && click_prompt_button(290, 6);
+    if (!ok || !click_consumed)
+        fail_safe_cancel_prompt();
+    st->handshake_failed.store(!ok || !click_consumed,
+                               std::memory_order_release);
+    st->finished.store(true, std::memory_order_release);
+    return 0;
+}
+} // namespace
+
+TEST(LevelEditorPromptBlock, down_held_in_the_real_key_array_moves_to_the_next_line)
+{
+    level_editor_testing_prompt_block_input_reset(); // seam idle (-1)
+    std::list<std::string> edited{"ab", "c"};
+
+    std::array<bool, SDL_SCANCODE_COUNT> keys{};
+    const bool* const saved = og::runtime::current_session->keystates_;
+    keys[static_cast<std::size_t>(KEYSTATE_DOWN)] = true;
+    og::runtime::current_session->keystates_ = keys.data();
+
+    PromptBlockInjectState st{};
+    RealHeldDownData data;
+    data.state = &st;
+    data.down_key = &keys[static_cast<std::size_t>(KEYSTATE_DOWN)];
+    SDL_Thread* thread = SDL_CreateThread(prompt_block_real_held_down_injector,
+                                          "prompt_block_real_held_down", &data);
+    if (thread == nullptr)
+    {
+        og::runtime::current_session->keystates_ = saved;
+        FAIL() << "failed to create the injector";
+    }
+
+    const bool accepted = prompt_for_string_block("Real held key", edited);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    og::runtime::current_session->keystates_ = saved;
+
+    EXPECT_TRUE(data.released.load(std::memory_order_acquire));
+    EXPECT_FALSE(st.handshake_failed.load(std::memory_order_acquire))
+        << "the prompt must observe the DOWN held in keystates_";
+    EXPECT_TRUE(accepted);
+    EXPECT_EQ((std::list<std::string>{"ab", "Zc"}), edited)
+        << "a DOWN held in keystates_ moves the cursor to line 1, column 0";
 }

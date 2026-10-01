@@ -3849,3 +3849,59 @@ TEST(PauseMenuFlow, input_cycler_onto_hostile_resting_pad_does_not_hang_menu)
     save_player_control_settings_to_cfg(cfg);
     cfg.save_settings();
 }
+
+// ---------------------------------------------------------------------------
+// PLAYER row (design §2.2): the pause menu hosts the per-seat settings
+// sub-screen. When the paused session dies while that sub-screen is open,
+// the sub-screen's first frame tick pumps, sees the dead transport and ends
+// the sub-screen; the PAUSED menu must then close too, with SessionEnded,
+// instead of reopening over a session that no longer exists.
+
+namespace
+{
+// The paired control's pump: the session stays alive, but the seat the
+// sub-screen was opened for vanishes (numplayers drops to 0) — the
+// sub-screen closes for a reason that is NOT a dead session.
+bool stub_pump_alive_but_seat_vanishes()
+{
+    ++g_stub.pump_calls;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 0;
+    return true;
+}
+} // namespace
+
+TEST(PauseMenuHandlers, player_row_session_death_in_sub_screen_closes_pause_menu)
+{
+    const og::ui::MenuScreenSpec& spec = og::ui::pause_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    NumplayersGuard numplayers(1);
+
+    g_stub = StubHostState{};
+    g_stub.pump_result = false;
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PauseMenuScreenState state;
+    state.host = &host;
+    og::ui::install_pause_menu_state_for_screen(&state);
+
+    EXPECT_EQ(MENU_EXIT,
+              spec.on_spec_row(og::ui::kPauseMenuPlayerBaseIndex, &state))
+        << "a session that died under the player screen closes PAUSED too";
+    EXPECT_EQ(PauseMenuResult::SessionEnded, state.outcome);
+    EXPECT_EQ(1, g_stub.pump_calls)
+        << "the sub-screen's first frame tick pumps once and vetoes the frame";
+
+    // Paired control: the sub-screen closes because its seat vanished while
+    // the session is alive -> PAUSED stays open (MENU_OK, Resumed).
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    g_stub = StubHostState{};
+    host.pump_paused = &stub_pump_alive_but_seat_vanishes;
+    state = og::ui::PauseMenuScreenState{};
+    state.host = &host;
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(og::ui::kPauseMenuPlayerBaseIndex, &state))
+        << "a sub-screen that closed with the session alive keeps PAUSED open";
+    EXPECT_EQ(PauseMenuResult::Resumed, state.outcome);
+    EXPECT_EQ(1, g_stub.pump_calls);
+
+    og::ui::install_pause_menu_state_for_screen(nullptr);
+}

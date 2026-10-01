@@ -615,6 +615,10 @@ static int scroll_controls_injector_thread(void* data)
     drain_one_viewer_iteration();
     tap_page_key(true, false);   probe_step(state, 4, 103);
     tap_page_key(true, false);   probe_step(state, 5, 0);
+    // The TOP clamp of the line-up key, sandwiched like the bottom clamp
+    // below: at 0 a line-up stays put, so the line-down after it lands on 8.
+    // Without the clamp the pair would read -8 then 0.
+    tap_line_key(true, false);   // already at the top: clamped, not -8
     tap_line_key(false, true);   probe_step(state, 6, 8);
     tap_line_key(true, false);   probe_step(state, 7, 0);
     tap_jump_key(false, true);   probe_step(state, 8, 208);
@@ -634,6 +638,13 @@ static int scroll_controls_injector_thread(void* data)
     // before each click lets the viewer drain the previous release event:
     // a release and the next press merged into one pump reads as "held",
     // not a fresh edge.
+    // The UP arrow's clamp first: at 0 a click on UP stays put (drained
+    // like a clamped key tap), so the DOWN click after it lands on 8.
+    // Without the clamp the pair would read -8 then 0.
+    drain_one_viewer_iteration();
+    inject_click(up_cx, up_cy, 50);
+    drain_one_viewer_iteration();
+    drain_one_viewer_iteration();
     inject_click(down_cx, down_cy, 50);
     probe_step(state, 10, 8);
 
@@ -667,6 +678,40 @@ static int scroll_controls_injector_thread(void* data)
     tap_jump_key(false, true);   probe_step(state, 15, 208);
     tap_line_key(false, true);   // already at the end: clamped, not 216
     tap_line_key(true, false);   probe_step(state, 16, 200);
+
+    // The DOWN arrow's clamp: at the end a click on DOWN stays put, so the
+    // UP click after it lands on 200 (216 then 208 without the clamp).
+    tap_jump_key(false, true);   probe_step(state, 17, 208);
+    drain_one_viewer_iteration();
+    inject_click(down_cx, down_cy, 50);
+    drain_one_viewer_iteration();
+    drain_one_viewer_iteration();
+    inject_click(up_cx, up_cy, 50);
+    probe_step(state, 18, 200);
+
+    // A track page below the thumb clamps at the end: from 113 (thumb
+    // y=77..100, the step-13 geometry) a page (+105) lands on 208, not 218;
+    // the line-up after it proves the offset is live.
+    tap_jump_key(true, false);   probe_step(state, 19, 0);
+    tap_page_key(false, true);   probe_step(state, 20, 105);
+    tap_line_key(false, true);   probe_step(state, 21, 113);
+    drain_one_viewer_iteration();
+    inject_click(layout.track.x + layout.track.w / 2, 110, 50);
+    probe_step(state, 22, 208);
+    tap_line_key(true, false);   probe_step(state, 23, 200);
+
+    // A track page above the thumb clamps at the top: from 97 (thumb
+    // around y=73..96, between the step-12 and step-13 geometries) a page
+    // (-105) lands on 0, not -8; the line-down after it proves the offset is
+    // live. y=60 is the step-14 click point, clear of the UP arrow's padded
+    // rect (a click there would take the arrow's own clamp instead).
+    tap_jump_key(true, false);   probe_step(state, 24, 0);
+    tap_page_key(false, true);   probe_step(state, 25, 105);
+    tap_line_key(true, false);   probe_step(state, 26, 97);
+    drain_one_viewer_iteration();
+    inject_click(layout.track.x + layout.track.w / 2, 60, 50);
+    probe_step(state, 27, 0);
+    tap_line_key(false, true);   probe_step(state, 28, 8);
 
     // A tap in the text area still dismisses (the wasm-touch e2e contract:
     // (160,100) must keep working).

@@ -30,6 +30,7 @@ og_test_living
 og_test_mass_coverage
 og_test_matchup
 og_test_menu_engine
+og_test_menu_light
 og_test_menu_ui
 og_test_parity
 og_test_picker

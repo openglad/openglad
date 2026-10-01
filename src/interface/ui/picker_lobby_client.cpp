@@ -678,9 +678,7 @@ private:
         while (seat_teams_.size() < target_count)
         {
             const std::size_t index = seat_teams_.size();
-            seat_teams_.push_back(index < seed.size()
-                    ? seed[index]
-                    : static_cast<short>(index % MAX_PLAYERS));
+            seat_teams_.push_back(seed[index]);
         }
     }
 
@@ -710,9 +708,6 @@ private:
 
     void send_host_settings()
     {
-        if (peers_.empty())
-            return;
-
         const SaveData& save = og::runtime::current_session->myscreen_->save_data;
         og::sim::LobbySettings settings;
         settings.campaign_id = save.current_campaign;
@@ -767,8 +762,6 @@ private:
         {
             LocalLobbyPeer& peer = peers_[peer_index];
             peer.team = seat_teams_[peer_index];
-            if (peer.name.empty())
-                peer.name = std::format("Player {}", peer_index + 1);
 
             og::sim::LobbyPlayer& player = players[peer_index];
             // Writer-side label clamps mirror read_lobby_player's, keeping
@@ -823,8 +816,6 @@ private:
 
     void sync_seat_teams_from_state()
     {
-        if (!state_.has_value())
-            return;
         for (std::size_t peer_index = 0; peer_index < peers_.size();
              ++peer_index)
         {
@@ -1055,8 +1046,6 @@ private:
     // preview and the launch adoption; nothing is broadcast (transport null).
     void drive_stage()
     {
-        if (!stage_ || !server_)
-            return;
         const std::uint64_t now = og::server::stage_clock_now_ms();
         try
         {

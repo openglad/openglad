@@ -29,6 +29,7 @@
 #include <optional>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -2674,4 +2675,48 @@ TEST_F(CampaignHooksTest, match_knobs_and_lineup_coexist_at_their_slots)
     ASSERT_TRUE(hooks::campaign_picker_page("", page));
     EXPECT_EQ("BOOK", page.title);
     EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+// The picker's lineup-power memo holds at most 64 rows: the 65th distinct
+// row clears it, so a row priced before the clear is priced AGAIN (the hook
+// runs), while the row that caused the clear stays memoized. The hook
+// returns its own call count, so every price names the call that made it.
+TEST_F(CampaignHooksTest, lineup_power_memo_is_bounded_at_64_rows)
+{
+    og::ui::lineup_power_cache_clear();
+    register_script(R"LUA(local calls = 0
+og.register_campaign_hooks({
+  lineup = { power = function(row)
+    calls = calls + 1
+    return calls
+  end },
+}))LUA");
+
+    // 65 distinct rows: a soldier at levels 1..65 (level is a row field).
+    std::vector<std::unique_ptr<guy>> fighters;
+    for (int level = 1; level <= 65; ++level) {
+        fighters.push_back(std::make_unique<guy>(FAMILY_SOLDIER));
+        fighters.back()->level = static_cast<short>(level);
+    }
+    for (int i = 0; i < 65; ++i) {
+        const std::optional<long long> price =
+            og::ui::lineup_power_for_guy(*fighters[static_cast<std::size_t>(i)]);
+        ASSERT_TRUE(price.has_value()) << "row " << i;
+        ASSERT_EQ(i + 1, *price) << "every distinct row is priced by a fresh call";
+    }
+
+    // Positive control: the 65th row, the one pushed after the clear, is
+    // still memoized -- no call, the same price.
+    EXPECT_EQ(std::optional<long long>(65),
+              og::ui::lineup_power_for_guy(*fighters[64]))
+        << "the newest row survives the bound";
+    // The first row was evicted by the clear at the 65th: priced again by
+    // call 66.
+    EXPECT_EQ(std::optional<long long>(66),
+              og::ui::lineup_power_for_guy(*fighters[0]))
+        << "the memo is bounded at 64 rows: the oldest row is recomputed";
+    // And the recomputed row is memoized again.
+    EXPECT_EQ(std::optional<long long>(66),
+              og::ui::lineup_power_for_guy(*fighters[0]));
+    og::ui::lineup_power_cache_clear();
 }
