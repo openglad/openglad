@@ -1,3 +1,4 @@
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
@@ -9,7 +10,9 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <memory>
 #include <string>
+#include <utility>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -169,6 +172,136 @@ TEST(ViewTeamList, viewscreen_view_team_renders_entries_for_my_team)
     vs->my_team = saved_my_team;
     game->world().delete_objects();
     game->set_active_canvas(saved_canvas);
+}
+
+
+namespace
+{
+// Draws the VIEW TEAM roster for team 1 and reports, for a glyph drawn at a
+// roster row's name cell, how many of its opaque pixels read back in BLACK
+// (the non-control name colour) out of how many it has.
+struct RosterProbe
+{
+    static constexpr int kLeft = 20;
+    // top 0 puts row 31 (y = 9 + 31*6 = 195) fully on the 200px UI canvas,
+    // so a 32nd row would be visible if it were drawn.
+    static constexpr int kTop = 0;
+    screen* game;
+    viewscreen* vs;
+    CanvasTarget saved_canvas;
+    short saved_my_team;
+    walker* saved_control;
+
+    explicit RosterProbe(screen* g)
+        : game(g), vs(g->viewob[0].get()), saved_canvas(g->active_canvas()),
+          saved_my_team(vs->my_team), saved_control(vs->control)
+    {
+        game->set_active_canvas(CanvasTarget::UI);
+        game->world().create_new_grid();
+        game->world().delete_objects();
+        vs->my_team = 1;
+        vs->control = nullptr; // every name BLACK
+    }
+    ~RosterProbe()
+    {
+        vs->control = saved_control;
+        vs->my_team = saved_my_team;
+        game->world().delete_objects();
+        game->set_active_canvas(saved_canvas);
+    }
+    RosterProbe(const RosterProbe&) = delete;
+    RosterProbe& operator=(const RosterProbe&) = delete;
+
+    walker* add_fighter(const char* stats_name)
+    {
+        walker* w = game->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        EXPECT_NE(nullptr, w);
+        if (w != nullptr)
+        {
+            w->set_team_num(1);
+            w->stats()->name = stats_name;
+        }
+        return w;
+    }
+    void draw() { vs->view_team(kLeft, kTop, 280, 199); }
+    static int row_y(int row) { return kTop + 9 + 6 * row; }
+
+    std::pair<int, int> black_glyph_at_row(char letter, int row) const
+    {
+        text& font = game->text_normal;
+        const std::size_t stride = static_cast<std::size_t>(font.sizex) *
+                                   static_cast<std::size_t>(font.sizey);
+        const unsigned char* const glyph =
+            font.letters->data.get() +
+            static_cast<std::size_t>(static_cast<unsigned char>(letter)) *
+                stride;
+        const int want = canonical_index(BLACK);
+        std::pair<int, int> matched_of_opaque{0, 0};
+        for (int r = 0; r < font.sizey; ++r)
+            for (int c = 0; c < font.sizex; ++c)
+            {
+                if (glyph[static_cast<std::size_t>(r * font.sizex + c)] == 0)
+                    continue;
+                ++matched_of_opaque.second;
+                int actual = -1;
+                game->get_pixel(kLeft + 5 + c, row_y(row) + r, &actual);
+                if (actual == want)
+                    ++matched_of_opaque.first;
+            }
+        return matched_of_opaque;
+    }
+};
+} // namespace
+
+// The VIEW TEAM roster has room for 31 rows: view_team stops after the 31st
+// listed fighter, so a 32nd teammate gets no row at all.
+TEST(ViewTeamList, view_team_lists_at_most_31_fighters)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game);
+    ASSERT_NE(nullptr, game->viewob[0].get());
+    RosterProbe probe(game);
+    for (int i = 0; i < 30; ++i)
+        ASSERT_NE(nullptr, probe.add_fighter("A"));
+    ASSERT_NE(nullptr, probe.add_fighter("Y")); // the 31st: the last row
+    ASSERT_NE(nullptr, probe.add_fighter("Z")); // the 32nd: no row
+    probe.draw();
+    ASSERT_EQ(5, (int)game->text_normal.sizex);
+
+    const auto y_row30 = probe.black_glyph_at_row('Y', 30);
+    EXPECT_EQ(y_row30.second, y_row30.first)
+        << "the 31st fighter still gets the last roster row";
+    const auto z_row31 = probe.black_glyph_at_row('Z', 31);
+    EXPECT_NE(z_row31.second, z_row31.first)
+        << "a 32nd fighter must not get a roster row";
+}
+
+// A recruit (a walker carrying a guy) is listed under the guy's name, not
+// the family stats name. Paired control: a plain teammate below it shows its
+// stats name.
+TEST(ViewTeamList, view_team_lists_a_recruit_under_its_guy_name)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game);
+    ASSERT_NE(nullptr, game->viewob[0].get());
+    RosterProbe probe(game);
+    walker* recruit = probe.add_fighter("S");
+    ASSERT_NE(nullptr, recruit);
+    auto character = std::make_unique<guy>(FAMILY_SOLDIER);
+    character->name = "G";
+    recruit->set_owned_myguy(std::move(character));
+    ASSERT_NE(nullptr, probe.add_fighter("S"));
+    probe.draw();
+
+    const auto g_row0 = probe.black_glyph_at_row('G', 0);
+    EXPECT_EQ(g_row0.second, g_row0.first)
+        << "a recruit is listed under its guy name";
+    const auto s_row0 = probe.black_glyph_at_row('S', 0);
+    EXPECT_NE(s_row0.second, s_row0.first)
+        << "the stats name must not be the one drawn for a recruit";
+    const auto s_row1 = probe.black_glyph_at_row('S', 1);
+    EXPECT_EQ(s_row1.second, s_row1.first)
+        << "a plain teammate is listed under its stats name";
 }
 
 

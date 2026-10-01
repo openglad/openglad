@@ -177,43 +177,6 @@ bool dirty_mask_has_bit(const std::uint64_t* mask, std::uint8_t bit_index)
     return (mask[bit_index / 64] & (1ULL << (bit_index % 64))) != 0;
 }
 
-void copy_delta_entity_field(og::sim::EntitySnapshot& destination,
-                             const og::sim::EntitySnapshot& source,
-                             std::uint8_t bit_index)
-{
-    switch (bit_index)
-    {
-    case og::dirty::BIT_ENTITY_ID:
-        destination.entity_id = source.entity_id;
-        return;
-    case og::dirty::BIT_REGEN_DELAY:
-        destination.regen_delay = source.regen_delay;
-        return;
-    case og::dirty::BIT_SPECIAL_COST:
-        std::copy(std::begin(source.special_cost), std::end(source.special_cost),
-                  std::begin(destination.special_cost));
-        return;
-    case og::dirty::BIT_DO_BOUNCE:
-        destination.do_bounce = source.do_bounce;
-        return;
-    default:
-        break;
-    }
-
-    const auto* field = std::find_if(
-        std::begin(og::sim::kEntitySnapshotFields),
-        std::end(og::sim::kEntitySnapshotFields),
-        [bit_index](const og::sim::EntitySnapshotFieldDesc& desc) {
-            return desc.bit_index == bit_index;
-        });
-    if (field == std::end(og::sim::kEntitySnapshotFields))
-        return;
-
-    std::memcpy(reinterpret_cast<std::uint8_t*>(&destination) + field->snap_offset,
-                reinterpret_cast<const std::uint8_t*>(&source) + field->snap_offset,
-                field->size);
-}
-
 og::sim::EntitySnapshot normalize_delta_entity_for_comparison(
     const og::sim::EntitySnapshot& entity)
 {
@@ -227,7 +190,7 @@ og::sim::EntitySnapshot normalize_delta_entity_for_comparison(
     {
         if (!dirty_mask_has_bit(normalized.dirty_mask, bit))
             continue;
-        copy_delta_entity_field(normalized, entity, bit);
+        og::sim::copy_entity_field(normalized, entity, bit);
     }
 
     return normalized;

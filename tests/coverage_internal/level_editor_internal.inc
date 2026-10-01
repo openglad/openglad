@@ -109,6 +109,35 @@ int level_editor_dialog_dismiss_driver(void* data)
     return level_editor_stream_dialog_dismissal_events(*state);
 }
 
+// A dismiss stream that stays silent until a timed_dialog has announced itself
+// open. Flows that pass through the campaign browser need this: a SPACE that
+// arrived while the browser was up could activate its highlighted button. The
+// driver answers 1 when no dialog ever opened before the main thread stopped
+// it, so a flow can also prove that no dialog was shown.
+struct LevelEditorGatedDismissState
+{
+    LevelEditorDialogDismissState dismiss;
+};
+
+int level_editor_gated_dismiss_driver(void* data)
+{
+    auto* gated = static_cast<LevelEditorGatedDismissState*>(data);
+    og::runtime::ensure_thread_session();
+    if (gated == nullptr)
+        return 1;
+    const std::uint64_t deadline =
+        static_cast<std::uint64_t>(og::input_native::ticks_ms()) + 30000u;
+    while (!trace_contains("dialog", "timed_dialog_open"))
+    {
+        if (gated->dismiss.stop.load(std::memory_order_acquire))
+            return 1;
+        if (static_cast<std::uint64_t>(og::input_native::ticks_ms()) >= deadline)
+            return 1;
+        og::input_native::sleep_ms(1);
+    }
+    return level_editor_stream_dialog_dismissal_events(gated->dismiss);
+}
+
 class LevelEditorTestingThread
 {
 public:
@@ -445,6 +474,38 @@ int level_editor_test_mouse_release_workflows()
                 }
                 key_guard.set(KEYSTATE_LCTRL, false);
 
+                // A plain click (no Ctrl) replaces the whole selection with
+                // exactly the clicked object: Ctrl+click a second object to
+                // grow the selection to two, then plain-click the target.
+                walker* other =
+                    data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+                check(other != nullptr);
+                if (other != nullptr)
+                {
+                    const int other_world_x = GRID_SIZE * 14;
+                    const int other_world_y = GRID_SIZE * 8;
+                    other->setxy(other_world_x, other_world_y);
+                    other->set_floor(0);
+                    const int other_screen_x = other_world_x -
+                        data.level->level_visuals().topx +
+                        scr->viewob[0]->xloc;
+                    const int other_screen_y = other_world_y -
+                        data.level->level_visuals().topy +
+                        scr->viewob[0]->yloc;
+                    key_guard.set(KEYSTATE_LCTRL, true);
+                    data.mouse_up(other_screen_x, other_screen_y,
+                                  other_screen_x, other_screen_y, done);
+                    key_guard.set(KEYSTATE_LCTRL, false);
+                    check(data.selection.size() == 2);
+                    data.mouse_up(
+                        screen_x, screen_y, screen_x, screen_y, done);
+                    check(data.selection.size() == 1);
+                    if (!data.selection.empty())
+                        check(data.selection.front().target == target);
+                    data.level->remove_ob(other);
+                }
+                check(data.level->world().oblist.size() == original_count);
+
                 // A snapped placement colliding with the authored object is
                 // rejected atomically: no duplicate remains in the level.
                 data.mode = Mode::Object;
@@ -711,6 +772,10 @@ int level_editor_test_save_failure_reporting()
         check(trace_contains("dialog", "timed_dialog_open Level saved."));
         check(!trace_contains("dialog", "timed_dialog_open Save failed."));
 
+        // Save As onto the mounted helper id succeeds while mounted.
+        check(data.saveCampaignAs(helper_id));
+        check(get_mounted_campaign() == helper_id);
+
         // Unmount the package. Nothing else changes.
         check(mount_guard.switch_to(""));
         check(get_mounted_campaign().empty());
@@ -721,6 +786,10 @@ int level_editor_test_save_failure_reporting()
         check(!data.saveCampaign());
         check(get_mounted_campaign().empty());
         check(eds().campaignchanged == 1);
+        // Save As repacks the package but cannot remount it either: the same
+        // refusal, never a false success.
+        check(!data.saveCampaignAs(helper_id));
+        check(get_mounted_campaign().empty());
         check(!data.saveLevel());
         check(eds().levelchanged == 1);
 
@@ -749,6 +818,330 @@ int level_editor_test_save_failure_reporting()
 
     check(mount_guard.restore());
     delete_campaign(helper_id);
+    check(get_mounted_campaign() == mount_guard.initially_mounted());
+    return failed_check == 0 ? 0 : -failed_check;
+}
+
+// File > Campaign > New / Load / Save As, end to end through the real menu
+// clicks. Load and Save As open the campaign browser, which under TESTING
+// accepts the MOUNTED campaign once its first frame is on the window, so every
+// flow mounts an isolated helper package first (a save while "gladiator" is
+// mounted would leave a per-PID copy shadowing the shipped package for the rest
+// of the binary). Yes/no answers come from the queue. The SPACE stream that
+// closes each result dialog starts only once that dialog has opened, i.e.
+// after the browser has already auto-accepted and closed, so no key can land
+// on a highlighted browser button.
+int level_editor_test_campaign_menu_flows()
+{
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+        {
+            failed_check = check_index;
+            Log("level-editor campaign-menu check {} failed\n", check_index);
+        }
+    };
+
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    LevelEditorTestingYesNoGuard yes_no_guard;
+    LevelEditorTestingPromptGuard prompt_guard;
+    LevelEditorTestingMouseEventGuard mouse_event_guard;
+
+    // Earlier tests may leave either dirty flag set (the state guard restores
+    // whatever it found); every door below asks about unsaved work first.
+    eds().levelchanged = 0;
+    eds().campaignchanged = 0;
+
+    const std::string helper_id = "coverage.campaign_menu";
+    const std::string created_id = "coverage.campaign_menu_new";
+    const std::string broken_id = "coverage.campaign_menu_bad";
+    const std::string source_id = "coverage.campaign_menu_src";
+    const auto delete_helpers = [&] {
+        for (const std::string* id :
+             {&helper_id, &created_id, &broken_id, &source_id})
+            delete_campaign(*id);
+        cleanup_unpacked_campaign();
+    };
+    delete_helpers();
+    check(create_new_campaign(helper_id));
+    // A package the browser lists but the editor cannot load: a user-dir
+    // .glad whose campaign.yaml is gone.
+    check(create_new_campaign(broken_id));
+    check(unpack_campaign(broken_id));
+    std::error_code remove_error;
+    check(std::filesystem::remove(
+        get_user_path() + "temp/campaign.yaml", remove_error));
+    check(repack_campaign(broken_id));
+    cleanup_unpacked_campaign();
+    check(does_campaign_exist(broken_id));
+
+    check(mount_guard.switch_to(helper_id));
+    LevelEditorData data;
+    check(data.loadCampaign(helper_id));
+    check(data.loadLevel(1));
+    data.level->set_draw_pos(0, 0);
+    data.myradar.start(data.level.get());
+    backgrounds().assign(
+        kDefaultBackgrounds.begin(), kDefaultBackgrounds.end());
+    eds().maxrows = static_cast<std::int32_t>(backgrounds().size() / 4);
+    eds().rowsdown = 0;
+    eds().current_floor = 0;
+    eds().decor_mode = false;
+    object_pane().clear();
+    object_pane().push_back({Order::Living, FAMILY_SOLDIER});
+    data.mode = Mode::Terrain;
+    data.reset_mode_buttons();
+    data.update_menu_buttons();
+
+    MouseState& menu_mouse = query_mouse_no_poll();
+    menu_mouse.left = false;
+    menu_mouse.right = false;
+    const auto click_button = [&](SimpleButton& button) {
+        bool menu_done = false;
+        const int x = button.area.x + 1;
+        const int y = button.area.y + 1;
+        data.mouse_up(x, y, x, y, menu_done);
+        check(!menu_done);
+    };
+    // Opens File > Campaign, then clicks `door` with a dialog-dismiss stream
+    // armed on the next timed_dialog. Answers the driver's exit code: 0 when a
+    // dialog opened and was dismissed, 1 when no dialog ever opened.
+    //
+    // In the product this menu lives inside level_editor(), which runs nested
+    // in the open main menu (run_nested_menu_door), so the campaign browser's
+    // LegacyMenuFade finds a nonzero menu depth and does not fade. This
+    // exerciser drives the menu at depth 0; an Instant entry note gives the
+    // browser's entry the same no-fade decision. It is noted only when the
+    // flow opens the browser (the browser's entry consumes it), so no note is
+    // left pending for a later entry.
+    const auto click_campaign_door = [&](SimpleButton& door,
+                                         bool browser_opens) {
+        data.current_menu.clear();
+        click_button(data.fileButton);
+        click_button(data.fileCampaignButton);
+        trace_clear();
+        if (browser_opens)
+            og::ui::note_menu_entry_fade(og::ui::MenuEntryFade::Instant);
+        LevelEditorGatedDismissState gated;
+        LevelEditorTestingThread driver(
+            SDL_CreateThread(
+                level_editor_gated_dismiss_driver,
+                "level_editor_campaign_menu_dialogs", &gated),
+            gated.dismiss);
+        check(driver.valid());
+        if (driver.valid())
+            click_button(door);
+        const int driver_result = driver.stop_and_join();
+        level_editor_clear_dialog_dismissal_events();
+        return driver_result;
+    };
+    const auto packaged_title = [](const std::string& id) {
+        CampaignData probe(id);
+        return probe.load() ? probe.title : std::string("<unreadable>");
+    };
+
+    // --- File > Campaign > New ------------------------------------------
+    // Unsaved campaign details (a Campaign > Profile title edit dirties only
+    // campaignchanged) are protected like a dirty level: New asks first, and
+    // NO keeps the open campaign and its edit; no id is ever asked for.
+    check(eds().levelchanged == 0 && eds().campaignchanged == 0);
+    level_editor_testing_prompt_queue_push("Unsaved Title");
+    data.current_menu.clear();
+    click_button(data.campaignButton);
+    click_button(data.campaignProfileButton);
+    click_button(data.campaignProfileTitleButton);
+    check(data.campaign->title == "Unsaved Title");
+    check(eds().campaignchanged == 1 && eds().levelchanged == 0);
+    level_editor_testing_prompt_queue_push(created_id.c_str());
+    picker_testing_yes_or_no_queue_push(false);
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 1);
+    check(trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(data.campaign->id == helper_id);
+    check(data.campaign->title == "Unsaved Title");
+    check(eds().campaignchanged == 1);
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+    check(level_editor_testing_prompt_queue_ref().size() == 1);
+    level_editor_testing_prompt_queue_clear();
+    picker_testing_yes_or_no_queue_clear();
+
+    // Positive control: a valid new id creates, loads and mounts it. The
+    // campaign is dirty, so New asks to discard first: YES.
+    eds().campaignchanged = 1;
+    level_editor_testing_prompt_queue_push(created_id.c_str());
+    picker_testing_yes_or_no_queue_push(true);
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
+    check(trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+    check(trace_contains("dialog", "timed_dialog_open Campaign created."));
+    check(data.campaign->id == created_id);
+    check(get_mounted_campaign() == created_id);
+    check(eds().campaignchanged == 0);
+
+    // An id the package layer refuses is reported and switches nothing.
+    check(mount_guard.switch_to(helper_id));
+    check(data.loadCampaign(helper_id));
+    eds().campaignchanged = 1;
+    level_editor_testing_prompt_queue_push("bad id!");
+    picker_testing_yes_or_no_queue_push(true); // discard the dirty campaign
+    check(!std::filesystem::exists(get_user_path() + "temp"));
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
+    check(trace_contains(
+        "dialog", "timed_dialog_open Failed to create new campaign."));
+    check(!trace_contains("dialog", "timed_dialog_open Campaign created."));
+    check(data.campaign->id == helper_id);
+    check(get_mounted_campaign() == helper_id);
+    check(eds().campaignchanged == 1);
+    check(level_editor_testing_prompt_queue_ref().empty());
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+    // The refusal builds and leaves no scratch tree behind.
+    check(!std::filesystem::exists(get_user_path() + "temp"));
+
+    // Control: with nothing unsaved New asks no discard question (an empty
+    // yes/no queue would answer NO and cancel before the id prompt).
+    eds().campaignchanged = 0;
+    eds().levelchanged = 0;
+    level_editor_testing_prompt_queue_push("bad id!");
+    check(click_campaign_door(data.fileCampaignNewButton, false) == 0);
+    check(!trace_contains("confirm", "New Campaign: Discard unsaved changes?"));
+    check(trace_contains(
+        "dialog", "timed_dialog_open Failed to create new campaign."));
+    check(level_editor_testing_prompt_queue_ref().empty());
+    check(!std::filesystem::exists(get_user_path() + "temp"));
+
+    // --- File > Campaign > Load ---------------------------------------------
+    // Declining to discard unsaved changes never opens the browser.
+    check(data.loadCampaign("gladiator"));
+    check(get_mounted_campaign() == helper_id);
+    eds().campaignchanged = 1;
+    picker_testing_yes_or_no_queue_push(false);
+    check(click_campaign_door(data.fileCampaignLoadButton, false) == 1);
+    check(trace_contains("confirm", "Load Campaign: Discard unsaved changes?"));
+    check(!trace_contains("campaign_picker", "auto-accept"));
+    check(data.campaign->id == "gladiator");
+    check(eds().campaignchanged == 1);
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+
+    // Discard YES, load first level YES, discard the dirty level YES: the
+    // picked campaign is loaded and mounted, its first level is open and both
+    // dirty flags are clear.
+    data.level->world().id = 7;
+    eds().levelchanged = 1;
+    picker_testing_yes_or_no_queue_push(true);
+    picker_testing_yes_or_no_queue_push(true);
+    picker_testing_yes_or_no_queue_push(true);
+    check(click_campaign_door(data.fileCampaignLoadButton, true) == 0);
+    check(trace_contains("campaign_picker", "auto-accept coverage.campaign_menu"));
+    check(trace_contains("confirm", "Load Level: Discard unsaved changes?"));
+    check(trace_contains("dialog", "timed_dialog_open Campaign loaded."));
+    check(data.campaign->id == helper_id);
+    check(get_mounted_campaign() == helper_id);
+    check(eds().campaignchanged == 0);
+    check(eds().levelchanged == 0);
+    check(data.level->world().id == 1);
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+
+    // Load first level NO keeps the open (dirty) level: cross-campaign level
+    // transfer.
+    check(data.loadCampaign("gladiator"));
+    eds().campaignchanged = 0;
+    eds().levelchanged = 1;
+    data.level->world().id = 7;
+    picker_testing_yes_or_no_queue_push(false);
+    check(click_campaign_door(data.fileCampaignLoadButton, true) == 0);
+    check(trace_contains("confirm", "Load Campaign: Load first level?"));
+    check(trace_contains("dialog", "timed_dialog_open Campaign loaded."));
+    check(data.campaign->id == helper_id);
+    check(eds().levelchanged == 1);
+    check(data.level->world().id == 7);
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+    check(data.loadLevel(1));
+    eds().levelchanged = 0;
+
+    // A listed package without a descriptor: the browser accepts it, the load
+    // fails and says so, and no first-level prompt follows.
+    check(mount_guard.switch_to(broken_id));
+    check(click_campaign_door(data.fileCampaignLoadButton, true) == 0);
+    check(trace_contains(
+        "campaign_picker", "auto-accept coverage.campaign_menu_bad"));
+    check(trace_contains("dialog", "timed_dialog_open Failed to load campaign."));
+    check(!trace_contains("dialog", "timed_dialog_open Campaign loaded."));
+    check(!trace_contains("confirm", "Load first level?"));
+
+    // A load that fails leaves the open campaign exactly as it was: its id
+    // (which every later Save writes to) and its details.
+    check(mount_guard.switch_to(helper_id));
+    check(data.loadCampaign(helper_id));
+    const std::string helper_title = data.campaign->title;
+    check(!data.loadCampaign(broken_id));
+    check(data.campaign->id == helper_id);
+    check(data.campaign->title == helper_title);
+    // Positive control: a loadable id replaces both.
+    check(data.loadCampaign("gladiator"));
+    check(data.campaign->id == "gladiator");
+    check(data.campaign->title == packaged_title("gladiator"));
+    check(data.campaign->title != helper_title);
+
+    // A campaign whose declared first level does not exist.
+    check(mount_guard.switch_to(helper_id));
+    check(data.loadCampaign(helper_id));
+    data.campaign->first_level = 42;
+    check(data.saveCampaign());
+    eds().campaignchanged = 0;
+    eds().levelchanged = 0;
+    picker_testing_yes_or_no_queue_push(true);
+    check(click_campaign_door(data.fileCampaignLoadButton, true) == 0);
+    check(trace_contains(
+        "campaign_picker", "auto-accept coverage.campaign_menu"));
+    check(trace_contains(
+        "dialog", "timed_dialog_open Failed to load first level."));
+    check(!trace_contains("dialog", "timed_dialog_open Campaign loaded."));
+    data.campaign->first_level = 1;
+    check(data.saveCampaign());
+    check(data.loadLevel(1));
+
+    // --- File > Campaign > Save As ------------------------------------------
+    const std::string original_title = packaged_title(helper_id);
+    check(original_title != "<unreadable>");
+    // Overwrite NO: nothing is written and the campaign stays dirty.
+    data.campaign->title = "Save As Declined";
+    eds().campaignchanged = 1;
+    picker_testing_yes_or_no_queue_push(false);
+    check(click_campaign_door(data.fileCampaignSaveAsButton, true) == 1);
+    check(trace_contains("confirm", "Overwrite: Overwrite existing campaign?"));
+    check(packaged_title(helper_id) == original_title);
+    check(eds().campaignchanged == 1);
+
+    // Overwrite YES: saved, clean, and the package carries the edit.
+    data.campaign->title = "Save As Accepted";
+    picker_testing_yes_or_no_queue_push(true);
+    check(click_campaign_door(data.fileCampaignSaveAsButton, true) == 0);
+    check(trace_contains("dialog", "timed_dialog_open Campaign saved."));
+    check(eds().campaignchanged == 0);
+    check(packaged_title(helper_id) == "Save As Accepted");
+    check(get_mounted_campaign() == helper_id);
+
+    // The open campaign's own package is gone (deleted from the browser):
+    // the save fails, says so, keeps the work dirty and leaves the target
+    // package untouched.
+    check(create_new_campaign(source_id));
+    check(data.loadCampaign(source_id));
+    delete_campaign(source_id);
+    data.campaign->title = "Orphaned Edit";
+    eds().campaignchanged = 1;
+    picker_testing_yes_or_no_queue_push(true);
+    check(click_campaign_door(data.fileCampaignSaveAsButton, true) == 0);
+    check(trace_contains(
+        "dialog", "timed_dialog_open Failed to save campaign."));
+    check(!trace_contains("dialog", "timed_dialog_open Campaign saved."));
+    check(eds().campaignchanged == 1);
+    check(packaged_title(helper_id) == "Save As Accepted");
+    check(picker_testing_yes_or_no_queue_remaining() == 0);
+
+    check(mount_guard.restore());
+    delete_helpers();
     check(get_mounted_campaign() == mount_guard.initially_mounted());
     return failed_check == 0 ? 0 : -failed_check;
 }
@@ -2149,6 +2542,36 @@ int level_editor_test_nameless_selection_panel_rows()
     data.level->delete_objects();
     mount_guard.restore();
     return passed;
+}
+
+// The generated-scenario warning latch, driven through the editor's own load
+// path on a scratch LevelEditorData -- the File > Campaign > Load sequence
+// (mount, loadCampaign, loadLevel), then File > Level > Reload. One character
+// per step: 'W' the "Generated scenario" popup fired, '.' it stayed silent,
+// 'x' the step's load failed. Steps: open first_id's level 1, reload it, open
+// second_id's level 1.
+std::string level_editor_testing_generated_warnings(
+    const std::string& first_id, const std::string& second_id)
+{
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+    LevelEditorData data;
+    std::string steps;
+    const auto step = [&steps](bool loaded) {
+        steps += !loaded ? 'x'
+                 : trace_contains("popup", "Generated scenario") ? 'W'
+                                                                 : '.';
+        trace_clear();
+    };
+    trace_clear();
+    step(mount_guard.switch_to(first_id) && data.loadCampaign(first_id) &&
+         data.loadLevel(1));
+    step(data.reloadLevel());
+    step(mount_guard.switch_to(second_id) && data.loadCampaign(second_id) &&
+         data.loadLevel(1));
+    data.level->delete_objects();
+    mount_guard.restore();
+    return steps;
 }
 
 // Issue #12 seams. The editor's LevelEditorData is a function-local static

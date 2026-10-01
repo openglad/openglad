@@ -131,8 +131,11 @@ public:
     {
         return std::nullopt;
     }
+    // `ending` is the run's LevelOutcome::ending (0 = win), so a mode can
+    // word a loss differently from a win; both front ends pass the same
+    // value they draw the verdict from.
     virtual std::vector<std::string> results_summary_lines(
-        const SaveData&, const GameWorld&) const
+        const SaveData&, const GameWorld&, short /*ending*/) const
     {
         return {};
     }

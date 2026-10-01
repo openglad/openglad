@@ -122,14 +122,10 @@ void statistics::mark_dirty(std::uint8_t bit_index)
 void statistics::set_controller(walker* value)
 {
 	walker* dirty_owner = owner_;
-	if (dirty_owner == nullptr)
-		dirty_owner = controller_ ? controller_ : value;
 
 	controller_ = value;
 	controller_id_ = (value != nullptr) ? value->entity_id() : 0;
 
-	if (owner_ == nullptr)
-		owner_ = dirty_owner;
 	if (dirty_owner != nullptr)
 		dirty_owner->mark_dirty(og::dirty::BIT_CONTROLLER_ID);
 }
@@ -330,12 +326,9 @@ bool statistics::has_commands() const
 // arrive with a non-empty queue. Making the body match this sentence is
 // a sim behaviour change that WOULD move goldens, not a cleanup.
 
-short statistics::try_command(Sint32 whatcommand, Sint32 iterations)
+short statistics::try_random_walk(Sint32 iterations)
 {
-	if (whatcommand == COMMAND_RANDOM_WALK)
-		return try_command(COMMAND_WALK, iterations, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
-	else
-		return try_command(whatcommand, iterations, 0, 0);
+	return try_command(COMMAND_WALK, iterations, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
 }
 
 short statistics::try_command(Sint32 whatcommand, Sint32 iterations,
@@ -1292,16 +1285,10 @@ bool statistics::walk_to_foe()
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
 			if (howmany > 0)
 			{
-			    walker* firstfoe = foelist.front();
 				clear_command();
 				controller_->turn(controller_->facing(xdelta, ydelta));
 				controller_->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
 				current_game->world->find_near_foe(controller_);
-				if (!controller_->foe() && firstfoe)
-				{
-					controller_->set_foe(firstfoe);
-					set_last_distance(static_cast<Uint32>(controller_->distance_to_ob(foe)));
-				}
 				controller_->init_fire();
 				return 1;
 			}

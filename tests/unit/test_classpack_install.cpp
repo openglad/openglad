@@ -46,6 +46,7 @@
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/packs.h>
 
@@ -367,22 +368,8 @@ TEST(ClasspackInstall, overrides_data_preserves_callbacks)
     ASSERT_EQ(after->description, before.description)
         << "absent description must keep the exact current pointer";
     ASSERT_EQ(after->default_weapon, before.default_weapon);
-    // ...and EVERY behavior callback pointer is preserved unchanged.
+    // ...and the promotion callback pointer is preserved unchanged.
     ASSERT_EQ(after->promotion_new_level, before.promotion_new_level);
-    ASSERT_EQ(after->do_special, before.do_special);
-    ASSERT_EQ(after->check_special_ai, before.check_special_ai);
-    ASSERT_EQ(after->hit_response, before.hit_response);
-    ASSERT_EQ(after->set_difficulty, before.set_difficulty);
-    ASSERT_EQ(after->level_up, before.level_up);
-    ASSERT_EQ(after->on_death, before.on_death);
-    ASSERT_EQ(after->on_act_living, before.on_act_living);
-    ASSERT_EQ(after->on_shoved, before.on_shoved);
-    ASSERT_EQ(after->on_fire_weapon, before.on_fire_weapon);
-    ASSERT_EQ(after->handle_teleport, before.handle_teleport);
-    ASSERT_EQ(after->on_create, before.on_create);
-    ASSERT_EQ(after->customize_weapon, before.customize_weapon);
-    ASSERT_EQ(after->on_ani_complete, before.on_ani_complete);
-    ASSERT_EQ(after->on_melee_hit, before.on_melee_hit);
 }
 
 // #209: `radar_ping = true` rides the presentation fold onto the
@@ -425,7 +412,6 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
 {
     init_all_registries();
     CorePinGuard pin_mage(FAMILY_MAGE);
-    const FamilyDescriptor before_mage = *get_family_descriptor(FAMILY_MAGE);
     const GeneratorFamilyDescriptor before_tent =
         *get_generator_family_descriptor(FAMILY_TENT);
 
@@ -452,7 +438,6 @@ TEST(ClasspackInstall, wire_id_pins_and_references_resolve)
     ASSERT_EQ(mage->default_weapon, FAMILY_ROCK)
         << "default_weapon resolves through the weapon registry";
     ASSERT_EQ(mage->promotes_to, -1) << "explicit ~ clears the promotion";
-    ASSERT_EQ(mage->do_special, before_mage.do_special);
 
     const GeneratorFamilyDescriptor* tent =
         get_generator_family_descriptor(FAMILY_TENT);
@@ -485,9 +470,6 @@ TEST(ClasspackInstall, a_declaration_installs_and_skips_bad_refs)
         get_weapon_family_descriptor(FAMILY_ROCK);
     ASSERT_EQ(rock->fire_sound, 42);
     ASSERT_EQ(rock->init_bit_flags, BIT_MAGICAL | BIT_FIRE);
-    ASSERT_EQ(rock->on_death, before_rock.on_death);
-    ASSERT_EQ(rock->on_animate, before_rock.on_animate);
-    ASSERT_EQ(rock->on_hit_target, before_rock.on_hit_target);
 
     const FamilyDescriptor* elf = get_family_descriptor(FAMILY_ELF);
     ASSERT_EQ(elf->hiring_cost, 7) << "good fields apply";
@@ -1077,9 +1059,16 @@ TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
     // The escapes the core pack ships for its own name collisions.
     EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "core:#19"),
               FAMILY_GIANT_SKELETON);
-    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "beast"),
-              FAMILY_GOLEM)
-        << "the shared display name still lands on the lowest byte";
+    // Ruling R14: 18-20 carry their own display names, so each bare name
+    // resolves to its own byte and the retired shared name BEAST to none.
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "golem"),
+              FAMILY_GOLEM);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "giant_skel"),
+              FAMILY_GIANT_SKELETON);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "tower"),
+              FAMILY_TOWER1);
+    EXPECT_EQ(og::families::resolve_family_string_id(Order::Living, "beast"), -1)
+        << "no core living family is named BEAST any more";
 }
 
 // A mod family may reuse a CORE display name without shadowing the core
@@ -1605,6 +1594,26 @@ TEST(FamilyPresentation, glyph_utf8_round_trips)
     }
     og::GlyphColor unknown{};
     EXPECT_FALSE(og::glyph_color_from_name("puce", unknown));
+}
+
+// is_valid_utf8 walks a whole string through glyph_from_utf8, so every scalar
+// rule above applies at every position -- and a Latin-1 byte, the shape of a
+// folder name libyaml refuses to save, fails the string.
+TEST(FamilyPresentation, is_valid_utf8_accepts_only_well_formed_runs)
+{
+    EXPECT_TRUE(og::is_valid_utf8("")) << "the empty run is well-formed";
+    EXPECT_TRUE(og::is_valid_utf8("cafe")) << "plain ASCII";
+    EXPECT_TRUE(og::is_valid_utf8("caf\xC3\xA9")) << "UTF-8 e-acute";
+    EXPECT_TRUE(og::is_valid_utf8("\xE2\x99\xA3 \xF0\x9F\x98\x80!"))
+        << "three- and four-byte scalars mixed with ASCII";
+
+    EXPECT_FALSE(og::is_valid_utf8("caf\xE9")) << "Latin-1 e-acute at the end";
+    EXPECT_FALSE(og::is_valid_utf8("\xE9t\xE9")) << "Latin-1 in the middle";
+    EXPECT_FALSE(og::is_valid_utf8("ab\x80")) << "lone continuation";
+    EXPECT_FALSE(og::is_valid_utf8("a\xC0\x80" "b")) << "overlong NUL";
+    EXPECT_FALSE(og::is_valid_utf8("\xED\xA0\x80")) << "surrogate";
+    EXPECT_FALSE(og::is_valid_utf8("x\xE2\x99")) << "truncated tail";
+    EXPECT_FALSE(og::is_valid_utf8("\xF4\x90\x80\x80")) << "above U+10FFFF";
 }
 
 // ---------------------------------------------------------------------------
@@ -2262,6 +2271,22 @@ TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
     ASSERT_NE(quiet, nullptr);
     EXPECT_EQ(0.0f, quiet->hp) << "absent hp keeps the copied core row";
     EXPECT_EQ(44, quiet->init_lifetime);
+
+    // The loader carries a declared hp into the entity tables every spawned
+    // walker reads its hitpoints from (gloader install_pack_entity); the
+    // undeclared sibling keeps the zero a pack slot starts from.
+    const loader ld;
+    EXPECT_EQ(7.0f, ld.hitpoints[static_cast<std::size_t>(
+                        loader::slot_for(Order::Weapon, 21))]);
+    EXPECT_EQ(9.0f, ld.hitpoints[static_cast<std::size_t>(
+                        loader::slot_for(Order::FX, 21))]);
+    EXPECT_EQ(11.0f, ld.hitpoints[static_cast<std::size_t>(
+                         loader::slot_for(Order::Treasure, 21))]);
+    EXPECT_EQ(13.0f, ld.hitpoints[static_cast<std::size_t>(
+                         loader::slot_for(Order::Generator, 21))]);
+    EXPECT_EQ(0.0f, ld.hitpoints[static_cast<std::size_t>(
+                        loader::slot_for(Order::Weapon, 22))])
+        << "an undeclared hp leaves the loader row at zero";
 }
 
 namespace {

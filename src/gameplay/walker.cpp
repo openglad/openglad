@@ -43,6 +43,7 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/core/util.h>
 #include <openglad/core/sound_ids.h>
+#include "sim_difficulty.h"
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <algorithm>
 #include <cassert>
@@ -68,6 +69,14 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 short collide(short x, short y, short xsize, short ysize,
               short x2, short y2, short xsize2, short ysize2);
 
+std::uint32_t query_difficulty_percent()
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 100u;
+    const int difficulty = current_game->world->difficulty;
+    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
+}
+
 namespace
 {
 std::int32_t scale_los_circular(std::int32_t value)
@@ -82,18 +91,8 @@ std::int32_t scale_los_circular(std::int32_t value)
         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())));
 }
 
-std::uint32_t query_difficulty_percent()
-{
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 100u;
-    const int difficulty = current_game->world->difficulty;
-    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
-}
-
 std::uint32_t query_generator_rate_percent()
 {
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 100u;
     const int rate = current_game->world->generator_rate;
     if (rate <= 0)
         return 100u;
@@ -1146,13 +1145,6 @@ bool walker::set_frame_from_current_walk_animation()
 	while (seq_len < 128 && seq[seq_len] != -1)
 		seq_len++;
 
-	if (seq_len <= 0)
-	{
-		set_cycle(0);
-		set_frame(seq[0]);
-		return true;
-	}
-
 	int c = static_cast<int>(cycle());
 	if (c < 0 || c >= seq_len)
 	{
@@ -1231,12 +1223,10 @@ std::int32_t finalized_weapon_reach(const walker& weapon)
 
 bool weapon_profile_requires_hook(const walker& owner)
 {
-	if (owner.query_order() != Order::Living)
-		return false;
 	const FamilyDescriptor* descriptor =
 		get_family_descriptor(owner.family());
-	if (descriptor == nullptr || descriptor->customize_weapon != nullptr ||
-	    descriptor->on_fire_weapon != nullptr)
+	// Family weapon behaviour is Lua-only: the registration mask below says it all.
+	if (descriptor == nullptr)
 		return true;
 
 	// This predicate is reached from a Lua method, so the current world's VM
@@ -1275,8 +1265,6 @@ bool footprint_touches_water(GameWorld& world, const walker& mover,
 bool water_blocks_mover(const walker& mover)
 {
 	const statistics* stats = mover.stats();
-	if (stats == nullptr)
-		return true;
 	if (stats->query_bit_flags(BIT_ETHEREAL))
 		return false;
 	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
@@ -1394,8 +1382,6 @@ bool walker::can_approach_weapon_range(const walker* objective)
 				return false;
 			}
 		}
-		if (next_x == x && next_y == y)
-			return false;
 		x = next_x;
 		y = next_y;
 	}
@@ -1761,7 +1747,7 @@ walker::act_random()
 	if (!current_game->world->rng_.next(70) || (!foe()))
 		set_foe(current_game->world->find_nearest_foe(this));
 	if (!foe())
-		return stats_->try_command(COMMAND_RANDOM_WALK,20);
+		return stats_->try_random_walk(20);
 
 	xdist = foe()->xpos() - xpos();
 	ydist = foe()->ypos() - ypos();
@@ -1776,34 +1762,16 @@ walker::act_random()
 			stats_->set_command(COMMAND_FIRE, static_cast<std::int32_t>(current_game->world->rng_.next(24)), xdist, ydist);
 			return 1;
 		}
-		else
-			// Nearest foe is blocked
-			//foe = nullptr;
-			turn(facing(xdist,ydist));
 	}
 
 	// Otherwise, try to walk toward foe
-	newx = 0;
-	newy = 0;
+	newx = xdist;    // total horizontal distance..
+	if (newx)                      // If it's not 0, then get
+		newx = (newx > 0) ? 1 : -1;       // the normal of it..
 
-	if (foe())
-	{
-			newx = xdist;    // total horizontal distance..
-			if (newx)                      // If it's not 0, then get
-				newx = (newx > 0) ? 1 : -1;       // the normal of it..
-
-			newy = ydist;
-			if (newy)
-				newy = (newy > 0) ? 1 : -1;
-	}  // end of if we had a foe ..
-		else
-		{
-			while ( !newx && !newy)
-			{
-				newx = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // Walk in some random direction
-				newy = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // other than 0,0 :)
-			}
-		}
+	newy = ydist;
+	if (newy)
+		newy = (newy > 0) ? 1 : -1;
 
 	// If blocked
 	set_collide_ob(nullptr);
@@ -2576,8 +2544,6 @@ std::string_view entity_display_name(const walker* w, std::string_view fallback)
 // (server-only transient, the z_stair_latched_ precedent).
 void walker::latch_exit_contact(const walker* pad)
 {
-	if (pad == nullptr)
-		return;
 	exit_latched_ = true;
 	exit_latch_x_ = static_cast<std::int16_t>(pad->xpos());
 	exit_latch_y_ = static_cast<std::int16_t>(pad->ypos());

@@ -299,12 +299,13 @@ struct WebSocketClientTransport::Impl
 private:
     bool has_pending_connection_transition() const
     {
+        // Only reached while `connected` (connected_peers short-circuits).
+        // poll() set it after swapping out the whole queue, and every socket
+        // of an older generation was joined before the swap, so every entry
+        // queued since carries active_generation.
         std::lock_guard<std::mutex> lock(queue_mutex);
         for (const QueueEntry& entry : queue)
         {
-            if (entry.generation != active_generation)
-                continue;
-
             if (entry.kind == QueueEntryKind::Connect ||
                 entry.kind == QueueEntryKind::Disconnect)
             {
@@ -371,8 +372,10 @@ private:
     bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
-        if (queue.size() >= kMaxQueuedMessages)
-            return false;
+        // Only frames are capped (count and bytes). A Connect/Disconnect
+        // transition must always get through: capping the whole queue here
+        // dropped the very Disconnect the queue-full path enqueues, leaving a
+        // closed link reading Connected forever.
         if (entry.kind == QueueEntryKind::Message)
         {
             if (queued_message_count >= kMaxQueuedMessages ||

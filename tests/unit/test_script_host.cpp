@@ -38,6 +38,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -146,6 +147,44 @@ TEST(ScriptSandbox, tostring_is_address_free)
         "tostring(setmetatable({}, {__tostring = function() return 'X' end }))");
     ASSERT_TRUE(m.has_value());
     EXPECT_EQ("X", *m);
+}
+
+// sandbox_has walks TABLES only: a dotted path that runs through a non-table
+// value (a function, a number) is absent — never a Lua index error and never
+// a false "present". Paired with the same prefixes answering present.
+TEST(ScriptSandbox, a_dotted_path_through_a_non_table_is_absent)
+{
+    ScriptHost host;
+    ASSERT_TRUE(host.sandbox_has("og.div"));
+    ASSERT_TRUE(host.sandbox_has("math.maxinteger"));
+    EXPECT_FALSE(host.sandbox_has("og.div.x")) << "og.div is a function";
+    EXPECT_FALSE(host.sandbox_has("math.maxinteger.huge"))
+        << "math.maxinteger is a number";
+    EXPECT_TRUE(host.errors().empty());
+}
+
+// Deterministic tostring: a __tostring metamethod that answers a non-string
+// is a script error, never a value passed through to the caller. Numbers
+// ARE strings to lua_isstring, so the offending answer here is a table.
+TEST(ScriptSandbox, a_tostring_metamethod_returning_a_non_string_is_an_error)
+{
+    ScriptHost host;
+    // Positive control: a string answer passes through untouched.
+    ASSERT_EQ(std::optional<std::string>("ok"),
+              host.eval_string(
+                  "tostring(setmetatable({}, {__tostring = function() "
+                  "return 'ok' end}))"));
+    ASSERT_TRUE(host.errors().empty());
+
+    EXPECT_EQ(std::nullopt,
+              host.eval_string(
+                  "tostring(setmetatable({}, {__tostring = function() "
+                  "return {} end}))"));
+    ASSERT_EQ(1u, host.errors().size());
+    EXPECT_NE(std::string::npos,
+              host.errors()[0].message.find(
+                  "'__tostring' must return a string"))
+        << host.errors()[0].message;
 }
 
 TEST(ScriptSandbox, print_and_og_log_capture_lines_in_order)
@@ -369,6 +408,36 @@ TEST(ScriptHostBasics, eval_coercions_are_strict)
     auto s = host.eval_string("'x' .. 'y'");
     ASSERT_TRUE(s.has_value());
     EXPECT_EQ("xy", *s);
+}
+
+// An eval expression that does not compile yields NO value and records one
+// 'eval' script error. The optional is what keeps every eval-based assertion
+// in this file honest: a failed eval that answered 0 / false / "" would let
+// `EXPECT_EQ(0, *host.eval_number(...))` pass on a typo.
+TEST(ScriptHostBasics, an_eval_that_does_not_compile_yields_no_value_and_one_error)
+{
+    ScriptHost host;
+    // Positive control: the same shapes compile and answer with no error.
+    ASSERT_EQ(std::optional<double>(0.0), host.eval_number("0"));
+    ASSERT_EQ(std::optional<bool>(false), host.eval_boolean("false"));
+    ASSERT_EQ(std::optional<std::string>(""), host.eval_string("''"));
+    ASSERT_TRUE(host.errors().empty());
+
+    EXPECT_EQ(std::nullopt, host.eval_number("0 +"));
+    EXPECT_EQ(std::nullopt, host.eval_boolean("false and"));
+    EXPECT_EQ(std::nullopt, host.eval_string("'' .."));
+
+    // Each failed eval recorded the parser's error against 'eval'. All
+    // three wrap to `return (<expr>)` and stop at the same ')', so the
+    // store collapses them into one record counted three times.
+    ASSERT_EQ(1u, host.errors().size());
+    const og::script::ScriptError& e = host.errors()[0];
+    EXPECT_EQ("eval", e.where);
+    EXPECT_EQ(3u, e.count);
+    EXPECT_EQ(0u, e.message.rfind("eval:1: unexpected symbol near ')'", 0))
+        << e.message;
+    EXPECT_EQ(std::string::npos, e.message.find("stack traceback"))
+        << "a compile error never ran, so it has no traceback: " << e.message;
 }
 
 TEST(ScriptHostBasics, identical_programs_produce_identical_hosts)
@@ -1473,6 +1542,35 @@ TEST(ScriptCoverage, one_chunk_name_carrying_two_sources_keeps_both)
     std::filesystem::remove_all(dir);
 }
 
+// The honest-denominator invariant (openglad-test-integrity): the Lua half's
+// denominator is the set of pack sources the recorder inventories, so it
+// must not depend on whether recording happens to be on. A DISABLED recorder
+// inventories nothing (the production default: OPENGLAD_LUA_COVERAGE unset),
+// and neither does an enabled one handed an empty chunk name. Positive
+// control: the same declaration while enabled makes exactly one record.
+TEST(ScriptCoverage, a_disabled_recorder_never_moves_the_lua_denominator)
+{
+    cov::ScopedRecording recording;  // private, empty inventory
+    const std::string chunk = "packs/denominator/scripts/a.lua";
+    const std::string body = "return 1\n";
+
+    cov::set_enabled_for_testing(false);
+    cov::declare_pack_source(chunk, body, "probe/disabled");
+    cov::set_enabled_for_testing(true);
+    EXPECT_EQ(0u, cov::pack_sources().size())
+        << "a declaration made while recording was off entered the inventory";
+
+    cov::declare_pack_source("", body, "probe/unnamed");
+    EXPECT_EQ(0u, cov::pack_sources().size())
+        << "an unnamed chunk entered the inventory";
+
+    cov::declare_pack_source(chunk, body, "probe/enabled");
+    const std::vector<cov::PackSourceRecord> records = cov::pack_sources();
+    ASSERT_EQ(1u, records.size());
+    EXPECT_EQ(chunk, records[0].chunk);
+    EXPECT_EQ(cov::sha256_hex(body), records[0].digest);
+}
+
 // THE GENERATION BINDING. When one chunk name carries two sources in one
 // process, every hit is stored under the generation whose COMPILED CODE
 // executed — each compile binds its prototype tree to the (chunk, digest)
@@ -2125,7 +2223,7 @@ TEST_F(CoverageReportGate, an_empty_cpp_half_is_an_error_not_a_smaller_union)
 TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
 {
     // Lua: one fully-covered file out of the whole inventory — far below
-    // 95% for the half.
+    // the bar for the half.
     const RealSource real = load_real("packs/core/families/living-00-soldier.lua");
     forge_dump("lua-good.luacov", "og_unit_script",
                forge_s_record(real.chunk, real.bytes) +
@@ -2135,12 +2233,14 @@ TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
     // UNION clears the line bar on C++ slack alone (and the completeness
     // check has nothing to say — this test is about the bars). The forged
     // slack must dominate the REAL Lua inventory (the denominator is the
-    // live repo): at 95% each uncovered Lua line needs ~19 covered C++
-    // lines, so size generously — 2000/TU held ~2x headroom over the
-    // ~9.7k-line inventory when the basketball mode landed.
+    // live repo): at 97% each uncovered Lua line needs ~32 covered C++
+    // lines, so size generously — 4000/TU over ~187 TUs is ~748k lines,
+    // 1.7x the ~437k the 13.6k-line inventory needs at 97 (2000/TU cleared
+    // 96 with 2x headroom and failed the day the bar moved to 97; 4000
+    // still clears a 98 bar).
     ASSERT_FALSE(tracked_src_cpp().empty());
     const std::string cpp_args =
-        forge_cpp_tracefile({}, {}, /*lines_per_file=*/2000);
+        forge_cpp_tracefile({}, {}, /*lines_per_file=*/4000);
 
     const ReportRun run =
         run_report(manifest_args({"og_unit_script"}) + fixtures_args() +

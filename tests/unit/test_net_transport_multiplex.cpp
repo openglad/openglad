@@ -241,8 +241,17 @@ public:
     }
 
     std::vector<og::sim::ReceivedMessage> poll() override { return {}; }
+    std::vector<og::sim::TypedReceivedMessage> poll_typed() override
+    {
+        std::vector<og::sim::TypedReceivedMessage> drained =
+            std::move(typed_inbound);
+        typed_inbound.clear();
+        return drained;
+    }
     void accept_connections() override {}
     void disconnect(og::sim::PeerId peer_id) override { disconnected_peer = peer_id; }
+
+    std::vector<og::sim::TypedReceivedMessage> typed_inbound;
     std::vector<og::sim::PeerId> connected_peers() const override { return peers_; }
 
     og::sim::PeerId raw_send_peer = 0;
@@ -734,4 +743,53 @@ TEST(NetTransportMultiplex, typed_forwarding_methods_route_to_native_peer)
     EXPECT_EQ(44u, typed->control_change_peer);
     EXPECT_EQ(44u, typed->hash_check_peer);
     EXPECT_EQ(44u, typed->disconnected_peer);
+}
+
+// Rule (net_transport_multiplex.cpp poll_typed): native peer id 0 means "no
+// peer"; a typed child's message stamped with it is dropped and never gets a
+// public id. The companion message from a real native peer surfaces mapped.
+TEST(NetTransportMultiplex, typed_child_message_from_native_peer_zero_is_dropped)
+{
+    auto typed = std::make_shared<FakeTypedTransport>();
+    typed->connect_peer(5u);
+    og::sim::TypedReceivedMessage from_nobody;
+    from_nobody.peer_id = 0u;
+    from_nobody.kind = og::sim::TypedReceivedMessageKind::Heartbeat;
+    from_nobody.heartbeat = std::make_shared<og::sim::HeartbeatMessage>();
+    og::sim::TypedReceivedMessage from_peer = from_nobody;
+    from_peer.peer_id = 5u;
+    typed->typed_inbound = {from_nobody, from_peer};
+
+    og::sim::MultiplexTransport transport({typed});
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        transport.poll_typed();
+
+    ASSERT_EQ(1u, messages.size())
+        << "the native-peer-0 message must not surface";
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Heartbeat, messages[0].kind);
+    EXPECT_NE(0u, messages[0].peer_id);
+    EXPECT_EQ((std::vector<og::sim::PeerId>{messages[0].peer_id}),
+              transport.connected_peers())
+        << "only the real native peer holds a public id";
+}
+
+// Rule (net_transport_multiplex.cpp poll_typed): the same "no peer" rule for
+// an untyped child whose raw frames are decoded in poll_typed: a validly
+// encoded frame from native peer 0 is dropped before decoding.
+TEST(NetTransportMultiplex, untyped_child_frame_from_native_peer_zero_is_dropped)
+{
+    auto raw_transport = std::make_shared<FakeRawTransport>();
+    const std::vector<std::uint8_t> heartbeat =
+        og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{});
+    raw_transport->enqueue_raw(0u, heartbeat);
+    raw_transport->enqueue_raw(77u, heartbeat);
+
+    og::sim::MultiplexTransport transport({raw_transport});
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        transport.poll_typed();
+
+    ASSERT_EQ(1u, messages.size())
+        << "the native-peer-0 frame must not surface";
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Heartbeat, messages[0].kind);
+    EXPECT_NE(0u, messages[0].peer_id);
 }

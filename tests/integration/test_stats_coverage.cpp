@@ -44,7 +44,7 @@ TEST(StatsCoverage, stats_set_and_try_command_random_walk_paths)
     walker w;
     statistics s(&w);
 
-    s.try_command(COMMAND_RANDOM_WALK, 1);
+    s.try_random_walk(1);
     ASSERT_TRUE(!s.commands.empty()) << "try_command random walk should enqueue walk command";
     ASSERT_EQ((int)COMMAND_WALK, (int)s.commands.back().commandtype) << "random walk should map to walk";
 

@@ -14,6 +14,8 @@
 #include <openglad/interface/sound.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -305,18 +307,21 @@ std::vector<std::string> TroopResult::get_gained_specials() const
 {
     std::vector<std::string> result;
     
-    int family = get_family();
-    if (family < 0 || family >= NUM_FAMILIES)
-        return result;  // bogus family from an untrusted save -> no specials
+    // A troop's specials are the ones its OWN family's registry descriptor
+    // names, for any registered family (class-pack families past the core
+    // span included); a family with no descriptor (an unregistered byte from
+    // an untrusted save) names none.
+    const FamilyDescriptor* fd = get_family_descriptor(get_family());
+    if (fd == nullptr) return result;
 
     Sint32 test1 = get_level() - 1;
     if ( !(test1%3) ) // we're on a special-gaining level
     {
         test1 = (test1 / 3) + 1; // this is the special #
         if ( (test1 <= 4) // raise this when we have more than 4 specials
-                && (og::runtime::current_session->myscreen_->special_name[family][test1] != "NONE") )
+                && (std::strcmp(fd->special_names[test1], kSpecialNameNone) != 0) )
         {
-            result.push_back(og::runtime::current_session->myscreen_->special_name[family][test1]);
+            result.push_back(fd->special_names[test1]);
         }
     }
     
@@ -880,13 +885,14 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             }
 
             // Tier-B mode summary (tower-triple §2.7): the mounted mode may
-            // add overview lines (tower: "Floor N conquered - best B"),
+            // add overview lines (tower: "Floor N conquered - best B", or
+            // "Fell on Floor N - best B" when `ending` is a loss),
             // centered at the CTF banner's tight 8px pitch so the classic
             // gold/time block stays on the first screen. Classic adds none.
             {
                 const std::vector<std::string> mode_lines =
                     og::mode::current_progression().results_summary_lines(
-                        save_data, ctf_world);
+                        save_data, ctf_world, static_cast<short>(ending));
                 for (const std::string& line : mode_lines)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
@@ -1055,6 +1061,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	                          troops[troop_idx].get_name().c_str(), gain,
 	                          row_special.empty()? "none" : row_special.c_str());
 	                    END_IF_IN_SCROLL_AREA;
+	                    // The row's " the <class>" word, traced for every
+	                    // troop on every troops frame (scrolled out or not).
+	                    TRACE("results", "troop_class %s the %s",
+	                          troops[troop_idx].get_name().c_str(),
+	                          troops[troop_idx].get_class_name().c_str());
 	                }
 #endif
 	                

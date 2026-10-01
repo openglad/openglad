@@ -101,11 +101,39 @@ public:
         return socket->sendBinary(payload).success;
     }
 
+    struct ClosedPeer {
+        og::sim::PeerId peer_id = 0;
+        std::uint16_t code = 0;
+        std::string reason;
+    };
+
+    // Peers whose socket closed, in close order, with the close frame's code
+    // and reason (what the relay would see from a client closing on it).
+    std::vector<ClosedPeer> closed_peers() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return closed_peers_;
+    }
+
 private:
     struct PeerState {
         og::sim::PeerId peer_id = 0;
         std::weak_ptr<ix::WebSocket> socket;
     };
+
+    void record_close(const std::string& connection_id,
+                      const ix::WebSocketMessage& message)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto peer_it = peers_.find(connection_id);
+        if (peer_it == peers_.end())
+            return;
+        closed_peers_.push_back(ClosedPeer{
+            .peer_id = peer_it->second.peer_id,
+            .code = message.closeInfo.code,
+            .reason = message.closeInfo.reason,
+        });
+    }
 
     struct DropRule {
         og::sim::PeerId from_peer_id = 0;
@@ -137,6 +165,7 @@ private:
 
         case ix::WebSocketMessageType::Close:
         case ix::WebSocketMessageType::Error:
+            record_close(connection_state->getId(), *message);
             handle_close(connection_state->getId());
             break;
 
@@ -448,11 +477,12 @@ private:
     }
 
     ix::WebSocketServer server_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     og::sim::PeerId next_peer_id_ = 1;
     std::optional<og::sim::PeerId> host_peer_id_;
     std::optional<DropRule> drop_next_forwarded_frame_;
     std::map<std::string, PeerState> peers_;
+    std::vector<ClosedPeer> closed_peers_;
 };
 
 template <typename Predicate>
@@ -1084,6 +1114,97 @@ TEST(NetTransportRelayWs, link_state_reports_lost_after_relay_drops_connection)
     EXPECT_TRUE(client.connected_peers().empty());
 }
 
+// Rule (net_transport_relay_ws.cpp retire_and_redial): a send or broadcast
+// that ix refuses has already closed the socket on the GAME thread, and if
+// ix's io thread sampled the socket just before, it leaves run() for good
+// with reconnection armed -- nothing would ever fire again, so a queued
+// Disconnect that only poll() turns into link state is not enough. The
+// failed send itself marks the link Lost, the next send returns at the
+// `connected` gate (no dial storm), and the retired socket is replaced by
+// one that dials the relay again. The loop below never calls poll() on the
+// host: the transition must come from the failing send alone.
+enum class RelaySendPath { Targeted, Broadcast };
+
+void expect_failed_send_retires_and_redials(RelaySendPath path)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    auto server = std::make_unique<FakeRelayServer>(port);
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.min_reconnect_wait_ms = 1u;
+    options.max_reconnect_wait_ms = 20u;
+    const std::string url =
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-REDIAL", port);
+    og::sim::RelayWebSocketTransport host(url, options);
+    og::sim::RelayWebSocketTransport joiner(url, options);
+    host.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(host));
+    joiner.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(host, 1u));
+    ASSERT_TRUE(poll_until_peer_count(joiner, 1u));
+    const og::sim::PeerId joiner_id = *joiner.local_peer_id();
+
+    const std::vector<std::uint8_t> payload =
+        og::sim::serialize_client_ready_message(
+            og::sim::ClientReadyMessage{.last_applied_tick = 7u});
+    const auto send_once = [&] {
+        if (path == RelaySendPath::Targeted)
+            host.send(joiner_id, payload.data(), payload.size());
+        else
+            host.broadcast(payload);
+    };
+
+    // Positive control: a send over a healthy link leaves it Connected.
+    send_once();
+    ASSERT_EQ(og::sim::TransportLinkState::Connected, host.link_state())
+        << "a send that succeeded must not move the link";
+
+    server.reset();
+
+    EXPECT_TRUE(wait_until(
+        [&] {
+            send_once();
+            return host.link_state() == og::sim::TransportLinkState::Lost;
+        },
+        10s))
+        << "a send that failed must mark the relay link Lost on the game "
+           "thread, without waiting for a poll() a dead io thread never feeds";
+    EXPECT_TRUE(host.connected_peers().empty());
+    EXPECT_FALSE(host.local_peer_id().has_value())
+        << "the retired socket's room membership is gone";
+
+    // Storm half: the next send returns at the `connected` gate instead of
+    // tearing the replacement socket down and dialling yet again.
+    send_once();
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, host.link_state());
+
+    // The replacement socket still dials: a relay back on the same port is
+    // re-joined and the link reads Connected with a fresh room membership.
+    FakeRelayServer returning_server(port);
+    EXPECT_TRUE(wait_until(
+        [&] {
+            (void)host.poll();
+            (void)joiner.poll();
+            return host.link_state() ==
+                       og::sim::TransportLinkState::Connected &&
+                host.local_peer_id().has_value();
+        },
+        15s))
+        << "the relay transport stopped dialling after the failed send";
+}
+
+TEST(NetTransportRelayWs, a_failed_send_retires_the_link_and_redials_the_relay)
+{
+    expect_failed_send_retires_and_redials(RelaySendPath::Targeted);
+}
+
+TEST(NetTransportRelayWs,
+     a_failed_broadcast_retires_the_link_and_redials_the_relay)
+{
+    expect_failed_send_retires_and_redials(RelaySendPath::Broadcast);
+}
+
 // Live end-to-end check against the DEPLOYED Cloudflare relay: native TLS
 // (https:// room create + wss:// room sockets through ixwebsocket/OpenSSL)
 // plus the full owner/guest handshake and frame forwarding. Opt-in because it
@@ -1179,6 +1300,124 @@ TEST(NetTransportRelayWs, live_cloudflare_relay_end_to_end)
         },
         15s)) << "guest->owner broadcast through the live relay";
     EXPECT_TRUE(std::equal(payload.begin(), payload.end(), received.begin()));
+}
+
+// Mirrors the receive-queue caps in
+// src/platform/sdl/net_transport_relay_ws.cpp (file-local).
+constexpr std::size_t kRelayMaxQueuedMessages = 1024u;
+constexpr std::size_t kRelayMaxInboundFrameBytes = 128u * 1024u;
+
+std::vector<std::uint8_t> relay_frame_from(og::sim::PeerId source,
+                                           std::span<const std::uint8_t> payload)
+{
+    std::vector<std::uint8_t> frame = {
+        2u,
+        static_cast<std::uint8_t>(source & 0xffu),
+        static_cast<std::uint8_t>((source >> 8) & 0xffu),
+        static_cast<std::uint8_t>((source >> 16) & 0xffu),
+        static_cast<std::uint8_t>((source >> 24) & 0xffu),
+    };
+    frame.insert(frame.end(), payload.begin(), payload.end());
+    return frame;
+}
+
+bool wait_for_close_of(const FakeRelayServer& server,
+                       og::sim::PeerId peer_id,
+                       FakeRelayServer::ClosedPeer& closed,
+                       std::chrono::milliseconds timeout = 5s)
+{
+    return wait_until(
+        [&] {
+            for (const auto& entry : server.closed_peers())
+            {
+                if (entry.peer_id == peer_id)
+                {
+                    closed = entry;
+                    return true;
+                }
+            }
+            return false;
+        },
+        timeout);
+}
+
+// Rule (net_transport_relay_ws.cpp handle_message/enqueue): a relay peer
+// flooding frames faster than the game thread polls is capped at 1024 queued
+// frames; the frame past the cap closes the relay link 1008 "receive queue
+// full", and the game sees the link Lost after the queued frames drain.
+TEST(NetTransportRelayWs, a_frame_flood_past_the_queue_count_cap_loses_the_link)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport transport(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-FLOOD", port), options);
+    transport.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(transport));
+
+    for (std::uint32_t tick = 0; tick <= kRelayMaxQueuedMessages; ++tick)
+    {
+        const std::vector<std::uint8_t> payload =
+            og::sim::serialize_client_ready_message(
+                og::sim::ClientReadyMessage{.last_applied_tick = tick});
+        if (!server.send_binary_message(1u, relay_frame_from(17u, payload)))
+            break;
+    }
+    FakeRelayServer::ClosedPeer closed;
+    ASSERT_TRUE(wait_for_close_of(server, 1u, closed))
+        << "the flooded link must close";
+    EXPECT_EQ(1008, closed.code);
+    EXPECT_EQ("receive queue full", closed.reason);
+
+    const std::vector<og::sim::ReceivedMessage> delivered = transport.poll();
+    ASSERT_EQ(kRelayMaxQueuedMessages, delivered.size());
+    for (std::size_t index = 0; index < delivered.size(); ++index)
+    {
+        ASSERT_EQ(17u, delivered[index].peer_id);
+        ASSERT_EQ(index, decode_client_ready_tick(delivered[index].data))
+            << "queued frames keep their order";
+    }
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, transport.link_state())
+        << "the game must see the flood-closed relay link as lost";
+}
+
+// Rule (net_transport_relay_ws.cpp enqueue): the 16 MiB queued-byte budget
+// closes the relay link long before the frame-count cap: 128 maximum-size
+// frames (exactly 16 MiB) are held, the 129th closes the link 1008.
+TEST(NetTransportRelayWs, a_byte_flood_past_16_mib_loses_the_link)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport transport(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-BYTES", port), options);
+    transport.accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(transport));
+
+    constexpr std::size_t kFramesInBudget = 128u;
+    const std::vector<std::uint8_t> payload(kRelayMaxInboundFrameBytes - 5u,
+                                            0x3cu);
+    const std::vector<std::uint8_t> max_frame = relay_frame_from(17u, payload);
+    ASSERT_EQ(kRelayMaxInboundFrameBytes, max_frame.size());
+    for (std::size_t frame = 0; frame <= kFramesInBudget; ++frame)
+    {
+        if (!server.send_binary_message(1u, max_frame))
+            break;
+    }
+    FakeRelayServer::ClosedPeer closed;
+    ASSERT_TRUE(wait_for_close_of(server, 1u, closed, 20s))
+        << "the flooded link must close";
+    EXPECT_EQ(1008, closed.code);
+    EXPECT_EQ("receive queue full", closed.reason);
+
+    const std::vector<og::sim::ReceivedMessage> delivered = transport.poll();
+    EXPECT_EQ(kFramesInBudget, delivered.size())
+        << "exactly the frames within the 16 MiB budget are delivered";
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, transport.link_state());
 }
 
 } // namespace

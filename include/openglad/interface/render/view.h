@@ -132,14 +132,12 @@ class viewscreen
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
-		bool draw_obs(); //moved here to fix radar
-		bool draw_obs(LevelRuntimeData* data);
 		// Multi-floor rendering: draw stacked floors bottom-up with per-floor
 		// opacity (camera floor opaque, floors below fade with depth, floors
 		// above are faint ghosts), interleaving each floor's tiles + entities so
 		// the camera floor occludes lower floors except through air holes.
 		// Single-floor levels collapse to one opaque pass (byte-identical).
-		void draw_floor_entities(LevelRuntimeData* data, int floor,
+		void draw_floor_entities(LevelRuntimeData* data, int floor, //moved here to fix radar
 		                         unsigned char alpha, bool layer_active);
 		// Floor-glide trigger + suppression ladder: the ONE place (both redraw
 		// overloads call it) that assigns current_floor_ from the control
@@ -260,7 +258,7 @@ class viewscreen
 			Sint32 yview;
 			float interpolation_alpha = 1.0f;
 			// Floor the camera-followed walker is on; the background draws floors
-			// 0..current_floor_ bottom-up (air reveals lower floors) and draw_obs
+			// 0..current_floor_ bottom-up (air reveals lower floors) and draw_floor_entities
 			// layers entities the same way. 0 for single-floor levels.
 			Sint32 current_floor_ = 0;
 		// When >= 0, forces the rendered floor. Set by the level editor (which

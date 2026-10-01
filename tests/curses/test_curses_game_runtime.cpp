@@ -19,12 +19,14 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/game_mode.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 
@@ -906,4 +908,163 @@ TEST(CursesGameRuntimeLocal, tower_loss_resets_disk_cursor_via_run_end_hook)
         << "the caller's save is otherwise untouched on a loss";
     EXPECT_EQ(static_cast<int>(save.team_size), 1)
         << "losses persist nothing else: the roster the player entered with";
+}
+
+// --- R8: a solo curses WIN through the public input path -----------------
+//
+// The classic level end needs no seam: a level with no hostile Living and an
+// EXIT pad holds open (level_done == 1) until a player-controlled walker
+// steps onto the pad, whose Lua rule (core:exit on_eat) raises the server's
+// exit prompt; answering 'y' ends the level as a win (ending 0, next level =
+// the exit's destination). The level is FIXTURE CONTENT authored with the
+// product's own writers -- the mapgen builders' start marker and exit
+// (og::mapgen::place_start / place_exit, the tower generator's calls) and
+// og::data::save_level_to_user_dir, the tower floor writer -- and it loads
+// through the ordinary user-path fall-through of the mounted campaign.
+namespace {
+
+// Removes an authored user-dir level on every exit path.
+struct AuthoredUserLevel
+{
+    int id;
+    ~AuthoredUserLevel() { (void)og::data::delete_tower_floor_files(id); }
+};
+
+constexpr int kAuthoredStartTileX = 6;
+constexpr int kAuthoredStartTileY = 10;
+constexpr int kAuthoredExitTileX = 10; // four tiles right of the start
+
+// A foe-less grass level with one team-0 start marker and, optionally, an
+// exit pad due right of it naming `exit_destination`.
+bool author_foeless_user_level(int id, bool with_exit, int exit_destination,
+                               const char* title)
+{
+    GameWorld authored(static_cast<std::uint32_t>(id));
+    headless_level_data_hooks().wire_world_entity_services(&authored, nullptr);
+    authored.create_new_grid();
+    authored.title = title;
+    og::mapgen::place_start(authored, 0, kAuthoredStartTileX,
+                            kAuthoredStartTileY);
+    if (with_exit)
+        og::mapgen::place_exit(authored, 0, kAuthoredExitTileX,
+                               kAuthoredStartTileY, exit_destination);
+    og::data::LevelFileMetadata metadata; // grid defaults to scen{id:04}
+    og::data::LevelFileIoError error = og::data::LevelFileIoError::None;
+    const bool written =
+        og::data::save_level_to_user_dir(authored, id, metadata, &error);
+    authored.delete_objects();
+    return written && error == og::data::LevelFileIoError::None;
+}
+
+} // namespace
+
+// Rule: walking the avatar onto a clear level's exit and answering the
+// prompt 'y' is a WIN that the local session folds into the caller's save:
+// the level is marked completed and the cursor moves to the exit's
+// destination. Keys go in through run_level_loop's public input (a held
+// 'd', then 'y' once the server's prompt is up), one bounded frame
+// per call.
+TEST(CursesGameRuntimeLocal, solo_exit_win_through_public_keys_folds_into_save)
+{
+    constexpr int kLevel = 9999;
+    constexpr int kDestination = 1;
+    AuthoredUserLevel files{kLevel};
+    ASSERT_TRUE(author_foeless_user_level(kLevel, /*with_exit=*/true,
+                                          kDestination, "CURSES EXIT"));
+
+    SaveData save;
+    init_test_save(save);
+    save.scen_num = static_cast<short>(kLevel);
+    ASSERT_FALSE(save.is_level_completed(kLevel));
+
+    std::string err;
+    auto session = make_local_session(save, 1, &err);
+    ASSERT_NE(session, nullptr) << err;
+    ASSERT_EQ(kLevel, session->mirror_world().id)
+        << "the authored user-dir level must load, not a fallback";
+
+    HeadlessTerminal term(30, 80);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    // Player 1's default MoveRight binding is 'd' (WASD, input_state.cpp);
+    // a press holds until its release.
+    term.push_char(U'd');
+
+    const LevelLoopOptions one_frame{.max_frames = 1,
+                                     .no_pacing = true,
+                                     .render = false};
+    GameRunResult result;
+    std::string prompt;
+    int frames = 0;
+    for (; frames < 400 && !result.ended; ++frames) {
+        if (prompt.empty() && session->exit_prompt_pending()) {
+            prompt = session->exit_prompt_text();
+            term.push_char(U'y'); // answered at the top of the next frame
+        }
+        result = run_level_loop(*session, term, clock, input, renderer,
+                                one_frame);
+    }
+
+    EXPECT_EQ("Exit to SOUTH OF TALWOOD (BEGINNING)?", prompt)
+        << "stepping onto the exit raises the server's exit prompt";
+    ASSERT_TRUE(result.ended) << "no level end within " << frames << " frames";
+    EXPECT_EQ(0, result.ending) << "an accepted exit is a win";
+    EXPECT_EQ(kDestination, result.next_level);
+    EXPECT_TRUE(save.is_level_completed(kLevel))
+        << "the win must be folded into the caller's save";
+    EXPECT_EQ(kDestination, static_cast<int>(save.scen_num))
+        << "the campaign cursor follows the exit";
+}
+
+// R3: with the finished save/world pair supplied, the verdict carries the
+// MOUNTED mode's results summary, space-joined -- the same line the SDL
+// results screen centres under the scoreboard (results_screen.cpp's
+// mode_summary_drawn). The tower's line names the floor the world IS
+// (world.id - 700) and the post-fold best; Classic adds nothing; the Gate
+// adds nothing; and a caller that passes no pair keeps the bare verdict.
+TEST(CursesGameRuntimeVerdict, mission_verdict_line_appends_the_mounted_mode_summary)
+{
+    MountRestore mount_restore;
+    GameRunResult win;
+    win.ended = true;
+    win.ending = 0;
+    SaveData save;
+    save.tower_best_floor = 2;
+    GameWorld world(0);
+    world.id = og::kTowerFirstFloorLevel;
+
+    ASSERT_EQ(og::mode::ProgressionKind::Classic,
+              og::mode::current_progression().kind())
+        << "the harness default mount is a classic campaign";
+    EXPECT_EQ("Victory!", mission_verdict_line(win, &save, &world))
+        << "Classic has no results summary to append";
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(
+                  std::string(og::kTowerCampaignId)));
+    ASSERT_EQ(og::mode::ProgressionKind::Tower,
+              og::mode::current_progression().kind());
+
+    EXPECT_EQ("Victory! Floor 1 conquered - best 2",
+              mission_verdict_line(win, &save, &world));
+
+    // B29: a tower LOSS must not read like a win. The summary names the
+    // floor the climb fell on (format_tower_loss's wording) -- the win line
+    // above is the positive control that the win shape is unchanged.
+    GameRunResult loss;
+    loss.ended = true;
+    loss.ending = 1;
+    EXPECT_EQ("Defeat. Fell on Floor 1 - best 2",
+              mission_verdict_line(loss, &save, &world))
+        << "a tower loss summary must not claim the floor was conquered";
+    EXPECT_EQ("Victory!", mission_verdict_line(win))
+        << "no pair, no summary: legacy callers are unchanged";
+
+    world.id = og::kTowerGateLevel;
+    EXPECT_EQ("Victory!", mission_verdict_line(win, &save, &world))
+        << "the Gate is not a floor; the tower adds nothing there";
+
+    EXPECT_TRUE(mount_restore.restore());
 }

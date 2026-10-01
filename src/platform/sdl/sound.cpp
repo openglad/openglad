@@ -41,6 +41,17 @@
 
 char * get_file_path(const char * file);
 
+// An audio device the game cannot open is not a reason to quit: log why,
+// release whatever init() got as far as, and carry on silent (play_sound
+// already ignores a silent sound object). Returns init()'s "no sound" 0.
+static int continue_without_audio(sdl_soundob& sound, const char* what)
+{
+	LogError("{} failed: {}; continuing without sound\n", what, SDL_GetError());
+	sound.shutdown();
+	sound.silence = 1;
+	return 0;
+}
+
 
 sdl_soundob::sdl_soundob()
 {
@@ -81,29 +92,20 @@ int sdl_soundob::init()
 	if (device_ == 0)
 	{
 		if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
-		{
-			LogError("SDL_InitSubSystem(SDL_INIT_AUDIO) failed: {}\n", SDL_GetError());
-			exit(0);
-		}
+			return continue_without_audio(*this, "SDL_InitSubSystem(SDL_INIT_AUDIO)");
 
 		// Mirrors the old mixer's open-audio(22050, S16, stereo, 1024);
 		// SDL3 has no chunksize knob. Devices start unpaused.
 		const SDL_AudioSpec want{SDL_AUDIO_S16, 2, 22050};
 		device_ = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want);
 		if (device_ == 0)
-		{
-			LogError("SDL_OpenAudioDevice failed: {}\n", SDL_GetError());
-			exit(0);
-		}
+			return continue_without_audio(*this, "SDL_OpenAudioDevice");
 
 		for (int c = 0; c < NUM_SOUND_CHANNELS; c++)
 		{
 			channels_[c] = SDL_CreateAudioStream(nullptr, nullptr);
 			if (channels_[c] == nullptr || !SDL_BindAudioStream(device_, channels_[c]))
-			{
-				LogError("SDL audio stream setup failed: {}\n", SDL_GetError());
-				exit(0);
-			}
+				return continue_without_audio(*this, "SDL audio stream setup");
 		}
 	}
 
@@ -150,10 +152,12 @@ void sdl_soundob::load_sound(sound_chunk *audio, const char * file)
     SDL_IOStream* rw = open_read_file("sound/", file);
 
 	// closeio=true: SDL_LoadWAV_IO closes rw itself, success or failure.
+	// A clip that will not load stays empty (play_sound skips it): one
+	// unreadable sample is not a reason to quit the game.
 	if (rw == nullptr || !SDL_LoadWAV_IO(rw, true, &audio->spec, &audio->buf, &audio->len))
 	{
-		LogError("SDL_LoadWAV_IO failed: {}\n", SDL_GetError());
-		exit(0);
+		LogError("SDL_LoadWAV_IO failed for sound/{}: {}\n", file, SDL_GetError());
+		return;
 	}
 
 	// Half volume, matching the old mixer's per-chunk volume of max/2.
@@ -221,8 +225,6 @@ void sdl_soundob::play_sound(short whichnum)
 	{
 		channel = channels_[next_steal_];
 		next_steal_ = (next_steal_ + 1) % NUM_SOUND_CHANNELS;
-		if (channel == nullptr)
-			return;
 		SDL_ClearAudioStream(channel);
 	}
 

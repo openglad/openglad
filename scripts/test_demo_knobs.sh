@@ -14,12 +14,15 @@ demo_bin=${1:?usage: test_demo_knobs.sh /path/to/openglad_demo}
 test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
+# Every run is bounded: a demo that blocks (a modal dialog nobody can answer
+# under the dummy video driver) reads as exit 124 here instead of eating the
+# whole ctest TIMEOUT. A healthy stanza takes well under a second.
 run_demo() { # run_demo <config-dir-name> [VAR=VALUE ...]; sets $output/$status
     local tag=$1
     shift
     set +e
     output=$(
-        env \
+        timeout 60 env \
             SDL_VIDEODRIVER=dummy \
             SDL_AUDIODRIVER=dummy \
             SDL_RENDER_DRIVER=software \
@@ -266,6 +269,67 @@ expect_status 1 'unusable capture directory'
 expect_message \
     "OPENGLAD_DEMO_CAPTURE_DIR '$test_root/not-a-directory/frames' is not usable" \
     'unusable capture directory'
+
+# --- 5c. A capture frame that cannot be written ---------------------------
+# A directory standing where frame00000.bmp must go makes the frame write
+# fail AFTER the worker threads are running. That failure is reported like
+# every other fatal knob -- "Unrecoverable error", exit 1 -- and never
+# aborts the process with joinable workers still alive (std::terminate,
+# exit 134). One case per writer: the single-cell capture and the
+# whole-grid capture (OPENGLAD_DEMO_CAPTURE_SESSION=-1). The positive
+# controls are the player- and cell-focus captures above: the same knobs
+# with nothing in the way write the frame and exit 0.
+mkdir -p "$test_root/capture-blocked/frame00000.bmp"
+run_demo capture-blocked \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_SEED=12 \
+    OPENGLAD_DEMO_MAX_FRAMES=5 \
+    OPENGLAD_DEMO_CAPTURE_DIR="$test_root/capture-blocked" \
+    OPENGLAD_DEMO_CAPTURE_FOCUS=player \
+    OPENGLAD_DEMO_CAPTURE_LIMIT=1
+expect_status 1 'blocked capture frame'
+expect_message \
+    "Unrecoverable error: openglad_demo failed to write capture frame $test_root/capture-blocked/frame00000.bmp" \
+    'blocked capture frame'
+
+mkdir -p "$test_root/capture-blocked-grid/frame00000.bmp"
+run_demo capture-blocked-grid \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_SEED=12 \
+    OPENGLAD_DEMO_MAX_FRAMES=5 \
+    OPENGLAD_DEMO_CAPTURE_DIR="$test_root/capture-blocked-grid" \
+    OPENGLAD_DEMO_CAPTURE_SESSION=-1 \
+    OPENGLAD_DEMO_CAPTURE_LIMIT=1
+expect_status 1 'blocked whole-grid capture frame'
+expect_message \
+    "Unrecoverable error: openglad_demo failed to write capture frame $test_root/capture-blocked-grid/frame00000.bmp" \
+    'blocked whole-grid capture frame'
+
+# --- 5d. A bootstrap level that cannot load ---------------------------------
+# A user-installed campaign whose only level is corrupt: the requested
+# scenario (2) does not exist, the loader falls back to the campaign's first
+# level, and that one is not a valid scenario either. The demo must fail
+# loudly (status 1) rather than open the game's modal "Fallback loading
+# failed" dialog, which nothing can answer in a headless run. The positive
+# control is every stanza above that boots a real level and exits 0.
+mkdir -p "$test_root/bootstrap-broken-config/campaigns"
+python3 - "$test_root/bootstrap-broken-config/campaigns/broken.glad" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as package:
+    package.writestr("campaign.yaml",
+                     "format_version:  1\ntitle:           Broken\n"
+                     "version:         1\nfirst_level:     1\n")
+    package.writestr("scen/scen1.fss", b"this is not a scenario file")
+PY
+run_demo bootstrap-broken \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_MAX_FRAMES=1 \
+    OPENGLAD_DEMO_CAMPAIGN=broken \
+    OPENGLAD_DEMO_SCENARIOS=2
+expect_status 1 'unloadable bootstrap level'
+expect_message \
+    'Unrecoverable error: openglad_demo failed to load bootstrap save0 for scenario 2' \
+    'unloadable bootstrap level'
 
 # --- 6. A grid wider than the display ---------------------------------------
 run_demo huge-grid \

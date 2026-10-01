@@ -46,6 +46,8 @@
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -1770,6 +1772,47 @@ struct ScriptedSetupIo {
 
 }  // namespace
 
+// Rule: choosing the wizard's BACK row leaves the terminal setup wizard at
+// once -- no further prompt is shown or read, and no notice is printed.
+// (Autosaves are not asserted: the per-prompt arena deal may bank one before
+// the first prompt, depending on what earlier cases left dealt.)
+TEST_F(MatchSetupSessionTest, terminal_driver_back_row_leaves_immediately)
+{
+    register_book(kSoccerKnobs);
+    save_.scen_num = 300;
+    save_.numplayers = 1;
+    put(save_, 0, 0, true);
+    save_.team_size = 1;
+
+    og::server::MatchStage stage({
+        .networked = false,
+        .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+        .host_company_save = &save_,
+    });
+
+    ScriptedSetupIo backing;
+    backing.save = &save_;
+    backing.stage = &stage;
+    backing.answers = {"@Back", "1"};
+    og::ui::run_terminal_match_setup(save_, backing.io());
+    EXPECT_EQ(1u, backing.prompts.size())
+        << "BACK is the last prompt the wizard shows";
+    EXPECT_EQ(1u, backing.cursor)
+        << "the answer after BACK must never be read";
+    EXPECT_TRUE(backing.notices.empty());
+
+    // Paired control: a navigation row keeps the wizard prompting, so the
+    // answer after it IS read (the wizard then leaves on "0").
+    ScriptedSetupIo stepping;
+    stepping.save = &save_;
+    stepping.stage = &stage;
+    stepping.answers = {"@Next: TEAMS", "0"};
+    og::ui::run_terminal_match_setup(save_, stepping.io());
+    EXPECT_EQ(2u, stepping.prompts.size())
+        << "Next: TEAMS moves on and prompts again";
+    EXPECT_EQ(2u, stepping.cursor);
+}
+
 // 19. Every dispatch arm of the loop, in one walk.
 TEST_F(MatchSetupSessionTest, terminal_driver_walks_every_outcome_arm)
 {
@@ -2004,13 +2047,63 @@ TEST_F(MatchSetupSessionTest, census_staged_match_report_answers_health_and_repo
                                                        bool_counts));
     EXPECT_EQ(counts, bool_counts);
 
-    // The Failed arm (StageStatus::Failed) has no deterministic fixture:
-    // every refusal a unit test can force -- unmounted campaign, a cursor
-    // the mount cannot name -- is caught by an Unavailable guard first, and
-    // MatchStage only fails on a load exception or the wire size cap. Wave 3
-    // owns the pin (WP8's terminal drives or WP7's SDL flow, which can force
-    // a stage the pipeline refuses); until then the arm is four uncovered
-    // src/ lines, recorded here rather than left silent.
+    // The Failed arm (StageStatus::Failed): a mounted campaign whose package
+    // carries a campaign.yaml and NO levels. The mount guard passes (the
+    // save names the mounted campaign), the stage's own campaign load
+    // succeeds, and its level load plus the first-level fallback both fail,
+    // so the stage fails -- and the report says STAGING FAILED instead of
+    // passing for a level with no world.
+    {
+        namespace fs = std::filesystem;
+        const std::string id = "cov98_census_failed_probe";
+        const fs::path user{get_user_path()};
+        const fs::path staging = user / (id + "_staging");
+        const fs::path archive = user / "campaigns" / (id + ".glad");
+        std::error_code ec;
+        fs::remove_all(staging, ec);
+        fs::create_directories(staging, ec);
+        fs::create_directories(user / "campaigns", ec);
+        {
+            std::ofstream yaml(staging / "campaign.yaml", std::ios::binary);
+            yaml << "format: 1\ntitle: Census Failed Probe\nfirst_level: 1\n";
+            ASSERT_TRUE(static_cast<bool>(yaml));
+        }
+        ASSERT_EQ(ArchiveIoError::None,
+                  zip_contents_with_error(staging.string(), archive.string()));
+        fs::remove_all(staging, ec);
+        struct ProbeCampaignCleanup {
+            std::string id;
+            ~ProbeCampaignCleanup()
+            {
+                (void)unmount_campaign_package_with_error(id);
+                (void)mount_campaign_package_with_error("modes");
+                delete_campaign(id);
+            }
+        } cleanup{id};
+        (void)unmount_campaign_package_with_error("modes");
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error(id));
+
+        save_.current_campaign = id;
+        save_.scen_num = 1;
+        og::server::MatchStage failing({
+            .networked = false,
+            .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,
+            .host_company_save = &save_,
+        });
+        counts = {5, 5, 5, 5};
+        report = og::ui::ScenarioRosterReport{};
+        EXPECT_EQ(Health::Failed,
+                  og::ui::census_staged_match_report(failing, save_, 0, 0u,
+                                                     counts, report));
+        EXPECT_TRUE(report.stage_failed)
+            << "the report leads with STAGING FAILED";
+        EXPECT_FALSE(report.staged);
+        EXPECT_EQ((std::array<int, 4>{5, 5, 5, 5}), counts)
+            << "a failed stage leaves the caller's counts alone";
+        save_.current_campaign = "modes";
+        save_.scen_num = 820;
+    }
 
     // An unmounted campaign has no world to census and says so in the
     // report's own words, not by going blank.

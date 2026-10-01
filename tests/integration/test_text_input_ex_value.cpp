@@ -685,3 +685,72 @@ TEST(TextInputExValue, prompt_hover_redraws_actions_and_cancels_in_letterboxed_v
     EXPECT_FALSE(value.has_value())
         << "hovered CANCEL must preserve cancellation after the edit";
 }
+
+namespace
+{
+struct ExChunkInjector
+{
+    std::vector<std::string> chunks;
+    bool saw_text_input = false;
+};
+
+// Waits for the blocking editor to open its text input (the editor's own
+// oracle: no engine frame to settle on), then types every chunk and commits
+// with Return. The editor consumes one queued event per wait, in order, so
+// the chunks need no pacing between them.
+int injector_thread_ex_chunks(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<ExChunkInjector*>(data);
+    const Uint64 active_deadline = SDL_GetTicks() + 5000;
+    while (!og::input_native::text_input_is_active() &&
+           SDL_GetTicks() < active_deadline)
+        SDL_Delay(5);
+    state->saw_text_input = og::input_native::text_input_is_active();
+    for (const std::string& chunk : state->chunks)
+        inject_text_input(chunk.c_str());
+    inject_key_press(SDLK_RETURN, 0);
+    return 0;
+}
+
+std::optional<std::string> run_ex_chunks(text& t, short maxlength,
+                                         ExChunkInjector& state)
+{
+    SDL_Thread* const th = SDL_CreateThread(injector_thread_ex_chunks,
+                                            "text_ex_chunks", &state);
+    if (th == nullptr)
+        return std::string("<injector thread failed to start>");
+    std::optional<std::string> value =
+        t.input_string_ex_value(10, 30, maxlength, "MSG", "");
+    SDL_WaitThread(th, nullptr);
+    return value;
+}
+} // namespace
+
+// input_string_ex edits inside the same fixed 100-byte buffer as
+// input_string (TextInputAndWidth.oversized_maxlength_clamps_to_the_edit_buffer
+// pins that twin): a 500 maxlength is clamped to what the buffer holds, so
+// 98 characters fit beside the terminator and the 99th is refused.
+TEST(TextInputExValue, oversized_maxlength_clamps_to_the_ex_edit_buffer)
+{
+    text t(TEXT_1);
+
+    ExChunkInjector oversized;
+    oversized.chunks = {std::string(31, 'x'), std::string(31, 'x'),
+                        std::string(31, 'x'), std::string(5, 'x'), "y"};
+    const std::optional<std::string> clamped = run_ex_chunks(t, 500, oversized);
+    ASSERT_TRUE(oversized.saw_text_input) << "the ex editor never opened";
+    ASSERT_TRUE(clamped.has_value());
+    EXPECT_EQ(std::string(98, 'x'), *clamped)
+        << "maxlength 500 must be clamped to the 100-byte edit buffer";
+
+    // Control: a caller's own small limit is kept exactly: 11 characters
+    // fit a 12-character field, and the 12th is refused.
+    ExChunkInjector small;
+    small.chunks = {std::string(11, 'z'), "w"};
+    const std::optional<std::string> kept = run_ex_chunks(t, 12, small);
+    ASSERT_TRUE(small.saw_text_input) << "the ex editor never opened";
+    ASSERT_TRUE(kept.has_value());
+    EXPECT_EQ(std::string(11, 'z'), *kept)
+        << "a small field keeps exactly maxlength-1 characters";
+}

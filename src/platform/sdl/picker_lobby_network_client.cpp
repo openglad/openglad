@@ -1336,8 +1336,6 @@ std::vector<short> resolve_local_seat_declaration_teams(
         if (std::find(teams.begin(), teams.end(), candidate) == teams.end())
             teams.push_back(candidate);
     }
-    if (teams.size() > seat_count)
-        teams.resize(seat_count);
     return teams;
 }
 
@@ -1608,8 +1606,7 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     {
         og::sim::LobbyCharacterSlot compacted = *slot.slot;
         compacted.slot_index = slot.save_slot_index;
-        compacted.owner_player_index =
-            slot.player != nullptr ? slot.player->player_index : 0xffu;
+        compacted.owner_player_index = slot.player->player_index;
         // slot_index is the owner's ORIGINAL private-save slot. The applied
         // save_slot_index may be a compacted position in the combined roster
         // and must never be used for owner-filtered persistence.
@@ -2267,8 +2264,7 @@ std::optional<std::string> detect_lan_ipv4_via_udp_route()
     sockaddr_in remote = {};
     remote.sin_family = AF_INET;
     remote.sin_port = htons(9);
-    if (inet_pton(AF_INET, "198.18.0.1", &remote.sin_addr) != 1)
-        return std::nullopt;
+    remote.sin_addr.s_addr = htonl(0xC6120001u); // 198.18.0.1
 
     const int connect_result = connect(
         descriptor,
@@ -3098,8 +3094,6 @@ public:
             og::ui::detail::make_team_change_message(
                 player_index, target_seat_id, team));
         poll_and_apply();
-        if (!state_.has_value())
-            return false;
         const og::sim::LobbyPlayer* const echoed =
             og::ui::detail::find_player_by_seat_id(*state_, target_seat_id);
         return echoed != nullptr && echoed->team == team;
@@ -3560,8 +3554,6 @@ private:
     // the same poll batch already applied).
     void refresh_stage_inputs()
     {
-        if (!stage_ || !server_)
-            return;
         try
         {
             og::server::MatchStageInputs inputs;
@@ -3932,16 +3924,7 @@ public:
             local_player_count_);
         local_team_ = local_seat_teams_.front();
         save->my_team = local_team_;
-        if (!prepare_pending_join_from_save())
-        {
-            spectator_mode_ = previous_spectator;
-            local_player_count_ = previous_player_count;
-            save->numplayers = previous_numplayers;
-            local_team_ = previous_local_team;
-            local_seat_teams_ = previous_seat_teams;
-            save->my_team = local_team_;
-            return false;
-        }
+        (void)prepare_pending_join_from_save();
 
         const bool accepted =
             og::ui::detail::wait_for_authoritative_lobby_outcome(
@@ -4076,8 +4059,7 @@ public:
             return true;
         }
 
-        if (!prepare_pending_join_from_save())
-            return true;
+        (void)prepare_pending_join_from_save();
 
         // Re-declare the private roster after the exact removal so fighters
         // carried by that seat move to a surviving stable seat. The exact
@@ -4308,8 +4290,6 @@ public:
         return og::ui::detail::wait_for_authoritative_lobby_value(
             [this] { poll_and_apply(); },
             [this, target_seat_id, team] {
-                if (!state_.has_value())
-                    return false;
                 const og::sim::LobbyPlayer* const echoed =
                     og::ui::detail::find_player_by_seat_id(
                         *state_, target_seat_id);
@@ -4757,8 +4737,6 @@ private:
 
     void send_settings_from_save()
     {
-        if (!transport_ || !state_.has_value())
-            return;
         SaveData* const save = current_picker_save();
         if (save == nullptr)
             return;
@@ -4828,8 +4806,6 @@ private:
 
     bool send_join_from_save()
     {
-        if (!transport_)
-            return false;
         if (spectator_mode_)
         {
             og::sim::LobbyMessage message;
@@ -5127,8 +5103,6 @@ private:
 
     void drain_messages()
     {
-        if (!transport_)
-            return;
 
         for (const og::sim::TypedReceivedMessage& message :
              poll_lobby_transport_messages(*transport_))

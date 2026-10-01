@@ -549,8 +549,8 @@ void view_team_roster(Menu& menu, SaveData& save)
         if (choice < 0)
             return;
         cursor = choice;
-        if (choice >= static_cast<int>(slots.size()))
-            continue;
+        // choose() answers only selectable rows, and the DEP/Gold footer
+        // row is not one: every answer indexes `slots`.
         const int slot = slots[static_cast<std::size_t>(choice)];
 
         if (key == U'd' || key == U'D') {
@@ -603,9 +603,9 @@ void hire_troops(Menu& menu, SaveData& save, TextPickerConfig& config,
     }
 
     for (;;) {
+        // HireSession always holds a recruit: the ctor and both family
+        // steps make one, and hire() refills it before it returns.
         const guy* r = session.current_recruit();
-        if (!r)
-            break;
 
         const std::string title = std::format("Hire: {} ({}/{})",
             og::ui::family_display_name(r->family),
@@ -857,15 +857,11 @@ void teams_screen(Menu& menu, SaveData& save)
 // so the old "documented local-roster bound" is gone with the scratch
 // marshaling. The scratch headless load survives only as the fallback
 // census world for a null stage.
+// Its one caller, view_scenario_locally_staged(), has already refused an
+// unmounted campaign with this screen's words, and staging never remounts.
 void view_scenario(Menu& menu, const SaveData& save, const GameWorld* staged,
                    og::ui::StagePreviewStatus status)
 {
-    if (get_mounted_campaign() != save.current_campaign) {
-        menu.show_text("View Scenario", {std::format(
-            "Campaign '{}' is not mounted.", save.current_campaign)});
-        return;
-    }
-
     // Seat block (#218): the curses View Level stages locally, so the
     // save-derived seat synthesis IS its staging input; every seat is this
     // machine's (all-local -> YOU).
@@ -1268,6 +1264,15 @@ void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
     og::ui::run_terminal_match_setup(save, io);
 }
 
+// The "Load failed" notice of the terminal open sequence (load_game and the
+// cloud download's scratch open share it).
+void show_load_failed(Menu& menu, const std::string& slot, SaveDataIoError io)
+{
+    menu.show_text("Load failed",
+        {std::format("Load failed for '{}' ({}).",
+            slot, og::ui::save_error_string(io))});
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -1435,7 +1440,7 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             const std::string status = og::ui::cloud::run_cloud_download(
                 {}, curses_cloud_hooks(menu, notified),
                 [this](const std::string& slot) {
-                    return open_downloaded_company(slot);
+                    return open_company_slot(slot);
                 });
             if (!notified)
                 menu.show_text("Cloud Save", {status});
@@ -1842,9 +1847,16 @@ void CursesPickerClient::run_game()
         // rematch shape's "next level" is this same level — say so honestly.
         // The next level's title is read off whatever campaign the session
         // left mounted (the one just played); scenario_display_name falls
-        // back to "N. Level N" if it cannot be read.
+        // back to "N. Level N" if it cannot be read. The verdict carries the
+        // mounted mode's results summary (tower: "Floor N conquered - best
+        // B", or "Fell on Floor N - best B" on a loss), read off the finished pair exactly as the SDL results screen
+        // does: save_data_ already holds the win fold (commit_result_to_save
+        // ran inside run_level_loop) and the mirror world still carries the
+        // finished level's id. (The networked dialog in finish_network_round
+        // has no such pair to pass: the tower is local-only.)
         menu.show_text("Mission complete",
-            {mission_verdict_line(result),
+            {mission_verdict_line(result, &save_data_,
+                                  &session->mirror_world()),
              (result.next_level >= 0 && !result.mode_rematch)
                  ? std::format("Next level: {}",
                        og::data::scenario_display_name(result.next_level))
@@ -1865,9 +1877,7 @@ bool CursesPickerClient::load_game()
     assert_company_slot_authority(); // [SAVE-R2]
     const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
     if (io != SaveDataIoError::None) {
-        menu.show_text("Load failed",
-            {std::format("Load failed for '{}' ({}).",
-                config_.save_name, og::ui::save_error_string(io))});
+        show_load_failed(menu, config_.save_name, io);
         return false;
     }
 
@@ -1890,12 +1900,22 @@ bool CursesPickerClient::load_game()
     return true;
 }
 
-bool CursesPickerClient::open_downloaded_company(const std::string& slot)
+bool CursesPickerClient::open_company_slot(const std::string& slot)
 {
     const std::string previous_slot = config_.save_name;
     config_.save_name = slot;
-    if (load_game())
+    // Open the company on a scratch save first: load_with_error reads the
+    // whole company before load_campaign can fail (its campaign is not
+    // installed here), so a failed open straight into save_data_ would leave
+    // the other company in memory under the previous slot.
+    SaveData scratch;
+    const SaveDataIoError io = scratch.load_with_error(slot);
+    if (io == SaveDataIoError::None && load_game())
         return true;
+    if (io != SaveDataIoError::None) {
+        Menu menu(term_, clock_);
+        show_load_failed(menu, slot, io);
+    }
     config_.save_name = previous_slot;
     assert_company_slot_authority(); // [SAVE-R2]
     return false;
@@ -1984,13 +2004,8 @@ bool CursesPickerClient::show_company_list()
                      "Restore a backup or delete it."});
                 break;
             }
-            const std::string previous_slot = config_.save_name;
-            config_.save_name = info.slot;
-            if (load_game())
+            if (open_company_slot(info.slot))
                 return true; // -> team build (base camp)
-            // load_game showed the error; restore the slot authority.
-            config_.save_name = previous_slot;
-            assert_company_slot_authority(); // [SAVE-R2]
             break;
         }
         case PickerMenuCommand::OpenCompanyBackups: {
@@ -2122,8 +2137,14 @@ bool CursesPickerClient::show_company_backups(
             const std::string previous_slot = config_.save_name;
             config_.save_name = company.slot;
             assert_company_slot_authority(); // [SAVE-R2]
+            // Rewind into a scratch save, never the open company: a
+            // ReloadFailed rollback reloads the TARGET's pre-restore state
+            // into the save it is handed, and the slot goes back to
+            // previous_slot below. The success path loses nothing —
+            // load_game re-reads the rewound file into save_data_.
+            SaveData rewound;
             const og::data::CompanyRestoreError error =
-                og::data::restore_company_backup(save_data_, company.slot,
+                og::data::restore_company_backup(rewound, company.slot,
                                                  backup.seq);
             // RestampFailed included: the rewind itself finished (the next
             // autosave re-stamps).

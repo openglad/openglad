@@ -1402,6 +1402,47 @@ TEST(InputKeybinds, input_control_settings_cfg_invalid_values_fall_back_to_defau
 }
 
 
+// The persisted default profiles are a permutation: a valid one (P1 and P2
+// swapped) loads as written, while a cfg in which two seats claim the SAME
+// factory profile is rejected atomically -- every seat falls back to its own
+// profile, never a half-applied mix.
+TEST(InputKeybinds, input_control_settings_cfg_duplicate_default_profiles_fall_back_to_identity)
+{
+    FullControlSnapshotGuard guard;
+    cfg_store config;
+    config.load_settings();
+
+    // Positive control: a valid swap is honoured as written.
+    config.apply_setting("controls", "player1_default_profile", "2");
+    config.apply_setting("controls", "player2_default_profile", "1");
+    config.apply_setting("controls", "player3_default_profile", "3");
+    config.apply_setting("controls", "player4_default_profile", "4");
+    load_player_control_settings_from_cfg(config);
+    const int swapped[4] = {1, 0, 2, 3};
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_EQ(swapped[p],
+                  input_hardware_state().player_control_default_profiles[p])
+            << "a valid persisted permutation loads as written (seat " << p
+            << ")";
+    }
+
+    // P1 and P2 both claim factory profile 3: the whole set is rejected.
+    config.apply_setting("controls", "player1_default_profile", "3");
+    config.apply_setting("controls", "player2_default_profile", "3");
+    config.apply_setting("controls", "player3_default_profile", "1");
+    config.apply_setting("controls", "player4_default_profile", "4");
+    load_player_control_settings_from_cfg(config);
+    for (int p = 0; p < 4; ++p)
+    {
+        EXPECT_EQ(p,
+                  input_hardware_state().player_control_default_profiles[p])
+            << "a duplicate profile claim must fall back atomically (seat "
+            << p << ")";
+    }
+}
+
+
 TEST(InputKeybinds, input_control_settings_cfg_persists_separate_mode_keymaps)
 {
     cfg_store config;

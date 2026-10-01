@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "test_family_hook_dispatch.h"
+#include "../../src/gameplay/family_registry_base.h"
 
 TEST(FamilyRegistry, registry_returns_non_null_for_valid_ids)
 {
@@ -139,33 +140,6 @@ TEST(FamilyRegistry, registry_bloodspot_flags)
     ASSERT_TRUE(get_family_descriptor(FAMILY_SKELETON)->leaves_bloodspot == false);
     ASSERT_TRUE(get_family_descriptor(FAMILY_TOWER1)->leaves_bloodspot == false);
     ASSERT_TRUE(get_family_descriptor(FAMILY_GIANT_SKELETON)->leaves_bloodspot == false);
-}
-
-TEST(FamilyRegistry, registry_carries_no_cpp_behavior_callbacks)
-{
-    init_family_registry();
-    // Family behavior lives in class-pack Lua. Every descriptor behavior
-    // slot is nullptr, for core and mod families alike, so the engine has no
-    // family-specific C++ fallback.
-    for (int i = 0; i < NUM_FAMILIES; i++)
-    {
-        const FamilyDescriptor* d = get_family_descriptor(i);
-        ASSERT_TRUE(d != nullptr);
-        EXPECT_EQ(nullptr, d->do_special) << d->name;
-        EXPECT_EQ(nullptr, d->check_special_ai) << d->name;
-        EXPECT_EQ(nullptr, d->hit_response) << d->name;
-        EXPECT_EQ(nullptr, d->set_difficulty) << d->name;
-        EXPECT_EQ(nullptr, d->level_up) << d->name;
-        EXPECT_EQ(nullptr, d->on_death) << d->name;
-        EXPECT_EQ(nullptr, d->on_act_living) << d->name;
-        EXPECT_EQ(nullptr, d->on_shoved) << d->name;
-        EXPECT_EQ(nullptr, d->on_fire_weapon) << d->name;
-        EXPECT_EQ(nullptr, d->handle_teleport) << d->name;
-        EXPECT_EQ(nullptr, d->on_create) << d->name;
-        EXPECT_EQ(nullptr, d->customize_weapon) << d->name;
-        EXPECT_EQ(nullptr, d->on_ani_complete) << d->name;
-        EXPECT_EQ(nullptr, d->on_melee_hit) << d->name;
-    }
 }
 
 TEST(FamilyRegistry, registry_behavior_lives_in_pack_lua)
@@ -314,4 +288,36 @@ TEST(FamilyRegistry, promotion_formula_survives_the_pack_install)
     ASSERT_NE(nullptr, orc->promotion_new_level);
     EXPECT_EQ(1, static_cast<int>(orc->promotion_new_level(42)));
     EXPECT_EQ(nullptr, get_family_descriptor(FAMILY_SOLDIER)->promotion_new_level);
+}
+
+namespace {
+
+struct GapProbeDescriptor
+{
+    int family_id = -1;
+};
+
+} // namespace
+
+// first_unpopulated_core_slot names the LOWEST core slot no pack installed:
+// it is the input of the missing-core-pack diagnostic
+// (require_core_families_installed), which must name the first gap, not
+// just report that one exists. Mod slots above the core span never count.
+TEST(FamilyRegistryBase, first_unpopulated_core_slot_names_the_lowest_gap)
+{
+    FamilyRegistryBase<GapProbeDescriptor, 3, 4> registry;
+    registry.init([](GapProbeDescriptor&) {});
+    EXPECT_EQ(0, registry.first_unpopulated_core_slot()) << "nothing installed";
+
+    ASSERT_TRUE(registry.set(1, GapProbeDescriptor{}));
+    ASSERT_TRUE(registry.set(3, GapProbeDescriptor{})); // mod slot
+    EXPECT_EQ(0, registry.first_unpopulated_core_slot())
+        << "slot 0 is still free although 1 (and mod slot 3) are installed";
+
+    ASSERT_TRUE(registry.set(0, GapProbeDescriptor{}));
+    EXPECT_EQ(2, registry.first_unpopulated_core_slot());
+
+    // Paired control: the whole core span installed reads as no gap.
+    ASSERT_TRUE(registry.set(2, GapProbeDescriptor{}));
+    EXPECT_EQ(-1, registry.first_unpopulated_core_slot());
 }

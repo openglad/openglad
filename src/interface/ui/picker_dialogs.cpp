@@ -81,7 +81,6 @@ DialogBounds compute_dialog_bounds(const char* title, const std::vector<std::str
 Sint32 leftmouse(button* buttons);
 void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 
 void timed_dialog(const char* message, float delay_seconds)
 {
@@ -240,7 +239,6 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
 
         int dumbcount = og::runtime::current_session->myscreen_->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
         int j = 0;
@@ -324,7 +322,6 @@ void popup_dialog(const char* title, const char* message)
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
 
         int dumbcount = og::runtime::current_session->myscreen_->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
         int j = 0;

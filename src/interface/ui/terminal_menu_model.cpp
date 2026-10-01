@@ -166,8 +166,9 @@ IPickerLobbyClient::StagedPreviewHealth census_staged_match_report(
             &seats);
         return Health::Failed;
     }
-    if (stage.status() != og::server::StageStatus::Staged)
-        return unavailable();
+    // Not Failed means Staged: observe_inputs() leaves has_inputs_ set, so
+    // ensure_current() restages an Empty stage, and stage_now() always ends
+    // Staged or Failed.
     const GameWorld* world = stage.world();
     // A stage that fell back must not masquerade as this level's census
     // (the mirror applies the same rule).

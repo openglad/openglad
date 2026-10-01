@@ -1148,7 +1148,6 @@ TEST(MassCoverage, pixie_render_paths) {
 
     p.setxy(static_cast<short>(vs->topx + 1), static_cast<short>(vs->topy + 1));
     ASSERT_TRUE(p.on_screen(vs)) << "pixie should be visible when inside the view";
-    ASSERT_TRUE(p.on_screen()) << "pixie should be visible in at least one active view";
 
     p.setxy(static_cast<short>(vs->topx - p.sizex - 2), static_cast<short>(vs->topy));
     ASSERT_TRUE(!p.on_screen(vs)) << "pixie left of the view should be hidden";

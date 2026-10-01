@@ -2,18 +2,25 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/classpack_data.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/resources/packs.h>
 #include <openglad/platform/sai2x.h>
 
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -584,7 +591,6 @@ TEST(ResultsScreenFullUi, troops_press_opens_the_troop_page_and_drains_the_wheel
     og::runtime::current_session->myscreen_->world().par_value = 3;
     og::runtime::current_session->myscreen_->framecount = 10;
     og::runtime::current_session->myscreen_->world().set_level_tick_count(10);
-    og::runtime::current_session->myscreen_->special_name[FAMILY_MAGE][2] = "Arcane Burst";
 
     std::map<int, guy*> before;
     std::map<int, walker*> after;
@@ -1252,16 +1258,66 @@ TEST(ResultsScreenFullUi, classic_mvp_ignores_foreign_company_team)
     screen_ref.world().end = saved_end;
 }
 
+namespace
+{
+// The five family registries are process-global: the pack family the troop
+// flow installs is freed on the way in and on EVERY way out, so no later test
+// in a shuffled order meets a living family 21 it never declared. The harness
+// mounts only gladiator, so the mod span starts empty.
+struct ResultsPackFamilyGuard
+{
+    ResultsPackFamilyGuard() { reset_all_registry_mod_slots(); }
+    ~ResultsPackFamilyGuard() { reset_all_registry_mod_slots(); }
+    ResultsPackFamilyGuard(const ResultsPackFamilyGuard&) = delete;
+    ResultsPackFamilyGuard& operator=(const ResultsPackFamilyGuard&) = delete;
+};
+} // namespace
+
 // The TROOPS page draws one row per troop: a troop whose after-exp is below
 // its before-exp shows a NEGATIVE XP gain (the red bar drawn leftwards), and
-// a troop that gained a level shows the special names it earned from
-// screen::special_name. Those rows are text and bars with no other seam, so
-// the per-drawn-row "troop_row <name> xp=<+/-N> special=<name>" trace is what
-// is pinned here: Bruise (level 5 -> 4) must report a negative gain and Glyph
-// (level 3 -> 4) must report the Arcane Burst it gained. OK — not the
-// injector's failsafe — must end the page.
+// a troop that gained a level shows the special its OWN family's registry
+// descriptor names at that slot, for any registered family. Those rows are
+// text and bars with no other seam, so the per-drawn-row
+// "troop_row <name> xp=<+/-N> special=<name>" trace is what is pinned here:
+// Bruise (level 5 -> 4) must report a negative gain, Glyph (a core MAGE,
+// level 3 -> 4) must report the slot-2 special its descriptor names, and Hex
+// (a class-pack family registered past slot 21, level 3 -> 4) must report its
+// own slot-2 special HEXFIRE — the old "bogus family" guard hid every family
+// past slot 21. OK — not the injector's failsafe — must end the page.
 TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
 {
+    ResultsPackFamilyGuard pack_guard;
+    {
+        og::data::ClasspackData data;
+        data.pack = "resultstest";
+        og::data::ClasspackLivingEntry e;
+        e.id = "test:hexknight";
+        e.wire_id = "auto";
+        e.name = "HEXKNIGHT-XII";
+        og::data::ClasspackCostsBlock costs;
+        costs.hire = 250;
+        e.costs = costs;
+        e.default_weapon = "core:knife";
+        og::data::ClasspackSpecialEntry fire;
+        fire.id = "hexfire";
+        fire.name = "HEXFIRE";
+        fire.mp_cost = 20;
+        fire.slot = 2;  // C++ harvests spell the slot; the Lua parser derives it
+        e.specials = std::vector<og::data::ClasspackSpecialEntry>{fire};
+        data.living.push_back(std::move(e));
+        ASSERT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    }
+    ASSERT_EQ(NUM_FAMILIES, og::families::resolve_family_string_id(
+                                Order::Living, "test:hexknight"))
+        << "the first living mod slot is the one past the 21 core families";
+
+    // The mage's REAL slot-2 name, read from its registry descriptor.
+    const FamilyDescriptor* mage = get_family_descriptor(FAMILY_MAGE);
+    ASSERT_NE(nullptr, mage);
+    const std::string mage_special = mage->special_names[2];
+    ASSERT_NE(std::string(kSpecialNameNone), mage_special)
+        << "the core MAGE's slot 2 must be a real special for this control";
+
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
@@ -1274,9 +1330,6 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
     screen_ref.world().par_value = 2;
     screen_ref.framecount = 30;
     screen_ref.world().set_level_tick_count(30);
-
-    const std::string saved_special = screen_ref.special_name[FAMILY_MAGE][2];
-    screen_ref.special_name[FAMILY_MAGE][2] = "Arcane Burst";
 
     std::map<int, guy*> before;
     std::map<int, walker*> after;
@@ -1326,6 +1379,52 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
     lost->stats()->set_hitpoints(5);
     after[2] = lost;
 
+    // A class-pack hero. The loader has no art for a pack id (add_ob would
+    // hand back a SOLDIER), so the walker is a soldier whose guy carries the
+    // pack family byte — get_family() reads after->myguy->family.
+    auto* hexer = screen_ref.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(hexer != nullptr) << "expected walker for the pack troop";
+    hexer->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    auto hex_before = std::make_unique<guy>(FAMILY_SOLDIER);
+    hex_before->name = "Hex";
+    hex_before->family = static_cast<char>(NUM_FAMILIES);
+    hex_before->level = 3;
+    hex_before->exp = calculate_exp(3) + 10;
+    before[3] = hex_before.get();
+    before_storage.push_back(std::move(hex_before));
+
+    hexer->myguy->name = "Hex";
+    hexer->myguy->family = static_cast<char>(NUM_FAMILIES);
+    hexer->myguy->exp = calculate_exp(4) + 30;
+    hexer->myguy->scen_kills = 0;
+    hexer->myguy->scen_damage = 3;
+    hexer->myguy->scen_damage_taken = 1;
+    hexer->myguy->scen_min_hp = 9;
+    hexer->stats()->set_max_hitpoints(10);
+    hexer->stats()->set_hitpoints(9);
+    after[3] = hexer;
+
+    // R14: three new recruits of the core families 18-20, the ones the
+    // registry once named BEAST. They sit below the scroll area (this flow
+    // never scrolls), so their rows are pinned by the per-troop class trace.
+    const std::array<std::pair<const char*, int>, 3> beasts = {{
+        {"Golem", FAMILY_GOLEM},
+        {"Skel", FAMILY_GIANT_SKELETON},
+        {"Tower", FAMILY_TOWER1},
+    }};
+    for (std::size_t b = 0; b < beasts.size(); ++b)
+    {
+        auto* beast = screen_ref.world().add_ob(Order::Living, beasts[b].second);
+        ASSERT_TRUE(beast != nullptr) << "expected walker for " << beasts[b].first;
+        beast->set_owned_myguy(std::make_unique<guy>(beasts[b].second));
+        beast->myguy->name = beasts[b].first;
+        beast->myguy->family = static_cast<char>(beasts[b].second);
+        beast->myguy->exp = calculate_exp(2);
+        beast->stats()->set_max_hitpoints(10);
+        beast->stats()->set_hitpoints(10);
+        after[static_cast<int>(4 + b)] = beast;
+    }
+
     results_screen_testing_set_force_full(true);
 
     int bows = 0;
@@ -1348,7 +1447,6 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
     }
 
     results_screen_testing_set_force_full(false);
-    screen_ref.special_name[FAMILY_MAGE][2] = saved_special;
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
     ASSERT_TRUE(!retry) << "troop detail OK path should not request retry";
@@ -1368,9 +1466,31 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
         << "this flow never scrolls, so both roster rows are inside the "
            "scroll area on every drawn troops frame — a row that stops "
            "drawing (or draws only on some frames) breaks the pair";
-    EXPECT_GT(count_result_traces("special=Arcane Burst"), 0)
-        << "a gained level must name the special it earned, read from "
-           "screen::special_name[family][slot]";
+    const std::string mage_row_special = "special=" + mage_special;
+    EXPECT_EQ(count_result_traces("troop_row Glyph "),
+              count_result_traces(mage_row_special.c_str()))
+        << "every drawn Glyph row must name the core MAGE's slot-2 special '"
+        << mage_special << "' from its registry descriptor";
+    EXPECT_EQ(count_result_traces("troop_row Hex "),
+              count_result_traces("troop_row Bruise "))
+        << "the pack troop's row draws on every troops frame like its siblings";
+    EXPECT_EQ(count_result_traces("troop_row Hex "),
+              count_result_traces("special=HEXFIRE"))
+        << "every drawn Hex row must name HEXFIRE, the slot-2 special its own "
+           "pack family (id 21, past the core table) declares";
+    // R14: every troop's class word is its family's registry display name;
+    // 18-20 read GOLEM, GIANT SKEL and TOWER (the HUD's words), never BEAST.
+    const int troop_frames = count_result_traces("troop_row Bruise ");
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Bruise the SOLDIER"))
+        << "control: a core SOLDIER's class word is unchanged";
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Golem the GOLEM"))
+        << "core family 18 reads GOLEM on the results screen";
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Skel the GIANT SKEL"))
+        << "core family 19 reads GIANT SKEL on the results screen";
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class Tower the TOWER"))
+        << "core family 20 reads TOWER on the results screen";
+    EXPECT_EQ(0, count_result_traces(" the BEAST"))
+        << "no registered core family reads the unknown-family word BEAST";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))
         << "the OK button is what ends the troop page";
     EXPECT_FALSE(trace_contains("results", "exit world_end"))

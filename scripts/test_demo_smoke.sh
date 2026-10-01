@@ -350,3 +350,87 @@ lockstep_forced_output=$(
 )
 printf '%s\n' "$lockstep_forced_output"
 grep -Fq 'openglad_demo: pacing lockstep' <<<"$lockstep_forced_output"
+
+# --- Bootstrap save failure ---------------------------------------------------
+# Every session boots from the save slot it writes first. A directory standing
+# where save/save0.gtl belongs makes that write fail (as root too, unlike a
+# chmod); the demo must refuse to run, loudly, rather than play whatever the
+# slot held before. Bounded: a demo that skipped the check would block in the
+# load-failure dialog, and timeout's 124 must not stall the whole script.
+mkdir -p "$test_root/save-fail-config/save/save0.gtl"
+set +e
+save_fail_output=$(
+    env \
+        SDL_VIDEODRIVER=dummy \
+        SDL_AUDIODRIVER=dummy \
+        SDL_RENDER_DRIVER=software \
+        OPENGLAD_DEMO_GRID=1x1 \
+        OPENGLAD_DEMO_MAX_FRAMES=1 \
+        OPENGLAD_DEMO_SEED=8 \
+        OPENGLAD_CONFIG_DIR="$test_root/save-fail-config" \
+        timeout 60 "$demo_bin" 2>&1
+)
+save_fail_status=$?
+set -e
+printf '%s\n' "$save_fail_output"
+if (( save_fail_status == 0 )); then
+    printf 'openglad_demo ran without being able to write its bootstrap save\n' >&2
+    exit 1
+fi
+grep -Fq 'openglad_demo failed to bootstrap save0 for scenario' \
+    <<<"$save_fail_output"
+
+# --- Clean shutdown on an OS quit request -------------------------------------
+# SDL turns SIGINT into SDL_EVENT_QUIT; the demo's loop must stop and the
+# process exit 0 through its normal shutdown (exit summary, worker join).
+# MAX_FRAMES=0 runs unbounded, so only the quit can end the run: a quit the
+# loop ignores becomes timeout's status 124. The signal is sent once the log
+# says the main loop is about to start -- a poll on that line, never a fixed
+# sleep -- and goes to the demo itself (its pid is written before the exec),
+# not to timeout, which would report a forwarded signal as 128+2. A
+# background job starts with SIGINT ignored, and SDL only claims a signal
+# whose handler is still the default, so the demo is exec'd with SIGINT reset
+# (env --default-signal). -k: a demo that ignores the quit (and timeout's
+# TERM) is killed rather than left running.
+sigint_log="$test_root/sigint.log"
+sigint_pidfile="$test_root/sigint.pid"
+env \
+    SDL_VIDEODRIVER=dummy \
+    SDL_AUDIODRIVER=dummy \
+    SDL_RENDER_DRIVER=software \
+    OPENGLAD_DEMO_GRID=1x1 \
+    OPENGLAD_DEMO_MAX_FRAMES=0 \
+    OPENGLAD_DEMO_SEED=9 \
+    OPENGLAD_CONFIG_DIR="$test_root/sigint-config" \
+    timeout -k 5 60 sh -c 'echo $$ >"$0"; exec env --default-signal=INT "$1"' \
+    "$sigint_pidfile" "$demo_bin" \
+    >"$sigint_log" 2>&1 &
+sigint_pid=$!
+sigint_ready=0
+for (( poll = 0; poll < 600; poll++ )); do
+    if [[ -s "$sigint_pidfile" ]] &&
+       grep -Fq 'spawning 1 worker threads' "$sigint_log"; then
+        sigint_ready=1
+        break
+    fi
+    kill -0 "$sigint_pid" 2>/dev/null || break
+    sleep 0.1
+done
+if (( sigint_ready == 0 )); then
+    cat "$sigint_log"
+    kill -KILL "$sigint_pid" 2>/dev/null || true
+    printf 'openglad_demo never reached its main loop\n' >&2
+    exit 1
+fi
+kill -INT "$(cat "$sigint_pidfile")"
+set +e
+wait "$sigint_pid"
+sigint_status=$?
+set -e
+cat "$sigint_log"
+if (( sigint_status != 0 )); then
+    printf 'openglad_demo exited with status %d on SIGINT (124/137 = never quit)\n' \
+        "$sigint_status" >&2
+    exit 1
+fi
+grep -Eq 'openglad_demo: [0-9]+ sim ticks,' "$sigint_log"

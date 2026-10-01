@@ -122,9 +122,13 @@ sign-off, quoted.
   becomes the literal string "@file".
 - `gh run watch --exit-status | tail` reads TAIL's exit code — capture
   gh's own status unpiped, or a failed run reads as green.
-- The OAuth token lacks `workflow` scope: pushes touching
-  `.github/workflows/` are rejected over HTTPS — push those via the SSH
-  remote.
+- Pushes that touch `.github/workflows/` need the `workflow` scope. The
+  `gh` token on this box carries it (`gh auth status` lists 'workflow'), so
+  push over HTTPS with the credential override —
+  `git -c credential.https://github.com.helper='!/home/yans/.local/bin/gh auth git-credential' push ...`
+  (the helper lines in ~/.gitconfig point at a garbage-collected nix store
+  path). The SSH remote has no key on this box (`Permission denied
+  (publickey)`); PR #319's coverage.yml bump was pushed this way.
 - A PR that becomes CONFLICTING against master gets NO
   pull_request-event runs at all (GitHub can't build the merge ref)
   while push-triggered workflows still run — looks like "CI only runs

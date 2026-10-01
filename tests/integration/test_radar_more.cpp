@@ -11,7 +11,11 @@
 #include <openglad/core/family_presentation.h>
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/families/effect_family_descriptor.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/generator_family_descriptor.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/legacy/base.h>
@@ -577,7 +581,7 @@ TEST_F(RadarMore, radar_terrain_follows_the_editor_floor_override)
 
 // B2 (robustness): a floor whose grid was never authored falls back to the
 // base grid (no crash, no garbage), and an out-of-range walker floor clamps
-// to the top floor.
+// to the top floor (above) or to the ground floor (below).
 TEST_F(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
 {
     FixedRandom fixed_rng(1);
@@ -615,6 +619,15 @@ TEST_F(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
         << "floor 5 with 2 floors clamps to the top floor";
     EXPECT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0]))
         << "an unauthored floor grid falls back to the base terrain";
+
+    // A negative floor (w:set_floor(-1) is unclamped from a level script)
+    // clamps to the ground floor, and the radar re-bakes floor 0's snow.
+    control->set_floor(-1);
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(0, static_cast<int>(r.bmp_floor_))
+        << "floor -1 clamps to the ground floor";
+    EXPECT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0]))
+        << "the ground floor's snow is re-baked";
 
     vs->control = saved_control;
     vs->radarstart = saved_radarstart;
@@ -1093,6 +1106,385 @@ TEST_F(RadarMore, landmark_fx_in_fxlist_draw_without_a_beacon)
     vs->control = saved_control;
     vs->radarstart = saved_radarstart;
     vs->editor_floor_override_ = saved_override;
+}
+
+// An FX landmark may declare its radar colour as the team sentinel
+// (kRadarColorTeam): it still counts as a landmark and pulses in the
+// entity's own team colour. Paired control: the same family with the
+// "none" colour is quiet furniture and paints nothing.
+TEST_F(RadarMore, team_coloured_fx_landmark_pulses_in_its_team_colour)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    const int shadow_family =
+        og::families::resolve_family_string_id(Order::FX, "modes:bshadow");
+    ASSERT_GE(shadow_family, 0);
+    const EffectFamilyDescriptor* shadow_d =
+        get_effect_family_descriptor(shadow_family);
+    ASSERT_NE(nullptr, shadow_d);
+    ASSERT_TRUE(shadow_d->radar.landmark);
+    ASSERT_TRUE(shadow_d->radar.ping);
+    ASSERT_EQ(0, shadow_d->radar.jitter);
+    const EffectFamilyDescriptor saved_shadow = *shadow_d;
+    ScopedEffectDescriptorRestore restore(shadow_family, saved_shadow);
+
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+    constexpr int gx = 8;
+    constexpr int gy = 8;
+    walker* landmark = d.add_fx_ob(Order::FX, shadow_family);
+    ASSERT_NE(nullptr, landmark);
+    landmark->setxy(GRID_SIZE * gx, GRID_SIZE * gy);
+    landmark->set_team_num(2);
+    const int team_color = landmark->query_team_color();
+    ASSERT_NE(COLOR_YELLOW, team_color) << "setup: team colour != declared";
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+
+    std::array<std::array<int, 3>, 4> team_band{};
+    for (std::size_t k = 0; k < team_band.size(); ++k)
+        team_band[k] = palette_rgb(team_color + static_cast<int>(k));
+
+    EffectFamilyDescriptor team_shadow = saved_shadow;
+    team_shadow.radar.color = og::kRadarColorTeam;
+    ASSERT_TRUE(set_effect_family_descriptor(shadow_family, team_shadow));
+    for (int frame = 0; frame < 16; ++frame)
+    {
+        ASSERT_EQ(1, r.draw(&d));
+        const std::array<int, 3> center = blip_rgb_at(r, gx, gy);
+        EXPECT_NE(team_band.end(),
+                  std::find(team_band.begin(), team_band.end(), center))
+            << "frame " << frame
+            << ": a team-sentinel landmark pulses in its team colour";
+    }
+
+    EffectFamilyDescriptor quiet_shadow = saved_shadow;
+    quiet_shadow.radar.color = og::kRadarColorNone;
+    ASSERT_TRUE(set_effect_family_descriptor(shadow_family, quiet_shadow));
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(palette_rgb(17), blip_rgb_at(r, gx, gy))
+        << "a colourless landmark paints nothing over the cobble";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+namespace
+{
+// Restores one living/weapon/treasure/generator descriptor on scope exit.
+template <typename Descriptor>
+class ScopedDescriptorRestore final
+{
+public:
+    using Setter = bool (*)(int, const Descriptor&);
+    ScopedDescriptorRestore(int family, const Descriptor& saved, Setter set)
+        : family_(family), saved_(saved), set_(set)
+    {
+    }
+    ~ScopedDescriptorRestore()
+    {
+        EXPECT_TRUE(set_(family_, saved_))
+            << "failed to restore family " << family_;
+    }
+    ScopedDescriptorRestore(const ScopedDescriptorRestore&) = delete;
+    ScopedDescriptorRestore& operator=(const ScopedDescriptorRestore&) =
+        delete;
+
+private:
+    int family_;
+    Descriptor saved_;
+    Setter set_;
+};
+} // namespace
+
+// #209: a pack may declare `ping` on a family of any order. A pinged blip
+// keeps the colour the plain per-order path would have used: Living = its
+// team colour, Generator = team colour + 1, an oblist Treasure (life gem) =
+// COLOR_FIRE, anything else that is not a landmark (a weapon) = COLOR_WHITE.
+// Sixteen consecutive frames walk every pulse brightness phase.
+TEST_F(RadarMore, pinged_families_of_every_order_keep_their_plain_blip_colour)
+{
+    const FamilyDescriptor* living_d = get_family_descriptor(FAMILY_ELF);
+    const GeneratorFamilyDescriptor* gen_d =
+        get_generator_family_descriptor(FAMILY_TENT);
+    const TreasureFamilyDescriptor* gem_d =
+        get_treasure_family_descriptor(FAMILY_LIFE_GEM);
+    const WeaponFamilyDescriptor* arrow_d =
+        get_weapon_family_descriptor(FAMILY_ARROW);
+    ASSERT_NE(nullptr, living_d);
+    ASSERT_NE(nullptr, gen_d);
+    ASSERT_NE(nullptr, gem_d);
+    ASSERT_NE(nullptr, arrow_d);
+    ScopedDescriptorRestore<FamilyDescriptor> living_restore(
+        FAMILY_ELF, *living_d, &set_family_descriptor);
+    ScopedDescriptorRestore<GeneratorFamilyDescriptor> gen_restore(
+        FAMILY_TENT, *gen_d, &set_generator_family_descriptor);
+    ScopedDescriptorRestore<TreasureFamilyDescriptor> gem_restore(
+        FAMILY_LIFE_GEM, *gem_d, &set_treasure_family_descriptor);
+    ScopedDescriptorRestore<WeaponFamilyDescriptor> arrow_restore(
+        FAMILY_ARROW, *arrow_d, &set_weapon_family_descriptor);
+    {
+        FamilyDescriptor pinged = *living_d;
+        pinged.radar.ping = true;
+        ASSERT_TRUE(set_family_descriptor(FAMILY_ELF, pinged));
+    }
+    {
+        GeneratorFamilyDescriptor pinged = *gen_d;
+        pinged.radar.ping = true;
+        ASSERT_TRUE(set_generator_family_descriptor(FAMILY_TENT, pinged));
+    }
+    {
+        TreasureFamilyDescriptor pinged = *gem_d;
+        pinged.radar.ping = true;
+        ASSERT_TRUE(set_treasure_family_descriptor(FAMILY_LIFE_GEM, pinged));
+    }
+    {
+        WeaponFamilyDescriptor pinged = *arrow_d;
+        pinged.radar.ping = true;
+        ASSERT_TRUE(set_weapon_family_descriptor(FAMILY_ARROW, pinged));
+    }
+
+    FixedRandom fixed_rng(0);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            set_tile(d, x, y, PIX_COBBLE_1);
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* elf = d.add_ob(Order::Living, FAMILY_ELF);
+    walker* tent = d.add_ob(Order::Generator, FAMILY_TENT);
+    walker* gem = d.add_ob(Order::Treasure, FAMILY_LIFE_GEM);
+    walker* arrow = d.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, elf);
+    ASSERT_NE(nullptr, tent);
+    ASSERT_NE(nullptr, gem);
+    ASSERT_NE(nullptr, arrow);
+    constexpr int kRow = 6;
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(1);
+    control->set_view_all(5); // generators need sight
+    elf->setxy(GRID_SIZE * 4, GRID_SIZE * kRow);
+    elf->set_team_num(1);
+    tent->setxy(GRID_SIZE * 8, GRID_SIZE * kRow);
+    tent->set_team_num(2);
+    gem->setxy(GRID_SIZE * 12, GRID_SIZE * kRow);
+    gem->set_dead(0);
+    arrow->setxy(GRID_SIZE * 16, GRID_SIZE * kRow);
+    arrow->set_team_num(2);
+
+    struct Pinged
+    {
+        const char* what;
+        int gx;
+        int base;
+    };
+    const std::array<Pinged, 4> pinged = {{
+        {"living (team colour)", 4, elf->query_team_color()},
+        {"generator (team colour + 1)", 8, tent->query_team_color() + 1},
+        {"life gem (COLOR_FIRE)", 12, COLOR_FIRE},
+        {"weapon (COLOR_WHITE)", 16, COLOR_WHITE},
+    }};
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = control;
+    vs->radarstart = 1;
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+
+    for (int frame = 0; frame < 16; ++frame)
+    {
+        ASSERT_EQ(1, r.draw(&d));
+        ASSERT_EQ(0, r.radarx);
+        ASSERT_EQ(0, r.radary);
+        for (const Pinged& p : pinged)
+        {
+            std::array<std::array<int, 3>, 4> band{};
+            for (std::size_t k = 0; k < band.size(); ++k)
+                band[k] = palette_rgb(p.base + static_cast<int>(k));
+            const std::array<int, 3> center = blip_rgb_at(r, p.gx, kRow);
+            EXPECT_NE(band.end(), std::find(band.begin(), band.end(), center))
+                << "frame " << frame << ": " << p.what;
+        }
+    }
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+}
+
+namespace
+{
+// A scripted-mode world whose beacon slots name the given targets: FAMILY_HIT
+// FX with no radar colour of their own, so only the beacon pass paints them
+// (legacy team-coloured centre dot; team 255 = the target's own colour).
+struct BeaconWorld
+{
+    LevelRuntimeData d{1};
+    explicit BeaconWorld(int floors)
+    {
+        d.create_new_grid();
+        for (int y = 0; y < d.world().grid.h; ++y)
+            for (int x = 0; x < d.world().grid.w; ++x)
+                set_tile(d, x, y, PIX_COBBLE_1);
+        if (floors > 1)
+        {
+            d.world().set_floor_count(floors);
+            for (int f = 1; f < floors; ++f)
+                fill_floor_grid(d.world(), f, PIX_COBBLE_1);
+        }
+        d.world().type |= GameWorld::TYPE_SCRIPTED;
+        d.world().mode.active = true;
+    }
+    walker* beacon_target(std::size_t slot, int gx, int gy, int floor)
+    {
+        walker* t = d.add_ob(Order::FX, FAMILY_HIT);
+        EXPECT_NE(nullptr, t);
+        if (t == nullptr)
+            return nullptr;
+        t->setxy(static_cast<short>(GRID_SIZE * gx),
+                 static_cast<short>(GRID_SIZE * gy));
+        t->set_floor(static_cast<short>(floor));
+        t->set_team_num(1);
+        t->set_dead(0);
+        d.world().mode.beacons[slot].entity_id =
+            static_cast<std::int32_t>(t->entity_id());
+        d.world().mode.beacons[slot].team = 255;
+        return t;
+    }
+};
+
+// Saves/restores the view fields the radar reads.
+struct RadarViewGuard
+{
+    viewscreen* vs;
+    walker* control;
+    short radarstart;
+    Sint32 floor_override;
+    explicit RadarViewGuard(viewscreen* v)
+        : vs(v), control(v->control), radarstart(v->radarstart),
+          floor_override(v->editor_floor_override_)
+    {
+        vs->control = nullptr;
+        vs->radarstart = 1;
+        vs->editor_floor_override_ = 0;
+    }
+    ~RadarViewGuard()
+    {
+        vs->control = control;
+        vs->radarstart = radarstart;
+        vs->editor_floor_override_ = floor_override;
+    }
+    RadarViewGuard(const RadarViewGuard&) = delete;
+    RadarViewGuard& operator=(const RadarViewGuard&) = delete;
+};
+} // namespace
+
+// Scripted-mode beacons: a beacon whose target stands on another floor than
+// the one the radar shows is not drawn. Paired control: the same-floor
+// beacon paints its target's centre dot.
+TEST_F(RadarMore, mode_beacons_on_another_floor_are_not_drawn)
+{
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    BeaconWorld world(2);
+    walker* same_floor = world.beacon_target(0, 8, 20, 0);
+    walker* other_floor = world.beacon_target(1, 16, 20, 1);
+    ASSERT_NE(nullptr, same_floor);
+    ASSERT_NE(nullptr, other_floor);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    RadarViewGuard view_guard(vs);
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&world.d);
+    ASSERT_EQ(1, r.draw(&world.d));
+
+    const std::array<int, 3> beacon_color =
+        palette_rgb(same_floor->query_team_color());
+    ASSERT_NE(palette_rgb(17), beacon_color) << "setup: beacon shows on cobble";
+    EXPECT_EQ(beacon_color, blip_rgb_at(r, 8, 20))
+        << "a same-floor beacon paints its target's centre";
+    EXPECT_EQ(palette_rgb(17), blip_rgb_at(r, 16, 20))
+        << "a beacon on another floor is not drawn";
+}
+
+// A beacon target outside the radar window is skipped instead of painting
+// outside the minimap. Paired control: an in-window beacon paints.
+TEST_F(RadarMore, mode_beacons_outside_the_radar_window_are_skipped)
+{
+    CountingRandom counter;
+    GameContext c;
+    c.rng = &counter;
+    GlobalContextGuard guard(&c);
+
+    BeaconWorld world(1);
+    // A camera far down the 40x60 grid scrolls the 44-row radar window to
+    // rows 16..59; row 8 is above it.
+    walker* inside = world.beacon_target(0, 8, 30, 0);
+    walker* above_window = world.beacon_target(1, 24, 8, 0);
+    ASSERT_NE(nullptr, inside);
+    ASSERT_NE(nullptr, above_window);
+    world.d.level_visuals().topy = GRID_SIZE * 60;
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    RadarViewGuard view_guard(vs);
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&world.d);
+    ASSERT_EQ(1, r.draw(&world.d));
+    ASSERT_EQ(16, r.radary) << "setup: the window starts at grid row 16";
+    ASSERT_GT(r.yloc, 8) << "setup: canvas room above the radar box";
+
+    // The above-window target would land 8 rows above the box. Mark that
+    // canvas pixel, redraw, and read it back.
+    screen* const canvas = og::runtime::current_session->myscreen_;
+    const int above_x = r.xloc + 24 - r.radarx;
+    const int above_y = r.yloc + 8 - r.radary;
+    canvas->pointb(above_x, above_y, COLOR_WHITE);
+    Uint8 br = 0, bg = 0, bb = 0;
+    canvas->get_pixel(above_x, above_y, &br, &bg, &bb);
+    ASSERT_EQ(1, r.draw(&world.d));
+    Uint8 ar = 0, ag = 0, ab = 0;
+    canvas->get_pixel(above_x, above_y, &ar, &ag, &ab);
+    const std::array<int, 3> above_before = {br, bg, bb};
+    const std::array<int, 3> above_after = {ar, ag, ab};
+    const std::array<int, 3> beacon_color =
+        palette_rgb(inside->query_team_color());
+    ASSERT_NE(above_before, beacon_color)
+        << "setup: the marker differs from the beacon colour";
+
+    EXPECT_EQ(beacon_color, blip_rgb_at(r, 8, 30))
+        << "an in-window beacon paints its target's centre";
+    EXPECT_EQ(above_before, above_after)
+        << "a beacon outside the radar window must not paint outside it";
 }
 
 // A pulse centered on any radar edge still visits all eight neighboring

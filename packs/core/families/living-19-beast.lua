@@ -10,7 +10,7 @@
 og.family("living", {
   id = "core:#19",
   wire_id = 19,
-  name = "BEAST",
+  name = "GIANT SKEL",
   short_name = og.NIL,
   stats  = { strength = 12, dexterity = 6, constitution = 12,
              intelligence = 8, armor = 6, level = 1 },

@@ -98,8 +98,8 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
     text.text.text = "abc";
     ASSERT_TRUE(!query_key_event(SDLK_A, text)) << "text event should not match keydown";
 
-    ASSERT_TRUE(!isKeyboardEvent(nullptr)) << "null event is not keyboard";
-    ASSERT_TRUE(!isJoystickEvent(nullptr)) << "null event is not joystick";
+    ASSERT_TRUE(!isKeyboardEvent(no_event)) << "null event is not keyboard";
+    ASSERT_TRUE(!isJoystickEvent(no_event)) << "null event is not joystick";
     ASSERT_TRUE(!isKeyboardEvent(text)) << "text event is not keyboard";
     ASSERT_TRUE(!isJoystickEvent(text)) << "text event is not joystick";
 

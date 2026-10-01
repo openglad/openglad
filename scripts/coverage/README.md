@@ -40,14 +40,15 @@ measures both.
 
 ## The bar, and where it is enforced
 
-**96 % line, 100 % function — for the C++ half alone, for the Lua half
+**98 % line, 100 % function — for the C++ half alone, for the Lua half
 alone, and for their union.** A union-only bar was walked straight through
-(back when the bar was 95): with C++ near 96 %, keeping only the 10 largest
+(back when the bar was 95): with C++ near 98 %, keeping only the 10 largest
 of 61 dumps left the Lua half at 94.50 % line while the union still read
 96.18 % PASS — the slack in one language absorbed the shortfall in the
 other. Each half is now held to the same bar by itself, which is also the
 only reading under which "Lua is in the 96/100 measurement" means what it
-says. The line bar moved from 95 to 96 in one announced step, after the
+says. The line bar moved from 95 to 96 in one announced step, from 96 to
+97 and from 97 to 98 the same way (both in PR #319), each time after the
 C++ half alone was lifted past it with behaviour-pinning tests and
 dead-code deletions (never by exclusion — see the invariant above).
 

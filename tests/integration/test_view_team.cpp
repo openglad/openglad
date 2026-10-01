@@ -4307,8 +4307,14 @@ TEST(ViewTeam, base_camp_ready_twin_toggles_and_gates)
     }
 
     // Deployed roster: the toggle acts directly through the Base Camp
-    // twin's own ordinal.
-    EXPECT_EQ(MENU_OK, teams_toggle_ready());
+    // twin's own ordinal -- the click dispatches the READY descriptor's own
+    // action through do_call.
+    ASSERT_EQ(button_action_id(ButtonAction::ToggleLobbyReady),
+              buttons[kCreateMenuReadyIndex].myfun);
+    vbutton ready_dispatcher;
+    EXPECT_EQ(MENU_OK,
+              ready_dispatcher.do_call(buttons[kCreateMenuReadyIndex].myfun,
+                                       buttons[kCreateMenuReadyIndex].arg1));
     ASSERT_EQ(1u, lobby.ready_calls.size());
     EXPECT_TRUE(lobby.ready_calls[0]);
     EXPECT_TRUE(lobby.ready_state);

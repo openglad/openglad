@@ -218,8 +218,6 @@ void apply_lobby_seat_assignments(
     for (short view_index = 0; view_index < numviews; ++view_index)
     {
         viewscreen* const view = current_screen.viewob[view_index].get();
-        if (view == nullptr)
-            continue;
 
         view->my_team = lobby_config.local_seat_teams[
             static_cast<std::size_t>(view_index)];
@@ -274,11 +272,6 @@ void glad_init(bool preserve_frame_timing,
                const og::ui::PickerLobbyGameStartConfig* lobby_config)
 {
     screen* current_screen = og::runtime::current_session->myscreen_;
-    if (current_screen == nullptr)
-    {
-        LogError("glad_init_failed reason=missing_screen\n");
-        return;
-    }
     clear_keyboard();
 	current_screen->set_active_canvas(current_screen->last_presented_canvas());
     current_screen->fadeblack(0);
@@ -370,14 +363,10 @@ void glad_init(bool preserve_frame_timing,
     g_frame_state() = fresh_state;
 }
 
-void glad_main(Sint32 playermode)
+void glad_main(Sint32 /*playermode*/)
 {
-    screen* current_screen = og::runtime::current_session->myscreen_;
-    if (current_screen == nullptr)
-    {
-        LogError("glad_main_failed mode={} reason=missing_screen\n", playermode);
-        return;
-    }
+    [[maybe_unused]] screen* current_screen =
+        og::runtime::current_session->myscreen_;
 
     struct GameplayActiveScope final {
         GameplayActiveScope()

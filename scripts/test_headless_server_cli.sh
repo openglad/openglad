@@ -95,6 +95,54 @@ check_failure "out of range fps" "--fps requires a positive integer" --fps 99999
 check_failure "invalid fps" "--fps requires a positive integer" --fps abc
 check_failure "non-positive fps" "--fps requires a positive integer" --fps 0
 
+# A missing core class pack refuses startup with ONE fatal diagnostic that
+# names the first gap. The binary runs from a private copy whose install
+# tree has the shipped campaigns but no packs/ (and whose user dir, HOME and
+# XDG dirs are empty temp dirs), with cwd inside it: a headless run with
+# nothing mounted must never fall back onto the repo's cfg/.
+check_missing_core_pack() {
+    local root=""
+    root=$(mktemp -d)
+    server_tmpdir=$root
+    local bin_dir="$root/install"
+    mkdir -p "$bin_dir/builtin" "$root/user" "$root/home" "$root/xdg"
+    cp "$server_bin" "$bin_dir/openglad_server"
+    local src_dir=""
+    src_dir=$(dirname "$server_bin")
+    cp "$src_dir"/builtin/*.glad "$bin_dir/builtin/"
+
+    local output=""
+    local status=0
+    set +e
+    output=$(cd "$bin_dir" &&
+        HOME="$root/home" XDG_CONFIG_HOME="$root/xdg" XDG_DATA_HOME="$root/xdg" \
+        USERPROFILE="$root/home" OPENGLAD_CONFIG_DIR="$root/user" \
+        timeout 30 ./openglad_server --host 127.0.0.1 --port 1 \
+            --lobby-poll-ms 0 --fps 60 2>&1 < /dev/null)
+    status=$?
+    set -e
+
+    local expected="no mounted class pack declares living family 0"
+    if [[ $status -ne 1 || $output != *"$expected"* ]]; then
+        printf 'Expected a missing core pack to exit 1 naming the first gap (got %d).\n' "$status" >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+    local count=0
+    count=$(grep -c "no mounted class pack declares" <<<"$output" || true)
+    if [[ $count -ne 2 ]]; then
+        # One LogError line plus the server's headless_server_fatal echo.
+        printf 'Expected exactly one diagnostic (LogError + fatal echo), saw %d lines.\n' "$count" >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    rm -rf -- "$root"
+    server_tmpdir=""
+}
+
+check_missing_core_pack
+
 check_server_start_shutdown() {
     local port=""
     port=$(python3 - <<'PY'

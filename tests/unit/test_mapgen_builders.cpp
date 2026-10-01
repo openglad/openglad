@@ -1162,4 +1162,82 @@ TEST(MapgenSpawnExits, z_stair_edge_joins_the_floors)
         << join_errors(without_stair);
 }
 
+// The spawn-exit audit treats another generator's BODY as solid: a
+// generator walled in on three sides whose only open side is filled by a
+// neighbouring generator has no usable exit and is reported. Without the
+// neighbour (the paired control) the same opening is a working exit and the
+// map is clean.
+TEST(MapgenSpawnExits, neighbouring_generator_body_blocks_the_only_exit)
+{
+    for (const bool neighbour : {false, true})
+    {
+        GameWorld w(39u);
+        init_world(w, 1, 24, 20);
+        wire_entity_services(w);
+        place_start(w, 0, 2, 2);
+        ASSERT_NE(nullptr, place_generator(w, FAMILY_TENT, 3, 0, 6, 6, 2));
+        // The sealed-alcove ring, with its east side (column 8, rows 6..7)
+        // left open.
+        wall_rect(w, 5, 5, 8, 5);
+        wall_rect(w, 5, 8, 8, 8);
+        wall_rect(w, 5, 5, 5, 8);
+        paint(w.grid, 8, 5, PIX_H_WALL1);
+        paint(w.grid, 8, 8, PIX_H_WALL1);
+        if (neighbour)
+        {
+            ASSERT_NE(nullptr,
+                      place_generator(w, FAMILY_TENT, 3, 0, 8, 6, 2));
+        }
+
+        GameWorld* const ambient_world = current_game->world;
+        const auto errors = audit_generator_spawn_exits(w);
+        current_game->world = ambient_world;
+
+        std::vector<std::string> sealed;
+        for (const std::string& e : errors)
+            if (e.find("at tile (6, 6)") != std::string::npos)
+                sealed.push_back(e);
+        if (neighbour)
+        {
+            ASSERT_EQ(1u, sealed.size()) << join_errors(errors);
+            EXPECT_NE(std::string::npos,
+                      sealed.front().find("no usable spawn exit"))
+                << join_errors(errors);
+        }
+        else
+        {
+            EXPECT_TRUE(errors.empty()) << join_errors(errors);
+        }
+    }
+}
+
 } // namespace
+
+// CONTRACT test — scatter_decor contract: modulus 0 scatters nothing. The
+// product's only callers (tower_floor_gen.cpp, the four dressing passes)
+// pass literal moduli 19/23/27/29, so a non-positive modulus is a builder
+// contract input, not a product state: the pass is disabled, succeeds, and
+// leaves the decor plane unallocated. Control: modulus 1 dresses every
+// eligible cell of the same world.
+TEST(MapgenDecor, scatter_decor_contract_modulus_zero_scatters_nothing)
+{
+    GameWorld w(23u);
+    init_world(w, 1, 12, 10);
+
+    EXPECT_TRUE(scatter_decor(w, 11u, 0, 0, 0, 11, 9, 0, DECOR_PEBBLES,
+                              {ScatterGround::Grass}))
+        << "a disabled scatter still reports success";
+    EXPECT_FALSE(w.decor_for_floor(0).valid())
+        << "modulus 0 must not allocate or dress the decor plane";
+
+    ASSERT_TRUE(scatter_decor(w, 11u, 0, 0, 0, 11, 9, 1, DECOR_PEBBLES,
+                              {ScatterGround::Grass}));
+    const PixieData& dec = w.decor_for_floor(0);
+    ASSERT_TRUE(dec.valid());
+    int dressed = 0;
+    for (int i = 0; i < dec.w * dec.h; ++i)
+        if (dec.data[static_cast<std::size_t>(i)] == DECOR_PEBBLES)
+            ++dressed;
+    EXPECT_EQ(12 * 10, dressed)
+        << "control: modulus 1 dresses every cell of the all-grass 12x10 world";
+}

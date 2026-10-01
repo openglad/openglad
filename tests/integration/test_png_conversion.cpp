@@ -857,3 +857,68 @@ TEST(JsonSidecar, malformed_json_variants_report_reason_and_fall_back)
             << "diagnostic should identify the rejected construct";
     }
 }
+
+// A sprite's frame height is stored in PixieData's one-byte h: a sidecar-less
+// PNG taller than 255 px (its whole height is the frame height) is rejected
+// rather than loaded with a wrapped height. Paired control: a 255 px strip,
+// the largest legal frame, still loads as one frame.
+TEST(JsonSidecar, a_frame_taller_than_255_px_is_rejected)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path tall = tmp_dir / "tall_frame.png";
+    const fs::path edge = tmp_dir / "edge_frame.png";
+    fs::remove(tmp_dir / "tall_frame.json", ec);
+    fs::remove(tmp_dir / "edge_frame.json", ec);
+
+    constexpr int W = 4;
+    write_indexed_png_strip(tall.string(), W, 129, 2); // one 258 px frame
+    write_indexed_png_strip(edge.string(), W, 85, 3);  // one 255 px frame
+
+    const PixieData rejected = read_pixie_file(tall.string().c_str());
+    EXPECT_FALSE(rejected.valid())
+        << "a 258 px frame must not load (h would wrap to 2)";
+
+    const PixieData accepted = read_pixie_file(edge.string().c_str());
+    ASSERT_TRUE(accepted.valid()) << "a 255 px frame is the legal maximum";
+    EXPECT_EQ(1, static_cast<int>(accepted.frames));
+    EXPECT_EQ(W, static_cast<int>(accepted.w));
+    EXPECT_EQ(255, static_cast<int>(accepted.h));
+
+    fs::remove(tall, ec);
+    fs::remove(edge, ec);
+}
+
+// A well-formed sidecar whose frames * frame_h disagrees with the PNG's real
+// height is rejected instead of slicing the strip at the wrong rows. Paired
+// control: the same PNG with the matching sidecar loads as two frames.
+TEST(JsonSidecar, a_sidecar_that_disagrees_with_the_png_height_is_rejected)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path png = tmp_dir / "height_mismatch.png";
+    const fs::path json = tmp_dir / "height_mismatch.json";
+
+    constexpr int W = 6;
+    constexpr int FH = 10;
+    write_indexed_png_strip(png.string(), W, FH, 2); // 20 px tall
+
+    // Internally consistent (meta.size.h == 1 * 10) but 10 != 20.
+    write_text_file(json.string(), aseprite_sidecar_for(W, FH, 1));
+    const PixieData rejected = read_pixie_file(png.string().c_str());
+    EXPECT_FALSE(rejected.valid())
+        << "a 1x10 sidecar over a 20 px PNG must be rejected";
+
+    write_text_file(json.string(), aseprite_sidecar_for(W, FH, 2));
+    const PixieData accepted = read_pixie_file(png.string().c_str());
+    ASSERT_TRUE(accepted.valid()) << "the matching 2x10 sidecar loads";
+    EXPECT_EQ(2, static_cast<int>(accepted.frames));
+    EXPECT_EQ(FH, static_cast<int>(accepted.h));
+
+    fs::remove(png, ec);
+    fs::remove(json, ec);
+}

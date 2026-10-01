@@ -1054,7 +1054,6 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
                 break;
             case Kind::Stayed:
             case Kind::Advanced:
-            case Kind::Closed:
                 // Outcome::message is the ONE channel, read exactly the way
                 // the SDL Stayed arm reads it (menu_screen_specs.cpp): a
                 // book action's Lua voice reaches a terminal now.

@@ -238,8 +238,6 @@ static void apply_capture_focus(screen& s, const CaptureSettings& capture)
     if (focus == CaptureFocus::Player)
         return;
     viewscreen* view = s.viewob[0].get();
-    if (view == nullptr)
-        return;
 
     if (focus == CaptureFocus::Center) {
         // viewscreen::redraw falls back to the LevelVisuals camera whenever it
@@ -596,12 +594,10 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     // og.campaign_match_set does: the capture tooling must not be the one
     // producer that can mint a clock the lobby would bounce (a typo'd
     // 40000 narrows to a negative short otherwise).
-    if (!og::data::clamp_match_setting(
-            "time_limit", env_int("OPENGLAD_DEMO_MATCH_TIME_LIMIT", 0, 0),
-            s->save_data.time_limit)) {
-        throw std::runtime_error(
-            "OPENGLAD_DEMO_MATCH_TIME_LIMIT could not be applied");
-    }
+    // "time_limit" is a clamping knob, so the call always answers true.
+    (void)og::data::clamp_match_setting(
+        "time_limit", env_int("OPENGLAD_DEMO_MATCH_TIME_LIMIT", 0, 0),
+        s->save_data.time_limit);
 
     // Amendment 7 (#276): a versus campaign's arena deals FILL: FAIR to the
     // teams it authors — the ONE rule the pickers apply at selection, run
@@ -630,12 +626,10 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
         for (std::size_t team = 0; team < s->save_data.fill.size(); ++team) {
             if ((authored & (1u << team)) == 0)
                 continue;
-            if (!og::data::clamp_match_setting(
-                    std::format("fill_{}", team + 1), fill,
-                    s->save_data.fill[team])) {
-                throw std::runtime_error(
-                    "OPENGLAD_DEMO_FILL could not be applied");
-            }
+            // "fill_1".."fill_4" all clamp, so the call always answers true.
+            (void)og::data::clamp_match_setting(
+                std::format("fill_{}", team + 1), fill,
+                s->save_data.fill[team]);
         }
     }
 
@@ -646,7 +640,13 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
             "openglad_demo failed to bootstrap save0 for scenario {}",
             scen_id));
     }
-    if (load_saved_game(og::data::active_company_slot().c_str(), s) == 0) {
+    // load_saved_game would answer a failed load with a modal dialog that a
+    // headless demo can never dismiss; take the error code and fail loudly.
+    // A fallback level (UsedFallbackLevel) is still a playable session.
+    const LoadSavedGameError load_error = load_saved_game_with_error(
+        og::data::active_company_slot().c_str(), s);
+    if (load_error != LoadSavedGameError::None &&
+        load_error != LoadSavedGameError::UsedFallbackLevel) {
         throw std::runtime_error(std::format(
             "openglad_demo failed to load bootstrap save0 for scenario {}",
             scen_id));
@@ -1156,6 +1156,29 @@ int main(int argc, char* argv[])
                 worker_thread_func,
                 std::ref(sync), std::ref(demos[static_cast<size_t>(i)]), i);
         }
+        // Every way out of this scope must stop and join the workers: the
+        // normal end of the run calls join_all() below, and a throw from the
+        // main loop (a capture frame that cannot be written) runs it from the
+        // destructor. Unwinding past a joinable std::thread is std::terminate,
+        // which turned the "Unrecoverable error" report into a core dump. The
+        // workers park on start_cv, so shutdown is raised and broadcast BEFORE
+        // the join, or the join waits forever.
+        struct WorkerJoiner {
+            WorkerSync& sync_;
+            std::vector<std::thread>& workers_;
+            void join_all()
+            {
+                {
+                    std::lock_guard lock(sync_.mtx);
+                    sync_.shutdown = true;
+                }
+                sync_.start_cv.notify_all();
+                for (auto& w : workers_) {
+                    if (w.joinable()) w.join();
+                }
+            }
+            ~WorkerJoiner() { join_all(); }
+        } worker_joiner{sync, workers};
 
         // --- Main loop ---
         constexpr int TIMER_WAIT_TICKS = 6;
@@ -1514,15 +1537,7 @@ int main(int argc, char* argv[])
         }
 
         // --- Shutdown worker threads ---
-        {
-            std::lock_guard lock(sync.mtx);
-            sync.shutdown = true;
-        }
-        sync.start_cv.notify_all();
-
-        for (auto& w : workers) {
-            if (w.joinable()) w.join();
-        }
+        worker_joiner.join_all();
 
         // Cleanup (the unique_ptr deleters also free on any early-return/throw path)
         cell_tex.clear();

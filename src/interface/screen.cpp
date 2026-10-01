@@ -260,8 +260,6 @@ void dispatch_cosmetic_screen_events(screen& self,
                     const PlatformBridge& bridge = platform_bridge();
                     if (bridge.play_sound)
                         bridge.play_sound(static_cast<int>(ev.a));
-                    else if (self.soundp)
-                        self.soundp->play_sound(static_cast<short>(ev.a));
                 }
                 break;
             case og::sim::EventKind::Notification:
@@ -1108,7 +1106,6 @@ void screen::init_common(short howmany, bool has_display)
 		for (j=0; j < NUM_SPECIALS; j++)
 		{
 			special_name[i][j] = fd ? fd->special_names[j] : "NONE";
-			alternate_name[i][j] = fd ? fd->alternate_names[j] : "NONE";
 		}
 	}
 
@@ -1249,8 +1246,6 @@ void screen::relayout_views()
 	for (Sint32 i = 0; i < numviews && i < MAX_VIEWS; i++)
 	{
 		const viewscreen* const v = viewob[i].get();
-		if (v == nullptr)
-			continue;
 		if (v->xloc == v->slot_x_ && v->yloc == v->slot_y_ &&
 		    v->xview == v->slot_w_ && v->yview == v->slot_h_)
 			continue; // window fills the slot: the plain present covers it
@@ -1333,16 +1328,15 @@ void screen::relayout_camera_view()
 	default:
 	{
 		// Inset at 4 seats (pinned geometry): w = ui_w*3/10, h = ui_h*3/10,
-		// min 96x60, centered — the canvas centre is a pane boundary there, and
-		// the bottom-right corner belongs to another seat's radar.
+		// centered — the canvas centre is a pane boundary there, and
+		// the bottom-right corner belongs to another seat's radar. The
+		// GameplayUI canvas is never below kMinWorldCanvasW x kMinWorldCanvasH
+		// (320x200, compute_gameplay_ui_canvas_dims), so the inset is always
+		// at least 96x60.
 		// GameplayUI coordinates; the World canvas and the seat layout
 		// never see it, so layout_pane_count() stays == numviews.
-		int w = ui_w * 3 / 10;
-		int h = ui_h * 3 / 10;
-		if (w < 96)
-			w = 96;
-		if (h < 60)
-			h = 60;
+		const int w = ui_w * 3 / 10;
+		const int h = ui_h * 3 / 10;
 		camera_pane_rects_.push_back(
 		    CameraPaneRect{(ui_w - w) / 2, (ui_h - h) / 2, w, h});
 		break;
@@ -1372,11 +1366,9 @@ CameraPaneRect screen::camera_minimap_block_for_seat(int seat, int ui_w,
 	    : og::view_layout::kModeFull;
 	// The seat's UI pane — the rectangle the radar anchors to, the same
 	// projection ScopedGameplayUiViewLayout applies before it draws.
-	og::view_layout::ViewLayout pane =
+	const og::view_layout::ViewLayout pane =
 	    og::view_layout::compute_view_layout(
 	        layout_pane_count(), seat, mode, ui_w, ui_h);
-	if (!pane.applies)
-		pane = og::view_layout::ViewLayout{true, 0, 0, ui_w, ui_h};
 	const auto [radar_w, radar_h] = radar_block_extents(
 	    level_runtime_data_.world().grid.w,
 	    level_runtime_data_.world().grid.h);
@@ -1502,8 +1494,6 @@ void screen::draw_camera_view_world()
 	    og::view_layout::compute_view_layout(
 	        layout_pane_count(), 3, og::view_layout::kModeFull,
 	        gameplay_ui_canvas_w(), gameplay_ui_canvas_h());
-	if (!r.applies)
-		return;
 	// Minimal bevel, drawn INSIDE the pane so a corner quadrant never clips:
 	// a light frame with the seat chrome's dark inner outline.
 	draw_box(r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, GREY, 0, 1);

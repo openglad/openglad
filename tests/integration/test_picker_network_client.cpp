@@ -45,12 +45,18 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#if defined(__unix__) || defined(__APPLE__)
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <future>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -2891,9 +2897,15 @@ TEST(PickerNetworkClient, host_stage_failure_reports_honest_preview_health)
     EXPECT_EQ(Health::None, host_client->staged_preview_health());
     EXPECT_EQ(nullptr, host_client->staged_world());
     host_client->initialize_from_save();
+    // The stage now EXISTS but has not staged (only drive_stage, from
+    // poll_and_apply, stages): an Empty stage is still honest-empty, never
+    // Failed and never Staged.
+    EXPECT_EQ(Health::None, host_client->staged_preview_health())
+        << "an initialized host whose stage has not staged yet reports None";
 
     og::server::MatchStage* const host_stage = host_client->take_match_stage();
     ASSERT_NE(nullptr, host_stage);
+    EXPECT_EQ(og::server::StageStatus::Empty, host_stage->status());
     ASSERT_TRUE(wait_until([&] {
         host_client->poll_and_apply();
         return host_client->staged_preview_health() == Health::Staged;
@@ -8859,6 +8871,71 @@ TEST(PickerNetworkClient,
     join_client->shutdown();
 }
 
+#if defined(__unix__) || defined(__APPLE__)
+// §2.5 line-B alert while the direct link is still dialling: a peer that
+// completes TCP (the kernel backlog accepts it) but never answers the
+// WebSocket upgrade keeps the joiner's transport in its handshake, and the
+// alert says so. Closing the listener resets that pending connection, and the
+// same alert then reports the failure (the control that the first read was
+// a live link state, not a constant).
+TEST(PickerNetworkClient,
+     join_direct_alert_says_connecting_while_the_handshake_is_pending)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Direct Joiner");
+
+    struct ListenerGuard
+    {
+        int fd = -1;
+        ~ListenerGuard()
+        {
+            if (fd != -1)
+                close(fd);
+        }
+    } listener;
+    listener.fd = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_NE(-1, listener.fd) << "a loopback listener socket is available";
+    const int reuse = 1;
+    ASSERT_EQ(0, setsockopt(listener.fd, SOL_SOCKET, SO_REUSEADDR,
+                            &reuse, sizeof(reuse)));
+    const int port = ix::getFreePort();
+    sockaddr_in address = {};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(static_cast<std::uint16_t>(port));
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(0, bind(listener.fd,
+                      reinterpret_cast<const sockaddr*>(&address),
+                      sizeof(address)));
+    ASSERT_EQ(0, listen(listener.fd, 4));
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+    join_client->poll_and_apply();
+    ASSERT_TRUE(join_client->connection_alert().has_value());
+    EXPECT_EQ("Status: connecting", *join_client->connection_alert())
+        << "a dialled link whose upgrade is unanswered is still connecting";
+
+    close(listener.fd);
+    listener.fd = -1;
+    EXPECT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        const std::optional<std::string> alert =
+            join_client->connection_alert();
+        return alert.has_value() && *alert == "Status: connection failed";
+    },
+    10s)) << "a reset handshake that never connected must read as failed";
+
+    join_client->shutdown();
+}
+#endif
+
 TEST(PickerNetworkClient,
      join_relay_flow_reports_connection_lost_after_relay_drops)
 {
@@ -9106,6 +9183,9 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     // A constructed client has a useful, non-throwing pre-initialization
     // contract. Exercise both implementations through the public interface so
     // menu code can inspect or poll them before a transport is installed.
+    // set_player_mode below writes numplayers/my_team into the live save.
+    SaveData& pre_init_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard pre_init_save_guard(pre_init_save);
     og::ui::PickerHostGameOptions host_options;
     host_options.port = ix::getFreePort();
     auto host_client = og::ui::create_host_picker_lobby_client(host_options);
@@ -9118,6 +9198,14 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_FALSE(host_client->set_ready(true));
     host_client->sync_from_save();
     EXPECT_TRUE(host_client->status_lines().empty());
+    // No lobby state yet: the host is not ready, and choosing spectator
+    // (player mode 0) declares ZERO local seats (the 1u above is the
+    // non-spectator control).
+    EXPECT_FALSE(host_client->local_ready())
+        << "a host with no lobby state is not ready";
+    host_client->set_player_mode(0);
+    EXPECT_EQ(0u, host_client->local_seat_count())
+        << "a spectator host declares no seats before any lobby state";
 
     og::ui::PickerJoinGameOptions join_options;
     join_options.mode = og::ui::PickerJoinMode::Direct;
@@ -9129,6 +9217,9 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
     EXPECT_FALSE(join_client->request_start_game());
     EXPECT_FALSE(join_client->request_seat_team_change(0, 0));
     EXPECT_FALSE(join_client->set_ready(true));
+    join_client->set_player_mode(0);
+    EXPECT_EQ(0u, join_client->local_seat_count())
+        << "a spectator joiner declares no seats before any lobby state";
     join_client->poll_and_apply();
     ASSERT_TRUE(join_client->connection_alert().has_value());
     EXPECT_EQ("Status: connecting", *join_client->connection_alert());
@@ -9146,12 +9237,12 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
 // Seven of those check( sites (the inet_pton/usable_lan_ipv4_string address
 // matrix and the two LAN-detection probes) live inside the .inc's
 // `#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))`
-// block, so the expectation carries the SAME guard: a Windows lane runs 130
-// checks and must pin 130, not fail against a POSIX-only literal.
+// block, so the expectation carries the SAME guard: a Windows lane runs 133
+// checks and must pin 133, not fail against a POSIX-only literal.
 #if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
-inline constexpr int kExpectedInternalHelperChecks = 137;
+inline constexpr int kExpectedInternalHelperChecks = 140;
 #else
-inline constexpr int kExpectedInternalHelperChecks = 130;
+inline constexpr int kExpectedInternalHelperChecks = 133;
 #endif
 
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
@@ -9285,6 +9376,16 @@ TEST(PickerNetworkClient,
         EXPECT_FALSE(join_client->request_seat_team_change(0xffu, 3));
         EXPECT_EQ(1, join_session.myscreen_->save_data.my_team);
     }
+    // The host is held to the same rule: it retargets only its OWN seats, so
+    // naming the joiner's player id is refused client-side, and the refusal
+    // does not fall back to the host's own seat (the host's own-seat change
+    // above is the accepted control).
+    EXPECT_FALSE(host_client->request_seat_team_change(join_indices.front(), 2))
+        << "the host must not retarget a joiner's seat";
+    host_client->poll_and_apply();
+    EXPECT_EQ(std::optional<std::int16_t>(0),
+              team_for(host_client->lobby_players(), host_indices.front()))
+        << "a refused foreign-seat change must not move the host's own seat";
 
     // Target only the joiner's second seat. Team 3 has no local hero, but it
     // remains a valid authored control assignment; the first seat and my_team
@@ -13145,4 +13246,506 @@ TEST(PickerNetworkClient, joiner_finds_a_returning_host_within_the_redial_cap)
         join_client->shutdown();
     }
     host_client->shutdown();
+}
+
+// --- WP-COV-NET (wave 4): the raw-authority joiner fixture ------------------
+//
+// A bare WebSocketServerTransport standing in for the host: it seats one
+// direct joiner with a crafted LobbyState and records every lobby message the
+// joiner puts on the wire. The real LobbyServer masks the joiner's
+// CLIENT-side guards (it truncates, resolves and answers for them), so only a
+// raw authority shows whether those guards hold. Every flow here answers what
+// it must: a joiner's add/remove seat waits unboundedly for its echo, so no
+// test sends one to this authority.
+
+namespace {
+
+class RawAuthorityJoiner
+{
+public:
+    explicit RawAuthorityJoiner(og::ui::PickerJoinGameOptions options = {})
+        : server_(std::make_shared<og::sim::WebSocketServerTransport>(port_))
+    {
+        server_->accept_connections();
+        options.mode = og::ui::PickerJoinMode::Direct;
+        options.direct_endpoint = std::format("127.0.0.1:{}", port_);
+        joiner_ = og::ui::create_join_picker_lobby_client(options);
+        joiner_->initialize_from_save();
+    }
+
+    ~RawAuthorityJoiner()
+    {
+        if (joiner_)
+            joiner_->shutdown();
+    }
+
+    RawAuthorityJoiner(const RawAuthorityJoiner&) = delete;
+    RawAuthorityJoiner& operator=(const RawAuthorityJoiner&) = delete;
+
+    og::ui::IPickerLobbyClient& joiner() { return *joiner_; }
+    og::sim::WebSocketServerTransport& server() { return *server_; }
+    [[nodiscard]] og::sim::PeerId joiner_peer() const { return joiner_peer_; }
+
+    // One joiner poll plus one drain of what reached the authority.
+    void pump()
+    {
+        joiner_->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_))
+        {
+            joiner_peer_ = peer_id;
+            received_.push_back(std::move(message));
+        }
+    }
+
+    [[nodiscard]] std::size_t count(og::sim::LobbyMessageKind kind) const
+    {
+        return static_cast<std::size_t>(std::count_if(
+            received_.begin(), received_.end(),
+            [kind](const og::sim::LobbyMessage& message) {
+                return message.kind() == kind;
+            }));
+    }
+
+    [[nodiscard]] const og::sim::LobbyMessage* last(
+        og::sim::LobbyMessageKind kind) const
+    {
+        for (auto it = received_.rbegin(); it != received_.rend(); ++it)
+        {
+            if (it->kind() == kind)
+                return &*it;
+        }
+        return nullptr;
+    }
+
+    // Wait until the authority holds `wanted` messages of `kind`.
+    [[nodiscard]] bool wait_for(og::sim::LobbyMessageKind kind,
+                                std::size_t wanted)
+    {
+        return wait_until([&] {
+            pump();
+            return count(kind) >= wanted;
+        });
+    }
+
+    // Seat the joiner as player `index` (seat 100 + index) on `team`,
+    // answering its latest Join by request id; a remote host holds player 0.
+    void seat_joiner(std::uint8_t index, short team)
+    {
+        const og::sim::LobbyMessage* const join =
+            last(og::sim::LobbyMessageKind::Join);
+        ASSERT_NE(nullptr, join) << "seat_joiner answers a received Join";
+        const auto& join_payload =
+            std::get<og::sim::LobbyJoinMessage>(join->payload);
+        og::sim::LobbyPlayer seated = join_payload.player;
+        seated.player_index = index;
+        seated.seat_id = static_cast<og::sim::LobbySeatId>(100u + index);
+        seated.machine_id = 2u;
+        seated.team = team;
+        seated.ready = false;
+        seated.is_host = false;
+
+        og::sim::LobbyState state;
+        state.settings.campaign_id = "gladiator";
+        state.settings.scenario_id = 1;
+        state.players.push_back(og::sim::LobbyPlayer{
+            .player_index = 0u,
+            .seat_id = 100u,
+            .machine_id = 1u,
+            .name = "Raw Host",
+            .company = "Raw Host Company",
+            .team = 0,
+            .character_slots = {make_lobby_slot(0u, "Raw Host", 0)},
+            .ready = false,
+            .is_host = true,
+        });
+        state.players.push_back(seated);
+        state.local_seat_ids = {seated.seat_id};
+        state.last_join_request_id = join_payload.request_id;
+        send_state(state);
+    }
+
+    void send_state(const og::sim::LobbyState& state)
+    {
+        server_->send_lobby_state(
+            joiner_peer_, std::make_shared<og::sim::LobbyState>(state));
+    }
+
+private:
+    int port_ = ix::getFreePort();
+    std::shared_ptr<og::sim::WebSocketServerTransport> server_;
+    std::unique_ptr<og::ui::IPickerLobbyClient> joiner_;
+    og::sim::PeerId joiner_peer_ = 0;
+    std::vector<og::sim::LobbyMessage> received_;
+};
+
+} // namespace
+
+// A GO pressed while the joiner's Join is still unconfirmed is DEFERRED; when
+// no lobby state exists at dispatch time it is CANCELLED, by design: the
+// comment on maybe_dispatch_deferred_start says "Only a link that cannot
+// carry the request (no transport, no lobby state) cancels it here". The
+// cancel leaves nothing pending, no outcome and no denial (the menu reads
+// that as "The start request was not sent. Try GO again"), and no StartGame
+// reaches the wire. Control: once seated, the same GO dispatches exactly one
+// StartGame.
+TEST(PickerNetworkClient, deferred_go_without_lobby_state_is_cancelled_not_sent)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u))
+        << "the joiner must connect and declare its seat";
+
+    // The Join is unanswered, so GO queues behind it.
+    EXPECT_FALSE(raw.joiner().request_start_game());
+    ASSERT_TRUE(raw.joiner().start_request_pending())
+        << "a GO behind an unconfirmed Join is a queued intent";
+
+    raw.joiner().poll_and_apply();
+    EXPECT_FALSE(raw.joiner().start_request_pending())
+        << "with no lobby state the deferred GO must be cancelled";
+    EXPECT_EQ(og::ui::StartRequestOutcome::None,
+              raw.joiner().start_request_outcome());
+    EXPECT_EQ(og::sim::StartDenialReason::None,
+              raw.joiner().last_start_denial());
+
+    // Control + ordering fence: seat the joiner, then GO. The socket is
+    // ordered, so a StartGame from the cancelled press would arrive first.
+    raw.seat_joiner(1u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    })) << "the crafted state must seat the joiner";
+    ASSERT_TRUE(wait_until([&] {
+        (void)raw.joiner().request_start_game();
+        raw.pump();
+        return raw.joiner().start_request_pending();
+    })) << "a seated joiner's GO must dispatch";
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::StartGame, 1u));
+    EXPECT_EQ(1u, raw.count(og::sim::LobbyMessageKind::StartGame))
+        << "only the seated GO may reach the wire";
+    const auto& start = std::get<og::sim::LobbyStartGameMessage>(
+        raw.last(og::sim::LobbyMessageKind::StartGame)->payload);
+    EXPECT_EQ(1u, start.player_index);
+}
+
+// A staged pair the joiner cannot apply (undecodable setup bytes paired by
+// generation with a keyframe) is reported honestly as Unavailable, never as
+// None ("waiting for host preview") and never as a stale world.
+TEST(PickerNetworkClient, unapplyable_staged_pair_reports_preview_unavailable)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u));
+    raw.seat_joiner(1u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    }));
+
+    // Control: nothing staged yet.
+    EXPECT_EQ(og::ui::IPickerLobbyClient::StagedPreviewHealth::None,
+              raw.joiner().staged_preview_health());
+    EXPECT_EQ(0u, raw.joiner().stage_generation());
+
+    const std::vector<std::uint8_t> setup_wire =
+        og::sim::serialize_staged_match_setup_message(
+            {.stage_generation = 7u, .setup_bytes = {1u, 2u, 3u}});
+    const std::vector<std::uint8_t> keyframe_wire =
+        og::sim::serialize_staged_match_keyframe_message(
+            {.stage_generation = 7u, .snapshot_bytes = {4u, 5u, 6u}});
+    ::testing::internal::CaptureStderr();
+    raw.server().send(raw.joiner_peer(), setup_wire.data(), setup_wire.size());
+    raw.server().send(
+        raw.joiner_peer(), keyframe_wire.data(), keyframe_wire.size());
+    const bool refreshed = wait_until([&] {
+        raw.pump();
+        return raw.joiner().stage_generation() == 1u;
+    });
+    const std::string stderr_text = ::testing::internal::GetCapturedStderr();
+    ASSERT_TRUE(refreshed) << "the paired generation must be attempted";
+
+    EXPECT_EQ(og::ui::IPickerLobbyClient::StagedPreviewHealth::Unavailable,
+              raw.joiner().staged_preview_health())
+        << "an unapplyable pair must read STAGING PREVIEW UNAVAILABLE";
+    EXPECT_EQ(nullptr, raw.joiner().staged_world());
+    EXPECT_NE(std::string::npos,
+              stderr_text.find("[ERROR] staged_preview_mirror_unavailable "
+                               "error=staged setup decode failed\n"))
+        << stderr_text;
+}
+
+// The joiner refuses an out-of-range team (4 or -1) itself: no TeamChange
+// ever reaches the authority. Control: team 2 sends exactly one, naming the
+// joiner's seat.
+TEST(PickerNetworkClient, joiner_refuses_out_of_range_team_client_side)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u));
+    raw.seat_joiner(1u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    }));
+
+    EXPECT_FALSE(raw.joiner().request_seat_team_change(1u, MAX_PLAYERS));
+    EXPECT_FALSE(raw.joiner().request_seat_team_change(1u, -1));
+
+    // Control (and ordering fence): the silent authority never echoes, so the
+    // bounded wait returns false, but the request itself is on the wire.
+    EXPECT_FALSE(raw.joiner().request_seat_team_change(1u, 2));
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::TeamChange, 1u));
+    EXPECT_EQ(1u, raw.count(og::sim::LobbyMessageKind::TeamChange))
+        << "out-of-range teams must never leave the joiner";
+    const auto& change = std::get<og::sim::LobbyTeamChangeMessage>(
+        raw.last(og::sim::LobbyMessageKind::TeamChange)->payload);
+    EXPECT_EQ(2, change.team);
+    EXPECT_EQ(101u, change.seat_id);
+}
+
+// An unseated spectator joiner's Leave names no player (0xff) before any
+// lobby state exists; control: once seated, the Leave it sends when it
+// switches to spectating names its real index.
+TEST(PickerNetworkClient, spectator_leave_names_no_player_until_seated)
+{
+    IxNetSystemScope net_system;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Raw Joiner");
+    save.numplayers = 0;
+    g_start_game_requested = false;
+
+    RawAuthorityJoiner raw;
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Leave, 1u))
+        << "a spectator joiner declares itself with a Leave";
+    EXPECT_EQ(0u, raw.count(og::sim::LobbyMessageKind::Join));
+    EXPECT_EQ(0xffu,
+              std::get<og::sim::LobbyLeaveMessage>(
+                  raw.last(og::sim::LobbyMessageKind::Leave)->payload)
+                  .player_index)
+        << "no lobby state: the Leave must name no player";
+
+    // Control: take a seat, get seated as player 2, then spectate again.
+    raw.joiner().set_player_mode(1);
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Join, 1u));
+    raw.seat_joiner(2u, 1);
+    ASSERT_TRUE(wait_until([&] {
+        raw.pump();
+        return raw.joiner().lobby_players().size() == 2u;
+    }));
+    raw.joiner().set_player_mode(0);
+    ASSERT_TRUE(raw.wait_for(og::sim::LobbyMessageKind::Leave, 2u));
+    EXPECT_EQ(2u,
+              std::get<og::sim::LobbyLeaveMessage>(
+                  raw.last(og::sim::LobbyMessageKind::Leave)->payload)
+                  .player_index)
+        << "a seated joiner's Leave must name its real index";
+}
+
+// A spectating host's ADD PLAYER that the 16-seat global cap refuses leaves
+// the host a spectator (zero seats, numplayers 0, no half-claimed seat).
+// Four crafted guests fill all sixteen seats; control: once one guest leaves,
+// the same [+] seats the host.
+TEST(PickerNetworkClient, spectator_host_add_seat_refused_by_global_cap_stays_spectator)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Cap Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host = og::ui::create_host_picker_lobby_client(host_options);
+    host->initialize_from_save();
+    host->set_player_mode(0);
+    ASSERT_EQ(0u, host->local_seat_count())
+        << "the host must start as a zero-seat spectator";
+
+    constexpr og::sim::PeerId kServerPeer = 1u;
+    std::vector<std::unique_ptr<og::sim::WebSocketClientTransport>> guests;
+    struct Cleanup
+    {
+        og::ui::IPickerLobbyClient* host = nullptr;
+        std::vector<std::unique_ptr<og::sim::WebSocketClientTransport>>*
+            guests = nullptr;
+        ~Cleanup()
+        {
+            og::ui::IPickerLobbyClient* owning_host = host;
+            shutdown_owning_host_before_join(owning_host);
+            if (guests != nullptr)
+                guests->clear();
+        }
+    } cleanup{host.get(), &guests};
+
+    const auto pump_all = [&] {
+        host->poll_and_apply();
+        for (const auto& guest : guests)
+            (void)guest->poll_typed();
+    };
+
+    for (int index = 0; index < 4; ++index)
+    {
+        og::sim::WebSocketClientTransport::Options guest_options;
+        guest_options.remote_peer_id = kServerPeer;
+        guest_options.automatic_reconnection = false;
+        guests.push_back(std::make_unique<og::sim::WebSocketClientTransport>(
+            std::format("ws://127.0.0.1:{}", host_options.port),
+            guest_options));
+        guests.back()->accept_connections();
+        ASSERT_TRUE(wait_until([&] {
+            pump_all();
+            return guests.back()->link_state() ==
+                og::sim::TransportLinkState::Connected;
+        })) << "crafted guest " << index << " must connect";
+
+        SaveData guest_save;
+        const std::string name = std::format("Cap Guest {}", index);
+        prepare_single_member_network_save(
+            guest_save, static_cast<short>(index % MAX_PLAYERS), name.c_str());
+        send_lobby_message(
+            *guests.back(),
+            kServerPeer,
+            og::ui::detail::make_join_message(
+                guest_save, name, static_cast<short>(index % MAX_PLAYERS),
+                nullptr, 4u));
+        const std::size_t wanted = static_cast<std::size_t>(index + 1) * 4u;
+        ASSERT_TRUE(wait_until([&] {
+            pump_all();
+            return host->lobby_players().size() == wanted;
+        })) << "guest " << index << " must hold four seats";
+    }
+
+    EXPECT_FALSE(host->add_local_seat())
+        << "the sixteen-seat cap must refuse the host's seat";
+    EXPECT_EQ(0u, host->local_seat_count());
+    EXPECT_EQ(0, static_cast<int>(save.numplayers))
+        << "a refused spectator must be restored to zero players";
+    EXPECT_EQ(16u, host->lobby_players().size());
+
+    // Control: one guest leaves; the same ADD PLAYER now seats the host.
+    guests.back().reset();
+    guests.pop_back();
+    ASSERT_TRUE(wait_until([&] {
+        pump_all();
+        return host->lobby_players().size() == 12u;
+    })) << "the departed guest's four seats must free up";
+    EXPECT_TRUE(host->add_local_seat());
+    EXPECT_EQ(1u, host->local_seat_count());
+    EXPECT_EQ(1, static_cast<int>(save.numplayers));
+}
+
+// A campaign archive path that exists but cannot be read as a file (here a
+// DIRECTORY named <id>.glad) has no content hash: the room listing carries
+// no campaign filter at all, never the CRC of zero bytes "00000000".
+// Control: a real archive file is filtered by its crc32.
+TEST(PickerNetworkClient, unreadable_campaign_archive_has_no_content_hash)
+{
+    IxNetSystemScope net_system;
+
+    const std::string campaign_id = "wp4 dir archive";
+    const std::filesystem::path archive_dir =
+        campaign_archive_path_for_testing(campaign_id);
+    std::error_code ec;
+    std::filesystem::remove_all(archive_dir, ec);
+    std::filesystem::create_directories(archive_dir, ec);
+    ASSERT_FALSE(ec) << ec.message();
+    struct DirCleanup
+    {
+        std::filesystem::path path;
+        ~DirCleanup()
+        {
+            std::error_code cleanup_ec;
+            std::filesystem::remove_all(path, cleanup_ec);
+        }
+    } dir_cleanup{archive_dir};
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(
+        relay_port, 200, R"({"code":"glad-xkcd"})", "[]", 200);
+    const std::string base = std::format("http://127.0.0.1:{}", relay_port);
+
+    EXPECT_TRUE(og::ui::list_relay_rooms(base, campaign_id).empty());
+    const std::string dir_uri = relay_server.last_room_list_uri();
+    EXPECT_EQ(std::nullopt, extract_query_param(dir_uri, "campaign"))
+        << "an unreadable archive must not be filtered by a hash: " << dir_uri;
+
+    // Control: a readable archive is filtered by its crc32.
+    const std::string file_campaign_id = "wp4 file archive";
+    ScopedCampaignArchive archive(file_campaign_id);
+    archive.write("hash control");
+    EXPECT_TRUE(og::ui::list_relay_rooms(base, file_campaign_id).empty());
+    EXPECT_EQ(std::optional<std::string>(crc32_hex_for_bytes("hash control")),
+              extract_query_param(relay_server.last_room_list_uri(), "campaign"));
+}
+
+// A second room-list discovery never waits for an in-flight one: the worker
+// owner reaps only FINISHED workers, so starting request B while request A's
+// response is held returns at once. The latch is released on every exit path.
+TEST(PickerNetworkClient, second_room_list_discovery_never_joins_an_in_flight_worker)
+{
+    IxNetSystemScope net_system;
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(
+        relay_port, 200, R"({"code":"glad-xkcd"})", "[]", 200);
+    const std::string base = std::format("http://127.0.0.1:{}", relay_port);
+
+    const std::size_t completed = relay_server.block_room_list_responses();
+    struct ReleaseLatch
+    {
+        FakeRelayServer& server;
+        ~ReleaseLatch() { server.release_room_list_responses(); }
+    } release_latch{relay_server};
+
+    auto first = og::ui::begin_list_relay_rooms(base, "gladiator");
+    ASSERT_NE(nullptr, first);
+    ASSERT_TRUE(relay_server.wait_for_room_list_request_after(completed))
+        << "request A must be in flight, held by the latch";
+
+    auto second_future = std::async(std::launch::async, [&] {
+        return og::ui::begin_list_relay_rooms(base, "gladiator");
+    });
+    const bool second_started =
+        second_future.wait_for(10s) == std::future_status::ready;
+    EXPECT_TRUE(second_started)
+        << "starting B must not join A's still-blocked worker";
+    EXPECT_FALSE(first->poll().has_value())
+        << "A is still held when B starts";
+
+    relay_server.release_room_list_responses();
+    auto second = second_future.get();
+    ASSERT_NE(nullptr, second);
+    std::optional<og::ui::PickerRelayRoomListResult> first_result;
+    std::optional<og::ui::PickerRelayRoomListResult> second_result;
+    ASSERT_TRUE(wait_until([&] {
+        if (!first_result)
+            first_result = first->poll();
+        if (!second_result)
+            second_result = second->poll();
+        return first_result.has_value() && second_result.has_value();
+    }));
+    EXPECT_TRUE(first_result->error.empty()) << first_result->error;
+    EXPECT_TRUE(second_result->error.empty()) << second_result->error;
 }

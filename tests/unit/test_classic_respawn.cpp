@@ -822,3 +822,44 @@ TEST(ClassicRespawn, full_queue_blocked_evict_keeps_the_incoming_corpse)
     EXPECT_EQ(og::sim::kRespawnMaxQueueEntries - 1, crafted)
         << "the blocked evict retry is the entry dropped, not the corpse";
 }
+
+// A cleric resurrect can beat the classic respawner to a hero: the live copy
+// carries the corpse's character (same guy id), so the queued revive is
+// refused at fire time. The corpse then stays dead, and the per-tick classic
+// death scan must NOT schedule it again while that live duplicate walks —
+// or the queue refires the refused revive every respawn period forever.
+// Control: once the duplicate itself dies, nothing is walking as that
+// character any more and both corpses are scheduled on the next scan.
+TEST(ClassicRespawn, live_duplicate_hero_corpse_is_never_rescheduled)
+{
+    ClassicArena arena(1);
+    GameWorld& w = arena.world();
+    walker* hero = arena.hero;
+    const std::uint32_t corpse_id = hero->entity_id();
+
+    arena.fx.kill(hero);
+    arena.fx.tick();
+    ASSERT_EQ(1u, w.respawn.respawn_queue.size());
+    ASSERT_EQ(corpse_id, w.respawn.respawn_queue[0].walker_entity_id);
+
+    // The resurrected copy: a live walker bound to the same character.
+    walker* duplicate = arena.fx.spawn_hero(FAMILY_SOLDIER, 0, 256, 320, 41);
+    ASSERT_NE(nullptr, duplicate);
+    const std::uint32_t duplicate_id = duplicate->entity_id();
+
+    arena.fx.tick(12); // the 12-tick timer runs out and the fire refuses
+    ASSERT_TRUE(hero->dead()) << "a live duplicate cancels the revive";
+    ASSERT_FALSE(duplicate->dead());
+    arena.fx.tick(3);
+    EXPECT_TRUE(w.respawn.respawn_queue.empty())
+        << "a corpse whose character walks again is not rescheduled";
+    EXPECT_TRUE(hero->dead());
+
+    // Control: the duplicate dies, so the character is no longer walking.
+    arena.fx.kill(duplicate);
+    arena.fx.tick();
+    ASSERT_EQ(2u, w.respawn.respawn_queue.size())
+        << "with no live duplicate both corpses are scheduled";
+    EXPECT_EQ(corpse_id, w.respawn.respawn_queue[0].walker_entity_id);
+    EXPECT_EQ(duplicate_id, w.respawn.respawn_queue[1].walker_entity_id);
+}

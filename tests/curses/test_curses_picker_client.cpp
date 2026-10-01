@@ -27,8 +27,11 @@
 #include <openglad/platform/curses/headless_terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/interface/platform_bridge.h>
@@ -38,8 +41,11 @@
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
 #include <array>
@@ -58,9 +64,13 @@
 
 #include <arpa/inet.h>
 #include <cstdint>
+#include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <ixwebsocket/IXGetFreePort.h>
+#include <openglad/platform/net_transport_websocket_server.h>
 
 #include "curses_mount_restore.h"
 
@@ -1041,12 +1051,34 @@ TEST(CursesPickerClient, view_scenario_band_overflow_stops_at_the_footer)
     EXPECT_TRUE(f.t().input_exhausted())
         << "both releases and the fresh press must be consumed";
     EXPECT_NE(std::string::npos, f.t().text_row(0).find("View Scenario"));
-    EXPECT_EQ(0u, f.t().text_row(15).find("[ press any key ]"))
-        << "the footer keeps its prompt when the census overflows:\n"
+    const auto trimmed_row = [](const HeadlessTerminal& term, int row) {
+        std::string text = term.text_row(row);
+        while (!text.empty() && text.back() == ' ')
+            text.pop_back();
+        return text;
+    };
+    EXPECT_EQ("[ press any key ]", trimmed_row(f.t(), 15))
+        << "the footer carries the prompt and nothing else:\n"
         << f.t().dump();
     EXPECT_NE(std::string::npos, f.t().text_row(12).find_first_not_of(' '))
         << "the first census row under the band must be filled:\n"
         << f.t().dump();
+
+    // MID-WRAP: at 20x20 a census line starts on the last row above the
+    // footer and wraps onto it with a tail longer than the 17-cell prompt,
+    // so a continuation written onto the footer row would stay visible past
+    // the prompt. The wrapped-continuation break must stop it.
+    PickerFixture wide({}, /*rows=*/20, /*cols=*/20);
+    wide.t().push_special(KeyCode::Enter);
+    wide.client.handle_menu_item(PickerMenuId::Scenario, *item);
+    EXPECT_TRUE(wide.t().input_exhausted());
+    EXPECT_EQ("[ press any key ]", trimmed_row(wide.t(), 19))
+        << "a census line wrapping onto the footer must stop above it:\n"
+        << wide.t().dump();
+    EXPECT_NE(std::string::npos,
+              wide.t().text_row(18).find_first_not_of(' '))
+        << "the row above the footer holds the start of the wrapped line:\n"
+        << wide.t().dump();
 }
 
 // Solo staged VIEW LEVEL degradation: a local stage that cannot fit the
@@ -1610,6 +1642,65 @@ void enter_prompt_number(HeadlessTerminal& term, int number)
     term.push_special(KeyCode::Enter);
 }
 
+// A transient notice is overwritten by the next screen the flow draws, so a
+// test that must READ one wraps the HeadlessTerminal and keeps the text of
+// every presented frame. Pure delegation: the scripted keys and the grid are
+// the wrapped terminal's.
+class PresentedFrameLog final : public ITerminal
+{
+public:
+    explicit PresentedFrameLog(HeadlessTerminal& inner) : inner_(inner) {}
+
+    int rows() const override { return inner_.rows(); }
+    int cols() const override { return inner_.cols(); }
+    bool supports_unicode() const override { return inner_.supports_unicode(); }
+    bool supports_color() const override { return inner_.supports_color(); }
+    void clear() override { inner_.clear(); }
+    void put(int row, int col, char32_t ch, Color fg, Color bg,
+             bool bold) override
+    {
+        inner_.put(row, col, ch, fg, bg, bold);
+    }
+    void put_str(int row, int col, std::string_view utf8, Color fg, Color bg,
+                 bool bold) override
+    {
+        inner_.put_str(row, col, utf8, fg, bg, bold);
+    }
+    void present() override
+    {
+        inner_.present();
+        frames_.push_back(inner_.dump());
+    }
+    Key poll_key(bool block) override { return inner_.poll_key(block); }
+    void set_cursor_visible(bool visible) override
+    {
+        inner_.set_cursor_visible(visible);
+    }
+    void beep() override { inner_.beep(); }
+
+    // Every presented frame whose text contains `needle`.
+    std::vector<std::string> frames_containing(std::string_view needle) const
+    {
+        std::vector<std::string> out;
+        for (const std::string& frame : frames_)
+            if (frame.find(needle) != std::string::npos)
+                out.push_back(frame);
+        return out;
+    }
+
+private:
+    HeadlessTerminal& inner_;
+    std::vector<std::string> frames_;
+};
+
+std::string read_user_file_bytes(const std::string& relative)
+{
+    std::ifstream in(std::filesystem::path(get_user_path()) / relative,
+                     std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)),
+                       std::istreambuf_iterator<char>());
+}
+
 } // namespace
 
 TEST(CursesPickerClient,
@@ -1780,6 +1871,93 @@ TEST(CursesPickerClient, company_backups_restore_no_first_then_yes)
     ASSERT_EQ(2u, backups.size());
     EXPECT_EQ("NEW BAND", backups.front().header.display_name)
         << "the pre-restore state must be snapshotted first (§3.7 step 1)";
+}
+
+// [SAVE-R2]/[SAVE-R3] a curses Restore Backup whose rewind FAILS names the
+// failure and puts the terminal slot back on the company that was open
+// before. The backup is torn exactly like CompanyIo's
+// restore_reload_failure_rolls_back_disk_and_memory: the 164-byte header with
+// listsize patched to 2 passes the step-0 header check (so the row is not
+// marked damaged and the confirm is reached) and fails the step-3 full
+// reload. The paired control is company_backups_restore_no_first_then_yes,
+// where the same Yes rewinds and the slot is repointed.
+TEST(CursesPickerClient, company_backup_restore_failure_names_it_and_keeps_the_slot)
+{
+    MountRestore mount_restore;
+    const std::string slot =
+        unique_curses_company_slot("curses-torn-restore");
+    ASSERT_TRUE(seed_curses_company(slot, "TORN BAND", 9400));
+    const std::string good_bytes =
+        read_user_file_bytes("save/" + slot + ".gtl");
+    ASSERT_GE(good_bytes.size(), 164u);
+    std::string torn = good_bytes.substr(0, 164);
+    const std::int16_t fake_listsize = 2;
+    std::memcpy(torn.data() + 130, &fake_listsize, sizeof(fake_listsize));
+    {
+        const std::filesystem::path backups_dir =
+            std::filesystem::path(get_user_path()) / "save" / "backups";
+        std::error_code ec;
+        std::filesystem::create_directories(backups_dir, ec);
+        std::ofstream out(backups_dir / (slot + ".005.gtl"),
+                          std::ios::binary | std::ios::trunc);
+        out.write(torn.data(), static_cast<std::streamsize>(torn.size()));
+        ASSERT_TRUE(out.good());
+    }
+    {
+        const std::vector<og::data::CompanyBackupInfo> backups =
+            og::data::list_company_backups(slot);
+        ASSERT_EQ(1u, backups.size());
+        ASSERT_TRUE(backups.front().header.valid)
+            << "the torn backup must pass the header check, or the flow "
+               "stops at the 'damaged' refusal instead of the rewind";
+    }
+    const int company_row = company_row_number(slot);
+    ASSERT_GT(company_row, 0);
+
+    HeadlessTerminal term{40, 100};
+    PresentedFrameLog log{term};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client(log, clock, config, options);
+    const std::string slot_before = config.save_name;
+    ASSERT_NE(slot, slot_before);
+    const std::string memory_before = client.save_data().save_name;
+    ASSERT_NE("TORN BAND", memory_before)
+        << "the pre-open company must differ from the restore target";
+
+    pick(term, 1);                         // chrome: Backups...
+    enter_prompt_number(term, company_row);
+    pick(term, 0);                         // backups chrome: Restore Backup
+    term.push_special(KeyCode::Enter);     // the only backup: row "1"
+    term.push_char(U'2');                  // digit-jump to Yes
+    term.push_special(KeyCode::Enter);
+    dismiss(term);                         // the failure notice
+    term.push_special(KeyCode::Escape);    // back out of the backups view
+    term.push_special(KeyCode::Escape);    // back out of the list
+
+    EXPECT_FALSE(client.show_company_list())
+        << "a failed rewind opens nothing (no team build)";
+    EXPECT_TRUE(term.input_exhausted());
+    EXPECT_EQ(slot_before, config.save_name)
+        << "[SAVE-R2] a failed restore must put the terminal slot back";
+    EXPECT_EQ(slot_before, og::data::active_company_slot())
+        << "[SAVE-R2] the active company slot follows the terminal slot";
+    const std::string notice = std::format(
+        "Restore failed ({}).",
+        og::ui::company_restore_error_string(
+            og::data::CompanyRestoreError::ReloadFailed));
+    EXPECT_EQ(1u, log.frames_containing(notice).size())
+        << "the failure is named on exactly one notice: " << notice;
+    EXPECT_EQ(good_bytes, read_user_file_bytes("save/" + slot + ".gtl"))
+        << "[SAVE-R3] the rollback leaves the company file byte-identical";
+    // BUG-REST-MEM: the step-3 rollback reloads the TARGET's pre-restore
+    // state; the in-memory save must stay on the company that is open (the
+    // slot and the memory never disagree), or the next Save writes the
+    // target's roster into the previous slot.
+    EXPECT_EQ(memory_before, client.save_data().save_name)
+        << "[SAVE-R2] a failed restore must leave the in-memory company on "
+           "the one that was open before";
 }
 
 // §2.4 delete-backup round trip (curses projection): NO-first keeps the
@@ -4203,6 +4381,123 @@ TEST(CursesPickerClient, cloud_download_confirms_installs_and_opens_company)
     cfg.data.erase("cloud");
 }
 
+// [SAVE-R2]/D16: a cloud DOWNLOAD whose company installs but cannot be
+// OPENED (its campaign is not installed here) keeps the company on disk,
+// names the missing campaign, and leaves the curses slot on the company that
+// was open before. install_company_bytes header-validates only, so the
+// install succeeds; load_with_error then fails with CampaignLoadFailed. The
+// paired control is cloud_download_confirms_installs_and_opens_company, where
+// the same DOWNLOAD opens the company and repoints the slot.
+TEST(CursesPickerClient, cloud_download_of_an_unopenable_company_keeps_the_slot)
+{
+    MountRestore mount_restore;
+    cfg.data.erase("cloud");
+
+    const std::string staging_slot =
+        unique_curses_company_slot("curses-cloud-stage");
+    {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = "ORPHAN BAND";
+        sd.current_campaign = "wp4nosuchcampaign";
+        sd.last_played_unix_s = 9350;
+        ASSERT_EQ(SaveDataIoError::None, sd.save_with_error(staging_slot));
+    }
+    const std::string remote_bytes =
+        read_user_file_bytes("save/" + staging_slot + ".gtl");
+    ASSERT_FALSE(remote_bytes.empty());
+    ASSERT_TRUE(remove_user_file("save/" + staging_slot + ".gtl"));
+
+    const std::string company_slot =
+        unique_curses_company_slot("curses-cloud-orphan");
+    ASSERT_FALSE(user_file_exists("save/" + company_slot + ".gtl"));
+    const std::vector<std::uint8_t> remote_raw(remote_bytes.begin(),
+                                               remote_bytes.end());
+    const std::string get_body =
+        std::format(
+            R"({{"revision":7,"uploaded_at":1754200000000,"slot":"{}",)"
+            R"("save_name":"ORPHAN BAND","scen_num":1,"last_played":9350,)"
+            R"("data_hex":"{}"}})",
+            company_slot, og::ui::cloud::hex_encode(remote_raw));
+
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_get = [&](const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    faked.cloud_http_post = [](const std::string&, const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 500;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    {
+        HeadlessTerminal term{40, 100};
+        PresentedFrameLog log{term};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client(log, clock, config, options);
+        const std::string slot_before = config.save_name;
+        ASSERT_NE(company_slot, slot_before);
+        const std::string memory_before = client.save_data().save_name;
+        const std::string campaign_before =
+            client.save_data().current_campaign;
+        ASSERT_NE("ORPHAN BAND", memory_before)
+            << "the pre-open company must differ from the download";
+
+        const int door_idx =
+            main_menu_item_index(PickerMenuCommand::OpenCloudMenu);
+        ASSERT_GE(door_idx, 0);
+        ASSERT_LE(door_idx, 8);
+        pick(term, door_idx);
+        pick(term, 0);                     // PASSPHRASE
+        term.push_string("correct horse battery");
+        term.push_special(KeyCode::Enter);
+        dismiss(term);                     // "Passphrase set."
+        pick(term, 2);                     // DOWNLOAD (new slot: no confirm)
+        dismiss(term);                     // the open path's "Load failed"
+        dismiss(term);                     // the campaign-missing notice
+        term.push_special(KeyCode::Escape); // leave the submenu
+        term.push_special(KeyCode::Escape); // Main -> quit
+
+        og::ui::run_picker(client);
+
+        EXPECT_TRUE(term.input_exhausted());
+        EXPECT_EQ(slot_before, config.save_name)
+            << "[SAVE-R2] an install that cannot be opened must leave the "
+               "curses slot on the previous company";
+        EXPECT_EQ(slot_before, og::data::active_company_slot());
+        EXPECT_EQ(1u, log.frames_containing(
+                          std::format("Load failed for '{}'", company_slot))
+                          .size())
+            << "the open attempt was made on the downloaded slot and failed";
+        EXPECT_EQ(1u, log.frames_containing("Downloaded, but campaign").size());
+        EXPECT_EQ(1u, log.frames_containing("'wp4nosuchcampaign' is not").size())
+            << "D16: the notice names the campaign to install";
+        // BUG-CLOUD-MEM: load_with_error read the whole downloaded save
+        // before load_campaign failed; the in-memory company must stay on
+        // the one that was open, like the slot.
+        EXPECT_EQ(memory_before, client.save_data().save_name)
+            << "[SAVE-R2] an unopenable download must leave the in-memory "
+               "company on the previous one";
+        EXPECT_EQ(campaign_before, client.save_data().current_campaign);
+    }
+
+    EXPECT_EQ(remote_bytes,
+              read_user_file_bytes("save/" + company_slot + ".gtl"))
+        << "D16: the downloaded company stays installed on disk";
+    EXPECT_EQ("7", cfg.get_setting("cloud", "revision"));
+    cfg.data.erase("cloud");
+}
+
 // Every destructive door in the company list opens with a row prompt, and
 // backing out of that prompt has to be free: no company deleted, no backup
 // deleted, no company opened, no slot repointed. The accepted delete at the
@@ -4287,3 +4582,554 @@ TEST(CursesPickerClient, view_scenario_refuses_an_unmounted_campaign)
     }
 }
 
+
+// --- cov97 WP-TERM: footer cuts, prompt scroll, Back rows, refusals -------
+
+// show_text never draws over its footer: when a WRAPPED line would cross
+// the footer row, the continuation is cut (the whole-line break above it
+// only fires between source lines). At 6x40 the third help line wraps into
+// two pieces and only the first fits above the footer. Control: that first
+// piece lands on the last body row.
+TEST(CursesPickerClient, show_text_cuts_a_wrapped_line_at_the_footer)
+{
+    PickerFixture f({}, /*rows=*/6, /*cols=*/40);
+    f.t().push_special(KeyCode::Enter);
+    f.client.show_help();
+
+    EXPECT_EQ(0u, f.t().text_row(4).find("Begin New Game"))
+        << "the wrapped line's head fills the last body row:\n"
+        << f.t().dump();
+    EXPECT_EQ("[ press any key ]" + std::string(40 - 17, ' '),
+              f.t().text_row(5))
+        << "the continuation must not be drawn under the footer:\n"
+        << f.t().dump();
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The camp prompt's context block scrolls with the Down arrow: one press
+// moves the window one line, and the overflow marker says where it is now.
+TEST(CursesPickerClient, camp_prompt_down_arrow_scrolls_one_line)
+{
+    PickerFixture f({}, 24, 80);
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    local docket = {}
+    for i = 1, 14 do
+      docket[i] = { id = "job" .. i, label = "JOB " .. i, kind = "action" }
+    end
+    return {
+      widgets = {
+        { kind = "text", weight = 2, lines = {
+            "The company waits at the fire.",
+            "The road east is open.",
+            "The bearer keeps the coin.",
+          } },
+        { kind = "actions", weight = 2, entries = docket },
+        { kind = "roster",
+          assign = { key = "muster", labels = { "WAR", "BURDEN" } } },
+      },
+    }
+  end,
+}))LUA");
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CampaignCamp);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Down);
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("-- 2-"), std::string::npos)
+        << "one Down press starts the window at line 2:\n" << dump;
+    EXPECT_EQ(dump.find("-- 1-"), std::string::npos)
+        << "the window must have moved off line 1:\n" << dump;
+}
+
+// A digit jump past the last selectable row leaves the highlight where it
+// was: '9' on the 8-row Main menu selects nothing, and the Enter after it
+// confirms the row the cursor started on. Control: '2' does jump.
+TEST(CursesPickerClient, digit_past_the_last_row_keeps_the_cursor)
+{
+    PickerFixture f;
+    const auto& def = og::ui::picker_menu_definition(PickerMenuId::Main);
+    ASSERT_EQ(8u, def.items.size()) << "'9' must address no row";
+
+    f.t().push_char(U'2');
+    f.t().push_special(KeyCode::Enter);
+    const auto* control = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(control, nullptr);
+    EXPECT_EQ(PickerMenuCommand::ContinueGame, control->command);
+
+    f.t().push_char(U'9');
+    f.t().push_special(KeyCode::Enter);
+    const auto* item = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(PickerMenuCommand::BeginNewGame, item->command)
+        << "an out-of-range digit must not move the highlight";
+}
+
+// The roster's 'd' key obeys the camp's deploy lock exactly like the Deploy
+// row: the lock's reason is shown and the benched hero stays benched.
+TEST(CursesPickerClient, roster_d_key_obeys_the_camps_deploy_lock)
+{
+    PickerFixture f;
+    ScopedSyntheticCampaignPicker picker(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = { { kind = "roster",
+      locks = { { unset = true, reason = "Swear first." } } } } }
+  end,
+}))LUA");
+    for (std::unique_ptr<guy>& member : f.save().team_list)
+        if (member != nullptr)
+            member->deployed = false;
+    const auto* roster = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(roster, nullptr);
+
+    f.t().push_char(U'd');               // deploy row 1 from the roster
+    dismiss(f.t());                      // the refusal screen
+    f.t().push_special(KeyCode::Escape); // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *roster);
+
+    EXPECT_EQ(0, og::ui::count_deployed_members(f.save()))
+        << "a refused 'd' must not deploy";
+    // The roster redraws over the refusal, so dump() cannot show it; the
+    // frame ledger does: roster ('d'), the refusal screen, roster (Esc).
+    EXPECT_EQ(3, f.t().present_count());
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// The Train screen's Back row leaves at once: the keys queued after it
+// belong to the caller. Were Back to fall through to the loop, the trailing
+// Enter / '7' / Enter would raise STR and accept the training.
+TEST(CursesPickerClient, train_back_row_leaves_without_training)
+{
+    PickerFixture f;
+    const short strength_before = f.save().team_list[0]->strength;
+    const std::uint32_t gold_before = f.save().m_totalcash[0];
+    const auto* train = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(train, nullptr);
+
+    f.t().push_special(KeyCode::Up);     // wrap to the last row: Back
+    f.t().push_special(KeyCode::Enter);  // Back
+    f.t().push_special(KeyCode::Enter);  // (would be +1 STR)
+    f.t().push_char(U'7');               // (would jump to Accept)
+    f.t().push_special(KeyCode::Enter);  // (would accept)
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *train);
+
+    EXPECT_EQ(strength_before, f.save().team_list[0]->strength);
+    EXPECT_EQ(gold_before, f.save().m_totalcash[0]);
+    EXPECT_FALSE(f.t().input_exhausted())
+        << "the keys after Back are not the Train screen's to consume";
+}
+
+// The Lineup page's Back row returns to Team Build at once; a trailing Enter
+// that would step TEAM 1's FILL wheel is left for the caller.
+TEST(CursesPickerClient, lineup_back_row_returns_without_touching_a_knob)
+{
+    PickerFixture f;
+    seed_lineup_roster(f.save());
+    f.save().current_campaign = "gladiator";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    const short fill_before = f.save().fill[0];
+
+    f.t().push_special(KeyCode::Up);     // wrap to the last row: Back
+    f.t().push_special(KeyCode::Enter);  // Back
+    f.t().push_special(KeyCode::Enter);  // (would step TEAM 1 FILL)
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, lineup_item());
+
+    EXPECT_EQ(fill_before, f.save().fill[0]);
+    EXPECT_FALSE(f.t().input_exhausted())
+        << "the Enter after Back is not the Lineup page's to consume";
+}
+
+// Cloud passphrase: a cancelled prompt and an empty entry both leave the
+// stored key untouched and say so. Control: the same screen still accepts a
+// valid passphrase.
+TEST(CursesPickerClient, cloud_passphrase_cancel_or_empty_keeps_the_key)
+{
+    cfg.data.erase("cloud");
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::CloudSave, PickerMenuCommand::CloudSetPassphrase);
+    ASSERT_NE(item, nullptr);
+    cfg.apply_setting("cloud", "key", "feedfacefeedface");
+
+    {
+        PickerFixture f;
+        f.t().push_special(KeyCode::Escape); // cancel the prompt
+        dismiss(f.t());
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *item);
+        EXPECT_NE(f.t().dump().find("Passphrase unchanged."),
+                  std::string::npos) << f.t().dump();
+        EXPECT_EQ("feedfacefeedface", cfg.get_setting("cloud", "key"));
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {
+        PickerFixture f;
+        f.t().push_special(KeyCode::Enter);  // accept an empty entry
+        dismiss(f.t());
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *item);
+        EXPECT_NE(f.t().dump().find("Passphrase unchanged."),
+                  std::string::npos) << f.t().dump();
+        EXPECT_EQ("feedfacefeedface", cfg.get_setting("cloud", "key"));
+    }
+    cfg.data.erase("cloud");
+}
+
+// Host Game on a port somebody else already holds, with no relay to fall
+// back on, refuses on the "Networking unavailable" screen with the direct
+// listener's reason, and reports that no lobby ran.
+TEST(CursesPickerClient, host_game_on_a_busy_port_reports_the_direct_failure)
+{
+    MountRestore mount_restore;
+    const int busy_port = ix::getFreePort();
+    og::sim::WebSocketServerTransport blocker(busy_port);
+    blocker.accept_connections();
+
+    CursesPickerOptions options;
+    options.host_port = busy_port;
+    PickerFixture f(options);
+    f.t().push_special(KeyCode::Enter);  // Networking: Host Game
+    dismiss(f.t());                      // the refusal screen
+    EXPECT_FALSE(f.client.configure_networking())
+        << "no lobby ran, so networking was not configured";
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Networking unavailable"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Direct: "), std::string::npos) << dump;
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// #155 cloud flows, the explicit NO: both overwrite confirms are NO-first,
+// and answering No is the one outcome the shared flow reports only through
+// its return value (every other outcome already put up its own notice). The
+// curses client must still SAY it: "Upload cancelled." after a declined
+// cloud overwrite, "Download cancelled." after a declined local overwrite.
+// Control: nothing moved — one POST only (no retry at the conflict
+// revision), and the local company still holds its own name.
+TEST(CursesPickerClient, cloud_declined_overwrites_still_report_the_cancel)
+{
+    cfg.data.erase("cloud");
+    cfg.apply_setting("cloud", "key", "feedfacefeedface");
+    const auto* upload = og::ui::find_picker_menu_item(
+        PickerMenuId::CloudSave, PickerMenuCommand::CloudUpload);
+    const auto* download = og::ui::find_picker_menu_item(
+        PickerMenuId::CloudSave, PickerMenuCommand::CloudDownload);
+    ASSERT_NE(upload, nullptr);
+    ASSERT_NE(download, nullptr);
+
+    struct BridgeRestore {
+        PlatformBridge saved;
+        ~BridgeRestore() { set_platform_bridge(saved); }
+    } bridge_restore{platform_bridge()};
+
+    int posts = 0;
+    std::string get_body;
+    PlatformBridge faked = bridge_restore.saved;
+    faked.cloud_http_post = [&posts](const std::string&, const std::string&) {
+        ++posts;
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 409;
+        result.body = R"({"revision":7,"uploaded_at":1754200000000,)"
+                      R"("slot":"elsewhere","save_name":"OTHER DEVICE",)"
+                      R"("scen_num":4,"last_played":9400})";
+        return result;
+    };
+    faked.cloud_http_get = [&get_body](const std::string&) {
+        og::ui::cloud::CloudHttpResult result;
+        result.status = 200;
+        result.body = get_body;
+        return result;
+    };
+    set_platform_bridge(faked);
+
+    {
+        PickerFixture f;
+        ASSERT_TRUE(seed_curses_company(f.config.save_name, "LOCAL BAND", 9200));
+        f.t().push_special(KeyCode::Enter); // the confirm opens on No
+        dismiss(f.t());                     // the cancel notice
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *upload);
+        EXPECT_NE(f.t().dump().find("Upload cancelled."), std::string::npos)
+            << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+        EXPECT_EQ(1, posts) << "a declined overwrite never re-posts";
+    }
+
+    {
+        const std::string slot =
+            unique_curses_company_slot("curses-cloud-decline");
+        ASSERT_TRUE(seed_curses_company(slot, "LOCAL BAND", 9200));
+        const std::vector<std::uint8_t> remote_raw = {'x'};
+        get_body = std::format(
+            R"({{"revision":5,"uploaded_at":1754200000000,"slot":"{}",)"
+            R"("save_name":"CLOUD BAND","scen_num":1,"last_played":9300,)"
+            R"("data_hex":"{}"}})",
+            slot, og::ui::cloud::hex_encode(remote_raw));
+
+        PickerFixture f;
+        f.t().push_special(KeyCode::Enter); // the confirm opens on No
+        dismiss(f.t());                     // the cancel notice
+        f.client.handle_menu_item(PickerMenuId::CloudSave, *download);
+        EXPECT_NE(f.t().dump().find("Download cancelled."), std::string::npos)
+            << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+        const std::optional<og::data::CompanyInfo> local =
+            og::data::read_company_header(slot);
+        ASSERT_TRUE(local.has_value());
+        EXPECT_EQ("LOCAL BAND", local->display_name)
+            << "a declined download leaves the local company alone";
+    }
+    cfg.data.erase("cloud");
+}
+
+// §2.3 Company List with nothing on disk says so in words and hands control
+// back (false: the state machine stays on the main menu) instead of drawing
+// an empty chooser. The harness reaps every company between tests
+// ([SAVE-R9]) and this suite's baseline is empty, so the list starts bare.
+// Control: with one company on disk the same call draws the list instead.
+TEST(CursesPickerClient, company_list_with_no_companies_says_so)
+{
+    ASSERT_TRUE(og::data::list_companies().empty())
+        << "the curses suite's per-PID save dir starts every test bare";
+    {
+        PickerFixture f;
+        dismiss(f.t());
+        EXPECT_FALSE(f.client.show_company_list());
+        EXPECT_NE(f.t().dump().find("No companies yet."), std::string::npos)
+            << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+
+    ASSERT_TRUE(seed_curses_company("wpleftone", "ONLY BAND", 9100));
+    PickerFixture f;
+    f.t().push_special(KeyCode::Escape); // back out of the list
+    EXPECT_FALSE(f.client.show_company_list());
+    EXPECT_EQ(f.t().dump().find("No companies yet."), std::string::npos);
+    EXPECT_NE(f.t().dump().find("ONLY BAND"), std::string::npos) << f.t().dump();
+}
+
+// [SAVE-R2] Opening a company that fails to load (its campaign is not
+// installed) must leave this client's slot authority where it was: the
+// failed open repointed config.save_name at the broken slot to try it, and
+// has to put it back — or the next autosave would write the broken slot.
+// Control: opening an intact company repoints the slot and proceeds.
+TEST(CursesPickerClient, failed_company_open_restores_the_previous_slot)
+{
+    MountRestore mount_restore;
+    {
+        SaveData broken;
+        broken.reset();
+        broken.save_name = "LOST BAND";
+        broken.current_campaign = "wpleftnosuchcampaign";
+        broken.last_played_unix_s = 9500;
+        ASSERT_EQ(SaveDataIoError::None, broken.save_with_error("wpleftlost"));
+    }
+    ASSERT_EQ(1u, og::data::list_companies().size());
+
+    {
+        PickerFixture f;
+        const std::string slot_before = f.config.save_name;
+        const std::string memory_before = f.save().save_name;
+        const std::string campaign_before = f.save().current_campaign;
+        ASSERT_NE("LOST BAND", memory_before)
+            << "the pre-open company must differ from the broken one";
+        pick(f.t(), 0);                      // chrome: Open Company...
+        f.t().push_special(KeyCode::Enter);  //   accept the pre-filled "1"
+        dismiss(f.t());                      //   the "Load failed" notice
+        f.t().push_special(KeyCode::Escape); // back out of the list
+        EXPECT_FALSE(f.client.show_company_list());
+        EXPECT_TRUE(f.t().input_exhausted());
+        EXPECT_EQ(slot_before, f.config.save_name)
+            << "a failed open must restore the previous slot";
+        EXPECT_EQ(slot_before, og::data::active_company_slot())
+            << "and re-assert it as the active company";
+        // load_with_error read the whole LOST BAND save before
+        // load_campaign refused it; the in-memory company must stay on the
+        // one that was open, like the slot, or the next Save writes LOST
+        // BAND's state into the previous slot.
+        EXPECT_EQ(memory_before, f.save().save_name)
+            << "[SAVE-R2] a failed open must leave the in-memory company on "
+               "the one that was open before";
+        EXPECT_EQ(campaign_before, f.save().current_campaign);
+    }
+
+    ASSERT_TRUE(seed_curses_company("wpleftgood", "GOOD BAND", 9600));
+    const int good_row = company_row_number("wpleftgood");
+    ASSERT_GT(good_row, 0);
+    PickerFixture f;
+    pick(f.t(), 0);                          // chrome: Open Company...
+    f.t().push_special(KeyCode::Backspace);  //   clear the pre-filled "1"
+    for (const char ch : std::to_string(good_row))
+        f.t().push_char(static_cast<char32_t>(ch));
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());                          // the "Loaded" screen
+    EXPECT_TRUE(f.client.show_company_list());
+    EXPECT_EQ("wpleftgood", f.config.save_name);
+}
+
+// --- R8: a solo curses WIN through run_game ------------------------------
+//
+// run_game drains every queued key into its first frame, so a keyed exit
+// prompt cannot be answered inside one run_game call from a scripted
+// terminal. The classic rule that needs no key at all is the one a clear
+// level WITHOUT an exit obeys: no hostile Living and no exit pad is
+// level_done == 2, a win with next level = id + 1 on the first tick
+// (game_world.cpp's level completion check). The level is fixture content
+// authored with the product's own writers (mapgen start marker +
+// save_level_to_user_dir) and loaded through the mounted campaign's
+// user-path fall-through.
+namespace {
+
+struct AuthoredUserLevel
+{
+    int id;
+    ~AuthoredUserLevel() { (void)og::data::delete_tower_floor_files(id); }
+};
+
+// A foe-less, exit-less grass level with one team-0 start marker.
+bool author_clear_user_level(int id, const char* title)
+{
+    GameWorld authored(static_cast<std::uint32_t>(id));
+    headless_level_data_hooks().wire_world_entity_services(&authored, nullptr);
+    authored.create_new_grid();
+    authored.title = title;
+    og::mapgen::place_start(authored, 0, 6, 10);
+    og::data::LevelFileMetadata metadata; // grid defaults to scen{id:04}
+    og::data::LevelFileIoError error = og::data::LevelFileIoError::None;
+    const bool written =
+        og::data::save_level_to_user_dir(authored, id, metadata, &error);
+    authored.delete_objects();
+    return written && error == og::data::LevelFileIoError::None;
+}
+
+// Every rendered row of the final frame, trailing/leading blanks trimmed.
+std::vector<std::string> trimmed_rows(const HeadlessTerminal& term)
+{
+    std::vector<std::string> rows;
+    for (int row = 0; row < term.rows(); ++row) {
+        std::string text = term.text_row(row);
+        const std::size_t first = text.find_first_not_of(' ');
+        if (first == std::string::npos) {
+            rows.emplace_back();
+            continue;
+        }
+        const std::size_t last = text.find_last_not_of(' ');
+        rows.push_back(text.substr(first, last - first + 1));
+    }
+    return rows;
+}
+
+bool has_row(const std::vector<std::string>& rows, std::string_view want)
+{
+    return std::find(rows.begin(), rows.end(), want) != rows.end();
+}
+
+} // namespace
+
+// Rule: a solo run_game that WINS folds the win into the picker's save,
+// autosaves it to the active company slot (LevelWin), and shows the
+// "Mission complete" dialog with the classic verdict and the next level.
+// Paired control: a quit run is not a win -- nothing is completed and no
+// Mission complete dialog appears.
+TEST(CursesPickerClient, run_game_solo_win_folds_autosaves_and_reports)
+{
+    constexpr int kLevel = 9998;
+    AuthoredUserLevel files{kLevel};
+    ASSERT_TRUE(author_clear_user_level(kLevel, "CURSES CLEAR"));
+
+    {
+        // Paired control: a run that ends by quitting (Esc before the first
+        // tick on shipped level 1, whose foes hold it open) is no win --
+        // nothing is completed and no Mission complete dialog appears. (The
+        // authored clear level cannot host this control: its win lands on
+        // the same server tick as the abort.)
+        PickerFixture f;
+        f.config.campaign = "gladiator";
+        f.config.level = 1;
+        f.config.team_families.clear();
+        f.t().push_special(KeyCode::Escape);
+        f.client.run_game();
+        EXPECT_FALSE(f.save().is_level_completed(1)) << "a quit is not a win";
+        EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
+        const std::vector<std::string> rows = trimmed_rows(f.t());
+        EXPECT_FALSE(has_row(rows, "Victory!")) << f.t().dump();
+        EXPECT_FALSE(has_row(rows, "Mission complete")) << f.t().dump();
+    }
+
+    PickerFixture f;
+    f.config.campaign = "gladiator";
+    f.config.level = kLevel;
+    f.config.team_families.clear();
+    f.client.run_game();
+
+    const std::vector<std::string> rows = trimmed_rows(f.t());
+    EXPECT_TRUE(has_row(rows, "Mission complete")) << f.t().dump();
+    EXPECT_TRUE(has_row(rows, "Victory!"))
+        << "a Classic win's verdict is exactly the bare word:\n"
+        << f.t().dump();
+    EXPECT_TRUE(has_row(rows, "Next level: 9999. Level 9999"))
+        << f.t().dump();
+    EXPECT_TRUE(f.save().is_level_completed(kLevel));
+    EXPECT_EQ(kLevel + 1, static_cast<int>(f.save().scen_num));
+
+    SaveData disk;
+    ASSERT_TRUE(disk.load(og::data::active_company_slot()))
+        << "the LevelWin autosave must have written the active slot";
+    EXPECT_TRUE(disk.is_level_completed(kLevel))
+        << "the autosaved company carries the win";
+    EXPECT_EQ(kLevel + 1, static_cast<int>(disk.scen_num));
+}
+
+// R3 (route T): the solo "Mission complete" dialog carries the MOUNTED
+// mode's results summary after the verdict, as the SDL results screen does.
+// A tower floor win reads "Victory! Floor 1 conquered - best 2": floor 1 is
+// the finished world's id - 700, and best is the post-fold value
+// (advance_cursor records the floor REACHED, 2). The floor is fixture
+// content: the product's own tower writer (save_level_to_user_dir, the
+// generator's writer) puts a clear, exit-less floor 701 where the generator
+// would; tower_floor_files_exist accepts it (it checks presence, not seed
+// provenance), and the classic clear-level rule wins it on the first tick.
+// The non-tower half of the rule is run_game_solo_win_folds_autosaves_and_reports:
+// the same dialog on a Classic level reads exactly "Victory!".
+TEST(CursesPickerClient, run_game_tower_floor_win_shows_the_mode_summary)
+{
+    MountRestore mount_restore;
+    struct PruneFloors
+    {
+        ~PruneFloors()
+        {
+            for (int id = og::kTowerFirstFloorLevel; id <= 760; ++id)
+                (void)og::data::delete_tower_floor_files(id);
+        }
+    } prune_floors;
+
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(
+                  std::string(og::kTowerCampaignId)));
+    ASSERT_EQ(og::mode::ProgressionKind::Tower,
+              og::mode::current_progression().kind());
+    ASSERT_TRUE(author_clear_user_level(og::kTowerFirstFloorLevel, "Floor 1"));
+    ASSERT_TRUE(og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel));
+
+    PickerFixture f;
+    f.config.campaign = std::string(og::kTowerCampaignId);
+    f.config.level = og::kTowerFirstFloorLevel;
+    f.config.team_families.clear();
+    f.save().tower_best_floor = 1;
+    f.client.run_game();
+
+    const std::vector<std::string> rows = trimmed_rows(f.t());
+    EXPECT_TRUE(has_row(rows, "Victory! Floor 1 conquered - best 2"))
+        << f.t().dump();
+    EXPECT_FALSE(has_row(rows, "Victory!"))
+        << "the tower verdict must carry its summary:\n" << f.t().dump();
+    EXPECT_TRUE(has_row(rows, "Next level: 702. Floor 2")) << f.t().dump();
+    EXPECT_EQ(2, static_cast<int>(f.save().tower_best_floor));
+    EXPECT_EQ(og::kTowerFirstFloorLevel + 1,
+              static_cast<int>(f.save().scen_num));
+
+    EXPECT_TRUE(mount_restore.restore());
+}

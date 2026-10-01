@@ -1,4 +1,6 @@
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/interface/button.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
@@ -7,6 +9,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -16,6 +19,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/pack_transfer_io.h>
+#include <openglad/core/fnv1a.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -35,6 +40,15 @@
 
 // Forward declaration from platform_io.cpp
 bool apply_sprite_sheet_setting();
+void draw_sprite_sheet_button(button& b);
+Sint32 change_resolution();
+bool picker_testing_submit_direct_join(const std::string& ip_address,
+                                       const std::string& port_text,
+                                       int& factory_calls, bool& direct_mode,
+                                       std::string& endpoint);
+bool picker_testing_join_relay_prompt(std::string& stored_room_code);
+std::string picker_testing_show_campaign_select(bool cancel);
+void campaign_picker_testing_set_auto_accept(bool enabled);
 
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);
@@ -282,6 +296,43 @@ struct ActivePickerLobbyClientGuard
     {
         og::ui::install_active_picker_lobby_client(saved);
     }
+};
+
+// A lobby client whose only property is whether it is a networked session.
+class SessionFlagPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    explicit SessionFlagPickerLobbyClient(bool networked) : networked_(networked) {}
+    void initialize_from_save() override {}
+    void shutdown() override { ++shutdowns; }
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return networked_;
+    }
+    int shutdowns = 0;
+
+private:
+    bool networked_;
 };
 
 struct PlatformBridgeGuard
@@ -589,7 +640,9 @@ std::string expected_training_stars(std::int32_t cost)
     if (cost == 0)
         return std::string();
     const int rating = ((55 / cost) * 5) / 11;
-    if (rating < 0 || rating > 5)
+    if (rating > 5)
+        return std::string(5, '*');
+    if (rating < 0)
         return std::string();
     return std::string(static_cast<std::size_t>(rating), '*');
 }
@@ -709,6 +762,42 @@ TEST(PickerFuncs, get_training_cost_rating_returns_stars)
         << "INT costs 25: the rating rounds to no star at all";
     EXPECT_STREQ("", get_training_cost_rating(FAMILY_SOLDIER, BUT_ARMOR))
         << "ARMOR costs 50: no star";
+}
+
+
+// A class pack may price an axis below the core pack's cheapest (5): the
+// rating arithmetic ((55 / cost) * 5) / 11 then overshoots five (cost 1 -> 25,
+// 2 -> 12, 3 -> 8) and the old switch fell into `default: ""`, so the HIRE
+// screen showed NO stars for the very cheapest stat. Anything that rates past
+// five is five stars; the core prices keep their faces.
+TEST(PickerFuncs, get_training_cost_rating_caps_a_pack_s_cheapest_price_at_five_stars)
+{
+    const FamilyDescriptor* original = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, original);
+    struct DescriptorRestore
+    {
+        FamilyDescriptor saved;
+        ~DescriptorRestore() { (void)set_family_descriptor(FAMILY_SOLDIER, saved); }
+    } restore{*original};
+
+    const auto rating_at_cost = [&](std::int32_t cost) {
+        FamilyDescriptor patched = restore.saved;
+        patched.stat_costs[StatAxis::Strength] = cost;
+        EXPECT_TRUE(set_family_descriptor(FAMILY_SOLDIER, patched));
+        return std::string(
+            get_training_cost_rating(FAMILY_SOLDIER, StatAxis::Strength));
+    };
+
+    EXPECT_EQ("*****", rating_at_cost(1)) << "cost 1 rates 25: five stars";
+    EXPECT_EQ("*****", rating_at_cost(2)) << "cost 2 rates 12: five stars";
+    EXPECT_EQ("*****", rating_at_cost(3)) << "cost 3 rates 8: five stars";
+    // Positive controls: the core pack's prices keep their exact faces.
+    EXPECT_EQ("*****", rating_at_cost(5)) << "cost 5 rates exactly 5";
+    EXPECT_EQ("****", rating_at_cost(6)) << "cost 6 rates 4";
+    EXPECT_EQ("", rating_at_cost(25)) << "cost 25 rates 0";
+    EXPECT_EQ("", rating_at_cost(0)) << "an unpriced axis has no rating";
+    EXPECT_EQ("", rating_at_cost(-2))
+        << "a negative price (opt_int accepts it) rates below zero: no stars";
 }
 
 
@@ -1938,6 +2027,238 @@ TEST(PickerFuncs, concrete_sdl_client_delegates_host_join_load_and_save)
 TEST(PickerFuncs, concrete_sdl_client_relay_state_machine_paths)
 {
     EXPECT_EQ(0, picker_testing_exercise_sdl_client_internal_paths());
+}
+
+// Rule: a DIRECT (LAN) JOIN composes the endpoint "<ip>:<port>" from the
+// two NETWORKING fields and hands exactly that to the platform join client.
+TEST(PickerFuncs, direct_join_hands_the_platform_ip_colon_port)
+{
+    ScopedTraceBuffer trace_guard;
+    int factory_calls = -1;
+    bool direct_mode = false;
+    std::string endpoint;
+    EXPECT_FALSE(picker_testing_submit_direct_join(
+        "10.1.2.3", "4567", factory_calls, direct_mode, endpoint))
+        << "the stub factory declines, so the join reports failure";
+    EXPECT_EQ(1, factory_calls);
+    EXPECT_TRUE(direct_mode) << "a LAN join asks for PickerJoinMode::Direct";
+    EXPECT_EQ("10.1.2.3:4567", endpoint);
+
+    // Paired control: a blank IP is refused before the factory is asked.
+    trace_clear();
+    EXPECT_FALSE(picker_testing_submit_direct_join(
+        "  ", "4567", factory_calls, direct_mode, endpoint));
+    EXPECT_EQ(0, factory_calls);
+    EXPECT_TRUE(trace_contains("popup", "IP address"));
+}
+
+// Rule: JOIN in relay mode with a room code that is still blank after the
+// room-code prompt stays in the menu and stores no code.
+TEST(PickerFuncs, relay_join_with_a_still_blank_code_stays_in_the_menu)
+{
+    struct PromptQueueRestore
+    {
+        PromptQueueRestore() { level_editor_testing_prompt_queue_clear(); }
+        ~PromptQueueRestore() { level_editor_testing_prompt_queue_clear(); }
+    } prompt_queue_restore;
+
+    std::string stored = "unset";
+    level_editor_testing_prompt_queue_push("   ");
+    EXPECT_FALSE(picker_testing_join_relay_prompt(stored))
+        << "a blank answer must keep the player in the menu";
+    EXPECT_EQ("", stored) << "the blank answer is not stored as the code";
+    EXPECT_TRUE(level_editor_testing_prompt_queue_ref().empty())
+        << "the prompt really ran and consumed the answer";
+
+    // Paired control: a typed code proceeds and is stored.
+    level_editor_testing_prompt_queue_push("GLAD-TYPED");
+    EXPECT_TRUE(picker_testing_join_relay_prompt(stored));
+    EXPECT_EQ("GLAD-TYPED", stored);
+}
+
+// Rule: shutting the lobby down ends a NETWORKED session, so the class packs
+// that session downloaded are unmounted; a local lobby's shutdown leaves the
+// session packs alone (the between-levels resume shape).
+TEST(PickerFuncs, networked_lobby_shutdown_ends_the_pack_transfer_session)
+{
+    const std::string pack_script = "og.log('wp4 session pack')\n";
+    const std::vector<std::uint8_t> pack_bytes(pack_script.begin(),
+                                               pack_script.end());
+    og::sim::PackManifestMessage manifest;
+    manifest.pack_index = 0;
+    manifest.pack_count = 1;
+    manifest.pack_id = "org.wp4.shutdownpack";
+    manifest.version = "1";
+    manifest.files.push_back(og::sim::PackManifestFileEntry{
+        .path = "scripts/session.lua",
+        .size_bytes = static_cast<std::uint32_t>(pack_bytes.size()),
+        .hash64 = og::core::fnv1a64(pack_bytes.data(), pack_bytes.size())});
+    struct PackCleanup
+    {
+        ~PackCleanup()
+        {
+            og::resources::unmount_session_packs();
+            std::error_code ec;
+            std::filesystem::remove_all(
+                std::filesystem::path(get_user_path()) / "packs_cache", ec);
+        }
+    } cleanup;
+    ASSERT_TRUE(og::resources::install_received_pack(manifest, {pack_bytes}));
+    ASSERT_TRUE(og::resources::mounted_pack_matches_manifest(manifest));
+
+    // Control: a LOCAL lobby shuts down and the session pack stays mounted.
+    {
+        SessionFlagPickerLobbyClient local(false);
+        ActivePickerLobbyClientGuard guard(&local);
+        picker_lobby_shutdown();
+        EXPECT_EQ(1, local.shutdowns);
+    }
+    EXPECT_TRUE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "a local lobby's shutdown is not the end of a networked session";
+
+    // The rule: the NETWORKED lobby's shutdown ends the session and drops
+    // the pack it downloaded.
+    {
+        SessionFlagPickerLobbyClient networked(true);
+        ActivePickerLobbyClientGuard guard(&networked);
+        picker_lobby_shutdown();
+        EXPECT_EQ(1, networked.shutdowns);
+    }
+    EXPECT_FALSE(og::resources::mounted_pack_matches_manifest(manifest))
+        << "the networked session's downloaded pack must be unmounted";
+}
+
+// Rule: SET CAMPAIGN cancelled in the browser changes nothing -- the client
+// answers with no campaign, and the save's campaign and level stay put.
+TEST(PickerFuncs, cancelling_set_campaign_changes_nothing)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string campaign = save.current_campaign;
+    const short scen = save.scen_num;
+    ASSERT_EQ(campaign, get_mounted_campaign())
+        << "the browser opens on the mounted campaign";
+
+    EXPECT_EQ("", picker_testing_show_campaign_select(/*cancel=*/true))
+        << "a cancelled browser selects no campaign";
+    EXPECT_EQ(campaign, save.current_campaign);
+    EXPECT_EQ(scen, save.scen_num);
+    EXPECT_EQ(campaign, get_mounted_campaign());
+
+    // Paired control: the un-cancelled browser accepts the campaign under
+    // its cursor -- the current one -- and the client names it.
+    campaign_picker_testing_set_auto_accept(true);
+    EXPECT_EQ(campaign, picker_testing_show_campaign_select(/*cancel=*/false));
+    EXPECT_EQ(campaign, save.current_campaign);
+    EXPECT_EQ(campaign, get_mounted_campaign());
+    save.scen_num = scen;
+}
+
+namespace
+{
+// get_pixel(x, y, &index) resolves an RGB back to the LOWEST palette index
+// with that colour, so an expected index goes through the same rule.
+int canonical_palette_index(unsigned char color)
+{
+    int wr = 0, wg = 0, wb = 0;
+    query_palette_reg(color, &wr, &wg, &wb);
+    for (int i = 0; i < 256; ++i)
+    {
+        int r = 0, g = 0, b = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &r, &g, &b);
+        if (r == wr && g == wg && b == wb)
+            return i;
+    }
+    return static_cast<int>(color);
+}
+
+struct CfgSettingRestore
+{
+    std::string category;
+    std::string setting;
+    std::string saved;
+    CfgSettingRestore(std::string category_, std::string setting_)
+        : category(std::move(category_)), setting(std::move(setting_)),
+          saved(cfg.get_setting(category, setting))
+    {
+    }
+    ~CfgSettingRestore() { cfg.apply_setting(category, setting, saved); }
+};
+} // namespace
+
+// Rule: the Sprite Sheet options row lights its face LIGHT_GREEN while a
+// custom sprite sheet is active, and leaves the row undrawn otherwise.
+TEST(PickerFuncs, sprite_sheet_row_lights_green_while_a_custom_sheet_is_active)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    const CanvasTarget saved_canvas = scr->active_canvas();
+    scr->set_active_canvas(CanvasTarget::UI);
+    CfgSettingRestore sheet("graphics", "sprite_sheet");
+
+    button row("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 200,
+               100, 90, 15, 0, 0, MenuNav{});
+    const int face_x = row.x + 1;  // inside the bevel, left of the label
+    const int face_y = row.y + 1;
+    const auto face_index = [&] {
+        int index = -1;
+        scr->get_pixel(face_x, face_y, &index);
+        return index;
+    };
+    const int black = canonical_palette_index(BLACK);
+    ASSERT_NE(black, canonical_palette_index(LIGHT_GREEN));
+
+    // Paired control: no custom sheet, nothing is drawn over the canvas.
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    scr->draw_box(row.x - 1, row.y - 1, row.x + row.sizex, row.y + row.sizey,
+                  BLACK, 1);
+    draw_sprite_sheet_button(row);
+    EXPECT_EQ(black, face_index()) << "the default sheet draws no face";
+
+    cfg.apply_setting("graphics", "sprite_sheet", "custom_sheet.png");
+    draw_sprite_sheet_button(row);
+    EXPECT_EQ(canonical_palette_index(LIGHT_GREEN), face_index())
+        << "an active custom sheet lights the row green";
+
+    scr->set_active_canvas(saved_canvas);
+}
+
+// Rule: in borderless desktop mode the Resolution row is inert -- it never
+// rewrites the remembered window size.
+TEST(PickerFuncs, borderless_resolution_row_keeps_the_remembered_size)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    struct DisplayRestore
+    {
+        screen* scr;
+        CfgSettingRestore mode{"graphics", "fullscreen"};
+        CfgSettingRestore width{"graphics", "width"};
+        CfgSettingRestore height{"graphics", "height"};
+        ~DisplayRestore()
+        {
+            cfg.apply_setting("graphics", "fullscreen", mode.saved);
+            cfg.apply_setting("graphics", "width", width.saved);
+            cfg.apply_setting("graphics", "height", height.saved);
+            scr->apply_display_settings_from_cfg();
+            scr->relayout_views();
+        }
+    } display_restore{scr};
+
+    // Paired control: in a window the row DOES step the remembered size.
+    cfg.apply_setting("graphics", "fullscreen", "off");
+    cfg.apply_setting("graphics", "width", "700");
+    cfg.apply_setting("graphics", "height", "450");
+    EXPECT_EQ(MENU_OK, change_resolution());
+    EXPECT_NE("700x450", cfg.get_setting("graphics", "width") + "x" +
+                             cfg.get_setting("graphics", "height"))
+        << "the windowed row cycles to another size";
+
+    cfg.apply_setting("graphics", "fullscreen", "borderless");
+    cfg.apply_setting("graphics", "width", "700");
+    cfg.apply_setting("graphics", "height", "450");
+    EXPECT_EQ(MENU_OK, change_resolution());
+    EXPECT_EQ("700", cfg.get_setting("graphics", "width"));
+    EXPECT_EQ("450", cfg.get_setting("graphics", "height"));
 }
 
 TEST(PickerFuncs, local_lobby_client_without_screen_has_exact_empty_contract)
@@ -4729,6 +5050,25 @@ TEST_F(SpriteSheetPicker, wheel_scroll_changes_the_pack_under_the_top_row)
     EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"));
 }
 
+// The wheel scrolls back UP too: two notches down and one up leave the top
+// row on the FIRST pack. An inert wheel-up leaves it on the second pack; a
+// wheel-up that overshot would land on Standard ("").
+TEST_F(SpriteSheetPicker, wheel_up_scrolls_the_list_back_one_row)
+{
+    SpriteSheetPackDirs packs_dirs("zz_wp4_wheelup_", 13);
+    const std::vector<std::string> packs = spritesheet_pack_list();
+    ASSERT_GE(packs.size(), 13u);
+    ASSERT_GE(1 + static_cast<int>(packs.size()) - kSheetVisibleRows, 2)
+        << "the list must be able to scroll at least two rows";
+
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW,
+              run_spritesheet_picker({sheet_wheel(-1), sheet_wheel(-1),
+                                      sheet_wheel(1), sheet_row_click(0)}));
+    EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"))
+        << "one wheel notch up must scroll back exactly one row";
+}
+
 // Teeth for the escape tail: the parting BACK press evaporates exactly the
 // way a frame slower than the 60 ms hold eats it, and the run still ENDS --
 // with one extra press, no other press disturbed, and the same selection.
@@ -4814,6 +5154,67 @@ TEST_F(SpriteSheetPicker, scrollbar_trough_pages_the_list_both_ways)
                   {page_down_0, page_down_1, page_up_2, sheet_row_click(0)}));
     EXPECT_EQ(packs[0], cfg.get_setting("graphics", "sprite_sheet"))
         << "a trough click above the thumb must page back exactly one row";
+}
+
+// A folder under extra_pix/ whose name is not UTF-8 (a Latin-1 "caf\xE9") is
+// not offered: once stored in cfg, libyaml refuses the scalar and EVERY later
+// settings save fails. The UTF-8 twin "cafe" is the positive control: listed,
+// picked, stored, and the settings still save.
+TEST_F(SpriteSheetPicker, a_folder_name_that_is_not_utf8_is_never_offered)
+{
+    namespace fs = std::filesystem;
+    const std::string bad_name = "000_wp4_caf\xE9";
+    const std::string good_name = "000_wp4_cafe";
+    struct Dirs
+    {
+        std::vector<fs::path> paths;
+        ~Dirs()
+        {
+            cfg.apply_setting("graphics", "sprite_sheet", "");
+            (void)apply_sprite_sheet_setting();
+            std::error_code ec;
+            for (const fs::path& path : paths)
+                fs::remove_all(path, ec);
+        }
+    } dirs;
+    for (const std::string& name : {good_name, bad_name})
+    {
+        const fs::path dir = fs::path(get_user_path()) / "extra_pix" / name;
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        ASSERT_TRUE(fs::is_directory(dir)) << "could not create " << dir;
+        dirs.paths.push_back(dir);
+    }
+
+    // Where each name sorts among EVERY folder on disk (the unfiltered
+    // listing): "cafe" < "caf\xE9" byte-wise, so the bad name sits on the
+    // row right under the good one.
+    const std::vector<std::string> on_disk = spritesheet_pack_list();
+    const auto good_it = std::find(on_disk.begin(), on_disk.end(), good_name);
+    const auto bad_it = std::find(on_disk.begin(), on_disk.end(), bad_name);
+    ASSERT_NE(on_disk.end(), good_it);
+    ASSERT_NE(on_disk.end(), bad_it);
+    const int good_row = 1 + static_cast<int>(good_it - on_disk.begin());
+    const int bad_row = 1 + static_cast<int>(bad_it - on_disk.begin());
+    ASSERT_EQ(good_row + 1, bad_row);
+    ASSERT_LT(bad_row, kSheetVisibleRows) << "both rows visible unscrolled";
+
+    ScopedTraceBuffer trace_scope;
+
+    // The row the bad name would occupy: it is not there to be picked.
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(bad_row)}));
+    EXPECT_NE(bad_name, cfg.get_setting("graphics", "sprite_sheet"))
+        << "a non-UTF-8 folder name must never become the stored setting";
+    EXPECT_FALSE(trace_contains("sheet", ("sel=" + bad_name).c_str()))
+        << "and the list must never have offered it";
+    EXPECT_TRUE(cfg.save_settings()) << "the settings still save";
+
+    // Control: the UTF-8 folder is listed, picked and saved.
+    reset_sprite_sheet_selection();
+    ASSERT_EQ(MENU_REDRAW, run_spritesheet_picker({sheet_row_click(good_row)}));
+    EXPECT_EQ(good_name, cfg.get_setting("graphics", "sprite_sheet"));
+    EXPECT_TRUE(cfg.save_settings());
 }
 
 // A pack that disappears between the click and the BACK cannot be mounted, so

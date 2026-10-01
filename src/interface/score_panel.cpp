@@ -18,7 +18,10 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/core/constants.h>
@@ -307,35 +310,20 @@ static unsigned char mode_hud_color(std::uint8_t team)
     return static_cast<unsigned char>(YELLOW);
 }
 
-// Fallback captions for a walker with neither a myguy nor a stats name.
-// File scope so the mode row can measure the caption the classic HUD is
-// about to draw on the same tm+4 row (see draw_mode_panel).
-static const std::array<const char*, NUM_FAMILIES> kFamilyHudNames = {
-    "SOLDIER", "ELF", "ARCHER", "MAGE",
-    "SKELETON", "CLERIC", "ELEMENTAL",
-    "FAERIE", "SLIME", "SLIME", "SLIME",
-    "THIEF", "GHOST", "DRUID", "ORC",
-    "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
-    "GOLEM", "GIANT SKEL", "TOWER",
-};
-
 // THE one copy of the upper-left HUD caption rule (a myguy's name wins even
-// when blank, else a non-empty stats name, else the family word).
+// when blank, else a non-empty stats name, else the family word: the family
+// registry's display name for ANY registered family, class-pack families
+// past the core span included, through og::ui::family_display_name).
 // new_score_panel draws it at lm+3 on the tm+4 row; draw_mode_panel measures
 // it to find where its own row may start, so the two must agree exactly.
 // The follow banner keeps its own blank-skipping variant below.
 static std::string hud_display_name(const walker* control)
 {
-    if (control == nullptr)
-        return {};
     if (control->myguy)
         return control->myguy->name;
     if (!control->stats()->name.empty())
         return control->stats()->name;
-    int fam = static_cast<int>(control->family());
-    if (fam < 0 || fam >= NUM_FAMILIES)
-        fam = 0;
-    return kFamilyHudNames[static_cast<std::size_t>(fam)];
+    return og::ui::family_display_name(static_cast<int>(control->family()));
 }
 
 // --- The condensed mode score row -------------------------------------------
@@ -433,8 +421,6 @@ static std::vector<ModeRowSegment> compose_mode_row(
             continue;
         const std::string_view body =
             strip_team_color_word(line.text.data(), line.team);
-        if (body.empty())
-            continue;
         if (!segments.empty())
             segments.push_back({std::string(kModeRowSeparator),
                                 mode_hud_color(255), 255});
@@ -745,12 +731,12 @@ short new_score_panel(screen* s, short /*do_it*/)
             // below, but it is an *unsigned* byte and remaining_team() takes a
             // signed char: a mirrored team above 127 narrows to a negative
             // value that matches no walker, so the HUD would report zero
-            // allies. Clamp to the legal team range first, exactly as the
-            // scenario loader does (sanitize_loaded_team_num). Every team the
-            // game actually produces is 0..MAX_TEAM and passes through
-            // unchanged.
+            // allies. Junk bytes above MAX_TEAM clamp to team 0, as the
+            // scenario loader does (sanitize_loaded_team_num). The FFA band
+            // (kFfaTeamBase + c, 16..31) is a real scoring identity above
+            // MAX_TEAM and passes through, so a fighter counts its own band.
             int hud_team = static_cast<int>(control->team_num());
-            if (hud_team > MAX_TEAM)
+            if (hud_team > MAX_TEAM && !og::sim::is_scoring_identity(hud_team))
                 hud_team = 0;
             tempallies = remaining_team(s, static_cast<char>(hud_team));
 
@@ -830,13 +816,8 @@ short new_score_panel(screen* s, short /*do_it*/)
             else if (!control->stats()->name.empty())
                 follow_name = control->stats()->name;
             else
-            {
-                int follow_fam = static_cast<int>(control->family());
-                if (follow_fam < 0 || follow_fam >= NUM_FAMILIES)
-                    follow_fam = 0;
-                follow_name = kFamilyHudNames[
-                    static_cast<std::size_t>(follow_fam)];
-            }
+                follow_name = og::ui::family_display_name(
+                    static_cast<int>(control->family()));
             if (follow_name.size() > 12)
                 follow_name.resize(12);
             std::string caption = "FOLLOWING " + follow_name;
@@ -876,13 +857,15 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             // family()/current_special() may be attacker-controlled on a
             // network mirror (set from raw int8 snapshot bytes), so they can be
-            // any value in [-128,127]. Clamp before using them to index the
-            // fixed namelist/special_name/alternate_name/special_cost arrays to
-            // prevent out-of-bounds reads. In-range values pass through
-            // unchanged.
-            int fam = static_cast<int>(control->family());
-            if (fam < 0 || fam >= NUM_FAMILIES)
-                fam = 0;
+            // any value in [-128,127]. The family is never used as an index:
+            // its words come from its registry descriptor, and a family with
+            // no descriptor (unregistered or out of range) names no special.
+            // The special IS an index (the descriptor's name arrays and
+            // special_cost), so it is clamped to prevent out-of-bounds reads.
+            // In-range values pass through unchanged.
+            const int fam = static_cast<int>(control->family());
+            static_assert(FD_NUM_SPECIALS == NUM_SPECIALS,
+                          "spc indexes the descriptor's special name arrays");
             int spc = static_cast<int>(control->current_special());
             if (spc < 0 || spc >= NUM_SPECIALS)
                 spc = 0;
@@ -993,8 +976,6 @@ short new_score_panel(screen* s, short /*do_it*/)
                         scorecountup[team_num]++;
                         scorecountup[team_num] += static_cast<Uint32>(rng((myscore - scorecountup[team_num]))/12);
                     }
-                    if (scorecountup[team_num] > myscore)
-                        scorecountup[team_num] = myscore;
 
                     // above should count up the score towards the current amount
                     if (!compact_score_panel)
@@ -1019,11 +1000,15 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             // Currently-select special
             // Alternate special name (if not "NONE")
+            const FamilyDescriptor* spc_fd = get_family_descriptor(fam);
+            const char* spc_name = spc_fd ? spc_fd->special_names[spc] : kSpecialNameNone;
+            const char* spc_alternate = spc_fd ? spc_fd->alternate_names[spc] : kSpecialNameNone;
             if (control->shifter_down() &&
-                s->alternate_name[fam][spc] != "NONE")
-                message = std::format("SPC: {}", s->alternate_name[fam][spc]);
+                std::strcmp(spc_alternate, kSpecialNameNone) != 0)
+                message = std::format("SPC: {}", spc_alternate);
             else
-                message = std::format("SPC: {}", s->special_name[fam][spc]);
+                message = std::format("SPC: {}", spc_name);
+            TRACE("hud", "spc_row fam=%d text=%s", fam, message.c_str());
 
             // Disabled-special signifier: a walker whose specials are
             // switched off (the level's NPC flag) can NEVER fire the

@@ -69,21 +69,15 @@ static void wire_world_loader(GameWorld& world,
                               const std::shared_ptr<loader>& game_loader)
 {
     world.entity_factory = [game_loader](Order order, std::int32_t family) -> std::unique_ptr<walker> {
-        if (!game_loader)
-            return nullptr;
         return game_loader->create_walker_owned(order, family);
     };
 
     world.entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
-        if (!game_loader)
-            return nullptr;
         game_loader->set_walker(&entity, order, family);
         return game_loader->graphics_for(entity.query_order(), entity.family());
     };
 
     world.entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
-        if (entity == nullptr || !game_loader)
-            return;
         game_loader->set_derived_stats(entity, order, family);
     };
 }
@@ -169,8 +163,6 @@ static void wire_world_entity_services(GameWorld* world,
 
 static void clear_world_entity_services(GameWorld* world)
 {
-    if (world == nullptr)
-        return;
     world->entity_factory = {};
     world->entity_configurator = {};
     world->entity_derived_stats = {};
@@ -178,14 +170,6 @@ static void clear_world_entity_services(GameWorld* world)
 
 static void install_world_detach_callback(GameWorld* world, LevelRuntimeData* level)
 {
-    if (world == nullptr)
-        return;
-    if (level == nullptr)
-    {
-        world->set_detach_callback({});
-        return;
-    }
-
     world->set_detach_callback([level, world] {
         if (&level->world() == world)
             level->attach_world(nullptr);
@@ -252,9 +236,6 @@ private:
 
 void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world)
 {
-    if (level == nullptr)
-        return;
-
     GameWorld& dst = level->world();
 
     level->delete_objects();
@@ -599,19 +580,11 @@ void LevelRuntimeData::attach_world(GameWorld* world)
 {
     GameWorld* old_world = world_;
     GameWorld* next_world = world ? world : &owned_world_;
+    // Re-attaching the attached world is a no-op; no caller does it (the
+    // screen attaches its world once, the detach callback only ever swaps an
+    // external world back to the owned one).
     if (next_world == old_world)
-    {
-        if (old_world != nullptr)
-        {
-            old_world->set_detach_callback({});
-            wire_world_entity_services(old_world, this, hooks_);
-            old_world->set_gameplay_context_bindings(
-                sim_context_save_, sim_context_events_, sim_context_config_);
-            if (old_world != &owned_world_)
-                install_world_detach_callback(old_world, this);
-        }
         return;
-    }
 
     if (old_world != nullptr)
     {

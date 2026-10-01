@@ -159,24 +159,6 @@ struct FamilyDescriptor {
 
     const char* death_message;                 // "SOLDIER SLAIN", etc. (fallback: "SOMEONE DIED")
 
-    // Optional behavior callbacks (nullptr = use the caller's default path)
-    SpecialResult (*do_special)(walker* self);
-    bool (*check_special_ai)(living* self);
-    void (*hit_response)(statistics* stats, walker* who);
-    void (*set_difficulty)(living* self, std::uint32_t level);
-    void (*level_up)(guy* self, std::int32_t level_diff);
-    bool (*on_death)(walker* self);            // return true = handled
-
-    // Additional per-family behavior callbacks
-    void (*on_act_living)(living* self);            // periodic effects during act()
-    void (*on_shoved)(walker* self);                // called when shoved by an ally
-    bool (*on_fire_weapon)(walker* self, walker* weapon); // before firing; false = block
-    bool (*handle_teleport)(walker* self);          // teleport-out complete; true = handled
-    void (*on_create)(walker* self);                // called when walker created from guy
-    void (*customize_weapon)(walker* self, walker* weapon); // tweak weapon after creation
-    bool (*on_ani_complete)(walker* self);    // animation end; true = handled
-    void (*on_melee_hit)(walker* self, walker* target);    // called after successful melee attack
-
     // Graphics / loader data
     const char* pix_filename;          // "monk.png" or a pack-relative path
     FamilyAnimationType animation_type;  // built-in table (see anim_table)

@@ -1023,3 +1023,101 @@ TEST(ModeTick, ffa_ramp_bases_avoid_reserved_and_cycled_palette)
         seen[base] = true;
     }
 }
+
+// Every damage sink honours a ward, including one granted by the level's
+// own on_damage gate: attack() checks invulnerability BEFORE the gate runs,
+// so only do_combat_damage's ward check can stop a hit whose gate made the
+// target invulnerable. The bare rig is the paired control: the same swing
+// lands its authored damage.
+TEST(ModeTick, damage_gate_granting_a_ward_mid_hit_lands_no_damage)
+{
+    GateRig bare;
+    const float bare_before = bare.hp();
+    bare.attacker->attack(bare.target);
+    const float authored_drop = bare_before - bare.hp();
+    ASSERT_GT(authored_drop, 0.0f) << "control: the unwarded hit lands";
+
+    GateRig warded(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    target:set_invulnerable_left(40)\n"
+        "    og.log('ward', amount)\n"
+        "    return nil\n"
+        "  end,\n"
+        "})\n");
+    const float before = warded.hp();
+    warded.attacker->attack(warded.target);
+    EXPECT_EQ(1, warded.fx.log_count("ward\t")) << "the gate ran once";
+    EXPECT_EQ(40, static_cast<int>(warded.target->invulnerable_left()));
+    EXPECT_EQ(before, warded.hp())
+        << "the ward the gate granted must stop the hit it gated";
+}
+
+// A withdraw requested mid weapon phase (here by the level's on_damage gate
+// when a thrown knife lands) ends that tick's weapon acts: a knife later in
+// weaplist does not move on the tick the request was raised, while on every
+// earlier tick it did (the paired control).
+TEST(ModeTick, withdraw_raised_by_a_weapon_hit_stops_the_rest_of_the_weapon_phase)
+{
+    ModeWorld fx;
+    fx.register_script(
+        "og.register_level_hooks(42, {\n"
+        "  on_damage = function(target, attacker, amount)\n"
+        "    og.set_withdraw_request(3)\n"
+        "    og.log('withdraw')\n"
+        "    return nil\n"
+        "  end,\n"
+        "})\n");
+    walker* orc = fx.spawn_living(FAMILY_ORC, 1, 200, 160);
+    ASSERT_NE(nullptr, orc);
+    fx.tick(); // the level's first tick is behind us before anything flies
+    // Knives go out the product way: a thrower's fire() spawns, places and
+    // aims the projectile (the hitter first, so it acts first in weaplist).
+    auto throw_knife = [&fx](int x, int y) -> std::uint32_t {
+        walker* thrower = fx.spawn_living(FAMILY_SOLDIER, 0, x, y);
+        if (thrower == nullptr)
+            return 0;
+        thrower->set_curdir(FACE_RIGHT);
+        thrower->set_lastx(1.0f); // fire() aims along the thrower's heading
+        thrower->set_lasty(0.0f);
+        thrower->set_current_weapon(FAMILY_KNIFE);
+        thrower->stats()->set_magicpoints(100.0f);
+        walker* knife = thrower->fire();
+        return knife != nullptr ? knife->entity_id() : 0;
+    };
+    const std::uint32_t hitter_id = throw_knife(160, 160);
+    const std::uint32_t bystander_id = throw_knife(40, 400);
+    ASSERT_NE(0u, hitter_id);
+    ASSERT_NE(0u, bystander_id);
+    // A fresh projectile spends its first act turning to its heading
+    // (walker::walk turns before it moves when curdir != the flight facing).
+    fx.tick();
+
+    bool raised = false;
+    for (int t = 0; t < 10 && !raised; ++t)
+    {
+        walker* bystander = fx.world().find_by_id(bystander_id);
+        ASSERT_NE(nullptr, bystander) << "tick " << t;
+        const short x_before = bystander->xpos();
+        fx.tick();
+        raised = fx.world().withdraw_requested;
+        bystander = fx.world().find_by_id(bystander_id);
+        ASSERT_NE(nullptr, bystander) << "tick " << t;
+        if (raised)
+        {
+            EXPECT_EQ(x_before, bystander->xpos())
+                << "the knife after the withdraw must not act that tick";
+        }
+        else
+        {
+            walker* hitter = fx.world().find_by_id(hitter_id);
+            EXPECT_NE(x_before, bystander->xpos())
+                << "control: without a withdraw the second knife flies (tick "
+                << t << ", hitter at "
+                << (hitter != nullptr ? hitter->xpos() : -1) << ")";
+        }
+    }
+    ASSERT_TRUE(raised) << "the first knife's hit raised the withdraw";
+    EXPECT_EQ(1, fx.log_count("withdraw"));
+    EXPECT_EQ(3, fx.world().withdraw_level);
+}

@@ -1977,3 +1977,84 @@ TEST_F(CampaignPickerSessionTest, terminal_camp_oath_announces_a_stand_down_the_
     (void)remove_user_file("save/campoath.gtl");
     (void)og::data::set_active_company_slot("save0");
 }
+
+// --- cov97 WP-TERM --------------------------------------------------------
+
+// A text widget with no lines and an actions widget with no entries add
+// NOTHING to the terminal camp -- not even the blank separator a listed
+// widget gets -- and the empty docket consumes no ordinal. Pinned against
+// the same camp composed without the two empty widgets (the control): the
+// two pages and the two prompt labels are identical.
+TEST_F(CampaignPickerSessionTest, terminal_camp_skips_empty_text_and_empty_actions)
+{
+    const auto camp_page = [this](const char* extra_widgets,
+                                  std::string& label) {
+        clear_pack_scripts();
+        register_script(std::string(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "readout", items = { { label = "ROAD", value = "OPEN" } } },
+)LUA") + extra_widgets + R"LUA(
+      { kind = "actions", entries = {
+          { id = "kit", label = "FIELD KIT", kind = "action", cost = 100 },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA");
+        ScriptedTerminalIo scripted;
+        scripted.save = &save_;
+        scripted.answers = {"0"};
+        og::ui::run_terminal_campaign_camp(save_, scripted.io());
+        if (scripted.prompts.size() != 1u)
+            return std::string("<no single prompt>");
+        label = scripted.prompts[0].label;
+        return scripted.page_text(0);
+    };
+
+    std::string control_label;
+    const std::string control = camp_page("", control_label);
+    ASSERT_NE(std::string::npos, control.find("ROAD")) << control;
+    ASSERT_NE(std::string::npos, control.find("FIELD KIT")) << control;
+
+    std::string label;
+    const std::string with_empties = camp_page(
+        R"LUA(      { kind = "text", weight = 1 },
+      { kind = "actions" },
+)LUA",
+        label);
+    EXPECT_EQ(control, with_empties)
+        << "empty widgets must leave no trace on the page";
+    EXPECT_EQ(control_label, label);
+    EXPECT_EQ("Camp # [1-1] (0 = back): ", label);
+}
+
+// An unaffordable docket action speaks its refusal on the terminal (the
+// session's "Not enough gold." reason), and nothing is debited.
+TEST_F(CampaignPickerSessionTest, terminal_camp_speaks_an_unaffordable_action)
+{
+    register_script(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "actions", entries = {
+          { id = "crown", label = "THE CROWN", kind = "action", cost = 99999 },
+        } },
+      { kind = "roster" },
+    } }
+  end,
+  picker_action = function(id)
+    return { message = "bought " .. id }
+  end,
+}))LUA");
+    const std::uint32_t gold_before = save_.m_totalcash[0];
+
+    ScriptedTerminalIo scripted;
+    scripted.save = &save_;
+    scripted.answers = {"1", "0"};
+    og::ui::run_terminal_campaign_camp(save_, scripted.io());
+
+    EXPECT_EQ(std::vector<std::string>{"Not enough gold."}, scripted.notices);
+    EXPECT_EQ(gold_before, save_.m_totalcash[0]);
+    EXPECT_EQ(2u, scripted.prompts.size())
+        << "the refusal returns to the camp prompt";
+}

@@ -334,6 +334,13 @@ TEST(VideoFade, video_fadebetween_honors_surface_lock_requirements)
                        wrong_dest_before.size()))
         << "a rejected destination must remain byte-identical";
 
+    // The rejected call's lock/unlock decoded the RLE: re-encode it so the
+    // SUCCESS call below also has to take (and release) the lock.
+    ASSERT_TRUE(SDL_SetSurfaceRLE(old_rle.get(), true));
+    ASSERT_TRUE(SDL_BlitSurface(
+        old_rle.get(), nullptr, rle_blit_target.get(), nullptr));
+    ASSERT_TRUE(SDL_MUSTLOCK(old_rle.get()))
+        << "the success-path call must start from a lock-requiring surface";
     EXPECT_EQ(1,
               og::runtime::current_session->myscreen_->fade_between(
                   old_rle.get(), new_ok.get(), dest.get()));

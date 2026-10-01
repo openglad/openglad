@@ -801,6 +801,34 @@ TEST_F(LuaFamilyDeclTest, family_id_defers_during_a_declaration)
     EXPECT_FALSE(used.ok) << "a deferred reference must refuse to be a number";
 }
 
+// og.register_level_hooks is behavior, and the declaration pass installs no
+// behavior: like og.register_hooks, og.register_campaign_hooks and
+// og.register_default_lineup it is a SILENT no-op here and lands in the
+// bind replay (test_level_scripts.cpp,
+// a_family_chunk_registers_level_hooks_in_the_real_pass). Before this was
+// fixed it raised "no world scripts" — there is no world in a declaration —
+// and that one call rejected the whole pack.
+TEST_F(LuaFamilyDeclTest, register_level_hooks_is_a_silent_no_op_in_the_declaration)
+{
+    ClasspackData data;
+    const DeclareResult r = declare(
+        "og.family('living', { id = 'v3:x', name = 'X' })\n"
+        "og.register_level_hooks(-1, { on_load = function() end })\n",
+        data);
+    ASSERT_TRUE(r.ok) << r.error;
+    ASSERT_EQ(1u, data.living.size())
+        << "the chunk's declaration must still be harvested";
+    EXPECT_EQ("v3:x", data.living[0].id);
+
+    // Control: the call's ARGUMENT SHAPE is still checked in this pass —
+    // only the registration is deferred. A non-integer level and a missing
+    // hook table are load errors here exactly as they are in the real pass.
+    expect_rejected(declare("og.register_level_hooks('x', {})\n"),
+                    "bad argument #1");
+    expect_rejected(declare("og.register_level_hooks(-1)\n"),
+                    "bad argument #2");
+}
+
 TEST_F(LuaFamilyDeclTest, the_api_version_is_readable_for_feature_detection)
 {
     ClasspackData data;

@@ -121,7 +121,6 @@ Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
 void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 std::string get_saved_name(const char* filename);
@@ -321,14 +320,13 @@ void ensure_highlighted_button_visible(const button* buttons,
 // to joiners as a read-only label. LINEUP (docs/lineup-design.md §2) is
 // always visible, like its row-mates; the parked spare (ordinal 7, the
 // retired TEAMS cell) is never linked. Every link is written on every call
-// so no variant inherits a stale one.
+// so no variant inherits a stale one. `buttons` holds at least
+// kScenarioMenuButtonCount rows: the caller
+// (sync_scenario_menu_host_control_visibility) owns the boundary guard.
 void picker_wire_scenario_menu_nav(button* buttons,
-                                   int count,
+                                   int /*count*/,
                                    bool host_controls_visible)
 {
-    if (buttons == nullptr || count < kScenarioMenuButtonCount)
-        return;
-
     const bool host = host_controls_visible;
 
     // Host column: SET CAMPAIGN over SET LEVEL over VIEW LEVEL.
@@ -810,8 +808,6 @@ bool picker_view_scenario_engine_frame_tick(void* /*screen_state*/,
                                             int /*frame*/)
 {
     ViewScenarioEngineState* const state = g_view_scenario_engine_state;
-    if (state == nullptr || state->scenario == nullptr)
-        return true;
     const SaveData& save =
         og::runtime::current_session->myscreen_->save_data;
     ViewScenarioKey key = view_scenario_current_key(save);
@@ -1643,7 +1639,10 @@ std::string get_class_description(unsigned char family)
     case 5:
         return "*****";
     default:
-        return "";
+        // A class pack may price an axis below 5 (cost 1-3 rates 25/12/8):
+        // anything past five stars is five stars. A negative price rates
+        // below zero and shows none.
+        return rating > 5 ? "*****" : "";
     }
 }
 
@@ -1684,10 +1683,6 @@ struct HireEngineState
     std::string description;
     std::vector<std::string> desc;
     const char* family_name = "";
-    // arg1 == 1: show the new-game intro popup after the first presented
-    // frame (no production caller passes 1 today — team build passes -1 —
-    // but the signature contract is preserved).
-    bool pending_new_game_popup = false;
 };
 
 // Entry-time repositioning of PREV/NEXT around the portrait, verbatim from
@@ -1724,27 +1719,6 @@ void picker_hire_menu_engine_on_reset(void* /*screen_state*/)
     change_hire_teamnum(0);
 }
 
-// The legacy loop-bottom arg1 == 1 branch: one intro popup after the first
-// presented frame (frame 1 draws at the END of iteration 1; the tick for
-// iteration 2 is the first point after that present), then a re-init
-// because the production popup swaps allbuttons_ under the screen.
-bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame)
-{
-    auto* const state = static_cast<HireEngineState*>(screen_state);
-    if (state == nullptr)
-        return true;
-    if (state->pending_new_game_popup && frame >= 2)
-    {
-        state->pending_new_game_popup = false;
-        popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
-        // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-        og::runtime::current_session->localbuttons_ =
-            init_buttons(pks().hiremenu_buttons.data(),
-                         static_cast<int>(pks().hiremenu_buttons.size()));
-    }
-    return true;
-}
-
 // The legacy per-frame content pass, verbatim (runs after draw_buttons):
 // name box, portrait, description, cost, and the stat panel. Note the
 // shipped one-frame quirk preserved on purpose: the name-box label is drawn
@@ -1756,9 +1730,6 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
     if (state == nullptr)
         return;
     const HireMenuLayout l;
-
-    if (!og::runtime::current_session->current_guy_)
-        sync_current_guy_from_hire();
 
     // Name box
     og::runtime::current_session->myscreen_->draw_button(
@@ -1899,7 +1870,7 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
 // MENU_REDRAW (the spec's exit_value); a remote start propagates its
 // MENU_EXIT directly (the slot-menu normalization — the parent breaks with
 // StartGame selected instead of re-detecting the start one loop later).
-Sint32 create_hire_menu(Sint32 arg1)
+Sint32 create_hire_menu(Sint32 /*arg1*/)
 {
 	// No pre-run clear (#237 ownership — see create_view_scenario_menu);
 	// picker_backdrop_draw_background clears.
@@ -1919,7 +1890,6 @@ Sint32 create_hire_menu(Sint32 arg1)
                                      HireMenuLayout{}.description_box_content.w / 6,
                                      og::core::WrapMode::Paragraphs);
     state.family_name = get_family_string(state.last_family);
-    state.pending_new_game_popup = (arg1 == 1);
 
 	grab_mouse();
 
@@ -1955,11 +1925,6 @@ Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
     {
         return MENU_OK;
     }
-    if (!picker_lobby_save_slot_editable(
-            pks().train_session->current_slot()))
-    {
-        return MENU_OK;
-    }
 
     const guy& member = pks().train_session->original();
     const int sold_team = std::clamp(
@@ -1982,8 +1947,6 @@ Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
         popup_dialog("SELL CHARACTER", "BACKUP FAILED\nCHARACTER NOT SOLD");
         return MENU_REDRAW;
     }
-    if (result != og::ui::TrainSession::SellResult::Sold)
-        return MENU_OK;
 
     picker_base_camp_after_roster_mutation(sold_team);
     if (pks().train_session->empty())
@@ -2214,11 +2177,6 @@ Sint32 create_train_menu(Sint32 arg1)
     }
     pks().train_session = &train_session;
     sync_current_guy_from_train();
-    if (pks().train_session->empty()) {
-        pks().train_session = nullptr;
-        show_need_team_to_train_popup();
-        return MENU_OK;
-    }
 
     TrainEngineState state;
     state.start_time = query_timer();
@@ -2284,8 +2242,6 @@ Sint32 cycle_guy(Sint32 whichway)
         // Fallback: create recruit directly (for any code calling this outside a session)
         constexpr auto& guys = og::ui::kAllowableGuys;
         og::runtime::current_session->current_type_ = (og::runtime::current_session->current_type_ + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
-        if (og::runtime::current_session->current_type_ < 0)
-            og::runtime::current_session->current_type_ = static_cast<Sint32>(guys.size()) - 1;
         og::runtime::current_session->current_guy_ = og::ui::create_recruit(guys[static_cast<std::size_t>(og::runtime::current_session->current_type_)], og::runtime::current_session->current_team_num_, og::runtime::current_session->myscreen_->save_data);
         show_guy(0, 0);
         grab_mouse();
@@ -2438,8 +2394,6 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 {
 	if (!pks().train_session || pks().train_session->empty())
 		return -1;
-	if (!picker_lobby_save_slot_editable(pks().train_session->current_slot()))
-		return MENU_OK;
 
 	// This is for cheating! Only CHEAT :)
 	// SDL-specific: cheat mode (hold right mouse → free changes)
@@ -2592,8 +2546,7 @@ Sint32 go_menu(Sint32 arg1)
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
 
-	if (arg1)
-		arg1 = 1;
+	(void)arg1;
 
     // Make sure the launched match has a valid team. Networked picker saves
     // remain private, so a spectator/empty-local peer must consult the

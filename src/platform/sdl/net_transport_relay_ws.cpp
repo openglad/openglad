@@ -203,12 +203,10 @@ void append_u32_le(std::vector<std::uint8_t>& bytes, std::uint32_t value)
     bytes.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
 }
 
-std::optional<std::uint32_t> read_u32_le(std::span<const std::uint8_t> bytes,
-                                         std::size_t offset)
+// Callers guarantee offset + 4 <= bytes.size().
+std::uint32_t read_u32_le(std::span<const std::uint8_t> bytes,
+                          std::size_t offset)
 {
-    if (offset + sizeof(std::uint32_t) > bytes.size())
-        return std::nullopt;
-
     return static_cast<std::uint32_t>(bytes[offset]) |
         (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
         (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
@@ -250,12 +248,12 @@ std::optional<ReceivedMessage> decode_incoming_relay_payload(
         return std::nullopt;
     }
 
-    const auto peer_id = read_u32_le(bytes, 1u);
-    if (!peer_id.has_value() || *peer_id == 0)
+    const std::uint32_t peer_id = read_u32_le(bytes, 1u);
+    if (peer_id == 0)
         return std::nullopt;
 
     ReceivedMessage message;
-    message.peer_id = *peer_id;
+    message.peer_id = peer_id;
     message.data.assign(bytes.begin() + static_cast<std::ptrdiff_t>(kRelayPeerHeaderSize),
                         bytes.end());
     return message;
@@ -397,10 +395,7 @@ struct RelayWebSocketTransport::Impl
             encode_targeted_relay_payload(peer_id, data, len);
         const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
         if (!send_info.success)
-        {
-            enqueue_disconnect(active_generation);
-            websocket->close();
-        }
+            retire_and_redial();
     }
 
     void broadcast(const std::uint8_t* data, std::size_t len)
@@ -418,10 +413,7 @@ struct RelayWebSocketTransport::Impl
             encode_broadcast_relay_payload(data, len);
         const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
         if (!send_info.success)
-        {
-            enqueue_disconnect(active_generation);
-            websocket->close();
-        }
+            retire_and_redial();
     }
 
     std::vector<ReceivedMessage> poll()
@@ -437,6 +429,9 @@ struct RelayWebSocketTransport::Impl
         }
 
         std::vector<ReceivedMessage> received;
+        // A failed send retires the socket and dials a fresh one under a new
+        // generation (retire_and_redial), so entries the retired socket
+        // queued before it stopped are stale: skip them.
         for (auto& entry : queued_entries)
         {
             if (entry.generation != active_generation)
@@ -538,6 +533,32 @@ struct RelayWebSocketTransport::Impl
     }
 
 private:
+    // A send that ix refused has already closed the socket and set it CLOSED
+    // on THIS (game) thread (IXWebSocketTransport::sendOnSocket). If the io
+    // thread was at the top of run() having just sampled isConnected() as
+    // true, it reads that Closed and returns for good with automatic
+    // reconnection still armed: no callback ever fires again, close() on the
+    // corpse is a no-op and nothing re-dials. Retire the socket and dial a
+    // fresh one instead — the direct client's rule
+    // (net_transport_websocket_client.cpp, send()).
+    //
+    // The generation moves first, so poll() drops what the retiring socket
+    // queued. The link is marked down synchronously, which makes the NEXT
+    // send/broadcast return at its `connected` gate instead of cancelling
+    // the new dial every tick. The relay drops a closed socket's peer and
+    // tells the room it left, so the redial restores THIS link; peers the
+    // room saw leave must rejoin.
+    void retire_and_redial()
+    {
+        connected = false;
+        link_closed = true;
+        reset_peer_state();
+        active_generation = next_generation++;
+        detail::quiesce_and_stop(*websocket);
+        websocket = make_websocket(active_generation);
+        websocket->start();
+    }
+
     std::unique_ptr<ix::WebSocket> make_websocket(std::uint64_t generation)
     {
         auto socket = std::make_unique<ix::WebSocket>();
@@ -681,8 +702,10 @@ private:
     bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
-        if (queue.size() >= kMaxQueuedMessages)
-            return false;
+        // Only frames are capped (count and bytes). A Connect/Disconnect
+        // transition must always get through: capping the whole queue here
+        // dropped the very Disconnect the queue-full path enqueues, leaving a
+        // closed link reading Connected forever.
         if (entry.kind == QueueEntryKind::TextMessage ||
             entry.kind == QueueEntryKind::BinaryMessage)
         {

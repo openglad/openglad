@@ -1144,4 +1144,141 @@ TEST(NetTransportWebSocketClient, a_healthy_link_survives_a_ping_interval)
     client.disconnect(1u);
 }
 
+// Mirrors the receive-queue caps in
+// src/platform/sdl/net_transport_websocket_client.cpp (file-local).
+constexpr std::size_t kClientMaxQueuedMessages = 1024u;
+constexpr std::size_t kClientMaxInboundFrameBytes = 128u * 1024u;
+
+struct DirectLink
+{
+    int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport server;
+    og::sim::WebSocketClientTransport client;
+
+    DirectLink()
+        : server(port, server_options()),
+          client(std::format("ws://127.0.0.1:{}", port), client_options())
+    {
+    }
+
+    static og::sim::WebSocketServerTransport::Options server_options()
+    {
+        og::sim::WebSocketServerTransport::Options options;
+        options.host = "127.0.0.1";
+        return options;
+    }
+
+    static og::sim::WebSocketClientTransport::Options client_options()
+    {
+        og::sim::WebSocketClientTransport::Options options;
+        options.remote_peer_id = 73u;
+        options.automatic_reconnection = false;
+        return options;
+    }
+};
+
+// Rule (net_transport_websocket_client.cpp accept_connections): calling
+// accept_connections on a client that already started is a no-op: it neither
+// re-dials (the server keeps exactly its one peer) nor drops frames already
+// queued for the game thread.
+TEST(NetTransportWebSocketClient,
+     accept_connections_on_a_started_client_neither_redials_nor_drops_frames)
+{
+    DirectLink link;
+    link.server.accept_connections();
+    link.client.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(link.client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(link.server, 1u));
+    const og::sim::PeerId server_peer = link.server.connected_peers().front();
+
+    const auto send_tick = [&](std::uint32_t tick) {
+        link.server.send_keyframe_request(
+            server_peer,
+            std::make_shared<og::sim::KeyframeRequestMessage>(
+                og::sim::KeyframeRequestMessage{.last_seen_tick = tick}));
+    };
+    // One frame in flight to (or already in) the client's queue, the repeated
+    // accept, then one frame on the original connection after it. Both must
+    // arrive: a re-dial would clear the queue and orphan the old connection.
+    send_tick(41u);
+    link.client.accept_connections();
+    send_tick(42u);
+
+    const auto delivered = poll_until_messages(link.client, 2u);
+    ASSERT_EQ(2u, delivered.size())
+        << "frames on the original connection must survive a repeated "
+           "accept_connections";
+    EXPECT_EQ(41u, decode_keyframe_request_tick(delivered[0].data));
+    EXPECT_EQ(42u, decode_keyframe_request_tick(delivered[1].data));
+    EXPECT_EQ(og::sim::TransportLinkState::Connected, link.client.link_state());
+    (void)link.server.poll();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{server_peer}),
+              link.server.connected_peers())
+        << "a started client must not dial a second connection";
+}
+
+// Rule (net_transport_websocket_client.cpp handle_message/enqueue): a server
+// flooding frames faster than the game thread polls is capped at 1024 queued
+// frames; the frame past the cap closes the link 1008 and the game sees the
+// link Lost after the 1024 queued frames are delivered in order.
+TEST(NetTransportWebSocketClient,
+     a_frame_flood_past_the_queue_count_cap_closes_the_link_as_lost)
+{
+    DirectLink link;
+    link.server.accept_connections();
+    link.client.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(link.client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(link.server, 1u));
+    const og::sim::PeerId server_peer = link.server.connected_peers().front();
+
+    for (std::uint32_t tick = 0; tick <= kClientMaxQueuedMessages; ++tick)
+    {
+        const std::vector<std::uint8_t> frame =
+            og::sim::serialize_keyframe_request_message(
+                og::sim::KeyframeRequestMessage{.last_seen_tick = tick});
+        link.server.send(server_peer, frame.data(), frame.size());
+    }
+    // The client's close reaches the server; the client is not polled yet.
+    ASSERT_TRUE(poll_until_peer_count(link.server, 0u))
+        << "the flooded client must close its link";
+
+    const std::vector<og::sim::ReceivedMessage> delivered = link.client.poll();
+    ASSERT_EQ(kClientMaxQueuedMessages, delivered.size());
+    for (std::size_t index = 0; index < delivered.size(); ++index)
+    {
+        ASSERT_EQ(index, decode_keyframe_request_tick(delivered[index].data))
+            << "queued frames keep their order";
+    }
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, link.client.link_state())
+        << "the game must see the flood-closed link as lost";
+    EXPECT_TRUE(link.client.connected_peers().empty());
+}
+
+// Rule (net_transport_websocket_client.cpp enqueue): the 16 MiB queued-byte
+// budget closes the link well under the frame-count cap: 128 maximum-size
+// frames (exactly 16 MiB) are held, the 129th closes it 1008 and the game
+// sees Lost.
+TEST(NetTransportWebSocketClient,
+     a_byte_flood_past_16_mib_closes_the_link_as_lost)
+{
+    DirectLink link;
+    link.server.accept_connections();
+    link.client.accept_connections();
+    ASSERT_TRUE(poll_until_peer_count(link.client, 1u));
+    ASSERT_TRUE(poll_until_peer_count(link.server, 1u));
+    const og::sim::PeerId server_peer = link.server.connected_peers().front();
+
+    constexpr std::size_t kFramesInBudget = 128u;
+    const std::vector<std::uint8_t> max_frame(kClientMaxInboundFrameBytes, 0x3cu);
+    for (std::size_t frame = 0; frame <= kFramesInBudget; ++frame)
+        link.server.send(server_peer, max_frame.data(), max_frame.size());
+    ASSERT_TRUE(poll_until_peer_count(link.server, 0u, 20s))
+        << "the flooded client must close its link";
+
+    const std::vector<og::sim::ReceivedMessage> delivered = link.client.poll();
+    EXPECT_EQ(kFramesInBudget, delivered.size())
+        << "exactly the frames within the 16 MiB budget are delivered";
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, link.client.link_state());
+}
+
 } // namespace

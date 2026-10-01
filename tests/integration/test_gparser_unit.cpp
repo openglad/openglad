@@ -460,6 +460,39 @@ TEST(GparserUnit, gparser_save_settings_writes_only_persisted_data_and_reports_o
     fs::create_directories(cfg_dir, ec);
 }
 
+// save_settings reports failure (false, plus "Couldn't write
+// cfg/openglad.yaml.") when a setting cannot be emitted, instead of
+// claiming success over a truncated file. Product route: graphics/
+// sprite_sheet stores the name of a directory the user made under
+// extra_pix/ (picker.cpp pick_spritesheet takes it from directory_iterator),
+// and a Linux file name can be any bytes, e.g. Latin-1 "caf\xE9", which
+// libyaml refuses as invalid UTF-8. Paired control: the UTF-8 spelling of
+// the same name saves.
+TEST(GparserUnit, gparser_save_settings_reports_a_value_libyaml_cannot_emit)
+{
+    og::test::ScopedPhysicalFileState config_state(unit_config_file());
+    ASSERT_TRUE(config_state.ready()) << config_state.error().message();
+    heal_unit_filesystem();
+    std::error_code ec;
+    std::filesystem::create_directories(unit_config_file().parent_path(), ec);
+
+    cfg_store utf8_cfg;
+    utf8_cfg.apply_setting("graphics", "sprite_sheet", "caf\xC3\xA9");
+    utf8_cfg.apply_setting("sound", "sound", "on");
+    ASSERT_TRUE(utf8_cfg.save_settings()) << "a UTF-8 sheet name saves";
+
+    cfg_store latin1_cfg;
+    latin1_cfg.apply_setting("graphics", "sprite_sheet", "caf\xE9");
+    latin1_cfg.apply_setting("sound", "sound", "on");
+    testing::internal::CaptureStderr();
+    const bool saved = latin1_cfg.save_settings();
+    const std::string reported = testing::internal::GetCapturedStderr();
+    EXPECT_FALSE(saved) << "an unemittable value must fail the save";
+    EXPECT_NE(std::string::npos,
+              reported.find("Couldn't write cfg/openglad.yaml."))
+        << reported;
+}
+
 TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
 {
     // Both flags print and _Exit(0) from inside commandline(), so the child

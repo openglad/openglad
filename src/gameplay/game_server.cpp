@@ -1109,18 +1109,6 @@ void GameServer::handle_transport_disconnect(
                 disconnected_players_.push_back(replacement);
         }
     }
-    else if (client.has_player_binding())
-    {
-        for (const BoundPlayer& seat : client.bound_players)
-        {
-            if (seat.control != nullptr &&
-                seat.control->user() == static_cast<int>(seat.player_index))
-            {
-                seat.control->set_user(-1);
-                seat.control->restore_act_type();
-            }
-        }
-    }
     else if (client.spectator_admitted &&
              !is_zero_session_token(client.session_token))
     {
@@ -1365,9 +1353,7 @@ walker* GameServer::player_control(std::size_t player_index) const noexcept
 
 InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
 {
-    const auto client_it = clients_.find(peer_id);
-    if (client_it == clients_.end())
-        throw std::runtime_error("GameServer missing client for initial setup");
+    const ConnectedClientState& client = clients_.at(peer_id);
 
     InitialSetupMessage message;
     message.level_id = world_.id;
@@ -1379,9 +1365,9 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.pixmaxx = world_.pixmaxx;
     message.pixmaxy = world_.pixmaxy;
     // A multi-seat peer's display team follows its first seat (lowest slot).
-    message.my_team = client_it->second.bound_players.empty()
+    message.my_team = client.bound_players.empty()
         ? 0
-        : client_it->second.bound_players.front().team_num;
+        : client.bound_players.front().team_num;
     message.allied_mode = world_.allied_mode;
     message.current_scenario = world_.current_scenario;
     message.respawn_mode = world_.respawn_mode;
@@ -1433,8 +1419,6 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
             return;
         }
 
-        if (is_zero_session_token(client.session_token))
-            client.session_token = allocate_session_token();
         response.session_token = client.session_token;
         transport_.send_hello(peer_id, std::make_shared<HelloMessage>(response));
         return;
@@ -1550,15 +1534,10 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
          ++entry_index)
     {
         const DisconnectedPlayer& seat_entry = matching_seats[entry_index];
-        const auto seat_it = std::find_if(
-            reconnected.bound_players.begin(),
-            reconnected.bound_players.end(),
-            [&seat_entry](const BoundPlayer& seat) {
-                return seat.local_slot == seat_entry.local_slot;
-            });
-        if (seat_it == reconnected.bound_players.end())
-            continue;
-        BoundPlayer& seat = *seat_it;
+        // bind_player above upserted exactly these slots into a client that
+        // had no seats (a bound client never reaches this path), and both
+        // lists are sorted by local_slot, so the indices line up.
+        BoundPlayer& seat = reconnected.bound_players[entry_index];
         seat.resume_in_dead_state =
             seat.control != nullptr && seat.control->dead();
         seat.pending_inputs.clear();
@@ -1604,10 +1583,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
 
 void GameServer::handle_heartbeat(PeerId peer_id)
 {
-    const auto client_it = clients_.find(peer_id);
-    if (client_it == clients_.end())
-        return;
-    client_it->second.last_received_input_ms = now_ms();
+    clients_.at(peer_id).last_received_input_ms = now_ms();
 }
 
 void GameServer::update_disconnected_players(std::uint64_t now)
@@ -1842,8 +1818,6 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
     for (const std::uint32_t tick : pending_ticks)
     {
         const auto input_it = seat.pending_inputs.find(tick);
-        if (input_it == seat.pending_inputs.end())
-            continue;
 
         const PlayerInput& received = input_it->second;
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
@@ -1887,8 +1861,6 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         switch (message.kind)
         {
         case TypedReceivedMessageKind::Input:
-            if (!message.input)
-                break;
             if (!client.has_player_binding() && !client.spectator_admitted)
                 break;
             // A zero-seat display still sends the shared InputState envelope
@@ -2108,9 +2080,6 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
             }
             break;
 
-        case TypedReceivedMessageKind::Malformed:
-            break;
-
         case TypedReceivedMessageKind::Snapshot:
         case TypedReceivedMessageKind::DeltaSnapshot:
         case TypedReceivedMessageKind::SimEventBatch:
@@ -2130,6 +2099,9 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         // an upstream client cannot stage anything on the server.
         case TypedReceivedMessageKind::StagedMatchSetup:
         case TypedReceivedMessageKind::StagedMatchKeyframe:
+        // poll_server_messages turns a Malformed marker into a disconnect
+        // and never forwards it, so none reaches this loop.
+        case TypedReceivedMessageKind::Malformed:
             break;
         }
     }
@@ -2838,9 +2810,6 @@ walker* GameServer::find_match_reclaim_control(std::size_t player_index) const
 
 void GameServer::maybe_send_control_change(std::size_t player_index, walker* control)
 {
-    if (player_index >= kMaxGlobalPlayers)
-        return;
-
     ControlChangeMessage message;
     message.player_index = static_cast<std::uint8_t>(player_index);
     message.entity_id = control != nullptr ? control->entity_id() : 0U;

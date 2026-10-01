@@ -87,9 +87,6 @@ unsigned char sanitize_loaded_team_num(unsigned char team_num)
 void fill_fixed_field(char* dst, size_t fixed_len, std::string_view src,
                       const char* field_name)
 {
-    if (dst == nullptr || fixed_len == 0)
-        return;
-
     memset(dst, 0, fixed_len);
     const size_t to_copy = std::min(src.size(), fixed_len);
     memcpy(dst, src.data(), to_copy);

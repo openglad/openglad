@@ -860,6 +860,38 @@ TEST(WalkerUnit, walker_r11_act_and_animate_extra_cases)
     ASSERT_EQ(ANI_WALK, w->ani_type());
     ASSERT_EQ(0, static_cast<int>(w->cycle()));
 }
+// A weapon family the loader cannot build (an in-range slot with no sprite:
+// create_walker_owned reports and returns null) fires nothing AND spends
+// nothing: fire() checks the created projectile before charging
+// weapon_cost. A buildable family is the paired control: one knife, one
+// charge.
+TEST(WalkerUnit, fire_with_an_unbuildable_weapon_spends_no_magic)
+{
+    WalkerR11Fixture fx;
+    constexpr int kUnbuildable = NUM_FAMILIES - 1;
+    ASSERT_EQ(nullptr, fx.level.world().add_ob(Order::Weapon, kUnbuildable))
+        << "precondition: the loader has no weapon in this slot";
+    walker* shooter = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 80, 80);
+    ASSERT_NE(nullptr, shooter);
+    shooter->stats()->set_magicpoints(50.0f);
+    shooter->stats()->set_weapon_cost(5);
+    shooter->set_lastx(1);
+    shooter->set_lasty(0);
+    const std::size_t weapons_before = fx.level.world().weaplist.size();
+
+    shooter->set_current_weapon(static_cast<unsigned short>(kUnbuildable));
+    EXPECT_EQ(nullptr, shooter->fire());
+    EXPECT_EQ(50.0f, shooter->stats()->magicpoints())
+        << "no projectile, no charge";
+    EXPECT_EQ(weapons_before, fx.level.world().weaplist.size());
+
+    shooter->set_current_weapon(FAMILY_KNIFE);
+    ASSERT_NE(nullptr, shooter->fire()) << "control: a knife is buildable";
+    EXPECT_EQ(45.0f, shooter->stats()->magicpoints())
+        << "control: a real launch pays weapon_cost once";
+    EXPECT_EQ(weapons_before + 1, fx.level.world().weaplist.size());
+}
+
 } // namespace detail_walker_r11
 
 // --- From test_walker_r14.cpp ---

@@ -72,7 +72,7 @@ void LevelRender::init_decor(PixieData decor_pixdata[])
 {
     for (int i = 0; i < DECOR_MAX; i++)
         impl_->decor[i] = decor_pixdata[i].valid()
-            ? std::make_unique<pixie>(decor_pixdata[i], 0)
+            ? std::make_unique<pixie>(decor_pixdata[i])
             : nullptr;
 }
 

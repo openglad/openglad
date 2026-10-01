@@ -634,6 +634,73 @@ TEST(PickerCommon, get_random_name_without_a_pool_borrows_the_soldier_pool)
     }
 }
 
+namespace
+{
+// Patch one family descriptor for the length of a scope, exactly as a pack
+// install would, and put the shipped one back even when an assertion fails.
+struct FamilyDescriptorPatch
+{
+    int family;
+    FamilyDescriptor saved;
+
+    explicit FamilyDescriptorPatch(int family_)
+        : family(family_), saved(*get_family_descriptor(family_))
+    {
+    }
+    ~FamilyDescriptorPatch() { (void)set_family_descriptor(family, saved); }
+};
+} // namespace
+
+// Rule: with no name pool anywhere -- the family has none AND the soldier
+// fallback has none (a pack that redeclares soldier without `names`) -- a
+// recruit is named "Nameless" rather than drawing from a null list.
+TEST(PickerCommon, get_random_name_with_no_pool_anywhere_is_nameless)
+{
+    ASSERT_NE(nullptr, get_family_descriptor(FAMILY_SOLDIER));
+    FamilyDescriptorPatch soldier_patch(FAMILY_SOLDIER);
+    ASSERT_TRUE(name_pool_of(FAMILY_GOLEM).empty())
+        << "the golem ships no names of its own";
+
+    // Paired control: with the shipped soldier pool the golem borrows it.
+    const std::vector<std::string> soldier = name_pool_of(FAMILY_SOLDIER);
+    ASSERT_FALSE(soldier.empty());
+    std::srand(3);
+    const std::string borrowed = og::ui::get_random_name(FAMILY_GOLEM);
+    EXPECT_NE(soldier.end(),
+              std::find(soldier.begin(), soldier.end(), borrowed))
+        << "a poolless family borrows the soldier pool: " << borrowed;
+
+    FamilyDescriptor poolless = soldier_patch.saved;
+    poolless.name_pool = nullptr;
+    poolless.name_pool_size = 0;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, poolless));
+    EXPECT_STREQ("Nameless", og::ui::get_random_name(FAMILY_GOLEM))
+        << "no pool on the family and none on the soldier fallback";
+}
+
+// Rule: a class whose declared hire price nets negative (a pack's
+// costs.hire < 0; the decl reader accepts any int32) prices at 0 -- the
+// unpriced/refused cost -- never as a wrapped ~4-billion price.
+TEST(PickerCommon, calculate_hire_cost_of_a_negative_price_is_zero_not_wrapped)
+{
+    ASSERT_NE(nullptr, get_family_descriptor(FAMILY_SOLDIER));
+    FamilyDescriptorPatch soldier_patch(FAMILY_SOLDIER);
+    guy base_recruit(FAMILY_SOLDIER);
+    const std::uint32_t shipped = og::ui::calculate_hire_cost(base_recruit);
+
+    // Paired control: a positive price change moves the cost one for one.
+    FamilyDescriptor dearer = soldier_patch.saved;
+    dearer.hiring_cost = soldier_patch.saved.hiring_cost + 7;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, dearer));
+    EXPECT_EQ(shipped + 7u, og::ui::calculate_hire_cost(base_recruit));
+
+    FamilyDescriptor negative = soldier_patch.saved;
+    negative.hiring_cost = -1000000;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, negative));
+    EXPECT_EQ(0u, og::ui::calculate_hire_cost(base_recruit))
+        << "a price that nets negative is 0, not 2^32 - n";
+}
+
 TEST(PickerCommon, get_unique_name_falls_back_to_numbered_duplicate)
 {
     SaveData save;
@@ -1853,18 +1920,6 @@ TEST(PickerCommon, format_difficulty_label)
     ASSERT_TRUE(og::ui::format_difficulty_label(2) == "Difficulty: Slaughter");
 }
 
-// --- format_allied_mode_label ---
-
-TEST(PickerCommon, format_allied_mode_label)
-{
-    SaveData save;
-    save.allied_mode = 0;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: SPLIT");
-
-    save.allied_mode = 1;
-    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "SEATS: TOGETHER");
-}
-
 // --- collect_team_families ---
 
 TEST(PickerCommon, collect_team_families)
@@ -2410,6 +2465,42 @@ bool any_line_contains(const std::vector<std::string>& lines,
 }
 
 } // namespace
+
+// Rule: the VIEW LEVEL roster report stops at kMaxScenarioReportRows (200)
+// rows, so a huge authored level cannot blow up the pager. Named livings are
+// one row each, which makes the cap exact to observe.
+TEST(PickerCommon, scenario_report_caps_at_two_hundred_rows)
+{
+    SaveData save;
+    save.my_team = 0;
+    const auto report_rows = [&save](ReportWorld& fx) {
+        return og::ui::build_scenario_roster_report(
+                   nullptr, og::ui::StagePreviewStatus::None, save,
+                   &fx.world())
+            .rows.size();
+    };
+
+    // Paired control: below the cap every named fighter gets its row.
+    ReportWorld small(false);
+    const std::size_t empty_rows = report_rows(small);
+    for (int i = 0; i < 150; ++i)
+    {
+        const std::string name = "R" + std::to_string(i);
+        small.spawn_living_named(FAMILY_SOLDIER, 0, 1, name.c_str());
+    }
+    ASSERT_EQ(empty_rows + 150u, report_rows(small));
+
+    ReportWorld huge(false);
+    std::vector<std::string> names;
+    names.reserve(250);
+    for (int i = 0; i < 250; ++i)
+    {
+        names.push_back("H" + std::to_string(i));
+        huge.spawn_living_named(FAMILY_SOLDIER, 0, 1, names.back().c_str());
+    }
+    EXPECT_EQ(200u, report_rows(huge))
+        << "250 named livings report exactly kMaxScenarioReportRows rows";
+}
 
 TEST(PickerCommon, scenario_report_groups_classic_roster)
 {
@@ -6531,6 +6622,106 @@ TEST(PickerCommon, open_most_recent_company_reports_an_empty_shelf)
 
     std::error_code ec;
     std::filesystem::remove(shelf.save_dir / "wp5damaged.gtl", ec);
+}
+
+// [SAVE-R2] The SDL Open Company row and CONTINUE open through
+// open_company_slot. A company whose campaign is not installed fails in
+// load_campaign AFTER load_with_error has read its whole body, so the
+// in-memory company must stay on the one that was open, like the slot --
+// even when that company has no file on disk to reload it from (the §3.4
+// "save0" default at launch once every company has its own derived slug,
+// or a NEW GAME whose first write failed). Otherwise the next autosave
+// writes the refused company's roster and purse into the active slot.
+// Second failure case: the open company IS on disk, and the campaign mount
+// comes back to its campaign. Paired control: an openable company moves the
+// active slot and loads its roster into memory.
+TEST(PickerCommon, open_company_slot_failure_keeps_the_open_company_in_memory)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ParkedSaveShelf shelf;
+    struct Cleanup
+    {
+        ~Cleanup()
+        {
+            for (const char* slot : {"wpocopen", "wpoclost", "wpocgood"})
+                (void)remove_user_file(std::string("save/") + slot + ".gtl");
+        }
+    } cleanup;
+
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    const auto seed = [](const std::string& slot, const char* name,
+                         const char* campaign, std::uint32_t cash,
+                         int soldiers) {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = name;
+        sd.current_campaign = campaign;
+        sd.totalcash = cash;
+        sd.m_totalcash[0] = cash;
+        sd.last_played_unix_s = 8100;
+        for (int i = 0; i < soldiers; ++i)
+            sd.team_list[static_cast<std::size_t>(i)] =
+                std::make_unique<guy>(FAMILY_SOLDIER);
+        sd.team_size = static_cast<unsigned char>(soldiers);
+        return sd.save_with_error(slot) == SaveDataIoError::None;
+    };
+    ASSERT_TRUE(seed("wpoclost", "LOST BAND", "wpocnosuchcampaign", 4321, 4));
+    ASSERT_TRUE(seed("wpocgood", "GOOD BAND", "gladiator", 9600, 2));
+
+    og::data::ScopedActiveCompany active("wpocopen");
+    ASSERT_TRUE(active.applied());
+    ASSERT_FALSE(user_file_exists("save/wpocopen.gtl"))
+        << "the open company has no file on disk yet";
+
+    SaveData save;
+    save.reset();
+    save.save_name = "OPEN BAND";
+    save.current_campaign = "gladiator";
+    save.totalcash = 777;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_size = 1;
+
+    SaveDataIoError io = SaveDataIoError::None;
+    EXPECT_EQ(og::ui::ContinueResult::LoadFailed,
+              og::ui::open_company_slot(save, "wpoclost", &io));
+    EXPECT_EQ(SaveDataIoError::CampaignLoadFailed, io);
+    EXPECT_EQ("wpocopen", og::data::active_company_slot())
+        << "a failed open restores the previous slot";
+    EXPECT_EQ("OPEN BAND", save.save_name)
+        << "[SAVE-R2] a failed open must leave the in-memory company on the "
+           "one that was open before";
+    EXPECT_EQ("gladiator", save.current_campaign);
+    EXPECT_EQ(777u, save.totalcash);
+    EXPECT_EQ(1, save.team_size);
+
+    // The open company on disk (on gladiator): memory stays, and the mount
+    // the failed load tore down comes back to the open company's campaign.
+    ASSERT_TRUE(seed("wpocopen", "OPEN BAND", "gladiator", 777, 1));
+    io = SaveDataIoError::None;
+    EXPECT_EQ(og::ui::ContinueResult::LoadFailed,
+              og::ui::open_company_slot(save, "wpoclost", &io));
+    EXPECT_EQ(SaveDataIoError::CampaignLoadFailed, io);
+    EXPECT_EQ("wpocopen", og::data::active_company_slot());
+    EXPECT_EQ("OPEN BAND", save.save_name);
+    EXPECT_EQ(777u, save.totalcash);
+    EXPECT_EQ("gladiator", get_mounted_campaign())
+        << "the open company's campaign is mounted again";
+
+    // Paired control: an openable company moves the slot and its roster
+    // and purse are what memory holds.
+    io = SaveDataIoError::None;
+    EXPECT_EQ(og::ui::ContinueResult::Opened,
+              og::ui::open_company_slot(save, "wpocgood", &io));
+    EXPECT_EQ(SaveDataIoError::None, io);
+    EXPECT_EQ("wpocgood", og::data::active_company_slot());
+    EXPECT_EQ("GOOD BAND", save.save_name);
+    EXPECT_EQ(9600u, save.totalcash);
+    ASSERT_EQ(2, save.team_size);
+    ASSERT_NE(nullptr, save.team_list[1]);
+    EXPECT_EQ(FAMILY_SOLDIER, save.team_list[1]->family);
+    EXPECT_EQ("gladiator", get_mounted_campaign());
 }
 
 // --- SETUP wizard rules hoisted into picker_common (#304/#305) ---------

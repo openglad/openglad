@@ -70,4 +70,66 @@ TEST(CursesHostLobby, a_busy_direct_port_is_reported_not_thrown)
         << error << "\"";
 }
 
+// The same busy port with a relay configured still hosts: the relay is a
+// second way in, so losing the direct listener is not losing the lobby.
+// (RelayWebSocketTransport::accept_connections only starts its socket; no
+// relay has to answer for the lobby to exist.)
+TEST(CursesHostLobby, a_busy_direct_port_still_hosts_over_a_configured_relay)
+{
+    MountRestore mount_restore;
+
+    const int busy_port = ix::getFreePort();
+    og::sim::WebSocketServerTransport blocker(busy_port);
+    blocker.accept_connections();
+
+    SaveData save;
+    init_host_save(save);
+    HostOptions options;
+    options.port = busy_port;
+    options.relay_url =
+        "ws://127.0.0.1:" + std::to_string(ix::getFreePort()) + "/room";
+
+    std::string error;
+    std::unique_ptr<CursesLobby> lobby =
+        make_host_lobby(save, options, &error);
+    EXPECT_NE(nullptr, lobby) << "the relay alone is enough to host over";
+    EXPECT_EQ("", error) << "a lobby that runs reports no refusal";
+    lobby.reset();  // stop the relay's socket thread inside the test
+}
+
+// When BOTH transports fail, the refusal names both reasons, direct first:
+// a whitespace-only relay URL trims to empty and is refused by the relay
+// transport itself.
+TEST(CursesHostLobby, both_transports_failing_names_both_reasons)
+{
+    MountRestore mount_restore;
+
+    const int busy_port = ix::getFreePort();
+    og::sim::WebSocketServerTransport blocker(busy_port);
+    blocker.accept_connections();
+
+    SaveData save;
+    init_host_save(save);
+    HostOptions options;
+    options.port = busy_port;
+    options.relay_url = "   ";
+
+    std::string error;
+    std::unique_ptr<CursesLobby> lobby;
+    ASSERT_NO_THROW(lobby = make_host_lobby(save, options, &error));
+    EXPECT_EQ(nullptr, lobby);
+    const std::string relay_reason =
+        "  Relay: RelayWebSocketTransport URL must not be empty";
+    ASSERT_EQ(0u, error.rfind("Direct: ", 0)) << error;
+    ASSERT_GT(error.size(), relay_reason.size()) << error;
+    EXPECT_EQ(relay_reason,
+              error.substr(error.size() - relay_reason.size()))
+        << "the relay's reason follows the direct one; error was \""
+        << error << "\"";
+    EXPECT_EQ(std::string::npos,
+              error.substr(0, error.size() - relay_reason.size())
+                  .find("Relay:"))
+        << "exactly one relay reason";
+}
+
 } // namespace og::curses

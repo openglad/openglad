@@ -31,6 +31,7 @@
 
 #include "script_host_impl.h"
 #include "script_internal.h"
+#include "script_raise.h"
 
 #include <algorithm>
 #include <cstring>
@@ -54,7 +55,7 @@ char g_og_nil_tag = 0;
 
 int family_ref_use_error(lua_State* L)
 {
-    return luaL_error(
+    script_raise(
         L, "og.family_id: a family byte cannot be READ while families are "
            "being declared — the ids are assigned by the install this "
            "declaration feeds. The call answers a truthy placeholder so the "
@@ -440,8 +441,7 @@ bool take_radar_color(Harvest& h, const std::string& where,
 {
     if (lua_type(h.L, -1) == LUA_TSTRING) {
         std::string text;
-        if (!h.take_string(where, text))
-            return false;
+        (void)h.take_string(where, text);  // a string: cannot fail
         if (text == og::kRadarColorNoneName)
             out = og::kRadarColorNone;
         else if (text == og::kRadarColorTeamName)
@@ -1431,27 +1431,35 @@ bool bind_specials(lua_State* L, VmState* st, int tbl, int family_idx,
     for (lua_Integer i = 1; i <= n; i++) {
         lua_rawgeti(L, list, i);
         const int entry = lua_gettop(L);
-        if (!lua_istable(L, entry)) {
-            lua_pop(L, 1);
-            continue;  // the declaration pass already refused this pack
-        }
-        lua_getfield(L, entry, "id");
+        if (lua_istable(L, entry))
+            lua_getfield(L, entry, "id");
+        else
+            lua_pushnil(L);
         const char* id = lua_tostring(L, -1);
         if (id == nullptr) {
-            lua_pop(L, 2);
-            continue;  // the declaration pass already refused this pack
+            // The declaration pass refuses an entry that is not a table or
+            // has no id, so reaching here means the chunk handed the two
+            // passes different lists (it branched on og.family_id's
+            // declare-time placeholder). Skipping the entry would install
+            // the special's data with no cast behind it.
+            script_raise(L,
+                         "og.family %s '%s': specials entry %d has no id in "
+                         "the bind pass — the declaration pass never saw "
+                         "this specials list, so the chunk declares "
+                         "different specials in its two passes",
+                         order_str, family_label.c_str(),
+                         static_cast<int>(i));
         }
         const std::string special_id = id;
         lua_pop(L, 1);
         const int slot = special_slot_for_id(fd, special_id.c_str());
         if (slot < 0) {
-            luaL_error(L,
-                       "og.family: special '%s' names no slot of living "
-                       "family '%s' — the declaration and the installed "
-                       "family disagree (declared ids: %s)",
-                       special_id.c_str(), family_label.c_str(),
-                       declared_special_ids(fd).c_str());
-            return false;  // unreachable
+            script_raise(L,
+                         "og.family: special '%s' names no slot of living "
+                         "family '%s' — the declaration and the installed "
+                         "family disagree (declared ids: %s)",
+                         special_id.c_str(), family_label.c_str(),
+                         declared_special_ids(fd).c_str());
         }
         lua_getfield(L, entry, "cast");
         if (lua_isfunction(L, -1)) {
@@ -1520,8 +1528,8 @@ int bind_family(lua_State* L, VmState* st, const OrderInfo* oi, int tbl)
     lua_getfield(L, tbl, "id");
     const char* id = lua_tostring(L, -1);
     if (id == nullptr)
-        return luaL_error(L, "og.family %s: a declaration needs an id "
-                             "(id = \"<pack>:<family>\")", oi->name);
+        script_raise(L, "og.family %s: a declaration needs an id "
+                        "(id = \"<pack>:<family>\")", oi->name);
     const std::string declared_id = id;
     lua_pop(L, 1);
     const int family_id =
@@ -1532,11 +1540,11 @@ int bind_family(lua_State* L, VmState* st, const OrderInfo* oi, int tbl)
         // pack was rejected) or the install dropped the entry — both are the
         // split-brain case V1 exists to prevent, so say so instead of
         // binding hooks into a void.
-        return luaL_error(L,
-                          "og.family %s '%s': no such family is installed — "
-                          "the declaration that should have created it did "
-                          "not survive the install",
-                          oi->name, declared_id.c_str());
+        script_raise(L,
+                     "og.family %s '%s': no such family is installed — "
+                     "the declaration that should have created it did "
+                     "not survive the install",
+                     oi->name, declared_id.c_str());
     }
 
     push_family_hook_table(L, st, oi->order, family_id);
@@ -1564,23 +1572,22 @@ int bind_family(lua_State* L, VmState* st, const OrderInfo* oi, int tbl)
 // with ordinary destructors.
 int raise_harvest_error(lua_State* L, const Harvest& h)
 {
-    return luaL_error(L, "%s", h.err.c_str());
+    script_raise(L, "%s", h.err.c_str());
 }
 
 // og.family / og.anims / og.pack all describe DATA, and data installs from
 // families/ (format spec V1). Elsewhere a declaration would bind behavior in
 // every VM while its data half never installed — the split-brain family this
 // whole two-context design exists to make impossible.
-bool require_families_chunk(lua_State* L, const VmState* st, const char* what)
+void require_families_chunk(lua_State* L, const VmState* st, const char* what)
 {
     if (st != nullptr && st->current_chunk == ChunkKind::Family)
-        return true;
-    luaL_error(L,
-               "%s: only a packs/<id>/families/*.lua chunk may declare pack "
-               "data — families/ is what the installer evaluates, so a "
-               "declaration anywhere else would never install",
-               what);
-    return false;  // unreachable; luaL_error does not return
+        return;
+    script_raise(L,
+                 "%s: only a packs/<id>/families/*.lua chunk may declare pack "
+                 "data — families/ is what the installer evaluates, so a "
+                 "declaration anywhere else would never install",
+                 what);
 }
 
 }  // namespace
@@ -1590,20 +1597,17 @@ int og_family(lua_State* L)
     const char* order_str = luaL_checkstring(L, 1);
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
-    if (!require_families_chunk(L, st, "og.family"))
-        return 0;
+    require_families_chunk(L, st, "og.family");
     const OrderInfo* oi = find_order(order_str);
     if (oi == nullptr)
-        return luaL_error(L, "og.family: unknown order '%s' (living, weapon, "
-                             "effect, treasure, generator)", order_str);
+        script_raise(L, "og.family: unknown order '%s' (living, weapon, "
+                        "effect, treasure, generator)", order_str);
     if (st->mode != VmMode::Declare) {
         // BIND pass: the same call binds hooks and specials casts against
         // the descriptors this declaration already installed, and touches no
         // registry.
         return bind_family(L, st, oi, 2);
     }
-    if (st->harvest == nullptr)
-        return luaL_error(L, "og.family: no declaration in progress");
     Harvest h{L, {}};
     // Argument 2 is the declaration table; every reader indexes it directly
     // rather than copying, so the caller's stack is untouched on the way
@@ -1619,12 +1623,9 @@ int og_anims(lua_State* L)
     const char* name = luaL_checklstring(L, 1, &name_len);
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
-    if (!require_families_chunk(L, st, "og.anims"))
-        return 0;
+    require_families_chunk(L, st, "og.anims");
     if (st->mode != VmMode::Declare)
         return 0;  // frame tables are data; the bind replay wants none of it
-    if (st->harvest == nullptr)
-        return luaL_error(L, "og.anims: no declaration in progress");
     Harvest h{L, {}};
     og::data::ClasspackAnimSet set;
     if (!harvest_anim_set(h, std::string(name, name_len), 2, set))
@@ -1637,12 +1638,9 @@ int og_pack(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
     VmState* st = get_vm_state(L);
-    if (!require_families_chunk(L, st, "og.pack"))
-        return 0;
+    require_families_chunk(L, st, "og.pack");
     if (st->mode != VmMode::Declare)
         return 0;
-    if (st->harvest == nullptr)
-        return luaL_error(L, "og.pack: no declaration in progress");
     Harvest h{L, {}};
     if (!harvest_pack_header(h, 1, *st->harvest))
         return raise_harvest_error(L, h);

@@ -540,3 +540,44 @@ TEST_F(LevelScriptsTest, level_and_entity_hook_registration_rejections)
     EXPECT_TRUE(*answered);
     EXPECT_EQ(4u, errs.size()) << "an accepted registration reports nothing";
 }
+
+// A class pack's families/*.lua may register level hooks. The declaration
+// pass defers the call (test_classpack_lua_decl.cpp,
+// register_level_hooks_is_a_silent_no_op_in_the_declaration); this is the
+// other half of that rule: the bind replay runs the same family chunk in the
+// world VM, and there the registration lands and the hook fires.
+TEST_F(LevelScriptsTest, a_family_chunk_registers_level_hooks_in_the_real_pass)
+{
+    constexpr std::uint32_t kOnLoadBit =
+        1u << 0;  // LevelHook::Load (family_hooks.h: "Load 0")
+    clear_pack_family_chunks();
+    // Level dispatch is gated on the pack having scripts at all, so the pack
+    // ships one inert script beside its family file.
+    register_pack_script({"lvlfam", "lvlfam/scripts/inert.lua",
+                          "local inert = true\n"});
+
+    // Control: the same pack whose family chunk does not call the registrar
+    // has no level hook anywhere.
+    register_pack_family_chunk(
+        {"lvlfam", "lvlfam/families/a.lua", "local nothing = true\n"});
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1));
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42));
+
+    // The family chunk registers a wildcard on_load: after the bind replay
+    // the table carries exactly the on_load bit, and the first tick fires it
+    // exactly once.
+    register_pack_family_chunk(
+        {"lvlfam", "lvlfam/families/a.lua",
+         "og.register_level_hooks(-1, {\n"
+         "  on_load = function(level) og.log('family load', level) end,\n"
+         "})\n"});
+    EXPECT_EQ(kOnLoadBit, hooks::level_hook_kinds_for(-1));
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42))
+        << "a wildcard registration is not a level-42 registration";
+    world.tick();
+    world.tick();
+    ASSERT_EQ(1u, vm_log().size());
+    EXPECT_EQ("family load\t42", vm_log()[0]);
+    EXPECT_TRUE(world.scripts().host().errors().empty())
+        << world.scripts().host().errors().front().message;
+}

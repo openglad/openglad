@@ -163,10 +163,10 @@ character, on both sides. Consequences:
   bare form to stay unambiguous. A living family that omits `name` inherits
   the registry default `BEAST` and its bare form resolves to whichever `BEAST`
   sits at the lowest byte.
-- When registry names genuinely collide (golem / giant_skeleton / tower1 are
-  all `BEAST`; the slime trio is all `SLIME`), form 1 addresses the exact
-  byte — e.g. `core:#19` for giant_skeleton, which is why the core pack's
-  `families/*.lua` declarations carry ids like `core:#19`.
+- When registry names genuinely collide (the slime trio is all `SLIME`),
+  form 1 addresses the exact byte — e.g. `core:#9` for the small slime,
+  which is why the core pack's `families/*.lua` declarations carry ids
+  like `core:#9`.
 
 An unknown order, an unresolvable family, a non-function hook value, or a
 table with no recognised hook name is a **load error**: the whole chunk is

@@ -726,7 +726,7 @@ block.
   compatibility. Reusing a display name is legal, but its bare form is
   ambiguous and resolves to the lowest byte.
 - The core pack explicitly declares positional ids for historic display-name
-  collisions such as the `BEAST` and `SLIME` groups.
+  collisions such as the `SLIME` group.
 - There is no string-id provenance or remapping in the save, level, or
   snapshot formats. A byte that belongs to a mod must be loaded with the
   compatible pack set. Core ids remain safe across legacy data because the
@@ -917,7 +917,7 @@ The verification layers cover different promises:
 **Pack Lua is inside the coverage gate.** `scripts/coverage/` measures
 every pack script the engine can load, line-by-line and function-by-function,
 and merges the result with gcovr's `src/` numbers;
-`.github/workflows/coverage.yml` enforces one bar — 96 % line, 100 % function
+`.github/workflows/coverage.yml` enforces one bar — 98 % line, 100 % function
 — on the C++ half alone, on the Lua half alone, and on their union. Separate
 floors prevent one language's surplus from hiding the other's shortfall. See
 `scripts/coverage/README.md` for how each number is produced and why arming

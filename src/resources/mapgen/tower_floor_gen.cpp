@@ -50,7 +50,9 @@
 #include <array>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace og::tower {
@@ -262,6 +264,26 @@ constexpr std::array<BandSpec, 6> kBands = {{
      0, FAMILY_FLIGHT_POTION,
      "Snow crowns the last rampart.", nullptr},
 }};
+
+// Every briefing line the tower writes is a literal: the band voices and
+// kOpenStairsLine. Checked here, where they are authored.
+constexpr bool briefing_lines_fit_the_budget()
+{
+    if (std::char_traits<char>::length(kOpenStairsLine) > kBriefingLineBudget)
+        return false;
+    for (const BandSpec& band : kBands)
+    {
+        if (band.briefing1 == nullptr ||
+            std::char_traits<char>::length(band.briefing1) > kBriefingLineBudget)
+            return false;
+        if (band.briefing2 != nullptr &&
+            std::char_traits<char>::length(band.briefing2) > kBriefingLineBudget)
+            return false;
+    }
+    return true;
+}
+static_assert(briefing_lines_fit_the_budget(),
+              "a tower briefing line overflows kBriefingLineBudget");
 
 // Foe team assignments. Foes sit on team 2 (NOT team 1: the builder lib's
 // hold-post rule treats teams <= 1 as allied garrisons, and tower guards
@@ -598,19 +620,51 @@ void carve_warren(GameWorld& w, const BuildPlan& plan, Layout& lay,
 // shrinking by an inset, AIR everywhere beyond it, so every walk-off drops
 // exactly one story onto the platform below. Band 4 punches an AIR ring
 // (shaft) inside the platform edge with two solid bridges.
+// Shrink per story, capped so the TOP platform keeps >= 16 tiles of
+// span: its core must still seat the exit pad, both stair pads of the
+// last boundary, the boss squad and their mutual clearances.
+constexpr int spire_inset_step(int tw, int th, int stories)
+{
+    int inset_step = std::min(tw, th) / (2 * std::max(1, stories));
+    if (stories > 1)
+        inset_step = std::min(inset_step,
+                              (std::min(tw, th) - 16) / (2 * (stories - 1)));
+    return std::max(3, inset_step);
+}
+
+// Every band that can roll T4 keeps a platform of at least 7x7 tiles on
+// every story it can have (the Bailey's boss floor grows to 2 stories; the
+// attempt-3 fallback never carves a spire). The spire carve relies on it.
+constexpr bool spire_platforms_fit_every_band()
+{
+    for (std::size_t b = 0; b < kBands.size(); ++b)
+    {
+        const BandSpec& band = kBands[b];
+        if (band.tmpl_weights[T4_SPIRE] == 0)
+            continue;
+        const int max_stories =
+            (b == 0) ? std::max(2, band.stories_max) : band.stories_max;
+        for (int stories = band.stories_min; stories <= max_stories; ++stories)
+        {
+            const int step = spire_inset_step(band.tw, band.th, stories);
+            for (int f = 1; f < stories; ++f)
+            {
+                const int in = step * f;
+                if ((band.tw - 1 - in) - in < 7 || (band.th - 1 - in) - in < 7)
+                    return false;
+            }
+        }
+    }
+    return true;
+}
+static_assert(spire_platforms_fit_every_band(),
+              "a spire story's platform shrank below 7x7 tiles");
+
 void carve_spire(GameWorld& w, const BuildPlan& plan, Layout& lay,
                  SeedStream& s, bool air_rings)
 {
-    // Shrink per story, capped so the TOP platform keeps >= 16 tiles of
-    // span: its core must still seat the exit pad, both stair pads of the
-    // last boundary, the boss squad and their mutual clearances.
-    int inset_step =
-        std::min(plan.tw, plan.th) / (2 * std::max(1, plan.stories));
-    if (plan.stories > 1)
-        inset_step = std::min(
-            inset_step,
-            (std::min(plan.tw, plan.th) - 16) / (2 * (plan.stories - 1)));
-    inset_step = std::max(3, inset_step);
+    const int inset_step =
+        spire_inset_step(plan.tw, plan.th, plan.stories);
     border_walls(w, 0);
     quadrant_rooms(lay, 0, plan.tw, plan.th);
     for (int f = 1; f < plan.stories; ++f)
@@ -619,14 +673,6 @@ void carve_spire(GameWorld& w, const BuildPlan& plan, Layout& lay,
         paint_rect(g, 0, 0, plan.tw - 1, plan.th - 1, PIX_AIR);
         const int in = inset_step * f;
         const Rect plat = {in, in, plan.tw - 1 - in, plan.th - 1 - in};
-        if (plat.x1 - plat.x0 < 7 || plat.y1 - plat.y0 < 7)
-        {
-            // Degenerate platform (tiny grid): keep the story solid instead.
-            paint_rect(g, 1, 1, plan.tw - 2, plan.th - 2,
-                       plan.band->base_tile);
-            lay.rooms.push_back({f, {2, 2, plan.tw - 3, plan.th - 3}});
-            continue;
-        }
         paint_rect(g, plat.x0, plat.y0, plat.x1, plat.y1,
                    plan.band->base_tile);
         if (air_rings)
@@ -763,8 +809,6 @@ void place_stairs(GameWorld& w, BuildPlan& plan, const Layout& lay)
                     best_d = d;
                 }
             }
-            if (best == nullptr)
-                continue;
             // Candidate anchors, ALL clamped inside the chosen room (a pad
             // outside it could float in a spire story's open air): the
             // ideal-biased point first, then the room corners, so the two
@@ -806,8 +850,9 @@ void place_stairs(GameWorld& w, BuildPlan& plan, const Layout& lay)
 
 // Post-smooth fall repair: any AIR cell a walker can step into must land on
 // standable ground within 4 stories (spec step 11's fall audit, made true by
-// construction). Landings the dressing broke are re-grounded; air columns
-// past floor 0 are pit deaths and stay legal.
+// construction). Landings the dressing broke are re-grounded. Story 0 never
+// holds air (carve_spire paints PIX_AIR on stories >= 1 only), so every air
+// column bottoms out on a real landing cell.
 void repair_fall_landings(GameWorld& w, const BuildPlan& plan)
 {
     for (int f = 1; f < plan.stories; ++f)
@@ -830,8 +875,6 @@ void repair_fall_landings(GameWorld& w, const BuildPlan& plan)
                 while (lf > 0 &&
                        w.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
                     --lf;
-                if (w.grid_for_floor(lf).data[static_cast<std::size_t>(tx + ty * g.w)] == PIX_AIR)
-                    continue; // pit: designed death
                 if (!cell_standable(w, lf, tx, ty))
                     paint(w.grid_for_floor(lf), tx, ty, plan.band->base_tile);
             }
@@ -846,6 +889,20 @@ struct FoePick
     int count;
 };
 
+// Every band's anchor foe (mix[0]) is always allowed and carries a real
+// share, so composition_for's divisor is positive on every floor >= 1 (the
+// only floors the tower builds: every caller guards scen_num > the Gate).
+constexpr bool every_band_anchor_is_always_allowed()
+{
+    for (const BandSpec& band : kBands)
+        if (band.mix[0].family < 0 || band.mix[0].min_floor > 1 ||
+            band.mix[0].percent <= 0)
+            return false;
+    return true;
+}
+static_assert(every_band_anchor_is_always_allowed(),
+              "a band's mix[0] anchor must be allowed on every floor");
+
 std::vector<FoePick> composition_for(const BandSpec& band, int floor_number,
                                      int total)
 {
@@ -854,8 +911,6 @@ std::vector<FoePick> composition_for(const BandSpec& band, int floor_number,
     for (const FoeMix& m : band.mix)
         if (m.family >= 0 && floor_number >= m.min_floor)
             allowed_total_pct += m.percent;
-    if (allowed_total_pct <= 0)
-        return picks;
     int placed = 0;
     for (const FoeMix& m : band.mix)
     {
@@ -880,9 +935,7 @@ int maxobs_worst_case(const GameWorld& w)
     int worst = 0;
     for (const auto& uptr : w.oblist)
     {
-        const walker* ob = uptr.get();
-        if (ob == nullptr)
-            continue;
+        const walker* ob = uptr.get(); // add_ob never files a null
         if (ob->query_order() == Order::Living)
             worst += (ob->family() == FAMILY_SLIME) ? 2 : 1;
         else if (ob->query_order() == Order::Generator)
@@ -895,8 +948,7 @@ constexpr int kMaxobsBudget = 120;
 
 // --- Audits (spec step 11). -------------------------------------------------------
 
-std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan,
-                                    const std::list<std::string>& description)
+std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan)
 {
     std::vector<std::string> errors = og::mapgen::audit_footing(w);
     {
@@ -923,14 +975,6 @@ std::vector<std::string> run_audits(GameWorld& w, const BuildPlan& plan,
             "maxobs: worst-case population {} exceeds the {} budget "
             "(Frenzy generators modeled at 8 spawns, slimes split 2x)",
             worst, kMaxobsBudget));
-    if (w.title.size() > 30)
-        errors.push_back(std::format("title '{}' overflows the 30-char field",
-                                     w.title));
-    for (const std::string& line : description)
-        if (line.size() > kBriefingLineBudget)
-            errors.push_back(std::format(
-                "briefing line '{}' overflows the {}-char budget", line,
-                kBriefingLineBudget));
     (void)plan;
     return errors;
 }
@@ -1204,8 +1248,6 @@ void clear_stair_cross_blocking_decor(GameWorld& w, const BuildPlan& plan)
             {
                 const int nx = sc.tx + off[0];
                 const int ny = sc.ty + off[1];
-                if (nx < 0 || ny < 0 || nx >= dec.w || ny >= dec.h)
-                    continue;
                 const unsigned char d = dec.data[static_cast<std::size_t>(nx + ny * dec.w)];
                 if (d < DECOR_MAX &&
                     kDecorRegistry[d].pass == DecorPassability::BlocksGround)
@@ -1398,16 +1440,9 @@ std::vector<std::string> build_tower_floor(GameWorld& world,
                 best_d = d;
             }
         }
-        if (exit_room != nullptr)
-        {
-            const Rect& rr = exit_room->r;
-            plan.exit_pad = {std::max(rr.x0 + 1, rr.x1 - 4), rr.y0 + 1,
-                             rr.x1 - 1, std::min(rr.y1 - 1, rr.y0 + 4)};
-        }
-        else
-        {
-            plan.exit_pad = {plan.tw - 9, 3, plan.tw - 4, 8};
-        }
+        const Rect& rr = exit_room->r;
+        plan.exit_pad = {std::max(rr.x0 + 1, rr.x1 - 4), rr.y0 + 1,
+                         rr.x1 - 1, std::min(rr.y1 - 1, rr.y0 + 4)};
     }
     force_ground_pad(world, top, plan.exit_pad, plan.band->base_tile);
 
@@ -1452,6 +1487,13 @@ std::vector<std::string> build_tower_floor(GameWorld& world,
 
     // (10) Identity, title, briefing, par/limit.
     world.id = og::kTowerGateLevel + floor_number;
+    // "Floor " + the longest int ("-2147483648", digits10 + 2 chars) fits
+    // the .fss 30-char title field.
+    static_assert(std::string_view("Floor ").size() +
+                          static_cast<std::size_t>(
+                              std::numeric_limits<int>::digits10 + 2) <=
+                      30,
+                  "a tower floor title can overflow the 30-char field");
     world.title = std::format("Floor {}", floor_number);
     description.clear();
     description.push_back(plan.band->briefing1);
@@ -1465,7 +1507,7 @@ std::vector<std::string> build_tower_floor(GameWorld& world,
         static_cast<short>(4 + 2 * plan.band_idx + 3 * plan.lap);
 
     // (11) Audits.
-    return run_audits(world, plan, description);
+    return run_audits(world, plan);
 }
 
 TowerFloorReport generate_tower_floor_to_user_dir(std::uint32_t run_seed,

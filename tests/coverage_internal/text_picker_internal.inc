@@ -1619,3 +1619,191 @@ int text_picker_testing_hires_across_visits_draw_fresh_names()
     check(state_restore.restore());
     return failed ? -failed_check : 0;
 }
+
+namespace {
+
+// Dispatches `command` from whichever menu carries it (Team Build first,
+// then the Scenario submenu) with `input` on stdin; returns the stdout the
+// handler printed, or false when the item or the capture is unavailable.
+bool text_picker_run_menu_command(TextPickerClient& client,
+                                  PickerMenuCommand command,
+                                  const std::string& input,
+                                  std::string& output)
+{
+    PickerMenuId menu_id = PickerMenuId::TeamBuild;
+    const PickerMenuItem* item =
+        find_picker_menu_item(PickerMenuId::TeamBuild, command);
+    if (item == nullptr) {
+        menu_id = PickerMenuId::Scenario;
+        item = find_picker_menu_item(PickerMenuId::Scenario, command);
+    }
+    if (item == nullptr)
+        return false;
+    ScopedTextPickerStdoutCapture capture;
+    if (!capture.ready())
+        return false;
+    {
+        ScopedCinRedirect cin_input(input);
+        client.handle_menu_item(menu_id, *item);
+    }
+    output = capture.finish();
+    return capture.finish_ok();
+}
+
+} // namespace
+
+// One Team Build / Scenario command on a fresh gladiator client (the
+// default one-soldier company), stdin = `input`. Returns 0 with the
+// printed text and the post-command team size, or a negative setup error.
+int text_picker_testing_run_team_command(int command, const std::string& input,
+                                         std::string& output,
+                                         int& team_size_after)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    if (!text_picker_run_menu_command(
+            client, static_cast<PickerMenuCommand>(command), input, output))
+        return -3;
+    team_size_after = client.testing_save_data().team_size;
+    return state_restore.restore() ? 0 : -4;
+}
+
+// The camp's level row through the text set-level tail. The caller
+// registers a camp whose first docket row is level 1 (replay = true); the
+// company stands on level 3 with level 1 cleared (`cleared`) or not.
+// Returns 0 with the save's cursor, replay arm and replay origin.
+int text_picker_testing_camp_level_row(bool cleared, short& scen_num,
+                                       short& replay_level,
+                                       short& replay_origin)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.level = 3;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    SaveData& save = client.testing_save_data_mutable();
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+    if (cleared)
+        save.add_level_completed("gladiator", 1);
+    std::string output;
+    if (!text_picker_run_menu_command(client, PickerMenuCommand::CampaignCamp,
+                                      "1\n\n", output))
+        return -3;
+    scen_num = save.scen_num;
+    replay_level = save.replay_level;
+    replay_origin = save.replay_origin;
+    save.clear_replay_arm();
+    return state_restore.restore() ? 0 : -4;
+}
+
+// #207 design point 5 through run_game: arm the camp's replay row on a
+// cleared level (the product's own set-level tail), then GO. The protocol
+// session folds nothing back, so run_game itself resolves the excursion on
+// return. Returns 0 with the config's level and the save's cursor and arm
+// after the game.
+int text_picker_testing_run_game_resolves_replay_arm(int& level_after,
+                                                     short& scen_after,
+                                                     short& replay_level_after,
+                                                     int& level_armed)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    if (mount_campaign_package_with_error("gladiator") !=
+        CampaignPackageIoError::None)
+        return -2;
+    TextPickerConfig config;
+    config.campaign = "gladiator";
+    config.level = 3;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    SaveData& save = client.testing_save_data_mutable();
+    save.current_campaign = "gladiator";
+    save.scen_num = 3;
+    save.add_level_completed("gladiator", 1);
+    std::string output;
+    if (!text_picker_run_menu_command(client, PickerMenuCommand::CampaignCamp,
+                                      "1\n\n", output))
+        return -3;
+    level_armed = config.level;
+    {
+        ScopedTextPickerStdoutCapture capture;
+        if (!capture.ready())
+            return -4;
+        {
+            ScopedCinRedirect cin_input("");
+            client.run_game();
+        }
+        (void)capture.finish();
+        if (!capture.finish_ok())
+            return -5;
+    }
+    level_after = config.level;
+    scen_after = save.scen_num;
+    replay_level_after = save.replay_level;
+    save.clear_replay_arm();
+    return state_restore.restore() ? 0 : -6;
+}
+
+// Campaign Select on a client whose configured campaign is `campaign`, stdin
+// = `input` (an empty string is EOF at the prompt). The caller arranges the
+// filesystem (which campaign packages list_campaigns can see) and the mount.
+// Returns 0 with the printed text, the value show_campaign_select returned,
+// the config's and the save's campaign after the call, and the recorded
+// error code; a negative value is a setup error.
+int text_picker_testing_campaign_select(const std::string& campaign,
+                                        const std::string& input,
+                                        std::string& output,
+                                        std::string& returned,
+                                        std::string& config_campaign_after,
+                                        std::string& save_campaign_after,
+                                        int& error_code)
+{
+    ScopedTextPickerInternalState state_restore;
+    if (!state_restore.ready())
+        return -1;
+    TextPickerConfig config;
+    config.campaign = campaign;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "helper-slot";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    client.testing_save_data_mutable().current_campaign = campaign;
+    {
+        ScopedTextPickerStdoutCapture capture;
+        if (!capture.ready())
+            return -2;
+        {
+            ScopedCinRedirect cin_input(input);
+            returned = client.show_campaign_select();
+        }
+        output = capture.finish();
+        if (!capture.finish_ok())
+            return -3;
+    }
+    config_campaign_after = config.campaign;
+    save_campaign_after = client.testing_save_data().current_campaign;
+    error_code = static_cast<int>(error.code);
+    return state_restore.restore() ? 0 : -4;
+}

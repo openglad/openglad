@@ -158,9 +158,6 @@ struct SessionState {
     std::int32_t editguy_ = 0;
     std::string message_;
 
-    // Help UI state (Phase 12) — moved from help.cpp globals.
-    short help_end_of_file_ = 0;
-
     // Test-only context override snapshot used by push_test_context/pop_test_context.
     bool test_context_active_ = false;
     IRandom* test_context_rng_snapshot_ = nullptr;

@@ -404,10 +404,16 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
         << "the shield joins the control's team";
     EXPECT_EQ(200, (int)shield->lifetime()) << "the shield lives 200 ticks";
 
+    // Cheat 'f' is a TOGGLE: the first press flips flying, the second press
+    // flips it back (cheat_handler.cpp, the BIT_FLYING arm).
     const bool flying_before = v->control->stats()->query_bit_flags(BIT_FLYING) != 0;
     e.key.key = SDLK_F;
     v->input(e);
     ASSERT_TRUE((v->control->stats()->query_bit_flags(BIT_FLYING) != 0) != flying_before) << "f key should toggle flying bit";
+    v->input(e);
+    EXPECT_EQ(flying_before,
+              v->control->stats()->query_bit_flags(BIT_FLYING) != 0)
+        << "a second cheat+'f' must toggle flying back off";
 
     const float hp_before = v->control->stats()->hitpoints();
     e.key.key = SDLK_H;
@@ -415,10 +421,15 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     EXPECT_FLOAT_EQ(hp_before + 100.0f, v->control->stats()->hitpoints())
         << "cheat+'h' adds exactly 100 hitpoints to the control";
 
+    // Cheat 'i' is a toggle too: a second press clears invincibility.
     const bool inv_before = v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0;
     e.key.key = SDLK_I;
     v->input(e);
     ASSERT_TRUE((v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0) != inv_before) << "i key should toggle invincible bit";
+    v->input(e);
+    EXPECT_EQ(inv_before,
+              v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0)
+        << "a second cheat+'i' must toggle invincibility back off";
 
     const float mp_before = v->control->stats()->magicpoints();
     e.key.key = SDLK_M;
@@ -433,6 +444,31 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
         << "cheat+'s' adds exactly 20 to the control's speed bonus";
     EXPECT_FLOAT_EQ(v->control->normal_stepsize(), v->control->speed_bonus())
         << "cheat+'s' also sets the bonus step to the normal stepsize";
+
+    // Cheat 'v' adds exactly 100 ticks of invisibility while the control is
+    // below the 3000 cap, and nothing once it has reached the cap.
+    v->control->set_invisibility_left(0);
+    e.key.key = SDLK_V;
+    v->input(e);
+    EXPECT_EQ(100, static_cast<int>(v->control->invisibility_left()))
+        << "cheat+'v' below the cap adds exactly 100 invisibility";
+    v->control->set_invisibility_left(3000);
+    v->input(e);
+    EXPECT_EQ(3000, static_cast<int>(v->control->invisibility_left()))
+        << "cheat+'v' at the 3000 cap adds nothing";
+    v->control->set_invisibility_left(0);
+
+    // Cheat 't' transforms the control into the NEXT family in family order
+    // (soldier -> elf), keeping it a living walker.
+    ASSERT_EQ(FAMILY_SOLDIER, static_cast<int>(v->control->family()))
+        << "the control starts as the soldier";
+    e.key.key = SDLK_T;
+    v->input(e);
+    EXPECT_EQ((FAMILY_SOLDIER + 1) % NUM_FAMILIES,
+              static_cast<int>(v->control->family()))
+        << "cheat+'t' must transform the control into the next family";
+    EXPECT_EQ(Order::Living, v->control->query_order())
+        << "the transform keeps the control a living walker";
 
     ks.set(SDLK_C, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;

@@ -18,6 +18,7 @@
 // hand-owned difficulty kExpected table remains the independent oracle over
 // the spec transcription (G11).
 
+#include <openglad/core/irandom.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
@@ -38,6 +39,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/company.h>
+#include <openglad/interface/ui/cloud_save_client.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_click_ladder.h"
 #include "test_interact.h"
@@ -45,10 +48,13 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <format>
 #include <map>
 #include <memory>
@@ -167,7 +173,12 @@ struct FakeLobbyClient final : og::ui::IPickerLobbyClient
     {
         return local_seats;
     }
+    [[nodiscard]] StagedPreviewHealth staged_preview_health() const override
+    {
+        return staged_health;
+    }
 
+    StagedPreviewHealth staged_health = StagedPreviewHealth::None;
     int settings_syncs = 0;
     short synced_save_level = -1;
     int synced_world_level = -1;
@@ -2247,6 +2258,65 @@ TEST(MenuEngine, base_camp_scripted_zone_gate_lattice_sweep)
     (void)picker_createmenu_buttons();
 }
 
+namespace
+{
+
+// Replays one fixed (adjective, noun, group) pick through the generator's
+// three draws, so a test can walk every bank combination through the REAL
+// generate_company_name instead of re-spelling its format.
+class BankPickRandom final : public IRandom
+{
+public:
+    BankPickRandom(std::uint32_t adjective, std::uint32_t noun,
+                   std::uint32_t group)
+        : picks_{adjective, noun, group}
+    {
+    }
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        const std::uint32_t pick = picks_[calls_ % picks_.size()];
+        ++calls_;
+        return max_exclusive == 0 ? 0 : pick % max_exclusive;
+    }
+
+private:
+    std::array<std::uint32_t, 3> picks_;
+    std::size_t calls_ = 0;
+};
+
+} // namespace
+
+// The name-entry face draws the company name unclipped, so every name the
+// screen can hold must fit kCompanyNameMaxLen: a typed name is capped by
+// the editor's maxlength, and a generated one by the word banks. Walk EVERY
+// bank combination through the generator: the longest is exactly the cap —
+// one longer word and the face would ink past its box.
+TEST(MenuEngine, name_entry_generated_names_fit_the_cap)
+{
+    const og::ui::CompanyNameBanks banks = og::ui::company_name_banks();
+    std::size_t longest = 0;
+    std::size_t combinations = 0;
+    for (std::uint32_t a = 0; a < banks.adjectives.size(); ++a) {
+        for (std::uint32_t n = 0; n < banks.nouns.size(); ++n) {
+            for (std::uint32_t g = 0; g < banks.groups.size(); ++g) {
+                BankPickRandom rng(a, n, g);
+                const std::string name = og::ui::generate_company_name(rng);
+                ASSERT_EQ(std::format("{} {} {}", banks.adjectives[a],
+                                      banks.nouns[n], banks.groups[g]),
+                          name);
+                longest = std::max(longest, name.size());
+                ++combinations;
+            }
+        }
+    }
+    EXPECT_EQ(banks.adjectives.size() * banks.nouns.size() *
+                  banks.groups.size(),
+              combinations);
+    EXPECT_EQ(og::ui::kCompanyNameMaxLen, longest)
+        << "the longest generated company name is exactly the face's cap";
+}
+
 // §2.2 new-company name entry: a Layer-F engine screen entered directly from
 // the BEGIN NEW GAME flow, NOT a registry (legacy-vs-engine) screen, so the
 // gate-lattice sweep above cannot reach it. Pin its materialized shape, the
@@ -2852,6 +2922,167 @@ TEST(MenuEngine, company_backups_spec_shape_and_nav_variants)
             << "a multi-page list must ink its p/N strip";
     }
     output->clearbuffer();
+}
+
+// [SAVE-R2]/[SAVE-R3] A Restore Backup that fails must leave the IN-MEMORY
+// company on the one that was open, even when that company has no file on
+// disk yet. The product state: the active slot defaults to "save0" (§3.4) and
+// only an explicit selection repoints it, so a launch whose companies all
+// carry derived slugs starts on an active slot with no file (as does a NEW
+// GAME whose first write failed). From there LOAD -> BK -> restore a snapshot
+// taken while the company was on a campaign this machine no longer has: step
+// 3's reload fails, the rollback reloads the TARGET's pre-restore state into
+// the save it is handed, and the arm's best-effort reload of the active slot
+// cannot undo that (no file) -- the target's roster and purse then sat in
+// memory under the active slot, where a minimize/close autosave writes them.
+// Paired control in the same test: a snapshot that DOES reload rewinds, repoints
+// the active slot at the company, and puts the rewound state in memory.
+TEST(MenuEngine, company_backups_failed_restore_keeps_the_open_company_in_memory)
+{
+    EngineTestGuard guard;
+    namespace fs = std::filesystem;
+    const std::string mounted_before = get_mounted_campaign();
+    SaveData& memory = og::runtime::current_session->myscreen_->save_data;
+
+    // Park the live in-memory company in a scratch file so the test can put
+    // it back whatever the restore does to it.
+    const std::string parked_slot = "wpmeparked";
+    ASSERT_EQ(SaveDataIoError::None, memory.save_with_error(parked_slot));
+    struct Cleanup
+    {
+        std::string mounted_before;
+        std::string parked_slot;
+        ~Cleanup()
+        {
+            SaveData& live = og::runtime::current_session->myscreen_->save_data;
+            (void)live.load_with_error(parked_slot);
+            for (const char* slot :
+                 {"wpmeparked", "wpmetarget", "wpmewest", "wpmegood"})
+            {
+                for (const og::data::CompanyBackupInfo& info :
+                     og::data::list_company_backups(slot))
+                    (void)og::data::delete_company_backup(slot, info.seq);
+                (void)remove_user_file(std::string("save/") + slot + ".gtl");
+            }
+            if (get_mounted_campaign() != mounted_before)
+                (void)mount_campaign_package_with_error(mounted_before);
+            picker_testing_yes_or_no_queue_clear();
+            og::ui::install_company_backups_state_for_screen(nullptr);
+        }
+    } cleanup{mounted_before, parked_slot};
+
+    const std::string open_slot = "wpmeopen";
+    ASSERT_FALSE(user_file_exists("save/" + open_slot + ".gtl"))
+        << "the open company has no file on disk yet";
+    og::data::ScopedActiveCompany active(open_slot);
+    ASSERT_EQ(open_slot, og::data::active_company_slot());
+    const std::string name_before = memory.save_name;
+    const std::uint32_t cash_before = memory.totalcash;
+
+    const auto seed = [](const std::string& slot, const char* name,
+                         const char* campaign, std::uint32_t cash) {
+        SaveData sd;
+        sd.reset();
+        sd.save_name = name;
+        sd.current_campaign = campaign;
+        sd.totalcash = cash;
+        sd.last_played_unix_s = 8100;
+        return sd.save_with_error(slot) == SaveDataIoError::None;
+    };
+    // The snapshot is on a campaign that is gone; the live file is intact.
+    ASSERT_TRUE(seed("wpmetarget", "TARGET BAND", "wpmenosuchcampaign", 4321));
+    ASSERT_TRUE(og::data::backup_company_now("wpmetarget"));
+    ASSERT_TRUE(seed("wpmetarget", "TARGET BAND", "gladiator", 4321));
+    ASSERT_NE("TARGET BAND", name_before)
+        << "the open company must differ from the restore target";
+    ASSERT_NE(4321u, cash_before);
+
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::company_backups_menu_screen_spec();
+    {
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wpmetarget";
+        state.company_name = "TARGET BAND";
+        state.backups = og::data::list_company_backups("wpmetarget");
+        ASSERT_EQ(1u, state.backups.size());
+        state.page = og::ui::PageModel::make(1, 10);
+        og::ui::install_company_backups_state_for_screen(&state);
+        trace_clear();
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);  // REWIND? YES
+        EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(0, &state));
+        EXPECT_TRUE(trace_contains("popup", "RELOAD FAILED - REWIND UNDONE"))
+            << "the restore must fail at the step-3 reload";
+        EXPECT_FALSE(state.opened);
+        EXPECT_EQ(open_slot, og::data::active_company_slot())
+            << "[SAVE-R2] a failed restore keeps the active slot";
+        EXPECT_EQ(name_before, memory.save_name)
+            << "[SAVE-R2] a failed restore must leave the in-memory company "
+               "on the one that was open before";
+        EXPECT_EQ(cash_before, memory.totalcash);
+        og::ui::install_company_backups_state_for_screen(nullptr);
+    }
+
+    // Same failure with an open company that IS on disk, on another
+    // campaign: memory keeps it and the mount follows it back, not the
+    // target campaign the failed reload's rollback mounted.
+    ASSERT_TRUE(seed("wpmewest", "WEST BAND", "westlands", 2222));
+    {
+        og::data::ScopedActiveCompany west_active("wpmewest");
+        ASSERT_EQ(SaveDataIoError::None, memory.load_with_error("wpmewest"));
+        ASSERT_EQ("westlands", get_mounted_campaign());
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wpmetarget";
+        state.company_name = "TARGET BAND";
+        state.backups = og::data::list_company_backups("wpmetarget");
+        int failing_row = -1;
+        for (std::size_t i = 0; i < state.backups.size(); ++i)
+        {
+            if (state.backups[i].seq == 1)
+                failing_row = static_cast<int>(i);
+        }
+        ASSERT_EQ(2u, state.backups.size())
+            << "the first failed restore added its pre-restore snapshot";
+        ASSERT_EQ(1, failing_row) << "seq 1 (the gone campaign) is the older";
+        state.page = og::ui::PageModel::make(2, 10);
+        og::ui::install_company_backups_state_for_screen(&state);
+        trace_clear();
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);  // REWIND? YES
+        EXPECT_EQ(MENU_REDRAW, spec.on_spec_row(failing_row, &state));
+        EXPECT_TRUE(trace_contains("popup", "RELOAD FAILED - REWIND UNDONE"));
+        EXPECT_EQ("wpmewest", og::data::active_company_slot());
+        EXPECT_EQ("WEST BAND", memory.save_name);
+        EXPECT_EQ(2222u, memory.totalcash);
+        EXPECT_EQ("westlands", get_mounted_campaign())
+            << "the mount follows the company left in memory";
+        og::ui::install_company_backups_state_for_screen(nullptr);
+    }
+
+    // Control: a snapshot that reloads rewinds the company into memory.
+    ASSERT_TRUE(seed("wpmegood", "OLD GOOD BAND", "gladiator", 1234));
+    ASSERT_TRUE(og::data::backup_company_now("wpmegood"));
+    ASSERT_TRUE(seed("wpmegood", "NEW GOOD BAND", "gladiator", 5678));
+    {
+        og::ui::CompanyBackupsScreenState state;
+        state.slot = "wpmegood";
+        state.company_name = "NEW GOOD BAND";
+        state.backups = og::data::list_company_backups("wpmegood");
+        ASSERT_EQ(1u, state.backups.size());
+        state.page = og::ui::PageModel::make(1, 10);
+        og::ui::install_company_backups_state_for_screen(&state);
+        trace_clear();
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);  // REWIND? YES
+        EXPECT_EQ(MENU_EXIT, spec.on_spec_row(0, &state));
+        EXPECT_TRUE(state.opened);
+        EXPECT_EQ("wpmegood", og::data::active_company_slot())
+            << "a restore repoints the active slot at the rewound company";
+        EXPECT_EQ("OLD GOOD BAND", memory.save_name)
+            << "the in-memory save must hold the rewound state";
+        EXPECT_EQ(1234u, memory.totalcash);
+        og::ui::install_company_backups_state_for_screen(nullptr);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -4730,6 +4961,28 @@ TEST(MenuEngine, seat_settings_rows_refuse_a_seat_that_has_left_the_roster)
     EXPECT_TRUE(lobby.removed_seats.empty())
         << "nor ask authority to drop anybody on its behalf";
 
+    // A seat the roster still lists, but under ANOTHER machine: it is not
+    // among this machine's local seats, so no controller profile here
+    // drives it and the editor must not touch profile one on its behalf.
+    lobby.players.push_back(make_menu_lobby_player(1, "FOREIGN COMPANY"));
+    ASSERT_EQ(std::vector<std::uint8_t>{0}, lobby.local_indices);
+    og::ui::SeatSettingsScreenState foreign{
+        .seat_id = lobby.players.back().seat_id,
+        .player_index = lobby.players.back().player_index,
+        .local_slot = -1,
+    };
+    og::ui::install_seat_settings_state_for_screen(&foreign);
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsModeIndex, &foreign));
+    EXPECT_EQ(-1, foreign.local_slot)
+        << "another machine's seat claims no local controller profile";
+    EXPECT_EQ(flipped, get_player_control_mode(0))
+        << "and must not flip this machine's profile one";
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(kSeatSettingsRemoveIndex, &foreign));
+    EXPECT_TRUE(lobby.removed_seats.empty())
+        << "nor ask authority to drop another machine's seat";
+
     og::ui::install_seat_settings_state_for_screen(nullptr);
 }
 
@@ -4766,6 +5019,14 @@ TEST(MenuEngine, networked_seat_editor_and_scenario_propagate_remote_start)
     pks().selected_menu_item = nullptr;
     EXPECT_EQ(MENU_EXIT, create_scenario_menu(0))
         << "the SCENARIO wrapper must preserve a remote structural exit";
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
+              pks().selected_menu_item->command);
+
+    pks().selected_menu_item = nullptr;
+    EXPECT_EQ(MENU_EXIT, create_lineup_menu(0))
+        << "the LINEUP wrapper must preserve a remote structural exit, not "
+           "fold it into its own BACK's MENU_REDRAW";
     ASSERT_NE(nullptr, pks().selected_menu_item);
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
               pks().selected_menu_item->command);
@@ -4860,6 +5121,70 @@ TEST(MenuEngine, base_camp_draw_clips_headers_skips_stale_rows_and_locks_team)
               spec.on_spec_row(kBaseCampTeamChipBase, &state));
     EXPECT_EQ(old_team, save.team_list[0]->teamnum);
     EXPECT_TRUE(trace_contains("popup", "LOCKED"));
+
+    // MOVE UP on a slot this machine may not edit answers ORDER LOCKED and
+    // leaves the company order as it was.
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->name = "SECOND";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    og::ui::base_camp_refresh_rows(state);
+    ASSERT_EQ(2u, state.slots.size());
+    og::ui::g_picker_save_slot_editable_callback =
+        [](int slot) { return slot != 1; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+    EXPECT_TRUE(trace_contains("popup", "ORDER: LOCKED"));
+    EXPECT_EQ("VISIBLE", save.team_list[0]->name);
+    EXPECT_EQ("SECOND", save.team_list[1]->name)
+        << "a locked slot must not be reordered";
+    EXPECT_FALSE(trace_contains("basecamp", "move_up"));
+
+    // Paired control: the same click on an editable slot moves it up.
+    og::ui::g_picker_save_slot_editable_callback = [](int) { return true; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampMoveUpBase + 1, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "move_up slot=1 to=0"));
+    EXPECT_EQ("SECOND", save.team_list[0]->name);
+    EXPECT_EQ("VISIBLE", save.team_list[1]->name);
+    EXPECT_FALSE(trace_contains("popup", "LOCKED"));
+}
+
+// A staged preview that FAILED on the owner must reach the LINEUP census
+// as a failure (the formatter leads with STAGING FAILED), never as the
+// silent count-only fallback a machine with no staged world shows.
+TEST(MenuEngine, lineup_census_reports_a_failed_staged_preview)
+{
+    EngineTestGuard engine_guard;
+    MenuCallbackStateGuard callback_guard;
+    FakeLobbyClient lobby;
+    lobby.networked = true;
+    lobby.host = false;
+    lobby.players = {make_menu_lobby_player(0, "LOCAL COMPANY")};
+    lobby.local_indices = {0};
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    const og::ui::MenuScreenSpec& spec = og::ui::lineup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.frame_tick);
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const auto census_failed =
+        [&](og::ui::IPickerLobbyClient::StagedPreviewHealth health) {
+            lobby.staged_health = health;
+            og::ui::LineupScreenState st;
+            // Entered on the loaded level: the tick seeds the report only.
+            st.last_level_id = save.scen_num;
+            og::ui::install_lineup_state_for_screen(&st);
+            EXPECT_TRUE(spec.frame_tick(&st, 0));
+            og::ui::install_lineup_state_for_screen(nullptr);
+            EXPECT_TRUE(st.report_valid);
+            return st.report.stage_failed;
+        };
+    EXPECT_TRUE(census_failed(
+        og::ui::IPickerLobbyClient::StagedPreviewHealth::Failed))
+        << "a failed staged preview is reported as failed";
+    EXPECT_FALSE(census_failed(
+        og::ui::IPickerLobbyClient::StagedPreviewHealth::None))
+        << "no staged preview is not a failure";
 }
 
 TEST(MenuEngine, company_dispatch_surfaces_invalid_open_delete_and_restore)
@@ -4927,4 +5252,109 @@ TEST(MenuEngine, company_wrappers_reject_a_missing_screen_without_mutation)
     EXPECT_FALSE(og::ui::run_company_backups_screen(
         "missing", "MISSING COMPANY"));
     EXPECT_EQ(MENU_EXIT, mainmenu(0));
+}
+
+// The CLOUD SAVE screen names the company it would upload. When the active
+// company's file is present but its header cannot be read, the screen still
+// names it -- by its SLOT -- rather than claiming there is no company or
+// printing a blank name.
+void picker_testing_cloud_passphrase_queue_clear();
+void picker_testing_cloud_passphrase_queue_push(const char* value);
+
+TEST(MenuEngine, cloud_save_names_the_company_by_slot_when_its_header_is_unreadable)
+{
+    EngineTestGuard guard;
+    namespace fs = std::filesystem;
+    const std::string slot = og::data::active_company_slot();
+    ASSERT_FALSE(slot.empty());
+    const fs::path company_file =
+        fs::path(get_user_path()) / "save" / (slot + ".gtl");
+
+    // Stand an unreadable company file in the active slot; put back
+    // whatever was there (and the cloud key cfg) on the way out.
+    struct CompanyFileRestore
+    {
+        fs::path path;
+        bool existed = false;
+        std::string bytes;
+        ~CompanyFileRestore()
+        {
+            std::error_code ec;
+            if (existed)
+            {
+                std::ofstream out(path, std::ios::binary | std::ios::trunc);
+                out << bytes;
+            }
+            else
+            {
+                fs::remove(path, ec);
+            }
+            cfg.data.erase("cloud");
+            picker_testing_cloud_passphrase_queue_clear();
+            og::ui::install_cloud_save_state_for_screen(nullptr);
+        }
+    } restore{company_file, fs::exists(company_file), {}};
+    if (restore.existed)
+    {
+        std::ifstream in(company_file, std::ios::binary);
+        restore.bytes.assign(std::istreambuf_iterator<char>(in),
+                             std::istreambuf_iterator<char>());
+    }
+    std::error_code ec;
+    fs::create_directories(company_file.parent_path(), ec);
+    {
+        std::ofstream out(company_file, std::ios::binary | std::ios::trunc);
+        out << "this is not a company file";
+    }
+    cfg.data.erase("cloud");
+    picker_testing_cloud_passphrase_queue_clear();
+
+    const og::ui::MenuScreenSpec& spec = og::ui::cloud_save_menu_screen_spec();
+    Sint32 passphrase_row = -1;
+    for (int i = 0; i < spec.row_count; ++i)
+    {
+        if (std::string(spec.rows[i].id) == "cloud_passphrase")
+            passphrase_row = spec.rows[i].arg;
+    }
+    ASSERT_NE(-1, passphrase_row);
+
+    // The accepted passphrase is the dispatch that refreshes the screen's
+    // company state from disk.
+    og::ui::CloudSaveScreenState state;
+    og::ui::install_cloud_save_state_for_screen(&state);
+    picker_testing_cloud_passphrase_queue_push("correct horse battery");
+    ASSERT_EQ(MENU_REDRAW, spec.on_spec_row(passphrase_row, &state));
+    ASSERT_TRUE(state.company_present) << "the file is there";
+    ASSERT_EQ("", state.company_name) << "and its header is unreadable";
+
+    // The company line (y 126..133, from x=80), hashed off the drawn frame.
+    screen& output = *og::runtime::current_session->myscreen_;
+    const auto company_line = [&output](const og::ui::CloudSaveScreenState& s) {
+        output.clearbuffer();
+        og::ui::cloud_save_menu_screen_spec().draw_content(
+            const_cast<og::ui::CloudSaveScreenState*>(&s));
+        std::uint64_t hash = 1469598103934665603ull;
+        for (int y = 124; y <= 135; ++y)
+        {
+            for (int x = 76; x < 320; ++x)
+            {
+                Uint8 r = 0, g = 0, b = 0;
+                output.get_pixel(x, y, &r, &g, &b);
+                hash = (hash ^ ((std::uint64_t{r} << 16) |
+                                (std::uint64_t{g} << 8) | b)) *
+                       1099511628211ull;
+            }
+        }
+        return hash;
+    };
+    og::ui::CloudSaveScreenState named_by_slot = state;
+    named_by_slot.company_name = slot;
+    og::ui::CloudSaveScreenState named_otherwise = state;
+    named_otherwise.company_name = "ZZ OTHER BAND";
+
+    const std::uint64_t drawn = company_line(state);
+    EXPECT_EQ(company_line(named_by_slot), drawn)
+        << "an unreadable header reads COMPANY: <slot>";
+    EXPECT_NE(company_line(named_otherwise), drawn)
+        << "control: the hashed band does see the company's name";
 }

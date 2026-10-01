@@ -505,68 +505,36 @@ walker* prepare_ignored_ball_ray(SoccerWorld& fx, int shooter_x = 272)
     return shooter;
 }
 
-int g_weapon_customizer_calls = 0;
-int g_weapon_on_fire_calls = 0;
-
-void counting_one_pixel_weapon_profile(walker*, walker* weapon)
+// Dispatches of a probe hook in `world`: each og.logs exactly its own name
+// (kArcherCustomizeWeaponLog / kArcherOnFireWeaponLog), once per call.
+std::size_t script_log_count(GameWorld& world, const char* line)
 {
-    g_weapon_customizer_calls++;
-    weapon->set_stepsize(1.0f);
-    weapon->set_lineofsight(1);
+    std::size_t n = 0;
+    for (const auto& logged : world.scripts().host().log())
+    {
+        if (logged == line)
+            n++;
+    }
+    return n;
 }
 
-bool counting_reject_weapon_launch(walker*, walker* weapon)
+// The recovery-range geometry the two weapon-hook tests share: a team-0
+// archer at (272, 456) facing the ball across deep water (tiles 19..29 x
+// 27..31), ranged fire enabled and free, carrying `weapon`.
+walker* spawn_water_shooter(SoccerWorld& fx, int weapon)
 {
-    g_weapon_on_fire_calls++;
-    weapon->set_dead(1);
-    return false;
+    walker* shooter =
+        fx.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+    if (shooter == nullptr)
+        return nullptr;
+    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    shooter->set_current_weapon(static_cast<unsigned short>(weapon));
+    fx.tick(1);
+    fx.thaw_kickoff();
+    paint_water(fx.world(), 19, 27, 29, 31);
+    fx.set_ball(400, 464, 0, 0);
+    return shooter;
 }
-
-struct ScopedWeaponCustomizer
-{
-    FamilyDescriptor* descriptor = nullptr;
-    void (*previous)(walker*, walker*) = nullptr;
-
-    ScopedWeaponCustomizer(int family, void (*replacement)(walker*, walker*))
-        : descriptor(const_cast<FamilyDescriptor*>(
-              get_family_descriptor(family)))
-    {
-        if (descriptor != nullptr)
-        {
-            previous = descriptor->customize_weapon;
-            descriptor->customize_weapon = replacement;
-        }
-    }
-
-    ~ScopedWeaponCustomizer()
-    {
-        if (descriptor != nullptr)
-            descriptor->customize_weapon = previous;
-    }
-};
-
-struct ScopedWeaponFireHook
-{
-    FamilyDescriptor* descriptor = nullptr;
-    bool (*previous)(walker*, walker*) = nullptr;
-
-    ScopedWeaponFireHook(int family, bool (*replacement)(walker*, walker*))
-        : descriptor(const_cast<FamilyDescriptor*>(
-              get_family_descriptor(family)))
-    {
-        if (descriptor != nullptr)
-        {
-            previous = descriptor->on_fire_weapon;
-            descriptor->on_fire_weapon = replacement;
-        }
-    }
-
-    ~ScopedWeaponFireHook()
-    {
-        if (descriptor != nullptr)
-            descriptor->on_fire_weapon = previous;
-    }
-};
 
 }  // namespace
 
@@ -1467,8 +1435,6 @@ TEST_F(ModesSoccer, recovery_range_matches_every_ranged_core_class_profile)
         const og::script::WorldScripts& scripts =
             og::script::active_world_scripts();
         const bool requires_hook =
-            descriptor->customize_weapon != nullptr ||
-            descriptor->on_fire_weapon != nullptr ||
             scripts.has_hook(Order::Living, family,
                              og::script::FamilyHook::CustomizeWeapon) ||
             scripts.has_hook(Order::Living, family,
@@ -1569,90 +1535,90 @@ TEST_F(ModesSoccer, recovery_range_probe_never_touches_the_world_obmap)
 TEST_F(ModesSoccer,
        recovery_range_conservatively_rejects_weapon_customization)
 {
-    SoccerWorld fx;
-    walker* shooter =
-        fx.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
-    ASSERT_NE(nullptr, shooter);
-    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
-    shooter->set_current_weapon(FAMILY_KNIFE);
-    fx.tick(1);
-    ASSERT_TRUE(fx.soccer_active());
-    fx.thaw_kickoff();
-    paint_water(fx.world(), 19, 27, 29, 31);
-    fx.set_ball(400, 464, 0, 0);
-
-    const std::uint32_t rng_before = fx.world().rng_.state_;
-    const std::size_t weapons_before = fx.world().weaplist.size();
+    // kSoccerLevelArcherCustomizer's on_mode_init registers a Lua
+    // core:archer customize_weapon hook (one-pixel profile) in THIS world.
     {
-        g_weapon_customizer_calls = 0;
-        ScopedWeaponCustomizer customizer(FAMILY_ARCHER,
-                                           counting_one_pixel_weapon_profile);
-        ASSERT_NE(nullptr, customizer.descriptor);
+        SoccerWorld fx(kSoccerLevelArcherCustomizer);
+        walker* shooter = spawn_water_shooter(fx, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, shooter);
+        ASSERT_TRUE(fx.soccer_active());
+        ASSERT_TRUE(og::script::active_world_scripts().has_hook(
+            Order::Living, FAMILY_ARCHER,
+            og::script::FamilyHook::CustomizeWeapon));
+
+        const std::uint32_t rng_before = fx.world().rng_.state_;
+        const std::size_t weapons_before = fx.world().weaplist.size();
         EXPECT_EQ(0, shooter->prospective_weapon_reach(1, 0));
         EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
             << "an arbitrary customizer is ineligible without dispatch";
-        EXPECT_EQ(0, g_weapon_customizer_calls);
+        EXPECT_EQ(0u,
+                  script_log_count(fx.world(), kArcherCustomizeWeaponLog));
         EXPECT_EQ(rng_before, fx.world().rng_.state_);
         EXPECT_EQ(weapons_before, fx.world().weaplist.size())
             << "the rejected profile never spawns a scratch projectile";
 
         walker* actual = shooter->create_weapon();
         ASSERT_NE(nullptr, actual);
-        EXPECT_EQ(1, g_weapon_customizer_calls)
+        EXPECT_EQ(1u,
+                  script_log_count(fx.world(), kArcherCustomizeWeaponLog))
             << "a real shot still dispatches its family customizer once";
         EXPECT_EQ(1, static_cast<std::int32_t>(actual->stepsize()) *
                          actual->lineofsight());
         actual->set_dead(1);
+        EXPECT_EQ(rng_before, fx.world().rng_.state_);
     }
-    EXPECT_EQ(rng_before, fx.world().rng_.state_);
 
-    EXPECT_EQ(56, shooter->prospective_weapon_reach(1, 0));
-    EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
-        << "the ordinary knife still cannot span this deep water";
-    shooter->set_current_weapon(FAMILY_ARROW);
-    EXPECT_EQ(154, shooter->prospective_weapon_reach(1, 0));
-    EXPECT_TRUE(shooter->can_approach_weapon_range(fx.ball()))
-        << "the same class automatically follows its live weapon profile";
+    // Control: the same archer on kSoccerLevelA, where no level registered
+    // a customizer, follows its live weapon profile.
+    {
+        SoccerWorld fx;
+        walker* shooter = spawn_water_shooter(fx, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, shooter);
+        ASSERT_TRUE(fx.soccer_active());
+        ASSERT_FALSE(og::script::active_world_scripts().has_hook(
+            Order::Living, FAMILY_ARCHER,
+            og::script::FamilyHook::CustomizeWeapon));
+        EXPECT_EQ(56, shooter->prospective_weapon_reach(1, 0));
+        EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
+            << "the ordinary knife still cannot span this deep water";
+        shooter->set_current_weapon(FAMILY_ARROW);
+        EXPECT_EQ(154, shooter->prospective_weapon_reach(1, 0));
+        EXPECT_TRUE(shooter->can_approach_weapon_range(fx.ball()))
+            << "the same class automatically follows its live weapon profile";
+    }
 }
 
 TEST_F(ModesSoccer, recovery_range_rejects_on_fire_hooks_without_dispatch)
 {
-    // Native descriptor path: metadata rejects it without invoking the
-    // callback, while a real launch still reaches and obeys that callback.
+    // Level-registered Lua hook: kSoccerLevelArcherFireVeto's on_mode_init
+    // gives core:archer an on_fire_weapon that kills the shot and vetoes it.
+    // Metadata rejects the profile without invoking the hook, while a real
+    // launch still reaches and obeys it.
     {
-        SoccerWorld fx;
-        walker* shooter =
-            fx.spawn_living(FAMILY_ARCHER, 0, 272, 456, ACT_SIT);
+        SoccerWorld fx(kSoccerLevelArcherFireVeto);
+        walker* shooter = spawn_water_shooter(fx, FAMILY_ARROW);
         ASSERT_NE(nullptr, shooter);
-        shooter->set_current_weapon(FAMILY_ARROW);
-        fx.tick(1);
         ASSERT_TRUE(fx.soccer_active());
-        fx.thaw_kickoff();
-        paint_water(fx.world(), 19, 27, 29, 31);
-        fx.set_ball(400, 464, 0, 0);
+        ASSERT_TRUE(og::script::active_world_scripts().has_hook(
+            Order::Living, FAMILY_ARCHER,
+            og::script::FamilyHook::OnFireWeapon));
 
-        g_weapon_on_fire_calls = 0;
         const std::uint32_t rng_before = fx.world().rng_.state_;
         const std::size_t weapons_before = fx.world().weaplist.size();
-        {
-            ScopedWeaponFireHook hook(FAMILY_ARCHER,
-                                      counting_reject_weapon_launch);
-            ASSERT_NE(nullptr, hook.descriptor);
-            EXPECT_EQ(0, shooter->prospective_weapon_reach(1, 0));
-            EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()));
-            fx.ball()->setxy(shooter->xpos(), shooter->ypos());
-            EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
-                << "hooked profiles stay ineligible at exact overlap";
-            EXPECT_EQ(0, g_weapon_on_fire_calls);
-            EXPECT_EQ(rng_before, fx.world().rng_.state_);
-            EXPECT_EQ(weapons_before, fx.world().weaplist.size());
+        EXPECT_EQ(0, shooter->prospective_weapon_reach(1, 0));
+        EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()));
+        fx.ball()->setxy(shooter->xpos(), shooter->ypos());
+        EXPECT_FALSE(shooter->can_approach_weapon_range(fx.ball()))
+            << "hooked profiles stay ineligible at exact overlap";
+        EXPECT_EQ(0u, script_log_count(fx.world(), kArcherOnFireWeaponLog));
+        EXPECT_EQ(rng_before, fx.world().rng_.state_);
+        EXPECT_EQ(weapons_before, fx.world().weaplist.size());
 
-            shooter->set_lastx(1.0f);
-            shooter->set_lasty(0.0f);
-            EXPECT_EQ(nullptr, shooter->fire());
-            EXPECT_EQ(1, g_weapon_on_fire_calls)
-                << "only the real launch dispatches on_fire_weapon";
-        }
+        shooter->set_lastx(1.0f);
+        shooter->set_lasty(0.0f);
+        EXPECT_EQ(nullptr, shooter->fire());
+        EXPECT_EQ(1u, script_log_count(fx.world(), kArcherOnFireWeaponLog))
+            << "only the real launch dispatches on_fire_weapon";
     }
 
     // Active per-world Lua path: soldier's returning-knife hook would spend

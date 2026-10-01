@@ -66,17 +66,6 @@ pixie::pixie(const PixieData& data)
 	accel = 0;
 }
 
-//buffers: new constructor that automatically calls init_sdl_surface
-pixie::pixie(const PixieData& data, int doaccel)
-{
-	set_data(data);
-	
-	accel = 0;
-	
-	if(doaccel)
-		init_sdl_surface();
-}
-
 // Destruct the pixie and its variables
 pixie::~pixie()
 {
@@ -190,17 +179,6 @@ short pixie::put_screen(short x, short y)
 {
 	og::runtime::current_session->myscreen_->putdata(x, y, sizex, sizey, {bmp, static_cast<size_t>(sizex * sizey)});
 	return 1;
-}
-
-short pixie::on_screen()
-{
-	short i;
-	for (i=0; i < og::runtime::current_session->myscreen_->numviews; i++)
-	{
-		if (on_screen(og::runtime::current_session->myscreen_->viewob[i].get()))
-			return 1;
-	}
-	return 0;
 }
 
 short pixie::on_screen(viewscreen  *viewp)

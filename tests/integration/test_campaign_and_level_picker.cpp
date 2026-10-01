@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <string_view>
 #include <mutex>
@@ -31,9 +32,6 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-// level_picker.cpp helpers
-bool isDir(const std::string& filename);
-bool sort_scen(const std::string& first, const std::string& second);
 // campaign_picker.cpp helper
 int toInt(const std::string& s);
 int campaign_picker_testing_exercise_entry_draw_paths();
@@ -752,15 +750,6 @@ TEST(CampaignAndLevelPicker,
 {
     cleanup_leftover_test_campaigns();
 
-    ASSERT_TRUE(isDir(".")) << "isDir should report current directory as directory";
-    ASSERT_TRUE(!isDir("./definitely_missing_openglad_path")) << "isDir should report missing path as not directory";
-
-    ASSERT_TRUE(sort_scen("level2", "level10")) << "sort_scen should order numeric suffixes";
-    ASSERT_TRUE(!sort_scen("abc9", "abc2")) << "sort_scen should not invert numeric suffix ordering";
-    ASSERT_TRUE(!sort_scen("levelx", "level2"))
-        << "a malformed numeric suffix should use deterministic lexical ordering";
-    ASSERT_TRUE(sort_scen("alpha1", "beta1"))
-        << "different prefixes should use deterministic lexical ordering";
     ASSERT_EQ(42, toInt("42")) << "toInt should parse decimal text";
     ASSERT_EQ(0, toInt("not-an-integer"))
         << "toInt should reject malformed input instead of accepting a prefix";
@@ -1598,6 +1587,79 @@ TEST(CampaignAndLevelPicker, level_picker_enter_id_returns_valid_prompt_value)
            "end the browser";
 }
 
+// A campaign.yaml whose `first_level:` is not a positive integer must not
+// hand the browser's caller a level 0: CampaignEntry falls back to level 1
+// (campaign_picker.cpp, `if (first_level <= 0) first_level = 1;`). The
+// un-driven browser auto-accepts the MOUNTED campaign after its first frame,
+// so no injector is needed; `nullptr` skips the completion heal, which would
+// try to load a level from this level-less package. The paired control
+// declares first_level 3 and must get 3 back.
+namespace
+{
+bool write_first_level_probe_package(const std::string& id,
+                                     const std::string& first_level)
+{
+    namespace fs = std::filesystem;
+    const fs::path user{get_user_path()};
+    const fs::path staging = user / (id + "_staging");
+    std::error_code ec;
+    fs::remove_all(staging, ec);
+    fs::create_directories(staging, ec);
+    fs::create_directories(user / "campaigns", ec);
+    {
+        std::ofstream yaml(staging / "campaign.yaml", std::ios::binary);
+        yaml << "format: 1\ntitle: First Level Probe\nfirst_level: "
+             << first_level << "\n";
+        if (!yaml)
+            return false;
+    }
+    const fs::path archive = user / "campaigns" / (id + ".glad");
+    const ArchiveIoError zip_err =
+        zip_contents_with_error(staging.string(), archive.string());
+    fs::remove_all(staging, ec);
+    return zip_err == ArchiveIoError::None;
+}
+
+int pick_first_level_of_probe(const std::string& first_level,
+                              const std::string& stem)
+{
+    const std::string id = unique_test_campaign_id(stem);
+    TemporaryCampaignGuard campaign_guard{get_mounted_campaign(), id};
+    if (!write_first_level_probe_package(id, first_level))
+    {
+        ADD_FAILURE() << "could not write the probe package";
+        return -1;
+    }
+    if (mount_campaign_package_with_error(id) != CampaignPackageIoError::None)
+    {
+        ADD_FAILURE() << "could not mount the probe package";
+        return -1;
+    }
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    const CampaignResult result = pick_campaign(nullptr, false);
+    EXPECT_EQ(id, result.id) << "the un-driven browser accepts the mounted campaign";
+    return result.first_level;
+}
+} // namespace
+
+TEST(CampaignAndLevelPicker, non_numeric_first_level_falls_back_to_level_one)
+{
+    EXPECT_EQ(1, pick_first_level_of_probe("junk", "cpfl"))
+        << "an unparsable first_level must fall back to level 1, not 0";
+    EXPECT_EQ(3, pick_first_level_of_probe("3", "cpfl"))
+        << "control: a declared first_level is kept";
+}
+
 // do_set_scen_level is the single choke for the browser click AND the
 // free-typed ENTER ID: an unearned forward id refuses at the gate (in the
 // campaign's voice, before any load) and the cursor stays put.
@@ -1683,7 +1745,11 @@ TEST(CampaignAndLevelPicker, set_scen_level_accepts_earned_id_and_abandons_repla
     SDL_Thread* thread = SDL_CreateThread(
         level_picker_enter_id_injector, "level_picker_enter_id_ok", nullptr);
     ASSERT_TRUE(thread != nullptr);
-    const Sint32 ret = do_set_scen_level(0);
+    // Through the button dispatcher -- vbutton::do_call's DoSetScenLevel arm,
+    // the path the SET LEVEL row takes -- not a direct call.
+    vbutton dispatcher;
+    const Sint32 ret = dispatcher.do_call(
+        button_action_id(ButtonAction::DoSetScenLevel), 0);
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 

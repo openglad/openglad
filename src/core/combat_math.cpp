@@ -83,9 +83,8 @@ std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constituti
     if (max_time <= 0)
         return 0;
 
+    // next() < max_time <= INT32_MAX, so the cast is never negative.
     std::int32_t result = static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(max_time)));
-    if (result < 0)
-        result = 0;
     // Post-draw soft cap (runaway-specials spec §2.6a): the rng draw above
     // keeps its legacy bound at ALL levels — only the resulting roll is
     // softened. Every roll 0..79 (all an L20-or-below con-0 wielder can

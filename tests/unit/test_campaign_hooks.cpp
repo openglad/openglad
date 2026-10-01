@@ -29,8 +29,10 @@
 #include <optional>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 #include "unit_pack_store_guard.h"
 
@@ -1134,6 +1136,32 @@ TEST_F(CampaignHooksTest, action_without_registration_answers_false)
     hooks::CampaignActionResult result;
     EXPECT_FALSE(hooks::campaign_picker_action("x", result));
     EXPECT_TRUE(hooks::campaign_picker_registered());
+}
+
+// The assign chip's dispatch tail (campaign_hooks.h): campaign_assign_set
+// forwards (slot, tag) to the installed provider and answers its verdict;
+// with no provider installed (no campaign session owns the save surface) it
+// answers false and reaches nothing — the chip must not report an oath that
+// no save recorded.
+TEST_F(CampaignHooksTest, assign_set_forwards_to_the_provider_and_refuses_without_one)
+{
+    std::vector<std::pair<int, int>> writes;
+    hooks::CampaignProviders providers;
+    providers.assign_set = [&](int save_slot, int tag) {
+        writes.emplace_back(save_slot, tag);
+        return tag != 7;  // the provider's own refusal passes through
+    };
+    hooks::install_campaign_providers(std::move(providers));
+    EXPECT_TRUE(hooks::campaign_assign_set(3, 2));
+    EXPECT_FALSE(hooks::campaign_assign_set(4, 7));
+    ASSERT_EQ(2u, writes.size());
+    EXPECT_EQ(std::make_pair(3, 2), writes[0]);
+    EXPECT_EQ(std::make_pair(4, 7), writes[1]);
+
+    hooks::clear_campaign_providers();
+    EXPECT_FALSE(hooks::campaign_assign_set(3, 2))
+        << "no provider installed must answer false";
+    EXPECT_EQ(2u, writes.size()) << "a cleared provider was still reached";
 }
 
 // ---------------------------------------------------------------------------
@@ -2647,4 +2675,48 @@ TEST_F(CampaignHooksTest, match_knobs_and_lineup_coexist_at_their_slots)
     ASSERT_TRUE(hooks::campaign_picker_page("", page));
     EXPECT_EQ("BOOK", page.title);
     EXPECT_TRUE(vm_errors().empty()) << vm_errors().front().message;
+}
+
+// The picker's lineup-power memo holds at most 64 rows: the 65th distinct
+// row clears it, so a row priced before the clear is priced AGAIN (the hook
+// runs), while the row that caused the clear stays memoized. The hook
+// returns its own call count, so every price names the call that made it.
+TEST_F(CampaignHooksTest, lineup_power_memo_is_bounded_at_64_rows)
+{
+    og::ui::lineup_power_cache_clear();
+    register_script(R"LUA(local calls = 0
+og.register_campaign_hooks({
+  lineup = { power = function(row)
+    calls = calls + 1
+    return calls
+  end },
+}))LUA");
+
+    // 65 distinct rows: a soldier at levels 1..65 (level is a row field).
+    std::vector<std::unique_ptr<guy>> fighters;
+    for (int level = 1; level <= 65; ++level) {
+        fighters.push_back(std::make_unique<guy>(FAMILY_SOLDIER));
+        fighters.back()->level = static_cast<short>(level);
+    }
+    for (int i = 0; i < 65; ++i) {
+        const std::optional<long long> price =
+            og::ui::lineup_power_for_guy(*fighters[static_cast<std::size_t>(i)]);
+        ASSERT_TRUE(price.has_value()) << "row " << i;
+        ASSERT_EQ(i + 1, *price) << "every distinct row is priced by a fresh call";
+    }
+
+    // Positive control: the 65th row, the one pushed after the clear, is
+    // still memoized -- no call, the same price.
+    EXPECT_EQ(std::optional<long long>(65),
+              og::ui::lineup_power_for_guy(*fighters[64]))
+        << "the newest row survives the bound";
+    // The first row was evicted by the clear at the 65th: priced again by
+    // call 66.
+    EXPECT_EQ(std::optional<long long>(66),
+              og::ui::lineup_power_for_guy(*fighters[0]))
+        << "the memo is bounded at 64 rows: the oldest row is recomputed";
+    // And the recomputed row is memoized again.
+    EXPECT_EQ(std::optional<long long>(66),
+              og::ui::lineup_power_for_guy(*fighters[0]));
+    og::ui::lineup_power_cache_clear();
 }

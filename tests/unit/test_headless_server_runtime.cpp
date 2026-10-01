@@ -23,6 +23,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -259,6 +261,63 @@ TEST_F(HeadlessServerRuntimeTest,
     for (const short marker_team : guest_marker_teams)
         EXPECT_EQ(1, marker_team)
             << "the authoritative guest must not borrow a red start marker";
+}
+
+// The dedicated server refuses to launch a level when neither the requested
+// level nor the campaign's first shipped level loads: a campaign package
+// whose only scenario file is corrupt answers false (with the
+// fallback_failed diagnostic) instead of running an empty world. Paired
+// control: invalid_saved_level_falls_back_to_first_shipped_level below,
+// where the fallback level loads.
+TEST_F(HeadlessServerRuntimeTest,
+       unloadable_level_and_unloadable_fallback_refuse_the_launch)
+{
+    namespace fs = std::filesystem;
+    const std::string campaign = "og_test_noload";
+    const fs::path staging =
+        fs::path(get_user_path()) / "noload_staging" / campaign;
+    const fs::path archive =
+        fs::path(get_user_path()) / "campaigns" / (campaign + ".glad");
+    std::error_code ec;
+    fs::remove_all(staging, ec);
+    fs::create_directories(staging / "scen", ec);
+    {
+        std::ofstream out(staging / "scen" / "scen2.fss", std::ios::binary);
+        out << "NOT AN FSS FILE";
+    }
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(staging.string(), archive.string()));
+
+    constexpr short kMissingLevel = 7;
+    active_save_.current_campaign = campaign;
+    active_save_.scen_num = kMissingLevel;
+    active_save_.current_levels[campaign] = kMissingLevel;
+    create_level_runtime_data(kMissingLevel);
+
+    testing::internal::CaptureStderr();
+    const bool loaded = with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_, active_save_, /*difficulty_setting=*/1, events_,
+            /*authoritative=*/true);
+    });
+    const std::string diagnostics = testing::internal::GetCapturedStderr();
+
+    EXPECT_FALSE(loaded) << diagnostics;
+    EXPECT_NE(std::string::npos,
+              diagnostics.find("headless_server_level_load_failed level=7 "
+                               "action=fallback_to_2"))
+        << diagnostics;
+    EXPECT_NE(std::string::npos,
+              diagnostics.find("headless_server_level_fallback_failed "
+                               "requested=7 fallback=2"))
+        << diagnostics;
+
+    level_data_.reset();
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    fs::remove(archive, ec);
+    fs::remove_all(fs::path(get_user_path()) / "noload_staging", ec);
 }
 
 TEST_F(HeadlessServerRuntimeTest,

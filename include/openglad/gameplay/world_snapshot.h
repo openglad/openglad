@@ -583,6 +583,10 @@ void split_event_batches(const SimEventBatch& source,
                          SimEventBatch& sim_batch,
                          GameFlowEventBatch& game_flow_batch);
 void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta);
+// Copies the one field `bit_index` (an og::dirty bit < FIELD_COUNT) names
+// from src into dst: the rule apply_delta uses per dirty bit.
+void copy_entity_field(EntitySnapshot& dst, const EntitySnapshot& src,
+                       std::uint8_t bit_index);
 SimEventBatch drain_sim_events(SimEventLog& log);
 
 } // namespace og::sim

@@ -107,7 +107,6 @@ void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
                                              void* screen_state);
 void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
                                     int& highlighted_button);
-bool picker_hire_menu_engine_frame_tick(void* screen_state, int frame);
 void picker_hire_menu_engine_on_reset(void* screen_state);
 void picker_hire_menu_engine_draw_content(void* screen_state);
 void picker_train_menu_engine_on_reset(void* screen_state);
@@ -1194,17 +1193,11 @@ bool reload_picker_level_and_sync_settings(screen& myscreen, short level_id)
 
 void level_reload_guard_on_reset(void* screen_state)
 {
-    if (screen_state == nullptr)
-        return;
     static_cast<LevelReloadGuardState*>(screen_state)->was_reset = true;
 }
 
 bool level_reload_guard_frame_tick(void* screen_state, int /*frame*/)
 {
-    // Null state = a caller that never reaches the guard in practice (the
-    // G5 remote-start sweep exits before any frame tick); stay inert.
-    if (screen_state == nullptr)
-        return true;
     auto* const guard = static_cast<LevelReloadGuardState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
     if (guard->last_level_id != myscreen->save_data.scen_num ||
@@ -1415,6 +1408,12 @@ constexpr MenuButtonSpec kZoneSubmenuRows[] = {
 
 #undef OG_ZONE_SUBMENU_ROW
 
+// The rewire indexes every ordinal up to NEXT without a count check: the
+// runner hands it the materialized spec array, whose size IS this table's.
+static_assert(static_cast<int>(std::size(kZoneSubmenuRows))
+                  == kZoneSubmenuButtonCount,
+              "zone submenu ordinals are the layout contract");
+
 // The rows' band inside the panel: the narrative lines take the top of the
 // panel's face and the rows take what is left, so a wordy page shows fewer
 // rows per window instead of spilling out of the frame.
@@ -1551,8 +1550,6 @@ void zone_submenu_reset_page(ZoneSubmenuScreenState& state,
 // composed row text to BOTH label surfaces (descriptor + live vbutton).
 void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
 {
-    if (count < kZoneSubmenuButtonCount)
-        return;
     const ZoneSubmenuScreenState* st = g_zone_submenu_state;
     const og::ui::CampaignPickerSession* session =
         st != nullptr ? st->session : nullptr;
@@ -1680,16 +1677,6 @@ void zone_submenu_draw_content(void* screen_state)
     text& mytext = game->text_normal;
     const SaveData& save = game->save_data;
 
-    const auto strip_text = [game](int x, int y, const std::string& value,
-                                   unsigned char color) {
-        if (value.empty())
-            return;
-        const int width = static_cast<int>(value.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
-                               8, PURE_BLACK, 150);
-        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
-    };
-
     // Header line A, byte-for-byte the Base Camp's: COMPANY + the gold
     // block. Prices with no purse on screen are unreadable.
     draw_camp_line_a(save);
@@ -1702,10 +1689,10 @@ void zone_submenu_draw_content(void* screen_state)
             std::chrono::steady_clock::now().time_since_epoch())
             .count();
     if (st != nullptr && !st->toast.empty() && now_ms < st->toast_until_ms) {
-        strip_text(10, 17, st->toast, YELLOW);
+        camp_strip_text(10, 17, st->toast, YELLOW);
     } else {
         std::string title = session != nullptr ? session->page().title : "CAMP";
-        strip_text(
+        camp_strip_text(
             10, 17,
             og::ui::clip_with_ellipsis(
                 "CAMP: " + title,
@@ -1721,13 +1708,12 @@ void zone_submenu_draw_content(void* screen_state)
     int y = kZoneSubmenuLineY0;
     for (const std::string& line : session->page().lines) {
         mytext.write_xy_flat(
-            12, y, og::ui::clip_with_ellipsis(line, 49).c_str(), PURE_BLACK,
-            1);
+            12, y, og::ui::clip_with_ellipsis(line, 49).c_str(), PURE_BLACK);
         y += 8;
     }
 
     if (st->page.multi_page())
-        strip_text(140, 176, st->page.indicator(), WHITE);
+        camp_strip_text(140, 176, st->page.indicator(), WHITE);
 }
 
 // The ONE gated scripted level set behind every SDL campaign-book level
@@ -1907,8 +1893,6 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 {
     ZoneSubmenuScreenState* st =
         static_cast<ZoneSubmenuScreenState*>(screen_state);
-    if (st == nullptr || st->session == nullptr)
-        return row == kZoneSubmenuBackIndex ? MENU_EXIT : 0;
     og::ui::CampaignPickerSession& session = *st->session;
     // One click, one answer (the Base Camp rule).
     st->toast.clear();
@@ -2244,10 +2228,10 @@ constexpr MenuButtonSpec kViewScenarioRows[] = {
 // the PageModel PREV/NEXT pagers in the command band (the VIEW LEVEL footer
 // geometry). Every row dispatches through MenuSpecRow except BACK, so
 // keyboard FIRE, mouse clicks, and the 1/2/3 + PageUp/PageDown hotkeys all
-// route through help_engine_on_spec_row in help.cpp; the pager visibility
-// override and the rewire read the open screen's state through a file-static
-// pointer there (null = the single-page bare-sweep shape: pagers hidden,
-// BACK's right-link closed).
+// route through help_engine_on_spec_row in help.cpp; the pager override and
+// the rewire read the open screen's state through a file-static pointer there
+// (null = the bare-sweep shape: pagers hidden, BACK's right-link closed; the
+// content draw runs only under show_general_help, which installs it first).
 
 constexpr MenuButtonSpec kHelpMenuRows[] = {
     {.id = "help_tab_controls", .label = "CONTROLS", .hotkey = KEYSTATE_1,
@@ -2653,11 +2637,12 @@ og::ui::SeatClaimability base_camp_seat_claimability()
 }
 
 // The rail's seats: this machine's own, in local-slot order, capped at the
-// four slots. The inverse of base_camp_seat_local_slot — slot k is the seat
-// whose player_index is local_seat_indices[k]. A local index the roster does
-// not (yet) carry stops the list rather than leaving a hole: the rail never
-// shows a card it cannot name, and the slots after it fall back to ADD
-// PLAYER, which is what the lobby is about to say anyway.
+// four slots: slot k is the seat whose player_index is
+// local_seat_indices[k], so the slot IS the seat's local controller slot.
+// A local index the roster does not (yet) carry stops the list rather
+// than leaving a hole: the rail never shows a card it cannot name, and the
+// slots after it fall back to ADD PLAYER, which is what the lobby is about
+// to say anyway.
 struct BaseCampRailSeats {
     std::array<const og::sim::LobbyPlayer*, kBaseCampSeatCardsPerPage> seat{};
     int count = 0;
@@ -3059,22 +3044,6 @@ static_assert(static_cast<int>(std::size(kBaseCampRows))
                   == kCreateMenuButtonCount,
               "base camp spec ordinals are the layout contract");
 
-// A card's controller profile is its POSITION in this machine's local seat
-// list, never the card index and never the global P# (menu_system.md §3.1 —
-// displayed P1 once drove profile 3). Seat settings resolves it the same way
-// off the same list, so the card and the editor always name one profile.
-int base_camp_seat_local_slot(const BaseCampScreenState& state,
-                              std::uint8_t player_index)
-{
-    const auto local = std::find(state.local_seat_indices.begin(),
-                                 state.local_seat_indices.end(),
-                                 player_index);
-    if (local == state.local_seat_indices.end())
-        return -1;
-    return static_cast<int>(
-        std::distance(state.local_seat_indices.begin(), local));
-}
-
 // The owner-short-name half of base_camp_seat_label, factored so the LINEUP
 // bands' seat run names a local seat's controller the same way the rail card
 // does (docs/lineup-design.md §2.1). Empty when the seat is not local (the
@@ -3101,14 +3070,17 @@ std::string local_seat_owner_short_name(int local_slot)
     return local_slot >= 0 ? std::string("SPEC") : std::string();
 }
 
-std::string base_camp_seat_label(const BaseCampScreenState& state,
+// A card's controller profile is its POSITION in this machine's local seat
+// list, never the global P# (menu_system.md §3.1 — displayed P1 once drove
+// profile 3). Seat settings resolves it the same way off the same list, so
+// the card and the editor always name one profile. The rail's slot k IS
+// that position (base_camp_rail_seats builds slot k from
+// local_seat_indices[k]), so every card is a local seat and its owner is
+// never empty: the screen, a mapping short name, or SPEC.
+std::string base_camp_seat_label(int local_slot,
                                  const og::sim::LobbyPlayer& seat)
 {
-    const int local_slot =
-        base_camp_seat_local_slot(state, seat.player_index);
     std::string owner = local_seat_owner_short_name(local_slot);
-    if (owner.empty())
-        owner = company_abbreviation(seat.company);
     // TWO trailing visual pads shift the visible centered ink a full cell
     // left, which centers it over the chip-free zone (the face minus the last
     // ten pixels, which the chip owns) instead of over the whole face. One pad
@@ -3382,9 +3354,6 @@ void seat_settings_rewire(button* buttons, int count,
 {
     if (buttons == nullptr || g_seat_settings_state == nullptr)
         return;
-    const int expected = kSeatSettingsButtonCount;
-    if (count < expected)
-        return;
 
     og::sim::LobbyPlayer player;
     if (!resolve_seat_settings_player(*g_seat_settings_state, player))
@@ -3581,9 +3550,6 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
 {
     auto* const state =
         static_cast<SeatSettingsScreenState*>(screen_state);
-    if (state == nullptr)
-        return MENU_OK;
-
     og::sim::LobbyPlayer player;
     if (!resolve_seat_settings_player(*state, player))
         return MENU_REDRAW;
@@ -3868,7 +3834,7 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
             rail_seats.seat[static_cast<std::size_t>(slot)] != nullptr)
         {
             slot_button.label = base_camp_seat_label(
-                *st, *rail_seats.seat[static_cast<std::size_t>(slot)]);
+                slot, *rail_seats.seat[static_cast<std::size_t>(slot)]);
         }
         else
         {
@@ -4627,15 +4593,6 @@ void base_camp_draw_content(void* screen_state)
     const bool hire_visible =
         roster_layout == nullptr || roster_layout->can_hire;
 
-    const auto strip_text = [game](int x, int y, const std::string& value,
-                                   unsigned char color) {
-        if (value.empty())
-            return;
-        const int width = static_cast<int>(value.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4), 8, PURE_BLACK, 150);
-        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
-    };
-
     // Line A (§9.10.3, G3): one spelling for the whole camp — see
     // draw_camp_line_a above for the budget it holds to.
     draw_camp_line_a(save);
@@ -4681,13 +4638,14 @@ void base_camp_draw_content(void* screen_state)
     // line_b_budget above, the solo header and the toast are pre-clipped to
     // the conservative kBaseCampLineBCharsHireVisible. A clip at the draw
     // site would only cut mid-word after the fact.
-    strip_text(10, 17, line_b, line_b_color);
+    camp_strip_text(10, 17, line_b, line_b_color);
 
     // The "p/N" strip sits in the pager cluster's reserved middle slot;
-    // strip_text backs its text with a 2px pad, so the text starts there.
+    // camp_strip_text backs its text with a 2px pad, so the text starts
+    // there.
     if (st != nullptr && st->page.multi_page())
-        strip_text(kBaseCampPageIndicatorX + 2, 17, st->page.indicator(),
-                   WHITE);
+        camp_strip_text(kBaseCampPageIndicatorX + 2, 17,
+                        st->page.indicator(), WHITE);
 
     // The zone composition: the roster band (default: the whole panel,
     // header at the classic y=33) plus any text/readout widget ink. The
@@ -4730,7 +4688,7 @@ void base_camp_draw_content(void* screen_state)
                     zone_text.lines[line], 49);
                 mytext.write_xy_flat(12,
                                      band_y + static_cast<int>(line) * 8,
-                                     clipped.c_str(), PURE_BLACK, 1);
+                                     clipped.c_str(), PURE_BLACK);
             }
         }
         if (const og::ui::CampaignZoneSession::ReadoutLayout* readout =
@@ -4762,8 +4720,7 @@ void base_camp_draw_content(void* screen_state)
                 mytext.write_xy(x, band_y, label.c_str(), BLACK, 1);
                 if (!value.empty()) {
                     mytext.write_xy_flat(x + static_cast<int>(used) * 6,
-                                         band_y, value.c_str(), PURE_BLACK,
-                                         1);
+                                         band_y, value.c_str(), PURE_BLACK);
                 }
             }
         }
@@ -4851,7 +4808,7 @@ void base_camp_draw_content(void* screen_state)
                 static_cast<char>('1' + team), '\0'};
             mytext.write_xy_flat(chip_x + (team == 0 ? 3 : 2),
                                  kBaseCampSeatRailY + 2,
-                                 number, PURE_BLACK, 1);
+                                 number, PURE_BLACK);
         }
     }
 
@@ -4916,8 +4873,7 @@ void base_camp_draw_content(void* screen_state)
             mytext.write_xy_flat(kBaseCampOathColumnX, y + 2, oath.c_str(),
                                  member->campaign_tag >= 1
                                      ? identity_color
-                                     : kBenchedTextShade,
-                                 1);
+                                     : kBenchedTextShade);
         } else {
             // The chip communicates and changes the character's team. Match
             // the in-game team ramp (team*16+40), clamping defensive save
@@ -4939,7 +4895,7 @@ void base_camp_draw_content(void* screen_state)
             // one pixel right instead of leaving it visibly left-heavy.
             const int team_number_x = team == 0 ? 65 : 64;
             mytext.write_xy_flat(team_number_x, y + 3, team_number,
-                                 PURE_BLACK, 1);
+                                 PURE_BLACK);
         }
 
         // Family identity is a compact swatch immediately after CLASS (or
@@ -4974,7 +4930,7 @@ void base_camp_draw_content(void* screen_state)
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
-                                 row.name.c_str(), identity_color, 1);
+                                 row.name.c_str(), identity_color);
             draw_base_camp_family_swatch(
                 *game,
                 kBaseCampNameColumnX + mytext.query_width(row.name) +
@@ -4987,9 +4943,9 @@ void base_camp_draw_content(void* screen_state)
         } else {
             const BaseCampRowText row = format_base_camp_row(*member);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
-                                 row.name.c_str(), identity_color, 1);
+                                 row.name.c_str(), identity_color);
             mytext.write_xy_flat(kBaseCampSoloClassColumnX, y + 2,
-                                 row.cls.c_str(), identity_color, 1);
+                                 row.cls.c_str(), identity_color);
             draw_base_camp_family_swatch(
                 *game,
                 kBaseCampSoloClassColumnX + mytext.query_width(row.cls) +
@@ -5096,8 +5052,6 @@ Sint32 base_camp_level_set_tail(BaseCampScreenState& st, int level,
 // positional refresh of the roster rows.
 bool base_camp_frame_tick(void* screen_state, int /*frame*/)
 {
-    if (screen_state == nullptr)
-        return true;
     auto* const state = static_cast<BaseCampScreenState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
     if (state->last_level_id != myscreen->save_data.scen_num ||
@@ -5146,8 +5100,6 @@ bool base_camp_frame_tick(void* screen_state, int /*frame*/)
 
 void base_camp_on_reset(void* screen_state)
 {
-    if (screen_state == nullptr)
-        return;
     auto* const state = static_cast<BaseCampScreenState*>(screen_state);
     state->was_reset = true;
     // A nested screen (hire/train/zone submenu) may have changed the
@@ -5172,9 +5124,9 @@ Sint32 base_camp_open_match_setup(BaseCampScreenState& st,
         st.pending_setup_go = 2;
         return MENU_REDRAW;
     case og::ui::MatchSetupExit::RemoteStart:
-        if (team_build_start_selected())
-            return MENU_EXIT;
-        return MENU_REDRAW;
+        // run_match_setup_screen answers RemoteStart only when
+        // team_build_start_selected() already holds.
+        return MENU_EXIT;
     case og::ui::MatchSetupExit::Closed:
         break;
     }
@@ -5190,8 +5142,6 @@ Sint32 base_camp_open_match_setup(BaseCampScreenState& st,
 Sint32 base_camp_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<BaseCampScreenState*>(screen_state);
-    if (st == nullptr)
-        return 0;
     // One click, one answer: the previous action's message never survives
     // into this one's frame.
     base_camp_clear_toast(*st);
@@ -5414,8 +5364,9 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
                 base_camp_show_toast(*st, outcome.reason);
                 return MENU_OK;
             }
-            if (outcome.kind != Outcome::Acted)
-                return 0;
+            // Acted: idx and the Action kind were checked above on the
+            // same rows act() reads, and the action answers Refused or
+            // Acted only.
             // #212: a match knob written through og.campaign_match_set
             // armed the providers' dirty flag; run the settings sync so
             // joiners follow.
@@ -5559,9 +5510,6 @@ Sint32 base_camp_on_spec_row(int row, void* screen_state)
                 base_camp_show_toast(
                     *st, og::ui::campaign_oath_toast(
                              assign.labels[label_index], stood_down));
-            } else if (stood_down) {
-                base_camp_show_toast(
-                    *st, std::string(og::ui::kCampaignOathStoodDownMessage));
             }
             // Undeployed cycles ride the autosave tail only (no ready
             // clear); the tag byte must reach the company file.
@@ -5823,9 +5771,10 @@ void name_entry_draw_content(void* screen_state)
     // Match name_guy's classic modal exactly: prompt at face+2,+4 and the
     // editable value eight pixels below it, both left-aligned DARK_BLUE.
     game->text_normal.write_xy(96, 74, "FOUND YOUR COMPANY:", DARK_BLUE, 1);
-    std::string name = st != nullptr ? st->name : std::string();
-    if (name.size() > kCompanyNameMaxLen)
-        name.resize(kCompanyNameMaxLen);
+    // The name is never longer than kCompanyNameMaxLen: the generator's
+    // banks cap it (MenuEngine.name_entry_generated_names_fit_the_cap) and
+    // the editor's maxlength caps a typed one.
+    const std::string name = st != nullptr ? st->name : std::string();
     game->text_normal.write_xy(96, 82, name.c_str(), DARK_BLUE, 1);
     // §9.3: the slug preview is gone (F2 — the filename teaches nothing);
     // the freed slot carries a GREY hint on a U2 black strip teaching the
@@ -5973,14 +5922,16 @@ constexpr MenuButtonSpec kCompanyListRows[] = {
 #undef OG_COMPANY_LIST_BAK
 #undef OG_COMPANY_LIST_DEL
 
+static_assert(static_cast<int>(std::size(kCompanyListRows))
+                  == kCompanyListNextIndex + 1,
+              "company list ordinals are the layout contract");
+
 // Per-frame visibility + nav over the live list state (pattern b: full-graph
 // rewire recomputed every frame; BFS-pinned per visibility variant). Also
 // stamps the §2.3 active-company marker — red do_outline (U4) — on the live
 // row vbuttons, and re-asserts the pagers on both surfaces.
 void company_list_rewire(button* buttons, int count, int& /*highlighted*/)
 {
-    if (count < kCompanyListNextIndex + 1)
-        return;
     const CompanyListScreenState* st = g_company_list_state;
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
@@ -6169,8 +6120,6 @@ Sint32 company_list_on_spec_row(int row, void* screen_state)
 {
     CompanyListScreenState* st =
         static_cast<CompanyListScreenState*>(screen_state);
-    if (st == nullptr)
-        return 0;
 
     if (row == kCompanyListBackIndex) {
         TRACE("company_list", "back");
@@ -6335,13 +6284,15 @@ constexpr MenuButtonSpec kCompanyBackupsRows[] = {
 
 #undef OG_COMPANY_BACKUP_ROW
 
+static_assert(static_cast<int>(std::size(kCompanyBackupsRows))
+                  == kCompanyBackupsNextIndex + 1,
+              "company backups ordinals are the layout contract");
+
 // Per-frame visibility + nav over the live snapshot state (pattern b, like
 // the Company List): page-window the rows, chain them vertically into BACK,
 // close BACK/pager side links over pager visibility.
 void company_backups_rewire(button* buttons, int count, int& /*highlighted*/)
 {
-    if (count < kCompanyBackupsNextIndex + 1)
-        return;
     const CompanyBackupsScreenState* st = g_company_backups_state;
     const int first = st != nullptr ? st->page.first_index() : 0;
     const int end = st != nullptr ? st->page.end_index() : 0;
@@ -6432,8 +6383,6 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
 {
     CompanyBackupsScreenState* st =
         static_cast<CompanyBackupsScreenState*>(screen_state);
-    if (st == nullptr)
-        return 0;
 
     if (row == kCompanyBackupsBackIndex) {
         TRACE("company_backups", "back");
@@ -6472,15 +6421,22 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
     if (!no_or_yes_prompt("REWIND TO THIS BACKUP?", message.c_str(), false))
         return MENU_REDRAW;
 
+    // Rewind into a scratch save, never the open company: a ReloadFailed
+    // rollback reloads the TARGET's pre-restore state into the save it is
+    // handed, and the open company may have no file to reload it from (the
+    // §3.4 "save0" default at launch, a NEW GAME whose first write failed).
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    SaveData rewound_save;
     const og::data::CompanyRestoreError error =
-        og::data::restore_company_backup(save, st->slot, info.seq);
+        og::data::restore_company_backup(rewound_save, st->slot, info.seq);
     const bool rewound =
         error == og::data::CompanyRestoreError::None
         || error == og::data::CompanyRestoreError::RestampFailed;
     if (rewound) {
-        // RestampFailed included: the rewind itself finished (disk and
-        // memory hold the restored company; the next autosave re-stamps).
+        // RestampFailed included: the rewind itself finished (disk holds the
+        // restored company; the next autosave re-stamps). The scratch just
+        // loaded the rewound file, so memory now takes it from there.
+        (void)save.load_with_error(st->slot);
         // §2.4: a restored company opens straight into base camp — repoint
         // the active slot at it (restore itself never touches the slot; it
         // may target a non-active company, e.g. a corrupt one being
@@ -6500,14 +6456,9 @@ Sint32 company_backups_on_spec_row(int row, void* screen_state)
 
     // Failure: popup, stay listed, state rolled back (§3.7 [SAVE-R3]).
     popup_dialog("RESTORE BACKUP", company_restore_error_string(error));
-    if (error == og::data::CompanyRestoreError::ReloadFailed
-        && st->slot != og::data::active_company_slot()) {
-        // The step-3 rollback reloaded the TARGET company's pre-restore
-        // state into memory; put the ambient company back so the slot and
-        // the in-memory save never disagree (the open_company_slot
-        // discipline).
-        (void)save.load_with_error(og::data::active_company_slot());
-    }
+    // The failed reload and its rollback mounted the TARGET's campaign;
+    // the open company stays in memory, so its campaign goes back up.
+    (void)sync_campaign_mount_to_save(save);
     // Steps >= 1 may have produced the pre-restore snapshot even on a later
     // failure: re-scan so the list tells the truth, and clamp the window.
     const int page_before = st->page.page;
@@ -6665,8 +6616,6 @@ Sint32 cloud_save_on_spec_row(int row, void* screen_state)
 {
     CloudSaveScreenState* st =
         static_cast<CloudSaveScreenState*>(screen_state);
-    if (st == nullptr)
-        return row == kCloudSaveBackIndex ? MENU_EXIT : 0;
 
     switch (row)
     {
@@ -6818,9 +6767,6 @@ const MenuScreenSpec& hire_menu_screen_spec()
         .prepare_buttons = &picker_hire_menu_engine_prepare_buttons,
         .draw_background = &picker_backdrop_draw_background,
         .draw_content = &picker_hire_menu_engine_draw_content,
-        // The new-game intro popup fires after the first presented frame
-        // (legacy loop-bottom arg1 == 1 branch).
-        .frame_tick = &picker_hire_menu_engine_frame_tick,
         // The legacy reset tail: re-derive the hire-team label surfaces.
         .on_reset = &picker_hire_menu_engine_on_reset,
         // Every legacy local exit returned MENU_REDRAW.
@@ -7449,13 +7395,9 @@ void lineup_draw_content(void* screen_state)
             picker_lobby_session_room_code(), players,
             kLineupTitleCensusChars);
     }
+    // Both sources are clipped at the source: lineup_show_toast and the
+    // census's own kLineupTitleCensusChars budget.
     if (!right_line.empty()) {
-        if (right_line.size() >
-            static_cast<std::size_t>(kLineupTitleCensusChars))
-        {
-            right_line.resize(
-                static_cast<std::size_t>(kLineupTitleCensusChars));
-        }
         const int x =
             kLineupPanelX2 - static_cast<int>(right_line.size()) * 6;
         mytext.write_xy(x, 8, right_line.c_str(), right_color, 1);
@@ -7494,14 +7436,13 @@ void lineup_draw_content(void* screen_state)
         // The old font's "1" is a column narrower: bias that lone glyph one
         // pixel right (the Base Camp chip's own rule).
         mytext.write_xy_flat(kLineupChipX + (t == 0 ? 4 : 3), header_y + 3,
-                             digit, PURE_BLACK, 1);
+                             digit, PURE_BLACK);
 
         mytext.write_xy_flat(kLineupTeamTextX, header_y + 2,
                              std::format("TEAM {}", t + 1).c_str(),
-                             PURE_BLACK, 1);
+                             PURE_BLACK);
         mytext.write_xy_flat(kLineupPowerTextX, header_y + 2,
-                             format_lineup_power(band.power).c_str(), BLACK,
-                             1);
+                             format_lineup_power(band.power).c_str(), BLACK);
 
         // Seat run x=150..306 (26-char budget): the three-tier rule the
         // SETUP wizard's TEAMS line draws too (og::ui::format_lineup_seat_run
@@ -7513,7 +7454,7 @@ void lineup_draw_content(void* screen_state)
             run = "NO SEAT";
         }
         mytext.write_xy_flat(kLineupSeatRunX, header_y + 2, run.c_str(),
-                             BLACK, 1);
+                             BLACK);
 
         // The MAP UNITS caption beside the box (B9): drawn ink, not a
         // button face, so it follows the box's visibility (host-only) and
@@ -7525,8 +7466,7 @@ void lineup_draw_content(void* screen_state)
                                  y + kLineupCensusDy, "MAP UNITS",
                                  box_live
                                      ? static_cast<unsigned char>(BLACK)
-                                     : kBenchedTextShade,
-                                 1);
+                                     : kBenchedTextShade);
         }
 
         // Census / diagnostics at (190, y+19), 21-char budget. The cell is
@@ -7564,14 +7504,12 @@ void lineup_draw_content(void* screen_state)
             TRACE("lineup", "census %d %s", t, census.c_str());
         }
         mytext.write_xy_flat(kLineupCensusX, y + kLineupCensusDy,
-                             census.c_str(), census_color, 1);
+                             census.c_str(), census_color);
     }
 }
 
 bool lineup_frame_tick(void* screen_state, int /*frame*/)
 {
-    if (screen_state == nullptr)
-        return true;
     auto* const st = static_cast<LineupScreenState*>(screen_state);
     screen* const myscreen = og::runtime::current_session->myscreen_;
     bool restage = false;
@@ -7605,8 +7543,6 @@ bool lineup_frame_tick(void* screen_state, int /*frame*/)
 
 void lineup_on_reset(void* screen_state)
 {
-    if (screen_state == nullptr)
-        return;
     static_cast<LineupScreenState*>(screen_state)->was_reset = true;
     lineup_power_cache_clear();
 }
@@ -7618,8 +7554,6 @@ void lineup_on_reset(void* screen_state)
 // gated on this machine holding a second seat, and the full graph rewired.
 void lineup_menu_rewire(button* buttons, int count, int& highlighted_button)
 {
-    if (buttons == nullptr || count < kLineupButtonCount)
-        return;
     const SaveData& save =
         og::runtime::current_session->myscreen_->save_data;
     const bool knobs = picker_lobby_host_controls_visible();
@@ -7736,12 +7670,10 @@ int match_setup_visible_rows()
 // The windowed row a display slot shows this frame, or null past the end
 // AND on the pager slot (whose face is page().more — a caller that treated
 // it as an ordinary row would dispatch a row the campaign never wrote).
+// The one caller walks [0, match_setup_visible_rows()) under a live state.
 const SetupRow* match_setup_window_row(int slot)
 {
-    const MatchSetupScreenState* const st = g_match_setup_state;
-    if (st == nullptr || slot < 0 || slot >= match_setup_visible_rows())
-        return nullptr;
-    return st->session.window_row(slot);
+    return g_match_setup_state->session.window_row(slot);
 }
 
 // The face a display slot draws: its windowed row, or the pager row.
@@ -8025,8 +7957,6 @@ int match_setup_entry_highlight(const MatchSetupScreenState& st,
 // surfaces, and rewires every link over what the gates left standing.
 void match_setup_rewire(button* buttons, int count, int& highlighted_button)
 {
-    if (buttons == nullptr || count < kMatchSetupButtonCount)
-        return;
     MatchSetupScreenState* const st = g_match_setup_state;
     const bool host = picker_lobby_host_controls_visible();
 
@@ -8198,16 +8128,6 @@ void match_setup_draw_content(void* screen_state)
     text& mytext = game->text_normal;
     const SaveData& save = game->save_data;
 
-    const auto strip_text = [game](int x, int y, const std::string& value,
-                                   unsigned char color) {
-        if (value.empty())
-            return;
-        const int width = static_cast<int>(value.size()) * 6;
-        game->draw_rect_filled(x - 2, y - 1, static_cast<Uint32>(width + 4),
-                               8, PURE_BLACK, 150);
-        game->text_normal.write_xy(x, y, color, "%s", value.c_str());
-    };
-
     // Header line A, byte-for-byte the Base Camp's (draw_camp_line_a is
     // the one spelling): COMPANY + the gold block. The purse stays on
     // screen while the match is set up.
@@ -8220,7 +8140,7 @@ void match_setup_draw_content(void* screen_state)
             st != nullptr ? st->toast : std::string(),
             st != nullptr ? st->toast_until_ms : 0,
             static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
-        strip_text(10, 17, slot.text, slot.color);
+        camp_strip_text(10, 17, slot.text, slot.color);
     }
 
     if (st == nullptr)
@@ -8252,17 +8172,17 @@ void match_setup_draw_content(void* screen_state)
                         line.label,
                         static_cast<std::size_t>(kSetupLineChars))
                         .c_str(),
-                    PURE_BLACK, 1);
+                    PURE_BLACK);
             } else {
                 mytext.write_xy_flat(kSetupTeamLabelX, y, line.label.c_str(),
-                                     PURE_BLACK, 1);
+                                     PURE_BLACK);
                 mytext.write_xy_flat(
                     kSetupTeamSeatX, y,
                     og::ui::clip_with_ellipsis(
                         line.seats,
                         static_cast<std::size_t>(kSetupTeamSeatChars))
                         .c_str(),
-                    BLACK, 1);
+                    BLACK);
                 // A diagnostic takes the benched shade LINEUP gives it:
                 // the cell mirrors GO's refusal, not a count.
                 mytext.write_xy_flat(
@@ -8272,8 +8192,7 @@ void match_setup_draw_content(void* screen_state)
                         static_cast<std::size_t>(kSetupTeamCensusChars))
                         .c_str(),
                     line.diag ? kBenchedTextShade
-                              : static_cast<unsigned char>(BLACK),
-                    1);
+                              : static_cast<unsigned char>(BLACK));
             }
             y += kSetupLinePitch;
         }
@@ -8287,7 +8206,7 @@ void match_setup_draw_content(void* screen_state)
             og::ui::clip_with_ellipsis(
                 page.lines[i], static_cast<std::size_t>(kSetupLineChars))
                 .c_str(),
-            PURE_BLACK, 1);
+            PURE_BLACK);
         y += kSetupLinePitch;
     }
     if (page.team_lines_at >= page.lines.size())
@@ -8306,8 +8225,6 @@ void match_setup_draw_content(void* screen_state)
 bool match_setup_frame_tick(void* screen_state, int /*frame*/)
 {
     auto* const st = static_cast<MatchSetupScreenState*>(screen_state);
-    if (st == nullptr)
-        return true;
     screen* const game = og::runtime::current_session->myscreen_;
     const SaveData& save = game->save_data;
     const LineupSeatView seats = picker_lineup_seat_view();
@@ -8457,9 +8374,6 @@ Sint32 match_setup_dispatch(MatchSetupScreenState& st,
         TRACE("setup", "refused %s", outcome.message.c_str());
         match_setup_show_toast(st, outcome.message);
         return MENU_REDRAW;
-    case Kind::Closed:
-        st.exit = MatchSetupExit::Closed;
-        return MENU_EXIT;
     case Kind::SetLevel:
         return match_setup_level_tail(st, outcome.level, outcome.replay_arm);
     case Kind::Turned:
@@ -8523,8 +8437,6 @@ Sint32 match_setup_choose(MatchSetupScreenState& st, int slot,
 Sint32 match_setup_on_spec_row(int row, void* screen_state)
 {
     auto* const st = static_cast<MatchSetupScreenState*>(screen_state);
-    if (st == nullptr)
-        return row == kMatchSetupBackIndex ? MENU_EXIT : 0;
     // One click, one answer (the Base Camp rule).
     st->toast.clear();
     st->toast_until_ms = 0;
@@ -8882,9 +8794,9 @@ Sint32 create_team_menu(Sint32 arg1)
     const Sint32 retvalue =
         og::ui::run_menu_screen(og::ui::team_build_menu_screen_spec(), &state);
     og::ui::install_base_camp_state_for_screen(nullptr);
-    if (retvalue & MENU_EXIT)
-        return retvalue;
-    return MENU_REDRAW;
+    // Every exit of the team_build spec carries MENU_EXIT (its exit_value,
+    // the TeamBuildScope remote start, a row's structural exit).
+    return retvalue;
 }
 
 button* picker_scenariomenu_buttons()

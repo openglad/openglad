@@ -77,9 +77,13 @@ void init_family_registry()
 
 const FamilyDescriptor* get_family_descriptor(int family_id)
 {
-    if (!s_registry.is_initialized())
-        init_family_registry();
     return s_registry.get(family_id);
+}
+
+const char* get_family_display_name(int family_id)
+{
+    const FamilyDescriptor* descriptor = get_family_descriptor(family_id);
+    return descriptor != nullptr ? descriptor->name : "BEAST";
 }
 
 bool set_family_descriptor(int family_id, const FamilyDescriptor& d)
@@ -105,8 +109,6 @@ void reset_family_registry_mod_slots()
 
 int first_unpopulated_core_family_slot()
 {
-    if (!s_registry.is_initialized())
-        init_family_registry();
     return s_registry.first_unpopulated_core_slot();
 }
 

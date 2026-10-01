@@ -39,22 +39,8 @@ bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
                        });
 }
 
-bool is_tracked_entity(const GameWorld& world, const walker* candidate)
-{
-    if (candidate == nullptr)
-        return false;
-
-    return contains_walker_ptr(world.oblist, candidate)
-        || contains_walker_ptr(world.fxlist, candidate)
-        || contains_walker_ptr(world.weaplist, candidate)
-        || contains_walker_ptr(world.dead_list, candidate);
-}
-
 void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
 {
-    if (entity == nullptr)
-        return;
-
     constexpr int kMaxOwnerDepth = 16;
     walker* current = entity;
     for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
@@ -62,7 +48,7 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
         walker* owner = current->owner();
         if (owner == nullptr || owner == current)
             return;
-        if (!is_tracked_entity(world, owner))
+        if (!world.tracks(owner))
         {
             current->set_owner(nullptr);
             return;
@@ -91,6 +77,17 @@ void refresh_self_reference_ids(walker& entity)
         stats->set_controller(&entity);
     }
 }
+}
+
+bool GameWorld::tracks(const walker* candidate) const noexcept
+{
+    if (candidate == nullptr)
+        return false;
+
+    return contains_walker_ptr(oblist, candidate)
+        || contains_walker_ptr(fxlist, candidate)
+        || contains_walker_ptr(weaplist, candidate)
+        || contains_walker_ptr(dead_list, candidate);
 }
 
 namespace og::sim {
@@ -1174,7 +1171,7 @@ walker* GameWorld::find_near_foe(walker* ob)
 	            for (auto it = ls.begin(); it != ls.end(); )
             {
                 walker* w = *it;
-                if (!is_tracked_entity(*this, w))
+                if (!tracks(w))
                 {
                     it = ls.erase(it);
                     continue;
@@ -1865,9 +1862,6 @@ void GameWorld::tick()
     // --- Check background for exits ---
     for (auto& uptr : fxlist)
     {
-        if (withdraw_requested)
-            break;
-
         walker* ob = uptr.get();
         if (ob && !ob->dead())
         {
@@ -1879,9 +1873,6 @@ void GameWorld::tick()
             }
         }
     }
-
-    if (withdraw_requested)
-        return;
 
     // --- Level completion check ---
     // A TYPE_SCRIPTED map whose campaign pack registered no on_mode_init
@@ -2187,8 +2178,6 @@ inline constexpr std::int32_t kWakeNudgeRadius = 4;
 
 bool GameWorld::dormant_occupies_spot(const walker* probe) const
 {
-    if (probe == nullptr)
-        return false;
     return dormant_overlaps_box(*this, probe, probe->xpos(), probe->ypos(),
                                 probe->floor());
 }
@@ -2222,8 +2211,6 @@ bool GameWorld::wake_spot_blocked(walker* ob)
 
 bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
 {
-    if (ob == nullptr)
-        return false;
     const PixieData& g = grid_for_floor(ob->floor());
     if (!g.valid())
         return false;

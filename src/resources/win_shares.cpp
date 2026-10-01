@@ -35,9 +35,6 @@ void distribute_delta(std::uint32_t delta,
                       int total,
                       std::array<std::uint64_t, kMaxPlayers>& out)
 {
-    if (total <= 0)
-        return;
-
     std::uint64_t assigned = 0;
     int largest_count = 0;
     int largest_player = -1;

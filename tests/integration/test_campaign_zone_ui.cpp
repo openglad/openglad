@@ -58,6 +58,7 @@
 #include <vector>
 
 // Picker entry points for the injector-driven flows.
+extern bool g_start_game_requested;
 void picker_testing_set_force_real_dialogs(bool enabled);
 void picker_main(Sint32 argc, char** argv);
 extern int g_picker_mainmenu_calls;
@@ -70,6 +71,22 @@ namespace {
 screen* test_screen()
 {
     return og::runtime::current_session->myscreen_;
+}
+
+// FNV-1a over the palette index of every pixel in [x0,x1) x [y0,y1): the
+// pixel oracle the direct draw_content pins compare against a reference.
+std::uint64_t zone_region_hash(screen& output, int x0, int y0, int x1, int y1)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            int pixel = 0;
+            output.get_pixel(x, y, &pixel);
+            hash ^= static_cast<std::uint8_t>(pixel);
+            hash *= 1099511628211ULL;
+        }
+    }
+    return hash;
 }
 
 void cleanup_picker_state()
@@ -1713,6 +1730,57 @@ TEST(CampaignZoneUi, zone_submenu_pagers_step_and_saturate)
     EXPECT_EQ(2, count_trace_containing("zone", "submenu_page"));
     EXPECT_TRUE(trace_contains("zone", "submenu_page 1/2"));
 
+    // The "p/N" strip at (140,176) is the only place a player reads which
+    // window of a long shelf he is on. A multi-page window inks it exactly
+    // as the camp's shared strip spells it (2px pad, 150-alpha black
+    // backing, WHITE text) and follows the page; a one-page shelf leaves
+    // the band untouched.
+    screen& output = *test_screen();
+    const auto indicator_band = [&output] {
+        return zone_region_hash(output, 130, 170, 200, 186);
+    };
+    const auto reference_strip = [&output, &indicator_band](
+                                     const std::string& value) {
+        output.clearbuffer();
+        const int width = static_cast<int>(value.size()) * 6;
+        output.draw_rect_filled(138, 175, static_cast<Uint32>(width + 4), 8,
+                                PURE_BLACK, 150);
+        output.text_normal.write_xy(140, 176, WHITE, "%s", value.c_str());
+        return indicator_band();
+    };
+    output.clearbuffer();
+    const std::uint64_t blank_band = indicator_band();
+    const std::uint64_t page_one = reference_strip("1/2");
+    const std::uint64_t page_two = reference_strip("2/2");
+    ASSERT_NE(blank_band, page_one) << "the oracle strip must ink the band";
+    ASSERT_NE(page_one, page_two);
+
+    ASSERT_EQ(0, st.page.first_index());
+    output.clearbuffer();
+    spec.draw_content(&st);
+    EXPECT_EQ(page_one, indicator_band())
+        << "a multi-page shelf shows 1/2 on its first window";
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuNextIndex, &st));
+    output.clearbuffer();
+    spec.draw_content(&st);
+    EXPECT_EQ(page_two, indicator_band()) << "and 2/2 once NEXT moved it";
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kZoneSubmenuPrevIndex, &st));
+
+    // Paired control: the five-row STORES shelf fits one window, and its
+    // band stays blank.
+    og::ui::CampaignPickerSession short_session(save);
+    ASSERT_TRUE(short_session.open_at("stores"));
+    og::ui::ZoneSubmenuScreenState one_page;
+    one_page.session = &short_session;
+    one_page.page = og::ui::PageModel::make(
+        static_cast<int>(short_session.page().rows.size()),
+        kZoneSubmenuRowsPerPage);
+    ASSERT_FALSE(one_page.page.multi_page());
+    output.clearbuffer();
+    spec.draw_content(&one_page);
+    EXPECT_EQ(blank_band, indicator_band())
+        << "a one-page shelf draws no page indicator";
+
     og::ui::install_zone_submenu_state_for_screen(nullptr);
 }
 
@@ -2469,6 +2537,674 @@ TEST(CampaignZoneUi, retired_roster_controls_are_inert_for_a_stale_click)
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
 
     og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// An oath roster whose book has FROZEN the question: the chip still shows,
+// but the campaign has closed the oaths and says why.
+constexpr const char* kFrozenOathScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "roster",
+          assign = { key = "road", labels = { "WAR", "BURDEN" },
+                     frozen = "The oaths are sealed." } },
+      },
+    }
+  end,
+}))LUA";
+
+} // namespace
+
+// The oath chip answers a click it may not honour in words, and writes no
+// tag: a book that froze the oaths refuses with its own reason, and a slot
+// this machine may not edit says LOCKED. Either click that swore the hero
+// anyway would put a campaign_tag in the company file the book (or the
+// owning machine) never agreed to.
+TEST(CampaignZoneUi, oath_chip_refuses_a_frozen_oath_and_a_locked_slot)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    struct EditableCallbackGuard {
+        og::ui::PickerSaveSlotEditableCallback saved =
+            og::ui::g_picker_save_slot_editable_callback;
+        ~EditableCallbackGuard()
+        {
+            og::ui::g_picker_save_slot_editable_callback = saved;
+        }
+    } editable_guard;
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    // --- Frozen: the book's reason is the answer. ---
+    SyntheticCampaignScriptGuard::install(kFrozenOathScript);
+    og::ui::CampaignZoneSession frozen(save);
+    frozen.fetch();
+    ASSERT_TRUE(frozen.scripted());
+    ASSERT_TRUE(frozen.roster().assign.active);
+    ASSERT_EQ("The oaths are sealed.", frozen.roster().assign.frozen);
+
+    og::ui::BaseCampScreenState frozen_state;
+    frozen_state.zone = &frozen;
+    og::ui::base_camp_refresh_rows(frozen_state);
+    og::ui::install_base_camp_state_for_screen(&frozen_state);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &frozen_state));
+    EXPECT_EQ("The oaths are sealed.", frozen_state.toast);
+    EXPECT_EQ(0, save.team_list[0]->campaign_tag)
+        << "a frozen oath writes no tag";
+    EXPECT_TRUE(trace_contains("zone", "assign_frozen slot=0"));
+    EXPECT_FALSE(trace_contains("zone", "assign slot="));
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    // --- Live oath, but slot 0 is not this machine's to edit. ---
+    SyntheticCampaignScriptGuard::install(kRosterEchoScript);
+    og::ui::CampaignZoneSession live(save);
+    live.fetch();
+    ASSERT_TRUE(live.scripted());
+    ASSERT_TRUE(live.roster().assign.active);
+    ASSERT_TRUE(live.roster().assign.frozen.empty());
+
+    og::ui::BaseCampScreenState live_state;
+    live_state.zone = &live;
+    og::ui::base_camp_refresh_rows(live_state);
+    og::ui::install_base_camp_state_for_screen(&live_state);
+    og::ui::g_picker_save_slot_editable_callback =
+        [](int slot) { return slot != 0; };
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(kBaseCampTeamChipBase, &live_state));
+    EXPECT_EQ("LOCKED", live_state.toast);
+    EXPECT_EQ(0, save.team_list[0]->campaign_tag)
+        << "a locked slot writes no tag";
+    EXPECT_FALSE(trace_contains("zone", "assign slot="));
+
+    // Paired control: the SAME live chip on the editable neighbour swears
+    // its hero, so the two refusals above are the rules and not a dead chip.
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampTeamChipBase + 1, &live_state));
+    EXPECT_EQ(1, save.team_list[1]->campaign_tag);
+    EXPECT_TRUE(trace_contains("zone", "assign slot=1 tag=1"));
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// The echo roster with its TRAIN affordance (the row body) switched by the
+// composition: the only difference between the two fixtures below.
+std::string roster_train_script(const char* can_train)
+{
+    return std::string(R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return {
+      widgets = {
+        { kind = "roster", can_train = )LUA") +
+        can_train + R"LUA( },
+      },
+    }
+  end,
+}))LUA";
+}
+
+// A joiner whose host has already pressed GO: the lobby holds a launchable
+// start config, so any nested screen the click opens returns at its first
+// frame (the remote-start preemption) instead of blocking the test.
+struct HostStartedLobbyClient final : og::ui::IPickerLobbyClient
+{
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override { return false; }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return og::ui::PickerLobbyGameStartConfig{};
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return og::ui::PickerLobbyGameStartConfig{};
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return false;
+    }
+};
+
+// Installs the started lobby and ARMS the host's GO before any click (both
+// halves of every flow below: a nested screen with nothing to preempt it
+// would block forever), and restores all of it on the way out.
+struct HostStartedScope
+{
+    HostStartedLobbyClient lobby;
+    og::ui::IPickerLobbyClient* saved = og::ui::active_picker_lobby_client();
+
+    HostStartedScope()
+    {
+        og::ui::install_active_picker_lobby_client(&lobby);
+        g_start_game_requested = true;
+        og::runtime::current_session->picker_->selected_menu_item = nullptr;
+    }
+
+    ~HostStartedScope()
+    {
+        g_start_game_requested = false;
+        og::runtime::current_session->picker_->selected_menu_item = nullptr;
+        og::ui::install_active_picker_lobby_client(saved);
+        clear_allbuttons();
+        og::runtime::current_session->localbuttons_ = nullptr;
+    }
+};
+
+bool start_game_selected()
+{
+    const auto* const item =
+        og::runtime::current_session->picker_->selected_menu_item;
+    return item != nullptr &&
+           item->command == og::ui::PickerMenuCommand::StartGame;
+}
+
+} // namespace
+
+// A row-body click is the TRAIN door. A composition that retired can_train
+// hides that door, and the click already in flight must be inert: no train
+// screen, no seed. The same click on a composition that keeps TRAIN opens
+// the screen — and a host GO reaching this joiner there unwinds Base Camp
+// as MENU_EXIT, so the launch is not swallowed by the nested screen.
+TEST(CampaignZoneUi, retired_train_door_is_inert_and_a_live_one_carries_the_start)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+    HostStartedScope started;
+
+    // --- Retired: the stale row-body click does nothing at all. ---
+    SyntheticCampaignScriptGuard::install(roster_train_script("false").c_str());
+    og::ui::CampaignZoneSession locked(save);
+    locked.fetch();
+    ASSERT_TRUE(locked.scripted());
+    ASSERT_FALSE(locked.roster().can_train);
+    og::ui::BaseCampScreenState locked_state;
+    locked_state.zone = &locked;
+    og::ui::base_camp_refresh_rows(locked_state);
+    og::ui::install_base_camp_state_for_screen(&locked_state);
+    trace_clear();
+    EXPECT_EQ(MENU_OK,
+              spec.on_spec_row(kBaseCampRowBodyBase + 0, &locked_state));
+    EXPECT_FALSE(trace_contains("basecamp", "train slot"))
+        << "a retired TRAIN door must not open the train screen";
+    EXPECT_FALSE(start_game_selected());
+    og::ui::install_base_camp_state_for_screen(nullptr);
+
+    // --- Paired control: the live door opens TRAIN, which the armed GO
+    // preempts; Base Camp returns the launch. ---
+    SyntheticCampaignScriptGuard::install(roster_train_script("true").c_str());
+    og::ui::CampaignZoneSession open_roster(save);
+    open_roster.fetch();
+    ASSERT_TRUE(open_roster.scripted());
+    ASSERT_TRUE(open_roster.roster().can_train);
+    og::ui::BaseCampScreenState open_state;
+    open_state.zone = &open_roster;
+    og::ui::base_camp_refresh_rows(open_state);
+    og::ui::install_base_camp_state_for_screen(&open_state);
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT,
+              spec.on_spec_row(kBaseCampRowBodyBase + 0, &open_state))
+        << "a host GO reaching a joiner in TRAIN must unwind Base Camp";
+    EXPECT_TRUE(trace_contains("basecamp", "train slot=0"));
+    EXPECT_TRUE(start_game_selected());
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+// A classic campaign's book page row opens the zone submenu. A host GO that
+// reaches a joiner parked in that submenu must come back out of BOTH
+// screens as MENU_EXIT with START GAME selected — a MENU_REDRAW here would
+// leave the joiner standing in Base Camp while the host's match launches.
+TEST(CampaignZoneUi, host_start_unwinds_a_joiner_parked_in_a_book_page)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SyntheticCampaignScriptGuard::install(kZoneScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    ASSERT_FALSE(og::ui::is_versus_campaign(save))
+        << "a classic book: the page row is the submenu door, not SETUP";
+
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    ASSERT_TRUE(zone.scripted());
+    ASSERT_EQ(1u, zone.actions().size());
+    ASSERT_EQ("stores", zone.actions()[0].rows[0].id);
+
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = team_build_spec();
+    HostStartedScope started;
+
+    trace_clear();
+    EXPECT_EQ(MENU_EXIT,
+              spec.on_spec_row(kBaseCampZoneActionBase + 0, &state));
+    EXPECT_TRUE(start_game_selected());
+    EXPECT_FALSE(trace_contains("zone", "page_row stores"))
+        << "the remote start leaves before the ordinary page-row close";
+    EXPECT_TRUE(state.toast.empty())
+        << "the page opened: no unreadable-page toast";
+
+    og::ui::install_base_camp_state_for_screen(nullptr);
+}
+
+namespace {
+
+// A header readout of two cells, spelled by the caller.
+std::string readout_script(const char* label0, const char* value0,
+                           const char* label1, const char* value1)
+{
+    return std::format(R"LUA(og.register_campaign_hooks({{
+  base_camp = function()
+    return {{
+      widgets = {{
+        {{ kind = "readout",
+          items = {{
+            {{ label = "{}", value = "{}" }},
+            {{ label = "{}", value = "{}" }},
+          }} }},
+        {{ kind = "roster" }},
+      }},
+    }}
+  end,
+}}))LUA",
+                       label0, value0, label1, value1);
+}
+
+// The Base Camp content pass over one scripted composition, hashed over
+// the readout's header band (y=33, three 100px cells from x=12).
+std::uint64_t camp_readout_band(SaveData& save, const std::string& script)
+{
+    SyntheticCampaignScriptGuard::install(script.c_str());
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    EXPECT_TRUE(zone.scripted());
+    EXPECT_NE(nullptr, zone.readout());
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    // The values ink PURE_BLACK on the panel face; a cleared (black)
+    // buffer would hide them, so the pass draws over a WHITE field.
+    screen& output = *test_screen();
+    output.draw_box(0, 0, 319, 199, WHITE, 1, 1);
+    team_build_spec().draw_content(&state);
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    return zone_region_hash(output, 0, 31, 320, 42);
+}
+
+} // namespace
+
+// A readout cell has a 16-character budget shared by its label and value
+// (label, one space, value). A label past the budget is clipped to it and
+// evicts the value; a value that would run past the budget is clipped to
+// what the label left. Each overlong composition must draw EXACTLY what its
+// pre-clipped spelling draws: an unclipped cell runs into its neighbour.
+TEST(CampaignZoneUi, readout_cells_share_one_sixteen_character_budget)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    // Cell 0: a 19-char label (clipped to 16, value evicted). Cell 1: a
+    // 4-char label + space leaves 11 for an 18-char value.
+    const std::uint64_t overlong = camp_readout_band(
+        save, readout_script("ABCDEFGHIJKLMNOPQRS", "77", "GOLD",
+                             "0123456789ABCDEFGH"));
+    const std::uint64_t preclipped = camp_readout_band(
+        save, readout_script("ABCDEFGHIJKLMNOP", "", "GOLD", "0123456789A"));
+    EXPECT_EQ(preclipped, overlong)
+        << "an overlong cell must draw exactly its clipped spelling";
+
+    // Paired controls: the band sees the LAST glyph each budget keeps, so
+    // the equality above is not a band too coarse to notice a clip.
+    EXPECT_NE(preclipped,
+              camp_readout_band(save, readout_script("ABCDEFGHIJKLMNOX", "",
+                                                     "GOLD", "0123456789A")))
+        << "the 16th label glyph is inside the band";
+    EXPECT_NE(preclipped,
+              camp_readout_band(save, readout_script("ABCDEFGHIJKLMNOP", "",
+                                                     "GOLD", "0123456789X")))
+        << "the 11th value glyph is inside the band";
+}
+
+namespace {
+
+// The roster FIRST, the readout under it: nothing is hoisted into the
+// header band, so the readout keeps its own grid unit.
+std::string roster_first_readout_script(const char* label)
+{
+    return std::format(R"LUA(og.register_campaign_hooks({{
+  base_camp = function()
+    return {{
+      widgets = {{
+        {{ kind = "roster" }},
+        {{ kind = "readout",
+          items = {{
+            {{ label = "{}", value = "" }},
+          }} }},
+      }},
+    }}
+  end,
+}}))LUA",
+                       label);
+}
+
+struct ReadoutBands
+{
+    std::uint64_t header = 0;  // the y=33 header band
+    std::uint64_t own = 0;     // the readout's own grid band
+    bool in_header_band = false;
+};
+
+ReadoutBands camp_readout_bands(SaveData& save, const std::string& script)
+{
+    SyntheticCampaignScriptGuard::install(script.c_str());
+    og::ui::CampaignZoneSession zone(save);
+    zone.fetch();
+    EXPECT_TRUE(zone.scripted());
+    ReadoutBands bands;
+    const og::ui::CampaignZoneSession::ReadoutLayout* const readout =
+        zone.readout();
+    EXPECT_NE(nullptr, readout);
+    if (readout == nullptr)
+        return bands;
+    bands.in_header_band = readout->in_header_band;
+    og::ui::BaseCampScreenState state;
+    state.zone = &zone;
+    og::ui::base_camp_refresh_rows(state);
+    og::ui::install_base_camp_state_for_screen(&state);
+    screen& output = *test_screen();
+    output.draw_box(0, 0, 319, 199, WHITE, 1, 1);
+    team_build_spec().draw_content(&state);
+    og::ui::install_base_camp_state_for_screen(nullptr);
+    // Row grid: y0 45, pitch 14 (menu_screen_specs.cpp kBaseCampRowY0/Pitch).
+    const int own_y = 45 + 14 * readout->start_unit;
+    bands.header = zone_region_hash(output, 0, 31, 320, 42);
+    bands.own = zone_region_hash(output, 0, own_y, 320, own_y + 12);
+    return bands;
+}
+
+} // namespace
+
+// A readout is hoisted into the panel's header band (y=33) only when the
+// roster is not the first widget. With the roster first, the readout draws
+// on its OWN grid band: its text moves that band and never the header.
+TEST(CampaignZoneUi, a_readout_under_the_roster_draws_on_its_own_grid_band)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    const ReadoutBands a = camp_readout_bands(
+        save, roster_first_readout_script("GOLD"));
+    const ReadoutBands b = camp_readout_bands(
+        save, roster_first_readout_script("FAME"));
+    EXPECT_FALSE(a.in_header_band) << "a roster-first readout is not hoisted";
+    EXPECT_EQ(a.header, b.header)
+        << "the readout's text must not reach the header band";
+    EXPECT_NE(a.own, b.own) << "it draws on its own grid band instead";
+
+    // Paired control: readout first, roster second -- hoisted, and now the
+    // readout's text moves the header band.
+    EXPECT_NE(camp_readout_band(save, readout_script("GOLD", "", "X", "")),
+              camp_readout_band(save, readout_script("FAME", "", "X", "")))
+        << "a hoisted readout draws in the header band";
+}
+
+// With can_deploy off the own rows lose their deploy BUTTONS, but the
+// player still reads each hero's deploy state as the X/- glyph the foreign
+// rows use. With the buttons live the content pass leaves that cell to
+// them.
+TEST(CampaignZoneUi, retired_deploy_buttons_still_show_deploy_state)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    SyntheticCampaignScriptGuard script_guard;
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    seed_three_benched_soldiers(save);
+
+    // The deploy column (x 23..37) of the whole roster band, drawn by the
+    // content pass for one composition and one deploy state of row 0.
+    const auto deploy_column = [&save](const char* controls, bool deployed) {
+        save.team_list[0]->deployed = deployed;
+        SyntheticCampaignScriptGuard::install(
+            roster_lock_script(controls).c_str());
+        og::ui::CampaignZoneSession zone(save);
+        zone.fetch();
+        EXPECT_TRUE(zone.scripted());
+        og::ui::BaseCampScreenState state;
+        state.zone = &zone;
+        og::ui::base_camp_refresh_rows(state);
+        og::ui::install_base_camp_state_for_screen(&state);
+        screen& output = *test_screen();
+        output.clearbuffer();
+        team_build_spec().draw_content(&state);
+        og::ui::install_base_camp_state_for_screen(nullptr);
+        return zone_region_hash(output, 23, 44, 37, 200);
+    };
+
+    EXPECT_NE(deploy_column("false", false), deploy_column("false", true))
+        << "with the deploy buttons retired, X and - still tell the state";
+    EXPECT_EQ(deploy_column("true", false), deploy_column("true", true))
+        << "with live buttons the content pass draws no deploy glyph";
+    save.team_list[0]->deployed = false;
+}
+
+namespace {
+
+// A versus campaign's book, reduced to its two answers that are neither a
+// level nor a page: an action that acts and SPEAKS, and one the company
+// cannot afford.
+constexpr const char* kSetupBookScript = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "GAMES",
+      entries = {
+        { id = "drums", label = "DRUMS", kind = "action" },
+        { id = "crown", label = "CROWN", kind = "action", cost = 900000 },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "The drums roll." }
+  end,
+}))LUA";
+
+} // namespace
+
+// The SETUP wizard hosts the book's own rows on its GAME step. A book
+// action that acts without answering a level speaks its Lua message on
+// line B — the one message channel (R2-1) — and stays on the step; a
+// refused one (not enough gold) is toasted and traced and does not
+// advance either. A wizard that swallowed either would leave the player
+// clicking a row that visibly did nothing.
+TEST(CampaignZoneUi, setup_book_actions_speak_and_refusals_hold_the_step)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // Saved BEFORE the modes mount, so the guard hands back the gladiator
+    // registry the test remounts at its end.
+    SyntheticCampaignScriptGuard script_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // The modes pack registers its own book; one campaign carries one book
+    // (a second registration is a conflict), so this book stands alone.
+    og::script::clear_pack_scripts();
+    SyntheticCampaignScriptGuard::install(kSetupBookScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    for (int t = 0; t < 4; ++t)
+        save.m_totalcash[t] = 0;
+    ASSERT_TRUE(og::ui::is_versus_campaign(save));
+
+    og::ui::MatchSetupScreenState state(save);
+    og::ui::MatchSetupSession::Inputs in;
+    in.save = &save;
+    in.is_host = true;
+    ASSERT_TRUE(state.session.open(in));
+    ASSERT_EQ(og::ui::MatchSetupSession::Step::Game, state.session.step());
+    ASSERT_EQ(2u, state.session.page().rows.size());
+    ASSERT_EQ("drums", state.session.page().rows[0].base.id);
+    ASSERT_EQ("crown", state.session.page().rows[1].base.id);
+    og::ui::install_match_setup_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = og::ui::match_setup_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.on_spec_row);
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(og::ui::kMatchSetupRowBase + 0, &state));
+    EXPECT_EQ("The drums roll.", state.toast)
+        << "the book's own voice lands on line B";
+    EXPECT_TRUE(trace_contains("setup", "toast The drums roll."));
+    EXPECT_EQ(og::ui::MatchSetupSession::Step::Game, state.session.step());
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(og::ui::kMatchSetupRowBase + 1, &state));
+    EXPECT_EQ("Not enough gold.", state.toast);
+    EXPECT_TRUE(trace_contains("setup", "refused Not enough gold."));
+    EXPECT_EQ(og::ui::MatchSetupSession::Step::Game, state.session.step())
+        << "a refusal never advances the step";
+    EXPECT_EQ(0u, save.m_totalcash[0]) << "and spends nothing";
+
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+namespace {
+
+// The same one-action book, speaking a 59-character sentence (the short
+// "The drums roll." above is the paired control: kept whole).
+constexpr const char* kLongSpeechBookScript = R"LUA(og.register_campaign_hooks({
+  picker_menu = function(page_id)
+    return {
+      title = "GAMES",
+      entries = {
+        { id = "drums", label = "DRUMS", kind = "action" },
+      },
+    }
+  end,
+  picker_action = function(entry_id)
+    return { message = "The drums roll across the whole arena and the crowd roars!!" }
+  end,
+}))LUA";
+
+} // namespace
+
+// The wizard's toast is clipped AT SOURCE to line B's hire-hidden budget
+// (41 characters): a book sentence longer than the line is cut to exactly
+// the budget before it is stored or traced, never drawn past the strip.
+TEST(CampaignZoneUi, setup_toast_is_clipped_to_the_line_b_budget)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    SyntheticCampaignScriptGuard script_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    og::script::clear_pack_scripts();
+    SyntheticCampaignScriptGuard::install(kLongSpeechBookScript);
+
+    SaveData& save = test_screen()->save_data;
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    ASSERT_TRUE(og::ui::is_versus_campaign(save));
+
+    og::ui::MatchSetupScreenState state(save);
+    og::ui::MatchSetupSession::Inputs in;
+    in.save = &save;
+    in.is_host = true;
+    ASSERT_TRUE(state.session.open(in));
+    ASSERT_EQ(1u, state.session.page().rows.size());
+    og::ui::install_match_setup_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec = og::ui::match_setup_menu_screen_spec();
+
+    const std::string sentence =
+        "The drums roll across the whole arena and the crowd roars!!";
+    ASSERT_EQ(59u, sentence.size());
+    const std::string clipped = sentence.substr(
+        0, static_cast<std::size_t>(og::ui::kBaseCampLineBCharsHireHidden));
+    ASSERT_EQ(41u, clipped.size());
+
+    trace_clear();
+    EXPECT_EQ(MENU_REDRAW,
+              spec.on_spec_row(og::ui::kMatchSetupRowBase + 0, &state));
+    EXPECT_EQ(clipped, state.toast)
+        << "the toast keeps exactly the line's 41 characters";
+    EXPECT_TRUE(trace_contains("setup", ("toast " + clipped).c_str()));
+    EXPECT_FALSE(trace_contains("setup", sentence.substr(0, 42).c_str()))
+        << "no 42nd character reaches the trace";
+
+    og::ui::install_match_setup_state_for_screen(nullptr);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
 }
 
 // The fifth roster site: the CLASSIC team-color cycler (reachable only

@@ -508,8 +508,6 @@ void clear_link_lost_overlay_text(screen& gameplay_screen,
     for (int index = 0; index < gameplay_screen.numviews; ++index)
     {
         viewscreen* const view = gameplay_screen.viewob[index].get();
-        if (view == nullptr)
-            continue;
         view->expire_display_text(kLinkLostOverlayText);
         view->expire_display_text(kPauseOverlayMenuHint);
     }
@@ -558,8 +556,6 @@ std::size_t compute_local_player_count(const screen& gameplay_screen)
 void prepare_server_session_for_gameplay(og::runtime::GameSession& server_session)
 {
     screen* const server_screen = server_session.myscreen_;
-    if (server_screen == nullptr)
-        return;
 
     server_screen->world().tick_count_ = 0;
     server_screen->world().reset_level_progress();
@@ -1060,8 +1056,6 @@ void refresh_pause_overlay_text(og::runtime::LocalTransportRuntime& runtime,
     for (int index = 0; index < gameplay_screen.numviews; ++index)
     {
         viewscreen* const view = gameplay_screen.viewob[index].get();
-        if (view == nullptr)
-            continue;
 
         if (retire_banner)
             view->expire_display_text(runtime.pause_overlay_banner);
@@ -1127,8 +1121,6 @@ void render_link_lost_overlay(screen& gameplay_screen,
         for (int index = 0; index < gameplay_screen.numviews; ++index)
         {
             viewscreen* const view = gameplay_screen.viewob[index].get();
-            if (view == nullptr)
-                continue;
             view->refresh_display_text(kLinkLostOverlayText, 1);
             view->refresh_display_text(kPauseOverlayMenuHint, 1);
         }
@@ -1925,8 +1917,6 @@ bool local_transport_shadow_abort_level(GameSession& session)
         // world.end=1 propagates to every display via the broadcast snapshot, so
         // all peers return to the team-build menu.
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr)
-            return true;
 
         auto server_scope = runtime->server_session->activate();
         GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
@@ -1981,8 +1971,6 @@ bool local_transport_shadow_restart_level(GameSession& session)
     }
 
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return false;
 
     auto server_scope = runtime->server_session->activate();
     GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
@@ -2044,8 +2032,7 @@ bool local_transport_shadow_add_local_player(GameSession& session)
     // key profile is whatever slot N of the profile pool holds — the rotation
     // seeded it, so nothing is reset here.
     viewscreen* const lead_view = gameplay_screen.viewob[0].get();
-    const short team = lead_view != nullptr ? lead_view->my_team
-                                            : gameplay_screen.world().my_team;
+    const short team = lead_view->my_team;
 
     // --- Server side: resolve the walker, connect + bind the new peer, and
     // broadcast the mapping. This runs between ticks (a pending pause only
@@ -2156,8 +2143,6 @@ bool local_transport_shadow_remove_local_player(GameSession& session,
     const auto runtime = session.local_transport_runtime_;
     screen& gameplay_screen = *session.myscreen_;
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return false;
 
     const std::size_t old_count = compute_local_player_count(gameplay_screen);
     const std::size_t removed = static_cast<std::size_t>(player_index);
@@ -2372,21 +2357,16 @@ void reset_local_transport_shadow(GameSession& session,
     runtime->server_session = std::make_unique<GameSession>(server_cfg);
     runtime->server_session->isolated_company_session_ =
         runtime->isolated_company;
-    runtime->server_transport = og::sim::InProcessTransport::create_server();
+    const std::shared_ptr<og::sim::InProcessTransport>
+        inprocess_server_transport = og::sim::InProcessTransport::create_server();
+    runtime->server_transport = inprocess_server_transport;
     runtime->server_transport->accept_connections();
-    const auto inprocess_server_transport =
-        std::dynamic_pointer_cast<og::sim::InProcessTransport>(
-            runtime->server_transport);
-    if (!inprocess_server_transport)
-        return;
 
     {
         auto server_scope = runtime->server_session->activate();
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr)
-            return;
         // A GTL no longer owns the local player count. This fresh
         // authoritative screen must inherit the live launch configuration
         // before the install uses that runtime projection to build views.
@@ -2502,8 +2482,6 @@ void reset_local_transport_shadow(GameSession& session,
     }
 
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return;
 
     runtime->server = std::make_unique<og::sim::GameServer>(
         server_screen->world(),
@@ -2736,8 +2714,6 @@ void reset_network_host_transport_shadow(
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
-        if (server_screen == nullptr)
-            return;
         // A GTL no longer owns the local player count. This fresh
         // authoritative screen must inherit the live launch configuration
         // before the install uses that runtime projection to build views.
@@ -2816,8 +2792,6 @@ void reset_network_host_transport_shadow(
     }
 
     screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return;
 
     // §4.4 control-policy install: derive owner-locked from the game-start
     // config (the display save carries cross_control + the deploy-filtered

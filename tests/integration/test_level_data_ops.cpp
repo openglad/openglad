@@ -14,6 +14,10 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <utility>
 #include <unistd.h>
 #include <vector>
 
@@ -780,4 +784,274 @@ TEST(LevelDataOps, level_data_find_foe_helpers_return_null_without_valid_targets
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_near_foe(actor) == nullptr) << "find_near_foe should return null when no valid foes exist";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
+}
+
+
+// ---------------------------------------------------------------------------
+// CampaignData I/O failure paths, driven by user campaign packages on disk
+// (<user>/campaigns/<id>.glad, the files the campaign editor loads and saves).
+// ---------------------------------------------------------------------------
+
+std::string get_user_path();
+
+namespace detail_campaign_io_failures {
+
+namespace fs = std::filesystem;
+
+std::string unique_campaign_id(const char* tag)
+{
+    return std::string("test.inp.") + tag + "." + std::to_string(::getpid());
+}
+
+fs::path user_campaign_package(const std::string& id)
+{
+    return fs::path(get_user_path()) / "campaigns" / (id + ".glad");
+}
+
+// Zips `files` (relative path -> contents; a trailing '/' makes a directory
+// holding a keep file) into <user>/campaigns/<id>.glad with the engine's own
+// archive writer.
+void write_campaign_package(const std::string& id,
+                            const std::vector<std::pair<std::string, std::string>>& files)
+{
+    const fs::path stage = fs::path(get_user_path()) / ("stage." + id);
+    fs::remove_all(stage);
+    for (const auto& [rel, contents] : files)
+    {
+        if (!rel.empty() && rel.back() == '/')
+        {
+            fs::create_directories(stage / rel);
+            std::ofstream(stage / rel / "keep.txt") << "keep\n";
+            continue;
+        }
+        fs::create_directories((stage / rel).parent_path());
+        std::ofstream(stage / rel, std::ios::binary) << contents;
+    }
+    fs::create_directories(user_campaign_package(id).parent_path());
+    ASSERT_EQ(ArchiveIoError::None,
+              zip_contents_with_error(stage.string() + "/",
+                                      user_campaign_package(id).string()))
+        << "fixture package " << id << " should zip";
+    fs::remove_all(stage);
+}
+
+std::string read_bytes(const fs::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), {});
+}
+
+const char* const kGoodYaml =
+    "title: Harvested Title\n"
+    "version: \"7.5\"\n";
+
+// Removes the packages a test created and drops the metadata cache, whatever
+// the test's outcome.
+struct ScopedCampaignPackages
+{
+    std::vector<std::string> ids;
+    ~ScopedCampaignPackages()
+    {
+        for (const std::string& id : ids)
+        {
+            std::error_code ec;
+            fs::remove_all(user_campaign_package(id), ec);
+            delete_campaign(id);
+        }
+        cleanup_unpacked_campaign();
+    }
+};
+
+// The descriptor write goes to temp/campaign.yaml under the user dir and,
+// when that fails, to the same relative path under the working directory.
+// A directory named campaign.yaml at both places makes the descriptor
+// unwritable; this guard creates and removes the working-directory one.
+struct ScopedUnwritableCwdDescriptor
+{
+    ScopedUnwritableCwdDescriptor()
+    {
+        created = !fs::exists("temp/campaign.yaml");
+        fs::create_directories("temp/campaign.yaml/blocker");
+    }
+    ~ScopedUnwritableCwdDescriptor()
+    {
+        std::error_code ec;
+        if (created)
+            fs::remove_all("temp/campaign.yaml", ec);
+    }
+    bool created = false;
+};
+
+} // namespace detail_campaign_io_failures
+
+TEST(CampaignDataIo, load_of_unparseable_yaml_reports_parse_failed_and_keeps_harvested_fields)
+{
+    using namespace detail_campaign_io_failures;
+    ScopedCampaignPackages packages;
+    const std::string good_id = unique_campaign_id("yamlgood");
+    const std::string bad_id = unique_campaign_id("yamlbad");
+    packages.ids = {good_id, bad_id};
+    write_campaign_package(good_id, {{"campaign.yaml", kGoodYaml}});
+    write_campaign_package(
+        bad_id, {{"campaign.yaml", std::string(kGoodYaml) + "bad: \"unterminated\n"}});
+
+    // Control: the well-formed descriptor loads clean.
+    CampaignData good(good_id);
+    EXPECT_TRUE(good.load());
+    EXPECT_EQ(CampaignData::IoError::None, good.last_io_error());
+    EXPECT_EQ("Harvested Title", good.title);
+
+    // The same simple pairs ahead of a broken scalar: the load reports the
+    // parse failure but keeps what the line pre-harvest recovered.
+    CampaignData bad(bad_id);
+    EXPECT_FALSE(bad.load()) << "a campaign.yaml libyaml cannot parse must fail the load";
+    EXPECT_EQ(CampaignData::IoError::ParseFailed, bad.last_io_error());
+    EXPECT_EQ("Harvested Title", bad.title);
+    EXPECT_EQ("7.5", bad.version);
+}
+
+TEST(CampaignDataIo, save_as_aborts_when_descriptor_cannot_be_written)
+{
+    using namespace detail_campaign_io_failures;
+    ScopedCampaignPackages packages;
+    const std::string good_id = unique_campaign_id("descgood");
+    const std::string blocked_id = unique_campaign_id("descblocked");
+    const std::string good_dst = unique_campaign_id("descgood.dst");
+    const std::string blocked_dst = unique_campaign_id("descblocked.dst");
+    packages.ids = {good_id, blocked_id, good_dst, blocked_dst};
+    write_campaign_package(good_id, {{"campaign.yaml", kGoodYaml}});
+    write_campaign_package(blocked_id, {{"campaign.yaml/", ""}});
+
+    // Control: an ordinary package saves-as to a new id.
+    CampaignData good(good_id);
+    EXPECT_TRUE(good.save_as(good_dst));
+    EXPECT_EQ(good_dst, good.id);
+    EXPECT_TRUE(fs::exists(user_campaign_package(good_dst)));
+
+    ScopedUnwritableCwdDescriptor cwd_blocker;
+    CampaignData blocked(blocked_id);
+    EXPECT_FALSE(blocked.save_as(blocked_dst))
+        << "save_as must stop when temp/campaign.yaml cannot be written";
+    EXPECT_EQ(CampaignData::IoError::OpenWriteFailed, blocked.last_io_error());
+    EXPECT_EQ(blocked_id, blocked.id) << "a failed save_as keeps the source id";
+    EXPECT_FALSE(fs::exists(user_campaign_package(blocked_dst)))
+        << "no destination package is repacked after the descriptor failed";
+}
+
+TEST(CampaignDataIo, save_aborts_and_leaves_package_when_descriptor_cannot_be_written)
+{
+    using namespace detail_campaign_io_failures;
+    ScopedCampaignPackages packages;
+    const std::string good_id = unique_campaign_id("savegood");
+    const std::string blocked_id = unique_campaign_id("saveblocked");
+    packages.ids = {good_id, blocked_id};
+    write_campaign_package(good_id, {{"campaign.yaml", kGoodYaml}});
+    write_campaign_package(blocked_id, {{"campaign.yaml/", ""}});
+
+    // Control: an ordinary package saves in place.
+    CampaignData good(good_id);
+    good.title = "Saved Title";
+    EXPECT_TRUE(good.save());
+    EXPECT_EQ(CampaignData::IoError::None, good.last_io_error());
+
+    const std::string before = read_bytes(user_campaign_package(blocked_id));
+    ASSERT_FALSE(before.empty());
+    ScopedUnwritableCwdDescriptor cwd_blocker;
+    CampaignData blocked(blocked_id);
+    blocked.title = "Never Written";
+    EXPECT_FALSE(blocked.save())
+        << "save must stop when temp/campaign.yaml cannot be written";
+    EXPECT_EQ(CampaignData::IoError::OpenWriteFailed, blocked.last_io_error());
+    EXPECT_EQ(before, read_bytes(user_campaign_package(blocked_id)))
+        << "the aborted save must not repack the package";
+    EXPECT_FALSE(fs::exists(fs::path(get_user_path()) / "temp"))
+        << "the aborted save cleans its unpack directory";
+}
+
+TEST(CampaignDataIo, save_as_to_unwritable_destination_fails_repack_and_keeps_id)
+{
+    using namespace detail_campaign_io_failures;
+    ScopedCampaignPackages packages;
+    const std::string src_id = unique_campaign_id("repacksrc");
+    const std::string dst_id = unique_campaign_id("repackdst");
+    packages.ids = {src_id, dst_id};
+    write_campaign_package(src_id, {{"campaign.yaml", kGoodYaml}});
+
+    // A directory (with content, so std::remove cannot clear it) squats on
+    // the destination package path.
+    fs::create_directories(user_campaign_package(dst_id) / "squatter");
+
+    CampaignData src(src_id);
+    EXPECT_FALSE(src.save_as(dst_id))
+        << "save_as must fail when the destination package cannot be created";
+    EXPECT_EQ(CampaignData::IoError::PackageRepackFailed, src.last_io_error());
+    EXPECT_EQ(src_id, src.id) << "a failed save_as keeps the source id";
+
+    // Control: with the squatter gone the same save_as succeeds.
+    fs::remove_all(user_campaign_package(dst_id));
+    EXPECT_TRUE(src.save_as(dst_id));
+    EXPECT_EQ(CampaignData::IoError::None, src.last_io_error());
+    EXPECT_EQ(dst_id, src.id);
+}
+
+// A campaign save that unpacks fine but cannot rewrite its package reports
+// PackageRepackFailed, names the reason on stderr and leaves the original
+// package untouched. The obstruction is the user campaigns directory made
+// read-only for the save: the unpack only READS <id>.glad, while the repack
+// must create the rewritten archive beside it (libzip writes a temporary
+// file in that directory and renames it over the package). Lanes: POSIX
+// permissions on Linux and macOS; the Windows lane (release.yml) configures
+// BUILD_TESTING=OFF, so this file (already <unistd.h>-bound) never builds
+// there.
+TEST(CampaignDataIo, save_reports_repack_failed_when_package_cannot_be_rewritten)
+{
+    using namespace detail_campaign_io_failures;
+    ASSERT_NE(0u, ::geteuid())
+        << "run the tests as a non-root user (CI's ubuntu-latest is non-root)";
+    ScopedCampaignPackages packages;
+    const std::string id = unique_campaign_id("repackinplace");
+    packages.ids = {id};
+    write_campaign_package(id, {{"campaign.yaml", kGoodYaml}});
+    const fs::path campaigns_dir = user_campaign_package(id).parent_path();
+
+    // Control: the same package saves in place while the directory is
+    // writable.
+    CampaignData control(id);
+    control.title = "Saved Title";
+    ASSERT_TRUE(control.save());
+    ASSERT_EQ(CampaignData::IoError::None, control.last_io_error());
+
+    const std::string before = read_bytes(user_campaign_package(id));
+    ASSERT_FALSE(before.empty());
+    struct RestoreDirMode
+    {
+        fs::path dir;
+        fs::perms saved;
+        ~RestoreDirMode()
+        {
+            std::error_code ec;
+            fs::permissions(dir, saved, fs::perm_options::replace, ec);
+        }
+    } restore{campaigns_dir, fs::status(campaigns_dir).permissions()};
+    fs::permissions(campaigns_dir,
+                    fs::perms::owner_read | fs::perms::owner_exec |
+                        fs::perms::group_read | fs::perms::group_exec |
+                        fs::perms::others_read | fs::perms::others_exec,
+                    fs::perm_options::replace);
+
+    CampaignData blocked(id);
+    blocked.title = "Never Written";
+    testing::internal::CaptureStderr();
+    const bool saved = blocked.save();
+    const std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_FALSE(saved) << "a package that cannot be rewritten fails the save";
+    EXPECT_EQ(CampaignData::IoError::PackageRepackFailed,
+              blocked.last_io_error());
+    EXPECT_NE(std::string::npos,
+              err.find("campaign_save_failed id=" + id + " reason=repack_failed"))
+        << "stderr was: " << err;
+    EXPECT_EQ(before, read_bytes(user_campaign_package(id)))
+        << "the failed repack leaves the original package bytes";
+    EXPECT_FALSE(fs::exists(fs::path(get_user_path()) / "temp"))
+        << "the failed save still cleans its unpack directory";
 }

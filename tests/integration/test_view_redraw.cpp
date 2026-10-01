@@ -160,45 +160,6 @@ std::vector<int> capture_view_rect(screen& scr, const viewscreen& vs)
     return pixels;
 }
 
-struct RectBox
-{
-    Sint32 min_x = 0;
-    Sint32 min_y = 0;
-    Sint32 max_x = -1;
-    Sint32 max_y = -1;
-
-    bool empty() const { return max_x < min_x; }
-};
-
-// Bounding box (in screen coordinates) of every pixel that differs between a
-// baseline capture and a capture taken after the draw under test.
-RectBox changed_box(const std::vector<int>& before,
-                    const std::vector<int>& after,
-                    const viewscreen& vs)
-{
-    RectBox box;
-    box.min_x = vs.endx;
-    box.min_y = vs.endy;
-    box.max_x = -1;
-    box.max_y = -1;
-    if (before.size() != after.size())
-        return box;
-    for (std::size_t i = 0; i < before.size(); ++i)
-    {
-        if (before[i] == after[i])
-            continue;
-        const Sint32 x =
-            vs.xloc + static_cast<Sint32>(i % static_cast<std::size_t>(vs.xview));
-        const Sint32 y =
-            vs.yloc + static_cast<Sint32>(i / static_cast<std::size_t>(vs.xview));
-        box.min_x = std::min(box.min_x, x);
-        box.max_x = std::max(box.max_x, x);
-        box.min_y = std::min(box.min_y, y);
-        box.max_y = std::max(box.max_y, y);
-    }
-    return box;
-}
-
 } // namespace
 
 static walker* make_guy(char family, unsigned char team = 0)
@@ -832,13 +793,12 @@ TEST(ViewRedraw, control_near_the_corner_drives_the_camera_negative)
 
 
 // ---------------------------------------------------------------------------
-// viewscreen::draw_obs(LevelRuntimeData*)
+// viewscreen::refresh
 // ---------------------------------------------------------------------------
 
 // refresh() presents THIS view's rect (view.cpp:1356-1360): the window stops
 // being black, and the present vouches for (xloc,yloc,xview,yview) only — a
-// draw outside that rect stays unpresented. (The no-arg draw_obs() wrapper is
-// pinned in draw_obs_draws_the_living_and_skips_the_dead below.)
+// draw outside that rect stays unpresented.
 TEST(ViewRedraw, refresh_presents_only_this_views_rect)
 {
     screen* const active = og::runtime::current_session->myscreen_;
@@ -897,80 +857,6 @@ TEST(ViewRedraw, damage_number_context_erases_one_index_without_touching_sibling
 
     context.erase_index(42u, 0u);
     EXPECT_EQ(0u, context.state_count());
-}
-
-
-// draw_obs() draws every non-dead walker in the world's lists through
-// draw_walker at worldx - topx + xloc (walker_draw.cpp:948), skips the dead
-// (view.cpp:1885-1890), and the no-arg overload runs the same draw against
-// active_screen()->level_runtime_data() (view.cpp:1863). Read back off the
-// canvas, so a draw_obs that iterated nothing cannot pass.
-TEST(ViewRedraw, draw_obs_draws_the_living_skips_the_dead_and_follows_the_camera)
-{
-    prepare_view_world();
-
-    screen* const active = og::runtime::current_session->myscreen_;
-    ASSERT_NE(nullptr, active);
-    viewscreen* const vs = active->viewob[0].get();
-    ASSERT_NE(nullptr, vs);
-    active->set_active_canvas(CanvasTarget::World);
-
-    ScreenInterpolationContextGuard interpolation_guard(*active);
-    interpolation_guard.set(nullptr, 1.0f);
-
-    walker* const w = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, w) << "the walker to draw must exist";
-    w->setxy(100, 100);
-
-    vs->topx = 0;
-    vs->topy = 0;
-
-    // Baseline: the same call with the walker dead — everything draw_obs does
-    // besides this walker (floor effects) is in both captures.
-    w->set_dead(1);
-    active->clearbuffer();
-    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
-    const std::vector<int> without_walker = capture_view_rect(*active, *vs);
-
-    w->set_dead(0);
-    active->clearbuffer();
-    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
-    const std::vector<int> with_walker = capture_view_rect(*active, *vs);
-
-    ASSERT_NE(without_walker, with_walker)
-        << "a living walker must paint pixels a dead one does not";
-
-    const RectBox box = changed_box(without_walker, with_walker, *vs);
-    ASSERT_FALSE(box.empty()) << "the sprite must land inside the view";
-
-    // The same walker with the camera moved: the drawn pixels shift by exactly
-    // the camera delta, which is the projection rule itself.
-    vs->topx = 16;
-    vs->topy = 8;
-    w->set_dead(1);
-    active->clearbuffer();
-    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
-    const std::vector<int> shifted_base = capture_view_rect(*active, *vs);
-    w->set_dead(0);
-    active->clearbuffer();
-    ASSERT_TRUE(vs->draw_obs(&active->level_runtime_data()));
-    const std::vector<int> shifted = capture_view_rect(*active, *vs);
-    const RectBox shifted_box = changed_box(shifted_base, shifted, *vs);
-    ASSERT_FALSE(shifted_box.empty()) << "the sprite must still be drawn";
-    EXPECT_EQ(box.min_x - 16, shifted_box.min_x)
-        << "screen x is worldx - topx + xloc";
-    EXPECT_EQ(box.min_y - 8, shifted_box.min_y)
-        << "screen y is worldy - topy + yloc";
-
-    // The no-arg wrapper draws the active screen's level: same pixels.
-    vs->topx = 0;
-    vs->topy = 0;
-    active->clearbuffer();
-    ASSERT_TRUE(vs->draw_obs());
-    EXPECT_EQ(with_walker, capture_view_rect(*active, *vs))
-        << "draw_obs() must delegate to active_screen()->level_runtime_data()";
-
-    ASSERT_TRUE(active->world().remove_ob(w));
 }
 
 

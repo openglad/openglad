@@ -28,6 +28,8 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/sim_control_policy.h>
@@ -39,6 +41,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/headless_tick_interval.h>
 
 #include "curses_mount_restore.h"
 #include "transcript_capture.h"
@@ -90,6 +93,8 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
 int curses_network_testing_exercise_internal_helpers();
+short curses_network_testing_networked_win_cursor(short finished,
+                                                  int next_level);
 std::string curses_network_testing_session_build_failure(bool host,
                                                         const char* campaign,
                                                         bool* restored_out);
@@ -546,6 +551,17 @@ TEST(CursesNetwork, internal_helpers_cover_message_and_session_paths)
 {
     EXPECT_EQ(0,
               curses_network_testing_exercise_internal_helpers());
+}
+
+// A networked win whose end event names no next level (-1) advances the
+// campaign by one, like the local runtime; an explicit next level is taken
+// as given (the control).
+TEST(CursesNetwork, networked_win_without_a_next_level_advances_by_one)
+{
+    EXPECT_EQ(7, curses_network_testing_networked_win_cursor(3, 7))
+        << "an explicit next level is the cursor's next stop";
+    EXPECT_EQ(4, curses_network_testing_networked_win_cursor(3, -1))
+        << "no next level: the level after the one just won";
 }
 
 TEST(CursesNetwork, roster_reflects_two_players)
@@ -2167,6 +2183,79 @@ TEST(CursesNetwork, joiner_follows_after_team_wipe_and_switch_char_cycles)
     }
 }
 
+// §4.5 curses follow: when the WATCHED target dies, the camera advances to
+// the next follow target after the corpse (og::sim::next_follow_target_id),
+// never resting on the corpse. A hero's corpse persists in the mirror (an
+// anonymous troop is erased with its death, so only a hero can be watched
+// while dead), which makes the retarget observable. The host plays team 2 so
+// the scenario's awake team-0 troops outlive the kill: the next target is a
+// live troop, which the legacy own-seat resolution (the joiner's wiped seat)
+// can never name. Ids are held across ticks, never walker*. Paired control:
+// joiner_follows_after_team_wipe_and_switch_char_cycles above, where the
+// watched hero stays alive and the camera stays on it.
+TEST(CursesNetwork, joiner_follow_advances_past_a_watched_hero_that_dies)
+{
+    SaveData host_save;
+    SaveData join_save;
+    constexpr short kHostTeam = 2;
+    init_team_save(host_save, kHostTeam, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 30);
+
+    ASSERT_GE(og::curses::curses_network_testing_clear_server_team(
+                  *game.host_session, 1),
+              1);
+    bool engaged = false;
+    for (int i = 0; i < 120 && !engaged; ++i) {
+        advance_all(*game.host_session, *game.join_session, 1);
+        engaged = game.join_session->follow_engaged();
+    }
+    ASSERT_TRUE(engaged);
+    const std::uint32_t watched = game.join_session->followed_entity_id();
+    ASSERT_NE(0u, watched);
+    {
+        const walker* w =
+            game.join_session->mirror_world().find_by_id(watched);
+        ASSERT_NE(nullptr, w);
+        ASSERT_FALSE(w->dead());
+        ASSERT_NE(nullptr, w->myguy);
+        ASSERT_EQ("Host", w->myguy->name) << "the joiner watches the host's hero";
+    }
+
+    // Kill the watched hero's team on the authoritative server.
+    ASSERT_GE(og::curses::curses_network_testing_clear_server_team(
+                  *game.host_session, kHostTeam),
+              1);
+    bool watched_dead = false;
+    std::uint32_t expected = 0;
+    for (int i = 0; i < 120 && !watched_dead; ++i) {
+        advance_all(*game.host_session, *game.join_session, 1);
+        walker* const corpse =
+            game.join_session->mirror_world().find_by_id(watched);
+        ASSERT_NE(nullptr, corpse) << "a hero's corpse persists in the mirror";
+        watched_dead = corpse->dead();
+        if (watched_dead)
+            expected = og::sim::next_follow_target_id(
+                game.join_session->mirror_world(), corpse, false);
+    }
+    ASSERT_TRUE(watched_dead) << "the server kill must reach the mirror";
+    ASSERT_NE(0u, expected) << "an awake scenario troop outlives the kill";
+    ASSERT_NE(watched, expected);
+
+    EXPECT_TRUE(game.join_session->follow_engaged());
+    const std::uint32_t followed = game.join_session->followed_entity_id();
+    EXPECT_EQ(expected, followed)
+        << "a dead watched target advances to the next follow target";
+    const walker* const now =
+        game.join_session->mirror_world().find_by_id(followed);
+    ASSERT_NE(nullptr, now);
+    EXPECT_FALSE(now->dead()) << "the camera never rests on a corpse";
+}
+
 TEST(CursesNetwork, host_input_propagates_to_joiner_mirror)
 {
     SaveData host_save;
@@ -2485,6 +2574,88 @@ TEST(CursesNetwork, lobby_team_key_walks_the_domain_no_band_can_narrow)
     EXPECT_EQ(0, local_team()) << "and the walk wraps at the end of it";
 }
 
+// Lobby team cycling on a JOINER: a second 't' while the first request is
+// still unechoed cycles from the last REQUESTED team, not from the stale
+// replicated one. Only the joiner is polled between the presses, so the host
+// never processes the first request and the echo check in
+// request_seat_team_change fails, leaving it pending. The band is read BEFORE
+// the host is pumped (pumping first would echo the request and clear the
+// pending state, and the stale-team path would be the one exercised). The
+// paired control is the host's own echo-per-press walk,
+// lobby_team_key_walks_the_domain_no_band_can_narrow.
+TEST(CursesNetwork, joiner_second_team_press_cycles_from_the_pending_request)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_NE(host_lobby, nullptr);
+    ASSERT_NE(join_lobby, nullptr);
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+    bool converged = false;
+    for (int i = 0; i < 200 && !converged; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        converged = host_lobby->players().size() == 2 &&
+            join_lobby->players().size() == 2;
+    }
+    ASSERT_TRUE(converged);
+
+    const std::vector<std::uint8_t> local = join_lobby->local_player_indices();
+    ASSERT_EQ(1u, local.size());
+    const auto team_of = [&local](const CursesLobby& lobby) -> short {
+        for (const og::sim::LobbyPlayer& player : lobby.players()) {
+            if (player.player_index == local.front())
+                return static_cast<short>(player.team);
+        }
+        return -1;
+    };
+    ASSERT_EQ(1, team_of(*join_lobby));
+    const std::string seat_label =
+        std::format("Requested P{} -> ", local.front() + 1);
+
+    join_term.push_char(U't');
+    join_lobby->poll(join_term, clock);
+    ASSERT_TRUE(status_contains(
+        *join_lobby, seat_label + og::sim::team_color_name(2)))
+        << "the first press requests one step on and stays pending";
+    ASSERT_EQ(1, team_of(*join_lobby)) << "no echo: the host was not polled";
+
+    join_term.push_char(U't');
+    join_lobby->poll(join_term, clock);
+    EXPECT_TRUE(status_contains(
+        *join_lobby, seat_label + og::sim::team_color_name(3)))
+        << "the second press must cycle from the pending request (team 2), "
+           "not from the stale replicated team 1";
+    EXPECT_FALSE(status_contains(
+        *join_lobby, seat_label + og::sim::team_color_name(2)));
+
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    EXPECT_EQ(3, team_of(*host_lobby))
+        << "the authoritative roster lands on the second request";
+    EXPECT_EQ(3, team_of(*join_lobby));
+    EXPECT_FALSE(status_contains(*join_lobby, seat_label))
+        << "the echo clears the pending band";
+
+    host_lobby->cancel();
+    join_lobby->cancel();
+}
+
 // The lobby "Level:" line reads scenario titles off the LOCAL mount, so when
 // the mounted campaign differs from the lobby's campaign it must show the
 // bare number — never the local campaign's title for a colliding level
@@ -2594,6 +2765,67 @@ TEST(CursesNetwork, classic_lobby_allows_shared_team_request)
 
     host_lobby->cancel();
     join_lobby->cancel();
+}
+
+// A peer attached to the hosting lobby's transport that never took a lobby
+// seat enters the level as a SPECTATOR: the host's GameServer admits it at GO
+// and seeds it with the initial setup and a keyframe, while the host plays on
+// its own seat. (The LobbyServer keeps an unjoined peer attached until GO:
+// "connected but not joined" never blocks a start.)
+TEST(CursesNetwork, unjoined_peer_on_the_host_transport_enters_as_a_spectator)
+{
+    SaveData host_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto watcher = server->create_client_transport();
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, /*difficulty=*/1, server, host_client,
+        kPinnedCursesMatchSeed);
+    ASSERT_NE(host_lobby, nullptr);
+
+    HeadlessTerminal host_term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 20; ++i)
+        host_lobby->poll(host_term, clock);
+    ASSERT_EQ(1u, host_lobby->players().size())
+        << "the watcher never joined, so the roster is the host alone";
+
+    host_lobby->request_start();
+    bool host_ready = false;
+    for (int i = 0; i < 200 && !host_ready; ++i)
+        host_ready = host_lobby->poll(host_term, clock);
+    ASSERT_TRUE(host_ready);
+    std::unique_ptr<CursesGameSession> host_session =
+        host_lobby->take_session();
+    ASSERT_NE(host_session, nullptr);
+
+    bool saw_setup = false;
+    bool saw_snapshot = false;
+    for (int i = 0; i < 60 && !(saw_setup && saw_snapshot); ++i) {
+        host_session->send_input(InputState{});
+        host_session->advance();
+        for (const og::sim::TypedReceivedMessage& message :
+             watcher->poll_typed()) {
+            if (message.kind ==
+                    og::sim::TypedReceivedMessageKind::InitialSetup &&
+                message.initial_setup) {
+                saw_setup = true;
+                EXPECT_EQ(1, message.initial_setup->current_scenario);
+            }
+            if (message.kind == og::sim::TypedReceivedMessageKind::Snapshot &&
+                message.snapshot)
+                saw_snapshot = true;
+        }
+    }
+    EXPECT_TRUE(saw_setup)
+        << "an unseated attached peer must be admitted as a spectator and "
+           "seeded with the initial setup";
+    EXPECT_TRUE(saw_snapshot) << "and a keyframe";
+    EXPECT_NE(0u, host_session->followed_entity_id())
+        << "the host still plays its own seat";
 }
 
 // The terminal lobby exposes the same exact-seat operation as SDL Base Camp:
@@ -2971,6 +3203,157 @@ TEST(CursesNetworkProcess, dedicated_server_transitions_from_lobby_to_gameplay)
               server.output().find("headless_server_tick_interval_ms"));
 }
 
+// Two dedicated-server rules in ONE process run (a process test costs
+// seconds, so they share the launch):
+// (a) a peer connected to the server's lobby that never takes a seat enters
+//     the match as a SPECTATOR — admitted at GO and seeded with the initial
+//     setup and a keyframe, not dropped;
+// (b) the lobby host's speed request retimes the server's tick cadence: the
+//     GameServer applies the host peer's timer_wait_request to the world and
+//     the server loop re-derives its frame interval from it, logging the new
+//     interval.
+// The paired control for both is dedicated_server_transitions_from_lobby_to_gameplay
+// (a seated host, no speed request: one interval line).
+TEST(CursesNetworkProcess, dedicated_server_admits_an_unseated_spectator_and_retimes_on_the_host_speed_request)
+{
+    const std::optional<int> port = external_server_free_tcp_port();
+    ASSERT_TRUE(port.has_value());
+
+    ExternalServerProcess server({
+        "--host", "127.0.0.1",
+        "--port", std::to_string(*port),
+        "--lobby-poll-ms", "0",
+    });
+    ASSERT_TRUE(server.launched());
+    ASSERT_TRUE(server.wait_for_output("headless_server_listening", 10s))
+        << server.output();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 1u;
+    client_options.automatic_reconnection = false;
+    og::sim::WebSocketClientTransport host(
+        std::format("ws://127.0.0.1:{}", *port), client_options);
+    host.accept_connections();
+    ASSERT_TRUE(poll_external_client_until(
+        host,
+        [&host](const auto&) {
+            return host.connected_peers() ==
+                std::vector<og::sim::PeerId>{1u};
+        })) << server.output();
+
+    og::sim::LobbyCharacterSlot slot = make_network_roster_slot(
+        0u, 7101, "Process Soldier", FAMILY_SOLDIER);
+    slot.deployed = true;
+    slot.character.strength = 12;
+    slot.character.dexterity = 11;
+    slot.character.constitution = 13;
+    slot.character.intelligence = 10;
+    slot.character.armor = 5;
+    slot.character.level = 1;
+    slot.character.teamnum = 0;
+
+    constexpr std::uint32_t join_request_id = 51u;
+    auto join = std::make_shared<og::sim::LobbyMessage>();
+    join->payload = og::sim::LobbyJoinMessage{
+        .player = og::sim::LobbyPlayer{
+            .name = "Process Host",
+            .company = "Process Company",
+            .team = 0,
+            .character_slots = {slot},
+        },
+        .request_id = join_request_id,
+    };
+    host.send_lobby_message(1u, join);
+    ASSERT_TRUE(poll_external_client_until(
+        host,
+        [](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::LobbyState &&
+                    message.lobby_state &&
+                    message.lobby_state->last_join_request_id ==
+                        join_request_id)
+                    return true;
+            }
+            return false;
+        })) << server.output();
+
+    // The watcher connects AFTER the host joined and never sends a join.
+    og::sim::WebSocketClientTransport watcher(
+        std::format("ws://127.0.0.1:{}", *port), client_options);
+    watcher.accept_connections();
+    ASSERT_TRUE(poll_external_client_until(
+        watcher,
+        [&watcher](const auto&) {
+            return watcher.connected_peers() ==
+                std::vector<og::sim::PeerId>{1u};
+        })) << server.output();
+
+    auto start = std::make_shared<og::sim::LobbyMessage>();
+    start->payload = og::sim::LobbyStartGameMessage{
+        .player_index = 0u,
+        .request_id = 52u,
+    };
+    host.send_lobby_message(1u, start);
+
+    const std::string default_interval = std::format(
+        "headless_server_tick_interval_ms {}\n",
+        og::server::compute_headless_tick_interval_ms(
+            og::sim::DEFAULT_TIMER_WAIT));
+    ASSERT_TRUE(server.wait_for_output(default_interval, 20s))
+        << server.output();
+
+    // (a) the spectator is seeded.
+    bool watcher_setup = false;
+    bool watcher_snapshot = false;
+    EXPECT_TRUE(poll_external_client_until(
+        watcher,
+        [&](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::InitialSetup &&
+                    message.initial_setup) {
+                    watcher_setup = true;
+                    EXPECT_EQ(1, message.initial_setup->current_scenario);
+                }
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::Snapshot &&
+                    message.snapshot)
+                    watcher_snapshot = true;
+            }
+            return watcher_setup && watcher_snapshot;
+        })) << "an unseated lobby peer must be admitted as a spectator and "
+               "seeded with the initial setup and a keyframe\n"
+            << server.output();
+
+    // (b) the host's speed request retimes the server loop.
+    constexpr std::int8_t kRequestedTimerWait = 12;
+    const std::uint32_t requested_ms =
+        og::server::compute_headless_tick_interval_ms(kRequestedTimerWait);
+    ASSERT_NE(requested_ms,
+              og::server::compute_headless_tick_interval_ms(
+                  og::sim::DEFAULT_TIMER_WAIT))
+        << "the request must map to a different cadence to be observable";
+    const std::string requested_interval = std::format(
+        "headless_server_tick_interval_ms {}\n", requested_ms);
+    EXPECT_EQ(std::string::npos, server.output().find(requested_interval))
+        << "nothing retimes the loop before the request";
+    bool retimed = false;
+    for (std::uint32_t tick = 1; tick <= 200 && !retimed; ++tick) {
+        auto input = std::make_shared<InputState>();
+        input->timer_wait_request = kRequestedTimerWait;
+        host.send_input(1u, input, tick);
+        (void)host.poll_typed();
+        (void)watcher.poll_typed();
+        retimed = server.wait_for_output(requested_interval, 50ms);
+    }
+    EXPECT_TRUE(retimed)
+        << "the host's timer_wait_request must retime the server loop\n"
+        << server.output();
+
+    EXPECT_TRUE(server.terminate_cleanly()) << server.output();
+}
+
 // --- LINEUP §6: kick and disconnect from the curses lobby ---------------
 
 // The host walks the seat cursor onto the joiner's seat and presses 'k'.
@@ -3069,6 +3452,107 @@ TEST(CursesNetwork, host_kick_key_removes_the_peer_and_tells_it_why)
         << "the host names the machine it removed, in the shared row label";
     EXPECT_FALSE(host_lobby->connection_alert().has_value())
         << "the host's own link is healthy";
+}
+
+// R13: a Kicked notice tears the joiner's lobby down, and NOTHING after it
+// in the same polled batch may apply. The LobbyServer sends the courtesy
+// notice and then disconnects the peer, whose rebuild broadcasts a state;
+// over a relay/WebSocket link that broadcast can already sit in the doomed
+// peer's queue, and a joiner that has not polled in between drains both in
+// ONE batch. Applying the trailing state resurrected a roster over the dead
+// links. The test plays the server on a raw InProcessTransport so the batch
+// order is exactly the one the product's server produces.
+TEST(CursesNetwork, kicked_notice_stops_applying_the_rest_of_its_polled_batch)
+{
+    og::sim::LobbyState state;
+    state.host_player_id = 0;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0,
+        .seat_id = 7,
+        .machine_id = 3,
+        .name = "Host",
+        .company = "HOST CO",
+        .team = 0,
+        .character_slots = {},
+        .ready = false,
+        .is_host = true,
+    });
+    // A hand-built state must be one the wire can carry.
+    const std::optional<og::sim::LobbyState> round_trip =
+        og::sim::deserialize_lobby_state_message(
+            og::sim::serialize_lobby_state_message(state));
+    ASSERT_TRUE(round_trip.has_value());
+    ASSERT_EQ(state, *round_trip);
+
+    struct JoinRig {
+        SaveData save;
+        std::shared_ptr<og::sim::InProcessTransport> server;
+        std::shared_ptr<og::sim::InProcessTransport> client;
+        std::unique_ptr<CursesLobby> lobby;
+        og::sim::PeerId joiner = 0;
+    };
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    // One join lobby on a raw server link, polled once so it sends its
+    // settings+join; the server side drains those and learns the joiner's
+    // peer id from them (the messages are otherwise ignored).
+    const auto make_rig = [&](JoinRig& rig) {
+        init_team_save(rig.save, 1, FAMILY_ELF, "Joiner");
+        rig.server = og::sim::InProcessTransport::create_server();
+        rig.server->accept_connections();
+        rig.client = rig.server->create_client_transport();
+        rig.lobby = make_join_lobby_over_transport_for_testing(
+            rig.save, 1, rig.client, rig.client->local_peer_id());
+        EXPECT_FALSE(rig.lobby->poll(term, clock));
+        bool saw_join = false;
+        for (const og::sim::TypedReceivedMessage& message :
+             rig.server->poll_typed()) {
+            rig.joiner = message.peer_id;
+            saw_join = true;
+        }
+        ASSERT_TRUE(saw_join) << "the joiner's first poll sends its join";
+    };
+
+    // Positive control: the same state ALONE is applied -- the roster
+    // appears and nothing is alerted.
+    {
+        JoinRig rig;
+        make_rig(rig);
+        ASSERT_NE(nullptr, rig.lobby);
+        rig.server->send_lobby_state(
+            rig.joiner, std::make_shared<og::sim::LobbyState>(state));
+        rig.lobby->poll(term, clock);
+        ASSERT_EQ(1u, rig.lobby->players().size())
+            << "a lone lobby state must be applied";
+        EXPECT_EQ("Host", rig.lobby->players()[0].name);
+        EXPECT_FALSE(rig.lobby->connection_alert().has_value());
+    }
+
+    // The batch: Kicked, THEN the state, both queued before one poll.
+    JoinRig rig;
+    make_rig(rig);
+    ASSERT_NE(nullptr, rig.lobby);
+    rig.server->send_lobby_message(
+        rig.joiner,
+        std::make_shared<og::sim::LobbyMessage>(
+            og::sim::LobbyMessage{.payload = og::sim::LobbyKickedMessage{}}));
+    rig.server->send_lobby_state(
+        rig.joiner, std::make_shared<og::sim::LobbyState>(state));
+    EXPECT_FALSE(rig.lobby->poll(term, clock));
+
+    ASSERT_TRUE(rig.lobby->connection_alert().has_value())
+        << "the Kicked notice must land";
+    EXPECT_EQ("KICKED BY HOST", *rig.lobby->connection_alert());
+    EXPECT_EQ(0u, rig.lobby->players().size())
+        << "a lobby state behind a Kicked notice in one batch must be "
+           "ignored: the lobby is torn down";
+    EXPECT_FALSE(rig.lobby->is_host());
+
+    // The next poll neither spins nor re-arms anything.
+    EXPECT_FALSE(rig.lobby->poll(term, clock));
+    EXPECT_EQ(0u, rig.lobby->players().size());
+    ASSERT_TRUE(rig.lobby->connection_alert().has_value());
+    EXPECT_EQ("KICKED BY HOST", *rig.lobby->connection_alert());
 }
 
 // LINEUP §6 on the DEDICATED shape: a standalone LobbyServer with two JOIN
@@ -3686,4 +4170,79 @@ TEST(CursesNetwork, host_start_on_a_failed_stage_names_the_stage)
         << term.dump();
     EXPECT_NE(nullptr, lobby->take_session())
         << "and the accepted start must yield the session";
+}
+
+namespace {
+
+// Types 's' (GO) on the lobby's first painted frame, then nothing until
+// `escape_frame` frames have been painted, then Esc once. The level loop
+// paints a frame per tick, so the Esc lands inside whichever loop is running
+// at that point: in the level it is the withdraw key, in a lobby that has
+// not started it would be cancel.
+class GoThenWithdrawTerminal final : public ITerminal
+{
+public:
+    explicit GoThenWithdrawTerminal(int escape_frame)
+        : escape_frame_(escape_frame)
+    {
+    }
+
+    int rows() const override { return 24; }
+    int cols() const override { return 80; }
+    bool supports_unicode() const override { return false; }
+    bool supports_color() const override { return false; }
+    void clear() override {}
+    void put(int, int, char32_t, Color, Color, bool) override {}
+    void put_str(int, int, std::string_view, Color, Color, bool) override {}
+    void present() override { ++frames_; }
+    Key poll_key(bool) override
+    {
+        if (!sent_go_ && frames_ >= 1) {
+            sent_go_ = true;
+            return Key::character(U's');
+        }
+        if (!sent_escape_ && frames_ >= escape_frame_) {
+            sent_escape_ = true;
+            return Key::special(KeyCode::Escape);
+        }
+        return Key::none();
+    }
+    void set_cursor_visible(bool) override {}
+    void beep() override {}
+
+private:
+    int escape_frame_ = 0;
+    int frames_ = 0;
+    bool sent_go_ = false;
+    bool sent_escape_ = false;
+};
+
+} // namespace
+
+// run_curses_lobby is the whole networked door: once a start is negotiated
+// it takes the session and hands it to the level loop, returning the LEVEL's
+// verdict — here the player's Esc withdraw, which only the level loop can
+// report (a lobby that backed out answers a default result with
+// withdrew == false). Control: the lobby really did hand its session over.
+TEST(CursesNetwork, run_curses_lobby_plays_the_negotiated_level)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto lobby = make_host_lobby_over_transport_for_testing(
+        save, 1, server, host_client, kPinnedCursesMatchSeed);
+    ASSERT_NE(lobby, nullptr);
+
+    GoThenWithdrawTerminal term(/*escape_frame=*/60);
+    FakeClock clock;
+    const GameRunResult result = run_curses_lobby(*lobby, term, clock);
+    EXPECT_TRUE(result.withdrew)
+        << "the Esc withdraw is the level loop's verdict, passed back";
+    EXPECT_FALSE(result.ended);
+    EXPECT_FALSE(lobby->cancelled()) << "the lobby started instead of backing out";
+    EXPECT_EQ(nullptr, lobby->take_session())
+        << "the session was taken by run_curses_lobby itself";
 }

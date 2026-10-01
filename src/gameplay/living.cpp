@@ -34,18 +34,9 @@
 #include <openglad/core/util.h>
 #include <cstring>
 
-// RNG now comes from current_game->world->rng_.
-namespace
-{
-std::uint32_t query_difficulty_percent()
-{
-    if (current_game == nullptr || current_game->world == nullptr)
-        return 100u;
-    const int difficulty = current_game->world->difficulty;
-    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
-}
-} // namespace
+#include "sim_difficulty.h"
 
+// RNG now comes from current_game->world->rng_.
 living::living(const PixieData& data)
     : walker(data)
 {
@@ -344,13 +335,6 @@ bool living::act()
 
 				//break;
 			}
-			// We are a generator
-		case ACT_GENERATE:
-			{
-				Log("LIVING Generator?\n");
-				//              act_generate();
-				break;
-			}
 			// We are a weapon
 		case ACT_FIRE:
 			{
@@ -416,7 +400,7 @@ bool living::act()
 					else if (!current_game->world->rng_.next(2))
 						set_foe(current_game->world->find_nearest_foe(this));
 					else
-						stats_->try_command(COMMAND_RANDOM_WALK,20);
+						stats_->try_random_walk(20);
 
 					return 1;
 				}
@@ -760,7 +744,7 @@ bool living::act_random()
 	if (!current_game->world->rng_.next(80) || (!foe()))
 		set_foe(current_game->world->find_near_foe(this));
 	if (!foe())
-		return stats_->try_command(COMMAND_RANDOM_WALK,40);
+		return stats_->try_random_walk(40);
 
 	xdist = static_cast<short>(foe()->xpos() - xpos());
 	ydist = static_cast<short>(foe()->ypos() - ypos());

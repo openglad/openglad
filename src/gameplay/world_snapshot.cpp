@@ -225,17 +225,10 @@ bool has_materialized_grid(const og::sim::WorldSnapshot& snapshot) noexcept
            grid_cell_count(snapshot.grid_width, snapshot.grid_height);
 }
 
+// Only called on a baseline that has a materialized grid (apply_delta
+// returns before it otherwise, and only writes elements in between).
 void normalize_materialized_grid(og::sim::WorldSnapshot& snapshot)
 {
-    if (!has_materialized_grid(snapshot))
-    {
-        snapshot.grid_dirty = false;
-        snapshot.grid_full_resend = false;
-        snapshot.full_grid_data.clear();
-        snapshot.grid_dirty_tiles.clear();
-        return;
-    }
-
     snapshot.grid_dirty = true;
     snapshot.grid_full_resend = true;
     snapshot.grid_dirty_tiles.clear();
@@ -455,7 +448,7 @@ constexpr bool entity_field_wire_plan_is_valid()
         {
             const EntityFieldWriteStep& step =
                 kEntityFieldWirePlan.steps[kEntityFieldWirePlan.step_start[bit] + i];
-            if (step.size != 1 && step.size != 2 && step.size != 4 && step.size != 8)
+            if (step.size != 1 && step.size != 2 && step.size != 4)
                 return false;
             if (static_cast<std::size_t>(step.offset) + step.size >
                 sizeof(og::sim::EntitySnapshot))
@@ -472,7 +465,7 @@ constexpr bool entity_field_wire_plan_is_valid()
 
 static_assert(entity_field_wire_plan_is_valid(),
               "entity field wire plan drift -- every step must be an in-bounds "
-              "1/2/4/8-byte EntitySnapshot read");
+              "1/2/4-byte EntitySnapshot read");
 
 std::uint8_t* write_u32_le(std::uint8_t* out, std::uint32_t value)
 {
@@ -491,7 +484,9 @@ std::uint8_t* write_u64_le(std::uint8_t* out, std::uint64_t value)
 }
 
 // Host byte order never reaches the wire: every scalar is composed
-// little-endian byte by byte, exactly as the append_* writers do.
+// little-endian byte by byte, exactly as the append_* writers do. `size` is
+// 1, 2 or 4: entity_field_wire_plan_is_valid() (static_assert above) admits
+// no other step width, so the 4-byte write is the remaining case.
 std::uint8_t* write_field_le(std::uint8_t* out,
                              const std::uint8_t* src,
                              std::uint8_t size)
@@ -509,21 +504,12 @@ std::uint8_t* write_field_le(std::uint8_t* out,
         out[1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
         return out + 2;
     }
-    case 4:
-    {
-        std::uint32_t value = 0;
-        std::memcpy(&value, src, sizeof(value));
-        return write_u32_le(out, value);
-    }
-    case 8:
-    {
-        std::uint64_t value = 0;
-        std::memcpy(&value, src, sizeof(value));
-        return write_u64_le(out, value);
-    }
     default:
-        throw std::runtime_error("snapshot serialization: unsupported field size");
+        break;
     }
+    std::uint32_t value = 0;
+    std::memcpy(&value, src, sizeof(value));
+    return write_u32_le(out, value);
 }
 
 void read_raw_trivial_field(ByteReader& reader,
@@ -545,21 +531,12 @@ void read_raw_trivial_field(ByteReader& reader,
         std::memcpy(dst, &value, sizeof(value));
         return;
     }
-    case 4:
-    {
-        const std::uint32_t value = reader.read_u32(field_name);
-        std::memcpy(dst, &value, sizeof(value));
-        return;
-    }
-    case 8:
-    {
-        const std::uint64_t value = reader.read_u64(field_name);
-        std::memcpy(dst, &value, sizeof(value));
-        return;
-    }
     default:
-        throw std::runtime_error("snapshot deserialization: unsupported field size");
+        break;
     }
+    // 4 bytes: the only width left (see write_field_le).
+    const std::uint32_t value = reader.read_u32(field_name);
+    std::memcpy(dst, &value, sizeof(value));
 }
 
 void deserialize_entity_field(ByteReader& reader,
@@ -584,11 +561,10 @@ void deserialize_entity_field(ByteReader& reader,
         break;
     }
 
+    // Non-null: bit_index < FIELD_COUNT (for_each_dirty_field_bit masks with
+    // kDirtyMaskValidBits), the manual bits returned above, and
+    // entity_snapshot_field_table_is_valid() gives every other bit a desc.
     const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
-    if (field == nullptr)
-    {
-        throw std::runtime_error("snapshot deserialization: unknown entity field bit");
-    }
 
     std::uint8_t* const dst =
         reinterpret_cast<std::uint8_t*>(&snapshot) + field->snap_offset;
@@ -633,9 +609,11 @@ void deserialize_entity_fields(ByteReader& reader,
     });
 }
 
-void copy_entity_field(og::sim::EntitySnapshot& dst,
-                       const og::sim::EntitySnapshot& src,
-                       std::uint8_t bit_index)
+} // namespace
+
+void og::sim::copy_entity_field(og::sim::EntitySnapshot& dst,
+                                const og::sim::EntitySnapshot& src,
+                                std::uint8_t bit_index)
 {
     switch (bit_index)
     {
@@ -652,22 +630,22 @@ void copy_entity_field(og::sim::EntitySnapshot& dst,
         break;
     }
 
+    // Non-null for the same reason as in deserialize_entity_field.
     const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
-    if (field == nullptr)
-    {
-        throw std::runtime_error("apply_delta: unknown entity field bit");
-    }
 
     std::memcpy(reinterpret_cast<std::uint8_t*>(&dst) + field->snap_offset,
                 reinterpret_cast<const std::uint8_t*>(&src) + field->snap_offset,
                 field->size);
 }
 
+namespace
+{
+
 void apply_entity_delta_fields(og::sim::EntitySnapshot& baseline,
                                const og::sim::EntitySnapshot& delta)
 {
     for_each_dirty_field_bit(delta.dirty_mask, [&baseline, &delta](std::uint8_t bit) {
-        copy_entity_field(baseline, delta, bit);
+        og::sim::copy_entity_field(baseline, delta, bit);
     });
 }
 
@@ -2198,11 +2176,10 @@ void rebind_guys(GameWorld& world,
 
             if (claimed_ids.insert(guy_id).second)
             {
-                auto owned_it = guy_storage.find(guy_id);
-                if (owned_it != guy_storage.end() && owned_it->second != nullptr)
-                    entity->set_owned_myguy(std::move(owned_it->second));
-                else
-                    entity->set_myguy_view(guy_it->second);
+                // guy_storage and guy_lookup are filled together with the
+                // same keys, every stored guy is a fresh make_unique, and
+                // claimed_ids lets each id move out exactly once.
+                entity->set_owned_myguy(std::move(guy_storage.at(guy_id)));
             }
             else
             {
@@ -2422,35 +2399,32 @@ void capture_world_grid(const GameWorld& world,
     }
 }
 
-void capture_entity_stats(const statistics* entity_stats,
+void capture_entity_stats(const statistics& entity_stats,
                           og::sim::EntitySnapshot& snapshot)
 {
-    if (entity_stats == nullptr)
-        return;
-
-    snapshot.hitpoints = entity_stats->hitpoints();
-    snapshot.max_hitpoints = entity_stats->max_hitpoints();
-    snapshot.magicpoints = entity_stats->magicpoints();
-    snapshot.max_magicpoints = entity_stats->max_magicpoints();
-    snapshot.max_heal_delay = entity_stats->max_heal_delay();
-    snapshot.current_heal_delay = entity_stats->current_heal_delay();
-    snapshot.max_magic_delay = entity_stats->max_magic_delay();
-    snapshot.current_magic_delay = entity_stats->current_magic_delay();
-    snapshot.magic_per_round = entity_stats->magic_per_round();
-    snapshot.heal_per_round = entity_stats->heal_per_round();
-    snapshot.armor = entity_stats->armor();
-    snapshot.level = entity_stats->level();
-    snapshot.bit_flags = entity_stats->bit_flags();
-    snapshot.delete_me = entity_stats->delete_me();
-    snapshot.frozen_delay = entity_stats->frozen_delay();
-    snapshot.weapon_cost = entity_stats->weapon_cost();
+    snapshot.hitpoints = entity_stats.hitpoints();
+    snapshot.max_hitpoints = entity_stats.max_hitpoints();
+    snapshot.magicpoints = entity_stats.magicpoints();
+    snapshot.max_magicpoints = entity_stats.max_magicpoints();
+    snapshot.max_heal_delay = entity_stats.max_heal_delay();
+    snapshot.current_heal_delay = entity_stats.current_heal_delay();
+    snapshot.max_magic_delay = entity_stats.max_magic_delay();
+    snapshot.current_magic_delay = entity_stats.current_magic_delay();
+    snapshot.magic_per_round = entity_stats.magic_per_round();
+    snapshot.heal_per_round = entity_stats.heal_per_round();
+    snapshot.armor = entity_stats.armor();
+    snapshot.level = entity_stats.level();
+    snapshot.bit_flags = entity_stats.bit_flags();
+    snapshot.delete_me = entity_stats.delete_me();
+    snapshot.frozen_delay = entity_stats.frozen_delay();
+    snapshot.weapon_cost = entity_stats.weapon_cost();
     for (int i = 0; i < NUM_SPECIALS; ++i)
-        snapshot.special_cost[i] = entity_stats->special_cost(i);
-    snapshot.old_order = entity_stats->old_order();
-    snapshot.old_family = entity_stats->old_family();
-    snapshot.last_distance = entity_stats->last_distance();
-    snapshot.current_distance = entity_stats->current_distance();
-    snapshot.controller_id = entity_stats->controller_id();
+        snapshot.special_cost[i] = entity_stats.special_cost(i);
+    snapshot.old_order = entity_stats.old_order();
+    snapshot.old_family = entity_stats.old_family();
+    snapshot.last_distance = entity_stats.last_distance();
+    snapshot.current_distance = entity_stats.current_distance();
+    snapshot.controller_id = entity_stats.controller_id();
 }
 
 og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
@@ -2546,7 +2520,7 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.owner_id = entity.owner_id();
     snapshot.collide_ob_id = entity.collide_ob_id();
 
-    capture_entity_stats(entity.stats(), snapshot);
+    capture_entity_stats(*entity.stats(), snapshot);
 
     if (const auto* weapon = dynamic_cast<const weap*>(&entity);
         weapon != nullptr)

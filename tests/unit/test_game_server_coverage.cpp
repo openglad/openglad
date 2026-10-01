@@ -6,6 +6,7 @@
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -17,7 +18,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <format>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -1722,6 +1726,555 @@ TEST(GameServerCoverage, revived_walker_is_reclaimed_for_connected_and_grace_sea
                   server.disconnected_players().front().control->entity_id())
             << "a grace-window seat must adopt its revived hero too";
     }
+}
+
+std::vector<std::uint8_t> input_frame(std::uint32_t tick, const InputState& input)
+{
+    const auto bytes = og::sim::serialize_input(tick, input);
+    return {bytes.begin(), bytes.end()};
+}
+
+std::vector<std::uint8_t> hello_frame(const og::sim::SessionToken& token)
+{
+    og::sim::HelloMessage hello;
+    hello.session_token = token;
+    const auto bytes = og::sim::serialize_hello(hello);
+    return {bytes.begin(), bytes.end()};
+}
+
+// Rule (game_server.cpp handle_transport_disconnect): a seat parked in its
+// grace window keeps playing out of its NEWEST pending input, not whichever
+// one the unordered pending map happens to yield last. Two future inputs are
+// pending at the disconnect; the repeated input carries the later tick's
+// held keys (pressed flags are cleared).
+TEST(GameServerCoverage, grace_seat_repeats_its_newest_pending_input)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({96u});
+    server.poll_incoming_messages();
+
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(64, 64);
+    server.bind_player(96u, 0u, fixture.world().my_team, control);
+    server.step();
+    transport.queue_raw(
+        96u, og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+    server.step();
+
+    const std::uint32_t next_tick = fixture.world().tick_count_ + 1u;
+    InputState older;
+    older.players[0].held[static_cast<int>(InputAction::MoveLeft)] = true;
+    older.players[0].pressed[static_cast<int>(InputAction::Fire)] = true;
+    InputState newer;
+    newer.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    newer.players[0].pressed[static_cast<int>(InputAction::Fire)] = true;
+    // Queue the newer tick FIRST so arrival order cannot stand in for tick
+    // order. Both sit ahead of the tick this step consumes.
+    transport.queue_raw(96u, input_frame(next_tick + 6u, newer));
+    transport.queue_raw(96u, input_frame(next_tick + 3u, older));
+    server.step();
+    ASSERT_TRUE(server.disconnected_players().empty());
+
+    transport.set_connected({});
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    const PlayerInput& repeated =
+        server.disconnected_players().front().repeated_input;
+    EXPECT_TRUE(repeated.held[static_cast<int>(InputAction::MoveRight)])
+        << "the grace seat must repeat the newest pending input";
+    EXPECT_FALSE(repeated.held[static_cast<int>(InputAction::MoveLeft)])
+        << "the older pending input must not win";
+    EXPECT_FALSE(repeated.pressed[static_cast<int>(InputAction::Fire)])
+        << "a parked seat never repeats a press";
+}
+
+// Rule (handle_transport_disconnect): one grace record per seat. When the
+// same player seat disconnects again while an older record for it is still
+// parked, the record is REPLACED with the newer seat state instead of a second
+// record being appended for the same player.
+TEST(GameServerCoverage, second_disconnect_of_a_seat_refreshes_its_grace_record)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    walker* const first = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const second = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+    server.bind_player(97u, 0u, fixture.world().my_team, first);
+    transport.set_connected({});
+    server.poll_incoming_messages();
+
+    // Paired control: the first disconnect parks exactly one record.
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    EXPECT_EQ(first, server.disconnected_players().front().control);
+    EXPECT_EQ(0u, server.disconnected_players().front().player_index);
+
+    // The same player seat, now bound on another connection, drops too.
+    transport.set_connected({98u});
+    server.poll_incoming_messages();
+    server.bind_player(98u, 0u, fixture.world().my_team, second);
+    transport.set_connected({});
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.disconnected_players().size())
+        << "a seat's second disconnect must not duplicate its grace record";
+    EXPECT_EQ(second, server.disconnected_players().front().control)
+        << "the record must carry the newer seat's state";
+    EXPECT_EQ(0u, server.disconnected_players().front().player_index);
+}
+
+// Rule (process_non_input_messages, Input): input from a connected peer that
+// is neither bound to a seat nor an admitted spectator is ignored entirely;
+// even the host's timer-wait request inside it has no effect until the peer
+// holds a seat.
+TEST(GameServerCoverage, input_from_an_unseated_peer_is_ignored_entirely)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+    server.connect_client(91u);
+    fixture.world().timer_wait = 3;
+
+    InputState input;
+    input.timer_wait_request = 11;
+    transport.queue_raw(91u, input_frame(1u, input));
+    server.step();
+    EXPECT_EQ(3, fixture.world().timer_wait)
+        << "an unseated peer's input must not reach the timer";
+
+    // Paired control: the same frame from the same (host) peer is honoured
+    // once it holds a seat.
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    server.bind_player(91u, 0u, fixture.world().my_team, control);
+    transport.queue_raw(91u, input_frame(1u, input));
+    server.step();
+    EXPECT_EQ(11, fixture.world().timer_wait);
+}
+
+// Rule (process_non_input_messages, Input): a seat's pending-input queue is
+// capped at 256 distinct ticks; a 257th distinct tick arriving while the
+// queue is full is dropped. Past ticks bypass the future window, so the flood
+// uses ticks behind the live one: 256 idle frames, then the newest frame
+// holding MoveRight. The newest pending tick's held keys become the seat's
+// last known input, read back through the grace record after a disconnect.
+TEST(GameServerCoverage, pending_input_queue_is_capped_at_256_ticks)
+{
+    const auto held_right_after_flood = [](std::uint32_t filler_count) {
+        TestGameWorld fixture;
+        CoverageTransport transport;
+        og::sim::GameServer server(fixture.world(), fixture.events, transport);
+        transport.set_connected({96u});
+        server.poll_incoming_messages();
+        walker* const control =
+            fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        EXPECT_NE(nullptr, control);
+        if (control == nullptr)
+            return false;
+        control->setxy(64, 64);
+        server.bind_player(96u, 0u, fixture.world().my_team, control);
+        server.step();
+        transport.queue_raw(96u, og::sim::serialize_client_ready_message(
+                                     {.last_applied_tick = 0u}));
+        server.step();
+        // Run the world past 300 ticks so 257 distinct PAST ticks exist.
+        for (int i = 0; i < 300; ++i)
+            server.step();
+        const std::uint32_t live_tick = fixture.world().tick_count_;
+        EXPECT_GT(live_tick, 290u) << "the world must actually tick";
+
+        const InputState idle;
+        InputState right;
+        right.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+        for (std::uint32_t i = 0; i < filler_count; ++i)
+            transport.queue_raw(96u, input_frame(i + 1u, idle));
+        transport.queue_raw(96u, input_frame(live_tick - 1u, right));
+        server.step();
+
+        transport.set_connected({});
+        server.poll_incoming_messages();
+        EXPECT_EQ(1u, server.disconnected_players().size());
+        if (server.disconnected_players().size() != 1u)
+            return false;
+        return server.disconnected_players()
+            .front()
+            .repeated_input.held[static_cast<int>(InputAction::MoveRight)];
+    };
+
+    // Paired control: 255 fillers leave room, the newest frame is stored.
+    EXPECT_TRUE(held_right_after_flood(255u))
+        << "the 256th distinct pending tick must still be accepted";
+    EXPECT_FALSE(held_right_after_flood(256u))
+        << "a 257th distinct pending tick must be dropped at the cap";
+}
+
+// Rule (broadcast_current_state): at most kMaxKeyframesPerTick (2) budgeted
+// recovery keyframes go out per tick during live play; a third requesting
+// client is deferred with its keyframe still owed and served next tick.
+TEST(GameServerCoverage, live_recovery_keyframes_are_budgeted_two_per_tick)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u, 92u, 93u});
+    server.poll_incoming_messages();
+
+    for (std::size_t i = 0; i < 3u; ++i)
+    {
+        walker* const control =
+            fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, control);
+        server.bind_player(static_cast<og::sim::PeerId>(91u + i),
+                           static_cast<std::uint8_t>(i),
+                           fixture.world().my_team, control);
+    }
+    // A living foe keeps the level running: with no enemy left the level is
+    // won, and a terminal EndGame keyframe is exempt from the budget.
+    walker* const foe = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, foe);
+    foe->set_team_num(static_cast<unsigned char>(fixture.world().my_team + 1));
+    foe->setxy(400, 400);
+    for (og::sim::PeerId peer = 91u; peer <= 93u; ++peer)
+    {
+        server.send_initial_snapshot(peer, og::sim::SnapshotCaptureMode::Peek);
+        transport.queue_raw(peer, og::sim::serialize_client_ready_message(
+                                      og::sim::ClientReadyMessage{}));
+    }
+    server.step();
+    server.step();
+    ASSERT_EQ(2u, fixture.world().level_tick_count())
+        << "the launch gate must be open: this pins LIVE play";
+    ASSERT_EQ(0, fixture.world().ending) << "the level must still be running";
+
+    const auto count_keyframes_for = [&](og::sim::PeerId peer) {
+        int count = 0;
+        for (const auto& sent : transport.sent())
+        {
+            if (sent.peer_id == peer && sent.data.size() > 1 &&
+                sent.data[1] == og::sim::kSnapshotMessageType)
+                ++count;
+        }
+        return count;
+    };
+
+    transport.clear_sent();
+    for (og::sim::PeerId peer = 91u; peer <= 93u; ++peer)
+    {
+        transport.queue_raw(peer, og::sim::serialize_keyframe_request_message(
+                                      {.last_seen_tick = 1u}));
+    }
+    server.step();
+    ASSERT_EQ(3u, fixture.world().level_tick_count());
+    const std::string counts = std::format(
+        "keyframes 91={} 92={} 93={}", count_keyframes_for(91u),
+        count_keyframes_for(92u), count_keyframes_for(93u));
+    EXPECT_EQ(1, count_keyframes_for(91u)) << counts;
+    EXPECT_EQ(1, count_keyframes_for(92u)) << counts;
+    EXPECT_EQ(0, count_keyframes_for(93u))
+        << "the third budgeted keyframe in one tick must be deferred; "
+        << counts;
+
+    transport.clear_sent();
+    server.step();
+    EXPECT_EQ(1, count_keyframes_for(93u))
+        << "the deferred keyframe must go out on the next tick";
+}
+
+// Rule (handle_hello reconnect): a player whose hero died during the grace
+// window resumes in the dead state and the corpse's player tag is released
+// (user -> -1), so the dead walker is not left claimed by a seat that no
+// longer drives it.
+TEST(GameServerCoverage, reconnect_to_a_hero_that_died_in_grace_releases_the_corpse)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+
+    // A named hero (it carries its guy record), so its corpse stays in the
+    // world after death exactly as a player character's does.
+    walker* const hero = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    auto record = std::make_unique<guy>(FAMILY_SOLDIER);
+    record->name = "Grace";
+    hero->set_owned_myguy(std::move(record));
+    hero->setxy(64, 64);
+    const std::uint32_t hero_id = hero->entity_id();
+    server.bind_player(97u, 0u, fixture.world().my_team, hero);
+    transport.queue_raw(97u, hello_frame(og::sim::kZeroSessionToken));
+    server.step();
+    const auto hello = find_hello(transport, 97u);
+    ASSERT_TRUE(hello.has_value());
+    ASSERT_FALSE(og::sim::is_zero_session_token(hello->session_token));
+
+    transport.set_connected({});
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+
+    // An enemy lands a lethal blow while the seat is parked.
+    walker* const parked = fixture.world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, parked);
+    walker* const raider = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, raider);
+    raider->setxy(80, 64);
+    raider->set_team_num(static_cast<unsigned char>(parked->team_num() + 1u));
+    raider->set_damage(10000);
+    raider->attack(parked);
+    server.step();
+    walker* const corpse = fixture.world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, corpse) << "a living corpse persists";
+    ASSERT_TRUE(corpse->dead()) << "the hero must die during the grace window";
+    ASSERT_EQ(0, corpse->user())
+        << "precondition: the corpse still carries the seat's player tag";
+
+    transport.set_connected({98u});
+    server.poll_incoming_messages();
+    transport.queue_raw(98u, hello_frame(hello->session_token));
+    server.step();
+
+    ASSERT_TRUE(server.disconnected_players().empty())
+        << "the reconnect must have consumed the grace record";
+    const walker* const released = fixture.world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, released);
+    EXPECT_EQ(-1, released->user())
+        << "the dead hero's player tag must be released on reconnect";
+}
+
+// Rule (handle_hello reconnect, ruling R5 — INTENDED): a reconnecting seat
+// reclaims its parked hero that the AI holds (user() == -1) UNCONDITIONALLY
+// — player tag and ACT_CONTROL — even when the control policy refuses that
+// seat a fresh claim of the same hero. The fresh-bind half is the positive
+// control: bind_player re-checks an installer-supplied control against
+// control_claim_allowed and leaves it unclaimed (and the reconnect re-runs
+// that same refusing bind before its own loop overrides it). The state is
+// product-reachable: an installer-supplied control under an owner-locked
+// policy whose machine map has no entry for the seat, and a joiner that drops
+// and returns during the level-start handshake. That timing also isolates the
+// rule: no tick has run this level, so the reconnect's own InitialSetup holds
+// the launch gate and the tick's input-handler claim cannot mask the
+// reconnect's claim.
+TEST(GameServerCoverage,
+     reconnect_reclaims_the_ai_held_hero_regardless_of_the_claim_policy)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+
+    walker* const hero = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    auto record = std::make_unique<guy>(FAMILY_SOLDIER);
+    record->name = "Owner";
+    record->owner_player_index = 0;
+    hero->set_owned_myguy(std::move(record));
+    hero->setxy(64, 64);
+    const std::uint32_t hero_id = hero->entity_id();
+    ASSERT_EQ(-1, hero->user()) << "precondition: an AI-held hero";
+    const char ai_act_type = hero->act_type();
+    ASSERT_NE(ACT_CONTROL, ai_act_type);
+
+    // Owner-locked with no machine entry for seat 0: seat 0 claims nothing.
+    std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines;
+    machines.fill(og::sim::kPlayerMachineNone);
+    og::sim::set_control_policy(fixture.world(),
+                                og::sim::kControlPolicyOwnerLocked, machines);
+    ASSERT_EQ(og::sim::kControlPolicyOwnerLocked,
+              fixture.world().control_policy);
+
+    // Positive control: the FRESH bind of the supplied hero is refused.
+    server.bind_player(97u, 0u, fixture.world().my_team, hero);
+    ASSERT_FALSE(og::sim::control_claim_allowed(fixture.world(), hero, 0))
+        << "the policy must refuse seat 0 a fresh claim of this hero";
+    ASSERT_EQ(-1, hero->user())
+        << "a fresh bind honours the policy and leaves the hero unclaimed";
+    ASSERT_EQ(ai_act_type, hero->act_type());
+
+    // The joiner drops before tick 1: its seat parks in the grace window.
+    transport.set_connected({});
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    const og::sim::SessionToken token =
+        server.disconnected_players().front().session_token;
+    ASSERT_FALSE(og::sim::is_zero_session_token(token));
+    ASSERT_EQ(-1, fixture.world().find_by_id(hero_id)->user());
+
+    transport.set_connected({98u});
+    server.poll_incoming_messages();
+    transport.queue_raw(98u, hello_frame(token));
+    server.step();
+
+    ASSERT_EQ(0u, fixture.world().level_tick_count())
+        << "isolation: the reconnect step must not have ticked the world";
+    EXPECT_TRUE(server.disconnected_players().empty())
+        << "the reconnect must have consumed the grace record";
+    const auto resumed = find_hello(transport, 98u);
+    ASSERT_TRUE(resumed.has_value());
+    EXPECT_EQ(token, resumed->session_token)
+        << "the reconnect resumes the same session";
+    walker* const reclaimed = fixture.world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, reclaimed);
+    EXPECT_FALSE(og::sim::control_claim_allowed(fixture.world(), reclaimed, 0))
+        << "the policy still refuses the claim the reconnect just made";
+    EXPECT_EQ(0, reclaimed->user())
+        << "the reconnecting seat reclaims its AI-held hero regardless";
+    EXPECT_EQ(ACT_CONTROL, reclaimed->act_type());
+    EXPECT_EQ(reclaimed, server.player_control(0u));
+}
+
+// Rule (send_forced_keyframe_to_ready_clients): when a mission abort is
+// accepted, the forced old-level keyframe goes only to clients ready to take
+// snapshots. A peer that joined mid-level and has not confirmed its initial
+// keyframe (seeded, not ready) receives nothing.
+TEST(GameServerCoverage, forced_abort_keyframe_skips_a_client_that_is_not_ready)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+    walker* const host_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, host_control);
+    server.bind_player(91u, 0u, fixture.world().my_team, host_control);
+    server.send_initial_snapshot(91u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(91u, og::sim::serialize_client_ready_message(
+                                 og::sim::ClientReadyMessage{}));
+    server.step();
+    ASSERT_EQ(1u, fixture.world().level_tick_count());
+
+    // A second peer joins mid-level: the handshake pump seeds it (setup +
+    // initial keyframe) but it never confirms ready.
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+    walker* const late_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, late_control);
+    server.bind_player(92u, 1u, fixture.world().my_team, late_control);
+    server.step();
+    ASSERT_TRUE(find_initial_setup(transport, 92u).has_value())
+        << "precondition: the late peer was seeded";
+
+    const auto keyframes_at = [&](og::sim::PeerId peer, std::uint32_t tick) {
+        int count = 0;
+        for (const auto& sent : transport.sent())
+        {
+            if (sent.peer_id != peer || sent.data.size() <= 1 ||
+                sent.data[1] != og::sim::kSnapshotMessageType)
+                continue;
+            if (og::sim::deserialize_snapshot(sent.data).tick_count == tick)
+                ++count;
+        }
+        return count;
+    };
+    const auto snapshots_for = [&](og::sim::PeerId peer) {
+        int count = 0;
+        for (const auto& sent : transport.sent())
+        {
+            if (sent.peer_id == peer && sent.data.size() > 1 &&
+                (sent.data[1] == og::sim::kSnapshotMessageType ||
+                 sent.data[1] == og::sim::kDeltaSnapshotMessageType))
+                ++count;
+        }
+        return count;
+    };
+
+    transport.clear_sent();
+    const std::uint32_t abort_tick = fixture.world().tick_count_;
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_exit_prompt_response_message(
+            {.accepted = true, .abort_request = true}));
+    server.step();
+
+    // Paired control: the ready host takes exactly one keyframe of the
+    // pre-abort state.
+    EXPECT_EQ(1, keyframes_at(91u, abort_tick))
+        << "the ready client must receive the forced keyframe";
+    EXPECT_EQ(0, snapshots_for(92u))
+        << "an unready client must not be sent the forced keyframe";
+}
+
+// A client in the level-transition limbo (InitialSetup re-sent, keyframe
+// owed, NOT yet ClientReady) gets no keyframe from broadcast_current_state —
+// the direct broadcast the local shadow's Esc-abort / RESTART issue while a
+// reload is still handshaking. Control: once that client readies, the
+// handshake pump serves it exactly one keyframe.
+TEST(GameServerCoverage, unready_limbo_client_gets_no_keyframe_from_a_direct_broadcast)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+
+    walker* const control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    server.bind_player(91u, 0u, fixture.world().my_team, control);
+    server.send_initial_snapshot(91u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    ASSERT_EQ(1u, fixture.world().level_tick_count());
+
+    // Quit-mission reload: the client re-enters the limbo.
+    server.on_withdraw_accepted = [&](int /*destination*/) {
+        fixture.world().tick_count_ = 0;
+        fixture.world().reset_level_progress();
+        return true;
+    };
+    now_ms = 2'000;
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_exit_prompt_response_message(
+            {.accepted = true, .abort_request = true}));
+    server.step();
+    ASSERT_EQ(0u, fixture.world().level_tick_count());
+    ASSERT_TRUE(find_initial_setup(transport, 91u).has_value())
+        << "the reload must have re-sent the InitialSetup";
+
+    const auto count_snapshots = [&] {
+        int count = 0;
+        for (const auto& sent : transport.sent())
+        {
+            if (sent.peer_id == 91u && sent.data.size() > 1 &&
+                sent.data[1] == og::sim::kSnapshotMessageType)
+                ++count;
+        }
+        return count;
+    };
+
+    transport.clear_sent();
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+    EXPECT_EQ(0, count_snapshots())
+        << "an unready limbo client must not be sent its keyframe";
+
+    // Control: the client readies; the pump serves the owed keyframe.
+    transport.queue_raw(
+        91u,
+        og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{}));
+    server.step();
+    EXPECT_EQ(1, count_snapshots())
+        << "a ready limbo client is owed exactly one keyframe";
 }
 
 } // namespace

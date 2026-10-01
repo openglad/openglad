@@ -597,10 +597,10 @@ struct UpperFloorCoverageMask
 			return static_cast<Sint32>(std::min<std::int64_t>(
 			    source_coord / GRID_SIZE, limit));
 		};
+		// No <= 0 clamp: a non-positive bound (0 for [-15, 0], negative
+		// below) leaves the `g < end` loops empty exactly as 0 would.
 		auto tile_end = [](std::int64_t source_coord, Sint32 limit)
 		{
-			if (source_coord <= 0)
-				return Sint32{0};
 			return static_cast<Sint32>(std::min<std::int64_t>(
 			    (source_coord + GRID_SIZE - 1) / GRID_SIZE, limit));
 		};
@@ -675,10 +675,9 @@ void generate_glow_kernel()
 }
 
 // Fire-family (order, family) pairs — families are per-order namespaces.
+// Callers skip dead walkers (view.cpp's fire-glow entity loop).
 bool glows(const walker& w)
 {
-	if (w.dead())
-		return false;
 	const int fam = w.family();
 	switch (w.query_order())
 	{
@@ -989,6 +988,18 @@ void advance_frame_if_due(std::uint32_t now_ms)
 		advance_frame_state();
 }
 
+// The one advance rule: one effects tick per call when the cadence is off,
+// else one tick per elapsed kWallClockCadenceIntervalMs of now_ms.
+void advance_frame_at(std::uint32_t now_ms)
+{
+	if (!wall_clock_cadence)
+	{
+		advance_frame_state();
+		return;
+	}
+	advance_frame_if_due(now_ms);
+}
+
 } // namespace
 
 void effects_set_wall_clock_cadence(bool on)
@@ -998,12 +1009,7 @@ void effects_set_wall_clock_cadence(bool on)
 
 void effects_advance_frame()
 {
-	if (!wall_clock_cadence)
-	{
-		advance_frame_state();
-		return;
-	}
-	advance_frame_if_due(static_cast<std::uint32_t>(
+	advance_frame_at(static_cast<std::uint32_t>(
 	    std::chrono::duration_cast<std::chrono::milliseconds>(
 	        std::chrono::steady_clock::now().time_since_epoch())
 	        .count()));
@@ -1012,12 +1018,7 @@ void effects_advance_frame()
 #ifdef TESTING
 void effects_advance_frame_at(std::uint32_t now_ms)
 {
-	if (!wall_clock_cadence)
-	{
-		advance_frame_state();
-		return;
-	}
-	advance_frame_if_due(now_ms);
+	advance_frame_at(now_ms);
 }
 #endif
 
@@ -1182,9 +1183,8 @@ void effects_track_air_falls(GameWorld& world)
 		if (w == nullptr || w->dead() || w->dormant() ||
 		    w->query_order() != Order::Living)
 			continue;
+		// Never 0: every oblist insertion assigns an id (assign_entity_id).
 		const std::uint32_t id = w->entity_id();
-		if (id == 0)
-			continue;
 		const short f = w->floor();
 		const float wx = static_cast<float>(w->xpos());
 		const float wy = static_cast<float>(w->ypos());
@@ -1286,9 +1286,9 @@ bool draw_fall_cues(viewscreen* vs, int floor)
 		(void)id;
 		if (static_cast<int>(cue.to_floor) != floor)
 			continue;
+		// age < kFallCueFrames: advance_frame_state (the only frame_tick
+		// writer) erases a cue in the same call its age reaches it.
 		const std::uint32_t age = frame_tick - cue.start_tick;
-		if (age >= kFallCueFrames)
-			continue; // expired; effects_advance_frame prunes it
 
 		auto plot2 = [&](Sint32 sx, Sint32 sy, unsigned char alpha)
 		{
@@ -1319,12 +1319,13 @@ bool draw_fall_cues(viewscreen* vs, int floor)
 		const Sint32 head_wx = static_cast<Sint32>(
 		    hole_cx + (land_cx - hole_cx) * static_cast<float>(step) /
 		        static_cast<float>(kFallCueFrames));
+		static_assert(kFallCueAlphaHead -
+		                  (kFallCueStreakLen - 1) * kFallCueAlphaStep > 0,
+		              "every streak pixel keeps a positive alpha");
 		for (Sint32 t = 0; t < kFallCueStreakLen; t++)
 		{
 			const int a = kFallCueAlphaHead - static_cast<int>(t) *
 			    kFallCueAlphaStep;
-			if (a <= 0)
-				break;
 			plot2(head_wx - 1 - vs->topx + vs->xloc,
 			      head_wy - t - vs->topy + vs->yloc,
 			      static_cast<unsigned char>(a));
@@ -1482,10 +1483,9 @@ static bool single_floor_reads_outdoor(GameWorld& world)
 	return outdoor_memo;
 }
 
+// vs is non-null: both callers (the redraw overloads) pass `this`.
 void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 {
-	if (!vs)
-		return;
 	// The kind is WORLD state (rolled by the authoritative side, synced via
 	// snapshot); this is a render-only READ. cfg "effects" weather is the
 	// CLIENT-side display opt-out on top of it.

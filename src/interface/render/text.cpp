@@ -33,11 +33,10 @@
 static PixieData letters1;
 static PixieData letters_big;
 
+// value is a prompt's static edit buffer and length > 0: both callers run
+// only under `tempchar == KEYCODE_BACKSPACE && current_length > 0`.
 static void erase_last_utf8_codepoint(char* value, std::size_t length)
 {
-    if (value == nullptr || length == 0)
-        return;
-
     std::size_t erase_at = length - 1;
     while (erase_at > 0 &&
            (static_cast<unsigned char>(value[erase_at]) & 0xc0u) == 0x80u)
@@ -99,10 +98,10 @@ text::~text()
 // a dialog header drawn through such a text came out blank while the body
 // text -- a different text object, built after the load -- painted fine
 // (issue #259). Called from every measuring and drawing entry point.
+// letters is never null here: the only constructor points it at letters1 or
+// letters_big before any member can run, and nothing else assigns it.
 void text::sync_geometry()
 {
-    if (letters == nullptr)
-        return;
     sizex = static_cast<short>(letters->w);
     sizey = static_cast<short>(letters->h);
 }
@@ -329,7 +328,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 }
 
 Sint32 text::write_xy_flat(Sint32 x, Sint32 y, std::string_view string,
-                           unsigned char color, short to_buffer)
+                           unsigned char color)
 {
 	sync_geometry();
 	if (sizex <= 0 || sizey <= 0)
@@ -351,16 +350,9 @@ Sint32 text::write_xy_flat(Sint32 x, Sint32 y, std::string_view string,
 
 		const Sint32 xi = x + static_cast<Sint32>(i) *
 			static_cast<Sint32>(sizex + 1);
-		if (to_buffer)
-		{
-			output->walkputbuffertext(
-				xi, y, sizex, sizey, 0, 0,
-				output->canvas_w(), output->canvas_h(), flat_glyph, color);
-		}
-		else
-		{
-			output->putdatatext(xi, y, sizex, sizey, flat_glyph, color);
-		}
+		output->walkputbuffertext(
+			xi, y, sizex, sizey, 0, 0,
+			output->canvas_w(), output->canvas_h(), flat_glyph, color);
 	}
 	return 1;
 }
@@ -414,12 +406,11 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	if (!whereto)
-		og::runtime::current_session->myscreen_->putdatatext(x, y, sizex, sizey, char_span, color);
-	else
-				og::runtime::current_session->myscreen_->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
-				                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-				                       char_span, color);
+	// whereto is non-null: write_xy's null-view case takes the flat
+	// write_char_xy(x, y, letter, color) instead.
+	og::runtime::current_session->myscreen_->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+	                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
+	                       char_span, color);
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;

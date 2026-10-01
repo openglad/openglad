@@ -1,6 +1,8 @@
 // The shared state-machine tests normally use mock clients.  Expose only the
 // concrete adapter construction boundary so tests can drive and assert its
 // real IPickerClient operations directly.
+void campaign_picker_testing_abort();  // campaign_picker_internal.inc
+
 std::unique_ptr<og::ui::IPickerClient> picker_testing_create_sdl_client()
 {
     return std::make_unique<SdlPickerClient>();
@@ -368,7 +370,102 @@ struct PickerSdlClientTestAccess
         trace_clear();
         return failed_check == 0 ? 0 : -failed_check;
     }
+
+    // The bridge and active-client state every single-shot probe below
+    // borrows and hands back.
+    struct ProbeRestore
+    {
+        PlatformBridge saved_bridge = platform_bridge();
+        og::ui::IPickerLobbyClient* saved_active =
+            og::ui::active_picker_lobby_client();
+        ~ProbeRestore()
+        {
+            set_platform_bridge(std::move(saved_bridge));
+            og::ui::install_active_picker_lobby_client(saved_active);
+        }
+    };
+
+    // DIRECT (LAN) JOIN: the options the SDL client hands the platform join
+    // factory. The stub factory declines (nullptr), so the session stays on
+    // its local client and the join reports failure.
+    static bool submit_direct_join(const std::string& ip_address,
+                                   const std::string& port_text,
+                                   int& factory_calls, bool& direct_mode,
+                                   std::string& endpoint)
+    {
+        ProbeRestore restore;
+        factory_calls = 0;
+        direct_mode = false;
+        endpoint.clear();
+        PlatformBridge bridge = platform_bridge();
+        bridge.create_join_picker_lobby_client =
+            [&](const og::ui::PickerJoinGameOptions& options)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+            ++factory_calls;
+            direct_mode = options.mode == og::ui::PickerJoinMode::Direct;
+            endpoint = options.direct_endpoint;
+            return nullptr;
+        };
+        set_platform_bridge(std::move(bridge));
+
+        SdlPickerClient client;
+        client.networking_settings_.use_room_code = false;
+        client.networking_settings_.ip_address = ip_address;
+        client.networking_settings_.port_text = port_text;
+        return client.submit_network_join();
+    }
+
+    // JOIN in relay mode with a blank room code: the active-room prompt runs
+    // (answered from the TESTING prompt queue) against an offline room list
+    // (no platform list hooks), and the code the client stores comes back.
+    static bool join_relay_prompt(std::string& stored_room_code)
+    {
+        ProbeRestore restore;
+        PlatformBridge bridge = platform_bridge();
+        bridge.begin_list_relay_rooms = {};
+        bridge.list_relay_rooms = {};
+        set_platform_bridge(std::move(bridge));
+
+        SdlPickerClient client;
+        client.networking_settings_.use_room_code = true;
+        client.networking_settings_.room_code.clear();
+        const bool proceed = client.prompt_for_relay_room_code_if_blank();
+        stored_room_code = client.networking_settings_.room_code;
+        client.cancel_relay_room_list_request();
+        return proceed;
+    }
+
+    // SET CAMPAIGN through the real browser: `cancel` leaves it without a
+    // pick (the TESTING abort is the browser's own BACK); otherwise the
+    // un-driven browser accepts the campaign under its cursor.
+    static std::string show_campaign_select(bool cancel)
+    {
+        ProbeRestore restore;
+        SdlPickerClient client;
+        if (cancel)
+            campaign_picker_testing_abort();
+        return client.show_campaign_select();
+    }
 };
+
+bool picker_testing_submit_direct_join(const std::string& ip_address,
+                                       const std::string& port_text,
+                                       int& factory_calls, bool& direct_mode,
+                                       std::string& endpoint)
+{
+    return PickerSdlClientTestAccess::submit_direct_join(
+        ip_address, port_text, factory_calls, direct_mode, endpoint);
+}
+
+bool picker_testing_join_relay_prompt(std::string& stored_room_code)
+{
+    return PickerSdlClientTestAccess::join_relay_prompt(stored_room_code);
+}
+
+std::string picker_testing_show_campaign_select(bool cancel)
+{
+    return PickerSdlClientTestAccess::show_campaign_select(cancel);
+}
 
 int picker_testing_exercise_sdl_client_internal_paths()
 {

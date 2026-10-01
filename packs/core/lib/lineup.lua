@@ -209,7 +209,7 @@ end
 --   core:archer   packs/core/families/living-02-archer.lua:82
 --   core:mage     packs/core/families/living-03-mage.lua:64
 --   core:orc      packs/core/families/living-14-orc.lua:88
---   core:#18      packs/core/families/living-18-beast.lua:8 (BEAST)
+--   core:#18      packs/core/families/living-18-beast.lua:8 (GOLEM)
 --   core:cleric   packs/core/families/living-05-cleric.lua:285
 --   core:druid    packs/core/families/living-13-druid.lua:145
 --   core:elf / core:thief declare no hook (living-01-elf.lua,

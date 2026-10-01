@@ -21,6 +21,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -165,6 +166,26 @@ TEST(WinShares, teams_split_independently)
     EXPECT_EQ(15u, table.cash[0][1]);
     EXPECT_EQ(9u, table.cash[3][2]);
     EXPECT_EQ(0u, table.cash[3][0]);
+}
+
+// An unowned deployed hero (owner == guy::kNoOwner: collect_deployed_contributors
+// reports every myguy walker, owned or not) neither dilutes the owned players'
+// shares nor receives one. Paired control: the two owned players split the
+// whole pot exactly as if the unowned hero were absent.
+TEST(WinShares, an_unowned_contributor_neither_dilutes_nor_receives)
+{
+    NetWinFoldCapture capture;
+    capture.cash_delta[0] = 90;
+    add_contributors(capture, /*owner=*/0, /*team=*/0, /*count=*/1);
+    add_contributors(capture, /*owner=*/1, /*team=*/0, /*count=*/1);
+    add_contributors(capture, guy::kNoOwner, /*team=*/0, /*count=*/1);
+
+    const NetWinShareTable table = compute_networked_win_shares(capture);
+    EXPECT_EQ(45u, table.cash[0][0]) << "no dilution by the unowned hero";
+    EXPECT_EQ(45u, table.cash[0][1]);
+    EXPECT_EQ(90u, sum_team(table.cash[0])) << "the pot goes to owners only";
+    EXPECT_EQ(1, table.deployed_count[0]);
+    EXPECT_EQ(1, table.deployed_count[1]);
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +378,113 @@ TEST(WinShares, persist_networked_win_overlays_session_campaign_state)
          og::data::list_company_backups("netwinbook"))
         (void)remove_user_file("save/backups/" + info.filename);
     (void)remove_user_file("save/netwinbook.gtl");
+}
+
+// A networked win on a machine whose company file cannot be read (no
+// untouched pre-level roster to merge into) persists nothing: it answers
+// false and writes neither the company nor a backup, instead of clobbering
+// the company with a partial team. Paired control: once the pre-level save
+// exists, the same persist succeeds.
+TEST(WinShares, persist_networked_win_without_a_prelevel_save_writes_nothing)
+{
+    ScopedMountRestore mount_guard;
+    restore_default_campaigns();
+    og::data::ScopedActiveCompany active("netwinnosave");
+    ASSERT_TRUE(active.applied());
+    (void)remove_user_file("save/netwinnosave.gtl");
+
+    SaveData session;
+    session.current_campaign = "gladiator";
+    session.scen_num = 2;
+    TestGameWorld fx;
+    NetWinFoldCapture capture;
+    add_contributors(capture, /*owner=*/0, /*team=*/0, /*count=*/1);
+    const std::array<std::uint8_t, 1> own = {0};
+
+    EXPECT_FALSE(og::progression::persist_networked_win(
+        "netwinnosave", session, fx.world(), std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/1));
+    SaveData probe;
+    EXPECT_EQ(SaveDataIoError::OpenReadFailed, probe.load_with_error("netwinnosave"))
+        << "no company file may appear";
+    EXPECT_TRUE(og::data::list_company_backups("netwinnosave").empty())
+        << "no backup snapshot may appear";
+
+    {
+        SaveData disk;
+        disk.save_name = "NET NOSAVE CO";
+        disk.current_campaign = "gladiator";
+        disk.scen_num = 1;
+        ASSERT_TRUE(disk.save("netwinnosave"));
+    }
+    EXPECT_TRUE(og::progression::persist_networked_win(
+        "netwinnosave", session, fx.world(), std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/1))
+        << "with the pre-level save present the persist lands";
+
+    for (const og::data::CompanyBackupInfo& info :
+         og::data::list_company_backups("netwinnosave"))
+        (void)remove_user_file("save/backups/" + info.filename);
+    (void)remove_user_file("save/netwinnosave.gtl");
+}
+
+// A networked win whose company write fails (here: the atomic-save staging
+// path save/<slot>.tmp.gtl is occupied by a directory) reports false, and
+// the company file keeps its pre-level contents. Paired control: with the
+// staging path free the same persist succeeds and advances the cursor.
+TEST(WinShares, persist_networked_win_reports_a_failed_company_write)
+{
+    ScopedMountRestore mount_guard;
+    restore_default_campaigns();
+    og::data::ScopedActiveCompany active("netwinfail");
+    ASSERT_TRUE(active.applied());
+    {
+        SaveData disk;
+        disk.save_name = "NET FAIL CO";
+        disk.current_campaign = "gladiator";
+        disk.scen_num = 1;
+        ASSERT_TRUE(disk.save("netwinfail"));
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path staging =
+        fs::path(get_user_path()) / "save" / "netwinfail.tmp.gtl";
+    std::error_code ec;
+    fs::create_directories(staging, ec);
+    ASSERT_TRUE(fs::is_directory(staging)) << ec.message();
+
+    SaveData session;
+    session.current_campaign = "gladiator";
+    session.scen_num = 2;
+    TestGameWorld fx;
+    NetWinFoldCapture capture;
+    add_contributors(capture, /*owner=*/0, /*team=*/0, /*count=*/1);
+    const std::array<std::uint8_t, 1> own = {0};
+
+    EXPECT_FALSE(og::progression::persist_networked_win(
+        "netwinfail", session, fx.world(), std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/1));
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("netwinfail"));
+        EXPECT_EQ(1, reloaded.scen_num) << "the failed write left the company as it was";
+    }
+
+    fs::remove_all(staging, ec);
+    fs::remove(fs::path("save") / "netwinfail.tmp.gtl", ec); // cwd fallback
+    EXPECT_TRUE(og::progression::persist_networked_win(
+        "netwinfail", session, fx.world(), std::span<const std::uint8_t>(own),
+        std::optional<std::size_t>(0), capture, /*completed_level=*/1));
+    {
+        SaveData reloaded;
+        ASSERT_EQ(SaveDataIoError::None, reloaded.load_with_error("netwinfail"));
+        EXPECT_EQ(2, reloaded.scen_num) << "the control write carries the cursor";
+    }
+
+    for (const og::data::CompanyBackupInfo& info :
+         og::data::list_company_backups("netwinfail"))
+        (void)remove_user_file("save/backups/" + info.filename);
+    (void)remove_user_file("save/netwinfail.gtl");
 }
 
 // #207: the networked cursor restore. The session fold (progression.cpp

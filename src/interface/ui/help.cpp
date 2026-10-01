@@ -59,11 +59,6 @@ constexpr int help_char_budget(int box_width) { return (box_width - 2) / 6; }
 
 namespace
 {
-inline short& help_end_of_file()
-{
-    return og::runtime::current_session->help_end_of_file_;
-}
-
 // Edge-trigger with hold-repeat over a polled key state (issue #156). The
 // old `(now - start_time) % N` phase gate was open only ~13.6ms out of
 // every 136ms, so a short PageDown tap did nothing about half the time.
@@ -467,7 +462,6 @@ static short scroll_campaign_description(screen *s,
 	if (!data.load())
 		return 1;
 
-	help_end_of_file() = 0;
 	return scroll_text_view(s,
 		static_cast<int>(data.description.size()), 240,
 		data.title.c_str(), HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8, 244, 119,
@@ -496,37 +490,6 @@ short read_campaign_intro(screen *s)
 	                                   &entry_fade);
 }
 
-
-// OgFile-based overloads (used by tests and headless builds)
-// This function reads one text line from file infile,
-// stopping at length (length), or when encountering an
-// end-of-line character ..
-std::string read_one_line(og::io::OgFile& infile, short length)
-{
-    char temp;
-    std::string newline;
-    newline.reserve(static_cast<size_t>(length));
-    for (short i = 0; i < length; i++) {
-        size_t n = infile.read(&temp, 1, 1);
-        if (n != 1) { help_end_of_file() = 1; return newline; }
-        if (temp == '\n' || temp == '\r') return newline;
-        newline.push_back(temp);
-    }
-    return newline;
-}
-
-// This function fills the array with the help file text ..
-// It returns the # of lines successfully filled ..
-short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& infile)
-{
-    short i;
-    for (i = 0; i < MAX_LINES; i++) {
-        std::string someline = read_one_line(infile, HELP_WIDTH);
-        snprintf(somearray[i], HELP_WIDTH, "%s", someline.c_str());
-        if (help_end_of_file()) return i;
-    }
-    return MAX_LINES;
-}
 
 // General help text lines (Controls tab)
 static const char* controls_help_lines[] = {
@@ -707,9 +670,8 @@ static const char* get_content_line(const TabContent& content, int index)
 		return "";
 	if (content.is_dynamic && content.dynamic_lines)
 		return (*content.dynamic_lines)[static_cast<std::size_t>(index)].c_str();
-	else if (content.static_lines)
-		return content.static_lines[index];
-	return "";
+	// Every get_tab_content() arm that is not dynamic sets static_lines.
+	return content.static_lines[index];
 }
 
 // ---------------------------------------------------------------------------
@@ -800,11 +762,9 @@ og::ui::RowState help_engine_pager_row_state(
 
 // Nav closure over the hidden pagers, re-asserted per frame over the static
 // base link (the VIEW LEVEL shape).
-void help_engine_rewire(button* buttons, int num_buttons,
+void help_engine_rewire(button* buttons, int /*num_buttons*/,
                         int& /*highlighted_button*/)
 {
-	if (num_buttons <= kHelpMenuBackIndex)
-		return;
 	const HelpScreenState* const state = g_help_screen_state;
 	const bool multi_page = state != nullptr && state->pager.multi_page();
 	buttons[kHelpMenuBackIndex].nav.right =
@@ -870,8 +830,6 @@ bool help_engine_frame_tick(void* /*screen_state*/, int /*frame*/)
 void help_engine_draw_content(void* /*screen_state*/)
 {
 	const HelpScreenState* const state = g_help_screen_state;
-	if (state == nullptr)
-		return;
 	screen* const scr = og::runtime::current_session->myscreen_;
 	text& mytext = scr->text_normal;
 

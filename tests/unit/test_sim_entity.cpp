@@ -350,3 +350,52 @@ TEST(SimEntity, walker_headless_frame_tracking)
     ASSERT_TRUE(result == 0);           // Should fail — no frames allocated
     ASSERT_TRUE(w.frame() == 0);  // Frame unchanged
 }
+
+// SimEventLogSuppressGuard (apply_snapshot's bracket for its silent replay)
+// mutes text events: push_with_text inside the guard records nothing, and
+// the same push after the guard lands with its tick, kind, payload and text.
+TEST(SimEntity, suppressed_event_log_drops_text_events)
+{
+    og::sim::SimEventLog log;
+    log.current_tick_ = 12;
+    {
+        og::sim::SimEventLogSuppressGuard guard(log);
+        log.push_with_text(og::sim::EventKind::Notification, "hidden", 3, 4);
+        EXPECT_EQ(0u, log.size()) << "a suppressed log records no text event";
+    }
+    log.push_with_text(og::sim::EventKind::Notification, "shown", 3, 4);
+    ASSERT_EQ(1u, log.size()) << "the guard restored recording";
+    EXPECT_EQ("shown", log.events()[0].text);
+    EXPECT_EQ(og::sim::EventKind::Notification, log.events()[0].kind);
+    EXPECT_EQ(12u, log.events()[0].tick);
+    EXPECT_EQ(3u, log.events()[0].a);
+    EXPECT_EQ(4u, log.events()[0].b);
+}
+
+// cosmetic_rng() between levels (a context with no world, the state
+// walker_combat's hit flash and the render layer guard against) answers
+// nullptr, never a stale generator; with a world installed it answers that
+// world's rng_, and an installed cosmetic override wins over both.
+TEST(SimEntity, cosmetic_rng_follows_the_installed_world)
+{
+    GameplayContext* const prev = current_game;
+    GameplayContext ctx;
+    current_game = &ctx;
+    ASSERT_EQ(nullptr, cosmetic_rng_override()) << "precondition: no override";
+    IRandom* const between_levels = cosmetic_rng();
+
+    GameWorld world(7);
+    ctx.world = &world;
+    IRandom* const in_level = cosmetic_rng();
+
+    FixedRandom fixed(1);
+    IRandom* fixed_ref = &fixed;
+    set_cosmetic_rng_override(&fixed_ref);
+    IRandom* const overridden = cosmetic_rng();
+    set_cosmetic_rng_override(nullptr);
+    current_game = prev;
+
+    EXPECT_EQ(nullptr, between_levels);
+    EXPECT_EQ(static_cast<IRandom*>(&world.rng_), in_level);
+    EXPECT_EQ(static_cast<IRandom*>(&fixed), overridden);
+}

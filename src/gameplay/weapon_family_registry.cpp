@@ -31,8 +31,6 @@ void init_weapon_family_registry()
 
 const WeaponFamilyDescriptor* get_weapon_family_descriptor(int family_id)
 {
-    if (!s_registry.is_initialized())
-        init_weapon_family_registry();
     return s_registry.get(family_id);
 }
 
@@ -61,7 +59,5 @@ void reset_weapon_family_registry_mod_slots()
 
 int first_unpopulated_core_weapon_family_slot()
 {
-    if (!s_registry.is_initialized())
-        init_weapon_family_registry();
     return s_registry.first_unpopulated_core_slot();
 }

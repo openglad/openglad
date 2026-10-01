@@ -56,9 +56,6 @@ void handle_cheat_keys(walker*& control, short mynum,
                        const void* native_event, const PlayerInput& pi,
                        screen* game_screen)
 {
-	if (native_event == nullptr)
-		return;
-
 	if (!pi.is_held(InputAction::Cheat) || !CHEAT_MODE)
 		return;
 

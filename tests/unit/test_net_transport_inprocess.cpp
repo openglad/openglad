@@ -3834,3 +3834,45 @@ TEST(NetTransportInProcess,
     EXPECT_EQ(0, level_transitions)
         << "a failed persist must not set the client up for the next level";
 }
+
+// Rule (net_transport_inprocess.cpp validate_message_roundtrip): with
+// serialization validation switched on through the transport Options, a
+// typed message the wire cannot carry losslessly is rejected loudly at send
+// time. A lobby seat name longer than kMaxLobbyCompanyNameLength (40) is
+// clamped by the wire reader, so its round trip differs from the original.
+TEST(NetTransportInProcess, validation_rejects_a_lobby_message_the_wire_would_alter)
+{
+    const auto pair = og::sim::InProcessTransport::create_linked_pair(
+        {.validate_serialization = true});
+
+    // Paired control: a name exactly at the wire width round-trips and is
+    // delivered unchanged.
+    og::sim::LobbyJoinMessage fits;
+    fits.player.name = std::string(og::sim::kMaxLobbyCompanyNameLength, 'a');
+    const og::sim::LobbyMessage fitting_message{.payload = fits};
+    pair.client->send_lobby_message(
+        pair.peer_id, std::make_shared<og::sim::LobbyMessage>(fitting_message));
+    const std::vector<og::sim::TypedReceivedMessage> delivered =
+        pair.server->poll_typed();
+    ASSERT_EQ(1u, delivered.size());
+    ASSERT_NE(nullptr, delivered[0].lobby_message);
+    EXPECT_EQ(fitting_message, *delivered[0].lobby_message);
+
+    og::sim::LobbyJoinMessage too_long;
+    too_long.player.name =
+        std::string(og::sim::kMaxLobbyCompanyNameLength + 1u, 'b');
+    const og::sim::LobbyMessage altered_message{.payload = too_long};
+    try
+    {
+        pair.client->send_lobby_message(
+            pair.peer_id,
+            std::make_shared<og::sim::LobbyMessage>(altered_message));
+        ADD_FAILURE() << "a lossy lobby message must be rejected";
+    }
+    catch (const std::runtime_error& error)
+    {
+        EXPECT_STREQ("lobby message round-trip mismatch", error.what());
+    }
+    EXPECT_TRUE(pair.server->poll_typed().empty())
+        << "the rejected message must not be delivered";
+}

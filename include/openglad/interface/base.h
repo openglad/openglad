@@ -109,12 +109,9 @@ inline constexpr int HELP_WIDTH = 100;   // maximum length of display line
 // Help text functions — implemented in SDL builds (base.cpp).
 // Declared unconditionally; headless builds that don't link base.cpp
 // must not call these.
-namespace og::io { class OgFile; }
-short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& infile);
 short   read_campaign_intro(screen *scr);
 short   show_campaign_description(screen *scr, const std::string& campaign_id);
 short   read_scenario(screen  *scr);
-std::string read_one_line(og::io::OgFile& infile, short length);
 
 //color defines:
 inline constexpr unsigned char DEFAULT_TEXT_COLOR = 88;

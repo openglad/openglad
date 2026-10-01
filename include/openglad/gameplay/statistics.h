@@ -74,7 +74,7 @@ class statistics
 		void set_controller(walker* value);
 		walker* controller() const { return controller_; }
 		short  try_command(std::int32_t whatcommand, std::int32_t iterations, std::int32_t info1, std::int32_t info2);
-		short  try_command(std::int32_t whatcommand, std::int32_t iterations);
+		short  try_random_walk(std::int32_t iterations);
 		void set_command(std::int32_t whatcommand, std::int32_t iterations);
 		void set_command(std::int32_t whatcommand, std::int32_t iterations, std::int32_t info1, std::int32_t info2);
 		void add_command(std::int32_t whatcommand, std::int32_t iterations, std::int32_t info1, std::int32_t info2);

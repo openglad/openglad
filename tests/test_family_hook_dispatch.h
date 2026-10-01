@@ -199,18 +199,16 @@ inline bool on_death(const FamilyDescriptor& fd, walker* self)
 }
 
 // --- weapon / effect / treasure -------------------------------------------
-// The presence helpers below answer "does this family have behavior at all",
-// counting either path: three weapon families (wave, door, animate) still
-// have no Lua twin and keep their C++ callback, and these tests should not
-// care which side implements them.
+// The presence helpers below answer "does this family have behavior at all".
+// Family behavior is Lua-only (the descriptors carry no C++ callbacks), so
+// each helper is the registered-hook query alone.
 
 inline bool has_on_death(const WeaponFamilyDescriptor& wfd)
 {
     mount_core_pack();
     return og::script::active_world_scripts().has_hook(
                Order::Weapon, wfd.family_id,
-               og::script::FamilyHook::WeaponOnDeath) ||
-           wfd.on_death != nullptr;
+               og::script::FamilyHook::WeaponOnDeath);
 }
 
 inline bool has_on_hit_target(const WeaponFamilyDescriptor& wfd)
@@ -218,8 +216,7 @@ inline bool has_on_hit_target(const WeaponFamilyDescriptor& wfd)
     mount_core_pack();
     return og::script::active_world_scripts().has_hook(
                Order::Weapon, wfd.family_id,
-               og::script::FamilyHook::WeaponOnHitTarget) ||
-           wfd.on_hit_target != nullptr;
+               og::script::FamilyHook::WeaponOnHitTarget);
 }
 
 inline bool has_on_death(const EffectFamilyDescriptor& efd)
@@ -227,8 +224,7 @@ inline bool has_on_death(const EffectFamilyDescriptor& efd)
     mount_core_pack();
     return og::script::active_world_scripts().has_hook(
                Order::FX, efd.family_id,
-               og::script::FamilyHook::EffectOnDeath) ||
-           efd.on_death != nullptr;
+               og::script::FamilyHook::EffectOnDeath);
 }
 
 inline bool has_on_act(const EffectFamilyDescriptor& efd)
@@ -236,8 +232,7 @@ inline bool has_on_act(const EffectFamilyDescriptor& efd)
     mount_core_pack();
     return og::script::active_world_scripts().has_hook(
                Order::FX, efd.family_id,
-               og::script::FamilyHook::EffectOnAct) ||
-           efd.on_act != nullptr;
+               og::script::FamilyHook::EffectOnAct);
 }
 
 inline bool on_death(const WeaponFamilyDescriptor& wfd, weap* self)

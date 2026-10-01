@@ -146,8 +146,6 @@ CampaignPickerLayout campaign_picker_layout()
     const int left_room = layout.title_center_x - layout.detail.x;
     const int half_room = right_room < left_room ? right_room : left_room;
     layout.title_max_chars = (2 * half_room) / kGlyphAdvance;
-    if (layout.title_max_chars < 0)
-        layout.title_max_chars = 0;
     return layout;
 }
 
@@ -413,10 +411,7 @@ const char* level_row_status_label(bool cleared, bool current)
 
 const char* family_display_name(int family)
 {
-    const auto* fd = get_family_descriptor(family);
-    if (fd)
-        return fd->name;
-    return "BEAST";
+    return get_family_display_name(family);
 }
 
 const char* family_short_name(short family)
@@ -1340,8 +1335,6 @@ std::vector<std::pair<int, int>> fallback_resolutions(std::pair<int, int> deskto
         if (w >= 640 && h >= 400)
             out.emplace_back(w, h);
     }
-    if (out.empty())
-        out.emplace_back(desktop);
     return out;
 }
 
@@ -1464,8 +1457,7 @@ short cycle_guy_team(SaveData& save, int slot_index, int dir)
     // The wrap is this helper's own rule; the WRITE is the one setter every
     // team-assignment surface shares (docs/lineup-design.md §5).
     const int next = ((member->teamnum + dir) % 4 + 4) % 4;
-    if (!set_guy_team(save, slot_index, static_cast<short>(next)))
-        return -1;
+    (void)set_guy_team(save, slot_index, static_cast<short>(next));
     return static_cast<short>(next);
 }
 
@@ -1519,8 +1511,6 @@ std::vector<short> derive_local_gameplay_seat_teams(const SaveData& save)
             teams.push_back(candidate);
     }
 
-    if (teams.empty())
-        teams.push_back(0);
     if (save.allied_mode != 0)
         teams.assign(static_cast<std::size_t>(required_players), teams.front());
     return teams;
@@ -1743,9 +1733,11 @@ std::string format_base_camp_scen_line(const SaveData& save,
         dep_part.size() < budget ? budget - dep_part.size() : 0;
     // The level's NAME is the one piece of story on this screen, so the
     // title takes the ellipsis cut ("SCEN 1: THE RASPBERRY..") instead of
-    // stopping mid-word; the SCEN id itself never loses digits.
-    if (prefix.size() >= scen_budget)
-        return clip_chars(prefix, scen_budget) + dep_part;
+    // stopping mid-word; the SCEN id itself never loses digits: the prefix
+    // is at most 13 chars ("SCEN -32768: ") and the DEP part at most 11
+    // ("  DEP 24/24"), so scen_budget >= 34 - 11 = 23 always fits it.
+    static_assert(MAX_TEAM_SIZE <= 99 &&
+                  kBaseCampLineBCharsHireVisible - 11 > 13);
     return prefix +
         clip_with_ellipsis(std::string(level_title),
                            scen_budget - prefix.size()) +
@@ -2318,11 +2310,6 @@ std::string format_difficulty_label(int difficulty)
     return std::format("Difficulty: {}", kDifficultyNames[normalized]);
 }
 
-std::string format_allied_mode_label(const SaveData& save)
-{
-    return is_allied_mode(save) ? "SEATS: TOGETHER" : "SEATS: SPLIT";
-}
-
 std::string format_ctf_score_label(const SaveData& save)
 {
     // 80px face = 12 chars; "SCORE: MAP" is 10, "SCORE: 10" 9.
@@ -2400,8 +2387,6 @@ std::string format_played_date_utc(std::int64_t unix_s)
     const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
     const std::chrono::year_month_day ymd{
         std::chrono::floor<std::chrono::days>(when)};
-    if (!ymd.ok())
-        return {};
     return std::format("{:04}-{:02}-{:02}", static_cast<int>(ymd.year()),
                        static_cast<unsigned>(ymd.month()),
                        static_cast<unsigned>(ymd.day()));
@@ -2467,8 +2452,6 @@ std::string format_saved_datetime_utc(std::int64_t unix_s)
     const std::chrono::sys_seconds when{std::chrono::seconds{unix_s}};
     const auto day = std::chrono::floor<std::chrono::days>(when);
     const std::chrono::year_month_day ymd{day};
-    if (!ymd.ok())
-        return {};
     const std::chrono::hh_mm_ss<std::chrono::seconds> tod{when - day};
     return std::format("{:02}-{:02} {:02}:{:02}",
                        static_cast<unsigned>(ymd.month()),
@@ -2563,18 +2546,26 @@ ContinueResult open_company_slot(SaveData& save, const std::string& slot,
 
     const std::string previous = og::data::active_company_slot();
     (void)og::data::set_active_company_slot(slot);
-    const SaveDataIoError io = save.load_with_error(slot);
+    // Open into a scratch save, never the open company: load_with_error
+    // reads the whole body before load_campaign can fail (its campaign is
+    // not installed), and the open company may have no file to reload it
+    // from (the §3.4 "save0" default at launch, a NEW GAME whose first
+    // write failed).
+    SaveData opened;
+    const SaveDataIoError io = opened.load_with_error(slot);
     if (io != SaveDataIoError::None) {
         if (io_error != nullptr)
             *io_error = io;
         // The header validated but the body failed (torn file, missing
-        // campaign package). Restore the previous slot and best-effort
-        // reload it so autosaves keep targeting the company that is really
-        // open instead of writing the old save into the broken slot.
+        // campaign package). Restore the previous slot so autosaves keep
+        // targeting the company that is really open, which stays in memory;
+        // the failed load tore its campaign mount down, so put it back.
         (void)og::data::set_active_company_slot(previous);
-        (void)save.load_with_error(previous);
+        (void)sync_campaign_mount_to_save(save);
         return ContinueResult::LoadFailed;
     }
+    // The scratch just loaded the file, so memory now takes it from there.
+    (void)save.load_with_error(slot);
     return ContinueResult::Opened;
 }
 
@@ -2745,8 +2736,6 @@ const guy* HireSession::current_recruit() const
 
 std::uint32_t HireSession::current_cost() const
 {
-    if (!recruit_)
-        return 0;
     return calculate_hire_cost(*recruit_);
 }
 
@@ -3152,8 +3141,6 @@ void TrainSession::select_current_slot()
 
 guy* TrainSession::original_member()
 {
-    if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
-        return nullptr;
     if (!picker_lobby_save_slot_editable(edit_slot_))
         return nullptr;
     return save_.team_list[static_cast<std::size_t>(edit_slot_)].get();
@@ -3161,8 +3148,6 @@ guy* TrainSession::original_member()
 
 const guy* TrainSession::original_member() const
 {
-    if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
-        return nullptr;
     if (!picker_lobby_save_slot_editable(edit_slot_))
         return nullptr;
     return save_.team_list[static_cast<std::size_t>(edit_slot_)].get();
@@ -4433,8 +4418,6 @@ std::string format_lineup_power_cell(std::optional<long long> power, int width)
             }
         }
     }
-    if (static_cast<int>(text.size()) > field)
-        text.resize(static_cast<std::size_t>(field));
     return std::format("{:>{}}", text, field);
 }
 

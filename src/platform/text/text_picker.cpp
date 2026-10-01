@@ -419,15 +419,22 @@ public:
     SaveData& testing_save_data_mutable();
 #endif
 
+    // The "Load failed" report of the terminal open sequence (load_game and
+    // the cloud download's scratch open share it).
+    void report_load_failure(const std::string& slot, SaveDataIoError io)
+    {
+        set_error(TextPickerErrorCode::LoadIoError,
+            std::string("load failed: ") + save_error_string(io));
+        std::printf("Load failed for '%s' (%s).\n", slot.c_str(),
+                    save_error_string(io));
+    }
+
     bool load_game() override
     {
         assert_company_slot_authority(); // [SAVE-R2]
         const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
         if (io != SaveDataIoError::None) {
-            set_error(TextPickerErrorCode::LoadIoError,
-                std::string("load failed: ") + save_error_string(io));
-            std::printf("Load failed for '%s' (%s).\n",
-                config_.save_name.c_str(), save_error_string(io));
+            report_load_failure(config_.save_name, io);
             return false;
         }
 
@@ -491,13 +498,8 @@ public:
                                 "backup or delete it.\n", info.slot.c_str());
                     break;
                 }
-                const std::string previous_slot = config_.save_name;
-                config_.save_name = info.slot;
-                if (load_game())
+                if (open_company_slot(info.slot))
                     return true; // -> team build (base camp)
-                // load_game printed the error; restore the slot authority.
-                config_.save_name = previous_slot;
-                assert_company_slot_authority(); // [SAVE-R2]
                 break;
             }
             case PickerMenuCommand::OpenCompanyBackups: {
@@ -670,8 +672,14 @@ private:
                 const std::string previous_slot = config_.save_name;
                 config_.save_name = company.slot;
                 assert_company_slot_authority(); // [SAVE-R2]
+                // Rewind into a scratch save, never the open company: a
+                // ReloadFailed rollback reloads the TARGET's pre-restore
+                // state into the save it is handed, and the slot goes back
+                // to previous_slot below. The success path loses nothing —
+                // load_game re-reads the rewound file into save_data_.
+                SaveData rewound;
                 const og::data::CompanyRestoreError error =
-                    og::data::restore_company_backup(save_data_,
+                    og::data::restore_company_backup(rewound,
                                                      company.slot,
                                                      backup.seq);
                 // RestampFailed included: the rewind itself finished (the
@@ -816,7 +824,7 @@ private:
             const std::string status = og::ui::cloud::run_cloud_download(
                 {}, text_cloud_hooks(notified),
                 [this](const std::string& slot) {
-                    return open_downloaded_company(slot);
+                    return open_company_slot(slot);
                 });
             if (!notified)
                 std::printf("%s\n", status.c_str());
@@ -861,16 +869,24 @@ private:
         return hooks;
     }
 
-    // #155 download open path: the terminal §2.3 open sequence — repoint
-    // this client's slot authority at the installed company and load it;
-    // restore the previous slot on failure (the show_company_list
-    // discipline).
-    bool open_downloaded_company(const std::string& slot)
+    // The terminal §2.3 open sequence, shared by the company list's Open
+    // Company and the #155 cloud download: repoint this client's slot
+    // authority at the company and load it; on failure restore the previous
+    // slot and leave the open company in memory.
+    bool open_company_slot(const std::string& slot)
     {
         const std::string previous_slot = config_.save_name;
         config_.save_name = slot;
-        if (load_game())
+        // Open the company on a scratch save first: load_with_error reads
+        // the whole company before load_campaign can fail (its campaign is
+        // not installed here), so a failed open straight into save_data_
+        // would leave the other company in memory under the previous slot.
+        SaveData scratch;
+        const SaveDataIoError io = scratch.load_with_error(slot);
+        if (io == SaveDataIoError::None && load_game())
             return true;
+        if (io != SaveDataIoError::None)
+            report_load_failure(slot, io);
         config_.save_name = previous_slot;
         assert_company_slot_authority(); // [SAVE-R2]
         return false;
@@ -1128,15 +1144,13 @@ private:
                 }
                 const short current =
                     save_data_.team_list[static_cast<std::size_t>(slot - 1)]->teamnum;
-                const short moved = cycle_guy_team(save_data_, slot - 1,
+                // The checks above are every refusal cycle_guy_team has (a
+                // bad slot, an empty slot; its wrap always lands in 0-3).
+                (void)cycle_guy_team(save_data_, slot - 1,
                     (value - 1) - static_cast<int>(current));
-                if (moved < 0) {
-                    std::printf("Invalid slot or team.\n");
-                } else {
-                    std::printf("Moved slot %d to %s.\n", slot,
-                        og::sim::team_color_name(value - 1));
-                    autosave_company_after_mutation();  // §3.8 team cycle
-                }
+                std::printf("Moved slot %d to %s.\n", slot,
+                    og::sim::team_color_name(value - 1));
+                autosave_company_after_mutation();  // §3.8 team cycle
                 continue;
             }
             std::printf("Unrecognized command.\n");
@@ -1361,11 +1375,6 @@ private:
         for (;;) {
             std::printf("\n--- Team Roster ---\n");
             const std::vector<int> slots = collect_base_camp_slots(save_data_);
-            if (slots.empty()) {
-                std::printf("(empty)\n");
-                wait_for_enter();
-                return;
-            }
 
             for (std::size_t i = 0; i < slots.size(); ++i) {
                 const guy& member =
@@ -1436,10 +1445,6 @@ private:
     void deploy_prompt()
     {
         const std::vector<int> slots = collect_base_camp_slots(save_data_);
-        if (slots.empty()) {
-            std::printf("(empty roster - hire someone first)\n");
-            return;
-        }
         std::printf("Toggle deploy for roster row [1-%d]: ",
             static_cast<int>(slots.size()));
         std::fflush(stdout);
@@ -1472,10 +1477,6 @@ private:
             return;
         }
         TrainSession session(save_data_);
-        if (session.empty()) {
-            std::printf("No team members available to train.\n");
-            return;
-        }
         if (seed_slot >= 0)
             (void)session.seek_slot(seed_slot);  // §2.5 'train N' direct-open
 
@@ -1557,9 +1558,9 @@ private:
         std::string line;
 
         for (;;) {
+            // HireSession always holds a recruit (its ctor, the family steps
+            // and hire() all leave one in place).
             const guy* r = session.current_recruit();
-            if (!r)
-                break;
             std::printf("\n--- Hire: %s (%d/%d) ---\n",
                 family_display_name(r->family),
                 session.family_index() + 1,

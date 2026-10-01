@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
+#include <vector>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
@@ -257,6 +259,91 @@ TEST(LoadLevels, missing_company_slot_reports_the_error_and_builds_no_world)
     EXPECT_EQ(1, load_saved_game("openglad_wp10_present_slot", scr));
     EXPECT_FALSE(trace_contains("popup", "Could not load the saved game"));
     EXPECT_EQ(1, scr->world().id);
+    scr->world().delete_objects();
+}
+
+// A save whose level will not load falls back to the mounted campaign's
+// lowest level. When THAT level will not load either, the load must stop and
+// say so: load_saved_game_with_error reports FallbackLevelLoadFailed (no
+// mission starts on a half-loaded world), and the compatibility wrapper turns
+// it into the 0 its callers test and puts up the "Fallback loading failed"
+// dialog.
+TEST(LoadLevels, unloadable_fallback_level_reports_the_error_and_starts_no_mission)
+{
+    namespace fs = std::filesystem;
+    og::test::ScopedCampaignMountState mount_restore;
+    ASSERT_TRUE(prepare_default_level_load());
+    // Tryxian ships no level 1 (its first level is 103), so a scen1.fss in the
+    // user's scen/ becomes the lowest level list_levels_v() reports without
+    // shadowing any shipped file.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("tryxian"));
+
+    og::runtime::GameSession::Config session_config;
+    session_config.allocate_screen = true;
+    session_config.create_display = false;
+    session_config.allocate_prefs = true;
+    session_config.install_legacy_globals = false;
+    og::runtime::GameSession isolated_session(session_config);
+    auto isolated_scope = isolated_session.activate();
+    screen* const scr = isolated_session.screen_ptr();
+    ASSERT_NE(nullptr, scr);
+
+    const char* const slot = "openglad_fallback_fail_slot";
+    scr->save_data.reset();
+    scr->save_data.current_campaign = "tryxian";
+    scr->save_data.scen_num = 9999; // no campaign ships it
+    scr->save_data.numplayers = 1;
+    ASSERT_TRUE(scr->save_data.save(slot));
+
+    // Paired control: the fallback level loads, so the load succeeds on it.
+    const std::vector<int> shipped_levels = list_levels_v();
+    ASSERT_FALSE(shipped_levels.empty());
+    ASSERT_GT(shipped_levels.front(), 1)
+        << "a level 1 is already visible; the corrupt file below would not "
+           "be the fallback";
+    trace_clear();
+    EXPECT_EQ(LoadSavedGameError::UsedFallbackLevel,
+              load_saved_game_with_error(slot, scr));
+    EXPECT_EQ(shipped_levels.front(), scr->world().id);
+    EXPECT_EQ(shipped_levels.front(),
+              static_cast<int>(scr->save_data.scen_num));
+    scr->world().delete_objects();
+
+    // Now the lowest listed level is an unparseable scen1.fss.
+    const fs::path corrupt =
+        fs::path(get_user_path()) / "scen" / "scen1.fss";
+    ASSERT_FALSE(fs::exists(corrupt)) << "refusing to overwrite " << corrupt;
+    struct RemoveOnExit
+    {
+        fs::path path;
+        ~RemoveOnExit()
+        {
+            std::error_code ec;
+            fs::remove(path, ec);
+        }
+    } remove_corrupt{corrupt};
+    std::error_code ec;
+    fs::create_directories(corrupt.parent_path(), ec);
+    {
+        std::ofstream out(corrupt, std::ios::binary);
+        out << "FSS"; // truncated header: the level loader rejects it
+    }
+    ASSERT_TRUE(fs::exists(corrupt));
+    ASSERT_EQ(1, list_levels_v().front());
+
+    trace_clear();
+    EXPECT_EQ(LoadSavedGameError::FallbackLevelLoadFailed,
+              load_saved_game_with_error(slot, scr));
+    EXPECT_EQ(1, static_cast<int>(scr->save_data.scen_num))
+        << "the load tried the campaign's lowest level as the fallback";
+    EXPECT_FALSE(trace_contains("popup", "Fallback loading failed"))
+        << "the error-returning entry point reports, it does not prompt";
+
+    // The wrapper: 0 and the dialog.
+    trace_clear();
+    EXPECT_EQ(0, load_saved_game(slot, scr));
+    EXPECT_TRUE(trace_contains("popup", "Fallback loading failed"));
     scr->world().delete_objects();
 }
 

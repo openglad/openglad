@@ -10,6 +10,8 @@
 #include <openglad/platform/curses/kitty_keys.h>
 
 #include <cerrno>
+#include <string>
+#include <string_view>
 #include <vector>
 
 using namespace og::curses;
@@ -187,6 +189,50 @@ TEST(KittyKeys, partial_sequence_waits_for_rest)
     EXPECT_FALSE(d.next(k)) << "buffer fully consumed";
 }
 
+// A read can end right after the ESC that opens a sequence. The lone ESC
+// must wait for the next read (never decode as a bare Escape), so the
+// sequence reassembles into the one key it is. Positive control: the same
+// bytes in ONE read decode identically.
+TEST(KittyKeys, lone_escape_waits_for_the_rest_of_its_sequence)
+{
+    Decoder whole;
+    whole.feed("\x1b[113u");
+    Key control;
+    ASSERT_TRUE(whole.next(control));
+    EXPECT_TRUE(control.is_char(U'q'));
+
+    Decoder d;
+    Key k;
+    d.feed("\x1b");
+    EXPECT_FALSE(d.next(k)) << "a lone ESC is the head of a split sequence";
+    d.feed("[113u");
+    ASSERT_TRUE(d.next(k));
+    EXPECT_TRUE(k.is_char(U'q'))
+        << "the split sequence decodes as its one key, not Escape then text";
+    EXPECT_FALSE(d.next(k)) << "and nothing else";
+}
+
+// The same rule for the SS3 form: 'ESC O' with the final byte still in
+// flight waits, then decodes as F1 -- never drops the head and leaves a
+// stray 'P'.
+TEST(KittyKeys, split_ss3_sequence_waits_for_its_final_byte)
+{
+    Decoder whole;
+    whole.feed("\x1bOP");
+    Key control;
+    ASSERT_TRUE(whole.next(control));
+    EXPECT_EQ(control.code, KeyCode::F1);
+
+    Decoder d;
+    Key k;
+    d.feed("\x1bO");
+    EXPECT_FALSE(d.next(k)) << "ESC O without its final byte is incomplete";
+    d.feed("P");
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.code, KeyCode::F1);
+    EXPECT_FALSE(d.next(k));
+}
+
 TEST(KittyKeys, capability_response_is_skipped_not_emitted)
 {
     Decoder d;
@@ -318,6 +364,34 @@ TEST(KittyKeys, response_indicates_support_partial_not_done)
     // The kitty reply arrived but the DA reply has not yet -> supported, not done.
     EXPECT_TRUE(kitty::response_indicates_support("\x1b[?0u", done));
     EXPECT_FALSE(done);
+}
+
+// A reply that arrived cut off mid-sequence is incomplete: the handshake is
+// not over until the DA reply's final byte lands. Control: the same bytes
+// with that final 'c' end it.
+TEST(KittyKeys, response_indicates_support_ignores_an_incomplete_trailing_reply)
+{
+    bool done = false;
+    EXPECT_TRUE(kitty::response_indicates_support("\x1b[?1u\x1b[?62c", done));
+    EXPECT_TRUE(done) << "control: the complete DA reply ends the handshake";
+
+    done = true;
+    EXPECT_TRUE(kitty::response_indicates_support("\x1b[?1u\x1b[?62", done))
+        << "the complete kitty reply before the cut still counts";
+    EXPECT_FALSE(done) << "a DA reply without its final byte is not the end";
+}
+
+// Stray non-CSI bytes between replies are stepped over one at a time, so a
+// kitty reply right after one is still found.
+TEST(KittyKeys, response_indicates_support_steps_over_a_stray_byte)
+{
+    bool done = false;
+    EXPECT_TRUE(kitty::response_indicates_support("\x1b[?1u\x1b[?62c", done))
+        << "control: the same replies with no stray byte";
+    done = false;
+    EXPECT_TRUE(kitty::response_indicates_support("Z\x1b[?1u\x1b[?62c", done))
+        << "the kitty reply after the stray 'Z' must be found";
+    EXPECT_TRUE(done);
 }
 
 TEST(CursesTerminalInternals, capability_probe_waits_past_an_empty_poll_slice)

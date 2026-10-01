@@ -1,13 +1,14 @@
 // Render-pass tests for the multifloor FX pre-pass: ground shadows under
 // living units / weapons-in-flight and glass reflections on the camera floor
-// (draw_walker_shadow / draw_walker_reflection wired into draw_floor_entities
-// and draw_obs). Effects OFF must render byte-identically, so every test
+// (draw_walker_shadow / draw_walker_reflection wired into
+// draw_floor_entities). Effects OFF must render byte-identically, so every test
 // compares an off-run against an on-run of the same scene.
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/interface/render/effects.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -431,31 +432,6 @@ TEST_F(RenderEffects, weapon_shadow_stays_at_ground_when_raised_by_worldz)
     const RGB on = px(probe_x, probe_y);
     ASSERT_TRUE(darkened(on, off))
         << "airborne weapon's shadow must stay on the ground plane";
-
-    restore_world(vs);
-}
-
-TEST_F(RenderEffects, draw_obs_legacy_path_draws_shadow_prepass)
-{
-    viewscreen* vs = view0();
-    ASSERT_NE(nullptr, vs);
-    prepare_world();
-    EffectsCfgGuard guard;
-    cfg.apply_setting("effects", "reflections", "off");
-    cfg.apply_setting("effects", "weather", "off");
-    cfg.apply_setting("effects", "shadows", "on");
-
-    walker* w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    ASSERT_NE(nullptr, w);
-    w->setxy(160, 120);
-    vs->control = w;
-    ASSERT_TRUE(do_redraw(vs)); // establish camera + current_floor_
-
-    // The level-editor entity path shares the same pre-pass per floor.
-    trace_clear();
-    ASSERT_TRUE(vs->draw_obs(&scr()->level_runtime_data()));
-    ASSERT_TRUE(trace_contains("effects", "shadows floor=0 n=1"))
-        << "draw_obs must run the shadow pre-pass";
 
     restore_world(vs);
 }
@@ -996,6 +972,80 @@ TEST_F(RenderEffects, dead_walkers_are_rejected_by_world_and_tile_draws)
 
     EXPECT_FALSE(draw_walker(*w, vs));
     EXPECT_FALSE(draw_walker_tile(*w, vs));
+}
+
+// A dormant (delayed-spawn) walker has not entered the world: it casts no
+// shadow. Paired control: the same walker, woken, casts one.
+TEST_F(RenderEffects, dormant_walker_casts_no_shadow_until_it_wakes)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "reflections", "off");
+    cfg.apply_setting("effects", "weather", "off");
+    cfg.apply_setting("effects", "shadows", "on");
+
+    walker* const control = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const sleeper = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, sleeper);
+    control->setxy(160, 120);
+    sleeper->setxy(200, 120);
+    vs->control = control;
+    sleeper->set_dormant(true);
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera
+
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_TRUE(trace_contains("effects", "shadows floor=0 n=1"))
+        << "only the awake walker casts a shadow";
+    EXPECT_FALSE(draw_walker_shadow(*sleeper, vs))
+        << "a dormant walker casts no shadow";
+
+    sleeper->set_dormant(false);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_TRUE(trace_contains("effects", "shadows floor=0 n=2"))
+        << "once awake, the delayed spawn casts its shadow too";
+}
+
+// effects "hit_anim" off hides the hit-spark FX in the tile draw: the call
+// still reports handled but paints nothing. Paired control: with hit_anim on
+// the same spark paints its sprite.
+TEST_F(RenderEffects, hit_anim_off_hides_the_hit_spark_tile)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+
+    walker* const spark = scr()->world().add_ob(Order::FX, FAMILY_HIT);
+    ASSERT_NE(nullptr, spark);
+    ASSERT_EQ(FAMILY_HIT, spark->family());
+    spark->setxy(160, 120);
+    ASSERT_NE(nullptr, spark->bmp_data());
+    vs->topx = 0;
+    vs->topy = 0;
+    const int x0 = 160 + vs->xloc;
+    const int y0 = 120 + vs->yloc;
+
+    ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+    scr()->clearbuffer();
+    const std::vector<RGB> blank = grab_rect(x0, y0, GRID_SIZE, GRID_SIZE);
+
+    cfg.apply_setting("effects", "hit_anim", "on");
+    ASSERT_TRUE(draw_walker_tile(*spark, vs));
+    EXPECT_FALSE(rects_equal(blank, grab_rect(x0, y0, GRID_SIZE, GRID_SIZE)))
+        << "with hit_anim on the spark paints";
+
+    scr()->clearbuffer();
+    cfg.apply_setting("effects", "hit_anim", "off");
+    EXPECT_TRUE(draw_walker_tile(*spark, vs));
+    EXPECT_TRUE(rects_equal(blank, grab_rect(x0, y0, GRID_SIZE, GRID_SIZE)))
+        << "with hit_anim off the spark tile paints nothing";
 }
 
 TEST_F(RenderEffects, debug_path_toggle_adds_overlay_without_mutating_path)
@@ -3183,6 +3233,170 @@ TEST_F(RenderEffects, fall_cue_plays_smear_then_puff_after_an_air_fall)
     restore_world(vs);
 }
 
+namespace
+{
+// A viewport narrower than the world canvas, so "past its right edge" is
+// real canvas: x 8..98, y 8..128. A marker band just right of the edge
+// (x 98..114) proves an effect never paints outside its own viewport.
+constexpr short kClipX = 8, kClipY = 8, kClipW = 90, kClipH = 120;
+constexpr unsigned char kClipMarker = 200;
+
+struct ClipViewport
+{
+    viewscreen* vs;
+    explicit ClipViewport(viewscreen* v) : vs(v)
+    {
+        vs->resize(kClipX, kClipY, kClipW, kClipH);
+        vs->topx = 0;
+        vs->topy = 0;
+    }
+    ~ClipViewport() { scr()->relayout_views(); }
+    ClipViewport(const ClipViewport&) = delete;
+    ClipViewport& operator=(const ClipViewport&) = delete;
+
+    void paint_band() const
+    {
+        scr()->fastbox(vs->endx, vs->yloc, 16, vs->yview, kClipMarker);
+    }
+    // Pixels of the band that no longer read back as the marker.
+    int band_changed() const
+    {
+        int changed = 0;
+        const int want = canonical_palette_index(kClipMarker);
+        for (int y = vs->yloc; y < vs->endy; ++y)
+            for (int x = vs->endx; x < vs->endx + 16; ++x)
+            {
+                int actual = -1;
+                scr()->get_pixel(x, y, &actual);
+                if (actual != want)
+                    ++changed;
+            }
+        return changed;
+    }
+};
+} // namespace
+
+// Z-stair chevrons are clipped to their viewport: a stair tile straddling
+// the right edge paints its inside half and nothing past the edge.
+TEST_F(RenderEffects, stair_chevrons_never_paint_past_the_viewport_edge)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+    ClipViewport clip(vs);
+    ASSERT_EQ(98, vs->endx);
+
+    GameWorld& world = scr()->world();
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    // Tile column 5 spans screen x 88..103: it straddles endx = 98.
+    for (int gy = 1; gy < 6; ++gy)
+        world.grid.data[static_cast<std::size_t>(5 + world.grid.w * gy)] =
+            static_cast<unsigned char>(PIX_ZSTAIR_UP);
+
+    scr()->clearbuffer();
+    clip.paint_band();
+    EXPECT_TRUE(draw_stair_overlays(vs, world.grid))
+        << "the inside half of the straddling stairs still paints";
+    EXPECT_EQ(0, clip.band_changed())
+        << "no chevron pixel may land past the viewport edge";
+}
+
+// Falling dust is clipped to its viewport: a mover overhead whose speck
+// column straddles the right edge sheds specks inside only.
+TEST_F(RenderEffects, falling_dust_never_paints_past_the_viewport_edge)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+    ClipViewport clip(vs);
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, mover);
+    mover->set_floor(1);
+    // Speck column centre (x + sizex/2 on screen) one pixel inside endx:
+    // the +/-6px jitter puts specks on both sides of the edge.
+    const int x_end = vs->endx - 1 - vs->xloc - mover->sizex() / 2;
+    effects_reset_for_testing();
+    mover->setxy(static_cast<short>(x_end - 6), static_cast<short>(60));
+    EXPECT_FALSE(draw_walker_dust(*mover, vs)) << "no motion history yet";
+    effects_advance_frame();
+    mover->setxy(static_cast<short>(x_end), static_cast<short>(60));
+
+    scr()->clearbuffer();
+    clip.paint_band();
+    bool drew = false;
+    // Every stagger phase over one fall period, so both sides of the edge
+    // see specks.
+    for (std::uint32_t f = 0; f < 36; ++f)
+    {
+        drew = draw_walker_dust(*mover, vs) || drew;
+        effects_advance_frame();
+        mover->setxy(static_cast<short>(x_end + (f % 2 == 0 ? 6 : 0)), static_cast<short>(60));
+    }
+    EXPECT_TRUE(drew) << "the mover sheds dust inside the viewport";
+    EXPECT_EQ(0, clip.band_changed())
+        << "no dust speck may land past the viewport edge";
+    effects_reset_for_testing();
+}
+
+// The fall cue's smear is clipped to its viewport: a landing whose smear
+// column sits on the right edge paints its inside pixel column only.
+TEST_F(RenderEffects, fall_cue_smear_never_paints_past_the_viewport_edge)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "dust", "on");
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* faller = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, faller);
+    faller->set_floor(1);
+    faller->setxy(200, 120);
+    const std::uint32_t id = faller->entity_id();
+
+    // Start the cue exactly as fall_cue_plays_smear_then_puff_after_an_air_fall.
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    faller->set_floor(0);
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_EQ(8u, effects_fall_cue_frames_left(id)) << "setup: the cue runs";
+
+    ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+    ClipViewport clip(vs);
+    // The smear is 2px wide at x = head_wx - 1 - topx + xloc; put its left
+    // pixel on the last inside column.
+    const int head_wx = 200 + faller->sizex() / 2;
+    vs->topx = static_cast<Sint32>(head_wx - 1 + vs->xloc - (vs->endx - 1));
+    vs->topy = 0;
+    scr()->clearbuffer();
+    clip.paint_band();
+    EXPECT_TRUE(draw_fall_cues(vs, 0)) << "the inside smear column paints";
+    EXPECT_EQ(0, clip.band_changed())
+        << "no smear pixel may land past the viewport edge";
+    effects_reset_for_testing();
+}
+
 TEST_F(RenderEffects, fall_cue_absent_for_stair_descents_teleports_and_dust_off)
 {
     viewscreen* vs = view0();
@@ -5222,6 +5436,75 @@ TEST_F(RenderEffects, floor_glide_ghost_hold_keeps_above_floor_alpha)
     restore_world(vs);
 }
 
+// Parallax depth scale: a floor d levels below the camera renders at
+// 1 + d*0.10, but never below half scale (kMinBelowFloorScale) — floors six
+// or more below stop shrinking. pf = d*0.05 recovers d, so 1 + 2*pf is the
+// unclamped scale the pass would have used. Steady (no glide) pass.
+TEST_F(RenderEffects, deep_floors_stop_shrinking_at_half_scale_when_steady)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 8, 6);
+    ASSERT_NE(nullptr, control);
+    settle_glide_baseline(vs);
+    ASSERT_EQ(0, vs->floor_glide_frames_left());
+
+    // Camera on floor 6: floor 0 is 6 below (0.4 unclamped).
+    const viewscreen::FloorPassParams deep = vs->compute_floor_pass(0, world, false);
+    EXPECT_FLOAT_EQ(0.4f, 1.0f + 2.0f * deep.pf) << "setup: 6 floors below";
+    EXPECT_FLOAT_EQ(0.5f, deep.fscale)
+        << "a floor 6 below the camera clamps to half scale";
+    const viewscreen::FloorPassParams shallow = vs->compute_floor_pass(2, world, false);
+    EXPECT_FLOAT_EQ(0.6f, shallow.fscale)
+        << "a floor 4 below keeps its linear scale";
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// The same half-scale floor holds mid-glide, where the depth is the
+// continuous dz = f - camera_z.
+TEST_F(RenderEffects, deep_floors_stop_shrinking_at_half_scale_mid_glide)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 8, 6);
+    ASSERT_NE(nullptr, control);
+    put_tile_under(world, control, 6,
+                   static_cast<unsigned char>(PIX_ZSTAIR_UP));
+    settle_glide_baseline(vs);
+
+    // Climb to floor 7 over the stair, then read a mid-glide frame.
+    control->set_floor(7);
+    ASSERT_TRUE(do_redraw(vs)); // stair-up trigger
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_GT(vs->floor_glide_frames_left(), 0) << "setup: the glide runs";
+    const viewscreen::FloorPassParams glide_deep =
+        vs->compute_floor_pass(0, world, false);
+    EXPECT_LT(1.0f + 2.0f * glide_deep.pf, 0.5f)
+        << "setup: floor 0 sits more than 5 floors below the moving camera";
+    EXPECT_FLOAT_EQ(0.5f, glide_deep.fscale)
+        << "mid-glide, a floor far below still clamps to half scale";
+    const viewscreen::FloorPassParams glide_near =
+        vs->compute_floor_pass(3, world, false);
+    EXPECT_NEAR(1.0f + 2.0f * glide_near.pf, glide_near.fscale, 1e-5f)
+        << "mid-glide, a nearer floor keeps its continuous scale";
+    EXPECT_LT(0.5f, glide_near.fscale);
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
 // 10.2-8a: the departing floor renders terrain-only during a no-hold
 // down-glide — a monster on it contributes ZERO pixels from the trigger
 // frame on (the frame-1 entity vanish, deliberate and fx-review-gated).
@@ -7071,4 +7354,154 @@ TEST(EffectsCadence, wall_clock_gates_frame_advancement)
 	       "and tests rely on";
 
 	effects_reset_for_testing();
+}
+
+// ---- Per-order gates of the render store (trails, dust, fall cue) ----
+
+// Rule: a fall cue plays only in the view of the floor it LANDS on. The
+// camera sits on floor 1 while a second walker drops 1 -> 0: the cue is
+// recorded (8 frames) but the floor-1 pass must not draw it. The TRACE is
+// the oracle (it fires only when a cue pixel was painted), so no pixel
+// occlusion question arises. Positive control: the same cue, same frame,
+// seen from the landing floor 0, paints.
+TEST_F(RenderEffects, fall_cue_draws_only_in_the_view_of_its_landing_floor)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "dust", "on");
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->set_floor(1);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* faller = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, faller);
+    faller->set_floor(1);
+    faller->setxy(200, 120);
+    const std::uint32_t id = faller->entity_id();
+    ASSERT_NE(0u, id);
+
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    faller->set_floor(0); // the instant air fall, straight down
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "fall_cue start id="))
+        << "the drop seen from floor 1 must still record a cue";
+    ASSERT_EQ(8u, effects_fall_cue_frames_left(id));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue floor=1"))
+        << "a cue landing on floor 0 must not paint in the floor-1 view";
+
+    // Control: same frame tick, camera moved to the landing floor.
+    w->set_floor(0);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "fall_cue floor=0"))
+        << "the landing floor's view must paint the cue";
+    ASSERT_EQ(8u, effects_fall_cue_frames_left(id));
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// Rule: trails track WEAPONS only. The weapon list also parks effects: a
+// broken door hands its spot to the core:door_open FX through
+// og.add_weap_ob('fx', ...) (packs/core/lib/weapon_door.lua), and that FX
+// must never enter the trail store, while an arrow beside it does.
+TEST_F(RenderEffects, trails_skip_effects_parked_in_the_weapon_list)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "trails", "on");
+
+    const int door_open = og::families::resolve_family_string_id(
+        Order::FX, "core:door_open");
+    ASSERT_GE(door_open, 0) << "core:door_open must be registered";
+
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    GameWorld& world = scr()->world();
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* opened = world.add_weap_ob(Order::FX, door_open);
+    ASSERT_NE(nullptr, opened);
+    ASSERT_EQ(Order::FX, opened->query_order());
+    opened->setxy(192, 96);
+    walker* arrow = world.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->setxy(200, 140);
+    const std::uint32_t fx_id = opened->entity_id();
+    const std::uint32_t arrow_id = arrow->entity_id();
+    ASSERT_NE(0u, fx_id);
+    ASSERT_NE(0u, arrow_id);
+
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_EQ(1u, effects_store_depth(arrow_id))
+        << "control: the arrow in the weapon list is tracked";
+    ASSERT_EQ(0u, effects_store_depth(fx_id))
+        << "the door-open FX parked in the weapon list must not be tracked";
+    ASSERT_EQ(1u, effects_store_size());
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// Rule: dust shakes loose only from LIVING movers on the floor above. A
+// life gem lying on floor 1 sits in the object list next to a living; with
+// every other store writer (shadows/reflections/ripples/trails) off, only
+// the living may enter the dust store.
+TEST_F(RenderEffects, dust_tracks_only_living_movers_on_the_floor_above)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "dust", "on");
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, mover);
+    mover->set_floor(1);
+    mover->setxy(200, 120);
+    walker* gem = world.add_ob(Order::Treasure, FAMILY_LIFE_GEM);
+    ASSERT_NE(nullptr, gem);
+    ASSERT_EQ(Order::Treasure, gem->query_order());
+    gem->set_floor(1);
+    gem->setxy(120, 80);
+    const std::uint32_t mover_id = mover->entity_id();
+    const std::uint32_t gem_id = gem->entity_id();
+    ASSERT_NE(0u, gem_id);
+
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_EQ(1u, effects_store_depth(mover_id))
+        << "control: the living overhead is tracked for dust";
+    ASSERT_EQ(0u, effects_store_depth(gem_id))
+        << "a life gem overhead must never enter the dust store";
+    ASSERT_EQ(1u, effects_store_size());
+
+    effects_reset_for_testing();
+    restore_world(vs);
 }

@@ -58,14 +58,6 @@ int acting_team(const SaveData& save)
     return team;
 }
 
-// Display-name rule from the picker's family_display_name: descriptor name
-// when the family is installed, "BEAST" for unknown/uninstalled families.
-const char* family_display_name(int family)
-{
-    const FamilyDescriptor* descriptor = get_family_descriptor(family);
-    return descriptor != nullptr ? descriptor->name : "BEAST";
-}
-
 // #212: armed by a successful match_set, consumed by the missions surface
 // after each Acted outcome (the sync-settings-from-save tail).
 bool g_match_settings_dirty = false;
@@ -259,7 +251,7 @@ og::script::hooks::CampaignProviders make_campaign_providers(
                 continue;
             og::script::hooks::CampaignRosterEntry entry;
             entry.name = member->name;
-            entry.family = family_display_name(member->family);
+            entry.family = get_family_display_name(member->family);
             entry.level = member->level;
             entry.exp = static_cast<int>(member->exp);
             entry.strength = member->strength;

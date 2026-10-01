@@ -113,33 +113,13 @@ void plot_ping_blip(short cx, short cy, unsigned char base_color,
     }
 }
 
-template <typename WalkerList>
-bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
-{
-    return std::any_of(list.begin(), list.end(),
-                       [candidate](const auto& entry) {
-                           return entry.get() == candidate;
-                       });
-}
-
-bool control_pointer_is_live(LevelRuntimeData& level, const walker* candidate)
-{
-    if (candidate == nullptr)
-        return false;
-
-    return contains_walker_ptr(level.world().oblist, candidate)
-        || contains_walker_ptr(level.world().fxlist, candidate)
-        || contains_walker_ptr(level.world().weaplist, candidate)
-        || contains_walker_ptr(level.world().dead_list, candidate);
-}
-
 walker* sanitize_radar_control(viewscreen* view, LevelRuntimeData& level)
 {
     if (view == nullptr)
         return nullptr;
 
     walker* candidate = view->control;
-    if (candidate != nullptr && !control_pointer_is_live(level, candidate))
+    if (candidate != nullptr && !level.world().tracks(candidate))
         view->control = nullptr;
     return view->control;
 }

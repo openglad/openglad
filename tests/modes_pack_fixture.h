@@ -99,6 +99,15 @@ inline constexpr int kSoccerLevelA = 9301;
 inline constexpr int kSoccerLevelB = 9302;
 inline constexpr int kSoccerLevelC = 9303;
 inline constexpr int kSoccerLevelD = 9304;
+// kSoccerLevelA's pitch plus a core:archer customize_weapon (9310) or
+// on_fire_weapon (9311) hook that the level's on_mode_init registers, so
+// only a world on that level carries it. Each hook og.logs its own name
+// (kArcherCustomizeWeaponLog / kArcherOnFireWeaponLog) once per dispatch.
+inline constexpr int kSoccerLevelArcherCustomizer = 9310;
+inline constexpr int kSoccerLevelArcherFireVeto = 9311;
+inline constexpr const char* kArcherCustomizeWeaponLog =
+    "archer_customize_weapon";
+inline constexpr const char* kArcherOnFireWeaponLog = "archer_on_fire_weapon";
 inline constexpr int kOnsLevelA = 9401;
 inline constexpr int kOnsLevelB = 9402;
 inline constexpr int kOnsLevelC = 9403;
@@ -361,6 +370,36 @@ inline constexpr const char* kTestRegistrationLua =
     "  goal_rects = { [0] = { x = 16, y = 400, w = 32, h = 128 } },\n"
     "  kickoff = { x = 320, y = 464 } }))\n"
     "og.register_level_hooks(9309, soccer.make_hooks(nil))\n"
+    "-- 9310/9311: kSoccerLevelA's pitch whose on_mode_init also registers a\n"
+    "-- core:archer weapon hook, so only a world on that level carries it.\n"
+    "local function archer_hooked_pitch(id, archer_hooks)\n"
+    "  local hooks = soccer.make_hooks({\n"
+    "    id = id, mode = \"soccer\", teams = 2, time_limit = 10800,\n"
+    "    score_limit = 3,\n"
+    "    goal_rects = { [0] = { x = 16, y = 400, w = 32, h = 128 },\n"
+    "                   [1] = { x = 592, y = 400, w = 32, h = 128 } },\n"
+    "    kickoff = { x = 320, y = 464 } })\n"
+    "  local soccer_init = hooks.on_mode_init\n"
+    "  hooks.on_mode_init = function(level)\n"
+    "    soccer_init(level)\n"
+    "    og.register_hooks(\"living\", \"core:archer\", archer_hooks)\n"
+    "  end\n"
+    "  og.register_level_hooks(id, hooks)\n"
+    "end\n"
+    "archer_hooked_pitch(9310, {\n"
+    "  customize_weapon = function(self, weapon)\n"
+    "    og.log(\"archer_customize_weapon\")\n"
+    "    weapon:set_stepsize(1)\n"
+    "    weapon:set_lineofsight(1)\n"
+    "  end,\n"
+    "})\n"
+    "archer_hooked_pitch(9311, {\n"
+    "  on_fire_weapon = function(self, weapon)\n"
+    "    og.log(\"archer_on_fire_weapon\")\n"
+    "    weapon:set_dead(1)\n"
+    "    return false\n"
+    "  end,\n"
+    "})\n"
     "local onslaught = og.use(\"mode_onslaught_impl\")\n"
     "local ons_rows = {\n"
     "  { id = 9401, mode = \"onslaught\", teams = 2, time_limit = 14400,\n"

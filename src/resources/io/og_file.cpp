@@ -71,8 +71,6 @@ public:
 
     std::int64_t seek(std::int64_t offset, int whence) override
     {
-        if (!file_)
-            return -1;
         PHYSFS_uint64 pos = 0;
         switch (whence) {
             case 0: // SEEK_SET
@@ -116,22 +114,16 @@ public:
 
     std::size_t read(void* buf, std::size_t size, std::size_t count) override
     {
-        if (!file_)
-            return 0;
         return std::fread(buf, size, count, file_);
     }
 
     std::size_t write(const void* buf, std::size_t size, std::size_t count) override
     {
-        if (!file_)
-            return 0;
         return std::fwrite(buf, size, count, file_);
     }
 
     std::int64_t seek(std::int64_t offset, int whence) override
     {
-        if (!file_)
-            return -1;
         if (std::fseek(file_, static_cast<long>(offset), whence) != 0)
             return -1;
         return std::ftell(file_);
@@ -886,11 +878,6 @@ PixieData read_pixie_file(const char* filename)
                 return result;
             }
         }
-    }
-
-    if (pixels.size() != static_cast<std::size_t>(png_w) * static_cast<std::size_t>(png_h)) {
-        LogError("Unexpected indexed PNG size for {}\n", path);
-        return result;
     }
 
     // Look up frame metadata from per-PNG Aseprite JSON sidecar; absent

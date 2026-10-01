@@ -66,6 +66,8 @@
 #include <openglad/resources/win_shares.h>
 #include <openglad/server/headless_server_runtime.h>
 
+#include "curses_game_flow_internal.h"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -103,53 +105,6 @@ std::string make_network_player_name()
         std::chrono::steady_clock::now().time_since_epoch().count());
     const std::uint64_t seq = counter.fetch_add(1, std::memory_order_relaxed);
     return std::format("curses-{:016x}-{:x}", now, seq);
-}
-
-// Pull human-readable notification text out of an event batch into `out`.
-// A targeted line (target_player >= 0) is addressed to one global player and
-// is dropped by every other seat.
-void collect_notifications(const og::sim::SimEventBatch& batch,
-                           std::vector<std::string>& out, int local_player)
-{
-    for (const og::sim::Event& ev : batch.events) {
-        if (ev.kind == og::sim::EventKind::Notification && !ev.text.empty() &&
-            (ev.target_player < 0 || ev.target_player == local_player))
-            out.push_back(ev.text);
-    }
-}
-
-// Latched level-end state (see curses_game_runtime.cpp for the rationale: the
-// authoritative end arrives as an EndGame/SetEnd event and must NOT be stored in
-// the mirror world, since the next delta snapshot would clobber it).
-struct PendingEnd {
-    bool ended = false;
-    short ending = 0;
-    short next_level = -1;
-};
-
-// Apply terminal game-flow events: latch any level end and collect notifications.
-void apply_game_flow_batch(const og::sim::SimEventBatch& batch, PendingEnd& end,
-                           std::vector<std::string>& messages, int local_player)
-{
-    for (const og::sim::Event& ev : batch.events) {
-        switch (ev.kind) {
-        case og::sim::EventKind::EndGame:
-            end.ended = true;
-            end.ending = static_cast<short>(static_cast<std::int32_t>(ev.a));
-            end.next_level = static_cast<short>(static_cast<std::int32_t>(ev.b));
-            break;
-        case og::sim::EventKind::SetEnd:
-            end.ended = true;
-            break;
-        case og::sim::EventKind::Notification:
-            if (!ev.text.empty() &&
-                (ev.target_player < 0 || ev.target_player == local_player))
-                messages.push_back(ev.text);
-            break;
-        default:
-            break;
-        }
-    }
 }
 
 // --- lobby message construction (replicated from the SDL lobby helpers) ------
@@ -1441,10 +1396,11 @@ public:
     // Offer this host's mounted non-core class packs (protocol v10). The
     // shared memo keys on the MOUNTED campaign, so the announcement follows
     // the staging remount instead of being snapshotted at construction.
+    // Every caller runs with a live server_: init_host / init_host_over_
+    // transport call it right after creating one, and pump_once only inside
+    // its `role_ == Host && server_ != nullptr` block.
     void sync_hosted_packs()
     {
-        if (server_ == nullptr)
-            return;
         if (std::optional<std::vector<og::sim::HostedPack>> packs =
                 hosted_packs_.refresh())
         {
@@ -1744,12 +1700,11 @@ public:
                 const short base = request_pending_for_selected
                     ? last_team_request_
                     : selected->team;
-                const short target = state_.has_value()
-                    ? og::sim::lobby_next_selectable_team(
-                          state_->settings, base)
-                    : static_cast<short>((base + 1) % MAX_PLAYERS);
-                if (target < 0)
-                    continue;
+                // `selected` came from selected_local_player(), which
+                // answers nullptr without a lobby state.
+                // Never -1: lobby_effective_team_mask() is never empty.
+                const short target = og::sim::lobby_next_selectable_team(
+                    state_->settings, base);
 
                 last_team_request_ = target;
                 last_team_request_seat_id_ = selected->seat_id;
@@ -2275,10 +2230,10 @@ private:
     // The MACHINE row label the Networking submenu shows for the same
     // machine (§6) — one formatter, so the two surfaces name a peer
     // identically.
+    // Its one caller, kick_selected_seat(), runs it only after
+    // local_player_is_host(), which is false without a lobby state.
     std::string machine_row_label(og::sim::LobbyMachineId machine_id) const
     {
-        if (!state_.has_value())
-            return {};
         const std::vector<std::uint8_t> local = local_player_indices();
         for (const og::ui::NetworkingMachineRow& row :
              og::ui::build_networking_machine_rows(state_->players, local))
@@ -2323,12 +2278,16 @@ private:
             std::to_string(seats[index]->player_index + 1);
     }
 
-    void handle_typed_message(const og::sim::TypedReceivedMessage& message)
+    // Applies one polled message. Returns false when the message tore the
+    // lobby down (a Kicked notice): the caller must stop applying the rest
+    // of that batch, or a trailing LobbyState would resurrect a roster over
+    // the dead links.
+    bool handle_typed_message(const og::sim::TypedReceivedMessage& message)
     {
         if (pack_client_ && transport_ &&
             pack_client_->handle_message(*transport_, server_peer_id_,
                                          message)) {
-            return;
+            return true;
         }
         switch (message.kind) {
         case og::sim::TypedReceivedMessageKind::LobbyState:
@@ -2388,7 +2347,7 @@ private:
                 kicked_ = true;
                 team_status_.clear();
                 teardown();
-                break;
+                return false;
             }
             if (message.lobby_message &&
                 message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
@@ -2417,16 +2376,17 @@ private:
         default:
             break;
         }
+        return true;
     }
 
     // Staged lobby (#218): change-key recompute from the live LobbyServer
     // (the SAME functions build_session_if_needed consumes at GO). Also run
     // by the start gate at StartGame time so a same-batch roster edit
     // reaches the launched world.
+    // Callers: the start gate installed ON *server_ (so server_ exists
+    // whenever it runs) and pump_once's `server_ != nullptr` host block.
     void refresh_stage_inputs()
     {
-        if (server_ == nullptr)
-            return;
         try
         {
             og::server::MatchStageInputs inputs;
@@ -2499,12 +2459,13 @@ private:
 
         for (const og::sim::TypedReceivedMessage& message :
              poll_lobby_transport_messages(*client_link)) {
-            handle_typed_message(message);
+            if (!handle_typed_message(message))
+                break;
         }
 
         // Staged lobby (#218, C9): apply the joiner's retained pair into the
         // headless preview mirror on the pump cadence. The negotiated state's
-        // campaign is the local level-load source (build_join_save_equivalent
+        // campaign is the local level-load source (build_join_save_equivalent_from_state
         // reads the same field at session build).
         if (role_ == LobbyRole::Join && state_.has_value())
         {
@@ -2560,8 +2521,11 @@ private:
                 session_built_failed_ = true;
                 return;
             }
-            // Build the equivalent the joiner will spawn from the negotiated state.
-            og::sim::LobbySaveDataEquivalent lobby_save = build_join_save_equivalent();
+            // The joiner spawns the same world the host negotiated:
+            // reconstruct the lobby-equivalent from the last LobbyState
+            // (campaign/scenario + full roster).
+            og::sim::LobbySaveDataEquivalent lobby_save =
+                build_join_save_equivalent_from_state(*state_);
             std::size_t join_index = 0;
             if (const og::sim::LobbyPlayer* const local =
                     find_local_player(*state_)) {
@@ -2573,15 +2537,6 @@ private:
         }
         if (session_ == nullptr)
             session_built_failed_ = true;
-    }
-
-    // The joiner spawns the same world the host negotiated. Reconstruct the
-    // lobby-equivalent from the last LobbyState (campaign/scenario + full roster).
-    og::sim::LobbySaveDataEquivalent build_join_save_equivalent() const
-    {
-        if (!state_.has_value())
-            return {};
-        return build_join_save_equivalent_from_state(*state_);
     }
 
     void teardown()

@@ -545,3 +545,51 @@ TEST(WorldSnapshotCoverage, drain_sim_events_preserves_tick_and_drains_once)
     EXPECT_EQ(808U, empty.sequence);
     EXPECT_TRUE(empty.events.empty());
 }
+
+// apply_snapshot's reorder pass keeps going past a record whose entity could
+// not be created (the loader returns null for a slot with no sprite): the
+// live entities after it still take snapshot order. The same snapshot
+// without the uncreatable record is the paired control.
+TEST(WorldSnapshotCoverage, apply_snapshot_orders_entities_past_an_uncreatable_record)
+{
+    for (const bool lead_with_uncreatable : {false, true})
+    {
+        TestGameWorld fixture;
+        GameWorld& world = fixture.world();
+        walker* const first = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* const second = world.add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, first);
+        ASSERT_NE(nullptr, second);
+        const std::uint32_t first_id = first->entity_id();
+        const std::uint32_t second_id = second->entity_id();
+
+        og::sim::WorldSnapshot snapshot =
+            og::sim::peek_keyframe_snapshot(world);
+        ASSERT_EQ(2U, snapshot.oblist.size());
+        std::swap(snapshot.oblist[0], snapshot.oblist[1]);
+        if (lead_with_uncreatable)
+        {
+            og::sim::EntitySnapshot uncreatable;
+            uncreatable.entity_id = 999;
+            uncreatable.family = FAMILY_ELF;
+            snapshot.oblist.insert(snapshot.oblist.begin(), uncreatable);
+        }
+        auto real_factory = world.entity_factory;
+        world.entity_factory =
+            [real_factory](Order order, std::int32_t family)
+                -> std::unique_ptr<walker> {
+            if (family == FAMILY_ELF)
+                return nullptr;
+            return real_factory(order, family);
+        };
+
+        EXPECT_TRUE(og::sim::apply_snapshot(world, snapshot));
+        EXPECT_EQ(nullptr, find_entity(world, 999));
+        std::vector<std::uint32_t> order;
+        for (const auto& entry : world.oblist)
+            order.push_back(entry->entity_id());
+        EXPECT_EQ((std::vector<std::uint32_t>{second_id, first_id}), order)
+            << (lead_with_uncreatable ? "past an uncreatable record"
+                                      : "control");
+    }
+}

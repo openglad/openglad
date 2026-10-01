@@ -749,18 +749,6 @@ int CampaignZoneSession::next_assign_tag(int tag)
     return tag == 1 ? 2 : 1;
 }
 
-char CampaignZoneSession::assign_glyph(
-    const hooks::CampaignAssignSpec& spec, int tag)
-{
-    if (tag < 1 || tag > static_cast<int>(spec.labels.size()))
-        return '-';
-    const std::string& label = spec.labels[static_cast<std::size_t>(tag - 1)];
-    if (label.empty())
-        return '-';
-    return static_cast<char>(
-        std::toupper(static_cast<unsigned char>(label.front())));
-}
-
 namespace {
 
 std::string upper_clipped(std::string value, std::size_t budget)
@@ -1204,8 +1192,6 @@ struct CampChoice {
 
 std::string terminal_camp_oath_prompt_label(std::size_t rows)
 {
-    if (rows == 0)
-        return "Swear # (0 = done): ";
     return std::format("Swear # [1-{}] (0 = done): ", rows);
 }
 
@@ -1263,11 +1249,13 @@ std::vector<std::string> terminal_camp_roster_lines(
     if (assign.active)
     {
         // Pad the summary out to the oath column so the channel's name is a
-        // COLUMN HEADING, not a third fact in the strip.
-        if (header.size() + 1 < kCampRosterOathColumn)
-            header.resize(kCampRosterOathColumn, ' ');
-        else
-            header += "  ";
+        // COLUMN HEADING, not a third fact in the strip. The strip is at
+        // most 31 chars -- "COMPANY  DEP " (13), two counts of at most
+        // MAX_TEAM_SIZE around '/', two spaces, and the gold label
+        // clip_chars() cuts to 11 -- so it always ends short of the column.
+        static_assert(MAX_TEAM_SIZE < 100);
+        static_assert(13 + 2 + 1 + 2 + 2 + 11 + 1 < kCampRosterOathColumn);
+        header.resize(kCampRosterOathColumn, ' ');
         header += CampaignZoneSession::assign_header_text(
             assign, kCampaignOathCellChars);
     }
@@ -1418,21 +1406,13 @@ std::vector<std::string> terminal_camp_lines(const SaveData& save,
 std::vector<std::string> terminal_camp_oath_legend(
     const hooks::CampaignAssignSpec& assign)
 {
+    // An active assign spec always carries exactly two non-empty labels:
+    // world_scripts.cpp's assign parse refuses anything else before it
+    // sets `active`, and the one caller returns on an inactive spec.
     std::vector<std::string> lines;
     std::string cycle = "A row number swears that hero: ";
-    if (assign.labels.size() >= 2)
-    {
-        cycle += std::format("- -> {} -> {} -> {}", assign.labels[0],
-                             assign.labels[1], assign.labels[0]);
-    }
-    else if (assign.labels.size() == 1)
-    {
-        cycle += std::format("- -> {}", assign.labels[0]);
-    }
-    else
-    {
-        return lines;
-    }
+    cycle += std::format("- -> {} -> {} -> {}", assign.labels[0],
+                         assign.labels[1], assign.labels[0]);
     // The cycle string carries the "never back to unset" rule on its own:
     // the "-" appears only at the head, never again.
     lines.push_back(
@@ -1468,11 +1448,8 @@ void run_terminal_camp_oath(SaveData& save, CampaignZoneSession& zone,
             terminal_camp_roster_lines(save, zone, slots, true);
         const std::vector<std::string> legend =
             terminal_camp_oath_legend(assign);
-        if (!legend.empty())
-        {
-            lines.emplace_back();
-            lines.insert(lines.end(), legend.begin(), legend.end());
-        }
+        lines.emplace_back();
+        lines.insert(lines.end(), legend.begin(), legend.end());
         const std::optional<std::string> answer =
             io.prompt(std::string(kTerminalCampOathTitle), lines,
                       terminal_camp_oath_prompt_label(slots.size()));
@@ -1513,17 +1490,11 @@ void run_terminal_camp_oath(SaveData& save, CampaignZoneSession& zone,
             continue;
         }
         // The full-word toast: the cycle must never be a silent glyph flip —
-        // and neither may the un-deploy it rides on.
+        // and neither may the un-deploy it rides on. next_assign_tag()
+        // answers 1 or 2, and the spec holds exactly two labels.
         const std::size_t label_index = static_cast<std::size_t>(next_tag - 1);
-        if (label_index < assign.labels.size())
-        {
-            io.notice(campaign_oath_toast(assign.labels[label_index],
-                                          stood_down));
-        }
-        else if (stood_down)
-        {
-            io.notice(std::string(kCampaignOathStoodDownMessage));
-        }
+        io.notice(campaign_oath_toast(assign.labels[label_index],
+                                      stood_down));
         (void)company_autosave_after_mutation(save,
                                               kTerminalNetworkedLobbyActive);
         zone.refetch();  // own mutation: the locks and the column re-derive
@@ -1576,13 +1547,11 @@ void run_terminal_campaign_camp(SaveData& save,
             continue;
         }
 
+        // `choices` was built from this zone's actions this iteration and
+        // only io.prompt (which never sees the zone) ran since, so the
+        // pick names a live row.
         const CampaignZoneSession::ActionsLayout* actions =
             zone.actions_widget(picked.widget);
-        if (actions == nullptr ||
-            picked.row >= static_cast<int>(actions->rows.size()))
-        {
-            continue;  // defensive: the composition moved under the answer
-        }
         // Copy: an Acted refetch replaces the rows under the one we read.
         const CampaignZoneSession::Row row =
             actions->rows[static_cast<std::size_t>(picked.row)];
@@ -1628,8 +1597,9 @@ void run_terminal_campaign_camp(SaveData& save,
                     io.notice(outcome.reason);
                     break;
                 }
-                if (outcome.kind != Outcome::Acted)
-                    break;
+                // Not Refused means Acted: the row is a live Action row
+                // (act()'s None arms are its bad-index/non-Action guards),
+                // and the executor answers only Refused or Acted.
                 // The session already debited and refetched; persist it.
                 (void)company_autosave_after_mutation(
                     save, kTerminalNetworkedLobbyActive);

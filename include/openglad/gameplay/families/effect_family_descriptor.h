@@ -42,7 +42,4 @@ struct EffectFamilyDescriptor {
     // Pack-declared fully-qualified id ("core:bomb"); see FamilyDescriptor
     // for the contract (borrowed from the ClasspackStore, nullptr = none).
     const char* declared_id = nullptr;
-
-    bool (*on_act)(effect* self);
-    bool (*on_death)(effect* self);
 };

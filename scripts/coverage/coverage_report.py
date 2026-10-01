@@ -1311,7 +1311,7 @@ def main() -> int:
     ap.add_argument("--cpp-tracefile", type=Path, default=None,
                     help="pre-made lcov tracefile for the C++ side")
     ap.add_argument("--output-dir", type=Path, required=True)
-    ap.add_argument("--line-threshold", type=float, default=96.0)
+    ap.add_argument("--line-threshold", type=float, default=98.0)
     ap.add_argument("--function-threshold", type=float, default=100.0)
     ap.add_argument("--processes-manifest", type=Path,
                     default=PROCESS_MANIFEST_FILE,
@@ -1419,7 +1419,7 @@ def main() -> int:
     combined = cpp_totals.add(lua_totals)
 
     # EVERY measured half must meet the bar, and so must the union. A single
-    # combined bar is gameable from either side: with C++ at 96%+ the union
+    # combined bar is gameable from either side: with C++ at 98%+ the union
     # tolerated a Lua half at 94.50%, which is exactly the shape of "the
     # directive says Lua is in the 95/100 measurement" being technically
     # true and practically false.

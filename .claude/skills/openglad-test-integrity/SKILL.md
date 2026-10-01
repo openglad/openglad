@@ -121,6 +121,20 @@ survive -Werror:
   the group (new binary + recorder_processes.txt line); never bump the
   ceiling.
 
+## Rejected deletion classes
+
+A guard that exists because a LIBRARY promises never to hand us the bad
+value is not dead code, and deleting it is not a coverage lever. These
+are rejected as a class (feat/coverage-97 ruling, 2026-09-30): libyaml
+and libzip failure arms and caller-checked null guards (wave 1's WP-RES
+deletions, e.g. 729e72d7 and f6fbe004, never merged), SDL 3.4.x
+argument-contract arms (`SDL_LockSurface`, `SDL_FillSurfaceRect`,
+`SDL_MUSTLOCK`), and IXWebSocket contract guards (dc2bb8fb, reverted).
+The pinned library version is not a proof: the guard is what keeps a
+bump from becoming a crash. Leave these lines uncovered, list them in the
+report as "rejected class", and never propose them again. A deletion
+needs a REPO-INTERNAL proof (the last caller, the arithmetic, the enum).
+
 ## Entity pointers do not survive the tick (ASan-only bug class)
 
 `GameWorld::tick`'s erase sweep frees dead weapons/effects the same tick

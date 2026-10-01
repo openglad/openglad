@@ -243,20 +243,6 @@ void dump_living(std::string& out)
         field(out, "promotion_level_req", number(fd->promotion_level_req));
         field(out, "promotion_new_level", callback(fd->promotion_new_level));
         field(out, "death_message", quoted(fd->death_message));
-        field(out, "cb.do_special", callback(fd->do_special));
-        field(out, "cb.check_special_ai", callback(fd->check_special_ai));
-        field(out, "cb.hit_response", callback(fd->hit_response));
-        field(out, "cb.set_difficulty", callback(fd->set_difficulty));
-        field(out, "cb.level_up", callback(fd->level_up));
-        field(out, "cb.on_death", callback(fd->on_death));
-        field(out, "cb.on_act_living", callback(fd->on_act_living));
-        field(out, "cb.on_shoved", callback(fd->on_shoved));
-        field(out, "cb.on_fire_weapon", callback(fd->on_fire_weapon));
-        field(out, "cb.handle_teleport", callback(fd->handle_teleport));
-        field(out, "cb.on_create", callback(fd->on_create));
-        field(out, "cb.customize_weapon", callback(fd->customize_weapon));
-        field(out, "cb.on_ani_complete", callback(fd->on_ani_complete));
-        field(out, "cb.on_melee_hit", callback(fd->on_melee_hit));
         field(out, "pix_filename", quoted(fd->pix_filename));
         field(out, "animation_type",
               number(static_cast<long long>(fd->animation_type)));
@@ -303,9 +289,6 @@ void dump_weapons(std::string& out)
         dump_anims(out, fd->anim_table, fd->anim_row_count);
         dump_glyph(out, fd->glyph);
         dump_radar(out, fd->radar);
-        field(out, "cb.on_death", callback(fd->on_death));
-        field(out, "cb.on_animate", callback(fd->on_animate));
-        field(out, "cb.on_hit_target", callback(fd->on_hit_target));
         dump_tuning(out, Order::Weapon, id);
     }
 }
@@ -327,8 +310,6 @@ void dump_effects(std::string& out)
         dump_anims(out, fd->anim_table, fd->anim_row_count);
         dump_glyph(out, fd->glyph);
         dump_radar(out, fd->radar);
-        field(out, "cb.on_act", callback(fd->on_act));
-        field(out, "cb.on_death", callback(fd->on_death));
         dump_tuning(out, Order::FX, id);
     }
 }
@@ -350,7 +331,6 @@ void dump_treasures(std::string& out)
         dump_anims(out, fd->anim_table, fd->anim_row_count);
         dump_glyph(out, fd->glyph);
         dump_radar(out, fd->radar);
-        field(out, "cb.on_eat", callback(fd->on_eat));
         dump_tuning(out, Order::Treasure, id);
     }
 }

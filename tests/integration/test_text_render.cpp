@@ -1,7 +1,9 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/text.h>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstddef>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -197,7 +199,7 @@ TEST(TextRender, text_write_xy_flat_recolors_every_opaque_glyph_pixel)
     constexpr unsigned char background = 13;
     constexpr unsigned char ink = 64;
     output->fastbox(x, y, font.sizex, font.sizey, background);
-    ASSERT_EQ(1, font.write_xy_flat(x, y, "M", ink, 1));
+    ASSERT_EQ(1, font.write_xy_flat(x, y, "M", ink));
 
     const std::size_t stride = static_cast<std::size_t>(font.sizex) *
                                static_cast<std::size_t>(font.sizey);
@@ -878,5 +880,93 @@ TEST(TextRender, viewscreen_write_arms_offset_by_the_pane_origin)
     vs->yloc = saved_yloc;
     vs->endx = saved_endx;
     vs->endy = saved_endy;
+    out->clearbuffer();
+}
+
+namespace
+{
+// text_shutdown() frees the shared font pixies for the whole process; a text
+// ctor reloads them. Reload on scope exit so every later test (in any
+// --gtest_shuffle order) draws with a live font.
+struct FontReloadGuard
+{
+    ~FontReloadGuard()
+    {
+        text reload(TEXT_1);
+        EXPECT_TRUE(reload.letters != nullptr && reload.letters->valid())
+            << "the shared font must come back for the rest of the binary";
+        // Re-sync the screen font's cached 0x0 glyph box: later tests read
+        // font.sizex/sizey before their first draw call.
+        EXPECT_EQ(6, og::runtime::current_session->myscreen_->text_normal
+                         .query_width("A"))
+            << "the 5px small font advances 6px per glyph again";
+    }
+};
+
+int count_non_background(screen* out, Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                         int background)
+{
+    int n = 0;
+    for (Sint32 py = y; py < y + h; ++py)
+        for (Sint32 px = x; px < x + w; ++px)
+        {
+            int actual = -1;
+            out->get_pixel(px, py, &actual);
+            if (actual != background)
+                ++n;
+        }
+    return n;
+}
+} // namespace
+
+// Text drawn after its font was unloaded (text_shutdown) paints nothing and
+// reports 0 on every buffered/alpha/pane arm -- it never reads a freed glyph
+// table. Paired control: the same calls with the font loaded report 1 and
+// paint.
+TEST(TextRender, unloaded_font_arms_paint_nothing_and_report_zero)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    viewscreen* const vs = out->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    text& font = out->text_normal;
+    ASSERT_NE(nullptr, font.letters);
+    FontReloadGuard reload_guard;
+
+    constexpr int background = 13;
+    constexpr unsigned char ink = 64;
+    constexpr Sint32 x = 10;
+    constexpr Sint32 y = 10;
+    constexpr Sint32 box = 40;
+    const auto draw_every_arm = [&]() {
+        std::array<Sint32, 5> r{};
+        r[0] = font.write_char_xy(x, y, 'A', ink, static_cast<short>(1));
+        r[1] = font.write_xy_flat(x, y, "A", ink);
+        r[2] = font.write_char_xy(x, y, 'A', static_cast<short>(1));
+        r[3] = font.write_char_xy_alpha(x, y, 'A', ink, 200);
+        r[4] = font.write_char_xy(x - vs->xloc, y - vs->yloc, 'A', ink, vs);
+        return r;
+    };
+    const std::array<const char*, 5> arm = {
+        "write_char_xy(colour, to_buffer)", "write_xy_flat",
+        "write_char_xy(to_buffer)", "write_char_xy_alpha",
+        "write_char_xy(viewscreen)"};
+
+    // Loaded: every arm paints and reports 1.
+    out->clearbuffer();
+    out->fastbox(x, y, box, box, static_cast<unsigned char>(background));
+    const std::array<Sint32, 5> loaded = draw_every_arm();
+    for (std::size_t i = 0; i < arm.size(); ++i)
+        EXPECT_EQ(1, loaded[i]) << arm[i] << " with a loaded font";
+    EXPECT_NE(0, count_non_background(out, x, y, box, box, background));
+
+    // Unloaded: nothing painted, every arm reports 0.
+    text_shutdown();
+    out->clearbuffer();
+    out->fastbox(x, y, box, box, static_cast<unsigned char>(background));
+    const std::array<Sint32, 5> unloaded = draw_every_arm();
+    for (std::size_t i = 0; i < arm.size(); ++i)
+        EXPECT_EQ(0, unloaded[i]) << arm[i] << " with an unloaded font";
+    EXPECT_EQ(0, count_non_background(out, x, y, box, box, background))
+        << "an unloaded font must not paint a single pixel";
     out->clearbuffer();
 }

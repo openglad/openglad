@@ -7,6 +7,10 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
 #include <gtest/gtest.h>
 
 TEST(SaveDataUnit, save_data_update_guys_clamps_to_max_team_size)
@@ -425,6 +429,83 @@ TEST(SaveDataUnit, replay_arm_is_cleared_by_reset_and_load)
     // Leave the mount state EXACTLY as found — including the nothing-mounted
     // case (a leaked mount desyncs against suites that re-init PhysFS, e.g.
     // CompanyScan, and every later title lookup answers the raw id).
+    if (get_mounted_campaign() != mounted_before)
+    {
+        if (!get_mounted_campaign().empty())
+        {
+            ASSERT_EQ(CampaignPackageIoError::None,
+                      unmount_campaign_package_with_error(
+                          get_mounted_campaign()));
+        }
+        if (!mounted_before.empty())
+        {
+            ASSERT_EQ(CampaignPackageIoError::None,
+                      mount_campaign_package_with_error(mounted_before));
+        }
+    }
+}
+
+// A GTL whose campaign-state book repeats a key (a hand-edited or spliced
+// file: the writer never emits one) loads with ONE entry for that key and
+// the LAST value wins, so a re-save is deterministic. Paired control: the
+// untouched file loads both distinct keys with their own values.
+TEST(SaveDataUnit, a_repeated_campaign_state_key_folds_last_one_wins)
+{
+    const std::string mounted_before = get_mounted_campaign();
+    if (!mounted_before.empty())
+    {
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  unmount_campaign_package_with_error(mounted_before));
+    }
+    restore_default_campaigns();
+
+    SaveData src;
+    src.reset();
+    src.current_campaign = "gladiator";
+    src.scen_num = 1;
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "watch_a", 3));
+    ASSERT_TRUE(src.campaign_state_set("gladiator", "watch_b", 8));
+    ASSERT_TRUE(src.save("dupkey_scratch"));
+
+    {
+        SaveData loaded;
+        ASSERT_TRUE(loaded.load("dupkey_scratch"));
+        EXPECT_EQ(3, loaded.campaign_state_get("gladiator", "watch_a"));
+        EXPECT_EQ(8, loaded.campaign_state_get("gladiator", "watch_b"));
+    }
+
+    // Rename the second key to the first in the raw bytes (same length,
+    // exactly one occurrence), leaving watch_a=3 then watch_a=8 on disk.
+    const std::filesystem::path path =
+        std::filesystem::path(get_user_path()) / "save" / "dupkey_scratch.gtl";
+    std::string bytes;
+    {
+        std::ifstream in(path, std::ios::binary);
+        ASSERT_TRUE(in.good());
+        bytes.assign(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+    }
+    const std::size_t at = bytes.find("watch_b");
+    ASSERT_NE(std::string::npos, at);
+    ASSERT_EQ(std::string::npos, bytes.find("watch_b", at + 1));
+    bytes[at + 6] = 'a';
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        ASSERT_TRUE(out.good());
+    }
+
+    {
+        SaveData loaded;
+        ASSERT_TRUE(loaded.load("dupkey_scratch"));
+        EXPECT_EQ(8, loaded.campaign_state_get("gladiator", "watch_a"))
+            << "the later duplicate wins";
+        ASSERT_EQ(1u, loaded.campaign_state.count("gladiator"));
+        EXPECT_EQ(1u, loaded.campaign_state.at("gladiator").size())
+            << "the duplicate folds into one entry";
+    }
+
+    (void)remove_user_file("save/dupkey_scratch.gtl");
     if (get_mounted_campaign() != mounted_before)
     {
         if (!get_mounted_campaign().empty())

@@ -2157,7 +2157,7 @@ TEST(CoverageMisc, final_r16_stats_walker_level_data_and_picker_state)
 
     a->stats()->set_command(COMMAND_DIE, 1);
     a->stats()->set_command(COMMAND_WALK, 1);
-    a->stats()->try_command(COMMAND_RANDOM_WALK, 1);
+    a->stats()->try_random_walk(1);
     ASSERT_TRUE(a->stats()->has_commands());
 
     // The three right-hand-wall probes each read ONE cell, a single

@@ -125,24 +125,21 @@ void DamageNumberRenderContext::trim_owner(std::uint32_t owner_entity_id,
     if (owner_it == state_by_owner_.end())
         return;
 
+    // live_count >= 1 here and a stored entry is never empty (prepare_state
+    // grows it to index + 1; erase_index/prune drop whole owners), so the
+    // trimmed entry stays non-empty.
     auto& owner_state = owner_it->second;
     if (owner_state.size() > live_count)
         owner_state.resize(live_count);
-
-    if (owner_state.empty())
-        state_by_owner_.erase(owner_it);
 }
 
+// The sole caller (draw_walker) erases only while it holds the render_state
+// prepare_state just returned for this owner (owner id != 0), so the owner's
+// entry exists.
 void DamageNumberRenderContext::erase_index(std::uint32_t owner_entity_id,
                                             std::size_t index)
 {
-    if (owner_entity_id == 0u)
-        return;
-
     const auto owner_it = state_by_owner_.find(owner_entity_id);
-    if (owner_it == state_by_owner_.end())
-        return;
-
     auto& owner_state = owner_it->second;
     if (index < owner_state.size())
         owner_state.erase(owner_state.begin() + static_cast<std::ptrdiff_t>(index));
@@ -182,8 +179,6 @@ static bool float_eq(float a, float b)
 #ifdef TESTING
 std::size_t damage_number_render_state_count(const screen* screen_ctx)
 {
-    if (screen_ctx == nullptr)
-        return 0u;
     return screen_ctx->damage_number_render_context().state_count();
 }
 #endif
@@ -777,13 +772,12 @@ inline constexpr Uint8 SHADOW_ALPHA = 90;
 inline constexpr Uint8 REFLECTION_ALPHA = 80;
 
 // Alive Living/Weapon walkers cast shadows and reflections; phantoms and
-// invisible units cast neither (their FX must not give them away).
+// invisible units cast neither (their FX must not give them away). Every
+// caller's entity loop already skips dead walkers.
 static bool casts_ground_effects(const walker& w)
 {
     const Order order = w.query_order();
     if (order != Order::Living && order != Order::Weapon)
-        return false;
-    if (w.dead())
         return false;
     if (w.dormant()) // delayed spawn: not in the world yet
         return false;
