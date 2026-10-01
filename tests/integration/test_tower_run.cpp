@@ -574,7 +574,7 @@ TEST_F(TowerRunE2E, retry_suppressed_and_summary_lines_under_tower_mount)
     scr().world().id = og::kTowerGateLevel + 4;
     const std::vector<std::string> lines =
         og::mode::current_progression().results_summary_lines(
-            scr().save_data, scr().world());
+            scr().save_data, scr().world(), /*ending=*/0);
     ASSERT_EQ(1u, lines.size());
     EXPECT_EQ("Floor 4 conquered - best 7", lines[0]);
 
@@ -584,7 +584,7 @@ TEST_F(TowerRunE2E, retry_suppressed_and_summary_lines_under_tower_mount)
               mount_campaign_package_with_error("gladiator"));
     EXPECT_FALSE(og::mode::current_progression().suppress_retry());
     EXPECT_TRUE(og::mode::current_progression()
-                    .results_summary_lines(scr().save_data, scr().world())
+                    .results_summary_lines(scr().save_data, scr().world(), 0)
                     .empty());
 }
 

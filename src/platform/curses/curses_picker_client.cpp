@@ -1849,7 +1849,7 @@ void CursesPickerClient::run_game()
         // left mounted (the one just played); scenario_display_name falls
         // back to "N. Level N" if it cannot be read. The verdict carries the
         // mounted mode's results summary (tower: "Floor N conquered - best
-        // B"), read off the finished pair exactly as the SDL results screen
+        // B", or "Fell on Floor N - best B" on a loss), read off the finished pair exactly as the SDL results screen
         // does: save_data_ already holds the win fold (commit_result_to_save
         // ran inside run_level_loop) and the mirror world still carries the
         // finished level's id. (The networked dialog in finish_network_round

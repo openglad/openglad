@@ -275,11 +275,13 @@ public:
     }
 
     std::vector<std::string> results_summary_lines(
-        const SaveData& save, const GameWorld& world) const override
+        const SaveData& save, const GameWorld& world,
+        short ending) const override
     {
         if (world.id <= og::kTowerGateLevel)
             return {};
-        return {format_tower_summary(world.id, save.tower_best_floor)};
+        return {format_tower_summary(world.id, save.tower_best_floor,
+                                     /*won=*/ending == 0)};
     }
 };
 
@@ -291,10 +293,14 @@ IProgression& tower_progression()
     return instance;
 }
 
-std::string format_tower_summary(int world_id, short best_floor)
+std::string format_tower_summary(int world_id, short best_floor, bool won)
 {
-    return std::format("Floor {} conquered - best {}",
-                       world_id - og::kTowerGateLevel, best_floor);
+    const int floor_number = world_id - og::kTowerGateLevel;
+    if (!won)
+        return std::format("Fell on Floor {} - best {}", floor_number,
+                           best_floor);
+    return std::format("Floor {} conquered - best {}", floor_number,
+                       best_floor);
 }
 
 std::string format_tower_loss(int world_id, short best_floor,

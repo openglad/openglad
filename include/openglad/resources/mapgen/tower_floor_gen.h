@@ -93,8 +93,10 @@ class IProgression;
 // The static stateless Tower instance (spec §5.5).
 IProgression& tower_progression();
 
-// "Floor {N} conquered — best {best}" (results overview line, wins only).
-std::string format_tower_summary(int world_id, short best_floor);
+// The results overview line: "Floor {N} conquered - best {best}" for a won
+// floor, "Fell on Floor {N} - best {best}" for any other ending (the loss
+// wording mirrors format_tower_loss below).
+std::string format_tower_summary(int world_id, short best_floor, bool won);
 
 // The run-over popup body: team-wipe/timeout shape carries the shareable
 // seed; the withdraw/quit shape does not.

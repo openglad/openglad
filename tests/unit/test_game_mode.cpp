@@ -107,7 +107,8 @@ TEST(GameModeClassic, classic_defaults_are_identity)
 
     // Results surfaces: mode adds nothing.
     EXPECT_FALSE(classic.ending_popup(save, world, loss).has_value());
-    EXPECT_TRUE(classic.results_summary_lines(save, world).empty());
+    EXPECT_TRUE(classic.results_summary_lines(save, world, 0).empty());
+    EXPECT_TRUE(classic.results_summary_lines(save, world, 1).empty());
 }
 
 // ---------------------------------------------------------------------------

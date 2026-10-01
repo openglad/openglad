@@ -427,7 +427,8 @@ std::string mission_verdict_line(const GameRunResult& result,
     // caller supplies the finished save/world pair.
     if (save != nullptr && world != nullptr) {
         for (const std::string& line :
-             og::mode::current_progression().results_summary_lines(*save, *world))
+             og::mode::current_progression().results_summary_lines(
+                 *save, *world, static_cast<short>(result.ending)))
         {
             verdict += ' ';
             verdict += line;
