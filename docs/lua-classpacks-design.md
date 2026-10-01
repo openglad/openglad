@@ -917,7 +917,7 @@ The verification layers cover different promises:
 **Pack Lua is inside the coverage gate.** `scripts/coverage/` measures
 every pack script the engine can load, line-by-line and function-by-function,
 and merges the result with gcovr's `src/` numbers;
-`.github/workflows/coverage.yml` enforces one bar — 97 % line, 100 % function
+`.github/workflows/coverage.yml` enforces one bar — 98 % line, 100 % function
 — on the C++ half alone, on the Lua half alone, and on their union. Separate
 floors prevent one language's surplus from hiding the other's shortfall. See
 `scripts/coverage/README.md` for how each number is produced and why arming
