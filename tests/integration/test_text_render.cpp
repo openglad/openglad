@@ -199,7 +199,7 @@ TEST(TextRender, text_write_xy_flat_recolors_every_opaque_glyph_pixel)
     constexpr unsigned char background = 13;
     constexpr unsigned char ink = 64;
     output->fastbox(x, y, font.sizex, font.sizey, background);
-    ASSERT_EQ(1, font.write_xy_flat(x, y, "M", ink, 1));
+    ASSERT_EQ(1, font.write_xy_flat(x, y, "M", ink));
 
     const std::size_t stride = static_cast<std::size_t>(font.sizex) *
                                static_cast<std::size_t>(font.sizey);
@@ -940,7 +940,7 @@ TEST(TextRender, unloaded_font_arms_paint_nothing_and_report_zero)
     const auto draw_every_arm = [&]() {
         std::array<Sint32, 5> r{};
         r[0] = font.write_char_xy(x, y, 'A', ink, static_cast<short>(1));
-        r[1] = font.write_xy_flat(x, y, "A", ink, 1);
+        r[1] = font.write_xy_flat(x, y, "A", ink);
         r[2] = font.write_char_xy(x, y, 'A', static_cast<short>(1));
         r[3] = font.write_char_xy_alpha(x, y, 'A', ink, 200);
         r[4] = font.write_char_xy(x - vs->xloc, y - vs->yloc, 'A', ink, vs);

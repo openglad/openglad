@@ -1708,8 +1708,7 @@ void zone_submenu_draw_content(void* screen_state)
     int y = kZoneSubmenuLineY0;
     for (const std::string& line : session->page().lines) {
         mytext.write_xy_flat(
-            12, y, og::ui::clip_with_ellipsis(line, 49).c_str(), PURE_BLACK,
-            1);
+            12, y, og::ui::clip_with_ellipsis(line, 49).c_str(), PURE_BLACK);
         y += 8;
     }
 
@@ -4689,7 +4688,7 @@ void base_camp_draw_content(void* screen_state)
                     zone_text.lines[line], 49);
                 mytext.write_xy_flat(12,
                                      band_y + static_cast<int>(line) * 8,
-                                     clipped.c_str(), PURE_BLACK, 1);
+                                     clipped.c_str(), PURE_BLACK);
             }
         }
         if (const og::ui::CampaignZoneSession::ReadoutLayout* readout =
@@ -4721,8 +4720,7 @@ void base_camp_draw_content(void* screen_state)
                 mytext.write_xy(x, band_y, label.c_str(), BLACK, 1);
                 if (!value.empty()) {
                     mytext.write_xy_flat(x + static_cast<int>(used) * 6,
-                                         band_y, value.c_str(), PURE_BLACK,
-                                         1);
+                                         band_y, value.c_str(), PURE_BLACK);
                 }
             }
         }
@@ -4810,7 +4808,7 @@ void base_camp_draw_content(void* screen_state)
                 static_cast<char>('1' + team), '\0'};
             mytext.write_xy_flat(chip_x + (team == 0 ? 3 : 2),
                                  kBaseCampSeatRailY + 2,
-                                 number, PURE_BLACK, 1);
+                                 number, PURE_BLACK);
         }
     }
 
@@ -4875,8 +4873,7 @@ void base_camp_draw_content(void* screen_state)
             mytext.write_xy_flat(kBaseCampOathColumnX, y + 2, oath.c_str(),
                                  member->campaign_tag >= 1
                                      ? identity_color
-                                     : kBenchedTextShade,
-                                 1);
+                                     : kBenchedTextShade);
         } else {
             // The chip communicates and changes the character's team. Match
             // the in-game team ramp (team*16+40), clamping defensive save
@@ -4898,7 +4895,7 @@ void base_camp_draw_content(void* screen_state)
             // one pixel right instead of leaving it visibly left-heavy.
             const int team_number_x = team == 0 ? 65 : 64;
             mytext.write_xy_flat(team_number_x, y + 3, team_number,
-                                 PURE_BLACK, 1);
+                                 PURE_BLACK);
         }
 
         // Family identity is a compact swatch immediately after CLASS (or
@@ -4933,7 +4930,7 @@ void base_camp_draw_content(void* screen_state)
             const BaseCampNetRowText row = format_base_camp_net_row(
                 member->name, display.company, member->level);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
-                                 row.name.c_str(), identity_color, 1);
+                                 row.name.c_str(), identity_color);
             draw_base_camp_family_swatch(
                 *game,
                 kBaseCampNameColumnX + mytext.query_width(row.name) +
@@ -4946,9 +4943,9 @@ void base_camp_draw_content(void* screen_state)
         } else {
             const BaseCampRowText row = format_base_camp_row(*member);
             mytext.write_xy_flat(kBaseCampNameColumnX, y + 2,
-                                 row.name.c_str(), identity_color, 1);
+                                 row.name.c_str(), identity_color);
             mytext.write_xy_flat(kBaseCampSoloClassColumnX, y + 2,
-                                 row.cls.c_str(), identity_color, 1);
+                                 row.cls.c_str(), identity_color);
             draw_base_camp_family_swatch(
                 *game,
                 kBaseCampSoloClassColumnX + mytext.query_width(row.cls) +
@@ -7439,14 +7436,13 @@ void lineup_draw_content(void* screen_state)
         // The old font's "1" is a column narrower: bias that lone glyph one
         // pixel right (the Base Camp chip's own rule).
         mytext.write_xy_flat(kLineupChipX + (t == 0 ? 4 : 3), header_y + 3,
-                             digit, PURE_BLACK, 1);
+                             digit, PURE_BLACK);
 
         mytext.write_xy_flat(kLineupTeamTextX, header_y + 2,
                              std::format("TEAM {}", t + 1).c_str(),
-                             PURE_BLACK, 1);
+                             PURE_BLACK);
         mytext.write_xy_flat(kLineupPowerTextX, header_y + 2,
-                             format_lineup_power(band.power).c_str(), BLACK,
-                             1);
+                             format_lineup_power(band.power).c_str(), BLACK);
 
         // Seat run x=150..306 (26-char budget): the three-tier rule the
         // SETUP wizard's TEAMS line draws too (og::ui::format_lineup_seat_run
@@ -7458,7 +7454,7 @@ void lineup_draw_content(void* screen_state)
             run = "NO SEAT";
         }
         mytext.write_xy_flat(kLineupSeatRunX, header_y + 2, run.c_str(),
-                             BLACK, 1);
+                             BLACK);
 
         // The MAP UNITS caption beside the box (B9): drawn ink, not a
         // button face, so it follows the box's visibility (host-only) and
@@ -7470,8 +7466,7 @@ void lineup_draw_content(void* screen_state)
                                  y + kLineupCensusDy, "MAP UNITS",
                                  box_live
                                      ? static_cast<unsigned char>(BLACK)
-                                     : kBenchedTextShade,
-                                 1);
+                                     : kBenchedTextShade);
         }
 
         // Census / diagnostics at (190, y+19), 21-char budget. The cell is
@@ -7509,7 +7504,7 @@ void lineup_draw_content(void* screen_state)
             TRACE("lineup", "census %d %s", t, census.c_str());
         }
         mytext.write_xy_flat(kLineupCensusX, y + kLineupCensusDy,
-                             census.c_str(), census_color, 1);
+                             census.c_str(), census_color);
     }
 }
 
@@ -8177,17 +8172,17 @@ void match_setup_draw_content(void* screen_state)
                         line.label,
                         static_cast<std::size_t>(kSetupLineChars))
                         .c_str(),
-                    PURE_BLACK, 1);
+                    PURE_BLACK);
             } else {
                 mytext.write_xy_flat(kSetupTeamLabelX, y, line.label.c_str(),
-                                     PURE_BLACK, 1);
+                                     PURE_BLACK);
                 mytext.write_xy_flat(
                     kSetupTeamSeatX, y,
                     og::ui::clip_with_ellipsis(
                         line.seats,
                         static_cast<std::size_t>(kSetupTeamSeatChars))
                         .c_str(),
-                    BLACK, 1);
+                    BLACK);
                 // A diagnostic takes the benched shade LINEUP gives it:
                 // the cell mirrors GO's refusal, not a count.
                 mytext.write_xy_flat(
@@ -8197,8 +8192,7 @@ void match_setup_draw_content(void* screen_state)
                         static_cast<std::size_t>(kSetupTeamCensusChars))
                         .c_str(),
                     line.diag ? kBenchedTextShade
-                              : static_cast<unsigned char>(BLACK),
-                    1);
+                              : static_cast<unsigned char>(BLACK));
             }
             y += kSetupLinePitch;
         }
@@ -8212,7 +8206,7 @@ void match_setup_draw_content(void* screen_state)
             og::ui::clip_with_ellipsis(
                 page.lines[i], static_cast<std::size_t>(kSetupLineChars))
                 .c_str(),
-            PURE_BLACK, 1);
+            PURE_BLACK);
         y += kSetupLinePitch;
     }
     if (page.team_lines_at >= page.lines.size())
