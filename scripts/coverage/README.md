@@ -269,6 +269,138 @@ byte-identical. gcov's line metric on the C++ side has the identical blind
 spot. The lint narrows the surface; only instruction/branch-granularity
 recording would close it, and that is deliberately not built yet.
 
+### Run-to-run noise floor (measured 2026-10-02, 7753ffed)
+
+Identical binaries used to cover different lines from run to run (#338):
+`og_test_curses` read `walker_combat.cpp` anywhere from 0 to 155 lines, and
+two local whole-suite passes of the same build sat 24 lines apart. Against a
+gate margin of a hundred-odd lines that spread was not noise you could
+ignore. This is what is left, and what it is.
+
+**Method.** `scripts/coverage/noise_probe.py capture` runs gcovr exactly as
+`coverage_report.py` does; `noise_probe.py compare` reads N tracefiles and
+lists, per file, the lines whose hit bit differs between runs. Every `.gcda`
+is deleted before each run. Per binary: N=5 `ctest -R` runs. Whole suite:
+N=3 passes the way `coverage.yml` runs it (`ctest --parallel 4 --timeout
+420`, no retry, `-E emscripten_build_test` locally), on a 12-core box with
+an 8 GiB cgroup and a shared load average of 13-16.
+
+**What was fixed.** The match seed (`og::server::draw_match_seed()`) came
+from `std::random_device` in every TESTING harness, so every GO, network-host
+start, curses lobby and curses solo launch staged a different world each
+run. The three harness mains now pin `kHarnessMatchSeed`
+(`tests/test_match_seed.h`). Noisy lines per binary, N=5, before and after:
+
+| binary | before | after |
+|---|---|---|
+| `og_test_view` | 493 | 0\* |
+| `og_test_matchup` | 471 | 61 |
+| `og_test_picker_network` | 785 | 3 |
+| `og_unit_headless_platform` | 38 | 30 |
+| `og_test_curses` | 1027 | 57 |
+
+\* Runs 2-5 are identical at 24524 lines. Capture 1 carried 222 extra lines
+(`gparser.cpp` 90, `input_state.cpp` 68, `platform_headless.cpp` 56,
+`script_coverage.cpp` 5, `filesystem.cpp` 2, `og_file.cpp` 1). No SDL binary
+links `platform_headless.cpp`, so that capture read a contaminated `.gcda`
+set, not `og_test_view`; it was discarded as a capture fault and did not
+recur in any later run. The raw five-run compare prints 222.
+
+**The floor.** Three whole-suite passes read C++ `lines_hit` 72452, 72452
+and 72451 of 73838 found: a spread of **1 line**, with **8 lines** that
+flipped at least once. The margin rule (#319's "< 0.1 pp") is read against
+this band. A change whose measured effect is a handful of lines is inside
+it; say so, and do not attribute it.
+
+The lines that still flip, and why:
+
+| lines | cause | status |
+|---|---|---|
+| `net_transport_websocket_server.cpp:158-159, 168-169` | io-thread timing: a send to a peer whose socket already expired, versus a send that fails | true race, accepted |
+| `game_server.cpp:2851` | how many clients become ready in the same tick decides whether the keyframe budget runs out | true race, accepted |
+| `astar.cpp:53` | an unreachable node is costed in one pass and not another; a wall-clock-bounded sim (a forked `openglad_server`, a text client or a GO flow) ticks a different number of frames | wall-clock tick count, accepted |
+| `game_world.cpp:60` | the owner-chain depth break ran 4, 1 and 0 times; same wall-clock class as above | accepted |
+| `input.cpp:1263` | the range-guard return in `isPlayerHoldingKey`, hit once in one pass from the production `og_interface` objects | unattributed, accepted |
+
+Below the whole-suite floor, per-binary noise that other tests cover in
+every pass, so it never reaches the gate number:
+
+- **The menu-time roll.** `og.campaign_random` draws from a generator seeded
+  from the wall clock the first time any camp action rolls
+  (`src/resources/campaign_state_providers.cpp`, `random_pick`). Three tests
+  take the RANDOM row and land on a different arena each run:
+  `PlatformHeadless.text_picker_modes_camp_row_is_the_one_door`,
+  `CursesPickerClient.setup_flow_random_row_sets_an_arena` and
+  `MatchSetupUi.random_row_sets_an_arena_and_lands_on_teams`. With those three
+  filtered out, `og_unit_headless_platform` has no noisy line in 5 runs and
+  `og_test_curses` has one, the contention arm below. Pinning the roll needs
+  a product change or a TESTING seam; neither is made here.
+- **The five `try_to_lock` contention arms**: `if (!lock.owns_lock()) return
+  {};` in `poll()` of `src/platform/sdl/net_transport_websocket_client.cpp`,
+  `net_transport_websocket_server.cpp`, `net_transport_relay_ws.cpp` and the
+  two emscripten transports. Each is hit only when the io thread holds the
+  queue mutex at the moment the game thread polls: ±1 line each. Measured:
+  the client arm went unhit in 1 of 5 `og_test_picker_network` runs and the
+  server arm in 3 of 5 `og_test_curses` runs; the whole suite hit both in
+  every pass (2-5 and 57-71 times). Replacing `try_to_lock`
+  with a blocking lock would remove them; that is a transport behaviour
+  change and is not made to steady a coverage number.
+- **Websocket teardown**: `net_transport_websocket_common.h:87` (the quiesce
+  loop sees `Closing`) and `net_transport_websocket_server.cpp:238` (a
+  disconnect for a connection with no peer), both io-thread order.
+- **The stage debounce in SDL flows**: `match_stage.cpp:206`, the restage in
+  `ensure_current()` that runs only when the stage is still dirty at GO,
+  that is, when an input change is younger than `kStageDebounceMs` (250 ms of
+  steady clock).
+- **A real-time window in `og_test_matchup`**: `walker.cpp:1091-1126` and the
+  `on_ani_complete` dispatch in `world_scripts.cpp:2320-2327` (one attack
+  animation completing). It appears only when `CampaignZoneUi` runs before
+  `MatchSetupUi` (1 of 4 such runs, 0 of 4 with `CtfUi` or `ModeUi` first)
+  and never with any of the 96 tests run alone (3 runs each).
+
+Measured and **not** noise: the forked `openglad_server` children in
+`CursesNetworkProcess` (real-time ticks, an unpinnable seed) and the
+fixed-count curses poll loops that straddle the 250 ms stage debounce
+produced no flipped line in 5 runs of `og_test_curses`.
+
+**Counter races.** The build has no `-fprofile-update=atomic`, so threaded
+code can tear a gcov counter. gcovr reported 16, 16 and 20 tolerated
+negative-hit warnings on the three passes, all on hot lines. With the flag,
+`lines_found` was identical (73838) and the warnings went to 0, but
+`og_unit_sim` went from 156 s to 548 s, `og_unit_data` from 53 s to 327 s
+and `og_test_menu_ui` from 188 s to 241 s. The flag is not set.
+
+**CI retries are a separate effect.** CI runs the suite with `--repeat
+until-pass:3`, and a failed attempt keeps its `.gcda` hits. A CI pass that
+retried a test can therefore read above any local single pass, by up to
+that test's own noise. Check the run log for a repeated test before reading
+a CI difference as real.
+
+### Lines only the x11 display lane reaches
+
+The `x11-display` CI job (`scripts/ci/run_x11_display_lane.sh`, binary
+`og_test_display_x11`, ctest entries `og_test_display_x11_one` and
+`og_test_display_x11_two`, configured with `-DOPENGLAD_X11_DISPLAY_TESTS=ON`)
+drives SDL's real x11 driver under Xvfb. It is a behaviour lane. Coverage
+does not run it, so every line below stays uncovered in the gate's number.
+All are in `src/platform/sdl/video_sdl.cpp`.
+Line numbers and counts are WP-LANE's reading of the 8ca01f96 CI coverage
+artifact; `video_sdl.cpp` is unchanged through 7d399af0. A local single pass
+at 7753ffed reads 58 uncovered `sai2x.cpp` lines, not 55 (CI's retried
+passes read differently; see the retry note above).
+
+- Covered by the one-screen run (25 lines): 2895, 2896, 2899, 2900;
+  3437-3441, 3448; 2980; 3353; 3083, 3085; 3013-3021; 3318, 3319.
+- Covered only by the two-screen run (10 further lines): 3241, 3243, 3244;
+  3422; 3373-3375; 3263, 3271, 3273.
+- Reached by neither run: 2897-2898, 3265-3269, 3277-3278, 3176,
+  3181-3194, 3214-3216, 3399, 3412. These are library-contract guards or
+  arms with no deterministic trigger, and the guards stay.
+- Checked and not reachable through this lane: `walker_draw.cpp:78`, `:85`
+  and `:1023` (tick-clock and empty-container arms) and the uncovered
+  lines of `sai2x.cpp` (55 on that artifact) (SDL allocation and lock
+  contract arms, or logic that does not depend on the driver).
+
 ## How each number is produced
 
 ### Lua line coverage
