@@ -76,6 +76,7 @@ enum class ArchiveIoError {
     ReadEntryFailed,
     CloseArchiveFailed,
     ResourceLimitExceeded,
+    ReadInputFailed,
 };
 
 [[nodiscard]] CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);
