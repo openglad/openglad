@@ -763,6 +763,56 @@ TEST(SimInputUnit, sim_control_owner_locked_switch_char_falls_back_to_own)
     ASSERT_EQ(-1, foreign->user());
     ASSERT_TRUE(result.control_hp_changed);
 }
+
+// Per-tick claim (issue #333): a SUPPLIED control the policy refuses is
+// treated as no control at all — the control reference reads null after the
+// call, the walker is never stamped, and the seat takes the site-2 verdict
+// (Follow: the only candidate is the same refused hero, so no endgame).
+TEST(SimInputUnit, sim_control_owner_locked_refused_supplied_control_is_not_claimed)
+{
+    SimInputFixture fx;
+    walker* foreign = add_char(fx, 0, -1, true, /*owner=*/2);
+    const char ai_act_type = foreign->act_type();
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {2, og::sim::encode_player_machine(2, true)}}));
+    ASSERT_FALSE(og::sim::control_claim_allowed(fx.world(), foreign, 0));
+
+    walker* control = foreign;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    const SimInputResult result = process(fx, input, control, 0, debounce);
+    EXPECT_EQ(nullptr, control) << "the refused supplied control is dropped";
+    EXPECT_EQ(nullptr, result.new_control);
+    EXPECT_FALSE(result.endgame_requested) << "Follow, never EndGame";
+    EXPECT_EQ(-1, foreign->user()) << "the refused walker is never stamped";
+    EXPECT_EQ(ai_act_type, foreign->act_type());
+}
+
+// Paired positive control: a supplied control on the seat's own machine is
+// claimed by the per-tick setup exactly as before.
+TEST(SimInputUnit, sim_control_owner_locked_allowed_supplied_control_is_claimed)
+{
+    SimInputFixture fx;
+    walker* seatmate_hero = add_char(fx, 0, -1, true, /*owner=*/1);
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {1, og::sim::encode_player_machine(0, true)}}));
+    ASSERT_TRUE(og::sim::control_claim_allowed(fx.world(), seatmate_hero, 0));
+
+    walker* control = seatmate_hero;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    const SimInputResult result = process(fx, input, control, 0, debounce);
+    EXPECT_EQ(seatmate_hero, control);
+    EXPECT_FALSE(result.endgame_requested);
+    EXPECT_EQ(0, seatmate_hero->user());
+    EXPECT_EQ(ACT_CONTROL, seatmate_hero->act_type());
+}
 } // namespace detail_sim_control_enforcement
 
 // --- #222/#223 silent-failure cues: a player key that does nothing must say

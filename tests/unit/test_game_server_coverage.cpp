@@ -2140,6 +2140,105 @@ TEST(GameServerCoverage,
     EXPECT_EQ(reclaimed, server.player_control(0u));
 }
 
+// Rule (sim_process_player_input per-tick claim — issue #333): the tick's
+// control setup claims a seat's AI-held control only when
+// control_claim_allowed says so, the same predicate bind_player consults. A
+// supplied control the owner-locked policy refuses stays the AI's on every
+// tick: the seat goes null on the first tick (ControlChange entity 0) and
+// takes the site-2 verdict — Follow here, because the only living is a
+// same-team hero the policy denies. bind_player still STORES the refused
+// walker on the seat (the R5 reconnect contract pinned above), so that is
+// asserted as the precondition before any step.
+TEST(GameServerCoverage,
+     a_policy_refused_supplied_control_stays_unclaimed_on_every_tick)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+
+    walker* const hero = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(64, 64);
+    ASSERT_EQ(-1, hero->user()) << "precondition: an AI-held hero";
+    const char ai_act_type = hero->act_type();
+    ASSERT_NE(ACT_CONTROL, ai_act_type);
+
+    std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines;
+    machines.fill(og::sim::kPlayerMachineNone);
+    og::sim::set_control_policy(fixture.world(),
+                                og::sim::kControlPolicyOwnerLocked, machines);
+    ASSERT_FALSE(og::sim::control_claim_allowed(fixture.world(), hero, 0));
+
+    server.bind_player(97u, 0u, fixture.world().my_team, hero);
+    ASSERT_EQ(hero, server.player_control(0u))
+        << "precondition (R5 storage): bind_player keeps the refused walker";
+    ASSERT_EQ(-1, hero->user());
+
+    server.send_initial_snapshot(97u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(97u, og::sim::serialize_client_ready_message(
+                                 og::sim::ClientReadyMessage{}));
+    transport.clear_sent();
+    for (int step = 1; step <= 3; ++step)
+    {
+        server.step();
+        ASSERT_EQ(static_cast<std::uint32_t>(step),
+                  fixture.world().level_tick_count())
+            << "each step ticks the world";
+        EXPECT_EQ(-1, hero->user())
+            << "tick " << step << ": the refused hero stays the AI's";
+        EXPECT_EQ(ai_act_type, hero->act_type()) << "tick " << step;
+        EXPECT_EQ(nullptr, server.player_control(0u))
+            << "tick " << step << ": the refused seat holds no control";
+        if (step == 1)
+        {
+            const auto change = find_control_change(transport, 97u);
+            ASSERT_TRUE(change.has_value())
+                << "the first tick tells the mirror the seat let go";
+            EXPECT_EQ(0u, change->player_index);
+            EXPECT_EQ(0u, change->entity_id);
+        }
+    }
+}
+
+// Paired positive control for the rule above: with the legacy policy the same
+// supplied hero is claimed at bind and stays claimed on every tick, and no
+// ControlChange is sent.
+TEST(GameServerCoverage, a_policy_allowed_supplied_control_is_claimed_on_every_tick)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+
+    walker* const hero = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(64, 64);
+    ASSERT_EQ(-1, hero->user());
+    ASSERT_TRUE(og::sim::control_claim_allowed(fixture.world(), hero, 0));
+
+    server.bind_player(97u, 0u, fixture.world().my_team, hero);
+    ASSERT_EQ(0, hero->user()) << "the legacy policy claims at bind";
+
+    server.send_initial_snapshot(97u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(97u, og::sim::serialize_client_ready_message(
+                                 og::sim::ClientReadyMessage{}));
+    transport.clear_sent();
+    for (int step = 1; step <= 3; ++step)
+    {
+        server.step();
+        ASSERT_EQ(static_cast<std::uint32_t>(step),
+                  fixture.world().level_tick_count());
+        EXPECT_EQ(0, hero->user()) << "tick " << step;
+        EXPECT_EQ(ACT_CONTROL, hero->act_type()) << "tick " << step;
+        EXPECT_EQ(hero, server.player_control(0u)) << "tick " << step;
+    }
+    EXPECT_FALSE(find_control_change(transport, 97u).has_value())
+        << "an unchanged seat sends no ControlChange";
+}
+
 // Rule (send_forced_keyframe_to_ready_clients): when a mission abort is
 // accepted, the forced old-level keyframe goes only to clients ready to take
 // snapshots. A peer that joined mid-level and has not confirmed its initial
