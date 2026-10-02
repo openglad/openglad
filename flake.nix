@@ -244,6 +244,15 @@
             # encoder scripts/media/capture_showcase.sh uses to turn captured
             # frames into the shipped GIFs and PNGs.
             xvfb-run
+            # The real-display x11 lane (scripts/ci/run_x11_display_lane.sh):
+            # Xvfb with -noreset, xrandr to add video modes to its screen,
+            # openbox as the EWMH window manager that acknowledges fullscreen
+            # requests, and xprop/xdpyinfo to verify the topology before ctest.
+            xvfb
+            xrandr
+            openbox
+            xprop
+            xdpyinfo
             ffmpeg
             # Drive native menus and include the OS cursor in screenshots.
             xdotool
