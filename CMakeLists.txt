@@ -446,10 +446,10 @@ og_add_shell_check_target(check_render_no_sim_writes
     check_render_no_sim_writes.sh
 )
 
-# The four Code::Blocks-era touch/multiplayer build macros stay retired: no
-# CMake build ever defined them and PR #292 deleted their arms. The script
-# names them and explains why each one is gone; naming them here too would
-# trip the check itself, which is the point.
+# The eight retired build macros stay retired: the four Code::Blocks-era
+# touch/multiplayer ones (arms deleted in PR #292) and the four 2013 port
+# hooks no build here defines (arms deleted for #302). The script names them
+# and explains why each one is gone.
 og_add_shell_check_target(check_retired_build_macros
     "Checking retired build macros have not reappeared"
     check_retired_build_macros.sh

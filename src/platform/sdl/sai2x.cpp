@@ -886,14 +886,8 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 	}
     
     int w, h;
-    #ifdef ANDROID
-    w = 0;
-    h = 0;
-    fullscreen = true;
-    #else
     w = width;
     h = height;
-    #endif
 
     // SDL3: windows are shown by default; SDL_WINDOW_FULLSCREEN with no
     // exclusive mode set is borderless fullscreen-desktop (the SDL2
@@ -914,10 +908,6 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 	// at device-pixel resolution.
 	window_flags |= SDL_WINDOW_RESIZABLE;
 	#endif
-
-    #ifdef __IPHONEOS__
-    window_flags |= SDL_WINDOW_BORDERLESS;
-    #endif
 
     window = create_boot_window(w, h, window_flags);
     if(window == nullptr)

@@ -217,11 +217,7 @@ RadarBlock radar_block_for_pane(int pane_endx, int pane_endy, int w, int h)
 	RadarBlock block;
 	block.w = w;
 	block.h = h;
-        #ifdef REDUCE_OVERSCAN
-        block.margin = 8;
-        #else
         block.margin = 4;
-        #endif
         block.x = (pane_endx - w) - block.margin;
         // At bottom
         block.y = (pane_endy - h) - block.margin;

@@ -133,7 +133,7 @@ private:
 // this test sees it.
 TEST(RadarBlockGeometry, block_sits_one_margin_in_from_the_pane_bottom_right)
 {
-    // No preset defines REDUCE_OVERSCAN, so the margin is the 4 px fork.
+    // The radar margin is a fixed 4 px.
     const RadarBlock block = radar_block_for_pane(/*pane_endx=*/300,
                                                   /*pane_endy=*/180,
                                                   /*w=*/40, /*h=*/30);
