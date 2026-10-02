@@ -64,6 +64,11 @@ Since a wrapped bound is a desync rather than a rounding error, the bindings
 raise a script error instead of quietly clamping. Bounds in
 `[1, 2147483647]` are passed through exactly and draw what they always drew.
 
+Some calls draw from the sim RNG without looking like it: `attack()`,
+`og.query_object_passable`, `og.charm_duration`, `og.freeze_duration` and
+`og.heal_amount`. Reordering or short-circuiting them changes the stream
+(R4).
+
 ## Declaring a family (`og.family`)
 
 ```lua
@@ -640,12 +645,12 @@ which accepts either a guy handle or a walker.
 | `og.find_in_range(list, range, self)` | Array, count. |
 | `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`, and allegiance follows the owner chain. |
 | `og.oblist()` | Array of every entity in the ob list, in list order. |
-| `og.living_count()` | The world's living head-count field. NOT derivable from an `og.oblist()` scan — the counter can legitimately drift (an editor map resize erases livings without decrementing), and scripts must read the same field the C++ read. |
+| `og.living_count()` | The world's living head-count field. NOT derivable from an `og.oblist()` scan — the counter can legitimately drift (an editor map resize erases livings without decrementing), so a script that needs the head count reads this field. |
 | `og.remaining_foes(self)` | `int`. |
 
-`list` selects which world entity list the C++ call scanned: `"ob"`,
-`"weap"`, or `"fx"`. Any other string is an error. All arrays preserve the
-C++ iteration order — walk them with `for i = 1, #t` (there is no `pairs`).
+`list` selects which world entity list to scan: `"ob"`, `"weap"`, or
+`"fx"`. Any other string is an error. All arrays are in the engine's list
+order; walk them with `for i = 1, #t` (there is no `pairs`).
 
 ### Terrain
 
@@ -717,8 +722,8 @@ rows.
 
 | Function | Result |
 |---|---|
-| `og.ani_frame(entity, row, index)` | The single frame value, or `nil`. `nil` covers every case where the C++ `if (self->ani)` guard (or a bad row/index) would have bailed, so the script simply skips its `set_frame`. The sentinel slot itself is addressable (`index == length`), so a legitimately empty row reads back the same `-1` the C++ would have handed `set_frame`. |
-| `og.ani_row(entity, row)` | Array of the frames up to (excluding) the `-1` sentinel, or `nil`. An empty table means "present but zero-length" (the C++ `seq_len <= 0` stop); `nil` means no table, row past `ani_count`, a null row, or a missing sentinel. |
+| `og.ani_frame(entity, row, index)` | The single frame value, or `nil`. `nil` means the walker has no animation table, or the row/index is bad; skip the `set_frame` call then. The sentinel slot itself is addressable (`index == length`), so a legitimately empty row reads back the `-1` sentinel. |
+| `og.ani_row(entity, row)` | Array of the frames up to (excluding) the `-1` sentinel, or `nil`. An empty table means "present but zero-length" (`seq_len <= 0`); `nil` means no table, row past `ani_count`, a null row, or a missing sentinel. |
 
 Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
@@ -741,7 +746,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 | `og.game_ended()` | `bool`. |
 | `og.my_team()` | The local team number. |
 | `og.enemy_freeze()` / `og.set_enemy_freeze(v)` | The freeze bank. |
-| `og.set_palette(id)` | Sets `current_palette_id`. Pair it with an `EVENT_SET_PALETTE` emit, exactly like the C++ did — the field alone changes no pixels. |
+| `og.set_palette(id)` | Sets `current_palette_id`. Pair it with an `EVENT_SET_PALETTE` emit: the field alone changes no pixels. |
 | `og.current_scenario()` | Current scenario number. |
 | `og.level_completed(level) → bool` | Whether that level is in the completed set. |
 | `og.world_can_exit_whenever() → bool` | The `TYPE_CAN_EXIT_WHENEVER` world flag. |
@@ -751,7 +756,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
 | Function | Effect |
 |---|---|
-| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored, matching the C++ `is_valid_score_team()` guard. |
+| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored (the engine's `is_valid_score_team()` guard). |
 | `og.set_withdraw_request(level)` | Latches the exit pad's withdraw request (`withdraw_requested` + `withdraw_level` together). |
 | `og.emit_exit_confirmation(prompt, dest_level [, is_withdraw])` | `RequestExitConfirmation` with the exit pad's payload. |
 | `og.emit_withdraw_to_level(level)` | `WithdrawToLevel`. |
@@ -787,7 +792,7 @@ exactly one definition. (The four flat spellings that predate the namespace
 — `og.scare_duration`, `og.scare_radius`, `og.elemental_lifetime`,
 `og.image_lifetime` — stay as they are; new combat_math surface lands here.)
 
-| Function | C++ helper (legacy formula) |
+| Function | Engine formula (`combat_math.h`) |
 |---|---|
 | `og.combat.yell_radius(level)` | `yell_radius` — orc yell radius, `160 + 20*L` px, flat cap 420. |
 | `og.combat.stun_total(cur_raw, add)` | `stun_total` — orc yell stun accumulator over RAW `frozen_delay`: `cur_raw < 0` (thaw immunity) discards the add; negative adds count as 0; monotonic cap at 150 (an over-cap value is answered unchanged). |
@@ -1091,11 +1096,11 @@ local C = og.C
 -- Each wisp starts with a random slice of its ember already spent.
 -- Exactly one draw, unconditional, so the RNG stream advances identically
 -- on every peer (R4). The bound is a positive literal, so plain og.rand
--- is right — its error on n <= 0 is a tripwire worth keeping.
+-- is right — its error on n <= 0 is a tripwire worth keeping; og.rand0 is
+-- for bounds that can legitimately reach zero (see flare_burst).
 local function on_create(self)
   local spent = og.rand(16)
-  -- magicpoints is a C++ float: per-op rounding.
-  self.magicpoints = og.fsub(self.max_magicpoints, spent)
+  self.magicpoints = self.max_magicpoints - spent
   self.ani_type = C.ANI_WALK
 end
 
@@ -1118,7 +1123,7 @@ local function flare_burst(self)
   local t = og.tuning(self)
   local ember = og.trunc(self.magicpoints) - t.burn_floor
   if ember <= 0 then
-    return false, "NO EMBER TO VENT"
+    return false, "NOT ENOUGH EMBER"
   end
   -- Tuning is modder data: clamp it into a sane sim window before use.
   local range = og.clamp(t.burst_range, C.GRID_SIZE, 320)
@@ -1132,9 +1137,8 @@ local function flare_burst(self)
     -- the thaw-immunity discard and the 150 cap are its policy, not ours.
     foes[i]:add_frozen_stun(t.stun_base + roll)
   end
-  -- magicpoints and busy are C++ floats: per-op rounding.
-  self.magicpoints = og.fsub(self.magicpoints, ember)
-  self.busy = og.fadd(self:busy(), 4.0)
+  self.magicpoints = self.magicpoints - ember
+  self.busy = self:busy() + 4.0
   og.emit_positional_sound(self, C.SOUND_EXPLODE)
   return true
 end
@@ -1145,12 +1149,12 @@ end
 --   on_fire_weapon = on_fire_weapon,
 ```
 
-Details worth noticing: `self.magicpoints` reads the property, but the
-`busy` *read* stays `self:busy()` (reads resolve method-first — `busy` is
-also a method name — while the `self.busy =` write works for every writable
-property); the plain `-` and `*` on `ember` and the roll bound are exact
-integer arithmetic, so no `og.f*` shim; and both `og.rand` and `og.rand0`
-appear, each where its contract is the right one.
+`self.magicpoints` reads the property, but the `busy` *read* stays
+`self:busy()`: reads resolve method-first and `busy` is also a method name,
+while the `self.busy =` write works for every writable property. The
+arithmetic uses plain Lua operators; the `og.f*` and `og.div` shims are a
+core-pack rule (cookbook R1–R3). Both `og.rand` and `og.rand0` appear, each
+where its contract fits.
 
 ### Where to go for more
 
@@ -1165,10 +1169,11 @@ appear, each where its contract is the right one.
 
 ### One statement per line
 
-Pack Lua is measured by the same coverage gate as the C++, and line coverage
-counts lines. `if low then flee() end` on one line makes the branch body share
-a coverage point with the test that guards it, so a branch nothing ever takes
-reads as covered. Write it out:
+Every build checks pack Lua with `scripts/check_lua_statement_lines.py`. The
+rule exists for line coverage (see `scripts/coverage/README.md`):
+`if low then flee() end` on one line makes the branch body share a coverage
+point with the test that guards it, so a branch nothing ever takes reads as
+covered. Write it out:
 
 ```lua
 -- rejected by scripts/check_lua_statement_lines.py
@@ -1201,35 +1206,3 @@ literal.
   at zero for all of them and must set what it needs on the entity after
   spawning it. Living families do not have this gap — their loader stats
   come from the declaration's `combat` block.
-
-## Transliteration checklist
-
-For porting C++-shaped behavior into pack Lua (new mods should just write
-the idiom the worked example shows; this list is for byte-exact ports).
-
-1. Map every C++ float operator to exactly one `og.f*` call; never chain in
-   Lua. Comparing floats directly is fine. Plain `+`/`-`/`*` is safe only
-   when the exact result is representable in C `float`; division never is.
-2. Map integer `/` and `%` to `og.div` / `og.mod` unless documented operand
-   ranges prove Lua floor division/remainder identical to C truncation.
-3. `(int32)someFloat` → `og.trunc`. Explicit narrowing casts → `og.i8`/
-   `og.i16`/`og.u8` **only** where the C++ did more than a plain setter store
-   (setters — and the properties routed through them — already narrow).
-4. Preserve `og.rand` call order and count exactly. A guarded C++ draw
-   (`if (n > 0) r = rng(n)`) is one `og.rand0(n)` — identical stream both
-   ways. Watch for C++ expressions with two `rng.next()` calls: C++ operand
-   order is unspecified, so make the order explicit and let parity
-   adjudicate PER SITE. Adjudicated so far: comparison operands
-   (`rng(a) >= rng(b)`) ran LEFT-first (thief, orc); function-call arguments
-   (`f(..., rng(3), rng(3))`) ran RIGHT-first (slime grow). Do not assume
-   either — flip on parity failure.
-5. Remember the calls that draw from the RNG without looking like it:
-   `attack()`, `query_object_passable()`, `og.charm_duration`,
-   `og.freeze_duration`, `og.heal_amount`.
-6. `for_each_foe_in_range` → `og.foes_in_range`; `world->find_*_in_range` →
-   the matching `og.find_*` with the correct list selector.
-7. `dynamic_cast<living*>` guards → `self:order() ~= og.C.ORDER_LIVING`.
-8. A `switch (current_special())` ladder → a `specials` table; the
-   dispatcher's select/default/fall-through semantics are the ladder's.
-9. Keep every emitted string byte-identical.
-10. Run `og_test_parity` after each family; goldens must not change.

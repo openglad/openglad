@@ -5,9 +5,10 @@ OpenGlad's built-in family data and family-specific behavior ship through
 engine provides registries, generic entity behavior, and script dispatch; it
 does not carry a second native implementation of the core families.
 
-This document is the **architecture and determinism** reference: how packs
-are built, loaded, identified and dispatched, and the rules any sim-facing
-Lua must obey. `og_test_parity` is the enforcement gate.
+This document is the architecture and determinism reference: how packs are
+built, loaded, identified and dispatched, and the rules any sim-facing Lua
+must obey. The parity harness (`og_test_parity`) checks the core pack
+against those rules.
 
 Companion documents, each in its own lane:
 
@@ -113,9 +114,9 @@ returns the widened result. Chains keep per-op float rounding this way.
 `og.i32(x)` to reproduce the wrap at exactly the sites the C++ narrowed, and
 `og.trunc(x)` for `static_cast<int32>(float)` (truncation toward zero).
 Field setters additionally clamp/wrap to the underlying field type, matching
-the C++ member types. The chain fork (`effect_chain.lua`) is the worked
-example: `og.fmul` reproduces master's *arithmetic*, and because master then
-stores the result in a `Sint32`, the port needs `og.trunc` at that site.
+the C++ member types. The chain fork in `packs/core/lib/effect_chain.lua`
+shows both helpers together: the fork damage is an `og.fmul` product that the
+classic engine stored in a `Sint32`, so the Lua wraps it in `og.trunc`.
 
 The walker property layer inherits this rule for free: `self.hp = v`,
 `self.team = v`, `self.busy = v`, … route through the SAME registered
@@ -281,7 +282,7 @@ and the specials casts in that VM's hook tables, joined to the installed
 descriptors **by declared id**, and touches no registry. Data installs once;
 behavior installs per VM.
 
-The consequences are worth stating out loud:
+Consequences:
 
 - A declaration's data half runs once no matter how many VMs exist, so
   `og.family` can never double-install a family or move an auto-assigned
@@ -291,8 +292,8 @@ The consequences are worth stating out loud:
   written for.
 - `og.family` is legal **only** in a `packs/<id>/families/*.lua` chunk.
   Anywhere else it is a load error: the declaration would bind behavior in
-  every VM while its data half never installed, which is exactly the
-  split-brain family the two passes exist to make impossible.
+  every VM while its data half never installed: the split-brain family the
+  two passes exist to prevent.
 - `og.family_id` cannot answer a real byte during the declare pass (the ids
   are assigned by the install this declaration feeds). It returns a truthy
   placeholder so the shipped `assert(og.family_id(...))` idiom still reads,
@@ -467,8 +468,7 @@ with `og.query_genre` to apply its own surface physics.
 ### The living blocks: `stats` / `combat` / `costs` / `specials`
 
 Those four blocks are the only place the "undeclared changes nothing" rule
-is tightened, and the reason is the same in each case: the honest default
-would be a gameplay trap.
+is tightened, because a default in any of them would be a gameplay trap.
 
 - **Every member of `stats` and `combat` is required** when the block
   appears. A missing `armor` would install a 0-armor class, and nothing
@@ -919,39 +919,8 @@ The verification layers cover different promises:
   save/load behavior, multiplayer transfer, and descriptor-driven
   presentation.
 
-**Pack Lua is inside the coverage gate.** `scripts/coverage/` measures
-every pack script the engine can load, line-by-line and function-by-function,
-and merges the result with gcovr's `src/` numbers;
-`.github/workflows/coverage.yml` enforces one bar — 98 % line, 100 % function
-— on the C++ half alone, on the Lua half alone, and on their union. Separate
-floors prevent one language's surplus from hiding the other's shortfall. See
-`scripts/coverage/README.md` for how each number is produced and why arming
-the recorder is a runtime switch rather than a compile flag. Focused gaps are
-covered by `tests/unit/test_pack_lua_paths.cpp` (the cloud's overlap test, the
-cleric's whole kit, the archmage's response chain, the slime split), which is
-the place to add the next one.
-
-Three rules define the Lua metric:
-
-* **Every prototype is a function.** The denominator is the compiled prototype
-  tree, not the set of registered hooks, so an uncalled local helper or
-  anonymous callback costs exactly what a hook costs — and a script no test
-  loads is a file of misses rather than an absence.
-* **A function is covered when a line of its body ran**, never at the point
-  the engine decided to dispatch it. A hook that is registered — even
-  dispatched — but never *entered* reads as a miss. What the metric does NOT
-  distinguish, and no line-derived metric can: once a hook's body is entered,
-  an empty body counts (its `end` carries `OP_RETURN` and fires a line event)
-  and so does one that raises on its first statement — a dispatched no-op
-  stub is indistinguishable from an implementation. See "What the numbers do
-  NOT claim" in `scripts/coverage/README.md`.
-* **One statement per line** (`scripts/check_lua_statement_lines.py`, a build
-  dependency of `og_gameplay`). Line coverage counts lines, so `if low then
-  flee() end` on one line is a branch the metric cannot see. Writing it out
-  costs nothing and makes the branch measurable.
-
-Coverage identity is the content hash. Byte-identical copies collapse into
-one entry, but a **byte-variant** copy of a shipped script (a CRLF re-encode,
-a whitespace edit, an abandoned fork of a pack file) is a second denominator
-entry at 0 %. The report names it in its never-loaded list, and its prototypes
-remain misses until a test loads those exact bytes or the variant is deleted.
+Shipped pack Lua is part of the project's coverage gate; how it is measured
+is described in `scripts/coverage/README.md`. Every pack is held to one
+statement per line (`scripts/check_lua_statement_lines.py`, a build
+dependency of `og_gameplay`): line coverage counts lines, so
+`if low then flee() end` on one line hides a branch the metric cannot see.
