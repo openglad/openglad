@@ -551,8 +551,9 @@ TEST_F(LevelScriptsTest, a_family_chunk_registers_level_hooks_in_the_real_pass)
     constexpr std::uint32_t kOnLoadBit =
         1u << 0;  // LevelHook::Load (family_hooks.h: "Load 0")
     clear_pack_family_chunks();
-    // Level dispatch is gated on the pack having scripts at all, so the pack
-    // ships one inert script beside its family file.
+    // The pack also ships one inert scripts/ chunk beside its family file:
+    // level dispatch must see a family registration whether or not scripts/
+    // exist (the families/-only case is the next test, issue #322).
     register_pack_script({"lvlfam", "lvlfam/scripts/inert.lua",
                           "local inert = true\n"});
 
@@ -597,12 +598,12 @@ TEST_F(LevelScriptsTest,
         << "precondition: the pack ships no scripts/ chunk at all";
 
     // Control: a families/-only pack whose chunk registers nothing has no
-    // level hook and logs nothing.
+    // level hook. (No tick here: the level's on_load moment is the first
+    // tick, and it belongs to the registration below.)
     register_pack_family_chunk(
         {"lvlfam", "lvlfam/families/a.lua", "local nothing = true\n"});
     EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1));
-    world.tick();
-    EXPECT_EQ(0u, vm_log().size());
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42));
 
     register_pack_family_chunk(
         {"lvlfam", "lvlfam/families/a.lua",
