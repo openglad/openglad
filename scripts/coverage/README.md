@@ -281,9 +281,13 @@ ignore. This is what is left, and what it is.
 `coverage_report.py` does; `noise_probe.py compare` reads N tracefiles and
 lists, per file, the lines whose hit bit differs between runs. Every `.gcda`
 is deleted before each run. Per binary: N=5 `ctest -R` runs. Whole suite:
-N=3 passes the way `coverage.yml` runs it (`ctest --parallel 4 --timeout
-420`, no retry, `-E emscripten_build_test` locally), on a 12-core box with
-an 8 GiB cgroup and a shared load average of 13-16.
+N=3 passes of `ctest --test-dir build/ci-coverage --parallel 4 --timeout 420
+--output-on-failure -E emscripten_build_test`, on a 12-core box with an
+8 GiB cgroup and a shared load average of 13-16. Two things differ from
+`coverage.yml`: the Lua recorder was **not armed** (no
+`OPENGLAD_LUA_COVERAGE`), and there was no `--repeat until-pass:3` (no test
+failed, so the retry would not have run). The unarmed recorder matters; see
+the armed band below.
 
 **What was fixed.** The match seed (`og::server::draw_match_seed()`) came
 from `std::random_device` in every TESTING harness, so every GO, network-host
@@ -306,11 +310,28 @@ links `platform_headless.cpp`, so that capture read a contaminated `.gcda`
 set, not `og_test_view`; it was discarded as a capture fault and did not
 recur in any later run. The raw five-run compare prints 222.
 
-**The floor.** Three whole-suite passes read C++ `lines_hit` 72452, 72452
-and 72451 of 73838 found: a spread of **1 line**, with **8 lines** that
-flipped at least once. The margin rule (#319's "< 0.1 pp") is read against
-this band. A change whose measured effect is a handful of lines is inside
-it; say so, and do not attribute it.
+**The floor.** Three unarmed whole-suite passes read C++ `lines_hit`
+72452, 72452 and 72451 of 73838 found: a spread of **1 line**, with **8
+lines** that flipped at least once.
+
+**The armed band.** `coverage.yml` arms the recorder, and arming it runs 29
+C++ lines that an unarmed pass never reaches: the `coverage::enabled()`
+bodies in `family_decl.cpp` (1485-1488), `pack_scripts.cpp` (31-33),
+`world_scripts.cpp` (988-990, 996-998, 1391, 1397, 1403, 1409, 1415, 1499),
+`packs.cpp:56`, `script_host.cpp:91` and the recorder itself,
+`script_coverage.cpp` (228, 517, 531-534, 536, 538). They are 0 in all
+three unarmed passes and hit in an armed one, every time the recorder is on.
+So an armed pass, the one the gate reads, sits at **72480-72481**, the
+unarmed band plus 29. One armed whole-suite pass, run exactly as
+`coverage.yml` runs it (recorder armed, `--repeat until-pass:3`, no retry
+taken, only `-E emscripten_build_test` added) at dd21576f with no `src/`
+change since the unarmed passes, read 72480. `noise_probe.py compare` of
+that tracefile against the three unarmed ones finds the 29 recorder lines,
+flips already listed in the table below, and that table's last two rows,
+which no unarmed pass showed; those two can move a single pass by one
+line either way. The margin rule (#319's "< 0.1 pp") is read against the
+armed band. A change whose measured effect is a handful of lines is
+inside it; say so, and do not attribute it.
 
 The lines that still flip, and why:
 
@@ -321,6 +342,8 @@ The lines that still flip, and why:
 | `astar.cpp:53` | an unreachable node is costed in one pass and not another; a wall-clock-bounded sim (a forked `openglad_server`, a text client or a GO flow) ticks a different number of frames | wall-clock tick count, accepted |
 | `game_world.cpp:60` | the owner-chain depth break ran 4, 1 and 0 times; same wall-clock class as above | accepted |
 | `input.cpp:1263` | the range-guard return in `isPlayerHoldingKey`, hit once in one pass from the production `og_interface` objects | unattributed, accepted |
+| `input_state.cpp:422` | the range-guard return in `get_player_control_mode`, the sibling per-player lookup: hit once (of 50273 calls) in the armed pass, in none of the three unarmed passes and none of 130 per-binary captures | unattributed, accepted |
+| `game_server.cpp:1187` | not a path flip: the third operand of the spectator Hello token check. The arm it guards (`:1189`, the mismatch disconnect) ran exactly once in all four passes. The unarmed build booked that operand on 1187 (1186 = 1185 + 1); the integration build booked it on 1186 (1186 = 1185) and left 1187 at 0. Two builds of the same source attribute one block to different lines | build-to-build line attribution, accepted |
 
 Below the whole-suite floor, per-binary noise that other tests cover in
 every pass, so it never reaches the gate number:
