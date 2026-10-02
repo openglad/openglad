@@ -12,6 +12,7 @@
 #include "test_escape_tail.h"
 #include "test_interact.h"
 #include "test_click_ladder.h"
+#include "test_match_seed.h"
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
@@ -585,4 +586,28 @@ TEST(OverpoweredTeam, a_leg_that_gives_up_frees_the_main_thread) {
         << "the tail restores the game speed it found";
     EXPECT_FALSE(g_test_remove_exits)
         << "the tail restores the exit-removal cheat it found";
+}
+
+// #338: every TESTING harness pins the match seed process-wide, so a GO,
+// lobby start or solo launch stages the SAME world on every run and the
+// coverage gate reads the same lines from the same binaries. Production
+// draws the seed from std::random_device xor the clock; without the pin this
+// assertion reads a different value each run. The scoped override is the
+// paired control (the seam is live and the seed is not merely a constant the
+// draw happens to return), and the last assertion pins the restore: a scope
+// that ends must hand back the harness seed, not production entropy, or every
+// later test in the binary goes random again.
+TEST(HarnessMatchSeed, harness_pins_the_match_seed)
+{
+    static_assert(kBattleSeed != kHarnessMatchSeed,
+                  "the control seed must differ from the harness seed");
+    ASSERT_EQ(kHarnessMatchSeed, og::server::draw_match_seed())
+        << "the harness main must pin the match seed after InitGoogleTest";
+    {
+        const ScopedMatchSeed match_seed(kBattleSeed);
+        ASSERT_EQ(kBattleSeed, og::server::draw_match_seed())
+            << "a scoped override must win while it is alive";
+    }
+    ASSERT_EQ(kHarnessMatchSeed, og::server::draw_match_seed())
+        << "a scoped override must restore the harness seed, not nullopt";
 }
