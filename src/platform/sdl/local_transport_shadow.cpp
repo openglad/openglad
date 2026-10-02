@@ -565,6 +565,18 @@ void prepare_server_session_for_gameplay(og::runtime::GameSession& server_sessio
         current_game->sim_events->clear();
 }
 
+// #326: the two shadow installs used to return silently when the
+// authoritative load failed, leaving the display running with no transport
+// shadow. A failed load still installs nothing; the caller reads that through
+// local_transport_active.
+void log_shadow_load_failure(const std::string& slot)
+{
+    LogError("transport_shadow: load_saved_game('{}') failed; no transport "
+             "shadow installed\n",
+             slot);
+    TRACE("transport_shadow", "load_saved_game failed slot=%s", slot.c_str());
+}
+
 // Staged adoption (#218): the session settings the legacy display-seed
 // keyframe used to deliver into the authoritative world, now stamped
 // explicitly. The cfg sim cadence (glad_init's
@@ -2408,11 +2420,13 @@ void reset_local_transport_shadow(GameSession& session,
                 gameplay_screen.save_data.replay_level;
             server_screen->save_data.replay_origin =
                 gameplay_screen.save_data.replay_origin;
-            if (load_saved_game(runtime->networked || runtime->isolated_company
-                                   ? "netsession"
-                                   : og::data::active_company_slot().c_str(),
-                               server_screen) == 0)
+            const std::string load_slot =
+                runtime->networked || runtime->isolated_company
+                    ? std::string("netsession")
+                    : og::data::active_company_slot();
+            if (load_saved_game(load_slot.c_str(), server_screen) == 0)
             {
+                log_shadow_load_failure(load_slot);
                 return;
             }
             // cross_control is SESSION-only (never serialized), so the slot
@@ -2750,11 +2764,12 @@ void reset_network_host_transport_shadow(
                 gameplay_screen.save_data.replay_level;
             server_screen->save_data.replay_origin =
                 gameplay_screen.save_data.replay_origin;
-            if (load_saved_game(runtime->networked
-                                   ? "netsession"
-                                   : og::data::active_company_slot().c_str(),
-                               server_screen) == 0)
+            const std::string load_slot =
+                runtime->networked ? std::string("netsession")
+                                   : og::data::active_company_slot();
+            if (load_saved_game(load_slot.c_str(), server_screen) == 0)
             {
+                log_shadow_load_failure(load_slot);
                 return;
             }
             // Session-only cross_control dropped by the disk round-trip — carry

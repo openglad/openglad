@@ -11,6 +11,7 @@
 
 #include <openglad/platform/game_loop.h>
 
+#include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
@@ -348,6 +349,14 @@ void glad_init(bool preserve_frame_timing,
             *gameplay_session, *current_screen,
             lobby_client != nullptr ? lobby_client->take_match_stage()
                                     : nullptr);
+    }
+    // #326: either install path may leave no shadow (a failed authoritative
+    // load). A mission without one cannot step, so do not start it.
+    if (!og::runtime::local_transport_active(*gameplay_session))
+    {
+        LogError("glad_init_failed reason=no_transport_shadow\n");
+        TRACE("game", "glad_init_failed reason=no_transport_shadow");
+        return;
     }
     current_screen->redrawme = 1;
     current_screen->framecount = 0;
