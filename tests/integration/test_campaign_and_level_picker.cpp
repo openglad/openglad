@@ -1765,6 +1765,80 @@ TEST(CampaignAndLevelPicker, set_scen_level_accepts_earned_id_and_abandons_repla
     save.reset();
 }
 
+// #341 item 1: the load-failure arm of the same choke. On an ungated
+// (`matchup: versus`) campaign an ENTER ID naming no level passes the gate,
+// fails to load, says so, and rolls the world back to the level it had --
+// reloading it -- with the cursor untouched and no "Big problem" second
+// failure. (That second arm stays unpinned: its only product route is the
+// level picker deleting the current level's file.)
+TEST(CampaignAndLevelPicker, set_scen_level_load_failure_restores_the_current_level)
+{
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    og::runtime::current_session->myscreen_->world().id = 820;
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->load_level());
+    const std::string title_820 =
+        og::runtime::current_session->myscreen_->world().title;
+
+    PromptQueueGuard prompt_queue;
+    prompt_queue.push("9999");  // ungated, but no scen9999.fss exists
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    trace_clear();
+    level_picker_testing_input_reset();
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_enter_id_injector, "level_picker_enter_id_fail", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    vbutton dispatcher;
+    const Sint32 ret = dispatcher.do_call(
+        button_action_id(ButtonAction::DoSetScenLevel), 0);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(2, (int)ret) << "the failed load returns MENU_REDRAW";
+    EXPECT_FALSE(trace_contains("picker", "set_level_denied_gate 9999"))
+        << "precondition: a versus campaign must not gate the id";
+    EXPECT_TRUE(trace_contains("game", "LevelRuntimeData::load id=9999 "))
+        << "the chosen id must be attempted";
+    EXPECT_TRUE(trace_contains("popup", "Invalid level file."))
+        << "the failed load must say so";
+    EXPECT_EQ(820, (int)og::runtime::current_session->myscreen_->world().id)
+        << "the failed load must roll the world id back";
+    EXPECT_TRUE(trace_contains("game", "LevelRuntimeData::load id=820 "))
+        << "the rollback must reload the level it restored";
+    EXPECT_EQ(title_820,
+              og::runtime::current_session->myscreen_->world().title)
+        << "the world must still hold level 820";
+    EXPECT_EQ(820, (int)save.scen_num)
+        << "a failed load must not move the cursor";
+    EXPECT_FALSE(trace_contains("popup", "Also failed"))
+        << "the reload of a good level must succeed";
+
+    // Put the world and the mount back where the neighbouring tests expect
+    // them (a leaked "modes" mount re-targets later tests under shuffle).
+    save.reset();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    og::runtime::current_session->myscreen_->world().id = 1;
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->load_level());
+}
+
 TEST(CampaignAndLevelPicker, level_picker_delete_removes_only_selected_level)
 {
     ViewportGuard viewport_guard;
