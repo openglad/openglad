@@ -275,10 +275,11 @@ TEST(ScreenFuncs, screen_damage_tile_out_of_bounds)
     const int gh = world().grid.h;
     world().grid.data[0] = PIX_GRASS2;
 
-    // NOTE: damage_tile divides by GRID_SIZE with C++ truncation, so a
-    // coordinate inside the first cell's width (e.g. -10) lands on cell 0 and
-    // is NOT rejected. The guard bites from one whole cell out; that is the
-    // behaviour pinned here.
+    // damage_tile rejects any negative pixel before it divides by GRID_SIZE
+    // (issue #296: C++ truncation used to fold -15..-1 onto cell 0). The
+    // one-pixel edge is pinned in og_unit_sim
+    // (damage_tile_rejects_negative_pixels_before_dividing); this screen-path
+    // test pins one whole cell out on each side.
     ASSERT_EQ(0, (int)scr().damage_tile(-GRID_SIZE, 0))
         << "a negative x cell must be rejected";
     ASSERT_EQ(0, (int)scr().damage_tile(0, -GRID_SIZE))
