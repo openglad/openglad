@@ -135,11 +135,19 @@ const std::vector<PackagePins>& package_pins()
         // on or within one cell of the shoulder's lava — removed the three
         // ring-walk rocks that pinched the circuit against the lava sheet.
         // See levels_finale.cpp; re-pinned from the regen.)
+        // (#301, nine levels up by 1..12: the autotiler's dark-grass top
+        // middle now keeps dark grass instead of leaking a light-grass column
+        // down the patch, and the smoother's extra draw re-rolls the later
+        // tile variants. The decor scatters are cell-hash keyed and dress
+        // only exact interior tiles, so the counts follow the new ground.
+        // scen1 65->67, scen6 174->186, scen7 96->97, scen8 277->278,
+        // scen11 105->111, scen12 143->152, scen13 71->75, scen19 397->400,
+        // scen22 145->157. Re-pinned from the regen.)
         {"westlands", false,
-         {{1, 65},  {2, 44},  {3, 74},  {4, 46},  {5, 135}, {6, 174},
-          {7, 96},  {8, 277}, {9, 270}, {10, 92}, {11, 105}, {12, 143},
-          {13, 71}, {14, 70}, {15, 147}, {16, 77}, {17, 187}, {19, 397},
-          {20, 114}, {21, 91}, {22, 145}, {23, 417}, {24, 270}, {25, 88},
+         {{1, 67},  {2, 44},  {3, 74},  {4, 46},  {5, 135}, {6, 186},
+          {7, 97},  {8, 278}, {9, 270}, {10, 92}, {11, 111}, {12, 152},
+          {13, 75}, {14, 70}, {15, 147}, {16, 77}, {17, 187}, {19, 400},
+          {20, 114}, {21, 91}, {22, 157}, {23, 417}, {24, 270}, {25, 88},
           {26, 38}}},
     };
     return pins;
