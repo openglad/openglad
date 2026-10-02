@@ -38,6 +38,7 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/local_transport_shadow.h>
+#include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 #include <openglad/resources/io_common.h>
@@ -2222,6 +2223,103 @@ TEST(GameLoop, local_transport_shadow_invalid_reset_paths_clear_runtime)
     EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session));
     EXPECT_FALSE(gameplay_session.relay_transport_active_);
 
+    game_screen->world().delete_objects();
+}
+
+// #326: both shadow installs (local and network host) load the authoritative
+// world from the company slot on the legacy path. A failed load used to
+// return with no word; the rule now is that it is logged and still installs
+// nothing, so local_transport_active stays the one channel glad_init reads.
+TEST(GameLoop,
+     transport_shadow_install_logs_a_failed_authoritative_load_and_installs_nothing)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    // A direct (non-lobby) launch: the display and the shadow both load the
+    // ACTIVE company slot, not "netsession".
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    ASSERT_FALSE(gameplay_session.networked_session_);
+    ASSERT_FALSE(gameplay_session.isolated_company_session_);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session))
+        << "control: the save0 company loads and the shadow installs";
+
+    {
+        og::data::ScopedActiveCompany missing("shadow-326-missing");
+        ASSERT_TRUE(missing.applied());
+
+        trace_clear();
+        og::runtime::reset_local_transport_shadow(gameplay_session,
+                                                  *game_screen);
+        EXPECT_TRUE(trace_contains(
+            "transport_shadow",
+            "load_saved_game failed slot=shadow-326-missing"))
+            << "the local install must report the failed authoritative load";
+        EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session))
+            << "a failed load installs no local shadow";
+
+        auto server_transport = og::sim::InProcessTransport::create_server();
+        auto host_local_client_transport =
+            server_transport->create_client_transport();
+        std::vector<og::sim::LobbyPlayerBinding> player_bindings;
+        player_bindings.push_back(og::sim::LobbyPlayerBinding{
+            .peer_id = host_local_client_transport->local_peer_id(),
+            .player_index = 0u,
+            .team = 0,
+        });
+        trace_clear();
+        og::runtime::reset_network_host_transport_shadow(
+            gameplay_session,
+            *game_screen,
+            server_transport,
+            host_local_client_transport,
+            player_bindings);
+        EXPECT_TRUE(trace_contains(
+            "transport_shadow",
+            "load_saved_game failed slot=shadow-326-missing"))
+            << "the host install must report the failed authoritative load";
+        EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session))
+            << "a failed load installs no host shadow";
+
+        // The SDL launch reads the same predicate after the install and
+        // refuses to start a mission that has no shadow (here the company
+        // file is missing for the display load as well).
+        trace_clear();
+        glad_init();
+        EXPECT_TRUE(trace_contains(
+            "transport_shadow",
+            "load_saved_game failed slot=shadow-326-missing"));
+        EXPECT_TRUE(trace_contains(
+            "game", "glad_init_failed reason=no_transport_shadow"))
+            << "glad_init must stop when no transport shadow was installed";
+        ASSERT_NE(nullptr, og::runtime::current_game_session);
+        EXPECT_FALSE(og::runtime::local_transport_active(
+            *og::runtime::current_game_session));
+    }
+
+    // Paired positive control: the same launch with its real company slot
+    // back installs the shadow and reports neither failure.
+    trace_clear();
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    EXPECT_TRUE(og::runtime::local_transport_active(
+        *og::runtime::current_game_session));
+    EXPECT_FALSE(trace_contains("transport_shadow", "load_saved_game failed"));
+    EXPECT_FALSE(trace_contains("game", "glad_init_failed"));
+
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 
