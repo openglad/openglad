@@ -16,6 +16,7 @@
  */
 
 #include <openglad/resources/io.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
@@ -243,6 +244,8 @@ SDL_IOStream* open_read_file(const char* path, const char* file)
 	    SDL_IOStream* rwops = og::io::physfsio_open_write(file);
 	    if(rwops != nullptr)
 	        return rwops;
+	    if(!og::io::stdio_write_fallback_allowed(file))
+	        return nullptr;
 	    return SDL_IOFromFile(file, "wb");
 	}
 

@@ -22,10 +22,12 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 // Path helpers (defined in platform_io.cpp, linked via og_io or text client)
@@ -198,11 +200,33 @@ OgFilePtr og_open_read(const char* path, const char* file)
     return og_open_read((std::string(path) + file).c_str());
 }
 
+bool stdio_write_fallback_allowed(const char* file)
+{
+    const char* write_dir = PHYSFS_isInit() ? PHYSFS_getWriteDir() : nullptr;
+    if (write_dir == nullptr)
+        return true;
+    const std::filesystem::path path(file);
+    if (path.is_absolute())
+        return true;
+    // Both sides resolve against the CURRENT working directory, which is what
+    // PhysFS itself does with a relative write dir when it opens a file.
+    std::error_code path_ec;
+    std::error_code root_ec;
+    const std::filesystem::path resolved =
+        std::filesystem::absolute(path, path_ec).lexically_normal();
+    const std::filesystem::path root =
+        std::filesystem::absolute(std::filesystem::path(write_dir), root_ec).lexically_normal();
+    const std::filesystem::path rel = resolved.lexically_relative(root);
+    return !path_ec && !root_ec && !rel.empty() && *rel.begin() != "..";
+}
+
 OgFilePtr og_open_write(const char* file)
 {
     PHYSFS_File* f = PHYSFS_isInit() ? PHYSFS_openWrite(file) : nullptr;
     if (f)
         return std::make_unique<PhysfsOgFile>(f);
+    if (!stdio_write_fallback_allowed(file))
+        return nullptr;
 
     FILE* fp = std::fopen(file, "wb");
     if (fp) {
