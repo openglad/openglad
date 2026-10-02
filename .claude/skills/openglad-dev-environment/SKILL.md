@@ -52,6 +52,16 @@ AGENTS.md doesn't: divergence, accepted failures, and traps.
    oracles instead (tests/unit/test_version.cpp,
    tests/curses/test_curses_mount_guard.cpp are the shapes).
 
+The **x11-display CI job** (#329) runs og_test_display_x11 on SDL's real
+x11 driver under Xvfb; no plain local ctest runs it (the group is built and
+registered only with `-DOPENGLAD_X11_DISPLAY_TESTS=ON`). Reproduce it with
+the tree's own flake, which carries Xvfb/xrandr/openbox/xprop/xdpyinfo:
+`nix develop <tree> -c bash scripts/ci/run_x11_display_lane.sh build/ci-test [one|two]`
+after configuring with the option and building `og_test_display_x11`.
+Starting Xvfb by hand, keep `-noreset`: without it the server resets when
+its last client disconnects and every xrandr-added mode is gone before SDL
+connects.
+
 ## Accepted local failures and standing rulings
 
 - `emscripten_build_test` fails on machines without `$EMSDK` set — this
