@@ -7,12 +7,12 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 
 // The scenario table mirrors the PIX_* tile ids numerically (it must not
@@ -71,18 +71,18 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
         // non-zero target floor is valid here. No-op for floor 0 (the default).
         if (s.floor != 0)
             w->change_floor(static_cast<short>(s.floor));
-        // Leave user_ at the SimEntity default (-1, NPC). The first call to
-        // sim_process_player_input for the player_team walker takes ownership
-        // and sets user_ = player_num + act_type = ACT_CONTROL — exactly the
-        // takeover sequence the production game uses when a player picks up
-        // a control. The harness never sets user_ directly.
+        // Leave user_ at the SimEntity default (-1, NPC). The harness never
+        // calls sim_process_player_input: claim_control (below) takes
+        // ownership on the first apply_inputs_at_tick, setting
+        // act_type = ACT_CONTROL, user_ = 0 and clearing the command queue
+        // (the companion dumper's claim, which the goldens encode).
         if (s.default_weapon != 0)
             w->set_default_weapon(s.default_weapon);
         if (s.current_weapon != 0)
             w->set_current_weapon(s.current_weapon);
 
         // Phase 01 (semantic-parity): caster preconditions for special slots
-        // >= 2. Cycling gate: src/gameplay/sim_input_handler.cpp:314 `(control->current_special() - 1) * 3 + 1` must be <= stats()->level().
+        // >= 2. Cycling gate: src/gameplay/sim_input_handler.cpp:196 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
         // Firing gate: src/gameplay/living.cpp:585 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
         // Zero defaults preserve byte-mirror layout for rows that don't need
         // either; the harness raises level/MP only when the SpawnSpec asks
@@ -247,28 +247,11 @@ void cycle_next_character(GameWorld& world,
 
 void cycle_special(walker* control)
 {
-    if (control == nullptr || control->stats() == nullptr) return;
-
-    control->set_current_special(control->current_special() + 1);
-    const int special_index = static_cast<int>(control->current_special());
-    const auto* descriptor = get_family_descriptor(
-        static_cast<int>(static_cast<unsigned char>(control->family())));
-    const char* special_name =
-        (!descriptor || special_index < 0 || special_index >= NUM_SPECIALS)
-            ? nullptr
-            : descriptor->special_names[special_index];
-    const bool missing_special =
-        descriptor == nullptr ||
-        special_index < 0 ||
-        special_index >= NUM_SPECIALS ||
-        special_name == nullptr ||
-        std::strcmp(special_name, "NONE") == 0;
-
-    if (special_index > (NUM_SPECIALS - 1) ||
-        missing_special ||
-        (((control->current_special() - 1) * 3 + 1) >
-         control->stats()->level()))
-        control->set_current_special(1);
+    // The cycling rule itself lives once, in the product
+    // (sim_advance_current_special); the null guards are the harness's own
+    // preconditions, and the press edge is detected by the caller.
+    if (control && control->stats())
+        sim_advance_current_special(*control);
 }
 
 } // namespace
