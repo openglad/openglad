@@ -1031,6 +1031,13 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
    (generated content under `campaigns/<id>/` is committed like a lockfile)
 5. **asan** — ASan + UBSan build and test
 6. **tsan** — ThreadSanitizer build and test
+7. **x11-display** — `og_test_display_x11` on SDL's real x11 driver under Xvfb,
+   through `scripts/ci/run_x11_display_lane.sh`: one X screen with XRandR modes
+   and openbox (the mode selector and a real exclusive mode switch), then two X
+   screens with no window manager (the multi-display Exclusive guard and an
+   unacknowledged fullscreen request). The group is built only with
+   `-DOPENGLAD_X11_DISPLAY_TESTS=ON`; locally, run the same script inside
+   `nix develop`, whose shell provides Xvfb, xrandr and openbox
 
 Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
 `parity-canary.yml` (the parity mutation canary — the teeth oracle for
