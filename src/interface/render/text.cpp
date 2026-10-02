@@ -122,7 +122,7 @@ Sint32 text::query_width(std::string_view string) // returns width, in pixels
 
 	while (i < string.size())
 	{
-		if (string[i] >= 65 && string[i] <= 93) // uppercase
+		if (string[i] >= 65 && string[i] <= 92) // uppercase
 			over += sizex;
 		else
 			over += sizex-1;

@@ -125,7 +125,7 @@ TEST(TextRender, small_font_query_width_is_one_advance_per_character)
 }
 
 
-// The big font is proportional: 'A'..']' cost sizex, everything else sizex-1.
+// The big font is proportional: 'A'..'\' (65..92) cost sizex, everything else sizex-1.
 TEST(TextRender, big_font_query_width_charges_uppercase_the_wider_advance)
 {
     text& big = og::runtime::current_session->myscreen_->text_big;
@@ -133,7 +133,7 @@ TEST(TextRender, big_font_query_width_charges_uppercase_the_wider_advance)
     ASSERT_GE(big.sizex, 9) << "text_big takes the proportional branch";
 
     ASSERT_EQ(4 * big.sizex, big.query_width("TEST"))
-        << "uppercase bytes (65..93) each cost sizex";
+        << "uppercase bytes (65..92) each cost sizex";
     ASSERT_EQ(big.sizex + 3 * (big.sizex - 1), big.query_width("Test"))
         << "lowercase bytes each cost sizex - 1";
 }
