@@ -1033,10 +1033,10 @@ TEST(WalkerMovement, walker_draw_tile_phantom_and_forestwalk_paths)
 // to a named facing, walks ONE full stepsize that way, reports that walk's
 // result and restores the original curdir.
 //
-// The slope ladder exists TWICE in src/: living::facing (src/gameplay/living.cpp)
-// is a byte-for-byte copy of walker::facing (src/gameplay/walker_movement.cpp),
-// and a living never reaches the base one. Weapons, effects and every other
-// non-living walker do, so the table below runs through both.
+// The slope ladder exists ONCE in src/: walker::facing
+// (src/gameplay/walker_movement.cpp). Livings inherit it (the living twin was
+// deleted as a byte-identical copy, issue #298), so the table below runs
+// through a living and through a non-living walker, both reaching that rule.
 TEST(WalkerMovement, facing_buckets_and_npc_fallback_component_walks)
 {
     fresh_grass_map();
@@ -1054,18 +1054,17 @@ TEST(WalkerMovement, facing_buckets_and_npc_fallback_component_walks)
     };
     for (auto& v : vectors) {
         ASSERT_EQ(v.expected, (int)w->facing(v.x, v.y))
-            << "living::facing(" << v.x << "," << v.y << ") slope bucket";
+            << "a living's facing(" << v.x << "," << v.y << ") slope bucket";
     }
 
-    // The same ten rungs through the base rule, which only a NON-living walker
-    // reaches: make_guy always yields a living, whose override shadows it.
+    // The same ten rungs through a NON-living walker: one rule, two callers.
     {
         PixieData px(1, 1, 1, new unsigned char[1]{0});
         walker nonliving(px);
         for (auto& v : vectors) {
             ASSERT_EQ(v.expected, (int)nonliving.facing(v.x, v.y))
                 << "walker::facing(" << v.x << "," << v.y
-                << ") slope bucket (the non-living twin of the rule above)";
+                << ") slope bucket (the non-living caller of the same rule)";
         }
     }
 
