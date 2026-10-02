@@ -5444,9 +5444,10 @@ TEST(LobbyState, start_correlation_matchers)
         .request_id = 40u,
     };
 
-    EXPECT_FALSE(
+    EXPECT_TRUE(
         og::sim::start_confirmation_matches_request(confirmation, 41u))
-        << "an accepted request 40 must not resolve this caller's pending 41";
+        << "an accepted StartGame starts every machine regardless of its own "
+           "pending id (R-331)";
     EXPECT_TRUE(og::sim::start_confirmation_matches_request(confirmation, 0u))
         << "follower rule: a peer that never asked to start accepts the "
            "host's accepted StartGame unconditionally";
