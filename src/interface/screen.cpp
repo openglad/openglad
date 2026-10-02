@@ -1034,8 +1034,6 @@ void screen::init_common(short howmany, bool has_display)
 
     TRACE("init", "screen constructor: numviews=%d display=%d", howmany, has_display);
 
-	Sint32 i, j;
-
 	grab_timer();
 
 	timerstart = static_cast<Uint32>(query_timer_control());
@@ -1099,15 +1097,6 @@ void screen::init_common(short howmany, bool has_display)
 	}
 
 	init_all_registries();
-	// Let's set the special names for all walkers ..
-	for (i=0; i < NUM_FAMILIES; i++)
-	{
-		auto* fd = get_family_descriptor(i);
-		for (j=0; j < NUM_SPECIALS; j++)
-		{
-			special_name[i][j] = fd ? fd->special_names[j] : "NONE";
-		}
-	}
 
 	sync_world_from_save_data();
 }

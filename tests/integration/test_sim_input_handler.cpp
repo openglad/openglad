@@ -116,12 +116,11 @@ TEST(SimInputHandler, sim_input_endgame_when_no_control)
     input.clear();
     walker* control = nullptr;
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS];
 
     og::sim::SimEventLog log;
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(result.endgame_requested) << "should request endgame with no walkers";
     ASSERT_EQ(1, result.endgame_type) << "endgame type should be 1";
@@ -140,12 +139,11 @@ TEST(SimInputHandler, sim_input_assigns_control)
     input.clear();
     walker* control = nullptr;
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS];
 
     og::sim::SimEventLog log;
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(!result.endgame_requested) << "should not endgame";
     ASSERT_TRUE(control != nullptr) << "control should be assigned";
@@ -184,12 +182,11 @@ TEST(SimInputHandler, respawning_dead_hero_does_not_switch_to_teammate)
     InputState input;
     input.clear();
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
     walker* control = dead_hero;
 
     const SimInputResult retained = sim_process_player_input(
-        input.players[0], control, world, 0, 0, debounce, special_names, &log);
+        input.players[0], control, world, 0, 0, debounce, &log);
     EXPECT_EQ(dead_hero, control);
     EXPECT_EQ(dead_hero, retained.new_control);
     EXPECT_EQ(-1, teammate->user());
@@ -198,7 +195,7 @@ TEST(SimInputHandler, respawning_dead_hero_does_not_switch_to_teammate)
     // The same shape with respawns off retains legacy auto-switch behavior.
     world.respawn_mode = 0;
     const SimInputResult switched = sim_process_player_input(
-        input.players[0], control, world, 0, 0, debounce, special_names, &log);
+        input.players[0], control, world, 0, 0, debounce, &log);
     EXPECT_EQ(teammate, control);
     EXPECT_TRUE(switched.control_hp_changed);
 
@@ -240,11 +237,10 @@ TEST(SimInputHandler, sim_input_held_direction_walksteps_and_advances_one_stepsi
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS];
     og::sim::SimEventLog log;
 
     sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
 
     ASSERT_FLOAT_EQ(step, control->lastx())
         << "MoveRight must reach walkstep(1,0), which records lastx = 1*stepsize";
@@ -260,7 +256,7 @@ TEST(SimInputHandler, sim_input_held_direction_walksteps_and_advances_one_stepsi
     // Facing the way it is already headed, the same input steps.
     control->set_curdir(static_cast<signed char>(FACE_RIGHT));
     sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
 
     ASSERT_EQ(static_cast<short>(x_before + step), control->xpos())
         << "facing right, one held MoveRight advances exactly one stepsize";
@@ -284,21 +280,20 @@ TEST(SimInputHandler, sim_input_switch_special_wraps_and_debounces)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
-    special_names[FAMILY_SOLDIER][2] = "NONE";
     og::sim::SimEventLog log;
 
     sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_EQ(1, debounce.changedspec) << "switch special should set debounce latch";
-    ASSERT_EQ(1, control->current_special()) << "invalid/locked special should wrap to 1";
+    ASSERT_EQ(1, control->current_special())
+        << "level 1 locks the soldier's slot 2 (needs level 4): wrap to 1";
 
     input.clear();
     sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_EQ(0, debounce.changedspec) << "no press frame should clear special debounce";
 
     teardown();
@@ -327,12 +322,11 @@ TEST(SimInputHandler, sim_input_yell_sets_follow_and_notification)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     const SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_EQ(SOUND_YO, result.play_sound) << "plain yell should request yo sound";
     ASSERT_TRUE(result.notify_text == "Yo!") << "plain yell should emit Yo notification";
@@ -372,12 +366,11 @@ TEST(SimInputHandler, sim_input_yell_within_cooldown_emits_nothing)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_EQ(2u, log.size()) << "the first yell should emit sound + notification";
 
     // Second yell inside the cooldown window: yo_delay ticks 30 -> 29 and the
@@ -385,7 +378,7 @@ TEST(SimInputHandler, sim_input_yell_within_cooldown_emits_nothing)
     log.clear();
     const SimInputResult repeat = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_EQ(-1, repeat.play_sound) << "yell inside the cooldown should request no sound";
     ASSERT_TRUE(repeat.notify_text.empty()) << "yell inside the cooldown should not notify";
@@ -418,12 +411,11 @@ TEST(SimInputHandler, sim_input_shift_yell_summon_and_release)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(result.notify_text == "SUMMONING DEFENSE!") << "shift+yell should enter summon mode";
     ASSERT_EQ(ACTION_FOLLOW, ally->action()) << "summon mode should set ally action to follow";
@@ -437,7 +429,7 @@ TEST(SimInputHandler, sim_input_shift_yell_summon_and_release)
     control->set_action(ACTION_FOLLOW);
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(result.notify_text == "RELEASING MEN!") << "shift+yell in follow mode should release";
     ASSERT_EQ(1u, log.size()) << "release should emit one event and no sound";
@@ -478,11 +470,10 @@ TEST(SimInputHandler, sim_input_frozen_and_user_mismatch_drop_movement_and_cue)
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "user mismatch should return current control early";
     ASSERT_FLOAT_EQ(0.0f, control->lastx())
         << "a walker owned by another seat must never walkstep for seat 0";
@@ -498,7 +489,7 @@ TEST(SimInputHandler, sim_input_frozen_and_user_mismatch_drop_movement_and_cue)
     log.clear();
 
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
 
     ASSERT_TRUE(result.new_control == control) << "frozen control should still be returned";
     ASSERT_EQ(1, control->stats()->frozen_delay()) << "frozen delay should decrement";
@@ -548,13 +539,12 @@ TEST(SimInputHandler, sim_input_switch_char_forward_and_reverse_paths)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     walker* control = w1;
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(control == w2) << "forward switch should select next eligible teammate";
     ASSERT_EQ(1, debounce.changedchar) << "switch-char press should set debounce";
@@ -569,7 +559,7 @@ TEST(SimInputHandler, sim_input_switch_char_forward_and_reverse_paths)
 
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(control == w1) << "reverse switch should select previous eligible teammate";
     ASSERT_TRUE(result.control_hp_changed) << "reverse switching should mark HP changed";
@@ -593,12 +583,11 @@ TEST(SimInputHandler, sim_input_switch_char_error_and_default_action_paths)
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(control == detached.get()) << "missing oldcontrol in oblist should fall back to old control";
     ASSERT_TRUE(result.control_hp_changed) << "failed switch should still report control hp";
@@ -610,7 +599,7 @@ TEST(SimInputHandler, sim_input_switch_char_error_and_default_action_paths)
 
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_EQ(0, (int)control->action()) << "default shift+yell action branch should reset control action";
 }
@@ -654,11 +643,10 @@ TEST(SimInputHandler, sim_input_bonus_round_repeat_fire_and_walkstep_all_land_in
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     const SimInputResult result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
 
     ASSERT_TRUE(result.new_control == control) << "processing should return same control";
     ASSERT_EQ(1, (int)control->bonus_rounds()) << "bonus rounds should decrement each tick";
@@ -694,11 +682,10 @@ TEST(SimInputHandler, sim_input_switch_char_forward_selects_next_friendly)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
     SimInputResult result = sim_process_player_input(
         input.players[0], oldcontrol, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(oldcontrol == ally) << "switch char should move control to next valid teammate";
     ASSERT_EQ(1, debounce.changedchar) << "switch char should set debounce latch";
@@ -731,12 +718,11 @@ TEST(SimInputHandler, sim_input_switch_char_reverse_and_missing_old_control_path
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(control == ally) << "reverse switch should pick previous valid teammate";
     ASSERT_TRUE(result.control_hp == 88.0f) << "reverse switch should return ally hp";
@@ -756,7 +742,7 @@ TEST(SimInputHandler, sim_input_switch_char_reverse_and_missing_old_control_path
 
     result = sim_process_player_input(
         input.players[0], orphan, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(orphan == orphan_up.get()) << "missing old control entry should preserve old control";
     ASSERT_TRUE(result.control_hp_changed) << "missing old control should still return hp update";
@@ -783,12 +769,11 @@ TEST(SimInputHandler, sim_input_switch_char_no_candidate_keeps_old_control_and_t
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     const SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(control != nullptr) << "control should remain valid";
     ASSERT_EQ(1, control->bonus_rounds()) << "bonus rounds should tick down";
@@ -829,11 +814,10 @@ TEST(SimInputHandler, sim_input_fire_press_attacks_and_a_queued_command_suppress
     input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "special/fire paths should preserve control";
     ASSERT_EQ(ANI_ATTACK, static_cast<int>(control->ani_type()))
         << "a Fire press runs walker::init_fire, which leaves ANI_WALK for ANI_ATTACK";
@@ -847,7 +831,7 @@ TEST(SimInputHandler, sim_input_fire_press_attacks_and_a_queued_command_suppress
     ASSERT_TRUE(control->stats()->has_commands()) << "precondition: command queue is non-empty";
 
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "non-empty command queue path should return control";
     ASSERT_EQ(ANI_WALK, static_cast<int>(control->ani_type()))
         << "a queued command skips the whole movement/action block, so Fire never fires";
@@ -910,12 +894,11 @@ TEST(SimInputHandler, sim_input_switch_char_wraparound_forward_and_reverse)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_TRUE(control == candidate) << "forward switch should wrap to first teammate";
     ASSERT_TRUE(result.control_hp_changed) << "wrapped switch should report hp change";
     ASSERT_TRUE(result.control_hp == 61.0f) << "wrapped switch hp should match target";
@@ -942,7 +925,7 @@ TEST(SimInputHandler, sim_input_switch_char_wraparound_forward_and_reverse)
 
     result = sim_process_player_input(
         input.players[0], reverse_control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_TRUE(reverse_control == reverse_candidate) << "reverse switch should wrap to last teammate";
     ASSERT_TRUE(result.control_hp == 72.0f) << "reverse wrapped hp should match target";
 
@@ -961,8 +944,6 @@ TEST(SimInputHandler, sim_input_switch_special_valid_advance_and_shift_yell_defa
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
-    special_names[FAMILY_SOLDIER][2] = "VALID_SPECIAL";
     og::sim::SimEventLog log;
     InputState input;
     input.clear();
@@ -970,7 +951,7 @@ TEST(SimInputHandler, sim_input_switch_special_valid_advance_and_shift_yell_defa
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "switch special should keep control";
     ASSERT_EQ(2, control->current_special()) << "valid unlocked special should advance";
 
@@ -980,7 +961,7 @@ TEST(SimInputHandler, sim_input_switch_special_valid_advance_and_shift_yell_defa
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "shift+yell default branch should keep control";
     ASSERT_EQ(0, control->action()) << "default shift+yell branch should reset action";
 
@@ -1031,9 +1012,6 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     world().oblist.push_back(std::move(ally_after_up));
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
-    special_names[FAMILY_SOLDIER][2] = "SPECIAL_OK";
-    special_names[FAMILY_SOLDIER][3] = "SPECIAL_OK_2";
     og::sim::SimEventLog log;
     InputState input;
     SimInputResult result;
@@ -1042,7 +1020,7 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "switch special should preserve control";
     ASSERT_EQ(2, control->current_special())
         << "a named, level-unlocked next special is what SwitchSpecial advances to";
@@ -1051,7 +1029,7 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
     ASSERT_EQ(control, result.notify_source) << "plain yell should report the controlled walker as notification source";
 
     // Shift+yell summon, then release, then default.
@@ -1060,17 +1038,17 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     control->set_action(0);
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
     ASSERT_EQ("SUMMONING DEFENSE!", result.notify_text) << "shift+yell should summon friendly units";
     ASSERT_EQ(control, result.notify_source) << "summon notification should come from the controlled walker";
     control->set_action(ACTION_FOLLOW);
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
     ASSERT_EQ("RELEASING MEN!", result.notify_text) << "shift+yell while following should release units";
     ASSERT_EQ(0, control->action()) << "release branch should clear follow action";
     control->set_action(99);
     result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.notify_text.empty()) << "default shift+yell branch should not claim a notification";
     ASSERT_EQ(0, control->action()) << "default shift+yell branch should reset unknown actions";
 
@@ -1091,7 +1069,7 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "movement/action branch should keep control";
     ASSERT_FLOAT_EQ(step, control->lastx())
         << "the held direction reaches walkstep(1,0), which records lastx = 1*stepsize";
@@ -1107,7 +1085,7 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     control->set_frame(0);
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "idle animate branch should keep control";
     ASSERT_EQ(1, static_cast<int>(control->cycle()))
         << "no movement + BIT_ANIMATE advances the walk cycle by exactly one";
@@ -1121,7 +1099,7 @@ TEST(SimInputHandler, sim_input_yell_movement_and_idle_animate_branches)
     control->set_frame(0);
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "user mismatch path should return control";
     ASSERT_EQ(0, static_cast<int>(control->cycle()))
         << "a walker owned by another seat never reaches the idle-animate branch";
@@ -1151,8 +1129,6 @@ TEST(SimInputHandler, sim_input_cheat_gates_and_command_queue_skip_movement_bloc
     world().oblist.push_back(std::move(ally_up));
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
-    special_names[FAMILY_SOLDIER][2] = "SPECIAL_OK";
     og::sim::SimEventLog log;
     InputState input;
 
@@ -1161,7 +1137,7 @@ TEST(SimInputHandler, sim_input_cheat_gates_and_command_queue_skip_movement_bloc
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "cheat-held switch-char should keep existing control";
     ASSERT_EQ(0, (int)debounce.changedchar) << "cheat-held switch-char should not latch debounce";
 
@@ -1172,7 +1148,7 @@ TEST(SimInputHandler, sim_input_cheat_gates_and_command_queue_skip_movement_bloc
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.new_control == control) << "queued-command path should preserve control";
     ASSERT_FLOAT_EQ(0.0f, control->lastx())
         << "a walker executing a queued command must ignore MoveRight (no walkstep)";
@@ -1184,7 +1160,7 @@ TEST(SimInputHandler, sim_input_cheat_gates_and_command_queue_skip_movement_bloc
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
     ASSERT_TRUE(result.notify_text.empty()) << "cheat-held yell should not emit notifications";
 }
 
@@ -1207,11 +1183,10 @@ TEST(SimInputHandler, sim_input_switch_char_reverse_missing_old_control_restores
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
 
     ASSERT_TRUE(control == orphan_up.get()) << "reverse switch should restore old control when not found in oblist";
     ASSERT_TRUE(result.control_hp_changed) << "reverse missing-control path should report HP changed";
@@ -1237,11 +1212,10 @@ TEST(SimInputHandler, sim_input_dead_control_reassigns_to_next_alive)
     InputState input;
     input.clear();
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
 
     ASSERT_TRUE(control == replacement) << "dead control should be replaced by next available teammate";
     ASSERT_TRUE(result.control_hp_changed) << "dead-control reassignment should report HP changed";
@@ -1300,11 +1274,10 @@ TEST(SimInputHandler, sim_input_switch_char_skips_ineligible_candidates_then_sel
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
 
     ASSERT_TRUE(control == good) << "switch-char should skip ineligible entries and select first valid candidate";
     ASSERT_TRUE(result.control_hp_changed) << "valid switch should report hp change";
@@ -1330,11 +1303,10 @@ TEST(SimInputHandler, sim_input_assigns_unowned_control_and_clears_commands)
     InputState input;
     input.clear();
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, &log);
 
     ASSERT_TRUE(result.new_control == control) << "control should be preserved";
     ASSERT_EQ(0, (int)control->user()) << "unowned control should be assigned to player";
@@ -1369,11 +1341,10 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
     InputState input;
     input.clear();
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
 
     ASSERT_TRUE(result.new_control == control) << "control should stay active";
     ASSERT_EQ(0, (int)control->bonus_rounds()) << "bonus rounds should decrement";
@@ -1388,7 +1359,7 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
     const short still_x = control->xpos();
 
     result = sim_process_player_input(
-        input.players[0], control, world(), 0, 0, debounce, special_names, &log);
+        input.players[0], control, world(), 0, 0, debounce, &log);
 
     ASSERT_EQ(0, (int)control->bonus_rounds()) << "the bonus round is spent either way";
     ASSERT_EQ(still_x, control->xpos())
@@ -1417,28 +1388,27 @@ TEST(SimInputHandler, sim_input_republishes_held_shift_as_shifter_down)
     world().oblist.push_back(std::move(control_up));
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     InputState input;
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     sim_process_player_input(input.players[0], control, world(), 0, 0,
-                             debounce, special_names, &log);
+                             debounce, &log);
     ASSERT_EQ(1, static_cast<int>(control->shifter_down()))
         << "a held Shift must raise shifter_down for the tick";
 
     // The negative control: the same walker, one tick later, key released.
     input.clear();
     sim_process_player_input(input.players[0], control, world(), 0, 0,
-                             debounce, special_names, &log);
+                             debounce, &log);
     ASSERT_EQ(0, static_cast<int>(control->shifter_down()))
         << "releasing Shift must lower shifter_down on the very next tick";
 
     // Held again: the state follows the key every tick, it does not latch.
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     sim_process_player_input(input.players[0], control, world(), 0, 0,
-                             debounce, special_names, &log);
+                             debounce, &log);
     ASSERT_EQ(1, static_cast<int>(control->shifter_down()))
         << "shifter_down tracks the held key on every tick";
 

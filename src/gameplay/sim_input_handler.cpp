@@ -11,6 +11,8 @@
 
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
@@ -21,6 +23,7 @@
 #include <openglad/core/test_trace.h>
 
 #include <algorithm>
+#include <string_view>
 
 namespace {
 
@@ -182,7 +185,6 @@ SimInputResult sim_process_player_input(
     short player_num,
     short my_team,
     SimInputDebounce& debounce,
-    const std::string (*special_names)[NUM_SPECIALS],
     og::sim::SimEventLog* sim_events)
 {
     SimInputResult result;
@@ -195,12 +197,23 @@ SimInputResult sim_process_player_input(
     if (debounce.cue_delay > 0)
         debounce.cue_delay--;
 
-    // --- Control setup ---
+    // --- Control setup (§4.4 per-tick claim) ---
     if (control && control->user() == -1)
     {
-        control->set_act_type(ACT_CONTROL);
-        control->set_user(static_cast<signed char>(player_num));
-        control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
+        if (og::sim::control_claim_allowed(level, control, player_num))
+        {
+            control->set_act_type(ACT_CONTROL);
+            control->set_user(static_cast<signed char>(player_num));
+            control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
+        }
+        else
+        {
+            // A supplied control the policy refuses is treated as no control
+            // at all: the seat takes the same §4.4 site-2 verdict (Follow /
+            // Claimed / EndGame) an auto-selected null seat takes below.
+            // Issue #333.
+            control = nullptr;
+        }
     }
     if (!control || control->dead())
     {
@@ -288,14 +301,13 @@ SimInputResult sim_process_player_input(
         control->set_current_special(control->current_special() + 1);
 
         const int special_index = static_cast<int>(control->current_special());
-        const int family_index = static_cast<int>(static_cast<unsigned char>(control->family()));
-        bool special_missing = true;
-        if (special_names != nullptr &&
-            family_index >= 0 && family_index < NUM_FAMILIES &&
-            special_index >= 0 && special_index < NUM_SPECIALS)
-        {
-            special_missing = (special_names[family_index][special_index] == "NONE");
-        }
+        const FamilyDescriptor* const descriptor = get_family_descriptor(
+            static_cast<int>(static_cast<unsigned char>(control->family())));
+        const bool special_missing =
+            descriptor == nullptr || special_index < 0 ||
+            special_index >= NUM_SPECIALS ||
+            descriptor->special_names[special_index] == nullptr ||
+            std::string_view(descriptor->special_names[special_index]) == "NONE";
 
         if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
             || special_missing

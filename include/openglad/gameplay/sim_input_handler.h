@@ -66,12 +66,16 @@ struct SimInputDebounce
 //   player_num   - player index (0-3)
 //   my_team      - team number for this player
 //   debounce     - per-player debounce state
-//   special_names - special ability names array [NUM_FAMILIES][NUM_SPECIALS]
 //   sim_events   - delivery channel for the yell sound and the yell /
 //                  summon / release notifications (nullable; emission is a
 //                  no-op on a null log). The authoritative server passes its
 //                  own log so these cues ride the per-tick event batch out to
 //                  every client mirror.
+//
+// Switch Special: the special a press lands on is decided by the LIVE family
+// registry (get_family_descriptor) for every registered family, core or
+// pack; a slot named NONE, an out-of-range slot, or a level below
+// (special-1)*3+1 wraps to special 1 (issue #321).
 //
 // Returns a SimInputResult describing what happened (for render layer to act on).
 SimInputResult sim_process_player_input(
@@ -81,7 +85,6 @@ SimInputResult sim_process_player_input(
     short player_num,
     short my_team,
     SimInputDebounce& debounce,
-    const std::string (*special_names)[NUM_SPECIALS],
     og::sim::SimEventLog* sim_events);
 
 // Find the next available control walker for a player.

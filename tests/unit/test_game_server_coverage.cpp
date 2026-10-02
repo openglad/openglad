@@ -1,4 +1,6 @@
 #include <openglad/gameplay/damage_number_event.h>
+#include <openglad/gameplay/families/classpack_data.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -12,6 +14,7 @@
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/sound_ids.h>
+#include <openglad/resources/packs.h>
 
 #include <gtest/gtest.h>
 
@@ -26,6 +29,7 @@
 #include <vector>
 
 #include "../test_game_world_fixture.h"
+#include "unit_pack_store_guard.h"
 
 namespace {
 
@@ -2136,6 +2140,105 @@ TEST(GameServerCoverage,
     EXPECT_EQ(reclaimed, server.player_control(0u));
 }
 
+// Rule (sim_process_player_input per-tick claim — issue #333): the tick's
+// control setup claims a seat's AI-held control only when
+// control_claim_allowed says so, the same predicate bind_player consults. A
+// supplied control the owner-locked policy refuses stays the AI's on every
+// tick: the seat goes null on the first tick (ControlChange entity 0) and
+// takes the site-2 verdict — Follow here, because the only living is a
+// same-team hero the policy denies. bind_player still STORES the refused
+// walker on the seat (the R5 reconnect contract pinned above), so that is
+// asserted as the precondition before any step.
+TEST(GameServerCoverage,
+     a_policy_refused_supplied_control_stays_unclaimed_on_every_tick)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+
+    walker* const hero = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(64, 64);
+    ASSERT_EQ(-1, hero->user()) << "precondition: an AI-held hero";
+    const char ai_act_type = hero->act_type();
+    ASSERT_NE(ACT_CONTROL, ai_act_type);
+
+    std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines;
+    machines.fill(og::sim::kPlayerMachineNone);
+    og::sim::set_control_policy(fixture.world(),
+                                og::sim::kControlPolicyOwnerLocked, machines);
+    ASSERT_FALSE(og::sim::control_claim_allowed(fixture.world(), hero, 0));
+
+    server.bind_player(97u, 0u, fixture.world().my_team, hero);
+    ASSERT_EQ(hero, server.player_control(0u))
+        << "precondition (R5 storage): bind_player keeps the refused walker";
+    ASSERT_EQ(-1, hero->user());
+
+    server.send_initial_snapshot(97u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(97u, og::sim::serialize_client_ready_message(
+                                 og::sim::ClientReadyMessage{}));
+    transport.clear_sent();
+    for (int step = 1; step <= 3; ++step)
+    {
+        server.step();
+        ASSERT_EQ(static_cast<std::uint32_t>(step),
+                  fixture.world().level_tick_count())
+            << "each step ticks the world";
+        EXPECT_EQ(-1, hero->user())
+            << "tick " << step << ": the refused hero stays the AI's";
+        EXPECT_EQ(ai_act_type, hero->act_type()) << "tick " << step;
+        EXPECT_EQ(nullptr, server.player_control(0u))
+            << "tick " << step << ": the refused seat holds no control";
+        if (step == 1)
+        {
+            const auto change = find_control_change(transport, 97u);
+            ASSERT_TRUE(change.has_value())
+                << "the first tick tells the mirror the seat let go";
+            EXPECT_EQ(0u, change->player_index);
+            EXPECT_EQ(0u, change->entity_id);
+        }
+    }
+}
+
+// Paired positive control for the rule above: with the legacy policy the same
+// supplied hero is claimed at bind and stays claimed on every tick, and no
+// ControlChange is sent.
+TEST(GameServerCoverage, a_policy_allowed_supplied_control_is_claimed_on_every_tick)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({97u});
+    server.poll_incoming_messages();
+
+    walker* const hero = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(64, 64);
+    ASSERT_EQ(-1, hero->user());
+    ASSERT_TRUE(og::sim::control_claim_allowed(fixture.world(), hero, 0));
+
+    server.bind_player(97u, 0u, fixture.world().my_team, hero);
+    ASSERT_EQ(0, hero->user()) << "the legacy policy claims at bind";
+
+    server.send_initial_snapshot(97u, og::sim::SnapshotCaptureMode::Peek);
+    transport.queue_raw(97u, og::sim::serialize_client_ready_message(
+                                 og::sim::ClientReadyMessage{}));
+    transport.clear_sent();
+    for (int step = 1; step <= 3; ++step)
+    {
+        server.step();
+        ASSERT_EQ(static_cast<std::uint32_t>(step),
+                  fixture.world().level_tick_count());
+        EXPECT_EQ(0, hero->user()) << "tick " << step;
+        EXPECT_EQ(ACT_CONTROL, hero->act_type()) << "tick " << step;
+        EXPECT_EQ(hero, server.player_control(0u)) << "tick " << step;
+    }
+    EXPECT_FALSE(find_control_change(transport, 97u).has_value())
+        << "an unchanged seat sends no ControlChange";
+}
+
 // Rule (send_forced_keyframe_to_ready_clients): when a mission abort is
 // accepted, the forced old-level keyframe goes only to clients ready to take
 // snapshots. A peer that joined mid-level and has not confirmed its initial
@@ -2275,6 +2378,113 @@ TEST(GameServerCoverage, unready_limbo_client_gets_no_keyframe_from_a_direct_bro
     server.step();
     EXPECT_EQ(1, count_snapshots())
         << "a ready limbo client is owed exactly one keyframe";
+}
+
+// Rule (sim_process_player_input, Switch Special — issue #321): the special a
+// press lands on is decided by the LIVE family registry for every registered
+// family, core or pack. A class-pack hero above the core span (id >= 21)
+// cycles through the slots its pack declared and wraps past the last one,
+// through the real server path (seat input -> step). Core soldier is the
+// control: the same press moves it 1 -> 2.
+TEST(GameServerCoverage, a_pack_family_hero_cycles_its_declared_specials)
+{
+    // Declared before the world so the pack family outlives every walker
+    // that carries its id; frees the mod slots on the way in and out.
+    og::test::ScopedPackStoreState pack_store_restore;
+    struct ModSlots
+    {
+        ModSlots() { init_all_registries(); reset_all_registry_mod_slots(); }
+        ~ModSlots() { reset_all_registry_mod_slots(); }
+    } mod_slots;
+
+    og::data::ClasspackData data;
+    data.pack = "switchtest";
+    og::data::ClasspackLivingEntry entry;
+    entry.id = "switchtest:switcher";
+    entry.wire_id = "auto";
+    entry.name = "SWITCHER";
+    std::vector<og::data::ClasspackSpecialEntry> specials(2);
+    specials[0].id = "alpha";
+    specials[0].name = "ALPHA";
+    specials[0].mp_cost = 1;
+    specials[0].slot = 1;
+    specials[1].id = "beta";
+    specials[1].name = "BETA";
+    specials[1].mp_cost = 1;
+    specials[1].slot = 2;
+    entry.specials = std::move(specials);
+    data.living.push_back(std::move(entry));
+    ASSERT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    const FamilyDescriptor* const pack_family =
+        get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(nullptr, pack_family) << "the pack family lands at id 21";
+
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({96u, 97u});
+    server.poll_incoming_messages();
+
+    // The loader has no art for a pack id, so add_ob would hand back a
+    // SOLDIER; the family byte is set on the live walker instead (the shape
+    // test_glad_hud.cpp's pack-family HUD test takes).
+    walker* const switcher =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const soldier =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, switcher);
+    ASSERT_NE(nullptr, soldier);
+    switcher->set_family(static_cast<char>(NUM_FAMILIES));
+    ASSERT_EQ(NUM_FAMILIES,
+              static_cast<int>(static_cast<unsigned char>(switcher->family())));
+    switcher->setxy(64, 64);
+    soldier->setxy(128, 64);
+    for (walker* const hero : {switcher, soldier})
+    {
+        hero->stats()->set_level(4);  // unlocks exactly slots 1 and 2
+        hero->set_current_special(1);
+    }
+    server.bind_player(96u, 0u, fixture.world().my_team, switcher);
+    server.bind_player(97u, 1u, fixture.world().my_team, soldier);
+    server.step();
+    for (const og::sim::PeerId peer : {96u, 97u})
+    {
+        transport.queue_raw(peer, og::sim::serialize_client_ready_message(
+                                      {.last_applied_tick = 0u}));
+    }
+    server.step();
+
+    const auto press_switch_special = [&](bool pressed) {
+        // Both seat slots carry the press: whichever slot the server maps a
+        // peer's frame to, each hero sees it.
+        InputState input;
+        for (const int slot : {0, 1})
+        {
+            input.players[slot]
+                .pressed[static_cast<int>(InputAction::SwitchSpecial)] = pressed;
+        }
+        const auto bytes =
+            og::sim::serialize_input(fixture.world().tick_count_ + 1u, input);
+        for (const og::sim::PeerId peer : {96u, 97u})
+        {
+            transport.queue_raw(
+                peer, std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+        }
+        server.step();
+    };
+
+    press_switch_special(true);
+    EXPECT_EQ(2, switcher->current_special())
+        << "a pack hero lands on its declared slot 2 (BETA)";
+    EXPECT_EQ(2, soldier->current_special())
+        << "control: the core soldier lands on slot 2";
+
+    press_switch_special(false);
+    press_switch_special(true);
+    EXPECT_EQ(1, switcher->current_special())
+        << "slot 3 is NONE for the pack family: the press wraps to slot 1";
+    EXPECT_EQ(1, soldier->current_special())
+        << "control: slot 3 needs level 7, the level gate wraps to slot 1";
 }
 
 } // namespace

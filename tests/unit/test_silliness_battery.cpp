@@ -335,7 +335,6 @@ SprinkleRunStats run_player_victim_sprinkle(BatteryFixture& fx, living* faerie,
 {
     const WeaponFamilyDescriptor& wfd = sprinkle_descriptor();
     SimInputDebounce debounce{};
-    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
     input.clear();
     walker* control = victim;
@@ -368,7 +367,7 @@ SprinkleRunStats run_player_victim_sprinkle(BatteryFixture& fx, living* faerie,
 
         (void)sim_process_player_input(input.players[0], control,
                                        fx.level.world(), 0, 0, debounce,
-                                       special_names, &fx.events);
+                                       &fx.events);
         EXPECT_TRUE(control == victim);
         (void)victim->act();
 
@@ -855,7 +854,6 @@ TEST(SwitchLaunderRegression, scare_survives_double_switch)
     a->set_current_weapon(FAMILY_ARROW);
 
     SimInputDebounce debounce{};
-    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
     walker* control = a;
     auto tick = [&](bool press_switch) {
@@ -864,7 +862,7 @@ TEST(SwitchLaunderRegression, scare_survives_double_switch)
             input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
         (void)sim_process_player_input(input.players[0], control,
                                        fx.level.world(), 0, 0, debounce,
-                                       special_names, &fx.events);
+                                       &fx.events);
     };
 
     // The pre-fix launder: SwitchChar away and back cleared the whole queue.
@@ -912,12 +910,11 @@ TEST(SwitchLaunderRegression, charm_survives_claim_and_expires_naturally)
     // clear_command restored real_team_num — switching characters silently
     // un-charmed. AFTER: the selective clear keeps the charm.
     SimInputDebounce debounce{};
-    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
     input.clear();
     walker* control = victim;
     (void)sim_process_player_input(input.players[0], control, fx.level.world(),
-                                   0, 0, debounce, special_names, &fx.events);
+                                   0, 0, debounce, &fx.events);
     ASSERT_EQ(0, static_cast<int>(victim->user()));
     ASSERT_EQ(0, static_cast<int>(victim->team_num()));
     ASSERT_EQ(1, static_cast<int>(victim->real_team_num()))

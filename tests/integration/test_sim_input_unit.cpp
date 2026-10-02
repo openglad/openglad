@@ -89,17 +89,16 @@ TEST(SimInputUnit, sim_input_endgame_and_control_assignment_paths)
     SimInputDebounce debounce{};
     InputState input;
     input.clear();
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(result.endgame_requested);
     ASSERT_TRUE(result.endgame_type == 1);
 
     walker* w = add_living(fx, 0, -1);
     w->stats()->set_hitpoints(37.0f);
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(!result.endgame_requested);
     ASSERT_TRUE(control == w);
     ASSERT_TRUE(result.control_hp_changed);
@@ -115,18 +114,21 @@ TEST(SimInputUnit, sim_input_switch_special_yell_and_mismatch_paths)
     ASSERT_TRUE(ally != nullptr);
     control->set_act_type(ACT_CONTROL);
     ally->set_act_type(ACT_RANDOM);
+    control->stats()->set_level(4);  // unlocks the soldier's slot 2
+    control->set_current_special(1);
 
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
-    special_names[FAMILY_SOLDIER][2] = "NONE";
 
+    // The live registry names the soldier's slot 2 (BOOMERANG) and level 4
+    // unlocks it, so the press lands there (issue #321: no injected table).
     InputState input;
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(debounce.changedspec == 1);
-    ASSERT_TRUE(control->current_special() == 1);
+    ASSERT_EQ(2, control->current_special())
+        << "a registry-named, level-unlocked slot is where the press lands";
     ASSERT_TRUE(result.new_control == control);
 
     input.clear();
@@ -134,13 +136,13 @@ TEST(SimInputUnit, sim_input_switch_special_yell_and_mismatch_paths)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     control->set_action(0);
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(result.notify_text == "SUMMONING DEFENSE!");
     ASSERT_TRUE(ally->action() == ACTION_FOLLOW);
 
     control->set_action(ACTION_FOLLOW);
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(result.notify_text == "RELEASING MEN!");
     ASSERT_TRUE(ally->action() == 0);
 
@@ -157,7 +159,7 @@ TEST(SimInputUnit, sim_input_switch_special_yell_and_mismatch_paths)
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(control, result.new_control)
         << "a foreign-owned control is handed straight back";
     ASSERT_FLOAT_EQ(mismatch_x, control->xpos())
@@ -169,7 +171,7 @@ TEST(SimInputUnit, sim_input_switch_special_yell_and_mismatch_paths)
     input.clear();
     control->stats()->set_frozen_delay(1);
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(control->stats()->frozen_delay() == 0);
 }
 } // namespace detail_sim_input_coverage_push
@@ -254,7 +256,6 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
 {
     SimInputFixture fx;
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
     input.clear();
 
@@ -265,7 +266,7 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
 
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(result.control_hp_changed);
     ASSERT_TRUE(control == &orphan);
 
@@ -274,7 +275,7 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     debounce.changedchar = 0;
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(result.control_hp_changed);
     ASSERT_TRUE(control == &orphan);
 
@@ -289,7 +290,7 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     debounce.changedchar = 0;
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(b, control)
         << "forward cycling selects the next eligible walker after current "
            "in oblist order (a -> b)";
@@ -303,7 +304,7 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     b->set_user(-1);
     c->set_user(-1);
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(c, control)
         << "reverse cycling walks rbegin-wards from current and wraps to the "
            "tail (a -> c), which is NOT the forward pick";
@@ -319,22 +320,26 @@ TEST(SimInputUnit, sim_input_r11_switch_special_yell_and_action_default)
     ally->set_act_type(ACT_RANDOM);
 
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
-    special_names[FAMILY_SOLDIER][1] = "A";
-    special_names[FAMILY_SOLDIER][2] = "NONE";
 
+    // The live registry's skeleton declares one special (TUNNEL), so its slot
+    // 2 is NONE; level 4 would unlock slot 2, so only the registry wraps it.
+    control->set_order_family(Order::Living, FAMILY_SKELETON);
+    control->stats()->set_level(4);
+    control->set_current_special(1);
     InputState input;
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->current_special() == 1); // wrap due to NONE
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
+    ASSERT_EQ(1, control->current_special())
+        << "the registry's NONE slot 2 wraps the press back to 1";
+    control->set_order_family(Order::Living, FAMILY_SOLDIER);
 
     input.clear();
     debounce.changedspec = 0;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(result.play_sound == SOUND_YO);
     ASSERT_TRUE(control->yo_delay() == 30);
     ASSERT_TRUE(ally->leader() == control);
@@ -345,7 +350,7 @@ TEST(SimInputUnit, sim_input_r11_switch_special_yell_and_action_default)
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(control->action() == 0);
 }
 
@@ -358,7 +363,6 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
     assign_basic_ani(control);
 
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
 
     // ani_type != ANI_WALK branch
@@ -366,7 +370,7 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
     control->set_cycle(0);
     input.clear();
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(result.new_control == control);
 
     // Movement branch: a held direction walksteps by EXACTLY one stepsize
@@ -378,7 +382,7 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     const float x_before = control->xpos();
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_FLOAT_EQ(x_before + control->stepsize(), control->xpos())
         << "a held direction walksteps by exactly one stepsize";
     ASSERT_FLOAT_EQ(control->stepsize(), control->lastx())
@@ -393,14 +397,14 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
     control->set_cycle(0);
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(1, static_cast<int>(control->cycle()))
         << "BIT_ANIMATE idle must advance the cycle by exactly one";
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(2, static_cast<int>(control->cycle()));
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(0, static_cast<int>(control->cycle()))
         << "the idle cycle wraps at the row's -1 sentinel";
 
@@ -418,7 +422,7 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(control, result.new_control);
     ASSERT_EQ(ANI_ATTACK, static_cast<int>(control->ani_type()))
         << "held Fire must start the attack animation";
@@ -434,7 +438,6 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
 {
     SimInputFixture fx;
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
 
     walker* a = add_living(fx, 0, 0);       // current control
@@ -448,7 +451,7 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(control, c) << "switch cycle landed on a dormant/dead ally";
 
     // Keep cycling: with B dormant the rotation is A <-> C, never B.
@@ -458,7 +461,7 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
         debounce.changedchar = 0;
         input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
         sim_process_player_input(
-            input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+            input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
         ASSERT_NE(control, b) << "switch cycle landed on dormant ally at step " << i;
         ASSERT_FALSE(control->dormant());
     }
@@ -472,7 +475,7 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     fx.events.clear();
     sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(control, a) << "with only dormant/dead allies, control must fall back";
     // #223 path 1: the key kept the same body, so say why rather than
     // reading as a dead key. Addressed to the pressing seat only.
@@ -497,7 +500,7 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(control, c);
 }
 } // namespace detail_sim_input_r11
@@ -570,10 +573,9 @@ SimInputResult process(SimInputFixture& fx, const InputState& input,
                        walker*& control, short player_num,
                        SimInputDebounce& debounce)
 {
-    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     return sim_process_player_input(input.players[player_num], control,
                                     fx.world(), player_num, 0, debounce,
-                                    special_names, &fx.events);
+                                    &fx.events);
 }
 
 } // namespace
@@ -761,6 +763,56 @@ TEST(SimInputUnit, sim_control_owner_locked_switch_char_falls_back_to_own)
     ASSERT_EQ(-1, foreign->user());
     ASSERT_TRUE(result.control_hp_changed);
 }
+
+// Per-tick claim (issue #333): a SUPPLIED control the policy refuses is
+// treated as no control at all — the control reference reads null after the
+// call, the walker is never stamped, and the seat takes the site-2 verdict
+// (Follow: the only candidate is the same refused hero, so no endgame).
+TEST(SimInputUnit, sim_control_owner_locked_refused_supplied_control_is_not_claimed)
+{
+    SimInputFixture fx;
+    walker* foreign = add_char(fx, 0, -1, true, /*owner=*/2);
+    const char ai_act_type = foreign->act_type();
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {2, og::sim::encode_player_machine(2, true)}}));
+    ASSERT_FALSE(og::sim::control_claim_allowed(fx.world(), foreign, 0));
+
+    walker* control = foreign;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    const SimInputResult result = process(fx, input, control, 0, debounce);
+    EXPECT_EQ(nullptr, control) << "the refused supplied control is dropped";
+    EXPECT_EQ(nullptr, result.new_control);
+    EXPECT_FALSE(result.endgame_requested) << "Follow, never EndGame";
+    EXPECT_EQ(-1, foreign->user()) << "the refused walker is never stamped";
+    EXPECT_EQ(ai_act_type, foreign->act_type());
+}
+
+// Paired positive control: a supplied control on the seat's own machine is
+// claimed by the per-tick setup exactly as before.
+TEST(SimInputUnit, sim_control_owner_locked_allowed_supplied_control_is_claimed)
+{
+    SimInputFixture fx;
+    walker* seatmate_hero = add_char(fx, 0, -1, true, /*owner=*/1);
+    og::sim::set_control_policy(
+        fx.world(), og::sim::kControlPolicyOwnerLocked,
+        machine_map({{0, og::sim::encode_player_machine(0, true)},
+                     {1, og::sim::encode_player_machine(0, true)}}));
+    ASSERT_TRUE(og::sim::control_claim_allowed(fx.world(), seatmate_hero, 0));
+
+    walker* control = seatmate_hero;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    const SimInputResult result = process(fx, input, control, 0, debounce);
+    EXPECT_EQ(seatmate_hero, control);
+    EXPECT_FALSE(result.endgame_requested);
+    EXPECT_EQ(0, seatmate_hero->user());
+    EXPECT_EQ(ACT_CONTROL, seatmate_hero->act_type());
+}
 } // namespace detail_sim_control_enforcement
 
 // --- #222/#223 silent-failure cues: a player key that does nothing must say
@@ -853,10 +905,9 @@ SimInputResult process(SimInputFixture& fx, const InputState& input,
                        walker*& control, short player_num,
                        SimInputDebounce& debounce)
 {
-    static std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     return sim_process_player_input(input.players[player_num], control,
                                     fx.world(), player_num, 0, debounce,
-                                    special_names, &fx.events);
+                                    &fx.events);
 }
 
 } // namespace

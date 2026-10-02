@@ -261,7 +261,7 @@ TEST(LivingFuncs, living_check_special_gates_disabled_flag_then_downgrades_unaff
 
 
 // ---------------------------------------------------------------------------
-// living::facing tests
+// facing tests (a living reaches walker::facing; issue #298)
 // ---------------------------------------------------------------------------
 
 TEST(LivingFuncs, living_facing)

@@ -551,8 +551,9 @@ TEST_F(LevelScriptsTest, a_family_chunk_registers_level_hooks_in_the_real_pass)
     constexpr std::uint32_t kOnLoadBit =
         1u << 0;  // LevelHook::Load (family_hooks.h: "Load 0")
     clear_pack_family_chunks();
-    // Level dispatch is gated on the pack having scripts at all, so the pack
-    // ships one inert script beside its family file.
+    // The pack also ships one inert scripts/ chunk beside its family file:
+    // level dispatch must see a family registration whether or not scripts/
+    // exist (the families/-only case is the next test, issue #322).
     register_pack_script({"lvlfam", "lvlfam/scripts/inert.lua",
                           "local inert = true\n"});
 
@@ -577,6 +578,44 @@ TEST_F(LevelScriptsTest, a_family_chunk_registers_level_hooks_in_the_real_pass)
     world.tick();
     world.tick();
     ASSERT_EQ(1u, vm_log().size());
+    EXPECT_EQ("family load\t42", vm_log()[0]);
+    EXPECT_TRUE(world.scripts().host().errors().empty())
+        << world.scripts().host().errors().front().message;
+}
+
+// Issue #322: the level dispatch gate counts EVERY kind of installed pack Lua,
+// not scripts/ alone. A pack that ships only families/ (no scripts/) still
+// runs its family chunks in the world VM, so a level hook one of them
+// registers must be visible and must fire. Same fixture as the test above
+// with the inert scripts/ chunk taken away.
+TEST_F(LevelScriptsTest,
+       a_family_chunk_registers_level_hooks_without_any_scripts)
+{
+    constexpr std::uint32_t kOnLoadBit =
+        1u << 0;  // LevelHook::Load (family_hooks.h: "Load 0")
+    clear_pack_family_chunks();
+    ASSERT_TRUE(pack_scripts().empty())
+        << "precondition: the pack ships no scripts/ chunk at all";
+
+    // Control: a families/-only pack whose chunk registers nothing has no
+    // level hook. (No tick here: the level's on_load moment is the first
+    // tick, and it belongs to the registration below.)
+    register_pack_family_chunk(
+        {"lvlfam", "lvlfam/families/a.lua", "local nothing = true\n"});
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1));
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42));
+
+    register_pack_family_chunk(
+        {"lvlfam", "lvlfam/families/a.lua",
+         "og.register_level_hooks(-1, {\n"
+         "  on_load = function(level) og.log('family load', level) end,\n"
+         "})\n"});
+    EXPECT_EQ(kOnLoadBit, hooks::level_hook_kinds_for(-1))
+        << "a families/-only pack's level hook must reach the dispatcher";
+    world.tick();
+    world.tick();
+    ASSERT_EQ(1u, vm_log().size())
+        << "the families/-only on_load must fire exactly once";
     EXPECT_EQ("family load\t42", vm_log()[0]);
     EXPECT_TRUE(world.scripts().host().errors().empty())
         << world.scripts().host().errors().front().message;

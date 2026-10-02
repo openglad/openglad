@@ -230,20 +230,6 @@ void remember_sent_entity_lists(og::sim::PerClientState& client_state,
     }
 }
 
-void populate_special_names(
-    std::string (&special_names)[NUM_FAMILIES][NUM_SPECIALS])
-{
-    for (int family = 0; family < NUM_FAMILIES; ++family)
-    {
-        const FamilyDescriptor* descriptor = get_family_descriptor(family);
-        for (int special = 0; special < NUM_SPECIALS; ++special)
-        {
-            special_names[family][special] =
-                descriptor ? descriptor->special_names[special] : "NONE";
-        }
-    }
-}
-
 bool player_input_has_activity(const PlayerInput& input)
 {
     for (int key = 0; key < NUM_INPUT_KEYS; ++key)
@@ -929,7 +915,6 @@ GameServer::GameServer(GameWorld& world, SimEventLog& events, ITransport& transp
     , events_(events)
     , transport_(transport)
 {
-    populate_special_names(special_names_);
     wall_clock_ms_source_ = [] {
         return static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1677,7 +1662,6 @@ void GameServer::process_disconnected_players(std::uint32_t expected_tick)
             static_cast<short>(disconnected.player_index),
             disconnected.team_num,
             player_input_debounce_[disconnected.player_index],
-            special_names_,
             &events_);
 
         player_controls_[disconnected.player_index] = disconnected.control;
@@ -2649,7 +2633,6 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
             static_cast<short>(player_index),
             seat.team_num,
             player_input_debounce_[player_index],
-            special_names_,
             &events_);
 
         player_controls_[player_index] = seat.control;

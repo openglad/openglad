@@ -1211,7 +1211,6 @@ void viewscreen::process_input(const InputState& input_state)
 	SimInputResult result = sim_process_player_input(
 		pi, control, active_screen()->world(),
 		mynum, my_team, g_viewscreen_debounce[mynum],
-		active_screen()->special_name,
 		ctx().sim_events.get());
 
 	// Handle render-layer effects from the sim result

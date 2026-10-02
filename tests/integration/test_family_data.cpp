@@ -8,7 +8,14 @@
 #include <openglad/legacy/base.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sim_input_handler.h>
+#include <algorithm>
 #include <cstring>
+#include <memory>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 const char* get_family_string(Sint32 family);
@@ -131,22 +138,62 @@ TEST_F(FamilyDataFixture, walker_init_matches_registry)
 }
 
 
-// Verify special_name strings on screen match registry
-TEST(FamilyData, special_names_match_screen)
+// Switch Special reads the LIVE registry (issue #321): for every core family,
+// at a level that unlocks every slot, repeated presses visit exactly the
+// registry's named slots in order and then wrap to 1. (This replaces
+// special_names_match_screen, whose subject — the screen's snapshot copy of
+// the registry names — no longer exists.)
+TEST(FamilyData, switch_special_cycles_the_registry_named_slots)
 {
-    init_family_registry();
-    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_)
-        << "the screen carries the special-name tables this test compares against";
-
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_);
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    og::sim::SimEventLog log;
     for (int fam = 0; fam < NUM_FAMILIES; fam++)
     {
-        auto* d = get_family_descriptor(fam);
-        for (int s = 0; s < NUM_SPECIALS; s++)
+        const FamilyDescriptor* d = get_family_descriptor(fam);
+        ASSERT_NE(nullptr, d) << "core family " << fam << " is installed";
+        int named = 0;
+        for (int s = 1; s < NUM_SPECIALS; s++)
         {
-            char msg[128];
-            std::snprintf(msg, sizeof(msg), "family %d special_name[%d] mismatch: '%s' vs '%s'",
-                          fam, s, d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str());
-            ASSERT_STREQ(d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str()) << msg;
+            if (d->special_names[s] != nullptr &&
+                std::strcmp(d->special_names[s], "NONE") != 0)
+                named++;
+        }
+
+        auto w = std::make_unique<walker>();
+        w->set_order_family(Order::Living, static_cast<char>(fam));
+        w->set_user(0);
+        w->set_act_type(ACT_CONTROL);
+        w->stats()->set_level(30);  // (5-1)*3+1 = 13: every slot unlocked
+        w->set_current_special(1);
+        walker* control = w.get();
+
+        std::vector<int> visited{1};
+        for (int press = 0; press < std::max(named, 1); press++)
+        {
+            SimInputDebounce debounce{};
+            PlayerInput pi{};
+            pi.pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
+            sim_process_player_input(pi, control, world, 0, 0, debounce, &log);
+            ASSERT_EQ(w.get(), control);
+            visited.push_back(control->current_special());
+        }
+        std::vector<int> expected;
+        for (int s = 1; s <= std::max(named, 1); s++)
+            expected.push_back(s);
+        expected.push_back(1);
+        EXPECT_EQ(expected, visited)
+            << "family " << fam << " (" << d->name << ") declares " << named
+            << " named slots";
+        if (fam == FAMILY_SOLDIER)
+        {
+            EXPECT_EQ((std::vector<int>{1, 2, 3, 4, 1}), visited)
+                << "anchor: the soldier's four specials";
+        }
+        if (fam == FAMILY_SKELETON)
+        {
+            EXPECT_EQ((std::vector<int>{1, 1}), visited)
+                << "anchor: the skeleton's one special wraps at once";
         }
     }
 }
