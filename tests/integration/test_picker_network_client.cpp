@@ -4119,12 +4119,12 @@ void run_denied_joiner_then_host_start(bool joiner_presses_again)
 
     // Control: the joiner's own GO is denied NotHost (its counter moves on).
     // request_start_game() returns true only for a start that landed in the
-    // same call; a dispatched GO returns false with start_request_pending().
+    // same call, which a joiner's own GO can never produce. Its same-call
+    // poll may or may not already read the denial echo, so the wait below —
+    // a NotHost verdict for THIS machine's request — is the dispatch proof.
     {
         auto join_scope = join_session.activate();
         ASSERT_FALSE(join_client->request_start_game());
-        ASSERT_TRUE(join_client->start_request_pending())
-            << "the joiner's first GO was dispatched";
     }
     ASSERT_TRUE(wait_until([&] {
         poll_both();
@@ -4151,10 +4151,16 @@ void run_denied_joiner_then_host_start(bool joiner_presses_again)
         // only because both clients live in this one test process, and the
         // join client refuses a GO while it is set.
         g_start_game_requested = false;
+        // The second GO dispatches request id 2. Its same-call poll may
+        // already read the queued StartGame{id=1} (the start then lands in
+        // this call and it returns true) or not (it returns false with the
+        // request pending). Either way the GO was not refused, and either
+        // way the R-331 rule decides whether StartGame{id=1} starts a
+        // machine holding pending id 2.
         auto join_scope = join_session.activate();
-        ASSERT_FALSE(join_client->request_start_game());
-        ASSERT_TRUE(join_client->start_request_pending())
-            << "the joiner's second GO is dispatched (pending request id 2)";
+        const bool started_in_call = join_client->request_start_game();
+        ASSERT_TRUE(started_in_call || join_client->start_request_pending())
+            << "the joiner's second GO was refused instead of dispatched";
     }
 
     const bool joiner_started = wait_until([&] {
