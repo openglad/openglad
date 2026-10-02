@@ -22,7 +22,7 @@ using og::kDefaultCampaignId;
 constexpr std::int16_t kDefaultScenarioId = 1;
 constexpr std::int16_t kDefaultDifficulty = 1;
 constexpr std::int16_t kDefaultAlliedMode = 1;
-constexpr std::size_t kMaxLobbyTeamSize = 24;
+using og::sim::kMaxLobbyTeamSize;
 constexpr auto compare_peer_connection_order =
     [](const auto& lhs, const auto& rhs) {
         return lhs.second->connection_order <
@@ -307,12 +307,6 @@ poll_lobby_messages(og::sim::ITransport& transport)
         result.malformed_peer_ids.end());
     return result;
 }
-
-struct OrderedLobbySlot {
-    std::uint8_t slot_index = 0;
-    std::size_t player_order = 0;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
-};
 
 // A re-sent join whose seats match the peer's stored seats content-for-content
 // preserves ready (kills the go_menu re-send deadlock). Compares seat count,
@@ -1375,80 +1369,28 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         ? state_.settings.scenario_id
         : kDefaultScenarioId;
 
-    std::vector<OrderedLobbySlot> ordered_slots;
-    for (std::size_t player_index = 0; player_index < state_.players.size();
-         ++player_index)
+    // §4.2: NETWORKED roster assembly materializes only DEPLOYED slots —
+    // benched characters never enter the netsession seed, InitialSetup, or
+    // GuySnapshots (filtered BEFORE densification, so compaction indices count
+    // deployed slots only). Local sessions deliberately keep the full roster:
+    // the local start path seeds the player's ACTIVE COMPANY slot from this
+    // equivalent, so filtering here would drop benched members from the real
+    // save file. The local assembly filter lives at spawn time instead
+    // (spawn_team_from_save skips benched members).
+    std::optional<std::vector<LobbyCharacterSlot>> roster =
+        og::sim::assemble_gameplay_roster(
+            og::sim::order_lobby_slots(state_.players, !local_session_));
+    if (!roster.has_value())
     {
-        const LobbyPlayer& player = state_.players[player_index];
-        for (std::size_t slot_order = 0; slot_order < player.character_slots.size();
-             ++slot_order)
-        {
-            // §4.2: NETWORKED roster assembly materializes only DEPLOYED
-            // slots — benched characters never enter the netsession seed,
-            // InitialSetup, or GuySnapshots (filtered BEFORE densification,
-            // so compaction indices count deployed slots only). Local
-            // sessions deliberately keep the full roster: the local start
-            // path seeds the player's ACTIVE COMPANY slot from this
-            // equivalent, so filtering here would drop benched members from
-            // the real save file. The local assembly filter lives at spawn
-            // time instead (spawn_team_from_save skips benched members).
-            if (!local_session_ && !player.character_slots[slot_order].deployed)
-                continue;
-            ordered_slots.push_back(OrderedLobbySlot{
-                .slot_index = player.character_slots[slot_order].slot_index,
-                .player_order = player_index,
-                .slot = &player.character_slots[slot_order],
-            });
-        }
-    }
-
-    if (ordered_slots.size() > kMaxLobbyTeamSize)
-    {
+        // Unreachable by construction (#337): networked, join capacity
+        // (remaining_team_capacity) admitted only deployed slots and the
+        // filter above removed the benched ones, so this count is what
+        // capacity counted; local, the roster is a partition of one 24-slot
+        // team_list (static_assert in picker_lobby_client.cpp).
         throw std::runtime_error(
             "LobbyServer exceeded the SaveData-equivalent 24-slot team limit");
     }
-
-    std::sort(ordered_slots.begin(), ordered_slots.end(),
-              [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
-                  // (slot_index, player_order) is unique: player_order is
-                  // the player's own index and sanitize_character_slots
-                  // de-duplicates slot_index within a player.
-                  return std::tie(lhs.slot_index, lhs.player_order) <
-                      std::tie(rhs.slot_index, rhs.player_order);
-              });
-
-    const bool slots_are_dense = std::all_of(
-        ordered_slots.begin(), ordered_slots.end(),
-        [&ordered_slots](const OrderedLobbySlot& slot) {
-            return static_cast<std::size_t>(slot.slot_index) ==
-                static_cast<std::size_t>(&slot - ordered_slots.data());
-        });
-
-    if (slots_are_dense)
-    {
-        for (const OrderedLobbySlot& slot : ordered_slots)
-        {
-            LobbyCharacterSlot gameplay_slot = *slot.slot;
-            gameplay_slot.owner_player_index =
-                state_.players[slot.player_order].player_index;
-            gameplay_slot.owner_save_slot = slot.slot_index;
-            equivalent.team_list.push_back(std::move(gameplay_slot));
-        }
-        canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
-        return equivalent;
-    }
-
-    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
-    {
-        LobbyCharacterSlot compacted = *ordered_slots[index].slot;
-        compacted.slot_index = static_cast<std::uint8_t>(index);
-        compacted.owner_player_index =
-            state_.players[ordered_slots[index].player_order].player_index;
-        compacted.owner_save_slot = ordered_slots[index].slot_index;
-        equivalent.team_list.push_back(std::move(compacted));
-    }
-
-    canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
+    equivalent.team_list = std::move(*roster);
     return equivalent;
 }
 

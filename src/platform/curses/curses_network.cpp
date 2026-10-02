@@ -295,19 +295,11 @@ const og::sim::LobbyPlayer* find_local_player(
     return seats.empty() ? nullptr : seats.front();
 }
 
-struct OrderedLobbyGameplaySlot {
-    std::uint8_t private_slot_index = 0;
-    std::size_t player_order = 0;
-    std::size_t slot_order = 0;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
-};
-
-// Rebuild the joiner's game-start seed from the authoritative lobby echo.
-// Keep this byte-for-byte equivalent in shape to
-// LobbyServer::build_save_data_equivalent(): both sides sort colliding private
-// save slots by slot/player/source order, compact only when that combined order
-// is sparse, preserve ownership metadata, and canonicalize private guy-id
-// collisions before either side creates a world.
+// Rebuild the joiner's game-start seed from the authoritative lobby echo. The
+// roster comes from the same gameplay helpers LobbyServer::
+// build_save_data_equivalent() uses (og::sim::order_lobby_slots +
+// assemble_gameplay_roster): one order, one compaction, one set of ownership
+// stamps and guy-id canonicalization on both sides.
 og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     const og::sim::LobbyState& state)
 {
@@ -334,68 +326,14 @@ og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     equivalent.fill = state.settings.fill;
     equivalent.map_units = state.settings.map_units;
 
-    std::vector<OrderedLobbyGameplaySlot> ordered_slots;
-    for (std::size_t player_order = 0; player_order < state.players.size();
-         ++player_order)
-    {
-        const og::sim::LobbyPlayer& player = state.players[player_order];
-        for (std::size_t slot_order = 0;
-             slot_order < player.character_slots.size();
-             ++slot_order)
-        {
-            const og::sim::LobbyCharacterSlot& slot =
-                player.character_slots[slot_order];
-            if (!slot.deployed)
-                continue;
-            ordered_slots.push_back(OrderedLobbyGameplaySlot{
-                .private_slot_index = slot.slot_index,
-                .player_order = player_order,
-                .slot_order = slot_order,
-                .slot = &slot,
-            });
-        }
-    }
-
-    if (ordered_slots.size() > MAX_TEAM_SIZE)
-    {
+    std::optional<std::vector<og::sim::LobbyCharacterSlot>> roster =
+        og::sim::assemble_gameplay_roster(
+            og::sim::order_lobby_slots(state.players, true));
+    if (!roster.has_value()) {
         throw std::runtime_error(
             "Curses lobby exceeded the SaveData-equivalent 24-slot team limit");
     }
-
-    std::sort(
-        ordered_slots.begin(),
-        ordered_slots.end(),
-        [](const OrderedLobbyGameplaySlot& lhs,
-           const OrderedLobbyGameplaySlot& rhs) {
-            if (lhs.private_slot_index != rhs.private_slot_index)
-                return lhs.private_slot_index < rhs.private_slot_index;
-            if (lhs.player_order != rhs.player_order)
-                return lhs.player_order < rhs.player_order;
-            return lhs.slot_order < rhs.slot_order;
-        });
-
-    const bool slots_are_dense = std::all_of(
-        ordered_slots.begin(),
-        ordered_slots.end(),
-        [&ordered_slots](const OrderedLobbyGameplaySlot& slot) {
-            return static_cast<std::size_t>(slot.private_slot_index) ==
-                static_cast<std::size_t>(&slot - ordered_slots.data());
-        });
-
-    equivalent.team_list.reserve(ordered_slots.size());
-    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
-    {
-        const OrderedLobbyGameplaySlot& ordered = ordered_slots[index];
-        og::sim::LobbyCharacterSlot gameplay_slot = *ordered.slot;
-        if (!slots_are_dense)
-            gameplay_slot.slot_index = static_cast<std::uint8_t>(index);
-        gameplay_slot.owner_player_index =
-            state.players[ordered.player_order].player_index;
-        gameplay_slot.owner_save_slot = ordered.private_slot_index;
-        equivalent.team_list.push_back(std::move(gameplay_slot));
-    }
-
-    og::sim::canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
+    equivalent.team_list = std::move(*roster);
     return equivalent;
 }
 

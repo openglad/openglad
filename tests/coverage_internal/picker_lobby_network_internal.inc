@@ -537,7 +537,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         true));
     check(yielding_polls == 1);
     const auto equivalent =
-        build_save_data_equivalent_from_state(state, false);
+        build_save_data_equivalent_from_state(state, false).value();
     check(equivalent.current_campaign == std::string(kDefaultCampaignId) &&
           equivalent.scen_num == 1 &&
           equivalent.numplayers == 1 &&
@@ -552,7 +552,8 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     og::sim::LobbyState colliding_private_slots = state;
     colliding_private_slots.players[0].character_slots[0].slot_index = 0;
     const auto collision_equivalent =
-        build_save_data_equivalent_from_state(colliding_private_slots, false);
+        build_save_data_equivalent_from_state(colliding_private_slots, false)
+            .value();
     check(collision_equivalent.team_list.size() == 2 &&
           collision_equivalent.team_list[0].slot_index == 0 &&
           collision_equivalent.team_list[1].slot_index == 1 &&
@@ -560,7 +561,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           collision_equivalent.team_list[1].owner_save_slot == 0 &&
           collision_equivalent.team_list[0].owner_player_index == 2 &&
           collision_equivalent.team_list[1].owner_player_index == 1);
-    check(build_save_data_equivalent_from_state(state, true).numplayers == 0);
+    check(build_save_data_equivalent_from_state(state, true).value().numplayers == 0);
     SaveData applied_save;
     applied_save.team_list[0] = make_member(0, "Private", 0, 9);
     applied_save.team_size = 1;
@@ -588,6 +589,11 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(applied_save.team_size == 1 &&
           applied_save.team_list[0] != nullptr &&
           applied_save.team_list[0]->name == "Private");
+    // #324: 25 deployed slots exceed og::sim::kMaxLobbyTeamSize; the joiner
+    // refuses to build a start seed (build_game_start_config -> nullopt)
+    // instead of wrapping the compacted uint8 slot index.
+    check(!build_save_data_equivalent_from_state(oversized_state, false)
+               .has_value());
     og::sim::LobbyState invalid_private_slot_state = state;
     invalid_private_slot_state.players.back().character_slots[0].slot_index =
         static_cast<std::uint8_t>(MAX_TEAM_SIZE);
@@ -619,7 +625,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(reconciled_again.deploy_flags_adopted == 0 &&
           reconciled_again.deploy_benched == 0);
     const auto benched_equivalent =
-        build_save_data_equivalent_from_state(benched_state, false);
+        build_save_data_equivalent_from_state(benched_state, false).value();
     check(benched_equivalent.team_list.size() == 1 &&
           benched_equivalent.team_list[0].owner_player_index == 2);
     applied_save.team_list[0]->deployed = true;

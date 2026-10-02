@@ -9249,12 +9249,12 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
 // Seven of those check( sites (the inet_pton/usable_lan_ipv4_string address
 // matrix and the two LAN-detection probes) live inside the .inc's
 // `#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))`
-// block, so the expectation carries the SAME guard: a Windows lane runs 133
-// checks and must pin 133, not fail against a POSIX-only literal.
+// block, so the expectation carries the SAME guard: a Windows lane runs 134
+// checks and must pin 134, not fail against a POSIX-only literal.
 #if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
-inline constexpr int kExpectedInternalHelperChecks = 140;
+inline constexpr int kExpectedInternalHelperChecks = 141;
 #else
-inline constexpr int kExpectedInternalHelperChecks = 133;
+inline constexpr int kExpectedInternalHelperChecks = 134;
 #endif
 
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)

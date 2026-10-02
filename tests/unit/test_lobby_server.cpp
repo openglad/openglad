@@ -4055,6 +4055,227 @@ TEST(LobbyServer, local_session_equivalent_keeps_benched_slots)
     EXPECT_EQ("Reserve", equivalent.team_list[1].character.name);
 }
 
+// #324: og::sim::order_lobby_slots / assemble_gameplay_roster — the one
+// roster order and the one densify/stamp/limit step the server and both
+// joiners share. Truth table over hand-built player vectors.
+namespace {
+
+og::sim::LobbyPlayer make_order_player(std::uint8_t player_index,
+                                       std::vector<og::sim::LobbyCharacterSlot> slots)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = player_index;
+    player.character_slots = std::move(slots);
+    return player;
+}
+
+std::vector<std::string> ordered_names(
+    const std::vector<og::sim::OrderedLobbySlot>& ordered)
+{
+    std::vector<std::string> names;
+    for (const og::sim::OrderedLobbySlot& entry : ordered)
+        names.push_back(entry.slot->character.name);
+    return names;
+}
+
+} // namespace
+
+TEST(LobbyOrder, cross_player_collision_is_ordered_by_player)
+{
+    // Two players both own private slot 0; player 0's sits SECOND in its own
+    // list. The order is (slot_index, player_order, slot_order): the player
+    // index decides before the position inside a player's list.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_order_player(0u, {make_slot(3u, 10, "P0-s3", FAMILY_SOLDIER),
+                               make_slot(0u, 11, "P0-s0", FAMILY_SOLDIER)}),
+        make_order_player(1u, {make_slot(0u, 20, "P1-s0", FAMILY_ELF)}),
+    };
+    const auto ordered = og::sim::order_lobby_slots(players, false);
+    EXPECT_EQ((std::vector<std::string>{"P0-s0", "P1-s0", "P0-s3"}),
+              ordered_names(ordered));
+    ASSERT_EQ(3u, ordered.size());
+    EXPECT_EQ(0u, ordered[0].player_order);
+    EXPECT_EQ(1u, ordered[0].slot_order);
+    EXPECT_EQ(&players[0], ordered[0].player);
+    EXPECT_EQ(1u, ordered[1].player_order);
+    EXPECT_EQ(0u, ordered[1].slot_order);
+}
+
+TEST(LobbyOrder, crafted_intra_player_duplicate_is_ordered_by_list_position)
+{
+    // A client-side state is un-sanitized and may repeat a slot_index inside
+    // one player: the third key (position in the list) makes the order total.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_order_player(0u, {make_slot(1u, 10, "second-listed", FAMILY_SOLDIER),
+                               make_slot(0u, 11, "zero", FAMILY_SOLDIER),
+                               make_slot(1u, 12, "third-listed", FAMILY_SOLDIER)}),
+    };
+    // Slot 0 first, then the two slot-1 entries in list order...
+    EXPECT_EQ((std::vector<std::string>{"zero", "second-listed", "third-listed"}),
+              ordered_names(og::sim::order_lobby_slots(players, false)));
+    // ...and swapping the duplicates in the list swaps them in the order.
+    std::vector<og::sim::LobbyPlayer> swapped = players;
+    std::swap(swapped[0].character_slots[0], swapped[0].character_slots[2]);
+    EXPECT_EQ((std::vector<std::string>{"zero", "third-listed", "second-listed"}),
+              ordered_names(og::sim::order_lobby_slots(swapped, false)))
+        << "on a slot_index tie the list position decides";
+}
+
+TEST(LobbyOrder, deployed_only_drops_benched_slots_and_false_keeps_them)
+{
+    og::sim::LobbyCharacterSlot benched = make_slot(1u, 11, "bench", FAMILY_MAGE);
+    benched.deployed = false;
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_order_player(0u, {make_slot(0u, 10, "front", FAMILY_SOLDIER),
+                               benched,
+                               make_slot(2u, 12, "rear", FAMILY_SOLDIER)}),
+    };
+    EXPECT_EQ((std::vector<std::string>{"front", "rear"}),
+              ordered_names(og::sim::order_lobby_slots(players, true)));
+    EXPECT_EQ((std::vector<std::string>{"front", "bench", "rear"}),
+              ordered_names(og::sim::order_lobby_slots(players, false)));
+}
+
+TEST(LobbyOrder, sparse_roster_is_densified_with_owner_stamps)
+{
+    // Player 3 owns private slots 2 and 5; player 7 owns slot 2 as well.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_order_player(3u, {make_slot(5u, 10, "a5", FAMILY_SOLDIER),
+                               make_slot(2u, 11, "a2", FAMILY_SOLDIER)}),
+        make_order_player(7u, {make_slot(2u, 20, "b2", FAMILY_ELF)}),
+    };
+    const auto roster =
+        og::sim::assemble_gameplay_roster(og::sim::order_lobby_slots(players, true));
+    ASSERT_TRUE(roster.has_value());
+    ASSERT_EQ(3u, roster->size());
+    const std::array<const char*, 3> names = {"a2", "b2", "a5"};
+    const std::array<std::uint8_t, 3> owners = {3u, 7u, 3u};
+    const std::array<std::uint8_t, 3> private_slots = {2u, 2u, 5u};
+    for (std::size_t index = 0; index < 3u; ++index)
+    {
+        EXPECT_EQ(names[index], (*roster)[index].character.name);
+        EXPECT_EQ(index, (*roster)[index].slot_index) << "compacted position";
+        EXPECT_EQ(owners[index], (*roster)[index].owner_player_index);
+        EXPECT_EQ(private_slots[index], (*roster)[index].owner_save_slot)
+            << "the owner's ORIGINAL private slot survives compaction";
+    }
+}
+
+TEST(LobbyOrder, dense_roster_keeps_slot_indices_and_canonicalizes_guy_ids)
+{
+    // Dense 0..2 already; two characters carry the same guy id.
+    const std::vector<og::sim::LobbyPlayer> players = {
+        make_order_player(0u, {make_slot(0u, 40, "x", FAMILY_SOLDIER),
+                               make_slot(2u, 40, "z", FAMILY_SOLDIER)}),
+        make_order_player(1u, {make_slot(1u, 7, "y", FAMILY_ELF)}),
+    };
+    const auto roster =
+        og::sim::assemble_gameplay_roster(og::sim::order_lobby_slots(players, true));
+    ASSERT_TRUE(roster.has_value());
+    ASSERT_EQ(3u, roster->size());
+    EXPECT_EQ("x", (*roster)[0].character.name);
+    EXPECT_EQ("y", (*roster)[1].character.name);
+    EXPECT_EQ("z", (*roster)[2].character.name);
+    for (std::uint8_t index = 0; index < 3u; ++index)
+    {
+        EXPECT_EQ(index, (*roster)[index].slot_index);
+        EXPECT_EQ(index, (*roster)[index].owner_save_slot);
+    }
+    EXPECT_EQ(40, (*roster)[0].character.guy_id) << "first occurrence keeps its id";
+    EXPECT_EQ(7, (*roster)[1].character.guy_id);
+    EXPECT_EQ(0, (*roster)[2].character.guy_id)
+        << "the repeat takes the lowest free id";
+}
+
+TEST(LobbyOrder, the_roster_limit_is_exactly_the_lobby_team_size)
+{
+    ASSERT_EQ(24u, og::sim::kMaxLobbyTeamSize);
+    std::vector<og::sim::LobbyCharacterSlot> slots;
+    for (std::uint8_t slot = 0; slot < og::sim::kMaxLobbyTeamSize; ++slot)
+        slots.push_back(make_slot(slot, 100 + slot, "member", FAMILY_SOLDIER));
+    std::vector<og::sim::LobbyPlayer> players = {make_order_player(0u, slots)};
+
+    const auto at_limit =
+        og::sim::assemble_gameplay_roster(og::sim::order_lobby_slots(players, true));
+    ASSERT_TRUE(at_limit.has_value()) << "24 characters is a legal roster";
+    EXPECT_EQ(24u, at_limit->size());
+
+    players.push_back(make_order_player(
+        1u, {make_slot(0u, 500, "one-too-many", FAMILY_ELF)}));
+    EXPECT_FALSE(
+        og::sim::assemble_gameplay_roster(og::sim::order_lobby_slots(players, true))
+            .has_value())
+        << "25 characters is refused";
+}
+
+// #337: a LOCAL session keeps benched slots in the equivalent, and its roster
+// is one save's team_list partitioned over the local seats, so it can never
+// exceed the 24-slot bound (static_assert in picker_lobby_client.cpp).
+TEST(LobbyServer, local_session_partition_of_24_with_benched_slots_builds_exactly_24_rows)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    std::size_t expected_benched = 0;
+    const auto seat_slots = [&](std::uint8_t first, std::uint8_t count) {
+        std::vector<og::sim::LobbyCharacterSlot> slots;
+        for (std::uint8_t offset = 0; offset < count; ++offset)
+        {
+            og::sim::LobbyCharacterSlot slot = make_slot(
+                static_cast<std::uint8_t>(first + offset),
+                100 + first + offset, "member", FAMILY_SOLDIER);
+            slot.deployed = offset % 3 != 0;
+            if (!slot.deployed)
+                ++expected_benched;
+            slots.push_back(slot);
+        }
+        return slots;
+    };
+    transport.queue_lobby_message(11u, make_join_message("P1", 0, seat_slots(0u, 14u)));
+    transport.queue_lobby_message(22u, make_join_message("P2", 1, seat_slots(14u, 10u)));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySaveDataEquivalent equivalent;
+    ASSERT_NO_THROW(equivalent = server.build_save_data_equivalent());
+    ASSERT_EQ(24u, equivalent.team_list.size());
+    const auto benched = static_cast<std::size_t>(std::count_if(
+        equivalent.team_list.begin(), equivalent.team_list.end(),
+        [](const og::sim::LobbyCharacterSlot& slot) { return !slot.deployed; }));
+    EXPECT_EQ(expected_benched, benched) << "benched flags ride the local equivalent";
+    for (std::uint8_t index = 0; index < 24u; ++index)
+        EXPECT_EQ(index, equivalent.team_list[index].owner_save_slot);
+}
+
+TEST(LobbyServer, crafted_local_roster_over_24_throws_the_team_limit_error)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    const auto seat_slots = [](std::uint8_t count) {
+        std::vector<og::sim::LobbyCharacterSlot> slots;
+        for (std::uint8_t slot = 0; slot < count; ++slot)
+            slots.push_back(make_slot(slot, 100 + slot, "member", FAMILY_SOLDIER));
+        return slots;
+    };
+    transport.queue_lobby_message(11u, make_join_message("P1", 0, seat_slots(13u)));
+    transport.queue_lobby_message(22u, make_join_message("P2", 1, seat_slots(12u)));
+    server.poll_incoming_messages();
+
+    try
+    {
+        (void)server.build_save_data_equivalent();
+        ADD_FAILURE() << "a 25-slot local roster must refuse";
+    }
+    catch (const std::runtime_error& error)
+    {
+        EXPECT_STREQ("LobbyServer exceeded the SaveData-equivalent 24-slot team limit",
+                     error.what());
+    }
+}
+
 TEST(LobbyServer, raw_poll_rejects_bad_envelope_before_same_peer_message)
 {
     MockLobbyTransport transport;

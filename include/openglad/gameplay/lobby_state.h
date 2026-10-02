@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -14,6 +15,12 @@
 #include <vector>
 
 namespace og::sim {
+
+// The gameplay roster bound: a combined game-start roster holds at most this
+// many characters (one SaveData team_list, MAX_TEAM_SIZE in resources). The
+// server's join capacity and per-seat sanitize clamp use it, and
+// assemble_gameplay_roster is the one place that refuses a larger roster.
+inline constexpr std::size_t kMaxLobbyTeamSize = 24;
 
 // Maximum company display-name length preserved by the lobby wire (matches
 // the 40-byte SaveData::save_name field the name comes from). The lobby-state
@@ -235,6 +242,34 @@ struct LobbyPlayer {
 
     bool operator==(const LobbyPlayer&) const = default;
 };
+
+// One roster entry in the order every lobby roster assembler uses (#324).
+struct OrderedLobbySlot {
+    std::uint8_t slot_index = 0;  // the owner's PRIVATE save slot
+    std::size_t player_order = 0; // index into the players vector
+    std::size_t slot_order = 0;   // index into that player's character_slots
+    const LobbyPlayer* player = nullptr;
+    const LobbyCharacterSlot* slot = nullptr;
+};
+
+// The one roster order: (slot_index, player_order, slot_order), a total order.
+// slot_order is the tiebreak a CRAFTED state needs (client-side state comes
+// off the wire un-sanitized and may repeat slot_index within one player); on
+// sanitized server state the first two keys are already unique
+// (sanitize_character_slots de-duplicates slot_index per seat), so the third
+// never decides there. deployed_only drops benched slots BEFORE ordering.
+[[nodiscard]] std::vector<OrderedLobbySlot> order_lobby_slots(
+    const std::vector<LobbyPlayer>& players,
+    bool deployed_only);
+
+// The gameplay roster the server and both joiners seed a match from: one
+// LobbyCharacterSlot per ordered entry, slot_index compacted to its position
+// (a no-op when the order is already dense 0..N-1), owner_player_index and
+// owner_save_slot (the original private slot) stamped, guy ids canonicalized.
+// Returns nullopt when ordered.size() > kMaxLobbyTeamSize — the ONE home of
+// the limit; each caller keeps its own reaction to it.
+[[nodiscard]] std::optional<std::vector<LobbyCharacterSlot>>
+assemble_gameplay_roster(const std::vector<OrderedLobbySlot>& ordered);
 
 // Content carried by a Join declaration. Server-issued identity, dense P#,
 // host/ready state, display names, and assembly-only ownership metadata are

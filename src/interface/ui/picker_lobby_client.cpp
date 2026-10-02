@@ -10,6 +10,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/pack_transfer_io.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/server/match_stage.h>
 
 #include <algorithm>
@@ -35,13 +36,6 @@ struct LocalLobbyPeer {
     og::sim::LobbySeatId seat_id = og::sim::kInvalidLobbySeatId;
     short team = 0;
     std::string name;
-};
-
-struct OrderedLobbySlot {
-    std::uint8_t slot_index = 0;
-    std::size_t player_order = 0;
-    std::size_t slot_order = 0;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
 };
 
 struct PreservedSaveSlot {
@@ -778,6 +772,15 @@ private:
         // A company slot belongs to exactly one synthetic seat. Duplicate
         // seat-team assignments are valid, so matching every seat
         // independently would advertise the same fighter more than once.
+        // #337: the local roster is therefore a partition of ONE save's
+        // team_list, benched members included, and the local LobbyServer's
+        // equivalent (which keeps benched slots) can never exceed its limit.
+        static_assert(static_cast<std::size_t>(MAX_TEAM_SIZE) <= og::sim::kMaxLobbyTeamSize,
+                      "the local roster is one save's team_list partitioned "
+                      "over the local seats; its total can never exceed the "
+                      "lobby's gameplay roster bound, so "
+                      "LobbyServer::build_save_data_equivalent's limit cannot "
+                      "fire for a local session");
         for (std::size_t slot_index = 0;
              slot_index < save.team_list.size(); ++slot_index)
         {
@@ -975,38 +978,16 @@ private:
                       state_->players.size(),
                       static_cast<std::size_t>(MAX_PLAYERS)));
 
-        std::vector<OrderedLobbySlot> ordered_slots;
-        for (std::size_t player_index = 0; player_index < state_->players.size();
-             ++player_index)
-        {
-            const og::sim::LobbyPlayer& player = state_->players[player_index];
-            for (std::size_t slot_order = 0;
-                 slot_order < player.character_slots.size();
-                 ++slot_order)
-            {
-                ordered_slots.push_back(OrderedLobbySlot{
-                    .slot_index = player.character_slots[slot_order].slot_index,
-                    .player_order = player_index,
-                    .slot_order = slot_order,
-                    .slot = &player.character_slots[slot_order],
-                });
-            }
-        }
-
-        std::sort(ordered_slots.begin(), ordered_slots.end(),
-                  [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
-                      if (lhs.slot_index != rhs.slot_index)
-                          return lhs.slot_index < rhs.slot_index;
-                      if (lhs.player_order != rhs.player_order)
-                          return lhs.player_order < rhs.player_order;
-                      return lhs.slot_order < rhs.slot_order;
-                  });
+        // Benched slots included (the real save is rebuilt), and no
+        // compaction: the write-back below keys on each PRIVATE slot_index.
+        const std::vector<og::sim::OrderedLobbySlot> ordered_slots =
+            og::sim::order_lobby_slots(state_->players, /*deployed_only=*/false);
 
         for (auto& member : save.team_list)
             member.reset();
         save.team_size = 0;
 
-        for (const OrderedLobbySlot& ordered_slot : ordered_slots)
+        for (const og::sim::OrderedLobbySlot& ordered_slot : ordered_slots)
         {
             // LobbyCharacterSlot::slot_index is the machine's PRIVATE save
             // slot. Keep it authoritative even when only one of several

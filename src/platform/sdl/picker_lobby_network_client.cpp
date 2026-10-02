@@ -78,20 +78,6 @@ namespace {
 constexpr std::string_view kDefaultCampaignId = "gladiator";
 constexpr auto kJoinRetryInterval = std::chrono::milliseconds(100);
 
-struct OrderedLobbySlot {
-    std::uint8_t slot_index = 0;
-    std::size_t player_order = 0;
-    std::size_t slot_order = 0;
-    const og::sim::LobbyPlayer* player = nullptr;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
-};
-
-struct AppliedLobbySlot {
-    std::uint8_t save_slot_index = 0;
-    const og::sim::LobbyPlayer* player = nullptr;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
-};
-
 SaveData* current_picker_save() noexcept
 {
     if (og::runtime::current_session == nullptr ||
@@ -1481,67 +1467,6 @@ std::vector<og::sim::LobbyPlayer> copy_local_seats(
     return seats;
 }
 
-std::vector<AppliedLobbySlot> collect_applied_lobby_slots(
-    const og::sim::LobbyState& state)
-{
-    std::vector<OrderedLobbySlot> ordered_slots;
-    for (std::size_t player_index = 0; player_index < state.players.size();
-         ++player_index)
-    {
-        const og::sim::LobbyPlayer& player = state.players[player_index];
-        for (std::size_t slot_order = 0;
-             slot_order < player.character_slots.size();
-             ++slot_order)
-        {
-            // §4.2: the joiner mirror materializes only DEPLOYED slots,
-            // filtered BEFORE densification — must match
-            // LobbyServer::build_save_data_equivalent exactly (host and
-            // joiner derive the same in-level roster from the same state).
-            if (!player.character_slots[slot_order].deployed)
-                continue;
-            ordered_slots.push_back(OrderedLobbySlot{
-                .slot_index = player.character_slots[slot_order].slot_index,
-                .player_order = player_index,
-                .slot_order = slot_order,
-                .player = &player,
-                .slot = &player.character_slots[slot_order],
-            });
-        }
-    }
-
-    std::sort(ordered_slots.begin(), ordered_slots.end(),
-              [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
-                  if (lhs.slot_index != rhs.slot_index)
-                      return lhs.slot_index < rhs.slot_index;
-                  if (lhs.player_order != rhs.player_order)
-                      return lhs.player_order < rhs.player_order;
-                  return lhs.slot_order < rhs.slot_order;
-              });
-
-    const bool slots_are_dense = std::all_of(
-        ordered_slots.begin(), ordered_slots.end(),
-        [&ordered_slots](const OrderedLobbySlot& slot) {
-            return static_cast<std::size_t>(slot.slot_index) ==
-                static_cast<std::size_t>(&slot - ordered_slots.data());
-        });
-
-    std::vector<AppliedLobbySlot> applied_slots;
-    applied_slots.reserve(ordered_slots.size());
-    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
-    {
-        std::uint8_t save_slot_index = ordered_slots[index].slot_index;
-        if (!slots_are_dense)
-            save_slot_index = static_cast<std::uint8_t>(index);
-        applied_slots.push_back(AppliedLobbySlot{
-            .save_slot_index = save_slot_index,
-            .player = ordered_slots[index].player,
-            .slot = ordered_slots[index].slot,
-        });
-    }
-
-    return applied_slots;
-}
-
 const og::sim::LobbyPlayer* find_player_by_seat_id(
     const og::sim::LobbyState& state,
     og::sim::LobbySeatId seat_id) noexcept
@@ -1573,7 +1498,7 @@ bool local_player_is_host(const og::sim::LobbyState& state) noexcept
          local_player->player_index == state.host_player_id);
 }
 
-og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
+std::optional<og::sim::LobbySaveDataEquivalent> build_save_data_equivalent_from_state(
     const og::sim::LobbyState& state,
     bool spectator_mode,
     std::size_t local_player_count = 1)
@@ -1602,19 +1527,19 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.fill = state.settings.fill;
     equivalent.map_units = state.settings.map_units;
 
-    for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
+    // §4.2: the joiner mirror materializes only DEPLOYED slots, in the one
+    // roster order LobbyServer::build_save_data_equivalent uses (host and
+    // joiner derive the same in-level roster from the same state).
+    std::optional<std::vector<og::sim::LobbyCharacterSlot>> roster =
+        og::sim::assemble_gameplay_roster(
+            og::sim::order_lobby_slots(state.players, true));
+    if (!roster.has_value())
     {
-        og::sim::LobbyCharacterSlot compacted = *slot.slot;
-        compacted.slot_index = slot.save_slot_index;
-        compacted.owner_player_index = slot.player->player_index;
-        // slot_index is the owner's ORIGINAL private-save slot. The applied
-        // save_slot_index may be a compacted position in the combined roster
-        // and must never be used for owner-filtered persistence.
-        compacted.owner_save_slot = slot.slot->slot_index;
-        equivalent.team_list.push_back(std::move(compacted));
+        LogError("lobby roster exceeds the {}-slot team limit; refusing to start\n",
+                 og::sim::kMaxLobbyTeamSize);
+        return std::nullopt;
     }
-
-    og::sim::canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
+    equivalent.team_list = std::move(*roster);
     return equivalent;
 }
 
@@ -4026,12 +3951,15 @@ public:
             og::sim::shared_allied_gameplay_team(*state_);
         const bool authoritative_spectator = local_seats.empty();
 
-        og::ui::PickerLobbyGameStartConfig config;
-        config.save_data =
+        std::optional<og::sim::LobbySaveDataEquivalent> save_data =
             og::ui::detail::build_save_data_equivalent_from_state(
                 *state_,
                 authoritative_spectator,
                 local_seats.size());
+        if (!save_data.has_value()) return std::nullopt;
+
+        og::ui::PickerLobbyGameStartConfig config;
+        config.save_data = std::move(*save_data);
         config.difficulty =
             static_cast<std::int16_t>(state_->settings.difficulty);
         config.my_team = gameplay_start_team(config.save_data.allied_mode,
