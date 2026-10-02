@@ -512,7 +512,9 @@ walker* add_to(LevelR12Fixture& fx, WalkerList& ls,
 TEST(LevelDataUnit, level_data_r12_load_title_dispatch_and_save_grid_paths)
 {
     std::filesystem::create_directories("scen");
-    std::filesystem::create_directories("temp/pix");
+    // save_grid_file writes temp/pix/ through the PhysFS write dir, which does
+    // not create parent directories.
+    std::filesystem::create_directories(std::filesystem::path(get_user_path()) / "temp" / "pix");
 
     const int id_parse = 9411;
     const int id_bad = 9412;
@@ -563,8 +565,8 @@ TEST(LevelDataUnit, level_data_r12_load_title_dispatch_and_save_grid_paths)
 TEST(LevelDataUnit, level_data_r12_save_null_entries_and_query_passable_branches)
 {
     LevelR12Fixture fx;
-    std::filesystem::create_directories("temp/scen");
-    std::filesystem::create_directories("temp/pix");
+    std::filesystem::create_directories(std::filesystem::path(get_user_path()) / "temp" / "scen");
+    std::filesystem::create_directories(std::filesystem::path(get_user_path()) / "temp" / "pix");
 
     fx.level.world().id = 9450;
     fx.level.grid_file = "grid";

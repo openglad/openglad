@@ -437,20 +437,24 @@ EOF
     fi
 fi
 
-# Scenario fixtures. Most rows load scen/scen1.fss, which lives in temp/scen/
-# and is PRODUCED by og_test_level; a missing one turns every capture into an
+# Scenario fixtures. Most rows load scen/scen1.fss, which the harness serves
+# from the gladiator campaign it mounts (campaigns/gladiator/scen/scen1.fss).
+# The scen99 rows read temp/scen/scen99.fss, which og_test_level PRODUCES and
+# exports into the checkout. A missing one turns every capture into an
 # environment abort, one row at a time, with nothing saying why.
 while IFS= read -r fixture; do
     [[ -z "${fixture}" ]] && continue
     base="${fixture##*/}"
     if [[ -f "${REPO_ROOT}/${fixture}" || -f "${REPO_ROOT}/scen/${base}" \
-          || -f "${REPO_ROOT}/temp/scen/${base}" ]]; then
+          || -f "${REPO_ROOT}/temp/scen/${base}" \
+          || -f "${REPO_ROOT}/campaigns/gladiator/${fixture}" ]]; then
         continue
     fi
     cat >&2 <<EOF
 canary: scenario fixture ${fixture} is missing (looked for ${fixture},
-scen/${base} and temp/scen/${base} under ${REPO_ROOT}).
-run ctest -R ^og_test_level$ first — that suite produces temp/scen/*.fss.
+scen/${base}, temp/scen/${base} and campaigns/gladiator/${fixture} under
+${REPO_ROOT}).
+run ctest -R ^og_test_level$ first — that suite produces temp/scen/scen99.fss.
 EOF
     exit 7
 done < "${PLAN_DIR}/fixtures"

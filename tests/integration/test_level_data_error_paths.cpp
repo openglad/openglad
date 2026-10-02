@@ -20,6 +20,42 @@
 
 namespace fs = std::filesystem;
 
+// LevelRuntimeData::save writes temp/scen/scen{id}.fss and
+// temp/pix/{grid_file}.png through the PhysFS write dir (the user dir), and
+// PhysFS does not create parent directories: make the write dir's temp tree.
+static fs::path user_temp_dir()
+{
+    return fs::path(get_user_path()) / "temp";
+}
+
+static void create_user_temp_level_dirs()
+{
+    fs::create_directories(user_temp_dir() / "scen");
+    fs::create_directories(user_temp_dir() / "pix");
+}
+
+// The process working directory for one scope, restored on every exit path.
+// The /dev/full cases below run their save with the CWD at the user dir: the
+// writer's relative temp/... path then resolves under the PhysFS write dir,
+// the one relative shape og_open_write still hands to stdio when PhysFS
+// refuses it (PhysFS refuses to open a symlink), so the save reaches the
+// /dev/full symlink and fails on the WRITE, which is what these tests pin.
+struct ScopedCurrentPath
+{
+    explicit ScopedCurrentPath(const fs::path& dir) : saved(fs::current_path())
+    {
+        fs::current_path(dir);
+    }
+    ~ScopedCurrentPath()
+    {
+        std::error_code ec;
+        fs::current_path(saved, ec);
+    }
+    ScopedCurrentPath(const ScopedCurrentPath&) = delete;
+    ScopedCurrentPath& operator=(const ScopedCurrentPath&) = delete;
+    fs::path saved;
+};
+
 static bool write_file_bytes(const fs::path& p, const std::string& contents)
 {
     std::error_code ec;
@@ -173,10 +209,7 @@ TEST(LevelDataErrorPaths, level_data_save_truncates_fixed_fields_and_rejects_nul
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
-    // Ensure the temp scen/pix directories exist (LevelRuntimeData::save writes
-    // temp/scen/scen{id}.fss and temp/pix/{grid_file}.png).
-    fs::create_directories("temp/scen");
-    fs::create_directories("temp/pix");
+    create_user_temp_level_dirs();
 
     og::runtime::current_session->myscreen_->world().id = 123;
     og::runtime::current_session->myscreen_->level_grid_file() = "grid_file_name_too_long"; // >8, triggers truncation warning path
@@ -201,7 +234,7 @@ TEST(LevelDataErrorPaths, level_data_save_truncates_fixed_fields_and_rejects_nul
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed once the null entry is gone";
 
     std::vector<unsigned char> bytes;
-    const fs::path scen_path = fs::path("temp/scen") / "scen123.fss";
+    const fs::path scen_path = user_temp_dir() / "scen" / "scen123.fss";
     ASSERT_TRUE(read_all_bytes(scen_path, &bytes)) << "the saved scenario file should be readable";
     ASSERT_GE(bytes.size(), 49u) << "a saved scenario carries at least the fixed header";
     ASSERT_EQ(std::string("grid_fil"), std::string(bytes.begin() + 4, bytes.begin() + 12))
@@ -237,9 +270,9 @@ TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_grid_write_fails)
     og::runtime::current_session->myscreen_->level_grid_file() = "missing_dir/grid";
     og::runtime::current_session->myscreen_->world().title = "grid save failure";
 
-    fs::create_directories("temp/scen");
+    create_user_temp_level_dirs();
     std::error_code ec;
-    fs::remove_all("temp/pix/missing_dir", ec);
+    fs::remove_all(user_temp_dir() / "pix" / "missing_dir", ec);
 
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_level()) << "save should fail when grid file cannot be written";
     ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->level_io_error()) << "save should propagate grid write failure as OpenWriteFailed";
@@ -270,8 +303,8 @@ TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_grid_write_is_sho
     og::runtime::current_session->myscreen_->level_grid_file() = "grid_short_write";
     og::runtime::current_session->myscreen_->world().title = "grid short write";
 
-    fs::create_directories("temp/scen");
-    fs::create_directories("temp/pix");
+    create_user_temp_level_dirs();
+    ScopedCurrentPath at_user_dir(get_user_path());
 
     const fs::path grid_path = fs::path("temp/pix") / "grid_short_write.png";
     std::error_code ec;
@@ -314,8 +347,7 @@ TEST(LevelDataErrorPaths, level_data_save_caps_object_count_to_loader_limit)
     og::runtime::current_session->myscreen_->world().title = "object cap";
     og::runtime::current_session->myscreen_->level_description().clear();
 
-    fs::create_directories("temp/scen");
-    fs::create_directories("temp/pix");
+    create_user_temp_level_dirs();
 
     constexpr int kMaxScenarioObjects = 4096;
     constexpr int kObjectCount = kMaxScenarioObjects + 1;
@@ -328,7 +360,7 @@ TEST(LevelDataErrorPaths, level_data_save_caps_object_count_to_loader_limit)
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed even when object count exceeds loader limit";
 
     short serialized_count = -1;
-    const fs::path scen_path = fs::path("temp/scen") / "scen125.fss";
+    const fs::path scen_path = user_temp_dir() / "scen" / "scen125.fss";
     ASSERT_TRUE(read_scenario_object_count(scen_path, &serialized_count)) << "should read serialized object count from scenario file";
     ASSERT_EQ(kMaxScenarioObjects, static_cast<int>(serialized_count)) << "save should clamp serialized object count to loader max";
 
@@ -361,10 +393,11 @@ TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_scenario_write_fa
     og::runtime::current_session->myscreen_->world().title = "scenario save failure";
     og::runtime::current_session->myscreen_->level_description().clear();
 
+    create_user_temp_level_dirs();
+    ScopedCurrentPath at_user_dir(get_user_path());
+
     const fs::path scen_dir = "temp/scen";
     const fs::path scen_file = scen_dir / "scen125.fss";
-    fs::create_directories(scen_dir);
-    fs::create_directories("temp/pix");
     std::error_code ec;
     fs::remove(scen_file, ec);
     fs::create_symlink("/dev/full", scen_file, ec);

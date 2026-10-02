@@ -43,7 +43,8 @@ struct CampaignFixture {
 
 class AsepriteRoundTripFixture : public ::testing::Test {
 protected:
-    std::filesystem::path tmp_dir = std::filesystem::path("temp") / "aseprite_round_trip";
+    std::filesystem::path tmp_dir =
+        std::filesystem::path(get_user_path()) / "temp" / "aseprite_round_trip";
 
     void SetUp() override {
         std::error_code ec;

@@ -138,6 +138,17 @@ struct DescriptorRestore
     }
 };
 
+
+// save_level() and save_grid_file() write temp/scen/ and temp/pix/ through
+// the PhysFS write dir, and PhysFS does not create parent directories: make
+// the write dir's temp tree first.
+void create_user_temp_level_dirs()
+{
+    const std::filesystem::path temp = std::filesystem::path(get_user_path()) / "temp";
+    std::filesystem::create_directories(temp / "scen");
+    std::filesystem::create_directories(temp / "pix");
+}
+
 } // namespace
 
 TEST(LevelDataCoverage, swimming_descriptor_flag_reaches_every_supported_order)
@@ -259,7 +270,7 @@ TEST(LevelDataCoverage, swimming_grants_water_passage_but_not_obstacle_passage)
 
 TEST(LevelDataCoverage, level_data_save_rejects_null_fx_and_weap_entries)
 {
-    std::filesystem::create_directories("temp/scen");
+    create_user_temp_level_dirs();
     og::runtime::current_session->myscreen_->world().id = 789;
     og::runtime::current_session->myscreen_->level_grid_file() = "grid";
     og::runtime::current_session->myscreen_->world().title = "coverage";
@@ -391,7 +402,7 @@ TEST(LevelDataCoverage, level_data_load_version_dispatch_and_grid_save_paths)
     ASSERT_EQ(0, (int)load_scenario_version(mem, nullptr, 6)) << "null level pointer should fail";
     ASSERT_EQ(0, (int)load_scenario_version(mem, &data, 42)) << "unsupported loader version should fail";
 
-    std::filesystem::create_directories("temp/pix");
+    create_user_temp_level_dirs();
     PixieData pix(1, 1, 1, new unsigned char[1]{7});
     ASSERT_TRUE(save_grid_file("coverage_ok", pix)) << "save_grid_file should write to temp/pix";
     ASSERT_TRUE(!save_grid_file("nested/coverage_fail", pix)) << "save_grid_file should fail when parent dir is missing";
@@ -400,7 +411,7 @@ TEST(LevelDataCoverage, level_data_load_version_dispatch_and_grid_save_paths)
 
 TEST(LevelDataCoverage, level_data_load_clamps_invalid_team_ids_to_score_range)
 {
-    std::filesystem::create_directories("temp/pix");
+    create_user_temp_level_dirs();
     PixieData pix(1, 1, 1, new unsigned char[1]{7});
     ASSERT_TRUE(save_grid_file("covteam", pix)) << "save_grid_file should create loader grid";
 
@@ -971,7 +982,7 @@ TEST(LevelDataCoverage, level_data_round7a_title_reader_and_error_wrappers)
     og::runtime::current_session->myscreen_->level_grid_file() = "round7a";
     og::runtime::current_session->myscreen_->world().title = "Round7A";
     og::runtime::current_session->myscreen_->world().create_new_grid();
-    std::filesystem::create_directories("temp/scen");
+    create_user_temp_level_dirs();
     const auto err = og::runtime::current_session->myscreen_->save_level_with_error();
     ASSERT_EQ(LevelRuntimeData::IoError::None, err)
         << "save_with_error wrapper should write the prepared temp scenario";
@@ -1056,7 +1067,7 @@ TEST(LevelDataCoverage, level_data_round6_remove_ob_and_wrapper_paths)
     orphan.set_order_family(Order::Living, FAMILY_SOLDIER);
     ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->world().remove_ob(&orphan)) << "remove_ob should return 0 for unknown walker";
 
-    std::filesystem::create_directories("temp/scen");
+    create_user_temp_level_dirs();
     og::runtime::current_session->myscreen_->world().id = 9410;
     og::runtime::current_session->myscreen_->level_grid_file() = "grid";
     og::runtime::current_session->myscreen_->world().title = "round6";
@@ -1330,7 +1341,7 @@ TEST(LevelDataCoverage, level_data_round11_wrappers_draw_and_query_grid_entry_pa
     og::runtime::current_session->myscreen_->world().id = 9421;
     og::runtime::current_session->myscreen_->level_grid_file() = "grid";
     og::runtime::current_session->myscreen_->world().title = "round11";
-    std::filesystem::create_directories("temp/scen");
+    create_user_temp_level_dirs();
     const auto save_err = og::runtime::current_session->myscreen_->save_level_with_error();
     ASSERT_EQ(LevelRuntimeData::IoError::None, save_err) << "a prepared temp scenario should save cleanly through the wrapper";
 

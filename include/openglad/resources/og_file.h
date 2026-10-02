@@ -50,10 +50,24 @@ using OgFilePtr = std::unique_ptr<OgFile>;
 OgFilePtr og_open_read(const char* file, bool debug = false);
 OgFilePtr og_open_read(const char* path, const char* file);
 
-// Open a file for writing (SDL-free).
-// Tries PhysFS first, then direct filesystem.
+// Open a file for writing (SDL-free). PhysFS first. When PhysFS is
+// initialised with a write dir and REFUSES a relative path (missing parent in
+// the write dir, permissions), the open FAILS (nullptr): the caller reports
+// OpenWriteFailed and nothing is written relative to the process CWD. The
+// stdio fallback remains for exactly three cases: no PhysFS / no write dir
+// (callers such as company.cpp handle this explicitly); an absolute path
+// (PhysFS rejects those as insecure — the editor and level writers pass
+// get_user_path() + ...); and a relative path that resolves under the write
+// dir (a relative OPENGLAD_CONFIG_DIR, or HOME unset => "./").
 OgFilePtr og_open_write(const char* file);
 OgFilePtr og_open_write(const char* path, const char* file);
+
+// The stdio-fallback rule for og_open_write and platform_io's open_write_file
+// (its one home): true when a write PhysFS refused may still go to stdio.
+// The prefix test is component-wise over fs::absolute(file).lexically_normal()
+// against the write dir PhysFS reports (the directory that refused), never a
+// string prefix ("./" and "../" spellings resolve first).
+[[nodiscard]] bool stdio_write_fallback_allowed(const char* file);
 
 // Helper: read exactly size*count bytes, return false on short read.
 inline bool og_read_exact(OgFile& f, void* dst, std::size_t size, std::size_t count)
