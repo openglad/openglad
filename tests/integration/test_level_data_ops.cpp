@@ -891,26 +891,6 @@ struct ScopedCampaignPackages
     }
 };
 
-// The descriptor write goes to temp/campaign.yaml under the user dir and,
-// when that fails, to the same relative path under the working directory.
-// A directory named campaign.yaml at both places makes the descriptor
-// unwritable; this guard creates and removes the working-directory one.
-struct ScopedUnwritableCwdDescriptor
-{
-    ScopedUnwritableCwdDescriptor()
-    {
-        created = !fs::exists("temp/campaign.yaml");
-        fs::create_directories("temp/campaign.yaml/blocker");
-    }
-    ~ScopedUnwritableCwdDescriptor()
-    {
-        std::error_code ec;
-        if (created)
-            fs::remove_all("temp/campaign.yaml", ec);
-    }
-    bool created = false;
-};
-
 } // namespace detail_campaign_io_failures
 
 TEST(CampaignDataIo, load_of_unparseable_yaml_reports_parse_failed_and_keeps_harvested_fields)
@@ -957,7 +937,9 @@ TEST(CampaignDataIo, save_as_aborts_when_descriptor_cannot_be_written)
     EXPECT_EQ(good_dst, good.id);
     EXPECT_TRUE(fs::exists(user_campaign_package(good_dst)));
 
-    ScopedUnwritableCwdDescriptor cwd_blocker;
+    // The blocked package unpacks a DIRECTORY named campaign.yaml into the
+    // user dir's temp/, so the relative descriptor write PhysFS refuses has
+    // nowhere else to go (#332: no fallback under the working directory).
     CampaignData blocked(blocked_id);
     EXPECT_FALSE(blocked.save_as(blocked_dst))
         << "save_as must stop when temp/campaign.yaml cannot be written";
@@ -985,7 +967,6 @@ TEST(CampaignDataIo, save_aborts_and_leaves_package_when_descriptor_cannot_be_wr
 
     const std::string before = read_bytes(user_campaign_package(blocked_id));
     ASSERT_FALSE(before.empty());
-    ScopedUnwritableCwdDescriptor cwd_blocker;
     CampaignData blocked(blocked_id);
     blocked.title = "Never Written";
     EXPECT_FALSE(blocked.save())
