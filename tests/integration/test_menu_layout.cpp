@@ -747,6 +747,95 @@ void check_setup_entry_highlight(const SetupLayoutDriver& driver,
 
 } // namespace
 
+// The camp asks one thing through the campaign providers: which team is
+// MINE (the shape test_campaign_zone_ui.cpp's kMyTeamZoneScript asks it in).
+constexpr const char* kProviderPinZoneScript = R"LUA(og.register_campaign_hooks({
+  base_camp = function()
+    return { widgets = {
+      { kind = "text", lines = { "MY SEAT TEAM " .. og.campaign_my_team() } },
+      { kind = "roster" },
+    } }
+  end,
+}))LUA";
+
+// Compose a scripted camp over `save` and read who answered
+// og.campaign_my_team(). Everything it touches — the mount, the pack-script
+// registry, the roster, the lobby client — is restored before any assertion
+// can return early.
+static void expect_session_campaign_providers_answer(SaveData& save)
+{
+    const std::string pin_mount = get_mounted_campaign();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    const std::vector<og::script::PackScript> pin_scripts =
+        og::script::pack_scripts();
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> pin_team;
+    for (std::size_t i = 0; i < pin_team.size(); ++i)
+        pin_team[i] = std::move(save.team_list[i]);
+    const unsigned char pin_team_size = save.team_size;
+    const auto pin_numplayers = save.numplayers;
+    const auto pin_allied = save.allied_mode;
+    const auto pin_my_team = save.my_team;
+    const std::string pin_campaign = save.current_campaign;
+    const short pin_scen = save.scen_num;
+    og::ui::IPickerLobbyClient* const pin_client =
+        og::ui::active_picker_lobby_client();
+
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->teamnum = 2;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.my_team = 3;
+    og::ui::install_active_picker_lobby_client(nullptr);
+    og::script::register_pack_script(
+        {"test.providerpin", "providerpin/scripts/c.lua",
+         kProviderPinZoneScript});
+
+    const int seat_team = og::ui::first_local_seat_team(save);
+    bool scripted = false;
+    std::string line = "<no text widget>";
+    {
+        og::ui::CampaignZoneSession zone(save);
+        zone.fetch();
+        scripted = zone.scripted();
+        if (!zone.texts().empty() && !zone.texts().front().lines.empty())
+            line = zone.texts().front().lines.front();
+    }
+
+    og::script::clear_pack_scripts();
+    for (const og::script::PackScript& script : pin_scripts)
+        og::script::register_pack_script(script);
+    og::ui::install_active_picker_lobby_client(pin_client);
+    for (std::size_t i = 0; i < pin_team.size(); ++i)
+        save.team_list[i] = std::move(pin_team[i]);
+    save.team_size = pin_team_size;
+    save.numplayers = pin_numplayers;
+    save.allied_mode = pin_allied;
+    save.my_team = pin_my_team;
+    save.current_campaign = pin_campaign;
+    save.scen_num = pin_scen;
+    if (!pin_mount.empty() && pin_mount != "gladiator")
+        (void)mount_campaign_package_with_error(pin_mount);
+
+    // The control: the seat the session answers with and the save's my_team
+    // differ, so the line below can tell the two provider sets apart.
+    EXPECT_EQ(1, seat_team);
+    EXPECT_TRUE(scripted)
+        << "og.campaign_my_team must ANSWER after the setup-layout test: a "
+           "cleared provider set fails the hook and drops the camp to its "
+           "default composition";
+    EXPECT_EQ("MY SEAT TEAM 1", line)
+        << "the session's provider answers the first local seat's team; a "
+           "fallback set left installed answers the save's my_team (3)";
+}
+
 TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
 {
     // The STATIC table first: the grid's own arithmetic, before any state.
@@ -968,6 +1057,15 @@ TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
     save.scen_num = previous_scen;
     if (!previous_mount.empty() && previous_mount != "modes")
         (void)mount_campaign_package_with_error(previous_mount);
+
+    // The test leaves the og.campaign_* providers exactly as the session
+    // installed them. Observed through the product: a camp hook that asks
+    // og.campaign_my_team() is answered by the SESSION's provider, which with
+    // no lobby open names the save's first local seat (TEAM 1 below). The
+    // save's own my_team says TEAM 3, so a fallback provider set left behind
+    // would answer 3, and no providers at all would fail the hook and drop
+    // the camp to its default composition.
+    ASSERT_NO_FATAL_FAILURE(expect_session_campaign_providers_answer(save));
 }
 
 TEST(MenuLayout, zone_submenu_screen_layout_states_and_nav)
