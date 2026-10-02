@@ -616,13 +616,12 @@ TEST(LevelDataOps, level_data_save_description_serialization_bounds)
     og::runtime::current_session->myscreen_->level_description().push_back(empty_line);
     og::runtime::current_session->myscreen_->level_description().push_back(boundary_line);
     og::runtime::current_session->myscreen_->level_description().push_back(long_line);
-    std::filesystem::create_directories("temp/scen");
-    // /temp/ is gitignored, so temp/pix does not exist on a fresh checkout.
-    std::filesystem::create_directories("temp/pix");
+    create_user_temp_level_dirs();
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed for description bounds regression";
 
-    const std::string scen_path = "temp/scen/scen" + std::to_string(kScenarioId) + ".fss";
+    const std::string scen_path =
+        get_user_path() + "temp/scen/scen" + std::to_string(kScenarioId) + ".fss";
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(read_file_bytes(scen_path, &bytes)) << "saved scenario should be readable";
     ASSERT_TRUE(bytes.size() >= 49) << "saved scenario should include fixed header";
