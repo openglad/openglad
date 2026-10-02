@@ -135,6 +135,21 @@ void write_text_file(const std::filesystem::path& path, std::string_view text)
         path, std::vector<unsigned char>(text.begin(), text.end()));
 }
 
+
+// Scratch files live under the user dir's temp/, spelled absolute:
+// og_open_write keeps its stdio fallback for an absolute path, so the
+// stdio-backed og_file paths stay stdio-backed, and no test write lands
+// relative to the checkout.
+std::filesystem::path user_temp()
+{
+    return std::filesystem::path(get_user_path()) / "temp";
+}
+
+std::filesystem::path io_platform_cov_dir()
+{
+    return user_temp() / "io_platform_cov";
+}
+
 } // namespace
 
 TEST(IoPlatformCoverage, user_path_and_open_write_stdio_fallback_are_exact)
@@ -386,7 +401,7 @@ TEST(IoPlatformCoverage,
 TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
+    const fs::path tmp_dir = io_platform_cov_dir();
     const fs::path bin_path = tmp_dir / "rw.bin";
     const fs::path pix_ok = tmp_dir / "ok.png";
     const fs::path pix_bad = tmp_dir / "bad.png";
@@ -416,7 +431,7 @@ TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
     ASSERT_EQ(0, static_cast<int>(in->read(got, 0, 1))) << "size=0 read should return 0";
     ASSERT_TRUE(og::io::og_read_exact(*in, got, 1, sizeof(got))) << "read payload";
     ASSERT_TRUE(std::memcmp(payload, got, sizeof(payload)) == 0) << "roundtrip payload";
-    ASSERT_TRUE(og::io::og_open_read("temp/io_platform_cov/does_not_exist.bin") == nullptr) << "missing file should return null";
+    ASSERT_TRUE(og::io::og_open_read((tmp_dir / "does_not_exist.bin").string().c_str()) == nullptr) << "missing file should return null";
 
     {
         PixieData test_data(1, 2, 1, new unsigned char[2]{7, 8});
@@ -447,7 +462,7 @@ TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
 TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
 {
     namespace fs = std::filesystem;
-    const fs::path base = fs::path("temp") / "resources_fs_api";
+    const fs::path base = user_temp() / "resources_fs_api";
     std::error_code ec;
     fs::create_directories(base, ec);
 
@@ -507,7 +522,7 @@ TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
 TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
 {
     namespace fs = std::filesystem;
-    fs::create_directories("temp");
+    fs::create_directories(user_temp());
 
     og::data::CampaignYaml original;
     original.title = "Round Trip";
@@ -518,7 +533,7 @@ TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
     original.contributors = "Contributor";
     original.description = "Line one\nLine two";
 
-    const fs::path path = fs::path("temp") / "io_platform_campaign.yaml";
+    const fs::path path = user_temp() / "io_platform_campaign.yaml";
     ASSERT_EQ(og::data::CampaignYamlWriteResult::Ok,
               og::data::write_campaign_yaml_with_result(path.string().c_str(), original));
 
@@ -534,7 +549,7 @@ TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
     ASSERT_EQ("Contributor", parsed.contributors);
     ASSERT_EQ("Line one\nLine two", parsed.description);
 
-    const fs::path bad_path = fs::path("temp") / "io_platform_campaign_bad.yaml";
+    const fs::path bad_path = user_temp() / "io_platform_campaign_bad.yaml";
     std::ofstream bad(bad_path);
     bad << "title: Partial\nbad: [unclosed\n";
     bad.close();
@@ -546,7 +561,7 @@ TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
     ASSERT_EQ("Partial", partial.title);
 
     const fs::path default_path =
-        fs::path("temp") / "io_platform_default_campaign.yaml";
+        user_temp() / "io_platform_default_campaign.yaml";
     ASSERT_TRUE(og::data::write_default_campaign_yaml(
         default_path.string().c_str()));
     og::data::CampaignYaml defaults;
@@ -561,10 +576,10 @@ TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
 TEST(IoPlatformCoverage, zip_api_roundtrip_and_error_paths)
 {
     namespace fs = std::filesystem;
-    const fs::path base = fs::path("temp") / "io_platform_cov_zip_in";
-    const fs::path archive = fs::path("temp") / "io_platform_cov_archive.zip";
-    const fs::path out = fs::path("temp") / "io_platform_cov_zip_out";
-    const fs::path missing_parent_zip = fs::path("temp") / "io_platform_cov_missing_parent" / "x.zip";
+    const fs::path base = user_temp() / "io_platform_cov_zip_in";
+    const fs::path archive = user_temp() / "io_platform_cov_archive.zip";
+    const fs::path out = user_temp() / "io_platform_cov_zip_out";
+    const fs::path missing_parent_zip = user_temp() / "io_platform_cov_missing_parent" / "x.zip";
 
     std::error_code ec;
     fs::remove_all(base, ec);
@@ -590,7 +605,7 @@ TEST(IoPlatformCoverage, zip_api_roundtrip_and_error_paths)
         << "zip with missing parent should report close failure after archive finalization";
 
     ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(base.string(), archive.string()))) << "zip should succeed";
-    ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed), static_cast<int>(og::io::unzip_into_with_error("temp/io_platform_cov_missing.zip", out.string()))) << "unzip missing archive should fail";
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed), static_cast<int>(og::io::unzip_into_with_error((user_temp() / "io_platform_cov_missing.zip").string(), out.string()))) << "unzip missing archive should fail";
     ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::unzip_into_with_error(archive.string(), out.string()))) << "unzip should succeed";
 
     const fs::path extracted = out / "sub" / "payload.txt";
@@ -730,7 +745,7 @@ TEST(IoPlatformCoverage, platform_io_remount_allows_files_still_open_path)
 TEST(IoPlatformCoverage, og_file_batch3_physfs_seek_and_path_overloads)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
+    const fs::path tmp_dir = io_platform_cov_dir();
     const fs::path overload_file = tmp_dir / "overload.bin";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
@@ -784,7 +799,7 @@ TEST(IoPlatformCoverage, og_file_batch3_physfs_seek_and_path_overloads)
 TEST(IoPlatformCoverage, zip_api_batch3_output_open_failure_and_empty_input_dir)
 {
     namespace fs = std::filesystem;
-    const fs::path base = fs::path("temp") / "io_platform_cov_zip_batch3";
+    const fs::path base = user_temp() / "io_platform_cov_zip_batch3";
     const fs::path in_empty = base / "empty_input";
     const fs::path in_one = base / "one_input";
     const fs::path archive_empty = base / "empty.zip";
@@ -973,8 +988,8 @@ TEST(IoPlatformCoverage, zip_api_missing_input_dir_exists_guard_path)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path missing = fs::path("temp") / "zip_missing_input_batch8";
-    const fs::path archive = fs::path("temp") / "zip_missing_input_batch8.zip";
+    const fs::path missing = user_temp() / "zip_missing_input_batch8";
+    const fs::path archive = user_temp() / "zip_missing_input_batch8.zip";
     fs::remove_all(missing, ec);
     fs::remove(archive, ec);
 
@@ -990,7 +1005,7 @@ TEST(IoPlatformCoverage, zip_api_unreadable_and_non_regular_entries_report_add_f
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path base = fs::path("temp") / "io_platform_cov_zip_batch8";
+    const fs::path base = user_temp() / "io_platform_cov_zip_batch8";
     const fs::path archive = base / "edge_cases.zip";
     const fs::path unreadable = base / "no_read.txt";
     const fs::path normal = base / "ok.txt";
@@ -1044,7 +1059,7 @@ TEST(IoPlatformCoverage, zip_api_batch9_permission_denied_walk_and_corrupt_unzip
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path base = fs::path("temp") / "io_platform_cov_zip_batch9";
+    const fs::path base = user_temp() / "io_platform_cov_zip_batch9";
     const fs::path blocked = base / "blocked";
     const fs::path blocked_child = blocked / "child";
     const fs::path archive = base / "blocked_walk.zip";
@@ -1219,7 +1234,7 @@ TEST(IoPlatformCoverage, restore_default_campaigns_drops_the_legacy_twin)
 TEST(IoPlatformCoverage, read_pixie_file_truncated_header_path)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
+    const fs::path tmp_dir = io_platform_cov_dir();
     const fs::path pix_header_bad = tmp_dir / "bad_header.png";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
@@ -1244,7 +1259,7 @@ TEST(IoPlatformCoverage,
 {
     ScopedTraceBuffer trace_guard;
     namespace fs = std::filesystem;
-    const fs::path dir = fs::path("temp") / "io_platform_cov";
+    const fs::path dir = io_platform_cov_dir();
     const fs::path png = dir / "resource_followup.png";
     const fs::path json = dir / "resource_followup.json";
     og::test::ScopedPhysicalFileState png_state(png);
@@ -1387,7 +1402,7 @@ TEST(IoPlatformCoverage,
      indexed_png_resource_limits_and_decode_failures_are_rejected)
 {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::path("temp") / "io_platform_cov";
+    const fs::path dir = io_platform_cov_dir();
     const fs::path path = dir / "resource_rejection.png";
     og::test::ScopedPhysicalFileState path_state(path);
     ASSERT_TRUE(path_state.ready()) << path_state.error().message();
@@ -1475,10 +1490,10 @@ TEST(IoPlatformCoverage, platform_io_bool_wrappers_and_small_helpers)
     const std::list<std::string> exploded = explode("a,b,", ',');
     ASSERT_EQ(3, (int)exploded.size()) << "explode should include trailing empty segment";
 
-    const fs::path nested = fs::path("temp") / "io_platform_cov" / "wrapper_dir" / "a" / "b";
+    const fs::path nested = io_platform_cov_dir() / "wrapper_dir" / "a" / "b";
     ASSERT_TRUE(create_dir(nested.string())) << "create_dir should create nested directories";
 
-    const fs::path missing_zip = fs::path("temp") / "io_platform_cov" / "missing_bool_wrapper.zip";
+    const fs::path missing_zip = io_platform_cov_dir() / "missing_bool_wrapper.zip";
     ASSERT_TRUE(unzip_into_with_error(missing_zip.string(), (nested / "out").string()) != ArchiveIoError::None) << "unzip_into should return error for missing archive";
     (void)zip_contents_with_error((nested / "missing_input").string(), (nested / "out.zip").string());
 
@@ -1489,7 +1504,7 @@ TEST(IoPlatformCoverage, platform_io_bool_wrappers_and_small_helpers)
 TEST(IoPlatformCoverage, og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
+    const fs::path tmp_dir = io_platform_cov_dir();
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
 
@@ -1606,7 +1621,7 @@ TEST(IoPlatformCoverage, physfs_rwops_bridge_read_write_seek_paths)
 TEST(IoPlatformCoverage, og_file_round8_seek_cur_end_and_open_write_failure_paths)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov" / "round8_seek";
+    const fs::path tmp_dir = io_platform_cov_dir() / "round8_seek";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
 
@@ -1638,7 +1653,7 @@ TEST(IoPlatformCoverage, og_file_round8_seek_cur_end_and_open_write_failure_path
 TEST(IoPlatformCoverage, zip_platform_round8_open_archive_and_mount_error_paths)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov" / "round8_zip";
+    const fs::path tmp_dir = io_platform_cov_dir() / "round8_zip";
     std::error_code ec;
     fs::remove_all(tmp_dir, ec);
     fs::create_directories(tmp_dir, ec);
@@ -1690,7 +1705,7 @@ TEST(IoPlatformCoverage, rwops_handlers_and_open_read_debug_fallbacks)
 TEST(IoPlatformCoverage, new_file_error_paths_report_write_failures)
 {
     namespace fs = std::filesystem;
-    const fs::path base = fs::path("temp") / "io_platform_cov" / "new_file_errors";
+    const fs::path base = io_platform_cov_dir() / "new_file_errors";
     const fs::path pix_blocker = base / "pix_blocker.png";
     const fs::path map_blocker = base / "map_blocker.png";
     const fs::path campaign_blocker = base / "campaign.yaml";
