@@ -1,8 +1,8 @@
-# Floor Glide — implementation-ready specification
+# Floor Glide — design specification
 
 **Feature:** animated floor transitions for OpenGlad's z-axis multifloor rendering.
-**Branch:** `feature/z-axis-multifloor` (repo `/home/yans/code/openglad`). All file:line anchors verified against the working tree at commit `e8779d96` — line numbers shift as you insert code; anchor by the quoted text, not the number.
-**Winning mechanism:** Design 4, "Floor Glide — continuous-Z camera dolly (fractional camera floor)", unanimous across all three judge lenses, with the grafts and trims listed in §1.
+**Anchors:** file:line references point into commit `e8779d96`; the numbers have shifted since, so find code by the quoted text.
+**Mechanism:** Design 4, "Floor Glide — continuous-Z camera dolly (fractional camera floor)", chosen over Designs 1-3, with the grafts and trims listed in §1.
 
 ---
 

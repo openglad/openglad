@@ -9,7 +9,7 @@ Design for three coupled features:
 3. Revive **joystick support**, assigned per seat through the same INPUT
    cycler.
 
-Status: implemented on `feature/pause-menu`.
+Status: implemented.
 
 ## 1. Current state (what this replaces)
 
