@@ -397,7 +397,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			          (right==TYPE_TREES|| right==TYPE_WALL) )
 				newvalue = PIX_GRASS_DARK_UR;
 			else if (around == (TO_LEFT | TO_RIGHT | TO_DOWN)) // == top middle
-			{} // do nothing
+			{
+				newvalue = grass_dark_variants[next_random(4)];
+			}
 			else if (around == (TO_UP | TO_DOWN | TO_LEFT)) // right middle
 			{
 				newvalue = grass_dark_right[next_random(2)];
@@ -493,6 +495,8 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						newvalue = PIX_WALL4;
 					else if (uppix == PIX_FLOOR1) // wood
 						newvalue = PIX_WALL_ARROW_FLOOR;
+					else // no sill to match: keep the slit we have
+						newvalue = herepix;
 				}
 				break;
 			}
