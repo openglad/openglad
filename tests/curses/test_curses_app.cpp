@@ -588,8 +588,9 @@ std::vector<std::string> read_proc_syscall(pid_t child, int* open_errno)
 
 // The child is INSIDE poll_key's blocking poll(..., -1): the only state in
 // which a SIGWINCH is guaranteed to interrupt the poll (EINTR) instead of
-// landing between the resize-flag check and the poll (a lost wakeup the
-// test must not depend on). x86_64 glibc calls poll (7) and the third
+// landing between the resize-flag check and the poll (the self-pipe arm,
+// pinned by resize_landing_before_the_blocking_poll_still_redraws; this test
+// pins the EINTR arm). x86_64 glibc calls poll (7) and the third
 // argument is the -1 timeout; aarch64 has no poll syscall and glibc routes
 // it to ppoll (73) with a NULL timespec, so only the number is checked there.
 bool in_blocking_poll(const std::vector<std::string>& fields)

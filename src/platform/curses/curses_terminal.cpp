@@ -105,7 +105,50 @@ void restore_terminal()
 }
 
 volatile std::sig_atomic_t g_resize_pending = 0;
-void on_sigwinch(int) { g_resize_pending = 1; }
+
+// The resize wake pipe. The SIGWINCH handler sets g_resize_pending and then
+// writes one byte here; poll_key's blocking poll watches the read end next to
+// the terminal. A resize whose handler runs after poll_key checked the flag
+// but before the poll is entered, or on a thread other than the one blocked in
+// poll_key, then still wakes the poll: the byte is waiting when it starts.
+// Created once per process and never closed -- the handler stays installed
+// until the caller's old disposition is restored, and a closed descriptor
+// could be reused by an unrelated file the handler would then write into.
+volatile std::sig_atomic_t g_wake_write = -1;
+int g_wake_read = -1;
+
+bool set_nonblocking_cloexec(int fd)
+{
+    const int flags = ::fcntl(fd, F_GETFL);
+    return flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 &&
+           ::fcntl(fd, F_SETFD, FD_CLOEXEC) == 0;
+}
+
+// Not pipe2(): macOS has none, and the curses client builds there.
+void create_wake_pipe()
+{
+    if (g_wake_read >= 0)
+        return;
+    int ends[2] = {-1, -1};
+    if (::pipe(ends) != 0 || !set_nonblocking_cloexec(ends[0]) || !set_nonblocking_cloexec(ends[1])) throw std::runtime_error("openglad_curses: cannot create the resize wake pipe");
+    g_wake_read = ends[0];
+    g_wake_write = ends[1];
+}
+
+void on_sigwinch(int)
+{
+    // poll_key reads errno right after an interrupted poll: a write that
+    // failed (EAGAIN on a full pipe) must not turn that EINTR into an error.
+    const int saved_errno = errno;
+    // Flag first, then the byte: a poll that finds the byte always finds the
+    // flag set when it loops back to the check.
+    g_resize_pending = 1;
+    if (g_wake_write >= 0) {
+        const ssize_t written = ::write(g_wake_write, "w", 1);
+        (void)written; // a full pipe already holds a wake-up
+    }
+    errno = saved_errno;
+}
 
 void on_fatal_signal(int sig)
 {
@@ -171,6 +214,9 @@ struct CursesTerminal::Impl {
     bool started = false;
     int in_fd = STDIN_FILENO;
     int out_fd = STDOUT_FILENO;
+    // The resize wake pipe's read end; -1 (ignored by poll) when the terminal
+    // installed no SIGWINCH handler.
+    int wake_fd = -1;
     kitty::Decoder decoder;
 
     ~Impl()
@@ -186,6 +232,16 @@ struct CursesTerminal::Impl {
         struct winsize ws{};
         if (::ioctl(out_fd, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0 && ws.ws_col > 0)
             resize_term(ws.ws_row, ws.ws_col);
+    }
+
+    // Empty the wake pipe (its read end is non-blocking).
+    void drain_wake_pipe()
+    {
+        if (wake_fd < 0)
+            return;
+        std::array<char, 64> sink;
+        while (::read(wake_fd, sink.data(), sink.size()) > 0) {
+        }
     }
 };
 
@@ -229,6 +285,8 @@ CursesTerminal::CursesTerminal(Options opt) : impl_(std::make_unique<Impl>())
     write_all(impl_->out_fd, kitty::kEnableFocus);
 
     // Signal-driven terminal restoration + resize.
+    create_wake_pipe();
+    impl_->wake_fd = g_wake_read;
     struct sigaction sa{};
     sa.sa_handler = on_sigwinch;
     sigemptyset(&sa.sa_mask);
@@ -305,6 +363,10 @@ Key CursesTerminal::poll_key(bool block)
         // A pending resize takes priority so the renderer re-lays-out promptly.
         if (g_resize_pending) {
             g_resize_pending = 0;
+            // This resize's wake-up byte, so it does not wake the next poll.
+            // After clearing the flag: a resize landing in between sets the
+            // flag again and is returned by the next call.
+            impl_->drain_wake_pipe();
             impl_->handle_resize();
             return Key::special(KeyCode::Resize);
         }
@@ -313,10 +375,12 @@ Key CursesTerminal::poll_key(bool block)
         if (impl_->decoder.next(key))
             return key;
 
-        struct pollfd pfd{};
-        pfd.fd = impl_->in_fd;
-        pfd.events = POLLIN;
-        const int pr = ::poll(&pfd, 1, block ? -1 : 0);
+        // The terminal, and the resize wake pipe (a SIGWINCH that landed
+        // after the check above leaves its byte there, so this poll still
+        // returns at once).
+        struct pollfd fds[2] = {{impl_->in_fd, POLLIN, 0},
+                                {impl_->wake_fd, POLLIN, 0}};
+        const int pr = ::poll(fds, 2, block ? -1 : 0);
         if (pr < 0) {
             if (errno == EINTR)
                 continue; // interrupted (likely SIGWINCH): loop and re-check
@@ -326,6 +390,14 @@ Key CursesTerminal::poll_key(bool block)
         // non-blocking call (timeout 0) has one: nothing ready.
         if (pr == 0)
             return Key::none();
+        if (fds[1].revents & POLLIN) {
+            impl_->drain_wake_pipe();
+            continue; // the flag check above returns the Resize
+        }
+        // Only the terminal may be read: with two descriptors a positive
+        // answer can come from the pipe alone, and a read on a blocking
+        // terminal would then wait for a key.
+        if (fds[0].revents == 0) continue;
         std::array<char, 256> tmp;
         const ssize_t n = ::read(impl_->in_fd, tmp.data(), tmp.size());
         if (n > 0) {
