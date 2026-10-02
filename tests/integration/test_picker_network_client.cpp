@@ -11913,6 +11913,48 @@ TEST(PickerNetworkClient, joiner_lobby_link_death_latches_session_lost)
     }
 }
 
+namespace {
+
+// The direct joiner's recovery ceilings, read off the SHIPPED transport
+// options: the picker's joiner builds its WebSocketClientTransport with the
+// default Options (picker_lobby_network_client.cpp), so these are the
+// numbers a real joiner lives by. One home for both shapes:
+//
+//   dial cost = 3 s: TCP connect, the WebSocket upgrade and the lobby's
+//     hello and roster exchange, polled at 5 ms on a loaded box.
+//   redial gap ceiling = max_reconnect_wait_ms (1 s, the longest gap between
+//     two dials once ix's backoff is clamped) + the dial cost. This is the
+//     whole ceiling of joiner_finds_a_returning_host_within_the_redial_cap,
+//     whose 14 s outage spends any parked dial BEFORE the host returns.
+//   blip recovery ceiling = handshake_timeout_secs (10 s) + the redial gap
+//     ceiling. A blip restarts the host the moment the joiner has SEEN the
+//     drop, so the joiner's first re-dial can race the old listener's
+//     stop() -- the race the product documents at
+//     src/platform/sdl/net_transport_websocket_client.cpp:333 ("a connection
+//     accepted by ix's acceptor and then abandoned unclosed",
+//     IXSocketServer.cpp:415). A dial parked on that socket ends only at the
+//     handshake deadline; only then does the next dial land on the restarted
+//     host. A flat 10 s ceiling equalled the park alone and failed at
+//     ~10.06 s whenever the race was lost; the condition waited on --
+//     both ends report "Lobby: 2 players" -- is unchanged.
+constexpr std::chrono::milliseconds kDirectDialCost = 3s;
+
+std::chrono::milliseconds direct_redial_gap_ceiling()
+{
+    const og::sim::WebSocketClientTransport::Options shipped{};
+    return std::chrono::milliseconds(shipped.max_reconnect_wait_ms) +
+        kDirectDialCost;
+}
+
+std::chrono::milliseconds direct_blip_recovery_ceiling()
+{
+    const og::sim::WebSocketClientTransport::Options shipped{};
+    return std::chrono::seconds(shipped.handshake_timeout_secs) +
+        direct_redial_gap_ceiling();
+}
+
+} // namespace
+
 // #278 (the reviewer's blip): a joiner parked in the lobby whose link drops
 // for a moment while the host is still there. The transport auto-reconnects
 // inside the window, the client re-sends its Join and the lobby re-converges
@@ -11952,7 +11994,8 @@ TEST(PickerNetworkClient, joiner_lobby_link_blip_reconnects_inside_the_window)
         join_client->initialize_from_save();
     }
 
-    const auto converge = [&](const char* phase) {
+    const auto converge = [&](const char* phase,
+                              std::chrono::milliseconds ceiling) {
         ASSERT_TRUE(wait_until([&] {
             host_client->poll_and_apply();
             auto join_scope = join_session.activate();
@@ -11961,10 +12004,10 @@ TEST(PickerNetworkClient, joiner_lobby_link_blip_reconnects_inside_the_window)
                                               "Lobby: 2 players") &&
                 status_lines_contain_exact(host_client->status_lines(),
                                            "Lobby: 2 players");
-        }, 10s)) << phase << ": host and joiner should converge on a "
+        }, ceiling)) << phase << ": host and joiner should converge on a "
                     "two-player lobby";
     };
-    converge("before the blip");
+    converge("before the blip", 10s);
     {
         auto join_scope = join_session.activate();
         EXPECT_TRUE(join_client->session_established());
@@ -11996,7 +12039,7 @@ TEST(PickerNetworkClient, joiner_lobby_link_blip_reconnects_inside_the_window)
 
     // Recovery, as before #278: the reconnect lands, the Join is re-sent,
     // the lobby re-converges — and the session was never declared lost.
-    converge("after the blip");
+    converge("after the blip", direct_blip_recovery_ceiling());
     {
         auto join_scope = join_session.activate();
         EXPECT_TRUE(join_client->session_established());
@@ -12053,7 +12096,8 @@ TEST(PickerNetworkClient,
         join_client->initialize_from_save();
     }
 
-    const auto converge = [&](const char* phase) {
+    const auto converge = [&](const char* phase,
+                              std::chrono::milliseconds ceiling) {
         ASSERT_TRUE(wait_until([&] {
             host_client->poll_and_apply();
             auto join_scope = join_session.activate();
@@ -12062,10 +12106,10 @@ TEST(PickerNetworkClient,
                                               "Lobby: 2 players") &&
                 status_lines_contain_exact(host_client->status_lines(),
                                            "Lobby: 2 players");
-        }, 10s)) << phase << ": host and joiner should converge on a "
+        }, ceiling)) << phase << ": host and joiner should converge on a "
                     "two-player lobby";
     };
-    converge("before the blip");
+    converge("before the blip", 10s);
 
     // The blip, timed on the post-game moment: the host's listener drops,
     // the joiner SEES the close, and the picker returns from the level into
@@ -12095,7 +12139,7 @@ TEST(PickerNetworkClient,
 
     // Recovery: the reconnect lands, the resume Join goes out, the lobby
     // re-converges and the session was never declared lost.
-    converge("after the blip");
+    converge("after the blip", direct_blip_recovery_ceiling());
     {
         auto join_scope = join_session.activate();
         EXPECT_TRUE(join_client->session_established());
@@ -13237,7 +13281,8 @@ TEST(PickerNetworkClient, joiner_finds_a_returning_host_within_the_redial_cap)
     host_client = og::ui::create_host_picker_lobby_client(host_options);
     host_client->initialize_from_save();
 
-    const bool found_again = wait_until(both_see_two_players, 4s);
+    const bool found_again =
+        wait_until(both_see_two_players, direct_redial_gap_ceiling());
     const std::string host_status = describe(*host_client);
     std::string joiner_status;
     {
