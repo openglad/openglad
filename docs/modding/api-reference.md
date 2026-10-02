@@ -204,7 +204,7 @@ return anything; it is ignored.
 
 | Hook | Signature | Notes |
 |---|---|---|
-| `do_special` | `(self) → true` or `(self) → false, reason` | Return `true` on success; return a bounded reason on refusal. Usually registered as a [`specials` table](#the-specials-table) instead. |
+| `do_special` | `(self) → true` or `(self) → false, reason` | Return `true` on success; return a bounded reason on refusal. Usually registered as a [`specials` table](#specials) instead. |
 | `check_special_ai` | `(self) → bool` | AI's "should I special now?" |
 | `hit_response` | `(self, foe)` | `self` is the stats OWNER (`statistics::controller()`), not a stats handle. |
 | `set_difficulty` | `(self, level)` | |

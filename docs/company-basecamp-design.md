@@ -41,23 +41,17 @@ The web build keeps **Quit** visible but disabled. **Continue** opens the most
 recent valid company; if no valid company exists, the player is sent to the
 Company List.
 
-![Main menu](media/company-basecamp/main-menu.png)
-
 The shared **CONTROLS** screen described here has since been deleted (see
 [the pause-menu design](pause-menu-design.md)): direction mode, remap, reset
 and input device are per-seat rows on the player screens — a Base Camp seat
 card, or the pause menu's player rows in a mission. Seat count and next-level
 team choices no longer live on the main menu.
 
-![Game Settings](media/company-basecamp/settings.png)
-
 ### 2.2 Found Your Company
 
 Beginning a new game opens a name-entry screen with the same editing grammar as
 character naming. A generated fantasy name is offered initially and may be
 rerolled or edited. The filename derived from that name is not shown.
-
-![Company name entry](media/company-basecamp/new-company.png)
 
 ### 2.3 Company List
 
@@ -66,15 +60,11 @@ actions: open the company, inspect its backups, or delete it. Corrupt headers
 remain visible as corrupt entries and cannot silently replace the active
 company.
 
-![Company List](media/company-basecamp/company-list.png)
-
 ### 2.4 Backups
 
 The backups view lists a company's snapshots newest first. Restoring rewinds
 the selected company in place after making a pre-restore snapshot. Deleting a
 company removes its backups as well. The active company cannot be deleted.
-
-![Company backups](media/company-basecamp/backups.png)
 
 ### 2.5 Base Camp
 
@@ -108,8 +98,6 @@ level, and experience fields.
 - Tap the scenario summary to open the Scenario menu.
 - Network guests may inspect foreign rows but cannot mutate them.
 
-![Owned seat settings](media/team-selection/seat-settings.png)
-
 Adding or removing seats and choosing their teams changes the current session.
 Those choices survive leaving Base Camp and returning through **CONTINUE**, but
 they are neither loaded from nor written to a company file. Direction modes
@@ -120,8 +108,6 @@ reuses that profile instead of duplicating one of the surviving players'
 bindings. Its factory-layout identity moves with it, so **RESET** and later
 config reloads restore the same distinct layout.
 
-![Three local seats after Continue](media/team-selection/basecamp-three-local-seats.png)
-
 ### 2.6 GO and READY
 
 Solo games show **GO**. In a network lobby, guests see **READY** and the host
@@ -130,10 +116,6 @@ the deployment can provide one distinct controllable hero for each local view.
 Denials are shown instead of silently ignoring the request. Opening an owned
 seat editor withdraws that machine's readiness before a synchronous remap or
 confirmation can hold it there; the player must choose **READY** again.
-
-| Host | Joiner |
-|---|---|
-| ![Host ready room](media/company-basecamp/base-camp-host.png) | ![Joiner ready room](media/company-basecamp/base-camp-joiner.png) |
 
 ### 2.7 Cross-control
 
