@@ -648,6 +648,9 @@ public:
     
     bool saveLevelAs(int id);
     bool saveLevel();
+    // Both level saves: write the level into the mounted campaign's package
+    // (mutate_packaged_campaign), then remount it.
+    bool save_into_mounted_campaign();
     
     void draw(screen* s);
     Sint32 display_panel(screen* s);
@@ -873,22 +876,26 @@ bool LevelEditorData::saveCampaign()
 }
 
 
-bool LevelEditorData::saveLevelAs(int id)
+bool LevelEditorData::save_into_mounted_campaign()
 {
-    level->world().id = id;
-    level->grid_file = std::format("scen{}", id);
-    
-    std::string old_campaign = get_mounted_campaign();
-    unpack_campaign(old_campaign);
-    bool result = level->save();
-    if(result)
-        result = repack_campaign(old_campaign);
-    cleanup_unpacked_campaign();
+    const std::string mounted = get_mounted_campaign();
+    const bool result =
+        mutate_packaged_campaign(mounted, mounted, [this] {
+            return level->save();
+        }) == CampaignMutationError::None;
 
     // Remount for consistency in PhysFS
     (void)remount_campaign_package_with_error();
 
     return result;
+}
+
+bool LevelEditorData::saveLevelAs(int id)
+{
+    level->world().id = id;
+    level->grid_file = std::format("scen{}", id);
+    
+    return save_into_mounted_campaign();
 }
 
 
@@ -1470,17 +1477,7 @@ bool LevelEditorData::saveLevel()
 {
     level->grid_file = std::format("scen{}", level->world().id);
 
-    std::string old_campaign = get_mounted_campaign();
-    unpack_campaign(old_campaign);
-    bool result = level->save();
-    if(result)
-        result = repack_campaign(get_mounted_campaign());
-    cleanup_unpacked_campaign();
-
-    // Remount for consistency in PhysFS
-    (void)remount_campaign_package_with_error();
-
-    return result;
+    return save_into_mounted_campaign();
 }
 
 void LevelEditorData::draw(screen* s)

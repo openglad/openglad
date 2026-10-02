@@ -1839,6 +1839,80 @@ TEST(CampaignAndLevelPicker, set_scen_level_load_failure_restores_the_current_le
     ASSERT_TRUE(og::runtime::current_session->myscreen_->load_level());
 }
 
+// The range half of the same load-or-roll-back rule: a level id must fit the
+// save's short cursor (0..32767) before anything is written or loaded. ENTER
+// ID parses any positive int, so "40000" reaches SET LEVEL on an ungated
+// (`matchup: versus`) campaign; it must be refused BEFORE the loader is asked
+// for it -- the same rule the campaign-book level rows apply -- with the
+// picker's own "Invalid level file." answer, the current level reloaded and
+// the cursor untouched. The 820 reload trace is the paired positive control:
+// the loader trace is live, so the absent 40000 line means "never attempted".
+TEST(CampaignAndLevelPicker, set_scen_level_refuses_an_id_above_the_short_range_before_loading)
+{
+    ViewportGuard viewport_guard;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.current_campaign = "modes";
+    save.scen_num = 820;
+    og::runtime::current_session->myscreen_->world().id = 820;
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->load_level());
+    const std::string title_820 =
+        og::runtime::current_session->myscreen_->world().title;
+
+    PromptQueueGuard prompt_queue;
+    prompt_queue.push("40000");  // ungated, positive, but past the short range
+
+    char& end = og::runtime::current_session->myscreen_->world().end;
+    WorldEndGuard end_guard(end);
+    end = 0;
+
+    trace_clear();
+    level_picker_testing_input_reset();
+    SDL_Thread* thread = SDL_CreateThread(
+        level_picker_enter_id_injector, "level_picker_enter_id_range", nullptr);
+    ASSERT_TRUE(thread != nullptr);
+    vbutton dispatcher;
+    const Sint32 ret = dispatcher.do_call(
+        button_action_id(ButtonAction::DoSetScenLevel), 0);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    EXPECT_EQ(2, (int)ret) << "the refused set returns MENU_REDRAW";
+    EXPECT_FALSE(trace_contains("picker", "set_level_denied_gate 40000"))
+        << "precondition: a versus campaign must not gate the id";
+    EXPECT_FALSE(trace_contains("game", "LevelRuntimeData::load id=40000 "))
+        << "an id past 32767 must be refused before the loader is asked";
+    EXPECT_TRUE(trace_contains("popup", "Invalid level file."))
+        << "the refused id must say so";
+    EXPECT_EQ(820, (int)og::runtime::current_session->myscreen_->world().id)
+        << "the refused id must leave the world on level 820";
+    EXPECT_TRUE(trace_contains("game", "LevelRuntimeData::load id=820 "))
+        << "the rollback must reload the current level";
+    EXPECT_EQ(title_820,
+              og::runtime::current_session->myscreen_->world().title)
+        << "the world must still hold level 820";
+    EXPECT_EQ(820, (int)save.scen_num)
+        << "a refused id must not move the cursor";
+    EXPECT_FALSE(trace_contains("popup", "Also failed"))
+        << "the reload of a good level must succeed";
+
+    save.reset();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+    og::runtime::current_session->myscreen_->world().id = 1;
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->load_level());
+}
+
 TEST(CampaignAndLevelPicker, level_picker_delete_removes_only_selected_level)
 {
     ViewportGuard viewport_guard;
