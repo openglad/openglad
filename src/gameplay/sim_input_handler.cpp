@@ -11,6 +11,8 @@
 
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
@@ -21,6 +23,7 @@
 #include <openglad/core/test_trace.h>
 
 #include <algorithm>
+#include <string_view>
 
 namespace {
 
@@ -182,7 +185,6 @@ SimInputResult sim_process_player_input(
     short player_num,
     short my_team,
     SimInputDebounce& debounce,
-    const std::string (*special_names)[NUM_SPECIALS],
     og::sim::SimEventLog* sim_events)
 {
     SimInputResult result;
@@ -288,14 +290,13 @@ SimInputResult sim_process_player_input(
         control->set_current_special(control->current_special() + 1);
 
         const int special_index = static_cast<int>(control->current_special());
-        const int family_index = static_cast<int>(static_cast<unsigned char>(control->family()));
-        bool special_missing = true;
-        if (special_names != nullptr &&
-            family_index >= 0 && family_index < NUM_FAMILIES &&
-            special_index >= 0 && special_index < NUM_SPECIALS)
-        {
-            special_missing = (special_names[family_index][special_index] == "NONE");
-        }
+        const FamilyDescriptor* const descriptor = get_family_descriptor(
+            static_cast<int>(static_cast<unsigned char>(control->family())));
+        const bool special_missing =
+            descriptor == nullptr || special_index < 0 ||
+            special_index >= NUM_SPECIALS ||
+            descriptor->special_names[special_index] == nullptr ||
+            std::string_view(descriptor->special_names[special_index]) == "NONE";
 
         if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
             || special_missing

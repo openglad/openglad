@@ -565,7 +565,6 @@ TEST(InputLatch, sim_stuck_walking_up_recovers_on_down_press)
     input_state_from_sdl(input);
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS];
     og::sim::SimEventLog log;
 
     // Latched UP: the sim walks the character up (stuck-walking-up).
@@ -573,7 +572,7 @@ TEST(InputLatch, sim_stuck_walking_up_recovers_on_down_press)
     input_state_from_sdl(input);
     sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_TRUE(control->lasty() < 0.0f)
         << "latched UP must produce an upward walkstep";
 
@@ -585,7 +584,7 @@ TEST(InputLatch, sim_stuck_walking_up_recovers_on_down_press)
     input_state_from_sdl(input);
     sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
     ASSERT_TRUE(control->lasty() > 0.0f)
         << "fresh DOWN must walk the character down despite the stale UP latch";
 

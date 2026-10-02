@@ -372,7 +372,6 @@ TEST(StatsFright, switch_and_claim_preserve_fright_and_hygiene)
     b->set_current_weapon(FAMILY_ARROW);
 
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
     input.clear();
 
@@ -381,14 +380,14 @@ TEST(StatsFright, switch_and_claim_preserve_fright_and_hygiene)
     walker* control = a;
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(control == b);
     ASSERT_TRUE(result.new_control == b);
 
     // Next tick claims b (user -1 -> 0) and runs the SELECTIVE clear.
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(control == b);
     ASSERT_EQ(0, static_cast<int>(b->user()));
 
@@ -410,13 +409,12 @@ TEST(StatsFright, claim_path_no_longer_uncharms)
     c->set_real_team_num(1); // charmed onto team 0 (real team 1)
 
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
     input.clear();
 
     walker* control = c;
     (void)sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
 
     ASSERT_EQ(0, static_cast<int>(c->team_num()));
     ASSERT_EQ(1, static_cast<int>(c->real_team_num()))
@@ -431,7 +429,6 @@ TEST(StatsFright, sim_player_thaw_immunity_window)
     a->stats()->set_frozen_delay(2);
 
     SimInputDebounce debounce{};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     InputState input;
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
@@ -440,19 +437,19 @@ TEST(StatsFright, sim_player_thaw_immunity_window)
 
     // Tick 1: frozen (2 -> 1); all input swallowed.
     (void)sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(1, a->stats()->frozen_delay_raw());
     ASSERT_EQ(0, static_cast<int>(a->shifter_down()));
 
     // Tick 2: the 1 -> 0 transition writes the immunity phase.
     (void)sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(-og::combat::kFreezeThawImmunityTicks, a->stats()->frozen_delay_raw());
 
     // Tick 3: masked getter reads 0 — the player acts during immunity
     // (before: this tick was the thaw tick and a re-freeze could land first).
     (void)sim_process_player_input(
-        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(1, static_cast<int>(a->shifter_down()))
         << "input reaches the movement branch during the immunity window";
 }
