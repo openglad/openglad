@@ -20,7 +20,7 @@ legacy, or retired.
 | Match setup (the SETUP wizard, docs/match-setup-design.md) | Runtime |
 | Company List, Backups, company name entry | Runtime |
 | Networking | Legacy `SdlPickerClient` loop |
-| View Team, Matchup, Fighters list (amendment B6), manual Save/Load slots, global Controls | Retired |
+| View Team, Matchup, Fighters list, manual Save/Load slots, global Controls | Retired |
 
 Networking remains legacy because its room-list state machine needs pre-input
 polling and click-against-visible-snapshot semantics that the shared frame
@@ -127,7 +127,7 @@ compiled variants must keep every surviving raw index and link valid.
 
 ## Drawing and transitions
 
-Fades follow one rule (#237): a transition fades exactly when it crosses the
+Fades follow one rule: a transition fades exactly when it crosses the
 main-menu boundary, and it fades **symmetrically** — the way in and the way
 back. `run_menu_screen` derives the decision; no screen declares a fade:
 
@@ -137,9 +137,8 @@ back. `run_menu_screen` derives the decision; no screen declares a fade:
   `fadeblack(1)` presents it, and the screen fades its own last frame out
   again at its exit. Every main-menu door enters this way — GAME SETTINGS,
   HELP, the LOAD list, BEGIN NEW GAME's name entry, CONTINUE's Base Camp —
-  and so does the main menu itself behind each BACK. That symmetry is the
-  rule's whole point: a door that faded only on the way back was the bug
-  (#237).
+  and so does the main menu itself behind each BACK. A door must fade both
+  ways; one that faded only on the way back would be a bug.
 - A nested `run_menu_screen` call (any subscreen door under an open screen)
   never fades; its cold frame is composed and presented directly. Base Camp's
   strip and roster doors, settings' own subscreens, and the company list's
