@@ -11,7 +11,8 @@ reference documents, in reading order for any non-trivial task:
 
 1. `docs/lua-classpacks-design.md` — architecture and pack format. **§3
    Determinism Cookbook (R1–R10) is non-negotiable law** for anything that
-   runs inside the sim; §4 is the declaration schema.
+   runs inside the sim, except that R1–R3 are core pack only; §4 is the
+   declaration schema.
 2. `docs/modding/api-reference.md` — every `og.*` function, walker/stats/guy
    method, property, constant, and hook signature, plus a guided tour of the
    runnable example pack in `docs/modding/examples/emberwisp/` (one
@@ -117,20 +118,23 @@ either pass.
 
 ## The rules that bite
 
-- **Determinism**: integer division and remainder use `og.div`/`og.mod`
-  unless documented operand ranges prove Lua `//`/`%` identical to C; never
-  use `/` for integer division. Every float op maps to one `og.f*` call
-  (plain `+`/`-`/`*` is fine only when the operands already equal their C++
-  `float` values and the exact result is float-representable, commonly an
-  integer-valued result within 2^24). Randomness is ONLY via `og.rand` /
-  `og.rand0` (or
-  `og.cosmetic_rand` at C++ cosmetic-selector sites).
+- **Determinism**: randomness is ONLY via `og.rand` / `og.rand0`.
   `og.rand(n)` errors on `n <= 0`; `og.rand0(n)` answers 0 there WITHOUT
   advancing the stream (exactly C++ `next(0)`) — use `og.rand0` when the
   bound can legitimately reach zero (level/tuning-scaled), plain `og.rand`
   when it is provably positive (the error is a tripwire). No `pairs` (it
   does not exist). Arrays only. Never format a float into a sim-visible
   string.
+- **Core-pack arithmetic (cookbook R1–R3)**: core pack only. These rules
+  make core-pack Lua match the classic integer/float semantics the parity
+  goldens record; the engine does not require them of mods. In the core
+  pack, integer division and remainder use `og.div`/`og.mod` unless
+  documented operand ranges prove Lua `//`/`%` identical to C; never use `/`
+  for integer division. Every float op maps to one `og.f*` call (plain
+  `+`/`-`/`*` is fine only when the operands already equal their C++
+  `float` values and the exact result is float-representable, commonly an
+  integer-valued result within 2^24). `og.cosmetic_rand` stands in for
+  `og.rand` at the classic C++ cosmetic-selector sites.
 - **Preferred API surface** (use these over raw method chains):
   - *Properties*: `self.hp`, `self.max_hp`, `self.magicpoints`,
     `self.max_magicpoints`, `self.level`, `self.team` read AND write;
@@ -265,8 +269,9 @@ If every perturbation you try is inert, the honest conclusion is usually
 
 ### Order-of-evaluation traps
 
-C++ leaves evaluation order unspecified where Lua does not. Adjudicated per
-site by parity, and the answers genuinely differ:
+When porting core-pack behavior from C++: C++ leaves evaluation order
+unspecified where Lua does not. Adjudicated per site by parity, and the
+answers genuinely differ:
 
 - `rng(a) >= rng(b)` (comparison operands) → **left-first** (thief, orc)
 - `f(..., rng(3), rng(3))` (call arguments) → **right-first** (slime grow)

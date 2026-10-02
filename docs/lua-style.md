@@ -3,7 +3,7 @@
 Scope: all pack Lua — `packs/`, the example packs under `docs/modding/`, and
 pack chunks embedded in C++ `R"LUA(` literals. This document is style only.
 The determinism cookbook ([lua-classpacks-design.md](lua-classpacks-design.md)
-§3, R1–R10) and the build lints (`scripts/check_lua_statement_lines.py`: one
+§3, R1–R10, with R1–R3 core pack only) and the build lints (`scripts/check_lua_statement_lines.py`: one
 statement per line, one short-circuit per line, one `function` keyword per
 line; chunks compile text-only) are law underneath it and are not restated
 here. Where style and cookbook appear to conflict, the cookbook wins.
@@ -50,12 +50,12 @@ hook table is a load error.
 
 Three kinds of comment are admissible:
 
-1. **RNG-order records.** Eval-order adjudications (the `FLAGGED` convention:
-   two draws in one C++ expression, stating which order parity chose), guard
-   semantics, and notes on calls that look pure but draw (`attack()`,
-   `query_object_passable()`, `og.charm_duration`, …). These are load-bearing
-   determinism records; they move with the code they describe and survive
-   every refactor.
+1. **RNG-order records.** Eval-order records (the core pack's `FLAGGED`
+   convention: where the classic C++ made two draws in one expression, the
+   comment states which order parity chose), guard semantics, and notes on
+   calls that look pure but draw (`attack()`, `query_object_passable()`,
+   `og.charm_duration`, …). These are determinism records; they move with
+   the code they describe and survive every refactor.
 2. **Why-comments.** Why a kept shim is kept (S5), why a branch is spelled
    out for coverage measurability under the one-statement lint, why two
    statements cannot be reordered.
@@ -86,12 +86,16 @@ belongs in the binding's C++ documentation instead.
   filename-lexicographically into one shared environment per pack, so a
   `_G`-published helper works only by a load-order accident the reader
   cannot see; `og.use` makes the dependency explicit.
-- New `lib/` files ride the MP pack-transfer manifest (protocol v10); a
-  layout change must keep the manifest and pack-cache tests green.
+- New `lib/` files ride the MP pack-transfer manifest (protocol v10) like
+  any other pack file.
 
 ## S5 — Arithmetic shims
 
-The cookbook decides where a shim is required. Drop one only when audited
+The arithmetic shims (`og.div`/`og.mod`, `og.f*`, the narrowing helpers) are
+cookbook R1–R3, which are core pack only: they make core-pack Lua match the
+classic integer/float semantics the parity goldens record; the engine does
+not require them of mods. Within the core pack, the cookbook decides where a
+shim is required. Drop one only when audited
 operand ranges prove the plain operation identical (float-representable
 inputs and result for a removed `og.f*`; C and Lua division/remainder
 semantics identical for a removed `og.div`/`og.mod`). Integer-valued inputs
@@ -124,11 +128,3 @@ generated from the same registration table:
   get→combine→set chains wherever a binding exists.
 - The `s_*` methods remain supported aliases so out-of-tree packs keep
   working; removing them would be a pack-format compatibility break.
-
-## Applying the contract
-
-Changes to the core pack go through parity with the recorder off and armed,
-the coverage report, and the pin-map check
-(`scripts/parity/check_mutation_pins.py`). Pure renames are parity-neutral by
-construction; run parity anyway. Every touched file must comply with the
-whole contract.

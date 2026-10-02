@@ -1,27 +1,14 @@
-# Base Camp zones: the Lua-composable camp (issue #206 revamp)
+# Base Camp zones: the Lua-composable camp
 
 The first campaign-scripting cut bolted a MISSIONS book onto the SCENARIO
 submenu — a fourth level-selection door that restructured nothing. This
 design makes the campaign script own the between-levels *experience*: the
 Base Camp splits into a C++-owned **Game Management zone** and a
 Lua-composable **Gameplay zone**, and the shipped books move from a side
-page into the screen the player lives on. Red-teamed against the full
-recon of the 49-row screen, the lobby coupling, and the terminal twins;
-every mechanism below is either shipped machinery or a named extension.
-
-## History strategy: excise via squash
-
-The v1 missions architecture is UNMERGED (PR #227 is open) and this repo
-squash-merges every PR (verified: recent merge commits are all
-single-parent). Master therefore receives exactly one commit for this
-branch, and the excision goal — master never contains the missions door,
-its terminal ordinal churn, or a born-dead screen — is met by two
-requirements this design enforces instead of a history rewrite: the
-FINAL DIFF carries no missions residue (the zone waves retired every
-surface, constant, test and capture path), and the PR presents the zone
-architecture only. The branch history is retained as an honest audit
-trail of the build. `ButtonAction` 106 was removed outright when it
-became unreachable; the freed value is documented as free.
+page into the screen the player lives on. Every mechanism below is either
+shipped machinery or a named extension. The MISSIONS book never shipped;
+`ButtonAction` 106 was removed when it became unreachable, and the value is
+free.
 
 ## The split
 

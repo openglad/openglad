@@ -1,16 +1,13 @@
 # Master Specification — FREE FOR ALL (mode 7, campaigns/modes)
 
-Line anchors in this document were captured pre-implementation, at branch
-`feature/ffa-mode` HEAD `97bbf10b`; the mode has been built since and the
-files they point into have moved. Re-verify any anchor with
-`sed -n '<line>p'` against HEAD before trusting it.
+Line anchors in this document were captured before implementation, at
+commit `97bbf10b`; the files they point into have moved since, so find code
+by the quoted text.
 
-Status: **implemented** (judge-synthesized design, built on
-`feature/ffa-mode`). This
-document is the single authority for the FFA mode; it supersedes the two
-designer drafts it was synthesized from (the "minimal blast radius" draft won;
-grafts from the rival draft and two judge-found corrections are recorded in
-the Decision log). It resolves issues **#203** (non-team deathmatch
+Status: **implemented**. This document is the design record for the FFA
+mode. Of two candidate designs the "minimal blast radius" one won; grafts
+from the other and two review corrections are recorded in the Decision
+log. It resolves issues **#203** (non-team deathmatch
 scenarios) and **#187** (Mutant should force a true free-for-all). The player
 doc is `docs/mp-game-modes.md`; the pack cookbook every script cites is
 `docs/lua-classpacks-design.md`.

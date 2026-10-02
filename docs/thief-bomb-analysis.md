@@ -1,5 +1,8 @@
 # Thief bomb analysis (#228)
 
+> One-off analysis written to answer issue #228; it is not maintained as the
+> code changes.
+
 Issue #228 reports a level-10 thief's DROP BOMB one-shotting a level-9 cleric,
 and asks whether that is reasonable. This document answers it from the code: it
 reads the bomb's damage, blast, fuse and friendly-fire tiers out of the branch,

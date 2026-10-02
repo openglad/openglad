@@ -2,7 +2,7 @@
 
 The class-pack Lua API, symbol by symbol. Read
 [`docs/lua-classpacks-design.md`](../lua-classpacks-design.md) first — the
-Determinism Cookbook (R1–R10) governs everything here, and §4 is the
+Determinism Cookbook (R1–R10; R1–R3 are core pack only) governs everything here, and §4 is the
 declaration schema. For *how to build, run and prove* a mod, see
 [`.claude/skills/openglad-modding/SKILL.md`](../../.claude/skills/openglad-modding/SKILL.md).
 
@@ -36,18 +36,23 @@ never store mutable sim state in a global or upvalue (cookbook R6).
 
 ## Deterministic arithmetic (`og.*`)
 
+`og.div`/`og.mod`, the `og.f*` operations, the narrowing helpers and
+`og.cosmetic_rand` let core-pack Lua match the classic integer/float
+semantics the parity goldens record (cookbook R1–R3). They are core pack
+only: the engine does not require them of mods.
+
 | Function | Semantics |
 |---|---|
-| `og.div(a,b)` / `og.mod(a,b)` | C integer division/remainder (truncate toward zero, sign of dividend). Errors on `b == 0` and on overflow. Use for EVERY integer `/` and `%`. |
-| `og.fadd/fsub/fmul/fdiv(a,b)` | One operation performed in C `float`, returned as the exact widened double. One call per C++ float operator; never chain in Lua. |
-| `og.i8/i16/i32/u8(x)` | Modular narrowing of an integer, matching the C++ cast. |
+| `og.div(a,b)` / `og.mod(a,b)` | C integer division/remainder (truncate toward zero, sign of dividend). Errors on `b == 0` and on overflow. The core pack uses it for every integer `/` and `%` (R1). |
+| `og.fadd/fsub/fmul/fdiv(a,b)` | One operation performed in C `float`, returned as the exact widened double. The core pack makes one call per C++ float operator (R2). |
+| `og.i8/i16/i32/u8(x)` | Modular narrowing of an integer, matching the C++ cast (R3). |
 | `og.trunc(x)` | `(int64)trunc(double)` — C cast-float-to-int semantics. Errors on NaN / out of range. |
 | `og.max(a,b)` / `og.min(a,b)` | `std::max` / `std::min` exactly: `og.max` answers `b` only when `a < b`, `og.min` answers `b` only when `b < a`, every tie answers `a`. Exact mixed integer/float ordering (never a lossy int64→double round-trip); the winning argument comes back unchanged, so integer subtype survives. Arguments must be numbers (no string coercion); NaN is an error. |
 | `og.clamp(v,lo,hi)` | `std::clamp`: `lo` when `v < lo`, else `hi` when `hi < v`, else `v` itself. `hi < lo` (std's UB precondition) is a script error. Same ordering/subtype/NaN rules as `og.max`. |
 | `og.sign(x)` | `-1`, `0` or `1` as an integer, for any number (`og.sign(-0.0)` is 0; NaN is an error) — the guarded `v /= abs(v)` idiom as a total function. |
 | `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. `n` must be in `[1, 2147483647]`. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call, or use `og.rand0`) and when `n > 2147483647` (see the range note below). |
 | `og.rand0(n)` | `og.rand` with `IRandom`'s real `n <= 0` contract: answers 0 **without advancing the stream** (C++ `next(0)` returns before the LCG step), which is what the hand-written `if n > 0 then r = og.rand(n) end` guard trios encode. Negative `n` behaves as 0 too. For `n > 0` it is `og.rand` verbatim — including the `n > 2147483647` error — so swapping a guarded `og.rand` for `og.rand0` cannot move the stream. Requires an active world on every path. |
-| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Same bound range as `og.rand`: errors when `n <= 0` and when `n > 2147483647`. |
+| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Core pack only: it is used where the classic C++ drew through that selector (path-check cadence, elf spread). Same bound range as `og.rand`: errors when `n <= 0` and when `n > 2147483647`. |
 | `og.log(...)` / `print(...)` | Diagnostics. Traces under category `script`, and appends to the host's bounded transcript. |
 
 A Lua integer is 64-bit; the C++ generator behind all three RNG bindings
@@ -58,6 +63,11 @@ arrive as `next(0)`, answering a constant 0 without advancing the stream.
 Since a wrapped bound is a desync rather than a rounding error, the bindings
 raise a script error instead of quietly clamping. Bounds in
 `[1, 2147483647]` are passed through exactly and draw what they always drew.
+
+Some calls draw from the sim RNG without looking like it: `attack()`,
+`og.query_object_passable`, `og.charm_duration`, `og.freeze_duration` and
+`og.heal_amount`. Reordering or short-circuiting them changes the stream
+(R4).
 
 ## Declaring a family (`og.family`)
 
@@ -194,7 +204,7 @@ return anything; it is ignored.
 
 | Hook | Signature | Notes |
 |---|---|---|
-| `do_special` | `(self) → true` or `(self) → false, reason` | Return `true` on success; return a bounded reason on refusal. Usually registered as a [`specials` table](#the-specials-table) instead. |
+| `do_special` | `(self) → true` or `(self) → false, reason` | Return `true` on success; return a bounded reason on refusal. Usually registered as a [`specials` table](#specials) instead. |
 | `check_special_ai` | `(self) → bool` | AI's "should I special now?" |
 | `hit_response` | `(self, foe)` | `self` is the stats OWNER (`statistics::controller()`), not a stats handle. |
 | `set_difficulty` | `(self, level)` | |
@@ -635,12 +645,12 @@ which accepts either a guy handle or a walker.
 | `og.find_in_range(list, range, self)` | Array, count. |
 | `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`, and allegiance follows the owner chain. |
 | `og.oblist()` | Array of every entity in the ob list, in list order. |
-| `og.living_count()` | The world's living head-count field. NOT derivable from an `og.oblist()` scan — the counter can legitimately drift (an editor map resize erases livings without decrementing), and scripts must read the same field the C++ read. |
+| `og.living_count()` | The world's living head-count field. NOT derivable from an `og.oblist()` scan — the counter can legitimately drift (an editor map resize erases livings without decrementing), so a script that needs the head count reads this field. |
 | `og.remaining_foes(self)` | `int`. |
 
-`list` selects which world entity list the C++ call scanned: `"ob"`,
-`"weap"`, or `"fx"`. Any other string is an error. All arrays preserve the
-C++ iteration order — walk them with `for i = 1, #t` (there is no `pairs`).
+`list` selects which world entity list to scan: `"ob"`, `"weap"`, or
+`"fx"`. Any other string is an error. All arrays are in the engine's list
+order; walk them with `for i = 1, #t` (there is no `pairs`).
 
 ### Terrain
 
@@ -712,8 +722,8 @@ rows.
 
 | Function | Result |
 |---|---|
-| `og.ani_frame(entity, row, index)` | The single frame value, or `nil`. `nil` covers every case where the C++ `if (self->ani)` guard (or a bad row/index) would have bailed, so the script simply skips its `set_frame`. The sentinel slot itself is addressable (`index == length`), so a legitimately empty row reads back the same `-1` the C++ would have handed `set_frame`. |
-| `og.ani_row(entity, row)` | Array of the frames up to (excluding) the `-1` sentinel, or `nil`. An empty table means "present but zero-length" (the C++ `seq_len <= 0` stop); `nil` means no table, row past `ani_count`, a null row, or a missing sentinel. |
+| `og.ani_frame(entity, row, index)` | The single frame value, or `nil`. `nil` means the walker has no animation table, or the row/index is bad; skip the `set_frame` call then. The sentinel slot itself is addressable (`index == length`), so a legitimately empty row reads back the `-1` sentinel. |
+| `og.ani_row(entity, row)` | Array of the frames up to (excluding) the `-1` sentinel, or `nil`. An empty table means "present but zero-length" (`seq_len <= 0`); `nil` means no table, row past `ani_count`, a null row, or a missing sentinel. |
 
 Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
@@ -736,7 +746,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 | `og.game_ended()` | `bool`. |
 | `og.my_team()` | The local team number. |
 | `og.enemy_freeze()` / `og.set_enemy_freeze(v)` | The freeze bank. |
-| `og.set_palette(id)` | Sets `current_palette_id`. Pair it with an `EVENT_SET_PALETTE` emit, exactly like the C++ did — the field alone changes no pixels. |
+| `og.set_palette(id)` | Sets `current_palette_id`. Pair it with an `EVENT_SET_PALETTE` emit: the field alone changes no pixels. |
 | `og.current_scenario()` | Current scenario number. |
 | `og.level_completed(level) → bool` | Whether that level is in the completed set. |
 | `og.world_can_exit_whenever() → bool` | The `TYPE_CAN_EXIT_WHENEVER` world flag. |
@@ -746,7 +756,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
 | Function | Effect |
 |---|---|
-| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored, matching the C++ `is_valid_score_team()` guard. |
+| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored (the engine's `is_valid_score_team()` guard). |
 | `og.set_withdraw_request(level)` | Latches the exit pad's withdraw request (`withdraw_requested` + `withdraw_level` together). |
 | `og.emit_exit_confirmation(prompt, dest_level [, is_withdraw])` | `RequestExitConfirmation` with the exit pad's payload. |
 | `og.emit_withdraw_to_level(level)` | `WithdrawToLevel`. |
@@ -782,7 +792,7 @@ exactly one definition. (The four flat spellings that predate the namespace
 — `og.scare_duration`, `og.scare_radius`, `og.elemental_lifetime`,
 `og.image_lifetime` — stay as they are; new combat_math surface lands here.)
 
-| Function | C++ helper (legacy formula) |
+| Function | Engine formula (`combat_math.h`) |
 |---|---|
 | `og.combat.yell_radius(level)` | `yell_radius` — orc yell radius, `160 + 20*L` px, flat cap 420. |
 | `og.combat.stun_total(cur_raw, add)` | `stun_total` — orc yell stun accumulator over RAW `frozen_delay`: `cur_raw < 0` (thaw immunity) discards the add; negative adds count as 0; monotonic cap at 150 (an over-cap value is answered unchanged). |
@@ -1086,11 +1096,11 @@ local C = og.C
 -- Each wisp starts with a random slice of its ember already spent.
 -- Exactly one draw, unconditional, so the RNG stream advances identically
 -- on every peer (R4). The bound is a positive literal, so plain og.rand
--- is right — its error on n <= 0 is a tripwire worth keeping.
+-- is right — its error on n <= 0 is a tripwire worth keeping; og.rand0 is
+-- for bounds that can legitimately reach zero (see flare_burst).
 local function on_create(self)
   local spent = og.rand(16)
-  -- magicpoints is a C++ float: per-op rounding.
-  self.magicpoints = og.fsub(self.max_magicpoints, spent)
+  self.magicpoints = self.max_magicpoints - spent
   self.ani_type = C.ANI_WALK
 end
 
@@ -1113,7 +1123,7 @@ local function flare_burst(self)
   local t = og.tuning(self)
   local ember = og.trunc(self.magicpoints) - t.burn_floor
   if ember <= 0 then
-    return false, "NO EMBER TO VENT"
+    return false, "NOT ENOUGH EMBER"
   end
   -- Tuning is modder data: clamp it into a sane sim window before use.
   local range = og.clamp(t.burst_range, C.GRID_SIZE, 320)
@@ -1127,9 +1137,8 @@ local function flare_burst(self)
     -- the thaw-immunity discard and the 150 cap are its policy, not ours.
     foes[i]:add_frozen_stun(t.stun_base + roll)
   end
-  -- magicpoints and busy are C++ floats: per-op rounding.
-  self.magicpoints = og.fsub(self.magicpoints, ember)
-  self.busy = og.fadd(self:busy(), 4.0)
+  self.magicpoints = self.magicpoints - ember
+  self.busy = self:busy() + 4.0
   og.emit_positional_sound(self, C.SOUND_EXPLODE)
   return true
 end
@@ -1140,12 +1149,12 @@ end
 --   on_fire_weapon = on_fire_weapon,
 ```
 
-Details worth noticing: `self.magicpoints` reads the property, but the
-`busy` *read* stays `self:busy()` (reads resolve method-first — `busy` is
-also a method name — while the `self.busy =` write works for every writable
-property); the plain `-` and `*` on `ember` and the roll bound are exact
-integer arithmetic, so no `og.f*` shim; and both `og.rand` and `og.rand0`
-appear, each where its contract is the right one.
+`self.magicpoints` reads the property, but the `busy` *read* stays
+`self:busy()`: reads resolve method-first and `busy` is also a method name,
+while the `self.busy =` write works for every writable property. The
+arithmetic uses plain Lua operators; the `og.f*` and `og.div` shims are a
+core-pack rule (cookbook R1–R3). Both `og.rand` and `og.rand0` appear, each
+where its contract fits.
 
 ### Where to go for more
 
@@ -1160,10 +1169,11 @@ appear, each where its contract is the right one.
 
 ### One statement per line
 
-Pack Lua is measured by the same coverage gate as the C++, and line coverage
-counts lines. `if low then flee() end` on one line makes the branch body share
-a coverage point with the test that guards it, so a branch nothing ever takes
-reads as covered. Write it out:
+The build checks shipped Lua with `scripts/check_lua_statement_lines.py`.
+The rule exists for line coverage (see `scripts/coverage/README.md`):
+`if low then flee() end` on one line makes the branch body share a coverage
+point with the test that guards it, so a branch nothing ever takes reads as
+covered. Write it out:
 
 ```lua
 -- rejected by scripts/check_lua_statement_lines.py
@@ -1178,9 +1188,11 @@ end
 The rule is mechanical: no statement after `then` / `do` / `else` / `repeat`,
 after a `;`, or on a function's header line, and no two statements run
 together. An empty block (`function() end`, `if x then end`) is fine — it
-hides nothing. The check runs on every build, over `packs/`, over the example
-packs under `docs/modding/`, and over pack Lua that lives in a C++ `R"LUA(`
-literal.
+hides nothing. The check runs on every build over `.lua` files under
+`packs/`, `docs/` and `campaigns/` at any depth, `.lua` members of `.glad`
+campaign archives, and the declared product-C++ `R"LUA(` chunks
+(`scripts/lua_inventory.py` is the one list; a `.lua` under `tests/` or
+`scripts/` is a fixture and is not linted).
 
 ### Two limits worth knowing before you design
 
@@ -1196,35 +1208,3 @@ literal.
   at zero for all of them and must set what it needs on the entity after
   spawning it. Living families do not have this gap — their loader stats
   come from the declaration's `combat` block.
-
-## Transliteration checklist
-
-For porting C++-shaped behavior into pack Lua (new mods should just write
-the idiom the worked example shows; this list is for byte-exact ports).
-
-1. Map every C++ float operator to exactly one `og.f*` call; never chain in
-   Lua. Comparing floats directly is fine. Plain `+`/`-`/`*` is safe only
-   when the exact result is representable in C `float`; division never is.
-2. Map integer `/` and `%` to `og.div` / `og.mod` unless documented operand
-   ranges prove Lua floor division/remainder identical to C truncation.
-3. `(int32)someFloat` → `og.trunc`. Explicit narrowing casts → `og.i8`/
-   `og.i16`/`og.u8` **only** where the C++ did more than a plain setter store
-   (setters — and the properties routed through them — already narrow).
-4. Preserve `og.rand` call order and count exactly. A guarded C++ draw
-   (`if (n > 0) r = rng(n)`) is one `og.rand0(n)` — identical stream both
-   ways. Watch for C++ expressions with two `rng.next()` calls: C++ operand
-   order is unspecified, so make the order explicit and let parity
-   adjudicate PER SITE. Adjudicated so far: comparison operands
-   (`rng(a) >= rng(b)`) ran LEFT-first (thief, orc); function-call arguments
-   (`f(..., rng(3), rng(3))`) ran RIGHT-first (slime grow). Do not assume
-   either — flip on parity failure.
-5. Remember the calls that draw from the RNG without looking like it:
-   `attack()`, `query_object_passable()`, `og.charm_duration`,
-   `og.freeze_duration`, `og.heal_amount`.
-6. `for_each_foe_in_range` → `og.foes_in_range`; `world->find_*_in_range` →
-   the matching `og.find_*` with the correct list selector.
-7. `dynamic_cast<living*>` guards → `self:order() ~= og.C.ORDER_LIVING`.
-8. A `switch (current_special())` ladder → a `specials` table; the
-   dispatcher's select/default/fall-through semantics are the ladder's.
-9. Keep every emitted string byte-identical.
-10. Run `og_test_parity` after each family; goldens must not change.

@@ -1,8 +1,8 @@
-# Camera Viewscreens — implementation-ready specification
+# Camera Viewscreens — design specification
 
 **Feature:** engine-owned camera viewscreens — panes that follow an arbitrary walker without being a player seat — creatable, retargetable, and destroyable from mode Lua. First consumer: the ball camera in Soccer and Basketball (issue #224).
-**Branch:** `feature/camera-views` (repo `/home/yans/code/openglad`, forked from master `7f81461d`). All file:line anchors verified against that tree — line numbers shift as you insert code; anchor by the quoted text, not the number.
-**Winning mechanism:** the MINIMAL-BLAST skeleton (camera as a parallel member outside the seat world), selected by adversarial design review 61–54 over the issue-sketch INTEGRATED alternative, with eight grafts and rulings from the review folded in below. Rulings that would otherwise look arbitrary are marked "(design-review ruling)".
+**Anchors:** file:line references point into master `7f81461d`; the numbers have shifted since, so find code by the quoted text.
+**Mechanism:** the MINIMAL-BLAST skeleton (camera as a parallel member outside the seat world), chosen in design review over the INTEGRATED alternative from the issue sketch, with eight grafts and rulings from that review folded in below. Rulings that would otherwise look arbitrary are marked "(design-review ruling)".
 
 ---
 
