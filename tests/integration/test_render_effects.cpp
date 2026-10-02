@@ -122,6 +122,10 @@ void restore_world(viewscreen* vs)
 {
     vs->control = nullptr;
     scr()->world().delete_objects();
+    // The screen-owned damage-number cache outlives the world it was drawn
+    // from; against an empty world the product's own prune drops every
+    // owner, so the next scene's id-1 walker inherits nothing.
+    scr()->damage_number_render_context().prune_dead_owners(scr()->world());
     scr()->world().set_floor_count(1);
     scr()->world().set_weather(WeatherKind::None);
 }
