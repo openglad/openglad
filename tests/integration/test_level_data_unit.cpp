@@ -709,14 +709,28 @@ TEST(LevelDataUnit, level_data_r12_remove_ob_paths_and_zip_api_paths)
     ASSERT_TRUE(fx.level.numobs == before - 1);
     ASSERT_TRUE(fx.level.remove_ob(nullptr) == 0);
 
-    ASSERT_TRUE(og::io::unzip_into_with_error("temp/r12_zip/not_there.zip", "temp/r12_zip/out2") == ArchiveIoError::OpenArchiveFailed);
+    // Scratch lives under the user dir's temp/, spelled absolute, in a
+    // directory of its own removed on every exit path (the test_zip_api.cpp
+    // pattern): unzip_into_with_error creates its output dir before the open
+    // fails, so a CWD-relative path used to leave temp/r12_zip/ in the checkout.
+    const std::filesystem::path r12 = std::filesystem::path(get_user_path()) / "temp" / "r12_zip";
+    struct RemoveR12OnExit
+    {
+        std::filesystem::path path;
+        ~RemoveR12OnExit()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(path, ec);
+        }
+    } r12_guard{r12};
+    ASSERT_TRUE(og::io::unzip_into_with_error((r12 / "not_there.zip").string(), (r12 / "out2").string()) == ArchiveIoError::OpenArchiveFailed);
     // A missing input directory is not an error: zip_contents_with_error
     // reports None and creates NO archive (the empty-source contract).
     ASSERT_EQ(ArchiveIoError::None,
-              og::io::zip_contents_with_error("temp/r12_zip/in",
-                                             "temp/r12_zip/missing_parent/archive.zip"))
+              og::io::zip_contents_with_error((r12 / "in").string(),
+                                             (r12 / "missing_parent" / "archive.zip").string()))
         << "a missing input directory must report None, not an IO error";
-    ASSERT_FALSE(std::filesystem::exists("temp/r12_zip/missing_parent/archive.zip"))
+    ASSERT_FALSE(std::filesystem::exists(r12 / "missing_parent" / "archive.zip"))
         << "nothing to zip must leave no archive behind";
 }
 } // namespace detail_level_data_r12
