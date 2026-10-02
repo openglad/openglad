@@ -5458,3 +5458,75 @@ TEST(LobbyState, start_correlation_matchers)
         << "only a StartGame payload confirms a start — a Ready broadcast "
            "must not drop any machine into the level";
 }
+
+// F-B (one decode for the lobby server's poll): a raw-transport frame with a
+// valid envelope but a type no decoder knows is Malformed, exactly as it is on
+// a typed transport — the sending peer is disconnected and the rest of its
+// batch discarded. Before the fold the raw arm skipped every non-lobby,
+// non-pack frame without decoding it and kept the peer.
+TEST(LobbyServer, raw_undecodable_non_lobby_frame_disconnects_the_peer)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    // Precondition: the envelope itself is valid (protocol byte, 4-byte
+    // header), so only the type-dispatching decode can reject it.
+    const std::vector<std::uint8_t> unknown_type = {
+        og::sim::kNetworkProtocolVersion, 0xEEu, 0x00u, 0x00u};
+    og::sim::TransportEnvelope envelope;
+    ASSERT_TRUE(og::sim::decode_transport_envelope(unknown_type, envelope));
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::Malformed,
+              og::sim::decode_received_message(
+                  {.peer_id = 11u, .data = unknown_type})
+                  .kind);
+
+    transport.queue_raw_message(11u, unknown_type);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Rejected", 0,
+                          {make_slot(0u, 100, "Rejected Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Kept", 0,
+                          {make_slot(0u, 200, "Kept Guy", FAMILY_ARCHER)}));
+
+    EXPECT_NO_THROW(server.poll_incoming_messages());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u}),
+              transport.disconnected_peers())
+        << "an undecodable frame of an unknown type disconnects its sender";
+    ASSERT_EQ(1u, server.state().players.size())
+        << "the malformed peer's later join is discarded; the control joins";
+    EXPECT_EQ("Kept", server.state().players[0].name);
+}
+
+// F-B: on a typed transport the malformed-peer list is sorted and
+// deduplicated like the raw path's, so each malformed peer is disconnected
+// exactly once, in ascending peer order, however many bad frames it sent.
+TEST(LobbyServer, typed_malformed_peers_are_disconnected_once_each_in_peer_order)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    server.connect_client(33u);
+    transport.clear_sent_messages();
+
+    transport.queue_malformed_typed_message(22u);
+    transport.queue_malformed_typed_message(11u);
+    transport.queue_malformed_typed_message(22u);
+    transport.queue_lobby_message(
+        33u,
+        make_join_message("Kept", 0,
+                          {make_slot(0u, 300, "Kept Guy", FAMILY_SOLDIER)}));
+
+    EXPECT_NO_THROW(server.poll_incoming_messages());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u, 22u}),
+              transport.disconnected_peers())
+        << "one disconnect per malformed peer, ascending peer order";
+    ASSERT_EQ(1u, server.state().players.size())
+        << "a well-formed join from a clean peer still lands";
+    EXPECT_EQ("Kept", server.state().players[0].name);
+}
