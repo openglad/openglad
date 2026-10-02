@@ -891,8 +891,14 @@ TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
     og::script::unregister_pack_scripts("modes.core");
     save.current_campaign = "modes";
     save.scen_num = 820;
-    og::script::hooks::install_campaign_providers(
-        og::data::make_campaign_providers(save));
+    // No provider install here, and none cleared at the end: the GameSession
+    // the harness builds (install_legacy_globals) already installed the
+    // og.campaign_* providers over this SAME SaveData with the same host
+    // predicate (game_session.cpp), which is true with no lobby client. A
+    // local make_campaign_providers(save) swapped the session's my_team for
+    // the fallback while this test ran, and the clear at its end left the rest
+    // of the binary with no providers at all; re-passing the session's
+    // lambdas instead would be a test-side twin of game_session.cpp's.
 
     using Step = og::ui::MatchSetupSession::Step;
     struct StepVariant {
@@ -1049,7 +1055,6 @@ TEST(MenuLayout, match_setup_screen_layout_states_and_nav)
         og::ui::install_match_setup_state_for_screen(nullptr);
     }
 
-    og::script::hooks::clear_campaign_providers();
     og::script::clear_pack_scripts();
     for (const og::script::PackScript& script : saved_scripts)
         og::script::register_pack_script(script);
