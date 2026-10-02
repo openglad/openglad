@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
+#include <string>
 #include <string_view>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -105,7 +106,7 @@ namespace {
 // is what keeps the child's coverage -- the reason a bare _Exit is wrong.
 // It also removes the child's own per-PID config dir (integration_main makes
 // one per process) so a death-test child leaves nothing behind in /tmp.
-[[noreturn]] void exit_child(bool rule_held)
+[[noreturn]] void exit_child_with(int code)
 {
     if (const char* dir = std::getenv("OPENGLAD_CONFIG_DIR"))
     {
@@ -116,7 +117,12 @@ namespace {
     __gcov_dump();
 #endif
     std::fflush(nullptr);
-    _exit(rule_held ? 42 : 43);
+    _exit(code);
+}
+
+[[noreturn]] void exit_child(bool rule_held)
+{
+    exit_child_with(rule_held ? 42 : 43);
 }
 } // namespace
 
@@ -145,6 +151,65 @@ TEST(GameContext, an_audio_driver_that_will_not_start_leaves_the_game_silent)
             sdl_soundob sound;
             exit_child(sound.silence == 1 &&
                        sound.sound[SOUND_BOW].buf == nullptr);
+        },
+        ::testing::ExitedWithCode(42), "");
+}
+
+// Rule (#336, sound.cpp init/shutdown): the audio subsystem reference init()
+// takes is released by shutdown() whether or not a device was ever opened. A
+// driver that starts but cannot open its device (the disk driver writing into
+// a directory that does not exist) leaves the game silent AND leaves
+// SDL_WasInit(SDL_INIT_AUDIO) at 0, and every set_sound off->on retry that
+// fails the same way releases its own reference too. Positive control, in the
+// same child: after the harness's global sound is shut down the subsystem
+// reads 0 (nothing else holds a reference, and the observable works). Exit
+// codes: 42 rule held; 43 the failed open leaked the subsystem; 47 a failed
+// set_sound retry leaked it; 44 no global sound; 45 control failed; 46 the
+// SDL build has no disk audio driver (a loud red, never a skip).
+TEST(GameContext, an_audio_device_that_will_not_open_releases_the_audio_subsystem)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_EXIT(
+        {
+            auto* const global_sound = dynamic_cast<sdl_soundob*>(
+                og::runtime::current_session->myscreen_->soundp.get());
+            if (global_sound == nullptr)
+                exit_child_with(44);
+            global_sound->shutdown();
+            if (SDL_WasInit(SDL_INIT_AUDIO) != 0)
+                exit_child_with(45);
+
+            bool have_disk = false;
+            for (int i = 0; i < SDL_GetNumAudioDrivers(); ++i)
+                if (std::string_view(SDL_GetAudioDriver(i)) == "disk")
+                    have_disk = true;
+            if (!have_disk)
+                exit_child_with(46);
+
+            // A missing parent directory makes the path unopenable on every
+            // platform without drive or permission tricks.
+            const std::filesystem::path missing_parent =
+                std::filesystem::temp_directory_path() /
+                ("og-336-no-such-dir-" + std::to_string(::getpid()));
+            std::error_code ec;
+            std::filesystem::remove_all(missing_parent, ec);
+            const std::string out_file = (missing_parent / "out.raw").string();
+            SDL_SetHintWithPriority(SDL_HINT_AUDIO_DRIVER, "disk",
+                                    SDL_HINT_OVERRIDE);
+            SDL_SetHintWithPriority(SDL_HINT_AUDIO_DISK_OUTPUT_FILE,
+                                    out_file.c_str(), SDL_HINT_OVERRIDE);
+
+            sdl_soundob sound;
+            if (sound.silence != 1 || SDL_WasInit(SDL_INIT_AUDIO) != 0)
+                exit_child_with(43);
+            for (int toggle = 0; toggle < 2; ++toggle)
+            {
+                sound.set_sound(true);
+                sound.set_sound(false);
+            }
+            if (sound.silence != 1 || SDL_WasInit(SDL_INIT_AUDIO) != 0)
+                exit_child_with(47);
+            exit_child_with(42);
         },
         ::testing::ExitedWithCode(42), "");
 }
