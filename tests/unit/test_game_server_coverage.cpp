@@ -1,4 +1,6 @@
 #include <openglad/gameplay/damage_number_event.h>
+#include <openglad/gameplay/families/classpack_data.h>
+#include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -12,6 +14,7 @@
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/sound_ids.h>
+#include <openglad/resources/packs.h>
 
 #include <gtest/gtest.h>
 
@@ -26,6 +29,7 @@
 #include <vector>
 
 #include "../test_game_world_fixture.h"
+#include "unit_pack_store_guard.h"
 
 namespace {
 
@@ -2275,6 +2279,113 @@ TEST(GameServerCoverage, unready_limbo_client_gets_no_keyframe_from_a_direct_bro
     server.step();
     EXPECT_EQ(1, count_snapshots())
         << "a ready limbo client is owed exactly one keyframe";
+}
+
+// Rule (sim_process_player_input, Switch Special — issue #321): the special a
+// press lands on is decided by the LIVE family registry for every registered
+// family, core or pack. A class-pack hero above the core span (id >= 21)
+// cycles through the slots its pack declared and wraps past the last one,
+// through the real server path (seat input -> step). Core soldier is the
+// control: the same press moves it 1 -> 2.
+TEST(GameServerCoverage, a_pack_family_hero_cycles_its_declared_specials)
+{
+    // Declared before the world so the pack family outlives every walker
+    // that carries its id; frees the mod slots on the way in and out.
+    og::test::ScopedPackStoreState pack_store_restore;
+    struct ModSlots
+    {
+        ModSlots() { init_all_registries(); reset_all_registry_mod_slots(); }
+        ~ModSlots() { reset_all_registry_mod_slots(); }
+    } mod_slots;
+
+    og::data::ClasspackData data;
+    data.pack = "switchtest";
+    og::data::ClasspackLivingEntry entry;
+    entry.id = "switchtest:switcher";
+    entry.wire_id = "auto";
+    entry.name = "SWITCHER";
+    std::vector<og::data::ClasspackSpecialEntry> specials(2);
+    specials[0].id = "alpha";
+    specials[0].name = "ALPHA";
+    specials[0].mp_cost = 1;
+    specials[0].slot = 1;
+    specials[1].id = "beta";
+    specials[1].name = "BETA";
+    specials[1].mp_cost = 1;
+    specials[1].slot = 2;
+    entry.specials = std::move(specials);
+    data.living.push_back(std::move(entry));
+    ASSERT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    const FamilyDescriptor* const pack_family =
+        get_family_descriptor(NUM_FAMILIES);
+    ASSERT_NE(nullptr, pack_family) << "the pack family lands at id 21";
+
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({96u, 97u});
+    server.poll_incoming_messages();
+
+    // The loader has no art for a pack id, so add_ob would hand back a
+    // SOLDIER; the family byte is set on the live walker instead (the shape
+    // test_glad_hud.cpp's pack-family HUD test takes).
+    walker* const switcher =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const soldier =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, switcher);
+    ASSERT_NE(nullptr, soldier);
+    switcher->set_family(static_cast<char>(NUM_FAMILIES));
+    ASSERT_EQ(NUM_FAMILIES,
+              static_cast<int>(static_cast<unsigned char>(switcher->family())));
+    switcher->setxy(64, 64);
+    soldier->setxy(128, 64);
+    for (walker* const hero : {switcher, soldier})
+    {
+        hero->stats()->set_level(4);  // unlocks exactly slots 1 and 2
+        hero->set_current_special(1);
+    }
+    server.bind_player(96u, 0u, fixture.world().my_team, switcher);
+    server.bind_player(97u, 1u, fixture.world().my_team, soldier);
+    server.step();
+    for (const og::sim::PeerId peer : {96u, 97u})
+    {
+        transport.queue_raw(peer, og::sim::serialize_client_ready_message(
+                                      {.last_applied_tick = 0u}));
+    }
+    server.step();
+
+    const auto press_switch_special = [&](bool pressed) {
+        // Both seat slots carry the press: whichever slot the server maps a
+        // peer's frame to, each hero sees it.
+        InputState input;
+        for (const int slot : {0, 1})
+        {
+            input.players[slot]
+                .pressed[static_cast<int>(InputAction::SwitchSpecial)] = pressed;
+        }
+        const auto bytes =
+            og::sim::serialize_input(fixture.world().tick_count_ + 1u, input);
+        for (const og::sim::PeerId peer : {96u, 97u})
+        {
+            transport.queue_raw(
+                peer, std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+        }
+        server.step();
+    };
+
+    press_switch_special(true);
+    EXPECT_EQ(2, switcher->current_special())
+        << "a pack hero lands on its declared slot 2 (BETA)";
+    EXPECT_EQ(2, soldier->current_special())
+        << "control: the core soldier lands on slot 2";
+
+    press_switch_special(false);
+    press_switch_special(true);
+    EXPECT_EQ(1, switcher->current_special())
+        << "slot 3 is NONE for the pack family: the press wraps to slot 1";
+    EXPECT_EQ(1, soldier->current_special())
+        << "control: slot 3 needs level 7, the level gate wraps to slot 1";
 }
 
 } // namespace
