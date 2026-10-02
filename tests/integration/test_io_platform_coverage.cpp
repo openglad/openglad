@@ -1791,3 +1791,54 @@ TEST(IoPlatformCoverage, sprite_sheet_apply_covers_same_pack_and_failed_unmount)
     ASSERT_TRUE(apply_sprite_sheet_setting()) << "restore original sprite sheet";
     fs::remove_all(pack_dir, ec);
 }
+
+// #332's one rule through the SDL twin: open_write_file (the screenshot
+// writer's opener) asks og::io::stdio_write_fallback_allowed before its
+// SDL_IOFromFile fallback, so a relative write PhysFS refused (the write dir
+// lacks its parent) never lands under the process CWD. Paired control: the
+// same relative shape with the parent present in the write dir opens through
+// PhysFS and lands there.
+TEST(IoPlatformCoverage, open_write_file_never_lands_a_refused_relative_path_in_the_cwd)
+{
+    namespace fs = std::filesystem;
+    const fs::path cwd =
+        fs::temp_directory_path() / ("openglad_io_refused_write_" + std::to_string(::getpid()));
+    const fs::path present = fs::path(get_user_path()) / "refused_write_present";
+    std::error_code ec;
+    fs::remove_all(cwd, ec);
+    fs::remove_all(present, ec);
+    fs::create_directories(cwd / "nosuchdir");
+    fs::create_directories(cwd / "refused_write_present");
+    fs::create_directories(present);
+    struct Restore
+    {
+        fs::path saved;
+        fs::path cwd;
+        fs::path present;
+        ~Restore()
+        {
+            std::error_code ignored;
+            fs::current_path(saved, ignored);
+            fs::remove_all(cwd, ignored);
+            fs::remove_all(present, ignored);
+        }
+    } restore{fs::current_path(), cwd, present};
+    fs::current_path(cwd);
+
+    SDL_IOStream* refused = open_write_file("nosuchdir/shot.png");
+    const bool refused_opened = refused != nullptr;
+    if (refused)
+        SDL_CloseIO(refused);
+    EXPECT_FALSE(refused_opened)
+        << "a relative write PhysFS refused must fail, not fall back to the CWD";
+    EXPECT_FALSE(fs::exists(cwd / "nosuchdir" / "shot.png"))
+        << "the refused write landed in the process CWD";
+
+    SDL_IOStream* accepted = open_write_file("refused_write_present/shot.png");
+    const bool accepted_opened = accepted != nullptr;
+    if (accepted)
+        SDL_CloseIO(accepted);
+    EXPECT_TRUE(accepted_opened) << "PhysFS serves a relative write whose parent exists";
+    EXPECT_TRUE(fs::exists(present / "shot.png")) << "the PhysFS write landed in the write dir";
+    EXPECT_FALSE(fs::exists(cwd / "refused_write_present" / "shot.png"));
+}
