@@ -2048,15 +2048,6 @@ TEST(CampaignZoneUi, wizard_arena_rows_are_plain_while_the_camps_stay_green)
     SaveData& save = test_screen()->save_data;
     save.current_campaign = "modes";
     save.scen_num = 820;  // SOCCER: THE PITCH — the armed arena
-    // is_host explicitly, not make_campaign_providers's local-play
-    // default: these providers outlive the test (the hooks need SOME
-    // provider set installed, and clearing them leaves the next scripted
-    // camp unable to compose), so an unconditional TRUE here would hand a
-    // later JOINER flow a host book — which is how a host-gated RANDOM
-    // row turned up on a joiner's GAME step.
-    og::script::hooks::install_campaign_providers(
-        og::data::make_campaign_providers(
-            save, [] { return picker_lobby_host_controls_visible(); }));
 
     og::ui::MatchSetupScreenState state(save);
     og::ui::MatchSetupSession::Inputs in;
