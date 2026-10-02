@@ -11,7 +11,6 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
-#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
@@ -1664,12 +1663,7 @@ walker* resolve_or_spawn_seat_walker(GameWorld& world,
     // setxy routes obmap updates through obmap::move, which early-outs on an
     // unchanged position — re-register explicitly (the respawn engine's
     // ensure_obmap_registration rule).
-    if (world.myobmap != nullptr && !stock->ignore() && !stock->dead() &&
-        world.myobmap->walker_to_pos.find(stock) ==
-            world.myobmap->walker_to_pos.end())
-    {
-        world.myobmap->add(stock, stock->xpos(), stock->ypos());
-    }
+    og::sim::ensure_obmap_registration(world, stock);
     stock->set_spawn_point(stock->xpos(), stock->ypos(),
                            static_cast<std::uint8_t>(stock->floor()));
     spawned_out = true;
