@@ -395,7 +395,9 @@ passes read differently; see the retry note above).
   3422; 3373-3375; 3263, 3271, 3273.
 - Reached by neither run: 2897-2898, 3265-3269, 3277-3278, 3176,
   3181-3194, 3214-3216, 3399, 3412. These are library-contract guards or
-  arms with no deterministic trigger, and the guards stay.
+  arms with no deterministic trigger, and the guards stay. (3176 is an SDL
+  contract arm: `display_for_window()` answers 0 when SDL reports no display
+  at request time, and the pending display is re-queried here instead.)
 - Checked and not reachable through this lane: `walker_draw.cpp:78`, `:85`
   and `:1023` (tick-clock and empty-container arms) and the uncovered
   lines of `sai2x.cpp` (55 on that artifact) (SDL allocation and lock
