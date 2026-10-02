@@ -308,7 +308,43 @@ TEST(CursesGameRuntimeLocal, followed_avatar_resolves_to_player)
 
     const walker* avatar = session->mirror_world().find_by_id(id);
     ASSERT_NE(avatar, nullptr);
-    EXPECT_GE(avatar->user(), 0) << "followed avatar is a human-controlled walker";
+    EXPECT_EQ(0, avatar->user())
+        << "the followed avatar is the walker the local seat (global player 0) "
+           "controls";
+}
+
+// The local session's camera follows its seat's mapped avatar only while that
+// walker is alive in the mirror -- the one follow rule the networked curses
+// sessions use too. A death snapshot can leave the seat's controlled-entity id
+// unchanged (a respawn mode keeps a dead control mapped for the whole revive
+// countdown); the camera must then leave the corpse instead of resting on it.
+// The local seat has no other walker tagged user 0, so nothing is followed.
+TEST(CursesGameRuntimeLocal, followed_id_skips_a_dead_mapped_avatar)
+{
+    SaveData save;
+    init_test_save(save);
+    std::string err;
+    auto session = make_local_session(save, 1, &err);
+    ASSERT_NE(session, nullptr) << err;
+
+    // Positive control: the live avatar is followed.
+    const std::uint32_t id = session->followed_entity_id();
+    ASSERT_NE(0u, id) << "the live avatar must be followed";
+    walker* const avatar = session->mirror_world().find_by_id(id);
+    ASSERT_NE(nullptr, avatar);
+    ASSERT_FALSE(avatar->dead());
+    ASSERT_EQ(0, avatar->user());
+    std::size_t seat_walkers = 0;
+    for (const auto& up : session->mirror_world().oblist)
+        if (up && up->user() == 0)
+            ++seat_walkers;
+    ASSERT_EQ(1u, seat_walkers) << "only the avatar carries the seat's tag";
+
+    // The mirror now holds the avatar as a corpse; the mapping is unchanged.
+    avatar->set_dead(1);
+    EXPECT_EQ(0u, session->followed_entity_id())
+        << "a dead mapped avatar must not be followed (was the corpse id "
+        << id << ")";
 }
 
 TEST(CursesGameRuntimeLocal, advancing_progresses_the_simulation)

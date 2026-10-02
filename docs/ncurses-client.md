@@ -184,7 +184,9 @@ if the terminal does not advertise support it **throws and the client aborts** â
 there is no legacy fallback. On success it enables the protocol (key-up/down +
 real modifiers + standalone Ctrl/Alt) plus focus reporting, then reads raw bytes
 from the tty and feeds them to a pure `kitty::Decoder` (see `kitty_keys.h`).
-`SIGWINCH` yields a `Resize` key; `SIGINT`/`SIGTERM`/`atexit` restore the keyboard
+`SIGWINCH` yields a `Resize` key (delivered through a self-pipe the blocking
+read watches, so a resize that lands while the client is about to block still
+wakes it, whichever thread took the signal); `SIGINT`/`SIGTERM`/`atexit` restore the keyboard
 mode and leave curses so the protocol is never left enabled in the user's shell.
 `HeadlessTerminal` stores a `rows*cols` vector of `Cell`, a scripted
 `std::deque<Key>` for input (now including release/modifier events), and exposes

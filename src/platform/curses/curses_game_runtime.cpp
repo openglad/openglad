@@ -99,16 +99,8 @@ public:
 
     std::uint32_t followed_entity_id() const override
     {
-        const auto& ids = client_->controlled_entity_ids();
-        if (ids[0] != 0)
-            return ids[0];
-        // Fallback: the first living entity the local player controls.
-        for (const auto& up : client_level_->world().oblist) {
-            const walker* w = up.get();
-            if (w && !w->dead() && w->user() >= 0)
-                return w->entity_id();
-        }
-        return 0;
+        return resolve_followed_entity_id(*client_, client_level_->world(),
+                                          kLocalSeatPlayerIndex);
     }
 
     std::uint32_t next_input_tick() const override
@@ -348,7 +340,7 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(
     s->client_transport_ = s->server_transport_->create_client_transport();
     s->peer_id_ = s->client_transport_->local_peer_id();
     s->server_->connect_client(s->peer_id_);
-    s->server_->bind_player(s->peer_id_, 0,
+    s->server_->bind_player(s->peer_id_, kLocalSeatPlayerIndex,
                             static_cast<short>(s->server_save_.my_team), nullptr);
 
     // --- Client mirror ---
