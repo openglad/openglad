@@ -8208,18 +8208,30 @@ TEST(PickerNetworkClient,
         .request_id = 1u,
     };
     send_lobby_message(guest_transport, kServerPeer, std::move(crafted_start));
+    // The verdict is the first state the guest receives that carries its own
+    // correlation id -- not simply the newest state. A broadcast already in
+    // flight to the guest (the join broadcast, the elected host's roster
+    // sync, the host's own denial round) can land after the snapshot above
+    // and before the answer, and that state carries no verdict at all.
+    std::optional<og::sim::LobbyState> guest_echo;
     ASSERT_TRUE(wait_until([&] {
         pump_all();
-        return guest_states.size() > guest_states_before;
-    })) << "the guest's StartGame must be ANSWERED, not silently dropped";
+        for (std::size_t i = guest_states_before; i < guest_states.size(); ++i)
+        {
+            if (guest_states[i].last_start_request_id == 1u)
+            {
+                guest_echo = guest_states[i];
+                return true;
+            }
+        }
+        return false;
+    })) << "the guest's StartGame must be ANSWERED with its own correlation "
+           "id, not silently dropped";
 
-    const og::sim::LobbyState& guest_echo = guest_states.back();
     EXPECT_EQ(og::sim::start_denial_reason_value(
                   og::sim::StartDenialReason::NotHost),
-              guest_echo.last_start_denial)
+              guest_echo->last_start_denial)
         << "the crafted guest must be told WHY its start was refused";
-    EXPECT_EQ(1u, guest_echo.last_start_request_id)
-        << "and the verdict must carry the guest's own correlation id";
     EXPECT_FALSE(g_start_game_requested)
         << "a non-host start never reaches gameplay";
     EXPECT_FALSE(elected_host->has_game_start_config());
