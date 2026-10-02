@@ -664,6 +664,11 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     s->continuous_input();
     s->redrawme = 1;
     s->framecount = 0;
+    // A restart reloads the SAME world object, often on the same scenario id,
+    // and the level clock only re-arms on a new id; re-arm it the way
+    // glad_main's launch does, or the restarted match inherits the finished
+    // one's clock and ends on its first tick.
+    s->world().reset_level_progress();
     s->timerstart = static_cast<Uint32>(query_timer_control());
     og::runtime::reset_local_transport_shadow(*demo.session, *s);
     if (!og::runtime::local_transport_active(*demo.session)) {
