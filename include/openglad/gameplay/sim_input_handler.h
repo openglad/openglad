@@ -88,8 +88,8 @@ SimInputResult sim_process_player_input(
     og::sim::SimEventLog* sim_events);
 
 // Find the next available control walker for a player.
-// Searches level_data.oblist for: player chars, team members, then any
-// unclaimed alive player character.
+// Searches level_data.oblist for unclaimed player chars on my_team, then any
+// unclaimed team member; never another team (returns nullptr instead).
 walker* sim_find_next_control(GameWorld& level, short my_team);
 
 // Advance a walker's current special by one and wrap to special 1 when the slot
