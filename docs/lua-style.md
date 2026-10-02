@@ -3,7 +3,7 @@
 Scope: all pack Lua — `packs/`, the example packs under `docs/modding/`, and
 pack chunks embedded in C++ `R"LUA(` literals. This document is style only.
 The determinism cookbook ([lua-classpacks-design.md](lua-classpacks-design.md)
-§3, R1–R10) and the build lints (`scripts/check_lua_statement_lines.py`: one
+§3, R1–R10, with R1–R3 core pack only) and the build lints (`scripts/check_lua_statement_lines.py`: one
 statement per line, one short-circuit per line, one `function` keyword per
 line; chunks compile text-only) are law underneath it and are not restated
 here. Where style and cookbook appear to conflict, the cookbook wins.
@@ -91,7 +91,11 @@ belongs in the binding's C++ documentation instead.
 
 ## S5 — Arithmetic shims
 
-The cookbook decides where a shim is required. Drop one only when audited
+The arithmetic shims (`og.div`/`og.mod`, `og.f*`, the narrowing helpers) are
+cookbook R1–R3, which are core pack only: they make core-pack Lua match the
+classic integer/float semantics the parity goldens record; the engine does
+not require them of mods. Within the core pack, the cookbook decides where a
+shim is required. Drop one only when audited
 operand ranges prove the plain operation identical (float-representable
 inputs and result for a removed `og.f*`; C and Lua division/remainder
 semantics identical for a removed `og.div`/`og.mod`). Integer-valued inputs

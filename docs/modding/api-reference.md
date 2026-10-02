@@ -2,7 +2,7 @@
 
 The class-pack Lua API, symbol by symbol. Read
 [`docs/lua-classpacks-design.md`](../lua-classpacks-design.md) first — the
-Determinism Cookbook (R1–R10) governs everything here, and §4 is the
+Determinism Cookbook (R1–R10; R1–R3 are core pack only) governs everything here, and §4 is the
 declaration schema. For *how to build, run and prove* a mod, see
 [`.claude/skills/openglad-modding/SKILL.md`](../../.claude/skills/openglad-modding/SKILL.md).
 
@@ -36,18 +36,23 @@ never store mutable sim state in a global or upvalue (cookbook R6).
 
 ## Deterministic arithmetic (`og.*`)
 
+`og.div`/`og.mod`, the `og.f*` operations, the narrowing helpers and
+`og.cosmetic_rand` let core-pack Lua match the classic integer/float
+semantics the parity goldens record (cookbook R1–R3). They are core pack
+only: the engine does not require them of mods.
+
 | Function | Semantics |
 |---|---|
-| `og.div(a,b)` / `og.mod(a,b)` | C integer division/remainder (truncate toward zero, sign of dividend). Errors on `b == 0` and on overflow. Use for EVERY integer `/` and `%`. |
-| `og.fadd/fsub/fmul/fdiv(a,b)` | One operation performed in C `float`, returned as the exact widened double. One call per C++ float operator; never chain in Lua. |
-| `og.i8/i16/i32/u8(x)` | Modular narrowing of an integer, matching the C++ cast. |
+| `og.div(a,b)` / `og.mod(a,b)` | C integer division/remainder (truncate toward zero, sign of dividend). Errors on `b == 0` and on overflow. The core pack uses it for every integer `/` and `%` (R1). |
+| `og.fadd/fsub/fmul/fdiv(a,b)` | One operation performed in C `float`, returned as the exact widened double. The core pack makes one call per C++ float operator (R2). |
+| `og.i8/i16/i32/u8(x)` | Modular narrowing of an integer, matching the C++ cast (R3). |
 | `og.trunc(x)` | `(int64)trunc(double)` — C cast-float-to-int semantics. Errors on NaN / out of range. |
 | `og.max(a,b)` / `og.min(a,b)` | `std::max` / `std::min` exactly: `og.max` answers `b` only when `a < b`, `og.min` answers `b` only when `b < a`, every tie answers `a`. Exact mixed integer/float ordering (never a lossy int64→double round-trip); the winning argument comes back unchanged, so integer subtype survives. Arguments must be numbers (no string coercion); NaN is an error. |
 | `og.clamp(v,lo,hi)` | `std::clamp`: `lo` when `v < lo`, else `hi` when `hi < v`, else `v` itself. `hi < lo` (std's UB precondition) is a script error. Same ordering/subtype/NaN rules as `og.max`. |
 | `og.sign(x)` | `-1`, `0` or `1` as an integer, for any number (`og.sign(-0.0)` is 0; NaN is an error) — the guarded `v /= abs(v)` idiom as a total function. |
 | `og.rand(n)` | Sim RNG, uniform over `[0, n)`. The only randomness source. `n` must be in `[1, 2147483647]`. Errors when `n <= 0` (C++ `next(0)` silently returns 0 — guard the call, or use `og.rand0`) and when `n > 2147483647` (see the range note below). |
 | `og.rand0(n)` | `og.rand` with `IRandom`'s real `n <= 0` contract: answers 0 **without advancing the stream** (C++ `next(0)` returns before the LCG step), which is what the hand-written `if n > 0 then r = og.rand(n) end` guard trios encode. Negative `n` behaves as 0 too. For `n > 0` it is `og.rand` verbatim — including the `n > 2147483647` error — so swapping a guarded `og.rand` for `og.rand0` cannot move the stream. Requires an active world on every path. |
-| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Use ONLY where the C++ drew through that selector (path-check cadence, elf spread). Same bound range as `og.rand`: errors when `n <= 0` and when `n > 2147483647`. |
+| `og.cosmetic_rand(n)` | Draws from the parity harness's cosmetic stream when one is installed, else the sim RNG — the C++ `cosmetic_rng_override()` pattern. Core pack only: it is used where the classic C++ drew through that selector (path-check cadence, elf spread). Same bound range as `og.rand`: errors when `n <= 0` and when `n > 2147483647`. |
 | `og.log(...)` / `print(...)` | Diagnostics. Traces under category `script`, and appends to the host's bounded transcript. |
 
 A Lua integer is 64-bit; the C++ generator behind all three RNG bindings

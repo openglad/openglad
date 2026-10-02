@@ -73,13 +73,16 @@ resources/packs/               pack mount/enumerate, pack hashing; runs the
   types from core or gameplay. `check_vendor_leaks.sh` enforces the whole
   matrix, including keeping `lua.h` and friends under `src/gameplay/script/`.
 
-## 3. Determinism Cookbook (MANDATORY for all pack Lua)
+## 3. Determinism Cookbook
 
 Lua 5.4 integers are int64 and exact. Lua floats are C doubles. The sim uses
-C++ `float` in places (hitpoints, busy, damage). The rules below make every
-sim-facing expression preserve the engine's numeric semantics.
+C++ `float` in places (hitpoints, busy, damage).
 
-**R1 — Integer division and modulo.** Use `og.div(a,b)` / `og.mod(a,b)` unless
+R1–R3 and `og.cosmetic_rand` (R4) are core pack only: they make core-pack Lua
+match the classic integer/float semantics the parity goldens record; the
+engine does not require them of mods. R4–R10 apply to every pack.
+
+**R1 — Integer division and modulo (core pack only).** Use `og.div(a,b)` / `og.mod(a,b)` unless
 the operand ranges prove plain `//` / `%` equivalent. The helpers use C
 semantics (truncate toward zero; div-by-zero raises a script error), while
 Lua `//` / `%` use floor semantics and differ for negative operands. Never
@@ -93,7 +96,7 @@ differs from the historic C truncation. Every peer still runs the same Lua,
 so this does not create a desync. New code keeps `og.div`/`og.mod` unless its
 intended input domain has an equally explicit proof.
 
-**R2 — Float arithmetic is per-op through bindings.** Every C++ float
+**R2 — Float arithmetic is per-op through bindings (core pack only).** Every C++ float
 operation maps to exactly one call: `og.fadd(a,b)`, `og.fsub`, `og.fmul`,
 `og.fdiv` — each casts operands to `float`, performs the op in `float`, and
 returns the widened result. Chains keep per-op float rounding this way.
@@ -105,7 +108,7 @@ returns the widened result. Chains keep per-op float rounding this way.
     Division is NEVER done in Lua (double rounding).
   - Float comparisons in Lua are safe (float→double widening is exact).
 
-**R3 — Narrowing writes go through typed helpers.** C++ stores into
+**R3 — Narrowing writes go through typed helpers (core pack only).** C++ stores into
 `char`/`short`/`unsigned char` wrap. Use `og.i8(x)`, `og.i16(x)`, `og.u8(x)`,
 `og.i32(x)` to reproduce the wrap at exactly the sites the C++ narrowed, and
 `og.trunc(x)` for `static_cast<int32>(float)` (truncation toward zero).
@@ -127,7 +130,9 @@ non-colliding names (`hp`, `max_hp`, `magicpoints`, `max_magicpoints`,
 **R4 — RNG only via `og.rand(n)` / `og.rand0(n)`** (routes to
 `current_game->world->rng_`). Preserve the ORDER and COUNT of rand calls
 exactly when translating behavior. `math.random` does not exist in the
-sandbox.
+sandbox. The core pack also uses `og.cosmetic_rand(n)` at the sites where
+the classic C++ drew through its cosmetic selector (path-check cadence, elf
+spread); that binding is core pack only, like R1–R3.
 
 Chunk top level is fenced. Every world-facing `og.*` — `og.rand` included —
 raises while a pack chunk or lib module is being evaluated, in the

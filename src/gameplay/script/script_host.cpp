@@ -119,8 +119,10 @@ int og_mod(lua_State* L)
     return 1;
 }
 
-// Each og.f* performs exactly one operation in float precision so deterministic
-// Lua arithmetic keeps the C++ per-operation rounding.
+// Each og.f* performs exactly one operation in float precision, matching the
+// classic C++ per-operation rounding (cookbook R2, core pack only).
+// Core-pack Lua uses them to match the parity goldens; the engine does not
+// require them of mods.
 int og_fadd(lua_State* L)
 {
     const float a = static_cast<float>(luaL_checknumber(L, 1));
@@ -153,7 +155,8 @@ int og_fdiv(lua_State* L)
     return 1;
 }
 
-// Narrowing helpers reproducing C++ integer truncation (modular, C++20).
+// Narrowing helpers reproducing C++ integer truncation (modular, C++20;
+// cookbook R3, core pack only).
 template <typename T>
 int og_narrow(lua_State* L)
 {
