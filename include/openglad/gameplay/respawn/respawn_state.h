@@ -172,6 +172,16 @@ int respawn_pending_count(const GameWorld& world, int team);
 bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
                         int floor);
 
+// The one obmap re-registration rule for a walker just placed with setxy():
+// setxy() moves obmap entries through obmap::move, which does nothing when
+// the position is unchanged, so a walker placed on the tile it already holds
+// (a revived corpse, or a fresh add_ob walker) can be left out of the obmap.
+// This adds w at its current position when it is live (not ignore(), dead()
+// or dormant()) and not already indexed; a null world obmap or null w is a
+// no-op. The respawn engine's revive/spawn paths and the transport shadow's
+// stock-seat spawn (local_transport_shadow.cpp) both call it.
+void ensure_obmap_registration(GameWorld& world, walker* w);
+
 // Positional stain scrub (og.scrub_corpse_stain backend): preserve a STAIN
 // tied to a pending respawn (player or AI); otherwise kill fresh STAIN /
 // LIFE_GEM drops whose sprite center lies within 8px Manhattan of the center
