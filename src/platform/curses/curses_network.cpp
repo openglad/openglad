@@ -295,19 +295,11 @@ const og::sim::LobbyPlayer* find_local_player(
     return seats.empty() ? nullptr : seats.front();
 }
 
-struct OrderedLobbyGameplaySlot {
-    std::uint8_t private_slot_index = 0;
-    std::size_t player_order = 0;
-    std::size_t slot_order = 0;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
-};
-
-// Rebuild the joiner's game-start seed from the authoritative lobby echo.
-// Keep this byte-for-byte equivalent in shape to
-// LobbyServer::build_save_data_equivalent(): both sides sort colliding private
-// save slots by slot/player/source order, compact only when that combined order
-// is sparse, preserve ownership metadata, and canonicalize private guy-id
-// collisions before either side creates a world.
+// Rebuild the joiner's game-start seed from the authoritative lobby echo. The
+// roster comes from the same gameplay helpers LobbyServer::
+// build_save_data_equivalent() uses (og::sim::order_lobby_slots +
+// assemble_gameplay_roster): one order, one compaction, one set of ownership
+// stamps and guy-id canonicalization on both sides.
 og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     const og::sim::LobbyState& state)
 {
@@ -334,68 +326,14 @@ og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     equivalent.fill = state.settings.fill;
     equivalent.map_units = state.settings.map_units;
 
-    std::vector<OrderedLobbyGameplaySlot> ordered_slots;
-    for (std::size_t player_order = 0; player_order < state.players.size();
-         ++player_order)
-    {
-        const og::sim::LobbyPlayer& player = state.players[player_order];
-        for (std::size_t slot_order = 0;
-             slot_order < player.character_slots.size();
-             ++slot_order)
-        {
-            const og::sim::LobbyCharacterSlot& slot =
-                player.character_slots[slot_order];
-            if (!slot.deployed)
-                continue;
-            ordered_slots.push_back(OrderedLobbyGameplaySlot{
-                .private_slot_index = slot.slot_index,
-                .player_order = player_order,
-                .slot_order = slot_order,
-                .slot = &slot,
-            });
-        }
-    }
-
-    if (ordered_slots.size() > MAX_TEAM_SIZE)
-    {
+    std::optional<std::vector<og::sim::LobbyCharacterSlot>> roster =
+        og::sim::assemble_gameplay_roster(
+            og::sim::order_lobby_slots(state.players, true));
+    if (!roster.has_value()) {
         throw std::runtime_error(
             "Curses lobby exceeded the SaveData-equivalent 24-slot team limit");
     }
-
-    std::sort(
-        ordered_slots.begin(),
-        ordered_slots.end(),
-        [](const OrderedLobbyGameplaySlot& lhs,
-           const OrderedLobbyGameplaySlot& rhs) {
-            if (lhs.private_slot_index != rhs.private_slot_index)
-                return lhs.private_slot_index < rhs.private_slot_index;
-            if (lhs.player_order != rhs.player_order)
-                return lhs.player_order < rhs.player_order;
-            return lhs.slot_order < rhs.slot_order;
-        });
-
-    const bool slots_are_dense = std::all_of(
-        ordered_slots.begin(),
-        ordered_slots.end(),
-        [&ordered_slots](const OrderedLobbyGameplaySlot& slot) {
-            return static_cast<std::size_t>(slot.private_slot_index) ==
-                static_cast<std::size_t>(&slot - ordered_slots.data());
-        });
-
-    equivalent.team_list.reserve(ordered_slots.size());
-    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
-    {
-        const OrderedLobbyGameplaySlot& ordered = ordered_slots[index];
-        og::sim::LobbyCharacterSlot gameplay_slot = *ordered.slot;
-        if (!slots_are_dense)
-            gameplay_slot.slot_index = static_cast<std::uint8_t>(index);
-        gameplay_slot.owner_player_index =
-            state.players[ordered.player_order].player_index;
-        gameplay_slot.owner_save_slot = ordered.private_slot_index;
-        equivalent.team_list.push_back(std::move(gameplay_slot));
-    }
-
-    og::sim::canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
+    equivalent.team_list = std::move(*roster);
     return equivalent;
 }
 
@@ -515,105 +453,6 @@ std::uint32_t follow_or_legacy_entity_id(const CursesFollowState& follow,
             return follow.target_entity_id;
     }
     return resolve_followed_entity_id(client, mirror, local_player_index);
-}
-
-// Decode lobby traffic regardless of whether the transport speaks typed messages
-// (in-process) or raw envelopes (WebSocket / relay).
-std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
-    og::sim::ITransport& transport)
-{
-    if (transport.supports_typed_messages())
-        return transport.poll_typed();
-
-    std::vector<og::sim::TypedReceivedMessage> typed_messages;
-    for (const auto& message : transport.poll()) {
-        og::sim::TransportEnvelope envelope;
-        if (!og::sim::decode_transport_envelope(message.data, envelope))
-            continue;
-
-        og::sim::TypedReceivedMessage typed_message;
-        typed_message.peer_id = message.peer_id;
-        switch (envelope.message_type) {
-        case og::sim::kLobbyMessageType: {
-            const auto decoded = og::sim::deserialize_lobby_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyMessage;
-            typed_message.lobby_message =
-                std::make_shared<og::sim::LobbyMessage>(*decoded);
-            break;
-        }
-        case og::sim::kLobbyStateMessageType: {
-            const auto decoded = og::sim::deserialize_lobby_state_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
-            typed_message.lobby_state =
-                std::make_shared<og::sim::LobbyState>(*decoded);
-            break;
-        }
-        // Class-pack transfer (protocol v10): joiner-bound stream.
-        case og::sim::kPackManifestMessageType: {
-            const auto decoded =
-                og::sim::deserialize_pack_manifest_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::PackManifest;
-            typed_message.pack_manifest =
-                std::make_shared<og::sim::PackManifestMessage>(*decoded);
-            break;
-        }
-        case og::sim::kPackFileChunkMessageType: {
-            const auto decoded =
-                og::sim::deserialize_pack_file_chunk_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::PackFileChunk;
-            typed_message.pack_file_chunk =
-                std::make_shared<og::sim::PackFileChunkMessage>(*decoded);
-            break;
-        }
-        case og::sim::kPackTransferDoneMessageType: {
-            const auto decoded =
-                og::sim::deserialize_pack_transfer_done_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PackTransferDone;
-            typed_message.pack_transfer_done =
-                std::make_shared<og::sim::PackTransferDoneMessage>(*decoded);
-            break;
-        }
-        // Staged lobby (#218, protocol v13): joiner-bound staged-world pair.
-        case og::sim::kStagedMatchSetupMessageType: {
-            const auto decoded =
-                og::sim::deserialize_staged_match_setup_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::StagedMatchSetup;
-            typed_message.staged_match_setup =
-                std::make_shared<og::sim::StagedMatchSetupMessage>(*decoded);
-            break;
-        }
-        case og::sim::kStagedMatchKeyframeMessageType: {
-            const auto decoded =
-                og::sim::deserialize_staged_match_keyframe_message(
-                    message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::StagedMatchKeyframe;
-            typed_message.staged_match_keyframe =
-                std::make_shared<og::sim::StagedMatchKeyframeMessage>(*decoded);
-            break;
-        }
-        default:
-            continue;
-        }
-        typed_messages.push_back(std::move(typed_message));
-    }
-    return typed_messages;
 }
 
 // =====================================================================
@@ -2350,13 +2189,14 @@ private:
                 return false;
             }
             if (message.lobby_message &&
-                message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
-                if (!og::sim::start_confirmation_matches_request(
-                        *message.lobby_message,
-                        pending_start_request_id_))
-                {
-                    break;
-                }
+                og::sim::start_confirmation_matches_request(
+                    *message.lobby_message)) {
+                // R-331: whatever this machine last asked for, the game has
+                // started. A joiner's band must not stay on the answer to an
+                // earlier press (a NotHost denial); the host's band keeps the
+                // caption its own actions put there.
+                if (!is_host())
+                    team_status_ = "Host started the game";
                 pending_start_request_id_ = 0;
                 start_negotiated_ = true;
             }
@@ -2458,7 +2298,7 @@ private:
         }
 
         for (const og::sim::TypedReceivedMessage& message :
-             poll_lobby_transport_messages(*client_link)) {
+             og::sim::poll_lobby_bound_messages(*client_link)) {
             if (!handle_typed_message(message))
                 break;
         }
