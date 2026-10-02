@@ -2424,11 +2424,12 @@ bool generator_customize_spawn(int generator_family, walker* generator,
 
 namespace {
 
-// Cheap gate shared by all level dispatchers: no packs → no VM creation, no
-// cost, byte-identical sims for script-less runs.
+// Cheap gate shared by all level dispatchers: no pack Lua at all (no scripts/
+// and no families/ chunk, pack_lua_absent) → no VM creation, no cost,
+// byte-identical sims for script-less runs.
 VmState* level_vm_state(std::uint32_t kind_bit)
 {
-    if (pack_scripts().empty())
+    if (pack_lua_absent())
         return nullptr;
     WorldScripts& ws = active_world_scripts();
     VmState* st = get_vm_state(ws.host().impl().L);
@@ -2462,7 +2463,7 @@ bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
 
 std::uint32_t level_hook_kinds_for(int level_id)
 {
-    if (pack_scripts().empty())
+    if (pack_lua_absent())
         return 0;
     WorldScripts& ws = active_world_scripts();
     lua_State* L = ws.host().impl().L;
@@ -2512,7 +2513,7 @@ void level_tick(GameWorld* world)
 
 void level_entity_death(walker* self)
 {
-    if (self == nullptr || pack_scripts().empty())
+    if (self == nullptr || pack_lua_absent())
         return;
     WorldScripts& ws = active_world_scripts();
     VmState* st = &vm_state(ws.host().impl().L);
@@ -2764,14 +2765,14 @@ private:
     bool armed_ = false;
 };
 
-// Gate shared by every campaign query/dispatch: no packs → nothing; a
-// conflicted registration answers "no scripted picker" and records the
+// Gate shared by every campaign query/dispatch: no pack Lua at all
+// (pack_lua_absent) → nothing; a conflicted registration answers "no scripted picker" and records the
 // conflict as a script error ONCE (the once-latch lives in the VmState, so
 // a VM rebuild that replays the same conflict reports again — correctly,
 // since the replay re-created it).
 VmState* campaign_vm_state()
 {
-    if (pack_scripts().empty())
+    if (pack_lua_absent())
         return nullptr;
     WorldScripts& ws = active_world_scripts();
     ScriptHost::Impl& impl = ws.host().impl();
@@ -2800,10 +2801,10 @@ VmState* campaign_vm_state()
 // campaign_vm_state: the default belongs to a shipped pack, not to a
 // campaign, so it answers with no book registered at all — and with a
 // CONFLICTED one, which is the half that makes the default un-poisonable.
-// Null when no packs are installed or nothing registered a default.
+// Null when no pack Lua is installed or nothing registered a default.
 VmState* default_lineup_vm_state()
 {
-    if (pack_scripts().empty())
+    if (pack_lua_absent())
         return nullptr;
     WorldScripts& ws = active_world_scripts();
     VmState* st = get_vm_state(ws.host().impl().L);
