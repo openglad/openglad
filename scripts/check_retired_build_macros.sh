@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Retired build macros must stay retired.
 #
-# Four preprocessor macros used to fork this codebase:
+# Eight preprocessor macros used to fork this codebase:
 #
-#     USE_TOUCH_INPUT     DISABLE_MULTIPLAYER
+#     USE_TOUCH_INPUT         DISABLE_MULTIPLAYER
 #     USE_CONTROLLER_INPUT    FAKE_TOUCH_EVENTS
+#     ANDROID                 OUYA
+#     __IPHONEOS__            REDUCE_OVERSCAN
 #
-# None of them was defined by any build file in this repository's history
-# except the Code::Blocks project target deleted in 49ea10bb, so since the
-# CMake migration every arm they guarded was code that no shipping build
-# compiled. `git log -S '-DUSE_CONTROLLER_INPUT' --all` and
+# The first four were never defined by any build file in this repository's
+# history except the Code::Blocks project target deleted in 49ea10bb, so
+# since the CMake migration every arm they guarded was code that no shipping
+# build compiled. `git log -S '-DUSE_CONTROLLER_INPUT' --all` and
 # `git log -S '-DREDUCE_OVERSCAN' --all` are empty; the other two appear only
 # in that one deleted project file. PR #292 deleted the arms.
 #
@@ -34,18 +36,43 @@
 #     plus save-slot and picker shims reachable only from the
 #     USE_TOUCH_INPUT arms above.
 #
-# So a new `#ifdef USE_TOUCH_INPUT` is never a build variant being restored;
-# it is dead code being re-added, or a live rule being forked in two. This
-# gate makes that fail the build instead of surviving as green dead weight,
-# the same way check_injector_settles.sh keeps flat fade settles out.
+# The other four are Jonathan Dearborn's 2013 port hooks (issue #302), and
+# none of them is set by anything this repository builds:
 #
-# Deliberately NOT covered: ANDROID, OUYA, __IPHONEOS__ and REDUCE_OVERSCAN.
-# Those are platform-port hooks, not dead build variants; deciding their
-# fate is a product-direction question, tracked separately.
+#   * ANDROID is defined automatically by the Android NDK toolchain
+#     (-DANDROID). The repository has no Android toolchain file, preset or
+#     CI lane, so no build here ever sets it.
+#   * __IPHONEOS__ was SDL2's iOS platform macro. SDL3 renamed it
+#     SDL_PLATFORM_IOS, so under the pinned SDL3 nothing defines it even on
+#     iOS. The live iOS fork is SDL_PLATFORM_IOS (see
+#     display_settings_platform_rewire in menu_screen_specs.cpp).
+#   * OUYA and REDUCE_OVERSCAN were defined by nothing — no toolchain, no
+#     preset, no build file in history.
+#
+# Their arms (an Android soft-keyboard sleep, Android/iOS window and path
+# forks, an OUYA keyboard-panning cutout, an 8 px/6 px overscan inset) were
+# deleted for #302. A port to one of those platforms starts from the live
+# seams (SDL_PLATFORM_*, the runtime overscan_percentage_ setting), not from
+# these names.
+#
+# So a new `#ifdef USE_TOUCH_INPUT` (or `#ifdef OUYA`) is never a build
+# variant being restored; it is dead code being re-added, or a live rule
+# being forked in two. This gate makes that fail the build instead of
+# surviving as green dead weight, the same way check_injector_settles.sh
+# keeps flat fade settles out.
+#
+# What it matches is what a RETURNING macro looks like, not prose: a
+# preprocessor directive naming one of the eight (#if/#ifdef/#ifndef/#elif/
+# #define/#undef, backslash-continued lines joined first) in the compiled
+# tree, or a -D / compile-definition naming one in the build files. Prose is
+# deliberately allowed: Jonathan Dearborn's 2013 comment above
+# overscan_percentage_ in include/openglad/interface/session_state.h
+# ("10% (0.10f) is recommended on OUYA") is heritage and stays verbatim.
 #
 # Wired into the build as a dependency of og_interface (CMakeLists.txt,
 # beside check_render_no_sim_writes), so every configuration that builds the
-# interface library runs it.
+# interface library runs it. Portable to bash 3.2 and POSIX awk (the macOS
+# Release lane): no mapfile/readarray, no awk escapes beyond POSIX.
 set -euo pipefail
 
 MACROS=(
@@ -53,43 +80,94 @@ MACROS=(
     DISABLE_MULTIPLAYER
     USE_CONTROLLER_INPUT
     FAKE_TOUCH_EVENTS
+    ANDROID
+    OUYA
+    __IPHONEOS__
+    REDUCE_OVERSCAN
 )
 
-# Search roots: the compiled tree plus the build files that configure it.
+# Directive roots: the compiled tree (and the web shell, whose C++ glue lives
+# beside it). Definition roots: the build files that configure it.
 # .github/workflows and flake.nix are deliberately NOT scanned -- a stray
 # -DUSE_TOUCH_INPUT added to a CI lane or to the dev shell would slip past
-# this gate, but it would switch nothing on, because PR #292 deleted every
-# arm; the thing worth failing the build over is an #ifdef coming BACK.
-ROOTS=(
+# this gate, but it would switch nothing on, because every arm is deleted;
+# the thing worth failing the build over is an #ifdef coming BACK.
+DIRECTIVE_ROOTS=(
     src
     include
     tests
+    web
+)
+DEFINITION_ROOTS=(
     cmake
     scripts
     CMakeLists.txt
     CMakePresets.json
-    web
 )
 
-present=()
-for root in "${ROOTS[@]}"; do
+dir_present=()
+for root in "${DIRECTIVE_ROOTS[@]}"; do
     if [ -e "$root" ]; then
-        present+=("$root")
+        dir_present+=("$root")
+    fi
+done
+def_present=()
+for root in "${DEFINITION_ROOTS[@]}"; do
+    if [ -e "$root" ]; then
+        def_present+=("$root")
     fi
 done
 
-if [ "${#present[@]}" -eq 0 ]; then
-    echo "ERROR: check_retired_build_macros.sh found none of its search roots;" >&2
+if [ "${#dir_present[@]}" -eq 0 ] || [ "${#def_present[@]}" -eq 0 ]; then
+    echo "ERROR: check_retired_build_macros.sh is missing its search roots;" >&2
     echo "       run it from the repository root." >&2
     exit 1
 fi
 
-# -w so a longer identifier that merely contains one of these names (there is
-# none today, but the gate should accuse only the real thing) does not trip
-# it. The script excludes itself: the names above are the documentation.
-pattern=$(IFS='|'; echo "${MACROS[*]}")
-hits=$(grep -rnwE "$pattern" "${present[@]}" \
-           --exclude=check_retired_build_macros.sh || true)
+# Explicit identifier boundaries rather than \b or grep -w, so the same
+# expression means the same thing to GNU grep, BSD grep and POSIX awk: a
+# longer identifier that merely contains one of these names does not trip it.
+names=$(IFS='|'; echo "${MACROS[*]}")
+word="(^|[^A-Za-z0-9_])(${names})([^A-Za-z0-9_]|$)"
+
+# 1. Preprocessor directives in C/C++ sources, in ONE awk process over every
+#    file (a per-file loop forks a thousand times, which is slow on Windows'
+#    bash). awk joins backslash-continued lines first, so a name on the
+#    second line of a multi-line #if is found and reported at the
+#    directive's first line.
+directive_hits=$(find "${dir_present[@]}" -type f \( -name '*.c' -o -name '*.cc' \
+        -o -name '*.cpp' -o -name '*.cxx' -o -name '*.h' -o -name '*.hh' \
+        -o -name '*.hpp' -o -name '*.inl' -o -name '*.ipp' -o -name '*.m' \
+        -o -name '*.mm' \) -exec awk -v word="$word" '
+    function check(text, at) {
+        if (text ~ /^[[:space:]]*#[[:space:]]*(if|ifdef|ifndef|elif|elifdef|elifndef|define|undef)([^A-Za-z0-9_]|$)/ &&
+            text ~ word)
+            print FILENAME ":" at ":" text
+    }
+    FNR == 1 { pending = "" }
+    {
+        line = $0
+        sub(/\r$/, "", line)
+        if (pending != "") { joined = pending " " line } else { joined = line; start = FNR }
+        if (line ~ /\\$/) {
+            sub(/\\$/, "", joined)
+            pending = joined
+            next
+        }
+        pending = ""
+        check(joined, start)
+    }
+' {} + | LC_ALL=C sort -t: -k1,1 -k2,2n)
+
+# 2. Definitions in the build files: -DNAME, add_compile_definitions(NAME),
+#    target_compile_definitions(... NAME), add_definitions(-DNAME). The
+#    script excludes itself: the names above are its documentation.
+#    -D is followed directly by the name, so it gets its own arm; the
+#    CMake commands take the name as a later argument on the same line.
+definition_hits=$(grep -rnE "(-D[[:space:]]*|(add_compile_definitions|target_compile_definitions|add_definitions|COMPILE_DEFINITIONS).*[^A-Za-z0-9_])(${names})([^A-Za-z0-9_]|$)" \
+        "${def_present[@]}" --exclude=check_retired_build_macros.sh || true)
+
+hits=$(printf '%s\n%s\n' "$directive_hits" "$definition_hits" | sed '/^$/d')
 
 if [ -n "$hits" ]; then
     echo "$hits" >&2
@@ -99,7 +177,9 @@ if [ -n "$hits" ]; then
     echo "       their arms were deleted in PR #292. Touch lives in" >&2
     echo "       handle_events/handle_basic_editor_event plus the web overlay's" >&2
     echo "       touch_keystate; multiplayer lives in the lobby/seat machinery." >&2
-    echo "       See the header of this script." >&2
+    echo "       ANDROID, OUYA, __IPHONEOS__ and REDUCE_OVERSCAN guarded port" >&2
+    echo "       hooks no build here defines; their arms were deleted for #302" >&2
+    echo "       (iOS forks on SDL_PLATFORM_IOS). See the header of this script." >&2
     exit 1
 fi
 
