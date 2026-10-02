@@ -178,6 +178,25 @@ walker* sim_cycle_next_character(
     return nullptr;
 }
 
+void sim_advance_current_special(walker& control)
+{
+    control.set_current_special(control.current_special() + 1);
+
+    const int special_index = static_cast<int>(control.current_special());
+    const FamilyDescriptor* const descriptor = get_family_descriptor(
+        static_cast<int>(static_cast<unsigned char>(control.family())));
+    const bool special_missing =
+        descriptor == nullptr || special_index < 0 ||
+        special_index >= NUM_SPECIALS ||
+        descriptor->special_names[special_index] == nullptr ||
+        std::string_view(descriptor->special_names[special_index]) == "NONE";
+
+    if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
+        || special_missing
+        || (((control.current_special() - 1) * 3 + 1) > control.stats()->level()))
+        control.set_current_special(1);
+}
+
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
@@ -298,21 +317,7 @@ SimInputResult sim_process_player_input(
     if (pi.was_pressed(InputAction::SwitchSpecial) && !debounce.changedspec)
     {
         debounce.changedspec = 1;
-        control->set_current_special(control->current_special() + 1);
-
-        const int special_index = static_cast<int>(control->current_special());
-        const FamilyDescriptor* const descriptor = get_family_descriptor(
-            static_cast<int>(static_cast<unsigned char>(control->family())));
-        const bool special_missing =
-            descriptor == nullptr || special_index < 0 ||
-            special_index >= NUM_SPECIALS ||
-            descriptor->special_names[special_index] == nullptr ||
-            std::string_view(descriptor->special_names[special_index]) == "NONE";
-
-        if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
-            || special_missing
-            || (((control->current_special() - 1) * 3 + 1) > control->stats()->level()))
-            control->set_current_special(1);
+        sim_advance_current_special(*control);
     }
 
     // --- yo_delay tick ---

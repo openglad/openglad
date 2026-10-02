@@ -326,31 +326,30 @@ void apply_authoritative_event_state(GameWorld& world,
             // of stranding it for the next keyframe.
             const short xpix = static_cast<short>(event.a);
             const short ypix = static_cast<short>(event.b);
-            if (world.damage_tile(xpix, ypix) && world.grid.valid())
+            if (world.damage_tile(xpix, ypix))
             {
                 const short tx = static_cast<short>(xpix / GRID_SIZE);
                 const short ty = static_cast<short>(ypix / GRID_SIZE);
-                if (tx >= 0 && ty >= 0 && tx < world.grid.w && ty < world.grid.h)
+                // damage_tile is the one bounds verdict: a non-zero return
+                // already means the grid is valid and (tx, ty) lies inside it.
+                const std::size_t gi =
+                    static_cast<std::size_t>(ty) * world.grid.w + static_cast<std::size_t>(tx);
+                const std::uint8_t value = world.grid.data[gi];
+                bool present = false;
+                for (auto& tile : snapshot.grid_dirty_tiles)
                 {
-                    const std::size_t gi =
-                        static_cast<std::size_t>(ty) * world.grid.w + static_cast<std::size_t>(tx);
-                    const std::uint8_t value = world.grid.data[gi];
-                    bool present = false;
-                    for (auto& tile : snapshot.grid_dirty_tiles)
+                    if (tile.x == tx && tile.y == ty)
                     {
-                        if (tile.x == tx && tile.y == ty)
-                        {
-                            tile.value = value;
-                            present = true;
-                            break;
-                        }
+                        tile.value = value;
+                        present = true;
+                        break;
                     }
-                    if (!present && !snapshot.grid_full_resend)
-                    {
-                        snapshot.grid_dirty = true;
-                        snapshot.grid_dirty_tiles.push_back(
-                            {tx, ty, value});
-                    }
+                }
+                if (!present && !snapshot.grid_full_resend)
+                {
+                    snapshot.grid_dirty = true;
+                    snapshot.grid_dirty_tiles.push_back(
+                        {tx, ty, value});
                 }
             }
             break;

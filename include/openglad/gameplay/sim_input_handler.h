@@ -92,6 +92,13 @@ SimInputResult sim_process_player_input(
 // unclaimed alive player character.
 walker* sim_find_next_control(GameWorld& level, short my_team);
 
+// Advance a walker's current special by one and wrap to special 1 when the slot
+// is out of range, unnamed/NONE in the LIVE family registry, or above the level
+// gate (special-1)*3+1 (issue #321). Precondition: control.stats() != nullptr.
+// The ONE home of the cycling rule: sim_process_player_input (debounced) and the
+// parity harness (scenario_runtime.cpp) both call it.
+void sim_advance_current_special(walker& control);
+
 // Cycle through the oblist starting after `current`, wrapping around,
 // returning the first living walker that satisfies `pred`.
 // If `reverse` is true, iterates backward.  Returns nullptr if none found.

@@ -104,7 +104,7 @@ fields, new SCEN_TYPE bits, MATCHUP layout changes, two-tone sprite colors
    belt-and-braces for hook-error-latched matches and also neutralizes the
    "team-0 props steal control" quirk in scripted play. Pin-free file;
    gated on TYPE_SCRIPTED which no parity golden sets.
-4. **SwitchChar** (`sim_input_handler.cpp:186-196`) finds nothing in FFA —
+4. **SwitchChar** (`sim_input_handler.cpp:270-311`) finds nothing in FFA —
    character switching is deliberately disabled (each fighter is an
    independent combatant). Documented in `mp-game-modes.md`. Unchanged code.
 
