@@ -4299,6 +4299,10 @@ struct BlindCyclerState
     // true: the same press with NO witness at all — the ladder then has only
     // its re-check-before-re-press to keep the wheel from overshooting.
     bool witnessless = false;
+    // How many edge observations of the cycler press come back blinded
+    // (g_click_ladder_edge_blinds): one is a label that lagged one wait, two
+    // is one that lagged past the next wait as well.
+    int edge_blinds = 1;
     bool opened = false;
     bool stepped = false;
     bool wheel_still_on_two = false;
@@ -4326,7 +4330,7 @@ int setup_blind_cycler_injector(void* data)
                                                      "SCORE: MAP", 10000);
         // Armed HERE, not in the test body: the blind belongs to the cycler
         // press, and the door ladder above would otherwise eat it.
-        g_click_ladder_edge_blinds = 1;
+        g_click_ladder_edge_blinds = state->edge_blinds;
         state->stepped = click_until_edge(
             "setup_row_0",
             [](int wait_ms) {
@@ -4463,6 +4467,60 @@ TEST(CampaignZoneUi, setup_click_helper_waits_out_a_landed_cycler)
            "walks the SCORE wheel past the stop the flow asked for";
     EXPECT_EQ(1, g_click_ladder_edge_waits)
         << "exactly one attempt waited on a press that had already landed";
+    EXPECT_EQ(0, g_click_ladder_click_retries)
+        << "a landed press is never charged as a re-press";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The landing is counted ONCE, however long its edge lags. Under a starved
+// menu thread the face of a landed press can stay unpublished across more
+// than one of the ladder's waits; the witness has already said the press
+// landed, so every later attempt only waits, and none of them is a second
+// landing. Two blinds make the first TWO observations lie: the ladder must
+// still report exactly one landed press waited out, never one per attempt
+// that waited (the count every reader of g_click_ladder_edge_waits takes it
+// to be).
+TEST(CampaignZoneUi,
+     setup_click_helper_counts_a_landed_press_once_however_long_its_edge_lags)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) is a TEAM DEATHMATCH arena, so the wizard's
+    // RULES step leads with the SCORE wheel: MAP -> 1 -> 3 -> 5 -> 10.
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_edge_waits = 0;
+    g_click_ladder_edge_blinds = 0;
+
+    BlindCyclerState state;
+    state.edge_blinds = 2;  // the face lags past TWO of the ladder's waits
+    SDL_Thread* thread = SDL_CreateThread(setup_blind_cycler_injector,
+                                          "setup_lagging_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the SETUP door still opens on RULES";
+    EXPECT_EQ(0, g_click_ladder_edge_blinds)
+        << "both injected blinds must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "a landed press whose label lagged twice must still reach its edge";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "the ladder must not press a landed cycler again, however many "
+           "waits its face lags";
+    EXPECT_EQ(1, g_click_ladder_edge_waits)
+        << "one landed press is one edge wait, not one per attempt that "
+           "waited on it";
     EXPECT_EQ(0, g_click_ladder_click_retries)
         << "a landed press is never charged as a re-press";
 
