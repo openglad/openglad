@@ -197,12 +197,23 @@ SimInputResult sim_process_player_input(
     if (debounce.cue_delay > 0)
         debounce.cue_delay--;
 
-    // --- Control setup ---
+    // --- Control setup (§4.4 per-tick claim) ---
     if (control && control->user() == -1)
     {
-        control->set_act_type(ACT_CONTROL);
-        control->set_user(static_cast<signed char>(player_num));
-        control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
+        if (og::sim::control_claim_allowed(level, control, player_num))
+        {
+            control->set_act_type(ACT_CONTROL);
+            control->set_user(static_cast<signed char>(player_num));
+            control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
+        }
+        else
+        {
+            // A supplied control the policy refuses is treated as no control
+            // at all: the seat takes the same §4.4 site-2 verdict (Follow /
+            // Claimed / EndGame) an auto-selected null seat takes below.
+            // Issue #333.
+            control = nullptr;
+        }
     }
     if (!control || control->dead())
     {
