@@ -718,6 +718,10 @@ TEST_F(LevelFileIoCoverage,
         std::error_code ec;
         ASSERT_TRUE(fs::create_directory(decor, ec)) << ec.message();
         ec.clear();
+        // The working directory's temp/pix is not guaranteed to exist: no
+        // other test writes level files relative to the checkout.
+        fs::create_directories(fallback_decor.parent_path(), ec);
+        ASSERT_FALSE(ec) << ec.message();
         ASSERT_TRUE(fs::create_directory(fallback_decor, ec)) << ec.message();
 
         GameWorld world(46);
