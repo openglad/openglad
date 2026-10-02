@@ -231,74 +231,36 @@ struct LobbyPollResult {
 LobbyPollResult
 poll_lobby_messages(og::sim::ITransport& transport)
 {
+    // One decode for raw and typed transports (og::sim::poll_decoded_messages,
+    // shared with the server and lobby-client polls). The lobby server
+    // consumes LobbyMessage and PackRequest and ignores every other
+    // well-formed kind; a Malformed frame marks its peer (peer 0 is no peer).
     LobbyPollResult result;
-
-    if (transport.supports_typed_messages())
+    for (const auto& message : og::sim::poll_decoded_messages(transport))
     {
-        for (const auto& typed_message : transport.poll_typed())
+        switch (message.kind)
         {
-            if (typed_message.kind == og::sim::TypedReceivedMessageKind::Malformed)
-            {
-                if (typed_message.peer_id != 0)
-                    result.malformed_peer_ids.push_back(typed_message.peer_id);
-                continue;
-            }
-            if (typed_message.kind ==
-                    og::sim::TypedReceivedMessageKind::PackRequest &&
-                typed_message.pack_request)
-            {
-                result.pack_requests.emplace_back(typed_message.peer_id,
-                                                  *typed_message.pack_request);
-                continue;
-            }
-            if (typed_message.kind != og::sim::TypedReceivedMessageKind::LobbyMessage ||
-                !typed_message.lobby_message)
-            {
-                continue;
-            }
-
-            result.messages.emplace_back(typed_message.peer_id,
-                                         *typed_message.lobby_message);
-        }
-        return result;
-    }
-
-    for (const auto& message : transport.poll())
-    {
-        og::sim::TransportEnvelope envelope;
-        if (!og::sim::decode_transport_envelope(message.data, envelope))
-        {
+        case og::sim::TypedReceivedMessageKind::Malformed:
             if (message.peer_id != 0)
                 result.malformed_peer_ids.push_back(message.peer_id);
-            continue;
+            break;
+        case og::sim::TypedReceivedMessageKind::PackRequest:
+            if (message.pack_request)
+                result.pack_requests.emplace_back(message.peer_id,
+                                                  *message.pack_request);
+            break;
+        case og::sim::TypedReceivedMessageKind::LobbyMessage:
+            if (message.lobby_message)
+                result.messages.emplace_back(message.peer_id,
+                                             *message.lobby_message);
+            break;
+        default:
+            break;
         }
-        if (envelope.message_type == og::sim::kPackRequestMessageType)
-        {
-            const auto decoded =
-                og::sim::deserialize_pack_request_message(message.data);
-            if (!decoded.has_value())
-            {
-                if (message.peer_id != 0)
-                    result.malformed_peer_ids.push_back(message.peer_id);
-                continue;
-            }
-            result.pack_requests.emplace_back(message.peer_id, *decoded);
-            continue;
-        }
-        if (envelope.message_type != og::sim::kLobbyMessageType)
-            continue;
-
-        const auto decoded = og::sim::deserialize_lobby_message(message.data);
-        if (!decoded.has_value())
-        {
-            if (message.peer_id != 0)
-                result.malformed_peer_ids.push_back(message.peer_id);
-            continue;
-        }
-
-        result.messages.emplace_back(message.peer_id, *decoded);
     }
 
+    // Sorted and unique: poll_incoming_messages disconnects each malformed
+    // peer once and binary-searches this list.
     std::sort(result.malformed_peer_ids.begin(),
               result.malformed_peer_ids.end());
     result.malformed_peer_ids.erase(

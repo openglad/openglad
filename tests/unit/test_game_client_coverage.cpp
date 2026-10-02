@@ -497,3 +497,44 @@ TEST(GameClientCoverage, deltas_are_dropped_while_a_keyframe_is_pending)
     EXPECT_EQ(11u, client.last_seen_server_tick());
     EXPECT_EQ(1u, client.keyframe_request_count());
 }
+
+// F-Q (one decode for the gameplay client's poll): the client's consumer
+// ignores a straggling staged-lobby keyframe, so a raw (WebSocket) transport
+// must hand it over like a typed transport does instead of calling it a
+// malformed server message and dropping the link. Before the fold the raw arm
+// sent the eight kinds it had no case for to `default:` = malformed.
+TEST(GameClientCoverage, raw_transport_keeps_the_link_on_a_straggling_staged_keyframe)
+{
+    constexpr og::sim::PeerId kServerPeer = 7u;
+    og::sim::WorldSnapshot staged_world;
+    staged_world.rng_state = 0xdeadbeefu;
+    og::sim::StagedMatchKeyframeMessage straggler;
+    straggler.stage_generation = 3u;
+    straggler.snapshot_bytes = og::sim::serialize_snapshot(staged_world);
+    const std::vector<std::uint8_t> keyframe_bytes =
+        og::sim::serialize_staged_match_keyframe_message(straggler);
+    // Precondition: the frame is well-formed (the shared decode accepts it).
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchKeyframe,
+              og::sim::decode_received_message(
+                  {.peer_id = kServerPeer, .data = keyframe_bytes})
+                  .kind);
+
+    RawTransport transport;
+    transport.queue(kServerPeer, keyframe_bytes);
+    transport.queue(
+        kServerPeer,
+        og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+
+    og::sim::GameClient client(transport, kServerPeer);
+    client.poll_messages();
+
+    EXPECT_TRUE(transport.disconnected().empty())
+        << "a well-formed straggler is not a malformed server message";
+    ASSERT_EQ(2u, client.last_polled_messages().size());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::StagedMatchKeyframe,
+              client.last_polled_messages()[0].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Heartbeat,
+              client.last_polled_messages()[1].kind)
+        << "the frame after the straggler is still delivered";
+    EXPECT_EQ(2, client.messages_drained_last_call());
+}

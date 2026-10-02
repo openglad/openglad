@@ -64,7 +64,10 @@
 # What it matches is what a RETURNING macro looks like, not prose: a
 # preprocessor directive naming one of the eight (#if/#ifdef/#ifndef/#elif/
 # #define/#undef, backslash-continued lines joined first) in the compiled
-# tree, or a -D / compile-definition naming one in the build files. Prose is
+# tree, or a -D / compile-definition naming one in the build files (a CMake
+# compile-definition call is joined across its lines up to its closing paren,
+# so a name on a later line of a multi-line target_compile_definitions( is
+# caught too). Prose is
 # deliberately allowed: Jonathan Dearborn's 2013 comment above
 # overscan_percentage_ in include/openglad/interface/session_state.h
 # ("10% (0.10f) is recommended on OUYA") is heritage and stays verbatim.
@@ -159,13 +162,137 @@ directive_hits=$(find "${dir_present[@]}" -type f \( -name '*.c' -o -name '*.cc'
     }
 ' {} + | LC_ALL=C sort -t: -k1,1 -k2,2n)
 
-# 2. Definitions in the build files: -DNAME, add_compile_definitions(NAME),
-#    target_compile_definitions(... NAME), add_definitions(-DNAME). The
-#    script excludes itself: the names above are its documentation.
-#    -D is followed directly by the name, so it gets its own arm; the
-#    CMake commands take the name as a later argument on the same line.
-definition_hits=$(grep -rnE "(-D[[:space:]]*|(add_compile_definitions|target_compile_definitions|add_definitions|COMPILE_DEFINITIONS).*[^A-Za-z0-9_])(${names})([^A-Za-z0-9_]|$)" \
+# 2. Definitions in the build files, in two passes.
+#    2a. -DNAME anywhere under the definition roots (shell scripts and
+#        CMakePresets.json carry -D tokens too). -D is followed directly by
+#        the name. The script excludes itself: the names above are its
+#        documentation.
+#    2b. The CMake compile-definition commands -- add_compile_definitions,
+#        target_compile_definitions, add_definitions, and set_property /
+#        set_target_properties / set_directory_properties /
+#        set_source_files_properties when the call names COMPILE_DEFINITIONS
+#        -- in ONE awk process over every CMakeLists.txt and *.cmake file.
+#        A call is joined from its opening line until its parentheses
+#        balance (a call that opens and closes on one line is just the short
+#        case), with # line comments and #[[ ]] bracket comments dropped and
+#        parentheses inside quoted arguments not counted, then tested as a
+#        whole and reported at its opening line. After a call closes, the
+#        rest of that line is scanned for the next opener, so a second call
+#        sharing the line is caught too. So a name on the third line of a
+#        multi-line target_compile_definitions( fails the build, while a
+#        "# OUYA" comment line inside one does not.
+d_hits=$(grep -rnE -e "-D[[:space:]]*(${names})([^A-Za-z0-9_]|$)" \
         "${def_present[@]}" --exclude=check_retired_build_macros.sh || true)
+
+cmake_call_hits=$(find "${def_present[@]}" -type f \( -name 'CMakeLists.txt' \
+        -o -name '*.cmake' \) -exec awk -v word="$word" '
+    # Returns the code part of one line: comments removed, parentheses (and
+    # escaped characters) inside quoted arguments blanked so they do not
+    # count toward the call depth. Quote and bracket-comment state carry
+    # across lines.
+    function clean(line,   out, i, n, c, rest, eq) {
+        out = ""
+        i = 1
+        n = length(line)
+        while (i <= n) {
+            if (in_bc) {
+                rest = substr(line, i)
+                eq = index(rest, bc_close)
+                if (eq == 0) { break }
+                i = i + eq - 1 + length(bc_close)
+                in_bc = 0
+                continue
+            }
+            c = substr(line, i, 1)
+            if (in_q) {
+                if (c == "\\") {
+                    c = substr(line, i + 1, 1)
+                    if (c == "(" || c == ")" || c == "\"") { c = " " }
+                    out = out " " c
+                    i = i + 2
+                    continue
+                }
+                if (c == "\"") { in_q = 0 }
+                else if (c == "(" || c == ")") { c = " " }
+                out = out c
+                i++
+                continue
+            }
+            if (c == "\"") { in_q = 1; out = out c; i++; continue }
+            if (c == "#") {
+                rest = substr(line, i + 1)
+                if (match(rest, /^\[=*\[/)) {
+                    bc_close = "]"
+                    for (eq = 0; eq < RLENGTH - 2; eq++) { bc_close = bc_close "=" }
+                    bc_close = bc_close "]"
+                    in_bc = 1
+                    i = i + 1 + RLENGTH
+                    continue
+                }
+                break
+            }
+            out = out c
+            i++
+        }
+        return out
+    }
+    function finish() {
+        if (in_call && (cmd !~ /^set_/ || joined ~ /COMPILE_DEFINITIONS/) &&
+            joined ~ word) {
+            gsub(/[[:space:]]+/, " ", joined)
+            sub(/^ /, "", joined)
+            print callfile ":" start ":" joined
+        }
+        in_call = 0
+    }
+    FNR == 1 { finish(); in_q = 0; in_bc = 0 }
+    {
+        line = $0
+        sub(/\r$/, "", line)
+        code = clean(line)
+        # A line can hold the tail of one call and the start of the next
+        # (two commands on one line is legal CMake), so after a call closes
+        # the rest of the SAME line is scanned for another opener.
+        while (1) {
+            if (!in_call) {
+                if (!match(tolower(code), /(^|[^a-z0-9_])(add_compile_definitions|target_compile_definitions|add_definitions|set_property|set_target_properties|set_directory_properties|set_source_files_properties)[[:space:]]*\(/))
+                    next
+                at = RSTART
+                if (substr(code, at, 1) !~ /[A-Za-z]/) { at++ }
+                code = substr(code, at)
+                cmd = tolower(code)
+                sub(/[^a-z_].*$/, "", cmd)
+                in_call = 1
+                depth = 0
+                joined = ""
+                start = FNR
+                callfile = FILENAME
+            }
+            closed = 0
+            n = length(code)
+            for (i = 1; i <= n; i++) {
+                c = substr(code, i, 1)
+                if (c == "(") { depth++ }
+                else if (c == ")") {
+                    depth--
+                    if (depth == 0) { closed = i; break }
+                }
+            }
+            if (!closed) { break }
+            joined = joined " " substr(code, 1, closed)
+            finish()
+            code = substr(code, closed + 1)
+        }
+        joined = joined " " code
+    }
+    END { finish() }
+' {} + | LC_ALL=C sort -t: -k1,1 -k2,2n)
+
+# One report per file:line (an add_definitions(-DNAME) line is found by both
+# passes).
+definition_hits=$(printf '%s\n%s\n' "$d_hits" "$cmake_call_hits" | sed '/^$/d' |
+        awk '{ split($0, p, ":"); key = p[1] ":" p[2]
+               if (!(key in seen)) { seen[key] = 1; print } }')
 
 hits=$(printf '%s\n%s\n' "$directive_hits" "$definition_hits" | sed '/^$/d')
 
