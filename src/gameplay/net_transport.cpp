@@ -1826,4 +1826,22 @@ std::vector<TypedReceivedMessage> ITransport::poll_typed()
     return typed_messages;
 }
 
+std::vector<TypedReceivedMessage> poll_decoded_messages(ITransport& transport)
+{
+    // A raw transport goes through the base decode (every poll() frame through
+    // decode_received_message) even if it overrides poll_typed().
+    return transport.supports_typed_messages()
+        ? transport.poll_typed()
+        : transport.ITransport::poll_typed();
+}
+
+std::vector<TypedReceivedMessage> poll_lobby_bound_messages(ITransport& transport)
+{
+    std::vector<TypedReceivedMessage> messages = poll_decoded_messages(transport);
+    std::erase_if(messages, [](const TypedReceivedMessage& message) {
+        return !is_lobby_bound(message.kind);
+    });
+    return messages;
+}
+
 } // namespace og::sim

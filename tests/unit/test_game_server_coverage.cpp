@@ -437,6 +437,174 @@ TEST(GameServerCoverage, typed_malformed_marker_suppresses_later_peer_messages)
               server.last_polled_messages().front().kind);
 }
 
+struct KindFrame {
+    og::sim::TypedReceivedMessageKind kind;
+    std::vector<std::uint8_t> bytes;
+};
+
+template <std::size_t N>
+std::vector<std::uint8_t> frame_bytes(const std::array<std::uint8_t, N>& bytes)
+{
+    return {bytes.begin(), bytes.end()};
+}
+
+// One WELL-FORMED frame of every kind a server sends and never receives.
+std::vector<KindFrame> well_formed_client_bound_frames()
+{
+    using Kind = og::sim::TypedReceivedMessageKind;
+    return {
+        {Kind::Snapshot, og::sim::serialize_snapshot(og::sim::WorldSnapshot{})},
+        {Kind::DeltaSnapshot, og::sim::serialize_delta(og::sim::WorldSnapshot{})},
+        {Kind::SimEventBatch,
+         og::sim::serialize_sim_event_batch(og::sim::SimEventBatch{.sequence = 3u, .events = {}})},
+        {Kind::GameFlowEventBatch,
+         og::sim::serialize_game_flow_event_batch(
+             og::sim::SimEventBatch{.sequence = 4u, .events = {}})},
+        {Kind::InitialSetup,
+         og::sim::serialize_initial_setup_message(og::sim::InitialSetupMessage{})},
+        {Kind::ExitPromptBroadcast,
+         og::sim::serialize_exit_prompt_broadcast_message(
+             og::sim::ExitPromptBroadcastMessage{})},
+        {Kind::ControlChange,
+         og::sim::serialize_control_change_message(og::sim::ControlChangeMessage{})},
+        {Kind::PackManifest,
+         og::sim::serialize_pack_manifest_message(og::sim::PackManifestMessage{})},
+        {Kind::PackFileChunk,
+         og::sim::serialize_pack_file_chunk_message(og::sim::PackFileChunkMessage{
+             .pack_id = "pack", .file_index = 0u, .offset = 0u, .data = {1u}})},
+        {Kind::PackTransferDone,
+         og::sim::serialize_pack_transfer_done_message(
+             og::sim::PackTransferDoneMessage{.pack_id = "pack"})},
+        {Kind::StagedMatchSetup,
+         og::sim::serialize_staged_match_setup_message(
+             og::sim::StagedMatchSetupMessage{
+                 .stage_generation = 5u,
+                 .setup_bytes = og::sim::serialize_initial_setup_message(
+                     og::sim::InitialSetupMessage{}),
+             })},
+        {Kind::StagedMatchKeyframe,
+         og::sim::serialize_staged_match_keyframe_message(
+             og::sim::StagedMatchKeyframeMessage{
+                 .stage_generation = 5u,
+                 .snapshot_bytes =
+                     og::sim::serialize_snapshot(og::sim::WorldSnapshot{}),
+             })},
+    };
+}
+
+// One WELL-FORMED frame of every kind a server accepts from a peer.
+std::vector<KindFrame> well_formed_server_bound_frames()
+{
+    using Kind = og::sim::TypedReceivedMessageKind;
+    og::sim::LobbyMessage kick;
+    kick.payload = og::sim::LobbyKickMessage{.machine_id = 0x51u};
+    return {
+        {Kind::LobbyMessage, og::sim::serialize_lobby_message(kick)},
+        {Kind::LobbyState,
+         og::sim::serialize_lobby_state_message(og::sim::LobbyState{})},
+        {Kind::Input, frame_bytes(og::sim::serialize_input(9u, InputState{}))},
+        {Kind::Hello, frame_bytes(og::sim::serialize_hello(og::sim::HelloMessage{}))},
+        {Kind::ClientReady,
+         og::sim::serialize_client_ready_message(og::sim::ClientReadyMessage{})},
+        {Kind::KeyframeRequest,
+         og::sim::serialize_keyframe_request_message(
+             og::sim::KeyframeRequestMessage{})},
+        {Kind::Heartbeat,
+         og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{})},
+        {Kind::ExitPromptResponse,
+         og::sim::serialize_exit_prompt_response_message(
+             og::sim::ExitPromptResponseMessage{})},
+        {Kind::PauseBroadcast,
+         og::sim::serialize_pause_broadcast_message(og::sim::PauseBroadcastMessage{})},
+        {Kind::PauseResponse,
+         og::sim::serialize_pause_response_message(og::sim::PauseResponseMessage{})},
+        {Kind::SnapshotHashCheck,
+         og::sim::serialize_snapshot_hash_check_message(
+             og::sim::SnapshotHashCheckMessage{})},
+        {Kind::PackRequest,
+         og::sim::serialize_pack_request_message(
+             og::sim::PackRequestMessage{.pack_id = "pack"})},
+    };
+}
+
+// Queues frame i from peer base+i, raw or (decoded once, as an in-process
+// transport would hand it over) typed. Returns the peers in queue order.
+std::vector<og::sim::PeerId> queue_one_frame_per_peer(
+    CoverageTransport& transport,
+    const std::vector<KindFrame>& frames,
+    og::sim::PeerId base,
+    bool typed)
+{
+    std::vector<og::sim::PeerId> peers;
+    for (std::size_t index = 0; index < frames.size(); ++index)
+    {
+        const auto peer = static_cast<og::sim::PeerId>(base + index);
+        peers.push_back(peer);
+        og::sim::TypedReceivedMessage decoded = og::sim::decode_received_message(
+            {.peer_id = peer, .data = frames[index].bytes});
+        // Precondition: the frame really is well-formed and of the named kind.
+        EXPECT_EQ(frames[index].kind, decoded.kind) << "frame " << index;
+        if (typed)
+            transport.queue_typed(std::move(decoded));
+        else
+            transport.queue_raw(peer, frames[index].bytes);
+    }
+    return peers;
+}
+
+// #323: one acceptance rule (og::sim::is_server_bound) on BOTH transport
+// paths. A well-formed client-bound frame is a protocol violation: the peer is
+// disconnected and nothing is forwarded. The paired control sends one
+// well-formed server-bound frame per peer: all forwarded, in order, no
+// disconnect.
+TEST(GameServerCoverage, rejects_every_client_bound_kind_on_raw_and_typed_transports)
+{
+    for (const bool typed : {false, true})
+    {
+        SCOPED_TRACE(typed ? "typed transport" : "raw transport");
+        TestGameWorld fixture;
+        CoverageTransport transport(typed);
+        og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+        const std::vector<KindFrame> client_bound = well_formed_client_bound_frames();
+        const std::vector<KindFrame> server_bound = well_formed_server_bound_frames();
+        ASSERT_EQ(12u, client_bound.size());
+        ASSERT_EQ(12u, server_bound.size());
+
+        std::vector<og::sim::PeerId> all_peers;
+        for (std::size_t index = 0; index < 12u; ++index)
+        {
+            all_peers.push_back(static_cast<og::sim::PeerId>(201u + index));
+            all_peers.push_back(static_cast<og::sim::PeerId>(301u + index));
+        }
+        transport.set_connected(all_peers);
+        server.poll_incoming_messages();
+
+        // Control: every server-bound kind is forwarded, kinds in order.
+        const std::vector<og::sim::PeerId> accepted_peers =
+            queue_one_frame_per_peer(transport, server_bound, 301u, typed);
+        server.poll_incoming_messages();
+        EXPECT_TRUE(transport.disconnected().empty());
+        ASSERT_EQ(server_bound.size(), server.last_polled_messages().size());
+        for (std::size_t index = 0; index < server_bound.size(); ++index)
+        {
+            EXPECT_EQ(server_bound[index].kind,
+                      server.last_polled_messages()[index].kind)
+                << "server-bound frame " << index;
+            EXPECT_EQ(accepted_peers[index],
+                      server.last_polled_messages()[index].peer_id);
+        }
+
+        // Every client-bound kind disconnects its sender; nothing forwarded.
+        const std::vector<og::sim::PeerId> rejected_peers =
+            queue_one_frame_per_peer(transport, client_bound, 201u, typed);
+        server.poll_incoming_messages();
+        EXPECT_EQ(rejected_peers, transport.disconnected());
+        EXPECT_TRUE(server.last_polled_messages().empty());
+        EXPECT_EQ(accepted_peers, transport.connected_peers());
+    }
+}
+
 TEST(GameServerCoverage, snapshot_accumulation_coalesces_tiles_and_high_mask_bits)
 {
     og::sim::PerClientState state;

@@ -2019,128 +2019,6 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
 
 namespace {
 
-std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
-    og::sim::ITransport& transport)
-{
-    if (transport.supports_typed_messages())
-        return transport.poll_typed();
-
-    std::vector<og::sim::TypedReceivedMessage> typed_messages;
-    for (const auto& message : transport.poll())
-    {
-        og::sim::TransportEnvelope envelope;
-        if (!og::sim::decode_transport_envelope(message.data, envelope))
-            continue;
-
-        og::sim::TypedReceivedMessage typed_message;
-        typed_message.peer_id = message.peer_id;
-        switch (envelope.message_type)
-        {
-        case og::sim::kLobbyMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyMessage;
-            typed_message.lobby_message =
-                std::make_shared<og::sim::LobbyMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kLobbyStateMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_state_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
-            typed_message.lobby_state =
-                std::make_shared<og::sim::LobbyState>(*decoded);
-            break;
-        }
-
-        // Class-pack transfer (protocol v10): the joiner receives these on
-        // the same raw lobby transport and feeds them to PackTransferClient.
-        case og::sim::kPackManifestMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pack_manifest_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PackManifest;
-            typed_message.pack_manifest =
-                std::make_shared<og::sim::PackManifestMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kPackFileChunkMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pack_file_chunk_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PackFileChunk;
-            typed_message.pack_file_chunk =
-                std::make_shared<og::sim::PackFileChunkMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kPackTransferDoneMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pack_transfer_done_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PackTransferDone;
-            typed_message.pack_transfer_done =
-                std::make_shared<og::sim::PackTransferDoneMessage>(*decoded);
-            break;
-        }
-
-        // Staged lobby (#218, protocol v13): the owner's staged-world pair,
-        // joiner-bound on the same raw lobby transport.
-        case og::sim::kStagedMatchSetupMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_staged_match_setup_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::StagedMatchSetup;
-            typed_message.staged_match_setup =
-                std::make_shared<og::sim::StagedMatchSetupMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kStagedMatchKeyframeMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_staged_match_keyframe_message(
-                    message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::StagedMatchKeyframe;
-            typed_message.staged_match_keyframe =
-                std::make_shared<og::sim::StagedMatchKeyframeMessage>(
-                    *decoded);
-            break;
-        }
-
-        default:
-            continue;
-        }
-
-        typed_messages.push_back(std::move(typed_message));
-    }
-
-    return typed_messages;
-}
-
 short resolve_pending_local_team(
     const og::sim::LobbyState& state,
     short requested_team,
@@ -3487,7 +3365,7 @@ private:
 
         server_->poll_incoming_messages();
         for (const og::sim::TypedReceivedMessage& message :
-             poll_lobby_transport_messages(*local_client_transport_))
+             og::sim::poll_lobby_bound_messages(*local_client_transport_))
         {
             handle_typed_message(message);
         }
@@ -5105,7 +4983,7 @@ private:
     {
 
         for (const og::sim::TypedReceivedMessage& message :
-             poll_lobby_transport_messages(*transport_))
+             og::sim::poll_lobby_bound_messages(*transport_))
             handle_typed_message(message);
     }
 

@@ -286,7 +286,7 @@ int curses_network_testing_exercise_internal_helpers()
         raw.sent_payload() == unknown &&
         raw_transport.connected_peers() == std::vector<og::sim::PeerId>{1});
     const std::vector<og::sim::TypedReceivedMessage> decoded =
-        poll_lobby_transport_messages(raw);
+        og::sim::poll_lobby_bound_messages(raw);
     check(decoded.size() == 2 &&
         decoded[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
         decoded[1].kind == og::sim::TypedReceivedMessageKind::LobbyState);
@@ -319,7 +319,7 @@ int curses_network_testing_exercise_internal_helpers()
         },
     });
     const std::vector<og::sim::TypedReceivedMessage> staged_decoded =
-        poll_lobby_transport_messages(staged_raw);
+        og::sim::poll_lobby_bound_messages(staged_raw);
     check(staged_decoded.size() == 2 &&
         staged_decoded[0].kind ==
             og::sim::TypedReceivedMessageKind::StagedMatchSetup &&
@@ -376,7 +376,7 @@ int curses_network_testing_exercise_internal_helpers()
         },
     });
     const std::vector<og::sim::TypedReceivedMessage> pack_decoded =
-        poll_lobby_transport_messages(pack_raw);
+        og::sim::poll_lobby_bound_messages(pack_raw);
     check(pack_decoded.size() == 3);
     check(pack_decoded.size() == 3 &&
         pack_decoded[0].kind ==

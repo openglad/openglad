@@ -742,7 +742,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         {4, og::sim::serialize_lobby_message(join_message)});
     raw_transport.incoming.push_back(
         {5, og::sim::serialize_lobby_state_message(state)});
-    const auto typed_from_raw = poll_lobby_transport_messages(raw_transport);
+    const auto typed_from_raw = og::sim::poll_lobby_bound_messages(raw_transport);
     check(typed_from_raw.size() == 2 &&
           typed_from_raw[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
           typed_from_raw[1].kind == og::sim::TypedReceivedMessageKind::LobbyState);
@@ -803,7 +803,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
     typed_message.lobby_state = std::make_shared<og::sim::LobbyState>(state);
     typed_transport.typed.push_back(std::move(typed_message));
-    check(poll_lobby_transport_messages(typed_transport).size() == 1);
+    check(og::sim::poll_lobby_bound_messages(typed_transport).size() == 1);
 
     check(resolve_pending_local_team(state, -1) == 0);
     og::sim::LobbyState full_state;
