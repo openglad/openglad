@@ -3419,6 +3419,40 @@ TEST(CursesPickerClient, matchup_screen_handles_zero_local_seats)
     EXPECT_EQ(dump.find("P1 plays"), std::string::npos) << dump;
     EXPECT_EQ(dump.find("(P1)"), std::string::npos) << dump;
     EXPECT_NE(dump.find("RED TEAM 1 HEROES"), std::string::npos) << dump;
+    // Positive control for the #327 notice: one toggleable hero row means
+    // the list draws and the empty-matchup notice stays away.
+    EXPECT_EQ(dump.find("No heroes to match up"), std::string::npos) << dump;
+}
+
+// #327 / R-327: with no local seat and no hero, Matchup has nothing to
+// toggle. choose() returns -1 before drawing when nothing is selectable, so
+// the screen used to leave silently with no frame presented and the Escape
+// still queued. It now shows a one-line notice that the Escape dismisses.
+TEST(CursesPickerClient, matchup_with_no_selectable_row_shows_the_notice)
+{
+    PickerFixture f;
+    const auto* matchup_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::Teams);
+    ASSERT_NE(matchup_item, nullptr);
+    f.save().numplayers = 0;
+    for (auto& slot : f.save().team_list)
+        slot.reset();
+    f.save().team_size = 0;
+    const int presents_before = f.t().present_count();
+
+    // ONE key: the notice consumes it. A second would leak to the caller.
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *matchup_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("No heroes to match up - hire someone first."),
+              std::string::npos)
+        << "an empty Matchup must say why it has nothing to show\n" << dump;
+    EXPECT_NE(dump.find("Matchup"), std::string::npos) << dump;
+    EXPECT_EQ(1, f.t().present_count() - presents_before)
+        << "exactly one frame: the notice (the list never draws)";
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the notice must consume the Escape that dismisses it";
 }
 
 // A loaded SDL save can still say "4 players", but a curses process advertises
