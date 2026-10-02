@@ -1093,9 +1093,9 @@ TEST(CtfUi, settings_cycler_reports_a_label_that_never_lands)
         << "the camp's SETUP row opens the wizard on RULES";
     EXPECT_TRUE(state.ladder_reported_false)
         << "a face the wheel never shows must be reported, not claimed";
-    EXPECT_EQ(3, state.score_edge_waits)
-        << "one landed press, then only waiting: the ladder spends its three "
-           "attempts and reports, never hangs";
+    EXPECT_EQ(1, state.score_edge_waits)
+        << "one landed press, counted once, then only waiting: the ladder "
+           "spends its three attempts and reports, never hangs";
     EXPECT_EQ(0, state.score_click_retries)
         << "a landed press is never re-sent, whatever its label does";
     EXPECT_EQ(1, (int)save.ctf_capture_limit)

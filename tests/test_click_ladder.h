@@ -248,9 +248,13 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
 // re-press.
 //
 // Counted, never clocked: `click_retries` is the number of attempts that
-// re-pressed because nothing registered; `edge_waits` is the number that
-// waited without pressing — both the attempts that saw the landing witness
-// and a late edge found at re-press time.
+// re-pressed because nothing registered; `edge_waits` is the number of
+// presses that LANDED and were waited out instead of re-sent — a landing
+// witness seen while the edge was still absent, or a late edge found at
+// re-press time. A landing counts ONCE however many attempts its edge
+// lags: a later wait that expires on a press already counted is logged
+// ("still waiting on the landed press") and not counted again, so the
+// number reads the same on a starved box as on an idle one.
 inline int g_click_ladder_click_retries = 0;
 inline int g_click_ladder_edge_waits = 0;
 // TESTING-only fault injection for that half, mirroring g_click_ladder_click_drops:
@@ -323,12 +327,19 @@ inline bool click_until_edge(const std::string& id,
             return true;
         }
         if (has_landed()) {
-            spent = true;
-            ++g_click_ladder_edge_waits;
-            fprintf(stderr,
-                    "  [ladder] attempt %d: '%s' landed but its edge lagged; "
-                    "waiting, not re-pressing\n",
-                    attempt + 1, id.c_str());
+            if (!spent) {
+                spent = true;
+                ++g_click_ladder_edge_waits;
+                fprintf(stderr,
+                        "  [ladder] attempt %d: '%s' landed but its edge "
+                        "lagged; waiting, not re-pressing\n",
+                        attempt + 1, id.c_str());
+            } else {
+                fprintf(stderr,
+                        "  [ladder] attempt %d: '%s' is still waiting on the "
+                        "landed press\n",
+                        attempt + 1, id.c_str());
+            }
             continue;
         }
         ++g_click_ladder_click_retries;
