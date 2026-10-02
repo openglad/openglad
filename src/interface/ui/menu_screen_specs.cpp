@@ -1753,19 +1753,9 @@ ScriptedLevelSet apply_scripted_level_set(int level, bool replay_arm = false)
     // The do_set_scen_level tail without pick_level: load the chosen level
     // with rollback, then commit the cursor and republish. An armed replay
     // of the level already on screen has nothing to reload.
-    if (level != old_id) {
-        game->world().id = static_cast<short>(level);
-        if (level < 0 || level > 32767 || !game->load_level()) {
-            game->clearbuffer();
-            game->world().id = static_cast<short>(old_id);
-            if (!game->load_level()) {
-                game->clearbuffer();
-                popup_dialog("Big problem",
-                             "Also failed to reload current level...");
-            }
-            return ScriptedLevelSet::LoadFailed;
-        }
-    }
+    if (level != old_id &&
+        load_level_or_roll_back(*game, level) != LevelLoadOutcome::Loaded)
+        return ScriptedLevelSet::LoadFailed;
     if (replay_arm) {
         // The arm moves scen_num itself, so the republish and every
         // downstream reader see the same cursor a plain set would write.
@@ -1775,9 +1765,7 @@ ScriptedLevelSet apply_scripted_level_set(int level, bool replay_arm = false)
     }
     // A plain level set abandons any excursion in flight — only the
     // replay_arm branch above keeps/starts one.
-    game->save_data.clear_replay_arm();
-    game->save_data.scen_num = static_cast<short>(level);
-    picker_lobby_sync_settings_from_save();
+    commit_level_cursor(game->save_data, level);
     return ScriptedLevelSet::Set;
 }
 
