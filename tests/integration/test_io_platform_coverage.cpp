@@ -19,6 +19,7 @@
 #include <cstring>
 #include <fstream>
 #include <filesystem>
+#include <iterator>
 #include <physfs.h>
 #include <stdexcept>
 #include <string>
@@ -892,6 +893,80 @@ TEST(IoPlatformCoverage, platform_io_delete_level_nonempty_campaign_path)
 
     set_mounted_campaign_for_testing(prev);
 
+    cleanup_unpacked_campaign();
+    fs::remove(archive, ec);
+}
+
+
+// delete_level edits a packaged campaign: unpack into <user>/temp, drop the
+// level's two files, repack. Repacking REMOVES the archive and zips temp/
+// over it, so it may only run on a tree the unpack actually produced. An
+// archive that cannot be unpacked (here: bytes that are not a zip) must come
+// through the delete byte for byte; the paired control is the same call on a
+// readable archive, which drops scen321, keeps scen322 and leaves no unpacked
+// tree behind in <user>/temp.
+TEST(IoPlatformCoverage, delete_level_with_an_unreadable_archive_leaves_it_untouched)
+{
+    namespace fs = std::filesystem;
+    const std::string user = get_user_path();
+    const std::string id = "w4_delete_level_unreadable";
+    const fs::path temp_root = fs::path(user) / "temp";
+    const fs::path campaigns_dir = fs::path(user) / "campaigns";
+    const fs::path archive = campaigns_dir / (id + ".glad");
+    const std::string garbage = "this is not a zip archive";
+
+    std::error_code ec;
+    fs::create_directories(campaigns_dir, ec);
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    };
+
+    const std::string prev = get_mounted_campaign();
+    set_mounted_campaign_for_testing(id);
+
+    // Control: a readable archive is edited, and temp/ is cleared after.
+    cleanup_unpacked_campaign();
+    fs::create_directories(temp_root / "scen", ec);
+    fs::create_directories(temp_root / "pix", ec);
+    for (const char* name : {"scen/scen321.fss", "pix/scen0321.png",
+                             "scen/scen322.fss", "pix/scen0322.png"})
+    {
+        std::ofstream out(temp_root / name, std::ios::binary);
+        out << name;
+    }
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+              static_cast<int>(og::io::zip_contents_with_error(
+                  temp_root.string(), archive.string())))
+        << "seed campaign archive should be created";
+    cleanup_unpacked_campaign();
+    delete_level(321);
+    EXPECT_FALSE(fs::exists(temp_root))
+        << "delete_level must clear <user>/temp after the repack";
+    ASSERT_TRUE(unpack_campaign(id)) << "the repacked campaign must unpack";
+    EXPECT_FALSE(fs::exists(temp_root / "scen" / "scen321.fss"))
+        << "control: delete_level drops the scenario file";
+    EXPECT_TRUE(fs::exists(temp_root / "scen" / "scen322.fss"))
+        << "control: other levels keep their scenario file";
+    cleanup_unpacked_campaign();
+
+    // The rule: an archive the unpack refuses is never repacked over.
+    {
+        std::ofstream out(archive, std::ios::binary | std::ios::trunc);
+        out << garbage;
+    }
+    ASSERT_FALSE(unpack_campaign(id)) << "precondition: the archive is unreadable";
+    cleanup_unpacked_campaign();
+    delete_level(321);
+    EXPECT_TRUE(fs::exists(archive))
+        << "a failed unpack must not remove the campaign archive";
+    EXPECT_EQ(garbage, read_bytes(archive))
+        << "a failed unpack must leave the campaign archive byte for byte";
+    EXPECT_FALSE(fs::exists(temp_root))
+        << "a failed unpack leaves no unpacked tree behind";
+
+    set_mounted_campaign_for_testing(prev);
     cleanup_unpacked_campaign();
     fs::remove(archive, ec);
 }
