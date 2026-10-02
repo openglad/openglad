@@ -1054,6 +1054,10 @@ int main(int argc, char* argv[])
 
             demos[static_cast<size_t>(i)].session =
                 std::make_unique<og::runtime::GameSession>(sub_cfg);
+            // Nobody can click a demo cell's level-end popup, results panel
+            // or exit-pad prompt; they answer themselves so the session
+            // finishes and the grid restarts.
+            demos[static_cast<size_t>(i)].session->non_interactive_ = true;
         }
 
         // Uncapped-mode GPU compositor: one streaming texture per cell, so
