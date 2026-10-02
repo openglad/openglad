@@ -10,6 +10,7 @@
 #include <fstream>
 #include <list>
 #include <string>
+#include <system_error>
 
 namespace {
 
@@ -110,6 +111,126 @@ TEST(PhysfsWrappers, og_open_write_uses_physfs_inside_the_write_dir_and_stdio_ou
     fs::remove(abs_stdio, ec);
     fs::remove_all(base, ec);
     restore_unit_filesystem();
+}
+
+namespace {
+
+// The process working directory for one scope, restored on every exit path
+// (an ASSERT included). og_unit_data runs its tests on one thread.
+struct ScopedCurrentPath
+{
+    explicit ScopedCurrentPath(const std::filesystem::path& dir)
+        : saved(std::filesystem::current_path())
+    {
+        std::filesystem::current_path(dir);
+    }
+    ~ScopedCurrentPath()
+    {
+        std::error_code ec;
+        std::filesystem::current_path(saved, ec);
+    }
+    ScopedCurrentPath(const ScopedCurrentPath&) = delete;
+    ScopedCurrentPath& operator=(const ScopedCurrentPath&) = delete;
+    std::filesystem::path saved;
+};
+
+// Writes one byte through `file` and closes it; false when there is no file.
+bool write_one_byte(og::io::OgFilePtr file, unsigned char byte)
+{
+    if (!file)
+        return false;
+    return og::io::og_write_exact(*file, &byte, 1, 1);
+}
+
+} // namespace
+
+// #332, the editor-save product state: PhysFS writes to the user dir (A),
+// the process CWD is somewhere else (B, the install or the checkout), and a
+// relative write names a parent that A lacks but B has. PhysFS refuses; the
+// open must FAIL instead of landing the bytes under the CWD, where the save
+// would be silently lost. The controls pin every arm where the stdio
+// fallback stays: a write PhysFS accepts, an absolute path, no write dir at
+// all, and a relative path that resolves under the write dir.
+TEST(PhysfsWrappers, og_open_write_never_lands_a_refused_relative_path_in_the_cwd)
+{
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "openglad_unit_refused_write";
+    const fs::path write_dir = root / "A";
+    const fs::path cwd = root / "B";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    fs::create_directories(cwd / "nosuchdir");
+    fs::create_directories(cwd / "present");
+    fs::create_directories(write_dir / "present");
+    fs::create_directories(write_dir / "inner" / "sub");
+    struct Cleanup
+    {
+        fs::path root;
+        ~Cleanup()
+        {
+            restore_unit_filesystem();
+            std::error_code ignored;
+            fs::remove_all(root, ignored);
+        }
+    } cleanup{root};
+
+    if (!og::io::physfs_init("og_unit_tests"))
+    {
+        ASSERT_TRUE(og::io::physfs_deinit());
+        ASSERT_TRUE(og::io::physfs_init("og_unit_tests"));
+    }
+    ASSERT_TRUE(og::io::physfs_set_write_dir(write_dir.string()));
+
+    {
+        ScopedCurrentPath in_b(cwd);
+
+        // The rule: PhysFS refused (A has no nosuchdir/), so nothing opens.
+        EXPECT_FALSE(write_one_byte(og::io::og_open_write("nosuchdir/x.bin"), 1))
+            << "a relative write PhysFS refused must fail, not fall back to the CWD";
+        EXPECT_FALSE(fs::exists(cwd / "nosuchdir" / "x.bin"))
+            << "the refused editor save landed in the process CWD";
+        EXPECT_FALSE(fs::exists(write_dir / "nosuchdir"));
+
+        // A "../" spelling that climbs out of the CWD is resolved first and
+        // refused the same way: it does not resolve under the write dir.
+        EXPECT_FALSE(write_one_byte(og::io::og_open_write("../B/nosuchdir/y.bin"), 2))
+            << "a dot-dot relative path outside the write dir must fail";
+        EXPECT_FALSE(fs::exists(cwd / "nosuchdir" / "y.bin"));
+
+        // Control: a write PhysFS accepts lands in the write dir, not in B.
+        EXPECT_TRUE(write_one_byte(og::io::og_open_write("present/x.bin"), 3));
+        EXPECT_TRUE(fs::exists(write_dir / "present" / "x.bin"))
+            << "PhysFS still serves a relative write whose parent exists";
+        EXPECT_FALSE(fs::exists(cwd / "present" / "x.bin"));
+
+        // Control: PhysFS rejects an absolute path; stdio writes it.
+        EXPECT_TRUE(write_one_byte(og::io::og_open_write((cwd / "abs.bin").string().c_str()), 4))
+            << "an absolute path keeps the stdio fallback";
+        EXPECT_TRUE(fs::exists(cwd / "abs.bin"));
+    }
+
+    {
+        // Control: a relative path that resolves under the write dir keeps
+        // the fallback (a relative user dir, or HOME unset => "./"). With the
+        // CWD at A/inner, PhysFS looks for A/sub (absent) and refuses; stdio
+        // then lands the file at A/inner/sub/x.bin, which only stdio reaches.
+        ScopedCurrentPath in_inner(write_dir / "inner");
+        EXPECT_TRUE(write_one_byte(og::io::og_open_write("sub/x.bin"), 5))
+            << "a relative path under the write dir keeps the stdio fallback";
+        EXPECT_TRUE(fs::exists(write_dir / "inner" / "sub" / "x.bin"));
+        EXPECT_FALSE(fs::exists(write_dir / "sub"));
+    }
+
+    // Control: PhysFS running with no write dir at all; the relative write
+    // goes to the CWD, the case company.cpp's rename fallbacks handle.
+    ASSERT_TRUE(og::io::physfs_deinit());
+    ASSERT_TRUE(og::io::physfs_init("og_unit_tests"));
+    {
+        ScopedCurrentPath in_b(cwd);
+        EXPECT_TRUE(write_one_byte(og::io::og_open_write("nosuchdir/z.bin"), 6))
+            << "with no write dir a relative path keeps the stdio fallback";
+        EXPECT_TRUE(fs::exists(cwd / "nosuchdir" / "z.bin"));
+    }
 }
 
 // The mount source a virtual path resolves to. The coverage report leans on
