@@ -1,5 +1,6 @@
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/io.h>
+#include <openglad/resources/io_common.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
@@ -24,20 +25,48 @@ namespace {
 
 namespace fs = std::filesystem;
 
-fs::path mk_r15_dir(const std::string& tag)
+// Scratch lives under the user dir's temp/, spelled absolute (the
+// test_io_platform_coverage.cpp user_temp() pattern), never relative to the
+// checkout the binary runs from. And in a subdirectory of its OWN, removed
+// when the test ends: <user>/temp/ is also the campaign unpack dir
+// (cleanup_unpacked_campaign() remove_all's it, repack_campaign() zips all
+// of it), so scratch left loose there rides into the next editor save made
+// in the same binary.
+fs::path zip_r15_root()
 {
-    const fs::path p = fs::path("temp") / "zip_r15" / tag;
-    std::error_code ec;
-    fs::remove_all(p, ec);
-    fs::create_directories(p, ec);
-    return p;
+    return fs::path(get_user_path()) / "temp" / "zip_r15";
 }
+
+// One test's scratch dir, <user>/temp/zip_r15/<tag>, fresh on entry and
+// removed (with zip_r15/ itself) on every exit path, ASSERT included.
+class R15Dir
+{
+public:
+    explicit R15Dir(const std::string& tag) : path_(zip_r15_root() / tag)
+    {
+        std::error_code ec;
+        fs::remove_all(path_, ec);
+        fs::create_directories(path_, ec);
+    }
+    ~R15Dir()
+    {
+        std::error_code ec;
+        fs::remove_all(zip_r15_root(), ec);
+    }
+    R15Dir(const R15Dir&) = delete;
+    R15Dir& operator=(const R15Dir&) = delete;
+    const fs::path& path() const { return path_; }
+
+private:
+    fs::path path_;
+};
 
 } // namespace
 
 TEST(ZipApi, r15_zip_and_unzip_success_paths)
 {
-    const fs::path base = mk_r15_dir("ok");
+    const R15Dir scratch("ok");
+    const fs::path base = scratch.path();
     const fs::path in = base / "in";
     const fs::path out = base / "out";
     const fs::path zipfile = base / "archive.zip";
@@ -66,7 +95,8 @@ TEST(ZipApi, r15_zip_and_unzip_success_paths)
 
 TEST(ZipApi, r15_error_paths_for_open_archive_and_output)
 {
-    const fs::path base = mk_r15_dir("errors");
+    const R15Dir scratch("errors");
+    const fs::path base = scratch.path();
     const fs::path in = base / "in";
     const fs::path zipfile = base / "archive.zip";
     std::error_code ec;
@@ -170,7 +200,8 @@ std::string stored_zip(
 // extracts the same file with the same result.
 TEST(ZipApi, unzip_skips_an_entry_with_an_empty_name)
 {
-    const fs::path base = mk_r15_dir("empty_name");
+    const R15Dir scratch("empty_name");
+    const fs::path base = scratch.path();
     const fs::path zipfile = base / "nameless.zip";
     const fs::path control_zip = base / "control.zip";
     {
@@ -295,7 +326,8 @@ TEST(ZipApi, a_walk_that_runs_out_of_descriptors_reports_ReadInputFailed_and_wri
 {
     constexpr int kFreeFds = 8;
     constexpr int kDepth = 64;
-    const fs::path base = mk_r15_dir("fd_budget_walk");
+    const R15Dir scratch("fd_budget_walk");
+    const fs::path base = scratch.path();
     const fs::path deep_in = base / "deep";
     const fs::path shallow_in = base / "shallow";
     const fs::path deep_zip = base / "deep.zip";

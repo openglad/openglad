@@ -8,12 +8,47 @@
 #include <list>
 #include <filesystem>
 #include <string>
+#include <system_error>
+
+namespace
+{
+
+// Scratch lives under the user dir's temp/, spelled absolute (the
+// test_io_platform_coverage.cpp user_temp() pattern), never relative to the
+// checkout the binary runs from. And in a subdirectory of its OWN, removed
+// when the test ends: <user>/temp/ is also the campaign unpack dir
+// (cleanup_unpacked_campaign() remove_all's it, repack_campaign() zips all
+// of it), so scratch left loose there rides into the next editor save made
+// in the same binary.
+std::filesystem::path io_coverage_dir()
+{
+    return std::filesystem::path(get_user_path()) / "temp" / "io_coverage";
+}
+
+struct IoCoverageScratch
+{
+    IoCoverageScratch()
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(io_coverage_dir(), ec);
+        std::filesystem::create_directories(io_coverage_dir(), ec);
+    }
+    ~IoCoverageScratch()
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(io_coverage_dir(), ec);
+    }
+    IoCoverageScratch(const IoCoverageScratch&) = delete;
+    IoCoverageScratch& operator=(const IoCoverageScratch&) = delete;
+};
+
+} // namespace
 
 TEST(IoCoverage, campaign_yaml_reports_error_on_invalid_stream)
 {
     namespace fs = std::filesystem;
-    fs::create_directories("temp");
-    const fs::path path = fs::path("temp") / "invalid_campaign.yaml";
+    const IoCoverageScratch scratch;
+    const fs::path path = io_coverage_dir() / "invalid_campaign.yaml";
     std::ofstream out(path);
     out << "title: Broken\nroot: [1, 2\n";
     out.close();
@@ -29,8 +64,8 @@ TEST(IoCoverage, campaign_yaml_reports_error_on_invalid_stream)
 TEST(IoCoverage, campaign_yaml_preharvest_retains_only_simple_top_level_pairs)
 {
     namespace fs = std::filesystem;
-    fs::create_directories("temp");
-    const fs::path path = fs::path("temp") / "campaign_preharvest_edges.yaml";
+    const IoCoverageScratch scratch;
+    const fs::path path = io_coverage_dir() / "campaign_preharvest_edges.yaml";
     og::test::ScopedPhysicalFileState path_state(path);
     ASSERT_TRUE(path_state.ready()) << path_state.error().message();
     std::ofstream out(path, std::ios::binary);
@@ -56,8 +91,8 @@ TEST(IoCoverage, campaign_yaml_preharvest_retains_only_simple_top_level_pairs)
 TEST(IoCoverage, campaign_yaml_handles_nested_sequences_and_alias_events)
 {
     namespace fs = std::filesystem;
-    fs::create_directories("temp");
-    const fs::path path = fs::path("temp") / "campaign_structures.yaml";
+    const IoCoverageScratch scratch;
+    const fs::path path = io_coverage_dir() / "campaign_structures.yaml";
     og::test::ScopedPhysicalFileState path_state(path);
     ASSERT_TRUE(path_state.ready()) << path_state.error().message();
     std::ofstream out(path, std::ios::binary);
@@ -114,6 +149,14 @@ TEST(IoCoverage, io_platform_helpers_explode_and_archive_bool_wrappers)
     EXPECT_EQ((std::list<std::string>{"a", "", "b", "", ""}), parts)
         << "explode must keep the empty tokens in position";
 
-    const bool unzip_ok = unzip_into_with_error("temp/no_such_archive.zip", "temp/no_such_archive_out") == ArchiveIoError::None;
+    // unzip_into_with_error creates the output dir BEFORE zip_open fails,
+    // so this miss leaves a directory behind: inside the scratch, not the
+    // checkout.
+    const IoCoverageScratch scratch;
+    const bool unzip_ok =
+        unzip_into_with_error(
+            (io_coverage_dir() / "no_such_archive.zip").string(),
+            (io_coverage_dir() / "no_such_archive_out").string()) ==
+        ArchiveIoError::None;
     ASSERT_TRUE(!unzip_ok) << "unzip should return error for missing archive";
 }
