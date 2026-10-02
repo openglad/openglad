@@ -45,6 +45,7 @@
 
 #include "curses_mount_restore.h"
 #include "transcript_capture.h"
+#include "test_match_seed.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -417,7 +418,10 @@ struct StartedGame {
 // random cell every run, occasionally inside the map's team-0 guard pack,
 // where it was dead well before the 30th frame any of these tests advance to.
 // Pinned, the staged world is the same world on every run and on every runner.
-inline constexpr std::uint32_t kPinnedCursesMatchSeed = 0x0C0FFEEDu;
+// Since #338 every harness main pins this same seed process-wide
+// (tests/test_match_seed.h); the explicit argument stays so these lobbies do
+// not depend on what an earlier test left in the process-wide seam.
+inline constexpr std::uint32_t kPinnedCursesMatchSeed = kHarnessMatchSeed;
 
 StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
 {
