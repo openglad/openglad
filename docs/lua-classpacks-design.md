@@ -920,7 +920,11 @@ The verification layers cover different promises:
   presentation.
 
 Shipped pack Lua is part of the project's coverage gate; how it is measured
-is described in `scripts/coverage/README.md`. Every pack is held to one
+is described in `scripts/coverage/README.md`. Shipped Lua is held to one
 statement per line (`scripts/check_lua_statement_lines.py`, a build
-dependency of `og_gameplay`): line coverage counts lines, so
+dependency of `og_gameplay`): `.lua` files under `packs/`, `docs/` and
+`campaigns/` at any depth, `.lua` members of `.glad` campaign archives, and
+the declared product-C++ `R"LUA(` chunks (`scripts/lua_inventory.py` is the
+one list; a `.lua` under `tests/` or `scripts/` is a fixture and is not
+linted). Line coverage counts lines, so
 `if low then flee() end` on one line hides a branch the metric cannot see.

@@ -1169,8 +1169,8 @@ where its contract fits.
 
 ### One statement per line
 
-Every build checks pack Lua with `scripts/check_lua_statement_lines.py`. The
-rule exists for line coverage (see `scripts/coverage/README.md`):
+The build checks shipped Lua with `scripts/check_lua_statement_lines.py`.
+The rule exists for line coverage (see `scripts/coverage/README.md`):
 `if low then flee() end` on one line makes the branch body share a coverage
 point with the test that guards it, so a branch nothing ever takes reads as
 covered. Write it out:
@@ -1188,9 +1188,11 @@ end
 The rule is mechanical: no statement after `then` / `do` / `else` / `repeat`,
 after a `;`, or on a function's header line, and no two statements run
 together. An empty block (`function() end`, `if x then end`) is fine — it
-hides nothing. The check runs on every build, over `packs/`, over the example
-packs under `docs/modding/`, and over pack Lua that lives in a C++ `R"LUA(`
-literal.
+hides nothing. The check runs on every build over `.lua` files under
+`packs/`, `docs/` and `campaigns/` at any depth, `.lua` members of `.glad`
+campaign archives, and the declared product-C++ `R"LUA(` chunks
+(`scripts/lua_inventory.py` is the one list; a `.lua` under `tests/` or
+`scripts/` is a fixture and is not linted).
 
 ### Two limits worth knowing before you design
 
