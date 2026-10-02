@@ -11,7 +11,7 @@
 // are the TESTING counters below, and every helper here is a wait on one of
 // them.
 //
-// Two binaries drive it (og_test_menu_ui through
+// Two binaries drive it (og_test_menu_light through
 // tests/integration/test_campaign_and_level_picker.cpp, og_test_game_core
 // through tests/integration/test_campaign_sprite_uaf.cpp) and both used to
 // carry their own copy of these helpers. One rule, one implementation.
