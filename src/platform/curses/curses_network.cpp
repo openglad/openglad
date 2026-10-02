@@ -2189,13 +2189,14 @@ private:
                 return false;
             }
             if (message.lobby_message &&
-                message.lobby_message->kind() == og::sim::LobbyMessageKind::StartGame) {
-                if (!og::sim::start_confirmation_matches_request(
-                        *message.lobby_message,
-                        pending_start_request_id_))
-                {
-                    break;
-                }
+                og::sim::start_confirmation_matches_request(
+                    *message.lobby_message)) {
+                // R-331: whatever this machine last asked for, the game has
+                // started. A joiner's band must not stay on the answer to an
+                // earlier press (a NotHost denial); the host's band keeps the
+                // caption its own actions put there.
+                if (!is_host())
+                    team_status_ = "Host started the game";
                 pending_start_request_id_ = 0;
                 start_negotiated_ = true;
             }

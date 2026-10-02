@@ -499,7 +499,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(find_local_player(spoofed_state) != nullptr &&
           find_local_player(spoofed_state)->seat_id == local_player.seat_id);
 
-    // The StartGame reply correlation rules (stale denial, follower
+    // The StartGame reply rules (stale denial, any accepted
     // broadcast) moved to og::sim::start_denial_matches_request /
     // start_confirmation_matches_request in src/gameplay/lobby_state.cpp —
     // one implementation for SDL, curses and the in-process client. Their

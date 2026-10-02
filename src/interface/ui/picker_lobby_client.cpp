@@ -855,17 +855,9 @@ private:
                     break;
                 case og::sim::TypedReceivedMessageKind::LobbyMessage:
                     if (message.lobby_message
-                        && message.lobby_message->kind()
-                            == og::sim::LobbyMessageKind::StartGame)
+                        && og::sim::start_confirmation_matches_request(
+                            *message.lobby_message))
                     {
-                        if (!og::sim::start_confirmation_matches_request(
-                                *message.lobby_message,
-                                start_request_pending_
-                                    ? pending_start_request_id_
-                                    : 0))
-                        {
-                            break;
-                        }
                         start_request_pending_ = false;
                         pending_start_request_id_ = 0;
                         g_start_game_requested = true;

@@ -3258,17 +3258,9 @@ private:
 
         case og::sim::TypedReceivedMessageKind::LobbyMessage:
             if (message.lobby_message &&
-                message.lobby_message->kind() ==
-                    og::sim::LobbyMessageKind::StartGame)
+                og::sim::start_confirmation_matches_request(
+                    *message.lobby_message))
             {
-                if (!og::sim::start_confirmation_matches_request(
-                        *message.lobby_message,
-                        start_request_pending_
-                            ? pending_start_request_id_
-                            : 0))
-                {
-                    break;
-                }
                 start_request_pending_ = false;
                 pending_start_request_id_ = 0;
                 g_start_game_requested = true;
@@ -4869,20 +4861,16 @@ private:
                 break;
             }
             if (message.lobby_message &&
-                message.lobby_message->kind() ==
-                    og::sim::LobbyMessageKind::StartGame)
+                og::sim::start_confirmation_matches_request(
+                    *message.lobby_message))
             {
-                if (!og::sim::start_confirmation_matches_request(
-                        *message.lobby_message,
-                        start_request_pending_
-                            ? pending_start_request_id_
-                            : 0))
-                {
-                    break;
-                }
                 start_request_pending_ = false;
                 pending_start_request_id_ = 0;
                 deferred_start_requested_ = false;
+                // A follower denied earlier (NotHost) that never pressed
+                // again must not keep reporting that verdict once the game
+                // has started (IPickerLobbyClient::last_start_denial).
+                last_start_verdict_ = og::sim::StartDenialReason::None;
                 g_start_game_requested = true;
                 pending_game_start_config_ = build_game_start_config();
             }

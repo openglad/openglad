@@ -114,19 +114,21 @@ struct LobbyMessage;
 // echoed reason is not None. A denial from an older attempt, or a state with
 // no verdict in it, leaves the pending request outstanding.
 //
-// start_confirmation_matches_request: an accepted StartGame broadcast in
-// `message` resolves the caller's pending request when the ids match — and,
-// when the caller holds NO pending request (pending_request_id == 0), it is
-// accepted unconditionally. That second half is the FOLLOWER rule: a joiner
-// that never asked to start must still enter the level the host's accepted
-// request opened. A message that is not a StartGame never matches.
+// start_confirmation_matches_request: an accepted StartGame broadcast starts
+// the game on EVERY machine, whatever that machine's own pending request id
+// is (R-331, issue #331). The caller clears its pending id on a match. The old
+// id correlation stranded a joiner whose own GO had been denied (its counter
+// had moved on) when the host's request was the one the server accepted; a
+// locked lobby drops the joiner's late StartGame silently, so no reply ever
+// arrives to release it. Denials stay strictly id-correlated
+// (start_denial_matches_request). A message that is not a StartGame never
+// matches.
 [[nodiscard]] bool start_denial_matches_request(
     const LobbyState& state,
     std::uint32_t pending_request_id) noexcept;
 
 [[nodiscard]] bool start_confirmation_matches_request(
-    const LobbyMessage& message,
-    std::uint32_t pending_request_id) noexcept;
+    const LobbyMessage& message) noexcept;
 
 // The lobby wire's copy of a roster character. It is deliberately a SUBSET of
 // `guy`: fields absent here (the `deployed` flag, the GTL v16 `campaign_tag`)

@@ -26,14 +26,9 @@ bool start_denial_matches_request(
             StartDenialReason::None);
 }
 
-bool start_confirmation_matches_request(
-    const LobbyMessage& message,
-    std::uint32_t pending_request_id) noexcept
+bool start_confirmation_matches_request(const LobbyMessage& message) noexcept
 {
-    const auto* const start =
-        std::get_if<LobbyStartGameMessage>(&message.payload);
-    return start != nullptr &&
-        (pending_request_id == 0 || start->request_id == pending_request_id);
+    return std::get_if<LobbyStartGameMessage>(&message.payload) != nullptr;
 }
 
 std::vector<OrderedLobbySlot> order_lobby_slots(

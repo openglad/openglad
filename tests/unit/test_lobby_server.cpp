@@ -5436,36 +5436,25 @@ TEST(LobbyState, start_correlation_matchers)
         << "None is 'no denial recorded': a matching id alone must not "
            "release the pending request, or every unrelated broadcast would";
 
-    // Confirmation: the accepted StartGame broadcast. A caller with no
-    // pending request is a FOLLOWER and must enter the level anyway.
+    // Confirmation: the accepted StartGame broadcast starts EVERY machine —
+    // the requester, a follower that never asked, and a machine whose own
+    // pending request is a different one (R-331). The rule takes no pending
+    // id at all; the caller clears its own on a match.
     og::sim::LobbyMessage confirmation;
     confirmation.payload = og::sim::LobbyStartGameMessage{
         .player_index = 0u,
         .request_id = 40u,
     };
-
-    EXPECT_TRUE(
-        og::sim::start_confirmation_matches_request(confirmation, 41u))
+    EXPECT_TRUE(og::sim::start_confirmation_matches_request(confirmation))
         << "an accepted StartGame starts every machine regardless of its own "
            "pending id (R-331)";
-    EXPECT_TRUE(og::sim::start_confirmation_matches_request(confirmation, 0u))
-        << "follower rule: a peer that never asked to start accepts the "
-           "host's accepted StartGame unconditionally";
-
-    std::get<og::sim::LobbyStartGameMessage>(confirmation.payload).request_id =
-        41u;
-    EXPECT_TRUE(
-        og::sim::start_confirmation_matches_request(confirmation, 41u))
-        << "the requester's own accepted request resolves its pending id";
 
     og::sim::LobbyMessage not_a_start;
     not_a_start.payload = og::sim::LobbyReadyMessage{
         .player_index = 0u,
         .ready = true,
     };
-    EXPECT_FALSE(og::sim::start_confirmation_matches_request(not_a_start, 0u))
+    EXPECT_FALSE(og::sim::start_confirmation_matches_request(not_a_start))
         << "only a StartGame payload confirms a start — a Ready broadcast "
-           "must not drop a follower into the level";
-    EXPECT_FALSE(og::sim::start_confirmation_matches_request(not_a_start, 41u))
-        << "nor may it resolve a pending request";
+           "must not drop any machine into the level";
 }
