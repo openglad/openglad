@@ -1,10 +1,16 @@
 #include <SDL3/SDL.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/text.h>
+#include <openglad/interface/native_input.h>
+#include <openglad/interface/screen.h>
 #include "test_input_helpers.h"
+#include "test_escape_tail.h"
+#include "test_prompt_hover.h"
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -260,4 +266,163 @@ TEST(TextInputAndWidth, oversized_maxlength_clamps_to_the_edit_buffer)
     ASSERT_TRUE(small.has_value());
     EXPECT_EQ(std::string(11, 'z'), *small)
         << "a small field keeps exactly maxlength-1 characters";
+}
+
+// ---------------------------------------------------------------------------
+// Issue #328 fold guard: input_string and input_string_ex share one edit core
+// but NOT one draw. The plain prompt (hire-rename at 176,20, company name)
+// draws only its field box; the dialog frame, ACCEPT and CANCEL belong to the
+// _ex prompt alone. Folding input_string into "_ex with an empty message"
+// would paint that chrome over the caller's hand-drawn box, so the plain
+// prompt is captured while it blocks and compared with the _ex prompt at the
+// same geometry (the paired control that proves the probe can see chrome).
+// ---------------------------------------------------------------------------
+namespace
+{
+constexpr Sint32 kChromeX = 58;
+constexpr Sint32 kChromeY = 60;
+constexpr short kChromeLen = 29;
+constexpr unsigned char kChromeBackdrop = 77;
+constexpr unsigned char kPlainFieldColor = 13; // input_string's default backcolor
+
+struct ChromeProbeRun
+{
+    PromptHoverProbe probe;
+    std::atomic<bool> main_returned{false};
+    bool saw_text_input = false;
+    bool captured = false;
+};
+
+int injector_thread_chrome_probe(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const run = static_cast<ChromeProbeRun*>(data);
+    const Uint64 active_deadline = SDL_GetTicks() + 5000;
+    while (!og::input_native::text_input_is_active() &&
+           SDL_GetTicks() < active_deadline)
+        SDL_Delay(5);
+    run->saw_text_input = og::input_native::text_input_is_active();
+    if (run->saw_text_input)
+        run->captured = prompt_hover_capture(run->probe);
+
+    const auto prompt_hold = [] {
+        if (!og::input_native::text_input_is_active())
+            return false;
+        inject_key_press(SDLK_ESCAPE, 10);
+        return true;
+    };
+    return escape_to_the_main_thread(
+        run->main_returned, run->captured ? 0 : 1,
+        "the blocked prompt was never captured",
+        std::span<const EscapeDoor>{}, prompt_hold);
+}
+
+PromptHoverPixel palette_rgb(unsigned char index)
+{
+    const auto& palette = og::runtime::current_session->myscreen_->ourpalette;
+    const size_t offset = static_cast<size_t>(index) * 3;
+    return {static_cast<Uint8>(palette[offset] * 4),
+            static_cast<Uint8>(palette[offset + 1] * 4),
+            static_cast<Uint8>(palette[offset + 2] * 4)};
+}
+
+// Paints a known backdrop, opens one prompt at the chrome geometry, captures
+// the action rects (and their one-pixel surround) plus row y+1 of the field
+// from x-1 to one pixel past the field box while the prompt blocks, then
+// Escapes out. Returns the prompt's own result so the caller can confirm it
+// was the cancel path.
+std::optional<std::string> capture_prompt_chrome(bool extended,
+                                                 ChromeProbeRun& run,
+                                                 Sint32& field_width,
+                                                 std::vector<PromptHoverRect>& buttons)
+{
+    text t(TEXT_1);
+    screen* const out = og::runtime::current_session->myscreen_;
+    out->fastbox(0, 0, 320, 200, kChromeBackdrop);
+    field_width = kChromeLen * (t.sizex + 1);
+    const og::ui::PromptDialogLayout layout =
+        og::ui::prompt_dialog_layout(kChromeX, kChromeY, field_width, t.sizey);
+    buttons = {
+        {layout.actions.accept.x, layout.actions.accept.y,
+         layout.actions.accept.w, layout.actions.accept.h},
+        {layout.actions.cancel.x, layout.actions.cancel.y,
+         layout.actions.cancel.w, layout.actions.cancel.h},
+    };
+    // Field row: x-1 .. x+field_width+1, one pixel high.
+    init_prompt_hover_probe(run.probe, buttons,
+                            {kChromeX - 1, kChromeY + 1, field_width + 3, 1});
+
+    SDL_Thread* const thread = SDL_CreateThread(
+        injector_thread_chrome_probe, "text_chrome_probe", &run);
+    if (thread == nullptr)
+    {
+        ADD_FAILURE() << "failed to create the chrome probe injector";
+        return std::nullopt;
+    }
+    std::optional<std::string> result = extended
+        ? t.input_string_ex_value(kChromeX, kChromeY, kChromeLen, "NAME", "")
+        : t.input_string_value(kChromeX, kChromeY, kChromeLen, "");
+    run.main_returned.store(true, std::memory_order_release);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    SDL_PumpEvents();
+    escape_tail_join_hygiene();
+    EXPECT_EQ(0, thread_result);
+    EXPECT_TRUE(run.saw_text_input)
+        << "the injector must wait for the real blocking prompt";
+    EXPECT_TRUE(run.captured)
+        << "the capture must run on the main thread while the prompt blocks";
+    return result;
+}
+} // namespace
+
+TEST(TextInputAndWidth, plain_prompt_draws_no_dialog_chrome)
+{
+    const PromptHoverPixel backdrop = palette_rgb(kChromeBackdrop);
+    const PromptHoverPixel field = palette_rgb(kPlainFieldColor);
+    ASSERT_NE(backdrop, field) << "the backdrop must be distinguishable from the field";
+
+    // Control: the _ex prompt at the same geometry covers every probed
+    // action pixel with its frame and buttons.
+    {
+        ChromeProbeRun run;
+        Sint32 field_width = 0;
+        std::vector<PromptHoverRect> buttons;
+        const std::optional<std::string> value =
+            capture_prompt_chrome(true, run, field_width, buttons);
+        ASSERT_FALSE(value.has_value()) << "Escape cancels the _ex prompt";
+        ASSERT_TRUE(run.captured);
+        size_t backdrop_action_pixels = 0;
+        for (size_t i = 0; i < run.probe.field_begin; ++i)
+            if (run.probe.pixels[i] == backdrop)
+                ++backdrop_action_pixels;
+        EXPECT_EQ(0u, backdrop_action_pixels)
+            << "the _ex prompt draws its frame and ACCEPT/CANCEL over every probed pixel";
+    }
+
+    // Rule: the plain prompt leaves every one of those pixels untouched and
+    // draws exactly its field box, x .. x + maxlength * (sizex + 1) inclusive.
+    ChromeProbeRun run;
+    Sint32 field_width = 0;
+    std::vector<PromptHoverRect> buttons;
+    const std::optional<std::string> value =
+        capture_prompt_chrome(false, run, field_width, buttons);
+    ASSERT_FALSE(value.has_value()) << "Escape cancels the plain prompt";
+    ASSERT_TRUE(run.captured);
+    size_t backdrop_action_pixels = 0;
+    for (size_t i = 0; i < run.probe.field_begin; ++i)
+        if (run.probe.pixels[i] == backdrop)
+            ++backdrop_action_pixels;
+    EXPECT_EQ(run.probe.field_begin, backdrop_action_pixels)
+        << "input_string must not draw the dialog frame or ACCEPT/CANCEL";
+
+    const size_t row = run.probe.field_begin;
+    ASSERT_EQ(static_cast<size_t>(field_width + 3), run.probe.pixels.size() - row);
+    EXPECT_EQ(backdrop, run.probe.pixels[row])
+        << "the pixel left of the field (x-1) is untouched backdrop";
+    for (Sint32 dx = 0; dx <= field_width; ++dx)
+        EXPECT_EQ(field, run.probe.pixels[row + 1 + static_cast<size_t>(dx)])
+            << "field box pixel x+" << dx << " is the field colour";
+    EXPECT_EQ(backdrop, run.probe.pixels[row + 2 + static_cast<size_t>(field_width)])
+        << "the pixel right of the field (x+maxlength*(sizex+1)+1) is untouched backdrop";
 }
