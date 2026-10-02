@@ -8,17 +8,52 @@
  * The terminal clients' game-flow event reader, shared by the local session
  * (curses_game_runtime.cpp) and the networked host/join sessions
  * (curses_network.cpp). One implementation: both used to carry their own
- * copy of these three definitions.
+ * copy of these three definitions, and of the follow-id resolver.
  */
 #pragma once
 
+#include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/walker.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace og::curses {
+
+// The local (single-player) curses session binds its one seat as global
+// player 0.
+inline constexpr std::size_t kLocalSeatPlayerIndex = 0;
+
+// Resolve the entity a terminal seat's view follows: the seat's mapped avatar
+// while that walker is in the mirror and alive, else the first living walker
+// tagged with the seat's player index, else 0. A dead or missing mapped id is
+// never returned, so the camera and HUD never rest on a corpse or on an id
+// the mirror does not hold yet. The client's controlled-entity map is GLOBAL
+// (indexed by player index, identical on every peer). One rule for the local
+// session and the networked host/join sessions.
+inline std::uint32_t resolve_followed_entity_id(const og::sim::GameClient& client,
+                                                const GameWorld& mirror,
+                                                std::size_t local_player_index)
+{
+    const auto& ids = client.controlled_entity_ids();
+    if (local_player_index < ids.size() && ids[local_player_index] != 0) {
+        if (const walker* w = mirror.find_by_id(ids[local_player_index]);
+            w != nullptr && !w->dead())
+            return ids[local_player_index];
+    }
+    // Fallback: the first living entity this player controls (user == index).
+    for (const auto& up : mirror.oblist) {
+        const walker* w = up.get();
+        if (w && !w->dead() &&
+            w->user() == static_cast<int>(local_player_index))
+            return w->entity_id();
+    }
+    return 0;
+}
 
 // Pull human-readable notification text out of an event batch into `out`.
 // A targeted line (target_player >= 0) is addressed to one global player and

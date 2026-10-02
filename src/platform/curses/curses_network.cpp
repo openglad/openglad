@@ -337,31 +337,6 @@ og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     return equivalent;
 }
 
-// Resolve the entity this peer's view follows. The client's controlled-entity
-// map is GLOBAL (indexed by player index, identical on every peer), so the local
-// avatar is the slot for THIS peer's own player index. Falls back to any living
-// entity this player controls. Mirrors select_control_for_view() in the SDL
-// local transport shadow.
-std::uint32_t resolve_followed_entity_id(const og::sim::GameClient& client,
-                                         const GameWorld& mirror,
-                                         std::size_t local_player_index)
-{
-    const auto& ids = client.controlled_entity_ids();
-    if (local_player_index < ids.size() && ids[local_player_index] != 0) {
-        if (const walker* w = mirror.find_by_id(ids[local_player_index]);
-            w != nullptr && !w->dead())
-            return ids[local_player_index];
-    }
-    // Fallback: the first living entity this player controls (user == index).
-    for (const auto& up : mirror.oblist) {
-        const walker* w = up.get();
-        if (w && !w->dead() &&
-            w->user() == static_cast<int>(local_player_index))
-            return w->entity_id();
-    }
-    return 0;
-}
-
 // §4.5 follow camera for a networked curses peer — the curses parity of the
 // SDL DisplayFollowState. Engaged while the local seat has no controllable
 // walker (0-deploy, all-dead, spectator); the seat's SwitchChar binding
