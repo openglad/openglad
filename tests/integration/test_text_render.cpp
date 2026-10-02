@@ -125,7 +125,7 @@ TEST(TextRender, small_font_query_width_is_one_advance_per_character)
 }
 
 
-// The big font is proportional: 'A'..']' cost sizex, everything else sizex-1.
+// The big font is proportional: 'A'..'\' (65..92) cost sizex, everything else sizex-1.
 TEST(TextRender, big_font_query_width_charges_uppercase_the_wider_advance)
 {
     text& big = og::runtime::current_session->myscreen_->text_big;
@@ -133,9 +133,47 @@ TEST(TextRender, big_font_query_width_charges_uppercase_the_wider_advance)
     ASSERT_GE(big.sizex, 9) << "text_big takes the proportional branch";
 
     ASSERT_EQ(4 * big.sizex, big.query_width("TEST"))
-        << "uppercase bytes (65..93) each cost sizex";
+        << "uppercase bytes (65..92) each cost sizex";
     ASSERT_EQ(big.sizex + 3 * (big.sizex - 1), big.query_width("Test"))
         << "lowercase bytes each cost sizex - 1";
+}
+
+// Issue #297: query_width is the number draw_dialog centres a big-font header
+// with, so it must charge every byte exactly what the buffered draw arm
+// advances for it. The 2002 measure band was 65..93 while the draw band was
+// 65..92, so ']' (93) measured one pixel wider than it drew. Every printable
+// byte is checked one at a time against the draw arm's returned advance.
+TEST(TextRender, big_font_measures_every_byte_exactly_as_it_draws)
+{
+    screen* const out = og::runtime::current_session->myscreen_;
+    text& big = out->text_big;
+    ASSERT_NE(nullptr, big.letters);
+    ASSERT_TRUE(big.letters->valid());
+    ASSERT_GE(big.sizex, 9) << "text_big takes the proportional branch";
+
+    constexpr Sint32 x = 10;
+    constexpr Sint32 y = 140;
+    constexpr unsigned char ink = 64;
+    ASSERT_LE(y + big.sizey, out->canvas_h()) << "scratch band fits the canvas";
+
+    // Positive controls: the uppercase band edges cost the wide advance in
+    // both arms.
+    ASSERT_EQ(big.sizex, big.query_width("A")) << "'A' (65) measures sizex";
+    ASSERT_EQ(big.sizex, big.query_width("Z")) << "'Z' (90) measures sizex";
+    ASSERT_EQ(big.sizex, big.query_width("\\")) << "'\\' (92) measures sizex";
+    // ']' is outside the draw band, so it must measure the narrow advance.
+    EXPECT_EQ(big.sizex - 1, big.query_width("]"))
+        << "']' (93) measures sizex - 1, the advance the draw arm gives it";
+
+    for (int byte = 32; byte <= 124; ++byte)
+    {
+        const char glyph[2] = {static_cast<char>(byte), '\0'};
+        out->fastbox(x, y, 2 * big.sizex, big.sizey, static_cast<unsigned char>(13));
+        const Sint32 drawn = big.write_xy(x, y, glyph, ink, (short)1);
+        EXPECT_EQ(drawn, big.query_width(glyph))
+            << "byte " << byte << " ('" << glyph
+            << "'): query_width must equal the buffered draw advance";
+    }
 }
 
 
