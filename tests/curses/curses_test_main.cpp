@@ -30,8 +30,10 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 
 #include "company_litter_reap.h"
+#include "test_match_seed.h"
 
 void io_init(int argc, char* argv[]);
 void io_exit();
@@ -142,6 +144,11 @@ int main(int argc, char** argv)
                      executable.c_str(), 1);
 
     ::testing::InitGoogleTest(&argc, argv);
+    // #338: one match seed for the whole process (tests/test_match_seed.h).
+    // Without it every lobby/GO/solo launch stages a std::random_device world
+    // and identical binaries cover different lines from run to run. A test
+    // that needs another world scopes its own seed and restores this one.
+    og::server::set_match_seed_for_testing(kHarnessMatchSeed);
 
     const auto test_config_dir = std::filesystem::temp_directory_path() /
         ("openglad_curses_test_" + std::to_string(getpid()));

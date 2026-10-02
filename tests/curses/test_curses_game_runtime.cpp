@@ -31,6 +31,7 @@
 #include <openglad/server/match_stage.h>
 
 #include "curses_mount_restore.h"
+#include "test_match_seed.h"
 
 #include <filesystem>
 #include <tuple>
@@ -192,13 +193,17 @@ TEST(CursesGameRuntimeLocal, session_loads_level_and_populates_mirror)
 // latch (config_.seed) and GO hands the SAME latch to make_local_session, so
 // the world the preview showed IS the world the launch ticks. Before the fix
 // the launch drew its own draw_match_seed(), so the previewed squads/weather
-// were never the ones that played.
+// were never the ones that played. Under the harness that draw returns
+// kHarnessMatchSeed (#338, tests/test_match_seed.h), so the session seed must
+// differ from it or the pre-fix launch would stage the same world by accident.
 TEST(CursesGameRuntimeLocal, solo_launch_stages_the_previewed_seed)
 {
     SaveData save;
     init_test_save(save);
 
     constexpr std::uint32_t kSessionSeed = 4242u;
+    static_assert(kSessionSeed != kHarnessMatchSeed,
+                  "the latch seed must not be the harness's draw");
     og::server::MatchStage preview({
         .networked = false,
         .arm_policy = og::server::LobbyStartReplayArm::SeededIntent,

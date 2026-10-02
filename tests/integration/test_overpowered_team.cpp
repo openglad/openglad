@@ -73,9 +73,12 @@ public:
         og::server::set_match_seed_for_testing(seed);
     }
 
+    // Restores the HARNESS seed, never nullopt: nullopt is production
+    // entropy, and every later test in the binary would stage a random world
+    // again (#338).
     ~ScopedMatchSeed()
     {
-        og::server::set_match_seed_for_testing(std::nullopt);
+        og::server::set_match_seed_for_testing(kHarnessMatchSeed);
     }
 
     ScopedMatchSeed(const ScopedMatchSeed&) = delete;
