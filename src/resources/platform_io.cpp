@@ -123,11 +123,6 @@ std::string get_user_path()
 #ifdef __EMSCRIPTEN__
     // Use IDBFS mount point for persistent storage in browser
     return "/persist/";
-#elif defined(ANDROID)
-    std::string path = SDL_GetAndroidInternalStoragePath();
-    return path + "/";
-#elif defined(__IPHONEOS__)
-    return "../";
 #elif defined(_WIN32)
     char path[MAX_PATH];
     HRESULT hr = SHGetFolderPath(
@@ -162,13 +157,7 @@ std::string get_user_path()
 
 std::string get_asset_path()
 {
-#ifdef ANDROID
-    // SDL_IOStream will look in the app's assets directory for this path
-    return "";
-#elif defined(__IPHONEOS__)
-    // Assuming the cwd is set to the program's installation directory
-    return "";
-#elif defined(_WIN32)
+#if defined(_WIN32)
     // Assuming the cwd is set to the program's installation directory
     return "";
 #else

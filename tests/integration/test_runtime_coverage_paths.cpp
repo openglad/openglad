@@ -1904,11 +1904,7 @@ TEST(RuntimeCoveragePaths, runtime_score_panel_draws_no_hud_for_a_null_control_w
     viewscreen* const v = s->viewob[0].get();
     ASSERT_NE(nullptr, v) << "view should exist";
 
-#ifdef REDUCE_OVERSCAN
-    constexpr int kOverscanPadding = 6;
-#else
     constexpr int kOverscanPadding = 0;
-#endif
 
     walker* const old_control = v->control;
     const signed char old_overlay = v->prefs[PREF_OVERLAY];

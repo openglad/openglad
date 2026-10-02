@@ -661,17 +661,16 @@ constexpr MenuButtonSpec kDisplaySettingsRows[] = {
      .nav = {.up = 6, .down = 0, .left = 7}},
 };
 
-// No window to size or mode to pick: TV/mobile targets are always
-// fullscreen, and on web the page/CSS owns the window (the fullscreen cfg
-// is also deliberately ignored at boot there). Hide both rows and route the
+// No window to size or mode to pick: iOS is always fullscreen, and on web
+// the page/CSS owns the window (the fullscreen cfg is also deliberately
+// ignored at boot there). Hide both rows and route the
 // vertical cycle around them (BACK <-> overscan pair). Compile-time
 // platform fork, applied per frame (idempotent) as the screen's Rewire
 // program; a desktop-native build is a no-op with the verbatim static nav.
 void display_settings_platform_rewire(button* buttons, int num_buttons,
                                       int& highlighted_button)
 {
-#if defined(OUYA) || defined(ANDROID) || defined(__IPHONEOS__) || \
-    defined(SDL_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
+#if defined(SDL_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
     if (buttons == nullptr || num_buttons <= kDisplayMenuSmoothingIndex)
         return;
     buttons[kDisplayMenuModeIndex].hidden =
