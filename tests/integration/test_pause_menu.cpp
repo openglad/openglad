@@ -43,6 +43,7 @@
 #include <openglad/resources/save_data.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_click_ladder.h"
 #include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -3415,16 +3416,64 @@ int add_cycle_input_injector(void* data)
         return escape_the_pause_menu(
             flow->test_finished, 4,
             "the player screen never published INPUT");
-    interact("pause_input");
-    SDL_Delay(200);
-    interact("pause_input");
-    SDL_Delay(200);
-    interact("pause_player_back");
-    if (!wait_for_pause_interactable("pause_resume", 10'000) ||
-        !wait_for_completed_pause_menu_frames(2, 10'000))
+    // Every press below is proven consumed by what it writes before the next
+    // one goes out (tests/test_click_ladder.h), never by a flat settle. Two
+    // facts make the ladder safe on the INPUT row, whose dispatch runs a
+    // synchronous cfg write that has been measured stalling the main thread
+    // for seconds (see kPauseMenuFrameBudget's note): the ladder re-presses
+    // only after run_on_main_thread(reset_mouse_click_tracking) has RUN, which
+    // blocks until the stalled thread is back, and it then re-checks the edge
+    // before pressing — so a press that landed behind a stall is found there
+    // and never sent twice. The edge itself is the seat's input selection,
+    // read on the menu thread: the value the INPUT row writes.
+    const auto seat_input = [] {
+        std::string name;
+        if (!run_on_main_thread(
+                [&name] { name = og::ui::current_input_selection(1).name; }))
+            return std::string();
+        return name;
+    };
+    for (int cycle = 0; cycle < 2; ++cycle)
+    {
+        const std::string before = seat_input();
+        if (before.empty())
+            return escape_the_pause_menu(
+                flow->test_finished, 4,
+                "the menu thread never answered the seat's input before an "
+                "INPUT press");
+        const bool cycled = click_until_edge(
+            "pause_input",
+            [&before, &seat_input](int wait_ms) {
+                const Uint64 started_at = SDL_GetTicks();
+                for (;;)
+                {
+                    const std::string now = seat_input();
+                    if (!now.empty() && now != before)
+                        return true;
+                    if (SDL_GetTicks() - started_at >=
+                        static_cast<Uint64>(wait_ms))
+                        return false;
+                    SDL_Delay(50);
+                }
+            });
+        if (!cycled)
+            return escape_the_pause_menu(
+                flow->test_finished, 4,
+                cycle == 0 ? "the first INPUT press never moved the seat's "
+                             "input"
+                           : "the second INPUT press never moved the seat's "
+                             "input");
+    }
+    if (!click_until_edge("pause_player_back", [](int wait_ms) {
+            return wait_for_interactable("pause_resume", wait_ms);
+        }))
         return escape_the_pause_menu(
             flow->test_finished, 5,
-            "the PAUSED screen never came back after BACK");
+            "BACK never brought the PAUSED screen back");
+    if (!wait_for_completed_pause_menu_frames(2, 10'000))
+        return escape_the_pause_menu(
+            flow->test_finished, 5,
+            "the PAUSED screen never composed after BACK");
     interact("pause_resume");
     return 0;
 }
