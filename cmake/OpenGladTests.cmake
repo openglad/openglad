@@ -1602,6 +1602,21 @@ set_tests_properties(openglad_demo_knobs PROPERTIES
     TIMEOUT 120
 )
 
+# #335: a scenario that ENDS inside openglad_demo must finish its session and
+# restart the grid instead of blocking a worker on a modal nobody can click.
+# Its own entry so the 720-tick match never squeezes the knobs budget; the
+# TIMEOUT is sized from the coverage-lane measurement in the script header.
+add_test(NAME openglad_demo_restart
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_demo_restart.sh
+        $<TARGET_FILE:openglad_demo>
+)
+set_tests_properties(openglad_demo_restart PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT 120
+)
+
 # parity_runner_smoke is the harness's only non-gtest binary: the goldens are
 # captured through it and the mutation canary reads its exit code. Nothing
 # else exercises its CLI, which is how it shipped happily writing stub dumps

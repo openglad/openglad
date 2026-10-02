@@ -1,5 +1,6 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/core/combat_math.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/pathfinding_grid.h>
@@ -8,6 +9,7 @@
 #include <openglad/platform/soundob_sdl.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/results_screen.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -18,12 +20,15 @@
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <set>
+#include <string>
 #include <string_view>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -31,6 +36,13 @@
 namespace og::runtime {
 void install_sdl_context_services();
 }
+
+void popup_dialog(const char* title, const char* message);
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 
 // ---------------------------------------------------------------------------
 // GameContext basic tests
@@ -105,7 +117,7 @@ namespace {
 // is what keeps the child's coverage -- the reason a bare _Exit is wrong.
 // It also removes the child's own per-PID config dir (integration_main makes
 // one per process) so a death-test child leaves nothing behind in /tmp.
-[[noreturn]] void exit_child(bool rule_held)
+[[noreturn]] void exit_child_with(int code)
 {
     if (const char* dir = std::getenv("OPENGLAD_CONFIG_DIR"))
     {
@@ -116,7 +128,12 @@ namespace {
     __gcov_dump();
 #endif
     std::fflush(nullptr);
-    _exit(rule_held ? 42 : 43);
+    _exit(code);
+}
+
+[[noreturn]] void exit_child(bool rule_held)
+{
+    exit_child_with(rule_held ? 42 : 43);
 }
 } // namespace
 
@@ -145,6 +162,65 @@ TEST(GameContext, an_audio_driver_that_will_not_start_leaves_the_game_silent)
             sdl_soundob sound;
             exit_child(sound.silence == 1 &&
                        sound.sound[SOUND_BOW].buf == nullptr);
+        },
+        ::testing::ExitedWithCode(42), "");
+}
+
+// Rule (#336, sound.cpp init/shutdown): the audio subsystem reference init()
+// takes is released by shutdown() whether or not a device was ever opened. A
+// driver that starts but cannot open its device (the disk driver writing into
+// a directory that does not exist) leaves the game silent AND leaves
+// SDL_WasInit(SDL_INIT_AUDIO) at 0, and every set_sound off->on retry that
+// fails the same way releases its own reference too. Positive control, in the
+// same child: after the harness's global sound is shut down the subsystem
+// reads 0 (nothing else holds a reference, and the observable works). Exit
+// codes: 42 rule held; 43 the failed open leaked the subsystem; 47 a failed
+// set_sound retry leaked it; 44 no global sound; 45 control failed; 46 the
+// SDL build has no disk audio driver (a loud red, never a skip).
+TEST(GameContext, an_audio_device_that_will_not_open_releases_the_audio_subsystem)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    EXPECT_EXIT(
+        {
+            auto* const global_sound = dynamic_cast<sdl_soundob*>(
+                og::runtime::current_session->myscreen_->soundp.get());
+            if (global_sound == nullptr)
+                exit_child_with(44);
+            global_sound->shutdown();
+            if (SDL_WasInit(SDL_INIT_AUDIO) != 0)
+                exit_child_with(45);
+
+            bool have_disk = false;
+            for (int i = 0; i < SDL_GetNumAudioDrivers(); ++i)
+                if (std::string_view(SDL_GetAudioDriver(i)) == "disk")
+                    have_disk = true;
+            if (!have_disk)
+                exit_child_with(46);
+
+            // A missing parent directory makes the path unopenable on every
+            // platform without drive or permission tricks.
+            const std::filesystem::path missing_parent =
+                std::filesystem::temp_directory_path() /
+                ("og-336-no-such-dir-" + std::to_string(::getpid()));
+            std::error_code ec;
+            std::filesystem::remove_all(missing_parent, ec);
+            const std::string out_file = (missing_parent / "out.raw").string();
+            SDL_SetHintWithPriority(SDL_HINT_AUDIO_DRIVER, "disk",
+                                    SDL_HINT_OVERRIDE);
+            SDL_SetHintWithPriority(SDL_HINT_AUDIO_DISK_OUTPUT_FILE,
+                                    out_file.c_str(), SDL_HINT_OVERRIDE);
+
+            sdl_soundob sound;
+            if (sound.silence != 1 || SDL_WasInit(SDL_INIT_AUDIO) != 0)
+                exit_child_with(43);
+            for (int toggle = 0; toggle < 2; ++toggle)
+            {
+                sound.set_sound(true);
+                sound.set_sound(false);
+            }
+            if (sound.silence != 1 || SDL_WasInit(SDL_INIT_AUDIO) != 0)
+                exit_child_with(47);
+            exit_child_with(42);
         },
         ::testing::ExitedWithCode(42), "");
 }
@@ -537,4 +613,188 @@ TEST(GameContext, pathfinding_state_supports_move_construction_and_assignment)
         << "three orthogonal steps cost exactly " << kStraightRouteCost;
     EXPECT_EQ(make_state(32, 80), path.back())
         << "the move-assigned solver closes on the goal cell";
+}
+
+// ---------------------------------------------------------------------------
+// #335: a non-interactive session (openglad_demo's workers) answers its own
+// modals. The product check sits ABOVE each dialog's TESTING bypass, so a
+// flagged test executes the product line and the bypass's trace / override
+// queue is the observable that it pre-empted the dialog.
+// ---------------------------------------------------------------------------
+namespace {
+struct NonInteractiveGuard
+{
+    og::runtime::SessionState* session = og::runtime::current_session;
+    bool saved = session->non_interactive_;
+    explicit NonInteractiveGuard(bool on) { session->non_interactive_ = on; }
+    ~NonInteractiveGuard()
+    {
+        session->non_interactive_ = saved;
+        picker_testing_yes_or_no_queue_clear();
+    }
+    void set(bool on) { session->non_interactive_ = on; }
+};
+} // namespace
+
+// Rule: popup_dialog in a non-interactive session logs its text and returns
+// before the dialog (here: before the TESTING bypass that writes the popup
+// trace). Positive control: the same call with the flag off reaches the
+// bypass and writes "T: M".
+TEST(NonInteractiveSession, popup_dialog_returns_before_any_dialog)
+{
+    NonInteractiveGuard guard(true);
+    trace_clear();
+    popup_dialog("T", "M");
+    EXPECT_FALSE(trace_contains("popup", "T: M"))
+        << "a non-interactive popup must return before the dialog path";
+
+    guard.set(false);
+    popup_dialog("T", "M");
+    EXPECT_TRUE(trace_contains("popup", "T: M"))
+        << "control: an interactive popup reaches the dialog path";
+}
+
+// Rule: both prompt shapes decline in a non-interactive session, without
+// reaching the dialog and without consuming a queued answer. The queued
+// `true` is the proof: the flagged calls return false and leave it queued,
+// and the first interactive call after them reads it (control and queue
+// proof in one).
+TEST(NonInteractiveSession, yes_no_prompts_decline_without_a_dialog)
+{
+    NonInteractiveGuard guard(true);
+    trace_clear();
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+
+    EXPECT_FALSE(yes_or_no_prompt("T", "M", true))
+        << "a non-interactive yes/no prompt answers no";
+    EXPECT_FALSE(no_or_yes_prompt("T", "N", true))
+        << "a non-interactive no/yes prompt answers no";
+    EXPECT_FALSE(trace_contains("confirm", "T: M"));
+    EXPECT_FALSE(trace_contains("confirm", "T: N"));
+    EXPECT_EQ(1, picker_testing_yes_or_no_queue_remaining())
+        << "the flagged prompts must not consume the queued answer";
+
+    guard.set(false);
+    EXPECT_TRUE(yes_or_no_prompt("T", "M", false))
+        << "control: the interactive prompt reads the queued yes";
+    EXPECT_TRUE(trace_contains("confirm", "T: M"));
+    EXPECT_EQ(0, picker_testing_yes_or_no_queue_remaining());
+}
+
+// Rule: the 4-arg results_screen in a non-interactive session shows (logs)
+// the ending popup and returns false without running the panel. The force
+// seam is ON, so without the product check the REAL panel would run (its
+// TESTING bypass is byte-identical to the product arm and could never go
+// red). The escape thread, started first, records whether the panel loop ever
+// went live and, if it did, ends it through world().end (the panel's own
+// exit check), so a broken rule reads as a failed assertion, never a hang.
+// Positive control: the ResultsScreenFullUi force-ON tests (og_test_menu_ui)
+// drive the same real panel and see its loop live and its results traces.
+// Kept here, not beside them: og_test_menu_ui sits at the coverage-lane
+// ceiling (R-std-5) and this pin costs milliseconds.
+namespace {
+struct ResultsEscapeState
+{
+    std::atomic<bool> main_returned{false};
+    std::atomic<bool> panel_went_live{false};
+    std::atomic<bool> escape_ended_panel{false};
+};
+
+template <typename Pred>
+bool wait_bounded(Pred pred, int timeout_ms)
+{
+    const Uint64 start = SDL_GetTicks();
+    while (!pred())
+    {
+        if (SDL_GetTicks() - start > static_cast<Uint64>(timeout_ms))
+            return false;
+        SDL_Delay(2);
+    }
+    return true;
+}
+
+int results_escape_thread(void* data)
+{
+    og::runtime::current_session = og::runtime::primary_session.load();
+    auto* st = static_cast<ResultsEscapeState*>(data);
+    // Failure bound only: on the passing path main_returned ends this wait
+    // at once.
+    (void)wait_bounded(
+        [st] { return st->main_returned.load() || results_screen_testing_loop_live(); },
+        10000);
+    if (results_screen_testing_loop_live())
+    {
+        st->panel_went_live = true;
+        og::runtime::current_session->myscreen_->world().end = 1;
+        st->escape_ended_panel =
+            wait_bounded([] { return !results_screen_testing_loop_live(); }, 10000);
+    }
+    return 0;
+}
+} // namespace
+
+namespace {
+struct ResultsLeg
+{
+    bool retry = true;
+    bool panel_went_live = false;
+    bool escape_ended_panel = false;
+    bool mvp_traced = false;
+};
+
+// One forced-full results_screen call with the flag as given; the escape
+// thread ends a live panel through world().end.
+ResultsLeg run_results_leg(bool non_interactive)
+{
+    auto* const session = og::runtime::current_session;
+    const char saved_end = session->myscreen_->world().end;
+    session->myscreen_->world().end = 0;
+    session->myscreen_->save_data.current_campaign = "gladiator";
+    session->myscreen_->save_data.scen_num = 1;
+    session->myscreen_->save_data.current_levels.clear();
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+    ResultsEscapeState st;
+    ResultsLeg leg;
+    NonInteractiveGuard guard(non_interactive);
+    trace_clear();
+    results_screen_testing_set_force_full(true);
+    SDL_Thread* thread = SDL_CreateThread(results_escape_thread, "results_escape", &st);
+    if (thread != nullptr)
+    {
+        leg.retry = results_screen(0, 2, before, after);
+        st.main_returned = true;
+        SDL_WaitThread(thread, nullptr);
+    }
+    results_screen_testing_set_force_full(false);
+    session->myscreen_->world().end = saved_end;
+    leg.panel_went_live = st.panel_went_live.load();
+    leg.escape_ended_panel = st.escape_ended_panel.load();
+    leg.mvp_traced = trace_contains("results", "mvp_");
+    return leg;
+}
+} // namespace
+
+// Positive control in the same test: the identical call with the flag off
+// runs the real panel (live loop, MVP trace) and the escape thread ends it.
+TEST(NonInteractiveSession, results_screen_skips_the_panel_and_returns_no_retry)
+{
+    ASSERT_NE(nullptr, og::runtime::current_session);
+
+    const ResultsLeg flagged = run_results_leg(true);
+    EXPECT_FALSE(flagged.panel_went_live)
+        << "a non-interactive session must never run the results panel loop";
+    EXPECT_FALSE(flagged.mvp_traced)
+        << "the panel (which picks the MVP before its loop) must not run";
+    EXPECT_FALSE(flagged.retry) << "a non-interactive session never asks for a retry";
+
+    const ResultsLeg control = run_results_leg(false);
+    EXPECT_TRUE(control.panel_went_live)
+        << "control: with the flag off the forced panel loop goes live";
+    EXPECT_TRUE(control.escape_ended_panel)
+        << "control: the escape thread ends the live panel";
+    EXPECT_TRUE(control.mvp_traced) << "control: the real panel picks an MVP";
+    EXPECT_FALSE(control.retry) << "control: a panel ended by world().end asks no retry";
 }

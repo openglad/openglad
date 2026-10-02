@@ -176,6 +176,10 @@ int picker_testing_yes_or_no_queue_remaining()
 static bool yes_no_prompt_impl(const char* title, const char* message, bool default_value, bool yes_first)
 {
     Log("{}, {}: \n", title, message);
+    // Nobody can answer a non-interactive session's prompt: decline it, in
+    // both shapes, before anything waits for a click.
+    if (og::runtime::current_session && og::runtime::current_session->non_interactive_)
+        return false;
 #ifdef TESTING
     if (!s_force_real_dialogs)
     {
@@ -280,6 +284,10 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message)
 {
     Log("{}, {}\n", title, message);
+    // A non-interactive session has logged the text; there is no one to
+    // dismiss the dialog.
+    if (og::runtime::current_session && og::runtime::current_session->non_interactive_)
+        return;
 #ifdef TESTING
     if (!s_force_real_dialogs)
     {

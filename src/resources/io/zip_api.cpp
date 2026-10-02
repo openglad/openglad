@@ -33,26 +33,36 @@ constexpr zip_uint64_t kMaxUnzipEntries = 4096;
 constexpr zip_uint64_t kMaxUnzipEntryBytes = 64ull * 1024ull * 1024ull;
 constexpr zip_uint64_t kMaxUnzipTotalBytes = 256ull * 1024ull * 1024ull;
 
-static std::vector<fs::path> list_relative_paths_recursively(const fs::path& base)
+// Lists every entry under base, relative to it. A missing base is an empty
+// input set, not an error. A walk that cannot finish reports why through
+// walk_error: the constructor failing on a base that exists (ENOTDIR,
+// EMFILE), or an increment failing part way down the tree. libstdc++ and
+// libc++ reset the iterator to end on such an increment, so the loop exits
+// through its condition and the error is read after it, not inside it.
+// Permission-denied subdirectories are skipped (skip_permission_denied), not
+// reported.
+static std::vector<fs::path> list_relative_paths_recursively(const fs::path& base,
+    std::error_code& walk_error)
 {
     std::vector<fs::path> out;
     std::error_code ec;
+    walk_error.clear();
 
     if (!fs::exists(base, ec))
         return out;
 
     fs::recursive_directory_iterator it(base, fs::directory_options::skip_permission_denied, ec);
     fs::recursive_directory_iterator end;
-    for (; it != end; it.increment(ec))
+    for (; !ec && it != end; it.increment(ec))
     {
-        if (ec)
-            break;
         const fs::path& p = it->path();
-        fs::path rel = fs::relative(p, base, ec);
-        if (ec)
+        std::error_code rel_ec;
+        fs::path rel = fs::relative(p, base, rel_ec);
+        if (rel_ec)
             continue;
         out.push_back(rel);
     }
+    walk_error = ec;
     return out;
 }
 
@@ -123,13 +133,20 @@ ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std
     if (out_ec)
         out_path = fs::path(outfile);
 
+    // Walk first: a walk that cannot finish returns before zip_open, so the
+    // output path is never created or truncated for an incomplete archive.
+    std::error_code walk_error;
+    const std::vector<fs::path> entries = list_relative_paths_recursively(base, walk_error);
+    if (walk_error)
+        return ArchiveIoError::ReadInputFailed;
+
     int err = 0;
     zip* archive = zip_open(outfile.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
     if (archive == nullptr)
         return ArchiveIoError::OpenArchiveFailed;
 
     bool add_failed = false;
-    for (const fs::path& rel : list_relative_paths_recursively(base))
+    for (const fs::path& rel : entries)
     {
         const fs::path src = base / rel;
         const std::string dest_name = rel.generic_string();

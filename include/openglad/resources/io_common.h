@@ -76,6 +76,13 @@ enum class ArchiveIoError {
     ReadEntryFailed,
     CloseArchiveFailed,
     ResourceLimitExceeded,
+    // zip_contents_with_error never writes an archive it knows is incomplete:
+    // a directory walk that cannot finish (not a permission skip) returns
+    // ReadInputFailed, and a base that exists but cannot be iterated
+    // (ENOTDIR, EMFILE) is the same error. The walk completes before the
+    // archive is opened, so a failed walk leaves the output path exactly as
+    // it was.
+    ReadInputFailed,
 };
 
 [[nodiscard]] CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);
