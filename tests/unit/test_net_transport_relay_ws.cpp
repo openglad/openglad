@@ -174,8 +174,24 @@ private:
         }
     }
 
+    // A membership change and its fan-out are ONE step, the way the real
+    // relay sends them: relay/src/game-room.ts builds a joiner's peer_list
+    // from the room's peers at SEND time, so the list a peer receives always
+    // includes anyone whose peer_joined it could already have been sent.
+    // ixwebsocket runs every connection on its own thread, so without this
+    // lock two back-to-back opens interleave: X snapshots {1,X} and unlocks,
+    // Y inserts and sends peer_joined(Y) to X, and only then does X's thread
+    // send X its stale peer_list [1,X] — which the client applies as a
+    // REPLACEMENT of its peer set (net_transport_relay_ws.cpp's peer_list
+    // handler), so X sits at {1} for good. The same holds for a close's
+    // peer_left / host_changed fan-out against a concurrent open.
+    //
+    // Lock order: membership_mutex_ is always taken BEFORE mutex_, and
+    // handle_binary takes only mutex_, so no path takes the two the other
+    // way round. mutex_ still guards the map itself for the readers.
     void handle_open(const std::string& connection_id, ix::WebSocket& websocket)
     {
+        const std::lock_guard<std::mutex> membership(membership_mutex_);
         const std::shared_ptr<ix::WebSocket> socket = resolve_socket(websocket);
         if (!socket)
             return;
@@ -312,6 +328,7 @@ private:
 
     void handle_close(const std::string& connection_id)
     {
+        const std::lock_guard<std::mutex> membership(membership_mutex_);
         og::sim::PeerId peer_id = 0;
         bool was_host = false;
         std::optional<og::sim::PeerId> new_host_peer_id;
@@ -477,6 +494,9 @@ private:
     }
 
     ix::WebSocketServer server_;
+    // Serializes membership changes WITH their fan-out (handle_open,
+    // handle_close); taken before mutex_, never after it.
+    std::mutex membership_mutex_;
     mutable std::mutex mutex_;
     og::sim::PeerId next_peer_id_ = 1;
     std::optional<og::sim::PeerId> host_peer_id_;
