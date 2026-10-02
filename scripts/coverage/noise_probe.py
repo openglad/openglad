@@ -158,10 +158,12 @@ def cmd_capture(args: argparse.Namespace) -> int:
     with log.open("w", encoding="utf-8") as fh:
         proc = subprocess.run(cmd, cwd=REPO_ROOT, check=False,
                               stdout=fh, stderr=subprocess.STDOUT)
-    text = log.read_text(encoding="utf-8", errors="replace")
+    text = log.read_text(encoding="utf-8", errors="replace").lower()
+    # gcovr words the tolerated parse errors "Ignoring negative hits in:"
+    # and "Ignoring suspicious hits in:" (one per file, warn_once_per_file).
     print(f"{out}: gcovr exit {proc.returncode}; "
-          f"negative_hits warnings {text.count('negative_hits')}; "
-          f"suspicious_hits warnings {text.count('suspicious_hits')}")
+          f"negative-hit warnings {text.count('negative hits')}; "
+          f"suspicious-hit warnings {text.count('suspicious hits')}")
     return proc.returncode
 
 
