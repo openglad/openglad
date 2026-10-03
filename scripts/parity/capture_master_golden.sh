@@ -44,8 +44,8 @@ if [[ ! -x "${MASTER_BINARY}" ]]; then
     echo "       ${MASTER_BINARY}" >&2
     echo "" >&2
     echo "Build it from the master worktree:" >&2
-    echo "  cd ${MASTER_WORKTREE} && git checkout parity-companion" >&2
-    echo "  cmake --build --preset ci-test --target parity_dump_master" >&2
+    echo "  nix develop ${REPO_ROOT} -c bash ${MASTER_WORKTREE}/scripts/parity/build_parity_dump_master.sh" >&2
+    echo "(the companion has no CMake target; that script is its whole build)" >&2
     exit 2
 fi
 

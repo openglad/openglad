@@ -208,14 +208,16 @@ the example. Re-run them on a new box; never carry the numbers over.
 ## Fresh-machine setup (beyond `git clone` + nix)
 
 - `nix develop` provides the toolchain (GCC, cmake/ninja, SDL3, emcc,
-  ffmpeg, imagemagick). Note SDL2 in the shell is sdl2-compat over SDL3,
-  not real SDL2 — CI uses real libsdl2 where it needs SDL2.
+  ffmpeg, imagemagick). The shell also carries `sdl2-compat` and
+  `SDL2_mixer` (dev outputs) for the parity companion's build script
+  only; the game itself finds and links SDL3.
 - **gcovr is in the nix dev shell**, so local coverage runs need no separate
   install. CI's Ubuntu runner still installs gcovr with pip before configuring
   the coverage preset.
 - Parity companion: `git worktree add ../openglad-master
-  parity-companion` and build `parity_dump_master` there (SDL2-era —
-  see openglad-parity for the pkg-config recipe).
+  parity-companion` and build `parity_dump_master` there with the
+  one-liner in openglad-parity (`nix develop <checkout carrying this
+  flake.nix> -c bash <companion>/scripts/parity/build_parity_dump_master.sh`).
 - `temp/scen/*.fss` fixtures regenerate via a full ctest run
   (og_test_level writes them).
 - Relay/Pages deploys read credentials from the gitignored `./env`
