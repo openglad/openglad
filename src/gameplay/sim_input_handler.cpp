@@ -197,6 +197,30 @@ void sim_advance_current_special(walker& control)
         control.set_current_special(1);
 }
 
+walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
+                           short my_team, short player_num, bool reverse)
+{
+    // Unset our control
+    if (control.user() == player_num)
+    {
+        control.restore_act_type();
+        control.set_user(-1);
+    }
+
+    auto filter = [&level, anchor, my_team, player_num](const walker* w) {
+        // Never hand control to a dead or dormant (delayed-spawn) ally:
+        // dormant walkers are invisible, out of the obmap, skipped by the
+        // act phase, and excluded from snapshots, so selecting one strands
+        // the player on a ghost and blanks the HUD (bugs A1/A10).
+        return !w->dead() && !w->dormant() &&
+               w->query_order() == Order::Living &&
+               w->is_friendly(anchor) && w->team_num() == my_team &&
+               w->real_team_num() == 255 && w->user() == -1 &&
+               og::sim::control_claim_allowed(level, w, player_num); // §4.4 site 1
+    };
+    return sim_cycle_next_character(level.oblist, anchor, reverse, filter);
+}
+
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
@@ -276,26 +300,8 @@ SimInputResult sim_process_player_input(
         bool reverse = pi.is_held(InputAction::Shift);
         debounce.changedchar = 1;
 
-        // Unset our control
-        if (control->user() == player_num)
-        {
-            control->restore_act_type();
-            control->set_user(-1);
-        }
-        control = nullptr;
-
-        auto filter = [&level, oldcontrol, my_team, player_num](const walker* w) {
-            // Never hand control to a dead or dormant (delayed-spawn) ally:
-            // dormant walkers are invisible, out of the obmap, skipped by the
-            // act phase, and excluded from snapshots, so selecting one strands
-            // the player on a ghost and blanks the HUD (bugs A1/A10).
-            return !w->dead() && !w->dormant() &&
-                   w->query_order() == Order::Living &&
-                   w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-                   w->real_team_num() == 255 && w->user() == -1 &&
-                   og::sim::control_claim_allowed(level, w, player_num); // §4.4 site 1
-        };
-        control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);
+        control = sim_switch_control(level, *control, oldcontrol, my_team,
+                                     player_num, reverse);
 
         if (!control)
         {
