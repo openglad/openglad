@@ -119,7 +119,8 @@ jobs:
     # Sizing: a cold build of og_game_test plus one test binary, apt and two
     # Xvfb runs. 30 minutes is the starting cap; it is sized from the first CI
     # run of this job.
-    timeout-minutes: 30
+    # First CI run (PR #345, 2026-10-03) took 3m53s end to end; 15 is ~4x that.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
