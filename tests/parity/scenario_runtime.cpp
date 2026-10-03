@@ -195,6 +195,9 @@ void cycle_next_character(GameWorld& world,
     // The SwitchChar selection rule lives once, in the product
     // (sim_switch_control); `entry_control` is the control this tick began
     // with, the product's `oldcontrol` anchor. Seat 0, Shift held = reverse.
+    // The result is not claimed here: the next tick's claim_control claims
+    // it, which is the product's timing (sim_process_player_input claims at
+    // the top of its next call).
     walker* old = driver.control;
     if (old == nullptr) return;
 
@@ -202,7 +205,6 @@ void cycle_next_character(GameWorld& world,
                                       spec.player_team, 0,
                                       held(driver.held_mask, K_SHIFT));
     driver.control = next != nullptr ? next : old;
-    claim_control(world, spec, driver);
 }
 
 void cycle_special(walker* control)
@@ -250,6 +252,16 @@ void apply_inputs_at_tick(GameWorld& world,
     if (held(pressed, K_SWITCH))
     {
         cycle_next_character(world, spec, driver, entry_control);
+        // The product's switch tick: the special switch still applies to the
+        // new, unclaimed control, then sim_process_player_input returns before
+        // shifter, special, walk or fire (control->user() != player_num).
+        if (driver.control->user() != 0)
+        {
+            if (held(pressed, K_SPECIAL_SWITCH))
+                cycle_special(driver.control);
+            driver.prev_mask = driver.held_mask;
+            return;
+        }
     }
     walker* control = driver.control;
     if (control == nullptr || control->dead())
