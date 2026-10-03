@@ -197,6 +197,40 @@ void sim_advance_current_special(walker& control)
         control.set_current_special(1);
 }
 
+walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
+                           short my_team, short player_num, bool reverse)
+{
+    // Unset our control
+    if (control.user() == player_num)
+    {
+        control.restore_act_type();
+        control.set_user(-1);
+    }
+
+    auto filter = [&level, anchor, my_team, player_num](const walker* w) {
+        // Never hand control to a dead or dormant (delayed-spawn) ally:
+        // dormant walkers are invisible, out of the obmap, skipped by the
+        // act phase, and excluded from snapshots, so selecting one strands
+        // the player on a ghost and blanks the HUD (bugs A1/A10).
+        return !w->dead() && !w->dormant() &&
+               w->query_order() == Order::Living &&
+               w->is_friendly(anchor) && w->team_num() == my_team &&
+               w->real_team_num() == 255 && w->user() == -1 &&
+               og::sim::control_claim_allowed(level, w, player_num); // §4.4 site 1
+    };
+    return sim_cycle_next_character(level.oblist, anchor, reverse, filter);
+}
+
+bool sim_claim_control(GameWorld& level, walker& control, short player_num)
+{
+    if (!og::sim::control_claim_allowed(level, &control, player_num))
+        return false;
+    control.set_act_type(ACT_CONTROL);
+    control.set_user(static_cast<signed char>(player_num));
+    control.stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
+    return true;
+}
+
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
@@ -219,13 +253,7 @@ SimInputResult sim_process_player_input(
     // --- Control setup (§4.4 per-tick claim) ---
     if (control && control->user() == -1)
     {
-        if (og::sim::control_claim_allowed(level, control, player_num))
-        {
-            control->set_act_type(ACT_CONTROL);
-            control->set_user(static_cast<signed char>(player_num));
-            control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
-        }
-        else
+        if (!sim_claim_control(level, *control, player_num))
         {
             // A supplied control the policy refuses is treated as no control
             // at all: the seat takes the same §4.4 site-2 verdict (Follow /
@@ -276,26 +304,8 @@ SimInputResult sim_process_player_input(
         bool reverse = pi.is_held(InputAction::Shift);
         debounce.changedchar = 1;
 
-        // Unset our control
-        if (control->user() == player_num)
-        {
-            control->restore_act_type();
-            control->set_user(-1);
-        }
-        control = nullptr;
-
-        auto filter = [&level, oldcontrol, my_team, player_num](const walker* w) {
-            // Never hand control to a dead or dormant (delayed-spawn) ally:
-            // dormant walkers are invisible, out of the obmap, skipped by the
-            // act phase, and excluded from snapshots, so selecting one strands
-            // the player on a ghost and blanks the HUD (bugs A1/A10).
-            return !w->dead() && !w->dormant() &&
-                   w->query_order() == Order::Living &&
-                   w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-                   w->real_team_num() == 255 && w->user() == -1 &&
-                   og::sim::control_claim_allowed(level, w, player_num); // §4.4 site 1
-        };
-        control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);
+        control = sim_switch_control(level, *control, oldcontrol, my_team,
+                                     player_num, reverse);
 
         if (!control)
         {
@@ -308,6 +318,14 @@ SimInputResult sim_process_player_input(
 
         result.control_hp_changed = true;
         result.control_hp = control->stats()->hitpoints();
+
+        // Claim the selected hero in this same call, as the original game's
+        // continuous_input() does right after input() (view.cpp:887-892): the
+        // new hero acts under the seat's keys on the switch tick instead of
+        // taking one more AI act. The fallback body, which sim_switch_control
+        // released, is re-claimed here too.
+        if (control->user() == -1)
+            sim_claim_control(level, *control, player_num);
     }
 
     // --- Switch special ---

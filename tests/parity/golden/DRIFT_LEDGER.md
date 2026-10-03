@@ -676,3 +676,19 @@ replaced with the old walk step. The new Ashfall Fair defense check fails with
 only three defenders when team-0 attacks are suppressed; restoring attacks
 returns it to green. Campaign layouts, crew levels and defense bands are
 unchanged.
+
+## SwitchChar claim timing (W5-2, 2026-10-03)
+
+The original game claims the switched-to hero in `continuous_input()` in the
+same frame as the TAB press (`glad.cpp:316`, `view.cpp:887-892`), and the
+companion dumper does the same (`tools/parity_dump_master.cpp:349`). The
+current game used to claim it one `sim_process_player_input` call late, so the
+new hero took one more AI act on the switch tick. That was a deviation from
+the original game, not a deliberate change, and it is fixed: the game claims
+in the same call through `sim_claim_control` (commit `6042d7ab`, "fix(sim):
+SwitchChar claims the new hero in the same call, as the original game does"),
+and the harness claims through the same function.
+
+| id | what changed | golden captured from |
+|---|---|---|
+| `input_switch_char_scen99` | Nothing against the original game: for a short time (W5-PARITY, `d3338e68`) this golden was captured from the branch to encode the late claim; it is captured from the companion again and is byte-identical (`cmp`) to the golden at `afb651fe`. | Companion (`capture_master_golden.sh input_switch_char_scen99`). |

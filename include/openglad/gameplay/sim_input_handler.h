@@ -99,6 +99,27 @@ walker* sim_find_next_control(GameWorld& level, short my_team);
 // parity harness (scenario_runtime.cpp) both call it.
 void sim_advance_current_special(walker& control);
 
+// The ONE home of the SwitchChar rule: sim_process_player_input (debounced,
+// Cheat-gated) and the parity harness (scenario_runtime.cpp) both call it.
+// Releases `control` when `player_num` holds it (restore_act_type, user -1),
+// then returns the next walker after `anchor` in oblist order (before it when
+// `reverse`), wrapping, that is alive, not dormant, Living, friendly to
+// `anchor`, on `my_team`, real_team 255, unclaimed (user -1) and
+// control_claim_allowed for `player_num`; nullptr when nobody qualifies or
+// `anchor` is not in the oblist. The result is NOT claimed here: the caller
+// claims it with sim_claim_control in the same call.
+walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
+                           short my_team, short player_num, bool reverse);
+
+// The ONE home of the control claim: sim_process_player_input (the per-tick
+// claim and the SwitchChar claim) and the parity harness (scenario_runtime.cpp)
+// both call it. When control_claim_allowed lets `player_num` hold `control`,
+// sets ACT_CONTROL, user = player_num and clears the command queue with
+// clear_command_for_control_switch (forced fright and charm survive) and
+// returns true; otherwise touches nothing and returns false.
+// Precondition: control.stats() != nullptr.
+bool sim_claim_control(GameWorld& level, walker& control, short player_num);
+
 // Cycle through the oblist starting after `current`, wrapping around,
 // returning the first living walker that satisfies `pred`.
 // If `reverse` is true, iterates backward.  Returns nullptr if none found.

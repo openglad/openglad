@@ -29,9 +29,21 @@
 -- and docs/lua-classpacks-design.md §3): handles are dispatch-scoped
 -- (stashing one across dispatches is a script error on next use); og.rand
 -- errors on n <= 0; og.div/og.mod, og.f*, the narrowing helpers and
--- og.cosmetic_rand are core pack only (cookbook R1-R3: they make core-pack
--- Lua match the classic integer/float semantics the parity goldens record;
--- the engine does not require them of mods); no pairs in the sandbox; a level
+-- og.cosmetic_rand are the core-pack arithmetic toolkit of cookbook R1-R3.
+-- R1-R3 are core pack only. They make core-pack Lua reproduce the classic
+-- C++ results the parity goldens record; mods do not need them to stay in
+-- sync across peers. A mod's plain Lua arithmetic
+-- gives the same result on every peer: every build compiles the same pinned
+-- Lua 5.4.8; integers are 64-bit on every platform (the browser build
+-- included), so integer + - * // % is exact, wrapping on overflow; / always
+-- divides as floats; floats are IEEE doubles, and every float operation
+-- rounds the same way on every peer. Two results are not promised. ^ calls
+-- the C library's pow (only an exponent of exactly 2 is done as a multiply),
+-- so its last bit can differ between platforms; and a NaN's sign and payload
+-- are not fixed by IEEE 754 and can differ between platforms, which shows
+-- when a float is turned into text or packed with string.pack. The sandbox
+-- has no sqrt, sin, exp or log (R7).
+-- No pairs in the sandbox; a level
 -- on_damage hook returns nil (keep) / a number (replace) / false
 -- (cancel), and `return 0` is a zero-damage HIT rather than a cancel --
 -- the engine's hp <= 0 death check still runs after it.

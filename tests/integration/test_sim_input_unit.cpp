@@ -491,8 +491,10 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     }
     ASSERT_EQ(1, switch_cues);
 
-    // Reverse (Shift) cycle honors the same filter.
+    // Reverse (Shift) cycle honors the same filter. The last switch of the
+    // loop above claimed C in its own call, so release C again.
     c->set_dead(0);
+    c->set_user(-1);
     a->set_user(0);
     control = a;
     input.clear();
@@ -502,6 +504,62 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_EQ(control, c);
+}
+
+// The master game claims the switched-to hero in the same frame:
+// viewscreen::continuous_input() runs right after input() and before the next
+// act() (openglad-master glad.cpp:316, view.cpp:887-892). The current game
+// must hand the seat its new hero inside the SAME sim_process_player_input
+// call that pressed SwitchChar, not one call later, or the new hero takes one
+// act under its own AI on the switch tick. The "NO ONE TO SWITCH TO" fallback
+// re-claims the body sim_switch_control released, in the same call too.
+TEST(SimInputUnit, sim_input_switch_char_claims_the_new_hero_in_the_same_call)
+{
+    SimInputFixture fx;
+    SimInputDebounce debounce{};
+    InputState input;
+
+    walker* a = add_living(fx, 0, 0);   // the seat's hero
+    walker* b = add_living(fx, 0, -1);  // alive teammate
+    walker* c = add_living(fx, 0, -1);  // alive teammate
+    a->set_act_type(ACT_CONTROL);
+    ASSERT_EQ(ACT_RANDOM, b->act_type()) << "precondition: b starts under AI";
+    ASSERT_EQ(-1, c->user());
+
+    walker* control = a;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    const SimInputResult switched = sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
+    ASSERT_EQ(b, control) << "forward switch selects b";
+    ASSERT_EQ(b, switched.new_control);
+    ASSERT_EQ(0, b->user())
+        << "the switched-to hero is claimed by seat 0 in the switch call itself";
+    ASSERT_EQ(ACT_CONTROL, b->act_type())
+        << "the switched-to hero is under ACT_CONTROL in the switch call itself";
+    ASSERT_EQ(-1, a->user()) << "the old hero is released";
+
+    // Positive control: a call without SwitchChar keeps b claimed, as before.
+    input.clear();
+    sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
+    ASSERT_EQ(b, control);
+    ASSERT_EQ(0, b->user());
+    ASSERT_EQ(ACT_CONTROL, b->act_type());
+
+    // Fallback: with nobody else eligible, the released body is re-claimed in
+    // the same call that said "NO ONE TO SWITCH TO".
+    a->set_dead(1);
+    c->set_dead(1);
+    input.clear();
+    debounce.changedchar = 0;
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
+    ASSERT_EQ(b, control) << "no eligible teammate: control falls back to b";
+    ASSERT_EQ(0, b->user())
+        << "the fallback hero is re-claimed in the switch call itself";
+    ASSERT_EQ(ACT_CONTROL, b->act_type());
 }
 } // namespace detail_sim_input_r11
 
@@ -709,11 +767,13 @@ TEST(SimInputUnit, sim_control_owner_locked_switch_char_skips_foreign_hero)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     process(fx, input, control, 0, debounce);
     ASSERT_EQ(foreign, control) << "legacy shared pool takes the foreign hero";
+    ASSERT_EQ(0, foreign->user()) << "the switch call claims the new hero";
 
-    // Restore the pre-switch state (the cycle stamps the new user only on
-    // the NEXT tick, so only own's released tag needs resetting).
+    // Restore the pre-switch state: the switch released own and claimed
+    // foreign in the same call, so both tags need resetting.
     control = own;
     own->set_user(0);
+    foreign->set_user(-1);
 
     // Owner-locked: the same press skips the foreign hero onto the
     // same-machine one, and the foreign hero is never stamped.

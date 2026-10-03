@@ -189,65 +189,29 @@ bool held(std::uint32_t mask, std::uint32_t bit)
 
 void cycle_next_character(GameWorld& world,
                           const ScenarioSpec& spec,
-                          ScenarioInputDriver& driver)
+                          ScenarioInputDriver& driver,
+                          walker* entry_control)
 {
+    // The SwitchChar selection and claim rules live once, in the game
+    // (sim_switch_control, sim_claim_control); `entry_control` is the control
+    // this tick began with, the game's `oldcontrol` anchor. Seat 0, Shift
+    // held = reverse. The selected hero (or the fallback body) is claimed in
+    // this same tick, as the original game's continuous_input() and the
+    // current game's sim_process_player_input both do.
     walker* old = driver.control;
     if (old == nullptr) return;
 
-    if (old->user() == 0)
-    {
-        old->restore_act_type();
-        old->set_user(-1);
-    }
-
-    bool seen_old = false;
-    walker* next = nullptr;
-    auto accept = [&](walker* candidate) {
-        return candidate != nullptr &&
-               candidate->query_order() == Order::Living &&
-               candidate->is_friendly(old) &&
-               candidate->team_num() == spec.player_team &&
-               candidate->real_team_num() == 255 &&
-               candidate->user() == -1;
-    };
-
-    for (const auto& uptr : world.oblist)
-    {
-        walker* candidate = uptr.get();
-        if (candidate == old)
-        {
-            seen_old = true;
-            continue;
-        }
-        if (seen_old && accept(candidate))
-        {
-            next = candidate;
-            break;
-        }
-    }
-
-    if (seen_old && next == nullptr)
-    {
-        for (const auto& uptr : world.oblist)
-        {
-            walker* candidate = uptr.get();
-            if (candidate == old) break;
-            if (accept(candidate))
-            {
-                next = candidate;
-                break;
-            }
-        }
-    }
-
-    if (next == nullptr) next = old;
-    driver.control = next;
-    claim_control(world, spec, driver);
+    walker* next = sim_switch_control(world, *old, entry_control,
+                                      spec.player_team, 0,
+                                      held(driver.held_mask, K_SHIFT));
+    driver.control = next != nullptr ? next : old;
+    if (driver.control->user() == -1)
+        sim_claim_control(world, *driver.control, 0);
 }
 
 void cycle_special(walker* control)
 {
-    // The cycling rule itself lives once, in the product
+    // The cycling rule itself lives once, in the game
     // (sim_advance_current_special); the null guards are the harness's own
     // preconditions, and the press edge is detected by the caller.
     if (control && control->stats())
@@ -278,6 +242,7 @@ void apply_inputs_at_tick(GameWorld& world,
         }
     }
 
+    walker* const entry_control = driver.control;
     claim_control(world, spec, driver);
     if (driver.control == nullptr)
     {
@@ -288,7 +253,17 @@ void apply_inputs_at_tick(GameWorld& world,
     const std::uint32_t pressed = driver.held_mask & ~driver.prev_mask;
     if (held(pressed, K_SWITCH))
     {
-        cycle_next_character(world, spec, driver);
+        cycle_next_character(world, spec, driver, entry_control);
+        // A control the claim policy refused stays unclaimed: the game then
+        // applies the special switch and returns before shifter, special,
+        // walk or fire (control->user() != player_num).
+        if (driver.control->user() != 0)
+        {
+            if (held(pressed, K_SPECIAL_SWITCH))
+                cycle_special(driver.control);
+            driver.prev_mask = driver.held_mask;
+            return;
+        }
     }
     walker* control = driver.control;
     if (control == nullptr || control->dead())
