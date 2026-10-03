@@ -36,10 +36,24 @@ never store mutable sim state in a global or upvalue (cookbook R6).
 
 ## Deterministic arithmetic (`og.*`)
 
-`og.div`/`og.mod`, the `og.f*` operations, the narrowing helpers and
-`og.cosmetic_rand` let core-pack Lua match the classic integer/float
-semantics the parity goldens record (cookbook R1–R3). They are core pack
-only: the engine does not require them of mods.
+R1–R3 are core pack only. They make core-pack Lua reproduce the classic
+C++ results the parity goldens record; mods do not need them to stay in
+sync across peers. A mod's plain Lua arithmetic
+gives the same result on every peer: every build compiles the same pinned
+Lua 5.4.8; integers are 64-bit on every platform (the browser build
+included), so integer `+ - * // %` is exact, wrapping on overflow; `/`
+always divides as floats; floats are IEEE doubles, and every float
+operation rounds the same way on every peer. Two results are not promised.
+`^` calls the C library's `pow` (only an exponent of exactly 2 is done as
+a multiply), so its last bit can differ between platforms; and a NaN's
+sign and payload are not fixed by IEEE 754 and can differ between
+platforms, which shows when a float is turned into text or packed with
+`string.pack`. The sandbox has no `sqrt`, `sin`, `exp` or `log` (R7).
+
+`og.div`/`og.mod`, the `og.f*` operations, the narrowing helpers (`og.i8`,
+`og.i16`, `og.i32`, `og.u8`, `og.trunc`) and `og.cosmetic_rand` below are
+that core-pack toolkit; `og.rand`, `og.rand0`, `og.max`/`og.min`/`og.clamp`/`og.sign`
+and `og.log` are for every pack.
 
 | Function | Semantics |
 |---|---|

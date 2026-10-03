@@ -79,9 +79,34 @@ resources/packs/               pack mount/enumerate, pack hashing; runs the
 Lua 5.4 integers are int64 and exact. Lua floats are C doubles. The sim uses
 C++ `float` in places (hitpoints, busy, damage).
 
-R1–R3 and `og.cosmetic_rand` (R4) are core pack only: they make core-pack Lua
-match the classic integer/float semantics the parity goldens record; the
-engine does not require them of mods. R4–R10 apply to every pack.
+R1–R3 are core pack only. They make core-pack Lua reproduce the classic
+C++ results the parity goldens record; mods do not need them to stay in
+sync across peers. A mod's plain Lua arithmetic
+gives the same result on every peer: every build compiles the same pinned
+Lua 5.4.8; integers are 64-bit on every platform (the browser build
+included), so integer `+ - * // %` is exact, wrapping on overflow; `/`
+always divides as floats; floats are IEEE doubles, and every float
+operation rounds the same way on every peer. Two results are not promised.
+`^` calls the C library's `pow` (only an exponent of exactly 2 is done as
+a multiply), so its last bit can differ between platforms; and a NaN's
+sign and payload are not fixed by IEEE 754 and can differ between
+platforms, which shows when a float is turned into text or packed with
+`string.pack`. The sandbox has no `sqrt`, `sin`, `exp` or `log` (R7).
+`og.cosmetic_rand` (R4) is core pack only too, for the same reason.
+R4–R10 apply to every pack.
+
+Why the operators are safe and `^` is not: a Lua opcode computes one C
+operation and stores the result before the next opcode runs, and no Lua
+float opcode multiplies and then adds inside one operation, so there is
+nothing for a compiler to fuse into a multiply-add; none of the shipped
+targets (x86-64, AArch64, wasm32) computes doubles in x87 extended
+precision. `pow` is the only libm call a mod can reach whose result is
+not exact. `floor`, `ceil`, `abs`, `min` and `max` are exact; float `%`
+is an exact `fmod` followed by one rounding. The promise covers
+operations, not text. Turning text into a float (`tonumber`, a decimal
+literal in source) and a float into text go through the C library, so
+keep floats out of sim-visible strings (R7) and write float constants
+that are exact in binary, or derive them from integers.
 
 **R1 — Integer division and modulo (core pack only).** Use `og.div(a,b)` / `og.mod(a,b)` unless
 the operand ranges prove plain `//` / `%` equivalent. The helpers use C
@@ -190,8 +215,9 @@ scripts:
 
 **R7 — Sandbox floor.** Not available: `io`, `os`, `package`/`require`,
 `load`/`loadstring`/`dofile`/`loadfile`, `collectgarbage`, coroutines,
-`debug`, `utf8`, `pairs`/`next` (R5), `string.dump`, `math.random`, float
-transcendentals (`sin`, `exp`, `log`, `sqrt`; `^` produces floats — avoid).
+`debug`, `utf8`, `pairs`/`next` (R5), `string.dump`, `math.random`, the
+libm functions (`sin`, `exp`, `log`, `sqrt`); `^` exists but sits outside
+the cross-peer promise above.
 Available: `string` (incl. `format`; never format floats or tables into
 sim-visible strings), all of `table`, an integer `math` subset (`floor`,
 `ceil`, `abs`, `min`, `max`, `tointeger`, `type`, `maxinteger`,
