@@ -41,7 +41,8 @@ against a non-deterministic reference.
   `scenario_table.h`, and incremental builds do not reliably recompile the
   TUs embedding it. Before capturing or measuring, force-clean the dumper
   and harness object dirs (`rm -rf build/ci-test/CMakeFiles/og_test_parity.dir`
-  and the companion's `parity_dump_master.dir`), rebuild, and verify the
+  and the companion's `build/ci-test/obj/*.o` (its build is a hand g++
+  script, not CMake; delete the dumper's object)), rebuild, and verify the
   dump's `tick` equals the row's budget as a staleness canary.
 - After a failed headless run, `git status cfg/` — a session with nothing
   mounted rewrites `cfg/openglad.yaml` via the cwd fallback; restore it
@@ -52,12 +53,29 @@ against a non-deterministic reference.
 Branch `parity-companion` (pushed to origin) is the master-era tree plus
 recorder-only commits; its worktree conventionally lives at
 `../openglad-master` (`git worktree prune && git worktree add
-../openglad-master parity-companion`, rebuild `parity_dump_master` there
-with the ci-test preset). It is e761-era code needing SDL2: on a machine
-with only SDL3, point `PKG_CONFIG_PATH` at the `sdl2-compat.dev` and
-`SDL2_mixer.dev` pkgconfig dirs (`nix build --no-link --print-out-paths
-'nixpkgs#sdl2-compat.dev'` — `nix shell` alone does NOT set
-PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
+../openglad-master parity-companion`). It is e761-era code that needs SDL2
+and has no CMake build. Rebuild the companion dumper from any cwd with
+
+    nix develop /home/yans/code/openglad -c bash /home/yans/code/openglad-master/scripts/parity/build_parity_dump_master.sh
+
+(generic: `nix develop <openglad checkout> -c bash
+<companion>/scripts/parity/build_parity_dump_master.sh`). The checkout you
+name must carry this flake.nix; the main checkout does once master has it,
+and a checkout at an older commit runs the old shell, where the script
+exits 1. The dev shell carries `sdl2-compat` and `SDL2_mixer` from the
+flake's locked nixpkgs, so the script's `pkg-config --exists sdl2
+SDL2_mixer` check passes as written. Do not export `PKG_CONFIG_PATH` or
+run `nix build --no-link`, and never use `nix shell nixpkgs#…`: a floating
+channel's glibc does not match the shell's, and the link fails with
+`GLIBC_2.43` symbol errors.
+
+The two libraries are not GC roots. `nix-collect-garbage` can delete them;
+the next `nix develop` re-fetches the same store paths from the locked
+rev, so the already-built dumper (its RUNPATH names those paths) loads
+again without a rebuild. To keep them across a garbage collection, run
+`nix develop --profile <dir>/dev-shell /home/yans/code/openglad -c true`
+once. The profile link is the root, so keep `<dir>` outside any directory
+that gets wiped.
 
 - `tests/parity/scenario_table.h` and the companion's
   `tools/parity_scenario_table.h` must be **byte-identical** (`cmp`)
@@ -92,10 +110,6 @@ PKG_CONFIG_PATH, and the `.pc` files live in the `.dev` outputs).
   companion has no concept for and no table row names); that is harmless
   because the companion never evaluates a FactKind — it only declares the
   ones the shared table constructs.
-- `pkg-config` is not on the bare PATH here: run the companion build
-  inside `nix develop /home/yans/code/openglad -c bash -c '...'` with the
-  SDL2 `PKG_CONFIG_PATH` exported inside that shell, or the script exits
-  with "Missing dependencies. Install libsdl2-dev".
 
 ## Goldens and the drift ledger
 
