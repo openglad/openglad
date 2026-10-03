@@ -203,6 +203,11 @@
           packages = with pkgs; [
             actionlint
             sdl3
+            # Dev shell only: scripts/parity/build_parity_dump_master.sh in the
+            # SDL2-era parity companion checks `pkg-config --exists sdl2
+            # SDL2_mixer`. The game itself builds against SDL3 alone.
+            sdl2-compat
+            SDL2_mixer
             bash
             binutils
             clang
