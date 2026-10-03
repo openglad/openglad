@@ -23,7 +23,19 @@
 #     clock at 29.10 s (24.74 ticks/s), about 29.9 s projected to 740 ticks.
 #   Max = 29.9 s. Stanza timeout = 2 x max = 60 s; the ctest TIMEOUT
 #   (cmake/OpenGladTests.cmake) = 2 x 60 = 120 s.
+# Sanitizer builds (ci-asan: ASan+UBSan) run the sim several times slower
+# and were not in that measurement. PR #345's ASan lane (GitHub's 4-vCPU
+# runner, ctest --parallel 4, run 37090526673) reached 631 of 740 ticks in
+# 58.48 s = 10.79 ticks/s, so a full run projects to about 72 s. The
+# sanitizer stanza timeout is sized by the same 2 x max rule from that
+# measurement, 150 s, with the ctest TIMEOUT at 2 x 150 = 300 s; CMake
+# passes it in OPENGLAD_DEMO_RESTART_TIMEOUT when ENABLE_SANITIZERS is ON.
+# (The same ci-asan binary on the 12-CPU dev box, host load 20, 3 runs:
+# 12.43-12.64 s, 58.5-59.5 ticks/s: the runner's contention, not ASan
+# alone, is what the sizing covers.)
 set -euo pipefail
+
+stanza_timeout=${OPENGLAD_DEMO_RESTART_TIMEOUT:-60}
 
 demo_bin=${1:?usage: test_demo_restart.sh /path/to/openglad_demo}
 test_root=$(mktemp -d)
@@ -31,7 +43,7 @@ trap 'rm -rf -- "$test_root"' EXIT
 
 set +e
 output=$(
-    timeout 60 env \
+    timeout "$stanza_timeout" env \
         SDL_VIDEODRIVER=dummy \
         SDL_AUDIODRIVER=dummy \
         SDL_RENDER_DRIVER=software \
@@ -51,13 +63,20 @@ printf '=== restart (exit %d) ===\n%s\n' "$status" "$output"
 
 if (( status != 0 )); then
     if (( status == 124 )); then
+        # openglad_demo reports "<N> sim ticks" on the way out; the match
+        # clock ends at tick 720, so fewer ticks than that means the stanza
+        # timeout expired before the level end was even reachable.
+        ticks=$(grep -Eo 'openglad_demo: [0-9]+ sim ticks' <<<"$output" | tail -1 | grep -Eo '[0-9]+' | head -1)
         if grep -Fq 'Session 0 finished (worker thread)' <<<"$output"; then
             # The session ended and the grid restarted: nothing blocked, the
             # run was slower than the stanza timeout allows.
-            printf 'level-end restart: exceeded the stanza timeout after the session finished (slow run, not a blocked modal)\n' >&2
+            printf 'level-end restart: exceeded the stanza timeout (%ss) after the session finished (slow run, not a blocked modal)\n' "$stanza_timeout" >&2
+            grep -F 'sim ticks' <<<"$output" >&2 || true
+        elif [[ -n "${ticks:-}" ]] && (( ticks < 720 )); then
+            printf 'level-end restart: the stanza timeout (%ss) expired at tick %s of 740, before the 720-tick match clock could end (slow run, not a blocked modal; see the sizing note in this script)\n' "$stanza_timeout" "$ticks" >&2
             grep -F 'sim ticks' <<<"$output" >&2 || true
         else
-            printf 'level-end restart: timed out before the session finished (a modal dialog blocked the worker)\n' >&2
+            printf 'level-end restart: the match clock ended but the session never finished within %ss (a modal dialog blocked the worker)\n' "$stanza_timeout" >&2
         fi
     else
         printf 'level-end restart: expected exit 0, got %d\n' "$status" >&2

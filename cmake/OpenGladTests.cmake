@@ -1662,15 +1662,26 @@ set_tests_properties(openglad_demo_knobs PROPERTIES
 # restart the grid instead of blocking a worker on a modal nobody can click.
 # Its own entry so the 720-tick match never squeezes the knobs budget; the
 # TIMEOUT is sized from the coverage-lane measurement in the script header.
+# Sanitizer builds run the sim several times slower (PR #345's ASan lane:
+# 10.79 ticks/s, about 72 s for the full run); the script header records the
+# measurement and the 2 x max sizing of both numbers.
+if(ENABLE_SANITIZERS)
+    set(OG_DEMO_RESTART_STANZA_TIMEOUT 150)
+    set(OG_DEMO_RESTART_CTEST_TIMEOUT 300)
+else()
+    set(OG_DEMO_RESTART_STANZA_TIMEOUT 60)
+    set(OG_DEMO_RESTART_CTEST_TIMEOUT 120)
+endif()
 add_test(NAME openglad_demo_restart
     COMMAND ${CMAKE_COMMAND} -E env
+        OPENGLAD_DEMO_RESTART_TIMEOUT=${OG_DEMO_RESTART_STANZA_TIMEOUT}
         bash
         ${CMAKE_SOURCE_DIR}/scripts/test_demo_restart.sh
         $<TARGET_FILE:openglad_demo>
 )
 set_tests_properties(openglad_demo_restart PROPERTIES
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    TIMEOUT 120
+    TIMEOUT ${OG_DEMO_RESTART_CTEST_TIMEOUT}
 )
 
 # parity_runner_smoke is the harness's only non-gtest binary: the goldens are
