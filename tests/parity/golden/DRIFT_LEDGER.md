@@ -676,3 +676,20 @@ replaced with the old walk step. The new Ashfall Fair defense check fails with
 only three defenders when team-0 attacks are suppressed; restoring attacks
 returns it to green. Campaign layouts, crew levels and defense bands are
 unchanged.
+
+## SwitchChar claim timing (W5-2, 2026-10-03)
+
+Master claims the switched-to hero in `continuous_input()` in the same frame
+as the TAB press (`glad.cpp:316`, `view.cpp:887-892`), and the companion
+dumper does the same (`tools/parity_dump_master.cpp:349`). The product claims
+it at the top of the next `sim_process_player_input` call
+(`sim_input_handler.cpp:219-236`), so the new hero gets one act under its own
+AI on the switch tick and does not walk or fire on it. Per the R-harness
+ruling the harness takes the product's timing, so this row's golden is
+branch-sourced until either the product claims same-frame (then recapture
+from the companion) or a companion carrying the product's timing is
+deliberately created.
+
+| id | what changed | why | golden captured from |
+|---|---|---|---|
+| `input_switch_char_scen99` | `position_drift` on the archer (`walkers[1]` (168,148) → (172,152)), and `weapon_field`/`track_field` on every `FAMILY_ARROW`: all 20 `weapons[]` and all 253 `weapon_tracks[]` samples shift by the same (+4,+4). 548 leaves differ, every one an `xpos`/`ypos` with that delta. `rng_state`, `events`, `score_per_team`, hp, counts and `tick` (150) are byte-identical to the old golden. | On tick 5 the archer (AI on ticks 0-4) gets one more AI act, one step of +4,+4, before tick 6 claims it; the old golden claimed it on tick 5. The step draws nothing from the shared RNG stream. | Branch, harness source at commit `659ceec3` (`parity_runner_smoke --out`; the recapture commit adds only this golden and this row). The companion keeps master's same-frame claim (`view.cpp:887-892`, dumper `:349`); the product claims at the top of the next call (`sim_input_handler.cpp:219-236`); per the R-harness ruling the harness takes the product's timing, so this row's master side is BRANCH-SOURCED until either the product claims same-frame (then recapture from the companion) or a companion carrying the product's timing is deliberately created. A companion recapture must never replace this golden. |
