@@ -33,6 +33,18 @@ bool apply_sprite_sheet_setting();
 bool reassert_sprite_sheet_mount();
 
 std::string get_user_path();
+
+// Browser persistence namespace (docs/INSTALL.md, "Embedding / hosting for
+// multiple users"). The web build's IDBFS mount is "/persist" by default, or
+// "/persist_<token>" when the embedding host set
+// window.__opengladPersistNamespace to a valid token: 1..64 characters of
+// [A-Za-z0-9_-]. Empty or invalid tokens select the default store. The rule
+// is pure and compiled on every platform so it can be pinned off the wasm
+// target; the Emscripten io_init reads the window variable and feeds it here.
+inline constexpr std::string_view kWebPersistRootDefault = "/persist";
+inline constexpr std::size_t kWebPersistNamespaceMaxLength = 64;
+bool is_valid_web_persist_namespace(std::string_view token);
+std::string web_persist_root_for_namespace(std::string_view token);
 bool create_dir(const std::string& dirname);
 
 // User-directory file primitives (docs/company-basecamp-design.md §3.6).

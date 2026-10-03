@@ -996,6 +996,7 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_win_shares.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_state_providers.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_web_persist_namespace.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
