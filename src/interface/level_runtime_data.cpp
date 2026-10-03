@@ -365,100 +365,80 @@ bool CampaignData::load()
 bool CampaignData::save()
 {
     last_io_error_ = IoError::None;
-    cleanup_unpacked_campaign();
-    
-    bool result = true;
-    if(unpack_campaign(id))
-    {
-        // Unmount campaign while it is changed
-        //unmount_campaign_package(ascreen->current_campaign);
-        
+
+    // Unmount campaign while it is changed
+    //unmount_campaign_package(ascreen->current_campaign);
+
+    const CampaignMutationError error = mutate_packaged_campaign(id, id, [this] {
         if (!og::data::write_campaign_yaml("temp/campaign.yaml", campaign_data_to_yaml(*this)))
         {
             LogError("Couldn't write YAML descriptor for temp/campaign.yaml.\n");
-            last_io_error_ = IoError::OpenWriteFailed;
-            cleanup_unpacked_campaign();
             return false;
         }
-
-        if(result)
-        {
-            if(repack_campaign(id))
-            {
-                Log("Campaign saved.\n");
-            }
-            else
-            {
-                LogError("campaign_save_failed id={} reason=repack_failed\n", id);
-                result = false;
-                last_io_error_ = IoError::PackageRepackFailed;
-            }
-        }
-    }
-    else
+        return true;
+    });
+    if (error == CampaignMutationError::UnpackFailed)
     {
         LogError("campaign_save_failed id={} reason=unpack_failed\n", id);
-        result = false;
         last_io_error_ = IoError::PackageUnpackFailed;
+        return false;
     }
-    cleanup_unpacked_campaign();
-
-    if(result)
+    if (error == CampaignMutationError::MutationFailed)
     {
-        last_io_error_ = IoError::None;
-        og::data::clear_campaign_metadata_cache();
+        last_io_error_ = IoError::OpenWriteFailed;
+        return false;
     }
-    return result;
+    if (error == CampaignMutationError::RepackFailed)
+    {
+        LogError("campaign_save_failed id={} reason=repack_failed\n", id);
+        last_io_error_ = IoError::PackageRepackFailed;
+        return false;
+    }
+    Log("Campaign saved.\n");
+    last_io_error_ = IoError::None;
+    og::data::clear_campaign_metadata_cache();
+    return true;
 }
 
 bool CampaignData::save_as(const std::string& new_id)
 {
     last_io_error_ = IoError::None;
-    cleanup_unpacked_campaign();
 
-    bool result = true;
     // Unpack the campaign
-    if(unpack_campaign(id))
-    {
+    // Repack the campaign
+    // (mutate_packaged_campaign does both: unpack `id`, repack as `new_id`.)
+    const CampaignMutationError error = mutate_packaged_campaign(id, new_id, [this] {
         // Save the descriptor file
         if (!og::data::write_campaign_yaml("temp/campaign.yaml", campaign_data_to_yaml(*this)))
         {
             LogError("Couldn't write YAML descriptor for temp/campaign.yaml.\n");
-            result = false;
-            last_io_error_ = IoError::OpenWriteFailed;
+            return false;
         }
-        
-        // Repack the campaign
-        if(result)
-        {
-            if(repack_campaign(new_id))
-            {
-                // Success!
-                id = new_id;
-                Log("Campaign saved.\n");
-            }
-            else
-            {
-                LogError("campaign_save_as_failed src_id={} dst_id={} reason=repack_failed\n", id, new_id);
-                result = false;
-                last_io_error_ = IoError::PackageRepackFailed;
-            }
-        }
-    }
-    else
+        return true;
+    });
+    if (error == CampaignMutationError::UnpackFailed)
     {
         LogError("campaign_save_as_failed src_id={} dst_id={} reason=unpack_failed\n", id, new_id);
-        result = false;
         last_io_error_ = IoError::PackageUnpackFailed;
+        return false;
     }
-    cleanup_unpacked_campaign();
-
-    if(result)
+    if (error == CampaignMutationError::MutationFailed)
     {
-        last_io_error_ = IoError::None;
-        og::data::clear_campaign_metadata_cache();
+        last_io_error_ = IoError::OpenWriteFailed;
+        return false;
     }
-    return result;
+    if (error == CampaignMutationError::RepackFailed)
+    {
+        LogError("campaign_save_as_failed src_id={} dst_id={} reason=repack_failed\n", id, new_id);
+        last_io_error_ = IoError::PackageRepackFailed;
+        return false;
+    }
+    // Success!
+    id = new_id;
+    Log("Campaign saved.\n");
+    last_io_error_ = IoError::None;
+    og::data::clear_campaign_metadata_cache();
+    return true;
 }
 
 CampaignData::IoError CampaignData::load_with_error()

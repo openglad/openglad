@@ -53,6 +53,7 @@ public:
 
 private:
     SDL_AudioDeviceID device_ = 0;    // 0 = not opened
+    bool audio_subsystem_ = false;    // init() holds an SDL_INIT_AUDIO reference
     SDL_AudioStream* channels_[NUM_SOUND_CHANNELS] = {};
     int next_steal_ = 0;              // round-robin victim when all channels busy
 };

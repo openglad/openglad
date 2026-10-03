@@ -661,17 +661,16 @@ constexpr MenuButtonSpec kDisplaySettingsRows[] = {
      .nav = {.up = 6, .down = 0, .left = 7}},
 };
 
-// No window to size or mode to pick: TV/mobile targets are always
-// fullscreen, and on web the page/CSS owns the window (the fullscreen cfg
-// is also deliberately ignored at boot there). Hide both rows and route the
+// No window to size or mode to pick: iOS is always fullscreen, and on web
+// the page/CSS owns the window (the fullscreen cfg is also deliberately
+// ignored at boot there). Hide both rows and route the
 // vertical cycle around them (BACK <-> overscan pair). Compile-time
 // platform fork, applied per frame (idempotent) as the screen's Rewire
 // program; a desktop-native build is a no-op with the verbatim static nav.
 void display_settings_platform_rewire(button* buttons, int num_buttons,
                                       int& highlighted_button)
 {
-#if defined(OUYA) || defined(ANDROID) || defined(__IPHONEOS__) || \
-    defined(SDL_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
+#if defined(SDL_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
     if (buttons == nullptr || num_buttons <= kDisplayMenuSmoothingIndex)
         return;
     buttons[kDisplayMenuModeIndex].hidden =
@@ -1754,19 +1753,9 @@ ScriptedLevelSet apply_scripted_level_set(int level, bool replay_arm = false)
     // The do_set_scen_level tail without pick_level: load the chosen level
     // with rollback, then commit the cursor and republish. An armed replay
     // of the level already on screen has nothing to reload.
-    if (level != old_id) {
-        game->world().id = static_cast<short>(level);
-        if (level < 0 || level > 32767 || !game->load_level()) {
-            game->clearbuffer();
-            game->world().id = static_cast<short>(old_id);
-            if (!game->load_level()) {
-                game->clearbuffer();
-                popup_dialog("Big problem",
-                             "Also failed to reload current level...");
-            }
-            return ScriptedLevelSet::LoadFailed;
-        }
-    }
+    if (level != old_id &&
+        load_level_or_roll_back(*game, level) != LevelLoadOutcome::Loaded)
+        return ScriptedLevelSet::LoadFailed;
     if (replay_arm) {
         // The arm moves scen_num itself, so the republish and every
         // downstream reader see the same cursor a plain set would write.
@@ -1776,9 +1765,7 @@ ScriptedLevelSet apply_scripted_level_set(int level, bool replay_arm = false)
     }
     // A plain level set abandons any excursion in flight — only the
     // replay_arm branch above keeps/starts one.
-    game->save_data.clear_replay_arm();
-    game->save_data.scen_num = static_cast<short>(level);
-    picker_lobby_sync_settings_from_save();
+    commit_level_cursor(game->save_data, level);
     return ScriptedLevelSet::Set;
 }
 

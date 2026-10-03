@@ -149,6 +149,11 @@ void clear_pack_family_chunks()
     family_generation_counter()++;
 }
 
+bool pack_lua_absent() noexcept
+{
+    return pack_scripts().empty() && pack_family_chunks().empty();
+}
+
 unsigned pack_family_generation()
 {
     return family_generation_counter();

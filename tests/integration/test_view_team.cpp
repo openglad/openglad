@@ -21,6 +21,8 @@
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_click_ladder.h"
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/company.h>
@@ -728,32 +730,72 @@ TEST(ViewTeam, base_camp_name_tap_opens_train_seeded_on_that_character)
 // The visible TEAM-color square is an independent column before NAME.
 // Coordinate-level coverage keeps it from regressing into the train zone.
 struct BaseCampTeamChipTapState {
-    bool finished;
-    bool saw_team_change;
+    bool finished = false;
+    bool saw_team_change = false;
+    // Set by the MAIN thread once create_team_menu has returned; the escape
+    // tail presses its way out until then.
+    std::atomic<bool> test_finished{false};
 };
+
+// The tap's own consumption oracle: the team the chip WRITES, read on the
+// menu thread. A press the chip consumed moves team_list[0] 0 -> 1; a second
+// consumed press would move it on to 2, so the ladder below re-taps only
+// after this read still says 0 (the toggle-safety rule).
+static bool base_camp_slot0_team_is(int want, int wait_ms)
+{
+    const Uint64 started_at = SDL_GetTicks();
+    for (;;) {
+        int team = -1;
+        const bool read = run_on_main_thread([&team] {
+            const SaveData& save =
+                og::runtime::current_session->myscreen_->save_data;
+            team = save.team_list[0] != nullptr ? save.team_list[0]->teamnum
+                                                : -1;
+        });
+        if (read && team == want)
+            return true;
+        if (SDL_GetTicks() - started_at >= static_cast<Uint64>(wait_ms))
+            return false;
+        SDL_Delay(50);
+    }
+}
 
 static int base_camp_team_chip_tap_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<BaseCampTeamChipTapState*>(data);
+    // Every give-up walks Base Camp out through BACK (kPickerEscapeDoors), so
+    // create_team_menu always returns and the main thread always joins.
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why);
+    };
 
-    if (!wait_for_interactable("roster_team_0", 10000)) {
-        state->finished = true;
-        cancel_menu_screen();
-        return 0;
-    }
-    SDL_Delay(750);
-    const auto [mapped_x, mapped_y] =
-        ui_canvas_to_window(66.0f, 49.0f);
-    inject_click(static_cast<int>(mapped_x), static_cast<int>(mapped_y), 100);
-    SDL_Delay(500);
+    if (!wait_for_interactable("roster_team_0", 10000) ||
+        !wait_for_menu_frames(2))
+        return escape(1, "Base Camp never composed its roster TEAM chip");
 
-    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    state->saw_team_change = save.team_list[0] != nullptr &&
-        save.team_list[0]->teamnum == 1;
-    interact("back");
+    // The chip is a coordinate on the roster band, not a button of its own,
+    // so the ladder is handed the press itself; the trace the chip emits as
+    // it writes is the landing witness.
+    const bool cycled = click_until_edge(
+        [] {
+            const auto [mapped_x, mapped_y] =
+                ui_canvas_to_window(66.0f, 49.0f);
+            inject_click(static_cast<int>(mapped_x),
+                         static_cast<int>(mapped_y), 100);
+        },
+        "roster TEAM chip (66,49)",
+        [](int wait_ms) { return base_camp_slot0_team_is(1, wait_ms); },
+        "team slot=0 team=1", 3, 2500, "basecamp");
+    if (!cycled)
+        return escape(2, "the TEAM chip tap never moved slot 0's team to 1");
+    state->saw_team_change = true;
+
+    // The exit is the tail's own: BACK while Base Camp is up, watched until
+    // it goes, re-pressed only if it did not. A ladder here would spend its
+    // acknowledge posts on a main thread that has already left the menu.
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 TEST(ViewTeam, base_camp_color_tap_cycles_team_without_opening_train)
@@ -773,7 +815,9 @@ TEST(ViewTeam, base_camp_color_tap_cycles_team_without_opening_train)
     save.team_size = 1;
     save.save("save0");
 
-    BaseCampTeamChipTapState state = {false, false};
+    BaseCampTeamChipTapState state;
+    g_escape_tail_drops.store(0);
+    g_escape_tail_presses.store(0);
     SDL_Thread* thread = SDL_CreateThread(
         base_camp_team_chip_tap_injector, "base_camp_team_chip", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
@@ -781,10 +825,15 @@ TEST(ViewTeam, base_camp_color_tap_cycles_team_without_opening_train)
     pks().selected_menu_item = nullptr;
     const Sint32 ret = create_team_menu(0);
 
-    int thread_result = 0;
+    state.test_finished.store(true);
+    int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result
+        << " (1=Base Camp composed, 2=TEAM chip tap consumed)";
     ASSERT_TRUE(state.finished) << "team-chip injector should complete";
     ASSERT_TRUE(state.saw_team_change)
         << "tapping the team color should advance that character's team";

@@ -421,7 +421,6 @@ public:
     // Save data
     SaveData save_data;
 
-    std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
     std::unique_ptr<soundob> soundp;
     short redrawme;
     std::unique_ptr<viewscreen> viewob[MAX_VIEWS];

@@ -203,6 +203,11 @@
           packages = with pkgs; [
             actionlint
             sdl3
+            # Dev shell only: scripts/parity/build_parity_dump_master.sh in the
+            # SDL2-era parity companion checks `pkg-config --exists sdl2
+            # SDL2_mixer`. The game itself builds against SDL3 alone.
+            sdl2-compat
+            SDL2_mixer
             bash
             binutils
             clang
@@ -244,6 +249,15 @@
             # encoder scripts/media/capture_showcase.sh uses to turn captured
             # frames into the shipped GIFs and PNGs.
             xvfb-run
+            # The real-display x11 lane (scripts/ci/run_x11_display_lane.sh):
+            # Xvfb with -noreset, xrandr to add video modes to its screen,
+            # openbox as the EWMH window manager that acknowledges fullscreen
+            # requests, and xprop/xdpyinfo to verify the topology before ctest.
+            xvfb
+            xrandr
+            openbox
+            xprop
+            xdpyinfo
             ffmpeg
             # Drive native menus and include the OS cursor in screenshots.
             xdotool

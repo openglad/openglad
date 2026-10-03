@@ -111,6 +111,14 @@ const std::vector<PackScript>& pack_family_chunks();
 // Drop everything (tests; full remount).
 void clear_pack_family_chunks();
 
+// True when no pack Lua of any kind is installed — no scripts/ chunk and no
+// families/ chunk. The level, campaign and default-lineup dispatchers gate on
+// this (and only this): a world with family chunks but no scripts/ still runs
+// those chunks in every VM, and a families/ chunk may register level hooks
+// (og.register_level_hooks / campaign_hooks / default_lineup). Gating on
+// scripts/ alone hid those registrations (issue #322).
+[[nodiscard]] bool pack_lua_absent() noexcept;
+
 // Monotonic counter over family-chunk mutations, folded into the build
 // generation below for the same reason lib modules are: a declaration-only
 // edit must rebuild every long-lived VM.

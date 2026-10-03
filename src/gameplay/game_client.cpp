@@ -5,13 +5,11 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/damage_number_event.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
 
 #include <algorithm>
 #include <climits>
 #include <cstddef>
-#include <stdexcept>
 #include <utility>
 
 namespace {
@@ -47,276 +45,23 @@ struct ClientPollResult {
 ClientPollResult poll_client_messages(
     og::sim::ITransport& transport)
 {
+    // One decode for raw and typed transports (og::sim::poll_decoded_messages).
+    // The consumer switch in poll_messages_impl() is exhaustive and ignores the
+    // server-bound, pack and staged-lobby stragglers itself, so every
+    // well-formed kind is accepted here; the first Malformed frame flags the
+    // server and ends the poll.
     ClientPollResult result;
-    if (transport.supports_typed_messages())
+    for (og::sim::TypedReceivedMessage& message :
+         og::sim::poll_decoded_messages(transport))
     {
-        for (og::sim::TypedReceivedMessage& message : transport.poll_typed())
-        {
-            if (message.kind == og::sim::TypedReceivedMessageKind::Malformed)
-            {
-                result.malformed_server_message = true;
-                break;
-            }
-
-            result.messages.push_back(std::move(message));
-        }
-        return result;
-    }
-
-    for (const auto& message : transport.poll())
-    {
-        og::sim::TransportEnvelope envelope;
-        if (!og::sim::decode_transport_envelope(message.data, envelope))
+        if (message.kind == og::sim::TypedReceivedMessageKind::Malformed)
         {
             result.malformed_server_message = true;
             break;
         }
 
-        og::sim::TypedReceivedMessage typed_message;
-        typed_message.peer_id = message.peer_id;
-        try
-        {
-            switch (envelope.message_type)
-            {
-            case og::sim::kSnapshotMessageType:
-                typed_message.kind = og::sim::TypedReceivedMessageKind::Snapshot;
-                typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
-                    og::sim::deserialize_snapshot(message.data));
-                break;
-
-            case og::sim::kDeltaSnapshotMessageType:
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::DeltaSnapshot;
-                typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
-                    og::sim::deserialize_delta(message.data));
-                break;
-
-            case og::sim::kSimEventBatchMessageType:
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::SimEventBatch;
-                typed_message.event_batch =
-                    std::make_shared<og::sim::SimEventBatch>(
-                        og::sim::deserialize_sim_event_batch(message.data));
-                break;
-
-            case og::sim::kGameFlowEventBatchMessageType:
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::GameFlowEventBatch;
-                typed_message.event_batch =
-                    std::make_shared<og::sim::SimEventBatch>(
-                        og::sim::deserialize_game_flow_event_batch(
-                            message.data));
-                break;
-
-            case og::sim::kLobbyMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_lobby_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::LobbyMessage;
-                typed_message.lobby_message =
-                    std::make_shared<og::sim::LobbyMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kLobbyStateMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_lobby_state_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
-                typed_message.lobby_state =
-                    std::make_shared<og::sim::LobbyState>(*decoded);
-                break;
-            }
-
-            case og::sim::kInputMessageType:
-            {
-                const std::optional<og::sim::InputStateMessage> decoded =
-                    og::sim::deserialize_input_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind = og::sim::TypedReceivedMessageKind::Input;
-                typed_message.input = std::make_shared<InputState>(decoded->input);
-                typed_message.tick = decoded->tick;
-                break;
-            }
-
-            case og::sim::kInitialSetupMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_initial_setup_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::InitialSetup;
-                typed_message.initial_setup =
-                    std::make_shared<og::sim::InitialSetupMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kHelloMessageType:
-            {
-                const auto decoded = og::sim::deserialize_hello_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind = og::sim::TypedReceivedMessageKind::Hello;
-                typed_message.hello =
-                    std::make_shared<og::sim::HelloMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kHeartbeatMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_heartbeat_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind = og::sim::TypedReceivedMessageKind::Heartbeat;
-                typed_message.heartbeat =
-                    std::make_shared<og::sim::HeartbeatMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kExitPromptBroadcastMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_exit_prompt_broadcast_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::ExitPromptBroadcast;
-                typed_message.exit_prompt_broadcast =
-                    std::make_shared<og::sim::ExitPromptBroadcastMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kPauseBroadcastMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_pause_broadcast_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::PauseBroadcast;
-                typed_message.pause_broadcast =
-                    std::make_shared<og::sim::PauseBroadcastMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kControlChangeMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_control_change_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::ControlChange;
-                typed_message.control_change =
-                    std::make_shared<og::sim::ControlChangeMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kPackManifestMessageType:
-            {
-                // Pack transfers are handled by the lobby-phase picker
-                // clients; chunks that trail into the gameplay stream are
-                // legal traffic the dispatcher ignores — never grounds for
-                // disconnecting the server.
-                const auto decoded =
-                    og::sim::deserialize_pack_manifest_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::PackManifest;
-                typed_message.pack_manifest =
-                    std::make_shared<og::sim::PackManifestMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kPackFileChunkMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_pack_file_chunk_message(message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::PackFileChunk;
-                typed_message.pack_file_chunk =
-                    std::make_shared<og::sim::PackFileChunkMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kPackTransferDoneMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_pack_transfer_done_message(
-                        message.data);
-                if (!decoded.has_value())
-                {
-                    result.malformed_server_message = true;
-                    break;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::PackTransferDone;
-                typed_message.pack_transfer_done =
-                    std::make_shared<og::sim::PackTransferDoneMessage>(
-                        *decoded);
-                break;
-            }
-
-            default:
-                result.malformed_server_message = true;
-                break;
-            }
-        }
-        catch (const std::exception&)
-        {
-            result.malformed_server_message = true;
-        }
-
-        if (result.malformed_server_message)
-            break;
-
-        result.messages.push_back(std::move(typed_message));
+        result.messages.push_back(std::move(message));
     }
-
     return result;
 }
 

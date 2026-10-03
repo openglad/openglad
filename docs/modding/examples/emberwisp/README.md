@@ -46,8 +46,9 @@ modern surface in ~60 lines:
 - **A special that carries its own handler** — the entry declares
   `id`, `name`, `mp_cost` and `cast = flare_burst` together, so the cost
   and the code it charges for cannot drift apart. A declared slot that is
-  castable with nothing to run is a pack error; answering `false` from the
-  handler means "did not fire" and skips the `mp_cost`.
+  castable with nothing to run is a pack error; a handler that refuses
+  returns `false, reason`, and the engine then skips the `mp_cost` and shows
+  the reason to the player.
 - **`og.rand` vs `og.rand0`** — the create-time roll has a positive
   literal bound, so it uses plain `og.rand` (its `n <= 0` error is a
   tripwire); the per-foe stun roll's bound is tuning-driven and may be
@@ -62,7 +63,7 @@ shared by two or more files, and a one-family pack keeps helpers as
 `local function`s (style rule S4). See `packs/core/lib/` for real
 modules.
 
-## The three things worth copying
+## Art and animation
 
 **Sprite paths are virtual-filesystem paths.** `sprite =
 "packs/emberwisp/sprites/emberwisp.png"` is looked up as-is. Core art passes bare names
@@ -72,8 +73,8 @@ that actually opened, so a pack's `.json` sits beside its `.png`.
 
 **Frame metadata comes from the sidecar.** A PNG with no sidecar is a
 single-frame sprite. `meta.size` must equal `frame w` x `frame h * frame
-count` or the sprite is rejected — that cross-check is what catches a
-sidecar drifting away from its art.
+count` or the sprite is rejected; the cross-check catches a sidecar that
+has drifted away from its art.
 
 **Animation rows are `ani_type * 8 + curdir`.** `rows = 16` gives a family
 two ani_types over eight facings: 0 = walk, 1 = attack. Declaring fewer
@@ -81,7 +82,7 @@ rows than `rows` asks for repeats them *cyclically*, so two declared rows
 over `rows = 16` alternate walk/attack per facing rather than filling eight
 of each. Write every row out unless the cycle is what you want.
 
-The row count is also load-bearing beyond looks: it becomes
+The row count also matters for safety: it becomes
 `walker::ani_count`, which bounds the animation index arithmetic against a
 snapshot- or save-supplied `ani_type`/`curdir`. A pack table always carries
 its explicit count.

@@ -708,17 +708,13 @@ TEST_F(LevelFileIoCoverage,
         const fs::path fss = user_ / "temp/scen/lfio_decor_blocked.fss";
         const fs::path base = user_ / "temp/pix/lfiodecor.png";
         const fs::path decor = user_ / "temp/pix/lfiodecor_d0.png";
-        // OgFile deliberately falls back to stdio when PhysFS rejects an
-        // open. Block that relative fallback too, so this test exercises a
-        // real failed open independent of the test runner's working dir.
-        const fs::path fallback_decor =
-            fs::current_path() / "temp/pix/lfiodecor_d0.png";
-        ScopedFilesAbsent files({fss, base, decor, fallback_decor});
+        // A relative write PhysFS refuses no longer falls back to the
+        // working directory (#332), so the user-dir blocker alone makes
+        // the decor open fail.
+        ScopedFilesAbsent files({fss, base, decor});
         ASSERT_TRUE(files.ready());
         std::error_code ec;
         ASSERT_TRUE(fs::create_directory(decor, ec)) << ec.message();
-        ec.clear();
-        ASSERT_TRUE(fs::create_directory(fallback_decor, ec)) << ec.message();
 
         GameWorld world(46);
         world.create_new_grid();
@@ -735,7 +731,6 @@ TEST_F(LevelFileIoCoverage,
         EXPECT_TRUE(file_nonempty(fss));
         EXPECT_TRUE(file_nonempty(base));
         EXPECT_TRUE(fs::is_directory(decor));
-        EXPECT_TRUE(fs::is_directory(fallback_decor));
     }
 }
 

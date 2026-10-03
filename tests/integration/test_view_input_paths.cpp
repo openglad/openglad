@@ -206,30 +206,14 @@ TEST(ViewInputPaths, view_input_special_switch_cycles_the_current_special)
     walker* const controlp = control.get();
     controlp->set_act_type(ACT_CONTROL);
     controlp->set_user(0);
-    controlp->stats()->set_level(30); // every slot unlocked by level
+    controlp->stats()->set_level(4); // unlocks exactly slots 1 and 2
     controlp->set_current_special(1);
     s->world().oblist.push_back(std::move(control));
     v->control = controlp;
 
-    // Slot 2 is a real special, slot 3 is not: the wrap is then observable.
-    struct SpecialNameGuard
-    {
-        screen& s;
-        std::string saved2, saved3;
-        explicit SpecialNameGuard(screen& scr)
-            : s(scr), saved2(scr.special_name[FAMILY_SOLDIER][2]),
-              saved3(scr.special_name[FAMILY_SOLDIER][3])
-        {
-            s.special_name[FAMILY_SOLDIER][2] = "TEST SPECIAL";
-            s.special_name[FAMILY_SOLDIER][3] = "NONE";
-        }
-        ~SpecialNameGuard()
-        {
-            s.special_name[FAMILY_SOLDIER][2] = saved2;
-            s.special_name[FAMILY_SOLDIER][3] = saved3;
-        }
-    } special_guard(*s);
-
+    // The live registry names the soldier's slots 2 and 3, and level 4
+    // unlocks slot 2 but not slot 3 ((3-1)*3+1 = 7): the wrap is then
+    // observable at the level gate.
     InputState released = {};
     InputState pressed = {};
     pressed.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
@@ -249,11 +233,11 @@ TEST(ViewInputPaths, view_input_special_switch_cycles_the_current_special)
     EXPECT_EQ(2, (int)controlp->current_special())
         << "a held SwitchSpecial must not keep cycling";
 
-    // Release, press again: slot 3 is "NONE", so it wraps to 1.
+    // Release, press again: level 4 locks slot 3, so it wraps to 1.
     v->process_input(released);
     v->process_input(pressed);
     EXPECT_EQ(1, (int)controlp->current_special())
-        << "a slot with no special behind it wraps back to 1";
+        << "a slot the hero's level has not unlocked wraps back to 1";
 
     // Leave the latch released for the next test in this binary.
     v->process_input(released);

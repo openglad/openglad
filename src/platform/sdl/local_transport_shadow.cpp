@@ -11,7 +11,6 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
-#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
@@ -563,6 +562,18 @@ void prepare_server_session_for_gameplay(og::runtime::GameSession& server_sessio
     server_screen->world().clear_grid_dirty_tiles();
     if (current_game != nullptr && current_game->sim_events != nullptr)
         current_game->sim_events->clear();
+}
+
+// #326: the two shadow installs used to return silently when the
+// authoritative load failed, leaving the display running with no transport
+// shadow. A failed load still installs nothing; the caller reads that through
+// local_transport_active.
+void log_shadow_load_failure(const std::string& slot)
+{
+    LogError("transport_shadow: load_saved_game('{}') failed; no transport "
+             "shadow installed\n",
+             slot);
+    TRACE("transport_shadow", "load_saved_game failed slot=%s", slot.c_str());
 }
 
 // Staged adoption (#218): the session settings the legacy display-seed
@@ -1652,12 +1663,7 @@ walker* resolve_or_spawn_seat_walker(GameWorld& world,
     // setxy routes obmap updates through obmap::move, which early-outs on an
     // unchanged position — re-register explicitly (the respawn engine's
     // ensure_obmap_registration rule).
-    if (world.myobmap != nullptr && !stock->ignore() && !stock->dead() &&
-        world.myobmap->walker_to_pos.find(stock) ==
-            world.myobmap->walker_to_pos.end())
-    {
-        world.myobmap->add(stock, stock->xpos(), stock->ypos());
-    }
+    og::sim::ensure_obmap_registration(world, stock);
     stock->set_spawn_point(stock->xpos(), stock->ypos(),
                            static_cast<std::uint8_t>(stock->floor()));
     spawned_out = true;
@@ -2306,6 +2312,10 @@ void reset_local_transport_shadow(GameSession& session,
         !session.replay_playback_active_ &&
         match_stage->ensure_current(og::server::stage_clock_now_ms()) &&
         !consume_mismatched_stage(*match_stage, gameplay_screen.save_data);
+    // Every gate below the branch reads adopted_stage, not adopt_stage: a
+    // refused adoption falls back to the display-seed path and is then
+    // bound, weather-rolled and policy-installed exactly as a legacy install.
+    bool adopted_stage = false;
 
     gameplay_screen.set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
@@ -2382,19 +2392,32 @@ void reset_local_transport_shadow(GameSession& session,
             // the on_load latch; the adopt claims it truthfully after), then
             // append the staged announcements the clear must not eat.
             prepare_server_session_for_gameplay(*runtime->server_session);
-            if (!og::server::adopt_staged_world(
+            if (og::server::adopt_staged_world(
                     server_screen->level_runtime_data(),
                     server_screen->save_data,
                     *match_stage))
             {
-                return;
+                runtime->server_session->game_.sim_events->append(
+                    match_stage->take_events());
+                adopted_stage = true;
             }
-            runtime->server_session->game_.sim_events->append(
-                match_stage->take_events());
+            else
+            {
+                // adopt_staged_world fails before mutating anything, so the
+                // documented Failed-stage rule applies: drop the stage and
+                // seed from the display keyframe below. Unreachable today:
+                // ensure_current() == true implies Staged with a world.
+                LogError("transport_shadow: staged world adoption failed "
+                         "(status={}, level={}); falling back to the "
+                         "display-seed path\n",
+                         static_cast<int>(match_stage->status()),
+                         gameplay_screen.save_data.scen_num);
+            }
             match_stage->dispose();
-            adopt_display_session_settings(*server_screen, gameplay_screen);
+            if (adopted_stage)
+                adopt_display_session_settings(*server_screen, gameplay_screen);
         }
-        else
+        if (!adopted_stage)
         {
             // Legacy display-seed path: replay playback (the recorded initial
             // snapshot is the truth) and the no-stage fallback.
@@ -2408,11 +2431,13 @@ void reset_local_transport_shadow(GameSession& session,
                 gameplay_screen.save_data.replay_level;
             server_screen->save_data.replay_origin =
                 gameplay_screen.save_data.replay_origin;
-            if (load_saved_game(runtime->networked || runtime->isolated_company
-                                   ? "netsession"
-                                   : og::data::active_company_slot().c_str(),
-                               server_screen) == 0)
+            const std::string load_slot =
+                runtime->networked || runtime->isolated_company
+                    ? std::string("netsession")
+                    : og::data::active_company_slot();
+            if (load_saved_game(load_slot.c_str(), server_screen) == 0)
             {
+                log_shadow_load_failure(load_slot);
                 return;
             }
             // cross_control is SESSION-only (never serialized), so the slot
@@ -2455,7 +2480,7 @@ void reset_local_transport_shadow(GameSession& session,
         // install for the next level.
         // NOTE: current_session is the SERVER session inside this scope —
         // the playback flag lives on the outer gameplay session.
-        if (!adopt_stage && !session.replay_playback_active_)
+        if (!adopted_stage && !session.replay_playback_active_)
             server_screen->world().roll_weather();
         // Mirror the kind onto the display world NOW (the first tick's
         // snapshot would deliver it anyway): the replay recorder snapshots
@@ -2474,7 +2499,7 @@ void reset_local_transport_shadow(GameSession& session,
             // gets no pre-seeded control either: nothing on the server may
             // point at a walker as though a player were driving it.
             server_screen->viewob[index]->control =
-                (adopt_stage || spectator_autoplay)
+                (adopted_stage || spectator_autoplay)
                 ? nullptr
                 : resolve_control_from_entity_id(
                       server_screen->world(), control_entity_ids[index]);
@@ -2578,7 +2603,7 @@ void reset_local_transport_shadow(GameSession& session,
             // Staged adoption binds null (the dedicated-server shape): the
             // display's provisional entity ids do not exist in a stage-built
             // world, so bind_player's own claim scan resolves each seat.
-            walker* const initial_control = adopt_stage
+            walker* const initial_control = adopted_stage
                 ? nullptr
                 : resolve_control_from_entity_id(
                       server_screen->world(), control_entity_ids[index]);
@@ -2641,6 +2666,10 @@ void reset_network_host_transport_shadow(
         !session.replay_playback_active_ &&
         match_stage->ensure_current(og::server::stage_clock_now_ms()) &&
         !consume_mismatched_stage(*match_stage, gameplay_screen.save_data);
+    // Every gate below the branch reads adopted_stage, not adopt_stage: a
+    // refused adoption falls back to the display-seed path and is then
+    // bound, weather-rolled and policy-installed exactly as a legacy install.
+    bool adopted_stage = false;
 
     gameplay_screen.set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
@@ -2727,19 +2756,32 @@ void reset_network_host_transport_shadow(
             // the on_load latch truthfully), append the staged announcements
             // the clear must not eat, dispose the stage.
             prepare_server_session_for_gameplay(*runtime->server_session);
-            if (!og::server::adopt_staged_world(
+            if (og::server::adopt_staged_world(
                     server_screen->level_runtime_data(),
                     server_screen->save_data,
                     *match_stage))
             {
-                return;
+                runtime->server_session->game_.sim_events->append(
+                    match_stage->take_events());
+                adopted_stage = true;
             }
-            runtime->server_session->game_.sim_events->append(
-                match_stage->take_events());
+            else
+            {
+                // adopt_staged_world fails before mutating anything, so the
+                // documented Failed-stage rule applies: drop the stage and
+                // seed from the display keyframe below. Unreachable today:
+                // ensure_current() == true implies Staged with a world.
+                LogError("transport_shadow: staged world adoption failed "
+                         "(status={}, level={}); falling back to the "
+                         "display-seed path\n",
+                         static_cast<int>(match_stage->status()),
+                         gameplay_screen.save_data.scen_num);
+            }
             match_stage->dispose();
-            adopt_display_session_settings(*server_screen, gameplay_screen);
+            if (adopted_stage)
+                adopt_display_session_settings(*server_screen, gameplay_screen);
         }
-        else
+        if (!adopted_stage)
         {
             // Legacy display-seed path (replay playback / no-stage fallback).
             //
@@ -2750,11 +2792,12 @@ void reset_network_host_transport_shadow(
                 gameplay_screen.save_data.replay_level;
             server_screen->save_data.replay_origin =
                 gameplay_screen.save_data.replay_origin;
-            if (load_saved_game(runtime->networked
-                                   ? "netsession"
-                                   : og::data::active_company_slot().c_str(),
-                               server_screen) == 0)
+            const std::string load_slot =
+                runtime->networked ? std::string("netsession")
+                                   : og::data::active_company_slot();
+            if (load_saved_game(load_slot.c_str(), server_screen) == 0)
             {
+                log_shadow_load_failure(load_slot);
                 return;
             }
             // Session-only cross_control dropped by the disk round-trip — carry
@@ -2775,7 +2818,7 @@ void reset_network_host_transport_shadow(
         }
         // See the local install above: display world mirrors the kind now.
         gameplay_screen.world().set_weather(server_screen->world().weather());
-        if (!adopt_stage)
+        if (!adopted_stage)
             release_world_control_claims(server_screen->world());
         for (std::size_t index = 0; index < host_view_count; ++index)
         {
@@ -2784,7 +2827,7 @@ void reset_network_host_transport_shadow(
             server_screen->viewob[index]->my_team = view_teams[index];
             // A stage-built world has no display entity ids; the null binds
             // below claim controls the dedicated-server way.
-            server_screen->viewob[index]->control = adopt_stage
+            server_screen->viewob[index]->control = adopted_stage
                 ? nullptr
                 : resolve_control_from_entity_id(
                       server_screen->world(), view_control_ids[index]);
@@ -2801,7 +2844,7 @@ void reset_network_host_transport_shadow(
     // replicates both scalars to every client mirror. The staged world
     // arrives with the policy already installed from the SAME bindings
     // (MatchStage step 5); the adoption skips the re-install.
-    if (!adopt_stage)
+    if (!adopted_stage)
     {
         og::sim::install_control_policy(
             server_screen->world(),

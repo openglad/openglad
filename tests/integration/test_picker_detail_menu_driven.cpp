@@ -85,19 +85,10 @@ struct KeyStateGuard
     {
         og::runtime::current_session->keystates_ = saved;
     }
-
-    void pulse(SDL_Scancode sc, int down_ms = 25, int up_ms = 10)
-    {
-        fake[sc] = true;
-        SDL_Delay(static_cast<Uint32>(down_ms));
-        fake[sc] = false;
-        SDL_Delay(static_cast<Uint32>(up_ms));
-    }
 };
 
 struct InjectorArgs
 {
-    KeyStateGuard* ks = nullptr;
     bool go_to_promote = false;
     std::atomic<bool>* done = nullptr;
 };
@@ -242,7 +233,7 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abiliti
         KeyStateGuard ks;
         std::atomic<bool> done{false};
         prepare_detail_menu_mouse_click();
-        InjectorArgs args{&ks, false, &done};
+        InjectorArgs args{false, &done};
         SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu,
                                           "picker_detail_exit", &args);
         ASSERT_TRUE(th != nullptr) << "injector thread started for " << c.what;
@@ -317,7 +308,7 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_mage_to_archmage_branch)
     KeyStateGuard ks;
     std::atomic<bool> done{false};
     prepare_detail_menu_mouse_click();
-    InjectorArgs args{&ks, true, &done};
+    InjectorArgs args{true, &done};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_mage", &args);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
 
@@ -362,7 +353,7 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_orc_to_captain_branch)
     KeyStateGuard ks;
     std::atomic<bool> done{false};
     prepare_detail_menu_mouse_click();
-    InjectorArgs args{&ks, true, &done};
+    InjectorArgs args{true, &done};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_orc", &args);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
 

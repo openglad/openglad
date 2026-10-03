@@ -211,11 +211,7 @@ void new_draw_value_bar(Sint32 left, Sint32 top,
     } // end of sp stuff
 } // end of drawing routine ..
 
-#ifdef REDUCE_OVERSCAN
-inline constexpr int OVERSCAN_PADDING = 6;
-#else
 inline constexpr int OVERSCAN_PADDING = 0;
-#endif
 
 // Shared classic/scripted respawn countdown; scripted modes surface their
 // scores through the generic ModeState HUD lines.
@@ -335,10 +331,9 @@ static std::string hud_display_name(const walker* control)
 // (viewscreen::display_text) writes its five messages at viewport-local
 // y = 30, 36, 42, 48, 54. Two of the three score rows therefore landed
 // inside the banner block and shredded every announcement. The banner's
-// topmost row is viewport-local 30, i.e. tm + 30 - OVERSCAN_PADDING, so its
-// worst case (REDUCE_OVERSCAN, padding 6) is tm+24. text.png is a 5x6 font,
-// so a row at tm+4 ends on tm+9 — 14 clear scanlines in that worst case, 20
-// normally. The two can never share a scanline.
+// topmost row is viewport-local 30, i.e. tm + 30 - OVERSCAN_PADDING, which
+// is tm+30 with the padding at 0. text.png is a 5x6 font, so a row at tm+4
+// ends on tm+9 — 20 clear scanlines. The two can never share a scanline.
 //
 // Horizontal window: the classic HUD owns the caption at lm+3 and the
 // TEAM/FOES counter box on the SAME tm+4 row, so the mode row takes the

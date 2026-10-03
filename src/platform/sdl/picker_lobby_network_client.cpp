@@ -78,20 +78,6 @@ namespace {
 constexpr std::string_view kDefaultCampaignId = "gladiator";
 constexpr auto kJoinRetryInterval = std::chrono::milliseconds(100);
 
-struct OrderedLobbySlot {
-    std::uint8_t slot_index = 0;
-    std::size_t player_order = 0;
-    std::size_t slot_order = 0;
-    const og::sim::LobbyPlayer* player = nullptr;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
-};
-
-struct AppliedLobbySlot {
-    std::uint8_t save_slot_index = 0;
-    const og::sim::LobbyPlayer* player = nullptr;
-    const og::sim::LobbyCharacterSlot* slot = nullptr;
-};
-
 SaveData* current_picker_save() noexcept
 {
     if (og::runtime::current_session == nullptr ||
@@ -1481,67 +1467,6 @@ std::vector<og::sim::LobbyPlayer> copy_local_seats(
     return seats;
 }
 
-std::vector<AppliedLobbySlot> collect_applied_lobby_slots(
-    const og::sim::LobbyState& state)
-{
-    std::vector<OrderedLobbySlot> ordered_slots;
-    for (std::size_t player_index = 0; player_index < state.players.size();
-         ++player_index)
-    {
-        const og::sim::LobbyPlayer& player = state.players[player_index];
-        for (std::size_t slot_order = 0;
-             slot_order < player.character_slots.size();
-             ++slot_order)
-        {
-            // §4.2: the joiner mirror materializes only DEPLOYED slots,
-            // filtered BEFORE densification — must match
-            // LobbyServer::build_save_data_equivalent exactly (host and
-            // joiner derive the same in-level roster from the same state).
-            if (!player.character_slots[slot_order].deployed)
-                continue;
-            ordered_slots.push_back(OrderedLobbySlot{
-                .slot_index = player.character_slots[slot_order].slot_index,
-                .player_order = player_index,
-                .slot_order = slot_order,
-                .player = &player,
-                .slot = &player.character_slots[slot_order],
-            });
-        }
-    }
-
-    std::sort(ordered_slots.begin(), ordered_slots.end(),
-              [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
-                  if (lhs.slot_index != rhs.slot_index)
-                      return lhs.slot_index < rhs.slot_index;
-                  if (lhs.player_order != rhs.player_order)
-                      return lhs.player_order < rhs.player_order;
-                  return lhs.slot_order < rhs.slot_order;
-              });
-
-    const bool slots_are_dense = std::all_of(
-        ordered_slots.begin(), ordered_slots.end(),
-        [&ordered_slots](const OrderedLobbySlot& slot) {
-            return static_cast<std::size_t>(slot.slot_index) ==
-                static_cast<std::size_t>(&slot - ordered_slots.data());
-        });
-
-    std::vector<AppliedLobbySlot> applied_slots;
-    applied_slots.reserve(ordered_slots.size());
-    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
-    {
-        std::uint8_t save_slot_index = ordered_slots[index].slot_index;
-        if (!slots_are_dense)
-            save_slot_index = static_cast<std::uint8_t>(index);
-        applied_slots.push_back(AppliedLobbySlot{
-            .save_slot_index = save_slot_index,
-            .player = ordered_slots[index].player,
-            .slot = ordered_slots[index].slot,
-        });
-    }
-
-    return applied_slots;
-}
-
 const og::sim::LobbyPlayer* find_player_by_seat_id(
     const og::sim::LobbyState& state,
     og::sim::LobbySeatId seat_id) noexcept
@@ -1573,7 +1498,7 @@ bool local_player_is_host(const og::sim::LobbyState& state) noexcept
          local_player->player_index == state.host_player_id);
 }
 
-og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
+std::optional<og::sim::LobbySaveDataEquivalent> build_save_data_equivalent_from_state(
     const og::sim::LobbyState& state,
     bool spectator_mode,
     std::size_t local_player_count = 1)
@@ -1602,19 +1527,19 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.fill = state.settings.fill;
     equivalent.map_units = state.settings.map_units;
 
-    for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
+    // §4.2: the joiner mirror materializes only DEPLOYED slots, in the one
+    // roster order LobbyServer::build_save_data_equivalent uses (host and
+    // joiner derive the same in-level roster from the same state).
+    std::optional<std::vector<og::sim::LobbyCharacterSlot>> roster =
+        og::sim::assemble_gameplay_roster(
+            og::sim::order_lobby_slots(state.players, true));
+    if (!roster.has_value())
     {
-        og::sim::LobbyCharacterSlot compacted = *slot.slot;
-        compacted.slot_index = slot.save_slot_index;
-        compacted.owner_player_index = slot.player->player_index;
-        // slot_index is the owner's ORIGINAL private-save slot. The applied
-        // save_slot_index may be a compacted position in the combined roster
-        // and must never be used for owner-filtered persistence.
-        compacted.owner_save_slot = slot.slot->slot_index;
-        equivalent.team_list.push_back(std::move(compacted));
+        LogError("lobby roster exceeds the {}-slot team limit; refusing to start\n",
+                 og::sim::kMaxLobbyTeamSize);
+        return std::nullopt;
     }
-
-    og::sim::canonicalize_lobby_gameplay_guy_ids(equivalent.team_list);
+    equivalent.team_list = std::move(*roster);
     return equivalent;
 }
 
@@ -2018,128 +1943,6 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
 } // namespace og::ui::detail
 
 namespace {
-
-std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
-    og::sim::ITransport& transport)
-{
-    if (transport.supports_typed_messages())
-        return transport.poll_typed();
-
-    std::vector<og::sim::TypedReceivedMessage> typed_messages;
-    for (const auto& message : transport.poll())
-    {
-        og::sim::TransportEnvelope envelope;
-        if (!og::sim::decode_transport_envelope(message.data, envelope))
-            continue;
-
-        og::sim::TypedReceivedMessage typed_message;
-        typed_message.peer_id = message.peer_id;
-        switch (envelope.message_type)
-        {
-        case og::sim::kLobbyMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyMessage;
-            typed_message.lobby_message =
-                std::make_shared<og::sim::LobbyMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kLobbyStateMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_state_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
-            typed_message.lobby_state =
-                std::make_shared<og::sim::LobbyState>(*decoded);
-            break;
-        }
-
-        // Class-pack transfer (protocol v10): the joiner receives these on
-        // the same raw lobby transport and feeds them to PackTransferClient.
-        case og::sim::kPackManifestMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pack_manifest_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PackManifest;
-            typed_message.pack_manifest =
-                std::make_shared<og::sim::PackManifestMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kPackFileChunkMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pack_file_chunk_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PackFileChunk;
-            typed_message.pack_file_chunk =
-                std::make_shared<og::sim::PackFileChunkMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kPackTransferDoneMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pack_transfer_done_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PackTransferDone;
-            typed_message.pack_transfer_done =
-                std::make_shared<og::sim::PackTransferDoneMessage>(*decoded);
-            break;
-        }
-
-        // Staged lobby (#218, protocol v13): the owner's staged-world pair,
-        // joiner-bound on the same raw lobby transport.
-        case og::sim::kStagedMatchSetupMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_staged_match_setup_message(message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::StagedMatchSetup;
-            typed_message.staged_match_setup =
-                std::make_shared<og::sim::StagedMatchSetupMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kStagedMatchKeyframeMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_staged_match_keyframe_message(
-                    message.data);
-            if (!decoded.has_value())
-                continue;
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::StagedMatchKeyframe;
-            typed_message.staged_match_keyframe =
-                std::make_shared<og::sim::StagedMatchKeyframeMessage>(
-                    *decoded);
-            break;
-        }
-
-        default:
-            continue;
-        }
-
-        typed_messages.push_back(std::move(typed_message));
-    }
-
-    return typed_messages;
-}
 
 short resolve_pending_local_team(
     const og::sim::LobbyState& state,
@@ -3455,17 +3258,9 @@ private:
 
         case og::sim::TypedReceivedMessageKind::LobbyMessage:
             if (message.lobby_message &&
-                message.lobby_message->kind() ==
-                    og::sim::LobbyMessageKind::StartGame)
+                og::sim::start_confirmation_matches_request(
+                    *message.lobby_message))
             {
-                if (!og::sim::start_confirmation_matches_request(
-                        *message.lobby_message,
-                        start_request_pending_
-                            ? pending_start_request_id_
-                            : 0))
-                {
-                    break;
-                }
                 start_request_pending_ = false;
                 pending_start_request_id_ = 0;
                 g_start_game_requested = true;
@@ -3487,7 +3282,7 @@ private:
 
         server_->poll_incoming_messages();
         for (const og::sim::TypedReceivedMessage& message :
-             poll_lobby_transport_messages(*local_client_transport_))
+             og::sim::poll_lobby_bound_messages(*local_client_transport_))
         {
             handle_typed_message(message);
         }
@@ -4148,12 +3943,15 @@ public:
             og::sim::shared_allied_gameplay_team(*state_);
         const bool authoritative_spectator = local_seats.empty();
 
-        og::ui::PickerLobbyGameStartConfig config;
-        config.save_data =
+        std::optional<og::sim::LobbySaveDataEquivalent> save_data =
             og::ui::detail::build_save_data_equivalent_from_state(
                 *state_,
                 authoritative_spectator,
                 local_seats.size());
+        if (!save_data.has_value()) return std::nullopt;
+
+        og::ui::PickerLobbyGameStartConfig config;
+        config.save_data = std::move(*save_data);
         config.difficulty =
             static_cast<std::int16_t>(state_->settings.difficulty);
         config.my_team = gameplay_start_team(config.save_data.allied_mode,
@@ -5063,20 +4861,16 @@ private:
                 break;
             }
             if (message.lobby_message &&
-                message.lobby_message->kind() ==
-                    og::sim::LobbyMessageKind::StartGame)
+                og::sim::start_confirmation_matches_request(
+                    *message.lobby_message))
             {
-                if (!og::sim::start_confirmation_matches_request(
-                        *message.lobby_message,
-                        start_request_pending_
-                            ? pending_start_request_id_
-                            : 0))
-                {
-                    break;
-                }
                 start_request_pending_ = false;
                 pending_start_request_id_ = 0;
                 deferred_start_requested_ = false;
+                // A follower denied earlier (NotHost) that never pressed
+                // again must not keep reporting that verdict once the game
+                // has started (IPickerLobbyClient::last_start_denial).
+                last_start_verdict_ = og::sim::StartDenialReason::None;
                 g_start_game_requested = true;
                 pending_game_start_config_ = build_game_start_config();
             }
@@ -5105,7 +4899,7 @@ private:
     {
 
         for (const og::sim::TypedReceivedMessage& message :
-             poll_lobby_transport_messages(*transport_))
+             og::sim::poll_lobby_bound_messages(*transport_))
             handle_typed_message(message);
     }
 

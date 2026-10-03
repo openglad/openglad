@@ -1,16 +1,12 @@
 # Matched Teams — Design Specification ("Teams: Match")
 
-Branch `feature/mode-basketball` @ 429ec46e (PR #190 baseline — basketball is
-baseline code here). User intent, verbatim: a "TEAMS:" lobby option that fills
-a versus map's EMPTY teams with bot squads of COMPARABLE POWER to the human
-team(s); map team capacity comes from what spawn points exist (the existing
-authored-anchor contract).
+Line anchors below point into commit `429ec46e` (with basketball already
+in the tree) and have drifted since; find code by the quoted text.
 
-All line anchors below were verified by the fact scouts at this revision.
-**Line numbers drift as work packages land — every implementer must re-verify
-an anchor with `grep -n` immediately before editing, and run
-`python3 scripts/parity/check_mutation_pins.py` before every commit that
-touches any file under `src/gameplay/` or `src/resources/`.**
+The request, verbatim: a "TEAMS:" lobby option that fills a versus map's
+EMPTY teams with bot squads of COMPARABLE POWER to the human team(s); map
+team capacity comes from what spawn points exist (the existing
+authored-anchor contract).
 
 ---
 

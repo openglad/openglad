@@ -9,7 +9,7 @@ Design for three coupled features:
 3. Revive **joystick support**, assigned per seat through the same INPUT
    cycler.
 
-Status: implemented on `feature/pause-menu`.
+Status: implemented.
 
 ## 1. Current state (what this replaces)
 
@@ -217,7 +217,7 @@ Building on the gap analysis (everything below `JoyData` works today):
 - **Display**: seat-settings binding grid and control summaries show
   joystick bindings (`B0`, `AX0+`, `HAT↑` style) instead of the misleading
   keyboard names when a seat is joystick-driven; summary stays ≤48 chars.
-- **Cleanup in the same change**: the dead `#ifdef OUYA` blocks (~200 lines
+- **Cleanup in the same change**: the dead OUYA-console blocks (~200 lines
   in the input hot path) are deleted; `handle_joy_event` is reduced to its
   one real job (key_press_event_ + hat dispatch); the in-game options menu's
   `J` toggle (positional rebind + full subsystem restart) is removed in favor

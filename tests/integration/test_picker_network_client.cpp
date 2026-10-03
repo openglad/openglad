@@ -4032,6 +4032,165 @@ TEST(PickerNetworkClient,
     join_client->shutdown();
 }
 
+// #331 (R-331): an accepted StartGame starts EVERY machine, whatever that
+// machine's own pending request id is, and leaves no stale denial behind.
+// Shared flow for the two tests below, over real sockets (a direct-endpoint
+// joiner in its own GameSession, the host+join shape of
+// host_escape_abort_signals_join_runtime_to_end_session): the joiner's own GO
+// is denied NotHost, the joiner readies, and the host's GO is accepted.
+// joiner_presses_again selects case B (T1): the host is polled ALONE until it
+// starts, so StartGame{id=1} waits in the joiner's socket while the joiner
+// presses GO a second time (id 2) — a request the now-locked lobby drops with
+// no reply. Without it (T2) the joiner simply follows the host's start.
+namespace {
+
+void run_denied_joiner_then_host_start(bool joiner_presses_again)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(join_session.myscreen_->save_data,
+                                       1,
+                                       "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            shutdown_owning_host_before_join(host_client);
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+            g_start_game_requested = false;
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    const auto poll_both = [&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+    };
+    ASSERT_TRUE(wait_until([&] {
+        poll_both();
+        auto join_scope = join_session.activate();
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            status_lines_contain_exact(join_client->status_lines(),
+                                       "Lobby: 2 players");
+    })) << "host and join clients should converge on the same two-player lobby";
+    ASSERT_TRUE(host_save.save("save0"));
+
+    // Control: the joiner's own GO is denied NotHost (its counter moves on).
+    // request_start_game() returns true only for a start that landed in the
+    // same call, which a joiner's own GO can never produce. Its same-call
+    // poll may or may not already read the denial echo, so the wait below —
+    // a NotHost verdict for THIS machine's request — is the dispatch proof.
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_FALSE(join_client->request_start_game());
+    }
+    ASSERT_TRUE(wait_until([&] {
+        poll_both();
+        auto join_scope = join_session.activate();
+        return !join_client->start_request_pending() &&
+            join_client->last_start_denial() == og::sim::StartDenialReason::NotHost;
+    })) << "control: the joiner's first GO is denied as not-host";
+
+    ASSERT_TRUE(ready_up_joiners(*host_client,
+                                 {{&join_session, join_client.get()}}))
+        << "§4.3: the joiner must be ready before the host may start";
+    ASSERT_TRUE(host_client->request_start_game());
+
+    if (joiner_presses_again)
+    {
+        // Host ALONE: the accept is broadcast and StartGame{id=1} waits,
+        // unread, in the joiner's socket.
+        ASSERT_TRUE(wait_until([&] {
+            host_client->poll_and_apply();
+            return host_client->has_game_start_config();
+        })) << "control: the host's GO is accepted";
+        // The host's accept set the process-wide g_start_game_requested. The
+        // joiner's own PROCESS would read false here; the global is shared
+        // only because both clients live in this one test process, and the
+        // join client refuses a GO while it is set.
+        g_start_game_requested = false;
+        // The second GO dispatches request id 2. Its same-call poll may
+        // already read the queued StartGame{id=1} (the start then lands in
+        // this call and it returns true) or not (it returns false with the
+        // request pending). Either way the GO was not refused, and either
+        // way the R-331 rule decides whether StartGame{id=1} starts a
+        // machine holding pending id 2.
+        auto join_scope = join_session.activate();
+        const bool started_in_call = join_client->request_start_game();
+        ASSERT_TRUE(started_in_call || join_client->start_request_pending())
+            << "the joiner's second GO was refused instead of dispatched";
+    }
+
+    const bool joiner_started = wait_until([&] {
+        poll_both();
+        auto join_scope = join_session.activate();
+        return join_client->has_game_start_config();
+    });
+    auto join_scope = join_session.activate();
+    EXPECT_TRUE(joiner_started)
+        << "an accepted StartGame starts every machine regardless of its own "
+           "pending id (R-331); start_request_pending()="
+        << join_client->start_request_pending();
+    EXPECT_FALSE(join_client->start_request_pending());
+    EXPECT_EQ(og::sim::StartDenialReason::None, join_client->last_start_denial())
+        << "after an accepted start the joiner reads no denial (the "
+           "IPickerLobbyClient::last_start_denial promise)";
+}
+
+} // namespace
+
+TEST(PickerNetworkClient, denied_joiner_still_enters_when_the_host_starts)
+{
+    run_denied_joiner_then_host_start(/*joiner_presses_again=*/true);
+}
+
+TEST(PickerNetworkClient, follower_denied_earlier_reads_no_denial_after_the_hosts_start)
+{
+    run_denied_joiner_then_host_start(/*joiner_presses_again=*/false);
+}
+
 TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 {
     IxNetSystemScope net_system;
@@ -8208,18 +8367,30 @@ TEST(PickerNetworkClient,
         .request_id = 1u,
     };
     send_lobby_message(guest_transport, kServerPeer, std::move(crafted_start));
+    // The verdict is the first state the guest receives that carries its own
+    // correlation id -- not simply the newest state. A broadcast already in
+    // flight to the guest (the join broadcast, the elected host's roster
+    // sync, the host's own denial round) can land after the snapshot above
+    // and before the answer, and that state carries no verdict at all.
+    std::optional<og::sim::LobbyState> guest_echo;
     ASSERT_TRUE(wait_until([&] {
         pump_all();
-        return guest_states.size() > guest_states_before;
-    })) << "the guest's StartGame must be ANSWERED, not silently dropped";
+        for (std::size_t i = guest_states_before; i < guest_states.size(); ++i)
+        {
+            if (guest_states[i].last_start_request_id == 1u)
+            {
+                guest_echo = guest_states[i];
+                return true;
+            }
+        }
+        return false;
+    })) << "the guest's StartGame must be ANSWERED with its own correlation "
+           "id, not silently dropped";
 
-    const og::sim::LobbyState& guest_echo = guest_states.back();
     EXPECT_EQ(og::sim::start_denial_reason_value(
                   og::sim::StartDenialReason::NotHost),
-              guest_echo.last_start_denial)
+              guest_echo->last_start_denial)
         << "the crafted guest must be told WHY its start was refused";
-    EXPECT_EQ(1u, guest_echo.last_start_request_id)
-        << "and the verdict must carry the guest's own correlation id";
     EXPECT_FALSE(g_start_game_requested)
         << "a non-host start never reaches gameplay";
     EXPECT_FALSE(elected_host->has_game_start_config());
@@ -9237,12 +9408,12 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
 // Seven of those check( sites (the inet_pton/usable_lan_ipv4_string address
 // matrix and the two LAN-detection probes) live inside the .inc's
 // `#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))`
-// block, so the expectation carries the SAME guard: a Windows lane runs 133
-// checks and must pin 133, not fail against a POSIX-only literal.
+// block, so the expectation carries the SAME guard: a Windows lane runs 134
+// checks and must pin 134, not fail against a POSIX-only literal.
 #if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
-inline constexpr int kExpectedInternalHelperChecks = 140;
+inline constexpr int kExpectedInternalHelperChecks = 141;
 #else
-inline constexpr int kExpectedInternalHelperChecks = 133;
+inline constexpr int kExpectedInternalHelperChecks = 134;
 #endif
 
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
@@ -11901,6 +12072,48 @@ TEST(PickerNetworkClient, joiner_lobby_link_death_latches_session_lost)
     }
 }
 
+namespace {
+
+// The direct joiner's recovery ceilings, read off the SHIPPED transport
+// options: the picker's joiner builds its WebSocketClientTransport with the
+// default Options (picker_lobby_network_client.cpp), so these are the
+// numbers a real joiner lives by. One home for both shapes:
+//
+//   dial cost = 3 s: TCP connect, the WebSocket upgrade and the lobby's
+//     hello and roster exchange, polled at 5 ms on a loaded box.
+//   redial gap ceiling = max_reconnect_wait_ms (1 s, the longest gap between
+//     two dials once ix's backoff is clamped) + the dial cost. This is the
+//     whole ceiling of joiner_finds_a_returning_host_within_the_redial_cap,
+//     whose 14 s outage spends any parked dial BEFORE the host returns.
+//   blip recovery ceiling = handshake_timeout_secs (10 s) + the redial gap
+//     ceiling. A blip restarts the host the moment the joiner has SEEN the
+//     drop, so the joiner's first re-dial can race the old listener's
+//     stop() -- the race the product documents at
+//     src/platform/sdl/net_transport_websocket_client.cpp:333 ("a connection
+//     accepted by ix's acceptor and then abandoned unclosed",
+//     IXSocketServer.cpp:415). A dial parked on that socket ends only at the
+//     handshake deadline; only then does the next dial land on the restarted
+//     host. A flat 10 s ceiling equalled the park alone and failed at
+//     ~10.06 s whenever the race was lost; the condition waited on --
+//     both ends report "Lobby: 2 players" -- is unchanged.
+constexpr std::chrono::milliseconds kDirectDialCost = 3s;
+
+std::chrono::milliseconds direct_redial_gap_ceiling()
+{
+    const og::sim::WebSocketClientTransport::Options shipped{};
+    return std::chrono::milliseconds(shipped.max_reconnect_wait_ms) +
+        kDirectDialCost;
+}
+
+std::chrono::milliseconds direct_blip_recovery_ceiling()
+{
+    const og::sim::WebSocketClientTransport::Options shipped{};
+    return std::chrono::seconds(shipped.handshake_timeout_secs) +
+        direct_redial_gap_ceiling();
+}
+
+} // namespace
+
 // #278 (the reviewer's blip): a joiner parked in the lobby whose link drops
 // for a moment while the host is still there. The transport auto-reconnects
 // inside the window, the client re-sends its Join and the lobby re-converges
@@ -11940,7 +12153,8 @@ TEST(PickerNetworkClient, joiner_lobby_link_blip_reconnects_inside_the_window)
         join_client->initialize_from_save();
     }
 
-    const auto converge = [&](const char* phase) {
+    const auto converge = [&](const char* phase,
+                              std::chrono::milliseconds ceiling) {
         ASSERT_TRUE(wait_until([&] {
             host_client->poll_and_apply();
             auto join_scope = join_session.activate();
@@ -11949,10 +12163,10 @@ TEST(PickerNetworkClient, joiner_lobby_link_blip_reconnects_inside_the_window)
                                               "Lobby: 2 players") &&
                 status_lines_contain_exact(host_client->status_lines(),
                                            "Lobby: 2 players");
-        }, 10s)) << phase << ": host and joiner should converge on a "
+        }, ceiling)) << phase << ": host and joiner should converge on a "
                     "two-player lobby";
     };
-    converge("before the blip");
+    converge("before the blip", 10s);
     {
         auto join_scope = join_session.activate();
         EXPECT_TRUE(join_client->session_established());
@@ -11984,7 +12198,7 @@ TEST(PickerNetworkClient, joiner_lobby_link_blip_reconnects_inside_the_window)
 
     // Recovery, as before #278: the reconnect lands, the Join is re-sent,
     // the lobby re-converges — and the session was never declared lost.
-    converge("after the blip");
+    converge("after the blip", direct_blip_recovery_ceiling());
     {
         auto join_scope = join_session.activate();
         EXPECT_TRUE(join_client->session_established());
@@ -12041,7 +12255,8 @@ TEST(PickerNetworkClient,
         join_client->initialize_from_save();
     }
 
-    const auto converge = [&](const char* phase) {
+    const auto converge = [&](const char* phase,
+                              std::chrono::milliseconds ceiling) {
         ASSERT_TRUE(wait_until([&] {
             host_client->poll_and_apply();
             auto join_scope = join_session.activate();
@@ -12050,10 +12265,10 @@ TEST(PickerNetworkClient,
                                               "Lobby: 2 players") &&
                 status_lines_contain_exact(host_client->status_lines(),
                                            "Lobby: 2 players");
-        }, 10s)) << phase << ": host and joiner should converge on a "
+        }, ceiling)) << phase << ": host and joiner should converge on a "
                     "two-player lobby";
     };
-    converge("before the blip");
+    converge("before the blip", 10s);
 
     // The blip, timed on the post-game moment: the host's listener drops,
     // the joiner SEES the close, and the picker returns from the level into
@@ -12083,7 +12298,7 @@ TEST(PickerNetworkClient,
 
     // Recovery: the reconnect lands, the resume Join goes out, the lobby
     // re-converges and the session was never declared lost.
-    converge("after the blip");
+    converge("after the blip", direct_blip_recovery_ceiling());
     {
         auto join_scope = join_session.activate();
         EXPECT_TRUE(join_client->session_established());
@@ -13225,7 +13440,8 @@ TEST(PickerNetworkClient, joiner_finds_a_returning_host_within_the_redial_cap)
     host_client = og::ui::create_host_picker_lobby_client(host_options);
     host_client->initialize_from_save();
 
-    const bool found_again = wait_until(both_see_two_players, 4s);
+    const bool found_again =
+        wait_until(both_see_two_players, direct_redial_gap_ceiling());
     const std::string host_status = describe(*host_client);
     std::string joiner_status;
     {

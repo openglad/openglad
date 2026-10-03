@@ -65,8 +65,7 @@ local C = og.C
 -- for bounds that can legitimately reach zero (see flare_burst).
 local function on_create(self)
   local spent = og.rand(16)
-  -- magicpoints is a C++ float: per-op rounding.
-  self.magicpoints = og.fsub(self.max_magicpoints, spent)
+  self.magicpoints = self.max_magicpoints - spent
   self.ani_type = C.ANI_WALK
 end
 
@@ -83,8 +82,8 @@ local function on_fire_weapon(self)
 end
 
 -- Special 1, FLARE BURST: vent every point of ember above the burn floor
--- as a stunning flash. Answering false means "did not fire" — the engine
--- then skips the special's descriptor MP cost.
+-- as a stunning flash. A refusal returns a short reason, so the engine skips
+-- the special's descriptor MP cost and shows that reason to the player.
 local function flare_burst(self)
   local t = og.tuning(self)
   local ember = og.trunc(self.magicpoints) - t.burn_floor
@@ -103,9 +102,8 @@ local function flare_burst(self)
     -- the thaw-immunity discard and the 150 cap are its policy, not ours.
     foes[i]:add_frozen_stun(t.stun_base + roll)
   end
-  -- magicpoints and busy are C++ floats: per-op rounding.
-  self.magicpoints = og.fsub(self.magicpoints, ember)
-  self.busy = og.fadd(self:busy(), 4.0)
+  self.magicpoints = self.magicpoints - ember
+  self.busy = self:busy() + 4.0
   og.emit_positional_sound(self, C.SOUND_EXPLODE)
   return true
 end

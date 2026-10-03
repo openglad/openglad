@@ -482,8 +482,8 @@ int m_do_heal_effects(lua_State* L)
     return 0;
 }
 
-// walker:heal_clamped(amount[, source]) — fused self-heal with fixed,
-// parity-sensitive ordering. Operation sequence:
+// walker:heal_clamped(amount[, source]) — fused self-heal with a fixed
+// operation order. Operation sequence:
 //   (1) s_set_hitpoints(og.fadd(s_hitpoints(), amount))   float add
 //   (2) do_heal_effects(source, self, og.i16(amount))     source may be nil
 //   (3) if s_hitpoints() > s_max_hitpoints():  clamp to max
@@ -1231,11 +1231,13 @@ int og_query_genre(lua_State* L)
     return 1;
 }
 
-// og.cosmetic_rand(n): draw from the parity harness's cosmetic libc-rand
-// override when installed (so captured dumps match master's dual-RNG-stream
-// behavior without observing the sim rng_state), else the sim RNG — exactly
-// the C++ cosmetic_rng_override() pattern (see walker.cpp
-// next_path_check_delay / elf spread).
+// og.cosmetic_rand(n): core-pack-only draw for the classic C++ cosmetic
+// selector sites (path-check cadence, elf spread). It reads the parity
+// harness's cosmetic libc-rand override when installed (so captured dumps
+// match master's dual-RNG-stream behavior without observing the sim
+// rng_state), else the sim RNG — exactly the C++ cosmetic_rng_override()
+// pattern (see walker.cpp next_path_check_delay / elf spread). The engine
+// does not require it of mods.
 int og_cosmetic_rand(lua_State* L)
 {
     const lua_Integer n = luaL_checkinteger(L, 1);

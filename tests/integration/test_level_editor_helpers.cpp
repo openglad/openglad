@@ -42,6 +42,7 @@ int level_editor_test_exercise_internal_helpers();
 int level_editor_test_decor_migrated_roundtrip();
 int level_editor_test_mouse_release_workflows();
 int level_editor_test_save_failure_reporting();
+int level_editor_test_save_with_an_unreadable_campaign_writes_nothing();
 int level_editor_test_campaign_menu_flows();
 int level_editor_test_nameless_selection_panel_rows();
 enum class EventType;
@@ -242,6 +243,23 @@ TEST(LevelEditorHelpers, failed_saves_report_and_keep_the_level_dirty)
 {
     ASSERT_EQ(0, level_editor_test_save_failure_reporting())
         << "save-failure reporting failed at the negated check index";
+}
+
+// A level save into a mounted campaign whose archive cannot be unpacked must
+// fail and write no archive (never repack a stale <user>/temp over it), on
+// both save doors, beside the same save succeeding on a readable archive.
+// The unpack-failure legs need the archive removable under the mount, which
+// Windows' open PhysFS handle forbids, so the exact count is per platform.
+TEST(LevelEditorHelpers, level_save_with_an_unreadable_campaign_fails_and_writes_no_archive)
+{
+#if !defined(_WIN32)
+    constexpr int kExpectedChecks = 22;
+#else
+    constexpr int kExpectedChecks = 8;
+#endif
+    ASSERT_EQ(kExpectedChecks,
+              level_editor_test_save_with_an_unreadable_campaign_writes_nothing())
+        << "a negative value is minus the first failing internal check";
 }
 
 // File > Campaign > New, Load and Save As through the real menu clicks,

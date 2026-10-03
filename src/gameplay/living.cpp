@@ -694,47 +694,6 @@ void living::set_difficulty(std::uint32_t whatlevel)
 
 }
 
-short living::facing(short x, short y)
-{
-	std::int32_t bigy = static_cast<std::int32_t>(y*1000);
-	std::int32_t slope;
-
-	if (!x)
-	{
-		if (y>0)
-			return FACE_DOWN;
-		else
-			return FACE_UP;
-	}
-
-	slope = bigy / x;
-
-	if (x>0)
-	{
-		if (slope > 2414)
-			return FACE_DOWN;
-		if (slope > 414)
-			return FACE_DOWN_RIGHT;
-		if (slope > -414)
-			return FACE_RIGHT;
-		if (slope > -2414)
-			return FACE_UP_RIGHT;
-		return FACE_UP;
-	}
-	else
-	{
-		if (slope > 2414)
-			return FACE_UP;
-		if (slope > 414)
-			return FACE_UP_LEFT;
-		if (slope > -414)
-			return FACE_LEFT;
-		if (slope > -2414)
-			return FACE_DOWN_LEFT;
-		return FACE_DOWN;
-	}
-}
-
 bool living::act_random()
 {
 	//  short newx, newy; // apparently not used anymore

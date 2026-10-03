@@ -1,8 +1,8 @@
 # OpenGlad Architecture
 
-OpenGlad is a cross-platform C++ port of the DOS game **Gladiator** (1995) — a top-down, gauntlet-style action RPG with up to 4-player split-screen multiplayer, 15+ character classes, a built-in scenario editor, and campaign support. Licensed under GPL v2.
+OpenGlad is a cross-platform C++ port of the DOS game **Gladiator** (1995) — a top-down, gauntlet-style action RPG with split-screen play for up to four players per machine (sixteen seats across a networked lobby), 15+ character classes, a built-in scenario editor, and campaign support. Licensed under GPL v2.
 
-The codebase has been through an aggressive modernization (branch `cpp-modernization-plan`) that introduced modular architecture with enforced dependency rules, RAII ownership, a deterministic simulation layer, concurrent multi-session support, and a modern CMake build system targeting C++20.
+The modernized codebase has a modular architecture with enforced dependency rules, RAII ownership, a deterministic simulation layer, concurrent multi-session support, and a CMake build targeting C++20.
 
 ---
 
@@ -186,14 +186,14 @@ Build and CI checks enforce boundaries:
 
 ### Runtime Context and Thread-Local Rules
 
-Phase 12 retired global context fallback behavior:
+There is no global context fallback:
 
 - `set_global_context()` is removed
 - `ctx()` is strictly session-backed (`current_session->ctx_`) and asserts when no session exists
 - gameplay thread-local game-state pointer: `current_game`
 - platform thread-local game-state pointer: `current_session`
 
-### Global State Audit (Phase 12)
+### Process-Level Globals
 
 Allowed process-level globals (documented exceptions):
 
@@ -399,7 +399,7 @@ In both modes `OPENGLAD_DEMO_MAX_FRAMES` counts **sim ticks**, so a run's game-t
 openglad_demo: 61 sim ticks, 3459 rendered frames in 4.901 s (705.7 fps, 12.25 ticks/s)
 ```
 
-`ticks/s` holding ≈12.25 under load is the proof that render cost no longer slows the game; `fps` is the render benchmark.
+`ticks/s` holding ≈12.25 under load shows that render cost does not slow the game; `fps` is the render benchmark.
 
 #### Environment knobs
 
@@ -564,7 +564,7 @@ Shadow](#local-transport-shadow).
 
 The current network compatibility line is lobby/gameplay protocol **v13**, world
 snapshot format **v10**, and replay format **v15**. Protocol v13 adds the
-staged-lobby channel (#218): `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
+staged-lobby channel: `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
 complete InitialSetup / keyframe snapshot of the host's staged world so every
 peer previews the exact match before GO, plus `StartDenialReason::StageFailed`.
 Protocol v12 replaced the flattened CTF snapshot block with the generic
@@ -637,7 +637,7 @@ of its siblings.
 - `HostPickerLobbyClient` — hosts a `LobbyServer` over a `MultiplexTransport`
 - `JoinPickerLobbyClient` — connects to a remote host
 
-**The staged lobby (#218).** Every lobby OWNER (the local client, the SDL/
+**The staged lobby.** Every lobby OWNER (the local client, the SDL/
 curses hosts, the dedicated server) owns an `og::server::MatchStage`
 (`src/server/match_stage.cpp`, SDL-free, dual-listed into `og_interface`
 beside `headless_server_runtime.cpp` — the `level_runtime_data.cpp`
@@ -652,7 +652,7 @@ LEVEL renders and censuses that world on every client identically. At GO the
 launch ADOPTS the staged world — object handoff for the dedicated server and
 curses sessions, content transfer for the SDL shadow — so preview == launch
 is a byte identity, and `GameServer::step`'s level-start gate holds tick 1
-(and its event drain) until every seeded client is ready (#239).
+(and its event drain) until every seeded client is ready.
 
 ```
 Base Camp / picker_team_build (lobby)     each peer
@@ -696,7 +696,7 @@ tags carried on the snapshot wire), advanced as if it had played solo — see
 
 ### Structure
 
-- **Campaign** — A collection of levels with a progression order. Shipped as `.glad` packages (zip archives). The seven shipped campaigns are committed as plain source trees under `campaigns/<id>/` (campaign.yaml, scen/, pix/, icon.png); the build composes each tree into `build/<preset>/builtin/<id>.glad` with `scripts/make_glad.py` — a deterministic writer (stored members, bytewise-sorted paths, fixed timestamps), so identical trees always produce byte-identical archives. Pack-bearing campaigns (modes, concept) keep their pack Lua single-sourced under `tools/<tool>/pack/`, mapped to `packs/<pack-id>/` in the archive at composition time. The dev-only `concept` playground composes into `build/<preset>/builtin-dev/concept.glad` instead — tests, tooling and media capture load it from a build tree, but nothing installs, packages or preloads it, so it never reaches players (#240). `tests/unit/test_builtin_archives.cpp` pins the staged archives against the source trees byte-for-byte.
+- **Campaign** — A collection of levels with a progression order. Shipped as `.glad` packages (zip archives). The seven shipped campaigns are committed as plain source trees under `campaigns/<id>/` (campaign.yaml, scen/, pix/, icon.png); the build composes each tree into `build/<preset>/builtin/<id>.glad` with `scripts/make_glad.py` — a deterministic writer (stored members, bytewise-sorted paths, fixed timestamps), so identical trees always produce byte-identical archives. Pack-bearing campaigns (modes, concept) keep their pack Lua single-sourced under `tools/<tool>/pack/`, mapped to `packs/<pack-id>/` in the archive at composition time. The dev-only `concept` playground composes into `build/<preset>/builtin-dev/concept.glad` instead — tests, tooling and media capture load it from a build tree, but nothing installs, packages or preloads it, so it never reaches players. `tests/unit/test_builtin_archives.cpp` pins the staged archives against the source trees byte-for-byte.
 - **Level** — A single scenario file defining a tile grid, entity placements, objectives, and intro text.
 - **Scenario** — The in-game term for a level. Each has a numeric ID; the player progresses through them sequentially.
 
@@ -810,13 +810,13 @@ Each subdirectory name is the pack identifier. Files shadow built-in `pix/` asse
 
 1. **Settings persistence** — Active pack stored in `openglad.yaml` under `graphics` / `sprite_sheet` (empty string = no override).
 2. **Startup mount** — `apply_sprite_sheet_setting()` in `src/resources/io/platform_io_common.cpp` is called in `glad.cpp` after `cfg.load_settings()` and before `GameSession` construction. It mounts the chosen pack directory at the PhysFS `"pix/"` mount point with prepend priority.
-3. **Hot-swap** — When the user changes the selection from the Options menu, `apply_sprite_sheet_setting()` unmounts the old pack and mounts the new one, then `loader::reload_graphics_if_stale()` reloads all sprite data. Reloading frees buffers that live render components still borrow (menu buttons hold `pixieN` facings pointers into loader memory, and the SCENARIO screen keeps a loaded world), so it is only safe from a handler that returns `MENU_REDRAW`: the menu frame skeleton then re-creates every button pixie (`reset_buttons` → `init_buttons`) and re-runs the level-reload guard **before** anything draws. It is *not* safe because "no live walkers exist while the options menu is open" — that was never true.
+3. **Hot-swap** — When the user changes the selection from the Options menu, `apply_sprite_sheet_setting()` unmounts the old pack and mounts the new one, then `loader::reload_graphics_if_stale()` reloads all sprite data. Reloading frees buffers that live render components still borrow (menu buttons hold `pixieN` facings pointers into loader memory, and the SCENARIO screen keeps a loaded world), so it is only safe from a handler that returns `MENU_REDRAW`: the menu frame skeleton then re-creates every button pixie (`reset_buttons` → `init_buttons`) and re-runs the level-reload guard **before** anything draws. Live walkers can exist while the options menu is open, so that frame skeleton, not the menu, is what makes the reload safe.
 
-### Precedence vs. campaign art (issue #162)
+### Precedence vs. campaign art
 
 Campaign packages (`.glad`) also PREPEND on mount and may ship their own `pix/` entity art, which would silently outrank the sheet after any mid-session campaign switch. The rule is: **an explicitly configured user sprite sheet wins `pix/` lookups for the exact filenames it ships; the campaign wins for everything else.** `mount_campaign_package_with_error()` enforces it by calling `reassert_sprite_sheet_mount()` (re-prepend of the sheet) after every successful campaign mount, so the outcome no longer depends on mount order. Campaign class-pack sprites (`packs/<id>/sprites/*.png`) resolve by full virtual path and can never be shadowed by a sheet.
 
-### Campaign-switch reloads (issue #162)
+### Campaign-switch reloads
 
 Loaders record the `og::resources::sprite_source_generation()` they last rebuilt at; campaign mounts/unmounts and sprite-sheet (re)mounts bump the counter (the editor-save `remount_campaign_package_with_error()` deliberately does **not** — it restores the identical source set). Every campaign-switch flow calls `loader::reload_graphics_if_stale()` at a render-safe point (picker campaign handlers, the gameplay-entry net in `game.cpp`, editor entry/campaign-switch, replay bootstrap, the headless wire chokepoint in `platform_headless.cpp`, and the text/curses pickers); a same-campaign level advance is a generation-check no-op. The networked lobby-poll campaign sync deliberately never reloads mid-menu-frame — the gameplay-entry net covers it. Under `TESTING`, `create_walker_owned` traces when a walker is created from a stale loader so tests can pin that the enumerated flows never enter gameplay stale.
 
@@ -1004,7 +1004,7 @@ Menu functions block in event loops. Tests use a separate thread to drive naviga
 ```cpp
 static int injector_thread(void* data) {
     wait_for_interactable("button_id", 5000);  // Wait for button to exist
-    SDL_Delay(1500);                            // Entry settle (fades are instant under TESTING)
+    wait_for_menu_frames(2);                    // Settle on a completed engine frame
     interact("button_id");                      // Click by ID
     return 0;
 }
@@ -1031,6 +1031,13 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
    (generated content under `campaigns/<id>/` is committed like a lockfile)
 5. **asan** — ASan + UBSan build and test
 6. **tsan** — ThreadSanitizer build and test
+7. **x11-display** — `og_test_display_x11` on SDL's real x11 driver under Xvfb,
+   through `scripts/ci/run_x11_display_lane.sh`: one X screen with XRandR modes
+   and openbox (the mode selector and a real exclusive mode switch), then two X
+   screens with no window manager (the multi-display Exclusive guard and an
+   unacknowledged fullscreen request). The group is built only with
+   `-DOPENGLAD_X11_DISPLAY_TESTS=ON`; locally, run the same script inside
+   `nix develop`, whose shell provides Xvfb, xrandr and openbox
 
 Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
 `parity-canary.yml` (the parity mutation canary — the teeth oracle for

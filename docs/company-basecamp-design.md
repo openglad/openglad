@@ -41,23 +41,17 @@ The web build keeps **Quit** visible but disabled. **Continue** opens the most
 recent valid company; if no valid company exists, the player is sent to the
 Company List.
 
-![Main menu](media/company-basecamp/main-menu.png)
-
 The shared **CONTROLS** screen described here has since been deleted (see
 [the pause-menu design](pause-menu-design.md)): direction mode, remap, reset
 and input device are per-seat rows on the player screens — a Base Camp seat
 card, or the pause menu's player rows in a mission. Seat count and next-level
 team choices no longer live on the main menu.
 
-![Game Settings](media/company-basecamp/settings.png)
-
 ### 2.2 Found Your Company
 
 Beginning a new game opens a name-entry screen with the same editing grammar as
 character naming. A generated fantasy name is offered initially and may be
 rerolled or edited. The filename derived from that name is not shown.
-
-![Company name entry](media/company-basecamp/new-company.png)
 
 ### 2.3 Company List
 
@@ -66,15 +60,11 @@ actions: open the company, inspect its backups, or delete it. Corrupt headers
 remain visible as corrupt entries and cannot silently replace the active
 company.
 
-![Company List](media/company-basecamp/company-list.png)
-
 ### 2.4 Backups
 
 The backups view lists a company's snapshots newest first. Restoring rewinds
 the selected company in place after making a pre-restore snapshot. Deleting a
 company removes its backups as well. The active company cannot be deleted.
-
-![Company backups](media/company-basecamp/backups.png)
 
 ### 2.5 Base Camp
 
@@ -108,8 +98,6 @@ level, and experience fields.
 - Tap the scenario summary to open the Scenario menu.
 - Network guests may inspect foreign rows but cannot mutate them.
 
-![Owned seat settings](media/team-selection/seat-settings.png)
-
 Adding or removing seats and choosing their teams changes the current session.
 Those choices survive leaving Base Camp and returning through **CONTINUE**, but
 they are neither loaded from nor written to a company file. Direction modes
@@ -120,8 +108,6 @@ reuses that profile instead of duplicating one of the surviving players'
 bindings. Its factory-layout identity moves with it, so **RESET** and later
 config reloads restore the same distinct layout.
 
-![Three local seats after Continue](media/team-selection/basecamp-three-local-seats.png)
-
 ### 2.6 GO and READY
 
 Solo games show **GO**. In a network lobby, guests see **READY** and the host
@@ -130,10 +116,6 @@ the deployment can provide one distinct controllable hero for each local view.
 Denials are shown instead of silently ignoring the request. Opening an owned
 seat editor withdraws that machine's readiness before a synchronous remap or
 confirmation can hold it there; the player must choose **READY** again.
-
-| Host | Joiner |
-|---|---|
-| ![Host ready room](media/company-basecamp/base-camp-host.png) | ![Joiner ready room](media/company-basecamp/base-camp-joiner.png) |
 
 ### 2.7 Cross-control
 
@@ -400,20 +382,13 @@ gamepad auto-claim. When the lobby is at its sixteen-seat ceiling that button
 dims and reads **LOBBY FULL** instead: the seat is still this machine's to
 offer, and the reason it cannot be taken is somewhere else.
 
-The rail once windowed the whole lobby. It opened with a **SEATS** label that
-led to the team overview — a second, worse-placed door to a screen the
-Scenario menu already owned — and it cost the cards their breathing room, the
-four faces sitting a single pixel apart. Issue #236 spent the label's width on
-the gutters and gave its ordinal to a **+** at the left end; issue #243
-stopped the leftover width from collecting in the holes hidden controls left
-behind, drawing empty recesses (ghosts) where a seat could still land. Both
-were fixes to a premise that was wrong: remote seats were in the rail, which
-forced a pager, which forced a moving grid, which forced the **+** to live
-somewhere the cards were not. Restricting the rail to this machine's seats
-retires the **+**, both pagers and the ghosts at once — the ghost became the
-button it was always miming, and remote seats moved to the two places that
-already described them, the header line's census and **VIEW LEVEL**'s seat
-report.
+Earlier layouts windowed the whole lobby in the rail. That needed a **SEATS**
+label (a second door to the team overview the Scenario menu already owns), a
+pager, a moving grid, a floating **+** button and empty recesses (ghosts) where
+a seat could land, and it left the four faces a single pixel apart.
+Restricting the rail to this machine's seats removed the **+**, both pagers
+and the ghosts: the empty slot is now the ADD PLAYER button, and remote seats
+appear in the header line's census and in **VIEW LEVEL**'s seat report.
 
 ### 9.19 Company List geometry
 

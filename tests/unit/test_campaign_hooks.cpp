@@ -149,6 +149,36 @@ TEST_F(CampaignHooksTest, declare_mode_registrar_is_a_silent_noop)
     EXPECT_TRUE(result.ok) << result.error;
 }
 
+// Issue #322, campaign arm: the campaign gate counts families/ chunks as pack
+// Lua too. The declaration pass defers the registrar (the test above); the
+// bind replay runs the same chunk in the dispatch VM, and with NO scripts/
+// chunk installed at all the registration must still be served.
+TEST_F(CampaignHooksTest,
+       a_family_chunk_registers_campaign_hooks_without_any_scripts)
+{
+    ASSERT_TRUE(pack_scripts().empty())
+        << "precondition: the pack ships no scripts/ chunk at all";
+
+    // Control: a families/-only pack that registers no campaign book serves
+    // no picker.
+    register_pack_family_chunk({kPack, "campaigntest/families/a.lua",
+                                "local nothing = true\n"});
+    EXPECT_FALSE(hooks::campaign_picker_registered());
+
+    register_pack_family_chunk({kPack, "campaigntest/families/a.lua",
+                                R"LUA(og.register_campaign_hooks({
+  vars = { "delve_counted" },
+  picker_menu = function(page_id)
+    return { title = "BOOK" }
+  end,
+}))LUA"});
+    EXPECT_TRUE(hooks::campaign_picker_registered())
+        << "a families/-only pack's campaign book must reach the query";
+    const std::vector<std::string> vars = hooks::campaign_registered_vars();
+    ASSERT_EQ(1u, vars.size());
+    EXPECT_EQ("delve_counted", vars[0]);
+}
+
 TEST_F(CampaignHooksTest, declare_mode_still_rejects_a_bad_registration)
 {
     og::data::ClasspackData data;

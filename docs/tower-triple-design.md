@@ -1,6 +1,6 @@
 # Master Specification — Game-Mode Seam, Fall Damage, HUD Floor Awareness, Tower Climb
 
-Branch `feature/z-axis-multifloor` @ fd097693. All line anchors below were re-verified at this revision. **Line numbers drift as work packages land — every implementer must re-verify an anchor with `sed -n '<line>p'` / `grep -n` immediately before editing, and re-grep the canary pin map (`grep -n '"src/' tests/parity/scenario_table.h`) before every commit that touches a pinned file.**
+Line anchors below point into commit `fd097693` and have drifted since; find code by the quoted text.
 
 ---
 

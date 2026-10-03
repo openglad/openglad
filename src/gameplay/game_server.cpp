@@ -230,20 +230,6 @@ void remember_sent_entity_lists(og::sim::PerClientState& client_state,
     }
 }
 
-void populate_special_names(
-    std::string (&special_names)[NUM_FAMILIES][NUM_SPECIALS])
-{
-    for (int family = 0; family < NUM_FAMILIES; ++family)
-    {
-        const FamilyDescriptor* descriptor = get_family_descriptor(family);
-        for (int special = 0; special < NUM_SPECIALS; ++special)
-        {
-            special_names[family][special] =
-                descriptor ? descriptor->special_names[special] : "NONE";
-        }
-    }
-}
-
 bool player_input_has_activity(const PlayerInput& input)
 {
     for (int key = 0; key < NUM_INPUT_KEYS; ++key)
@@ -340,31 +326,30 @@ void apply_authoritative_event_state(GameWorld& world,
             // of stranding it for the next keyframe.
             const short xpix = static_cast<short>(event.a);
             const short ypix = static_cast<short>(event.b);
-            if (world.damage_tile(xpix, ypix) && world.grid.valid())
+            if (world.damage_tile(xpix, ypix))
             {
                 const short tx = static_cast<short>(xpix / GRID_SIZE);
                 const short ty = static_cast<short>(ypix / GRID_SIZE);
-                if (tx >= 0 && ty >= 0 && tx < world.grid.w && ty < world.grid.h)
+                // damage_tile is the one bounds verdict: a non-zero return
+                // already means the grid is valid and (tx, ty) lies inside it.
+                const std::size_t gi =
+                    static_cast<std::size_t>(ty) * world.grid.w + static_cast<std::size_t>(tx);
+                const std::uint8_t value = world.grid.data[gi];
+                bool present = false;
+                for (auto& tile : snapshot.grid_dirty_tiles)
                 {
-                    const std::size_t gi =
-                        static_cast<std::size_t>(ty) * world.grid.w + static_cast<std::size_t>(tx);
-                    const std::uint8_t value = world.grid.data[gi];
-                    bool present = false;
-                    for (auto& tile : snapshot.grid_dirty_tiles)
+                    if (tile.x == tx && tile.y == ty)
                     {
-                        if (tile.x == tx && tile.y == ty)
-                        {
-                            tile.value = value;
-                            present = true;
-                            break;
-                        }
+                        tile.value = value;
+                        present = true;
+                        break;
                     }
-                    if (!present && !snapshot.grid_full_resend)
-                    {
-                        snapshot.grid_dirty = true;
-                        snapshot.grid_dirty_tiles.push_back(
-                            {tx, ty, value});
-                    }
+                }
+                if (!present && !snapshot.grid_full_resend)
+                {
+                    snapshot.grid_dirty = true;
+                    snapshot.grid_dirty_tiles.push_back(
+                        {tx, ty, value});
                 }
             }
             break;
@@ -400,253 +385,24 @@ void consume_authoritative_visual_transients(GameWorld& world,
 ServerPollResult poll_server_messages(
     og::sim::ITransport& transport)
 {
+    // One decode (og::sim::poll_decoded_messages) and one acceptance rule
+    // (og::sim::is_server_bound) for raw and typed transports alike: a peer
+    // whose frame is Malformed or not server-bound is marked, and nothing it
+    // sends after that in this poll is forwarded.
     ServerPollResult result;
-    if (transport.supports_typed_messages())
-    {
-        std::unordered_set<og::sim::PeerId> malformed_peers;
-        for (og::sim::TypedReceivedMessage& message : transport.poll_typed())
-        {
-            if (message.kind == og::sim::TypedReceivedMessageKind::Malformed)
-            {
-                malformed_peers.insert(message.peer_id);
-                continue;
-            }
-            if (malformed_peers.contains(message.peer_id))
-                continue;
-
-            result.messages.push_back(std::move(message));
-        }
-        result.malformed_peers.assign(malformed_peers.begin(), malformed_peers.end());
-        std::sort(result.malformed_peers.begin(), result.malformed_peers.end());
-        return result;
-    }
-
     std::unordered_set<og::sim::PeerId> malformed_peers;
-    for (const auto& message : transport.poll())
+    for (og::sim::TypedReceivedMessage& message :
+         og::sim::poll_decoded_messages(transport))
     {
         if (malformed_peers.contains(message.peer_id))
             continue;
-
-        og::sim::TransportEnvelope envelope;
-        if (!og::sim::decode_transport_envelope(message.data, envelope))
+        if (!og::sim::is_server_bound(message.kind))
         {
             malformed_peers.insert(message.peer_id);
             continue;
         }
 
-        og::sim::TypedReceivedMessage typed_message;
-        typed_message.peer_id = message.peer_id;
-        try
-        {
-            switch (envelope.message_type)
-            {
-            case og::sim::kLobbyMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_lobby_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::LobbyMessage;
-                typed_message.lobby_message =
-                    std::make_shared<og::sim::LobbyMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kLobbyStateMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_lobby_state_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::LobbyState;
-                typed_message.lobby_state =
-                    std::make_shared<og::sim::LobbyState>(*decoded);
-                break;
-            }
-
-            case og::sim::kInputMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_input_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-
-                typed_message.kind = og::sim::TypedReceivedMessageKind::Input;
-                typed_message.input = std::make_shared<InputState>(decoded->input);
-                typed_message.tick = decoded->tick;
-                break;
-            }
-
-            case og::sim::kHelloMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_hello_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind = og::sim::TypedReceivedMessageKind::Hello;
-                typed_message.hello =
-                    std::make_shared<og::sim::HelloMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kClientReadyMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_client_ready_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::ClientReady;
-                typed_message.client_ready =
-                    std::make_shared<og::sim::ClientReadyMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kKeyframeRequestMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_keyframe_request_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::KeyframeRequest;
-                typed_message.keyframe_request =
-                    std::make_shared<og::sim::KeyframeRequestMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kHeartbeatMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_heartbeat_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::Heartbeat;
-                typed_message.heartbeat =
-                    std::make_shared<og::sim::HeartbeatMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kExitPromptResponseMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_exit_prompt_response_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::ExitPromptResponse;
-                typed_message.exit_prompt_response =
-                    std::make_shared<og::sim::ExitPromptResponseMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kPauseBroadcastMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_pause_broadcast_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::PauseBroadcast;
-                typed_message.pause_broadcast =
-                    std::make_shared<og::sim::PauseBroadcastMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kPauseResponseMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_pause_response_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::PauseResponse;
-                typed_message.pause_response =
-                    std::make_shared<og::sim::PauseResponseMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kSnapshotHashCheckMessageType:
-            {
-                const auto decoded =
-                    og::sim::deserialize_snapshot_hash_check_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::SnapshotHashCheck;
-                typed_message.snapshot_hash_check =
-                    std::make_shared<og::sim::SnapshotHashCheckMessage>(*decoded);
-                break;
-            }
-
-            case og::sim::kPackRequestMessageType:
-            {
-                // Pack transfers are a lobby-phase concern (LobbyServer). A
-                // stale request that slips into the gameplay stream is
-                // legal traffic and simply ignored by the dispatcher — it
-                // must not count as a malformed peer.
-                const auto decoded =
-                    og::sim::deserialize_pack_request_message(message.data);
-                if (!decoded.has_value())
-                {
-                    malformed_peers.insert(message.peer_id);
-                    continue;
-                }
-                typed_message.kind =
-                    og::sim::TypedReceivedMessageKind::PackRequest;
-                typed_message.pack_request =
-                    std::make_shared<og::sim::PackRequestMessage>(*decoded);
-                break;
-            }
-
-            default:
-                malformed_peers.insert(message.peer_id);
-                continue;
-            }
-        }
-        catch (const std::exception&)
-        {
-            malformed_peers.insert(message.peer_id);
-            continue;
-        }
-
-        result.messages.push_back(std::move(typed_message));
+        result.messages.push_back(std::move(message));
     }
 
     result.malformed_peers.assign(malformed_peers.begin(), malformed_peers.end());
@@ -929,7 +685,6 @@ GameServer::GameServer(GameWorld& world, SimEventLog& events, ITransport& transp
     , events_(events)
     , transport_(transport)
 {
-    populate_special_names(special_names_);
     wall_clock_ms_source_ = [] {
         return static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1677,7 +1432,6 @@ void GameServer::process_disconnected_players(std::uint32_t expected_tick)
             static_cast<short>(disconnected.player_index),
             disconnected.team_num,
             player_input_debounce_[disconnected.player_index],
-            special_names_,
             &events_);
 
         player_controls_[disconnected.player_index] = disconnected.control;
@@ -2649,7 +2403,6 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
             static_cast<short>(player_index),
             seat.team_num,
             player_input_debounce_[player_index],
-            special_names_,
             &events_);
 
         player_controls_[player_index] = seat.control;

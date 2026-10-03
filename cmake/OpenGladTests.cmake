@@ -207,10 +207,13 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_uxshots_probe.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_seat_chip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fade_ownership.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_display_x11.cpp
 )
 
+# NO_DEFAULT_TEST builds the binary but registers no ctest entry for it: the
+# caller adds its own entries (og_test_display_x11 runs once per X topology).
 function(og_add_test_group NAME)
-    cmake_parse_arguments(ARG "" "" "FILES" ${ARGN})
+    cmake_parse_arguments(ARG "NO_DEFAULT_TEST" "" "FILES" ${ARGN})
 
     set(selected)
     foreach(src IN LISTS ALL_INTEGRATION_TEST_SOURCES)
@@ -239,6 +242,9 @@ function(og_add_test_group NAME)
         target_compile_definitions(${NAME} PRIVATE ENABLE_COVERAGE)
     endif()
 
+    if(ARG_NO_DEFAULT_TEST)
+        return()
+    endif()
     add_test(NAME ${NAME} COMMAND ${NAME})
     set_tests_properties(${NAME} PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -514,6 +520,55 @@ og_add_test_group(og_test_rendering FILES
     test_text_input_and_width.cpp
     test_text_input_ex_value.cpp
 )
+
+# The real-display x11 lane (#329). SDL's x11 driver on Xvfb enumerates real
+# video modes and performs real mode switches, which the offscreen driver every
+# other Linux group runs on cannot (it enumerates no fullscreen mode and is not
+# "x11", so the multi-display exclusive guard never engages). The tests need an
+# X server with a prepared topology, which scripts/ci/run_x11_display_lane.sh
+# provides (the x11-display job in .github/workflows/test.yml); run them through
+# that script, not through a plain ctest. OFF by default: the group is neither
+# built nor registered in any other configure, so no other lane runs it on
+# offscreen and the coverage recorder population is unchanged.
+#
+# One binary, one ctest entry per topology. SDL_VIDEODRIVER=x11 wins over the
+# harness's non-overwriting offscreen default (integration_main.cpp), and
+# OG_X11_EXPECT_DISPLAYS is the display count each test asserts before doing
+# anything, so a lane started on the wrong X server fails instead of skipping.
+# Run A also runs the selector pin from test_video_modes_more.cpp, which skips
+# on offscreen for want of any fullscreen mode; run B leaves it out, because
+# on multi-display x11 the selector is empty by design.
+option(OPENGLAD_X11_DISPLAY_TESTS
+    "Build og_test_display_x11 and register the x11-one/x11-two ctest entries (needs an X server: scripts/ci/run_x11_display_lane.sh)"
+    OFF)
+if(OPENGLAD_X11_DISPLAY_TESTS)
+    og_add_test_group(og_test_display_x11 NO_DEFAULT_TEST FILES
+        test_display_x11.cpp
+        test_video_modes_more.cpp
+    )
+    foreach(topology one two)
+        if(topology STREQUAL "one")
+            set(x11_displays 1)
+            set(x11_filter "X11OneScreen.*:VideoModesMore.display_selector_reports_sdls_modes_the_desktop_and_the_usable_bounds")
+        else()
+            set(x11_displays 2)
+            set(x11_filter "X11TwoScreens.*")
+        endif()
+        set(x11_environment
+            "SDL_VIDEODRIVER=x11" "OG_X11_EXPECT_DISPLAYS=${x11_displays}")
+        if(OG_SANITIZER_TEST_ENVIRONMENT)
+            list(APPEND x11_environment ${OG_SANITIZER_TEST_ENVIRONMENT})
+        endif()
+        add_test(NAME og_test_display_x11_${topology}
+            COMMAND og_test_display_x11 --gtest_filter=${x11_filter})
+        set_tests_properties(og_test_display_x11_${topology} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 180
+            LABELS "x11-${topology}"
+            ENVIRONMENT "${x11_environment}"
+        )
+    endforeach()
+endif()
 
 og_add_test_group(og_test_picker FILES
     test_picker_accessible_levels.cpp
@@ -1601,6 +1656,32 @@ add_test(NAME openglad_demo_knobs
 set_tests_properties(openglad_demo_knobs PROPERTIES
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     TIMEOUT 120
+)
+
+# #335: a scenario that ENDS inside openglad_demo must finish its session and
+# restart the grid instead of blocking a worker on a modal nobody can click.
+# Its own entry so the 720-tick match never squeezes the knobs budget; the
+# TIMEOUT is sized from the coverage-lane measurement in the script header.
+# Sanitizer builds run the sim several times slower (PR #345's ASan lane:
+# 10.79 ticks/s, about 72 s for the full run); the script header records the
+# measurement and the 2 x max sizing of both numbers.
+if(ENABLE_SANITIZERS)
+    set(OG_DEMO_RESTART_STANZA_TIMEOUT 150)
+    set(OG_DEMO_RESTART_CTEST_TIMEOUT 300)
+else()
+    set(OG_DEMO_RESTART_STANZA_TIMEOUT 60)
+    set(OG_DEMO_RESTART_CTEST_TIMEOUT 120)
+endif()
+add_test(NAME openglad_demo_restart
+    COMMAND ${CMAKE_COMMAND} -E env
+        OPENGLAD_DEMO_RESTART_TIMEOUT=${OG_DEMO_RESTART_STANZA_TIMEOUT}
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_demo_restart.sh
+        $<TARGET_FILE:openglad_demo>
+)
+set_tests_properties(openglad_demo_restart PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    TIMEOUT ${OG_DEMO_RESTART_CTEST_TIMEOUT}
 )
 
 # parity_runner_smoke is the harness's only non-gtest binary: the goldens are

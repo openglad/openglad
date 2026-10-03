@@ -366,7 +366,6 @@ private:
     std::vector<DisconnectedSpectator> disconnected_spectators_;
     std::array<walker*, kMaxGlobalPlayers> player_controls_ = {};
     std::array<SimInputDebounce, kMaxGlobalPlayers> player_input_debounce_ = {};
-    std::string special_names_[NUM_FAMILIES][NUM_SPECIALS] = {};
     std::vector<TypedReceivedMessage> last_polled_messages_;
     std::deque<TypedReceivedMessage> pending_inbound_messages_;
     int messages_drained_last_call_ = 0;

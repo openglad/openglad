@@ -18,11 +18,13 @@
 #include <openglad/resources/packs.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/server/match_stage.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
 #endif
 
+#include "test_match_seed.h"
 #include "unit_core_pack_heal.h"
 
 namespace og::runtime {
@@ -147,6 +149,11 @@ private:
 int main(int argc, char** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
+    // #338: one match seed for the whole process (tests/test_match_seed.h).
+    // Without it every lobby/GO/solo launch stages a std::random_device world
+    // and identical binaries cover different lines from run to run. A test
+    // that needs another world scopes its own seed and restores this one.
+    og::server::set_match_seed_for_testing(kHarnessMatchSeed);
 
     const auto test_config_dir = std::filesystem::temp_directory_path() /
         ("openglad_headless_test_" + std::to_string(getpid()));

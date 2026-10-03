@@ -534,6 +534,32 @@ void cleanup_unpacked_campaign()
     std::filesystem::remove_all(get_user_path() + "temp", ec);
 }
 
+CampaignMutationError mutate_packaged_campaign(const std::string& campaign_id,
+                                               const std::string& repack_id,
+                                               const std::function<bool()>& mutate)
+{
+    cleanup_unpacked_campaign();
+    if (!unpack_campaign(campaign_id))
+    {
+        LogError("campaign_mutation_failed id={} reason=unpack_failed\n", campaign_id);
+        cleanup_unpacked_campaign();
+        return CampaignMutationError::UnpackFailed;
+    }
+    if (!mutate())
+    {
+        cleanup_unpacked_campaign();
+        return CampaignMutationError::MutationFailed;
+    }
+    if (!repack_campaign(repack_id))
+    {
+        LogError("campaign_mutation_failed id={} reason=repack_failed\n", repack_id);
+        cleanup_unpacked_campaign();
+        return CampaignMutationError::RepackFailed;
+    }
+    cleanup_unpacked_campaign();
+    return CampaignMutationError::None;
+}
+
 // ---------------------------------------------------------------------------
 // Level/campaign deletion
 // ---------------------------------------------------------------------------
@@ -545,16 +571,16 @@ void delete_level(int id)
     if(campaign.size() == 0)
         return;
 
-    cleanup_unpacked_campaign();
-    unpack_campaign(campaign);
-    // Delete data file
-    std::string path = std::format("{}temp/scen/scen{}.fss", get_user_path(), id);
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    // Delete terrain file
-    path = std::format("{}temp/pix/scen{:04d}.png", get_user_path(), id);
-    std::filesystem::remove(path, ec);
-    repack_campaign(campaign);
+    (void)mutate_packaged_campaign(campaign, campaign, [id] {
+        // Delete data file
+        std::string path = std::format("{}temp/scen/scen{}.fss", get_user_path(), id);
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+        // Delete terrain file
+        path = std::format("{}temp/pix/scen{:04d}.png", get_user_path(), id);
+        std::filesystem::remove(path, ec);
+        return true;
+    });
 
     (void)remount_campaign_package_with_error();
 }

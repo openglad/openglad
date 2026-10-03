@@ -879,4 +879,96 @@ TEST(SmoothUnit, smooth_without_a_target_returns_zero_and_reset_clears_it)
 
     pop_test_context();
 }
+
+// #301: the dark-grass "top middle" arm (mask 14: left|right|down) draws a
+// dark-grass variant like its left-middle/top-left siblings. It used to be an
+// empty arm, so the PIX_GRASS1 initialiser leaked out as light grass and the
+// cell below then read light grass above it and cascaded down the patch.
+TEST(SmoothUnit, dark_grass_top_middle_draws_a_dark_variant)
+{
+    SeqRandom rng;
+    GameContext gc;
+    gc.rng = &rng;
+    push_test_context(&gc);
+
+    smoother s;
+    PixieData pd = make_grid(PIX_GRASS1);
+    s.set_target(pd);
+
+    const int x = 4;
+    const int y = 4;
+    const int expected_dark[4] = {PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
+                                  PIX_GRASS_DARK_3, PIX_GRASS_DARK_4};
+    for (std::uint32_t draw = 0; draw < 4; ++draw)
+    {
+        SCOPED_TRACE(draw);
+        // Dark grass left, right and below; light grass above (and on every
+        // diagonal), so no tree/wall edge rule claims the cell first.
+        set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
+                           TO_LEFT | TO_RIGHT | TO_DOWN);
+        rng.n = draw;
+        s.smooth(x, y);
+        ASSERT_EQ(expected_dark[draw], s.query_x_y(x, y))
+            << "dark grass top middle (mask 14) -> grass_dark_variants[draw]";
+        ASSERT_EQ(draw + 1, rng.n)
+            << "the top-middle arm consumes exactly one draw";
+    }
+
+    // Positive control on the same grid: the all-around arm (mask 15) is the
+    // long-standing one-draw dark-variant rule the fixed arm now matches.
+    set_neighbors_mask(pd, x, y, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
+                       TO_UP | TO_LEFT | TO_RIGHT | TO_DOWN);
+    rng.n = 2;
+    s.smooth(x, y);
+    ASSERT_EQ(PIX_GRASS_DARK_3, s.query_x_y(x, y))
+        << "dark grass all around (mask 15) -> grass_dark_variants[2]";
+    ASSERT_EQ(3u, rng.n) << "the all-around arm consumes exactly one draw";
+
+    pop_test_context();
+}
+
+// #301: an arrow slit whose sill (the tile above) is neither grass, dark
+// grass, pavement nor wooden floor keeps its own tile. It used to fall out of
+// the slit arm with newvalue still on its PIX_GRASS1 initialiser, turning an
+// impassable wall into passable grass.
+TEST(SmoothUnit, arrow_slit_with_no_matching_sill_keeps_its_own_tile)
+{
+    SeqRandom rng;
+    GameContext gc;
+    gc.rng = &rng;
+    push_test_context(&gc);
+
+    smoother s;
+    PixieData pd = make_grid(PIX_GRASS1);
+    s.set_target(pd);
+
+    const int x = 4;
+    const int y = 4;
+
+    struct SlitCase { unsigned char slit; unsigned char above; int expected; const char* why; };
+    const SlitCase cases[] = {
+        // The fixed fall-through: the slit's own tile survives.
+        {PIX_WALL_ARROW_GRASS, PIX_COBBLE_1, PIX_WALL_ARROW_GRASS,
+         "grass slit under cobble keeps PIX_WALL_ARROW_GRASS"},
+        {PIX_WALL4,            PIX_WATER1,   PIX_WALL4,
+         "stone slit under water keeps PIX_WALL4"},
+        // Positive controls: the four sills still re-pick the slit variant.
+        {PIX_WALL4,            PIX_GRASS1,       PIX_WALL_ARROW_GRASS,      "grass sill"},
+        {PIX_WALL4,            PIX_GRASS_DARK_1, PIX_WALL_ARROW_GRASS_DARK, "dark grass sill"},
+        {PIX_WALL_ARROW_GRASS, PIX_PAVEMENT1,    PIX_WALL4,                 "pavement sill"},
+        {PIX_WALL_ARROW_GRASS, PIX_FLOOR1,       PIX_WALL_ARROW_FLOOR,      "wooden floor sill"},
+    };
+    for (const SlitCase& c : cases)
+    {
+        SCOPED_TRACE(c.why);
+        set_at(pd, x, y, c.slit);
+        set_at(pd, x, y - 1, c.above);
+        rng.n = 0;
+        s.smooth(x, y);
+        ASSERT_EQ(c.expected, s.query_x_y(x, y)) << c.why;
+        ASSERT_EQ(0u, rng.n) << "the arrow-slit arm draws nothing";
+    }
+
+    pop_test_context();
+}
 } // namespace detail_smooth_r14

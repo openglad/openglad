@@ -648,6 +648,9 @@ public:
     
     bool saveLevelAs(int id);
     bool saveLevel();
+    // Both level saves: write the level into the mounted campaign's package
+    // (mutate_packaged_campaign), then remount it.
+    bool save_into_mounted_campaign();
     
     void draw(screen* s);
     Sint32 display_panel(screen* s);
@@ -689,11 +692,7 @@ static LevelEditorData* g_level_editor_testing_data = nullptr;
 
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
 
-#ifdef REDUCE_OVERSCAN
-#define OVERSCAN_PADDING 6
-#else
 #define OVERSCAN_PADDING 0
-#endif
 
 LevelEditorData::LevelEditorData()
     : campaign(std::make_unique<CampaignData>("gladiator")), level(std::make_unique<LevelRuntimeData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
@@ -877,22 +876,26 @@ bool LevelEditorData::saveCampaign()
 }
 
 
-bool LevelEditorData::saveLevelAs(int id)
+bool LevelEditorData::save_into_mounted_campaign()
 {
-    level->world().id = id;
-    level->grid_file = std::format("scen{}", id);
-    
-    std::string old_campaign = get_mounted_campaign();
-    unpack_campaign(old_campaign);
-    bool result = level->save();
-    if(result)
-        result = repack_campaign(old_campaign);
-    cleanup_unpacked_campaign();
+    const std::string mounted = get_mounted_campaign();
+    const bool result =
+        mutate_packaged_campaign(mounted, mounted, [this] {
+            return level->save();
+        }) == CampaignMutationError::None;
 
     // Remount for consistency in PhysFS
     (void)remount_campaign_package_with_error();
 
     return result;
+}
+
+bool LevelEditorData::saveLevelAs(int id)
+{
+    level->world().id = id;
+    level->grid_file = std::format("scen{}", id);
+    
+    return save_into_mounted_campaign();
 }
 
 
@@ -1474,17 +1477,7 @@ bool LevelEditorData::saveLevel()
 {
     level->grid_file = std::format("scen{}", level->world().id);
 
-    std::string old_campaign = get_mounted_campaign();
-    unpack_campaign(old_campaign);
-    bool result = level->save();
-    if(result)
-        result = repack_campaign(get_mounted_campaign());
-    cleanup_unpacked_campaign();
-
-    // Remount for consistency in PhysFS
-    (void)remount_campaign_package_with_error();
-
-    return result;
+    return save_into_mounted_campaign();
 }
 
 void LevelEditorData::draw(screen* s)
@@ -2667,10 +2660,6 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 int w = toInt(width);
                 int h;
                 
-                #ifdef ANDROID
-                // The soft keyboard on Android might take a little while to be ready again, so opening it right away doesn't always work.
-                og::input_native::sleep_ms(1000);
-                #endif
                 if(prompt_for_string( "Map Height", height))
                 {
                     h = toInt(height);
@@ -3888,12 +3877,10 @@ Sint32 level_editor()
 
 		// Scroll the screen (panning)
 		// Zardus: ADD: added scrolling by keyboard
-		#ifndef OUYA
 		eds().pan_left = (og::runtime::current_session->keystates_[KEYSTATE_KP_4] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_a]);
 		eds().pan_right = (og::runtime::current_session->keystates_[KEYSTATE_KP_6] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_d]);
 		eds().pan_up = (og::runtime::current_session->keystates_[KEYSTATE_KP_8] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_w]);
 		eds().pan_down = (og::runtime::current_session->keystates_[KEYSTATE_KP_2] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_s]);
-		#endif
 		if (eds().pan_up && data.level->level_visuals().topy >= PAN_LIMIT_UP) // top of the screen
         {
             eds().redraw = 1;

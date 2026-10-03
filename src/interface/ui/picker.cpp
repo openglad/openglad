@@ -3250,6 +3250,43 @@ Sint32 do_pick_campaign(Sint32 arg1)
    return MENU_REDRAW;
 }
 
+LevelLoadOutcome load_level_or_roll_back(screen& game, int level,
+                                         void (*on_load_failed)(void*),
+                                         void* ctx)
+{
+    const int old_id = game.world().id;
+    if (level >= 0 && level <= 32767)
+    {
+        game.world().id = level;
+        if (game.load_level())
+            return LevelLoadOutcome::Loaded;
+    }
+    game.clearbuffer();
+    if (on_load_failed != nullptr)
+        on_load_failed(ctx);
+
+    game.world().id = old_id;
+    if (game.load_level())
+        return LevelLoadOutcome::RolledBack;
+    game.clearbuffer();
+    popup_dialog("Big problem", "Also failed to reload current level...");
+    return LevelLoadOutcome::RollbackFailed;
+}
+
+void commit_level_cursor(SaveData& save, int level)
+{
+    save.clear_replay_arm();
+    save.scen_num = static_cast<short>(level);
+    picker_lobby_sync_settings_from_save();
+}
+
+// SET LEVEL's answer to a refused or unloadable id, before the rollback
+// reload (and before any "Big problem" that reload raises).
+static void pop_invalid_level_file(void*)
+{
+    popup_dialog("Load Failed", "Invalid level file.");
+}
+
 Sint32 do_set_scen_level(Sint32 arg1)
 {
 	(void)arg1;
@@ -3273,28 +3310,20 @@ Sint32 do_set_scen_level(Sint32 arg1)
                std::string(og::ui::kCampaignLevelClosedMessage).c_str());
            return MENU_REDRAW;
        }
-       int old_id = og::runtime::current_session->myscreen_->world().id;
-       og::runtime::current_session->myscreen_->world().id = templevel;
-       if (templevel < 0 || !og::runtime::current_session->myscreen_->load_level())
+       if (load_level_or_roll_back(
+               *og::runtime::current_session->myscreen_, templevel,
+               pop_invalid_level_file) != LevelLoadOutcome::Loaded)
        {
-            og::runtime::current_session->myscreen_->clearbuffer();
-            popup_dialog("Load Failed", "Invalid level file.");
-            
-           og::runtime::current_session->myscreen_->world().id = old_id;
-           if(!og::runtime::current_session->myscreen_->load_level())
-           {
-                og::runtime::current_session->myscreen_->clearbuffer();
-                popup_dialog("Big problem", "Also failed to reload current level...");
-           }
+           // Rolled back: the hook said "Invalid level file." and the old
+           // level is loaded again ("Big problem" if even that failed).
        }
        else  // We're good
        {
            // SET LEVEL is a plain cursor write: it abandons any replay
            // excursion in flight (the stale arm must never skip a purge or
            // restore a cursor the player just re-pointed).
-           og::runtime::current_session->myscreen_->save_data.clear_replay_arm();
-           og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(templevel);
-           picker_lobby_sync_settings_from_save();
+           commit_level_cursor(
+               og::runtime::current_session->myscreen_->save_data, templevel);
            Log("Set level to {}\n", templevel);
        }
    }

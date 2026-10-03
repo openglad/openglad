@@ -978,3 +978,22 @@ void picker_base_camp_after_roster_mutation();
 // Sale overload: keeps the removed character's wallet in the networked
 // owner-preserving merge even when no remaining member names that team.
 void picker_base_camp_after_roster_mutation(int additional_owned_team);
+
+// The level-set load rule, ONE home for SET LEVEL (picker.cpp's
+// do_set_scen_level) and every scripted campaign-book level set
+// (menu_screen_specs.cpp's apply_scripted_level_set); defined in picker.cpp.
+class screen;
+class SaveData;
+enum class LevelLoadOutcome { Loaded, RolledBack, RollbackFailed };
+// Load `level` into `game`, rolling back on failure. The id must fit the
+// save's short cursor (0..32767): it is checked BEFORE world().id is written
+// or anything is loaded. On a refused id or a failed load: clearbuffer, call
+// `on_load_failed(ctx)` if given (the picker's loader popup, so it precedes
+// any reload message), restore the previous id and reload it; if that reload
+// fails too, clearbuffer and pop "Big problem".
+LevelLoadOutcome load_level_or_roll_back(screen& game, int level,
+                                         void (*on_load_failed)(void*) = nullptr,
+                                         void* ctx = nullptr);
+// A plain level set's commit: abandon any replay excursion, move the cursor to
+// `level`, republish the lobby settings.
+void commit_level_cursor(SaveData& save, int level);

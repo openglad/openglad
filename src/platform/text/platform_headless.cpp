@@ -4,9 +4,8 @@
  * implementations for functions that the game engine expects but that have
  * no SDL dependency in headless mode.
  *
- * Categorisation follows the headless platform completion matrix (section 6.3
- * of docs/over-engineering-audit.md):
- *   A) Implemented via shared helpers in src/io/platform_io_common.cpp
+ * Categorisation follows the headless platform completion matrix:
+ *   A) Implemented via shared helpers in src/resources/io/platform_io_common.cpp
  *   B) Explicit unsupported — one-time warning via std::call_once
  *   C) Safe no-ops with documentation
  *   D) Deferred — returns typed failure with log message

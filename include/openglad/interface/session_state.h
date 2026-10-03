@@ -118,6 +118,13 @@ struct SessionState {
     // persists only the characters owned by one of its own seats
     // (owner_player_index in own_player_indices_).
     bool networked_session_ = false;
+    // A session nobody is watching (openglad_demo workers): every blocking modal
+    // on the level-end and exit-pad paths answers itself instead of waiting for a
+    // click a headless run can never deliver. popup_dialog logs its text and
+    // returns; results_screen shows the popup and returns false (no retry);
+    // yes_or_no_prompt and no_or_yes_prompt answer "no". Product flag, not a
+    // TESTING seam.
+    bool non_interactive_ = false;
     // A local lobby launch also assembles a mission-only roster. Keep that
     // transient copy isolated from the active company exactly as we do for a
     // genuine network session, while retaining local gameplay/control

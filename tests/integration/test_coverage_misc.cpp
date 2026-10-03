@@ -2070,26 +2070,24 @@ TEST(CoverageMisc, final_r16_sim_input_switch_special_and_yell)
     follower->set_act_type(ACT_GUARD);
     follower->set_leader(nullptr);
 
-    std::string special_names[NUM_FAMILIES][6];
-    for (int i = 0; i < NUM_FAMILIES; ++i)
-        for (int j = 0; j < 6; ++j)
-            special_names[i][j] = "NONE";
-    special_names[FAMILY_SOLDIER][1] = "CHARGE";
-
     SimInputDebounce debounce;
     PlayerInput pi{};
 
+    // The live registry's soldier declares four specials, so slot 5 is NONE;
+    // level 20 unlocks slot 5 ((5-1)*3+1 = 13), so only the registry wraps it.
+    control_living->stats()->set_level(20);
     control_living->set_current_special(4);
     pi.pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     const SimInputResult s0 = sim_process_player_input(
-        pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        pi, control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(!s0.endgame_requested);
-    ASSERT_TRUE(control_living->current_special() == 1);
+    ASSERT_EQ(1, control_living->current_special())
+        << "the soldier's NONE slot 5 wraps the press back to 1";
 
     pi = {};
     pi.pressed[static_cast<int>(InputAction::Yell)] = true;
     const SimInputResult s1 = sim_process_player_input(
-        pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        pi, control, fx.level.world(), 0, 0, debounce, &fx.events);
     ASSERT_TRUE(s1.play_sound == SOUND_YO);
     ASSERT_TRUE(s1.notify_text == "Yo!");
     ASSERT_TRUE(control_living->yo_delay() == 30);

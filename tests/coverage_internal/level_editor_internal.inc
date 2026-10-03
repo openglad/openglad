@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 
 #include <atomic>
+#include <filesystem>
 
 void level_picker_testing_input_reset();
 void level_picker_testing_click(int x, int y);
@@ -820,6 +821,90 @@ int level_editor_test_save_failure_reporting()
     delete_campaign(helper_id);
     check(get_mounted_campaign() == mount_guard.initially_mounted());
     return failed_check == 0 ? 0 : -failed_check;
+}
+
+// A level save edits the packaged campaign: unpack it into <user>/temp, write
+// the level there, repack. Repacking REMOVES the archive and zips temp/ over
+// it, so it may only run on a tree the unpack produced. When the mounted
+// campaign's archive cannot be unpacked (here: it is gone) both save doors
+// must fail and write no archive -- not repack whatever a stale <user>/temp
+// held into a "campaign" that is only that. Each refusal sits beside the
+// same call succeeding on a readable archive. Returns the number of checks
+// run, or minus the first failing one. The unpack-failure legs are Linux/
+// macOS only: on Windows PhysFS holds the mounted archive open, so it cannot
+// be removed under the mount (the test pins the count per platform).
+int level_editor_test_save_with_an_unreadable_campaign_writes_nothing()
+{
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+        {
+            failed_check = check_index;
+            Log("level-editor unreadable-campaign save check {} failed\n",
+                check_index);
+        }
+    };
+
+    LevelEditorTestingStateGuard editor_state_guard;
+    LevelEditorTestingMountGuard mount_guard;
+
+    const std::string helper_id = "coverage.save_unreadable";
+    const std::string archive =
+        get_user_path() + "campaigns/" + helper_id + ".glad";
+    delete_campaign(helper_id);
+    check(create_new_campaign(helper_id));
+    check(mount_guard.switch_to(helper_id));
+
+    LevelEditorData data;
+    check(data.loadCampaign(helper_id));
+    data.level->world().id = 1;
+    data.level->delete_objects();
+    data.level->create_new_grid();
+
+    // Positive control: a readable archive takes the save.
+    check(data.saveLevel());
+    check(std::filesystem::exists(archive));
+    check(get_mounted_campaign() == helper_id);
+
+#if !defined(_WIN32)
+    std::error_code ec;
+    const auto lose_archive_over_a_stale_temp = [&] {
+        std::filesystem::remove(archive, ec);
+        std::filesystem::create_directories(get_user_path() + "temp/scen", ec);
+        std::filesystem::create_directories(get_user_path() + "temp/pix", ec);
+        check(!std::filesystem::exists(archive));
+    };
+    // The failed remount leaves nothing mounted: rebuild the helper package
+    // and mount it again before the next leg needs it.
+    const auto rebuild_helper = [&] {
+        check(mount_guard.switch_to(""));
+        delete_campaign(helper_id);
+        check(create_new_campaign(helper_id));
+        check(mount_guard.switch_to(helper_id));
+    };
+
+    lose_archive_over_a_stale_temp();
+    check(!data.saveLevel());
+    check(!std::filesystem::exists(archive));
+    rebuild_helper();
+
+    lose_archive_over_a_stale_temp();
+    check(!data.saveLevelAs(2));
+    check(!std::filesystem::exists(archive));
+    rebuild_helper();
+
+    // The editor recovers once the archive is readable again.
+    check(data.saveLevel());
+    check(std::filesystem::exists(archive));
+#endif
+
+    check(mount_guard.restore());
+    delete_campaign(helper_id);
+    cleanup_unpacked_campaign();
+    check(get_mounted_campaign() == mount_guard.initially_mounted());
+    return failed_check == 0 ? check_index : -failed_check;
 }
 
 // File > Campaign > New / Load / Save As, end to end through the real menu

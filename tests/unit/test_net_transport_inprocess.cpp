@@ -531,6 +531,88 @@ TEST(NetTransportInProcess,
     EXPECT_EQ(1, snapshot_it->snapshot->current_palette_id);
 }
 
+// The DamageTile consumer (game_server.cpp, apply_authoritative_event_state) folds
+// a damaged tile into the already-captured snapshot exactly when
+// GameWorld::damage_tile reports a non-zero tile: damage_tile is the ONE
+// bounds verdict. A pixel at (-1, -1) lies outside the grid, so it must
+// neither mutate the corner cell nor ship a dirty tile, while a pixel inside
+// a bare-grass cell chars it on the server AND ships exactly that tile.
+TEST(NetTransportInProcess,
+     game_server_folds_a_damage_tile_event_into_the_snapshot)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    // An ordinary level state: the corner cell is bare, undecorated grass,
+    // so a damage event that resolves to cell (0, 0) would char it.
+    GameWorld& server_world = fixture.server_world();
+    ASSERT_TRUE(server_world.grid.valid());
+    server_world.grid.data[0] = PIX_GRASS1;
+    PixieData& corner_decor = server_world.decor_for_floor(0);
+    if (corner_decor.valid())
+        corner_decor.data[0] = DECOR_NONE;
+    ASSERT_EQ(PIX_GRASS1, read_grid_tile(server_world, 0, 0));
+
+    const auto broadcast_damage = [&](short xpix, short ypix) {
+        fixture.with_server_context([&] {
+            fixture.server_events().push(
+                og::sim::EventKind::DamageTile,
+                static_cast<std::uint32_t>(static_cast<std::uint16_t>(xpix)),
+                static_cast<std::uint32_t>(static_cast<std::uint16_t>(ypix)));
+            // A real step: the tick's delta snapshot is captured first and
+            // the drained DamageTile event is folded into it afterwards.
+            fixture.server().step();
+        });
+        const std::vector<og::sim::TypedReceivedMessage> messages =
+            fixture.client_transport(0).poll_typed();
+        const auto snapshot_it = std::find_if(
+            messages.begin(),
+            messages.end(),
+            [](const og::sim::TypedReceivedMessage& message) {
+                return message.kind ==
+                           og::sim::TypedReceivedMessageKind::DeltaSnapshot &&
+                    message.snapshot != nullptr;
+            });
+        EXPECT_NE(messages.end(), snapshot_it) << "the step must deliver a delta snapshot";
+        return snapshot_it == messages.end()
+                   ? og::sim::WorldSnapshot{}
+                   : *snapshot_it->snapshot;
+    };
+
+    // Control first: off-grid pixel (-1, -1) leaves the corner grass intact
+    // and ships no tile.
+    const og::sim::WorldSnapshot off_grid = broadcast_damage(-1, -1);
+    EXPECT_EQ(PIX_GRASS1, read_grid_tile(server_world, 0, 0))
+        << "an off-grid damage pixel must not char cell (0, 0)";
+    EXPECT_FALSE(off_grid.grid_full_resend);
+    EXPECT_TRUE(off_grid.grid_dirty_tiles.empty())
+        << "an off-grid damage pixel must ship no grid tile";
+
+    // The real event: a pixel inside a bare-grass cell chars it and ships it.
+    const auto [tile_x, tile_y] = find_damageable_grid_tile(server_world);
+    const og::sim::WorldSnapshot on_grid = broadcast_damage(
+        static_cast<short>(tile_x * GRID_SIZE),
+        static_cast<short>(tile_y * GRID_SIZE));
+    EXPECT_EQ(PIX_GRASS1_DAMAGED, read_grid_tile(server_world, tile_x, tile_y))
+        << "the authoritative server cell must read charred grass";
+    EXPECT_FALSE(on_grid.grid_full_resend);
+    EXPECT_TRUE(on_grid.grid_dirty);
+    ASSERT_EQ(1u, on_grid.grid_dirty_tiles.size())
+        << "exactly the damaged tile is folded into the snapshot";
+    EXPECT_EQ(tile_x, on_grid.grid_dirty_tiles[0].x);
+    EXPECT_EQ(tile_y, on_grid.grid_dirty_tiles[0].y);
+    EXPECT_EQ(PIX_GRASS1_DAMAGED, on_grid.grid_dirty_tiles[0].value);
+}
+
 TEST(NetTransportInProcess, validating_mode_roundtrips_all_typed_messages)
 {
     const auto pair = og::sim::InProcessTransport::create_linked_pair(
