@@ -868,10 +868,13 @@ TEST(CursesAppProcess, resize_landing_before_the_blocking_poll_still_redraws)
             const int getregs_errno = errno;
             // Parked on the interrupted blocking poll: syscall 7 (poll), its
             // return still -ERESTART_RESTARTBLOCK, its timeout argument -1.
+            // The timeout is an int, so only rdx's low 32 bits are the
+            // argument: the dev box's C library sign-extends it into the
+            // register, GitHub's runner zero-extends it (rdx 4294967295).
             const bool parked_in_poll =
                 got == 0 && regs.orig_rax == 7 &&
                 static_cast<long long>(regs.rax) == -516 &&
-                static_cast<long long>(regs.rdx) == -1;
+                (regs.rdx & 0xffffffffULL) == 0xffffffffULL;
             if (!parked_in_poll)
                 detach();
             ASSERT_TRUE(parked_in_poll)
