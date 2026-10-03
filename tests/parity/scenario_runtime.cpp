@@ -192,12 +192,12 @@ void cycle_next_character(GameWorld& world,
                           ScenarioInputDriver& driver,
                           walker* entry_control)
 {
-    // The SwitchChar selection rule lives once, in the product
-    // (sim_switch_control); `entry_control` is the control this tick began
-    // with, the product's `oldcontrol` anchor. Seat 0, Shift held = reverse.
-    // The result is not claimed here: the next tick's claim_control claims
-    // it, which is the product's timing (sim_process_player_input claims at
-    // the top of its next call).
+    // The SwitchChar selection and claim rules live once, in the game
+    // (sim_switch_control, sim_claim_control); `entry_control` is the control
+    // this tick began with, the game's `oldcontrol` anchor. Seat 0, Shift
+    // held = reverse. The selected hero (or the fallback body) is claimed in
+    // this same tick, as the original game's continuous_input() and the
+    // current game's sim_process_player_input both do.
     walker* old = driver.control;
     if (old == nullptr) return;
 
@@ -205,11 +205,13 @@ void cycle_next_character(GameWorld& world,
                                       spec.player_team, 0,
                                       held(driver.held_mask, K_SHIFT));
     driver.control = next != nullptr ? next : old;
+    if (driver.control->user() == -1)
+        sim_claim_control(world, *driver.control, 0);
 }
 
 void cycle_special(walker* control)
 {
-    // The cycling rule itself lives once, in the product
+    // The cycling rule itself lives once, in the game
     // (sim_advance_current_special); the null guards are the harness's own
     // preconditions, and the press edge is detected by the caller.
     if (control && control->stats())
@@ -252,9 +254,9 @@ void apply_inputs_at_tick(GameWorld& world,
     if (held(pressed, K_SWITCH))
     {
         cycle_next_character(world, spec, driver, entry_control);
-        // The product's switch tick: the special switch still applies to the
-        // new, unclaimed control, then sim_process_player_input returns before
-        // shifter, special, walk or fire (control->user() != player_num).
+        // A control the claim policy refused stays unclaimed: the game then
+        // applies the special switch and returns before shifter, special,
+        // walk or fire (control->user() != player_num).
         if (driver.control->user() != 0)
         {
             if (held(pressed, K_SPECIAL_SWITCH))
