@@ -491,8 +491,10 @@ TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
     }
     ASSERT_EQ(1, switch_cues);
 
-    // Reverse (Shift) cycle honors the same filter.
+    // Reverse (Shift) cycle honors the same filter. The last switch of the
+    // loop above claimed C in its own call, so release C again.
     c->set_dead(0);
+    c->set_user(-1);
     a->set_user(0);
     control = a;
     input.clear();
@@ -765,11 +767,13 @@ TEST(SimInputUnit, sim_control_owner_locked_switch_char_skips_foreign_hero)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     process(fx, input, control, 0, debounce);
     ASSERT_EQ(foreign, control) << "legacy shared pool takes the foreign hero";
+    ASSERT_EQ(0, foreign->user()) << "the switch call claims the new hero";
 
-    // Restore the pre-switch state (the cycle stamps the new user only on
-    // the NEXT tick, so only own's released tag needs resetting).
+    // Restore the pre-switch state: the switch released own and claimed
+    // foreign in the same call, so both tags need resetting.
     control = own;
     own->set_user(0);
+    foreign->set_user(-1);
 
     // Owner-locked: the same press skips the foreign hero onto the
     // same-machine one, and the foreign hero is never stamped.

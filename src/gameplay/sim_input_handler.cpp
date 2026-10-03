@@ -221,6 +221,16 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
     return sim_cycle_next_character(level.oblist, anchor, reverse, filter);
 }
 
+bool sim_claim_control(GameWorld& level, walker& control, short player_num)
+{
+    if (!og::sim::control_claim_allowed(level, &control, player_num))
+        return false;
+    control.set_act_type(ACT_CONTROL);
+    control.set_user(static_cast<signed char>(player_num));
+    control.stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
+    return true;
+}
+
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
@@ -243,13 +253,7 @@ SimInputResult sim_process_player_input(
     // --- Control setup (§4.4 per-tick claim) ---
     if (control && control->user() == -1)
     {
-        if (og::sim::control_claim_allowed(level, control, player_num))
-        {
-            control->set_act_type(ACT_CONTROL);
-            control->set_user(static_cast<signed char>(player_num));
-            control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
-        }
-        else
+        if (!sim_claim_control(level, *control, player_num))
         {
             // A supplied control the policy refuses is treated as no control
             // at all: the seat takes the same §4.4 site-2 verdict (Follow /
@@ -314,6 +318,14 @@ SimInputResult sim_process_player_input(
 
         result.control_hp_changed = true;
         result.control_hp = control->stats()->hitpoints();
+
+        // Claim the selected hero in this same call, as the original game's
+        // continuous_input() does right after input() (view.cpp:887-892): the
+        // new hero acts under the seat's keys on the switch tick instead of
+        // taking one more AI act. The fallback body, which sim_switch_control
+        // released, is re-claimed here too.
+        if (control->user() == -1)
+            sim_claim_control(level, *control, player_num);
     }
 
     // --- Switch special ---
