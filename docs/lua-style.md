@@ -91,10 +91,21 @@ belongs in the binding's C++ documentation instead.
 
 ## S5 — Arithmetic shims
 
-The arithmetic shims (`og.div`/`og.mod`, `og.f*`, the narrowing helpers) are
-cookbook R1–R3, which are core pack only: they make core-pack Lua match the
-classic integer/float semantics the parity goldens record; the engine does
-not require them of mods. Within the core pack, the cookbook decides where a
+The arithmetic shims (`og.div`/`og.mod`, `og.f*`, the narrowing helpers)
+are cookbook R1–R3. R1–R3 are core pack only. They make core-pack Lua
+reproduce the classic C++ results the parity goldens record; mods do not
+need them to stay in sync across peers. A mod's plain Lua arithmetic
+gives the same result on every peer: every build compiles the same pinned
+Lua 5.4.8; integers are 64-bit on every platform (the browser build
+included), so integer `+ - * // %` is exact, wrapping on overflow; `/`
+always divides as floats; floats are IEEE doubles, and every float
+operation rounds the same way on every peer. Two results are not promised.
+`^` calls the C library's `pow` (only an exponent of exactly 2 is done as
+a multiply), so its last bit can differ between platforms; and a NaN's
+sign and payload are not fixed by IEEE 754 and can differ between
+platforms, which shows when a float is turned into text or packed with
+`string.pack`. The sandbox has no `sqrt`, `sin`, `exp` or `log` (R7).
+Within the core pack, the cookbook decides where a
 shim is required. Drop one only when audited
 operand ranges prove the plain operation identical (float-representable
 inputs and result for a removed `og.f*`; C and Lua division/remainder
