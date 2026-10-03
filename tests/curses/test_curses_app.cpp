@@ -593,11 +593,31 @@ std::vector<std::string> read_proc_syscall(pid_t child, int* open_errno)
 // pins the EINTR arm). x86_64 glibc calls poll (7) and the third
 // argument is the -1 timeout; aarch64 has no poll syscall and glibc routes
 // it to ppoll (73) with a NULL timespec, so only the number is checked there.
+// The timeout is an int (-1) handed to the kernel in a 64-bit register, and
+// which upper half the register carries depends on how the C library's poll
+// wrapper loaded it: the dev box's toolchain sign-extends it (the field
+// reads 0xffffffffffffffff), GitHub's ubuntu runner zero-extends it
+// (0xffffffff). The kernel reads the low 32 bits either way, so the oracle
+// does too. (PR #345: the first CI run failed both resize pins on exactly
+// this difference while the child sat in the right poll.)
+bool poll_timeout_is_minus_one(const std::string& field)
+{
+    if (field.size() < 3 || field[0] != '0' || (field[1] != 'x' && field[1] != 'X'))
+        return false;
+    unsigned long long value = 0;
+    try {
+        value = std::stoull(field.substr(2), nullptr, 16);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return (value & 0xffffffffULL) == 0xffffffffULL;
+}
+
 bool in_blocking_poll(const std::vector<std::string>& fields)
 {
 #if defined(__x86_64__)
     return fields.size() >= 4 && fields[0] == "7" &&
-           fields[3] == "0xffffffffffffffff";
+           poll_timeout_is_minus_one(fields[3]);
 #else
     return !fields.empty() && fields[0] == "73";
 #endif
