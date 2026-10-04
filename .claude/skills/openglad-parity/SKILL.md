@@ -7,7 +7,9 @@ description: The gameplay parity harness (og_test_parity), master-companion gold
 
 `og_test_parity` is the determinism gate: each scenario replays a scripted
 sim headlessly and byte-compares the state dump against a golden captured
-from the pre-networking master companion. The sim IS deterministic across
+from the old game (branch `parity-companion`, the pre-networking e761 code
+plus recorder and ported fixes), the single source of every golden; see
+"Goldens and the ledger". The sim IS deterministic across
 clean rebuilds — apparent non-determinism is always a stale build or a
 different config sneaking in. Master itself drew AI path-recheck cadence
 and elf projectile spread from libc `rand()`; the harness reproduces that
@@ -34,7 +36,8 @@ against a non-deterministic reference.
   that categorises the first divergence for a human and decides nothing.
   The smoke tool exits **3 and writes nothing** when the level did not load
   (broken campaign mount / PhysFS search path) — it used to exit 0 with a
-  valid-looking empty-arena dump that disagreed with every golden. It also
+  valid-looking empty-arena dump that disagreed with every golden. A
+  nonzero exit means the dump never happened, not that the row moved. It also
   points `OPENGLAD_CONFIG_DIR` at a private temp dir when the variable is
   unset, so a capture never touches `~/.openglad`.
 - **Stale-table trap** (cost hours): `kScenarios` is `inline constexpr` in
@@ -48,18 +51,24 @@ against a non-deterministic reference.
   mounted rewrites `cfg/openglad.yaml` via the cwd fallback; restore it
   before trusting later results.
 
-## The master companion
+## The old game (branch `parity-companion`)
 
-Branch `parity-companion` (pushed to origin) is the master-era tree plus
-recorder-only commits; its worktree conventionally lives at
-`../openglad-master` (`git worktree prune && git worktree add
-../openglad-master parity-companion`). It is e761-era code that needs SDL2
-and has no CMake build. Rebuild the companion dumper from any cwd with
+The old game is the branch `parity-companion`, pushed to
+`origin/parity-companion`: the e761 tree rebuilt as `a2d9d470`, plus two
+kinds of commit. Recorder-only commits touch `tools/parity_*` and nothing
+else (table mirrors, the golden capture tool `parity_dump_master`). Behaviour
+ports carry a deliberate current-game fix into the old game's C++, one fix
+per commit; the message names the current-game commit it mirrors, and the
+ledger's "Ported fixes" section has a row for it. Its worktree conventionally
+lives at `../openglad-master` (`git fetch origin parity-companion && git
+worktree prune && git worktree add ../openglad-master parity-companion`). It
+is e761-era code that needs SDL2 and has no CMake build. Rebuild the golden
+capture tool from any cwd with
 
     nix develop /home/yans/code/openglad -c bash /home/yans/code/openglad-master/scripts/parity/build_parity_dump_master.sh
 
 (generic: `nix develop <openglad checkout> -c bash
-<companion>/scripts/parity/build_parity_dump_master.sh`). The checkout you
+<old-game worktree>/scripts/parity/build_parity_dump_master.sh`). The checkout you
 name must carry this flake.nix; the main checkout does once master has it,
 and a checkout at an older commit runs the old shell, where the script
 exits 1. The dev shell carries `sdl2-compat` and `SDL2_mixer` from the
@@ -77,58 +86,76 @@ again without a rebuild. To keep them across a garbage collection, run
 once. The profile link is the root, so keep `<dir>` outside any directory
 that gets wiped.
 
-- `tests/parity/scenario_table.h` and the companion's
+- `tests/parity/scenario_table.h` and the old game's
   `tools/parity_scenario_table.h` must be **byte-identical** (`cmp`)
-  before any capture. Commit both trees, companion first.
-- The companion build does not recompile on a header-only table change
+  before any capture. Commit both trees, the old game first.
+- The old game's build does not recompile on a header-only table change
   (source-newer-than-object guard) — delete the dumper's `.o` first or a
   new id fails with "unknown scenario".
 - If a behavior depends on a render-driven field (the `drawcycle` lesson:
-  render-only counters FREEZE in a headless sim), the companion must
+  render-only counters FREEZE in a headless sim), the old game must
   replicate the render-loop bump as a cosmetic override — otherwise the
   golden encodes a frozen artifact and goes green while the real game
   misbehaves. Never just skip or branch-internal such a scenario.
-- Capturing the same ids into two directories before and after a
-  companion edit and `diff -rq`-ing them is the cheap proof that a
-  companion change moves nothing.
-- Sync status: the two tables were made byte-identical again on
-  2026-09-08 in three recorder-only companion commits — `e9e1f051` for the
-  #283 golden byte-compare wave (`--list` 221, four control captures
-  `diff -rq`-identical before and after), `d49b16c9` for the #228
-  `bomb_l10_vs_cleric_l9_scen99` row, after which `--list` prints **222**,
-  and `3f6e3cbd` for the review pass's fact retunes (five control captures
-  identical before and after; facts and comments never reach the dumper).
-  The tables are byte-identical again at companion `da657414`
-  (2026-09-15, PR #292 area H: 17 orphan family pins attached, three pin
-  definitions deleted, nine fact retunes, anchored source citations, and
-  the new `FactKind::WalkerOfOrderFamilyCount` enumerator + `pred::`
-  constructor mirrored into `tools/fact_predicate.h`) — `--list` still
-  prints **222** and three control captures are `diff -rq`-identical
-  before and after. The branch table compiles in the companion unchanged.
-  The companion header's FactKind ordinals sit one behind the branch's
-  from `WalkerOnFloor` onward (a branch-only multi-floor kind the
-  companion has no concept for and no table row names); that is harmless
-  because the companion never evaluates a FactKind — it only declares the
-  ones the shared table constructs.
+- Capturing every id into two directories before and after an old-game
+  commit and `diff -rq`-ing them is the proof of what that commit moves:
+  nothing for a recorder-only commit, exactly the ported rows for a
+  behaviour port.
+- Sync history (which old-game commit mirrored which table change, and
+  the control captures that proved each mirror moved nothing) lives in
+  `tests/parity/golden/DRIFT_LEDGER.md`, not here. The old game's
+  `tools/fact_predicate.h` FactKind ordinals sit one behind the current
+  game's from `WalkerOnFloor` onward (a multi-floor kind the old game has
+  no concept for and no table row names); that is harmless because the old
+  game never evaluates a FactKind — it only declares the ones the shared
+  table constructs, which is why the byte-identical table compiles there
+  at all.
 
-## Goldens and the drift ledger
+## Goldens and the ledger
 
-The SemanticParity arm byte-compares the canonical branch dump against the
-golden; there is no waiver — a row that cannot match is re-blessed with a
-ledger row or the branch is fixed.
+The rule (Yan, 2026-10-04): every parity golden is a capture from the old
+game, made by the golden capture tool
+(`scripts/parity/capture_master_golden.sh`), and no golden is ever captured
+from the current game. The SemanticParity arm byte-compares the canonical
+current-game dump against that golden; there is no waiver.
 
-`tests/parity/golden/DRIFT_LEDGER.md` is the authoritative record of every
-golden that deliberately diverges from the raw companion capture:
-master-era divergences root-caused to specific fixes, and **intentional
-gameplay changes whose goldens were captured from the fixed branch, pinned
-to the fix SHA**. A companion recapture must NEVER be pasted over a
-ledger-blessed golden — the teeth floor can sit inside the cross-arm
-drift. When adjudicating "does the branch match main", match the PR's
-merge base, not the ancient companion: capture companion → diff branch →
-on mismatch reproduce at the merge base → branch==merge-base means bless
-the branch dump + add a ledger row; branch!=merge-base means PR
-regression, never blessed. Any deliberate gameplay fix that moves goldens
-also gets a `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md` row.
+- **A deliberate departure from classic behaviour** is four steps: fix the
+  current game; port the same fix into the old game's C++, one fix per
+  commit, message naming the current-game commit; capture every id from
+  the old game before and after the port (`--all --out-dir`), `diff -rq`
+  the two, and `cmp` each moved capture against the current game's dump;
+  commit the recaptured goldens. A port that does not reach byte identity
+  is reported with its `diff_dumps.py` output, never forced or blessed.
+- `tests/parity/golden/DRIFT_LEDGER.md` records the ports ("Ported fixes")
+  and lists, under "Open", the goldens that predate the rule and are still
+  current-game captures. That list may only shrink: a row leaves it when
+  its fix is ported and the recapture `cmp`s equal. Never paste an old-game
+  capture over an Open row without the port; the row's facts can sit
+  inside the cross-arm drift.
+- **Merge-base adjudication is a diagnostic, never a source.** Reproducing
+  a row at the PR's merge base tells you whether a divergence is yours
+  (`branch == merge base`: it predates the PR; `branch != merge base`: a PR
+  regression). It never makes the current-game dump a golden.
+- Any deliberate gameplay fix that moves goldens also gets a
+  `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md` row.
+
+## How CI gets the old game
+
+No workflow fetches, clones or builds `parity-companion` (all eight were
+read at `83c3f1c0`: claude-code-review, claude, coverage, fuzz,
+parity-canary, release, test, wasm-e2e). `parity-canary.yml` builds
+`og_test_parity parity_runner_smoke og_test_level` and fetches only the
+PR's base ref for `--touched`; `test.yml` says CI must not re-capture
+goldens. CI sees the old game only through the committed goldens' bytes,
+which `og_test_parity` byte-compares (`tests/parity/golden_compare.h`). No
+old-game sha is pinned anywhere in CI. So "CI uses the ported old game"
+means two things, and both are the PR author's job:
+
+1. the committed goldens are captures from the old-game commit the ledger
+   names (a full `--all --out-dir` capture `cmp`s equal, Open rows aside);
+2. `origin/parity-companion` is pushed to that commit with the PR. A
+   missed push is invisible to every lane: CI stays green, and nobody can
+   reproduce the goldens from origin.
 
 ## Adding a scenario (the coordinated edits)
 
@@ -136,12 +163,21 @@ also gets a `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md` row.
    `kFacts_*`, `kMut_*`, and the `ScenarioSpec` row.
 2. `tests/parity/test_parity_scenarios.cpp`: `OG_PARITY_TEST(<id>)` —
    without it the per-name gtest does not exist.
-3. Mirror the table to the companion (byte-identical), rebuild
-   `parity_dump_master`, capture via
-   `scripts/parity/capture_master_golden.sh <id>`.
+3. Mirror the table to the old game (byte-identical, a recorder-only
+   commit), rebuild `parity_dump_master`, capture via
+   `MASTER_WORKTREE=<old-game worktree> OG_PARITY_SCEN99_FSS=<repo>/temp/scen/scen99.fss scripts/parity/capture_master_golden.sh <id>`.
+   Export both from a `.claude/worktrees/*` checkout: `MASTER_WORKTREE`
+   defaults to `../openglad-master` relative to the repo root, and an
+   unreadable or unset fixture variable makes the tool fall back to other
+   scen99 bytes. Never run the script with no ids and no `--out-dir`: that
+   is `--all` into `tests/parity/golden`, over the Open rows too.
 4. `tests/parity/scenario_facts_generated.json` is regenerated by ctest
    (write_scenario_facts_json) — commit it.
 5. Prove the mutation flips (see canary below) before calling it done.
+
+Do not mark a row `is_branch_internal` to get it off the old game: that
+switches `og_test_parity` to the determinism double-run and stops
+evaluating the row's predicates, which costs the row its teeth.
 
 Sim mechanics that constrain scenario design: SpawnSpec x/y are RAW
 PIXELS (GRID_SIZE is 16); hp predicates are in cents (hp×100); spawns

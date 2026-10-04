@@ -1,21 +1,42 @@
 #!/usr/bin/env bash
-# Capture master-side parity golden dumps for every master-comparable scenario.
+# Capture parity golden dumps from the old game.
 #
-# Drives the Phase 05 master companion binary
-# (../openglad-master/build/ci-test/parity_dump_master, built on branch
-# parity-companion in the sibling worktree) once per scenario, writes the
-# canonical JSON to tests/parity/golden/<id>.json, and validates each dump
-# against schema v1 via validate_schema.py.
+# This script is the ONLY way a parity golden is produced. Every golden is a
+# capture from the old game (branch parity-companion), never a dump of the
+# current game; tests/parity/golden/DRIFT_LEDGER.md states the rule and lists
+# the goldens that still predate it.
+#
+# Drives the golden capture tool parity_dump_master, built from the old game's
+# worktree (default ../openglad-master/build/ci-test/parity_dump_master, made by
+# that worktree's scripts/parity/build_parity_dump_master.sh), once per
+# scenario, writes the canonical JSON to <out-dir>/<id>.json, and validates each
+# dump against schema v1 via validate_schema.py.
 #
 # Usage:
-#   scripts/parity/capture_master_golden.sh --all
+#   scripts/parity/capture_master_golden.sh --all --out-dir <scratch>
 #   scripts/parity/capture_master_golden.sh <id>...
 #   scripts/parity/capture_master_golden.sh --all --no-write --diff
 #
+# A bare invocation (no ids and no --out-dir) means --all INTO
+# tests/parity/golden: it overwrites every golden, including the rows the
+# ledger lists under "Open", which are not old-game captures yet. Pass ids, or
+# capture into --out-dir and compare with cmp. --diff is not a proof: it falls
+# back to a lifetime-normalised "semantic" compare.
+#
 # Environment overrides:
-#   MASTER_WORKTREE   path to the master worktree (default: ../openglad-master)
+#   MASTER_WORKTREE   path to the old game's worktree (default: <REPO_ROOT>/../openglad-master).
+#                     From a .claude/worktrees/* checkout that default does not
+#                     exist; export it.
 #   MASTER_BINARY     path to parity_dump_master   (default: $MASTER_WORKTREE/build/ci-test/parity_dump_master)
 #   GOLDEN_DIR        destination directory       (default: tests/parity/golden)
+#
+# Read by the golden capture tool, not by this script:
+#   OG_PARITY_SCEN99_FSS  the temp/scen/scen99.fss fixture the scen99 rows load.
+#                     When it is set but unreadable the tool prints one stderr
+#                     line ("using embedded fixture") and falls back; when it is
+#                     unset the tool tries $OG_PARITY_WORKSPACE_ROOT/temp/scen,
+#                     then ./temp/scen, then its embedded bytes, silently.
+#                     Export it, and check the capture log.
 
 set -euo pipefail
 

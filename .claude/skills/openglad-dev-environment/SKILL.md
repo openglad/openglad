@@ -214,9 +214,10 @@ the example. Re-run them on a new box; never carry the numbers over.
 - **gcovr is in the nix dev shell**, so local coverage runs need no separate
   install. CI's Ubuntu runner still installs gcovr with pip before configuring
   the coverage preset.
-- Parity companion: `git worktree add ../openglad-master
-  parity-companion` and build `parity_dump_master` there with the
-  one-liner in openglad-parity (`nix develop <checkout carrying this
+- The old game (branch `parity-companion`, the source of every parity
+  golden): `git fetch origin parity-companion`, then `git worktree add
+  ../openglad-master parity-companion` and build `parity_dump_master` there
+  with the one-liner in openglad-parity (`nix develop <checkout carrying this
   flake.nix> -c bash <companion>/scripts/parity/build_parity_dump_master.sh`).
 - `temp/scen/*.fss` fixtures regenerate via a full ctest run
   (og_test_level writes them).

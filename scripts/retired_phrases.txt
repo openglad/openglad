@@ -85,3 +85,5 @@ zone_pager_(prev|next)_[01]	interact("zone_pager_next_0")	the docket pages on it
 pager.s gutter carries	the pager's gutter carries the p/N count	the window count is the MORE pager ROW own note (PR #307 round 4)
 level rows and GO wear the GO green	level rows and GO wear the GO green	inside the SETUP wizard green is GO alone: ARENA level rows are plain (PR #307 round 4). Classic campaigns keep the green, so a sentence about THEM must say so
 find_far_foe	The engine calls find_far_foe to acquire a target.	issue #293 renamed the native full-list nearest-distance scan to find_nearest_foe; dated design snapshots annotate historical references.
+[Bb]ranch-sourced|BRANCH-SOURCED	The row is BRANCH-SOURCED and has a ledger row.	since 2026-10-04 every golden is an old-game capture (DRIFT_LEDGER.md header); a departure is ported into the old game, never captured from the current game
+captured from the (fixed )?branch	Intentional changes are captured from the fixed branch.	since 2026-10-04 every golden is an old-game capture (DRIFT_LEDGER.md header); a departure is ported into the old game, never captured from the current game
