@@ -73,9 +73,10 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
             w->change_floor(static_cast<short>(s.floor));
         // Leave user_ at the SimEntity default (-1, NPC). The harness never
         // calls sim_process_player_input: claim_control (below) takes
-        // ownership on the first apply_inputs_at_tick, setting
-        // act_type = ACT_CONTROL, user_ = 0 and clearing the command queue
-        // (the companion dumper's claim, which the goldens encode).
+        // ownership on the first apply_inputs_at_tick through the game's
+        // sim_claim_control, the one home of the claim (ACT_CONTROL,
+        // user_ = 0, clear_command_for_control_switch), which the golden
+        // capture tool's claim_control mirrors.
         if (s.default_weapon != 0)
             w->set_default_weapon(s.default_weapon);
         if (s.current_weapon != 0)
@@ -173,12 +174,7 @@ void claim_control(GameWorld& world,
     if (driver.control == nullptr)
         return;
     if (driver.control->user() == -1)
-    {
-        driver.control->set_act_type(ACT_CONTROL);
-        driver.control->set_user(0);
-        if (driver.control->stats() != nullptr)
-            driver.control->stats()->clear_command();
-    }
+        sim_claim_control(world, *driver.control, 0);
     driver.initialised = true;
 }
 
