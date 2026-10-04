@@ -297,7 +297,7 @@ void claim_control(screen& game, InputDriver& driver,
         driver.control->set_act_type(ACT_CONTROL);
         driver.control->user = 0;
         if (driver.control->stats != nullptr)
-            driver.control->stats->clear_command();
+            driver.control->stats->clear_command_for_control_switch();
     }
     if (game.viewob[0] != nullptr)
     {

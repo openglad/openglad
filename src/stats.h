@@ -63,6 +63,7 @@ class statistics
 		void force_command(short whatcommand, short iterations, short info1, short info2);
 		bool has_commands();
 		void clear_command();
+		void clear_command_for_control_switch();
 		short do_command();
 		void hit_response(walker * who);
 		void yell_for_help(walker *foe);  // yell and run away
@@ -118,6 +119,7 @@ class command
 		short commandcount;
 		short com1;
 		short com2;
+		bool forced;
 };
 
 #endif

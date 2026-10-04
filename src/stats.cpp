@@ -91,6 +91,20 @@ void statistics::clear_command()
 	controller->leader = NULL;
 }
 
+void statistics::clear_command_for_control_switch()
+{
+	// Keep the leading run of externally forced walk commands (fright,
+	// knockback, flee); erase everything queued behind it.
+	auto keep_end = commands.begin();
+	while (keep_end != commands.end() && keep_end->forced
+	       && keep_end->commandtype == COMMAND_WALK)
+		++keep_end;
+	commands.erase(keep_end, commands.end());
+	// Make sure our weapon type is restored to normal ..
+	controller->current_weapon = controller->default_weapon;
+	controller->leader = NULL;
+}
+
 void statistics::add_command(short whatcommand, short iterations,
                              short info1, short info2)
 {
@@ -150,6 +164,7 @@ void statistics::force_command(short whatcommand, short iterations,
 	commands.front().com2 = info2;
 	commands.front().commandtype = whatcommand;
 	commands.front().commandcount = iterations;
+	commands.front().forced = true;
 }
 
 bool statistics::has_commands()
@@ -1159,4 +1174,5 @@ command::command()
 	commandtype = 0;
 	commandcount = 0;
 	com1 = com2 = 0;
+	forced = false;
 }

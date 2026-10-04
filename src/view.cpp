@@ -383,7 +383,7 @@ short viewscreen::input(const SDL_Event& event)
 	{
 		control->set_act_type(ACT_CONTROL);
 		control->user = (char) mynum;
-		control->stats->clear_command();
+		control->stats->clear_command_for_control_switch();
 	}
     // TODO: Factor out this code, which is duplicated in continuous_input()
 	if (!control || control->dead)
@@ -839,7 +839,7 @@ short viewscreen::input(const SDL_Event& event)
 
 	// if we changed control characters
 	if (control != oldcontrol)
-		control->stats->clear_command();
+		control->stats->clear_command_for_control_switch();
 
 	// If we're frozen ..
 	if (control->dead || control->stats->frozen_delay)
@@ -888,7 +888,7 @@ short viewscreen::continuous_input()
 	{
 		control->set_act_type(ACT_CONTROL);
 		control->user = (char) mynum;
-		control->stats->clear_command();
+		control->stats->clear_command_for_control_switch();
 	}
 
 	if (!control || control->dead)
@@ -986,7 +986,7 @@ short viewscreen::continuous_input()
 
 	// if we changed control characters
 	if (control != oldcontrol)
-		control->stats->clear_command();
+		control->stats->clear_command_for_control_switch();
 
 	// If we're frozen ..
 	if (control->stats->frozen_delay)
