@@ -583,11 +583,8 @@ void statistics::hit_response(walker  *who)
 				threshold = (5 * max_hitpoints)/10; // then flee at 50%
 			else                   // we're an enemy, so be braver :>
 				threshold = (5 * max_hitpoints)/16; // flee at 5/16%
-			if ( (hitpoints < threshold)
-			        && !controller->yo_delay) // then yell for help & run ..
-			{
-				yell_for_help(foe);
-			} // end of yell for help
+			// Retarget before yelling: clearing the old commands afterward would
+			// discard the escape walk that yell_for_help just queued.
 			if (controller->foe != foe) // we're attacked by a new enemy
 			{
 				// Clear old commands ..
@@ -597,6 +594,11 @@ void statistics::hit_response(walker  *who)
 				foe->foe = controller;
 				last_distance = current_distance = 32000;
 			}
+			if ( (hitpoints < threshold)
+			        && !controller->yo_delay) // then yell for help & run ..
+			{
+				yell_for_help(foe);
+			} // end of yell for help
 			break;
 	}
 

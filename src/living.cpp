@@ -643,7 +643,7 @@ short living::check_special()
 				myscreen->find_friends_in_range(myscreen->level_data.oblist,
 				            60, &howmany, this);
 
-				if (howmany > 1) // other than ourselves?
+				if (howmany > 0) // other than ourselves?
 				{
 					shifter_down = 0; // we're HEALING
 					return 1;

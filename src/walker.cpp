@@ -2608,7 +2608,7 @@ short walker::special()
 						          60, &howmany, this);
                         
 						didheal = 0;
-						if (howmany > 1) // some friends here ..
+						if (howmany > 0) // some friends here ..
 						{
 						    for(auto e = newlist.begin(); e != newlist.end(); e++)
 							{
@@ -3004,6 +3004,7 @@ short walker::special()
 						myscreen->viewob[0]->redraw();
 						myscreen->viewob[0]->refresh();
 						//myscreen->buffer_to_screen(0, 0, 320, 200);
+						bonus_rounds += generic;
 						std::list<walker*> newlist = myscreen->find_friends_in_range(
 						              myscreen->level_data.oblist, 30000, &howmany, this);
 						
@@ -3815,7 +3816,7 @@ short walker::special()
                         std::list<walker*> newlist = myscreen->find_friends_in_range(myscreen->level_data.oblist,
                                   60, &howmany, this);
                         didheal = 0;
-                        if (howmany > 1) // some friends here ..
+                        if (howmany > 0) // some friends here ..
                         {
                             //Log("Found %d friends\n", howmany-1);
                             for(auto e = newlist.begin(); e != newlist.end(); e++)

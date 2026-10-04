@@ -1303,7 +1303,7 @@ std::list<walker*> screen::find_friends_in_range(std::list<walker*>& somelist, S
 	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
 	    walker* w = *e;
-		if (w && !w->dead && w->query_order() == ORDER_LIVING
+		if (w && w != ob && !w->dead && w->query_order() == ORDER_LIVING
 		        && ( ob->is_friendly(w) )
 		   )
 		{
