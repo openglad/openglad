@@ -139,7 +139,7 @@ and the parity test driver claims through the same function.
 
 ## Open: goldens that are not yet old-game captures
 
-70 of 223 at `ab0a7d2a` / this branch, measured by `cmp` of a full old-game capture; this list may only
+Tracked in #349. 70 of 223 at `ab0a7d2a` / this branch, measured by `cmp` of a full old-game capture; this list may only
 shrink; a row leaves it when its fix is ported and it `cmp`s equal. Every row here predates the 2026-10-04 rule.
 
 The evidence cells keep the wording of the adjudication that blessed each row, where "branch" is the current game
