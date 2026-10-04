@@ -712,13 +712,16 @@ short screen::act()
 				viewob[0]->set_display_text(obmessage, 10);
 				printed_time = 1;
 			}
-			if (ob && !ob->dead &&
-			        ( (    (ob->query_order() != ORDER_LIVING)
-			               && (ob->query_order() != ORDER_GENERATOR)
-			          ) || (ob->team_num == 0) )
-			   )
+			if (ob && !ob->dead)
 			{
-				ob->act();
+				// The act gate is unchanged: frozen enemy livings and
+				// generators still skip their turn. Only the census is
+				// hoisted out of it: a frozen foe is still a foe (#231).
+				const bool may_act = ((ob->query_order() != ORDER_LIVING)
+				                      && (ob->query_order() != ORDER_GENERATOR))
+				                     || (ob->team_num == 0);
+				if (may_act)
+					ob->act();
 				if (ob && !ob->dead)
 				{
 					if (!ob->is_friendly_to_team(save_data.my_team) &&
