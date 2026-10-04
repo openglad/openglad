@@ -1331,7 +1331,7 @@ std::list<walker*> screen::find_foe_weapons_in_range(std::list<walker*>& somelis
 	    walker* w = *e;
 		if (w && !w->dead &&
 		        (w->query_order() == ORDER_WEAPON)
-		        && ( ob->is_friendly(w) )
+		        && !( ob->is_friendly(w) )
 		   )
 		{
 			if (ob->distance_to_ob(w) <= range)

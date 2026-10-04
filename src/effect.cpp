@@ -146,7 +146,7 @@ short effect::act()
 			center_on(owner);
 			setworldxy(worldx+xd, worldy+yd);
 			foelist = myscreen->find_foe_weapons_in_range(
-			              myscreen->level_data.oblist, sizex, &temp, this);
+			              myscreen->level_data.weaplist, sizex, &temp, this);
             
 			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
 			{
@@ -261,7 +261,7 @@ short effect::act()
 			center_on(owner);
 			setworldxy(worldx+xd, worldy+yd);
 			foelist = myscreen->find_foe_weapons_in_range(
-			              myscreen->level_data.oblist, sizex*2, &temp, this);
+			              myscreen->level_data.weaplist, sizex*2, &temp, this);
 			              
 			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
 			{
