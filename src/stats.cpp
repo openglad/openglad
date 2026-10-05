@@ -469,10 +469,9 @@ short statistics::do_command()
 						// walkstep(0,0) is a no-op, freezing the clinch
 						// forever; and no swing can land — a weapon always
 						// spawns just OUTSIDE the merged box. Step along our
-						// facing instead: any direction separates (in the
-						// current game; see the interpenetration escape rule
-						// in its obmap.cpp), and curdir keeps the choice
-						// deterministic. No RNG.
+						// facing instead: any direction separates (see the
+						// interpenetration escape rule in obmap.cpp), and
+						// curdir keeps the choice deterministic. No RNG.
 						short stepx = 0, stepy = 0;
 						facing_step_delta((char) controller->curdir,
 						                  stepx, stepy);
