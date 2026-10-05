@@ -3061,6 +3061,11 @@ short walker::special()
 					if (generic > 0)
 					{
 						generic = generic / 15;        // take 7% of remaining magic...
+						// runaway-specials 2.12 (current game: min(spare_mp / 15, 40)):
+						// the per-fireball add binds only above 660 MP; the
+						// lineofsight add/3 below inherits the bound.
+						if (generic > 40)
+							generic = 40;
 						stats->magicpoints -= generic; // and subtract this cost ...
 					}
 					else
