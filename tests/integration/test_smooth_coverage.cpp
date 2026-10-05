@@ -374,16 +374,16 @@ TEST(SmoothCoverage, smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_bra
         ASSERT_EQ((int)PIX_GRASS_DARK_B2, (int)at(grid, cx, cy))
             << "dark grass bottom middle picks grass_dark_bottom[1]";
 
-        // around == 14 (right|down|left) == top middle: the arm does nothing,
-        // so the tile is written with the PIX_GRASS1 the switch started with.
+        // around == 14 (right|down|left) == top middle: one dark variant is
+        // drawn (#301), grass_dark_variants[1] under FixedRandom(1).
         at(grid, cx, cy) = PIX_GRASS_DARK_1;
         at(grid, cx - 1, cy) = PIX_GRASS_DARK_1;
         at(grid, cx + 1, cy) = PIX_GRASS_DARK_1;
         at(grid, cx, cy - 1) = PIX_GRASS1;
         at(grid, cx, cy + 1) = PIX_GRASS_DARK_1;
         (void)s.smooth(cx, cy);
-        ASSERT_EQ((int)PIX_GRASS1, (int)at(grid, cx, cy))
-            << "dark grass top middle falls through to the untouched default";
+        ASSERT_EQ((int)PIX_GRASS_DARK_2, (int)at(grid, cx, cy))
+            << "dark grass top middle picks grass_dark_variants[1]";
 
         // around == 12 (down|left) == top right, with grass to the right.
         at(grid, cx, cy) = PIX_GRASS_DARK_1;

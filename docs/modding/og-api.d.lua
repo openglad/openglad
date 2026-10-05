@@ -28,8 +28,22 @@
 -- Semantics the type system cannot carry (see docs/modding/api-reference.md
 -- and docs/lua-classpacks-design.md §3): handles are dispatch-scoped
 -- (stashing one across dispatches is a script error on next use); og.rand
--- errors on n <= 0; every integer division goes through og.div/og.mod; one
--- og.f* call per float operation; no pairs in the sandbox; a level
+-- errors on n <= 0; og.div/og.mod, og.f*, the narrowing helpers and
+-- og.cosmetic_rand are the core-pack arithmetic toolkit of cookbook R1-R3.
+-- R1-R3 are core pack only. They make core-pack Lua reproduce the classic
+-- C++ results the parity goldens record; mods do not need them to stay in
+-- sync across peers. A mod's plain Lua arithmetic
+-- gives the same result on every peer: every build compiles the same pinned
+-- Lua 5.4.8; integers are 64-bit on every platform (the browser build
+-- included), so integer + - * // % is exact, wrapping on overflow; / always
+-- divides as floats; floats are IEEE doubles, and every float operation
+-- rounds the same way on every peer. Two results are not promised. ^ calls
+-- the C library's pow (only an exponent of exactly 2 is done as a multiply),
+-- so its last bit can differ between platforms; and a NaN's sign and payload
+-- are not fixed by IEEE 754 and can differ between platforms, which shows
+-- when a float is turned into text or packed with string.pack. The sandbox
+-- has no sqrt, sin, exp or log (R7).
+-- No pairs in the sandbox; a level
 -- on_damage hook returns nil (keep) / a number (replace) / false
 -- (cancel), and `return 0` is a zero-damage HIT rather than a cancel --
 -- the engine's hp <= 0 death check still runs after it.
@@ -111,7 +125,7 @@
 ---@field g_update_derived_stats fun(self: og.Walker, entity: og.Walker)
 ---@field g_upgrade_to_level fun(self: og.Walker, new_level: integer, arg3: any?)
 ---@field has_guy fun(self: og.Walker): boolean
----@field heal_clamped fun(self: og.Walker, amount: integer, source: og.Walker?) # walker:heal_clamped(amount[, source]) — fused self-heal with fixed, parity-sensitive ordering.
+---@field heal_clamped fun(self: og.Walker, amount: integer, source: og.Walker?) # walker:heal_clamped(amount[, source]) — fused self-heal with a fixed operation order.
 ---@field hp number # read/write property over s_hitpoints/s_set_hitpoints (write-through, same narrowing)
 ---@field in_act fun(self: og.Walker): boolean
 ---@field invisibility_left fun(self: og.Walker): integer
@@ -672,7 +686,7 @@
 ---@field check_special_ai_distance fun(lv: og.Walker, threshold: integer): boolean
 ---@field clamp fun(v: number, lo: number, hi: number): number # og.clamp(v, lo, hi) — std::clamp: lo when v < lo, else hi when hi < v, else v itself (so ties answer v: math.type(og.clamp(5, 5.0, 6.0)) is 'integer').
 ---@field clear_hud_line fun(slot: integer) # og.clear_hud_line(slot) — reset a HUD line to empty/default.
----@field cosmetic_rand fun(n: integer): integer # og.cosmetic_rand(n): draw from the parity harness's cosmetic libc-rand override when installed (so captured dumps match master's dual-RNG-stream behavior wit...
+---@field cosmetic_rand fun(n: integer): integer # og.cosmetic_rand(n): core-pack-only draw for the classic C++ cosmetic selector sites (path-check cadence, elf spread).
 ---@field current_scenario fun(): integer
 ---@field declare_winner fun(team: integer) # og.declare_winner(team) — convenience win latch: records winner_team, computes winner_is_player (live myguy on the winning team, after the first-arming reviv...
 ---@field div fun(a: integer, b: integer): integer
@@ -689,7 +703,7 @@
 ---@field entity_display_name fun(entity: og.Walker, fallback: string?): string
 ---@field entity_id fun(entity: og.Walker): integer # og.entity_id(handle) → stable sim entity id (0 for untracked).
 ---@field exp_from_action fun(entity: og.Walker, target: og.Walker?, action_name: "attack"|"eat_corpse"|"heal"|"kill"|"protection"|"raise_ghost"|"raise_skeleton"|"resurrect"|"resurrect_penalty"|"turn_undead", value: integer): integer # og.exp_from_action(self, target_or_nil, action_name, value) — the walker-level exp_from_action wrapper the family code calls.
----@field fadd fun(a: number, b: number): number # Each og.f* performs exactly one operation in float precision so deterministic Lua arithmetic keeps the C++ per-operation rounding.
+---@field fadd fun(a: number, b: number): number # Each og.f* performs exactly one operation in float precision, matching the classic C++ per-operation rounding (cookbook R2, core pack only).
 ---@field family fun(order_str: og.OrderName, arg2: table)
 ---@field family_flag fun(order: og.OrderName, fam: integer, flag: "has_returning_weapon"|"is_stationary"|"is_undead"|"leaves_bloodspot"): boolean? # og.family_flag("living", family_byte, flag_name) → descriptor boolean.
 ---@field family_id fun(order_str: og.OrderName, family_str: string): integer? # og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets scripts compare walker:family() against named families).
@@ -708,9 +722,9 @@
 ---@field fxlist fun(): og.Walker[] # og.fxlist() — the fx entity list in list order (flags, exit pads, balls live here; og.oblist covers livings/generators only).
 ---@field game_ended fun(): boolean
 ---@field heal_amount fun(arg1: integer, arg2: integer): integer, integer
----@field i16 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
----@field i32 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
----@field i8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
+---@field i16 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20; cookbook R3, core pack only).
+---@field i32 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20; cookbook R3, core pack only).
+---@field i8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20; cookbook R3, core pack only).
 ---@field image_lifetime fun(arg1: integer): integer
 ---@field is_alive fun(entity: og.Walker): boolean # og.is_alive(handle) → entity still resolvable (and not flagged dead).
 ---@field level_completed fun(level: integer): boolean
@@ -766,7 +780,7 @@
 ---@field team_score fun(team: integer): integer # og.team_score(t) — read GameWorld::m_score[t] (og.award_score's counter); errors outside [0, 3].
 ---@field trunc fun(x: number): integer
 ---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
----@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20).
+---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20; cookbook R3, core pack only).
 ---@field use fun(spec: string): any # TODO(stubgen): signature not fully inferred — og.use("name") → the frozen export of packs/<current pack>/lib/<name>.lua, or og.use("<pack-id>:name") → the same module out of ANOTHER installed pack's lib/...
 ---@field weaplist fun(): og.Walker[] # og.weaplist() — the weapon entity list in list order.
 ---@field world_can_exit_whenever fun(): boolean

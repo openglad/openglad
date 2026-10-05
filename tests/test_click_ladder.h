@@ -248,9 +248,13 @@ inline bool click_and_acknowledge_trace(const std::string& id, const char* categ
 // re-press.
 //
 // Counted, never clocked: `click_retries` is the number of attempts that
-// re-pressed because nothing registered; `edge_waits` is the number that
-// waited without pressing — both the attempts that saw the landing witness
-// and a late edge found at re-press time.
+// re-pressed because nothing registered; `edge_waits` is the number of
+// presses that LANDED and were waited out instead of re-sent — a landing
+// witness seen while the edge was still absent, or a late edge found at
+// re-press time. A landing counts ONCE however many attempts its edge
+// lags: a later wait that expires on a press already counted is logged
+// ("still waiting on the landed press") and not counted again, so the
+// number reads the same on a starved box as on an idle one.
 inline int g_click_ladder_click_retries = 0;
 inline int g_click_ladder_edge_waits = 0;
 // TESTING-only fault injection for that half, mirroring g_click_ladder_click_drops:
@@ -264,13 +268,20 @@ inline int g_click_ladder_edge_blinds = 0;
 // here NOW?"), never a budget.
 inline constexpr int kEdgeRecheckMs = 1;
 
-inline bool click_until_edge(const std::string& id,
+// Two front doors, one ladder. The body takes the PRESS as a callable, so a
+// press that is not an interactable id — a raw coordinate on a band with no
+// button of its own, like the roster's TEAM-color square — is driven by the
+// same toggle-safety rule instead of a copy of it; `what` names the press in
+// the log. The id overload below is the common case and delegates here.
+inline bool click_until_edge(const std::function<void()>& press,
+                             const std::string& what,
                              const std::function<bool(int)>& edge_reached,
                              const char* landed_trace = nullptr,
                              int attempts = 3, int wait_ms = 2500,
                              const char* landed_category = "zone",
                              bool ack_injectable = false)
 {
+    const std::string& id = what;
     const int landed_before =
         landed_trace ? count_trace_containing(landed_category, landed_trace)
                      : 0;
@@ -304,7 +315,7 @@ inline bool click_until_edge(const std::string& id,
                         "  [ladder] dropping the press on '%s' (injected)\n",
                         id.c_str());
             } else {
-                (void)interact(id);
+                press();
             }
         }
         bool reached = edge_reached(wait_ms);
@@ -323,12 +334,19 @@ inline bool click_until_edge(const std::string& id,
             return true;
         }
         if (has_landed()) {
-            spent = true;
-            ++g_click_ladder_edge_waits;
-            fprintf(stderr,
-                    "  [ladder] attempt %d: '%s' landed but its edge lagged; "
-                    "waiting, not re-pressing\n",
-                    attempt + 1, id.c_str());
+            if (!spent) {
+                spent = true;
+                ++g_click_ladder_edge_waits;
+                fprintf(stderr,
+                        "  [ladder] attempt %d: '%s' landed but its edge "
+                        "lagged; waiting, not re-pressing\n",
+                        attempt + 1, id.c_str());
+            } else {
+                fprintf(stderr,
+                        "  [ladder] attempt %d: '%s' is still waiting on the "
+                        "landed press\n",
+                        attempt + 1, id.c_str());
+            }
             continue;
         }
         ++g_click_ladder_click_retries;
@@ -336,6 +354,18 @@ inline bool click_until_edge(const std::string& id,
                 attempt + 1, id.c_str());
     }
     return false;
+}
+
+inline bool click_until_edge(const std::string& id,
+                             const std::function<bool(int)>& edge_reached,
+                             const char* landed_trace = nullptr,
+                             int attempts = 3, int wait_ms = 2500,
+                             const char* landed_category = "zone",
+                             bool ack_injectable = false)
+{
+    return click_until_edge([&id] { (void)interact(id); }, id, edge_reached,
+                            landed_trace, attempts, wait_ms, landed_category,
+                            ack_injectable);
 }
 
 // --- The label ladder: click a CYCLER until its face reads what you asked --

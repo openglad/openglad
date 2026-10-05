@@ -12,8 +12,10 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <format>
 #include <string_view>
 #include <map>
@@ -54,6 +56,7 @@ public:
     explicit FakeRelayServer(int port)
         : server_(port, "127.0.0.1", 5, 16)
     {
+        sender_ = std::thread([this] { sender_loop(); });
         server_.setOnClientMessageCallback(
             [this](std::shared_ptr<ix::ConnectionState> connection_state,
                    ix::WebSocket& websocket,
@@ -69,6 +72,12 @@ public:
     ~FakeRelayServer()
     {
         server_.stop();
+        {
+            std::lock_guard<std::mutex> lock(outbound_mutex_);
+            stopping_ = true;
+        }
+        outbound_cv_.notify_all();
+        sender_.join();
     }
 
     void drop_next_forwarded_frame(og::sim::PeerId from_peer_id,
@@ -86,7 +95,10 @@ public:
     {
         const std::shared_ptr<ix::WebSocket> socket =
             socket_for_peer(target_peer_id);
-        return socket && socket->send(text).success;
+        if (!socket)
+            return false;
+        enqueue(socket, text, false);
+        return true;
     }
 
     bool send_binary_message(og::sim::PeerId target_peer_id,
@@ -97,8 +109,8 @@ public:
         if (!socket)
             return false;
 
-        const std::string payload(bytes.begin(), bytes.end());
-        return socket->sendBinary(payload).success;
+        enqueue(socket, std::string(bytes.begin(), bytes.end()), true);
+        return true;
     }
 
     struct ClosedPeer {
@@ -174,8 +186,32 @@ private:
         }
     }
 
+    // A membership change and its fan-out are ONE step, the way the real
+    // relay sends them: relay/src/game-room.ts builds a joiner's peer_list
+    // from the room's peers at SEND time, so the list a peer receives always
+    // includes anyone whose peer_joined it could already have been sent.
+    // ixwebsocket runs every connection on its own thread, so without this
+    // lock two back-to-back opens interleave: X snapshots {1,X} and unlocks,
+    // Y inserts and sends peer_joined(Y) to X, and only then does X's thread
+    // send X its stale peer_list [1,X] — which the client applies as a
+    // REPLACEMENT of its peer set (net_transport_relay_ws.cpp's peer_list
+    // handler), so X sits at {1} for good. The same holds for a close's
+    // peer_left / host_changed fan-out against a concurrent open.
+    //
+    // The fan-out is ENQUEUED under membership_mutex_, never sent under it:
+    // every outbound frame goes through the one sender thread (sender_loop),
+    // in enqueue order, so a membership step's frames stay contiguous
+    // without any of our mutexes being held while ixwebsocket's are taken.
+    // ixwebsocket invokes this callback with its own transport lock held
+    // (ThreadSanitizer on PR #345: M2 => membership_mutex_), and a send
+    // takes that same family of locks (membership_mutex_ => M1 => M2), so
+    // sending under membership_mutex_ was a lock-order inversion.
+    //
+    // Lock order: membership_mutex_ before mutex_ before outbound_mutex_;
+    // the sender thread holds none of them while it calls into ixwebsocket.
     void handle_open(const std::string& connection_id, ix::WebSocket& websocket)
     {
+        const std::lock_guard<std::mutex> membership(membership_mutex_);
         const std::shared_ptr<ix::WebSocket> socket = resolve_socket(websocket);
         if (!socket)
             return;
@@ -264,7 +300,7 @@ private:
             append_peer_id(outbound, source_peer_id);
             outbound.append(payload.begin() + 1, payload.end());
             for (const auto& socket : target_sockets)
-                (void)socket->sendBinary(outbound);
+                enqueue(socket, outbound, true);
             return;
         }
 
@@ -307,11 +343,12 @@ private:
         outbound.push_back(static_cast<char>(kReceiveFromPeerTag));
         append_peer_id(outbound, source_peer_id);
         outbound.append(payload.begin() + 5, payload.end());
-        (void)target_socket->sendBinary(outbound);
+        enqueue(target_socket, std::move(outbound), true);
     }
 
     void handle_close(const std::string& connection_id)
     {
+        const std::lock_guard<std::mutex> membership(membership_mutex_);
         og::sim::PeerId peer_id = 0;
         bool was_host = false;
         std::optional<og::sim::PeerId> new_host_peer_id;
@@ -412,7 +449,7 @@ private:
             host_peer_id);
     }
 
-    static void send_text_to_sockets(
+    void send_text_to_sockets(
         const std::vector<std::shared_ptr<ix::WebSocket>>& sockets,
         const std::string& text)
     {
@@ -420,12 +457,59 @@ private:
             send_text(socket, text);
     }
 
-    static void send_text(const std::shared_ptr<ix::WebSocket>& socket,
-                          const std::string& text)
+    void send_text(const std::shared_ptr<ix::WebSocket>& socket,
+                   const std::string& text)
+    {
+        enqueue(socket, text, false);
+    }
+
+    struct Outbound {
+        std::shared_ptr<ix::WebSocket> socket;
+        std::string payload;
+        bool binary = false;
+    };
+
+    // The ONE place a frame leaves the fake relay. Callers may hold
+    // membership_mutex_ and/or mutex_; this takes only outbound_mutex_.
+    void enqueue(const std::shared_ptr<ix::WebSocket>& socket,
+                 std::string payload,
+                 bool binary)
     {
         if (!socket)
             return;
-        (void)socket->send(text);
+        {
+            std::lock_guard<std::mutex> lock(outbound_mutex_);
+            outbound_.push_back(Outbound{
+                .socket = socket,
+                .payload = std::move(payload),
+                .binary = binary,
+            });
+        }
+        outbound_cv_.notify_one();
+    }
+
+    // Drains outbound_ in FIFO order on its own thread, holding none of the
+    // relay's mutexes while ixwebsocket's send locks are taken. Keeps
+    // draining after stop so no enqueued frame is silently lost; sends on
+    // a closed socket simply fail.
+    void sender_loop()
+    {
+        for (;;)
+        {
+            std::unique_lock<std::mutex> lock(outbound_mutex_);
+            outbound_cv_.wait(lock, [this] {
+                return stopping_ || !outbound_.empty();
+            });
+            if (outbound_.empty())
+                return;
+            Outbound frame = std::move(outbound_.front());
+            outbound_.pop_front();
+            lock.unlock();
+            if (frame.binary)
+                (void)frame.socket->sendBinary(frame.payload);
+            else
+                (void)frame.socket->send(frame.payload);
+        }
     }
 
     static void append_peer_id(std::string& payload, og::sim::PeerId peer_id)
@@ -477,7 +561,15 @@ private:
     }
 
     ix::WebSocketServer server_;
+    // Serializes membership changes WITH the enqueue of their fan-out
+    // (handle_open, handle_close); taken before mutex_, never after it.
+    std::mutex membership_mutex_;
     mutable std::mutex mutex_;
+    std::mutex outbound_mutex_;
+    std::condition_variable outbound_cv_;
+    std::deque<Outbound> outbound_;
+    bool stopping_ = false;
+    std::thread sender_;
     og::sim::PeerId next_peer_id_ = 1;
     std::optional<og::sim::PeerId> host_peer_id_;
     std::optional<DropRule> drop_next_forwarded_frame_;

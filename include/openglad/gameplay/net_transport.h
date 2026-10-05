@@ -541,6 +541,54 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     Malformed,
 };
 
+// Which decoded kinds a GameServer accepts from a peer. Everything else —
+// client-bound kinds, Malformed — marks the peer malformed and disconnects it
+// (GameServer::poll_incoming_messages). One rule for raw and typed transports.
+[[nodiscard]] constexpr bool is_server_bound(TypedReceivedMessageKind kind) noexcept
+{
+    switch (kind)
+    {
+    case TypedReceivedMessageKind::LobbyMessage:
+    case TypedReceivedMessageKind::LobbyState:
+    case TypedReceivedMessageKind::Input:
+    case TypedReceivedMessageKind::Hello:
+    case TypedReceivedMessageKind::ClientReady:
+    case TypedReceivedMessageKind::KeyframeRequest:
+    case TypedReceivedMessageKind::Heartbeat:
+    case TypedReceivedMessageKind::ExitPromptResponse:
+    case TypedReceivedMessageKind::PauseBroadcast:
+    case TypedReceivedMessageKind::PauseResponse:
+    case TypedReceivedMessageKind::SnapshotHashCheck:
+    // Pack transfers are a lobby-phase concern (LobbyServer); a stale request
+    // that slips into the gameplay stream is legal traffic the dispatcher
+    // ignores, never a malformed peer.
+    case TypedReceivedMessageKind::PackRequest:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Which decoded kinds a lobby client (host or joiner, SDL or curses) consumes
+// from its lobby poll. Anything else, Malformed included, is dropped before
+// the client sees it (poll_lobby_bound_messages).
+[[nodiscard]] constexpr bool is_lobby_bound(TypedReceivedMessageKind kind) noexcept
+{
+    switch (kind)
+    {
+    case TypedReceivedMessageKind::LobbyMessage:
+    case TypedReceivedMessageKind::LobbyState:
+    case TypedReceivedMessageKind::PackManifest:
+    case TypedReceivedMessageKind::PackFileChunk:
+    case TypedReceivedMessageKind::PackTransferDone:
+    case TypedReceivedMessageKind::StagedMatchSetup:
+    case TypedReceivedMessageKind::StagedMatchKeyframe:
+        return true;
+    default:
+        return false;
+    }
+}
+
 struct TypedReceivedMessage {
     PeerId peer_id = 0;
     TypedReceivedMessageKind kind = TypedReceivedMessageKind::Snapshot;
@@ -761,6 +809,17 @@ public:
         return TransportLinkState::Connected;
     }
 };
+
+// One poll, decoded once: poll_typed() on a typed transport, otherwise every
+// raw poll() frame through decode_received_message (a frame that fails to
+// decode — bad envelope, unknown type, short payload, a throwing reader —
+// arrives as a Malformed message for its peer). Arrival order is kept.
+[[nodiscard]] std::vector<TypedReceivedMessage> poll_decoded_messages(
+    ITransport& transport);
+// The lobby clients' one poll (SDL host/joiner, curses): poll_decoded_messages
+// with everything that is not is_lobby_bound — Malformed included — dropped.
+[[nodiscard]] std::vector<TypedReceivedMessage> poll_lobby_bound_messages(
+    ITransport& transport);
 
 struct TransportEnvelope {
     std::uint8_t protocol_version = kNetworkProtocolVersion;

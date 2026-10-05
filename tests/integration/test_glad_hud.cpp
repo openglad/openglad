@@ -853,8 +853,7 @@ TEST_F(GladHud, follow_caption_draws_and_ai_target_keeps_hud_dark)
     };
     // The caption strip band: score_panel draws the yellow FOLLOWING text at
     // cy = bm - 12 (strip cy-2..cy+8), bottom-center of the viewport.
-    // bm == endy in this build (score_panel's OVERSCAN_PADDING is 0 without
-    // REDUCE_OVERSCAN).
+    // bm == endy (score_panel's OVERSCAN_PADDING is 0).
     const int band_y0 = v->endy - 14;
     const int band_y1 = v->endy - 2;
     auto caption_has_pixels = [&](const std::array<unsigned char, 64000>& frame) {

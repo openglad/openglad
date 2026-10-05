@@ -22,7 +22,6 @@
 class living : public walker
 {
 	public:
-		using walker::facing; // unhide overloads (std::int32_t/float) from base
 		using walker::shove;  // unhide overloads (std::int32_t/float) from base
 		living(const PixieData& data);
 		living();  // Headless constructor (no rendering data)
@@ -37,7 +36,6 @@ class living : public walker
 		bool           collide(walker  *ob) override;
 		bool           do_action(); // perform overriding action
 		walker* do_summon(char whatfamily, std::int32_t summon_lifetime) override;
-		short          facing(short x, short y) override;
 		void           set_difficulty(std::uint32_t whatlevel) override;
 		short          shove(walker  *target, short x, short y) override;
 		Order          query_order() const override

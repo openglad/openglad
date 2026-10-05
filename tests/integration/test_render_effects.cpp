@@ -122,6 +122,10 @@ void restore_world(viewscreen* vs)
 {
     vs->control = nullptr;
     scr()->world().delete_objects();
+    // The screen-owned damage-number cache outlives the world it was drawn
+    // from; against an empty world the product's own prune drops every
+    // owner, so the next scene's id-1 walker inherits nothing.
+    scr()->damage_number_render_context().prune_dead_owners(scr()->world());
     scr()->world().set_floor_count(1);
     scr()->world().set_weather(WeatherKind::None);
 }
@@ -927,6 +931,12 @@ TEST_F(RenderEffects, damage_number_visibility_and_expiration_preserve_cache)
     viewscreen* const vs = view0();
     ASSERT_NE(nullptr, vs);
     prepare_world();
+    // Entity ids restart at 1 with every fresh world, and the damage-number
+    // render context lives on the screen, not the world: a previous scene's
+    // owner-1 entries would be adopted by this test's walker (also id 1) and
+    // read back below as this scene's own cache.
+    ASSERT_EQ(0u, damage_number_render_state_count(scr()))
+        << "precondition: no render state survives a previous scene";
     RenderSceneGuard scene_guard(vs);
     EffectsCfgGuard guard;
     cfg.apply_setting("effects", "mini_hp_bar", "off");

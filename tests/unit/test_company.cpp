@@ -2112,8 +2112,9 @@ TEST(CompanyCloudBytes, install_stage_and_backup_failures_leave_the_company_inta
 {
     namespace fs = std::filesystem;
     SaveDirSandbox sandbox;
-    // og_open_write falls back to a cwd-relative path when PhysFS refuses;
-    // keep the repo's own save/ out of it either way.
+    // og_open_write hands a refused relative write to stdio only when PhysFS
+    // has no write dir or the path resolves under it (#332); this keeps the
+    // repo's own save/ clean should either arm ever see this staging write.
     og::test::ScopedPhysicalFileState cwd_staging_state(
         fs::current_path() / "save/cloudfail.cloudstage.tmp.gtl");
     ASSERT_TRUE(cwd_staging_state.ready())

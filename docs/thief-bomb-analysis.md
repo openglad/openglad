@@ -1,5 +1,8 @@
 # Thief bomb analysis (#228)
 
+> One-off analysis written to answer issue #228; it is not maintained as the
+> code changes.
+
 Issue #228 reports a level-10 thief's DROP BOMB one-shotting a level-9 cleric,
 and asks whether that is reasonable. This document answers it from the code: it
 reads the bomb's damage, blast, fuse and friendly-fire tiers out of the branch,
@@ -421,6 +424,10 @@ contain a `FAMILY_BOMB` (`effect_bomb_bystander`, `effect_explosion_range`,
 the #283 byte compare all eight go red: 8 ledger rows with branch-sourced
 goldens plus a `GAMEPLAY_FIXES_FROM_CLASSIC.md` row, since 2002 dropped the
 bomb silently.
+Update (2026-10-04): goldens are no longer taken from the current game. Under
+the golden-source policy (`tests/parity/golden/DRIFT_LEDGER.md` header) this
+option would mean porting the drop sound into the old game and recapturing the
+eight goldens from it.
 
 **Option 2 (done on this branch): one cast per tap, fixed at the input site.**
 §3.4's double cast is closed by making the held arm yield the tick on which the
@@ -452,6 +459,9 @@ breaks `effect_explosion_range_scen99`'s "165, below the knee so branch ==
 master" identity and forces a branch-sourced ledger golden; fuse changes move
 the detonation tick in all nine bomb rows for no balance gain (the fuse is
 already walkable).
+Update (2026-10-04): under the golden-source policy a knee change would be
+ported into the old game and the row recaptured from it, not taken from the
+current game.
 
 ### Housekeeping surfaced by this analysis
 

@@ -292,7 +292,7 @@ TEST(LivingCombat, living_act_fire_elemental_drain_charges_owner_and_heals_only_
 
 
 // ---------------------------------------------------------------------------
-// living::facing for all 8 directions
+// facing (walker::facing via a living) for all 8 directions
 // ---------------------------------------------------------------------------
 
 TEST(LivingCombat, living_facing_all_directions)

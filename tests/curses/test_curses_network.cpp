@@ -45,6 +45,7 @@
 
 #include "curses_mount_restore.h"
 #include "transcript_capture.h"
+#include "test_match_seed.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -417,7 +418,10 @@ struct StartedGame {
 // random cell every run, occasionally inside the map's team-0 guard pack,
 // where it was dead well before the 30th frame any of these tests advance to.
 // Pinned, the staged world is the same world on every run and on every runner.
-inline constexpr std::uint32_t kPinnedCursesMatchSeed = 0x0C0FFEEDu;
+// Since #338 every harness main pins this same seed process-wide
+// (tests/test_match_seed.h); the explicit argument stays so these lobbies do
+// not depend on what an earlier test left in the process-wide seam.
+inline constexpr std::uint32_t kPinnedCursesMatchSeed = kHarnessMatchSeed;
 
 StartedGame negotiate_and_start(SaveData& host_save, SaveData& join_save)
 {
@@ -1345,6 +1349,94 @@ TEST(CursesNetwork, joiner_start_request_is_denied_as_not_host)
         << join_term.dump();
     EXPECT_EQ(host_lobby->take_session(), nullptr);
     EXPECT_EQ(join_lobby->take_session(), nullptr);
+}
+
+// #331 case B (R-331): an accepted StartGame starts EVERY machine, whatever
+// that machine's own pending request id is. The joiner presses GO once and is
+// denied (its request counter moves on to 2); then the host's GO (id 1) is
+// accepted and the lobby locks; then the joiner presses GO again (id 2), which
+// meets the locked gate and is dropped with no reply. The id-correlated rule
+// stranded that joiner on its old denial text forever.
+TEST(CursesNetwork, denied_joiner_still_enters_when_the_host_starts)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+    ASSERT_TRUE(host_lobby->is_host());
+    ASSERT_FALSE(join_lobby->is_host());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 100; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    ASSERT_TRUE(status_contains(*host_lobby, "Players: 2"))
+        << "liveness control: both machines really shared this lobby";
+
+    // (1) The joiner's own GO is denied (request id 1 on the joiner).
+    join_term.push_char(U's');
+    for (int i = 0; i < 200 && !status_contains(*join_lobby, "Only the host can start");
+         ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+    ASSERT_TRUE(status_contains(*join_lobby, "Only the host can start"))
+        << "control: the joiner's first press really was denied:\n"
+        << join_term.dump();
+
+    // (2) The joiner readies, so the host's GO is allowed.
+    ready_curses_joiner(*host_lobby, *join_lobby, host_term, join_term, clock);
+    bool joiner_ready_on_host = false;
+    for (const og::sim::LobbyPlayer& player : host_lobby->players())
+        joiner_ready_on_host = joiner_ready_on_host || (!player.is_host && player.ready);
+    ASSERT_TRUE(joiner_ready_on_host) << "control: the host sees the joiner ready";
+
+    // (3) The host's GO is accepted. Poll ONLY the host: StartGame{id=1} now
+    // sits in the joiner's queue, and a joiner polled here would still hold no
+    // pending request and start as a plain follower.
+    host_lobby->request_start();
+    bool host_started = false;
+    for (int i = 0; i < 200 && !host_started; ++i)
+        host_started = host_lobby->poll(host_term, clock);
+    ASSERT_TRUE(host_started) << "control: the host's request was accepted";
+
+    // (4) The joiner presses GO again (its request id 2). The locked lobby
+    // drops it silently: no reply ever names id 2.
+    join_lobby->request_start();
+
+    // (5) Both machines enter the level.
+    bool join_started = false;
+    for (int i = 0; i < 400 && !join_started; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_started = join_lobby->poll(join_term, clock);
+    }
+    EXPECT_TRUE(join_started)
+        << "an accepted StartGame starts every machine regardless of its own "
+           "pending id (R-331):\n"
+        << join_term.dump();
+    EXPECT_NE(join_lobby->take_session(), nullptr);
+    EXPECT_NE(host_lobby->take_session(), nullptr);
+    EXPECT_FALSE(status_contains(*join_lobby, "Only the host can start"))
+        << "the joiner's band must not stay on the old denial:\n"
+        << join_term.dump();
+    EXPECT_TRUE(status_contains(*join_lobby, "Host started the game"))
+        << join_term.dump();
+    EXPECT_FALSE(status_contains(*host_lobby, "Host started the game"))
+        << "the host's own band is never told the host started:\n"
+        << host_term.dump();
 }
 
 TEST(CursesNetwork, host_start_denial_is_correlated_before_retry)

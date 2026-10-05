@@ -82,7 +82,8 @@ mode-switch path can disable a monitor and fail to re-enable it when the
 resized root screen no longer contains the other outputs. OpenGlad uses
 Borderless there, including when a saved configuration requests Exclusive.
 Single-display X11, Wayland, Windows, and other backends retain the normal
-Exclusive choices.
+Exclusive choices. The `x11-display` CI job pins both sides on Xvfb with SDL's
+real x11 driver (`scripts/ci/run_x11_display_lane.sh`).
 
 ### Wayland and the XWayland fallback
 

@@ -198,14 +198,13 @@ TEST(SmoothMatrix, grass_dark_grass_wall_and_cobble_masks_each_select_their_exac
     GlobalContextGuard guard(&ctx);
 
     // smooth.cpp TYPE_GRASS_DARK ladder with grass neighbours/diagonals, rng 0.
-    // Mask 14 (left|right|down) is the "top middle" do-nothing arm: newvalue is
-    // never assigned, so the PIX_GRASS1 initializer is what gets written. That
-    // quirk is the rule here and is worth pinning.
+    // Mask 14 (left|right|down) is the "top middle" arm: it draws one of the
+    // four dark variants (#301; it used to leak the PIX_GRASS1 initializer).
     static constexpr unsigned char kDarkGrass[16] = {
         PIX_GRASS_DARK_1,  PIX_GRASS_DARK_UR, PIX_GRASS_DARK_UR, PIX_GRASS_DARK_UR,
         PIX_GRASS_DARK_LL, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_1,  PIX_GRASS_DARK_1,
         PIX_GRASS_DARK_LL, PIX_GRASS_DARK_BR, PIX_GRASS_RUBBLE,  PIX_GRASS_RUBBLE,
-        PIX_GRASS_DARK_LL, PIX_GRASS_DARK_R1, PIX_GRASS1,        PIX_GRASS_DARK_1,
+        PIX_GRASS_DARK_LL, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_1,  PIX_GRASS_DARK_1,
     };
 
     // TYPE_WALL switch on a 5x6 grid whose (2,4) is a wall, so every "is the

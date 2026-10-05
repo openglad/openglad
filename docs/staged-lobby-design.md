@@ -1,8 +1,8 @@
-# The Staged Lobby (#218)
+# The Staged Lobby
 
 Every lobby assembles the match's REAL world before GO, previews that world,
-and launches by ADOPTING it. "Preview == launch" is not an agreement between
-two derivations any more — it is one world, byte-testable end to end.
+and launches by ADOPTING it, so the preview and the launch are one world,
+byte-testable end to end.
 
 ## The one staging pipeline
 
@@ -26,7 +26,7 @@ being compiled into `og_interface` AND the headless source lists — the
 non-sim entropy once per round (re-latched at `resume_after_level`); every
 restage pins `world.rng_.state_` AND the process-global weather roll sequence
 to it before the load. Identical `MatchStageInputs` therefore produce a
-byte-identical staged keyframe — the preview can never flicker, and the #235
+byte-identical staged keyframe — the preview can never flicker, and the
 squad permutation is drawn once from the pinned stream and latched in a
 replicated mode var.
 
@@ -55,8 +55,8 @@ InitialSetup message and a COMPLETE Peek keyframe of the staged world,
 generation-stamped and broadcast after every restage (per-peer catch-up for
 late connectors). Joiners own a `StagedPreviewMirror`: the retained newest
 generation-paired bytes applied into a headless LOCAL level load — mandatory,
-since a snapshot cannot rebuild a level — with honest
-Unavailable/retry-on-campaign-catch-up degradation. Snapshot format stays
+since a snapshot cannot rebuild a level — degrading to
+Unavailable, with a retry once the campaign catches up. Snapshot format stays
 v10 (mode/respawn/RNG/weather/control policy already replicate); replay stays
 v15.
 
@@ -86,7 +86,7 @@ control-less pan camera); curses draws the glyph band in the network lobby
 and in the solo picker's viewer (`CursesRenderer::draw_preview`); the text
 client stages locally with its session-latched `--seed`. MatchStage loads
 are HEADLESS-hooked only — lobby-poll restaging never touches the SDL loader
-(#162 stays closed, TRAIN included).
+(TRAIN included).
 **Update (2026-09-19, PR #307):** the SETUP wizard joins the list of readers —
 its TEAMS lines and its MATCH step census the same staged report VIEW LEVEL
 renders, rebuilt on the `stage_generation()` watch, and its GO reads
@@ -114,7 +114,7 @@ renders, rebuilt on the `stage_generation()` watch, and its GO reads
   collapsed onto it; the text client's crew assembler is deliberately not a
   twin — CLI family list, users/real teams, pinned legacy baselines).
 
-**#239 dies structurally**: `GameServer::step` holds tick 1 (and the event
+**The level-start gate.** `GameServer::step` holds tick 1 (and the event
 drain) while any seeded client is unready at level start — hosted, dedicated,
 joiner, curses-local, and the dedicated server's in-session transitions all
 ride the same gate, bounded by the ready deadline. The deadline covers BOTH
@@ -146,7 +146,7 @@ squad-code pins, dormancy, on_load-once, wire-pair == world, mirror heals
 byte-identical + report line-identical, the staged report line shapes, the
 16-row activation sweep (direct-Lua probe), the apply-executes-decision
 matrix (16 cases x 5 modes), and per-mode staged-vs-adopted byte identity.
-Integration: the level-start gate red-then-green battery (#239 shapes), the
+Integration: the level-start gate battery, the
 launch-equals-preview hash, the staged-pane injector flow, the uxshot band
 guard, curses host/join band cell-identity, and the text census determinism
 pins.

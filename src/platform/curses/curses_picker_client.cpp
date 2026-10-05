@@ -833,6 +833,16 @@ void teams_screen(Menu& menu, SaveData& save)
             }
         }
 
+        // #327: with no local seat and no hero there is nothing to toggle,
+        // and choose() would return before drawing anything. Say so once and
+        // leave (return, not continue: the loop would rebuild the same list).
+        if (std::none_of(entries.begin(), entries.end(),
+                         [](const ListEntry& e) { return e.selectable; })) {
+            menu.show_text("Matchup",
+                           {"No heroes to match up - hire someone first."});
+            return;
+        }
+
         const int choice = menu.choose("Matchup", entries,
             "Enter: cycle seat / character team | Esc back", cursor);
         if (choice < 0)

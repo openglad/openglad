@@ -1,6 +1,6 @@
-# Campaign scripting (issue #206)
+# Campaign scripting
 
-Campaigns can now ship Lua that runs at the *campaign* level rather than the
+Campaigns can ship Lua that runs at the *campaign* level rather than the
 *level* level: a scripted scenario picker, persistent per-company campaign
 state (decision tracking), gold sources and sinks, and level scripts that read
 the recorded decisions. This document is the engineering design; the
@@ -24,7 +24,7 @@ per-campaign content designs live with their packs.
    (read-only) so a choice made in the picker changes what happens in the
    sim.
 
-Non-goals (this change): sim-side *writes* to campaign state, replication
+Non-goals: sim-side *writes* to campaign state, replication
 of campaign state to networked mirrors, scripted procedural level
 generation.
 
@@ -269,7 +269,7 @@ return, before any world read, spawn, or RNG draw — so every existing
 calibration floor, battle smoke, and parity golden stays honest, and only
 the taken-decision paths need new coverage.
 
-## Build gates this change trips (by design)
+## Build gates the feature touched
 
 - **api_stub_check**: the new `og.campaign_*` luaL_Reg table and the
   campaign hook-name table must be taught to
@@ -325,7 +325,7 @@ field. Everything a campaign does with them is data.
   unchanged with all vars at 0; mutation-pin check + og_test_parity
   rebuild.
 
-## Adjacent issues designed through the same architecture
+## Related features built on the same architecture
 
 These ship in the same change, each taking the scripting-first shape (a
 static flag only where the declarative metadata already exists).

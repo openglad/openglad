@@ -17,8 +17,9 @@ back. Validates:
     what the two gates use to insist an ambiguous pin's context narrows
     the file to exactly one line rather than merely being present.
   - The realpath of ${file} resolved against the repo root does NOT live
-    under ../openglad-master/ or tests/parity/. Master is pinned at
-    master_companion_sha; tests/parity/* headers are consumed via
+    under ../openglad-master/ or tests/parity/. ../openglad-master is
+    the old game (branch parity-companion), the source of every golden,
+    and is never mutated; tests/parity/* headers are consumed via
     inline constexpr by every parity TU, so mutating them triggers a
     full parity-group rebuild that defeats incremental canary runs.
 

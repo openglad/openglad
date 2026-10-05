@@ -14,6 +14,7 @@
 #include <openglad/resources/filesystem_sync.h>
 
 #include <cstddef>
+#include <functional>
 #include <list>
 #include <string>
 #include <string_view>
@@ -88,6 +89,13 @@ enum class ArchiveIoError {
     ReadEntryFailed,
     CloseArchiveFailed,
     ResourceLimitExceeded,
+    // zip_contents_with_error never writes an archive it knows is incomplete:
+    // a directory walk that cannot finish (not a permission skip) returns
+    // ReadInputFailed, and a base that exists but cannot be iterated
+    // (ENOTDIR, EMFILE) is the same error. The walk completes before the
+    // archive is opened, so a failed walk leaves the output path exactly as
+    // it was.
+    ReadInputFailed,
 };
 
 [[nodiscard]] CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);
@@ -113,6 +121,21 @@ bool unpack_campaign(const std::string& campaign_id);
 bool repack_campaign(const std::string& campaign_id);
 
 void cleanup_unpacked_campaign();
+
+enum class CampaignMutationError {
+    None = 0,
+    UnpackFailed,
+    MutationFailed,
+    RepackFailed,
+};
+// The one home of "edit a packaged campaign": clear <user>/temp, unpack
+// `campaign_id` into it, run `mutate` there, repack the tree as `repack_id`,
+// clear <user>/temp again. A failed unpack never touches an archive (the
+// repack, which removes its target first, does not run); a failed mutation or
+// repack reports which. Remounting is the CALLER's step.
+[[nodiscard]] CampaignMutationError mutate_packaged_campaign(
+    const std::string& campaign_id, const std::string& repack_id,
+    const std::function<bool()>& mutate);
 
 enum class NewFileIoError {
     None = 0,

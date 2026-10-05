@@ -697,6 +697,36 @@ TEST_F(GameWorldEntityIdsFixture, boundary_queries_fail_closed_without_side_effe
     EXPECT_EQ(1, world.floor_count());
 }
 
+// Issue #296: damage_tile rejects a negative PIXEL coordinate before it
+// divides. Integer division truncates toward zero, so a pixel in [-15, -1]
+// used to land in cell 0 and char the top-left tile (the classic 2002
+// shape). A bomb that bursts just off the top/left edge damages nothing.
+TEST_F(GameWorldEntityIdsFixture, damage_tile_rejects_negative_pixels_before_dividing)
+{
+    constexpr int kGridWidth = 3;
+    constexpr int kGridHeight = 3;
+    auto pixels = std::make_unique<unsigned char[]>(kGridWidth * kGridHeight);
+    std::fill_n(pixels.get(), kGridWidth * kGridHeight, PIX_GRASS1);
+    world.grid = PixieData(1, kGridWidth, kGridHeight, pixels.release());
+    world.pixmaxx = kGridWidth * GRID_SIZE;
+    world.pixmaxy = kGridHeight * GRID_SIZE;
+
+    EXPECT_EQ(0, world.damage_tile(-1, 0)) << "x pixel -1 is off the map";
+    EXPECT_EQ(0, world.damage_tile(0, -15)) << "y pixel -15 is off the map";
+    EXPECT_EQ(0, world.damage_tile(-15, -15)) << "pixel (-15,-15) is off the map";
+    EXPECT_EQ(PIX_GRASS1, world.grid.data[0])
+        << "an off-map burst must not char cell 0";
+    EXPECT_TRUE(world.grid_dirty_tiles().empty())
+        << "an off-map burst folds no dirty tile";
+
+    // Control: pixel (0,0) is on the map, chars cell 0 and folds it.
+    EXPECT_EQ(static_cast<char>(PIX_GRASS1_DAMAGED), world.damage_tile(0, 0));
+    EXPECT_EQ(PIX_GRASS1_DAMAGED, world.grid.data[0]);
+    ASSERT_EQ(1u, world.grid_dirty_tiles().size());
+    EXPECT_EQ(0, world.grid_dirty_tiles()[0].first);
+    EXPECT_EQ(0, world.grid_dirty_tiles()[0].second);
+}
+
 // Owner links come back from saves and snapshots, so a corrupted or hostile
 // file can hand the world a loop (a owns b, b owns a). Every AI foe scan
 // walks that chain, so a loop there is a hang. The walk gives up after a

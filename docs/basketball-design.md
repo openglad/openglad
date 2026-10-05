@@ -1,14 +1,11 @@
 # Master Specification — BASKETBALL (mode 6, campaigns/modes)
 
-Line anchors in this document were re-verified at branch `feature/mode-basketball`,
-HEAD `0ed817cf`. Every implementer must re-verify an anchor with `sed -n '<line>p'`
-before editing — the referenced files move.
+Line anchors in this document point into commit `0ed817cf` and have drifted
+since; find code by the quoted text.
 
-Status: **approved design, pre-implementation, red-team revised**. This
-document is the single authority for the basketball mode; it supersedes the
-three designer drafts it was synthesized from. A two-auditor red team
-(engine-truth + gameplay) reviewed the first synthesis; every finding was
-applied — decisions D19-D26 and the amended D6/D7/D17 record the changes. A
+This document is the design record for the basketball mode. A review of the
+first draft (engine truth and gameplay) produced decisions D19-D26 and the
+amended D6/D7/D17. A
 post-implementation playtest amendment (2026-08-08, anchors verified at
 `456fafb7`) added D27-D28 — the throw now releases under point-blank contact
 and refunds its mana; an adversarial review of the first cut then narrowed

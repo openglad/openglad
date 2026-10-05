@@ -156,8 +156,13 @@ void statistics::clear_command()
 //     expiry belongs solely to charm_left decay (living.cpp), and the
 //     switch-cycle filter already refuses to switch INTO a charmed walker.
 // Extensionally identical to clear_command whenever the queue has no leading
-// forced entries AND real_team_num == 255 (true at every golden's switch and
-// at every scenario-start claim).
+// forced entries AND real_team_num == 255 (true at every golden's switch).
+// At a scenario-start claim real_team_num is NOT 255: the parity test driver
+// (scenario_runtime.cpp) and the golden capture tool (parity_dump_master.cpp)
+// spawn with real_team_num = team. The two clears still agree there, because
+// the hero's own first act() in that tick runs the charm decay (living.cpp,
+// "Charmed-ness"), which resets real_team_num to 255 (team unchanged) before
+// anything reads it.
 void statistics::clear_command_for_control_switch()
 {
 	int preserved = 0;

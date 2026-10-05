@@ -111,7 +111,7 @@ Everything a mod author needs is one hop from this table.
 | I need... | Go to |
 |---|---|
 | How to build, stage, test and **prove** a mod dispatches | [SKILL.md](.claude/skills/openglad-modding/SKILL.md) |
-| The rules my Lua must obey to stay deterministic (R1–R10) | [design doc §3](docs/lua-classpacks-design.md) — law, not advice |
+| The rules my Lua must obey to stay deterministic (R1–R10; R1–R3 are core pack only) | [design doc §3](docs/lua-classpacks-design.md) — law, not advice |
 | Naming, headers, comments, helpers, and legacy alias style | [lua-style.md](docs/lua-style.md) |
 | Every `og.*` function, walker/stats/guy method, constant, hook signature | [api-reference.md](docs/modding/api-reference.md) |
 | A complete pack to copy (one declaration + art, runnable) | [api-reference → Worked example](docs/modding/api-reference.md#worked-example-a-complete-class-pack), files in `docs/modding/examples/emberwisp/` |

@@ -700,6 +700,7 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
 {
     static_assert(og::data::kMaxSpecialSlot == FD_NUM_SPECIALS - 1,
                   "the slot cap and the descriptor's array must agree");
+    // Let's set the special names for all walkers ..
     for (int i = 0; i < FD_NUM_SPECIALS; i++) {
         d.special_cost[i] = kSpecialCostDisabled;
         d.special_names[i] = kSpecialNameNone;

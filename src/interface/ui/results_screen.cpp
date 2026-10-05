@@ -512,6 +512,13 @@ Uint32 get_time_bonus(int playernum)
 
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
+    // A non-interactive session shows (logs) the ending popup and skips the
+    // panel nobody could dismiss; no retry.
+    if (og::runtime::current_session->non_interactive_)
+    {
+        show_ending_popup(ending, nextlevel);
+        return false;
+    }
 #ifdef TESTING
     if (!s_force_full_results_ui)
     {

@@ -1603,11 +1603,11 @@ char GameWorld::damage_tile(short xloc, short yloc)
     if (!grid.valid())
         return 0;
 
+    if (xloc < 0 || yloc < 0)
+        return 0;
     const short xover = static_cast<short>(xloc / GRID_SIZE);
     const short yover = static_cast<short>(yloc / GRID_SIZE);
 
-    if (xover < 0 || yover < 0)
-        return 0;
     if (xover >= grid.w || yover >= grid.h)
         return 0;
 

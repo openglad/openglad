@@ -35,6 +35,8 @@ walker* classic_fire_respawn(GameWorld& world, const RespawnEntry& entry);
     return team < SCORE_TEAM_COUNT;
 }
 
+} // namespace
+
 // setxy() routes obmap updates through obmap::move, which early-outs when the
 // position is unchanged. A revived corpse (already removed from the obmap by
 // walker::death) placed back on its own tile would silently stay unindexed,
@@ -51,6 +53,8 @@ void ensure_obmap_registration(GameWorld& world, walker* w)
     if (world.myobmap->walker_to_pos.find(w) == world.myobmap->walker_to_pos.end())
         world.myobmap->add(w, w->xpos(), w->ypos());
 }
+
+namespace {
 
 // Passability probe for spawn placement. query_passable routes through
 // ob_pass_check, whose treasure overlap dispatches eat_me — a probe must

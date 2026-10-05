@@ -7,12 +7,12 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 
 // The scenario table mirrors the PIX_* tile ids numerically (it must not
@@ -71,18 +71,19 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
         // non-zero target floor is valid here. No-op for floor 0 (the default).
         if (s.floor != 0)
             w->change_floor(static_cast<short>(s.floor));
-        // Leave user_ at the SimEntity default (-1, NPC). The first call to
-        // sim_process_player_input for the player_team walker takes ownership
-        // and sets user_ = player_num + act_type = ACT_CONTROL — exactly the
-        // takeover sequence the production game uses when a player picks up
-        // a control. The harness never sets user_ directly.
+        // Leave user_ at the SimEntity default (-1, NPC). The harness never
+        // calls sim_process_player_input: claim_control (below) takes
+        // ownership on the first apply_inputs_at_tick through the game's
+        // sim_claim_control, the one home of the claim (ACT_CONTROL,
+        // user_ = 0, clear_command_for_control_switch), which the golden
+        // capture tool's claim_control mirrors.
         if (s.default_weapon != 0)
             w->set_default_weapon(s.default_weapon);
         if (s.current_weapon != 0)
             w->set_current_weapon(s.current_weapon);
 
         // Phase 01 (semantic-parity): caster preconditions for special slots
-        // >= 2. Cycling gate: src/gameplay/sim_input_handler.cpp:302 `(control->current_special() - 1) * 3 + 1` must be <= stats()->level().
+        // >= 2. Cycling gate: src/gameplay/sim_input_handler.cpp:196 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
         // Firing gate: src/gameplay/living.cpp:585 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
         // Zero defaults preserve byte-mirror layout for rows that don't need
         // either; the harness raises level/MP only when the SpawnSpec asks
@@ -173,12 +174,7 @@ void claim_control(GameWorld& world,
     if (driver.control == nullptr)
         return;
     if (driver.control->user() == -1)
-    {
-        driver.control->set_act_type(ACT_CONTROL);
-        driver.control->set_user(0);
-        if (driver.control->stats() != nullptr)
-            driver.control->stats()->clear_command();
-    }
+        sim_claim_control(world, *driver.control, 0);
     driver.initialised = true;
 }
 
@@ -189,86 +185,33 @@ bool held(std::uint32_t mask, std::uint32_t bit)
 
 void cycle_next_character(GameWorld& world,
                           const ScenarioSpec& spec,
-                          ScenarioInputDriver& driver)
+                          ScenarioInputDriver& driver,
+                          walker* entry_control)
 {
+    // The SwitchChar selection and claim rules live once, in the game
+    // (sim_switch_control, sim_claim_control); `entry_control` is the control
+    // this tick began with, the game's `oldcontrol` anchor. Seat 0, Shift
+    // held = reverse. The selected hero (or the fallback body) is claimed in
+    // this same tick, as the original game's continuous_input() and the
+    // current game's sim_process_player_input both do.
     walker* old = driver.control;
     if (old == nullptr) return;
 
-    if (old->user() == 0)
-    {
-        old->restore_act_type();
-        old->set_user(-1);
-    }
-
-    bool seen_old = false;
-    walker* next = nullptr;
-    auto accept = [&](walker* candidate) {
-        return candidate != nullptr &&
-               candidate->query_order() == Order::Living &&
-               candidate->is_friendly(old) &&
-               candidate->team_num() == spec.player_team &&
-               candidate->real_team_num() == 255 &&
-               candidate->user() == -1;
-    };
-
-    for (const auto& uptr : world.oblist)
-    {
-        walker* candidate = uptr.get();
-        if (candidate == old)
-        {
-            seen_old = true;
-            continue;
-        }
-        if (seen_old && accept(candidate))
-        {
-            next = candidate;
-            break;
-        }
-    }
-
-    if (seen_old && next == nullptr)
-    {
-        for (const auto& uptr : world.oblist)
-        {
-            walker* candidate = uptr.get();
-            if (candidate == old) break;
-            if (accept(candidate))
-            {
-                next = candidate;
-                break;
-            }
-        }
-    }
-
-    if (next == nullptr) next = old;
-    driver.control = next;
-    claim_control(world, spec, driver);
+    walker* next = sim_switch_control(world, *old, entry_control,
+                                      spec.player_team, 0,
+                                      held(driver.held_mask, K_SHIFT));
+    driver.control = next != nullptr ? next : old;
+    if (driver.control->user() == -1)
+        sim_claim_control(world, *driver.control, 0);
 }
 
 void cycle_special(walker* control)
 {
-    if (control == nullptr || control->stats() == nullptr) return;
-
-    control->set_current_special(control->current_special() + 1);
-    const int special_index = static_cast<int>(control->current_special());
-    const auto* descriptor = get_family_descriptor(
-        static_cast<int>(static_cast<unsigned char>(control->family())));
-    const char* special_name =
-        (!descriptor || special_index < 0 || special_index >= NUM_SPECIALS)
-            ? nullptr
-            : descriptor->special_names[special_index];
-    const bool missing_special =
-        descriptor == nullptr ||
-        special_index < 0 ||
-        special_index >= NUM_SPECIALS ||
-        special_name == nullptr ||
-        std::strcmp(special_name, "NONE") == 0;
-
-    if (special_index > (NUM_SPECIALS - 1) ||
-        missing_special ||
-        (((control->current_special() - 1) * 3 + 1) >
-         control->stats()->level()))
-        control->set_current_special(1);
+    // The cycling rule itself lives once, in the game
+    // (sim_advance_current_special); the null guards are the harness's own
+    // preconditions, and the press edge is detected by the caller.
+    if (control && control->stats())
+        sim_advance_current_special(*control);
 }
 
 } // namespace
@@ -295,6 +238,7 @@ void apply_inputs_at_tick(GameWorld& world,
         }
     }
 
+    walker* const entry_control = driver.control;
     claim_control(world, spec, driver);
     if (driver.control == nullptr)
     {
@@ -305,7 +249,17 @@ void apply_inputs_at_tick(GameWorld& world,
     const std::uint32_t pressed = driver.held_mask & ~driver.prev_mask;
     if (held(pressed, K_SWITCH))
     {
-        cycle_next_character(world, spec, driver);
+        cycle_next_character(world, spec, driver, entry_control);
+        // A control the claim policy refused stays unclaimed: the game then
+        // applies the special switch and returns before shifter, special,
+        // walk or fire (control->user() != player_num).
+        if (driver.control->user() != 0)
+        {
+            if (held(pressed, K_SPECIAL_SWITCH))
+                cycle_special(driver.control);
+            driver.prev_mask = driver.held_mask;
+            return;
+        }
     }
     walker* control = driver.control;
     if (control == nullptr || control->dead())

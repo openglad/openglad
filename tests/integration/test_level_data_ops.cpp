@@ -139,6 +139,16 @@ static bool read_file_bytes(const std::string& path, std::vector<uint8_t>* out)
     std::fclose(f);
     return true;
 }
+
+// save_level() writes temp/scen/<file> and temp/pix/<grid>.png through the
+// PhysFS write dir, and PhysFS does not create parent directories: make the
+// write dir's temp tree first.
+static void create_user_temp_level_dirs()
+{
+    const std::filesystem::path temp = std::filesystem::path(get_user_path()) / "temp";
+    std::filesystem::create_directories(temp / "scen");
+    std::filesystem::create_directories(temp / "pix");
+}
 } // namespace
 
 namespace
@@ -547,8 +557,7 @@ TEST(LevelDataOps, level_data_get_description_line)
     og::runtime::current_session->myscreen_->level_description().push_back("desc-a");
     og::runtime::current_session->myscreen_->level_description().push_back("desc-b");
     og::runtime::current_session->myscreen_->world().delete_objects();
-    std::filesystem::create_directories("temp/scen");
-    std::filesystem::create_directories("temp/pix");
+    create_user_temp_level_dirs();
 
     walker* ob = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
@@ -559,6 +568,27 @@ TEST(LevelDataOps, level_data_get_description_line)
     if (wp) wp->stats()->name = "WP";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed with populated lists";
     og::runtime::current_session->myscreen_->world().delete_objects();
+
+    // This level is og_test_parity's scen99 fixture (effect_bomb_lifetime_scen99,
+    // coverage_catchall_scen99), read from the source tree's gitignored
+    // temp/scen/ (ctest orders og_test_level first). The save lands in the
+    // write dir, so export it there explicitly, byte for byte.
+    {
+        namespace fs = std::filesystem;
+        const fs::path saved = fs::path(get_user_path()) / "temp" / "scen" / "scen99.fss";
+        const fs::path exported = fs::current_path() / "temp" / "scen" / "scen99.fss";
+        ASSERT_TRUE(fs::is_regular_file(saved)) << "the save landed in the write dir: " << saved;
+        fs::create_directories(exported.parent_path());
+        fs::copy_file(saved, exported, fs::copy_options::overwrite_existing);
+        std::vector<uint8_t> saved_bytes;
+        std::vector<uint8_t> exported_bytes;
+        ASSERT_TRUE(read_file_bytes(saved.string(), &saved_bytes));
+        ASSERT_TRUE(read_file_bytes(exported.string(), &exported_bytes))
+            << "the scen99 fixture export exists: " << exported;
+        ASSERT_EQ(std::string("FSS"), std::string(saved_bytes.begin(), saved_bytes.end()).substr(0, 3))
+            << "the saved scen99 is a scenario file";
+        ASSERT_EQ(saved_bytes, exported_bytes) << "the scen99 fixture export is byte-equal to the save";
+    }
 
     delete_campaign(tmp_id);
 }
@@ -586,13 +616,12 @@ TEST(LevelDataOps, level_data_save_description_serialization_bounds)
     og::runtime::current_session->myscreen_->level_description().push_back(empty_line);
     og::runtime::current_session->myscreen_->level_description().push_back(boundary_line);
     og::runtime::current_session->myscreen_->level_description().push_back(long_line);
-    std::filesystem::create_directories("temp/scen");
-    // /temp/ is gitignored, so temp/pix does not exist on a fresh checkout.
-    std::filesystem::create_directories("temp/pix");
+    create_user_temp_level_dirs();
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed for description bounds regression";
 
-    const std::string scen_path = "temp/scen/scen" + std::to_string(kScenarioId) + ".fss";
+    const std::string scen_path =
+        get_user_path() + "temp/scen/scen" + std::to_string(kScenarioId) + ".fss";
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(read_file_bytes(scen_path, &bytes)) << "saved scenario should be readable";
     ASSERT_TRUE(bytes.size() >= 49) << "saved scenario should include fixed header";
@@ -862,26 +891,6 @@ struct ScopedCampaignPackages
     }
 };
 
-// The descriptor write goes to temp/campaign.yaml under the user dir and,
-// when that fails, to the same relative path under the working directory.
-// A directory named campaign.yaml at both places makes the descriptor
-// unwritable; this guard creates and removes the working-directory one.
-struct ScopedUnwritableCwdDescriptor
-{
-    ScopedUnwritableCwdDescriptor()
-    {
-        created = !fs::exists("temp/campaign.yaml");
-        fs::create_directories("temp/campaign.yaml/blocker");
-    }
-    ~ScopedUnwritableCwdDescriptor()
-    {
-        std::error_code ec;
-        if (created)
-            fs::remove_all("temp/campaign.yaml", ec);
-    }
-    bool created = false;
-};
-
 } // namespace detail_campaign_io_failures
 
 TEST(CampaignDataIo, load_of_unparseable_yaml_reports_parse_failed_and_keeps_harvested_fields)
@@ -928,7 +937,9 @@ TEST(CampaignDataIo, save_as_aborts_when_descriptor_cannot_be_written)
     EXPECT_EQ(good_dst, good.id);
     EXPECT_TRUE(fs::exists(user_campaign_package(good_dst)));
 
-    ScopedUnwritableCwdDescriptor cwd_blocker;
+    // The blocked package unpacks a DIRECTORY named campaign.yaml into the
+    // user dir's temp/, so the relative descriptor write PhysFS refuses has
+    // nowhere else to go (#332: no fallback under the working directory).
     CampaignData blocked(blocked_id);
     EXPECT_FALSE(blocked.save_as(blocked_dst))
         << "save_as must stop when temp/campaign.yaml cannot be written";
@@ -956,7 +967,6 @@ TEST(CampaignDataIo, save_aborts_and_leaves_package_when_descriptor_cannot_be_wr
 
     const std::string before = read_bytes(user_campaign_package(blocked_id));
     ASSERT_FALSE(before.empty());
-    ScopedUnwritableCwdDescriptor cwd_blocker;
     CampaignData blocked(blocked_id);
     blocked.title = "Never Written";
     EXPECT_FALSE(blocked.save())

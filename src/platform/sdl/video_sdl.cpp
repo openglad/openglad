@@ -3173,7 +3173,7 @@ void sdl_video::reflect_display_settings_from_window(
 				E_Screen->window, pending_windowed_w_, pending_windowed_h_);
 			const SDL_DisplayID display = pending_windowed_display_ != 0
 				? pending_windowed_display_
-				: display_for_window();
+				: display_for_window(); // pending 0 = SDL reported no display at request time (SDL contract); re-query now
 			const int centered = static_cast<int>(SDL_WINDOWPOS_CENTERED_DISPLAY(display));
 			SDL_SetWindowPosition(E_Screen->window, centered, centered);
 			if (size_accepted && !SDL_SyncWindow(E_Screen->window))

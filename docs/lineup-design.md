@@ -2,16 +2,8 @@
 
 Design for issues #212 (team/player/bot composition), #261 (connected
 player details, a mode-aware Networking menu) and #259 (blank level-exit
-popup headers). Branch `feature/lineup-networking`, base `a0d85c87`.
-
-The rulings below are binding for implementers. Line anchors were
-verified at the base commit by six read-only scouts; **re-verify every
-anchor with `grep -n` before editing**, and run
-`python3 scripts/parity/check_mutation_pins.py` before any commit that
-touches a file named in `tests/parity/scenario_table.h` (of the files
-this design touches only `src/resources/save_data.cpp` — pin at line
-132, insert below it — and `src/gameplay/game_world.cpp` — max pin 1794
-— are pinned).
+popup headers). Line anchors point into commit `a0d85c87` and have drifted
+since; find code by the quoted text.
 
 ---
 

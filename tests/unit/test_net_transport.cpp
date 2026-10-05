@@ -4032,6 +4032,116 @@ TEST(NetTransport,
     EXPECT_EQ(lobby_state, *decoded_state.lobby_state);
 }
 
+// #325: the lobby clients' one poll (og::sim::poll_lobby_bound_messages)
+// keeps exactly the seven lobby-bound kinds, in arrival order and payload-equal,
+// and drops everything else: well-formed frames of other kinds, a malformed
+// lobby frame, a bad envelope. The same rule holds on a typed transport.
+TEST(LobbyPoll, keeps_exactly_the_seven_lobby_bound_kinds_in_order)
+{
+    using Kind = og::sim::TypedReceivedMessageKind;
+    og::sim::LobbyMessage kick;
+    kick.payload = og::sim::LobbyKickMessage{.machine_id = 0x51u};
+    const og::sim::LobbyState state = make_lobby_state_for_test();
+    const og::sim::PackManifestMessage manifest{
+        .pack_index = 0, .pack_count = 1, .pack_id = "pack", .version = "1.0",
+        .files = {}};
+    const og::sim::PackFileChunkMessage chunk{
+        .pack_id = "pack", .file_index = 2u, .offset = 64u, .data = {1, 2, 3}};
+    const og::sim::PackTransferDoneMessage done{.pack_id = "pack"};
+    const og::sim::StagedMatchSetupMessage staged_setup{
+        .stage_generation = 7u,
+        .setup_bytes = og::sim::serialize_initial_setup_message(
+            og::sim::InitialSetupMessage{})};
+    const og::sim::StagedMatchKeyframeMessage staged_keyframe{
+        .stage_generation = 7u,
+        .snapshot_bytes = og::sim::serialize_snapshot(og::sim::WorldSnapshot{})};
+
+    std::vector<std::uint8_t> malformed_lobby;
+    og::sim::append_transport_header(malformed_lobby, og::sim::kLobbyMessageType, 1);
+    malformed_lobby.push_back(0xffu);
+
+    const std::vector<og::sim::ReceivedMessage> frames = {
+        {1u, og::sim::serialize_lobby_message(kick)},
+        {2u, og::sim::serialize_snapshot(og::sim::WorldSnapshot{})},
+        {3u, og::sim::serialize_lobby_state_message(state)},
+        {4u, og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{})},
+        {5u, og::sim::serialize_pack_manifest_message(manifest)},
+        {6u, malformed_lobby},
+        {7u, og::sim::serialize_pack_file_chunk_message(chunk)},
+        {8u, og::sim::serialize_initial_setup_message(og::sim::InitialSetupMessage{})},
+        {9u, og::sim::serialize_pack_transfer_done_message(done)},
+        {10u, {0xffu}},
+        {11u, og::sim::serialize_staged_match_setup_message(staged_setup)},
+        {12u, og::sim::serialize_staged_match_keyframe_message(staged_keyframe)},
+    };
+    // Precondition: the dropped "other" frames are well-formed, so only the
+    // lobby-bound rule (not a decode failure) can drop them.
+    EXPECT_EQ(Kind::Snapshot, og::sim::decode_received_message(frames[1]).kind);
+    EXPECT_EQ(Kind::Heartbeat, og::sim::decode_received_message(frames[3]).kind);
+    EXPECT_EQ(Kind::InitialSetup, og::sim::decode_received_message(frames[7]).kind);
+
+    const auto expect_the_seven =
+        [&](const std::vector<og::sim::TypedReceivedMessage>& kept) {
+            ASSERT_EQ(7u, kept.size());
+            const std::array<Kind, 7> kinds = {
+                Kind::LobbyMessage, Kind::LobbyState, Kind::PackManifest,
+                Kind::PackFileChunk, Kind::PackTransferDone,
+                Kind::StagedMatchSetup, Kind::StagedMatchKeyframe};
+            const std::array<og::sim::PeerId, 7> peers = {1u, 3u, 5u, 7u, 9u, 11u, 12u};
+            for (std::size_t index = 0; index < kinds.size(); ++index)
+            {
+                EXPECT_EQ(kinds[index], kept[index].kind) << "message " << index;
+                EXPECT_EQ(peers[index], kept[index].peer_id) << "message " << index;
+            }
+            ASSERT_NE(nullptr, kept[0].lobby_message);
+            EXPECT_EQ(kick, *kept[0].lobby_message);
+            ASSERT_NE(nullptr, kept[1].lobby_state);
+            EXPECT_EQ(state, *kept[1].lobby_state);
+            ASSERT_NE(nullptr, kept[2].pack_manifest);
+            EXPECT_EQ(manifest, *kept[2].pack_manifest);
+            ASSERT_NE(nullptr, kept[3].pack_file_chunk);
+            EXPECT_EQ(chunk, *kept[3].pack_file_chunk);
+            ASSERT_NE(nullptr, kept[4].pack_transfer_done);
+            EXPECT_EQ(done, *kept[4].pack_transfer_done);
+            ASSERT_NE(nullptr, kept[5].staged_match_setup);
+            EXPECT_EQ(staged_setup, *kept[5].staged_match_setup);
+            ASSERT_NE(nullptr, kept[6].staged_match_keyframe);
+            EXPECT_EQ(staged_keyframe, *kept[6].staged_match_keyframe);
+        };
+
+    {
+        SCOPED_TRACE("raw transport");
+        MockTransport raw;
+        for (const og::sim::ReceivedMessage& frame : frames)
+            raw.queue_received(frame.peer_id, frame.data);
+        expect_the_seven(og::sim::poll_lobby_bound_messages(raw));
+        EXPECT_TRUE(og::sim::poll_lobby_bound_messages(raw).empty());
+    }
+
+    {
+        SCOPED_TRACE("typed transport");
+        class TypedQueueTransport final : public og::sim::ITransport
+        {
+        public:
+            std::vector<og::sim::TypedReceivedMessage> queued;
+            bool supports_typed_messages() const noexcept override { return true; }
+            std::vector<og::sim::TypedReceivedMessage> poll_typed() override
+            {
+                return std::exchange(queued, {});
+            }
+            void send(og::sim::PeerId, const std::uint8_t*, std::size_t) override {}
+            std::vector<og::sim::ReceivedMessage> poll() override { return {}; }
+            void accept_connections() override {}
+            void disconnect(og::sim::PeerId) override {}
+            std::vector<og::sim::PeerId> connected_peers() const override { return {}; }
+        };
+        TypedQueueTransport typed;
+        for (const og::sim::ReceivedMessage& frame : frames)
+            typed.queued.push_back(og::sim::decode_received_message(frame));
+        expect_the_seven(og::sim::poll_lobby_bound_messages(typed));
+    }
+}
+
 TEST(NetTransport, game_server_disconnects_peers_that_send_malformed_messages)
 {
     TestGameWorld fixture;

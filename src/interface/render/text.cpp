@@ -33,8 +33,9 @@
 static PixieData letters1;
 static PixieData letters_big;
 
-// value is a prompt's static edit buffer and length > 0: both callers run
-// only under `tempchar == KEYCODE_BACKSPACE && current_length > 0`.
+// value is the prompt's static edit buffer and length > 0: the one caller,
+// LineEditor::step, runs only under
+// `tempchar == KEYCODE_BACKSPACE && current_length > 0`.
 static void erase_last_utf8_codepoint(char* value, std::size_t length)
 {
     std::size_t erase_at = length - 1;
@@ -122,7 +123,7 @@ Sint32 text::query_width(std::string_view string) // returns width, in pixels
 
 	while (i < string.size())
 	{
-		if (string[i] >= 65 && string[i] <= 93) // uppercase
+		if (string[i] >= 65 && string[i] <= 92) // uppercase
 			over += sizex;
 		else
 			over += sizex-1;
@@ -416,89 +417,90 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 	return 1;
 }
 
-// This version passes DARK_BLUE and a grey color as defaults ..
-char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin)
+namespace
 {
-	return input_string(x, y, maxlength, begin, DARK_BLUE, 13);
-}
+// The one home of the one-line edit rule behind input_string and
+// input_string_ex (issue #328): the length clamp, the buffer seed, the key
+// and text-event step and the cancel path. Each public prompt keeps its own
+// draw and its own wait; only the editing lives here.
+struct LineEditor
+{
+	static constexpr short kMaxBufferLen = 99;
+	// One buffer pair for both prompts. The returned pointer is only ever
+	// consumed by the _value wrappers, which copy it at once.
+	static inline char editstring[kMaxBufferLen + 1];
+	static inline char firststring[kMaxBufferLen + 1];
 
-// Input_string reads a string from the keyboard, displaying it
-// at screen position x,y.  The maximum length of the string
-// is maxlength, and any string in 'begin' will automatically be
-// entered at the start.  Fore- and backcolor are used for the
-// text foreground and background color
-char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
-                          unsigned char forecolor, unsigned char backcolor)
-{
-	short current_length, i;
-	short string_done = 0;
-	static char editstring[100], firststring[100];
-	constexpr short kMaxBufferLen = static_cast<short>(sizeof(editstring) - 1);
-	if (maxlength > kMaxBufferLen)
-		maxlength = kMaxBufferLen;
-	if (maxlength < 0)
-		maxlength = 0;
-	
-	int tempchar;
-	const char* temptext;
+	text& font;
+	Sint32 x;
+	Sint32 y;
+	short maxlength;
+	short current_length = 0;
 	short has_typed = 0; // hasn't typed yet
+	bool done = false;
 	bool return_null = false;
 
-	for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
-		editstring[i] = 0; // clear the string ...
-
-	if (begin)
+	LineEditor(text& owner, Sint32 at_x, Sint32 at_y, short length, const char* begin)
+	    : font(owner), x(at_x), y(at_y), maxlength(length)
 	{
-		snprintf(editstring, sizeof(editstring), "%s", begin);
+		if (maxlength > kMaxBufferLen)
+			maxlength = kMaxBufferLen;
+		if (maxlength < 0)
+			maxlength = 0;
+
+		clear();
+
+		if (begin)
+		{
+			snprintf(editstring, sizeof(editstring), "%s", begin);
+		}
+		snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
+		current_length = static_cast<short>(strlen(editstring));
 	}
-	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
-	current_length = static_cast<short>(strlen(editstring));
-	og::runtime::current_session->myscreen_->draw_box(x, y, x+maxlength*(sizex+1), y+sizey, backcolor, 1, 1);
-	if (begin && begin[0] != '\0')
-		og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
-	write_xy(x, y, editstring, WHITE, 1);
-	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 
-	clear_keyboard();
-	clear_key_press_event();
-	clear_text_input_event();
-	
-    og::input_native::start_text_input(
-        editstring, std::max(0, static_cast<int>(maxlength) - 1));
-    
-	while ( !string_done )
+	static void clear()
 	{
-	
-        tempchar = 0;
-        temptext = nullptr;
-        
-		// Wait for a key to be pressed ..
-		while (!query_key_press_event() && !query_text_input_event())
-			//dumbcount++;
-			get_input_events(WAIT);
-        
+		for (short i=0; i < static_cast<short>(sizeof(editstring)); i++)
+			editstring[i] = 0; // clear the string ...
+	}
+
+	void replace_selection()
+	{
+		current_length = 0;
+		clear();
+		og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(font.sizex+1),
+		                  y+font.sizey+1, 1);
+	}
+
+	void cancel()
+	{
+		snprintf(editstring, sizeof(editstring), "%s", firststring);
+		done = true;
+		return_null = true;
+	}
+
+	// Consume whatever key press and text event the wait loop woke on.
+	void step()
+	{
+		int tempchar = 0;
+		const char* temptext = nullptr;
+
         if(query_key_press_event())
         {
             tempchar = query_key();
             clear_key_press_event();
             
             if (tempchar == KEYCODE_RETURN)
-                string_done = 1;
+                done = true;
             else if (tempchar == KEYCODE_ESCAPE)
             {
-                snprintf(editstring, sizeof(editstring), "%s", firststring);
-                string_done = 1;
-                return_null = true;
+                cancel();
             }
             else if (tempchar == KEYCODE_BACKSPACE && current_length > 0)
             {
                 if (!has_typed) // first char, so replace text
                 {
-                    current_length = 0;
-                    for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
-                        editstring[i] = 0; // clear the string ...
-                    og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
-                                      y+sizey+1, 1);
+                    replace_selection();
                 }
                 else
                 {
@@ -527,11 +529,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
             
             if (!has_typed) // first char, so replace text
             {
-                current_length = 0;
-                for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
-                    editstring[i] = 0; // clear the string ...
-                og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
-                                  y+sizey+1, 1);
+                replace_selection();
             }
             
             if (temptext != nullptr)
@@ -557,9 +555,59 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
             has_typed = 1;
             current_length = static_cast<short>(strlen(editstring));
         }
+	}
+
+	char* result() const
+	{
+		if(return_null)
+			return nullptr;
+		return editstring;
+	}
+};
+} // namespace
+
+// This version passes DARK_BLUE and a grey color as defaults ..
+char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin)
+{
+	return input_string(x, y, maxlength, begin, DARK_BLUE, 13);
+}
+
+// Input_string reads a string from the keyboard, displaying it
+// at screen position x,y.  The maximum length of the string
+// is maxlength, and any string in 'begin' will automatically be
+// entered at the start.  Fore- and backcolor are used for the
+// text foreground and background color
+char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
+                          unsigned char forecolor, unsigned char backcolor)
+{
+	LineEditor edit(*this, x, y, maxlength, begin);
+	maxlength = edit.maxlength;
+	char* const editstring = LineEditor::editstring;
+
+	og::runtime::current_session->myscreen_->draw_box(x, y, x+maxlength*(sizex+1), y+sizey, backcolor, 1, 1);
+	if (begin && begin[0] != '\0')
+		og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
+	write_xy(x, y, editstring, WHITE, 1);
+	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+
+	clear_keyboard();
+	clear_key_press_event();
+	clear_text_input_event();
+	
+    og::input_native::start_text_input(
+        editstring, std::max(0, static_cast<int>(maxlength) - 1));
+    
+	while ( !edit.done )
+	{
+		// Wait for a key to be pressed ..
+		while (!query_key_press_event() && !query_text_input_event())
+			//dumbcount++;
+			get_input_events(WAIT);
+        
+        edit.step();
 
 		og::runtime::current_session->myscreen_->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
-        if(!has_typed && strlen(editstring) > 0)
+        if(!edit.has_typed && strlen(editstring) > 0)
         {
             og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
             write_xy(x, y, editstring, WHITE, 1);
@@ -572,9 +620,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
     og::input_native::stop_text_input();
     
 	clear_keyboard();
-	if(return_null)
-        return nullptr;
-	return editstring;
+	return edit.result();
 
 }
 
@@ -605,19 +651,9 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
                           unsigned char forecolor, unsigned char backcolor)
 {
 	sync_geometry();
-	short current_length, i;
-	short string_done = 0;
-	static char editstring[100], firststring[100];
-	constexpr short kMaxBufferLen = static_cast<short>(sizeof(editstring) - 1);
-	if (maxlength > kMaxBufferLen)
-		maxlength = kMaxBufferLen;
-	if (maxlength < 0)
-		maxlength = 0;
-	
-	int tempchar;
-	const char* temptext;
-	short has_typed = 0; // hasn't typed yet
-	bool return_null = false;
+	LineEditor edit(*this, x, y, maxlength, begin);
+	maxlength = edit.maxlength;
+	char* const editstring = LineEditor::editstring;
 	const int field_width = maxlength * (sizex + 1);
 	// The shared one-line prompt is used by hiring, networking, and the level
 	// editor. Keep its touch affordances in the same canvas surface as the
@@ -629,15 +665,6 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	const og::ui::PromptButtonRect& cancel_button = actions.cancel;
 	const og::ui::PromptButtonRect& accept_button = actions.accept;
 
-	for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
-		editstring[i] = 0; // clear the string ...
-
-	if (begin)
-	{
-		snprintf(editstring, sizeof(editstring), "%s", begin);
-	}
-	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
-	current_length = static_cast<short>(strlen(editstring));
 	// Own the complete modal geometry here, where the real font height is
 	// known. Callers must not size a frame around a guessed text metric: that
 	// was how the action row escaped the hiring dialog in the first place.
@@ -649,10 +676,10 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 		    layout.frame.y + layout.frame.h, 1);
 		prompt_screen.draw_box(x, y, x + field_width, y + sizey, backcolor, 1, 1);
 		prompt_screen.draw_button(x, y, x + field_width, y + sizey, 1);
-		if (!has_typed && begin && begin[0] != '\0')
+		if (!edit.has_typed && begin && begin[0] != '\0')
 			prompt_screen.draw_box(x, y, x + query_width(editstring), y + sizey - 2, forecolor, 1, 1);
 		write_xy(x, y - 10, message, DARK_GREEN, 1);
-		write_xy(x, y, editstring, has_typed ? forecolor : WHITE, 1);
+		write_xy(x, y, editstring, edit.has_typed ? forecolor : WHITE, 1);
 		prompt_screen.draw_button(
 		    accept_button.x, accept_button.y,
 		    accept_button.x + accept_button.w, accept_button.y + accept_button.h, 1);
@@ -693,109 +720,24 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
     og::input_native::start_text_input(
         editstring, std::max(0, static_cast<int>(maxlength) - 1), message);
     
-	while ( !string_done )
+	while ( !edit.done )
 	{
-	
-        tempchar = 0;
-        temptext = nullptr;
-        
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event() && !query_text_input_event() &&
 		       !prompt_mouse.left && hover_action() == rendered_hover)
 			//dumbcount++;
 			get_input_events(WAIT);
         
-        if(query_key_press_event())
-        {
-            tempchar = query_key();
-            clear_key_press_event();
-            
-            if (tempchar == KEYCODE_RETURN)
-                string_done = 1;
-            else if (tempchar == KEYCODE_ESCAPE)
-            {
-                snprintf(editstring, sizeof(editstring), "%s", firststring);
-                string_done = 1;
-                return_null = true;
-            }
-            else if (tempchar == KEYCODE_BACKSPACE && current_length > 0)
-            {
-                if (!has_typed) // first char, so replace text
-                {
-                    current_length = 0;
-                    for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
-                        editstring[i] = 0; // clear the string ...
-                    og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
-                                      y+sizey+1, 1);
-                }
-                else
-                {
-                    // Keep the extended/message prompt path consistent with
-                    // input_string: SDL text events append UTF-8, so one
-                    // Backspace removes one complete code point.
-                    erase_last_utf8_codepoint(
-                        editstring,
-                        static_cast<std::size_t>(current_length));
-                }
-                
-                has_typed = 1;
-            }
-            // Other keys which will deselect the whole line
-            else if(tempchar == KEYCODE_LEFT || tempchar == KEYCODE_RIGHT || tempchar == KEYCODE_UP || tempchar == KEYCODE_DOWN || tempchar == KEYCODE_HOME || tempchar == KEYCODE_END)
-            {
-                has_typed = 1;
-            }
-            
-            current_length = static_cast<short>(strlen(editstring));
-        }
-        
-        if(query_text_input_event())
-        {
-            temptext = query_text_input();
-            
-            if (!has_typed) // first char, so replace text
-            {
-                current_length = 0;
-                for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
-                    editstring[i] = 0; // clear the string ...
-                og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
-                                  y+sizey+1, 1);
-            }
-            
-            if (temptext != nullptr)
-            {
-                const std::size_t len = strlen(temptext);
-                const int remaining = maxlength - current_length - 1;
-                if (remaining > 0 && len <= static_cast<std::size_t>(remaining))
-                {
-                    for (std::size_t j = 0; j < len; j++)
-                    {
-                        const unsigned char c = static_cast<unsigned char>(temptext[j]);
-                        if (c != 255)
-                        {
-                            editstring[current_length] = static_cast<char>(c);
-                            current_length++;
-                            editstring[current_length] = '\0';
-                        }
-                    }
-                }
-            }
-            clear_text_input_event();
-            
-            has_typed = 1;
-            current_length = static_cast<short>(strlen(editstring));
-        }
+        edit.step();
 
 		if (prompt_mouse.left)
 		{
 			prompt_mouse.left = 0;
 			if (prompt_mouse.in(accept_button))
-				string_done = 1;
+				edit.done = true;
 			else if (prompt_mouse.in(cancel_button))
 			{
-				snprintf(editstring, sizeof(editstring), "%s", firststring);
-				string_done = 1;
-				return_null = true;
+				edit.cancel();
 			}
 		}
 		
@@ -807,8 +749,6 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	reset_mouse_click_tracking();
     
 	clear_keyboard();
-	if(return_null)
-        return nullptr;
-	return editstring;
+	return edit.result();
 
 }

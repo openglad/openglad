@@ -490,7 +490,7 @@ void write_be32(unsigned char* dst, unsigned v)
 TEST(IndexedPngEncoding, png_is_indexed_color)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "indexed_png_encoding";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "indexed_png_encoding";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path path = tmp_dir / "indexed.png";
@@ -540,7 +540,7 @@ TEST(IndexedPngEncoding, png_is_indexed_color)
 TEST(IndexedPngEncoding, round_trip_pixel_indices)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "indexed_png_encoding";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "indexed_png_encoding";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path path = tmp_dir / "round_trip.png";
@@ -579,7 +579,7 @@ TEST(IndexedPngEncoding, round_trip_pixel_indices)
 TEST(IndexedPngEncoding, rejects_wrong_palette)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "indexed_png_encoding";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "indexed_png_encoding";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path good = tmp_dir / "good.png";
@@ -679,7 +679,7 @@ std::string aseprite_sidecar_for(int W, int frame_h, int frames)
 TEST(JsonSidecar, parses_aseprite_hash_format)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "json_sidecar";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path png = tmp_dir / "hash.png";
@@ -704,7 +704,7 @@ TEST(JsonSidecar, parses_aseprite_hash_format)
 TEST(JsonSidecar, missing_sidecar_treated_as_single_frame)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "json_sidecar";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path png = tmp_dir / "no_sidecar.png";
@@ -727,7 +727,7 @@ TEST(JsonSidecar, missing_sidecar_treated_as_single_frame)
 TEST(JsonSidecar, malformed_sidecar_logs_and_falls_back)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "json_sidecar";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path png = tmp_dir / "malformed.png";
@@ -755,7 +755,7 @@ TEST(JsonSidecar, malformed_sidecar_logs_and_falls_back)
 TEST(JsonSidecar, malformed_json_variants_report_reason_and_fall_back)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "json_sidecar";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     ASSERT_FALSE(ec) << ec.message();
@@ -865,7 +865,7 @@ TEST(JsonSidecar, malformed_json_variants_report_reason_and_fall_back)
 TEST(JsonSidecar, a_frame_taller_than_255_px_is_rejected)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "json_sidecar";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path tall = tmp_dir / "tall_frame.png";
@@ -897,7 +897,7 @@ TEST(JsonSidecar, a_frame_taller_than_255_px_is_rejected)
 TEST(JsonSidecar, a_sidecar_that_disagrees_with_the_png_height_is_rejected)
 {
     namespace fs = std::filesystem;
-    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    const fs::path tmp_dir = fs::path(get_user_path()) / "temp" / "json_sidecar";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
     const fs::path png = tmp_dir / "height_mismatch.png";

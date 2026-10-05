@@ -711,23 +711,70 @@ struct DefaultZoneFlowState
     bool hire_opened = false;
     bool train_opened = false;
     bool deploy_edges_acknowledged = true;
+    // Set by the MAIN thread after picker_main returns. The escape tail has
+    // no wall-clock bound on purpose: picker_main blocks until a click takes
+    // it out, so a tail that stopped trying early would guarantee the wedge
+    // it exists to prevent.
+    std::atomic<bool> test_finished{false};
 };
+
+// The flow walks into two of the camp's sub-screens, and both close on an
+// id ("back") that base camp publishes too, so each is named by the id only
+// it publishes: TRAIN by ACCEPT, HIRE by HIRE ME. Base camp's GO is checked
+// after them, then the main menu's CONTINUE (kPickerEscapeDoors' two doors).
+constexpr EscapeDoor kDefaultZoneEscapeDoors[] = {
+    {"accept", "back"},
+    {"hire_me", "back"},
+    {"go", "back"},
+    {"continue_game", "continue_game"},
+};
+
+// Poll tick, never a settle: the edge below is a wait-on-condition.
+constexpr int kDefaultZonePollMs = 50;
+
+// The edge for a BACK out of TRAIN or HIRE: base camp's GO is published and
+// neither sub-screen's own id is. Both halves are asked for, so the edge
+// names the screen that came up, not only the one that went away.
+bool wait_for_default_zone_camp(int wait_ms)
+{
+    int elapsed = 0;
+    while (elapsed < wait_ms) {
+        if (has_interactable("go") && !has_interactable("accept") &&
+            !has_interactable("hire_me"))
+            return true;
+        SDL_Delay(static_cast<Uint32>(kDefaultZonePollMs));
+        elapsed += kDefaultZonePollMs;
+    }
+    return false;
+}
 
 int default_zone_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     DefaultZoneFlowState* state = static_cast<DefaultZoneFlowState*>(data);
 
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kDefaultZoneEscapeDoors);
+    };
+
+    // -- Leg 1: the main menu is up --
+    if (!wait_for_interactable("continue_game", 5000) ||
+        !wait_for_menu_frames(2))
+        return escape(1, "the main menu never published continue_game");
+    // A bare press, not a ladder: the dropped-press tooth below arms
+    // g_click_ladder_click_drops for the DEPLOY press, and any ladder ahead of
+    // it would spend the drop here. A swallowed CONTINUE still cannot wedge
+    // the flow: leg 2 gives up through the tail, which presses CONTINUE.
     interact("continue_game");
 
-    // The default composition: roster + HIRE, no zone action rows.
+    // -- Leg 2: the default composition: roster + HIRE, no zone action rows --
     state->hire_seen = wait_for_interactable("hire_troops", 10000);
-    SDL_Delay(500);
+    if (!state->hire_seen || !wait_for_menu_frames(2))
+        return escape(2, "CONTINUE never composed base camp's HIRE door");
     capture_presented_frame("zone_default_camp", std::getenv("UXSHOTS_DIR"));
 
-    // Deploy toggle by id (the classic flow).
+    // -- Leg 3: the deploy toggle by id (the classic flow) --
     state->deploy_edges_acknowledged &=
         click_and_acknowledge_trace("roster_dep_0", "basecamp",
                                     "deploy slot=0 off");
@@ -738,29 +785,41 @@ int default_zone_injector(void* data)
     state->deploy_edges_acknowledged &=
         click_and_acknowledge_trace("roster_dep_0", "basecamp",
                                     "deploy slot=0 on");
+    if (!state->deploy_edges_acknowledged)
+        return escape(3, "a deploy toggle never traced its edge");
 
-    // Row-body train door.
-    interact("roster_row_0");
-    state->train_opened = wait_for_interactable("accept", 10000);
-    SDL_Delay(300);
-    interact("back");
-    SDL_Delay(300);
+    // -- Leg 4: the row-body train door --
+    state->train_opened = click_until_edge(
+        "roster_row_0",
+        [](int wait_ms) { return wait_for_interactable("accept", wait_ms); },
+        nullptr, 3, 10000);
+    if (!state->train_opened)
+        return escape(4, "the roster row never opened the train screen");
+    (void)wait_for_menu_frames(2);
+    if (!click_until_edge("back", wait_for_default_zone_camp, nullptr, 3,
+                          10000))
+        return escape(5, "BACK never brought the camp back from TRAIN");
+    (void)wait_for_menu_frames(2);
 
-    // HIRE at its new header-band rect, same id.
-    wait_for_interactable("hire_troops", 10000);
-    SDL_Delay(300);
-    interact("hire_troops");
-    state->hire_opened = wait_for_interactable("hire_me", 10000);
-    SDL_Delay(300);
-    interact("back");
-    SDL_Delay(300);
-
-    wait_for_interactable("go", 10000);
-    SDL_Delay(300);
-    interact("back");
+    // -- Leg 6: HIRE at its header-band rect, same id --
+    state->hire_opened = click_until_edge(
+        "hire_troops",
+        [](int wait_ms) { return wait_for_interactable("hire_me", wait_ms); },
+        nullptr, 3, 10000);
+    if (!state->hire_opened)
+        return escape(6, "HIRE never opened the hire screen");
+    (void)wait_for_menu_frames(2);
+    if (!click_until_edge("back", wait_for_default_zone_camp, nullptr, 3,
+                          10000))
+        return escape(7, "BACK never brought the camp back from HIRE");
+    (void)wait_for_menu_frames(2);
 
     state->finished = true;
-    return 0;
+    // The exit: the final BACK is the tail's, never a single bare press --
+    // picker_main blocks on the main thread and only a click makes it
+    // return, so a swallowed last press used to strand the binary at the
+    // ctest ceiling with nobody left to press again.
+    return escape(0, "");
 }
 
 } // namespace
@@ -783,12 +842,17 @@ TEST(CampaignZoneUi, default_zone_keeps_the_classic_roster_flows)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.test_finished.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
     verify_captured_frames("default_zone_flow", 1);
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.hire_seen)
         << "the default zone renders HIRE (id hire_troops)";
@@ -827,7 +891,10 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.test_finished.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
@@ -841,6 +908,8 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_dropped_press)
         << "a dropped press must cost a retry, not the toggle";
     EXPECT_EQ(1, g_click_ladder_trace_click_retries)
         << "exactly one press left no trace and was re-sent";
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.finished);
 }
 
@@ -877,7 +946,10 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.test_finished.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
@@ -895,6 +967,8 @@ TEST(CampaignZoneUi, deploy_toggle_survives_a_cancelled_acknowledge)
         << "the press itself registered: it must never be re-pressed";
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 off"));
     EXPECT_TRUE(trace_contains("basecamp", "deploy slot=0 on"));
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.finished);
 }
 
@@ -2048,15 +2122,6 @@ TEST(CampaignZoneUi, wizard_arena_rows_are_plain_while_the_camps_stay_green)
     SaveData& save = test_screen()->save_data;
     save.current_campaign = "modes";
     save.scen_num = 820;  // SOCCER: THE PITCH — the armed arena
-    // is_host explicitly, not make_campaign_providers's local-play
-    // default: these providers outlive the test (the hooks need SOME
-    // provider set installed, and clearing them leaves the next scripted
-    // camp unable to compose), so an unconditional TRUE here would hand a
-    // later JOINER flow a host book — which is how a host-gated RANDOM
-    // row turned up on a joiner's GAME step.
-    og::script::hooks::install_campaign_providers(
-        og::data::make_campaign_providers(
-            save, [] { return picker_lobby_host_controls_visible(); }));
 
     og::ui::MatchSetupScreenState state(save);
     og::ui::MatchSetupSession::Inputs in;
@@ -4234,6 +4299,10 @@ struct BlindCyclerState
     // true: the same press with NO witness at all — the ladder then has only
     // its re-check-before-re-press to keep the wheel from overshooting.
     bool witnessless = false;
+    // How many edge observations of the cycler press come back blinded
+    // (g_click_ladder_edge_blinds): one is a label that lagged one wait, two
+    // is one that lagged past the next wait as well.
+    int edge_blinds = 1;
     bool opened = false;
     bool stepped = false;
     bool wheel_still_on_two = false;
@@ -4261,7 +4330,7 @@ int setup_blind_cycler_injector(void* data)
                                                      "SCORE: MAP", 10000);
         // Armed HERE, not in the test body: the blind belongs to the cycler
         // press, and the door ladder above would otherwise eat it.
-        g_click_ladder_edge_blinds = 1;
+        g_click_ladder_edge_blinds = state->edge_blinds;
         state->stepped = click_until_edge(
             "setup_row_0",
             [](int wait_ms) {
@@ -4398,6 +4467,60 @@ TEST(CampaignZoneUi, setup_click_helper_waits_out_a_landed_cycler)
            "walks the SCORE wheel past the stop the flow asked for";
     EXPECT_EQ(1, g_click_ladder_edge_waits)
         << "exactly one attempt waited on a press that had already landed";
+    EXPECT_EQ(0, g_click_ladder_click_retries)
+        << "a landed press is never charged as a re-press";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+}
+
+// The landing is counted ONCE, however long its edge lags. Under a starved
+// menu thread the face of a landed press can stay unpublished across more
+// than one of the ladder's waits; the witness has already said the press
+// landed, so every later attempt only waits, and none of them is a second
+// landing. Two blinds make the first TWO observations lie: the ladder must
+// still report exactly one landed press waited out, never one per attempt
+// that waited (the count every reader of g_click_ladder_edge_waits takes it
+// to be).
+TEST(CampaignZoneUi,
+     setup_click_helper_counts_a_landed_press_once_however_long_its_edge_lags)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    // THE CIRCLE (scen 300) is a TEAM DEATHMATCH arena, so the wizard's
+    // RULES step leads with the SCORE wheel: MAP -> 1 -> 3 -> 5 -> 10.
+    write_save0_with_two_soldiers("modes", 300);
+
+    g_click_ladder_click_retries = 0;
+    g_click_ladder_click_drops = 0;
+    g_click_ladder_edge_waits = 0;
+    g_click_ladder_edge_blinds = 0;
+
+    BlindCyclerState state;
+    state.edge_blinds = 2;  // the face lags past TWO of the ladder's waits
+    SDL_Thread* thread = SDL_CreateThread(setup_blind_cycler_injector,
+                                          "setup_lagging_cycler", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_TRUE(state.opened) << "the SETUP door still opens on RULES";
+    EXPECT_EQ(0, g_click_ladder_edge_blinds)
+        << "both injected blinds must be consumed";
+    EXPECT_TRUE(state.stepped)
+        << "a landed press whose label lagged twice must still reach its edge";
+    EXPECT_TRUE(state.wheel_still_on_two)
+        << "the ladder must not press a landed cycler again, however many "
+           "waits its face lags";
+    EXPECT_EQ(1, g_click_ladder_edge_waits)
+        << "one landed press is one edge wait, not one per attempt that "
+           "waited on it";
     EXPECT_EQ(0, g_click_ladder_click_retries)
         << "a landed press is never charged as a re-press";
 

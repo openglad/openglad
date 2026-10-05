@@ -8,7 +8,11 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <functional>
+#include <sstream>
 #include <optional>
 #include <set>
 #include <string>
@@ -26,6 +30,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#if defined(__linux__) && defined(__x86_64__)
+#include <sys/ptrace.h>
+#include <sys/user.h>
+#endif
 
 #ifndef OPENGLAD_CURSES_TEST_EXECUTABLE
 #define OPENGLAD_CURSES_TEST_EXECUTABLE "openglad_curses"
@@ -124,10 +133,19 @@ void drain_pty_output(int master_fd, std::string& output)
     }
 }
 
+// Runs once, after the child enabled the keyboard protocol and before
+// `input_after_enable` is written: it may drive the child further through the
+// pty (resize it, read its transcript) while the child waits for a key. The
+// transcript is the harness's own buffer; the callback appends to it with
+// drain_pty_output so nothing the child writes is lost to the final asserts.
+using AfterEnableStep =
+    std::function<void(pid_t child, int master_fd, std::string& transcript)>;
+
 CursesProcessResult run_curses_process(
     const std::vector<std::string>& arguments,
     std::string_view input_after_enable,
-    bool report_flags_from_loop = true)
+    bool report_flags_from_loop = true,
+    const AfterEnableStep& after_enable = {})
 {
     CursesProcessResult result;
     TemporaryDirectory config_directory;
@@ -201,7 +219,8 @@ CursesProcessResult run_curses_process(
     constexpr std::string_view kitty_reply = "\x1b[?11u\x1b[?62;1c";
     constexpr std::string_view kitty_enable = "\x1b[>11u";
     bool sent_reply = false;
-    const auto deadline = std::chrono::steady_clock::now() + 15s;
+    auto deadline = std::chrono::steady_clock::now() + 15s;
+    bool ran_after_enable = false;
 
     while (std::chrono::steady_clock::now() < deadline) {
         drain_pty_output(master_fd, result.output);
@@ -218,6 +237,13 @@ CursesProcessResult run_curses_process(
         }
         const bool enable_seen =
             result.output.find(kitty_enable) != std::string::npos;
+        if (enable_seen && !ran_after_enable && after_enable) {
+            ran_after_enable = true;
+            after_enable(child, master_fd, result.output);
+            // The step bounds its own waits; the child's exit after the
+            // input below keeps the same 15 s budget the handshake had.
+            deadline = std::chrono::steady_clock::now() + 15s;
+        }
         if (enable_seen && !result.sent_input && !input_after_enable.empty()) {
             result.sent_input = write_all_fd(master_fd, input_after_enable);
         }
@@ -518,3 +544,405 @@ TEST(CursesAppProcess, terminal_flags_survive_a_drain_that_lags_the_child)
     EXPECT_TRUE(result.saw_enable)
         << "the reported flags must match the transcript, not the read sizes";
 }
+
+#if defined(__linux__) && (defined(__x86_64__) || defined(__aarch64__))
+namespace
+{
+// The main menu's footer hint (curses_picker_client.cpp, the generic
+// TerminalMenuModel choose call); draw_list puts it on the LAST row.
+constexpr std::string_view kMainMenuHint =
+    "Up/Down or j/k move | Enter select | digits jump | Esc/q back";
+// Where ncurses first paints that footer on the 40-row pty: a carriage
+// return, then VPA to row 40. Measured once (2026-10-02, ncurses from the
+// nix shell): the first frame writes "\r\x1b[40dUp/Down or ...", and after
+// the resize to 30 rows the redraw writes only "\r" + the hint, because
+// resize_term clamps ncurses' idea of the cursor (row 40) onto the new last
+// row, 30, so no vertical move is needed. ncurses refreshes damaged cells
+// only: at an unchanged size a redraw of the same menu writes nothing, so a
+// hint in the post-resize output means the footer MOVED to the new last row.
+const std::string kRow40Hint =
+    std::string("\x1b[40d") + std::string(kMainMenuHint);
+
+// /proc/<pid>/syscall: "<nr> <arg1> ... <arg6> <sp> <pc>" while the task is
+// blocked in a syscall, "running" or "-1 <sp> <pc>" otherwise.
+std::vector<std::string> read_proc_syscall(pid_t child, int* open_errno)
+{
+    std::vector<std::string> fields;
+    const std::string path = "/proc/" + std::to_string(child) + "/syscall";
+    errno = 0;
+    std::ifstream in(path);
+    if (!in) {
+        if (open_errno != nullptr)
+            *open_errno = errno != 0 ? errno : EIO;
+        return fields;
+    }
+    std::string line;
+    std::getline(in, line);
+    std::istringstream words(line);
+    for (std::string word; words >> word;)
+        fields.push_back(word);
+    if (open_errno != nullptr)
+        *open_errno = fields.empty() ? EACCES : 0;
+    return fields;
+}
+
+// The child is INSIDE poll_key's blocking poll(..., -1): the only state in
+// which a SIGWINCH is guaranteed to interrupt the poll (EINTR) instead of
+// landing between the resize-flag check and the poll (the self-pipe arm,
+// pinned by resize_landing_before_the_blocking_poll_still_redraws; this test
+// pins the EINTR arm). x86_64 glibc calls poll (7) and the third
+// argument is the -1 timeout; aarch64 has no poll syscall and glibc routes
+// it to ppoll (73) with a NULL timespec, so only the number is checked there.
+// The timeout is an int (-1) handed to the kernel in a 64-bit register, and
+// which upper half the register carries depends on how the C library's poll
+// wrapper loaded it: the dev box's toolchain sign-extends it (the field
+// reads 0xffffffffffffffff), GitHub's ubuntu runner zero-extends it
+// (0xffffffff). The kernel reads the low 32 bits either way, so the oracle
+// does too. (PR #345: the first CI run failed both resize pins on exactly
+// this difference while the child sat in the right poll.)
+bool poll_timeout_is_minus_one(const std::string& field)
+{
+    if (field.size() < 3 || field[0] != '0' || (field[1] != 'x' && field[1] != 'X'))
+        return false;
+    unsigned long long value = 0;
+    try {
+        value = std::stoull(field.substr(2), nullptr, 16);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return (value & 0xffffffffULL) == 0xffffffffULL;
+}
+
+bool in_blocking_poll(const std::vector<std::string>& fields)
+{
+#if defined(__x86_64__)
+    return fields.size() >= 4 && fields[0] == "7" &&
+           poll_timeout_is_minus_one(fields[3]);
+#else
+    return !fields.empty() && fields[0] == "73";
+#endif
+}
+
+bool child_still_running(pid_t child)
+{
+    siginfo_t info{};
+    // WNOWAIT: look without reaping, so the harness's own waitpid still
+    // collects the exit status.
+    if (::waitid(P_PID, static_cast<id_t>(child), &info,
+                 WEXITED | WNOHANG | WNOWAIT) != 0)
+        return false;
+    return info.si_pid == 0;
+}
+
+std::string escape_for_message(std::string_view bytes)
+{
+    std::string out;
+    for (const char c : bytes) {
+        if (c == '\x1b')
+            out += "\\e";
+        else if (c == '\r')
+            out += "\\r";
+        else if (c == '\n')
+            out += "\\n";
+        else
+            out += c;
+    }
+    return out;
+}
+} // namespace
+
+// #340: a terminal resize while the picker waits for a key. The SIGWINCH
+// interrupts poll_key's blocking poll; the EINTR arm loops, sees the pending
+// resize and hands the menu a Resize key, and the menu redraws at the new
+// size and keeps waiting. The child must still be alive (a resize is not a
+// cancel) and must draw its footer on the NEW last row, 30.
+TEST(CursesAppProcess, resize_during_a_blocking_poll_redraws_and_keeps_waiting)
+{
+    bool reached_blocking_poll = false;
+    bool redrew_at_new_size = false;
+    bool child_alive_when_esc_sent = false;
+    std::string after_resize;
+
+    const AfterEnableStep resize_while_blocked =
+        [&](pid_t child, int master_fd, std::string& transcript) {
+            // Precondition, loud and immediate: the parent can read the
+            // child's syscall state (Yama ptrace_scope <= 1 and
+            // CONFIG_HAVE_ARCH_TRACEHOOK). Without it the wait below could
+            // only time out, so fail with the errno instead.
+            int open_errno = 0;
+            const std::vector<std::string> probe =
+                read_proc_syscall(child, &open_errno);
+            ASSERT_EQ(0, open_errno)
+                << "cannot read /proc/" << child << "/syscall: "
+                << std::strerror(open_errno)
+                << " (needs Yama ptrace_scope <= 1 and "
+                   "CONFIG_HAVE_ARCH_TRACEHOOK)";
+            ASSERT_FALSE(probe.empty());
+
+            // Wait until the main menu is on screen AND the child sits in
+            // the blocking poll. Both waits end on a condition; the 60 s
+            // ceilings only bound a dead child. Measured on ci-test, the
+            // whole test (launch, reach, resize, redraw, exit) takes
+            // 11-22 ms; 60 s is far above an instrumented child's start,
+            // which the harness's own 15 s handshake budget already covers.
+            const auto poll_deadline =
+                std::chrono::steady_clock::now() + 60s;
+            while (std::chrono::steady_clock::now() < poll_deadline) {
+                drain_pty_output(master_fd, transcript);
+                if (transcript.find(kMainMenuHint) != std::string::npos &&
+                    in_blocking_poll(read_proc_syscall(child, nullptr))) {
+                    reached_blocking_poll = true;
+                    break;
+                }
+                if (!child_still_running(child))
+                    break;
+                pollfd ready{master_fd, POLLIN, 0};
+                (void)::poll(&ready, 1, 10);
+            }
+            ASSERT_TRUE(reached_blocking_poll)
+                << "the child never reached the main menu's blocking poll; "
+                   "last syscall state: "
+                << [&] {
+                       std::string joined;
+                       for (const std::string& f :
+                            read_proc_syscall(child, nullptr))
+                           joined += f + ' ';
+                       return joined;
+                   }()
+                << "\n" << escape_for_message(transcript);
+
+            // Positive control: before the resize the footer sat on row 40.
+            ASSERT_NE(std::string::npos, transcript.find(kRow40Hint))
+                << escape_for_message(transcript);
+            const std::size_t resize_offset = transcript.size();
+            winsize smaller{};
+            smaller.ws_row = 30;
+            smaller.ws_col = 80;
+            ASSERT_EQ(0, ::ioctl(master_fd, TIOCSWINSZ, &smaller))
+                << std::strerror(errno);
+
+            const auto redraw_deadline =
+                std::chrono::steady_clock::now() + 60s;
+            while (std::chrono::steady_clock::now() < redraw_deadline) {
+                drain_pty_output(master_fd, transcript);
+                if (transcript.find(kMainMenuHint, resize_offset) !=
+                    std::string::npos) {
+                    redrew_at_new_size = true;
+                    break;
+                }
+                if (!child_still_running(child))
+                    break;
+                pollfd ready{master_fd, POLLIN, 0};
+                (void)::poll(&ready, 1, 10);
+            }
+            after_resize = transcript.substr(resize_offset);
+            EXPECT_EQ(std::string::npos, after_resize.find("\x1b[40d"))
+                << "after the resize nothing may be drawn on the old row 40";
+            child_alive_when_esc_sent = child_still_running(child);
+        };
+
+    const CursesProcessResult result = run_curses_process(
+        {"--no-unicode", "--no-color"}, "\x1b[27u",
+        /*report_flags_from_loop=*/true, resize_while_blocked);
+
+    EXPECT_TRUE(reached_blocking_poll);
+    EXPECT_TRUE(redrew_at_new_size)
+        << "the menu must redraw its footer on the new last row after the "
+           "resize; "
+           "after the resize the child wrote:\n"
+        << escape_for_message(after_resize);
+    EXPECT_TRUE(child_alive_when_esc_sent)
+        << "a resize must not end the menu; the child exited before Esc";
+    expect_clean_curses_process(result);
+}
+
+#if defined(__x86_64__)
+// A resize whose SIGWINCH handler runs AFTER poll_key's pending-resize check
+// and BEFORE its blocking poll is entered (the lost-wakeup window #340 avoids
+// on purpose). The flag is set, nothing is pending on the terminal, and the
+// poll that follows must still return at once so the menu redraws before any
+// key arrives.
+//
+// The test reaches that window deterministically through the real kernel
+// signal path, without a seam in the product: it parks the child in the main
+// menu's blocking poll exactly as #340 does, stops it with PTRACE_INTERRUPT
+// (the interrupted poll(2) returns -ERESTART_RESTARTBLOCK, -516 -- the poll
+// syscall always arms a restart block -- and the task stops before the
+// restart fix-up), rewrites that return value to -ERESTARTNOINTR (-513),
+// resizes the pty while the child is still stopped (the kernel queues
+// SIGWINCH on it) and detaches. On resume the kernel delivers SIGWINCH, runs
+// on_sigwinch (the flag is set) and, because -513 re-executes the original
+// syscall even after a handled signal, re-enters poll(..., -1) once the
+// handler has returned: the poll starts after the handler ran and after the
+// flag check, with no signal left to interrupt it. Left at -516 the kernel
+// would turn the return into EINTR for a handled signal, and the EINTR arm
+// would catch the resize -- that is the #340 path, which is why the rewrite
+// is the whole trick.
+//
+// Rubric 5: every state the child sees (the handler ran between the check and
+// the poll; the poll was entered with nothing pending) is one the race reaches
+// on its own; the register rewrite only chooses WHEN the handler runs.
+// x86_64 only: aarch64 could do the same through PTRACE_SETREGSET (x0 holds
+// the return value, pc -= 4 on restart) but its user_pt_regs has no orig_x0
+// to assert the parked syscall number on, so the precondition below could not
+// be checked there.
+TEST(CursesAppProcess, resize_landing_before_the_blocking_poll_still_redraws)
+{
+    bool reached_blocking_poll = false;
+    bool restarted_after_handler = false;
+    bool redrew_at_new_size = false;
+    std::string last_syscall;
+    std::string after_resize;
+
+    const AfterEnableStep resize_before_the_poll =
+        [&](pid_t child, int master_fd, std::string& transcript) {
+            int open_errno = 0;
+            const std::vector<std::string> probe =
+                read_proc_syscall(child, &open_errno);
+            ASSERT_EQ(0, open_errno)
+                << "cannot read /proc/" << child << "/syscall: "
+                << std::strerror(open_errno)
+                << " (needs Yama ptrace_scope <= 1 and "
+                   "CONFIG_HAVE_ARCH_TRACEHOOK)";
+            ASSERT_FALSE(probe.empty());
+
+            // Reach the main menu's blocking poll exactly as #340 does. The
+            // 60 s ceilings only bound a dead child.
+            const auto poll_deadline =
+                std::chrono::steady_clock::now() + 60s;
+            while (std::chrono::steady_clock::now() < poll_deadline) {
+                drain_pty_output(master_fd, transcript);
+                if (transcript.find(kMainMenuHint) != std::string::npos &&
+                    in_blocking_poll(read_proc_syscall(child, nullptr))) {
+                    reached_blocking_poll = true;
+                    break;
+                }
+                if (!child_still_running(child))
+                    break;
+                pollfd ready{master_fd, POLLIN, 0};
+                (void)::poll(&ready, 1, 10);
+            }
+            ASSERT_TRUE(reached_blocking_poll)
+                << "the child never reached the main menu's blocking poll\n"
+                << escape_for_message(transcript);
+            // Positive control: before the resize the footer sat on row 40.
+            ASSERT_NE(std::string::npos, transcript.find(kRow40Hint))
+                << escape_for_message(transcript);
+
+            // Every precondition from here on detaches before it fails, so a
+            // broken precondition never leaves a stopped child behind.
+            const auto detach = [child] {
+                (void)::ptrace(PTRACE_DETACH, child, nullptr, nullptr);
+            };
+
+            errno = 0;
+            const long seized = ::ptrace(PTRACE_SEIZE, child, nullptr, nullptr);
+            ASSERT_EQ(0L, seized)
+                << "PTRACE_SEIZE of our own child failed: "
+                << std::strerror(errno) << " (needs Yama ptrace_scope <= 1)";
+            errno = 0;
+            const long interrupted =
+                ::ptrace(PTRACE_INTERRUPT, child, nullptr, nullptr);
+            const int interrupt_errno = errno;
+            if (interrupted != 0)
+                detach();
+            ASSERT_EQ(0L, interrupted)
+                << "PTRACE_INTERRUPT failed: " << std::strerror(interrupt_errno);
+
+            int stop_status = 0;
+            pid_t stopped = -1;
+            do {
+                stopped = ::waitpid(child, &stop_status, __WALL);
+            } while (stopped < 0 && errno == EINTR);
+            const bool event_stop = stopped == child && WIFSTOPPED(stop_status) &&
+                                    (stop_status >> 16) == PTRACE_EVENT_STOP;
+            if (!event_stop)
+                detach();
+            ASSERT_TRUE(event_stop)
+                << "expected a PTRACE_EVENT_STOP, waitpid returned " << stopped
+                << " with status 0x" << std::hex << stop_status;
+
+            user_regs_struct regs{};
+            errno = 0;
+            const long got = ::ptrace(PTRACE_GETREGS, child, nullptr, &regs);
+            const int getregs_errno = errno;
+            // Parked on the interrupted blocking poll: syscall 7 (poll), its
+            // return still -ERESTART_RESTARTBLOCK, its timeout argument -1.
+            // The timeout is an int, so only rdx's low 32 bits are the
+            // argument: the dev box's C library sign-extends it into the
+            // register, GitHub's runner zero-extends it (rdx 4294967295).
+            const bool parked_in_poll =
+                got == 0 && regs.orig_rax == 7 &&
+                static_cast<long long>(regs.rax) == -516 &&
+                (regs.rdx & 0xffffffffULL) == 0xffffffffULL;
+            if (!parked_in_poll)
+                detach();
+            ASSERT_TRUE(parked_in_poll)
+                << "the child is not parked on the interrupted blocking poll: "
+                << "PTRACE_GETREGS " << got << " ("
+                << std::strerror(getregs_errno) << "), orig_rax "
+                << regs.orig_rax << ", rax "
+                << static_cast<long long>(regs.rax) << ", rdx "
+                << static_cast<long long>(regs.rdx);
+
+            regs.rax = static_cast<unsigned long long>(-513LL);
+            errno = 0;
+            const long set = ::ptrace(PTRACE_SETREGS, child, nullptr, &regs);
+            const int setregs_errno = errno;
+            if (set != 0)
+                detach();
+            ASSERT_EQ(0L, set)
+                << "PTRACE_SETREGS failed: " << std::strerror(setregs_errno);
+
+            // The real resize, while the child is still stopped: the kernel
+            // queues SIGWINCH on it and delivers it on resume.
+            const std::size_t resize_offset = transcript.size();
+            winsize smaller{};
+            smaller.ws_row = 30;
+            smaller.ws_col = 80;
+            errno = 0;
+            const int resized = ::ioctl(master_fd, TIOCSWINSZ, &smaller);
+            const int resize_errno = errno;
+            errno = 0;
+            const long detached =
+                ::ptrace(PTRACE_DETACH, child, nullptr, nullptr);
+            const int detach_errno = errno;
+            ASSERT_EQ(0, resized) << std::strerror(resize_errno);
+            ASSERT_EQ(0L, detached)
+                << "PTRACE_DETACH failed: " << std::strerror(detach_errno);
+            restarted_after_handler = true;
+
+            const auto redraw_deadline =
+                std::chrono::steady_clock::now() + 60s;
+            while (std::chrono::steady_clock::now() < redraw_deadline) {
+                drain_pty_output(master_fd, transcript);
+                if (transcript.find(kMainMenuHint, resize_offset) !=
+                    std::string::npos) {
+                    redrew_at_new_size = true;
+                    break;
+                }
+                if (!child_still_running(child))
+                    break;
+                pollfd ready{master_fd, POLLIN, 0};
+                (void)::poll(&ready, 1, 10);
+            }
+            for (const std::string& f : read_proc_syscall(child, nullptr))
+                last_syscall += f + ' ';
+            after_resize = transcript.substr(resize_offset);
+        };
+
+    const CursesProcessResult result = run_curses_process(
+        {"--no-unicode", "--no-color"}, "\x1b[27u",
+        /*report_flags_from_loop=*/true, resize_before_the_poll);
+
+    EXPECT_TRUE(reached_blocking_poll);
+    EXPECT_TRUE(restarted_after_handler);
+    EXPECT_TRUE(redrew_at_new_size)
+        << "a resize landing before the blocking poll must still redraw "
+           "before any key; the child's last syscall state: "
+        << last_syscall << "\nafter the resize the child wrote:\n"
+        << escape_for_message(after_resize);
+    expect_clean_curses_process(result);
+}
+#endif
+#endif

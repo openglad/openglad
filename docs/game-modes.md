@@ -139,38 +139,13 @@ Only the CTF popup itself (`show_ctf_ending_popup`) remains hardcoded in the
 dispatch chain — migrating CTF onto `ending_popup` is optional and out of
 scope.
 
-## Tier-A recipe (NO seam code — every anchor verified on this branch)
+## Tier-A recipe
 
-A sim-ruleset mode = all of the following, paid in full:
-
-1. Core identity: a `SCEN_TYPE_*` bit (core/constants.h) + matching
-   `GameWorld::TYPE_*` constant (game_world.h).
-2. POD value-struct state embedded on `GameWorld` beside `CtfState ctf`
-   (game_world.h:397; leaf-header discipline per ctf_state.h:1-14), reset at
-   level load, and listed in BOTH `LevelRuntimeData` copy lists + the
-   old-world reset (level_runtime_data.cpp:275-277, 623-625, 644).
-3. A `<mode>_run_tick` free function joining the tick fork at
-   game_world.cpp:1785-1828, with the lazy-init `init_attempted` latch
-   (ctf.cpp:1018-1024) and **the win latch that RE-ASSERTS
-   `game_ended/ending/next_level` every tick** (tick entry resets them,
-   game_world.cpp:1617-1621 — this trap has bitten twice).
-4. A clause in `respawn_suppress_team_wipe_endgame` (ctf.cpp:1161-1183; all
-   three consumers — view.cpp:1393, game_server.cpp:1414/2148 — already gate
-   on it).
-5. If replicated: a snapshot block appended AFTER the CTF block
-   (world_snapshot.cpp:807/841/2393/2839/2969 + OG_REPLAY_COMPARE), plus the
-   protocol/snapshot/replay triple version bump and the 5 literal wire-byte
-   test re-pins (test_net_transport.cpp:240, 829-830, 858-859, ~2654;
-   test_input_state_net.cpp:133, 149).
-
-Grafted disciplines: (a) if the tick-fork condition is ever refactored, the
-CTF gate `!(init_attempted && !active)` must be reproduced EXACTLY,
-including owning the failing-init tick — pin with a 4-state truth-table unit
-test; (b) route new declarations into game_world.cpp via game_world.h
-includes, never by adding `#include` lines to game_world.cpp (mutation-canary
-pins 1620/1622 sit high; any line added above them shifts them silently).
-Create a `mode_run_completion_tick` dispatcher only when a THIRD sim engine
-appears.
+Superseded with the C++ CTF engine (see the banner at the top). A new
+sim-ruleset mode is a scripted mode: campaign-pack Lua on a `SCEN_TYPE_SCRIPTED`
+level, as [mp-game-modes.md](mp-game-modes.md) describes. The decision that
+split the seam into these two tiers is D1 in
+[tower-triple-design.md](tower-triple-design.md).
 
 ## The future-mode checklist (mode #3's bill, row by row)
 

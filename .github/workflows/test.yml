@@ -102,6 +102,53 @@ jobs:
         working-directory: relay
         run: npm test
 
+  x11-display:
+    name: X11 Display Lane
+    runs-on: ubuntu-latest
+    # The real-display lane (#329): og_test_display_x11 on SDL's x11 driver
+    # under Xvfb, where the offscreen driver every other Linux lane uses
+    # enumerates no video mode and is not "x11". Run A is one X screen with
+    # XRandR modes and openbox (mode selector, a real exclusive mode switch
+    # and its restore). Run B is two X screens with no window manager: SDL's
+    # x11 backend counts one display per X screen, so it trips
+    # exclusive_mode_switch_is_safe() exactly as a dual-monitor XRandR desktop
+    # would. It exercises OpenGlad's guard, which looks only at the driver and
+    # the display count; it does not reproduce SDL bug #9560 (the CRTC loss on
+    # a shared root) itself. A behaviour lane, outside the coverage gate.
+    #
+    # Sizing: a cold build of og_game_test plus one test binary, apt and two
+    # Xvfb runs. 30 minutes is the starting cap; it is sized from the first CI
+    # run of this job.
+    # First CI run (PR #345, 2026-10-03) took 3m53s end to end; 15 is ~4x that.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install dependencies
+        # xvfb: the X server. x11-xserver-utils: xrandr (adds the video modes).
+        # x11-utils: xdpyinfo and xprop (topology and window-manager checks).
+        # openbox: the EWMH window manager that acknowledges fullscreen.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev xvfb x11-xserver-utils x11-utils openbox
+
+      - uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: ci-x11
+
+      - name: Configure (ci-test preset, x11 display tests on)
+        run: cmake --preset ci-test -DOPENGLAD_X11_DISPLAY_TESTS=ON -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build the x11 display test binary
+        run: cmake --build --preset ci-test --target og_test_display_x11 -j"$(nproc)"
+
+      - name: Run the x11 display lane (one screen, then two)
+        # Exit 7 is an environment abort (Xvfb, the modes, the screen count or
+        # the window manager did not come up); nothing was tested.
+        run: bash scripts/ci/run_x11_display_lane.sh build/ci-test
+
   build:
     name: Native Build
     runs-on: ubuntu-latest

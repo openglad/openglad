@@ -6,14 +6,14 @@ deterministic simulation, its data-driven menu model, its save/level/campaign
 loading, and its server-authoritative networking. Only rendering (pixels →
 characters) and input (SDL events → key presses) are new.
 
-This document is the design spec and the contract that the implementation
-follows.
+This document describes what the client covers, how it is built from the
+engine's SDL-free pieces, and how it is tested.
 
 ---
 
-## Goals & non-goals
+## Scope
 
-**Goals**
+**What it does**
 
 - Zero SDL dependency. Links the same SDL-free components the headless server
   links (`og_core`, `og_gameplay`, `og_resources`, `og_platform_ws_transport`),
@@ -28,10 +28,10 @@ follows.
   the sim at pixel granularity; we snap to `pixel / GRID_SIZE` for display).
 - Networked multiplayer (host + join) over the same `GameServer`/`GameClient`/
   `LobbyServer`/WebSocket transports the SDL client and dedicated server use.
-- Extremely well tested, maintaining the project's coverage standard, with all
-  tests runnable headlessly in CI (no TTY required).
+- Tested headlessly in CI (no TTY required) and held to the project's
+  coverage gate.
 
-**Non-goals**
+**What it does not do**
 
 - Split-screen / multiple local players on one terminal (single local player).
 - The standalone pixel **level editor** (`openscen`). That is a separate tool,
@@ -42,14 +42,13 @@ follows.
 
 ---
 
-## Why this is feasible (the seams)
+## The engine seams it reuses
 
-The engine is already split so that simulation, data, and networking are
-SDL-free; SDL lives only in the renderer/input/menu *front end*. The ncurses
-client plugs into the same seams the headless `openglad_text` and
-`openglad_server` binaries already use.
+Simulation, data, and networking are SDL-free; SDL lives only in the
+renderer/input/menu front end. The ncurses client plugs into the same seams
+the headless `openglad_text` and `openglad_server` binaries use.
 
-| Concern | Engine seam we reuse | SDL-free? |
+| Concern | Engine seam | SDL-free? |
 |---|---|---|
 | Simulation step | `GameWorld::tick()` via `GameServer::step()` | yes (`og_gameplay`) |
 | Client mirror | `GameClient` (applies snapshots into a `GameWorld*`) | yes (`og_gameplay`) |
@@ -185,7 +184,9 @@ if the terminal does not advertise support it **throws and the client aborts** �
 there is no legacy fallback. On success it enables the protocol (key-up/down +
 real modifiers + standalone Ctrl/Alt) plus focus reporting, then reads raw bytes
 from the tty and feeds them to a pure `kitty::Decoder` (see `kitty_keys.h`).
-`SIGWINCH` yields a `Resize` key; `SIGINT`/`SIGTERM`/`atexit` restore the keyboard
+`SIGWINCH` yields a `Resize` key (delivered through a self-pipe the blocking
+read watches, so a resize that lands while the client is about to block still
+wakes it, whichever thread took the signal); `SIGINT`/`SIGTERM`/`atexit` restore the keyboard
 mode and leave curses so the protocol is never left enabled in the user's shell.
 `HeadlessTerminal` stores a `rows*cols` vector of `Cell`, a scripted
 `std::deque<Key>` for input (now including release/modifier events), and exposes
@@ -352,7 +353,7 @@ players join from separate clients.
 
 ---
 
-## Test plan (CI-safe, no TTY)
+## Tests (CI-safe, no TTY)
 
 All tests use `HeadlessTerminal` + `FakeClock`, so they run headlessly (no TTY) —
 the tty-specific bits of `CursesTerminal` (raw I/O, signals) are the only untested
@@ -371,8 +372,8 @@ CTest that asserts the shipped binary has zero SDL symbols.
    capability responses skipped (not surfaced as keys); and the
    support-detection handshake (kitty reply vs DA-only).
 3. **curses_input** — keys resolve through the player's bound keys, never a
-   hardcoded map: with the default 8-direction cluster `q`→up-left and `x`→down
-   (the regression the user hit), rebinding a key (explicit table or **loaded from
+   hardcoded map: with the default 8-direction cluster `q`→up-left and `x`→down,
+   rebinding a key (explicit table or **loaded from
    a `cfg_store`**) changes which terminal key fires which action, the configured
    **4/8-direction mode is honored**, and `Esc` is the only meta key. Plus exact
    **press/release** held tracking (held until release, no decay), **Ctrl/Alt via
@@ -401,8 +402,8 @@ CTest that asserts the shipped binary has zero SDL symbols.
    worlds converge by entity id + position; lobby roster sync; host input
    propagates to the joiner's mirror; cancel tears down cleanly.
 8. **sdl-free guard** — `openglad_curses_link_no_sdl` runs `nm`/`ldd` on the
-   shipped binary and fails on any SDL symbol or `libSDL2` dependency (mirrors
-   `openglad_server_link_no_sdl`).
+   shipped binary and fails on any SDL symbol or `libSDL<n>` dependency
+   (mirrors `openglad_server_link_no_sdl`).
 
 ### Known limitations
 

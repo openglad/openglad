@@ -16,6 +16,7 @@
  */
 
 #include <openglad/resources/io.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
@@ -187,11 +188,6 @@ std::string get_user_path()
     // IDBFS mount point for browser persistence -- "/persist/" unless the
     // embedding host selected a namespace (see web_persist_root()).
     return web_persist_root() + "/";
-#elif defined(ANDROID)
-    std::string path = SDL_GetAndroidInternalStoragePath();
-    return path + "/";
-#elif defined(__IPHONEOS__)
-    return "../";
 #elif defined(_WIN32)
     char path[MAX_PATH];
     HRESULT hr = SHGetFolderPath(
@@ -226,13 +222,7 @@ std::string get_user_path()
 
 std::string get_asset_path()
 {
-#ifdef ANDROID
-    // SDL_IOStream will look in the app's assets directory for this path
-    return "";
-#elif defined(__IPHONEOS__)
-    // Assuming the cwd is set to the program's installation directory
-    return "";
-#elif defined(_WIN32)
+#if defined(_WIN32)
     // Assuming the cwd is set to the program's installation directory
     return "";
 #else
@@ -308,6 +298,8 @@ SDL_IOStream* open_read_file(const char* path, const char* file)
 	    SDL_IOStream* rwops = og::io::physfsio_open_write(file);
 	    if(rwops != nullptr)
 	        return rwops;
+	    if(!og::io::stdio_write_fallback_allowed(file))
+	        return nullptr;
 	    return SDL_IOFromFile(file, "wb");
 	}
 

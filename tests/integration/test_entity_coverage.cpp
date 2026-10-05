@@ -50,12 +50,11 @@ TEST(EntityCoverage, sim_input_reverse_switch_missing_old_control_keeps_old)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(control == orphan_up.get()) << "missing reverse entry should keep old control";
     ASSERT_TRUE(result.control_hp_changed) << "missing reverse entry should report hp";
@@ -84,12 +83,11 @@ TEST(EntityCoverage, sim_input_shift_yell_default_action_branch)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_EQ(0, control->action()) << "default shift+yell branch should reset action to 0";
     ASSERT_TRUE(result.new_control == control) << "control should be preserved";
@@ -120,12 +118,11 @@ TEST(EntityCoverage, sim_input_switch_char_wraps_to_prior_candidate)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_TRUE(control == candidate) << "switch should wrap to prior candidate";
     ASSERT_TRUE(result.control_hp == 77.0f) << "reported hp should match wrapped candidate";
@@ -160,12 +157,11 @@ TEST(EntityCoverage, sim_input_idle_animation_cycle_wraps)
     input.clear();
 
     SimInputDebounce debounce = {};
-    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
-        0, 0, debounce, special_names, &log);
+        0, 0, debounce, &log);
 
     ASSERT_EQ(0, (int)control->cycle()) << "idle animation should wrap cycle at -1 sentinel";
     ASSERT_EQ(9, (int)control->frame()) << "idle animation should set frame from ani table";

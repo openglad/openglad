@@ -93,6 +93,7 @@ int sdl_soundob::init()
 	{
 		if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
 			return continue_without_audio(*this, "SDL_InitSubSystem(SDL_INIT_AUDIO)");
+		audio_subsystem_ = true;
 
 		// Mirrors the old mixer's open-audio(22050, S16, stereo, 1024);
 		// SDL3 has no chunksize knob. Devices start unpaused.
@@ -191,7 +192,14 @@ void sdl_soundob::shutdown()
 	{
 		SDL_CloseAudioDevice(device_);
 		device_ = 0;
+	}
+
+	// Keyed to the init, not to the device: an init whose device would not
+	// open still holds a subsystem reference, and this is where it goes.
+	if (audio_subsystem_)
+	{
 		SDL_QuitSubSystem(SDL_INIT_AUDIO);
+		audio_subsystem_ = false;
 	}
 }
 
