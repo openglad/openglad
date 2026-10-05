@@ -2749,16 +2749,13 @@ short walker::special()
 								return 0; // everyone was healthy; don't charge us
 							else
 							{
-                                if(!cfg.is_on("effects", "heal_numbers"))
-                                {
-                                    // Inform screen/view to print a message ..
-                                    if (didheal == 1)
-                                        sprintf(message, "Cleric healed 1 man!");
-                                    else
-                                        sprintf(message, "Cleric healed %d men!", didheal);
-                                    if (team_num == 0 || myguy) // home team
-                                        myscreen->do_notify(message, this);
-                                }
+                                // Inform screen/view to print a message ..
+                                if (didheal == 1)
+                                    sprintf(message, "Cleric healed 1 man!");
+                                else
+                                    sprintf(message, "Cleric healed %d men!", didheal);
+                                if (team_num == 0 || myguy) // home team
+                                    myscreen->do_notify(message, this);
                                 
 								// Play sound ...
 								if (on_screen())
@@ -4061,8 +4058,7 @@ short walker::special()
 						strcpy(message, "Orc");
 					strcat(message, " ate a corpse.");
 					
-                    if(!cfg.is_on("effects", "heal_numbers"))
-                        myscreen->do_notify(message, this);
+                    myscreen->do_notify(message, this);
 					if (stats->hitpoints > stats->max_hitpoints)
 						stats->hitpoints = stats->max_hitpoints;
 					newob->dead = 1;
