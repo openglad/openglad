@@ -806,6 +806,10 @@ add_custom_target(scenario_facts_generated ALL
     DEPENDS ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
 )
 add_dependencies(og_test_parity scenario_facts_generated)
+# Building the parity harness also checks that every old-game commit the
+# golden ledger names is pushed to origin/parity-companion (#349; only needs
+# bash, so unconditional).
+add_dependencies(og_test_parity check_parity_companion_refs)
 # Building the parity harness also re-validates the canary pins, so
 # pin rot surfaces on the next build rather than as a quietly
 # toothless canary run weeks later. (Interpreter-gated like the
@@ -1872,6 +1876,20 @@ add_test(NAME check_retired_phrases_selftest
         ${CMAKE_SOURCE_DIR}/scripts/test_check_retired_phrases.sh
 )
 set_tests_properties(check_retired_phrases_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The old-game commit gate's teeth, on a temp repository: an unpushed port, an
+# unlisted old-game src/ commit, a port beyond the pin, table drift, malformed
+# cells, and the SKIPPED-locally / required-in-CI split for an absent ref and
+# an unknown sha. See the script header.
+add_test(NAME check_parity_companion_refs_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_check_parity_companion_refs.sh
+)
+set_tests_properties(check_parity_companion_refs_selftest PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 60
 )

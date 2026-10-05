@@ -471,6 +471,16 @@ og_add_shell_check_target(check_lua_error_sites
     check_lua_error_sites.sh
 )
 
+# Every old-game commit tests/parity/golden/DRIFT_LEDGER.md names (its pin line
+# and its `old-game commit` table cells) must be on origin/parity-companion, the
+# current scenario table must equal the pin's, and every old-game src/ commit
+# must have a ledger cell (#349). Skips with a notice where the ref is absent or
+# stale, except under GITHUB_ACTIONS. See the script header.
+og_add_shell_check_target(check_parity_companion_refs
+    "Checking the golden ledger's old-game commits are on origin/parity-companion"
+    check_parity_companion_refs.sh
+)
+
 # --------------------------------------------------------------------------
 # Python-driven repo checks: resolve the interpreter at configure time.
 #

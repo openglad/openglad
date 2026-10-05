@@ -210,6 +210,13 @@ large MP pools:
 Division follows C truncation where the source value can be negative. The
 limits bind well above the normal starting MP used by parity scenarios.
 
+Update (2026-10-05): not for the starburst cap. `mage_freeze_time_offteam_scen99`
+spawns a level-15 mage with 900 MP, and its tick-271 STARBURST add is above 40,
+so the cap binds there (first-step fireball line of sight 24 with the cap, 27
+without). The old game carries the same cap since #349
+(`tests/parity/golden/DRIFT_LEDGER.md`, "#349 ports"). The other three caps
+change no golden: the old game reproduces every golden without them.
+
 ### 2.13 Deliberately unchanged behavior
 
 The safeguards do not merge bomb knockback, cap potion durations, limit the

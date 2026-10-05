@@ -183,6 +183,14 @@ Build and CI checks enforce boundaries:
 1. CMake target-level include root restriction per component
 2. `scripts/check_vendor_leaks.sh` external dependency include checks
 3. `scripts/check_vendor_leaks.sh` component dependency include checks
+4. `scripts/check_parity_companion_refs.sh`, an `og_test_parity` build
+   dependency, checks the parity goldens' source: every old-game commit
+   `tests/parity/golden/DRIFT_LEDGER.md` names (its pin line and its
+   `old-game commit` cells) is on `origin/parity-companion`,
+   `tests/parity/scenario_table.h` equals the pin's
+   `tools/parity_scenario_table.h`, and every old-game commit that touches
+   `src/` has a ledger cell. Under `GITHUB_ACTIONS` a missing ref fails it;
+   locally it skips with a notice
 
 ### Runtime Context and Thread-Local Rules
 

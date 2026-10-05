@@ -55,43 +55,44 @@ against a non-deterministic reference.
 
 The old game is the branch `parity-companion`, pushed to
 `origin/parity-companion`: the e761 tree rebuilt as `a2d9d470`, plus two
-kinds of commit. Recorder-only commits touch `tools/parity_*` and nothing
-else (table mirrors, the golden capture tool `parity_dump_master`). Behaviour
-ports carry a deliberate current-game fix into the old game's C++, one fix
-per commit; the message names the current-game commit it mirrors, and the
-ledger's "Ported fixes" section has a row for it. Its worktree conventionally
-lives at `../openglad-master` (`git fetch origin parity-companion && git
-worktree prune && git worktree add ../openglad-master parity-companion`). It
-is e761-era code that needs SDL2 and has no CMake build. Rebuild the golden
-capture tool from any cwd with
+kinds of commit. Recorder-only commits touch `tools/parity_*` (table
+mirrors, the golden capture tool `parity_dump_master`) or only the
+recorder blocks of `src/`. Behaviour ports carry a deliberate current-game
+fix into the old game's C++, one fix per commit; the message names the
+current-game commit it mirrors. Every commit that touches `src/` has an
+`old-game commit` cell in the ledger's "Ported fixes".
 
-    nix develop /home/yans/code/openglad -c bash /home/yans/code/openglad-master/scripts/parity/build_parity_dump_master.sh
+The goldens come from the commit the ledger pins (its header line
+"Old-game commit the goldens are captured from: `<sha>`"), which is not
+necessarily the branch tip: a recapture uses a worktree at the pin. The
+build and capture commands live in one place, the ledger's "Recapturing
+every golden from the old game"; this section keeps only the traps. A
+working worktree for authoring ports conventionally lives at
+`../openglad-master`. It is e761-era code that needs SDL2 and has no CMake
+build.
 
-(generic: `nix develop <openglad checkout> -c bash
-<old-game worktree>/scripts/parity/build_parity_dump_master.sh`). The checkout you
-name must carry this flake.nix; the main checkout does once master has it,
-and a checkout at an older commit runs the old shell, where the script
-exits 1. The dev shell carries `sdl2-compat` and `SDL2_mixer` from the
-flake's locked nixpkgs, so the script's `pkg-config --exists sdl2
-SDL2_mixer` check passes as written. Do not export `PKG_CONFIG_PATH` or
-run `nix build --no-link`, and never use `nix shell nixpkgs#…`: a floating
-channel's glibc does not match the shell's, and the link fails with
-`GLIBC_2.43` symbol errors.
-
-The two libraries are not GC roots. `nix-collect-garbage` can delete them;
-the next `nix develop` re-fetches the same store paths from the locked
-rev, so the already-built dumper (its RUNPATH names those paths) loads
-again without a rebuild. To keep them across a garbage collection, run
-`nix develop --profile <dir>/dev-shell /home/yans/code/openglad -c true`
-once. The profile link is the root, so keep `<dir>` outside any directory
-that gets wiped.
-
+- The `nix develop <checkout>` you build in must carry this flake.nix; a
+  checkout at an older commit runs the old shell, where the build script
+  exits 1. The dev shell carries `sdl2-compat` and `SDL2_mixer` from the
+  flake's locked nixpkgs. Do not export `PKG_CONFIG_PATH` or run `nix
+  build --no-link`, and never use `nix shell nixpkgs#…`: a floating
+  channel's glibc does not match the shell's, and the link fails with
+  `GLIBC_2.43` symbol errors.
+- The two libraries are not GC roots. `nix-collect-garbage` can delete
+  them; the next `nix develop` re-fetches the same store paths from the
+  locked rev, so the already-built dumper (its RUNPATH names those paths)
+  loads again without a rebuild. To keep them across a garbage
+  collection, run `nix develop --profile <dir>/dev-shell
+  /home/yans/code/openglad -c true` once, with `<dir>` outside any
+  directory that gets wiped.
+- The build script only recompiles a `.cpp` newer than its `.o`: after
+  any old-game header edit (`src/*.h`, `tools/*.h`), `rm -rf
+  <old-game worktree>/build/ci-test/obj` before rebuilding.
 - `tests/parity/scenario_table.h` and the old game's
   `tools/parity_scenario_table.h` must be **byte-identical** (`cmp`)
   before any capture. Commit both trees, the old game first.
-- The old game's build does not recompile on a header-only table change
-  (source-newer-than-object guard) — delete the dumper's `.o` first or a
-  new id fails with "unknown scenario".
+- A header-only table change hits the same guard: wipe the old game's
+  `obj/` first or a new id fails with "unknown scenario".
 - If a behavior depends on a render-driven field (the `drawcycle` lesson:
   render-only counters FREEZE in a headless sim), the old game must
   replicate the render-loop bump as a cosmetic override — otherwise the
@@ -126,36 +127,48 @@ current-game dump against that golden; there is no waiver.
   the two, and `cmp` each moved capture against the current game's dump;
   commit the recaptured goldens. A port that does not reach byte identity
   is reported with its `diff_dumps.py` output, never forced or blessed.
-- `tests/parity/golden/DRIFT_LEDGER.md` records the ports ("Ported fixes")
-  and lists, under "Open", the goldens that predate the rule and are still
-  current-game captures. That list may only shrink: a row leaves it when
-  its fix is ported and the recapture `cmp`s equal. Never paste an old-game
-  capture over an Open row without the port; the row's facts can sit
-  inside the cross-arm drift.
+- `tests/parity/golden/DRIFT_LEDGER.md` pins the old-game commit the
+  goldens are captured from, holds the recapture recipe, and records every
+  port. A port commit gets an `old-game commit` cell, the pin moves to the
+  new old-game commit, and `scripts/check_parity_companion_refs.sh`
+  enforces both (ancestry on `origin/parity-companion`, the table `cmp`
+  at the pin, a cell for every `src/` commit). Write an old-game sha you
+  want checked only in such a cell; prose shas are not read.
+- The ledger's "Open" list (goldens that are not old-game captures) has
+  been empty since #349 (2026-10-05), and it may only shrink: a departure
+  lands with its port and recapture. Never paste an old-game capture over
+  a golden without the port; the row's facts can sit inside the cross-arm
+  drift.
 - **Merge-base adjudication is a diagnostic, never a source.** Reproducing
   a row at the PR's merge base tells you whether a divergence is yours
   (`branch == merge base`: it predates the PR; `branch != merge base`: a PR
   regression). It never makes the current-game dump a golden.
-- Any deliberate gameplay fix that moves goldens also gets a
-  `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md` row.
+- Any deliberate gameplay fix gets a `docs/GAMEPLAY_FIXES_FROM_CLASSIC.md`
+  row, including one no parity row reaches (it says "this branch only" and
+  why it is golden-neutral).
 
 ## How CI gets the old game
 
-No workflow fetches, clones or builds `parity-companion` (all eight were
-read at `83c3f1c0`: claude-code-review, claude, coverage, fuzz,
-parity-canary, release, test, wasm-e2e). `parity-canary.yml` builds
-`og_test_parity parity_runner_smoke og_test_level` and fetches only the
-PR's base ref for `--touched`; `test.yml` says CI must not re-capture
-goldens. CI sees the old game only through the committed goldens' bytes,
-which `og_test_parity` byte-compares (`tests/parity/golden_compare.h`). No
-old-game sha is pinned anywhere in CI. So "CI uses the ported old game"
-means two things, and both are the PR author's job:
+Every workflow job checks out with `fetch-depth: 0`, which fetches
+`refs/heads/*`, so `origin/parity-companion` is in every CI clone (test,
+coverage, fuzz, wasm-e2e, parity-canary and release; proof: PR #345's
+canary job log shows `* [new branch] parity-companion ->
+origin/parity-companion`). No workflow builds the old game; CI sees it
+through the committed goldens' bytes, which `og_test_parity`
+byte-compares (`tests/parity/golden_compare.h`), and through
+`scripts/check_parity_companion_refs.sh`, which runs as an `og_test_parity`
+build dependency in every lane that builds it, with the ref required
+under `GITHUB_ACTIONS` (a missing ref is an error there, not a skip).
+Locally, an absent ref is a skip with a notice.
 
-1. the committed goldens are captures from the old-game commit the ledger
-   names (a full `--all --out-dir` capture `cmp`s equal, Open rows aside);
-2. `origin/parity-companion` is pushed to that commit with the PR. A
-   missed push is invisible to every lane: CI stays green, and nobody can
-   reproduce the goldens from origin.
+- Push `origin/parity-companion` BEFORE CI runs on the PR. A PR whose
+  ledger names an unpushed old-game commit, or whose pin is not on
+  `origin/parity-companion`, turns every lane that builds
+  `og_test_parity` red.
+- Never fetch the old game with `--depth`: a shallow clone cannot prove
+  ancestry, and the check refuses it.
+- The release lanes build with `-DBUILD_TESTING=OFF`, so the check never
+  runs there.
 
 ## Adding a scenario (the coordinated edits)
 
@@ -170,7 +183,9 @@ means two things, and both are the PR author's job:
    defaults to `../openglad-master` relative to the repo root, and an
    unreadable or unset fixture variable makes the tool fall back to other
    scen99 bytes. Never run the script with no ids and no `--out-dir`: that
-   is `--all` into `tests/parity/golden`, over the Open rows too.
+   is `--all` into `tests/parity/golden`. The mirror commit becomes the
+   ledger's pin (the table is checked at the pin), and it is pushed to
+   `origin/parity-companion` before CI runs.
 4. `tests/parity/scenario_facts_generated.json` is regenerated by ctest
    (write_scenario_facts_json) — commit it.
 5. Prove the mutation flips (see canary below) before calling it done.
