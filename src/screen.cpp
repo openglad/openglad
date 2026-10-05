@@ -1380,10 +1380,14 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 void screen::do_notify(const char *message, walker  *who)
 {
 #ifdef OG_PARITY_RECORDER
+	// Canonical notification form shared with the current game's parity
+	// test driver: text only, a = b = 0. The notifier's family and team are
+	// not recorded (the current game's notification event carries no
+	// notifier, and its a is a HUD display duration).
 	og::parity::record_event(
 	    og::parity::kEventNotification,
-	    who ? static_cast<std::uint32_t>(who->query_family()) : 0,
-	    who ? static_cast<std::uint32_t>(who->team_num) : 0,
+	    0,
+	    0,
 	    message ? std::string(message) : std::string());
 #endif
 	short i,sent=0;
