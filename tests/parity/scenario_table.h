@@ -5897,24 +5897,18 @@ inline constexpr Mutation kMut_mage_teleport_marker_scen99 = {
 };
 
 // ARCHMAGE slot-1 TELEPORT MARKER: a deliberately divergent twin of the mage
-// body (notifications not gated on user() != -1, hardcoded Int requirement 75,
-// and marker.ani_type set to a raw 2 instead of ANI_SPIN == 1).
+// body (notifications not gated on user() != -1, hardcoded Int requirement 75).
 // archmage.lua's hit_response sets shifter_down 0 before recasting slot 1, so
 // an AI archmage can never reach this arm and no other row in the corpus does.
 //
-// WHAT THIS ROW CANNOT ASSERT, AND WHY. On the branch the archmage's marker is
-// reaped on its first act tick: raw ani_type 2 makes effect::animate compute
-// ani_index = curdir + 2*8 >= 16, past the marker family's 16-row animation
-// table, so the ani_count bound (src/gameplay/effect.cpp:120-127) resets it to
-// ANI_WALK and effect::act then kills it. The e761 companion has no such bound,
-// reads past the table, and keeps the marker spinning -- which is why its
-// golden shows a live FAMILY_MARKER, an "(Old Marker Removed)" notice on the
-// second cast, and a return teleport that lands on the marker. The merge base
-// 05eaaa23 reproduces the branch exactly, so the divergence is master-era, not
-// this PR; see tests/parity/golden/DRIFT_LEDGER.md. mage.lua's ANI_SPIN twin is
-// unaffected, which is what mage_teleport_marker_scen99 pins. This row
-// therefore asserts only the placement arm, which does run: two casts, four
-// notifications, and the caster's own eastward walk.
+// THE MARKER SURVIVES. The 2002 C++ placed it with a raw ani_type 2, which
+// indexes row curdir + 16 of the marker's 16-row animation table. The old game
+// reads past the table and the marker keeps looping; the current game's
+// ani_count bound (src/gameplay/effect.cpp) reset it to ANI_WALK and
+// effect::act reaped it on its first tick. archmage.lua now places it with
+// ANI_SPIN, the marker's own row (as mage.lua does), so on both sides the
+// first marker lives until the second cast removes it ("(Old Marker
+// Removed)") and the second is alive at the final tick.
 inline constexpr InputEvent kInputsMarkerTwiceEast[] = {
     {   5, 0, K_SPECIAL | K_SHIFT},  // cast 1: place a marker at the start cell
     {   6, 0, K_NONE},
@@ -5944,11 +5938,9 @@ inline constexpr FactPredicate kFacts_archmage_teleport_marker_scen99[] = {
     // the lone team-1 soldier is parked 520 px away and is still at (272,400)
     // at the final tick, so nothing interrupts the walk or the two casts.
     pred::WalkerPositionMoved(FAMILY_ARCHMAGE, 414, 320),
-    // The caster is the ONLY alive team-0 entry: both placed markers are
-    // already reaped (see the ani_type note above). This is a drift sentinel --
-    // if the marker ever survives on the branch again, this predicate fails and
-    // forces a conscious rebaseline instead of a silent behaviour change.
-    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    // Two alive team-0 entries: the caster and the second marker (the first
+    // was removed by the second cast). A reaped marker drops this to 1.
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
 };
 
 inline constexpr Mutation kMut_archmage_teleport_marker_scen99 = {
