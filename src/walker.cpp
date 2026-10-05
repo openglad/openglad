@@ -1423,8 +1423,33 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
             // Any terrain in the way?  This checks boundaries too.
             if(!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
                 continue;
+            // No corner cutting (ported from the current game's #132,
+            // c409e7c8; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md "Single-floor
+            // pathing wedges"). A full-cell body can only make a diagonal
+            // cell transition when BOTH flanking orthogonal cells are open:
+            // its swept box necessarily overlaps them, so a diagonal past a
+            // blocked flank is pixel-impassable at EVERY offset. Flanks are
+            // tested with the same grid passability as the target. The
+            // current game also skips "air" flanks for non-flyers; this game
+            // has no air tiles, so that half has nothing to port. No RNG.
+            if(i != 0 && j != 0)
+            {
+                bool flanks_open = true;
+                const int flank[2][2] = {{x1 + i*GRID_SIZE, y1},
+                                         {x1, y1 + j*GRID_SIZE}};
+                for(int k = 0; k < 2; k++)
+                {
+                    if(!myscreen->query_grid_passable(flank[k][0], flank[k][1], path_walker))
+                    {
+                        flanks_open = false;
+                        break;
+                    }
+                }
+                if(!flanks_open)
+                    continue;
+            }
             // Any moving objects in the way?
-            else if(myscreen->level_data.myobmap->obmap_get_list(adj_x,adj_y).size() > 0)
+            if(myscreen->level_data.myobmap->obmap_get_list(adj_x,adj_y).size() > 0)
                 cost.cost = 10;
             else
                 // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
