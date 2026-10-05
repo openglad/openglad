@@ -248,8 +248,9 @@ inline constexpr int kSkeletonLifeCeiling = 900;
 inline constexpr int kGhostRaiseLifeKnee = 670;
 inline constexpr int kGhostRaiseLifeCeiling = 925;
 
-// 12. MP-pool damage caps (draw-free min() wraps at the cast sites; covered
-//     spawn-MP values sit far below every bind point; see design §2.12).
+// 12. MP-pool damage caps (draw-free min() wraps at the cast sites; see design
+//     §2.12). The starburst add binds in the parity corpus (the 900-MP mage of
+//     mage_freeze_time_offteam_scen99); the other three change no golden.
 // Heartburst pool / chain-lightning initial bolt (MP-cost)/2: binds only
 // above ~1280-1300 MP.
 inline constexpr int kMpPoolDamageCap = 600;

@@ -3,8 +3,10 @@
 #
 # This script is the ONLY way a parity golden is produced. Every golden is a
 # capture from the old game (branch parity-companion), never a dump of the
-# current game; tests/parity/golden/DRIFT_LEDGER.md states the rule and lists
-# the goldens that still predate it.
+# current game. tests/parity/golden/DRIFT_LEDGER.md states the rule, pins the
+# old-game commit the goldens are captured from, and holds the recipe
+# ("Recapturing every golden from the old game"): capture from a worktree of
+# that pinned commit.
 #
 # Drives the golden capture tool parity_dump_master, built from the old game's
 # worktree (default ../openglad-master/build/ci-test/parity_dump_master, made by
@@ -18,10 +20,10 @@
 #   scripts/parity/capture_master_golden.sh --all --no-write --diff
 #
 # A bare invocation (no ids and no --out-dir) means --all INTO
-# tests/parity/golden: it overwrites every golden, including the rows the
-# ledger lists under "Open", which are not old-game captures yet. Pass ids, or
-# capture into --out-dir and compare with cmp. --diff is not a proof: it falls
-# back to a lifetime-normalised "semantic" compare.
+# tests/parity/golden: it overwrites every golden, from whatever old-game
+# worktree MASTER_WORKTREE names, pinned or not. Pass ids, or capture into
+# --out-dir and compare with cmp. --diff is not a proof: it falls back to a
+# lifetime-normalised "semantic" compare.
 #
 # Environment overrides:
 #   MASTER_WORKTREE   path to the old game's worktree (default: <REPO_ROOT>/../openglad-master).
