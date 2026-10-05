@@ -205,7 +205,7 @@ under History. Rows closed by `cmp` alone carry no further evidence here.
 | `consumable_inventory_state_scen99` | M1 | M1 alone (2026-08-01 M table) | no |  |
 | `coverage_catchall_scen99` | notif a/b | not Open: matched the `ab0a7d2a` capture | yes: notification `a`/`b` only | no predicate reads a Notification's `a` or `b`; the byte compare carries the change |
 | `druid_protection_refresh_scen99` | druid, then notif a/b | druid top-up | yes: notification `a` 13 to 0 only |  |
-| `effect_bomb_bystander_scen99` | M1 | R: a bound-only RNG draw in the explosion's `get_base_damage` | no | the one differing bound is draw 132, `set_weapon_heading`'s waver on a TOWER1 probe arrow at tick 95 (5 old, 6 current): M1's `face_delta` at tick 94 gives the stationary tower (`stepsize` 0) a (0,0) heading, read as FACE_UP, so the probe is orthogonal and its step is scaled; ported literally, and the stepsize-0 heading is a follow-up issue |
+| `effect_bomb_bystander_scen99` | M1 | R: a bound-only RNG draw in the explosion's `get_base_damage` | no | the one differing bound is draw 132, `set_weapon_heading`'s waver on a TOWER1 probe arrow at tick 95 (5 old, 6 current): M1's `face_delta` at tick 94 gives the stationary tower (`stepsize` 0) a (0,0) heading, read as FACE_UP, so the probe is orthogonal and its step is scaled; ported literally, and the stepsize-0 heading is #350 |
 | `effect_chain_fork_scen99` | M1 | #132 M1 and/or M2/M3 (top drift table) | no |  |
 | `effect_chain_scen9410` | M2 | M2 alone | no |  |
 | `effect_explosion_emission_scen99` | M3 | M3 alone | no | M3 alone also closes it on `ab0a7d2a` (probe); M2 leaves it unmoved |
