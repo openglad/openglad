@@ -404,6 +404,18 @@ short living::shove(walker  *target, short x, short y)
 		// Make sure WE don't get shoved
 		if (random(3) && target->query_act_type() != ACT_CONTROL)
 		{
+			// 2026-07-10 shove command-theft livelock fix, ported from the
+			// current game's living::shove (c409e7c8). The old code cleared
+			// the target's queue and injected COMMAND_WALK(x, y) even when
+			// that walk was wall-blocked; a shover re-colliding every tick
+			// then refilled the injected command forever, so the target
+			// never re-ran its own COMMAND_SEARCH. Probe the injected walk's
+			// baby step against the GRID only before stealing the queue: if
+			// it is terrain-blocked, leave the target's queue alone. The
+			// random(3) draw above stays unconditional.
+			if (!myscreen->query_grid_passable(target->xpos + (float) x,
+			                                   target->ypos + (float) y, target))
+				return 0;
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
 			//   all commands
