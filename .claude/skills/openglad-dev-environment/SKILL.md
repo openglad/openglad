@@ -215,10 +215,10 @@ the example. Re-run them on a new box; never carry the numbers over.
   install. CI's Ubuntu runner still installs gcovr with pip before configuring
   the coverage preset.
 - The old game (branch `parity-companion`, the source of every parity
-  golden): `git fetch origin parity-companion`, then `git worktree add
-  ../openglad-master parity-companion` and build `parity_dump_master` there
-  with the one-liner in openglad-parity (`nix develop <checkout carrying this
-  flake.nix> -c bash <companion>/scripts/parity/build_parity_dump_master.sh`).
+  golden): to rebuild it and reproduce every golden, follow
+  `tests/parity/golden/DRIFT_LEDGER.md`, "Recapturing every golden from the
+  old game". For a recapture the worktree is at the ledger's pin, not the
+  branch tip; the build traps are in openglad-parity, "The old game".
 - `temp/scen/*.fss` fixtures regenerate via a full ctest run
   (og_test_level writes them).
 - Relay/Pages deploys read credentials from the gitignored `./env`

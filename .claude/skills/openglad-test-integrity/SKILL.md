@@ -234,21 +234,25 @@ is closed you cannot interrupt them.
 ## Proving a parity golden is authentic
 
 A golden is authentic when it `cmp`s equal to a capture from the old game
-(branch `parity-companion`) at the commit `tests/parity/golden/DRIFT_LEDGER.md`
-names, made with `scripts/parity/capture_master_golden.sh --out-dir <scratch>`.
-No golden is ever captured from the current game; the ledger's "Open" section
-lists the goldens that predate that rule and do not `cmp` equal yet.
+(branch `parity-companion`) at the commit on the pin line of
+`tests/parity/golden/DRIFT_LEDGER.md` ("Old-game commit the goldens are
+captured from: ..."), made with `scripts/parity/capture_master_golden.sh
+--out-dir <scratch>`; the ledger's "Recapturing every golden from the old
+game" is the recipe. No golden is ever captured from the current game, and
+since #349 every golden `cmp`s equal to that capture (the ledger's "Open"
+list is empty).
 
 The old game is the e761 baseline rebuilt as `a2d9d470`, plus two kinds of
-commit: recorder-only commits (`tools/parity_*` and nothing else) and
-behaviour ports, one fix per commit, whose message names the current-game
-commit they mirror and which have a row in the ledger's "Ported fixes"
-section. Verify with `git -C <old-game worktree> log --stat a2d9d470..HEAD`:
-every commit that touches `src/` must be one of those ports, listed in the
-ledger (the ports made before the rule, such as `4e1af2a1` and the armor-roll
-commits, are listed there too). A matching
-`git merge-base` is NOT sufficient proof — never quote it as such; merge-base
-adjudication only tells you whether a divergence is yours.
+commit: recorder-only commits and behaviour ports, one fix per commit, whose
+message names the current-game commit they mirror. Every old-game commit that
+touches `src/` must have an `old-game commit` cell in the ledger's "Ported
+fixes" (the ports made before the rule, such as `4e1af2a1` and the
+armor-roll commits, have cells too). `scripts/check_parity_companion_refs.sh`
+(an `og_test_parity` build dependency) makes that verification: ancestry on
+`origin/parity-companion`, the scenario table `cmp` at the pin, and a cell
+for every `src/` commit. A matching `git merge-base` is NOT sufficient proof
+— never quote it as such; merge-base adjudication only tells you whether a
+divergence is yours.
 `tests/parity/scenario_table.h` and the old game's
 `tools/parity_scenario_table.h` must be byte-identical (`cmp`) before any
 capture. A hand-edited golden fails the byte compare; an edited golden is
