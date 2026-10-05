@@ -178,7 +178,7 @@ local function teleport(self)
   else
     marker.lifetime = self.level // 4 + 1
   end
-  marker.ani_type = 2  -- raw 2 in the C++ (not ANI_SPIN, which is 1)
+  marker.ani_type = C.ANI_SPIN  -- the C++ wrote a raw 2 past the 16-row table
   if self.team == 0 or self:has_guy() then
     og.emit_notification("Teleport Marker Placed", 0, self)
     og.emit_notification(string.format("(%d Uses)", marker:lifetime()), 0, self)
