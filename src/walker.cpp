@@ -3915,7 +3915,13 @@ short walker::special()
                                 {
                                     // First see if this person already has protection (slow)
                                     tempwalk = NULL;
-                                    for(auto f = myscreen->level_data.oblist.begin(); f != myscreen->level_data.oblist.end(); f++)
+                                    // Look where the circle actually lives:
+                                    // add_ob routes ORDER_WEAPON to weaplist,
+                                    // so the oblist walk never matched.
+                                    short circlecount;
+                                    std::list<walker*> circles = myscreen->find_in_range(myscreen->level_data.weaplist,
+                                              100, &circlecount, newob);
+                                    for(auto f = circles.begin(); f != circles.end(); f++)
                                     {
                                         walker* ob = *f;
                                         if (ob && ob->owner == newob
