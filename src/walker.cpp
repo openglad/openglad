@@ -4125,6 +4125,63 @@ short walker::special()
 	return 0;
 }
 
+// Teleport destination probe, ported from the current game's
+// teleport_landing_clear (c409e7c8, bugs A6/A7). query_passable would route
+// through ob_pass_check, which EATS treasures at a rejected spot and fires
+// collide() side effects, and its grid half lets transient flight_left bless
+// a landing inside trees or boulders. This probe is the grid under ground
+// rules (flight_left masked) plus an eat-free sweep for blocking walkers.
+static bool teleport_spot_blocked_by(walker *other, walker *self,
+                                     Sint32 x, Sint32 y)
+{
+	if (other == NULL || other == self || other->dead)
+		return false;
+	char order = other->query_order();
+	bool blocking =
+		order == ORDER_LIVING || order == ORDER_GENERATOR ||
+		(order == ORDER_WEAPON &&
+		 (other->query_family() == FAMILY_DOOR || other->query_family() == FAMILY_TREE ||
+		  other->query_family() == FAMILY_BOULDER));
+	if (!blocking)
+		return false;
+	return x + self->sizex > other->xpos &&
+	       x < other->xpos + other->sizex &&
+	       y + self->sizey > other->ypos &&
+	       y < other->ypos + other->sizey;
+}
+
+static bool teleport_landing_clear(walker *self, Sint32 x, Sint32 y)
+{
+	short saved_flight = self->flight_left;
+	self->flight_left = 0;
+	bool grid_ok = myscreen->query_grid_passable((float) x, (float) y, self);
+	self->flight_left = saved_flight;
+	if (!grid_ok)
+		return false;
+	if (myscreen->level_data.myobmap == NULL)
+		return true;
+	// ob_pass_check lets BIT_NO_COLLIDE walkers through every overlap
+	if (self->stats != NULL &&
+	        self->stats->query_bit_flags(BIT_NO_COLLIDE))
+		return true;
+	// Walkers register in every 32px obmap bucket their bbox spans; scan all
+	// buckets the landing bbox touches.
+	for (Sint32 bx = x; bx < x + self->sizex + 32; bx += 32)
+	{
+		for (Sint32 by = y; by < y + self->sizey + 32; by += 32)
+		{
+			std::list<walker*>& pile = myscreen->level_data.myobmap->obmap_get_list(
+				(short) bx, (short) by);
+			for (auto e = pile.begin(); e != pile.end(); e++)
+			{
+				if (teleport_spot_blocked_by(*e, self, x, y))
+					return false;
+			}
+		}
+	}
+	return true;
+}
+
 short walker::teleport()
 {
 	short newx,newy;
@@ -4143,8 +4200,13 @@ short walker::teleport()
 		   )
 		{
 			// Found our marker!
-			if (myscreen->query_passable(ob->xpos, ob->ypos, this)
-			        && (distance = distance_to_ob(ob) > 64) )
+			// We land centered on it (same math as center_on), provided the
+			// landing spot is genuinely clear (bug A6; ported from c409e7c8).
+			distance = distance_to_ob(ob);
+			Sint32 landx = ob->xpos + ob->sizex/2 - sizex/2;
+			Sint32 landy = ob->ypos + ob->sizey/2 - sizey/2;
+			if ((distance > 64) &&
+			        teleport_landing_clear(this, landx, landy))
 			{
 				center_on(ob);
 				ob->lifetime--;
@@ -4166,7 +4228,7 @@ short walker::teleport()
 	newx = random(myscreen->level_data.grid.w)*GRID_SIZE;
 	newy = random(myscreen->level_data.grid.h)*GRID_SIZE;
 
-	while(!myscreen->query_passable(newx, newy, this))
+	while(!teleport_landing_clear(this, newx, newy))
 	{
 		newx = random(myscreen->level_data.grid.w)*GRID_SIZE;
 		newy = random(myscreen->level_data.grid.h)*GRID_SIZE;
@@ -4183,7 +4245,7 @@ short walker::teleport_ranged(Sint32 range)
 	newx = random(2*range) - range + xpos;
 	newy = random(2*range) - range + ypos;
 
-	while(!myscreen->query_passable(newx, newy, this) && keep_going)
+	while(!teleport_landing_clear(this, newx, newy) && keep_going)
 	{
 		newx = random(2*range) - range + xpos;
 		newy = random(2*range) - range + ypos;
