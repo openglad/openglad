@@ -1511,6 +1511,46 @@ void walker::follow_path_to_foe()
             if(dy != 0)
                 dy /= abs(dy);
             
+            // Convex-corner alignment assist (ported from the current game's
+            // #132, c409e7c8; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md
+            // "Single-floor pathing wedges"). The node-reached test below is
+            // cell-quantized (ALIGN_TO_GRID), so a node counts as reached
+            // while the body still spills up to GRID_SIZE-1 px into the next
+            // row/column. When the following hop is CARDINAL and the direct
+            // step is pixel-blocked, walkstep's fixed NPC fallback can march
+            // the walker back OUT of alignment: a deterministic 2-tick
+            // oscillation at convex wall corners. In that exact shape --
+            // cardinal hop, perpendicular misalignment, direct step
+            // pixel-blocked -- slide toward exact alignment instead, one
+            // checked pixel at a time (at most stepsize, at most the
+            // misalignment). No RNG; a pure function of position.
+            if((dx == 0) != (dy == 0))
+            {
+                int mis = (dx != 0)
+                    ? ypos - ALIGN_TO_GRID(ypos)
+                    : xpos - ALIGN_TO_GRID(xpos);
+                if(mis > 0 &&
+                   !myscreen->query_passable(xpos + float(dx)*stepsize,
+                                             ypos + float(dy)*stepsize, this))
+                {
+                    int budget = int(stepsize);
+                    if(budget > mis)
+                        budget = mis;
+                    bool slid = false;
+                    float sx = (dx != 0) ? 0.0f : -1.0f;
+                    float sy = (dx != 0) ? -1.0f : 0.0f;
+                    for(int i = 0; i < budget; i++)
+                    {
+                        if(!myscreen->query_passable(xpos + sx, ypos + sy, this))
+                            break;
+                        worldmove(sx, sy);
+                        slid = true;
+                    }
+                    if(slid)
+                        break; // this tick's move went to aligning
+                }
+            }
+            
             // Move toward there and we're done.
             walkstep(dx, dy);
             break;
