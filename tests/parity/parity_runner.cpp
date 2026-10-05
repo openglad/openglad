@@ -217,25 +217,6 @@ bool is_classic_display_text_notification(std::string_view text)
     return false;
 }
 
-void normalize_classic_notification_metadata(og::sim::Event& ev)
-{
-    if (ev.text == "THIEF: 'Nyah Nyah!'")
-    {
-        ev.a = FAMILY_THIEF;
-        ev.b = 0;
-    }
-    else if (ev.text.rfind("ArchMage has controlled ", 0) == 0)
-    {
-        ev.a = FAMILY_ARCHMAGE;
-        ev.b = 0;
-    }
-    else if (ev.text.rfind("Druid protected ", 0) == 0)
-    {
-        ev.a = FAMILY_DRUID;
-        ev.b = 0;
-    }
-}
-
 void append_events_for_tick(og::sim::SimEventLog& dst,
                             std::vector<og::sim::Event> events,
                             std::uint32_t tick,
@@ -275,36 +256,14 @@ void append_events_for_tick(og::sim::SimEventLog& dst,
         {
             if (is_classic_display_text_notification(normalized.text))
                 continue;
-            normalize_classic_notification_metadata(normalized);
-
-            constexpr std::string_view prefix = "Weapon ";
-            constexpr std::string_view suffix = " doing act random?";
-            if (normalized.text.rfind(prefix, 0) == 0 &&
-                normalized.text.size() > prefix.size() + suffix.size() &&
-                normalized.text.compare(normalized.text.size() - suffix.size(),
-                                        suffix.size(), suffix) == 0)
-            {
-                std::uint32_t family = 0;
-                bool saw_digit = false;
-                const auto begin = prefix.size();
-                const auto end = normalized.text.size() - suffix.size();
-                for (std::size_t i = begin; i < end; ++i)
-                {
-                    const unsigned char ch =
-                        static_cast<unsigned char>(normalized.text[i]);
-                    if (!std::isdigit(ch))
-                    {
-                        saw_digit = false;
-                        break;
-                    }
-                    saw_digit = true;
-                    family = family * 10u + static_cast<std::uint32_t>(ch - '0');
-                }
-                if (saw_digit)
-                {
-                    normalized.a = family;
-                }
-            }
+            // Canonical notification form, shared with the old game's
+            // recorder (screen::do_notify): text only, a = b = 0. The sim's
+            // a is a HUD display duration (SimEventLog::push_notification)
+            // or, for weap.cpp's two reports, the weapon's family and team;
+            // the old game recorded the notifier's family and team. Neither
+            // is gameplay, and the current game's event has no notifier.
+            normalized.a = 0;
+            normalized.b = 0;
         }
         if (!normalized.text.empty())
             dst.push_with_text(normalized.kind, normalized.text,
