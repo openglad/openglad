@@ -2416,7 +2416,11 @@ walker  *walker::create_weapon()
 		weapon = myscreen->level_data.add_ob(ORDER_LIVING, (char) default_weapon);
 		weapon->team_num = team_num;
 		weapon->owner = this;
-		weapon->set_difficulty(stats->level);
+		// A12b: no set_difficulty here. fire()'s ORDER_GENERATOR branch rolls
+		// the spawn's real level and applies set_difficulty once; this call
+		// ALSO applied it here at the generator's own level, so every spawn
+		// compounded two additive hp/regen boosts and a squared difficulty
+		// multiplier. Ported from the current game's create_weapon (c409e7c8).
 		return weapon;
 	}
 	// Normally, only livings fire
