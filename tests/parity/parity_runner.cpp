@@ -220,7 +220,8 @@ bool is_classic_display_text_notification(std::string_view text)
 void append_events_for_tick(og::sim::SimEventLog& dst,
                             std::vector<og::sim::Event> events,
                             std::uint32_t tick,
-                            bool drop_score_change = false)
+                            bool drop_score_change = false,
+                            const std::function<void()>& before_score = {})
 {
     dst.current_tick_ = tick;
     std::array<std::uint32_t, 4> score_delta{};
@@ -271,6 +272,14 @@ void append_events_for_tick(og::sim::SimEventLog& dst,
         else
             dst.push(normalized.kind, normalized.a, normalized.b);
     }
+
+    // The old game's golden capture tool synthesises score_change from an
+    // end-of-tick score snapshot, after anything act() recorded -- including
+    // the end_game/set_end pair screen::endgame writes on the tick the level
+    // ends. The caller's completion events therefore go out first.
+    if (before_score)
+        before_score();
+    dst.current_tick_ = tick;
 
     for (std::size_t team = 0; team < score_delta.size(); ++team)
     {
@@ -590,8 +599,11 @@ RunOutcome run_scenario(const ScenarioSpec& spec,
             world.next_level = parity_screen_next_level;
             world.ending = 0;
         }
-        append_events_for_tick(parity_events, std::move(tick_events), t);
-        append_screen_completion_events(parity_events, world, t, parity_screen_end);
+        append_events_for_tick(parity_events, std::move(tick_events), t,
+                               /*drop_score_change=*/false, [&] {
+            append_screen_completion_events(parity_events, world, t,
+                                            parity_screen_end);
+        });
         if (world.level_done == 2)
         {
             // Classic completion invalidates/redraws the screen directly.
