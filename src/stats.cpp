@@ -209,6 +209,53 @@ void statistics::set_command(short whatcommand, short iterations,
 
 }
 
+// Maps a facing direction to a unit step delta (the same table right_walk
+// builds inline with its turn switches). COMMAND_ATTACK's coincident-foe
+// clinch breaker uses it (port of the current game's facing_step_delta,
+// c409e7c8).
+static void facing_step_delta(char dir, short& xdelta, short& ydelta)
+{
+	switch (dir)
+	{
+		case FACE_UP:
+			xdelta = 0;
+			ydelta = -1;
+			break;
+		case FACE_UP_RIGHT:
+			xdelta = 1;
+			ydelta = -1;
+			break;
+		case FACE_RIGHT:
+			xdelta = 1;
+			ydelta = 0;
+			break;
+		case FACE_DOWN_RIGHT:
+			xdelta = 1;
+			ydelta = 1;
+			break;
+		case FACE_DOWN:
+			xdelta = 0;
+			ydelta = 1;
+			break;
+		case FACE_DOWN_LEFT:
+			xdelta = -1;
+			ydelta = 1;
+			break;
+		case FACE_LEFT:
+			xdelta = -1;
+			ydelta = 0;
+			break;
+		case FACE_UP_LEFT:
+			xdelta = -1;
+			ydelta = -1;
+			break;
+		default:
+			xdelta = 0;
+			ydelta = 0;
+			break;
+	}
+}
+
 // Do the current command
 short statistics::do_command()
 {
@@ -394,12 +441,61 @@ short statistics::do_command()
 				deltax /= abs(deltax);
 			if (deltay)
 				deltay /= abs(deltay);
-			if (!controller->fire_check(deltax,deltay))
-				controller->walkstep(deltax, deltay);
-			else // (controller->fire_check(deltax, deltay))
 			{
-				force_command(COMMAND_FIRE,(short) random(5),deltax,deltay);
-				controller->init_fire(deltax,deltay);
+				walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+				if (!controller->fire_check(deltax,deltay,&denial))
+				{
+					// Guard-standoff melee deadlock fix (2026-07-07; port of
+					// the current game's c409e7c8): when the shot at an
+					// IN-REACH foe is denied only by our orientation, turn
+					// to face the foe and swing next tick. Two denials mean
+					// exactly that:
+					//  - Facing: a thrown-weapon family pointed off the foe;
+					//  - NoRanged: a melee-only family (orc, ghost, slime) at
+					//    bump range — its hit lands through fire()'s blocked
+					//    weapon-spawn cell, which also requires facing.
+					// The classic fallback walked instead; with the foe's own
+					// body blocking that step, walkstep's blocked-NPC branch
+					// set curdir PERPENDICULAR (the wall-slide), the orbit
+					// re-collapsed the approach delta every tick, and two
+					// adjacent fighters could face-dance forever without one
+					// landed swing. OutOfRange/WallBlocked keep the classic
+					// walk-toward-the-foe response (they need repositioning),
+					// as does NoMagic (regen while closing).
+					if (deltax == 0 && deltay == 0)
+					{
+						// Exactly coincident with the foe (a transient
+						// pass-through left us inside its body). The classic
+						// walkstep(0,0) is a no-op, freezing the clinch
+						// forever; and no swing can land — a weapon always
+						// spawns just OUTSIDE the merged box. Step along our
+						// facing instead: any direction separates (in the
+						// current game; see the interpenetration escape rule
+						// in its obmap.cpp), and curdir keeps the choice
+						// deterministic. No RNG.
+						short stepx = 0, stepy = 0;
+						facing_step_delta((char) controller->curdir,
+						                  stepx, stepy);
+						controller->walkstep(stepx, stepy);
+					}
+					else if (denial == walker::FireCheckDenial::Facing ||
+					         denial == walker::FireCheckDenial::NoRanged)
+						// Note for NoRanged (melee-only) families: this only
+						// FACES the bump-range foe; their actual swings keep
+						// coming from the classic walk_to_foe() init_fire()
+						// cadence between ATTACK windows. Wiring init_fire()
+						// here as well was tried and rejected: it roughly
+						// doubles melee swing rate over classic and swung
+						// campaign balance hard.
+						controller->face_delta(deltax, deltay);
+					else
+						controller->walkstep(deltax, deltay);
+				}
+				else // (controller->fire_check(deltax, deltay))
+				{
+					force_command(COMMAND_FIRE,(short) random(5),deltax,deltay);
+					controller->init_fire(deltax,deltay);
+				}
 			}
 			break;
 		case COMMAND_UNCHARM:

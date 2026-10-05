@@ -631,6 +631,26 @@ bool walker::turn(short targetdir)
 	return true;
 }
 
+// Guard-standoff melee deadlock fix (2026-07-07; port of the current
+// game's walker::face_delta, c409e7c8): snap-face the direction of a
+// (foe) delta in one act. Unlike turn() this doesn't rotate one 45-degree
+// step per tick — the caller has already decided the walker must point at
+// its adjacent foe NOW. Sets all three facing channels a swing depends on:
+//   - curdir: the fire_check() facing gate compares against it,
+//   - enddir: otherwise living::act()'s pre-command turn would rotate us
+//     right back off the foe next tick,
+//   - lastx/lasty: set_weapon_heading() derives the weapon spawn cell and
+//     flight vector from these, not from curdir.
+// Consumes no RNG and never moves the walker.
+void walker::face_delta(short xdelta, short ydelta)
+{
+	const short dir = facing(xdelta, ydelta);
+	curdir = (signed char) dir;
+	enddir = (char) dir;
+	lastx = (float) xdelta * stepsize;
+	lasty = (float) ydelta * stepsize;
+}
+
 // This is the function you actually call when you want something
 // to fire.  It initializes the animation if animation is valid
 // and checks to see if the object is too busy.
@@ -4218,7 +4238,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 // If we find one, we init_fire.  If not,
 // we do nothing. init_fire will take care of
 // turning us if we need it.
-short walker::fire_check(short xdelta, short ydelta)
+short walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 {
 	walker  *weapon = NULL;
 	//  short newx=0, newy=0;
@@ -4228,13 +4248,24 @@ short walker::fire_check(short xdelta, short ydelta)
 	Sint32 distance;
 	short targetdir;
 
+	// Reports the denial stage to callers that ask (default: nobody).
+	// Same checks, same order, same RNG draws as always.
+	const auto deny = [denial](FireCheckDenial why) {
+		if (denial != NULL)
+			*denial = why;
+	};
+	deny(FireCheckDenial::None);
+
 	// Allow generators to 'always' succeed
 	if (order == ORDER_GENERATOR)
 		return 1;
 
 	weapon = create_weapon();
 	if (!weapon)
+	{
+		deny(FireCheckDenial::NoFoe);
 		return 0;
+	}
 	set_weapon_heading(weapon); // set lastx, lasty based on our facing...
 	weapon->collide_ob = NULL;
 	// Based on facing, we alter the weapon's proposed
@@ -4245,25 +4276,35 @@ short walker::fire_check(short xdelta, short ydelta)
 	{
 		//Log("fire check, no foe.\n");
 		//this does happen! but it appears harmless
+		deny(FireCheckDenial::NoFoe);
+		return 0;
+	}
+
+	// The reach gate runs before the NO_RANGED / magic gates so that a
+	// NoRanged or NoMagic denial always means "the foe IS within this
+	// weapon's reach" — the COMMAND_ATTACK melee loop keys off that to
+	// face a bump-range foe instead of sliding around it (guard-standoff
+	// fix, 2026-07-07). Every reordered gate returns the same 0 and no
+	// gate consumes RNG, so all other callers see identical behavior.
+	distance = distance_to_ob(foe);
+	if (distance > (Sint32) ( (Sint32) weapon->stepsize * (Sint32) weapon->lineofsight) )
+	{
+		weapon->dead = 1;
+		deny(FireCheckDenial::OutOfRange);
 		return 0;
 	}
 
 	if (stats->query_bit_flags(BIT_NO_RANGED))
 	{
 		weapon->dead=1;
+		deny(FireCheckDenial::NoRanged);
 		return 0;
 	}
 
 	if (stats->weapon_cost > stats->magicpoints)
 	{
 		weapon->dead = 1;
-		return 0;
-	}
-
-	distance = distance_to_ob(foe);
-	if (distance > (Sint32) ( (Sint32) weapon->stepsize * (Sint32) weapon->lineofsight) )
-	{
-		weapon->dead = 1;
+		deny(FireCheckDenial::NoMagic);
 		return 0;
 	}
 
@@ -4272,6 +4313,7 @@ short walker::fire_check(short xdelta, short ydelta)
 	{
 		//         turn(targetdir);
 		weapon->dead = 1;
+		deny(FireCheckDenial::Facing);
 		return 0;
 	}
 
@@ -4309,6 +4351,7 @@ short walker::fire_check(short xdelta, short ydelta)
 		{
 			// we hit a wall, so fail
 			weapon->dead = 1;
+			deny(FireCheckDenial::WallBlocked);
 			return 0;
 		}
 		if ( !myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
@@ -4321,6 +4364,7 @@ short walker::fire_check(short xdelta, short ydelta)
 	// By this point, we should have won or lost .. fail if we went our
 	// range and didn't hit anyone ..
 	weapon->dead = 1;
+	deny(FireCheckDenial::RayMiss);
 	return 0;
 
 	// Determine # of loops to look for guy

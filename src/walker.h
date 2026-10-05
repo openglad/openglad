@@ -66,7 +66,33 @@ class walker : public pixieN
 			return family;
 		}
 		walker  *create_weapon();
-		short fire_check(short xdelta, short ydelta);
+		// Why a fire_check() attempt was denied. Callers that care (the
+		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
+		// Facing, and NoRanged at bump range ("the foe is in weapon reach
+		// but we are pointed the wrong way / can only hit by facing") —
+		// from every other denial, because the classic response to ANY
+		// denial (walk toward the foe, sliding perpendicular when blocked)
+		// deadlocks two adjacent fighters forever. The reach gate runs
+		// before the NoRanged/NoMagic gates so those two denials imply the
+		// foe is within reach. Port of the current game's guard-standoff
+		// melee deadlock fix (2026-07-07, c409e7c8).
+		enum class FireCheckDenial : Uint8
+		{
+			None,        // check passed
+			NoFoe,       // nothing to fire at
+			NoRanged,    // BIT_NO_RANGED family (melee-only)
+			NoMagic,     // weapon costs more magic than we have
+			OutOfRange,  // foe beyond weapon stepsize*lineofsight
+			Facing,      // in reach, but curdir is not toward the foe
+			WallBlocked, // the shot ray hits terrain first
+			RayMiss,     // the shot ray ran full range without a hit
+		};
+		short fire_check(short xdelta, short ydelta,
+		                 FireCheckDenial* denial = NULL);
+		// Snap-face a (foe) direction: sets curdir AND enddir (so the
+		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
+		// weapon heading that set_weapon_heading() reads).
+		void face_delta(short xdelta, short ydelta);
 		short query_next_to();
 		short special();
 		short teleport();
