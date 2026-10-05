@@ -2159,10 +2159,22 @@ short walker::attack(walker  *target)
 						myscreen->save_data.m_score[team_num] += tempdamage_i + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
+					// This arm is selected by the KILLER's team (`playerteam`,
+					// set from headguy at the top), so an enemy killing one of
+					// the player's OWN named NPCs lands here too -- and used to
+					// be announced as an "ENEMY DEATH". Classic hardcoded
+					// `playerteam = 0`, i.e. it compared the victim against the
+					// PLAYER's team, and reported a player-team victim with the
+					// same-team arm's plain "<name> DIED!" text. Pick the
+					// wording off the same comparison classic made; a victim on
+					// neither team is still an enemy, so that text is unchanged.
 					if (strlen(target->stats->name) && !(target->lifetime)
 					        && (!target->owner) ) // do we have an NPC name?
 					{
-						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name);
+						if (myscreen->save_data.my_team != target->team_num)
+							sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name);
+						else
+							sprintf(message, "%s DIED!", target->stats->name);
 						myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 					}
 					if(remaining_foes(myscreen, this) == 1)  // This is the last foe
