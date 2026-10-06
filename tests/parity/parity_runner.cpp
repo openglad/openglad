@@ -259,10 +259,10 @@ void append_events_for_tick(og::sim::SimEventLog& dst,
                 continue;
             // Canonical notification form, shared with the old game's
             // recorder (screen::do_notify): text only, a = b = 0. The sim's
-            // a is a HUD display duration (SimEventLog::push_notification)
-            // or, for weap.cpp's two reports, the weapon's family and team;
-            // the old game recorded the notifier's family and team. Neither
-            // is gameplay, and the current game's event has no notifier.
+            // a is a HUD display duration (0 = STANDARD_TEXT_TIME) on every
+            // notification, weap.cpp's two reports included since #351; the
+            // old game recorded the notifier's family and team until
+            // cee3b41f. Neither is gameplay.
             normalized.a = 0;
             normalized.b = 0;
         }
