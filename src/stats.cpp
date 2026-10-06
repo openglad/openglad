@@ -1212,16 +1212,20 @@ bool statistics::walk_to_foe()
 			          PATHING_MIN_DISTANCE, &howmany, controller);
 			if (howmany > 0)
 			{
-			    walker* firstfoe = foelist.front();
 				clear_command();
+				// #320, port of the current game's fix: adopt the strictly
+				// nearer foe find_near_foe returns, ahead of the turn and the
+				// ATTACK draw, and aim this tick at it. A null result keeps
+				// the held foe.
+				walker* near_foe = myscreen->find_near_foe(controller);
+				if (near_foe && (Uint32) controller->distance_to_ob(near_foe) < tempdistance)
+				{
+					controller->foe = near_foe;
+					xdelta = near_foe->xpos - controller->xpos;
+					ydelta = near_foe->ypos - controller->ypos;
+				}
 				controller->turn(controller->facing(xdelta, ydelta));
 				controller->stats->try_command(COMMAND_ATTACK,(short) (30+ random(25)), 1, 1);
-				myscreen->find_near_foe(controller);
-				if (!controller->foe && firstfoe)
-				{
-					controller->foe = firstfoe;
-					last_distance = controller->distance_to_ob(foe);
-				}
 				controller->init_fire();
 				return 1;
 			}
