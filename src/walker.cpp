@@ -647,8 +647,11 @@ void walker::face_delta(short xdelta, short ydelta)
 	const short dir = facing(xdelta, ydelta);
 	curdir = (signed char) dir;
 	enddir = (char) dir;
-	lastx = (float) xdelta * stepsize;
-	lasty = (float) ydelta * stepsize;
+	// #350, port of the current game's fix: a stationary (stepsize 0)
+	// shooter keeps a usable heading toward the foe, magnitude 1 instead of 0.
+	const float scale = (stepsize == 0.0f) ? 1.0f : stepsize;
+	lastx = (float) xdelta * scale;
+	lasty = (float) ydelta * scale;
 }
 
 // This is the function you actually call when you want something
