@@ -561,6 +561,88 @@ TEST(SimInputUnit, sim_input_switch_char_claims_the_new_hero_in_the_same_call)
         << "the fallback hero is re-claimed in the switch call itself";
     ASSERT_EQ(ACT_CONTROL, b->act_type());
 }
+
+// #346: a seat with no control claims a teammate (sim_reacquire_apply's
+// Claimed verdict, handled by the claim tail) and presses SwitchChar on the
+// same tick. The just-claimed hero is the switch anchor, so the press cycles
+// on to the next teammate; with nobody else, the fallback is that hero,
+// re-claimed. Before the fix the anchor was the null entry pointer: the
+// claimed hero was released, the cycle found nothing, the fallback was null
+// and control->stats() crashed.
+TEST(SimInputUnit, sim_input_switch_char_on_the_claim_tick_cycles_from_the_claimed_hero)
+{
+    SimInputFixture fx;
+    SimInputDebounce debounce{};
+    InputState input;
+    walker* a = add_living(fx, 0, -1);
+    walker* b = add_living(fx, 0, -1);
+    a->set_act_type(ACT_GUARD);
+    b->set_act_type(ACT_GUARD);
+
+    walker* control = nullptr;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    const SimInputResult r = sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
+    ASSERT_EQ(b, control) << "the claim seated a; the press cycled a -> b";
+    ASSERT_EQ(b, r.new_control);
+    ASSERT_TRUE(r.control_hp_changed);
+    ASSERT_EQ(0, b->user());
+    ASSERT_EQ(ACT_CONTROL, b->act_type());
+    ASSERT_EQ(-1, a->user()) << "a, claimed then switched away from, is released";
+    ASSERT_EQ(ACT_GUARD, a->act_type()) << "and back on its own AI act type";
+
+    // Only one body: the fallback is the claimed hero, re-claimed, and the
+    // seat is told so (emit_throttled_cue: a Notification addressed to the
+    // seat, sim_input_handler.cpp:55-65).
+    SimInputFixture solo;
+    SimInputDebounce solo_debounce{};
+    walker* only = add_living(solo, 0, -1);
+    walker* solo_control = nullptr;
+    const SimInputResult s = sim_process_player_input(
+        input.players[0], solo_control, solo.level.world(), 0, 0, solo_debounce,
+        &solo.events);
+    ASSERT_EQ(only, solo_control);
+    ASSERT_EQ(only, s.new_control);
+    ASSERT_EQ(0, only->user());
+    ASSERT_EQ(ACT_CONTROL, only->act_type());
+    bool cued = false;
+    for (const og::sim::Event& ev : solo.events.events())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text == "NO ONE TO SWITCH TO" && ev.target_player == 0)
+            cued = true;
+    ASSERT_TRUE(cued) << "the solo fallback still says NO ONE TO SWITCH TO to seat 0";
+}
+
+// #346, dead entry: the seat enters on its corpse (user 0), the claim tail
+// seats a, and the SwitchChar press cycles from a to b. Before the fix the
+// anchor was the corpse, is_friendly(dead) rejected every candidate, control
+// fell back to the corpse, a was released and the press was lost.
+TEST(SimInputUnit, sim_input_switch_char_on_a_dead_entry_cycles_from_the_claimed_hero)
+{
+    SimInputFixture fx;
+    SimInputDebounce debounce{};
+    InputState input;
+    walker* d = add_living(fx, 0, 0);   // the seat's dead hero, first in oblist
+    walker* a = add_living(fx, 0, -1);
+    walker* b = add_living(fx, 0, -1);
+    d->set_act_type(ACT_CONTROL);
+    d->set_dead(1);
+    a->set_act_type(ACT_GUARD);
+    b->set_act_type(ACT_GUARD);
+
+    walker* control = d;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    const SimInputResult r = sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, &fx.events);
+    ASSERT_EQ(b, control) << "the claim seated a; the press cycled a -> b, not back to the corpse";
+    ASSERT_EQ(b, r.new_control);
+    ASSERT_EQ(0, b->user());
+    ASSERT_EQ(ACT_CONTROL, b->act_type());
+    ASSERT_EQ(-1, a->user()) << "a is released by the switch";
+    ASSERT_EQ(ACT_GUARD, a->act_type());
+}
 } // namespace detail_sim_input_r11
 
 // --- §4.4 enforcement wiring: the owner-locked policy-on matrix through

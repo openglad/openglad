@@ -304,14 +304,22 @@ SimInputResult sim_process_player_input(
         bool reverse = pi.is_held(InputAction::Shift);
         debounce.changedchar = 1;
 
-        control = sim_switch_control(level, *control, oldcontrol, my_team,
+        // #346: cycle from, and fall back to, the hero this seat holds RIGHT
+        // NOW. That is the entry control, or the hero the claim tail above
+        // just seated when the seat entered with no control or a dead one.
+        // The entry pointer (oldcontrol) is null or a corpse on that tick,
+        // and anchoring the switch on it released the just-claimed hero,
+        // cycled from nowhere and dereferenced null below. oldcontrol keeps
+        // its one job: the control != oldcontrol clear-command check.
+        walker* const anchor = control;
+        control = sim_switch_control(level, *anchor, anchor, my_team,
                                      player_num, reverse);
 
         if (!control)
         {
             // #223: the key used to do nothing at all when the company is
             // down to one body. Say so instead of reading as a dead key.
-            control = oldcontrol;
+            control = anchor;
             emit_throttled_cue(debounce, player_num, sim_events,
                                "NO ONE TO SWITCH TO");
         }

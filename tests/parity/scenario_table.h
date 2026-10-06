@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:459 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:467 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
