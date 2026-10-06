@@ -1291,9 +1291,24 @@ bool statistics::walk_to_foe()
 			if (howmany > 0)
 			{
 				clear_command();
+				// #320: find_near_foe's result was thrown away since the 2002
+				// import, so a walker kept its held foe while a nearer one
+				// stood beside it. Adopt the returned foe when it is strictly
+				// nearer than the held one (the Manhattan measure tempdistance
+				// already holds) and aim this tick's turn, ATTACK and
+				// init_fire at it. The find runs ahead of the ATTACK-duration
+				// draw, so any cloak draw it makes comes first. A null result
+				// means every foe in reach is cloaked: keep the held foe.
+				walker* near_foe = current_game->world->find_near_foe(controller_);
+				if (near_foe &&
+				    static_cast<Uint32>(controller_->distance_to_ob(near_foe)) < tempdistance)
+				{
+					controller_->set_foe(near_foe);
+					xdelta = near_foe->xpos() - controller_->xpos();
+					ydelta = near_foe->ypos() - controller_->ypos();
+				}
 				controller_->turn(controller_->facing(xdelta, ydelta));
 				controller_->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
-				current_game->world->find_near_foe(controller_);
 				controller_->init_fire();
 				return 1;
 			}
