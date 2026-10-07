@@ -69,11 +69,11 @@ TEST(StatsCoverage, stats_batch2_command_edge_paths_smoke)
     w.set_team_num(1);
     w.set_real_team_num(0);
 
-    // clear_command branch that restores weapon/team and clears leader.
+    // #317: clear_command keeps the charm; only the weapon and leader reset here.
     s.clear_command();
     ASSERT_EQ((int)FAMILY_KNIFE, (int)w.current_weapon()) << "clear_command should restore default weapon";
-    ASSERT_EQ(0, (int)w.team_num()) << "clear_command should restore real team";
-    ASSERT_EQ(255, (int)w.real_team_num()) << "clear_command should reset real team marker";
+    ASSERT_EQ(1, (int)w.team_num()) << "#317: clear_command must not end a charm";
+    ASSERT_EQ(0, (int)w.real_team_num()) << "#317: charm expiry belongs to the charm_left decay alone";
 
     // Add follow command (logging branch) and walk clamping branches.
     s.add_command(COMMAND_FOLLOW, 1, 0, 0);

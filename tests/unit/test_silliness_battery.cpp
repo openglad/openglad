@@ -930,7 +930,13 @@ TEST(SwitchLaunderRegression, charm_survives_claim_and_expires_naturally)
     ASSERT_EQ(255, static_cast<int>(victim->real_team_num()));
 }
 
-TEST(SwitchLaunderRegression, level_load_full_clear_unchanged)
+// #317: the full clear is not a charm reset. Fright must not cross a level,
+// and the full clear at a level-start claim wipes the forced run. Charm cannot
+// cross a level either, but not through this call: level start rebuilds every
+// walker with real_team_num 255 (create_team_walker,
+// headless_server_runtime.cpp); see
+// HeadlessServerRuntimeTest.spawned_roster_walker_starts_uncharmed.
+TEST(SwitchLaunderRegression, full_clear_wipes_fright_and_keeps_charm)
 {
     BatteryFixture fx;
     living* w = add_living(fx, FAMILY_SOLDIER, 0, 80, 80, 1);
@@ -938,10 +944,284 @@ TEST(SwitchLaunderRegression, level_load_full_clear_unchanged)
     w->set_real_team_num(2);
     w->set_team_num(0);
 
-    // The level-load path keeps FULL legacy semantics (§4): fright and charm
-    // must not cross levels.
     w->stats()->clear_command();
     ASSERT_TRUE(w->stats()->commands.empty());
-    ASSERT_EQ(2, static_cast<int>(w->team_num()));
-    ASSERT_EQ(255, static_cast<int>(w->real_team_num()));
+    ASSERT_EQ(0, static_cast<int>(w->team_num()));
+    ASSERT_EQ(2, static_cast<int>(w->real_team_num()));
+}
+
+// ===========================================================================
+// #317 — charm ends on its charm_left timer and nothing else.
+//
+// Every row charms through the REAL thief special (living-11-thief.lua's
+// charm arm), exactly like charm_survives_claim_and_expires_naturally above,
+// then exercises one routine AI path on the charmed walker. Before #317,
+// statistics::clear_command also restored real_team_num, so any of these
+// paths ended the charm while charm_left kept counting down to nothing.
+//
+// Cast (all within the 160 px yell_for_help radius of the victim):
+//   thief  team 0, the charmer (foe F2 before the cast)   (130,100)
+//   A0     team 0, the charmer's ally                     (100,140)
+//   victim team 1 -> 0                                    (100,100)
+//   F2     team 2, the victim's inherited foe              (70,100)
+//   T3     team 3, a third-team attacker                   (70,130)
+//   O1     team 1, an attacker from the victim's own team  (60,100)
+//   B1     team 1, the victim's original ally             (140,140)
+// find_foes_in_range walks the oblist in order and the thief charms the
+// FIRST eligible foe, so the victim is added before every other foe.
+// ===========================================================================
+
+namespace {
+
+struct CharmCast {
+    living* thief = nullptr;
+    living* a0 = nullptr;
+    living* victim = nullptr;
+    living* f2 = nullptr;
+    living* t3 = nullptr;
+    living* o1 = nullptr;
+    living* b1 = nullptr;
+};
+
+inline constexpr int kCharmLeftAfterCast = 477; // level diff 49, softened (<= 490)
+
+CharmCast cast_charm(BatteryFixture& fx, char victim_family = FAMILY_SOLDIER)
+{
+    CharmCast c;
+    c.thief = add_caster(fx, FAMILY_THIEF, 50, 130, 100);
+    c.thief->set_current_special(3);
+    c.thief->set_shifter_down(1);
+    c.a0 = add_living(fx, FAMILY_SOLDIER, 0, 100, 140);
+    c.victim = add_living(fx, victim_family, 1, 100, 100);
+    c.f2 = add_living(fx, FAMILY_SOLDIER, 2, 70, 100);
+    c.t3 = add_living(fx, FAMILY_SOLDIER, 3, 70, 130);
+    c.o1 = add_living(fx, FAMILY_SOLDIER, 1, 60, 100);
+    c.b1 = add_living(fx, FAMILY_SOLDIER, 1, 140, 140);
+    c.thief->set_foe(c.f2); // the victim inherits the charmer's foe
+
+    fx.script_next_roll(7); // the resist roll og.rand(20) must not be 0
+    EXPECT_TRUE(c.thief->special());
+
+    // The default hit_response draws for the victim's own special
+    // (check_special's rng_.next(2), then !rng(3)), and the soldier's AI
+    // check is true for a foe 30 px away, so one hit in three would also
+    // rewrite the queue. Disabling specials returns before both draws, so
+    // the queue below is written only by the clears and the forced walks.
+    c.victim->set_specials_disabled(true);
+    // One queued AI walk, so "queue untouched" and "queue cleared" both show.
+    c.victim->stats()->add_command(COMMAND_WALK, 9, 1, 0);
+    return c;
+}
+
+void expect_charmed(const CharmCast& c, int charm_left = kCharmLeftAfterCast)
+{
+    EXPECT_EQ(0, static_cast<int>(c.victim->team_num()))
+        << "#317: the victim must stay on the charmer's team";
+    EXPECT_EQ(1, static_cast<int>(c.victim->real_team_num()))
+        << "#317: only the charm_left decay may restore the real team";
+    EXPECT_EQ(charm_left, static_cast<int>(c.victim->charm_left()));
+}
+
+} // namespace
+
+TEST(CharmTimer, hit_from_current_foe_keeps_charm_and_queue)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+    expect_charmed(c);
+    ASSERT_TRUE(c.victim->foe() == c.f2);
+
+    c.victim->stats()->hit_response(c.f2);
+
+    expect_charmed(c);
+    ASSERT_TRUE(c.victim->foe() == c.f2);
+    ASSERT_EQ(1u, c.victim->stats()->commands.size()) << "no new foe, no clear";
+    ASSERT_TRUE(c.f2->foe() == nullptr);
+}
+
+TEST(CharmTimer, help_call_from_current_foe_recruits_charmers_side)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+    c.victim->stats()->set_hitpoints(20.0f); // below 5/16 of 100
+
+    c.victim->stats()->hit_response(c.f2);
+
+    expect_charmed(c);
+    ASSERT_EQ(80, static_cast<int>(c.victim->yo_delay()));
+    ASSERT_TRUE(c.thief->foe() == c.f2);
+    ASSERT_TRUE(c.a0->foe() == c.f2);
+    ASSERT_TRUE(c.thief->leader() == c.victim);
+    ASSERT_TRUE(c.a0->leader() == c.victim);
+    ASSERT_TRUE(c.b1->foe() == nullptr);
+    ASSERT_TRUE(c.o1->foe() == nullptr);
+    ASSERT_FALSE(c.victim->stats()->commands.empty());
+    const command& front = c.victim->stats()->commands.front();
+    ASSERT_TRUE(front.forced);
+    ASSERT_EQ(COMMAND_WALK, front.commandtype);
+    ASSERT_EQ(16, front.commandcount);
+}
+
+TEST(CharmTimer, hit_from_third_team_keeps_charm_and_retargets)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+
+    c.victim->stats()->hit_response(c.t3);
+
+    expect_charmed(c);
+    ASSERT_TRUE(c.victim->foe() == c.t3);
+    ASSERT_TRUE(c.t3->foe() == c.victim);
+    ASSERT_TRUE(c.victim->stats()->commands.empty())
+        << "the routine clear still empties the queue";
+    ASSERT_EQ(32000, c.victim->stats()->current_distance());
+}
+
+TEST(CharmTimer, help_call_from_third_team_hit_recruits_charmers_side)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+    c.victim->stats()->set_hitpoints(20.0f);
+
+    c.victim->stats()->hit_response(c.t3);
+
+    expect_charmed(c);
+    ASSERT_TRUE(c.thief->foe() == c.t3)
+        << "#317: the help call goes to the charmer's side";
+    ASSERT_TRUE(c.a0->foe() == c.t3);
+    ASSERT_TRUE(c.thief->leader() == c.victim);
+    ASSERT_TRUE(c.a0->leader() == c.victim);
+    ASSERT_TRUE(c.b1->foe() == nullptr)
+        << "the victim's original team is not its side while the charm holds";
+    ASSERT_TRUE(c.o1->foe() == nullptr);
+    ASSERT_FALSE(c.victim->stats()->commands.empty());
+    const command& front = c.victim->stats()->commands.front();
+    ASSERT_TRUE(front.forced);
+    ASSERT_EQ(COMMAND_WALK, front.commandtype);
+    ASSERT_EQ(16, front.commandcount);
+    ASSERT_EQ(1, front.com1);   // away from T3 (70,130): east ..
+    ASSERT_EQ(-1, front.com2);  // .. and north
+}
+
+TEST(CharmTimer, hit_from_original_team_keeps_charm_and_targets_attacker)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+
+    c.victim->stats()->hit_response(c.o1);
+
+    expect_charmed(c);
+    ASSERT_TRUE(c.victim->foe() == c.o1);
+    ASSERT_TRUE(c.o1->foe() == c.victim);
+}
+
+TEST(CharmTimer, help_call_from_original_team_hit_never_tells_attacker_to_fight_itself)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+    c.victim->stats()->set_hitpoints(20.0f);
+
+    c.victim->stats()->hit_response(c.o1);
+
+    expect_charmed(c);
+    ASSERT_TRUE(c.thief->foe() == c.o1);
+    ASSERT_TRUE(c.a0->foe() == c.o1);
+    ASSERT_TRUE(c.o1->foe() == c.victim)
+        << "before #317 the un-charmed victim recruited O1 against O1 itself";
+    ASSERT_TRUE(c.b1->foe() == nullptr);
+}
+
+TEST(CharmTimer, archer_lua_hit_response_keeps_charm)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx, FAMILY_ARCHER);
+
+    // The archer's Lua hit_response hook runs instead of the default and
+    // calls s_clear_command on a new attacker.
+    c.victim->stats()->hit_response(c.t3);
+
+    expect_charmed(c);
+    ASSERT_TRUE(c.victim->foe() == c.t3);
+    ASSERT_FALSE(c.victim->stats()->commands.empty());
+    const command& front = c.victim->stats()->commands.front();
+    ASSERT_TRUE(front.forced);
+    ASSERT_EQ(COMMAND_WALK, front.commandtype);
+    ASSERT_EQ(8, front.commandcount); // the hook's melee backpedal
+    ASSERT_EQ(0, static_cast<int>(c.victim->yo_delay()));
+    ASSERT_TRUE(c.t3->foe() == nullptr);
+}
+
+TEST(CharmTimer, ally_shove_keeps_charm)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+    c.a0->setxy(84, 100); // adjacent, west of the victim
+
+    fx.script_next_roll(1); // living::shove's rng_.next(3) must be non-zero
+    ASSERT_EQ(1, c.a0->shove(c.victim, 1, 0));
+
+    expect_charmed(c);
+    ASSERT_FALSE(c.victim->stats()->commands.empty());
+    const command& front = c.victim->stats()->commands.front();
+    ASSERT_EQ(COMMAND_WALK, front.commandtype);
+    ASSERT_EQ(4, front.commandcount);
+    ASSERT_EQ(1, front.com1);
+    ASSERT_EQ(0, front.com2);
+}
+
+TEST(CharmTimer, enemy_thief_cannot_recharm_until_the_timer_runs_out)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+    // A team-2 thief, level 7: range 16 + 4*7 = 44 px (Manhattan). At
+    // (100,70) the victim (30 px) is its only foe in range; the charmer at
+    // (130,100) is 60 px away.
+    living* thief2 = add_caster(fx, FAMILY_THIEF, 7, 100, 70);
+    thief2->set_team_num(2);
+    thief2->set_current_special(3);
+    thief2->set_shifter_down(1);
+
+    c.victim->stats()->hit_response(c.t3); // a routine clear on the victim
+    expect_charmed(c);
+
+    fx.script_next_roll(7);
+    ASSERT_FALSE(thief2->special())
+        << "#317: the charm-history gate (real_team_num) holds while the charm does";
+    expect_charmed(c);
+
+    // The timer runs out: the decay restores the real team.
+    c.victim->set_charm_left(2);
+    (void)c.victim->act();
+    (void)c.victim->act();
+    ASSERT_EQ(1, static_cast<int>(c.victim->team_num()));
+    ASSERT_EQ(255, static_cast<int>(c.victim->real_team_num()));
+    ASSERT_EQ(0, static_cast<int>(c.victim->charm_left()));
+
+    fx.script_next_roll(7);
+    ASSERT_TRUE(thief2->special()) << "after the timer the victim can be charmed again";
+    ASSERT_EQ(2, static_cast<int>(c.victim->team_num()));
+    ASSERT_EQ(1, static_cast<int>(c.victim->real_team_num()));
+    // Nobody else changed sides.
+    ASSERT_EQ(0, static_cast<int>(c.thief->team_num()));
+    ASSERT_EQ(0, static_cast<int>(c.a0->team_num()));
+    ASSERT_EQ(1, static_cast<int>(c.o1->team_num()));
+    ASSERT_EQ(1, static_cast<int>(c.b1->team_num()));
+    ASSERT_EQ(3, static_cast<int>(c.t3->team_num()));
+}
+
+TEST(CharmTimer, routine_clear_never_touches_the_timer)
+{
+    BatteryFixture fx;
+    CharmCast c = cast_charm(fx);
+    c.victim->set_charm_left(3);
+
+    c.victim->stats()->hit_response(c.t3);
+    expect_charmed(c, 3);
+
+    (void)c.victim->act();
+    (void)c.victim->act();
+    (void)c.victim->act();
+    ASSERT_EQ(1, static_cast<int>(c.victim->team_num()));
+    ASSERT_EQ(255, static_cast<int>(c.victim->real_team_num()));
+    ASSERT_EQ(0, static_cast<int>(c.victim->charm_left()));
 }

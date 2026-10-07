@@ -299,8 +299,9 @@ TEST(StatsUnit, stats_r11_clear_command_and_blocked_direction_defaults)
     w->set_real_team_num(0);
     w->stats()->force_command(COMMAND_WALK, 1, 1, 0);
     w->stats()->clear_command();
-    ASSERT_TRUE(w->team_num() == 0);
-    ASSERT_TRUE(w->real_team_num() == 255);
+    // #317: clear_command keeps the charm; only the queue, weapon and leader reset.
+    ASSERT_TRUE(w->team_num() == 1);
+    ASSERT_TRUE(w->real_team_num() == 0);
     ASSERT_TRUE(w->leader() == nullptr);
 
     w->set_curdir(127);

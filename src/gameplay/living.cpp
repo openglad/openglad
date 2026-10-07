@@ -205,6 +205,7 @@ bool living::act()
 	else
 	{
 		set_charm_left(0);
+		// Make sure we're back to our real team
 		if (real_team_num() != 255)
 		{
 			set_team_num(real_team_num());

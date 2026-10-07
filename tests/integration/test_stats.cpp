@@ -55,7 +55,9 @@ TEST(Stats, statistics_add_command_walk_clamps_direction)
 }
 
 
-TEST(Stats, statistics_clear_command_restores_weapon_and_team)
+// #317 (2026-10-07): a charm ends on its timer and nothing else, so the full
+// clear no longer restores the real team.
+TEST(Stats, statistics_clear_command_restores_weapon_and_leader_keeps_charm)
 {
     auto w = create_living(FAMILY_SOLDIER);
     auto leader = create_living(FAMILY_ORC);
@@ -72,8 +74,8 @@ TEST(Stats, statistics_clear_command_restores_weapon_and_team)
     w->stats()->clear_command();
 
     ASSERT_EQ((int)w->default_weapon(), (int)w->current_weapon()) << "clear_command should restore current_weapon";
-    ASSERT_EQ(0, (int)w->team_num()) << "clear_command should restore team_num from real_team_num";
-    ASSERT_EQ(255, (int)w->real_team_num()) << "clear_command should reset real_team_num to 255";
+    ASSERT_EQ(2, (int)w->team_num()) << "#317: clear_command must not end a charm";
+    ASSERT_EQ(0, (int)w->real_team_num()) << "#317: charm expiry belongs to the charm_left decay in living::act alone";
     ASSERT_TRUE(w->leader() == nullptr) << "clear_command should clear leader";
 
 }

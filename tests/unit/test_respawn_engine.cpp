@@ -1028,6 +1028,35 @@ TEST(RespawnEngine, charmed_corpse_respawns_on_its_true_team)
     ASSERT_EQ(255, runner->real_team_num());
 }
 
+// A free-for-all or mutant fighter (team bytes 16-31) that dies charmed:
+// revive_player_walker's team < 4 branch never runs for it, so the restore
+// must be explicit (#317; before, clear_command did it as a side effect).
+// RespawnArena hand-arms the mode with no pack mounted, so no mode script's
+// on_respawn can put the team back: this is the C++ path alone.
+TEST(RespawnEngine, charmed_band_byte_corpse_respawns_on_its_true_team)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 42;
+
+    // Charmed: the true team is a fighter band byte, the worn team is the
+    // charmer's.
+    runner->set_real_team_num(20);
+    runner->set_team_num(1);
+    runner->set_charm_left(100); // a dead walker never act()s, so it is still set at revive
+
+    arena.kill(runner);
+    ASSERT_TRUE(arena.schedule(runner));
+    arena.fx.tick(7);
+
+    ASSERT_FALSE(runner->dead()) << "charmed corpse must still respawn";
+    ASSERT_EQ(20, runner->team_num())
+        << "#317: respawn restores the real team itself for every byte, not only 0-3";
+    ASSERT_EQ(255, runner->real_team_num());
+    ASSERT_EQ(0, runner->charm_left());
+}
+
 // Guy ids are only unique per owning player (each networked client numbers
 // its roster from its own counter): a same-id walker owned by ANOTHER player
 // is a different character and must not block the respawn.
