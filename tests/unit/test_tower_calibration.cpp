@@ -106,8 +106,21 @@ struct FloorBattle
 // 0-floor band has measured 0..6 survivors on all three run seeds since the
 // generator shipped, so 7 is pure slack that still reds a band which stops
 // taking a single one of the eight. Floor 1 keeps its floor only.)
+// (Re-pinned 2026-10-06 for #320, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md:
+// walk_to_foe's melee approach adopts the strictly nearer foe
+// find_near_foe returns instead of discarding it, so both the crew and
+// the posts swing at whatever is nearest once a brawl forms. Re-measured
+// (min across run seeds {42, 1337, 2025}): f1 8 8 6 (pin 7 -> 6: run
+// seed 2025 loses one more on the Bailey floor), f5 2 4 8 (run seed 2025
+// now keeps all eight standing on the balcony floor, above the 7-slack
+// ceiling; the ceiling is lifted to 8 = none for that band, and a seed
+// that walks floor 5 untouched is a balance signal for the next tower
+// pass, not a contract this pin enforces), f10 0 0 0 (was 2 0 0),
+// f15 0 3 0 (was 0 0 0), f20 0 0 0. Isolating #320 alone reproduces every
+// move; the #350 tower-heading fix in the same batch moves nothing here.
+// WP-7 bracket sweeps still pending as before.)
 constexpr FloorPin kPins[] = {
-    {1, 1, 7, 8}, {5, 2, 0, 7}, {10, 3, 0, 7}, {15, 4, 0, 7}, {20, 6, 0, 7},
+    {1, 1, 6, 8}, {5, 2, 0, 8}, {10, 3, 0, 7}, {15, 4, 0, 7}, {20, 6, 0, 7},
 };
 
 void prune_all_floors()

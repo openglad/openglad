@@ -9807,6 +9807,13 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // which is exactly the order dependence the pins remove. If a sim change
     // moves these numbers the pin no longer produces the fight this case was
     // written around: re-pin deliberately, never delete the census.
+    // Re-pinned 2026-10-06 for #320 (walk_to_foe adopts the strictly nearer
+    // foe find_near_foe returns instead of discarding it): the 420-tick
+    // brawl now ends with thirteen livings instead of seventeen. Three
+    // isolated runs of the fixed build give 13; restoring only the
+    // pre-#320 stats.cpp returns 17, and the #350 tower-heading fix in the
+    // same batch moves nothing here. Both heroes and the re-teamed walker
+    // still stand, so the seat and team checks are unchanged.
     {
         screen* const authority =
             og::runtime::local_transport_shadow_testing_server_screen(session);
@@ -9831,7 +9838,7 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
             << "the lead team is the two heroes and nothing else";
         EXPECT_EQ(1, living[empty_team])
             << "the walker this case re-teamed must still be on the board";
-        EXPECT_EQ(17, total_living)
+        EXPECT_EQ(13, total_living)
             << "the pinned stream no longer produces the fight this case was "
                "written around";
     }

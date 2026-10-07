@@ -157,12 +157,23 @@ struct BattleResult
 // 24/25/26 held or moved up (slack kept, floors not raised); the 0-floor
 // levels stayed 0. Tower f5 moved 3->0 in the same pass, see
 // test_tower_calibration.cpp.)
+// (Re-pinned 2026-10-06 for #320, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md:
+// walk_to_foe's melee approach adopts the strictly nearer foe
+// find_near_foe returns instead of discarding it, so both sides of a
+// brawl swing at whatever is nearest. Deliberate re-measure across seeds
+// {42, 1337, 2025}: every floor held (no level got hotter); the one move
+// is the 0-floor war level 20 (The Crossroads), whose seed-42 crew now keeps
+// 3 standing instead of 0 (3 0 0), above its ceiling of 2, so the ceiling
+// is re-pinned by the war-row rule min(7, seed-42 measure + 2) = 5.
+// Isolating #320 alone reproduces the move; the #350 tower-heading fix
+// in the same batch moves nothing here. Long Season, Imaginations and
+// Tower floors re-measured inside their pins.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 7, 8},  {2, 2, 8, 8},  {3, 2, 6, 8},  {4, 3, 7, 8},
     {5, 3, 6, 8},  {6, 4, 3, 8},  {7, 4, 0, 2},  {8, 5, 0, 2},
     {9, 6, 0, 3},  {10, 5, 0, 2}, {11, 6, 4, 8}, {12, 6, 0, 2},
     {13, 6, 0, 3}, {14, 7, 0, 2}, {15, 7, 0, 5}, {16, 8, 2, 8},
-    {17, 8, 2, 8}, {19, 6, 4, 8}, {20, 7, 0, 2}, {21, 7, 7, 8},
+    {17, 8, 2, 8}, {19, 6, 4, 8}, {20, 7, 0, 5}, {21, 7, 7, 8},
     {22, 8, 0, 3}, {23, 8, 5, 8}, {24, 8, 2, 8}, {25, 9, 5, 8},
     {26, 9, 8, 8},
 };
