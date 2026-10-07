@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `04611243`
+Old-game commit the goldens are captured from: `351c8cc6`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -11,7 +11,7 @@ now `cmp` equal to a full capture from the old game at the pin above. That PR re
 (9 whose bytes changed only in notification `a`/`b`, 2 whose level-ending tick changed its event order, and the
 archmage marker row); the other 211 were already byte-identical to the capture. The sim-correctness batch (#320, #350;
 2026-10-06) ported two more fixes (`cd97028a`, `a4491684`), added two rows, reshaped one, and moved the pin to `04611243`; 225 of 225
-goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
+goldens `cmp` equal to a full capture at that pin. The charm timer port (#317; 2026-10-07) ported one fix (`95154fd3`), added two rows and moved the pin to `351c8cc6`; 227 of 227 goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
 game" below rebuilds the old game at the pin and reproduces every golden. When the current game departs from
 classic behaviour on purpose, the same fix is ported into the old game's C++, one fix per commit (the message names the
 current-game commit), the affected goldens are captured from the old game again, and the pin moves to the new old-game
@@ -61,7 +61,8 @@ exactly 9 ids. After the #349 ports, a full capture at `1bafb5da` differed from 
 75 ids: the 70 formerly Open, minus the two score-order rows (the parity test driver now matches the old game's
 unchanged bytes there), plus the 7 goldens recaptured for notification `a`/`b` alone. After the #320/#350 ports, a full
 capture at `04611243` differed from the `1bafb5da` capture in exactly 5 ids (3 for #350, 2 for #320 on top;
-`thief_taunt_matched_levels_scen99` also changed shape), plus the 2 new ids.
+`thief_taunt_matched_levels_scen99` also changed shape), plus the 2 new ids. After the #317 port, a full capture at
+`95154fd3` was `diff -rq`-identical to the `04611243` capture, and the capture at `351c8cc6` added exactly the 2 new ids.
 
 Old-game shas below are the commits on `parity-companion` as pushed to `origin/parity-companion`. Every sha in an
 `old-game commit` cell, and the pin, is checked by `scripts/check_parity_companion_refs.sh`, an `og_test_parity` build
@@ -92,6 +93,9 @@ touches `src/` must have a cell. Write an old-game sha you want checked only in 
 | `walk_to_foe_adopts_near_foe_scen99` | Nearest-foe adoption in the melee approach (#320; "Nearest-foe adoption in the melee approach (#320)") | `12de7666` (#353, added with the goldens) | `a4491684` | 2026-10-06, at `04611243` (row mirrored in `04611243`) | `cmp` exit 0 against the current game's dump (new arena; its bytes equal `multiplayer_two_teams_scen99`'s by construction) | New arena (added with the fix): the `multiplayer_two_teams` geometry read for the adoption; the thief ends at 5600 hp (6700 without adoption), the soldier at 7100 (7200). Tooth: the thief fact fails under the pin's `(void)near_foe;`. |
 | — (zero goldens) | SwitchChar on the tick a seat claims a hero (#346) | `12de7666` (`b1312009`; #353) | none | — | The parity test driver never calls `sim_process_player_input` (`tests/parity/scenario_runtime.cpp:72-77`); its own `cycle_next_character` returns early on a null control and falls back to its held control, and the golden capture tool returns before the switch on a null or dead control (`tools/parity_dump_master.cpp:383-395`); the full capture at `04611243` `cmp`s equal to every golden without it. | Nothing in the corpus. Outside it: a SwitchChar press on the tick a seat auto-claims a hero now cycles from that hero instead of crashing the server (null entry) or re-seating the corpse and losing the press (dead entry); the old game drops the press on the null-entry tick and keeps the seat null for one frame. |
 | — (zero goldens) | Weapon notices carry the HUD duration (#351) | `12de7666` (`3816d724`; #353) | none | — | Both recorders write a notification's `a` = `b` = 0 (`cee3b41f`; `parity_runner.cpp:256-268`), so the only bytes the fix changes never reach a dump. | Nothing in the corpus. Outside it: "Weapon sitting" and "Weapon N doing act random?" show for `STANDARD_TEXT_TIME` (75 cycles) like every other notice and like the old game's `do_notify`, instead of `family` cycles (12 for a glow, 14 for a wave). |
+| `thief_charm_third_party_hit_scen99` | Charm ends on its timer (#317; "Charm ends on its timer (#317)") | the #<PR> PR (`3111ecb0`) | `95154fd3` | 2026-10-07, at `351c8cc6` (row mirrored in `351c8cc6`) | `cmp` exit 0 against the current game's dump (new arena) | New arena (added with the fix): the charmed soldier stays on team 0 through three hits from the team-2 archer and its own clears; score 345 to team 0 (classic 0). Teeth: the exact reverse of the fix inside clear_command flips both team facts and the score. |
+| `thief_charm_expires_on_timer_scen99` | Charm ends on its timer (#317; "Charm ends on its timer (#317)") | the #<PR> PR (`3111ecb0`) | `95154fd3` | 2026-10-07, at `351c8cc6` (row mirrored in `351c8cc6`) | `cmp` exit 0 against the current game's dump (new arena) | New arena (added with the fix), the same spawns run to tick 160: the soldier is on team 1 again from tick 145 and the thief is alive. Teeth: disabling the decay restore flips both team facts. |
+| — (zero goldens) | Charm ends on its timer (#317) | the #<PR> PR (`3111ecb0`) | `95154fd3` | — | `diff -rq` of the all-ids captures before and after the port: EMPTY, 225/225 | Only three ids charm anyone and none clears a charmed walker before the run ends. |
 
 ### Evidence for the #294 and #295 rows (2026-09-26, kept from the "Classic finder fixes" entry)
 
@@ -334,6 +338,22 @@ duration), are not ported and move no golden; the per-golden table under "Ported
 | `a4491684` | **near-foe adoption**: `walk_to_foe`'s melee branch adopts the strictly nearer foe `find_near_foe` returns and aims this tick at it (#320; "Nearest-foe adoption in the melee approach (#320)") | `12de7666` (`9a38ee54`) #353 | `src/stats.cpp` `statistics::walk_to_foe`: the find runs ahead of the turn and the `random(25)` ATTACK draw; the result is adopted when `distance_to_ob` reads strictly under the held foe's; the dead `firstfoe` fallback (unreachable in both games) is gone. | On top of `cd97028a`: 2 ids, `multiplayer_two_teams_scen99`, `special_thief_2_scen99`. | Both `cmp` equal. |
 
 `04611243` is the table mirror (recorder-only, `tools/` only) and the pin.
+
+### Charm timer port (#317; 2026-10-07)
+
+One current-game fix was ported into the old game on `04611243`, measured like the ports above: the capture at
+`04611243` `cmp`s equal to every golden; the capture after the port was `diff -rq`-identical to it (225 of 225); the
+table mirror then added 2 ids. Both capture logs had no `using embedded fixture` line. Both new ids `cmp` equal to
+the current game's dump with the fix in place, and the current game dumps each twice with identical bytes.
+
+| old-game commit | label: fix (issue; GAMEPLAY_FIXES row) | current-game commit | old-game site(s) | ids it moves (additive) | cmp result |
+|---|---|---|---|---|---|
+| `95154fd3` | **charm timer**: `clear_command` no longer restores the real team, so a charm ends only when `charm_left` runs out (#317; "Charm ends on its timer (#317)") | the #<PR> PR (`3111ecb0`) | `src/stats.cpp` `statistics::clear_command`: the `real_team_num` restore is deleted; its 2002 comment "Make sure we're back to our real team" moves to the `charm_left` decay in `src/living.cpp` `living::act`. | None of 225: `diff -rq` of the all-ids captures at `04611243` and after `95154fd3` is empty. | — (nothing moved) |
+
+`351c8cc6` is the table mirror (recorder-only, `tools/` only) and the pin. The current-game cells above name this PR
+in words with its pre-squash commit in parentheses, so no cell cites a sha master cannot reach; once the PR is
+squashed, the next PR that edits this ledger rewrites them to the per-golden header's form,
+`` `<squash>` (`3111ecb0`; #<PR>) ``.
 
 ### Earlier ports (before the 2026-10-04 rule)
 
