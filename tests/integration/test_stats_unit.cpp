@@ -1030,3 +1030,151 @@ TEST(StatsUnit, stats_r14_hit_response_gates_and_direct_walk_and_blocked_default
     EXPECT_EQ(98, self->xpos()) << "the fallback still closes on the foe";
 }
 } // namespace detail_stats_r14
+
+// --- #300: the hit_response guard is reachable ---
+#include <openglad/gameplay/effect.h>
+
+namespace detail_stats_r14 {
+namespace {
+
+walker* add_generator(StatsR14Fixture& fx, unsigned char team, short x, short y)
+{
+    auto w = std::make_unique<walker>();
+    w->set_order_family(Order::Generator, FAMILY_TENT);
+    w->set_act_type(ACT_GENERATE);
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->setxy(x, y);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->stats()->set_max_hitpoints(1000.0f);
+    w->stats()->set_hitpoints(1000.0f);
+    walker* out = w.get();
+    fx.level.world().oblist.push_back(std::move(w));
+    return out;
+}
+
+// Stock effects set ignore=1 in both constructors (effect.cpp), and setxy
+// registers only non-ignored walkers in the obmap, so in_obmap must be set
+// BEFORE setxy for the effect to be something a weapon can collide with.
+walker* add_effect(StatsR14Fixture& fx, unsigned char team, short x, short y, bool in_obmap)
+{
+    auto w = std::make_unique<effect>();
+    w->set_order_family(Order::FX, FAMILY_FLASH);
+    w->set_sizex(16);
+    w->set_sizey(16);
+    if (in_obmap)
+        w->set_ignore(0);
+    w->setxy(x, y);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->stats()->set_max_hitpoints(1000.0f);
+    w->stats()->set_hitpoints(1000.0f);
+    walker* out = w.get();
+    fx.level.world().fxlist.push_back(std::move(w));
+    return out;
+}
+
+walker* add_knife(StatsR14Fixture& fx, walker* owner, short x, short y)
+{
+    auto w = std::make_unique<walker>();
+    w->set_order_family(Order::Weapon, FAMILY_KNIFE);
+    w->set_sizex(8);
+    w->set_sizey(8);
+    w->set_stepsize(1.0f);
+    w->setxy(x, y);
+    w->set_team_num(owner->team_num());
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_owner(owner);
+    w->set_damage(5.0f);
+    walker* out = w.get();
+    fx.level.world().weaplist.push_back(std::move(w));
+    return out;
+}
+
+} // namespace
+
+// #300: statistics::hit_response returns early for any controller that is not
+// Order::Living. walker::attack refuses only treasure (and friends), so a
+// generator hit in melee, a generator or an obmap-resident effect that a weapon
+// collides with, and an enemy weapon hit by a weapon all reach hit_response.
+// The guard keeps the living retarget, queue clear and yell away from them,
+// and also keeps the LIVING family hook away: hooks are looked up by family id
+// alone, so an arrow (weapon family 2) would otherwise run the archer's Lua
+// hit_response. Each arm first proves the hit landed, so none passes vacuously.
+TEST(StatsUnit, hit_response_guard_shields_non_living_targets)
+{
+    StatsR14Fixture fx;
+    GameWorld& world = fx.level.world();
+    walker* hero = add_living(fx, 0, 32, 32);
+    walker* foe = add_living(fx, 1, 64, 32);
+    walker* gen = add_generator(fx, 1, 200, 200);
+    walker* fxw = add_effect(fx, 1, 300, 200, true);
+    walker* stock_fx = add_effect(fx, 1, 400, 200, false);
+    walker* arrow = add_weapon(fx, 1, 200, 300);
+    walker* knife = add_knife(fx, hero, 32, 100);
+    ASSERT_NE(nullptr, stock_fx) << "stock effect created";
+
+    hero->set_damage(5.0f);
+    foe->set_act_type(ACT_RANDOM);
+    for (walker* w : {foe, arrow})
+    {
+        w->stats()->set_max_hitpoints(1000.0f);
+        w->stats()->set_hitpoints(1000.0f);
+    }
+    for (walker* w : {foe, gen, fxw, arrow})
+        w->stats()->add_command(COMMAND_WALK, 9, 1, 0);
+
+    // Control: a living answers the hit by retargeting and clearing its queue.
+    ASSERT_TRUE(hero->attack(foe)) << "the melee hit on the living lands";
+    EXPECT_LT(foe->stats()->hitpoints(), 1000.0f) << "the living took damage";
+    EXPECT_EQ(hero, foe->foe()) << "the living retargets its attacker";
+    EXPECT_TRUE(foe->stats()->commands.empty()) << "and its queue is cleared";
+
+    // Generator hit in melee (walker::attack's melee arm).
+    ASSERT_TRUE(hero->attack(gen)) << "the melee hit on the generator lands";
+    EXPECT_LT(gen->stats()->hitpoints(), 1000.0f) << "the generator took damage";
+    EXPECT_EQ(nullptr, gen->foe()) << "the generator's stats acquired no foe";
+    EXPECT_EQ(1u, gen->stats()->commands.size()) << "the generator's queue is untouched";
+
+    // Generator reported by the obmap as an owned knife's collide_ob
+    // (walker::attack's weapon-with-owner arm).
+    const float gen_hp = gen->stats()->hitpoints();
+    hero->set_foe(nullptr);
+    ASSERT_FALSE(world.query_passable(gen->xpos(), gen->ypos(), knife))
+        << "the knife collides with the generator";
+    ASSERT_EQ(gen, knife->collide_ob()) << "the obmap feeds the generator in";
+    ASSERT_TRUE(knife->attack(knife->collide_ob())) << "the knife hit lands";
+    EXPECT_LT(gen->stats()->hitpoints(), gen_hp) << "the generator took knife damage";
+    EXPECT_EQ(gen, hero->foe()) << "the owner arm ran: the knife's owner targets the generator";
+    EXPECT_EQ(nullptr, gen->foe()) << "the generator's stats still acquired no foe";
+    EXPECT_EQ(1u, gen->stats()->commands.size()) << "the generator's queue is still untouched";
+
+    // An effect that sits in the obmap, hit the same way.
+    ASSERT_FALSE(world.query_passable(fxw->xpos(), fxw->ypos(), knife))
+        << "the knife collides with the obmap-resident effect";
+    ASSERT_EQ(fxw, knife->collide_ob()) << "the obmap feeds the effect in";
+    ASSERT_TRUE(knife->attack(knife->collide_ob())) << "the knife hit on the effect lands";
+    EXPECT_LT(fxw->stats()->hitpoints(), 1000.0f) << "the effect took damage";
+    EXPECT_EQ(nullptr, fxw->foe()) << "the effect's stats acquired no foe";
+    EXPECT_EQ(1u, fxw->stats()->commands.size()) << "the effect's queue is untouched";
+
+    // A stock effect (ignore=1) is not in the obmap at all.
+    EXPECT_TRUE(world.query_passable(stock_fx->xpos(), stock_fx->ypos(), knife))
+        << "a stock effect is never something a weapon collides with";
+
+    // An enemy arrow hit by the knife. Without the guard the archer's Lua
+    // hit_response would run on the arrow and write current_distance 15000
+    // before failing; 777 is a sentinel that is not the statistics default.
+    arrow->stats()->set_current_distance(777);
+    ASSERT_TRUE(knife->attack(arrow)) << "the knife hit on the arrow lands";
+    EXPECT_LT(arrow->stats()->hitpoints(), 1000.0f) << "the arrow took damage";
+    EXPECT_EQ(nullptr, arrow->foe()) << "the arrow's stats acquired no foe";
+    EXPECT_EQ(1u, arrow->stats()->commands.size()) << "the arrow's queue is untouched";
+    EXPECT_EQ(777, arrow->stats()->current_distance())
+        << "the archer's living hit_response hook never ran on the arrow";
+}
+} // namespace detail_stats_r14
