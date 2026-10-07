@@ -1161,7 +1161,10 @@ TEST(CharmTimer, ally_shove_keeps_charm)
     ASSERT_EQ(1, c.a0->shove(c.victim, 1, 0));
 
     expect_charmed(c);
-    ASSERT_FALSE(c.victim->stats()->commands.empty());
+    // The shove empties the queue (clear_command) and then queues its own
+    // walk (set_command), so the AI walk queued after the cast is gone and
+    // the shove's walk is the only command left.
+    ASSERT_EQ(1u, c.victim->stats()->commands.size());
     const command& front = c.victim->stats()->commands.front();
     ASSERT_EQ(COMMAND_WALK, front.commandtype);
     ASSERT_EQ(4, front.commandcount);

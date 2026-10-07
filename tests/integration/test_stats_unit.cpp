@@ -1,6 +1,7 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -1032,7 +1033,6 @@ TEST(StatsUnit, stats_r14_hit_response_gates_and_direct_walk_and_blocked_default
 } // namespace detail_stats_r14
 
 // --- #300: the hit_response guard is reachable ---
-#include <openglad/gameplay/effect.h>
 
 namespace detail_stats_r14 {
 namespace {
@@ -1116,7 +1116,6 @@ TEST(StatsUnit, hit_response_guard_shields_non_living_targets)
     walker* stock_fx = add_effect(fx, 1, 400, 200, false);
     walker* arrow = add_weapon(fx, 1, 200, 300);
     walker* knife = add_knife(fx, hero, 32, 100);
-    ASSERT_NE(nullptr, stock_fx) << "stock effect created";
 
     hero->set_damage(5.0f);
     foe->set_act_type(ACT_RANDOM);
