@@ -168,7 +168,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
 // Cycling gate: src/gameplay/sim_input_handler.cpp:196 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
-// Firing gate: src/gameplay/living.cpp:585 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
+// Firing gate: src/gameplay/living.cpp:586 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
 struct SpawnSpec
@@ -8272,10 +8272,80 @@ inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
 };
 
 inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
-    "src/gameplay/stats.cpp", 1306,
+    "src/gameplay/stats.cpp", 1308,
     "controller_->set_foe(near_foe);",
     "(void)near_foe;",
     "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
+};
+
+// thief_charm_third_party_hit_scen99 / thief_charm_expires_on_timer_scen99 (#317):
+// a level-7 player THIEF charms a level-5 team-1 SOLDIER 25 px east (range
+// 16 + 4*7 = 44; level edge +2 gives charm_left 75 + 2*25 = 125, under the
+// og.soften knee, so both games read 125). Two team-2 hostiles fight the
+// charmed soldier: it is hit by the team-2 ARCHER, which is never its foe, at
+// ticks 36, 44 and 53, and its own fire_check / walk_to_foe clears run from
+// tick 22. Before #317 the first of those clears put it back on team 1; now
+// it stays on team 0 until the charm_left decay at tick 144 (first team-1
+// dump at 145). The team-2 TOWER1 sits ON the map at (600,680) to hold
+// level_done at 0: an off-map tower drains 1 hp per tick on an impassable
+// cell and dies by about tick 130.
+inline constexpr SpawnSpec kFamilySpawns_thief_charm_third_party_hit_scen99[] = {
+    { FAMILY_TOWER1,  2, kOrderLiving, 600, 680, 0, 0 },          // on-map team-2 tower: holds level_done = 0, ends untouched at 130 hp
+    { FAMILY_SOLDIER, 1, kOrderLiving, 145, 120, 0, 0, 5, 0 },    // the victim, level 5: 25 px east, inside charm range
+    { FAMILY_SOLDIER, 2, kOrderLiving, 200, 120, 0, 0 },          // team-2 melee hostile
+    { FAMILY_ARCHER,  2, kOrderLiving, 145, 220, 0, 0 },          // team-2 shooter: the third party that is never the victim's foe
+    { FAMILY_THIEF,   0, kOrderLiving, 120, 120, 0, 0, 7, 600 },  // player THIEF LAST (spawns PREPEND); level 7 opens slot 3, 600 MP
+};
+
+inline constexpr FactPredicate kFacts_thief_charm_third_party_hit_scen99[] = {
+    pred::TickReached(120),
+    pred::LevelDoneEquals(0),
+    // TEETH: the charmed soldier is still on the thief's team at 120.
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the charmed soldier is hit by the team-2 archer (not its foe) at ticks 36/44/53 and stays on the thief's team until charm_left (125) runs out at tick 144; before #317 the first routine clear at tick 22 returned it to team 1"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0,
+        "consequence: nobody is on team 1 while the charm holds; the kMut's early un-charm puts the soldier back there"),
+    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1),   // control: the tower only; the team-2 soldier and archer are dead on both arms
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7900, 7900,
+        "the soldier was hit (79/120) and kept its charm through the hits"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1700, 1700),     // control: 17 on both arms
+    pred::ScoreDelta(/*team=*/0, 345, 345,
+        "consequence: the charmed soldier's kills of the team-2 soldier and archer credit the charmer's team; classic reads 0"),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+};
+
+// The exact reverse of the #317 fix: put the real-team restore back into
+// clear_command itself. The first routine clear (direct_walk's fire_check at
+// tick 22) then un-charms, as classic did.
+inline constexpr Mutation kMut_thief_charm_third_party_hit_scen99 = {
+    "src/gameplay/stats.cpp", 148,
+    "controller_->set_leader(nullptr);",
+    "controller_->set_leader(nullptr); if (controller_->real_team_num() != 255) { controller_->set_team_num(controller_->real_team_num()); controller_->set_real_team_num(255); }",
+    "Restores the pre-#317 un-charm inside clear_command, so the soldier's own fire_check clear at tick 22 puts it back on team 1 (the classic capture): team-0 alive 2 -> 1, team-1 alive 0 -> 1, ScoreDelta(0) 345 -> 0 because its later kills credit team 1, which the dump does not score.",
+    "void statistics::clear_command()"
+};
+
+inline constexpr FactPredicate kFacts_thief_charm_expires_on_timer_scen99[] = {
+    pred::TickReached(160),
+    pred::LevelDoneEquals(0),
+    // TEETH: charm_left 125 runs out in the act of tick 144; 160 shows team 1.
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1,
+        "consequence: the charm_left decay restores the soldier to team 1 at tick 144; the kMut leaves it on team 0"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1,
+        "consequence: the thief alone on team 0 after the expiry"),
+    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_THIEF, 1,
+        "classic (early un-charm at tick 22) had the soldier kill the thief by about tick 140"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 8000),
+    pred::ScoreDelta(/*team=*/0, 345, 345),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+};
+
+inline constexpr Mutation kMut_thief_charm_expires_on_timer_scen99 = {
+    "src/gameplay/living.cpp", 211,
+    "set_team_num(real_team_num());",
+    "set_team_num(team_num());",
+    "The decay still zeroes charm_left and clears real_team_num but never moves the soldier back: team-1 alive 1 -> 0 and team-0 alive 1 -> 2 at tick 160. This is the only pin on the one remaining un-charm."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -10188,6 +10258,22 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_walk_to_foe_adopts_near_foe_scen99, std::size(kFacts_walk_to_foe_adopts_near_foe_scen99),
       kMut_walk_to_foe_adopts_near_foe_scen99 },
+
+    { "thief_charm_third_party_hit_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3Shift, std::size(kInputsSpecialSlot3Shift), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_charm_third_party_hit_scen99, std::size(kFamilySpawns_thief_charm_third_party_hit_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_charm_third_party_hit_scen99, std::size(kFacts_thief_charm_third_party_hit_scen99),
+      kMut_thief_charm_third_party_hit_scen99 },
+
+    { "thief_charm_expires_on_timer_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3Shift, std::size(kInputsSpecialSlot3Shift), 160,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_charm_third_party_hit_scen99, std::size(kFamilySpawns_thief_charm_third_party_hit_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_charm_expires_on_timer_scen99, std::size(kFacts_thief_charm_expires_on_timer_scen99),
+      kMut_thief_charm_expires_on_timer_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
