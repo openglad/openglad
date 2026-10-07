@@ -82,12 +82,6 @@ void statistics::clear_command()
 	commands.clear();
 	// Make sure our weapon type is restored to normal ..
 	controller->current_weapon = controller->default_weapon;
-	// Make sure we're back to our real team
-	if (controller->real_team_num != 255)
-	{
-		controller->team_num = controller->real_team_num;
-		controller->real_team_num = 255;
-	}
 	controller->leader = NULL;
 }
 
