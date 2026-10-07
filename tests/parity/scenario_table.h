@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:459 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:467 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -3947,14 +3947,14 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2700, 2700),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2800, 2800),
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
     "packs/core/families/living-11-thief.lua", 77,
     "self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
     "self:set_invisibility_left(0)",
-    "Discards CLOAK's invisibility grant at the cast site (the cloak roll is still drawn, only the total is thrown away), so the level-4 thief never gains cover and the team-1 soldier keeps engaging it. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3600, 3600) flips."
+    "Discards CLOAK's invisibility grant at the cast site (the cloak roll is still drawn, only the total is thrown away), so the level-4 thief never gains cover and the team-1 soldier keeps engaging it. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2800, 2800) flips: the uncovered thief ends at 700."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_thief_3_scen99[] = {
@@ -7833,14 +7833,17 @@ inline constexpr Mutation kMut_beast_set_difficulty_invariant_scen99 = {
 // match it, so both foes are melee-only families: a level-7 knife thrower one-shots the
 // 75-hp thief (measured), a level-7 melee walker does not, because SpawnSpec.stats_level
 // writes the level field without recomputing the damage column.
-// The team-0 FAMILY_TOWER1 is a stationary, zero-damage punching bag that both foes chew
-// on; its hp is a pure readout of the shifted damage rolls. It is FIRST in the array so
-// the thief (LAST) is still the oblist head and takes ACT_CONTROL.
+// The team-0 FAMILY_TOWER1 is a stationary decoy; since #350 it returns fire (its arrows
+// are the hits in the dump) and the foes go for the thief instead, so its hp is a
+// control. It is FIRST in the array so the thief (LAST) is still the oblist head and
+// takes ACT_CONTROL. The thief stands at (140,140) so that BOTH foes are inside the
+// 108 px taunt range at the tick-20 cast: at (120,120) only the orc was, and its two
+// rolls tied 5-5, which both adjudication orders accept (measured with #350 in place).
 inline constexpr SpawnSpec kFamilySpawns_thief_taunt_matched_levels_scen99[] = {
-    { FAMILY_TOWER1,      0, kOrderLiving, 200, 200, 0, 0 },         // stationary team-0 decoy, damage column 0
+    { FAMILY_TOWER1,      0, kOrderLiving, 200, 200, 0, 0 },         // stationary team-0 decoy, returns fire since #350
     { FAMILY_ORC,         1, kOrderLiving, 180, 150, 0, 0, 7, 0 },   // matched level 7, melee-only (BIT_NO_RANGED)
     { FAMILY_SMALL_SLIME, 1, kOrderLiving, 150, 180, 0, 0, 7, 0 },   // matched level 7, melee-only, distinct family
-    { FAMILY_THIEF,       0, kOrderLiving, 120, 120, 0, 0, 7, 600 }, // caster LAST
+    { FAMILY_THIEF,       0, kOrderLiving, 140, 140, 0, 0, 7, 600 }, // caster LAST, inside taunt range of both foes
 };
 
 inline constexpr FactPredicate kFacts_thief_taunt_matched_levels_scen99[] = {
@@ -7848,17 +7851,21 @@ inline constexpr FactPredicate kFacts_thief_taunt_matched_levels_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::EventKindAtLeast(/*notification*/2, 1,
         "anchor: the taunt arm emits \"THIEF: 'Nyah Nyah!'\" unconditionally once the loop finishes, on either adjudication order"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11000, 11000,
-        "consequence: the taunted foe's FOLLOW-duration draw sits at a different position in the stream under the two adjudication orders, so every later combat roll shifts; the decoy tower reads out that shift as exactly 11000 cents (11100 against 11300 under the inverted comparison before the armor-roll expectation)"),
-    pred::WalkerPositionMoved(FAMILY_ORC, 156, 132,
-        "consequence: the same one-position stream shift re-times the orc's approach; it ends at exactly (156,132) here and at (153,129) under the inverted comparison, short of this bound on both axes"),
+    // FLIPPING PREDICATE: the slime's pair is unequal (thief 5, slime 2), so the
+    // parity order taunts it and the inverted order does not.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 7200, 7200,
+        "consequence: taunted under the parity order (thief 5 vs slime 2) the slime FOLLOWs the thief and ends at exactly 72 hp; under the inverted comparison it is not taunted, its FOLLOW draw is not consumed, every later roll shifts and it ends at 6100 at (152,170)"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000,
+        "consequence: the orc's own pair is a 3-3 tie, taunted on both orders; the shifted stream still re-times its approach: untouched at 140 hp here, 13100 at (192,177) under the inverted comparison"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "control: neither foe reaches the decoy on either order (both go for the nearer thief), so it keeps full hp on both arms"),
 };
 
 inline constexpr Mutation kMut_thief_taunt_matched_levels_scen99 = {
     "packs/core/families/living-11-thief.lua", 97,
     "      if my_roll >= foe_roll then",
     "      if foe_roll >= my_roll then",
-    "Inverts the taunt adjudication. With matched levels both draws share the bound rand(7), so this is exactly the observable of the RIGHT-first draw order the parity port rejected: the same two draws are consumed but the opposite foe is taunted, which moves the FOLLOW-duration draw within the stream and shifts every later combat roll (decoy tower 11100 -> 11300, orc (156,132) -> (153,129))."
+    "Inverts the taunt adjudication. With matched levels both draws share the bound rand(7), so this is exactly the observable of the RIGHT-first draw order the parity port rejected: the same two draws are consumed but the opposite foe is taunted, which moves the FOLLOW-duration draw within the stream and shifts every later combat roll (medium slime 72 -> 61 hp, orc 140 -> 131 hp at (192,177), team-0 score 22 -> 70)."
 };
 
 // Face east, then cycle to special slot 4 and cast. The leading K_RIGHT is required:
@@ -8205,6 +8212,70 @@ inline constexpr Mutation kMut_druid_protection_refresh_scen99 = {
     "    local circles = og.find_in_range(\"weap\", 100, friend)",
     "    local circles = og.find_in_range(\"ob\", 100, friend)",
     "Points the existing-circle scan back at oblist, resurrecting the bug this row exists to pin. oblist holds livings, generators and FX; a summoned circle lives in weaplist, so the scan finds nothing, `existing` stays nil and the recast takes the mint arm instead of the top-up arm. The friendly ends the run wearing TWO rings and WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1) reads 2. Everything else holds: both casts still succeed, both still charge 200 magicpoints and emit SOUND_HEAL, so the play_sound floor and WeaponFamilyEmitted stay green and the flip is isolated to the stacking."
+};
+
+// tower_snap_face_heading_scen99 (#350): a stationary team-0 TOWER1 with two
+// melee foes re-crossing its facing sectors and an idle player (the arena of
+// thief_taunt_matched_levels_scen99 as it stood before this PR, with no
+// inputs). Each COMMAND_ATTACK Facing denial snap-faces the tower through
+// face_delta; with a stepsize of 0 that left a (0,0) heading, so the next
+// fire_check probe went FACE_UP and missed, and the single arrow that
+// followed (after the stationary walkstep restored a unit heading) flew due
+// west past everything. With the fix the heading keeps the direction toward
+// the foe and the tower's first shots go toward it: the slime takes them.
+inline constexpr SpawnSpec kFamilySpawns_tower_snap_face_heading_scen99[] = {
+    { FAMILY_TOWER1,      0, kOrderLiving, 200, 200, 0, 0 },         // stationary team-0 shooter
+    { FAMILY_ORC,         1, kOrderLiving, 180, 150, 0, 0, 7, 0 },   // melee foe closing from the NW
+    { FAMILY_SMALL_SLIME, 1, kOrderLiving, 150, 180, 0, 0, 7, 0 },   // melee foe closing from the W (reads MEDIUM_SLIME in the dump)
+    { FAMILY_THIEF,       0, kOrderLiving, 120, 120, 0, 0, 7, 600 }, // idle player LAST
+};
+
+inline constexpr FactPredicate kFacts_tower_snap_face_heading_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    // FLIPPING PREDICATE: the tower's snap-faced arrows hit the slime.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 7500, 7500,
+        "consequence: the tower's heading after a snap-face points at the foe, so its next probe and shot go toward the slime, which ends at 75 hp; with a (0,0) heading the FACE_UP probe misses, the one arrow that follows flies due west past everything and the slime ends untouched at 8000"),
+    // Control: the orc is never in the tower's line and keeps full hp on both arms.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000),
+};
+
+inline constexpr Mutation kMut_tower_snap_face_heading_scen99 = {
+    "src/gameplay/walker_movement.cpp", 501,
+    "    const float scale = (stepsize() == 0.0f) ? 1.0f : stepsize();",
+    "    const float scale = stepsize();",
+    "Reverts #350: a stationary shooter's snap-face leaves a (0,0) heading again, its next fire_check probe goes FACE_UP and misses, the one arrow that follows (after the stationary walkstep restores a unit heading) flies due west past everything, and WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 7500, 7500) fails with the slime untouched at 8000. The orc control, the tower count and the tick budget hold."
+};
+
+// walk_to_foe_adopts_near_foe_scen99 (#320): the multiplayer_two_teams arena
+// read for the adoption. The team-1 archer holds the team-0 soldier (52 px at
+// tick 24) while the team-2 thief has closed to 16 px in a cell the obmap
+// spiral probes first; walk_to_foe's melee branch adopts the thief because it
+// is strictly nearer, and the archer's arrows land on it from then on. Without
+// adoption the archer keeps shooting the soldier.
+inline constexpr SpawnSpec kFamilySpawns_walk_to_foe_adopts_near_foe_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 3, 200 }, // player (team 0): the archer's held foe
+    { FAMILY_THIEF,   2, kOrderLiving, 140, 140, 0, 0, 3, 200 }, // team 2: closes to 16 px, adopted at t24
+    { FAMILY_ARCHER,  1, kOrderLiving, 200, 200, 0, 0 },         // team-1 AI searcher
+};
+
+inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
+    pred::TickReached(44),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    // FLIPPING PREDICATE: the adopted thief takes the archer's arrows.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600,
+        "consequence: the archer adopts the nearer thief at t24 and its arrows land on it (56 hp); without adoption the archer keeps shooting the soldier and the thief ends at 6700"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 7100, 7100,
+        "consequence: the soldier is shot at only until t24 (7200 without adoption)"),
+    // Control: the archer's own hp is 9000 on both arms (multiplayer_two_teams pins it too).
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 9000, 9000),
+};
+
+inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
+    "src/gameplay/stats.cpp", 1306,
+    "controller_->set_foe(near_foe);",
+    "(void)near_foe;",
+    "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -10101,6 +10172,22 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_druid_protection_refresh_scen99, std::size(kFacts_druid_protection_refresh_scen99),
       kMut_druid_protection_refresh_scen99,
       "INTENTIONAL GAMEPLAY CHANGE -- golden captured from the branch at be57275f6b8e47979c9e278539b15570085c7a2d, never from the companion or the merge base, because the behaviour it records is new by design (the druid's protection top-up arm was dead from the 2002 import until that commit). See the \"Intentional gameplay changes\" section of tests/parity/golden/DRIFT_LEDGER.md before recapturing anything for this row." },
+
+    { "tower_snap_face_heading_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_tower_snap_face_heading_scen99, std::size(kFamilySpawns_tower_snap_face_heading_scen99),
+      0, false, true, Exercises::None,
+      kFacts_tower_snap_face_heading_scen99, std::size(kFacts_tower_snap_face_heading_scen99),
+      kMut_tower_snap_face_heading_scen99 },
+
+    { "walk_to_foe_adopts_near_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_multiplayer_two_teams, std::size(kInputs_multiplayer_two_teams), 44,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_walk_to_foe_adopts_near_foe_scen99, std::size(kFamilySpawns_walk_to_foe_adopts_near_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_walk_to_foe_adopts_near_foe_scen99, std::size(kFacts_walk_to_foe_adopts_near_foe_scen99),
+      kMut_walk_to_foe_adopts_near_foe_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

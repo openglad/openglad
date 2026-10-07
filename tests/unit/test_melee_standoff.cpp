@@ -267,6 +267,14 @@ TEST_F(WestlandsStandoffTest, l2_forest_road_crew_fights_past_mid_road)
     // at 415/515/986 and sweep at 2623/1805/2254, with 3/4/4 survivors.
     // Keep both deadlines and the picket/sweep checks; pin each seed's
     // exact census so this cannot admit another casualty on any seed.
+    // Re-measured 2026-10-06 for #320: walk_to_foe's melee approach now
+    // adopts the strictly nearer foe find_near_foe returns (it used to
+    // throw that result away), so a crew member closing on a foe swings
+    // at whatever is nearest instead of chasing its first target through
+    // the melee. Isolating #320 alone reproduces the change; the #350
+    // tower-heading fix in the same batch moves nothing here. Seeds
+    // 42/1337/2025 now cross at 415/467/921 and sweep at 1577/1673/2217,
+    // with 4/4/4 survivors: seed 42 keeps the soldier it lost under #295.
     constexpr int kMidRoadDeadline = 3000;
     constexpr int kSweepDeadline = 8000;   // post-fix: full road swept
 
@@ -274,7 +282,7 @@ TEST_F(WestlandsStandoffTest, l2_forest_road_crew_fights_past_mid_road)
     {
         std::uint32_t seed;
         int survivors;
-    } probes[] = {{42u, 3}, {1337u, 4}, {2025u, 4}};
+    } probes[] = {{42u, 4}, {1337u, 4}, {2025u, 4}};
     for (const auto& probe : probes)
     {
         const std::uint32_t seed = probe.seed;

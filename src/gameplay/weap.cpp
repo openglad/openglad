@@ -102,8 +102,8 @@ bool weap::act()
 					og::sim::emit_event_text(current_game->sim_events,
 					                         og::sim::EventKind::Notification,
 					                         "Weapon sitting",
-					                         static_cast<std::uint32_t>(family()),
-					                         static_cast<std::uint32_t>(team_num()));
+					                         0,   // a: HUD duration, 0 = STANDARD_TEXT_TIME (#351)
+					                         0);  // b: unused for notifications
 				return 1;
 			}
 
@@ -143,8 +143,8 @@ bool weap::act()
 				og::sim::emit_event_text(current_game->sim_events,
 				                         og::sim::EventKind::Notification,
 				                         msg,
-				                         static_cast<std::uint32_t>(family()),
-				                         static_cast<std::uint32_t>(team_num()));
+				                         0,   // a: HUD duration, 0 = STANDARD_TEXT_TIME (#351)
+				                         0);  // b: unused for notifications
 				return 1;
 			}  // END RANDOM
 			//break;

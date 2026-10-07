@@ -14,6 +14,7 @@
 #endif
 #include <openglad/gameplay/guy.h>
 #include "test_gameplay_context_scope.h"
+#include "test_sim_random_scope.h"
 
 namespace {
 // Paint one tile of a fixture's level grid (GRID_SIZE px per tile). The
@@ -461,6 +462,85 @@ TEST(StatsUnit, stats_r11_direct_walk_and_walk_to_foe_tail_branches)
     EXPECT_EQ(COMMAND_ATTACK, static_cast<int>(w->stats()->commands.front().commandtype))
         << "a live foe within 100px is attacked instead of walked to";
     EXPECT_EQ(foe, w->foe()) << "and it stays our foe";
+}
+
+// #320: the melee branch of walk_to_foe used to throw find_near_foe's result
+// away. It now adopts the returned foe when it is strictly nearer (Manhattan,
+// the same measure as tempdistance) than the held one, keeps the held foe on
+// an equal or farther result, and keeps it when the find returns null (every
+// foe in reach is cloaked). These fixtures push plain walkers onto oblist
+// without obmap registration, so find_near_foe ends in find_nearest_foe, which
+// keeps the FIRST strictly-nearer candidate in oblist order; every assertion
+// below holds whichever finder path answers.
+TEST(StatsUnit, walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise)
+{
+    const auto arm = [](StatsFixture& fx, walker* w, walker* held) {
+        w->stats()->commands.clear();
+        w->set_foe(held);
+        w->stats()->force_command(COMMAND_SEARCH, 5, 0, 0);
+        w->set_path_check_counter(0);
+        fx.level.world().rng_.state_ = 1;   // passes the rng(300) guard into the melee branch
+        return w->stats()->walk_to_foe();
+    };
+
+    {
+        StatsFixture fx;
+        walker* w = add_living(fx, 0);
+        walker* a = add_living(fx, 1);
+        walker* b = add_living(fx, 1);
+        ASSERT_NE(nullptr, w);
+        ASSERT_NE(nullptr, a);
+        ASSERT_NE(nullptr, b);
+        w->setxy(96, 96);
+        a->setxy(176, 96);   // 80 px: inside the 100 px melee short-circuit
+        b->setxy(128, 96);   // 32 px: strictly nearer
+
+        // 1. A strictly nearer foe is adopted and attacked.
+        ASSERT_TRUE(arm(fx, w, a)) << "walk_to_foe ran";
+        ASSERT_EQ(1u, w->stats()->commands.size()) << "the queue is replaced by one attack";
+        EXPECT_EQ(COMMAND_ATTACK, static_cast<int>(w->stats()->commands.front().commandtype))
+            << "the melee branch queues an attack";
+        EXPECT_EQ(b, w->foe()) << "the strictly nearer foe the find returned is adopted";
+
+        // 2. A farther candidate is not adopted.
+        b->setxy(240, 96);   // 144 px
+        ASSERT_TRUE(arm(fx, w, a)) << "walk_to_foe ran";
+        EXPECT_EQ(COMMAND_ATTACK, static_cast<int>(w->stats()->commands.front().commandtype))
+            << "the held foe is still attacked";
+        EXPECT_EQ(a, w->foe()) << "a farther candidate never replaces the held foe";
+
+        // 4. Every foe in reach cloaked: the find returns null, the held foe stays.
+        b->setxy(128, 96);
+        a->set_invisibility_left(40);
+        b->set_invisibility_left(40);
+        FixedRandom fixed{1};   // 1 % max: rng(300) passes, both cloak draws next(2) hide
+        ScopedSimRandom guard(&fixed);
+        ASSERT_TRUE(arm(fx, w, a)) << "walk_to_foe ran";
+        ASSERT_EQ(1u, w->stats()->commands.size()) << "the queue is replaced by one attack";
+        EXPECT_EQ(COMMAND_ATTACK, static_cast<int>(w->stats()->commands.front().commandtype))
+            << "a null find still attacks the held foe";
+        EXPECT_EQ(a, w->foe()) << "a null find keeps the held foe";
+    }
+
+    {
+        // 3. Equal distance is not adopted (strictly less). B is pushed before
+        //    A, so the finder returns B (first at the minimum) and only the
+        //    strict comparison keeps A.
+        StatsFixture fx;
+        walker* w = add_living(fx, 0);
+        walker* b = add_living(fx, 1);
+        walker* a = add_living(fx, 1);
+        ASSERT_NE(nullptr, w);
+        ASSERT_NE(nullptr, b);
+        ASSERT_NE(nullptr, a);
+        w->setxy(96, 96);
+        b->setxy(96, 176);   // 80 px
+        a->setxy(176, 96);   // 80 px
+        ASSERT_TRUE(arm(fx, w, a)) << "walk_to_foe ran";
+        EXPECT_EQ(COMMAND_ATTACK, static_cast<int>(w->stats()->commands.front().commandtype))
+            << "the held foe is attacked";
+        EXPECT_EQ(a, w->foe()) << "an equally distant candidate never replaces the held foe";
+    }
 }
 
 TEST(StatsUnit, stats_r11_path_check_counter_roll_is_seed_deterministic)

@@ -13,7 +13,9 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 #include <algorithm>
@@ -237,12 +239,88 @@ TEST(WeapBehavior, weap_act_random)
     const og::sim::Event& ev = sim_log().events()[0];
     EXPECT_EQ(og::sim::EventKind::Notification, ev.kind) << "the act_random report is a Notification";
     EXPECT_EQ("Weapon 0 doing act random?", ev.text) << "the report names the weapon family number";
-    EXPECT_EQ((std::uint32_t)FAMILY_KNIFE, ev.a) << "payload a is the weapon family";
-    EXPECT_EQ((std::uint32_t)3, ev.b) << "payload b is the weapon's team";
+    EXPECT_EQ(0u, ev.a) << "a is the HUD duration: 0 = STANDARD_TEXT_TIME (#351)";
+    EXPECT_EQ(0u, ev.b) << "b is unused for notifications (#351)";
 
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 
+
+// #351: the knife's family is 0, so an a == 0 check on a knife proves nothing.
+// Repeat both reports on non-zero families and teams: the notice's a is the HUD
+// display duration (0 = STANDARD_TEXT_TIME) and b is unused, never the
+// weapon's family and team.
+TEST(WeapBehavior, weap_notices_carry_no_family_in_a_or_team_in_b)
+{
+    walker* glow = make_weapon(FAMILY_GLOW);
+    ASSERT_NE(nullptr, glow) << "glow weapon created";
+    const WeaponFamilyDescriptor* glow_fd = get_weapon_family_descriptor(FAMILY_GLOW);
+    ASSERT_NE(nullptr, glow_fd) << "glow weapon family descriptor exists";
+    ASSERT_FALSE(glow_fd->skip_sit_notify) << "core:glow declares skip_sit_notify=false";
+    glow->set_team_num(2);
+    glow->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
+    glow->set_act_type(ACT_SIT);
+    reset_sim_log();
+    ASSERT_TRUE(glow->act()) << "ACT_SIT returns 1";
+    ASSERT_EQ(1u, sim_log().size()) << "a non-skipping family announces its sit exactly once";
+    const og::sim::Event sit_ev = sim_log().events()[0];
+    EXPECT_EQ(og::sim::EventKind::Notification, sit_ev.kind) << "the sit report is a Notification";
+    EXPECT_EQ("Weapon sitting", sit_ev.text) << "the sit report text";
+    EXPECT_EQ(0u, sit_ev.a) << "a is the HUD duration, not the family (12) (#351)";
+    EXPECT_EQ(0u, sit_ev.b) << "b is unused, not the team (2) (#351)";
+    og::runtime::current_session->myscreen_->world().remove_ob(glow);
+
+    walker* wave2 = make_weapon(FAMILY_WAVE2);
+    ASSERT_NE(nullptr, wave2) << "wave2 weapon created";
+    wave2->set_team_num(3);
+    wave2->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
+    wave2->set_act_type(ACT_RANDOM);
+    reset_sim_log();
+    ASSERT_TRUE(wave2->act()) << "ACT_RANDOM returns 1";
+    ASSERT_EQ(1u, sim_log().size()) << "ACT_RANDOM pushes exactly one sim event";
+    const og::sim::Event random_ev = sim_log().events()[0];
+    EXPECT_EQ(og::sim::EventKind::Notification, random_ev.kind) << "the act_random report is a Notification";
+    EXPECT_EQ("Weapon 14 doing act random?", random_ev.text) << "the report names the weapon family number";
+    EXPECT_EQ(0u, random_ev.a) << "a is the HUD duration, not the family (14) (#351)";
+    EXPECT_EQ(0u, random_ev.b) << "b is unused, not the team (3) (#351)";
+    og::runtime::current_session->myscreen_->world().remove_ob(wave2);
+}
+
+// #351: the sit notice reaches the view with the standard display time, the
+// fallback arm of screen::dispatch_cosmetic_events (a == 0 -> STANDARD_TEXT_TIME),
+// as the old game's do_notify shows it.
+TEST(WeapBehavior, weap_sit_notice_shows_for_standard_text_time)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    ASSERT_GE(s->numviews, 1) << "the integration session owns at least one view";
+    ASSERT_NE(nullptr, s->viewob[0]);
+
+    walker* glow = make_weapon(FAMILY_GLOW);
+    ASSERT_NE(nullptr, glow) << "glow weapon created";
+    glow->set_team_num(2);
+    glow->set_ani_type(ANI_WALK); // otherwise act() short-circuits into animate()
+    glow->set_act_type(ACT_SIT);
+    reset_sim_log();
+    ASSERT_TRUE(glow->act()) << "ACT_SIT returns 1";
+    ASSERT_EQ(1u, sim_log().size()) << "a non-skipping family announces its sit exactly once";
+
+    og::sim::SimEventBatch batch;
+    for (const og::sim::Event& ev : sim_log().events())
+        batch.events.push_back(ev);
+    for (short i = 0; i < s->numviews; ++i)
+        s->viewob[i]->clear_text();
+    s->dispatch_cosmetic_events(batch);
+
+    EXPECT_EQ(std::string("Weapon sitting"), s->viewob[0]->textlist[0])
+        << "the sit notice reaches the active view";
+    EXPECT_EQ(STANDARD_TEXT_TIME, static_cast<int>(s->viewob[0]->textcycles[0]))
+        << "the sit notice shows for STANDARD_TEXT_TIME, not for the family number (#351)";
+
+    for (short i = 0; i < s->numviews; ++i)
+        s->viewob[i]->clear_text();
+    og::runtime::current_session->myscreen_->world().remove_ob(glow);
+}
 
 // ---------------------------------------------------------------------------
 // weap::death - various weapon families
@@ -915,8 +993,8 @@ TEST(WeapBehavior, weap_act_sit_with_non_skipping_family_and_act_animate_shortcu
     const og::sim::Event& sit_ev = sim_log().events()[0];
     EXPECT_EQ(og::sim::EventKind::Notification, sit_ev.kind) << "the sit report is a Notification";
     EXPECT_EQ("Weapon sitting", sit_ev.text) << "the sit report text";
-    EXPECT_EQ((std::uint32_t)FAMILY_KNIFE, sit_ev.a) << "payload a is the weapon family";
-    EXPECT_EQ((std::uint32_t)2, sit_ev.b) << "payload b is the weapon's team";
+    EXPECT_EQ(0u, sit_ev.a) << "a is the HUD duration: 0 = STANDARD_TEXT_TIME (#351)";
+    EXPECT_EQ(0u, sit_ev.b) << "b is unused for notifications (#351)";
 
     // Cover act() early return path when previous animation is still active.
     anim_weapon->set_ani_type(ANI_ATTACK);

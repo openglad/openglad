@@ -496,6 +496,9 @@ void walker::face_delta(short xdelta, short ydelta)
     const short dir = facing(xdelta, ydelta);
     set_curdir(static_cast<signed char>(dir));
     set_enddir(static_cast<char>(dir));
-    set_lastx(static_cast<float>(xdelta) * stepsize());
-    set_lasty(static_cast<float>(ydelta) * stepsize());
+    // #350: a stationary (stepsize 0) shooter keeps a usable heading toward
+    // the foe after a snap-face: magnitude 1 instead of 0 (which read FACE_UP).
+    const float scale = (stepsize() == 0.0f) ? 1.0f : stepsize();
+    set_lastx(static_cast<float>(xdelta) * scale);
+    set_lasty(static_cast<float>(ydelta) * scale);
 }

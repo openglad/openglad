@@ -1034,6 +1034,50 @@ TEST(WalkerCoreMore, walker_round6_act_guard_faces_wakes_and_fires_directionally
     world.delete_objects();
 }
 
+// #350: face_delta is the snap-face a denied COMMAND_FIRE uses to point a
+// shooter at its foe. For a stationary (stepsize 0) shooter such as a tower,
+// scaling the delta by stepsize wrote a 0/0 heading, and set_weapon_heading()
+// read facing(0,0) == FACE_UP: the tower fired north instead of at the foe.
+TEST(WalkerCoreMore, face_delta_stepsize_zero_keeps_a_unit_heading_toward_the_foe)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, actor) << "actor created";
+
+    actor->set_curdir(FACE_UP);
+    actor->set_enddir(FACE_UP);
+    actor->set_stepsize(0.0f);
+    actor->face_delta(-1, 1);
+    ASSERT_EQ(FACE_DOWN_LEFT, static_cast<int>(actor->curdir()))
+        << "face_delta snaps curdir at the foe";
+    ASSERT_EQ(FACE_DOWN_LEFT, static_cast<int>(actor->enddir()))
+        << "face_delta snaps enddir at the foe";
+    ASSERT_FLOAT_EQ(-1.0f, actor->lastx())
+        << "a stationary shooter's heading carries the foe's x direction at "
+           "magnitude 1, not 0";
+    ASSERT_FLOAT_EQ(1.0f, actor->lasty())
+        << "a stationary shooter's heading carries the foe's y direction at "
+           "magnitude 1, not 0";
+    ASSERT_EQ(FACE_DOWN_LEFT,
+              static_cast<int>(actor->facing(static_cast<short>(actor->lastx()),
+                                             static_cast<short>(actor->lasty()))))
+        << "set_weapon_heading() and fire() switch on facing(lastx, lasty): it "
+           "must read the snapped direction, not FACE_UP";
+
+    // A walker that moves keeps the raw delta scaled by its stepsize.
+    actor->set_stepsize(4.0f);
+    actor->face_delta(-1, 1);
+    ASSERT_FLOAT_EQ(-4.0f, actor->lastx())
+        << "the non-stationary heading is still the delta times stepsize";
+    ASSERT_FLOAT_EQ(4.0f, actor->lasty())
+        << "the non-stationary heading is still the delta times stepsize";
+
+    world.delete_objects();
+}
+
 
 TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
 {

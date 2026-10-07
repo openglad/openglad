@@ -4930,13 +4930,26 @@ inline constexpr std::uint32_t kRealCourtBotGameSeed = 0x9E3779B9u;
 // 829 needs one reset before scoring. All six still score within regulation.
 // The seed, court geometry and exact assertions are unchanged; 825's replay
 // is unchanged too.
+//
+// Re-pinned 2026-10-07 for walk_to_foe adopting the strictly nearer foe
+// (#320; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): bots now land the melee hits
+// that fumble the carrier, so possessions break up more often and the bot
+// games score more slowly. At the 7200-tick regulation clock court 829 now
+// reaches the buzzer scoreless, so the test asks for a 14400-tick game
+// through the lobby TIME LIMIT request (kRealCourtBotGameTimeLimit); the
+// courts, rosters, fill wheel and seed are unchanged, and the request does
+// not move any tick before the old buzzer. First-score ticks, old -> new:
+// 824 3525 -> 5733, 825 142 -> 1034, 826 992 -> 2174, 827 1981 -> 2849,
+// 828 1732 -> 2045, 829 2745 -> 10754. Court 824 still plays the full
+// clock (9-2 at 14400); 829 still needs one watchdog reset before scoring.
+inline constexpr int kRealCourtBotGameTimeLimit = 14400;
 inline constexpr RealCourtBotGamePin kRealCourtBotGamePins[] = {
-    {824, 7200, 3525, {0, 2, 0, 0}, true, 7200, {2, 4, 0, 0}, 1, true, 0},
-    {825, 5400, 142, {0, 2, 0, 0}, false, 142, {0, 2, 0, 0}, -1, false, 0},
-    {826, 7200, 992, {0, 0, 2, 0}, false, 992, {0, 0, 2, 0}, -1, false, 0},
-    {827, 7200, 1981, {0, 2, 0, 0}, false, 1981, {0, 2, 0, 0}, -1, false, 0},
-    {828, 7200, 1732, {3, 0, 0, 0}, false, 1732, {3, 0, 0, 0}, -1, false, 0},
-    {829, 7200, 2745, {0, 2, 0, 0}, false, 2745, {0, 2, 0, 0}, -1, false, 1},
+    {824, 14400, 5733, {3, 0, 0, 0}, true, 14400, {9, 2, 0, 0}, 0, true, 0},
+    {825, 14400, 1034, {2, 0, 0, 0}, false, 1034, {2, 0, 0, 0}, -1, false, 0},
+    {826, 14400, 2174, {0, 0, 2, 0}, false, 2174, {0, 0, 2, 0}, -1, false, 0},
+    {827, 14400, 2849, {0, 2, 0, 0}, false, 2849, {0, 2, 0, 0}, -1, false, 0},
+    {828, 14400, 2045, {0, 2, 0, 0}, false, 2045, {0, 2, 0, 0}, -1, false, 0},
+    {829, 14400, 10754, {0, 2, 0, 0}, false, 10754, {0, 2, 0, 0}, -1, false, 1},
 };
 
 }  // namespace
@@ -4960,6 +4973,10 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
         // wheel — all-NONE would refuse the match.
         for (auto& knob : fx.world().ctf_requested_fill)
             knob = og::sim::kFillFair;
+        // The lobby TIME LIMIT request overrides each court's regulation
+        // (see the 2026-10-07 note above the pin table).
+        fx.world().ctf_requested_time_limit =
+            static_cast<std::int16_t>(kRealCourtBotGameTimeLimit);
         fx.world().rng_.state_ = kRealCourtBotGameSeed;
         fx.world().tick();
         ASSERT_TRUE(fx.world().mode.active) << expected.id;
