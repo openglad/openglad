@@ -49,7 +49,7 @@ void ensure_obmap_registration(GameWorld& world, walker* w)
     // No current caller passes a dormant walker, so this is pure invariant
     // enforcement (byte-identical for every existing path).
     if (world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead() ||
-        w->dormant())
+        w->dormant() || w->hidden())
         return;
     if (world.myobmap->walker_to_pos.find(w) == world.myobmap->walker_to_pos.end())
         world.myobmap->add(w, w->xpos(), w->ypos());
@@ -64,7 +64,7 @@ namespace {
 [[nodiscard]] bool spawn_spot_blocked_by(const walker* other, const walker* w,
                                          short x, short y)
 {
-    if (other == nullptr || other == w || other->dead())
+    if (other == nullptr || other == w || other->dead() || other->hidden())
         return false;
     const Order order = other->query_order();
     const bool blocking =

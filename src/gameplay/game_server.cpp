@@ -1426,6 +1426,7 @@ void GameServer::process_disconnected_players(std::uint32_t expected_tick)
             continue;
         }
 
+        walker* const previous_control = disconnected.control;
         sim_process_player_input(
             disconnected.repeated_input,
             disconnected.control,
@@ -1436,6 +1437,11 @@ void GameServer::process_disconnected_players(std::uint32_t expected_tick)
             &events_);
 
         player_controls_[disconnected.player_index] = disconnected.control;
+        // A possession moves a parked seat too (into the body its ghost took,
+        // or back out when the body is let go); every mirror must hear it.
+        if (disconnected.control != previous_control)
+            maybe_send_control_change(disconnected.player_index,
+                                      disconnected.control);
     }
 }
 
@@ -2552,7 +2558,7 @@ walker* GameServer::find_match_reclaim_control(std::size_t player_index) const
     for (const auto& uptr : world_.oblist)
     {
         walker* const entity = uptr.get();
-        if (entity != nullptr && !entity->dead() &&
+        if (entity != nullptr && !entity->dead() && !entity->hidden() &&
             entity->query_order() == Order::Living &&
             entity->user() == static_cast<int>(player_index))
         {
