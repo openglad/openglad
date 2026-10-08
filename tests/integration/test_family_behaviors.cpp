@@ -677,6 +677,67 @@ TEST(FamilyBehaviors, check_special_default_families)
     }
 }
 
+// The same families with New Specials on. The druid, the barbarian and the
+// golem have no new kit and keep the classic answer: always true. The
+// faerie and the orc captain (FAMILY_BIG_ORC) now have bot gates on slot 1
+// that answer from the scene, not by default:
+//   faerie BLINK / SWAP (kit_faerie.lua ai_blink): with no ally to save and
+//     no foe within 30 px, false; hurt below half with a foe within 30 px,
+//     true, and the shift is dropped (BLINK away, not SWAP).
+//   captain HOWL / EAT CORPSE (kit_captain.lua ai_howl): with no corpse
+//     underfoot, the shift is dropped and the orc's own howl range decides:
+//     no foe in the world, false; a foe 100 px off (inside 130), true.
+TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    world.create_new_grid();
+    world.new_specials = 1;
+
+    for (int fam : {FAMILY_DRUID, FAMILY_BARBARIAN, FAMILY_GOLEM})
+    {
+        walker* w = add_living_to_level(fam, 0, 100, 100);
+        ASSERT_TRUE(w != nullptr) << "walker created for family " << fam;
+        w->stats()->set_magicpoints(1000);
+        w->set_current_special(1);
+        EXPECT_TRUE(w->check_special())
+            << "family " << fam << " has no new kit: the classic answer";
+    }
+
+    walker* faerie = add_living_to_level(FAMILY_FAERIE, 0, 300, 300);
+    walker* captain = add_living_to_level(FAMILY_BIG_ORC, 0, 600, 100);
+    ASSERT_TRUE(faerie != nullptr && captain != nullptr);
+    for (walker* w : {faerie, captain})
+    {
+        w->stats()->set_magicpoints(1000);
+        w->set_current_special(1);
+        w->set_shifter_down(1);
+    }
+    EXPECT_FALSE(faerie->check_special())
+        << "faerie: no one to save and no foe close, no BLINK";
+    EXPECT_FALSE(captain->check_special())
+        << "captain: no foe in howling range, no HOWL";
+    EXPECT_EQ(0, captain->shifter_down())
+        << "captain: no corpse underfoot, so not EAT CORPSE";
+
+    walker* close_foe = add_living_to_level(FAMILY_SOLDIER, 1, 320, 300);
+    ASSERT_TRUE(close_foe != nullptr);
+    faerie->stats()->set_hitpoints(faerie->stats()->max_hitpoints() * 0.4f);
+    faerie->set_shifter_down(1);
+    EXPECT_TRUE(faerie->check_special())
+        << "faerie: hurt with a foe at 20 px, BLINK away";
+    EXPECT_EQ(0, faerie->shifter_down()) << "BLINK, not SWAP";
+
+    walker* far_foe = add_living_to_level(FAMILY_SOLDIER, 1, 700, 100);
+    ASSERT_TRUE(far_foe != nullptr);
+    captain->set_shifter_down(1);
+    EXPECT_TRUE(captain->check_special())
+        << "captain: a foe at 100 px is inside the 130 px howl";
+    EXPECT_EQ(0, captain->shifter_down()) << "HOWL, not EAT CORPSE";
+
+    world.delete_objects();
+}
+
 
 // Slime: should return true when numobs < MAXOBS
 TEST(FamilyBehaviors, check_special_slime_capacity)
@@ -2081,7 +2142,7 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     walker* foe_named = add_living_to_level(FAMILY_SOLDIER, 1, 120, 100);
     walker* foe_plain = add_living_to_level(FAMILY_SOLDIER, 1, 130, 100);
     ASSERT_TRUE(foe_named && foe_plain) << "foes for howl created";
-    // packs/core/families/living-14-orc.lua yell:
+    // packs/core/lib/orc_specials.lua yell:
     //   stun = max(0, yell_stun_base + rand0(level*10) - rand0(con*10)).
     // Both rolls are forced to zero so the stun is EXACTLY yell_stun_base:
     // og.rand0(0) answers 0 without touching the generator, so a level-0 orc
