@@ -124,6 +124,11 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     w->set_foe(nullptr);
     w->set_leader(nullptr);
     // Respawn breaks charm: rejoin the recorded true team, fully uncharmed.
+    // The real-team restore is explicit here since #317 (clear_command no
+    // longer does it); the team < 4 branch below then applies the caller's
+    // recorded team as before.
+    if (w->real_team_num() != 255)
+        w->set_team_num(w->real_team_num());
     if (team >= 0 && team < 4)
         w->set_team_num(static_cast<unsigned char>(team));
     w->set_real_team_num(255);

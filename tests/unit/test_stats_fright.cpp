@@ -221,11 +221,12 @@ TEST(StatsFright, selective_clear_preserves_forced_run_keeps_hygiene_and_charm)
     ASSERT_EQ(0, static_cast<int>(w->team_num()));
     ASSERT_EQ(2, static_cast<int>(w->real_team_num()));
 
-    // Contrast: the legacy full clear (level load path) still un-charms.
+    // Contrast: the full clear wipes the forced run too, and since #317 keeps
+    // the charm like the selective clear: the two differ only in the forced-walk run.
     s->clear_command();
     ASSERT_TRUE(s->commands.empty());
-    ASSERT_EQ(2, static_cast<int>(w->team_num()));
-    ASSERT_EQ(255, static_cast<int>(w->real_team_num()));
+    ASSERT_EQ(0, static_cast<int>(w->team_num()));
+    ASSERT_EQ(2, static_cast<int>(w->real_team_num()));
 }
 
 TEST(StatsFright, selective_clear_without_forced_front_wipes_queue)

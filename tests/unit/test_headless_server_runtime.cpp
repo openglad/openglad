@@ -1431,4 +1431,45 @@ TEST_F(HeadlessServerRuntimeTest, server_save_copy_carries_the_replay_arm)
     EXPECT_EQ(4, destination.replay_origin);
 }
 
+// Charm never crosses a level: the roster spawn creates every walker fresh
+// (create_team_walker). This is the mechanism the old
+// level_load_full_clear_unchanged pin attributed to clear_command (#317).
+TEST_F(HeadlessServerRuntimeTest, spawned_roster_walker_starts_uncharmed)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.allied_mode = 0;
+    lobby_save.team_list = {make_slot(0u, 100, "Front", FAMILY_SOLDIER, 0)};
+    initialize_from_lobby(lobby_save);
+
+    GameWorld& world = level_data_->world();
+    SaveData reinforcement;
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->id = 900;
+    member->name = "Fresh";
+    member->teamnum = 2;
+    member->level = 2;
+    member->deployed = true;
+    reinforcement.team_list[0] = std::move(member);
+
+    with_context([&] {
+        walker* marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        ASSERT_NE(nullptr, marker);
+        marker->set_team_num(2);
+        marker->setxy(160, 160);
+
+        og::server::spawn_team_from_save(world, reinforcement);
+
+        walker* const fresh = find_team_member(world, 900);
+        ASSERT_NE(nullptr, fresh) << "the deployed member spawns";
+        EXPECT_EQ(2, fresh->team_num()) << "it stands on its roster team";
+        EXPECT_EQ(255, fresh->real_team_num())
+            << "a level-start walker is never charmed (#317)";
+        EXPECT_EQ(0, fresh->charm_left()) << "and has no charm counting down";
+        EXPECT_TRUE(fresh->stats()->commands.empty()) << "and no queued AI commands";
+    });
+}
+
 } // namespace

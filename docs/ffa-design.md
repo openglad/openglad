@@ -118,6 +118,9 @@ would revive permanently on the charmer's byte. Fixes (both Lua):
 per-cadence renormalize pass re-asserts the byte on any registered fighter
 with `real_team_num == 255` and a wrong `team_num` (also heals berserk-charm
 residue). Charmed fighters (`real_team_num != 255`) are left alone.
+Since #317 `revive_player_walker` restores the real team itself for every
+byte before applying the recorded team, so the C++ path alone brings a charmed
+corpse back to its band; the Lua re-assertion stays as the backstop.
 
 **Mid-match join** (`on_entity_spawn`, gated `MODE_ID == 7`): a `has_guy`
 Living appearing with team < 16 gets the next free band byte from the bitmap.

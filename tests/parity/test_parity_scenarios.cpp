@@ -473,6 +473,10 @@ OG_PARITY_TEST(druid_protection_refresh_scen99)
 OG_PARITY_TEST(tower_snap_face_heading_scen99)
 OG_PARITY_TEST(walk_to_foe_adopts_near_foe_scen99)
 
+// charm timer (#317)
+OG_PARITY_TEST(thief_charm_third_party_hit_scen99)
+OG_PARITY_TEST(thief_charm_expires_on_timer_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker

@@ -130,17 +130,21 @@ void statistics::set_controller(walker* value)
 		dirty_owner->mark_dirty(og::dirty::BIT_CONTROLLER_ID);
 }
 
+// Empties the AI command queue and resets the weapon and leader. It does NOT
+// touch real_team_num: charm ends on its charm_left timer (living.cpp,
+// "Charmed-ness") and nowhere else (#317). Until 2026-10 this routine also
+// restored the real team, so any routine AI clear (a hit from a new attacker
+// here or in the archer's Lua hit_response hook, a rush, an ally's shove,
+// fire_check, walk_to_foe) ended a charm early and left charm_left counting
+// down to nothing. Deliberate resets un-charm at their own site: respawn
+// (respawn.cpp, revive_player_walker) and every level or lineup rebuild,
+// which creates fresh walkers with real_team_num 255 (create_team_walker in
+// headless_server_runtime.cpp, lineup.lua).
 void statistics::clear_command()
 {
 	commands.clear();
 	// Make sure our weapon type is restored to normal ..
 	controller_->set_current_weapon(controller_->default_weapon());
-	// Make sure we're back to our real team
-	if (controller_->real_team_num() != 255)
-	{
-		controller_->set_team_num(controller_->real_team_num());
-		controller_->set_real_team_num(255);
-	}
 	controller_->set_leader(nullptr);
 }
 
@@ -156,13 +160,11 @@ void statistics::clear_command()
 //     expiry belongs solely to charm_left decay (living.cpp), and the
 //     switch-cycle filter already refuses to switch INTO a charmed walker.
 // Extensionally identical to clear_command whenever the queue has no leading
-// forced entries AND real_team_num == 255 (true at every golden's switch).
-// At a scenario-start claim real_team_num is NOT 255: the parity test driver
-// (scenario_runtime.cpp) and the golden capture tool (parity_dump_master.cpp)
-// spawn with real_team_num = team. The two clears still agree there, because
-// the hero's own first act() in that tick runs the charm decay (living.cpp,
-// "Charmed-ness"), which resets real_team_num to 255 (team unchanged) before
-// anything reads it.
+// forced entries. Since #317 neither clear touches real_team_num: a charm ends
+// on its charm_left timer (living.cpp, "Charmed-ness") and nowhere else. The
+// parity test driver (scenario_runtime.cpp) and the golden capture tool
+// (parity_dump_master.cpp) spawn with real_team_num = team; the walker's own
+// first act() runs the decay and resets it to 255 (team unchanged).
 void statistics::clear_command_for_control_switch()
 {
 	int preserved = 0;

@@ -283,12 +283,16 @@ The selective clear does not restore `real_team_num`, so switching no longer
 removes charm. Character cycling already excludes walkers whose
 `real_team_num` is not 255.
 
-### 4c. Expiry and full clears
+### 4c. Expiry and the full clear
 
-Charm ends through the normal `charm_left` decay in `living::act`. Full
-`clear_command` still removes commands, restores the real team, and clears
-the leader for level or session resets. Forced effects and charm therefore do
-not cross a full reset.
+Charm ends through the `charm_left` decay in `living::act` and nowhere else
+(#317). Both clears leave `real_team_num` alone: the full `clear_command`
+removes every command, resets the weapon and clears the leader; the selective
+clear keeps the leading forced walks. The two differ only in that forced-walk
+run. Deliberate resets un-charm at their own site: respawn
+(`revive_player_walker`) explicitly, and every level or lineup rebuild by
+creating fresh walkers with `real_team_num` 255. Forced effects do not cross a
+full clear; charm crosses nothing but its own timer.
 
 ## 5. Campaign compatibility
 

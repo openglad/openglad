@@ -605,7 +605,7 @@ values from `og.C.BIT_*`.
 | `s_add_command(cmd, iterations, info1, info2)` | Append. |
 | `s_force_command(cmd, iterations, info1, info2)` | Prepend as a forced command. |
 | `s_set_command(cmd, iterations, info1, info2)` | Replace. |
-| `s_clear_command()` | Empty the queue. |
+| `s_clear_command()` | Empty the queue, reset the weapon to the default and clear the leader. Never touches the team: a charm ends on its `charm_left` timer (#317). |
 | `s_has_commands() → bool` | |
 | `s_do_command() → int` | Execute one queued step. The only binding that *runs* the queue; the rest only edit it. |
 | `s_force_fright(iterations, info1, info2)` | The ghost-scare fright injection (`statistics::force_fright`). NOT interchangeable with `s_force_command`: it MERGES into an existing forced `COMMAND_WALK` at the queue front so overlapping scares cannot stack end to end. |
