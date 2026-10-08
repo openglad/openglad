@@ -1013,7 +1013,7 @@ data block, the animation table, and the hooks — all three in one file.
 ```lua
 og.family("living", {
   id = "example:emberwisp",
-  wire_id = "auto",                   -- next free id >= 21, deterministic
+  wire_id = "auto",                   -- next free id >= 21 (weapons >= 22), deterministic
   name = "EMBERWISP",                 -- THE identity hooks resolve against
   stats = {                           -- all six required
     strength = 8, dexterity = 14, constitution = 7,

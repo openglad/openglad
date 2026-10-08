@@ -258,16 +258,22 @@ std::map<std::string, ParsedPack>& parsed_pack_memo()
 }
 
 // Deterministic wire-id assignment for one install run: core packs pin
-// explicit ids; wire_id auto/absent takes the next id >= 21 per order in
-// encounter order (packs are visited pack-id-lexicographically, entries in
-// declaration order). Ids 0..20 are reserved for the core pins, and every
-// install pass starts from a registry whose mod slots were just freed, so the
-// counter reproduces the same assignment on every peer. A pack that pins an
-// id >= 21 explicitly can still collide with an auto id — pin the whole
-// pack or none of it. Entries past a registry's capacity (256 ids per
-// order) are rejected by the slot lookup.
+// explicit ids; wire_id auto/absent takes the next id at or above its
+// order's floor in encounter order (packs are visited
+// pack-id-lexicographically, entries in declaration order). The floor is 21
+// for every order except weapons, whose floor is 22: New Specials reserves
+// core weapon ids 20 (bone wall) and 21 (war banner). Ids below the
+// floor are reserved for the core pins, and every install pass starts from a
+// registry whose mod slots were just freed, so the counter reproduces the
+// same assignment on every peer. A pack that pins an id at or above the
+// floor explicitly can still collide with an auto id — pin the whole pack or
+// none of it. Entries past a registry's capacity (256 ids per order) are
+// rejected by the slot lookup.
 struct AutoWireIds {
-    std::int32_t next[8] = {21, 21, 21, 21, 21, 21, 21, 21};
+    // Indexed by Order: Living, Weapon, Treasure, Generator, FX, ...
+    static_assert(static_cast<int>(Order::Weapon) == 1,
+                  "the weapon floor below sits at Order::Weapon");
+    std::int32_t next[8] = {21, 22, 21, 21, 21, 21, 21, 21};
 
     int take(Order order)
     {
