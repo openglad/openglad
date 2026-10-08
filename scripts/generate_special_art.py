@@ -20,8 +20,10 @@ like they belong next to the old ones:
     browns, with a team-band cloth that ripples the way the capture flag does.
   - bonewall.png (16x16, 2 frames): three upright posts, each two of the
     thrown bone's upright frames (bone1.png frame 0) stacked, lashed with two
-    rows of its sideways frame (bone1.png frame 2), on a grey ground shadow.
-    Frame 2 is the cracked wall: a post snapped, a bar fallen, cracks.
+    rows of its sideways frame (bone1.png frame 2) running post to post.
+    No ground shadow is painted in: like every obstacle the game ships, it
+    leaves that to the engine. Frame 2 is the cracked wall: a post snapped,
+    a bar broken and hanging, cracks.
   - ember.png (7x7, 2 frames): a charred spot in the darkest greys with the
     flame of the meteor bolt (meteor.png frame 0) standing on it.
     Frame 2 is the dying ember. The flame keeps the cycled fire band
@@ -364,33 +366,33 @@ def make_bonewall():
 
     def paint(cracked):
         cv = Canvas(16, 16)
-        # Ground shadow under the whole wall.
-        for x in range(1, 16):
-            cv.put(x, 14, GREY_SHADOW)
-        for x in range(3, 14):
-            cv.put(x, 15, GREY_SHADOW)
+        # No ground shadow: no obstacle sprite the game ships has one, the
+        # engine draws its own. Posts stand at x=1, 6 and 11 (shafts 2-3,
+        # 7-8 and 12-13) so the wall is centred, x=1..14. Each bar is lashed
+        # post to post: its two end knobs sit under the shafts it joins.
         # The bars go up first so the posts stand in front of them. On the
-        # cracked wall the upper right bar has come loose and hangs.
-        cv.stamp(sideways, 1, 2)
+        # cracked wall the upper right bar has broken off at post 2 and its
+        # loose end hangs between post 2 and post 3.
+        cv.stamp(sideways, 2, 2)
         if cracked:
-            cv.stamp([row[:4] for row in sideways], 8, 2)
-            cv.stamp([[29, 23], [22, 19]], 12, 5)
+            cv.stamp([row[:4] for row in sideways], 7, 2)
+            cv.stamp([[29, 23], [22, 19]], 9, 5)
         else:
-            cv.stamp(sideways, 8, 2)
-        cv.stamp(sideways, 1, 8)
-        cv.stamp(sideways, 8, 8)
-        for px in (0, 5, 10):
+            cv.stamp(sideways, 7, 2)
+        cv.stamp(sideways, 2, 8)
+        cv.stamp(sideways, 7, 8)
+        for px in (1, 6, 11):
             # The cracked wall's middle post has lost its top bone.
-            if not (cracked and px == 5):
+            if not (cracked and px == 6):
                 cv.stamp(upright, px, 1)
             cv.stamp(upright, px, 7)
         if cracked:
             # Cracks across the left post and the lower bar, and a splinter
-            # on the ground.
-            for x, y in ((1, 10), (2, 11), (1, 12), (9, 9), (10, 10)):
+            # on the ground under the broken bar.
+            for x, y in ((2, 10), (3, 11), (2, 12), (10, 9), (11, 10)):
                 cv.put(x, y, GREY_SHADOW)
-            cv.put(14, 13, GREY_BONE)
-            cv.put(15, 13, GREY_DARK)
+            cv.put(9, 14, GREY_BONE)
+            cv.put(10, 14, GREY_DARK)
         return cv
 
     return 16, 16, [paint(False), paint(True)]

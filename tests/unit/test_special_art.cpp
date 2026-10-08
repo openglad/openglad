@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <set>
@@ -40,7 +41,7 @@ struct ArtRow
 constexpr ArtRow kArt[] = {
     {"mine.png", 9, 9, 2, false, true, 0xcc1f1262u},
     {"banner.png", 12, 22, 4, false, true, 0x8cae22d3u},
-    {"bonewall.png", 16, 16, 2, false, false, 0x4b04cbc1u},
+    {"bonewall.png", 16, 16, 2, false, false, 0x1db153b3u},
     {"ember.png", 7, 7, 2, true, false, 0x79b6d946u},
 };
 
@@ -184,14 +185,19 @@ TEST(SpecialArt, banner_wears_the_skeletons_skull)
 }
 
 // The bone wall's posts are the thrown bone's upright frame (bone1.png
-// frame 0, cols 2..6): the bottom bone of each post is a verbatim copy.
+// frame 0, cols 2..6) at x=1, 6 and 11: the bottom bone of each post is a
+// verbatim copy. Its bars are the sideways frame (bone1.png frame 2, rows
+// 2..5) lashed post to post from x=2 and x=7, upper and lower: wherever a
+// bar's middle shows between two shafts, it is the bone's own pixel.
 TEST(SpecialArt, bone_wall_is_built_from_the_thrown_bone)
 {
     const PixieData wall = read_pixie_file("bonewall.png");
     const PixieData bone = read_pixie_file("bone1.png");
     ASSERT_TRUE(wall.valid() && bone.valid());
+    constexpr int kPosts[] = {1, 6, 11};
+    int post_pixels = 0;
     for (int f = 0; f < wall.frames; ++f)
-        for (const int post_x : {0, 5, 10})
+        for (const int post_x : kPosts)
             for (int y = 0; y < 7; ++y)
                 for (int x = 0; x < 5; ++x)
                 {
@@ -204,7 +210,68 @@ TEST(SpecialArt, bone_wall_is_built_from_the_thrown_bone)
                         continue;
                     EXPECT_EQ(b, w) << "wall frame " << f << " post " << post_x
                                     << " at " << x << "," << y;
+                    ++post_pixels;
                 }
+    // 18 opaque pixels in the upright bone, 3 posts, 2 frames, less the
+    // three the cracked frame darkens on the left post.
+    EXPECT_EQ(2 * 3 * 18 - 3, post_pixels);
+
+    // The bars on the whole wall. A column under a post's shaft (post_x + 1,
+    // post_x + 2) belongs to the post, so only the open span is compared.
+    auto under_a_shaft = [&](int x) {
+        for (const int post_x : kPosts)
+            if (x == post_x + 1 || x == post_x + 2)
+                return true;
+        return false;
+    };
+    int bar_pixels = 0;
+    for (const int bar_x : {2, 7})
+        for (const int bar_y : {2, 8})
+            for (int y = 0; y < 4; ++y)
+                for (int x = 0; x < 7; ++x)
+                {
+                    const int b = at(bone, 2, x, y + 2);
+                    if (b == 0 || under_a_shaft(bar_x + x))
+                        continue;
+                    EXPECT_EQ(b, at(wall, 0, bar_x + x, bar_y + y))
+                        << "bar at " << bar_x << "," << bar_y << " pixel "
+                        << x << "," << y;
+                    ++bar_pixels;
+                }
+    // Each bar shows three columns of its two-row middle between the posts.
+    EXPECT_EQ(4 * 3 * 2, bar_pixels);
+}
+
+// Like every obstacle the game ships (tree, door, boulder, tent, tower,
+// bone pile), the bone wall paints no ground shadow of its own: the engine
+// draws that. And the wall stands inside its outer posts, centred in the
+// frame, so no bar end sticks out past a post into thin air.
+TEST(SpecialArt, bone_wall_has_no_painted_shadow_and_no_loose_bar_end)
+{
+    const PixieData wall = read_pixie_file("bonewall.png");
+    ASSERT_TRUE(wall.valid());
+    ASSERT_EQ(16, static_cast<int>(wall.w));
+    for (int f = 0; f < wall.frames; ++f)
+        for (int y = wall.h - 2; y < wall.h; ++y)
+            for (int x = 0; x < wall.w; ++x)
+            {
+                const int v = at(wall, f, x, y);
+                EXPECT_FALSE(v == 16 || v == 17)
+                    << "wall frame " << f << " paints a shadow at " << x << ","
+                    << y;
+            }
+    int left = wall.w;
+    int right = -1;
+    for (int y = 0; y < wall.h; ++y)
+        for (int x = 0; x < wall.w; ++x)
+            if (at(wall, 0, x, y) != 0)
+            {
+                left = std::min(left, x);
+                right = std::max(right, x);
+            }
+    // The outer posts' top knobs are 4 wide, at x=1 and x=11.
+    EXPECT_EQ(1, left) << "the wall starts at the left post";
+    EXPECT_EQ(14, right) << "the wall ends at the right post";
 }
 
 // The ember's flame is the meteor bolt's (meteor.png frame 0, cols 2..5,
