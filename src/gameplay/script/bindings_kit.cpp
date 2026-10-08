@@ -50,7 +50,11 @@ int m_set_kit_state(lua_State* L)
     const bool hide = (value & KIT_HIDDEN) != 0;
     if (hide != w->hidden())
         w->set_hidden(hide);
-    w->set_kit_state(value);
+    // set_hidden may turn the hide away (a possessed body never hides), so
+    // the HIDDEN bit lands as set_hidden left it; the other bits as asked.
+    const std::uint8_t landed = static_cast<std::uint8_t>(
+        (value & ~KIT_HIDDEN) | (w->hidden() ? KIT_HIDDEN : 0));
+    w->set_kit_state(landed);
     return 0;
 }
 

@@ -587,6 +587,45 @@ TEST_F(KitLuaTest, kit_state_bindings_read_and_write_the_walker)
     EXPECT_EQ(1u, tw.world().myobmap->walker_to_pos.count(self));
 }
 
+// set_kit_state cannot hide a possessed body. walker::set_hidden turns away
+// the hide of a host whose rider is riding it, and the raw byte the binding
+// writes afterwards must land the HIDDEN bit as set_hidden left it, or a
+// kit could hide the host through the back door. The other bits still land.
+TEST_F(KitLuaTest, set_kit_state_cannot_hide_a_possessed_body)
+{
+    TestGameWorld tw;
+    walker* host = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* rider = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, host);
+    ASSERT_NE(nullptr, rider);
+    host->setxy(64, 64);
+    rider->setxy(64, 64);
+    rider->set_hidden(true);
+    host->set_possess_link(rider->entity_id());
+    rider->set_possess_link(host->entity_id());
+    ASSERT_TRUE(rider->hidden());
+    ASSERT_EQ(1u, tw.world().myobmap->walker_to_pos.count(host));
+
+    const std::string body =
+        "    self:set_kit_state(og.C.KIT_FEARLESS + og.C.KIT_HIDDEN)";
+    const auto linked = run("", body, host);
+    ASSERT_TRUE(linked.has_value()) << last_error();
+    EXPECT_FALSE(host->hidden()) << "the possessed body stays visible";
+    EXPECT_EQ(KIT_FEARLESS, host->kit_state())
+        << "the refused HIDDEN bit is not written, the other bits are";
+    EXPECT_EQ(1u, tw.world().myobmap->walker_to_pos.count(host))
+        << "and the body stays in the collision table";
+
+    // Once the possession is over the same call hides it as usual.
+    host->set_possess_link(0);
+    rider->set_possess_link(0);
+    const auto free_body = run("", body, host);
+    ASSERT_TRUE(free_body.has_value()) << last_error();
+    EXPECT_TRUE(host->hidden());
+    EXPECT_EQ(KIT_HIDDEN | KIT_FEARLESS, host->kit_state());
+    EXPECT_EQ(0u, tw.world().myobmap->walker_to_pos.count(host));
+}
+
 // og.match_setting("new_specials") answers the world's flag, and
 // walker:alternate_down() is the shift AND the current slot's alternate in
 // play: false while the setting hides a new-kit alternate, true for a
