@@ -29,6 +29,14 @@
 //   parked seat         redirect is broadcast      disconnected_seat_path_broadcasts_...
 //   claim scans         refuse both linked walkers claim_scans_refuse_linked_walkers
 //                       and a hidden unlinked one  claim_scans_refuse_a_hidden_unlinked_walker
+//   respawn reclaim     skips a hidden tagged body respawn_reclaim_skips_a_hidden_tagged_walker
+//   linked + charm      each real release path     charmed_host_released_by_{the_countdown,
+//                                                  switch_character,its_death},
+//                                                  charm_expiry_and_release_in_the_same_act
+//   two seats           one tick, own bodies only  two_ghosts_possess_two_hosts_in_one_tick,
+//                                                  two_ghosts_reach_for_one_host_in_one_tick
+//   death on a mirror   one snapshot carries both  rider_dies_mid_possession_on_a_mirror,
+//                                                  host_death_kills_the_rider_on_a_mirror
 //   linked: body hides  turned away (DIG IN)       a_possessed_body_never_hides
 //   snapshot seed       see test_world_snapshot.cpp (possess_link_survives_...,
 //                       snapshot_seeded_world_resumes_a_possession_and_keeps_a_ward)
@@ -41,6 +49,7 @@
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
@@ -51,10 +60,12 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/possession.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 
 #include <algorithm>
 #include <array>
@@ -894,4 +905,423 @@ TEST(KitPossession, disconnected_seat_path_broadcasts_control_change)
             return m.player_index == 0u && m.entity_id == s.orc->entity_id();
         });
     EXPECT_TRUE(heard) << "the connected mirror hears the parked seat move";
+}
+
+// A seat left with no body while a respawn mode runs adopts the walker that
+// wears its tag (GameServer::find_match_reclaim_control). A hidden walker is
+// not adopted: a dug-in skeleton hero keeps its tag in the ground, and the
+// seat must not be bound to a body the sim treats as not there. The filter
+// is the `!entity->hidden()` term in that function (game_server.cpp:2561).
+// Revealed, the same walker is adopted and the mirror hears it.
+TEST(KitPossession, respawn_reclaim_skips_a_hidden_tagged_walker)
+{
+    og::test::ScopedPackStoreState pack_store;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    tw.world().respawn_mode = og::sim::kRespawnModeHeroes;
+    RecordingTransport transport;
+    og::sim::GameServer server(tw.world(), tw.events, transport);
+    transport.set_connected({93u});
+    server.poll_incoming_messages();
+    server.connect_client(93u);
+
+    walker* digger = add_living(tw, FAMILY_SKELETON, kGhostTeam, 64, 64);
+    ASSERT_NE(nullptr, digger);
+    seat(*digger, 0);
+    digger->set_hidden(true);
+    ASSERT_TRUE(digger->hidden());
+
+    server.bind_player(93u, 0u, kGhostTeam, nullptr);
+    ASSERT_EQ(nullptr, server.player_control(0));
+    server.step();
+    transport.queue(93u, og::sim::serialize_client_ready_message(
+                             {.last_applied_tick = 0u}));
+    server.step();
+    EXPECT_EQ(nullptr, server.player_control(0))
+        << "the seat does not adopt a hidden walker";
+
+    digger->set_hidden(false);
+    transport.clear_sent();
+    server.step();
+    ASSERT_EQ(digger, server.player_control(0))
+        << "revealed, the same walker is adopted";
+    const auto changes = transport.control_changes(93u);
+    const bool heard = std::any_of(
+        changes.begin(), changes.end(),
+        [digger](const og::sim::ControlChangeMessage& m) {
+            return m.player_index == 0u && m.entity_id == digger->entity_id();
+        });
+    EXPECT_TRUE(heard) << "and the mirror is told";
+}
+
+// --- A charmed host at the moment of release, by each release path --------
+//
+// thief_charm_on_a_possessed_host_does_not_corrupt_release (above) releases
+// through release_possession directly. These drive each real path with a
+// seat on the host: the countdown, Switch Character, the host's death, and a
+// charm that runs out in the same act() that releases. Every path must leave
+// the charm's record pointing at the host's TRUE team, hand the seat's tag
+// back to the ghost, and let the charm's own expiry bring the host home.
+
+namespace {
+
+// The charm exactly as living-11-thief.lua writes it.
+void charm(walker& target, unsigned char thief_team, short ticks)
+{
+    ASSERT_EQ(255, target.real_team_num()) << "the charm's own gate";
+    target.set_real_team_num(target.team_num());
+    target.set_team_num(thief_team);
+    target.set_charm_left(ticks);
+}
+
+// One seat driving sim_process_player_input for player `player`.
+struct PlayerSeat {
+    walker* control;
+    SimInputDebounce debounce{};
+    InputState input;
+    TestGameWorld& tw;
+    short player;
+
+    PlayerSeat(TestGameWorld& t, walker* w, short p)
+        : control(w), tw(t), player(p)
+    {
+        input.clear();
+        seat(*w, p);
+    }
+    SimInputResult run()
+    {
+        SimInputResult r = sim_process_player_input(
+            input.players[player], control, tw.world(), player, 0, debounce,
+            &tw.events);
+        input.clear();
+        return r;
+    }
+    void press(InputAction a)
+    {
+        input.players[player].pressed[static_cast<int>(a)] = true;
+        input.players[player].held[static_cast<int>(a)] = true;
+    }
+};
+
+constexpr unsigned char kThiefTeam = 2;
+
+}  // namespace
+
+TEST(KitPossession, charmed_host_released_by_the_countdown)
+{
+    PossessionScene s;
+    PlayerSeat seat0(s.tw, s.ghost, 0);
+    ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 2).ok);
+    seat0.run();
+    ASSERT_EQ(s.orc, seat0.control);
+    charm(*s.orc, kThiefTeam, 6);
+    ASSERT_EQ(kGhostTeam, s.orc->real_team_num())
+        << "the charm recorded the ghost's team";
+
+    auto* host = dynamic_cast<living*>(s.orc);
+    ASSERT_NE(nullptr, host);
+    og::sim::possession_host_tick(s.tw.world(), *host);
+    og::sim::possession_host_tick(s.tw.world(), *host);
+    ASSERT_EQ(0u, s.orc->possess_link()) << "the countdown released";
+    EXPECT_EQ(kThiefTeam, s.orc->team_num()) << "still charmed";
+    EXPECT_EQ(kOrcTeam, s.orc->real_team_num())
+        << "the host's true team waits for the charm's end";
+    EXPECT_EQ(-1, s.orc->user());
+    EXPECT_NE(ACT_CONTROL, s.orc->act_type()) << "the host is a bot again";
+    EXPECT_EQ(0, s.ghost->user());
+    EXPECT_FALSE(s.ghost->hidden());
+    EXPECT_EQ(255, s.ghost->real_team_num());
+    seat0.run();
+    EXPECT_EQ(s.ghost, seat0.control) << "the seat follows the tag home";
+
+    for (int i = 0; i < 8 && s.orc->charm_left() != 0; ++i)
+        s.orc->act();
+    EXPECT_EQ(kOrcTeam, s.orc->team_num()) << "charm out: home on team 1";
+    EXPECT_EQ(255, s.orc->real_team_num());
+    EXPECT_EQ(0u, s.orc->possess_link());
+    EXPECT_EQ(s.ghost, seat0.control);
+}
+
+TEST(KitPossession, charmed_host_released_by_switch_character)
+{
+    PossessionScene s;
+    PlayerSeat seat0(s.tw, s.ghost, 0);
+    ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 100).ok);
+    seat0.run();
+    ASSERT_EQ(s.orc, seat0.control);
+    charm(*s.orc, kThiefTeam, 3);
+
+    seat0.press(InputAction::SwitchChar);
+    const SimInputResult r = seat0.run();
+    EXPECT_EQ(s.ghost, seat0.control) << "Switch Character leaves the charmed body";
+    EXPECT_EQ(s.ghost, r.new_control);
+    EXPECT_EQ(0u, s.orc->possess_link());
+    EXPECT_EQ(kThiefTeam, s.orc->team_num());
+    EXPECT_EQ(kOrcTeam, s.orc->real_team_num());
+    EXPECT_EQ(-1, s.orc->user());
+
+    for (int i = 0; i < 6 && s.orc->charm_left() != 0; ++i)
+        s.orc->act();
+    EXPECT_EQ(kOrcTeam, s.orc->team_num()) << "charm out: home";
+    EXPECT_EQ(255, s.orc->real_team_num());
+}
+
+TEST(KitPossession, charmed_host_released_by_its_death)
+{
+    PossessionScene s;
+    PlayerSeat seat0(s.tw, s.ghost, 0);
+    ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 100).ok);
+    seat0.run();
+    ASSERT_EQ(s.orc, seat0.control);
+    charm(*s.orc, kThiefTeam, 30);
+
+    s.orc->stats()->set_hitpoints(-6.0f);
+    s.orc->set_dead(1);
+    s.orc->death();
+    EXPECT_EQ(1, s.orc->death_called());
+    EXPECT_EQ(0u, s.orc->possess_link());
+    EXPECT_EQ(kOrcTeam, s.orc->real_team_num())
+        << "a corpse that died charmed keeps its true team on record";
+    EXPECT_EQ(kThiefTeam, s.orc->team_num());
+    EXPECT_FALSE(s.ghost->hidden());
+    EXPECT_FLOAT_EQ(97.0f, s.ghost->stats()->hitpoints())
+        << "the ghost takes half the overkill of 6";
+    EXPECT_EQ(0, s.ghost->user());
+    seat0.run();
+    EXPECT_EQ(s.ghost, seat0.control)
+        << "out of the charmed corpse, back to the ghost";
+}
+
+TEST(KitPossession, charm_expiry_and_release_in_the_same_act)
+{
+    PossessionScene s;
+    seat(*s.ghost, 0);
+    ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 1).ok);
+    charm(*s.orc, kThiefTeam, 1);  // runs out on the next act, before the host tick
+    s.orc->act();
+    EXPECT_EQ(0, s.orc->charm_left());
+    EXPECT_EQ(0u, s.orc->possess_link()) << "released in the same act";
+    EXPECT_EQ(kOrcTeam, s.orc->team_num())
+        << "home: neither on the ghost's team nor on the thief's";
+    EXPECT_EQ(255, s.orc->real_team_num());
+    EXPECT_EQ(0, s.ghost->user());
+    EXPECT_FALSE(s.ghost->hidden());
+}
+
+// --- Two seats, two ghosts, one tick ---------------------------------------
+//
+// Each seat lands on its own body and leaves only its own, whichever way
+// its possession ends, and no tag is ever worn twice.
+
+TEST(KitPossession, two_ghosts_possess_two_hosts_in_one_tick)
+{
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ga = add_living(tw, FAMILY_GHOST, kGhostTeam, 64, 64);
+    walker* gb = add_living(tw, FAMILY_GHOST, kGhostTeam, 64, 128);
+    walker* oa = add_living(tw, FAMILY_ORC, kOrcTeam, 96, 64);
+    walker* ob = add_living(tw, FAMILY_ORC, kOrcTeam, 96, 128);
+    ASSERT_TRUE(ga && gb && oa && ob);
+    PlayerSeat sa(tw, ga, 0);
+    PlayerSeat sb(tw, gb, 1);
+    ASSERT_TRUE(og::sim::possess(tw.world(), *ga, *oa, 2).ok);
+    ASSERT_TRUE(og::sim::possess(tw.world(), *gb, *ob, 100).ok);
+    sa.run();
+    sb.run();
+    EXPECT_EQ(oa, sa.control) << "seat 0 drives its own host";
+    EXPECT_EQ(ob, sb.control) << "seat 1 drives its own host";
+    EXPECT_EQ(0, oa->user());
+    EXPECT_EQ(1, ob->user());
+
+    // Seat 0 leaves by Switch Character; seat 1 is untouched.
+    sa.press(InputAction::SwitchChar);
+    sa.run();
+    EXPECT_EQ(ga, sa.control);
+    EXPECT_EQ(0u, oa->possess_link());
+    EXPECT_NE(0u, ob->possess_link()) << "seat 1's possession stands";
+    sb.run();
+    EXPECT_EQ(ob, sb.control);
+
+    // Seat 1's host dies; seat 1 goes back to ITS ghost, not seat 0's.
+    ob->stats()->set_hitpoints(-2.0f);
+    ob->set_dead(1);
+    ob->death();
+    sb.run();
+    EXPECT_EQ(gb, sb.control) << "seat 1 returns to its own ghost";
+    EXPECT_EQ(1, gb->user());
+    EXPECT_EQ(0, ga->user());
+    sa.run();
+    EXPECT_EQ(ga, sa.control);
+
+    int tag0 = 0;
+    int tag1 = 0;
+    for (const auto& u : tw.world().oblist)
+    {
+        if (!u || u->dead())
+            continue;
+        if (u->user() == 0)
+            ++tag0;
+        if (u->user() == 1)
+            ++tag1;
+    }
+    EXPECT_EQ(1, tag0) << "no walker shares seat 0's tag";
+    EXPECT_EQ(1, tag1) << "no walker shares seat 1's tag";
+}
+
+TEST(KitPossession, two_ghosts_reach_for_one_host_in_one_tick)
+{
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ga = add_living(tw, FAMILY_GHOST, kGhostTeam, 64, 64);
+    walker* gb = add_living(tw, FAMILY_GHOST, kGhostTeam, 64, 128);
+    walker* oa = add_living(tw, FAMILY_ORC, kOrcTeam, 96, 64);
+    ASSERT_TRUE(ga && gb && oa);
+    PlayerSeat sa(tw, ga, 0);
+    PlayerSeat sb(tw, gb, 1);
+    ASSERT_TRUE(og::sim::possess(tw.world(), *ga, *oa, 3).ok);
+    const og::sim::PossessResult second =
+        og::sim::possess(tw.world(), *gb, *oa, 3);
+    EXPECT_FALSE(second.ok);
+    EXPECT_STREQ("ALREADY POSSESSED", second.reason);
+    sa.run();
+    sb.run();
+    EXPECT_EQ(oa, sa.control);
+    EXPECT_EQ(gb, sb.control) << "the refused seat stays on its visible ghost";
+    EXPECT_EQ(1, gb->user());
+    EXPECT_FALSE(gb->hidden());
+    EXPECT_FALSE(og::sim::possess(tw.world(), *gb, *ga, 3).ok)
+        << "nor can it take the hidden first ghost";
+
+    auto* host = dynamic_cast<living*>(oa);
+    ASSERT_NE(nullptr, host);
+    for (int i = 0; i < 3; ++i)
+        og::sim::possession_host_tick(tw.world(), *host);
+    ASSERT_EQ(0u, oa->possess_link());
+    sa.run();
+    sb.run();
+    EXPECT_EQ(ga, sa.control) << "seat 0 back on ghost A";
+    EXPECT_EQ(gb, sb.control) << "seat 1 still on ghost B";
+
+    // Now B takes the freed host; A's seat must not follow.
+    ASSERT_TRUE(og::sim::possess(tw.world(), *gb, *oa, 100).ok);
+    sa.run();
+    sb.run();
+    EXPECT_EQ(ga, sa.control);
+    EXPECT_EQ(oa, sb.control);
+    EXPECT_EQ(1, oa->user());
+}
+
+// --- A death mid-possession, seen by a mirror -------------------------------
+//
+// The mirror learns of the release and the death in ONE snapshot. A dead,
+// revealed rider must not be filed in the mirror's collision table, and the
+// host must be home on its own team.
+
+namespace {
+
+void open_field(GameWorld& world)
+{
+    world.resize_grid(32, 32);
+    std::fill_n(world.grid.data.get(),
+                static_cast<std::size_t>(world.grid.w) * world.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+}
+
+bool in_world_obmap(GameWorld& world, walker* w)
+{
+    return world.myobmap->walker_to_pos.count(w) != 0;
+}
+
+}  // namespace
+
+TEST(KitPossession, rider_dies_mid_possession_on_a_mirror)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    open_field(source);
+    walker* ghost = add_living(source_fx, FAMILY_GHOST, kGhostTeam, 64, 64);
+    walker* orc = add_living(source_fx, FAMILY_ORC, kOrcTeam, 96, 64);
+    ASSERT_TRUE(ghost && orc);
+    seat(*ghost, 0);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 50).ok);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+    const auto possessed = og::sim::capture_keyframe_snapshot(source);
+    orc->setxy(160, 160);
+    og::sim::possession_host_tick(source, *dynamic_cast<living*>(orc));
+    ghost->set_dead(1);
+    ghost->death();  // kit_on_death: the hidden rider frees its host
+    ASSERT_EQ(0u, orc->possess_link());
+    ASSERT_TRUE(ghost->dead());
+    ASSERT_FALSE(ghost->hidden());
+    ASSERT_FALSE(in_world_obmap(source, ghost))
+        << "a corpse is out of the source obmap";
+    const auto after = og::sim::capture_keyframe_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    open_field(mirror);
+    og::sim::apply_snapshot(mirror, possessed);
+    walker* m_rider = mirror.find_by_id(ghost_id);
+    walker* m_host = mirror.find_by_id(orc_id);
+    ASSERT_TRUE(m_rider && m_host);
+    ASSERT_TRUE(m_rider->hidden());
+    ASSERT_FALSE(in_world_obmap(mirror, m_rider));
+    og::sim::apply_snapshot(mirror, after);
+    m_rider = mirror.find_by_id(ghost_id);
+    m_host = mirror.find_by_id(orc_id);
+    ASSERT_TRUE(m_rider && m_host);
+    EXPECT_TRUE(m_rider->dead());
+    EXPECT_FALSE(m_rider->hidden());
+    EXPECT_EQ(0u, m_rider->possess_link());
+    EXPECT_FALSE(in_world_obmap(mirror, m_rider))
+        << "a dead revealed rider is not filed in the mirror's obmap";
+    EXPECT_EQ(0u, m_host->possess_link());
+    EXPECT_EQ(kOrcTeam, m_host->team_num());
+    EXPECT_EQ(-1, m_host->user());
+    EXPECT_TRUE(in_world_obmap(mirror, m_host));
+    EXPECT_EQ(0, m_rider->user())
+        << "the corpse wears the seat's tag as on the source";
+    EXPECT_EQ(m_host->xpos() + m_host->sizex() / 2,
+              m_rider->xpos() + m_rider->sizex() / 2)
+        << "the corpse lies where the host stood";
+}
+
+TEST(KitPossession, host_death_kills_the_rider_on_a_mirror)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    open_field(source);
+    walker* ghost = add_living(source_fx, FAMILY_GHOST, kGhostTeam, 64, 64);
+    walker* orc = add_living(source_fx, FAMILY_ORC, kOrcTeam, 96, 64);
+    ASSERT_TRUE(ghost && orc);
+    seat(*ghost, 0);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 50).ok);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+    const auto possessed = og::sim::capture_keyframe_snapshot(source);
+    ghost->stats()->set_hitpoints(3.0f);
+    orc->stats()->set_hitpoints(-40.0f);
+    orc->set_dead(1);
+    orc->death();
+    ASSERT_TRUE(ghost->dead()) << "half of 40 overkill kills a 3 hp ghost";
+    ASSERT_TRUE(orc->dead());
+    const auto after = og::sim::capture_keyframe_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    open_field(mirror);
+    og::sim::apply_snapshot(mirror, possessed);
+    og::sim::apply_snapshot(mirror, after);
+    walker* m_rider = mirror.find_by_id(ghost_id);
+    walker* m_host = mirror.find_by_id(orc_id);
+    ASSERT_TRUE(m_rider && m_host);
+    EXPECT_TRUE(m_rider->dead());
+    EXPECT_TRUE(m_host->dead());
+    EXPECT_FALSE(m_rider->hidden());
+    EXPECT_FALSE(in_world_obmap(mirror, m_rider));
+    EXPECT_FALSE(in_world_obmap(mirror, m_host));
+    EXPECT_EQ(0u, m_rider->possess_link());
+    EXPECT_EQ(0u, m_host->possess_link());
+    EXPECT_EQ(kOrcTeam, m_host->team_num());
 }
