@@ -33,7 +33,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <cstring>
-
+#include <openglad/gameplay/possession.h>
 #include "sim_difficulty.h"
 
 // RNG now comes from current_game->world->rng_.
@@ -89,7 +89,7 @@ bool living::act()
 	update_exit_latch();
 
 	// Make sure everyone we're pointing to is valid. invisibility_left is a raw short written straight from snapshots (world_snapshot.cpp) and from Lua (set_invisibility_left), so it is NOT guaranteed non-negative; a negative divided by 20 and cast to IRandom::next's uint32 wrapped to a ~4e9 bound, which drops the foe on nearly every tick. Clamp the cloak counter to 0 first: for every non-negative value this is the identical expression, and next(0) == 0 keeps the lock exactly as before.
-	if (foe() && (foe()->dead() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left() > 0 ? foe()->invisibility_left()/20 : 0)) > 0) ) )
+	if (foe() && (foe()->dead() || foe()->hidden() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left() > 0 ? foe()->invisibility_left()/20 : 0)) > 0) ) )
 		set_foe(nullptr);
 	if (is_friendly(foe()))
 		set_foe(nullptr);
@@ -212,7 +212,7 @@ bool living::act()
 			set_real_team_num(255);
 		}
 	}
-
+	og::sim::possession_host_tick(*current_game->world, *this); // New Specials: a possessed host carries its rider and its countdown
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
 	            current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES

@@ -16,6 +16,7 @@
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/statistics.h>
@@ -96,7 +97,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() &&
+        if (w && !w->dead() && !w->dormant() && !w->hidden() &&
+            w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
@@ -111,7 +113,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() &&
+        if (w && !w->dead() && !w->dormant() && !w->hidden() &&
+            w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team)
@@ -217,7 +220,11 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
         // dormant walkers are invisible, out of the obmap, skipped by the
         // act phase, and excluded from snapshots, so selecting one strands
         // the player on a ghost and blanks the HUD (bugs A1/A10).
-        return !w->dead() && !w->dormant() &&
+        // Nor to a hidden one (dug in, or a ghost riding a body), nor to
+        // either side of a possession: a possessed body belongs to the seat
+        // whose ghost rides it, and a bot's possession is the bot's.
+        return !w->dead() && !w->dormant() && !w->hidden() &&
+               w->possess_link() == 0 &&
                w->query_order() == Order::Living &&
                w->is_friendly(anchor) && w->team_num() == my_team &&
                w->real_team_num() == 255 && w->user() == -1 &&
@@ -254,6 +261,26 @@ SimInputResult sim_process_player_input(
     // warm for the whole death and mute the first cue after the revive.
     if (debounce.cue_delay > 0)
         debounce.cue_delay--;
+
+    // --- Possession (New Specials) ---
+    // A seat whose hero rides a possessed body drives the body, and comes
+    // back to the hero when the body is let go. The tick the seat moves is
+    // spent on the move: a Special still held from the cast that possessed
+    // casts nothing on the host this tick.
+    {
+        walker* const before_redirect = control;
+        og::sim::possession_seat_redirect(level, control, player_num);
+        if (control != before_redirect)
+        {
+            result.new_control = control;
+            if (control != nullptr && control->stats() != nullptr)
+            {
+                result.control_hp_changed = true;
+                result.control_hp = control->stats()->hitpoints();
+            }
+            return result;
+        }
+    }
 
     // --- Control setup (§4.4 per-tick claim) ---
     if (control && control->user() == -1)
@@ -309,6 +336,19 @@ SimInputResult sim_process_player_input(
         bool reverse = pi.is_held(InputAction::Shift);
         debounce.changedchar = 1;
 
+        // New Specials: in a possessed body, Switch Character leaves the
+        // body (the ghost reappears where it stands); the next press cycles
+        // heroes as usual.
+        if (control->possess_link() != 0 && !control->hidden())
+        {
+            if (walker* rider = og::sim::release_possession(level, *control))
+                control = rider;
+            result.new_control = control;
+            result.control_hp_changed = true;
+            result.control_hp = control->stats()->hitpoints();
+            return result;
+        }
+
         // #346: cycle from, and fall back to, the hero this seat holds RIGHT
         // NOW. That is the entry control, or the hero the claim tail above
         // just seated when the seat entered with no control or a dead one.
@@ -339,6 +379,26 @@ SimInputResult sim_process_player_input(
         // released, is re-claimed here too.
         if (control->user() == -1)
             sim_claim_control(level, *control, player_num);
+    }
+
+    // --- A hidden hero (New Specials: dug in, or riding a body) ---
+    // It answers Special (a second press brings a dug-in hero up) and Switch
+    // Character (above) and nothing else: no walking, firing, yelling or
+    // special cycling. A hidden walker never acts, so its command queue
+    // never drains; the cast does not wait for an empty queue here.
+    if (control->hidden())
+    {
+        if (control->user() == player_num)
+        {
+            if (pi.was_pressed(InputAction::Special))
+                player_cast_special(control, debounce, player_num, sim_events,
+                                    true);
+            else if (pi.is_held(InputAction::Special))
+                player_cast_special(control, debounce, player_num, sim_events,
+                                    false);
+        }
+        result.new_control = control;
+        return result;
     }
 
     // --- Switch special ---
@@ -490,6 +550,14 @@ SimInputResult sim_process_player_input(
                 emit_throttled_cue(debounce, player_num, sim_events,
                                    "SPECIALS FROZEN");
             }
+            // A cast that hid its caster (a ghost entering a body) ends the
+            // seat's input for the tick: a hidden hero neither fires nor
+            // walks, and the next tick moves the seat into the body.
+            if (control->hidden())
+            {
+                result.new_control = control;
+                return result;
+            }
         }
 
         if (pi.was_pressed(InputAction::Fire))
@@ -506,6 +574,14 @@ SimInputResult sim_process_player_input(
             !pi.was_pressed(InputAction::Special))
             player_cast_special(control, debounce, player_num, sim_events,
                                 false);
+        // The held key can land a cast that hides its caster too (a held
+        // POSSESS that reaches the foe a tick later): the same rule as the
+        // press arm, no step and no fire after it.
+        if (control->hidden())
+        {
+            result.new_control = control;
+            return result;
+        }
 
         int walkx = pi.move_x();
         int walky = pi.move_y();

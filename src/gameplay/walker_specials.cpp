@@ -57,7 +57,7 @@ namespace
 bool teleport_spot_blocked_by(const walker* other, const walker* self,
                               std::int32_t x, std::int32_t y, float self_z)
 {
-	if (other == nullptr || other == self || other->dead())
+	if (other == nullptr || other == self || other->dead() || other->hidden())
 		return false;
 	const Order order = other->query_order();
 	const bool blocking =

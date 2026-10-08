@@ -2,6 +2,9 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/kit_state.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/obmap.h>
@@ -3599,4 +3602,182 @@ TEST(WorldSnapshot, hidden_bit_apply_keeps_the_mirror_obmap_in_step)
     EXPECT_FALSE(mirrored->hidden());
     EXPECT_TRUE(registered(mirrored))
         << "a revealed walker re-enters the mirror's obmap at its spot";
+}
+
+// A possession rides the snapshot: both links, the host's countdown, the
+// rider's hidden bit and its record of the host's team, and the seat's tag
+// on the host. Each link resolves to its partner by id in the seeded world;
+// a link to an id the world does not hold resolves to nothing.
+TEST(WorldSnapshot, possess_link_survives_snapshot_seed_and_resolves_by_id)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* ghost = source.add_ob(Order::Living, FAMILY_GHOST);
+    walker* orc = source.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(ghost && orc);
+    ghost->set_team_num(0);
+    ghost->setxy(64, 64);
+    orc->set_team_num(1);
+    orc->setxy(96, 64);
+    ghost->set_user(0);
+    ghost->set_act_type(ACT_CONTROL);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 77).ok);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+
+    TestGameWorld seeded_fx;
+    GameWorld& seeded = seeded_fx.world();
+    seeded.resize_grid(32, 32);
+    fill_world_grid(seeded, PIX_GRASS1);
+    og::sim::apply_snapshot(
+        seeded, og::sim::deserialize_snapshot(og::sim::serialize_snapshot(
+                    og::sim::capture_keyframe_snapshot(source))));
+    walker* rider = seeded.find_by_id(ghost_id);
+    walker* host = seeded.find_by_id(orc_id);
+    ASSERT_TRUE(rider && host);
+    EXPECT_EQ(host, seeded.find_by_id(rider->possess_link()));
+    EXPECT_EQ(rider, seeded.find_by_id(host->possess_link()));
+    EXPECT_EQ(77, host->possess_ticks());
+    EXPECT_TRUE(rider->hidden());
+    EXPECT_EQ(0u, seeded.myobmap->walker_to_pos.count(rider))
+        << "the seeded rider stays out of the obmap";
+    EXPECT_EQ(1u, seeded.myobmap->walker_to_pos.count(host));
+    EXPECT_EQ(0, host->team_num());
+    EXPECT_EQ(1, rider->real_team_num());
+    EXPECT_EQ(0, host->user());
+    EXPECT_EQ(-1, rider->user());
+
+    og::sim::WorldSnapshot stale = og::sim::capture_keyframe_snapshot(source);
+    for (auto& entity : stale.oblist)
+        if (entity.entity_id == orc_id)
+            entity.possess_link = 0x7ffffff0u;
+    og::sim::apply_snapshot(seeded, stale);
+    host = seeded.find_by_id(orc_id);
+    ASSERT_NE(nullptr, host);
+    EXPECT_EQ(0x7ffffff0u, host->possess_link());
+    EXPECT_EQ(nullptr, seeded.find_by_id(host->possess_link()))
+        << "a stale link resolves to nothing";
+}
+
+// A mirror that already holds the ghost, visible and in its obmap, follows
+// the authoritative side into a possession: the rider is hidden and leaves
+// the mirror's obmap although it arrives linked (only a walker whose partner
+// is hidden is refused a hide), and the host stays. The release brings the
+// rider back into the obmap.
+//
+// The three snapshots are captured BEFORE the mirror exists: the possession
+// verbs hide and move through the current gameplay context, and a
+// TestGameWorld makes itself current when it is built. With the mirror
+// built first, the source's hide and reveal would land in the mirror's
+// collision table (two stale entries, and the "obmap::walker_to_pos has N
+// elements left" line at the mirror's teardown).
+TEST(WorldSnapshot, possession_apply_moves_a_mirror_rider_out_of_the_obmap)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* ghost = source.add_ob(Order::Living, FAMILY_GHOST);
+    walker* orc = source.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(ghost && orc);
+    ghost->set_team_num(0);
+    ghost->setxy(64, 64);
+    orc->set_team_num(1);
+    orc->setxy(96, 64);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+
+    const og::sim::WorldSnapshot before =
+        og::sim::capture_keyframe_snapshot(source);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 50).ok);
+    ASSERT_EQ(0u, source.myobmap->walker_to_pos.count(ghost))
+        << "the source's rider left the source's obmap";
+    const og::sim::WorldSnapshot possessed =
+        og::sim::capture_keyframe_snapshot(source);
+    og::sim::release_possession(source, *orc);
+    ASSERT_EQ(1u, source.myobmap->walker_to_pos.count(ghost))
+        << "and came back into it on release";
+    const og::sim::WorldSnapshot released =
+        og::sim::capture_keyframe_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    mirror.resize_grid(32, 32);
+    fill_world_grid(mirror, PIX_GRASS1);
+    og::sim::apply_snapshot(mirror, before);
+    const auto registered = [&mirror](std::uint32_t id) {
+        return mirror.myobmap->walker_to_pos.count(mirror.find_by_id(id)) != 0;
+    };
+    ASSERT_TRUE(registered(ghost_id)) << "the mirror's ghost starts visible";
+
+    og::sim::apply_snapshot(mirror, possessed);
+    walker* rider = mirror.find_by_id(ghost_id);
+    ASSERT_NE(nullptr, rider);
+    EXPECT_TRUE(rider->hidden());
+    EXPECT_EQ(orc_id, rider->possess_link());
+    EXPECT_FALSE(registered(ghost_id))
+        << "the mirror's rider left the obmap although it arrived linked";
+    EXPECT_TRUE(registered(orc_id)) << "the host stays in it";
+
+    og::sim::apply_snapshot(mirror, released);
+    EXPECT_FALSE(mirror.find_by_id(ghost_id)->hidden());
+    EXPECT_TRUE(registered(ghost_id)) << "released, the rider is back";
+}
+
+// A world seeded from a snapshot (the shadow server's restart path) carries
+// on where the source stopped: the possession counts down and releases with
+// the host's true team, and a REASSEMBLE ward still cancels a death.
+TEST(WorldSnapshot, snapshot_seeded_world_resumes_a_possession_and_keeps_a_ward)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* ghost = source.add_ob(Order::Living, FAMILY_GHOST);
+    walker* orc = source.add_ob(Order::Living, FAMILY_ORC);
+    walker* skeleton = source.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_TRUE(ghost && orc && skeleton);
+    ghost->set_team_num(0);
+    ghost->setxy(64, 64);
+    orc->set_team_num(1);
+    orc->setxy(96, 64);
+    skeleton->set_team_num(0);
+    skeleton->setxy(160, 160);
+    skeleton->stats()->set_max_hitpoints(40.0f);
+    skeleton->set_kit_state(KIT_WARD);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 2).ok);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+    const std::uint32_t skeleton_id = skeleton->entity_id();
+
+    TestGameWorld seeded_fx;
+    GameWorld& seeded = seeded_fx.world();
+    seeded.resize_grid(32, 32);
+    fill_world_grid(seeded, PIX_GRASS1);
+    og::sim::apply_snapshot(seeded, og::sim::capture_keyframe_snapshot(source));
+    auto* host = dynamic_cast<living*>(seeded.find_by_id(orc_id));
+    walker* rider = seeded.find_by_id(ghost_id);
+    walker* warded = seeded.find_by_id(skeleton_id);
+    ASSERT_TRUE(host && rider && warded);
+
+    og::sim::possession_host_tick(seeded, *host);
+    EXPECT_EQ(1, host->possess_ticks());
+    EXPECT_TRUE(rider->hidden());
+    og::sim::possession_host_tick(seeded, *host);
+    EXPECT_EQ(0u, host->possess_link()) << "the countdown ran out";
+    EXPECT_FALSE(rider->hidden());
+    EXPECT_EQ(1u, seeded.myobmap->walker_to_pos.count(rider));
+    EXPECT_EQ(1, host->team_num()) << "the host's true team came with the seed";
+    EXPECT_EQ(255, rider->real_team_num());
+
+    EXPECT_EQ(KIT_WARD, warded->kit_state());
+    warded->stats()->set_hitpoints(-3.0f);
+    warded->set_dead(1);
+    warded->death();
+    EXPECT_FALSE(warded->dead()) << "the seeded ward still holds";
+    EXPECT_FLOAT_EQ(10.0f, warded->stats()->hitpoints());
 }
