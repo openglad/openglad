@@ -683,6 +683,10 @@ int main(int argc, char** argv)
             name.substr(0, name.find('.')));
     }
     cfg.apply_setting("graphics", "overscan_percentage", "0");
+    // New Specials: the preference holds the shipped default (on), so the
+    // session seed and any later re-seed from cfg agree with the per-test
+    // reset in reset_integration_ui_state().
+    cfg.apply_setting("gameplay", "new_specials", "on");
 
     create_global_screen(1);
     init_input();
