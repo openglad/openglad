@@ -33,6 +33,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <cstring>
+
 #include <openglad/gameplay/possession.h>
 #include "sim_difficulty.h"
 

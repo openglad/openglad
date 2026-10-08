@@ -17,6 +17,7 @@
 //
 // Stats.cpp
 //
+
 #include <openglad/gameplay/fearless.h>               // og::sim::fearless (New Specials)
 #include <openglad/gameplay/statistics.h>      // for bit flags, etc.
 #include <openglad/core/util.h>

@@ -21,6 +21,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/placement.h>
+
 #include <algorithm>
 #include <cstdlib>
 #include <format>

@@ -52,6 +52,7 @@
 #include <limits>
 #include <span>
 #include <openglad/gameplay/possession.h>
+
 // ************************************************************
 //  WALKER -- graphics routines
 //
