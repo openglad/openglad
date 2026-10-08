@@ -343,6 +343,63 @@ TEST_F(KitSkeleton, seated_hero_digs_in_where_it_stands)
     }
 }
 
+// A seated hero presses Switch Special during the sink (a level-4 skeleton
+// has TUNNEL and DIG IN, so the press lands on TUNNEL). The burrow keeps
+// DIG IN in hand while it lives, so the press after the latch, while
+// buried, reaches DIG IN: the skeleton pops up where it went down, and
+// TUNNEL never starts under the floor.
+//
+// RED without the burrow's hold on the slot: TUNNEL is in hand after the
+// switch ("DIG IN stays in hand" reads 1), and the press while buried
+// starts the tunnel's tele-out row (ani_type 2) on the hidden skeleton,
+// which stays hidden with its burrow ("the press pops it up" fails).
+TEST_F(KitSkeleton, switching_special_while_sinking_keeps_dig_in_in_hand)
+{
+    walker* skel = add_skeleton(0, 96, 96, 25.0f);
+    ASSERT_NE(nullptr, skel);
+    skel->set_user(0);
+    skel->set_current_special(static_cast<char>(kSlotDigIn));
+    walker* control = skel;
+    SimInputDebounce debounce{};
+    InputState input;
+    PlayerInput& pi = input.players[0];
+    // One seated tick: the seat's input (no key, or one key pressed), then
+    // the world tick, the way every client's seat runs it.
+    const auto seat_tick = [&](const InputKey* key) {
+        input.clear();
+        if (key != nullptr) {
+            pi.pressed[static_cast<int>(*key)] = true;
+            pi.held[static_cast<int>(*key)] = true;
+        }
+        sim_process_player_input(pi, control, world(), 0, 0, debounce,
+                                 &tw_->events);
+        tick();
+    };
+    const auto press = [&](InputKey key) { seat_tick(&key); };
+    const auto idle = [&]() { seat_tick(nullptr); };
+    press(InputKey::Special);  // tick 1: DIG IN
+    ASSERT_EQ(1u, markers(world(), skel, 1).size());
+    ASSERT_LT(skel->stats()->magicpoints(), 25.0f) << "DIG IN was paid";
+    press(InputKey::SpecialSwitch);  // tick 2: still sinking
+    EXPECT_FALSE(skel->hidden()) << "the switch came during the sink";
+    EXPECT_EQ(kSlotDigIn, skel->current_special()) << "DIG IN stays in hand";
+    for (int t = 3; t <= 12; ++t)
+        idle();  // past the sink and the latch
+    ASSERT_TRUE(skel->hidden()) << "buried";
+    EXPECT_EQ(kSlotDigIn, skel->current_special());
+
+    press(InputKey::Special);  // tick 13: free while buried
+    EXPECT_FALSE(skel->hidden()) << "the press pops it up";
+    EXPECT_EQ(ANI_TELE_IN, skel->ani_type()) << "up through the grow row";
+    EXPECT_TRUE(markers(world(), skel, 1).empty());
+    for (int t = 14; t <= 20; ++t) {
+        idle();
+        EXPECT_EQ(96, skel->xpos()) << "no tunnel hop, tick " << t;
+        EXPECT_EQ(96, skel->ypos()) << "no tunnel hop, tick " << t;
+        EXPECT_FALSE(skel->hidden()) << "tick " << t;
+    }
+}
+
 // Buried, the skeleton heals dig_regen every dig_regen_pulse ticks (and
 // nothing else: a hidden walker does not act), a foe 40 px off does not
 // wake it, and the first foe that comes within dig_trigger brings it up

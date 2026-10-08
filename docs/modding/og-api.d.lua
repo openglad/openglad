@@ -65,10 +65,12 @@
 ---@class og.Walker
 ---@field act_type fun(self: og.Walker): integer
 ---@field add_frozen_stun fun(self: og.Walker, add: integer) # ob:add_frozen_stun(n) — the universal application pattern for stun_total, fused into one verb: ob:s_set_frozen_delay(stun_total(ob:s_frozen_delay_raw(), n))...
+---@field alternate_cost fun(self: og.Walker, slot: integer): integer # walker:alternate_cost(slot) -> integer: the price of the slot's shifted alternate as this session sees it (the New Specials setting hides a new-kit alternate...
 ---@field alternate_down fun(self: og.Walker): boolean # walker:alternate_down() -> boolean: the shift is held AND the current slot's alternate is in play this session (the New Specials setting hides a new-kit alte...
 ---@field ani_type integer|fun(self: og.Walker): integer # write-through property: `self.ani_type = v` runs m_set_ani_type; reads answer the method (method-first)
 ---@field animate fun(self: og.Walker): boolean
 ---@field attack fun(self: og.Walker, target: og.Walker): boolean
+---@field blocks_placement fun(self: og.Walker): boolean # walker:blocks_placement() -> boolean: a weapon whose family declares blocks_placement (solid scenery: a bone wall, a war banner).
 ---@field bonus_rounds fun(self: og.Walker): integer
 ---@field busy number|fun(self: og.Walker): number # write-through property: `self.busy = v` runs m_set_busy; reads answer the method (method-first)
 ---@field can_approach_weapon_range fun(self: og.Walker, objective: og.Walker): boolean # walker:can_approach_weapon_range(objective) -> bool.

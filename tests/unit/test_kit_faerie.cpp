@@ -711,6 +711,9 @@ TEST(KitFaerie, ai_off_answers_the_classic_gate)
 // and `self.hp < og.fdiv(self.max_hp, 2.0)` -> `self.hp < 0.0` printed
 //   Value of: og::test::check_special_ai(*fd, f)  Actual: false  Expected: true
 //   Expected equality of these values: 0 f->shifter_down() Which is: 1
+// Without the price check (the gate before it could read SWAP's price),
+// "BLINK, not an unaffordable SWAP" read shift 1 and "19 MP, not cornered:
+// hold" answered true.
 TEST(KitFaerie, ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -747,6 +750,27 @@ TEST(KitFaerie, ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_c
     f->set_shifter_down(1);
     EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "cornered and hurt";
     EXPECT_EQ(0, f->shifter_down()) << "BLINK";
+
+    // SWAP costs 20, BLINK 8: with the dying ally back in play, a faerie
+    // that cannot pay for SWAP does not pick it (the engine would refuse it
+    // for mana); cornered, she blinks instead, and with nothing else to do
+    // she holds.
+    attacker->set_dead(0);
+    ally->setxy(180, 160);  // 20: nearer than the close foe (24), so the
+                            // dying ally is SWAP's partner again
+    f->stats()->set_magicpoints(20.0f);
+    f->set_shifter_down(0);
+    EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "20 MP pays for SWAP";
+    EXPECT_EQ(1, f->shifter_down()) << "SWAP at 20 MP";
+    f->stats()->set_magicpoints(19.0f);
+    f->set_shifter_down(1);
+    EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "19 MP, cornered";
+    EXPECT_EQ(0, f->shifter_down()) << "BLINK, not an unaffordable SWAP";
+    set_hp(f, 75.0f, 75.0f);
+    f->set_shifter_down(7);
+    EXPECT_FALSE(og::test::check_special_ai(*fd, f))
+        << "19 MP, not cornered: hold";
+    EXPECT_EQ(7, f->shifter_down()) << "no shift chosen";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

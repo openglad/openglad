@@ -50,7 +50,7 @@ og.family("living", {
   sprite = "ghost.png",
   animation = "standard",
   ai_line_of_sight = 12,
-  description = "Ghosts can pass through walls, trees, and anything else that gets in the way. Their chilling touch can bring death quickly at close range.\n\nSpecials: Scare or Wail, Siphon, Possess, Phase",
+  description = "Ghosts can pass through walls, trees, and anything else that gets in the way. Their chilling touch can bring death quickly at close range.\n\nSpecial: Scare or Wail, Siphon, Possess, Phase",
   names = { "Casper", "Slimer", "Reaper", "Ecto", "Pepper", "Boo", "Banshee",
             "Nyx" },
   playable = true,

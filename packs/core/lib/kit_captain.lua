@@ -487,10 +487,14 @@ local function warband(self)
   if #spots == 0 then
     return false, "NO ROOM AT THE EDGE"
   end
-  -- They run to a standing banner, else to the captain.
-  local rally = live_banner(self) or self
-  local goal_x = rally:xpos()
-  local goal_y = rally:ypos()
+  -- They run to the centre of a standing banner, else to the captain.
+  local goal_x = self:xpos()
+  local goal_y = self:ypos()
+  local rally = live_banner(self)
+  if rally then
+    goal_x = rally:xpos() + og.div(rally:sizex(), 2)
+    goal_y = rally:ypos() + og.div(rally:sizey(), 2)
+  end
   for i = 1, #spots, 2 do
     -- Owned and timed like a summoned elemental: a grunt dies with its
     -- captain, so it is fearless exactly while the captain lives.
@@ -529,7 +533,9 @@ function M.ai_howl(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  local hurt = self.hp < og.fmul(self.max_hp, 0.6)
+  -- Below 60 %, from whole numbers: hp and max_hp are C++ floats, one
+  -- float multiply each side, and no decimal fraction to round.
+  local hurt = og.fmul(self.hp, 5) < og.fmul(self.max_hp, 3)
   if hurt and corpse_underfoot(self, 24) then
     self:set_shifter_down(1)
     return true

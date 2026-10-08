@@ -72,8 +72,34 @@ local function burn_contacts(marker, owner, t)
   end
 end
 
--- A burning footprint at the owner's feet (bottom centre of its box).
+-- True when one of the owner's live embers already lies on the spot an
+-- ember of its size would drop on now (bottom centre of the owner's box).
+local function ember_underfoot(owner)
+  local obs = og.oblist()
+  for i = 1, #obs do
+    local ob = obs[i]
+    if ob:family() == FX_EMBER
+        and ob:order() == C.ORDER_FX
+        and ob:dead() == 0
+        and ob:owner() == owner then
+      local x = owner:xpos() + og.div(owner:sizex() - ob:sizex(), 2)
+      local y = owner:ypos() + owner:sizey() - ob:sizey()
+      local on_spot = ob:xpos() == x and ob:ypos() == y
+      if on_spot and ob:floor() == owner:floor() then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+-- A burning footprint at the owner's feet (bottom centre of its box), unless
+-- one still burns there: a standing elemental keeps one ember under it
+-- instead of piling them up.
 local function drop_ember(owner, t)
+  if ember_underfoot(owner) then
+    return
+  end
   local ember = og.add_ob("fx", FX_EMBER)
   if ember then
     ember:set_owner(owner)
