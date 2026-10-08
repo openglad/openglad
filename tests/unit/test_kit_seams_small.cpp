@@ -126,7 +126,9 @@ std::string last_script_error()
                           : errors.back().message;
 }
 
-class KitSeams : public ::testing::Test {
+// Its own suite name: test_kit_seams_hidden.cpp's KitSeams cases are plain
+// TEST()s, and GoogleTest refuses one suite that mixes TEST and TEST_F.
+class KitSeamsSmall : public ::testing::Test {
 protected:
     og::test::ScopedPackStoreState pack_store_restore_;
 
@@ -150,7 +152,7 @@ protected:
 // still rallies its friends, it just does not run) and the s_force_fright
 // binding (the ghost's scare). Every arm of the banner rule is flipped once:
 // distance, team, floor, the banner's death and the setting itself.
-TEST_F(KitSeams, fearless_bit_and_rally_radius_block_the_flee_walk)
+TEST_F(KitSeamsSmall, fearless_bit_and_rally_radius_block_the_flee_walk)
 {
     og::test::ScopedHookFailureGuard guard;
     const int banner_id = install_weapon(
@@ -246,7 +248,7 @@ TEST_F(KitSeams, fearless_bit_and_rally_radius_block_the_flee_walk)
 // does not declare it stays as passable as a knife. The teleport case uses
 // range 1, so every one of teleport_ranged's candidate spots overlaps the
 // scenery: with the flag every try is refused and the hop fails.
-TEST_F(KitSeams, blocks_placement_weapon_stops_teleport_spawn_and_floor_landing)
+TEST_F(KitSeamsSmall, blocks_placement_weapon_stops_teleport_spawn_and_floor_landing)
 {
     const int wall_id = install_weapon(
         "og.family('weapon', { id = 'kitprobe:wall', wire_id = 'auto',\n"
@@ -294,7 +296,7 @@ TEST_F(KitSeams, blocks_placement_weapon_stops_teleport_spawn_and_floor_landing)
 // inside death() (a warded skeleton's shape, staged here by a victim
 // on_death that clears dead), and never when the head of the chain is not a
 // living (a knife left owning itself after its thrower died).
-TEST_F(KitSeams, on_kill_fires_for_melee_projectile_and_explosion_kills_of_a_declaring_family)
+TEST_F(KitSeamsSmall, on_kill_fires_for_melee_projectile_and_explosion_kills_of_a_declaring_family)
 {
     og::test::ScopedHookFailureGuard guard;
     register_script(
@@ -412,7 +414,7 @@ TEST_F(KitSeams, on_kill_fires_for_melee_projectile_and_explosion_kills_of_a_dec
 
 // walker::attack refuses a hidden target outright (a dug-in skeleton, a
 // ghost riding a body): no damage, no kill. Revealed, the same blow lands.
-TEST_F(KitSeams, hidden_walker_cannot_be_attacked)
+TEST_F(KitSeamsSmall, hidden_walker_cannot_be_attacked)
 {
     TestGameWorld tw;
     walker* attacker = add_living(tw, FAMILY_SOLDIER, 0, 32, 32);
