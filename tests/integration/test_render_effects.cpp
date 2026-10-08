@@ -1021,6 +1021,245 @@ TEST_F(RenderEffects, dormant_walker_casts_no_shadow_until_it_wakes)
         << "once awake, the delayed spawn casts its shadow too";
 }
 
+// --- Hidden walkers and invisible things, per viewer ---------------------
+//
+// New Specials hides a walker (a dug-in skeleton, a ghost riding its host)
+// and lays invisible things (the thief's mine). Each is drawn only to its
+// own team. These tests draw one scene three times: from a viewer on the
+// thing's team, from a viewer on another team, and from a spectator camera
+// (no control), and compare the pixels where the thing stands.
+namespace
+{
+
+enum class Viewer
+{
+    OwnTeam,
+    OtherTeam,
+    Spectator,
+};
+
+struct ViewerScene
+{
+    viewscreen* vs = nullptr;
+    walker* own = nullptr;   // team 0 viewer
+    walker* other = nullptr; // team 1 viewer, standing on the same spot
+    Sint32 topx = 0;
+    Sint32 topy = 0;
+};
+
+// Two viewers on one spot (so every camera frames the same pixels) and the
+// effects that could paint near the target switched off.
+ViewerScene make_viewer_scene(viewscreen* vs)
+{
+    ViewerScene scene;
+    scene.vs = vs;
+    cfg.apply_setting("effects", "shadows", "off");
+    cfg.apply_setting("effects", "reflections", "off");
+    cfg.apply_setting("effects", "weather", "off");
+    cfg.apply_setting("effects", "screen_shake", "off");
+    cfg.apply_setting("effects", "fire_glow", "off");
+    cfg.apply_setting("effects", "trails", "off");
+    cfg.apply_setting("effects", "dust", "off");
+    scene.own = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    scene.other = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    if (scene.own == nullptr || scene.other == nullptr)
+        return scene;
+    scene.own->setxy(160, 120);
+    scene.own->set_team_num(0);
+    scene.other->setxy(160, 120);
+    scene.other->set_team_num(1);
+    vs->control = scene.own;
+    do_redraw(vs); // settle the camera on the shared spot
+    scene.topx = vs->topx;
+    scene.topy = vs->topy;
+    return scene;
+}
+
+// Redraw from one viewer and grab the pixels around `at`'s world spot (a
+// 4-pixel border so an outline or a stray pixel is caught too).
+std::vector<RGB> view_rect(ViewerScene& scene, Viewer viewer,
+                           const walker& at)
+{
+    viewscreen* const vs = scene.vs;
+    switch (viewer)
+    {
+    case Viewer::OwnTeam:
+        vs->control = scene.own;
+        break;
+    case Viewer::OtherTeam:
+        vs->control = scene.other;
+        break;
+    case Viewer::Spectator:
+        vs->control = nullptr;
+        scr()->level_runtime_data().level_visuals().topx = scene.topx;
+        scr()->level_runtime_data().level_visuals().topy = scene.topy;
+        break;
+    }
+    EXPECT_TRUE(do_redraw(vs));
+    EXPECT_EQ(scene.topx, vs->topx) << "every viewer frames the same spot";
+    EXPECT_EQ(scene.topy, vs->topy);
+    Sint32 sx = 0, sy = 0;
+    ground_anchor(at, vs, sx, sy);
+    return grab_rect(sx - 4, sy - 4, at.sizex() + 8, at.sizey() + 8);
+}
+
+} // namespace
+
+TEST_F(RenderEffects, hidden_walker_draws_only_for_its_team)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const digger = scr()->world().add_ob(Order::Living,
+                                                 FAMILY_SKELETON);
+    ASSERT_NE(nullptr, digger);
+    digger->setxy(200, 120);
+    digger->set_team_num(0);
+    ASSERT_NE(nullptr, digger->bmp_data());
+
+    // The walker in plain sight, and the spot with nothing on it (a dead
+    // walker is never painted).
+    const std::vector<RGB> plain = view_rect(scene, Viewer::OwnTeam, *digger);
+    digger->set_dead(1);
+    const std::vector<RGB> empty = view_rect(scene, Viewer::OwnTeam, *digger);
+    digger->set_dead(0);
+    ASSERT_FALSE(rects_equal(empty, plain)) << "the skeleton must paint";
+
+    digger->set_hidden(true);
+    const std::vector<RGB> own = view_rect(scene, Viewer::OwnTeam, *digger);
+    const std::vector<RGB> other =
+        view_rect(scene, Viewer::OtherTeam, *digger);
+    const std::vector<RGB> spectator =
+        view_rect(scene, Viewer::Spectator, *digger);
+
+    EXPECT_FALSE(rects_equal(own, empty))
+        << "its own team still sees where it is";
+    EXPECT_FALSE(rects_equal(own, plain))
+        << "its own team sees a dither, not the plain sprite";
+    EXPECT_TRUE(rects_equal(other, empty))
+        << "another team sees bare ground";
+    EXPECT_TRUE(rects_equal(spectator, empty))
+        << "a spectator camera sees bare ground";
+}
+
+TEST_F(RenderEffects, hidden_walker_casts_no_shadow_or_reflection)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "shadows", "on");
+    cfg.apply_setting("effects", "reflections", "on");
+    cfg.apply_setting("effects", "weather", "off");
+
+    // All-glass floor so every eligible walker would reflect.
+    GameWorld& world = scr()->world();
+    const std::size_t cells =
+        static_cast<std::size_t>(world.grid.w) * world.grid.h;
+    std::fill(world.grid.data.get(), world.grid.data.get() + cells,
+              static_cast<unsigned char>(PIX_GLASS));
+
+    walker* const control = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const digger = world.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, digger);
+    control->setxy(160, 120);
+    digger->setxy(200, 120);
+    digger->set_team_num(control->team_num()); // its own team looks on
+    vs->control = control;
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera
+
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_TRUE(trace_contains("effects", "shadows floor=0 n=2"))
+        << "both walkers cast a shadow while the skeleton is up";
+    EXPECT_TRUE(trace_contains("effects", "reflections floor=0 n=2"));
+
+    digger->set_hidden(true);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_TRUE(trace_contains("effects", "shadows floor=0 n=1"))
+        << "a hidden walker casts no shadow, even for its own team";
+    EXPECT_TRUE(trace_contains("effects", "reflections floor=0 n=1"))
+        << "and no reflection";
+    EXPECT_FALSE(draw_walker_shadow(*digger, vs));
+    EXPECT_FALSE(draw_walker_reflection(*digger, vs, world.grid));
+}
+
+TEST_F(RenderEffects,
+       invisible_fx_draws_only_for_its_team_and_the_cloak_is_unchanged)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    // An invisible thing on the ground (the mine's shape: an effect with a
+    // small fixed invisibility), laid by team 0.
+    walker* const mine = scr()->world().add_ob(Order::FX, FAMILY_BOMB);
+    ASSERT_NE(nullptr, mine);
+    mine->setxy(200, 120);
+    mine->set_team_num(0);
+    ASSERT_NE(nullptr, mine->bmp_data());
+
+    const std::vector<RGB> plain = view_rect(scene, Viewer::OtherTeam, *mine);
+    mine->set_dead(1); // off the draw lists' paint path: the bare ground
+    const std::vector<RGB> empty = view_rect(scene, Viewer::OtherTeam, *mine);
+    mine->set_dead(0);
+    ASSERT_FALSE(rects_equal(empty, plain)) << "the effect must paint";
+
+    mine->set_invisibility_left(20);
+    const std::vector<RGB> own = view_rect(scene, Viewer::OwnTeam, *mine);
+    const std::vector<RGB> other = view_rect(scene, Viewer::OtherTeam, *mine);
+    const std::vector<RGB> spectator =
+        view_rect(scene, Viewer::Spectator, *mine);
+    EXPECT_FALSE(rects_equal(own, empty)) << "its own team sees a shimmer";
+    EXPECT_FALSE(rects_equal(own, plain)) << "a shimmer, not the full sprite";
+    EXPECT_TRUE(rects_equal(other, empty))
+        << "another team sees bare ground where the mine lies";
+    EXPECT_TRUE(rects_equal(spectator, empty))
+        << "so does a spectator camera";
+
+    // The thief's cloak is a living's invisibility and keeps its old look:
+    // the other team draws the full sprite, a spectator camera still draws
+    // it (outlined), its own team a dither. This thief is on team 1, so the
+    // team-0 viewer is its foe.
+    mine->set_dead(1);
+    walker* const thief = scr()->world().add_ob(Order::Living, FAMILY_THIEF);
+    ASSERT_NE(nullptr, thief);
+    thief->setxy(200, 120);
+    thief->set_team_num(1);
+    const std::vector<RGB> foe_plain =
+        view_rect(scene, Viewer::OwnTeam, *thief);
+    const std::vector<RGB> ally_plain =
+        view_rect(scene, Viewer::OtherTeam, *thief);
+    thief->set_dead(1);
+    const std::vector<RGB> thief_ground =
+        view_rect(scene, Viewer::Spectator, *thief);
+    thief->set_dead(0);
+    thief->set_invisibility_left(50);
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::OwnTeam, *thief),
+                            foe_plain))
+        << "a cloaked thief still draws in full for the other team";
+    EXPECT_FALSE(rects_equal(view_rect(scene, Viewer::Spectator, *thief),
+                             thief_ground))
+        << "a spectator camera still sees a cloaked thief";
+    EXPECT_FALSE(rects_equal(view_rect(scene, Viewer::OtherTeam, *thief),
+                             ally_plain))
+        << "its own team sees the cloak's dither";
+}
+
 // effects "hit_anim" off hides the hit-spark FX in the tile draw: the call
 // still reports handled but paints nothing. Paired control: with hit_anim on
 // the same spark paints its sprite.

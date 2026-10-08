@@ -1460,7 +1460,8 @@ void screen::sync_camera_views()
 	// accepted multi-floor behavior for a camera pane).
 	walker* target =
 	    world_.find_by_id(static_cast<std::uint32_t>(camera_entity_id_));
-	if (target != nullptr && (target->dead() || target->dormant()))
+	if (target != nullptr &&
+	    (target->dead() || target->dormant() || target->hidden()))
 		target = nullptr;
 	camera_view_->control = target;
 }

@@ -260,9 +260,20 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
 
             const bool is_followed = (followed_id != 0 && w->entity_id() == followed_id);
 
+            const bool my_team =
+                w->team_num() == static_cast<unsigned char>(world.my_team);
+
+            // A hidden walker (dug in, or riding a host) shows only to its
+            // own team.
+            if (w->hidden() && !is_followed && !my_team)
+                continue;
+
             // Invisible dudes vanish from the map, except the player's own
-            // followed avatar (you always see yourself).
-            if (w->invisibility_left() > 0 && !is_followed)
+            // followed avatar (you always see yourself). An invisible
+            // non-living thing of our own (a mine we laid) still shows; an
+            // invisible creature, ours or not, stays hidden as before.
+            if (w->invisibility_left() > 0 && !is_followed &&
+                !(w->query_order() != Order::Living && my_team))
                 continue;
 
             // Multi-floor: only entities on the followed walker's floor show.
