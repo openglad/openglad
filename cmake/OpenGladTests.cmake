@@ -944,6 +944,22 @@ og_add_unit_group(og_unit_families FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_save_client.cpp
 )
 
+# New Specials: the setting's view of the specials table, the engine seams
+# the kits stand on, and one test file per kit.
+og_add_unit_group(og_unit_kits FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_specials_view.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_possession.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_seams_hidden.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_seams_small.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_bots.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_thief.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_ghost.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_faerie.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_captain.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_skeleton.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_elemental.cpp
+)
+
 og_add_unit_group(og_unit_script FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_host.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_errors.cpp

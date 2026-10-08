@@ -577,6 +577,10 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
+    // New Specials: this raw level path has no picker save and runs no sync
+    // twin, so the session value lands in both the save and the world here.
+    save.new_specials = static_cast<short>(args.new_specials != 0 ? 1 : 0);
+    world.new_specials = save.new_specials;
     for (const auto& [key, value] : args.campaign_state) {
         if (!save.campaign_state_set(args.campaign, key, value)) {
             std::fprintf(stderr, "Rejected --campaign-state key %s\n",

@@ -15,6 +15,7 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
@@ -68,8 +69,10 @@ bool is_mode_beacon_entity(const GameWorld& world, std::uint32_t id)
 }
 
 // Name of the walker's currently selected special ability, or "" if it has none
-// (family with no specials, or the special slot is empty/"NONE").
-std::string current_special_name(const walker* w)
+// (family with no specials, or the special slot is empty/"NONE"), as this
+// session's New Specials setting shows the table. While the shift is held the
+// alternate's name shows instead, when the slot has one in play.
+std::string current_special_name(const walker* w, const GameWorld& world)
 {
     const int sp = static_cast<int>(w->current_special());
     if (sp < 0 || sp >= FD_NUM_SPECIALS)
@@ -77,9 +80,13 @@ std::string current_special_name(const walker* w)
     const FamilyDescriptor* fd = get_family_descriptor(w->family());
     if (!fd)
         return {};
-    const char* name = fd->special_names[sp];
+    const char* name = og::sim::special_name(fd, sp, world.new_specials);
     if (!name || name[0] == '\0' || std::strcmp(name, "NONE") == 0)
         return {};
+    const char* alternate = og::sim::alternate_name(fd, sp, world.new_specials);
+    if (w->shifter_down() != 0 && alternate != nullptr &&
+        alternate[0] != '\0' && std::strcmp(alternate, "NONE") != 0)
+        return alternate;
     return name;
 }
 
@@ -401,7 +408,7 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
         // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the
         // player can see what casting fire/special will do.
         if (followed) {
-            const std::string special = current_special_name(followed);
+            const std::string special = current_special_name(followed, world);
             if (!special.empty())
                 line1 += "  Sp:" + special;
         }

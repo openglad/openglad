@@ -1173,3 +1173,48 @@ TEST(Replay, snapshot_difference_names_the_respawn_mode_and_band_fields)
             expected, actual, "ctf_requested_map_units[2]", "6", "2");
     }
 }
+
+// New Specials (replay v21): the world setting and the three entity fields
+// each name themselves when they diverge, so a desync in them is reported as
+// itself and not as an unexplained snapshot_hash mismatch.
+TEST(Replay, find_first_snapshot_difference_names_new_specials_and_kit_fields)
+{
+    const auto expect_named_diff =
+        [](const og::sim::WorldSnapshot& expected,
+           const og::sim::WorldSnapshot& actual,
+           std::string_view field,
+           std::string_view expected_value,
+           std::string_view actual_value) {
+            const std::optional<og::sim::ReplayVerificationFailure> diff =
+                og::sim::find_first_snapshot_difference(3u, expected, actual);
+            ASSERT_TRUE(diff.has_value()) << "expected a difference for " << field;
+            EXPECT_EQ(field, diff->field);
+            EXPECT_EQ(expected_value, diff->expected_value);
+            EXPECT_EQ(actual_value, diff->actual_value);
+        };
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        actual.new_specials = 1;
+        expect_named_diff(expected, actual, "new_specials", "0", "1");
+    }
+
+    const auto entity_case = [&](auto edit, std::string_view field,
+                                 std::string_view expected_value,
+                                 std::string_view actual_value) {
+        og::sim::WorldSnapshot expected;
+        expected.oblist.resize(1);
+        expected.oblist[0].entity_id = 5u;
+        og::sim::WorldSnapshot actual = expected;
+        edit(actual.oblist[0]);
+        expect_named_diff(expected, actual, field, expected_value,
+                          actual_value);
+    };
+    entity_case([](og::sim::EntitySnapshot& e) { e.possess_link = 77u; },
+                "oblist[0].possess_link", "0", "77");
+    entity_case([](og::sim::EntitySnapshot& e) { e.kit_state = 4u; },
+                "oblist[0].kit_state", "0", "4");
+    entity_case([](og::sim::EntitySnapshot& e) { e.possess_ticks = -9; },
+                "oblist[0].possess_ticks", "0", "-9");
+}

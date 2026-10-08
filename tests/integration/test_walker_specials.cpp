@@ -591,6 +591,11 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
 // faerie's freezing sprinkle is a weapon, not a special.
 TEST_F(WalkerSpecials, faerie_has_no_special_and_spends_no_magic)
 {
+    // The classic faerie: explicit about the New Specials setting whatever
+    // the session default is (a level load re-stamps the world from the
+    // session save, so the flag is set after it).
+    ensure_level_loaded();
+    og::runtime::current_session->myscreen_->world().new_specials = 0;
     walker* w = make_special_guy(FAMILY_FAERIE);
     ASSERT_NE(nullptr, w) << "faerie created";
     w->set_current_special(1);
@@ -675,6 +680,9 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
     // in a filtered subset, and every passability probe answers differently.
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
+    // This table is the classic kits: the New Specials setting is off,
+    // explicitly, whatever the session default is.
+    world.new_specials = 0;
 
     for (const SweepCase& sweep : kSweep)
     {

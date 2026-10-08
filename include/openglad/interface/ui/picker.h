@@ -55,6 +55,10 @@ struct TextPickerConfig
     // Protocol-mode only: pre-seeded campaign decision state; see
     // TextProtocolArgs::campaign_state.
     std::vector<std::pair<std::string, std::int32_t>> campaign_state;
+    // --new-specials 0|1; -1 = not given (the picker's own preference
+    // decides; --protocol, which has no picker, then plays the shipped
+    // default, on).
+    int new_specials = -1;
     std::string save_name = "text_quicksave";
 };
 

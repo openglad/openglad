@@ -138,6 +138,13 @@ void reset_integration_ui_state()
         og::runtime::current_session->myscreen_ != nullptr)
     {
         og::runtime::current_session->myscreen_->save_data.last_played_unix_s = 0;
+        // New Specials: the integration session runs the shipped default
+        // (on). A test that pins the setting off and forgets to put it back
+        // cannot leak that into the next test (--gtest_shuffle). The sync
+        // twin re-stamps the world from the save at every level load; the
+        // world is reset too for the tests that never load one.
+        og::runtime::current_session->myscreen_->save_data.new_specials = 1;
+        og::runtime::current_session->myscreen_->world().new_specials = 1;
     }
     // [LOBBY-R1] The same treatment for the standalone picker lobby client.
     // It is created lazily by almost any picker seam and destroyed only here

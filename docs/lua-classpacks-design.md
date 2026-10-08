@@ -378,7 +378,7 @@ Fields, by order (names match the descriptor struct members):
 ```lua
 og.family("living", {
   id = "core:soldier",             -- required declared id; qualified ids are scoped (§5)
-  wire_id = 0,                     -- integer 0..255, or "auto" (>= 21)
+  wire_id = 0,                     -- integer 0..255, or "auto" (>= 21; weapons >= 22)
   name = "SOLDIER",                -- display name and bare-id fallback (§5)
   short_name = og.NIL,             -- nullable: picker label override
   stats = {                        -- attribute scores; all six required
@@ -734,7 +734,8 @@ block.
   goldens, and the wire stay byte-compatible.
 - Mod families get bytes assigned at mount: campaign-embedded packs declare
   `wire_id = "auto"` and receive deterministic ids (assignment order = pack
-  id lexicographic, then declaration order, first automatic byte from 21 up). Levels,
+  id lexicographic, then declaration order, first automatic byte from 21 up, from
+  22 up for weapons, whose core ids 20 and 21 are reserved). Levels,
   saves, and snapshots continue to store family bytes; the mounted pack set
   determines what those bytes mean.
 - **A positional id is exact.** `#<byte>` or

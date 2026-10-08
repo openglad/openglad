@@ -151,6 +151,11 @@ TEST(FamilyStringIds, reader_vocabulary)
 
 namespace {
 
+// The first id a `wire_id = 'auto'` weapon takes: New Specials reserves core
+// weapon ids 20 (bone wall) and 21 (war banner), so the weapon floor is
+// one above every other order's (21).
+constexpr int kFirstAutoWeaponId = 22;
+
 // The five registries are process-global and every install test shares
 // them. Frees the pack-installed slots on the way IN and OUT, so a
 // shuffled run order can never leak a mod family into a test that counts
@@ -209,9 +214,10 @@ void load_committed_core_pack(ClasspackData& data)
             family_chunks.push_back(entry.path());
     }
     std::sort(family_chunks.begin(), family_chunks.end());
-    // 69 declaration files (the slime trio shares one; the CTF flag/
-    // waypoint pair left with the CTF retirement) plus the header.
-    ASSERT_EQ(family_chunks.size(), 70u);
+    // 70 declaration files (the slime trio shares one; the CTF flag/
+    // waypoint pair left with the CTF retirement; New Specials added the
+    // kit marker) plus the header.
+    ASSERT_EQ(family_chunks.size(), 71u);
     for (const std::filesystem::path& p : family_chunks) {
         og::script::register_pack_family_chunk(
             {"core", "packs/core/families/" + p.filename().string(),
@@ -267,7 +273,8 @@ TEST(CommittedCorePack, matches_the_built_in_registries)
     ASSERT_EQ(data.authors, "FSGames / the OpenGlad project");
     ASSERT_EQ(data.living.size(), static_cast<std::size_t>(NUM_FAMILIES));
     ASSERT_EQ(data.weapons.size(), 20u);
-    ASSERT_EQ(data.effects.size(), 13u);
+    // 13 classic effects plus the New Specials kit marker (wire id 17).
+    ASSERT_EQ(data.effects.size(), 14u);
     ASSERT_EQ(data.treasures.size(), 13u);
     ASSERT_EQ(data.generators.size(), 4u);
 
@@ -704,9 +711,10 @@ TEST(ClasspackInstall, auto_wire_id_lands_above_core_pins_and_resolves)
         data.living.push_back(std::move(e));
     }
     {
-        // The weapon core count is 20 and the auto counter starts at 21, so
-        // this lands ABOVE a free slot 20 — a hole the id scans must walk
-        // past rather than mistake for the end of the registry.
+        // The weapon auto counter starts at 22 (New Specials reserves core
+        // weapon ids 20 and 21), so this lands ABOVE the slots 20 and 21 — free in
+        // this test's registry — a hole the id scans must walk past rather
+        // than mistake for the end of the registry.
         og::data::ClasspackWeaponEntry w;
         w.id = "mod:hexbolt";
         w.wire_id = "auto";
@@ -736,10 +744,11 @@ TEST(ClasspackInstall, auto_wire_id_lands_above_core_pins_and_resolves)
     ASSERT_GE(living_id, NUM_FAMILIES) << "mod living family below the pins";
     ASSERT_GE(weapon_id, NUM_FAMILIES) << "mod weapon family below the pins";
     ASSERT_GE(effect_id, NUM_FAMILIES) << "mod effect family below the pins";
-    // A fresh auto counter starts each order at the first id past the
-    // living pins, so the assignment is exactly reproducible.
+    // A fresh auto counter starts each order at its floor — the first id
+    // past the living pins, and one higher for weapons — so the assignment
+    // is exactly reproducible.
     EXPECT_EQ(living_id, NUM_FAMILIES);
-    EXPECT_EQ(weapon_id, NUM_FAMILIES);
+    EXPECT_EQ(weapon_id, kFirstAutoWeaponId);
     EXPECT_EQ(effect_id, NUM_FAMILIES);
 
     // (b) the ordinary getters hand the mod descriptors back.
@@ -783,7 +792,9 @@ TEST(ClasspackInstall, auto_wire_id_lands_above_core_pins_and_resolves)
     }
     // Spelled out for the specific holes the scans have to survive.
     EXPECT_EQ(get_weapon_family_descriptor(weapon_id - 1), nullptr)
-        << "weapon slot 20 is free and must stay invisible";
+        << "weapon slot 21 is free here and must stay invisible";
+    EXPECT_EQ(get_weapon_family_descriptor(weapon_id - 2), nullptr)
+        << "weapon slot 20 is free here and must stay invisible";
     for (int id = 13; id < effect_id; id++)
         EXPECT_EQ(get_effect_family_descriptor(id), nullptr)
             << "effect slot " << id << " was never populated";
@@ -1045,9 +1056,9 @@ TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
     collect(Order::FX, data.effects);
     collect(Order::Treasure, data.treasures);
     collect(Order::Generator, data.generators);
-    ASSERT_EQ(expected.size(), 71u) << "the whole core pack";
+    ASSERT_EQ(expected.size(), 72u) << "the whole core pack";
 
-    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 71);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 72);
 
     for (const auto& [order, id, wire] : expected) {
         EXPECT_EQ(og::families::resolve_family_string_id(order, id.c_str()),
@@ -1297,8 +1308,8 @@ TEST(ClasspackInstall, undeclared_presentation_is_the_legacy_default)
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 3);
 
     EXPECT_EQ(get_family_descriptor(NUM_FAMILIES)->glyph.codepoint, U'?');
-    EXPECT_EQ(get_weapon_family_descriptor(21)->glyph.codepoint, U'*');
-    EXPECT_EQ(get_weapon_family_descriptor(21)->glyph.color,
+    EXPECT_EQ(get_weapon_family_descriptor(kFirstAutoWeaponId)->glyph.codepoint, U'*');
+    EXPECT_EQ(get_weapon_family_descriptor(kFirstAutoWeaponId)->glyph.color,
               og::GlyphColor::White);
     EXPECT_EQ(get_treasure_family_descriptor(21)->glyph.codepoint, U'$');
     EXPECT_EQ(get_treasure_family_descriptor(21)->glyph.color,
@@ -1494,9 +1505,9 @@ TEST(ClasspackInstall, unknown_animation_name_on_a_weapon_keeps_the_table)
         "                      animation = 'nope' })\n",
         data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 1);
-    ASSERT_NE(get_weapon_family_descriptor(21), nullptr);
-    EXPECT_EQ(get_weapon_family_descriptor(21)->anim_table, nullptr);
-    EXPECT_EQ(get_weapon_family_descriptor(21)->anim_row_count, 0);
+    ASSERT_NE(get_weapon_family_descriptor(kFirstAutoWeaponId), nullptr);
+    EXPECT_EQ(get_weapon_family_descriptor(kFirstAutoWeaponId)->anim_table, nullptr);
+    EXPECT_EQ(get_weapon_family_descriptor(kFirstAutoWeaponId)->anim_row_count, 0);
 }
 
 // Every non-living order can carry a pack table too, and the row count
@@ -1520,7 +1531,8 @@ TEST(ClasspackInstall, pack_animation_sets_reach_the_other_orders)
         data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 4);
 
-    const WeaponFamilyDescriptor* w = get_weapon_family_descriptor(21);
+    const WeaponFamilyDescriptor* w =
+        get_weapon_family_descriptor(kFirstAutoWeaponId);
     ASSERT_NE(w, nullptr);
     ASSERT_NE(w->anim_table, nullptr);
     EXPECT_EQ(w->anim_row_count, 24);
@@ -2086,6 +2098,8 @@ TEST(ClasspackInstallErrors, an_oversized_pack_stops_at_every_registry_end)
 
     constexpr int kFirstModId = 21;
     constexpr int kFits = NUM_FAMILY_SLOTS - kFirstModId;
+    // Weapons start one higher (kFirstAutoWeaponId), so one fewer fits.
+    constexpr int kWeaponFits = NUM_FAMILY_SLOTS - kFirstAutoWeaponId;
     constexpr int kOverflow = 8;
 
     ClasspackData data;
@@ -2125,21 +2139,21 @@ TEST(ClasspackInstallErrors, an_oversized_pack_stops_at_every_registry_end)
     }
 
     EXPECT_EQ(og::resources::install_classpack_data(std::move(data)),
-              5 * kFits)
+              4 * kFits + kWeaponFits)
         << "each order installs exactly its free slots and rejects the rest";
 
     // Per order: the last id that fits is populated, the first past the end
     // is not, and nothing wrapped around onto a core pin.
-    const std::pair<Order, const char*> orders[] = {
-        {Order::Living, "mod:bulk_living_"},
-        {Order::Weapon, "mod:bulk_weapon_"},
-        {Order::FX, "mod:bulk_effect_"},
-        {Order::Treasure, "mod:bulk_treasure_"},
-        {Order::Generator, "mod:bulk_generator_"},
+    const std::tuple<Order, const char*, int> orders[] = {
+        {Order::Living, "mod:bulk_living_", kFits},
+        {Order::Weapon, "mod:bulk_weapon_", kWeaponFits},
+        {Order::FX, "mod:bulk_effect_", kFits},
+        {Order::Treasure, "mod:bulk_treasure_", kFits},
+        {Order::Generator, "mod:bulk_generator_", kFits},
     };
-    for (const auto& [order, prefix] : orders) {
-        const std::string last = prefix + std::to_string(kFits - 1);
-        const std::string past = prefix + std::to_string(kFits);
+    for (const auto& [order, prefix, fits] : orders) {
+        const std::string last = prefix + std::to_string(fits - 1);
+        const std::string past = prefix + std::to_string(fits);
         EXPECT_EQ(og::families::resolve_family_string_id(order, last.c_str()),
                   NUM_FAMILY_SLOTS - 1)
             << last;
@@ -2245,7 +2259,8 @@ TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
         data);
     ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 5);
 
-    const WeaponFamilyDescriptor* w = get_weapon_family_descriptor(21);
+    const WeaponFamilyDescriptor* w =
+        get_weapon_family_descriptor(kFirstAutoWeaponId);
     ASSERT_NE(w, nullptr);
     EXPECT_EQ(7.0f, w->hp);
     EXPECT_EQ(33, w->init_lifetime) << "the sibling field lands too";
@@ -2267,7 +2282,8 @@ TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
 
     // Paired control: the sibling weapon declares no hp and keeps the core
     // row's value instead of being zeroed by the patch.
-    const WeaponFamilyDescriptor* quiet = get_weapon_family_descriptor(22);
+    const WeaponFamilyDescriptor* quiet =
+        get_weapon_family_descriptor(kFirstAutoWeaponId + 1);
     ASSERT_NE(quiet, nullptr);
     EXPECT_EQ(0.0f, quiet->hp) << "absent hp keeps the copied core row";
     EXPECT_EQ(44, quiet->init_lifetime);
@@ -2277,7 +2293,7 @@ TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
     // undeclared sibling keeps the zero a pack slot starts from.
     const loader ld;
     EXPECT_EQ(7.0f, ld.hitpoints[static_cast<std::size_t>(
-                        loader::slot_for(Order::Weapon, 21))]);
+                        loader::slot_for(Order::Weapon, kFirstAutoWeaponId))]);
     EXPECT_EQ(9.0f, ld.hitpoints[static_cast<std::size_t>(
                         loader::slot_for(Order::FX, 21))]);
     EXPECT_EQ(11.0f, ld.hitpoints[static_cast<std::size_t>(
@@ -2285,7 +2301,7 @@ TEST(ClasspackInstall, declared_hp_reaches_every_non_living_order)
     EXPECT_EQ(13.0f, ld.hitpoints[static_cast<std::size_t>(
                          loader::slot_for(Order::Generator, 21))]);
     EXPECT_EQ(0.0f, ld.hitpoints[static_cast<std::size_t>(
-                        loader::slot_for(Order::Weapon, 22))])
+                        loader::slot_for(Order::Weapon, kFirstAutoWeaponId + 1))])
         << "an undeclared hp leaves the loader row at zero";
 }
 

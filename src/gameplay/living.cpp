@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/terrain_types.h>
-#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
@@ -360,7 +360,7 @@ bool living::act()
 				if (!current_game->world->rng_.next(5) ) //1 in 5 to do our special
 				{
 					// Should we do our special? Are we full of magic?
-					if (stats_->magicpoints() >= stats_->special_cost(1))
+					if (stats_->magicpoints() >= og::sim::cast_cost(*this, 1, false))
 					{
 						set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>((stats_->level()+2)/3)) + 1));
 						const FamilyDescriptor* special_fd = get_family_descriptor(family());
@@ -368,7 +368,7 @@ bool living::act()
 						        (current_special() < 1) ||
 						        (current_special() >= FD_NUM_SPECIALS) ||
 						        (special_fd == nullptr) ||
-						        (strcmp(special_fd->special_names[static_cast<int>(current_special())], "NONE") == 0)
+						        (strcmp(og::sim::special_name(special_fd, static_cast<int>(current_special()), current_game->world->new_specials), "NONE") == 0)
 						   )
 							set_current_special(1);
 						if (check_special() )
@@ -581,10 +581,13 @@ bool living::check_special()
 		return false;
 
 	set_shifter_down(static_cast<short>(current_game->world->rng_.next(2))); // on or off, randomly ..
-
+	// New Specials: a bot cannot pay for a priced alternate -> no shift (never with the setting off).
+	if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);
 	// Make sure we have enough ..
-	if (stats_->magicpoints() < stats_->special_cost(static_cast<int>(current_special())))
+	if (stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))
 		set_current_special(1); // make us do default ..
+	// ... and again for the default slot the line above may have fallen back to.
+	if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);
 
 	auto* fd = get_family_descriptor(family());
 	if (auto hook_result = og::script::hooks::check_special_ai(fd, this))

@@ -19,6 +19,7 @@
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/placement.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -70,7 +71,8 @@ namespace {
         order == Order::Living || order == Order::Generator ||
         (order == Order::Weapon &&
          (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
-          other->family() == FAMILY_BOULDER));
+          other->family() == FAMILY_BOULDER ||
+          og::sim::declares_blocks_placement(*other)));
     if (!blocking)
         return false;
     return x + w->sizex() > other->xpos() &&

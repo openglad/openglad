@@ -186,7 +186,16 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // GameServer::broadcast_current_state, never emitted by the sim. Snapshot
 // format moves to v14 (apply_entity_snapshot_fields stops clearing the
 // mirror's list) and replay format to v20. No LobbySettings change.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 18;
+// v19: the New Specials setting. LobbySettings gains an i16 new_specials
+// appended LAST (after map_units) in append/read_lobby_settings, so every
+// earlier lobby payload offset keeps its number; sanitize_settings keeps it
+// in {0, 1}. InitialSetup gains an i16 new_specials after setup_generation.
+// Snapshot format moves to v15: the world state gains a u8 new_specials after
+// the player_machine map, and every entity gains possess_link (u32),
+// kit_state (u8) and possess_ticks (i16) on dirty bits 93-95. Replay format
+// moves to v21. Core weapon ids now run to 21, so auto-assigned pack weapon
+// ids start at 22.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 19;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
@@ -323,6 +332,8 @@ struct InitialSetupMessage {
     // reconnect catch-up) carry the unchanged generation and must not make a
     // display client reload its level.
     std::uint32_t setup_generation = 0;
+    // v19: the session's New Specials setting (0 = the classic kits).
+    std::int16_t new_specials = 0;
     std::vector<InitialSetupGuyData> guys;
     std::vector<std::int32_t> completed_levels;
     // Keyed by GLOBAL player index (u8-count-prefixed on the wire).
