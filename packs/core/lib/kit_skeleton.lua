@@ -33,6 +33,9 @@ local SINK_FRAMES = { 24, 25, 26, 27 }
 local SINK_TICKS = 4
 local SUNK_FRAME = 27
 
+-- DIG IN's slot in the skeleton's specials table.
+local DIG_IN_SLOT = 2
+
 -- Bot gate ranges (code constants, see the header).
 local DIG_FOES_RANGE = 80
 local WALL_FOE_RANGE = 60
@@ -186,6 +189,11 @@ local function burrow(marker)
     km.finish(marker)
     return
   end
+  -- While the burrow lives the special in hand stays DIG IN, so a press
+  -- while sinking or buried always reaches it. A Switch Special pressed
+  -- during the sink would otherwise leave TUNNEL in hand, and a free press
+  -- while buried would start the tunnel from under the floor.
+  owner:set_current_special(DIG_IN_SLOT)
   if owner:hidden() then
     buried(marker, owner)
     return
