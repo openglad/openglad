@@ -438,6 +438,14 @@ TEST(KitCaptain, captain_eats_a_corpse_when_hurt)
     EXPECT_EQ(1, stain->dead()) << "the corpse is eaten";
     EXPECT_GT(captain->myguy->exp, 0u) << "a hero is paid for the meal";
     EXPECT_TRUE(notified(tw, "ate a corpse."));
+
+    // A meal bigger than the wound tops the captain up to full, no further.
+    captain->stats()->set_hitpoints(195.0f);
+    walker* second = add_stain(tw, captain, 3);
+    ASSERT_NE(nullptr, second);
+    c = cast(captain, 1, true);
+    EXPECT_TRUE(c.ok) << c.reason;
+    EXPECT_FLOAT_EQ(200.0f, captain->stats()->hitpoints()) << "clamped to max";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -573,6 +581,32 @@ TEST(KitCaptain, hook_snags_drags_and_stuns)
     EXPECT_EQ(kHookStun, frozen(foe));
     EXPECT_EQ(captain, foe->foe());
     EXPECT_EQ(1, count_sound(tw, SOUND_CLANG));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A foe the blade's cut kills is not dragged: its body stays where it fell.
+TEST(KitCaptain, hook_kills_a_dying_foe_without_dragging_it)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_captain(tw, 200, 200);
+    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 222, 222);
+    ASSERT_NE(nullptr, captain);
+    ASSERT_NE(nullptr, foe);
+    foe->stats()->set_hitpoints(1.0f);
+    ASSERT_TRUE(cast(captain, 2, false).ok);
+    walker* blade = blades(tw).front();
+    int acts = 0;
+    while (!blade->dead() && acts < 16) {
+        blade->act();
+        ++acts;
+    }
+    ASSERT_TRUE(blade->dead());
+    EXPECT_TRUE(foe->dead()) << "the cut kills";
+    EXPECT_EQ(222, foe->xpos()) << "not dragged";
+    EXPECT_EQ(0, frozen(foe)) << "not stunned";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -749,8 +783,9 @@ TEST(KitCaptain, hurl_needs_an_adjacent_orc_and_a_target)
     walker* grunt = add_living(tw, FAMILY_ORC, kUs, 82, 100);
     ASSERT_NE(nullptr, grunt);
 
+    captain->set_foe(soldier);
     c = cast(captain, 3, false);
-    EXPECT_EQ("NO TARGET", c.reason) << "no foe at all";
+    EXPECT_EQ("NO TARGET", c.reason) << "an ally is no target, and no foe";
     walker* far = add_living(tw, FAMILY_SOLDIER, kThem, 300, 300);
     ASSERT_NE(nullptr, far);
     captain->set_foe(far);
@@ -836,12 +871,18 @@ TEST(KitCaptain, shove_displaces_the_front_half_two_tiles_and_stuns)
     walker* walled = add_living(tw, FAMILY_SOLDIER, kThem, 184, 176);
     walker* behind = add_living(tw, FAMILY_SOLDIER, kThem, 140, 160);
     ASSERT_TRUE(captain && ahead && walled && behind);
+    // A foe's tent straight above is not a body to shove.
+    walker* tent = tw.world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(kThem);
+    tent->setxy(160, 128);
     wall_tile(tw, 14, 11);
     tw.world().mysmoother.set_target(tw.world().grid);
 
     captain->set_curdir(static_cast<char>(FACE_UP));
     Cast c = cast(captain, 3, true);
-    EXPECT_EQ("NO ONE IN FRONT", c.reason) << "facing up: everyone is beside";
+    EXPECT_EQ("NO ONE IN FRONT", c.reason)
+        << "facing up: the foes are beside, and only the tent is ahead";
     EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
 
     captain->set_curdir(static_cast<char>(FACE_RIGHT));
@@ -852,6 +893,7 @@ TEST(KitCaptain, shove_displaces_the_front_half_two_tiles_and_stuns)
     EXPECT_EQ(160, ahead->ypos());
     EXPECT_EQ(200, walled->xpos()) << "one tile, then the wall";
     EXPECT_EQ(140, behind->xpos()) << "behind the captain: untouched";
+    EXPECT_EQ(128, tent->ypos()) << "a generator stays put";
     EXPECT_EQ(kShoveStun, frozen(ahead));
     EXPECT_EQ(kShoveStun, frozen(walled));
     EXPECT_EQ(0, frozen(behind));
@@ -1232,9 +1274,14 @@ TEST(KitCaptain, ai_howl_fires_when_a_foe_is_near_and_eats_when_hurt)
     walker* foe = add_living(s.tw, FAMILY_SOLDIER, kThem, 300, 200);
     ASSERT_NE(nullptr, foe);
     EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1)) << "howl";
-    add_stain(s.tw, s.captain);
+    walker* stain = add_stain(s.tw, s.captain);
+    ASSERT_NE(nullptr, stain);
     EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1)) << "healthy: howl";
     s.captain->stats()->set_hitpoints(100.0f);  // 100 < 0.6 * 200
+    stain->setxy(stain->xpos() + 4, stain->ypos() + 4);  // 32 > 24 squared px
+    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1))
+        << "hurt, but the corpse is out of reach: howl";
+    stain->center_on(s.captain);
     EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(1)) << "hurt: eat";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
