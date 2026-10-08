@@ -108,7 +108,8 @@ The scare radius is `min(50 + 10L, 250)` pixels. It is unchanged through level
 
 ### 2.4 Orc yell stun
 
-[`living-14-orc.lua`](../packs/core/families/living-14-orc.lua) keeps both original draws:
+[`lib/orc_specials.lua`](../packs/core/lib/orc_specials.lua) (the HOWL the orc and the orc captain
+both cast) keeps both original draws:
 
 ```text
 add = max(0, 10 + rand0(10L) - rand0(10 * constitution))
