@@ -584,6 +584,11 @@ and exact-seat removal use that identity rather than the mutable dense `P#`.
 Peers reject incompatible versions during the handshake, while snapshot and
 replay readers independently reject unsupported payload formats.
 
+New Specials (protocol v19, snapshot v15, replay v21) adds three per-entity
+snapshot fields, `possess_link` (u32, dirty bit 93), `kit_state` (u8, 94) and
+`possess_ticks` (i16, 95), plus the world's `new_specials` byte; see
+[new-specials.md](new-specials.md).
+
 ### Core components (`og_gameplay`, SDL-free)
 
 | Component | File | Role |
