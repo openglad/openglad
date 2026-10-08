@@ -711,6 +711,9 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
         EXPECT_NE(std::string::npos, text.find("\"path_len\":"))
             << "a selected target must produce a pathfinding report";
         EXPECT_NE(std::string::npos,
+                  text.find("\"dormant\":false,\"hidden\":false"))
+            << "every entity line reports whether it is hidden, beside dormant";
+        EXPECT_NE(std::string::npos,
                   text.find("\"cmd\":\"grid\",\"floor\":0,\"rows\":["));
         EXPECT_NE(std::string::npos, text.find("\"y\":0,\"cells\":[[0,"))
             << "negative grid bounds must be clipped";
