@@ -33,6 +33,7 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/kit_state.h>
@@ -1354,4 +1355,78 @@ TEST_F(ScriptBindingPropsTest, kit_possess_and_release_hand_back_the_engine_answ
     EXPECT_EQ(0u, live->possess_link());
     EXPECT_FALSE(self->hidden());
     EXPECT_EQ(1, live->team_num()) << "the host goes home";
+}
+
+// walker:alternate_cost(slot) answers the price of the slot's shifted
+// alternate as the session sees it: the declared price with the New
+// Specials setting on, 0 for a new-kit alternate the setting hides, 0 for
+// an alternate with no price of its own, and an error for a slot outside
+// the table. walker:blocks_placement() answers whether a weapon's family is
+// solid scenery (never a living).
+// RED (C++ mutation, rebuilt: blocks_placement answering false, and
+// alternate_cost reading the setting as always on): "solid 0 0 0" and,
+// with the setting off, "alt 0 77 40".
+TEST_F(ScriptBindingPropsTest, kit_alternate_cost_and_blocks_placement_read_the_family)
+{
+    // The descriptors are put back even when an assertion ends the test.
+    struct Restore {
+        FamilyDescriptor soldier = *get_family_descriptor(FAMILY_SOLDIER);
+        WeaponFamilyDescriptor arrow = *get_weapon_family_descriptor(FAMILY_ARROW);
+        ~Restore()
+        {
+            set_family_descriptor(FAMILY_SOLDIER, soldier);
+            set_weapon_family_descriptor(FAMILY_ARROW, arrow);
+        }
+    } restore;
+    FamilyDescriptor priced = restore.soldier;
+    priced.alternate_cost[1] = 0;            // no price of its own
+    priced.alternate_new_kit[1] = false;
+    priced.alternate_cost[2] = 77;           // a new-kit alternate
+    priced.alternate_new_kit[2] = true;
+    priced.special_new_kit[2] = false;
+    priced.alternate_cost[3] = 40;           // a classic priced alternate
+    priced.alternate_new_kit[3] = false;
+    priced.special_new_kit[3] = false;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, priced));
+    WeaponFamilyDescriptor scenery = restore.arrow;
+    scenery.blocks_placement = true;
+    ASSERT_TRUE(set_weapon_family_descriptor(FAMILY_ARROW, scenery));
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* knife = w.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* wall = w.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, knife);
+    ASSERT_NE(nullptr, wall);
+    self->set_foe(knife);
+    self->set_leader(wall);
+    const std::string body =
+        "    local function b(v) return v and 1 or 0 end\n"
+        "    og.log('alt', self:alternate_cost(1), self:alternate_cost(2),\n"
+        "           self:alternate_cost(3))\n"
+        "    og.log('solid', b(self:blocks_placement()),\n"
+        "           b(self:foe():blocks_placement()),\n"
+        "           b(self:leader():blocks_placement()))\n";
+
+    w.new_specials = 1;
+    expect_ran_clean(run_do_special(body, self));
+    const std::vector<std::string> on = logged();
+    ASSERT_EQ(2u, on.size());
+    EXPECT_EQ("alt\t0\t77\t40", on[0]) << "the declared prices, setting on";
+    EXPECT_EQ("solid\t0\t0\t1", on[1])
+        << "a living and a knife are not scenery; the walled weapon is";
+
+    w.new_specials = 0;
+    expect_ran_clean(run_do_special(body, self));
+    const std::vector<std::string> off = logged();
+    ASSERT_EQ(2u, off.size());
+    EXPECT_EQ("alt\t0\t0\t40", off[0])
+        << "setting off: the new-kit alternate is not in play";
+
+    expect_errored_with(run_do_special("    self:alternate_cost(6)\n", self),
+                        "alternate_cost index out of range");
+    expect_errored_with(run_do_special("    self:alternate_cost(-1)\n", self),
+                        "alternate_cost index out of range");
 }

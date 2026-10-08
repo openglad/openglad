@@ -11,6 +11,8 @@
 #include "script_internal.h"
 #include "script_raise.h"
 
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/fearless.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -18,6 +20,7 @@
 #include <openglad/gameplay/placement.h>
 #include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <cstdint>
@@ -113,6 +116,34 @@ int m_last_attacker_id(lua_State* L)
 int m_init_fire(lua_State* L)
 {
     lua_pushboolean(L, kit_self_arg(L)->init_fire() ? 1 : 0);
+    return 1;
+}
+
+// walker:blocks_placement() -> boolean: a weapon whose family declares
+// blocks_placement (solid scenery: a bone wall, a war banner). Neither a
+// shot nor a shield, so a guard that cuts down incoming shots leaves it.
+int m_blocks_placement(lua_State* L)
+{
+    lua_pushboolean(
+        L, og::sim::declares_blocks_placement(*kit_self_arg(L)) ? 1 : 0);
+    return 1;
+}
+
+// walker:alternate_cost(slot) -> integer: the price of the slot's shifted
+// alternate as this session sees it (the New Specials setting hides a
+// new-kit alternate); 0 when the alternate has no price of its own (it
+// costs the slot's price) or is not in play.
+int m_alternate_cost(lua_State* L)
+{
+    walker* w = kit_self_arg(L);
+    const lua_Integer slot = luaL_checkinteger(L, 2);
+    if (slot < 0 || slot >= NUM_SPECIALS)
+        script_raise(L, "alternate_cost index out of range");
+    const FamilyDescriptor* fd = get_family_descriptor(
+        static_cast<int>(static_cast<unsigned char>(w->family())));
+    lua_pushinteger(L, static_cast<lua_Integer>(og::sim::alternate_cost_in_play(
+                           fd, static_cast<int>(slot),
+                           og::sim::session_new_specials())));
     return 1;
 }
 
@@ -218,6 +249,8 @@ const luaL_Reg kKitWalkerMethods[] = {
     {"possess_ticks", m_possess_ticks},
     {"last_attacker_id", m_last_attacker_id},
     {"init_fire", m_init_fire},
+    {"blocks_placement", m_blocks_placement},
+    {"alternate_cost", m_alternate_cost},
     {nullptr, nullptr},
 };
 
