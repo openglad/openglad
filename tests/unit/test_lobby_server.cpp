@@ -5530,3 +5530,56 @@ TEST(LobbyServer, typed_malformed_peers_are_disconnected_once_each_in_peer_order
         << "a well-formed join from a clean peer still lands";
     EXPECT_EQ("Kept", server.state().players[0].name);
 }
+
+// New Specials (protocol v19). A fresh lobby offers the shipped default, on;
+// the host's published settings replace it.
+TEST(LobbyServer, default_lobby_settings_carry_new_specials_on)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    EXPECT_EQ(1, server.state().settings.new_specials);
+    EXPECT_EQ(1, server.build_save_data_equivalent().new_specials)
+        << "the game-start equivalent carries the setting";
+}
+
+// The setting is binary-or-fallback like infinite_gold: 0 and 1 pass and
+// reach the game-start equivalent, anything else keeps the accepted value.
+TEST(LobbyServer, sanitize_new_specials_keeps_zero_one_and_falls_back)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings off = make_ctf_lobby_settings();
+    off.new_specials = 0;
+    transport.queue_lobby_message(11u, make_settings_change_message(off));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.new_specials);
+    EXPECT_EQ(0, server.build_save_data_equivalent().new_specials);
+
+    og::sim::LobbySettings junk = make_ctf_lobby_settings();
+    junk.new_specials = 7;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.new_specials)
+        << "out-of-range new_specials falls back to the accepted value (0)";
+
+    og::sim::LobbySettings on = make_ctf_lobby_settings();
+    on.new_specials = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(on));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.new_specials);
+    EXPECT_EQ(1, server.build_save_data_equivalent().new_specials);
+
+    og::sim::LobbySettings negative = make_ctf_lobby_settings();
+    negative.new_specials = -1;
+    transport.queue_lobby_message(11u, make_settings_change_message(negative));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.new_specials)
+        << "out-of-range new_specials falls back to the accepted value (1)";
+}

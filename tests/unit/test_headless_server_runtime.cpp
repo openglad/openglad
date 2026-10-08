@@ -1071,6 +1071,39 @@ TEST(HeadlessServerSaveCopy, copy_carries_v14_company_fields)
         << "the copy replaces the destination book, it never merges";
 }
 
+// New Specials is a session-only setting like cross_control, so it is the
+// same dropped-field class: the server/checkpoint copy, the local game-start
+// equivalent and the lobby game-start config each name it explicitly. Each
+// hop is driven with the non-default value 1 (SaveData defaults to 0), so a
+// hop that forgot the field reads 0 and fails here.
+TEST(HeadlessServerSaveCopy, copy_and_equivalent_carry_new_specials)
+{
+    SaveData source;
+    source.new_specials = 1;
+    SaveData destination;
+    ASSERT_EQ(0, (int)destination.new_specials);
+    og::server::copy_headless_server_save_data(destination, source);
+    EXPECT_EQ(1, (int)destination.new_specials)
+        << "new_specials must survive the server/checkpoint copy";
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        og::server::build_local_save_equivalent(source);
+    EXPECT_EQ(1, equivalent.new_specials)
+        << "the local game-start equivalent carries the setting";
+
+    SaveData started;
+    ASSERT_EQ(0, (int)started.new_specials);
+    og::server::apply_headless_lobby_game_start_config(started, equivalent);
+    EXPECT_EQ(1, (int)started.new_specials)
+        << "the lobby game-start config lands in the session save";
+
+    og::sim::LobbySaveDataEquivalent off = equivalent;
+    off.new_specials = 0;
+    og::server::apply_headless_lobby_game_start_config(started, off);
+    EXPECT_EQ(0, (int)started.new_specials)
+        << "the host's off reaches a save that was on";
+}
+
 // ---------------------------------------------------------------------------
 // #207 replay excursion: the completed-level purge and its replay-arm skip.
 // Loading a level the save marks completed kills everything except team-0

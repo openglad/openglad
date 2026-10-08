@@ -4519,3 +4519,55 @@ TEST(NetTransport, game_client_control_change_reaches_high_player_indices)
     for (const std::uint32_t entity_id : client.controlled_entity_ids())
         EXPECT_NE(888u, entity_id);
 }
+
+// New Specials (protocol v19). Both directions carry the non-default value
+// 1 here (the struct default is 0), so a reader that skipped the field
+// would decode 0 and fail. The lobby field is appended LAST: the settings
+// block of a state whose only non-default is new_specials differs from the
+// all-default one in exactly the two bytes the field occupies.
+TEST(NetTransport, lobby_settings_round_trip_carries_new_specials)
+{
+    og::sim::LobbyState state = make_lobby_state_for_test();
+    state.settings.new_specials = 1;
+    const auto bytes = og::sim::serialize_lobby_state_message(state);
+    const auto decoded = og::sim::deserialize_lobby_state_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(1, decoded->settings.new_specials);
+    EXPECT_EQ(state.settings, decoded->settings);
+
+    og::sim::LobbyState plain;
+    og::sim::LobbyState with_flag;
+    with_flag.settings.new_specials = 1;
+    const auto plain_bytes = og::sim::serialize_lobby_state_message(plain);
+    const auto flag_bytes = og::sim::serialize_lobby_state_message(with_flag);
+    ASSERT_EQ(plain_bytes.size(), flag_bytes.size());
+    std::vector<std::size_t> differing;
+    for (std::size_t i = 0; i < plain_bytes.size(); ++i)
+        if (plain_bytes[i] != flag_bytes[i])
+            differing.push_back(i);
+    // The settings block ends just before the host player id u8, the
+    // denial echo u8 and the u32 request id: 4 + 51 = 55 bytes from the
+    // start, so the i16 sits at 53..54 (low byte 1 at 53).
+    ASSERT_EQ(1u, differing.size());
+    EXPECT_EQ(53u, differing.front())
+        << "new_specials is the last i16 of the settings block";
+}
+
+TEST(NetTransport, initial_setup_round_trip_carries_new_specials)
+{
+    og::sim::InitialSetupMessage expected;
+    expected.level_id = 3;
+    expected.setup_generation = 0x01020304u;
+    expected.new_specials = 1;
+    expected.completed_levels = {9};
+    const auto bytes = og::sim::serialize_initial_setup_message(expected);
+    const auto decoded = og::sim::deserialize_initial_setup_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(1, decoded->new_specials);
+    EXPECT_EQ(0x01020304u, decoded->setup_generation)
+        << "the field after setup_generation must not shift it";
+    ASSERT_EQ(1u, decoded->completed_levels.size());
+    EXPECT_EQ(9, decoded->completed_levels.front())
+        << "the guy and level lists after the field still decode";
+    EXPECT_EQ(expected, *decoded);
+}

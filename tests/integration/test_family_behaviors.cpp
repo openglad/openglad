@@ -661,6 +661,9 @@ TEST(FamilyBehaviors, check_special_skeleton_tunnel)
 TEST(FamilyBehaviors, check_special_default_families)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
+    // The classic kits: these families' default answer, with the New
+    // Specials setting off whatever the session default is.
+    og::runtime::current_session->myscreen_->world().new_specials = 0;
     int families[] = {FAMILY_DRUID, FAMILY_BARBARIAN, FAMILY_FAERIE,
                       FAMILY_BIG_ORC, FAMILY_GOLEM};
     for (int fam : families)
