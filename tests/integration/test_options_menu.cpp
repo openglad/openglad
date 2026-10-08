@@ -106,6 +106,7 @@ struct FxScreenSpec {
 static const FxToggleSpec kGameplayFxToggles[] = {
     {"toggle_hit_recoil", "effects", "hit_recoil"},
     {"toggle_attack_lunge", "effects", "attack_lunge"},
+    {"toggle_new_specials", "gameplay", "new_specials"},
 };
 
 static const FxToggleSpec kUiFxToggles[] = {
@@ -137,7 +138,7 @@ inline constexpr int kFxScreenCount = 3;
 inline constexpr int kFxMaxToggles = 14;
 
 static const FxScreenSpec kFxScreens[kFxScreenCount] = {
-    {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 2},
+    {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 3},
     {"ui_fx", "ui_fx_back", kUiFxToggles, 3},
     {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 14},
 };
@@ -154,6 +155,12 @@ struct OptionsState {
     bool toggled_fx[kFxScreenCount][kFxMaxToggles];
     bool gore_sprite_followed_toggle;
     bool gore_sprite_matches_cfg;
+    // New Specials: the click flips the preference (cfg) AND, in this local
+    // session (it decides its own session), the session's setting. Both are
+    // read on the menu thread after the click the flip check proved.
+    bool new_specials_session_followed_cfg;
+    int new_specials_before;
+    int new_specials_after;
     bool cycled_zoom;
     bool cycled_smoothing;
     bool entered_display;
@@ -847,11 +854,42 @@ static int options_injector(void* data)
                             blood_was_gory = live_blood_is_gory();
                         });
                 }
+                const bool is_new_specials =
+                    std::strcmp(toggle.button_id, "toggle_new_specials") == 0;
+                if (is_new_specials) {
+                    // Start from the shipped default, both halves agreeing:
+                    // a process that never loaded its settings holds an
+                    // empty preference, and a flip from "" to "on" would
+                    // leave the session where the cleanup put it.
+                    state->main_thread_tasks_all_ran &=
+                        run_on_main_thread([state] {
+                            cfg.apply_setting("gameplay", "new_specials", "on");
+                            og::runtime::current_session->myscreen_
+                                ->save_data.new_specials = 1;
+                            state->new_specials_before = 1;
+                        });
+                }
                 state->toggled_fx[s][t] = toggle.cycle
                     ? cycle_effect_and_check_lap(
                           toggle.button_id, toggle.category, toggle.key)
                     : toggle_effect_and_check_flip(
                           toggle.button_id, toggle.category, toggle.key);
+                if (is_new_specials && state->toggled_fx[s][t]) {
+                    // The flip check already proved the click landed (cfg
+                    // moved); the session value is written by the same
+                    // handler, so one read on the menu thread is the truth.
+                    bool pref_on = false;
+                    state->main_thread_tasks_all_ran &=
+                        run_on_main_thread([state, &pref_on] {
+                            state->new_specials_after = static_cast<int>(
+                                og::runtime::current_session->myscreen_
+                                    ->save_data.new_specials);
+                            pref_on = cfg.is_on("gameplay", "new_specials");
+                        });
+                    state->new_specials_session_followed_cfg =
+                        state->new_specials_after == (pref_on ? 1 : 0) &&
+                        state->new_specials_after != state->new_specials_before;
+                }
                 if (is_gore && state->toggled_fx[s][t]) {
                     // The click must repaint the live sprite, not just cfg.
                     // Sprite pixels and cfg are both menu-thread state, so
@@ -1286,6 +1324,11 @@ TEST(OptionsMenu, options_menu) {
     EXPECT_TRUE(state.gore_sprite_matches_cfg)
         << "after the click the installed blood sprite must match cfg "
            "effects/gore";
+    EXPECT_TRUE(state.new_specials_session_followed_cfg)
+        << "clicking New Specials in a local session must move the session's "
+           "setting with the preference (before "
+        << state.new_specials_before << ", after " << state.new_specials_after
+        << ", cfg gameplay/new_specials)";
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
     EXPECT_EQ("Zoom: 1.0x", state.zoom_label_when_unset)
         << "empty cfg (graphics, zoom) must fall back to 'Zoom: 1.0x' on the button face";

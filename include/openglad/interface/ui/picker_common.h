@@ -27,6 +27,7 @@ class guy;
 class GameWorld;
 struct LevelDataHooks;
 class IRandom;
+class cfg_store;
 
 namespace og::ui {
 
@@ -35,7 +36,7 @@ namespace og::ui {
 // please also change in guy.cpp
 inline constexpr float kStatCostExponent = 1.85f;
 
-inline constexpr std::array<int, 14> kAllowableGuys = {
+inline constexpr std::array<int, 15> kAllowableGuys = {
     FAMILY_SOLDIER,
     FAMILY_BARBARIAN,
     FAMILY_ELF,
@@ -50,6 +51,11 @@ inline constexpr std::array<int, 14> kAllowableGuys = {
     FAMILY_SMALL_SLIME,
     FAMILY_FAERIE,
     FAMILY_GHOST,
+    // Appended last so every earlier hire position keeps its family. Hiring
+    // is picker state, so the captain is on offer whatever the New Specials
+    // setting says; with it off a hired captain has no specials, exactly
+    // like an orc promoted at level 5.
+    FAMILY_BIG_ORC,
 };
 
 inline constexpr int kNewGameStartingGold = 5000;
@@ -513,6 +519,24 @@ void cycle_generator_rate(SaveData& save);
 // Toggle infinite gold: infinite_gold 0 (classic economy) <-> 1 (free
 // purchases). SESSION-ONLY, so no company autosave follows a toggle.
 void toggle_infinite_gold(SaveData& save);
+
+// New Specials (cfg gameplay/new_specials, SaveData::new_specials). The
+// per-machine preference seeds the session value once; the lobby then
+// negotiates it (host wins) and the seeded value never reaches the .gtl.
+// The preference reads exactly as the Gameplay FX row's face does: "on" is
+// on, anything else (a process that never loaded its settings included) is
+// off.
+void seed_new_specials_from_cfg(SaveData& save, cfg_store& config);
+// Write the preference, and mirror it into the session save only when this
+// machine decides the session (no lobby, or the host). A joiner's choice
+// records what it will host next time; the session keeps the host's value.
+// The text and curses Game Settings prompts set a value through this.
+void set_new_specials(SaveData& save, cfg_store& config, bool on,
+                      bool decides_session);
+// The Gameplay FX row: flips the preference (set_new_specials with the
+// opposite of the current preference).
+void apply_new_specials_toggle(SaveData& save, cfg_store& config,
+                               bool decides_session);
 
 // Toggle cross control: cross_control 0 (own seats) <-> 1 (all seats).
 // The pure save write behind change_cross_control()'s popup/sync tail, so
@@ -1245,6 +1269,10 @@ std::string format_generator_rate_label(const SaveData& save);
 // "Infinite Gold: Off" / "Infinite Gold: On".
 std::string format_infinite_gold_label(const SaveData& save);
 
+// "NEW SPECIALS: ON" / "NEW SPECIALS: OFF" (the session value, any nonzero
+// reads as on). The lobby RULES face, so a joiner sees the host's choice.
+std::string format_new_specials_label(const SaveData& save);
+
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 // (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:
 // the filename teaches nothing; companies are fully managed in-game on
@@ -1911,7 +1939,7 @@ bool local_seats_deployed_for_go(const SaveData& save,
                                  bool networked);
 
 // The lobby-synced knobs an applied settings change rewrites under an open
-// screen: the 12 scalars plus the eight per-team band knobs. scen_num is
+// screen: the 13 scalars plus the eight per-team band knobs. scen_num is
 // deliberately EXCLUDED: level changes already refetch through the frame-
 // tick reload guard, and double-triggering would hide a broken guard from
 // the tests. Every surface that watches for "the settings moved" hashes
@@ -1988,6 +2016,7 @@ inline constexpr std::string_view kRulesRowPermadeath = "permadeath";
 inline constexpr std::string_view kRulesRowGenerators = "generators";
 inline constexpr std::string_view kRulesRowDifficulty = "difficulty";
 inline constexpr std::string_view kRulesRowInfiniteGold = "infinite_gold";
+inline constexpr std::string_view kRulesRowNewSpecials = "new_specials";
 inline constexpr std::string_view kRulesRowCrossControl = "cross_control";
 std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs);
 

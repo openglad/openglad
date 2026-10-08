@@ -3802,6 +3802,23 @@ Sint32 change_infinite_gold()
    return MENU_OK;
 }
 
+// GAMEPLAY FX row 3. The preference always flips; the session value follows
+// only on the machine that decides the session (no lobby, or the host). A
+// joiner's click records what it will host next time; the server ignores a
+// joiner's settings anyway. Session-only like infinite gold: no company
+// autosave. The face is drawn from cfg every frame, so no label to write.
+// The trace states what the click itself wrote, before a joiner's lobby
+// echo puts the host's value back.
+Sint32 change_new_specials()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::apply_new_specials_toggle(save, cfg,
+                                     picker_lobby_host_controls_visible());
+   TRACE("teams", "new_specials %d", static_cast<int>(save.new_specials));
+   picker_lobby_sync_settings_from_save();
+   return MENU_REDRAW;
+}
+
 // §2.7 cross-control (DIFFICULTY row 7 — re-homed from MATCHUP, #218).
 // Visible to every networked peer; host-only actionable. A host toggle is a
 // SETTINGS change: the sync propagates it over the wire and the server

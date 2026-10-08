@@ -652,7 +652,7 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         int family;
         std::array<const char*, 5> stars;
     };
-    static constexpr std::array<FamilyStars, 14> kHireableStars = {{
+    static constexpr std::array<FamilyStars, 15> kHireableStars = {{
         {FAMILY_SOLDIER, {"****", "**", "****", "", ""}},         // 6 10 6 25 50
         {FAMILY_BARBARIAN, {"*****", "", "*****", "", ""}},       // 5 35 5 35 50
         {FAMILY_ELF, {"", "****", "*", "**", ""}},                // 25 6 12 8 50
@@ -667,6 +667,7 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         {FAMILY_SMALL_SLIME, {"", "", "**", "*", ""}},            // 20 20 8 14 50
         {FAMILY_FAERIE, {"", "****", "*", "**", ""}},             // 25 6 12 8 50
         {FAMILY_GHOST, {"*", "*", "*", "*", ""}},                 // 16 16 16 16 45
+        {FAMILY_BIG_ORC, {"****", "*", "*****", "", ""}},         // 6 15 5 40 50
     }};
     static_assert(kHireableStars.size() == og::ui::kAllowableGuys.size());
     for (const FamilyStars& row : kHireableStars)

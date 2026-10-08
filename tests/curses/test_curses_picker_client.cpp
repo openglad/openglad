@@ -700,7 +700,7 @@ TEST(CursesPickerClient, hire_full_team_reports_and_returns)
 }
 
 // Next/Previous family step the hire offer through kAllowableGuys and the
-// screen title says which one is on offer ("Hire: <FAMILY> (<n>/14)"); neither
+// screen title says which one is on offer ("Hire: <FAMILY> (<n>/15)"); neither
 // row hires. The last frame drawn carries the moved cursor, so each arm ends
 // on the family it navigated to.
 TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
@@ -710,7 +710,7 @@ TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
     ASSERT_NE(item, nullptr);
     const std::string second_family =
         og::ui::family_display_name(og::ui::kAllowableGuys[1]);
-    const std::string kSecond = "(2/14)";
+    const std::string kSecond = "(2/15)";
 
     {   // Next steps forward one family.
         PickerFixture f;
@@ -731,9 +731,9 @@ TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
     {   // Previous steps BACK one family, not to the start of the cycle.
         PickerFixture f;
         const int before_count = team_count(f.save());
-        pick(f.t(), 1); // Next family    -> 2/14
-        pick(f.t(), 1); // Next family    -> 3/14
-        pick(f.t(), 2); // Previous family-> 2/14
+        pick(f.t(), 1); // Next family    -> 2/15
+        pick(f.t(), 1); // Next family    -> 3/15
+        pick(f.t(), 2); // Previous family-> 2/15
         pick(f.t(), 3); // Back
         f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
 
@@ -2117,6 +2117,8 @@ TEST(CursesPickerClient, options_set_save_slot_and_seed)
     f.t().push_special(KeyCode::Backspace);
     f.t().push_string("123");
     f.t().push_special(KeyCode::Enter);
+    // Third prompt: New Specials, prefilled; Enter keeps it.
+    f.t().push_special(KeyCode::Enter);
 
     f.client.show_options();
 
@@ -2144,6 +2146,7 @@ TEST(CursesPickerClient, asserts_company_slot_authority)
         f.t().push_string("curses-authority-slot");
         f.t().push_special(KeyCode::Enter);
         f.t().push_special(KeyCode::Escape); // cancel the seed prompt
+        f.t().push_special(KeyCode::Escape); // cancel the New Specials prompt
         f.client.show_options();
         EXPECT_EQ(f.config.save_name, "curses-authority-slot");
         EXPECT_EQ("curses-authority-slot", og::data::active_company_slot());
@@ -2176,29 +2179,155 @@ TEST(CursesPickerClient, options_cancel_keeps_config)
 
     f.t().push_special(KeyCode::Escape); // cancel save-slot prompt
     f.t().push_special(KeyCode::Escape); // cancel seed prompt
+    f.t().push_special(KeyCode::Escape); // cancel New Specials prompt
     f.client.show_options();
 
     EXPECT_EQ(f.config.save_name, "keep_me");
     EXPECT_EQ(f.config.seed, 99u);
 }
 
+// Every presented frame, kept: the Game Settings page asks three questions
+// in a row, so a refusal shown between two prompts is gone from the last
+// frame by the time show_options returns.
+class FrameLogTerminal final : public og::curses::ITerminal
+{
+public:
+    explicit FrameLogTerminal(HeadlessTerminal& inner) : inner_(inner) {}
+    int rows() const override { return inner_.rows(); }
+    int cols() const override { return inner_.cols(); }
+    bool supports_unicode() const override { return inner_.supports_unicode(); }
+    bool supports_color() const override { return inner_.supports_color(); }
+    void clear() override { inner_.clear(); }
+    void put(int row, int col, char32_t ch, og::curses::Color fg,
+             og::curses::Color bg, bool bold) override
+    {
+        inner_.put(row, col, ch, fg, bg, bold);
+    }
+    void put_str(int row, int col, std::string_view utf8, og::curses::Color fg,
+                 og::curses::Color bg, bool bold) override
+    {
+        inner_.put_str(row, col, utf8, fg, bg, bold);
+    }
+    void present() override
+    {
+        inner_.present();
+        frames_ += inner_.dump();
+    }
+    og::curses::Key poll_key(bool block) override { return inner_.poll_key(block); }
+    void set_cursor_visible(bool visible) override
+    {
+        inner_.set_cursor_visible(visible);
+    }
+    void beep() override { inner_.beep(); }
+    const std::string& frames() const { return frames_; }
+
+private:
+    HeadlessTerminal& inner_;
+    std::string frames_;
+};
+
 TEST(CursesPickerClient, options_invalid_seed_keeps_current)
 {
-    PickerFixture f;
-    f.config.save_name = "slot";
-    f.config.seed = 44;
+    HeadlessTerminal inner{40, 100};
+    FrameLogTerminal term{inner};
+    FakeClock clock;
+    TextPickerConfig config;
+    config.save_name = "slot";
+    config.seed = 44;
+    CursesPickerOptions options;
+    CursesPickerClient client{term, clock, config, options};
 
-    f.t().push_special(KeyCode::Enter); // accept slot unchanged
+    inner.push_special(KeyCode::Enter); // accept slot unchanged
     for (int i = 0; i < 2; ++i)
-        f.t().push_special(KeyCode::Backspace);
-    f.t().push_string("bad");
-    f.t().push_special(KeyCode::Enter);
-    dismiss(f.t());
-    f.client.show_options();
+        inner.push_special(KeyCode::Backspace);
+    inner.push_string("bad");
+    inner.push_special(KeyCode::Enter);
+    dismiss(inner);
+    inner.push_special(KeyCode::Enter); // keep New Specials as it is
+    client.show_options();
 
-    EXPECT_EQ(f.config.save_name, "slot");
-    EXPECT_EQ(f.config.seed, 44u);
-    EXPECT_NE(f.t().dump().find("Invalid seed"), std::string::npos);
+    EXPECT_EQ(config.save_name, "slot");
+    EXPECT_EQ(config.seed, 44u);
+    EXPECT_NE(term.frames().find("Invalid seed"), std::string::npos);
+    EXPECT_TRUE(inner.input_exhausted());
+}
+
+// The New Specials prompt is the terminal twin of the Gameplay FX row: it
+// writes the per-machine preference and the session's setting (the curses
+// picker holds no networked lobby, so it always decides its session). The
+// prompt is prefilled with the session value; accepting it changes nothing.
+TEST(CursesPickerClient, show_options_new_specials_prompt)
+{
+    const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref() { cfg.apply_setting("gameplay", "new_specials", value); }
+    } restore{saved_pref};
+
+    cfg.apply_setting("gameplay", "new_specials", "on");
+    {   // The constructor seeds the session from the preference; "off"
+        // turns both off.
+        PickerFixture f;
+        ASSERT_EQ(1, f.save().new_specials) << "the cfg seed";
+        f.t().push_special(KeyCode::Enter);  // keep slot
+        f.t().push_special(KeyCode::Enter);  // keep seed
+        for (int i = 0; i < 2; ++i)          // erase the prefilled "on"
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("off");
+        f.t().push_special(KeyCode::Enter);
+        f.client.show_options();
+        EXPECT_EQ(0, f.save().new_specials) << "the session follows";
+        EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"))
+            << "the preference follows";
+        EXPECT_NE(std::string::npos, f.t().dump().find("New specials (on/off)"))
+            << f.t().dump();
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {   // The preference now seeds OFF; "on" turns both back on.
+        PickerFixture f;
+        ASSERT_EQ(0, f.save().new_specials) << "the cfg seed";
+        f.t().push_special(KeyCode::Enter);
+        f.t().push_special(KeyCode::Enter);
+        for (int i = 0; i < 3; ++i)          // erase the prefilled "off"
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("on");
+        f.t().push_special(KeyCode::Enter);
+        f.client.show_options();
+        EXPECT_EQ(1, f.save().new_specials);
+        EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
+    }
+    {   // Anything but on/off is refused and changes nothing.
+        PickerFixture f;
+        f.t().push_special(KeyCode::Enter);
+        f.t().push_special(KeyCode::Enter);
+        for (int i = 0; i < 2; ++i)
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("maybe");
+        f.t().push_special(KeyCode::Enter);
+        dismiss(f.t());
+        f.client.show_options();
+        EXPECT_EQ(1, f.save().new_specials);
+        EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
+        EXPECT_NE(std::string::npos, f.t().dump().find("Invalid value; on or off."))
+            << f.t().dump();
+    }
+    {   // --new-specials 0 overrides the seed for the run, and accepting
+        // the prefilled "off" leaves the preference alone.
+        HeadlessTerminal term{40, 100};
+        FakeClock clock;
+        TextPickerConfig config;
+        config.new_specials = 0;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        EXPECT_EQ(0, client.save_data().new_specials) << "the flag wins";
+        term.push_special(KeyCode::Enter);
+        term.push_special(KeyCode::Enter);
+        term.push_special(KeyCode::Enter);  // accept "off"
+        client.show_options();
+        EXPECT_EQ(0, client.save_data().new_specials);
+        EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"))
+            << "accepting the prefilled value writes nothing";
+    }
 }
 
 // --- help ----------------------------------------------------------------
