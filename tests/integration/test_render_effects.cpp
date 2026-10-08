@@ -1205,10 +1205,15 @@ TEST_F(RenderEffects,
     ASSERT_NE(nullptr, scene.own);
     ASSERT_NE(nullptr, scene.other);
 
-    // An invisible thing on the ground (the mine's shape: an effect with a
-    // small fixed invisibility), laid by team 0.
-    walker* const mine = scr()->world().add_ob(Order::FX, FAMILY_BOMB);
+    // The thief's mine (core:mine, effect wire id 13), laid by team 0 with
+    // the small fixed invisibility its cast gives it (mine_shimmer, 20).
+    const int mine_family =
+        og::families::resolve_family_string_id(Order::FX, "core:mine");
+    ASSERT_EQ(13, mine_family) << "core:mine is effect wire id 13";
+    walker* const mine = scr()->world().add_ob(Order::FX, mine_family);
     ASSERT_NE(nullptr, mine);
+    ASSERT_EQ(Order::FX, mine->query_order());
+    ASSERT_EQ(mine_family, mine->family());
     mine->setxy(200, 120);
     mine->set_team_num(0);
     ASSERT_NE(nullptr, mine->bmp_data());
@@ -1217,7 +1222,7 @@ TEST_F(RenderEffects,
     mine->set_dead(1); // off the draw lists' paint path: the bare ground
     const std::vector<RGB> empty = view_rect(scene, Viewer::OtherTeam, *mine);
     mine->set_dead(0);
-    ASSERT_FALSE(rects_equal(empty, plain)) << "the effect must paint";
+    ASSERT_FALSE(rects_equal(empty, plain)) << "the mine must paint";
 
     mine->set_invisibility_left(20);
     const std::vector<RGB> own = view_rect(scene, Viewer::OwnTeam, *mine);

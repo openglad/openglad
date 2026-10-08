@@ -10561,3 +10561,539 @@ TEST(GameLoop, local_shadow_seeds_server_world_with_session_new_specials)
         s->world().delete_objects();
     }
 }
+
+// ---------------------------------------------------------------------------
+// New Specials through the real local transport shadow: what the server
+// world does, the display mirror must show (and hide) the same way.
+//
+// Every scene below is built with the setting on, staged on the
+// AUTHORITATIVE server world (the mirror is only a copy of it), stepped with
+// local_transport_shadow_send_input + _finish_tick (one exact tick each),
+// and read back on the DISPLAY world the player sees.
+// ---------------------------------------------------------------------------
+#include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/kit_state.h>
+#include <openglad/gameplay/possession.h>
+#include <openglad/interface/level_visuals.h>
+
+short new_score_panel(screen* scr, short do_it); // score_panel.cpp, the HUD
+
+namespace new_specials_mirror {
+
+// Switches off every draw effect that could paint near a probed spot, and
+// restores the player's choices afterwards.
+struct QuietDrawGuard
+{
+    static constexpr std::array<const char*, 9> kKeys = {
+        "shadows", "reflections", "weather", "screen_shake", "fire_glow",
+        "trails", "dust", "ripples", "mini_hp_bar"};
+    std::vector<std::string> saved;
+
+    QuietDrawGuard()
+    {
+        for (const char* key : kKeys)
+        {
+            saved.push_back(cfg.get_setting("effects", key));
+            cfg.apply_setting("effects", key, "off");
+        }
+    }
+    ~QuietDrawGuard()
+    {
+        for (std::size_t i = 0; i < kKeys.size(); ++i)
+            if (!saved[i].empty())
+                cfg.apply_setting("effects", kKeys[i], saved[i]);
+    }
+    QuietDrawGuard(const QuietDrawGuard&) = delete;
+    QuietDrawGuard& operator=(const QuietDrawGuard&) = delete;
+};
+
+screen* server_screen()
+{
+    return og::runtime::local_transport_shadow_testing_server_screen(
+        *og::runtime::current_game_session);
+}
+
+// One exact tick through the shadow: the seat's input reaches the server,
+// the server steps once, the mirror applies the result.
+void drive_tick(const InputState& input = InputState{})
+{
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    screen* const s = og::runtime::current_session->myscreen_;
+    og::runtime::local_transport_shadow_send_input(
+        session, input, s->world().tick_count_ + 1u);
+    og::runtime::local_transport_shadow_finish_tick(session);
+}
+
+// Strips a loaded level to the walkers in `keep` plus ONE hostile living
+// kept dormant far away (a world with no live hostile wins the level on its
+// first tick; a dormant one never acts and never draws but holds the level
+// open). Generators go too. Run on the server first, then on the mirror with
+// the same ids, so the mirror never paints a frame the server disagrees
+// with. Returns the sentinel's id (0 when the level has no hostile).
+std::uint32_t strip_level(GameWorld& w, const std::vector<std::uint32_t>& keep,
+                          unsigned char own_team, std::uint32_t sentinel_id)
+{
+    std::vector<walker*> doomed;
+    for (auto& up : w.oblist)
+    {
+        walker* const a = up.get();
+        if (a == nullptr ||
+            std::find(keep.begin(), keep.end(), a->entity_id()) != keep.end())
+            continue;
+        if (a->query_order() != Order::Living &&
+            a->query_order() != Order::Generator)
+            continue;
+        if (a->query_order() == Order::Living && !a->dead() &&
+            a->team_num() != own_team &&
+            (sentinel_id == 0 || sentinel_id == a->entity_id()))
+        {
+            sentinel_id = a->entity_id();
+            continue;
+        }
+        doomed.push_back(a);
+    }
+    for (walker* a : doomed)
+        w.remove_ob(a);
+    if (walker* sentinel = w.find_by_id(sentinel_id))
+    {
+        sentinel->set_spawn_delay(65535);
+        sentinel->set_dormant(true);
+    }
+    w.type = static_cast<char>(w.type & ~SCEN_TYPE_SAVE_ALL);
+    return sentinel_id;
+}
+
+// Loads gladiator level 1 for one seat with `family` at level 10 and the
+// New Specials setting on, and strips it to that hero (plus the dormant
+// sentinel). Returns the hero's entity id, 0 on failure.
+std::uint32_t load_one_hero(int family, std::uint32_t& sentinel_id)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    gameplay_rec::build_save(s, "gladiator", 1, 1, {family}, 10);
+    s->save_data.new_specials = 1;
+    s->world().rng_.state_ = kScenarioDisplayRngPin;
+    std::srand(gameplay_rec::kClinicLibcRandPin);
+    glad_init();
+    screen* const server = server_screen();
+    if (server == nullptr || server->world().new_specials != 1)
+        return 0;
+    server->world().rng_.state_ = kScenarioAuthorityRngPin;
+    walker* const hero = gameplay_rec::find_seat_control(server->world());
+    if (hero == nullptr || hero->family() != family)
+        return 0;
+    const std::uint32_t hero_id = hero->entity_id();
+    sentinel_id = strip_level(server->world(), {hero_id}, hero->team_num(), 0);
+    strip_level(s->world(), {hero_id}, hero->team_num(), sentinel_id);
+    return hero_id;
+}
+
+void finish_scene()
+{
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    screen* const s = og::runtime::current_session->myscreen_;
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+walker* find_fx(GameWorld& w, int family)
+{
+    for (const auto* list : {&w.oblist, &w.fxlist, &w.weaplist})
+        for (const auto& up : *list)
+            if (up && !up->dead() && up->query_order() == Order::FX &&
+                up->family() == family)
+                return up.get();
+    return nullptr;
+}
+
+struct ViewPixels
+{
+    std::vector<std::array<Uint8, 3>> px;
+    Sint32 topx = 0;
+    Sint32 topy = 0;
+};
+
+// Redraws the display's first view from `viewer` (nullptr: a spectator
+// camera parked at `topx`/`topy`) and reads the screen pixels around
+// `target`'s world spot, with a 4-pixel border.
+ViewPixels view_around(walker* viewer, const walker& target, Sint32 topx = 0,
+                       Sint32 topy = 0)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* const vs = s->viewob[0].get();
+    vs->control = viewer;
+    if (viewer == nullptr)
+    {
+        s->level_runtime_data().level_visuals().topx = topx;
+        s->level_runtime_data().level_visuals().topy = topy;
+    }
+    EXPECT_TRUE(vs->redraw(&s->level_runtime_data(), false));
+    ViewPixels out;
+    out.topx = vs->topx;
+    out.topy = vs->topy;
+    const int x0 = static_cast<int>(target.worldx()) - vs->topx + vs->xloc - 4;
+    const int y0 = static_cast<int>(target.worldy()) - vs->topy + vs->yloc - 4;
+    for (int j = 0; j < target.sizey() + 8; ++j)
+        for (int i = 0; i < target.sizex() + 8; ++i)
+        {
+            std::array<Uint8, 3> c{};
+            s->get_pixel(x0 + i, y0 + j, &c[0], &c[1], &c[2]);
+            out.px.push_back(c);
+        }
+    return out;
+}
+
+// How many pixels differ between two reads of the same spot.
+int differing_pixels(const ViewPixels& a, const ViewPixels& b)
+{
+    if (a.px.size() != b.px.size())
+        return -1;
+    int n = 0;
+    for (std::size_t i = 0; i < a.px.size(); ++i)
+        n += a.px[i] != b.px[i] ? 1 : 0;
+    return n;
+}
+
+// A display-only stand-in viewer for another team: never on the server,
+// never stepped, the same family as `viewer` (the camera centres on its
+// control's size) and standing on its spot, so its camera frames exactly
+// the same pixels. Removed by the caller once the views are read.
+walker* other_team_viewer(const walker& viewer, unsigned char team)
+{
+    const walker& at = viewer;
+    screen* const s = og::runtime::current_session->myscreen_;
+    walker* const v = s->world().add_ob(Order::Living, viewer.family());
+    if (v == nullptr)
+        return nullptr;
+    v->set_team_num(team);
+    v->setxy(at.xpos(), at.ypos());
+    v->set_dormant(true); // drawn by nobody: only its team and spot matter
+    return v;
+}
+
+} // namespace new_specials_mirror
+
+// The thief lays a real MINE (Shift + DROP BOMB) on the server. The mirror
+// must carry it with its team and invisibility, and draw it only for its
+// own team: a team-0 view shows the shimmer, a team-1 view and a spectator
+// camera show the bare ground.
+TEST(GameLoop, mirror_draws_a_mine_only_for_its_team)
+{
+    using namespace new_specials_mirror;
+    std::uint32_t sentinel_id = 0;
+    const std::uint32_t thief_id = load_one_hero(FAMILY_THIEF, sentinel_id);
+    ASSERT_NE(0u, thief_id) << "a level-10 thief seated on gladiator 1";
+    ASSERT_NE(0u, sentinel_id) << "the level keeps one hostile";
+    screen* const s = og::runtime::current_session->myscreen_;
+    screen* const server = server_screen();
+    ASSERT_NE(nullptr, server);
+    const int mine_family =
+        og::families::resolve_family_string_id(Order::FX, "core:mine");
+    ASSERT_EQ(13, mine_family);
+
+    std::uint32_t mine_id = 0;
+    {
+        ScopedServerWorldContext server_ctx(*server);
+        walker* const thief = server->world().find_by_id(thief_id);
+        ASSERT_NE(nullptr, thief);
+        thief->stats()->set_max_magicpoints(500.0f);
+        thief->stats()->set_magicpoints(500.0f);
+        thief->set_current_special(1);
+        thief->set_shifter_down(1);
+        std::string reason;
+        ASSERT_TRUE(thief->special(nullptr, &reason))
+            << "the thief's MINE was refused: " << reason;
+        walker* const mine = find_fx(server->world(), mine_family);
+        ASSERT_NE(nullptr, mine) << "Shift + DROP BOMB lays a mine";
+        // Off the thief's feet, so nothing else paints where it lies.
+        mine->setxy(static_cast<short>(thief->xpos() - 40), thief->ypos());
+        mine_id = mine->entity_id();
+    }
+    for (int t = 0; t < 3; ++t)
+        drive_tick();
+
+    walker* const mine = s->world().find_by_id(mine_id);
+    walker* const thief = s->world().find_by_id(thief_id);
+    ASSERT_NE(nullptr, mine) << "the mirror carries the mine";
+    ASSERT_NE(nullptr, thief);
+    EXPECT_EQ(mine_family, mine->family());
+    EXPECT_EQ(thief->team_num(), mine->team_num());
+    EXPECT_GT(mine->invisibility_left(), 0) << "and its shimmer";
+
+    QuietDrawGuard quiet;
+    walker* const foe_view = other_team_viewer(*thief, 1);
+    ASSERT_NE(nullptr, foe_view);
+    const ViewPixels own = view_around(thief, *mine);
+    const ViewPixels other = view_around(foe_view, *mine);
+    const ViewPixels spectator = view_around(nullptr, *mine, own.topx, own.topy);
+    mine->set_dead(1); // the bare ground, for this one draw
+    const ViewPixels ground = view_around(thief, *mine);
+    mine->set_dead(0);
+    s->world().remove_ob(foe_view);
+    s->viewob[0]->control = thief;
+
+    EXPECT_EQ(own.topx, other.topx) << "both teams frame the same spot";
+    EXPECT_EQ(own.topy, other.topy);
+    EXPECT_GT(differing_pixels(ground, own), 0) << "its own team sees the mine";
+    EXPECT_EQ(0, differing_pixels(ground, other))
+        << "the other team sees bare ground";
+    EXPECT_EQ(0, differing_pixels(ground, spectator))
+        << "so does a spectator camera";
+    EXPECT_GT(differing_pixels(own, other), 0)
+        << "the two teams' views differ at the mine";
+
+    finish_scene();
+}
+
+// A ghost hero POSSESSES an orc on the server. The display follows the
+// seat into the body (the ControlChange), the HUD names the body's own
+// special, and Switch Character brings the seat back to the ghost.
+TEST(GameLoop, mirror_follows_a_possession)
+{
+    using namespace new_specials_mirror;
+    std::uint32_t sentinel_id = 0;
+    const std::uint32_t ghost_id = load_one_hero(FAMILY_GHOST, sentinel_id);
+    ASSERT_NE(0u, ghost_id) << "a level-10 ghost seated on gladiator 1";
+    screen* const s = og::runtime::current_session->myscreen_;
+    screen* const server = server_screen();
+    ASSERT_NE(nullptr, server);
+
+    std::uint32_t orc_id = 0;
+    {
+        ScopedServerWorldContext server_ctx(*server);
+        walker* const ghost = server->world().find_by_id(ghost_id);
+        ASSERT_NE(nullptr, ghost);
+        walker* const orc = server->world().add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, orc);
+        orc->set_team_num(1);
+        orc->setxy(static_cast<short>(ghost->xpos() + 24), ghost->ypos());
+        orc->set_act_type(ACT_GUARD);
+        orc_id = orc->entity_id();
+    }
+    drive_tick(); // the mirror learns of the orc
+    ASSERT_NE(nullptr, s->world().find_by_id(orc_id));
+    ASSERT_EQ(ghost_id, s->viewob[0]->control->entity_id());
+
+    {
+        ScopedServerWorldContext server_ctx(*server);
+        walker* const ghost = server->world().find_by_id(ghost_id);
+        walker* const orc = server->world().find_by_id(orc_id);
+        ASSERT_TRUE(ghost != nullptr && orc != nullptr);
+        const og::sim::PossessResult r =
+            og::sim::possess(server->world(), *ghost, *orc, 0);
+        ASSERT_TRUE(r.ok) << r.reason;
+    }
+    for (int t = 0; t < 4 && s->viewob[0]->control != nullptr &&
+                    s->viewob[0]->control->entity_id() != orc_id;
+         ++t)
+        drive_tick();
+    walker* const view_control = s->viewob[0]->control;
+    ASSERT_NE(nullptr, view_control);
+    EXPECT_EQ(orc_id, view_control->entity_id())
+        << "the display drives the possessed body";
+    walker* const mirror_ghost = s->world().find_by_id(ghost_id);
+    ASSERT_NE(nullptr, mirror_ghost);
+    EXPECT_TRUE(mirror_ghost->hidden()) << "the ghost rides unseen";
+    EXPECT_EQ(orc_id, mirror_ghost->possess_link());
+
+    trace_clear();
+    new_score_panel(s, 1);
+    const std::string orc_row =
+        "spc_row fam=" + std::to_string(FAMILY_ORC) + " text=SPC: HOWL";
+    EXPECT_TRUE(trace_contains("hud", orc_row.c_str()))
+        << "the HUD names the body's own special";
+
+    drive_tick(make_switch_char_input(0u));
+    for (int t = 0; t < 3 && s->viewob[0]->control != nullptr &&
+                    s->viewob[0]->control->entity_id() != ghost_id;
+         ++t)
+        drive_tick();
+    ASSERT_NE(nullptr, s->viewob[0]->control);
+    EXPECT_EQ(ghost_id, s->viewob[0]->control->entity_id())
+        << "Switch Character brings the seat back to the ghost";
+    EXPECT_FALSE(s->world().find_by_id(ghost_id)->hidden());
+    EXPECT_EQ(0u, s->world().find_by_id(orc_id)->possess_link());
+
+    finish_scene();
+}
+
+// A skeleton hero DIGS IN on the server (the real cast: four sinking ticks,
+// then hidden). The mirror hides it from the other team and a spectator
+// camera, and its own team still sees where it lies.
+TEST(GameLoop, mirror_hides_a_dug_in_skeleton_from_the_other_team)
+{
+    using namespace new_specials_mirror;
+    std::uint32_t sentinel_id = 0;
+    const std::uint32_t skel_id = load_one_hero(FAMILY_SKELETON, sentinel_id);
+    ASSERT_NE(0u, skel_id) << "a level-10 skeleton seated on gladiator 1";
+    screen* const s = og::runtime::current_session->myscreen_;
+    screen* const server = server_screen();
+    ASSERT_NE(nullptr, server);
+
+    {
+        ScopedServerWorldContext server_ctx(*server);
+        walker* const skel = server->world().find_by_id(skel_id);
+        ASSERT_NE(nullptr, skel);
+        skel->stats()->set_max_magicpoints(500.0f);
+        skel->stats()->set_magicpoints(500.0f);
+        skel->set_current_special(2);
+        skel->set_shifter_down(0);
+        // A freshly placed skeleton is still rising out of the ground (its
+        // grow row is a teleport row); let it finish before it digs.
+        skel->set_ani_type(ANI_WALK);
+        skel->set_cycle(0);
+        std::string reason;
+        ASSERT_TRUE(skel->special(nullptr, &reason))
+            << "DIG IN was refused: " << reason;
+    }
+    for (int t = 0; t < 8 && !server->world().find_by_id(skel_id)->hidden(); ++t)
+        drive_tick();
+    ASSERT_TRUE(server->world().find_by_id(skel_id)->hidden())
+        << "the skeleton is in the ground on the server";
+    drive_tick();
+    walker* const skel = s->world().find_by_id(skel_id);
+    ASSERT_NE(nullptr, skel);
+    EXPECT_TRUE(skel->hidden()) << "and on the mirror";
+
+    QuietDrawGuard quiet;
+    walker* const foe_view = other_team_viewer(*skel, 1);
+    ASSERT_NE(nullptr, foe_view);
+    const ViewPixels own = view_around(skel, *skel);
+    const ViewPixels other = view_around(foe_view, *skel);
+    const ViewPixels spectator = view_around(nullptr, *skel, own.topx, own.topy);
+    skel->set_dead(1); // the bare ground, for this one draw
+    const ViewPixels ground = view_around(foe_view, *skel);
+    skel->set_dead(0);
+    s->world().remove_ob(foe_view);
+    s->viewob[0]->control = skel;
+
+    EXPECT_EQ(own.topx, other.topx) << "both teams frame the same spot";
+    EXPECT_GT(differing_pixels(ground, own), 0)
+        << "its own team sees where it lies";
+    EXPECT_EQ(0, differing_pixels(ground, other))
+        << "the other team sees bare ground";
+    EXPECT_EQ(0, differing_pixels(ground, spectator))
+        << "so does a spectator camera";
+
+    finish_scene();
+}
+
+// The shadow's install seeds a fresh server world from a snapshot of the
+// display world (reset_local_transport_shadow, the legacy display-seed
+// path). A skeleton's REASSEMBLE ward, its LEGION window (a kit marker it
+// owns) and a ghost's possession of an orc are staged on the display, the
+// shadow is re-installed, and the seeded server must hold all three: the
+// kit fields, the marker with its owner resolved, the possession linked
+// both ways. A kill by the skeleton then still raises a skeleton, and the
+// mirror carries every field back.
+TEST(GameLoop, snapshot_seeded_server_keeps_a_ward_a_legion_window_and_a_possession)
+{
+    using namespace new_specials_mirror;
+    screen* const s = og::runtime::current_session->myscreen_;
+    gameplay_rec::build_save(s, "gladiator", 1, 1,
+                             {FAMILY_SKELETON, FAMILY_GHOST}, 10);
+    s->save_data.new_specials = 1;
+    s->world().rng_.state_ = kScenarioDisplayRngPin;
+    std::srand(gameplay_rec::kClinicLibcRandPin);
+    glad_init();
+    ASSERT_NE(nullptr, server_screen());
+    ASSERT_EQ(1, s->world().new_specials);
+    ASSERT_EQ(&s->world(), current_game->world)
+        << "the display world is the current one outside a shadow tick";
+
+    GameWorld& display = s->world();
+    walker* const skel = gameplay_rec::find_team_family(display, 0, FAMILY_SKELETON);
+    walker* const ghost = gameplay_rec::find_team_family(display, 0, FAMILY_GHOST);
+    ASSERT_TRUE(skel != nullptr && ghost != nullptr);
+    const std::uint32_t skel_id = skel->entity_id();
+    const std::uint32_t ghost_id = ghost->entity_id();
+    walker* const orc = display.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, orc);
+    orc->set_team_num(1);
+    orc->setxy(static_cast<short>(ghost->xpos() + 24), ghost->ypos());
+    const std::uint32_t orc_id = orc->entity_id();
+    const std::uint32_t sentinel_id =
+        strip_level(display, {skel_id, ghost_id, orc_id}, 0, 0);
+    ASSERT_NE(0u, sentinel_id);
+
+    // The real casts: REASSEMBLE, then LEGION (Shift), on the display world.
+    skel->stats()->set_max_magicpoints(500.0f);
+    skel->stats()->set_magicpoints(500.0f);
+    skel->set_ani_type(ANI_WALK);
+    skel->set_cycle(0);
+    skel->set_current_special(4);
+    std::string reason;
+    skel->set_shifter_down(0);
+    ASSERT_TRUE(skel->special(nullptr, &reason)) << "REASSEMBLE: " << reason;
+    skel->set_busy(0);
+    skel->set_shifter_down(1);
+    ASSERT_TRUE(skel->special(nullptr, &reason)) << "LEGION: " << reason;
+    skel->set_shifter_down(0);
+    ASSERT_NE(0, skel->kit_state() & KIT_WARD);
+    const int marker_family =
+        og::families::resolve_family_string_id(Order::FX, "core:kit_marker");
+    walker* const window = find_fx(display, marker_family);
+    ASSERT_NE(nullptr, window) << "LEGION opened its window";
+    ASSERT_EQ(skel, window->owner());
+    const std::uint32_t window_id = window->entity_id();
+    ASSERT_TRUE(og::sim::possess(display, *ghost, *orc, 500).ok);
+
+    og::runtime::reset_local_transport_shadow(
+        *og::runtime::current_game_session, *s);
+    ASSERT_TRUE(og::runtime::local_transport_active(
+        *og::runtime::current_game_session));
+    screen* const server = server_screen();
+    ASSERT_NE(nullptr, server);
+    GameWorld& seeded = server->world();
+    ASSERT_NE(&display, &seeded);
+    EXPECT_EQ(1, seeded.new_specials);
+
+    walker* const s_skel = seeded.find_by_id(skel_id);
+    walker* const s_ghost = seeded.find_by_id(ghost_id);
+    walker* const s_orc = seeded.find_by_id(orc_id);
+    walker* const s_window = seeded.find_by_id(window_id);
+    ASSERT_TRUE(s_skel && s_ghost && s_orc && s_window);
+    EXPECT_NE(0, s_skel->kit_state() & KIT_WARD) << "the ward came across";
+    EXPECT_EQ(marker_family, s_window->family());
+    EXPECT_EQ(2, s_window->ani_type()) << "the marker still plays LEGION";
+    EXPECT_EQ(s_skel, s_window->owner()) << "its owner resolves on the server";
+    EXPECT_GT(s_window->lifetime(), 0);
+    EXPECT_TRUE(s_ghost->hidden());
+    EXPECT_EQ(orc_id, s_ghost->possess_link());
+    EXPECT_EQ(ghost_id, s_orc->possess_link());
+    EXPECT_EQ(500, s_orc->possess_ticks());
+    EXPECT_EQ(0, s_orc->team_num()) << "the body fights for the ghost's side";
+
+    // A kill by the skeleton inside the window still raises one.
+    {
+        ScopedServerWorldContext server_ctx(*server);
+        int skeletons_before = 0;
+        for (const auto& up : seeded.oblist)
+            if (up && !up->dead() && up->query_order() == Order::Living &&
+                up->family() == FAMILY_SKELETON && up->team_num() == 0)
+                ++skeletons_before;
+        walker* const victim = seeded.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, victim);
+        victim->set_team_num(1);
+        victim->setxy(static_cast<short>(s_skel->xpos() + 16), s_skel->ypos());
+        s_skel->set_damage(1000.0f);
+        ASSERT_TRUE(s_skel->attack(victim));
+        ASSERT_TRUE(victim->dead());
+        int skeletons_after = 0;
+        for (const auto& up : seeded.oblist)
+            if (up && !up->dead() && up->query_order() == Order::Living &&
+                up->family() == FAMILY_SKELETON && up->team_num() == 0)
+                ++skeletons_after;
+        EXPECT_EQ(skeletons_before + 1, skeletons_after)
+            << "the seeded LEGION window raises the kill";
+    }
+
+    // And one tick later the mirror carries every field back.
+    drive_tick();
+    EXPECT_NE(0, display.find_by_id(skel_id)->kit_state() & KIT_WARD);
+    walker* const m_window = display.find_by_id(window_id);
+    ASSERT_NE(nullptr, m_window);
+    EXPECT_EQ(display.find_by_id(skel_id), m_window->owner());
+    EXPECT_EQ(orc_id, display.find_by_id(ghost_id)->possess_link());
+
+    finish_scene();
+}

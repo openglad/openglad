@@ -180,6 +180,37 @@ TEST(KitSeams, landing_probes_ignore_a_hidden_walker)
     world.myobmap->remove(sitter);
 }
 
+// The blink probe (walker_specials.cpp, teleport_spot_blocked_by: the
+// `other->hidden()` term of its first line) treats a hidden walker as not
+// there. In play the probe never meets one, because a hidden walker is out
+// of the obmap piles it scans; the term is the guard for the broken
+// invariant, so the walker is filed back in by hand to reach it. A hop of
+// range 1 from the sitter's own spot has only candidates that overlap it:
+// visible, the sitter blocks every one and the hop fails; hidden, the hop
+// lands.
+TEST(KitSeams, teleport_probe_skips_a_hidden_walker_left_in_the_obmap)
+{
+    TestGameWorld tw;
+    open_field(tw);
+    GameWorld& world = tw.world();
+    walker* hopper = add_living(tw, FAMILY_SOLDIER, 0, 96, 96);
+    walker* sitter = add_living(tw, FAMILY_ORC, 1, 96, 96);
+    ASSERT_TRUE(hopper && sitter);
+
+    EXPECT_FALSE(hopper->teleport_ranged(1))
+        << "a visible walker on every candidate spot blocks the hop";
+    EXPECT_EQ(96, hopper->xpos()) << "a failed hop moves nobody";
+    EXPECT_EQ(96, hopper->ypos());
+
+    sitter->set_hidden(true);
+    ASSERT_FALSE(in_obmap(tw, sitter));
+    world.myobmap->add(sitter, sitter->xpos(), sitter->ypos());
+    ASSERT_TRUE(in_obmap(tw, sitter));
+    EXPECT_TRUE(hopper->teleport_ranged(1))
+        << "the probe itself skips a hidden walker, even one left in the obmap";
+    world.myobmap->remove(sitter);
+}
+
 namespace {
 
 // Seats a walker for player 0 and drives sim_process_player_input.
