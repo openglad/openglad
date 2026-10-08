@@ -7,7 +7,7 @@ local C = og.C
 local lc = og.use("living_common")
 local FX_BOMB = assert(og.family_id("fx", "core:bomb"))
 local FX_CLOUD = assert(og.family_id("fx", "core:cloud"))
-
+local kt = og.use("kit_thief")
 local function check_special_ai(self)
   if self:current_special() == 1 then
     -- Drop-bomb AI uses this fixed per-tick range.
@@ -204,7 +204,7 @@ og.family("living", {
              train = { strength = 15, dexterity = 6, constitution = 9,
                        intelligence = 10, armor = 50, level = 200 } },
   specials = {
-    { id = "drop_bomb",    name = "DROP BOMB",    mp_cost = 35,  cast = drop_bomb },
+    { id = "drop_bomb",    name = "DROP BOMB",    mp_cost = 35,  alternate = { name = "MINE", mp_cost = 70, new_kit = true }, cast = kt.bomb_or_mine(drop_bomb) },
     { id = "cloak",        name = "CLOAK",        mp_cost = 125, cast = cloak },
     { id = "taunt_enemy",  name = "TAUNT ENEMY",  mp_cost = 100, alternate = { name = "CHARM OPPONENT" }, cast = taunt_or_charm },
     { id = "poison_cloud", name = "POISON CLOUD", mp_cost = 150 },
@@ -225,7 +225,7 @@ og.family("living", {
   sprite = "thief.png",
   animation = "standard",
   ai_line_of_sight = 10,
-  description = "Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs.\n\nSpecial: Drop Bomb",
+  description = "Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs.\n\nSpecial: Drop Bomb / Mine",
   names = { "Shinobi", "Dismas", "Shadow", "Stabby", "Swiftstrike", "Scourge",
             "Rogue" },
   playable = true,
