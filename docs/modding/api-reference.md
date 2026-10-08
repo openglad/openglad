@@ -582,6 +582,8 @@ declares no alternate at all (it means "not hidden by the setting").
 | `possess_ticks() → int` | On a possessed host: the ticks left (0 = for good). |
 | `last_attacker_id() → int` | The entity id of whoever last damaged this walker, 0 when nobody has. |
 | `init_fire() → bool` | The engine's own attack start: turns toward the facing first, refuses while busy, otherwise starts the attack row so the weapon leaves at its end (`fire()` at once for a walker with no attack row). |
+| `blocks_placement() → bool` | True for a weapon whose family declares `blocks_placement` (solid scenery: a bone wall, a war banner); false for anything else. A guard that cuts down incoming shots uses it to leave scenery standing. |
+| `alternate_cost(slot) → int` | The price of the slot's shifted alternate as this game sees it: 0 when the alternate has no price of its own (it costs the slot's price) or is not in play (a `new_kit` alternate with the setting off). `slot` outside 0..5 raises `alternate_cost index out of range`. |
 
 ### Combat and weapons
 

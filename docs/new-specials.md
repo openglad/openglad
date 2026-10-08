@@ -224,11 +224,14 @@ for the rest of the level.
 - A resisted POSSESS lets the host strike once.
 - A ghost riding a body regains no magic.
 - PHASE lasts 48 ticks at double speed, and the ghost cannot attack while
-  it lasts.
+  it lasts, not even on the tick it casts. A bot ghost never phases again
+  while its veil is up.
 
 **Faerie.**
 - SWAP never drops a walker onto a spot it could not stand on, such as
   water (`SWAP BLOCKED`).
+- A bot faerie only picks SWAP when it can pay for it; short of the price it
+  blinks away instead, or holds.
 - HASTEN keeps a stronger speed bonus already running (a high-level speed
   potion is not cut down to the haste).
 - GLIMMER pauses the faerie like one attack.
@@ -240,14 +243,20 @@ for the rest of the level.
 - The banner's aura numbers (`banner_pulse`, `banner_radius`,
   `banner_regen`, `banner_fright`) are on the `core:war_banner` family,
   because a banner outlives its captain.
-- When no banner stands, warband grunts run to where the captain stood
-  when they were called, then follow him.
-- The hook blade cuts down any enemy weapon that comes close while it
-  spins, and for now that includes an enemy war banner or bone wall.
+- Warband grunts gather at the middle of a standing banner. When no
+  banner stands, they run to where the captain stood when they were
+  called, then follow him.
+- The hook blade cuts down any enemy missile that comes close while it
+  spins, but passes an enemy war banner or bone wall by: those have to be
+  chopped down.
+- HOWL's bot answer counts the captain as hurt below 60 percent of its
+  health; at exactly 60 percent it still howls.
 
 **Skeleton.**
 - A dug-in skeleton comes up on its own after 300 ticks, and coming up is
   free. A dug-in enemy skeleton keeps the level open until it surfaces.
+- While it sinks and while it is buried, a skeleton keeps DIG IN in hand:
+  Switch Special cannot turn the next press into a TUNNEL.
 - Bone walls stop bodies, not most missiles: an enemy missile passes a wall
   about six times in ten.
 - LEGION in a respawn mode: a hero killed under LEGION both respawns and
@@ -257,8 +266,9 @@ for the rest of the level.
 
 **Fire elemental.**
 - Quenching IMMOLATE is free; until then the elemental casts nothing else.
-- A standing burner piles up embers under its feet (one every 4 ticks, each
-  lasting 40), so a foe pressed against it burns from both.
+- A standing burner keeps one ember under its feet: a new one drops (every
+  4 ticks) only where no ember of its own still burns, so embers trail
+  behind a moving elemental and do not pile up under a still one.
 - The parting starburst on death always fires the starburst, whatever slot
   the elemental had selected, and it fires on top of SUPERNOVA.
 

@@ -312,7 +312,7 @@ Druid:  Druids are the magicians of nature, and have
              gained by this barbarous act cannot be denied.
 
 
-+ Orc Captain:  An orc of level 5 or more may be promoted to
+Orc Captain:  An orc of level 5 or more may be promoted to
         Orc Captain (starting again at level 1), and captains can
         also be hired outright.  Captains are stronger and smarter
         than the basic orc, and throw blades across the field.
