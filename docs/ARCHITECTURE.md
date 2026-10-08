@@ -570,8 +570,9 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v13**, world
-snapshot format **v10**, and replay format **v15**. Protocol v13 adds the
+The current network compatibility line is lobby/gameplay protocol **v19**, world
+snapshot format **v15**, and replay format **v21** (New Specials, below).
+Protocol v13 added the
 staged-lobby channel: `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
 complete InitialSetup / keyframe snapshot of the host's staged world so every
 peer previews the exact match before GO, plus `StartDenialReason::StageFailed`.

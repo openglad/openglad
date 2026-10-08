@@ -86,8 +86,9 @@ The rules worth knowing before your first load error:
   with no `cast`, no `default_cast` and no `do_special` is a pack error;
   `cast = false` is the deliberate charged no-op.
 - `new_kit = true` on an entry (or inside its `alternate`) puts it behind
-  the New Specials setting: with the setting off it reads `"NONE"` at cost
-  5000 everywhere. An `alternate` may carry its own `mp_cost`. Every `ai`
+  the New Specials setting: with the setting off an entry reads `"NONE"` at
+  cost 5000 everywhere; a hidden alternate reads `"NONE"` and its price is
+  never charged (the slot keeps its own). An `alternate` may carry its own `mp_cost`. Every `ai`
   gate on a new-kit slot, and any `on_kill`, starts with
   `if og.match_setting("new_specials") == 0 then return true end` (a gate
   that answered `false` would skip a classic RNG draw). See

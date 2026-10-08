@@ -469,7 +469,7 @@ Druid:  Druids are the magicians of nature, and have
              already running is kept).
              SHIFTER: Haste Self (30): The same, on the faerie herself.
         4. + Wish (100): The faerie pops, and a fallen ally within
-             120 pixels rises in her place at full health, while every
+             120 pixels rises where it fell, at full health, while every
              living ally within 96 pixels is fully healed.  The whole
              party's reset, bought with the faerie.
 

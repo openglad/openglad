@@ -14,7 +14,7 @@ needs.
 | client | where |
 |---|---|
 | SDL | Game Settings → Gameplay FX → **New Specials** (green on, red off) |
-| text (`openglad_text`) | the game-settings prompt `New specials: on. Change (on/off, blank keeps current):`, or `--new-specials 0\|1` for one run |
+| text (`openglad_text`) | the game-settings prompt `New specials: <on\|off>. Change (on/off, blank keeps current):`, or `--new-specials 0\|1` for one run |
 | curses | Game Settings → `New specials (on/off):` |
 
 The row flips a per-machine preference (`cfg` key `gameplay/new_specials`,
