@@ -100,6 +100,7 @@ function M.ai_siphon(self)
   if phased(self) then
     return false
   end
+  -- max_hp is a C++ float: per-op rounding.
   if self.hp >= og.fmul(self.max_hp, 0.8) then
     return false
   end
@@ -275,6 +276,10 @@ function M.phase(self)
   self:set_speed_bonus_left(t.phase_ticks + 1)
   self:s_set_bit_flags(C.BIT_PHANTOM, 1)
   self:s_set_bit_flags(C.BIT_NO_COLLIDE, 1)
+  -- Too busy to swing from the cast on, as the veil keeps it: a Fire
+  -- pressed with the PHASE press is handled after it, before the veil's
+  -- first act. busy is a C++ float: per-op rounding.
+  self.busy = og.max(self:busy(), 2.0)
   -- An ignored walker leaves the collision table on its next move; move it
   -- onto its own spot so it leaves now.
   self:set_ignore(1)
@@ -286,7 +291,13 @@ function M.ai_phase(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
+  -- max_hp is a C++ float: per-op rounding.
   if self.hp >= og.fmul(self.max_hp, 0.3) then
+    return false
+  end
+  -- A phased ghost gains nothing from another roll: the cast refuses.
+  -- (Asked after the cheap health test: the marker search walks the list.)
+  if km.find(self, km.PHASE_VEIL) then
     return false
   end
   return nearest_foe(self, 48) ~= nil

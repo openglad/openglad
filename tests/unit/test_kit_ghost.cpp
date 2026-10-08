@@ -833,6 +833,9 @@ TEST(KitGhost, possess_reads_a_heros_constitution_and_passes_engine_refusals)
 //
 // Perturbation: phase_ticks = 1 in the staged ghost tuning. RED: "the
 // phase lasts phase_ticks": it ended on tick 1, not 48.
+// Perturbation: the kit as it was before the cast set busy itself (the
+// veil alone held the ghost, from its first act). RED: "too busy to swing
+// from the cast on" (busy 0 vs 2).
 TEST(KitGhost, phase_doubles_speed_blocks_attacks_and_expires_clean)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -851,6 +854,10 @@ TEST(KitGhost, phase_doubles_speed_blocks_attacks_and_expires_clean)
     EXPECT_TRUE(ghost->stats()->query_bit_flags(BIT_NO_COLLIDE));
     EXPECT_FALSE(in_obmap(tw, ghost)) << "out of the collision table at once";
     EXPECT_EQ(1u, live_of(tw, Order::FX, marker_family()).size());
+    // A Fire pressed with the PHASE press is handled after it, before the
+    // veil first acts: the cast itself makes the ghost too busy to swing
+    // (init_fire refuses while busy is above 0).
+    EXPECT_GE(ghost->busy(), 2.0f) << "too busy to swing from the cast on";
 
     const CastResult again = cast(ghost, 4, false);
     EXPECT_FALSE(again.ok);
@@ -982,7 +989,10 @@ TEST(KitGhost, ai_possess_fires_when_a_weaker_bot_foe_is_touching)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// PHASE: a badly hurt ghost (under 30 %) with a foe within 48 px.
+// PHASE: a badly hurt ghost (under 30 %) with a foe within 48 px, and not
+// while a veil already holds it.
+// Perturbation: the gate's veil check removed. RED: "already phased: no
+// roll for a cast that would be refused".
 TEST(KitGhost, ai_phase_fires_when_low_and_a_foe_is_close)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -997,6 +1007,11 @@ TEST(KitGhost, ai_phase_fires_when_low_and_a_foe_is_close)
     ghost->stats()->set_hitpoints(20.0f);
     orc->setxy(300, 64);
     EXPECT_FALSE(gate(ghost, 4)) << "no foe close";
+    orc->setxy(100, 64);
+    ASSERT_TRUE(gate(ghost, 4));
+    ASSERT_TRUE(cast(ghost, 4, false).ok);
+    EXPECT_FALSE(gate(ghost, 4))
+        << "already phased: no roll for a cast that would be refused";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
