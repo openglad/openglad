@@ -24,11 +24,19 @@
 //                      captain_howl_stuns_like_the_orc fails on the stun.
 //                      `corpse_heal_per_level = 5` -> 0 in the captain's
 //                      tuning: captain_eats_a_corpse_when_hurt fails on hp.
+//                      kit_captain.howl_or_eat's shifted
+//                      `return orc.eat_corpse(self)` -> `orc.yell(self)`:
+//                      promoted_orc_keeps_howl_and_eat_corpse fails on hp
+//                      (65 wanted, 50 read) and the uneaten corpse; the
+//                      WAR BANNER row's `mp_cost = 80` -> 81: the same test
+//                      fails on the promoted body's cast_cost (81).
 //   HOOK BLADE         `hook_radius = 16` -> 48: hook_orbits_tight_and_fast
 //                      fails on every orbit step; `hook_stun = 12` -> 0:
 //                      hook_snags_drags_and_stuns fails on the stun.
 //   KNIFE FAN          `for spread = -1, 1` -> `for spread = 0, 0`:
-//                      knife_fan_throws_three counts one knife.
+//                      knife_fan_throws_three counts one knife. Restoring
+//                      the aim through og.trunc: the same test reads a
+//                      0.75 aim back as 0.
 //   HURL ORC           `hurl_radius = 24` -> 0: hurled_orc_lands_clear_...
 //                      fails on both foes' stun.
 //   SHOVE              `shove_tiles = 2` -> 0: shove_displaces_... fails on
@@ -36,7 +44,10 @@
 //   WAR BANNER         `banner_regen = 1` -> 0 (core:war_banner tuning):
 //                      banner_regens_allies_... fails on the ally's hp.
 //   WARBAND            `warband_base = 2` -> 0: warband_arrives_... counts
-//                      no grunt.
+//                      no grunt. `local clear = room and not
+//                      on_the_captain(self, sx, sy)` -> `local clear = room`:
+//                      the same test finds the east grunt at 480, inside the
+//                      captain (448 wanted), and a grunt on top of him.
 // (The exact output lines are in the change's report.)
 
 #include <gtest/gtest.h>
@@ -230,6 +241,14 @@ bool notified(const TestGameWorld& tw, const std::string& needle)
             e.text.find(needle) != std::string::npos)
             return true;
     return false;
+}
+
+std::vector<short> xs_of(const std::vector<walker*>& ws)
+{
+    std::vector<short> out;
+    for (const walker* w : ws)
+        out.push_back(w->xpos());
+    return out;
 }
 
 int frozen(const walker* w)
@@ -450,8 +469,10 @@ TEST(KitCaptain, captain_eats_a_corpse_when_hurt)
 }
 
 // The bug the kit fixes: an orc promoted to captain kept no specials. Now
-// the promoted body howls (setting on).
-TEST(KitCaptain, promoted_orc_keeps_howl)
+// the promoted body carries the captain's whole price table (a stale orc
+// table would read 25/20/5000/5000), howls, and eats a corpse at EAT
+// CORPSE's own price (setting on).
+TEST(KitCaptain, promoted_orc_keeps_howl_and_eat_corpse)
 {
     og::test::ScopedHookFailureGuard guard;
     TestGameWorld tw;
@@ -465,10 +486,30 @@ TEST(KitCaptain, promoted_orc_keeps_howl)
     foe->myguy->constitution = 0;  // stun = 10 + level roll: never 0
     orc->transform_to(Order::Living, FAMILY_BIG_ORC);
     ASSERT_EQ(FAMILY_BIG_ORC, orc->family());
+    EXPECT_EQ(25, og::sim::cast_cost(*orc, 1, false));
+    EXPECT_EQ(20, og::sim::cast_cost(*orc, 1, true));
+    EXPECT_EQ(40, og::sim::cast_cost(*orc, 2, false));
+    EXPECT_EQ(50, og::sim::cast_cost(*orc, 3, false));
+    EXPECT_EQ(80, og::sim::cast_cost(*orc, 4, false));
+
+    orc->stats()->set_max_magicpoints(100.0f);
     orc->stats()->set_magicpoints(100.0f);
-    const Cast c = cast(orc, 1, false);
+    Cast c = cast(orc, 1, false);
     EXPECT_TRUE(c.ok) << c.reason;
+    EXPECT_FLOAT_EQ(25.0f, c.mp_spent) << "HOWL's price";
     EXPECT_GT(frozen(foe), 0);
+
+    orc->set_busy(0);
+    orc->stats()->set_max_hitpoints(200.0f);
+    orc->stats()->set_hitpoints(50.0f);
+    walker* stain = add_stain(tw, orc, 3);
+    ASSERT_NE(nullptr, stain);
+    c = cast(orc, 1, true);
+    EXPECT_TRUE(c.ok) << c.reason;
+    EXPECT_FLOAT_EQ(20.0f, c.mp_spent) << "EAT CORPSE's own price";
+    EXPECT_FLOAT_EQ(65.0f, orc->stats()->hitpoints())
+        << "50 + corpse level 3 * corpse_heal_per_level 5";
+    EXPECT_EQ(1, stain->dead()) << "the corpse is eaten";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -738,6 +779,10 @@ TEST(KitCaptain, knife_fan_throws_three)
     ASSERT_EQ(3u, v.size());
     for (const auto& k : v)
         EXPECT_LT(k.first, 0.0f) << "west";
+    // A diagonal walk leaves a fractional aim; the fan puts it back whole
+    // (a truncating restore would read 0, 0 here).
+    v = fan(FACE_DOWN_RIGHT, 0.75f, 0.75f);
+    ASSERT_EQ(3u, v.size());
     // No aim at all: down.
     v = fan(-1, 0, 0);
     ASSERT_EQ(3u, v.size());
@@ -1155,10 +1200,11 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
     const std::array<EdgeCase, 3> cases = {{
         // On the east and south the grid check refuses a body whose far
         // edge reaches the map's last pixel (x + size >= width), so the
-        // scan's first clear tile is one in.
-        {470, 200, 10, 512 - 2 * GRID_SIZE, 200, 2},  // east
+        // scan starts one tile in; the next two tiles (480 and 464) overlap
+        // the captain's box (470..485), so the first grunt is four in.
+        {470, 200, 10, 512 - 4 * GRID_SIZE, 200, 2},  // east
         {200, 30, 16, 200, 0, 4},                     // north, level 16: 2 + 2
-        {200, 480, 10, 200, 512 - 2 * GRID_SIZE, 2},  // south
+        {200, 470, 10, 200, 512 - 4 * GRID_SIZE, 2},  // south
     }};
     for (const EdgeCase& e : cases) {
         TestGameWorld tw;
@@ -1172,6 +1218,13 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         ASSERT_EQ(e.count, grunts.size()) << "captain at " << e.x << "," << e.y;
         EXPECT_EQ(e.want_x, grunts.front()->xpos());
         EXPECT_EQ(e.want_y, grunts.front()->ypos());
+        for (const walker* g : grunts)
+            EXPECT_FALSE(g->xpos() + g->sizex() > captain->xpos() &&
+                         g->xpos() < captain->xpos() + captain->sizex() &&
+                         g->ypos() + g->sizey() > captain->ypos() &&
+                         g->ypos() < captain->ypos() + captain->sizey())
+                << "a grunt at " << g->xpos() << "," << g->ypos()
+                << " stands inside the captain";
         const command* go = front_command(grunts.front());
         ASSERT_NE(nullptr, go);
         EXPECT_EQ(captain->xpos(), go->com1) << "no banner: to the captain";
@@ -1184,12 +1237,34 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         walker* captain = add_captain(tw, 40, 200, 19);  // 2 + 3 = 5 grunts
         ASSERT_NE(nullptr, captain);
         ASSERT_TRUE(cast(captain, 4, true).ok);
-        EXPECT_EQ(5u, grunts_of(tw, captain).size());
+        // The scan walks the captain's own row: the tiles at 32 and 48
+        // overlap his box (40..55) and are skipped, never filled.
+        EXPECT_EQ((std::vector<short>{0, 16, 64, 80, 96}),
+                  xs_of(grunts_of(tw, captain)));
         ASSERT_TRUE(cast(captain, 4, true).ok);
-        EXPECT_EQ(6u, grunts_of(tw, captain).size()) << "topped up to the cap";
+        EXPECT_EQ((std::vector<short>{0, 16, 64, 80, 96, 112}),
+                  xs_of(grunts_of(tw, captain)))
+            << "topped up to the cap, past the grunts already standing";
         const Cast full = cast(captain, 4, true);
         EXPECT_EQ("WARBAND ALREADY HERE", full.reason);
         EXPECT_FLOAT_EQ(0.0f, full.mp_spent);
+    }
+
+    {
+        // A captain 20 px from the west edge: the tile at 16 would cover
+        // 16..31, inside his box (20..35), and so would 32. The second
+        // grunt comes in at 48, never on top of him.
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().new_specials = 1;
+        walker* captain = add_captain(tw, 20, 200);
+        ASSERT_NE(nullptr, captain);
+        ASSERT_EQ(16, captain->sizex());
+        ASSERT_TRUE(cast(captain, 4, true).ok);
+        const auto grunts = grunts_of(tw, captain);
+        EXPECT_EQ((std::vector<short>{0, 48}), xs_of(grunts));
+        for (walker* g : grunts)
+            EXPECT_EQ(200, g->ypos());
     }
 
     {

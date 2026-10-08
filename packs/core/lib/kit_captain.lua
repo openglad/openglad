@@ -206,9 +206,10 @@ local function knife_fan(self)
     return false, "SPECIAL BUSY"
   end
   local facing = facing_index(self)
-  -- shim kept (both): the aim is parked in int temps, as the starburst does.
-  local saved_aim_x = og.trunc(self:lastx())
-  local saved_aim_y = og.trunc(self:lasty())
+  -- The aim is kept whole (a diagonal walk leaves it fractional) and put
+  -- back exactly after the three throws.
+  local saved_aim_x = self:lastx()
+  local saved_aim_y = self:lasty()
   -- fire() charges the weapon cost per knife; the special's price covers it.
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, 3 * self:s_weapon_cost())
@@ -413,6 +414,27 @@ local function war_banner(self)
   return true
 end
 
+-- True when a captain-sized box at (sx, sy) overlaps the captain himself.
+-- The clear-ground probe never counts the walker it measures with, and the
+-- scan runs along the captain's own row or column, so without this a grunt
+-- could be summoned inside him. Same edges as the probe: touching is clear.
+local function on_the_captain(self, sx, sy)
+  local x = self:xpos()
+  local y = self:ypos()
+  local w = self:sizex()
+  local h = self:sizey()
+  if sx + w <= x then
+    return false
+  end
+  if sx >= x + w then
+    return false
+  end
+  if sy + h <= y then
+    return false
+  end
+  return sy < y + h
+end
+
 -- Where the grunts come in: on the map edge nearest the captain, scanning
 -- inward a tile at a time for clear ground. Answers up to `want` spots as a
 -- flat x, y, x, y ... array (the captain is the size proxy: grunts are orcs,
@@ -443,7 +465,8 @@ local function edge_spots(self, want, scan_tiles)
       sy = pixmaxy - C.GRID_SIZE - step
     end
     local room = #spots < want * 2
-    if room and og.spawn_spot_clear(self, sx, sy) then
+    local clear = room and not on_the_captain(self, sx, sy)
+    if clear and og.spawn_spot_clear(self, sx, sy) then
       spots[#spots + 1] = sx
       spots[#spots + 1] = sy
     end

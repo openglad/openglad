@@ -6,7 +6,6 @@ og.family("effect", {
   id = "core:hook_blade",
   wire_id = 15,
   name = "HOOK BLADE",
-  loops_animation = true,
   creates_hit_effect = false,
   flags = {},
   -- The thrown knife's eight frames, stepped by on_act as it spins.
