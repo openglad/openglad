@@ -9,6 +9,7 @@
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/campaign_state_providers.h> // G4 my_team fallback
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/constants.h>
@@ -1000,6 +1001,27 @@ void cycle_generator_rate(SaveData& save)
 void toggle_infinite_gold(SaveData& save)
 {
     save.infinite_gold = static_cast<short>(save.infinite_gold != 0 ? 0 : 1);
+}
+
+void seed_new_specials_from_cfg(SaveData& save, cfg_store& config)
+{
+    save.new_specials =
+        static_cast<short>(config.is_on("gameplay", "new_specials") ? 1 : 0);
+}
+
+void set_new_specials(SaveData& save, cfg_store& config, bool on,
+                      bool decides_session)
+{
+    config.apply_setting("gameplay", "new_specials", on ? "on" : "off");
+    if (decides_session)
+        save.new_specials = static_cast<short>(on ? 1 : 0);
+}
+
+void apply_new_specials_toggle(SaveData& save, cfg_store& config,
+                               bool decides_session)
+{
+    set_new_specials(save, config, !config.is_on("gameplay", "new_specials"),
+                     decides_session);
 }
 
 void toggle_cross_control(SaveData& save)
@@ -2357,6 +2379,11 @@ std::string format_generator_rate_label(const SaveData& save)
 std::string format_infinite_gold_label(const SaveData& save)
 {
     return gold_is_infinite(save) ? "Infinite Gold: On" : "Infinite Gold: Off";
+}
+
+std::string format_new_specials_label(const SaveData& save)
+{
+    return save.new_specials != 0 ? "NEW SPECIALS: ON" : "NEW SPECIALS: OFF";
 }
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---
@@ -4978,12 +5005,12 @@ std::uint64_t match_settings_fingerprint(const SaveData& save)
     // through the frame-tick reload guard, and double-triggering would hide
     // a broken guard from the tests.
     std::string composed = std::format(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         save.current_campaign, save.allied_mode, save.ctf_team_count,
         save.ctf_capture_limit, save.ctf_respawn_ticks,
         save.ctf_strip_scenario_troops, save.respawn_mode,
         save.generator_rate, save.keep_fallen_heroes, save.cross_control,
-        save.infinite_gold, save.time_limit);
+        save.infinite_gold, save.time_limit, save.new_specials);
     // The eight per-team bot knobs (LINEUP §3.1) are lobby-synced like the
     // rest: a host cycling a squad preset must refresh the missions surface.
     for (std::size_t team = 0; team < save.fill.size(); ++team)
@@ -5125,6 +5152,7 @@ std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs)
                      match_upper(format_difficulty_label(inputs.difficulty))});
     faces.push_back(
         {kRulesRowInfiniteGold, match_upper(format_infinite_gold_label(save))});
+    faces.push_back({kRulesRowNewSpecials, format_new_specials_label(save)});
     if (inputs.networked)
     {
         faces.push_back({kRulesRowCrossControl,

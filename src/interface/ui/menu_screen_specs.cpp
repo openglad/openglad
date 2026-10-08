@@ -341,12 +341,15 @@ void fx_options_draw_content(const char* title,
 }
 
 // GAMEPLAY FX: toggles that change how the game feels to play. Single
-// centered column; nav is a vertical cycle through BACK.
+// centered column; nav is a vertical cycle through BACK. New Specials is
+// the one row here that changes the rules rather than the look: it writes
+// the per-machine preference (cfg gameplay/new_specials, the face colour)
+// and, on the machine that decides the session, the session's setting.
 constexpr MenuButtonSpec kGameplayFxRows[] = {
     {.id = "gameplay_fx_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 2, .down = 1}},
+     .nav = {.up = 3, .down = 1}},
     {.id = "toggle_hit_recoil", .label = "Hit recoil",
      .x = 115, .y = fx_row_y(0), .w = 90, .h = 15,
      .action = ButtonAction::ToggleHitRecoil, .arg = -1,
@@ -354,12 +357,17 @@ constexpr MenuButtonSpec kGameplayFxRows[] = {
     {.id = "toggle_attack_lunge", .label = "Attack lunge",
      .x = 115, .y = fx_row_y(1), .w = 90, .h = 15,
      .action = ButtonAction::ToggleAttackLunge, .arg = -1,
-     .nav = {.up = 1, .down = 0}},
+     .nav = {.up = 1, .down = 3}},
+    {.id = "toggle_new_specials", .label = "New Specials",
+     .x = 115, .y = fx_row_y(2), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleNewSpecials, .arg = -1,
+     .nav = {.up = 2, .down = 0}},
 };
 
 constexpr FxToggleDraw kGameplayFxToggleDraws[] = {
     {1, "effects", "hit_recoil"},
     {2, "effects", "attack_lunge"},
+    {3, "gameplay", "new_specials"},
 };
 
 void gameplay_fx_draw_content(void* /*screen_state*/)

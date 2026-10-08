@@ -1069,6 +1069,64 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
         << "event JSON must not contain raw carriage returns inside strings";
 }
 
+// The Game Settings page's New Specials prompt is the terminal twin of the
+// Gameplay FX row: on/off writes the per-machine preference AND the
+// session's setting (the text picker holds no networked lobby, so it always
+// decides its own session); blank keeps both; anything else is refused. The
+// session value is what the next visit's prompt states.
+TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
+{
+    const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref() { cfg.apply_setting("gameplay", "new_specials", value); }
+    } restore_pref{saved_pref};
+
+    const auto drive = [](const std::string& input, int flag) {
+        StdinRedirect stdin_redirect(input);
+        CoutRedirect cout_redirect;
+        StdoutCapture stdout_capture;
+        og::ui::TextPickerConfig config;
+        config.team_families = {FAMILY_SOLDIER};
+        config.new_specials = flag;
+        og::ui::TextPickerError error;
+        og::ui::run_text_picker(config, &error);
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+        return stdout_capture.restore();
+    };
+
+    // Main is 8 items: 4=options, 6=quit. Options asks slot, seed, specials.
+    cfg.apply_setting("gameplay", "new_specials", "on");
+    std::string printed = drive(
+        "4\n\n\noff\n"      // seeded on -> off
+        "4\n\n\nmaybe\n"    // refused, stays off
+        "4\n\n\n\n"          // blank: the prompt states the session value
+        "6\n",
+        -1);
+    std::size_t at = printed.find("New specials: on. Change (on/off, blank keeps current): ");
+    ASSERT_NE(std::string::npos, at) << "the cfg seed is on:\n" << printed;
+    at = printed.find("New specials: off. ", at);
+    ASSERT_NE(std::string::npos, at) << "the session followed the answer";
+    EXPECT_NE(std::string::npos, printed.find("Invalid value; on or off.\n", at));
+    EXPECT_NE(std::string::npos, printed.find("New specials: off. ", at + 1))
+        << "the refused answer changed nothing";
+    EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"))
+        << "the preference followed the answer";
+
+    // The preference now seeds off; "on" turns both back on.
+    printed = drive("4\n\n\non\n4\n\n\n\n6\n", -1);
+    at = printed.find("New specials: off. ");
+    ASSERT_NE(std::string::npos, at) << printed;
+    EXPECT_NE(std::string::npos, printed.find("New specials: on. ", at));
+    EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
+
+    // --new-specials 0 overrides the cfg seed for this run only.
+    printed = drive("4\n\n\n\n6\n", 0);
+    EXPECT_NE(std::string::npos, printed.find("New specials: off. ")) << printed;
+    EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"))
+        << "a blank answer writes nothing";
+}
+
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
     // Team Build is 12 items (§2.5 in-place substitution: 1=roster,
@@ -1096,9 +1154,11 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "4\n"       // main: options
         "newslot\n"
         "not-a-seed\n"
+        "\n"        //   New Specials: blank keeps current
         "4\n"       // main: options again
         "textslot\n"
         "123\n"
+        "off\n"     //   New Specials: off
         "2\n"       // main: continue -> team build (base camp)
         "1\n"       // base camp: roster (deploy flags + sub-prompt)
         "deploy 1\n" //   roster: bench display row 1
@@ -1168,6 +1228,14 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // leave it ambient and --gtest_shuffle decides.
     og::runtime::current_session->current_difficulty_ = 1;  // Battle
 
+    // The options visits write the New Specials preference; put it back.
+    const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref() { cfg.apply_setting("gameplay", "new_specials", value); }
+    } restore_pref{saved_pref};
+    cfg.apply_setting("gameplay", "new_specials", "on");
+
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
     StdoutCapture stdout_capture;
@@ -1180,6 +1248,12 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
     EXPECT_EQ("textslot", config.save_name);
+    // The first visit's blank kept the seeded "on"; the second's "off" took.
+    const std::size_t first_prompt = printed.find("New specials: on. ");
+    ASSERT_NE(std::string::npos, first_prompt) << "the first options visit";
+    EXPECT_NE(std::string::npos, printed.find("New specials: on. ", first_prompt + 1))
+        << "a blank answer keeps the session value";
+    EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"));
     EXPECT_EQ(1, config.level)
         << "the earned-roads gate must refuse the unearned forward jump";
     EXPECT_EQ(std::vector<int>({FAMILY_SOLDIER, FAMILY_MAGE, FAMILY_SOLDIER}),

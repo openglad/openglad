@@ -30,6 +30,7 @@
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/win_shares.h>
@@ -14053,6 +14054,42 @@ TEST(PickerNetworkClient, joiner_adopts_host_new_specials)
         join_client->poll_and_apply();
         return join_session.myscreen_->save_data.new_specials == 0;
     })) << "the joiner's save must adopt the host's New Specials (off)";
+
+    // The joiner's Gameplay FX click goes through the real row callback with
+    // the joiner's lobby installed: it flips the joiner's preference (what
+    // it will host next time) and leaves the host's value in its session.
+    {
+        const std::string saved_pref =
+            cfg.get_setting("gameplay", "new_specials");
+        struct RestorePref {
+            std::string value;
+            ~RestorePref()
+            {
+                cfg.apply_setting("gameplay", "new_specials", value);
+            }
+        } restore_pref{saved_pref};
+        cfg.apply_setting("gameplay", "new_specials", "on");
+
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard installed(join_client.get());
+        ASSERT_FALSE(picker_lobby_host_controls_visible())
+            << "the joiner does not decide the session";
+        // The lobby echo inside the click puts the host's value back into
+        // the save either way, so the trace of what the click itself wrote
+        // is the proof the row left the session alone.
+        trace_clear();
+        EXPECT_EQ(MENU_REDRAW, change_new_specials());
+        EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"))
+            << "the joiner's click records its own preference";
+        EXPECT_EQ(0, join_session.myscreen_->save_data.new_specials);
+        EXPECT_EQ(MENU_REDRAW, change_new_specials());
+        EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
+        EXPECT_EQ(0, join_session.myscreen_->save_data.new_specials)
+            << "a joiner's preference never overrides the host's value";
+        EXPECT_TRUE(trace_contains("teams", "new_specials 0"));
+        EXPECT_FALSE(trace_contains("teams", "new_specials 1"))
+            << "the joiner's click wrote the session value itself";
+    }
 
     host_save.new_specials = 1;
     host_client->sync_settings_from_save();

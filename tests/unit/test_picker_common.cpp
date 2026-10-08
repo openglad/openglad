@@ -21,6 +21,7 @@
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -425,16 +426,33 @@ TEST(PickerCommon, reset_for_new_game)
 // description_box_content.w / 6 = 164 / 6), must fit the box — at most 10
 // lines (the 8px fallback pitch ceiling) and no line over 27 chars. This is
 // the regression guard that a future pack edit cannot silently overflow the
-// box.
+// box. The hire list itself is covered too, whatever its families' playable
+// flags say: the orc captain is on offer there, and every family on offer
+// must ship a description for the box.
 TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
 {
     init_family_registry();
+    for (const int family_id : og::ui::kAllowableGuys)
+    {
+        const auto* fd = get_family_descriptor(family_id);
+        ASSERT_NE(nullptr, fd) << "hire-list family " << family_id;
+        EXPECT_NE(nullptr, fd->description)
+            << "hire-list family " << family_id << " has no description";
+    }
+    const auto on_hire_list = [](int family_id) {
+        return std::find(og::ui::kAllowableGuys.begin(),
+                         og::ui::kAllowableGuys.end(),
+                         family_id) != og::ui::kAllowableGuys.end();
+    };
     int checked = 0;
+    bool checked_captain = false;
     for (int family_id = 0; family_id < 256; family_id++)
     {
         const auto* fd = get_family_descriptor(family_id);
-        if (fd == nullptr || !fd->is_playable || fd->description == nullptr)
+        if (fd == nullptr || fd->description == nullptr ||
+            (!fd->is_playable && !on_hire_list(family_id)))
             continue;
+        checked_captain |= family_id == FAMILY_BIG_ORC;
         const std::vector<std::string> flowed = og::core::wrap_text(
             fd->description, 27, og::core::WrapMode::Paragraphs);
         EXPECT_LE(flowed.size(), 10u)
@@ -446,6 +464,7 @@ TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
         checked++;
     }
     EXPECT_GE(checked, 10) << "core class pack not installed";
+    EXPECT_TRUE(checked_captain) << "the hire box shows the captain's text too";
 }
 
 // --- family_display_name ---
@@ -484,10 +503,12 @@ TEST(PickerCommon, family_hiring_base_cost)
 
 TEST(PickerCommon, allowable_guys_constants)
 {
-    ASSERT_TRUE(og::ui::kAllowableGuys.size() == 14);
+    ASSERT_TRUE(og::ui::kAllowableGuys.size() == 15);
     ASSERT_TRUE(og::ui::kAllowableGuys[0] == FAMILY_SOLDIER);
     ASSERT_TRUE(og::ui::kAllowableGuys[1] == FAMILY_BARBARIAN);
     ASSERT_TRUE(og::ui::kAllowableGuys[13] == FAMILY_GHOST);
+    // The orc captain is hireable, appended so no earlier position moved.
+    ASSERT_TRUE(og::ui::kAllowableGuys[14] == FAMILY_BIG_ORC);
 }
 
 // --- kDifficultyNames ---
@@ -780,8 +801,8 @@ TEST(PickerCommon, hire_session_cycle)
     ASSERT_TRUE(session.current_recruit() != nullptr);
     ASSERT_TRUE(session.current_recruit()->family == FAMILY_SOLDIER);
 
-    // Cycle forward through all 14 families
-    for (int i = 1; i < 14; i++) {
+    // Cycle forward through all 15 families
+    for (int i = 1; i < 15; i++) {
         session.next_family();
         ASSERT_TRUE(session.family_index() == i);
         ASSERT_TRUE(session.current_recruit() != nullptr);
@@ -793,7 +814,11 @@ TEST(PickerCommon, hire_session_cycle)
     ASSERT_TRUE(session.family_index() == 0);
     ASSERT_TRUE(session.current_recruit()->family == FAMILY_SOLDIER);
 
-    // Cycle backward wraps to 13 (GHOST)
+    // Cycle backward wraps to 14 (ORC CAPTAIN)
+    session.prev_family();
+    ASSERT_TRUE(session.family_index() == 14);
+    ASSERT_TRUE(session.current_recruit()->family == FAMILY_BIG_ORC);
+    // ... and one more step back is the ghost, where the list used to end.
     session.prev_family();
     ASSERT_TRUE(session.family_index() == 13);
     ASSERT_TRUE(session.current_recruit()->family == FAMILY_GHOST);
@@ -3616,6 +3641,92 @@ TEST(PickerCommon, format_infinite_gold_label)
     EXPECT_LE(og::ui::format_infinite_gold_label(save).size(), 23u);
     save.infinite_gold = 0;
     EXPECT_LE(og::ui::format_infinite_gold_label(save).size(), 23u);
+}
+
+// --- New Specials (the Gameplay FX row and its terminal twins) ---
+
+// The per-machine preference seeds the session value, and reads exactly as
+// the row's face does: "on" is on, anything else is off (a process that
+// never loaded its settings has the empty string).
+TEST(PickerCommon, seed_new_specials_reads_cfg)
+{
+    cfg_store config;
+    SaveData save;
+    save.new_specials = 1;
+
+    config.apply_setting("gameplay", "new_specials", "off");
+    og::ui::seed_new_specials_from_cfg(save, config);
+    EXPECT_EQ(0, save.new_specials) << "cfg off seeds the session off";
+
+    config.apply_setting("gameplay", "new_specials", "on");
+    og::ui::seed_new_specials_from_cfg(save, config);
+    EXPECT_EQ(1, save.new_specials) << "cfg on seeds the session on";
+
+    cfg_store unloaded;
+    og::ui::seed_new_specials_from_cfg(save, unloaded);
+    EXPECT_EQ(0, save.new_specials)
+        << "an unset preference reads off, the same as the row's face";
+
+    cfg_store loaded;
+    loaded.apply_setting("gameplay", "new_specials", "on");  // the default
+    og::ui::seed_new_specials_from_cfg(save, loaded);
+    EXPECT_EQ(1, save.new_specials);
+}
+
+// The preference always flips; the session value follows only on the
+// machine that decides the session. A joiner's click records what it will
+// host next time and leaves the host's value in its save.
+TEST(PickerCommon, apply_toggle_follows_decides_session)
+{
+    cfg_store config;
+    config.apply_setting("gameplay", "new_specials", "on");
+    SaveData save;
+    save.new_specials = 1;
+
+    og::ui::apply_new_specials_toggle(save, config, /*decides_session=*/true);
+    EXPECT_EQ("off", config.get_setting("gameplay", "new_specials"));
+    EXPECT_EQ(0, save.new_specials) << "the deciding machine's session follows";
+
+    og::ui::apply_new_specials_toggle(save, config, /*decides_session=*/true);
+    EXPECT_EQ("on", config.get_setting("gameplay", "new_specials"));
+    EXPECT_EQ(1, save.new_specials);
+
+    // A joiner holding the host's OFF: the click flips its preference only.
+    save.new_specials = 0;
+    og::ui::apply_new_specials_toggle(save, config, /*decides_session=*/false);
+    EXPECT_EQ("off", config.get_setting("gameplay", "new_specials"));
+    EXPECT_EQ(0, save.new_specials);
+    og::ui::apply_new_specials_toggle(save, config, /*decides_session=*/false);
+    EXPECT_EQ("on", config.get_setting("gameplay", "new_specials"));
+    EXPECT_EQ(0, save.new_specials) << "the host's value stays in the session";
+
+    // An unset preference reads off, so the first click turns it on.
+    cfg_store unloaded;
+    og::ui::apply_new_specials_toggle(save, unloaded, true);
+    EXPECT_EQ("on", unloaded.get_setting("gameplay", "new_specials"));
+    EXPECT_EQ(1, save.new_specials);
+
+    // The prompts' setter writes the value asked for, not a flip.
+    og::ui::set_new_specials(save, config, /*on=*/true, true);
+    EXPECT_EQ("on", config.get_setting("gameplay", "new_specials"));
+    EXPECT_EQ(1, save.new_specials);
+    og::ui::set_new_specials(save, config, /*on=*/false, false);
+    EXPECT_EQ("off", config.get_setting("gameplay", "new_specials"));
+    EXPECT_EQ(1, save.new_specials);
+}
+
+TEST(PickerCommon, format_new_specials_label)
+{
+    SaveData save;
+    EXPECT_EQ("NEW SPECIALS: OFF", og::ui::format_new_specials_label(save))
+        << "a hand-built save is classic";
+    save.new_specials = 1;
+    EXPECT_EQ("NEW SPECIALS: ON", og::ui::format_new_specials_label(save));
+    save.new_specials = 7;
+    EXPECT_EQ("NEW SPECIALS: ON", og::ui::format_new_specials_label(save))
+        << "any nonzero session value plays the new kits";
+    // A RULES face fits the 42-glyph row.
+    EXPECT_LE(og::ui::format_new_specials_label(save).size(), 42u);
 }
 
 TEST(PickerCommon, can_afford_and_format_wallet_amount)
@@ -6829,6 +6940,7 @@ TEST(PickerCommon, match_settings_fingerprint_moves_on_every_synced_knob_and_not
     moves("cross_control", save.cross_control, save.cross_control + 1);
     moves("infinite_gold", save.infinite_gold, save.infinite_gold + 1);
     moves("time_limit", save.time_limit, save.time_limit + 3600);
+    moves("new_specials", save.new_specials, save.new_specials + 1);
     for (std::size_t team = 0; team < 4; ++team)
     {
         moves("fill[team]", save.fill[team],
