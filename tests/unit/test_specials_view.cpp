@@ -133,7 +133,7 @@ TEST(SpecialsView, off_equals_registry_before_the_feature)
             const unsigned short stamped = w->stats()->special_cost(slot);
             ASSERT_EQ(fd->special_cost[slot], stamped)
                 << "the loader stamps the declared cost, family " << family;
-            if (slot_new)
+            if (slot_new && family == FAMILY_GOLEM)
                 ++hidden_slots_seen;
             for (const short flag : {short{0}, short{1}}) {
                 tw.world().new_specials = flag;
@@ -176,7 +176,8 @@ TEST(SpecialsView, off_equals_registry_before_the_feature)
     }
     EXPECT_GE(families_checked, NUM_FAMILIES) << "every core family installed";
     EXPECT_EQ(2, hidden_slots_seen)
-        << "the probe's two new-kit slots were really in the sweep";
+        << "the probe's two new-kit slots were really in the sweep (the "
+           "shipped kits' new-kit slots are swept too, but not counted)";
 
     // The rule above, spelled out on the probe so the sweep cannot agree
     // with a broken rule by computing it the same way.

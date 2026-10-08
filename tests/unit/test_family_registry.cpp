@@ -158,12 +158,12 @@ TEST(FamilyRegistry, registry_behavior_lives_in_pack_lua)
                        FAMILY_SLIME, FAMILY_SMALL_SLIME, FAMILY_MEDIUM_SLIME,
                        FAMILY_BARBARIAN, FAMILY_ARCHMAGE, FAMILY_CLERIC,
                        FAMILY_DRUID, FAMILY_MAGE, FAMILY_THIEF,
-                       FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_ORC})
+                       FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_ORC,
+                       FAMILY_FAERIE, FAMILY_BIG_ORC})
         EXPECT_TRUE(has(family, FamilyHook::DoSpecial))
             << get_family_descriptor(family)->name;
     // Data-only families register none.
-    for (int family : {FAMILY_GOLEM, FAMILY_GIANT_SKELETON, FAMILY_TOWER1,
-                       FAMILY_FAERIE, FAMILY_BIG_ORC})
+    for (int family : {FAMILY_GOLEM, FAMILY_GIANT_SKELETON, FAMILY_TOWER1})
         EXPECT_FALSE(has(family, FamilyHook::DoSpecial))
             << get_family_descriptor(family)->name;
 
