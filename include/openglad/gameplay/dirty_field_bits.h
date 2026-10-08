@@ -123,9 +123,15 @@ inline constexpr std::uint8_t BIT_SPAWN_X = 90;
 inline constexpr std::uint8_t BIT_SPAWN_Y = 91;
 inline constexpr std::uint8_t BIT_SPAWN_FLOOR = 92;
 
-inline constexpr std::uint8_t FIELD_COUNT = 93;
+// New Specials entity state (93-95): the possession link, the kit-state
+// byte (kit_state.h) and the host's possession countdown.
+inline constexpr std::uint8_t BIT_POSSESS_LINK = 93;
+inline constexpr std::uint8_t BIT_KIT_STATE = 94;
+inline constexpr std::uint8_t BIT_POSSESS_TICKS = 95;
 
-static_assert(BIT_SPAWN_FLOOR + 1 == FIELD_COUNT,
+inline constexpr std::uint8_t FIELD_COUNT = 96;
+
+static_assert(BIT_POSSESS_TICKS + 1 == FIELD_COUNT,
               "Dirty field bit count drift -- update dirty_field_bits.h");
 
 static_assert(FIELD_COUNT <= 128,

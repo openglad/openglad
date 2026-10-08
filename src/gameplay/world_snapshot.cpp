@@ -1000,6 +1000,8 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_u8(buffer, snapshot.control_policy);
     for (const std::uint8_t machine : snapshot.player_machine)
         append_u8(buffer, machine);
+    // Snapshot v15: the New Specials setting.
+    append_u8(buffer, snapshot.new_specials);
 }
 
 void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -1039,6 +1041,7 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.control_policy = reader.read_u8("world.control_policy");
     for (std::uint8_t& machine : snapshot.player_machine)
         machine = reader.read_u8("world.player_machine");
+    snapshot.new_specials = reader.read_u8("world.new_specials");
 }
 
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
@@ -1941,6 +1944,16 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_spawn_x(safe_spawn_x);
     entity.set_spawn_y(safe_spawn_y);
     entity.set_spawn_floor(snapshot.spawn_floor);
+    // New Specials state. possess_link is applied as is: a stale id resolves
+    // to nothing through find_by_id. A flip of the HIDDEN bit goes through
+    // set_hidden so the mirror's collision table follows it, then the raw
+    // byte lands.
+    entity.set_possess_link(snapshot.possess_link);
+    entity.set_possess_ticks(snapshot.possess_ticks);
+    const bool snapshot_hidden = (snapshot.kit_state & KIT_HIDDEN) != 0;
+    if (snapshot_hidden != entity.hidden())
+        entity.set_hidden(snapshot_hidden);
+    entity.set_kit_state(snapshot.kit_state);
     // A walker present in a snapshot is by construction awake (capture
     // excludes dormant walkers): clear dormancy so a mirror whose own level
     // load created the same delayed walker reveals it when the authoritative
@@ -2458,6 +2471,9 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.spawn_x = entity.spawn_x();
     snapshot.spawn_y = entity.spawn_y();
     snapshot.spawn_floor = entity.spawn_floor();
+    snapshot.possess_link = entity.possess_link();
+    snapshot.kit_state = entity.kit_state();
+    snapshot.possess_ticks = entity.possess_ticks();
     snapshot.team_num = entity.team_num();
     snapshot.real_team_num = entity.real_team_num();
     snapshot.user = entity.user();
@@ -2726,6 +2742,7 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.generator_rate = world.generator_rate;
     snapshot.control_policy = world.control_policy;
     snapshot.player_machine = world.player_machine;
+    snapshot.new_specials = world.new_specials != 0 ? 1 : 0;
 
     std::unordered_set<int> seen_guy_ids;
     capture_entity_list(world.oblist, snapshot.oblist, snapshot.guy_snapshots,
@@ -3191,6 +3208,8 @@ bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     world.generator_rate = snapshot.generator_rate;
     world.control_policy = snapshot.control_policy;
     world.player_machine = snapshot.player_machine;
+    // Sim-side clamp: a crafted snapshot reaches this unchecked.
+    world.new_specials = snapshot.new_specials != 0 ? 1 : 0;
 
     GuyStorage guy_storage;
     GuyLookup guy_lookup;
@@ -3298,6 +3317,7 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.generator_rate = delta.generator_rate;
     baseline.control_policy = delta.control_policy;
     baseline.player_machine = delta.player_machine;
+    baseline.new_specials = delta.new_specials;
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;

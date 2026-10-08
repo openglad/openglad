@@ -371,6 +371,8 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
         append_i16(payload, squad);
     for (const std::int16_t level : settings.map_units)
         append_i16(payload, level);
+    // Protocol v19: the New Specials setting, appended LAST.
+    append_i16(payload, settings.new_specials);
 }
 
 og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
@@ -396,6 +398,7 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
         squad = reader.read_i16();
     for (std::int16_t& level : settings.map_units)
         level = reader.read_i16();
+    settings.new_specials = reader.read_i16();
     return settings;
 }
 
@@ -515,6 +518,8 @@ std::vector<std::uint8_t> serialize_initial_setup_message(
     append_i16(payload, message.generator_rate);
     // v13: the ready-resetting setup generation (see net_transport.h).
     append_u32(payload, message.setup_generation);
+    // v19: the session's New Specials setting.
+    append_i16(payload, message.new_specials);
     append_u32(payload, static_cast<std::uint32_t>(message.guys.size()));
     for (const auto& guy : message.guys)
         append_initial_setup_guy(payload, guy);
@@ -549,6 +554,7 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.respawn_mode = reader.read_i16();
             message.generator_rate = reader.read_i16();
             message.setup_generation = reader.read_u32();
+            message.new_specials = reader.read_i16();
             const std::uint32_t guy_count = reader.read_u32();
             if (!reader.ok() ||
                 guy_count >

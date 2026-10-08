@@ -314,12 +314,9 @@ class walker : public og::sim::SimEntity
 		// countdown the HOST carries (0 = permanent while linked). All three
 		// are 0 on every walker unless a New Specials kit wrote them, and
 		// neither transform_to nor transfer_stats touches them.
-		[[nodiscard]] std::uint8_t kit_state() const noexcept { return kit_state_; }
-		void set_kit_state(std::uint8_t value) { kit_state_ = value; }
-		[[nodiscard]] std::uint32_t possess_link() const noexcept { return possess_link_; }
-		void set_possess_link(std::uint32_t value) { possess_link_ = value; }
-		[[nodiscard]] std::int16_t possess_ticks() const noexcept { return possess_ticks_; }
-		void set_possess_ticks(std::int16_t value) { possess_ticks_ = value; }
+		OG_WALKER_DIRTY_FIELD(std::uint8_t, kit_state, og::dirty::BIT_KIT_STATE);
+		OG_WALKER_DIRTY_FIELD(std::uint32_t, possess_link, og::dirty::BIT_POSSESS_LINK);
+		OG_WALKER_DIRTY_FIELD(std::int16_t, possess_ticks, og::dirty::BIT_POSSESS_TICKS);
 		[[nodiscard]] bool hidden() const noexcept
 		{
 			return (kit_state() & KIT_HIDDEN) != 0;

@@ -707,7 +707,7 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
 {
     static_assert(std::is_standard_layout_v<og::sim::EntitySnapshot>);
     static_assert(std::is_trivially_copyable_v<og::sim::EntitySnapshot>);
-    EXPECT_EQ(91u, og::sim::kEntitySnapshotTableFieldCount);
+    EXPECT_EQ(94u, og::sim::kEntitySnapshotTableFieldCount);
     EXPECT_EQ(2u, og::sim::kEntitySnapshotManualFieldCount);
     EXPECT_EQ(og::dirty::FIELD_COUNT, og::sim::kEntitySnapshotTrackedFieldCount);
 
@@ -2455,13 +2455,15 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 537 bytes of world state (72 pre-block scalars, the v11 respawn block
+    // 538 bytes of world state (72 pre-block scalars, the v11 respawn block
     // at its empty size 9, the fixed 409-byte mode block — v13 appended the
     // one 5-byte camera-view slot — the 26 match-knob bytes, and the trailing
-    // respawn_mode/generator_rate/control_policy/player_machine 21) + 4 grid
-    // bytes. Not to be confused with the world-state size itself, which v13
-    // moved to 537: the two constants collide numerically one bump apart.
-    constexpr std::size_t kEntityCountOffset = 542;
+    // respawn_mode/generator_rate/control_policy/player_machine/new_specials
+    // 22; v15 appended new_specials) + 4 grid bytes. Not to be confused with
+    // the world-state size itself (kSerializedWorldStateBytes in
+    // test_world_snapshot_coverage.cpp, 538 since v15), from which this is
+    // derived: 1 + 538 + 4.
+    constexpr std::size_t kEntityCountOffset = 543;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;

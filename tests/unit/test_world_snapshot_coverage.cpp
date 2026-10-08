@@ -25,15 +25,17 @@
 namespace
 {
 
-// Snapshot v13: one format byte followed by 537 bytes of fixed/default world
+// Snapshot v15: one format byte followed by 538 bytes of fixed/default world
 // state before the grid block (72 pre-block scalars + the empty respawn
-// block 9 + the fixed mode block 409 + 26 match-knob bytes + 21 trailing
-// scalar/player_machine bytes). Keeping this wire pin explicit makes
-// malformed payload tests fail loudly when the format is deliberately
+// block 9 + the fixed mode block 409 + 26 match-knob bytes + 22 trailing
+// scalar/player_machine/new_specials bytes). Keeping this wire pin explicit
+// makes malformed payload tests fail loudly when the format is deliberately
 // revised: v12 appended the eight per-team bot i16s to the match knobs,
-// which is the whole of the 10 -> 26 move, and v13 appended the one 5-byte
-// camera-view slot to the mode block, which is the whole of the 404 -> 409.
-constexpr std::size_t kSerializedWorldStateBytes = 537;
+// which is the whole of the 10 -> 26 move, v13 appended the one 5-byte
+// camera-view slot to the mode block, which is the whole of the 404 -> 409,
+// and v15 appended the one new_specials byte after player_machine, the whole
+// of the 537 -> 538.
+constexpr std::size_t kSerializedWorldStateBytes = 538;
 constexpr std::size_t kGridOffset = 1 + kSerializedWorldStateBytes;
 constexpr std::size_t kGridDirtyOffset = kGridOffset + 2;
 constexpr std::size_t kGridFullResendOffset = kGridOffset + 3;
