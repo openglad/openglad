@@ -1319,4 +1319,39 @@ TEST_F(ScriptBindingPropsTest, kit_possess_and_release_hand_back_the_engine_answ
     expect_errored_with(
         run_do_special("    og.possess(self, self:foe(), -1)\n", self),
         "og.possess: ticks out of range");
+
+    // A live host on another team is taken: true and no reason, both sides
+    // linked, the rider hidden, the host on the rider's team with the
+    // countdown set. Releasing from the rider's side hands the rider back
+    // and the host goes home.
+    walker* live = w.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, live);
+    live->set_team_num(1);
+    live->setxy(64, 64);
+    self->setxy(96, 64);
+    self->set_foe(live);
+    expect_ran_clean(run_do_special(
+        "    local ok, reason = og.possess(self, self:foe(), 30)\n"
+        "    og.log('possess', ok and 1 or 0, reason == nil and 1 or 0)\n",
+        self));
+    const std::vector<std::string> taken = logged();
+    ASSERT_EQ(1u, taken.size());
+    EXPECT_EQ("possess\t1\t1", taken[0]) << "a live foe is possessed";
+    EXPECT_EQ(live->entity_id(), self->possess_link());
+    EXPECT_EQ(self->entity_id(), live->possess_link());
+    EXPECT_EQ(30, live->possess_ticks());
+    EXPECT_TRUE(self->hidden()) << "the rider rides hidden";
+    EXPECT_EQ(self->team_num(), live->team_num())
+        << "the host now fights for the rider's team";
+
+    expect_ran_clean(run_do_special(
+        "    og.log('release', og.release_possession(self) == self and 1 or 0)\n",
+        self));
+    const std::vector<std::string> released = logged();
+    ASSERT_EQ(1u, released.size());
+    EXPECT_EQ("release\t1", released[0]) << "release hands back the rider";
+    EXPECT_EQ(0u, self->possess_link());
+    EXPECT_EQ(0u, live->possess_link());
+    EXPECT_FALSE(self->hidden());
+    EXPECT_EQ(1, live->team_num()) << "the host goes home";
 }
