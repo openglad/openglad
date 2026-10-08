@@ -33,6 +33,7 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -209,7 +210,9 @@ int centre_y(const walker* w) { return w->ypos() + w->sizey() / 2; }
 
 // The OFF twin every new slot shares: with the setting off the slot is not
 // in play, so the cost gate refuses (NoMP) before any script runs, and no
-// kit entity appears.
+// kit entity appears. Perturbation (staged living-06: `new_kit = true`
+// dropped from the slot's row): the slot casts with the setting off -> red,
+// for each of the four twins.
 void expect_off_slot_refused(int slot, short shift)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -240,6 +243,7 @@ void expect_off_slot_refused(int slot, short shift)
 // The table as each setting sees it.
 // ---------------------------------------------------------------------------
 
+// Perturbation (staged living-06: name = "METEORS"): red.
 TEST(KitElemental, specials_table_reads_the_kit_on_and_the_classic_slot_off)
 {
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_FIREELEMENTAL);
@@ -278,8 +282,16 @@ TEST(KitElemental, specials_table_reads_the_kit_on_and_the_classic_slot_off)
 // the elemental and stands touching it burns 2 x (6 + 4) a tick; a foe that
 // only touches it burns 6 + 4; a far foe and a touching ally do not burn.
 // An ember drops at the elemental's feet every fourth tick.
+// The touching foes stand where a touch really happens, not only straight
+// beside the elemental: the striker half a body lower on its right, one
+// foe touching its top-left corner diagonally, and a giant skeleton whose
+// big box reaches over it from the top-left. The far foe sits well inside
+// the finder's wide search radius, so only the box test spares it.
 // Perturbation (staged kit tuning immolate_drain = 200): the first marker
 // tick finds 70 < 200 MP and puts the fire out; nothing burns -> red.
+// Perturbation (staged kit: the contact search radius back to
+// owner:sizex() + 4, which measures top-left corner to top-left corner):
+// the lower striker, the corner foe and the giant are not burned -> red.
 TEST(KitElemental, immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -288,11 +300,18 @@ TEST(KitElemental, immolate_drains_two_per_tick_burns_contact_melee_most_and_lay
     ASSERT_NE(nullptr, e);
     const int ex = e->xpos();
     const int ey = e->ypos();
-    living* striker = add_living(w, FAMILY_SOLDIER, 1, ex + e->sizex(), ey);
+    living* striker = add_living(w, FAMILY_SOLDIER, 1, ex + e->sizex(), ey + 10);
     living* toucher = add_living(w, FAMILY_SOLDIER, 1, ex, ey + e->sizey() + 2);
     living* far = add_living(w, FAMILY_SOLDIER, 1, ex + 120, ey);
     living* ally = add_living(w, FAMILY_SOLDIER, 0, ex - e->sizex(), ey);
     ASSERT_TRUE(striker && toucher && far && ally);
+    living* corner = add_living(w, FAMILY_SOLDIER, 1, 0, 0);
+    ASSERT_NE(nullptr, corner);
+    place(corner, ex - corner->sizex() - 2, ey - corner->sizey() - 2);
+    living* giant = add_living(w, FAMILY_GIANT_SKELETON, 1, 0, 0);
+    ASSERT_NE(nullptr, giant);
+    ASSERT_GE(giant->sizex(), 48) << "the giant's box is the big one";
+    place(giant, ex - giant->sizex() + 2, ey - giant->sizey() + 2);
     // The elemental is a bot: struck with mana it may light the fire
     // itself (the hit path), so it is struck dry and filled after.
     e->stats()->set_magicpoints(0.0f);
@@ -320,6 +339,10 @@ TEST(KitElemental, immolate_drains_two_per_tick_burns_contact_melee_most_and_lay
         << "the melee attacker burns double";
     EXPECT_TRUE(lost_one_hit_of(10.0f, toucher0, hp(toucher)))
         << "contact burns 6 + level";
+    EXPECT_TRUE(lost_one_hit_of(10.0f, 100.0f, hp(corner)))
+        << "a diagonal touch burns too";
+    EXPECT_TRUE(lost_one_hit_of(10.0f, 100.0f, hp(giant)))
+        << "a big foe reaching over the elemental burns";
     EXPECT_FLOAT_EQ(100.0f, hp(far));
     EXPECT_FLOAT_EQ(100.0f, hp(ally));
     EXPECT_TRUE(embers(w).empty()) << "no ember on the first tick";
@@ -352,8 +375,13 @@ TEST(KitElemental, immolate_is_not_cast_with_new_specials_off)
 
 // An ember burns the foes standing on it every sixth tick of its forty
 // (36, 30, 24, 18, 12, 6 left: six burns of 4 + level / 2), never an ally,
-// shows its dying frame for its last ten ticks and dies at zero.
+// shows its dying frame for its last ten ticks and dies at zero. "Standing
+// on it" means any overlap: here the ember lies under the middle of each
+// foe, not under its top-left corner.
 // Perturbation (staged ember tuning ember_pulse = 999): no burn -> red.
+// Perturbation (staged ember lib: the search radius back to the ember's
+// own width, which measures top-left corner to top-left corner): neither
+// the crosser nor the giant burns -> red.
 TEST(KitElemental, embers_burn_crossers_then_die)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -366,11 +394,18 @@ TEST(KitElemental, embers_burn_crossers_then_die)
         ASSERT_TRUE(marker->act());
     ASSERT_EQ(1u, embers(w).size());
     walker* ember = embers(w)[0];
-    // The elemental walks off; a foe and an ally step onto the ember.
+    // The elemental walks off; a foe and an ally step onto the ember, the
+    // foe with the ember right under the middle of its body, and a giant
+    // skeleton stands with the ember under its middle too.
     place(e, e->xpos() + 150, e->ypos());
-    living* crosser = add_living(w, FAMILY_SOLDIER, 1, ember->xpos(), ember->ypos());
+    living* crosser = add_living(w, FAMILY_SOLDIER, 1, 0, 0);
     living* friend_on_it = add_living(w, FAMILY_SOLDIER, 0, ember->xpos(), ember->ypos());
-    ASSERT_TRUE(crosser && friend_on_it);
+    living* giant = add_living(w, FAMILY_GIANT_SKELETON, 1, 0, 0);
+    ASSERT_TRUE(crosser && friend_on_it && giant);
+    place(crosser, centre_x(ember) - crosser->sizex() / 2,
+          centre_y(ember) - crosser->sizey() / 2);
+    place(giant, centre_x(ember) - giant->sizex() / 2,
+          centre_y(ember) - giant->sizey() / 2);
     EXPECT_EQ(0, ember->frame());
 
     int acts = 0;
@@ -381,6 +416,8 @@ TEST(KitElemental, embers_burn_crossers_then_die)
     EXPECT_EQ(4, acts);
     EXPECT_TRUE(lost_one_hit_of(6.0f, 100.0f, hp(crosser)))
         << "one burn at 36 ticks left";
+    EXPECT_TRUE(lost_one_hit_of(6.0f, 100.0f, hp(giant)))
+        << "the giant over the ember burns too";
     while (!ember->dead()) {
         ASSERT_TRUE(ember->act());
         if (!ember->dead() && ember->lifetime() == 9) {
@@ -397,6 +434,23 @@ TEST(KitElemental, embers_burn_crossers_then_die)
         << "six burns of six";
     EXPECT_FLOAT_EQ(100.0f, hp(friend_on_it));
     EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The burn scans search a radius wide enough for any foe box up to 64 x 64
+// to overlap the burning box (effect_ember.lua, LIVING_BOX): a bigger
+// living would be missed at some overlaps. Every core living fits.
+// Perturbation (a core living box over 64 px, e.g. the bound lowered here
+// to 32): the golem and the giant skeleton exceed it -> red.
+TEST(KitElemental, every_core_living_box_fits_the_burn_search)
+{
+    constexpr int kLivingBox = 64;
+    ElementalWorld w(1);
+    for (int family = 0; family < NUM_FAMILIES; ++family) {
+        living* l = add_living(w, family, 1, 100, 100);
+        ASSERT_NE(nullptr, l) << "family " << family;
+        EXPECT_LE(l->sizex(), kLivingBox) << "family " << family;
+        EXPECT_LE(l->sizey(), kLivingBox) << "family " << family;
+    }
 }
 
 // 31 MP: lighting takes 30, the first tick finds 1 < 2 and the fire goes
@@ -612,8 +666,43 @@ TEST(KitElemental, meteor_rain_strikes_the_target_area_every_five_ticks)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// A current foe that has just died is no target: the rain falls on the
+// nearest living foe instead, and with only the corpse in range it is
+// refused and costs nothing.
+// Perturbation (staged kit: rain_target's dead-foe check removed): the
+// rain is centred on the corpse -> red.
+TEST(KitElemental, meteor_rain_passes_over_a_dead_foe)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* e = add_elemental(w, 7, 1000.0f, 3);
+    ASSERT_NE(nullptr, e);
+    living* corpse = add_living(w, FAMILY_SOLDIER, 1, 180, 100);
+    living* foe = add_living(w, FAMILY_SOLDIER, 1, 100, 200);
+    ASSERT_TRUE(corpse && foe);
+    e->set_foe(corpse);
+    corpse->set_dead(1);
+    const Cast c = cast(e);
+    ASSERT_TRUE(c.ok) << c.reason;
+    EXPECT_FLOAT_EQ(930.0f, mp(e));
+    walker* rain = markers(w).at(0);
+    EXPECT_EQ(centre_x(foe), centre_x(rain)) << "on the living foe";
+    EXPECT_EQ(centre_y(foe), centre_y(rain)) << "on the living foe";
+
+    // The living foe falls too; the corpse is still the current foe.
+    foe->set_dead(1);
+    e->set_foe(corpse);
+    const Cast refused = cast(e);
+    EXPECT_FALSE(refused.ok);
+    EXPECT_EQ("NO TARGET IN RANGE", refused.reason);
+    EXPECT_FLOAT_EQ(930.0f, mp(e));
+    EXPECT_EQ(1u, markers(w).size()) << "no second rain";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // With no current foe the nearest one is the target; when the caster dies
-// the rain stops at once.
+// the rain stops at once. Perturbation (staged kit: the find_near_foe
+// fallback replaced by nil): no target -> red.
 TEST(KitElemental, meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -755,6 +844,42 @@ TEST(KitElemental, dying_elemental_with_setting_off_fires_the_classic_starburst)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// The family file's classic hooks still answer as before with the kit
+// loaded beside them: the level-up gains and the summoned elemental's toll
+// on its mage (1 HP + 3 MP buy 1 HP; an owner who cannot pay both costs
+// the elemental a tick of lifetime instead). Perturbations (staged
+// living-06: the level-up strength gain 12 -> 13; the toll's 3 MP -> 2):
+// each red.
+TEST(KitElemental, classic_level_up_and_summoned_toll_are_unchanged)
+{
+    og::test::ScopedHookFailureGuard guard;
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_FIREELEMENTAL);
+    ASSERT_NE(nullptr, fd);
+    guy g(FAMILY_FIREELEMENTAL);
+    const short strength = g.strength;
+    og::test::level_up(*fd, &g, 1);
+    EXPECT_EQ(strength + 12, g.strength);
+
+    ElementalWorld w(1);
+    living* e = add_elemental(w, 4, 0.0f, 1);
+    living* mage = add_living(w, FAMILY_SOLDIER, 0, 60, 100);
+    ASSERT_TRUE(e && mage);
+    mage->stats()->set_magicpoints(10.0f);
+    e->set_owner(mage);
+    e->set_lifetime(10);
+    e->stats()->set_hitpoints(50.0f);
+    og::test::on_act_living(*fd, e);
+    EXPECT_FLOAT_EQ(51.0f, hp(e)) << "paid in full";
+    EXPECT_FLOAT_EQ(99.0f, hp(mage));
+    EXPECT_FLOAT_EQ(7.0f, mp(mage));
+    EXPECT_EQ(10, e->lifetime());
+    mage->stats()->set_magicpoints(2.0f);
+    og::test::on_act_living(*fd, e);
+    EXPECT_FLOAT_EQ(51.0f, hp(e)) << "the owner cannot pay the mana";
+    EXPECT_EQ(9, e->lifetime());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // ---------------------------------------------------------------------------
 // Bot gates
 // ---------------------------------------------------------------------------
@@ -845,7 +970,9 @@ TEST(KitElemental, ai_rekindle_heals_when_hurt_and_novas_when_cornered)
 // With the setting off every new gate answers true at once: no foe
 // acquired, no shift written, no draw (check_special() && !rng(3) must see
 // the same answer it saw before the kit existed). STARBURST's gate is the
-// classic foe-within-130 on both settings.
+// classic foe-within-130 on both settings. Perturbation (staged kit: the
+// three guards compare against 2 instead of 0): the gates run with the
+// setting off and answer false -> red.
 TEST(KitElemental, ai_off_answers_the_classic_gate)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -880,6 +1007,7 @@ TEST(KitElemental, ai_off_answers_the_classic_gate)
 // The ember family: art and glyph
 // ---------------------------------------------------------------------------
 
+// Perturbation (staged effect-16: glyph_ascii = "."): red.
 TEST(KitElemental, new_kit_entities_load_art_and_glyphs)
 {
     const int ember_family = fx_family("core:ember");
@@ -912,6 +1040,8 @@ TEST(KitElemental, new_kit_entities_load_art_and_glyphs)
 // setting on it reaches for its new specials (an IMMOLATE fire, a METEOR
 // RAIN or a REKINDLE leaves a marker, an ember, an explosion or a flash
 // behind); with the setting off none of them ever appears.
+// Perturbation (staged lib/kit_marker.lua: spawn makes no marker): no fire,
+// no rain, no ember -> red.
 TEST(KitElemental, bot_elemental_uses_its_kit_in_the_tick_loop_only_when_on)
 {
     og::test::ScopedHookFailureGuard guard;
