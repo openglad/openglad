@@ -314,6 +314,7 @@
 ---@field on_create? fun(self: og.Walker)
 ---@field on_death? fun(self: og.Walker): boolean
 ---@field on_fire_weapon? fun(self: og.Walker, weapon: og.Walker): boolean
+---@field on_kill? fun(self: og.Walker, victim: og.Walker)
 ---@field on_melee_hit? fun(self: og.Walker, target: og.Walker)
 ---@field on_shoved? fun(target: og.Walker)
 ---@field set_difficulty? fun(self: og.Walker, level: integer)

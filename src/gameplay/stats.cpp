@@ -17,7 +17,7 @@
 //
 // Stats.cpp
 //
-
+#include <openglad/gameplay/fearless.h>               // og::sim::fearless (New Specials)
 #include <openglad/gameplay/statistics.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
 #include <openglad/core/pixdefs.h>
@@ -733,7 +733,7 @@ void statistics::yell_for_help(walker *foe)
 	if (deltay)
 		deltay =  (deltay / abs(deltay));
 	// Run away
-	force_command(COMMAND_WALK, 16, deltax, deltay);
+	if (!og::sim::fearless(*controller_)) force_command(COMMAND_WALK, 16, deltax, deltay);  // rallied walkers hold
 	// Notify friends of need ...
 	if (controller_->myguy && (controller_->team_num() == 0) )
 	{

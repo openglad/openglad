@@ -859,10 +859,10 @@ int s_controller(lua_State* L)
 // scares cannot stack end-to-end.
 int s_force_fright(lua_State* L)
 {
-    stats_arg(L)->force_fright(
-        static_cast<std::int32_t>(luaL_checkinteger(L, 2)),
-        static_cast<std::int32_t>(luaL_checkinteger(L, 3)),
-        static_cast<std::int32_t>(luaL_checkinteger(L, 4)));
+    const auto iterations = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    const auto info1 = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
+    const auto info2 = static_cast<std::int32_t>(luaL_checkinteger(L, 4));
+    if (!og::sim::fearless(*self_arg(L))) stats_arg(L)->force_fright(iterations, info1, info2);  // a rallied walker holds
     return 0;
 }
 
