@@ -248,7 +248,7 @@ bool walker::attack(walker  *target)
         return 0;
 
     if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||
-            target->invulnerable_left() != 0 )
+            target->invulnerable_left() != 0 || target->hidden())
         return 0;
 
     if (order() != Order::Living && owner())
@@ -478,6 +478,15 @@ bool walker::attack(walker  *target)
 
         target->set_dead(1);
         target->death(); // any special effect upon death ..
+        // New Specials: the killer's family hears of the kill only now, when
+        // death() has left the corpse and the life gem behind. A walker that
+        // got back up inside death() (a warded skeleton) was not killed.
+        if (targetorder == Order::Living && target->dead() &&
+            headguy->query_order() == Order::Living)
+            og::script::hooks::on_kill(
+                get_family_descriptor(static_cast<int>(
+                    static_cast<unsigned char>(headguy->family()))),
+                headguy, target);
     }
     set_collide_ob(nullptr);
 

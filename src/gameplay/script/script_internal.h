@@ -12,6 +12,7 @@
 #include "script_host_impl.h"
 
 #include <openglad/core/order.h>
+#include <openglad/gameplay/fearless.h>  // the fright binding's gate
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/script/family_hooks.h>
 

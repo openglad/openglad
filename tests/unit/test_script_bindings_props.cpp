@@ -35,6 +35,8 @@
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/kit_state.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -1023,4 +1025,298 @@ TEST_F(ScriptBindingPropsTest, an_explicit_floor_probes_that_floor_not_the_probe
     EXPECT_EQ("grid\t1\t0\t1", log[0]);
     EXPECT_EQ("both\t1\t0\t1", log[1]);
     EXPECT_EQ("object\t1\t0", log[2]);
+}
+
+// ---------------------------------------------------------------------------
+// New Specials kit verbs (bindings_kit.cpp). Each answer is read back in C++
+// against the engine function the binding wraps.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::size_t obmap_entries(GameWorld& w, walker* ob)
+{
+    return w.myobmap->walker_to_pos.count(ob);
+}
+
+// A copy of the script log: re-registering a script rebuilds the host, so a
+// reference into the old log would not survive the next run.
+std::vector<std::string> logged()
+{
+    return og::script::active_world_scripts().host().log();
+}
+
+}  // namespace
+
+// og.swap_places(a, b): the two walkers trade positions and floors and both
+// stay in the collision table. It probes nothing, so a drumstick lying on
+// the spot a walker swaps onto is NOT eaten (a query_passable probe would
+// have eaten it). It refuses, moving nobody, for the same walker twice and
+// for a hidden walker.
+TEST_F(ScriptBindingPropsTest, kit_swap_places_trades_spots_and_floors_and_eats_nothing)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* other = w.add_ob(Order::Living, FAMILY_ORC);
+    walker* food = w.add_ob(Order::Treasure, FAMILY_DRUMSTICK);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, other);
+    ASSERT_NE(nullptr, food);
+    self->setxy(64, 64);
+    other->set_floor(1);
+    other->setxy(192, 96);
+    food->set_floor(1);
+    food->setxy(192, 96);
+    other->set_team_num(1);
+    self->stats()->set_hitpoints(5.0f);
+    self->set_foe(other);
+
+    expect_ran_clean(run_do_special(
+        "    local function b(v) return v and 1 or 0 end\n"
+        "    og.log('same', b(og.swap_places(self, self)))\n"
+        "    og.log('swap', b(og.swap_places(self, self:foe())))\n",
+        self));
+    std::vector<std::string> log = logged();
+    ASSERT_EQ(2u, log.size());
+    EXPECT_EQ("same\t0", log[0]) << "a walker cannot swap with itself";
+    EXPECT_EQ("swap\t1", log[1]);
+    EXPECT_EQ(192, self->xpos());
+    EXPECT_EQ(96, self->ypos());
+    EXPECT_EQ(1, self->floor());
+    EXPECT_EQ(64, other->xpos());
+    EXPECT_EQ(64, other->ypos());
+    EXPECT_EQ(0, other->floor());
+    EXPECT_EQ(1u, obmap_entries(w, self));
+    EXPECT_EQ(1u, obmap_entries(w, other));
+    EXPECT_FALSE(food->dead()) << "the swap must not eat what lies underfoot";
+    EXPECT_FLOAT_EQ(5.0f, self->stats()->hitpoints());
+
+    // A hidden walker cannot be swapped: nothing moves.
+    other->set_hidden(true);
+    expect_ran_clean(run_do_special(
+        "    local function b(v) return v and 1 or 0 end\n"
+        "    og.log('hidden', b(og.swap_places(self, self:foe())))\n",
+        self));
+    log = logged();
+    ASSERT_EQ(1u, log.size());
+    EXPECT_EQ("hidden\t0", log[0]);
+    EXPECT_EQ(192, self->xpos());
+    EXPECT_EQ(64, other->xpos());
+}
+
+// og.line_clear(a, b): GameWorld::clear_sight_line — a wall cell between
+// the two walkers blocks it, an open row does not, and walkers on different
+// floors never see each other.
+TEST_F(ScriptBindingPropsTest, kit_line_clear_is_blocked_by_a_wall_and_by_floors)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+    const int gw = w.grid.w;
+    const int gh = w.grid.h;
+    ASSERT_GT(gw, 12);
+    ASSERT_GT(gh, 8);
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) *
+                                  static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) *
+                             static_cast<std::size_t>(gh),
+              static_cast<unsigned char>(PIX_GRASS1));
+    buf[6 + 2 * gw] = static_cast<unsigned char>(PIX_H_WALL1);  // row 2 only
+    w.grid_for_floor(0) = PixieData(1, static_cast<unsigned char>(gw),
+                                    static_cast<unsigned char>(gh), buf);
+
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* walled = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* open = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* upstairs = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, walled);
+    ASSERT_NE(nullptr, open);
+    ASSERT_NE(nullptr, upstairs);
+    // Cell centres: row 2 crosses the wall at column 6, row 6 is open.
+    self->setxy(2 * GRID_SIZE, 2 * GRID_SIZE);
+    walled->setxy(10 * GRID_SIZE, 2 * GRID_SIZE);
+    open->setxy(2 * GRID_SIZE, 6 * GRID_SIZE);
+    upstairs->set_floor(1);
+    upstairs->setxy(2 * GRID_SIZE, 4 * GRID_SIZE);
+    ASSERT_FALSE(w.clear_sight_line(self, walled));
+    ASSERT_TRUE(w.clear_sight_line(self, open));
+
+    self->set_foe(walled);
+    self->set_leader(open);
+    walled->set_foe(upstairs);
+    expect_ran_clean(run_do_special(
+        "    local function b(v) return v and 1 or 0 end\n"
+        "    local walled = self:foe()\n"
+        "    og.log('line', b(og.line_clear(self, walled)),\n"
+        "           b(og.line_clear(self, self:leader())),\n"
+        "           b(og.line_clear(self, walled:foe())))\n",
+        self));
+    const std::vector<std::string> log = logged();
+    ASSERT_EQ(1u, log.size());
+    EXPECT_EQ("line\t0\t1\t0", log[0]);
+}
+
+// og.map_size() answers the world's pixel bounds and its floor count.
+TEST_F(ScriptBindingPropsTest, kit_map_size_answers_pixel_bounds_and_floors)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(3);
+    w.pixmaxx = 1234;
+    w.pixmaxy = 567;
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    expect_ran_clean(run_do_special(
+        "    local x, y, floors = og.map_size()\n"
+        "    og.log('size', x, y, floors)\n",
+        self));
+    const std::vector<std::string> log = logged();
+    ASSERT_EQ(1u, log.size());
+    EXPECT_EQ("size\t1234\t567\t3", log[0]);
+}
+
+// og.rejoin_obmap(ent) puts a walker a kit took out of the collision table
+// back at its spot, and never re-registers a dead one.
+TEST_F(ScriptBindingPropsTest, kit_rejoin_obmap_registers_a_live_walker_only)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* corpse = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, corpse);
+    self->setxy(64, 64);
+    corpse->setxy(128, 64);
+    w.myobmap->remove(self);
+    w.myobmap->remove(corpse);
+    corpse->set_dead(1);
+    self->set_foe(corpse);
+    ASSERT_EQ(0u, obmap_entries(w, self));
+    expect_ran_clean(run_do_special(
+        "    og.rejoin_obmap(self)\n"
+        "    og.rejoin_obmap(self:foe())\n",
+        self));
+    EXPECT_EQ(1u, obmap_entries(w, self));
+    EXPECT_EQ(0u, obmap_entries(w, corpse)) << "a dead walker stays out";
+    bool found = false;
+    for (const walker* ob : w.myobmap->obmap_get_list(64, 64, 0))
+        found = found || ob == self;
+    EXPECT_TRUE(found) << "registered at its own spot";
+}
+
+// og.fearless(ent) answers og::sim::fearless: the walker's KIT_FEARLESS mark
+// (the banner's aura is pinned in test_kit_seams_small.cpp).
+TEST_F(ScriptBindingPropsTest, kit_fearless_answers_the_kit_mark)
+{
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    register_do_special(
+        "    og.log('fearless', og.fearless(self) and 1 or 0)\n");
+    expect_ran_clean(dispatch(self));
+    self->set_kit_state(KIT_FEARLESS);
+    expect_ran_clean(dispatch(self));
+    const std::vector<std::string> log = logged();
+    ASSERT_EQ(2u, log.size());
+    EXPECT_EQ("fearless\t0", log[0]);
+    EXPECT_EQ("fearless\t1", log[1]);
+}
+
+// walker:set_hidden takes a boolean or an integer (0 clears, anything else
+// sets); a string or a fraction is a script error and leaves the walker as
+// it was.
+TEST_F(ScriptBindingPropsTest, kit_set_hidden_refuses_a_non_integer)
+{
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    expect_ran_clean(run_do_special("    self:set_hidden(true)\n", self));
+    EXPECT_TRUE(self->hidden());
+    expect_errored_with(run_do_special("    self:set_hidden('x')\n", self),
+                        "walker:set_hidden: expected a boolean or 0|1");
+    EXPECT_TRUE(self->hidden()) << "a refused call changes nothing";
+    expect_errored_with(run_do_special("    self:set_hidden(0.5)\n", self),
+                        "walker:set_hidden: expected a boolean or 0|1");
+    EXPECT_TRUE(self->hidden());
+    expect_ran_clean(run_do_special("    self:set_hidden(0)\n", self));
+    EXPECT_FALSE(self->hidden());
+}
+
+// walker:last_attacker_id() answers the id walker::note_attacker stamped (0
+// before anyone hit); walker:init_fire() starts the attack row once and is
+// refused while the walker is busy from it.
+TEST_F(ScriptBindingPropsTest, kit_last_attacker_id_and_init_fire)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* hitter = w.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, hitter);
+    self->setxy(64, 64);
+    self->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    self->set_enddir(static_cast<char>(FACE_RIGHT));
+    self->set_lastx(1.0f);
+    self->set_lasty(0.0f);
+    self->set_busy(0.0f);
+    self->set_ani_type(ANI_WALK);
+
+    const std::string body =
+        "    og.log('hit', self:last_attacker_id())\n"
+        "    local function b(v) return v and 1 or 0 end\n"
+        "    og.log('fire', b(self:init_fire()), b(self:init_fire()))\n";
+    expect_ran_clean(run_do_special(body, self));
+    EXPECT_EQ(ANI_ATTACK, self->ani_type()) << "the attack row started";
+    EXPECT_GT(self->busy(), 0.0f);
+
+    self->note_attacker(hitter, 7u);
+    ASSERT_NE(0u, hitter->entity_id());
+    expect_ran_clean(dispatch(self));
+    const std::vector<std::string> log = logged();
+    ASSERT_EQ(4u, log.size());
+    EXPECT_EQ("hit\t0", log[0]) << "nobody has hit it yet";
+    EXPECT_EQ("fire\t1\t0", log[1]) << "the second start is refused: busy";
+    EXPECT_EQ("hit\t" + std::to_string(hitter->entity_id()), log[2]);
+}
+
+// og.possess(rider, host, ticks) hands back the engine's answer: true, or
+// false plus a short HUD reason; a dead host is always refused. ticks must
+// fit the host's countdown. og.release_possession(ent) answers nil for a
+// walker that is in no possession.
+TEST_F(ScriptBindingPropsTest, kit_possess_and_release_hand_back_the_engine_answer)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* host = w.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, host);
+    host->set_team_num(1);
+    self->set_foe(host);
+    host->set_dead(1);
+
+    expect_ran_clean(run_do_special(
+        "    local ok, reason = og.possess(self, self:foe(), 30)\n"
+        "    og.log('possess', ok and 1 or 0, type(reason), #reason)\n"
+        "    og.log('release', og.release_possession(self) == nil and 1 or 0)\n",
+        self));
+    const std::vector<std::string> log = logged();
+    ASSERT_EQ(2u, log.size());
+    ASSERT_EQ(0u, log[0].rfind("possess\t0\tstring\t", 0)) << log[0];
+    const int reason_len = std::stoi(log[0].substr(log[0].rfind('\t') + 1));
+    EXPECT_GT(reason_len, 0) << "a refusal names its reason";
+    EXPECT_LE(reason_len, 24) << "and it fits the HUD";
+    EXPECT_EQ("release\t1", log[1]);
+    EXPECT_EQ(0u, self->possess_link());
+    EXPECT_EQ(0u, host->possess_link());
+
+    expect_errored_with(
+        run_do_special("    og.possess(self, self:foe(), 40000)\n", self),
+        "og.possess: ticks out of range");
+    expect_errored_with(
+        run_do_special("    og.possess(self, self:foe(), -1)\n", self),
+        "og.possess: ticks out of range");
 }

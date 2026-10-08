@@ -79,6 +79,10 @@ enum class FamilyHook : std::uint8_t {
     // act override — returning true means the walker's act is DONE this
     // tick (the effect_on_act "true = handled" contract, for livings).
     OnActOverride,
+    // living (appended, New Specials): on_kill(self, victim) runs after
+    // `self` (the head of the killing chain) has killed a living and the
+    // victim's death() has finished, so its corpse and life gem exist.
+    OnKill,
     Count,
 };
 
@@ -175,6 +179,9 @@ bool customize_weapon(const FamilyDescriptor* fd, walker* self,
                       walker* weapon);
 std::optional<bool> on_ani_complete(const FamilyDescriptor* fd, walker* self);
 bool on_melee_hit(const FamilyDescriptor* fd, walker* self, walker* target);
+// The killer's family hook after a kill (see FamilyHook::OnKill). Families
+// that do not declare on_kill cost one mask test. No result.
+bool on_kill(const FamilyDescriptor* fd, walker* self, walker* victim);
 
 // Weapon-family hooks.
 std::optional<bool> weapon_on_death(const WeaponFamilyDescriptor* wfd,
