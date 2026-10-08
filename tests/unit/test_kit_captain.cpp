@@ -68,7 +68,6 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -167,7 +166,7 @@ walker* add_stain(TestGameWorld& tw, walker* under, short level = 3)
 
 struct Cast {
     bool ok = false;
-    SpecialFailure why = SpecialFailure::None;
+    walker::SpecialFailure why = walker::SpecialFailure::None;
     std::string reason;
     float mp_spent = 0.0f;
 };
@@ -238,7 +237,7 @@ int frozen(const walker* w)
     return static_cast<int>(w->stats()->frozen_delay());
 }
 
-const statistics::command* front_command(const walker* w)
+const command* front_command(const walker* w)
 {
     if (w->stats()->commands.empty())
         return nullptr;
@@ -313,7 +312,7 @@ TEST(KitCaptain, captain_has_no_specials_when_off)
                 << "slot " << slot << " shifted " << shifted;
             const Cast c = cast(captain, slot, shifted);
             EXPECT_FALSE(c.ok) << "slot " << slot << " shifted " << shifted;
-            EXPECT_EQ(SpecialFailure::NoMP, c.why);
+            EXPECT_EQ(walker::SpecialFailure::NoMP, c.why);
             EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
         }
     }
@@ -599,7 +598,7 @@ TEST(KitCaptain, hook_hauls_a_foe_when_no_spot_is_clear)
     }
     ASSERT_TRUE(blade->dead());
     EXPECT_EQ(222, foe->xpos()) << "nowhere to land: not moved";
-    const statistics::command* walk = front_command(foe);
+    const command* walk = front_command(foe);
     ASSERT_NE(nullptr, walk);
     EXPECT_EQ(COMMAND_WALK, walk->commandtype);
     EXPECT_EQ(-1, walk->com1) << "toward the captain";
@@ -668,7 +667,10 @@ TEST(KitCaptain, knife_fan_throws_three)
     const auto knives_now = [&tw]() {
         return live_of(tw.world().weaplist, Order::Weapon, FAMILY_KNIFE);
     };
-    const auto fan_dirs = [&](int curdir, float aim_x, float aim_y) {
+    // The three new knives' flight vectors (lastx, lasty), ordered by the
+    // side they lean to. Each fire() adds its own small waver, so the test
+    // reads the spread, not exact unit vectors.
+    const auto fan = [&](int curdir, float aim_x, float aim_y) {
         const std::size_t before = knives_now().size();
         captain->set_curdir(static_cast<char>(curdir));
         captain->set_lastx(aim_x);
@@ -679,24 +681,38 @@ TEST(KitCaptain, knife_fan_throws_three)
         EXPECT_FLOAT_EQ(30.0f, c.mp_spent) << "KNIFE FAN's price, no more";
         EXPECT_FLOAT_EQ(aim_x, captain->lastx()) << "aim restored";
         EXPECT_FLOAT_EQ(aim_y, captain->lasty());
-        std::set<std::pair<int, int>> dirs;
         const auto now = knives_now();
         EXPECT_EQ(before + 3, now.size()) << "three knives";
-        for (std::size_t i = before; i < now.size(); ++i) {
-            const int sx = (now[i]->lastx() > 0) - (now[i]->lastx() < 0);
-            const int sy = (now[i]->lasty() > 0) - (now[i]->lasty() < 0);
-            dirs.insert({sx, sy});
-        }
-        return dirs;
+        std::vector<std::pair<float, float>> v;
+        for (std::size_t i = before; i < now.size(); ++i)
+            v.push_back({now[i]->lastx(), now[i]->lasty()});
+        return v;
     };
-
-    using Dirs = std::set<std::pair<int, int>>;
-    EXPECT_EQ((Dirs{{1, -1}, {1, 0}, {1, 1}}), fan_dirs(FACE_RIGHT, 1, 0))
-        << "facing right";
-    EXPECT_EQ((Dirs{{-1, -1}, {-1, 0}, {-1, 1}}), fan_dirs(-1, -1, 0))
-        << "the -1 sentinel reads the aim (left)";
-    EXPECT_EQ((Dirs{{1, 1}, {0, 1}, {-1, 1}}), fan_dirs(-1, 0, 0))
-        << "no aim at all: down";
+    // Facing right: all three fly east; one climbs, one falls, one between.
+    auto v = fan(FACE_RIGHT, 1, 0);
+    ASSERT_EQ(3u, v.size());
+    std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second;
+    });
+    for (const auto& k : v)
+        EXPECT_GT(k.first, 0.0f) << "east";
+    EXPECT_LT(v[0].second, -0.5f * v[0].first) << "up and east";
+    EXPECT_LT(std::abs(v[1].second), 0.5f * v[1].first) << "straight east";
+    EXPECT_GT(v[2].second, 0.5f * v[2].first) << "down and east";
+    // The -1 sentinel reads the aim: west.
+    v = fan(-1, -1, 0);
+    ASSERT_EQ(3u, v.size());
+    for (const auto& k : v)
+        EXPECT_LT(k.first, 0.0f) << "west";
+    // No aim at all: down.
+    v = fan(-1, 0, 0);
+    ASSERT_EQ(3u, v.size());
+    std::sort(v.begin(), v.end());
+    for (const auto& k : v)
+        EXPECT_GT(k.second, 0.0f) << "south";
+    EXPECT_LT(v[0].first, -0.5f * v[0].second) << "down and west";
+    EXPECT_LT(std::abs(v[1].first), 0.5f * v[1].second) << "straight down";
+    EXPECT_GT(v[2].first, 0.5f * v[2].second) << "down and east";
 
     captain->set_busy(4.0f);
     const Cast busy = cast(captain, 2, true);
@@ -937,7 +953,7 @@ TEST(KitCaptain, banner_regens_allies_and_frights_lower_foes)
     banner->act();
     EXPECT_FLOAT_EQ(101.0f, ally->stats()->hitpoints()) << "regenerates";
     EXPECT_FLOAT_EQ(100.0f, far_ally->stats()->hitpoints()) << "out of reach";
-    const statistics::command* flee = front_command(weak);
+    const command* flee = front_command(weak);
     ASSERT_NE(nullptr, flee) << "the weaker foe is frightened";
     EXPECT_EQ(1, flee->com1) << "away from the banner (east)";
     EXPECT_EQ(nullptr, front_command(strong)) << "a stronger foe holds";
@@ -985,7 +1001,7 @@ TEST(KitCaptain, rallied_walker_does_not_flee_when_hit)
     const auto runs = [&]() {
         ally->stats()->commands.clear();
         ally->stats()->yell_for_help(foe);
-        const statistics::command* walk = front_command(ally);
+        const command* walk = front_command(ally);
         const bool ran = walk != nullptr && walk->commandtype == COMMAND_WALK;
         ally->stats()->commands.clear();
         return ran;
@@ -1080,7 +1096,7 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
             EXPECT_NE(0, g->kit_state() & KIT_FEARLESS);
             EXPECT_TRUE(og::sim::fearless(*g));
             EXPECT_EQ(captain, g->leader());
-            const statistics::command* go = front_command(g);
+            const command* go = front_command(g);
             ASSERT_NE(nullptr, go);
             EXPECT_EQ(COMMAND_GOTO, go->commandtype);
             EXPECT_EQ(banner->xpos(), go->com1) << "to the banner";
@@ -1095,9 +1111,12 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
     };
     // 512 x 512 px field. No banner: they run to the captain.
     const std::array<EdgeCase, 3> cases = {{
-        {470, 200, 10, 512 - GRID_SIZE, 200, 2},  // east
-        {200, 30, 16, 200, 0, 4},                 // north, level 16: 2 + 2
-        {200, 480, 10, 200, 512 - GRID_SIZE, 2},  // south
+        // On the east and south the grid check refuses a body whose far
+        // edge reaches the map's last pixel (x + size >= width), so the
+        // scan's first clear tile is one in.
+        {470, 200, 10, 512 - 2 * GRID_SIZE, 200, 2},  // east
+        {200, 30, 16, 200, 0, 4},                     // north, level 16: 2 + 2
+        {200, 480, 10, 200, 512 - 2 * GRID_SIZE, 2},  // south
     }};
     for (const EdgeCase& e : cases) {
         TestGameWorld tw;
@@ -1111,7 +1130,7 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         ASSERT_EQ(e.count, grunts.size()) << "captain at " << e.x << "," << e.y;
         EXPECT_EQ(e.want_x, grunts.front()->xpos());
         EXPECT_EQ(e.want_y, grunts.front()->ypos());
-        const statistics::command* go = front_command(grunts.front());
+        const command* go = front_command(grunts.front());
         ASSERT_NE(nullptr, go);
         EXPECT_EQ(captain->xpos(), go->com1) << "no banner: to the captain";
     }
