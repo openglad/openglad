@@ -448,6 +448,10 @@ og.family("weapon", {
   vz = 0.35, gravity = 0.05, sizez = 0,
   can_drop_floors = true,
   hp = 50,                           -- base hitpoints; see the note below
+  rally_radius = 0,                  -- px; >0: friends this close never flee
+                                     --   (New Specials setting on only)
+  blocks_placement = false,          -- true: no teleport, respawn or floor
+                                     --   landing puts a walker on it
 })
 
 og.family("effect", {                -- "fx" is accepted as an alias
@@ -528,7 +532,8 @@ leaves the key out or writes `specials = {}`. Each entry takes:
 | `mp_cost` | required, magic points per cast |
 | `cast` | optional function: the handler for this slot |
 | `ai` | optional function: sugar for one family-level `check_special_ai` |
-| `alternate = { name = "..." }` | optional; shown while Shift is held |
+| `alternate = { name = "...", mp_cost = N, new_kit = true }` | optional; `name` (required) is shown while Shift is held; `mp_cost` (optional) is the alternate's own price, gated and charged while Shift is held, else the slot's `mp_cost`; `new_kit` (optional) hides the alternate while the New Specials setting is off. No other key is accepted |
+| `new_kit` | optional boolean: the slot exists only while the New Specials setting is on; with it off the slot reads `"NONE"` at cost 5000 everywhere (see [new-specials.md](new-specials.md)) |
 | `slot = N` | optional, 2..5, to skip a hole |
 
 **Absence is how a slot is disabled.** 5000 is the registry's own marker for
@@ -568,7 +573,7 @@ og.family("living", {
 
 | order | hook names |
 |---|---|
-| living | `do_special`, `check_special_ai`, `hit_response`, `set_difficulty`, `level_up`, `on_death`, `on_act_living`, `on_shoved`, `on_fire_weapon`, `handle_teleport`, `on_create`, `customize_weapon`, `on_ani_complete`, `on_melee_hit` |
+| living | `do_special`, `check_special_ai`, `hit_response`, `set_difficulty`, `level_up`, `on_death`, `on_act_living`, `on_shoved`, `on_fire_weapon`, `handle_teleport`, `on_create`, `customize_weapon`, `on_ani_complete`, `on_melee_hit`, `on_act_override`, `on_kill` |
 | weapon | `on_death`, `on_animate`, `on_hit_target` |
 | effect | `on_act`, `on_death` |
 | treasure | `on_eat` |
