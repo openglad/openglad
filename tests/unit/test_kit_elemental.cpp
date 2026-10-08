@@ -361,6 +361,9 @@ TEST(KitElemental, immolate_drains_two_per_tick_burns_contact_melee_most_and_lay
         << "at the elemental's feet";
     EXPECT_EQ(e->xpos() + (e->sizex() - ember->sizex()) / 2, ember->xpos())
         << "centred under the elemental";
+    // It walks on a tile: the next ember drops at its new feet (one still
+    // burning where it stood would keep it from dropping a second there).
+    place(e, ex + GRID_SIZE, ey);
     for (int tick = 5; tick <= 8; ++tick)
         ASSERT_TRUE(marker->act());
     EXPECT_EQ(2u, embers(w).size());
@@ -493,7 +496,50 @@ TEST(KitElemental, immolate_burns_out_after_its_longest_burn)
     EXPECT_TRUE(marker->dead()) << "out after 200 ticks";
     EXPECT_FALSE(channelling(*e));
     EXPECT_FLOAT_EQ(10000.0f - 30.0f - 199.0f * 2.0f, mp(e));
-    EXPECT_EQ(49u, embers(w).size()) << "an ember every fourth tick";
+    // Standing still the whole burn (the embers are not acted here, so the
+    // first never goes out): one ember under it, no pile.
+    EXPECT_EQ(1u, embers(w).size()) << "a standing burner keeps one ember";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A standing burner drops an ember only where none of its own still burns:
+// the first at its feet on the fourth tick, the next only once that one has
+// gone out (forty acts later, on the next fourth tick), never a pile. When
+// it moves, the next ember drops at its new feet beside the old one.
+//
+// RED without the check (an ember every fourth tick wherever it stands):
+// "one ember under a standing burner" reads 10, and the drops come on
+// ticks 4, 8, 12 ... instead of 4 and 44.
+TEST(KitElemental, standing_burner_keeps_one_ember_underfoot)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* e = add_elemental(w, 4, 10000.0f, 2);
+    ASSERT_NE(nullptr, e);
+    ASSERT_TRUE(cast(e).ok);
+    walker* marker = markers(w).at(0);
+    std::vector<int> drops;
+    std::size_t most = 0;
+    std::vector<walker*> seen;
+    for (int tick = 1; tick <= 60; ++tick) {
+        ASSERT_TRUE(marker->act());
+        for (walker* ember : embers(w)) {
+            if (std::find(seen.begin(), seen.end(), ember) == seen.end()) {
+                seen.push_back(ember);
+                drops.push_back(tick);
+            }
+            ember->act();
+        }
+        most = std::max(most, embers(w).size());
+    }
+    EXPECT_EQ(1u, most) << "one ember under a standing burner";
+    EXPECT_EQ((std::vector<int>{4, 44}), drops)
+        << "the next drop waits for the first ember to go out";
+
+    place(e, e->xpos() + GRID_SIZE, e->ypos());
+    for (int tick = 61; tick <= 64; ++tick)
+        ASSERT_TRUE(marker->act());
+    EXPECT_EQ(2u, embers(w).size()) << "moved: a new ember at its new feet";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
