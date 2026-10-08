@@ -228,6 +228,16 @@ void dump_living(std::string& out)
                   quoted(fd->alternate_names[s]));
             field(out, (prefix + "cost").c_str(),
                   number(fd->special_cost[s]));
+            // New Specials keys print only when declared, so a family that
+            // never mentions them keeps its golden lines unchanged.
+            if (fd->special_new_kit[s])
+                field(out, (prefix + "new_kit").c_str(), yes_no(true));
+            if (fd->alternate_new_kit[s])
+                field(out, (prefix + "alternate_new_kit").c_str(),
+                      yes_no(true));
+            if (fd->alternate_cost[s] != 0)
+                field(out, (prefix + "alternate_cost").c_str(),
+                      number(fd->alternate_cost[s]));
         }
         field(out, "default_weapon", number(fd->default_weapon));
         field(out, "init_bit_flags", number(fd->init_bit_flags));
@@ -277,6 +287,11 @@ void dump_weapons(std::string& out)
         field(out, "fire_sound", number(fd->fire_sound));
         field(out, "skip_sit_notify", yes_no(fd->skip_sit_notify));
         field(out, "is_auto_attackable", yes_no(fd->is_auto_attackable));
+        // New Specials scenery keys: printed only when declared.
+        if (fd->rally_radius != 0)
+            field(out, "rally_radius", number(fd->rally_radius));
+        if (fd->blocks_placement)
+            field(out, "blocks_placement", yes_no(true));
         field(out, "init_bit_flags", number(fd->init_bit_flags));
         field(out, "init_lifetime", number(fd->init_lifetime));
         field(out, "init_ani_type",

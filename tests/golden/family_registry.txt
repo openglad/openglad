@@ -2564,6 +2564,24 @@
   radar.color = -1
   radar.jitter = 0
   tuning = ~
+[effect 17]
+  declared_id = "core:kit_marker"
+  family_id = 17
+  name = "KIT MARKER"
+  loops_animation = false
+  creates_hit_effect = false
+  init_bit_flags = 64
+  pix_filename = "empty.png"
+  anim_row_count = 0
+  anim_table = ~
+  glyph.codepoint = 32
+  glyph.ascii = 32
+  glyph.color = 8
+  glyph.bold = false
+  glyph.transparent = true
+  radar.color = -1
+  radar.jitter = 0
+  tuning = ~
 [treasure 0]
   declared_id = "core:stain"
   family_id = 0

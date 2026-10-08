@@ -13,6 +13,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_control_policy.h>
@@ -178,18 +179,22 @@ walker* sim_cycle_next_character(
     return nullptr;
 }
 
-void sim_advance_current_special(walker& control)
+void sim_advance_current_special(const GameWorld& level, walker& control)
 {
     control.set_current_special(control.current_special() + 1);
 
     const int special_index = static_cast<int>(control.current_special());
     const FamilyDescriptor* const descriptor = get_family_descriptor(
         static_cast<int>(static_cast<unsigned char>(control.family())));
-    const bool special_missing =
+    const char* const special_name =
         descriptor == nullptr || special_index < 0 ||
-        special_index >= NUM_SPECIALS ||
-        descriptor->special_names[special_index] == nullptr ||
-        std::string_view(descriptor->special_names[special_index]) == "NONE";
+                special_index >= NUM_SPECIALS
+            ? nullptr
+            : og::sim::special_name(descriptor, special_index,
+                                    level.new_specials);
+    const bool special_missing =
+        special_name == nullptr ||
+        std::string_view(special_name) == "NONE";
 
     if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
         || special_missing
@@ -343,7 +348,7 @@ SimInputResult sim_process_player_input(
     if (pi.was_pressed(InputAction::SwitchSpecial) && !debounce.changedspec)
     {
         debounce.changedspec = 1;
-        sim_advance_current_special(*control);
+        sim_advance_current_special(level, *control);
     }
 
     // --- yo_delay tick ---

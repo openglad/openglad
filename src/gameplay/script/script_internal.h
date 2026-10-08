@@ -222,6 +222,11 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st);
 // mechanism instead of open-coding a second check.
 void fence_world_entry(lua_State* L, VmState* st, const char* name);
 
+// The New Specials bindings (bindings_kit.cpp): kit-state walker methods,
+// og.* kit verbs (fenced) and og.C.KIT_*. Expects the og table on top of
+// the stack, after install_entity_bindings_into_og built og.C.
+void register_kit_bindings(lua_State* L, VmState* st);
+
 // Creates the walker/guy handle metatables in this VM (idempotent).
 void ensure_handle_metatables(lua_State* L, VmState* st);
 

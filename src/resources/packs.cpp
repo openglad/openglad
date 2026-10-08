@@ -706,6 +706,9 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_names[i] = kSpecialNameNone;
         d.alternate_names[i] = kSpecialNameNone;
         d.special_ids[i] = nullptr;
+        d.special_new_kit[i] = false;
+        d.alternate_new_kit[i] = false;
+        d.alternate_cost[i] = 0;
     }
     for (const og::data::ClasspackSpecialEntry& s : list) {
         // The parser guarantees 1..kMaxSpecialSlot, strictly increasing.
@@ -714,6 +717,11 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_ids[s.slot] = s.id.c_str();
         if (s.alternate_name)
             d.alternate_names[s.slot] = s.alternate_name->c_str();
+        // New Specials: what the setting hides, and the alternate's own
+        // price (the parser bounds it below kSpecialCostDisabled).
+        d.special_new_kit[s.slot] = s.new_kit;
+        d.alternate_new_kit[s.slot] = s.alternate_new_kit;
+        d.alternate_cost[s.slot] = static_cast<unsigned short>(s.alternate_cost);
     }
 }
 
@@ -871,6 +879,10 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
         d.skip_sit_notify = *e.skip_sit_notify;
     if (e.is_auto_attackable)
         d.is_auto_attackable = *e.is_auto_attackable;
+    if (e.rally_radius)
+        d.rally_radius = *e.rally_radius;
+    if (e.blocks_placement)
+        d.blocks_placement = *e.blocks_placement;
     if (e.init_bit_flags) {
         std::int32_t flags = 0;
         if (fold_bit_flags(*e.init_bit_flags, flags, e.id))

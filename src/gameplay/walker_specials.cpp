@@ -19,9 +19,11 @@
 #include <cstdint>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/placement.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
@@ -62,7 +64,8 @@ bool teleport_spot_blocked_by(const walker* other, const walker* self,
 		order == Order::Living || order == Order::Generator ||
 		(order == Order::Weapon &&
 		 (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
-		  other->family() == FAMILY_BOULDER));
+		  other->family() == FAMILY_BOULDER ||
+		  og::sim::declares_blocks_placement(*other)));
 	if (!blocking)
 		return false;
 	// Cylinder z-overlap gate, mirroring ob_pass_check: height-disjoint pairs
@@ -168,8 +171,12 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 			special_index = 1;
 		}
 
-	// Do we have enough for our special ability?
-	if (stats_->magicpoints() < stats_->special_cost(special_index))
+	// Do we have enough for our special ability? One price gates and is
+	// charged: the specials table as this session sees it (New Specials),
+	// read once here, before the cast can change the walker's kit state.
+	const unsigned short cast_price =
+		og::sim::cast_cost(*this, special_index, shifter_down() != 0);
+	if (stats_->magicpoints() < cast_price)
 		return fail(SpecialFailure::NoMP, "NOT ENOUGH MP");
 
 	if (query_order() != Order::Living)
@@ -184,7 +191,7 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 		did_special = hook_result->succeeded();
 		decline_reason = hook_result->reason();
 		if (did_special)
-			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
+			stats_->set_magicpoints(	stats_->magicpoints() - cast_price);
 	}
 	// Bound the world's accumulated time-stop bank after each special. The
 	// per-cast formula remains in packs/core/families/living-03-mage.lua;

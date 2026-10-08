@@ -24,6 +24,7 @@
 
 #include <openglad/gameplay/sim_entity.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/kit_state.h>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -306,6 +307,32 @@ class walker : public og::sim::SimEntity
 			set_spawn_y(static_cast<std::int16_t>(y));
 			set_spawn_floor(floor);
 		}
+		// New Specials entity state. kit_state is the KIT_* byte of
+		// kit_state.h (HIDDEN, FEARLESS, WARD, CHANNEL). possess_link is the
+		// id of the walker on the other side of a possession (the host on
+		// the ghost, the ghost on the host; 0 = none); possess_ticks is the
+		// countdown the HOST carries (0 = permanent while linked). All three
+		// are 0 on every walker unless a New Specials kit wrote them, and
+		// neither transform_to nor transfer_stats touches them.
+		[[nodiscard]] std::uint8_t kit_state() const noexcept { return kit_state_; }
+		void set_kit_state(std::uint8_t value) { kit_state_ = value; }
+		[[nodiscard]] std::uint32_t possess_link() const noexcept { return possess_link_; }
+		void set_possess_link(std::uint32_t value) { possess_link_ = value; }
+		[[nodiscard]] std::int16_t possess_ticks() const noexcept { return possess_ticks_; }
+		void set_possess_ticks(std::int16_t value) { possess_ticks_ = value; }
+		[[nodiscard]] bool hidden() const noexcept
+		{
+			return (kit_state() & KIT_HIDDEN) != 0;
+		}
+		[[nodiscard]] bool fearless_bit() const noexcept
+		{
+			return (kit_state() & KIT_FEARLESS) != 0;
+		}
+		// Sets or clears KIT_HIDDEN and keeps the collision table in step,
+		// the way set_dormant does: hiding pulls the walker out of the obmap,
+		// revealing re-registers it at its spot unless it is ignored or
+		// dormant. Behaviour (who skips a hidden walker) lives elsewhere.
+		void set_hidden(bool value);
 		std::int32_t regen_delay() const { return regen_delay_; }
 		void set_regen_delay(std::int32_t value)
 		{
@@ -541,6 +568,9 @@ class walker : public og::sim::SimEntity
 		std::int16_t spawn_x_ = -1;
 		std::int16_t spawn_y_ = -1;
 		std::uint8_t spawn_floor_ = 0;
+		std::uint8_t kit_state_ = 0;
+		std::uint32_t possess_link_ = 0;
+		std::int16_t possess_ticks_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
 		// Kill-attribution stamp (see the accessors above): server-only,
 		// never replicated.

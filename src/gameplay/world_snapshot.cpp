@@ -2210,7 +2210,7 @@ void rebuild_obmap(GameWorld& world)
             // local transport shadow's server seed, mirrors, replays) —
             // walking into their spawn cell triggered melee against an
             // invisible body. set_dormant(false) re-registers them on wake.
-            if (!entry->ignore() && !entry->dead() && !entry->dormant())
+            if (!entry->ignore() && !entry->dead() && !entry->dormant() && !entry->hidden())
                 world.myobmap->add(entry.get(), entry->xpos(), entry->ypos());
             else
                 world.myobmap->remove(entry.get());

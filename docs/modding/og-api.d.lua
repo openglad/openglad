@@ -65,6 +65,7 @@
 ---@class og.Walker
 ---@field act_type fun(self: og.Walker): integer
 ---@field add_frozen_stun fun(self: og.Walker, add: integer) # ob:add_frozen_stun(n) — the universal application pattern for stun_total, fused into one verb: ob:s_set_frozen_delay(stun_total(ob:s_frozen_delay_raw(), n))...
+---@field alternate_down fun(self: og.Walker): boolean # walker:alternate_down() -> boolean: the shift is held AND the current slot's alternate is in play this session (the New Specials setting hides a new-kit alte...
 ---@field ani_type integer|fun(self: og.Walker): integer # write-through property: `self.ani_type = v` runs m_set_ani_type; reads answer the method (method-first)
 ---@field animate fun(self: og.Walker): boolean
 ---@field attack fun(self: og.Walker, target: og.Walker): boolean
@@ -733,7 +734,7 @@
 ---@field level_tick fun(): integer
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
----@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
+---@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"new_specials"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer

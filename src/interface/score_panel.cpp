@@ -21,6 +21,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/mode/mode_state.h>
@@ -995,9 +996,10 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             // Currently-select special
             // Alternate special name (if not "NONE")
+            // (New Specials: the names as this session's setting shows them.)
             const FamilyDescriptor* spc_fd = get_family_descriptor(fam);
-            const char* spc_name = spc_fd ? spc_fd->special_names[spc] : kSpecialNameNone;
-            const char* spc_alternate = spc_fd ? spc_fd->alternate_names[spc] : kSpecialNameNone;
+            const char* spc_name = og::sim::special_name(spc_fd, spc, s->world_.new_specials);
+            const char* spc_alternate = og::sim::alternate_name(spc_fd, spc, s->world_.new_specials);
             if (control->shifter_down() &&
                 std::strcmp(spc_alternate, kSpecialNameNone) != 0)
                 message = std::format("SPC: {}", spc_alternate);
@@ -1014,7 +1016,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
                 TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
             }
-            else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
+            else if (control->stats()->magicpoints() >= og::sim::cast_cost(*control, spc, control->shifter_down() != 0))
                 mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
             else
                 mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));

@@ -20,7 +20,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/test_trace.h>
-
+#include <openglad/gameplay/placement.h>
 #include <algorithm>
 #include <cstdlib>
 #include <format>
@@ -2097,7 +2097,8 @@ namespace
         order == Order::Living || order == Order::Generator ||
         (order == Order::Weapon &&
          (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
-          other->family() == FAMILY_BOULDER));
+          other->family() == FAMILY_BOULDER ||
+          og::sim::declares_blocks_placement(*other)));
     if (!blocking)
         return false;
     return x + ob->sizex() > other->xpos() &&

@@ -209,9 +209,10 @@ void load_committed_core_pack(ClasspackData& data)
             family_chunks.push_back(entry.path());
     }
     std::sort(family_chunks.begin(), family_chunks.end());
-    // 69 declaration files (the slime trio shares one; the CTF flag/
-    // waypoint pair left with the CTF retirement) plus the header.
-    ASSERT_EQ(family_chunks.size(), 70u);
+    // 70 declaration files (the slime trio shares one; the CTF flag/
+    // waypoint pair left with the CTF retirement; New Specials added the
+    // kit marker) plus the header.
+    ASSERT_EQ(family_chunks.size(), 71u);
     for (const std::filesystem::path& p : family_chunks) {
         og::script::register_pack_family_chunk(
             {"core", "packs/core/families/" + p.filename().string(),
@@ -267,7 +268,8 @@ TEST(CommittedCorePack, matches_the_built_in_registries)
     ASSERT_EQ(data.authors, "FSGames / the OpenGlad project");
     ASSERT_EQ(data.living.size(), static_cast<std::size_t>(NUM_FAMILIES));
     ASSERT_EQ(data.weapons.size(), 20u);
-    ASSERT_EQ(data.effects.size(), 13u);
+    // 13 classic effects plus the New Specials kit marker (wire id 17).
+    ASSERT_EQ(data.effects.size(), 14u);
     ASSERT_EQ(data.treasures.size(), 13u);
     ASSERT_EQ(data.generators.size(), 4u);
 
@@ -1045,9 +1047,9 @@ TEST(FamilyStringIds, every_committed_core_pack_id_resolves_to_its_wire_id)
     collect(Order::FX, data.effects);
     collect(Order::Treasure, data.treasures);
     collect(Order::Generator, data.generators);
-    ASSERT_EQ(expected.size(), 71u) << "the whole core pack";
+    ASSERT_EQ(expected.size(), 72u) << "the whole core pack";
 
-    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 71);
+    ASSERT_EQ(og::resources::install_classpack_data(std::move(data)), 72);
 
     for (const auto& [order, id, wire] : expected) {
         EXPECT_EQ(og::families::resolve_family_string_id(order, id.c_str()),

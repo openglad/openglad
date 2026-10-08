@@ -2575,3 +2575,26 @@ void walker::update_exit_latch()
 
 // attach_render, set_data, bmp_data, set_frame, set_direct_frame, ~walker
 // are all in src/runtime/walker_render_bridge.cpp.
+
+// New Specials: hide or reveal (see walker.h). The same collision-table
+// bookkeeping as set_dormant: a hidden walker is out of the obmap, and a
+// revealed one re-enters at the spot it already occupies.
+void walker::set_hidden(bool value)
+{
+	if (hidden() == value)
+		return;
+	const std::uint8_t state = kit_state();
+	set_kit_state(static_cast<std::uint8_t>(
+	    value ? (state | KIT_HIDDEN) : (state & ~KIT_HIDDEN)));
+	set_outline(0);
+
+	obmap* map = (current_game != nullptr && current_game->world != nullptr)
+	    ? current_game->world->myobmap.get()
+	    : nullptr;
+	if (map == nullptr)
+		return;
+	if (value)
+		map->remove(this);
+	else if (!ignore() && !dormant())
+		map->add(this, xpos(), ypos());
+}
