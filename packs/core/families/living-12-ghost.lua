@@ -1,6 +1,6 @@
--- core:ghost — scare-cloud special (cookbook: docs/lua-classpacks-design.md §3).
+-- core:ghost — scare cloud; with New Specials also wail, siphon, possess and phase (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
-
+local kg = og.use("kit_ghost")
 local ai = og.use("ai")
 local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 
@@ -30,8 +30,10 @@ og.family("living", {
              train = { strength = 16, dexterity = 16, constitution = 16,
                        intelligence = 16, armor = 45, level = 200 } },
   specials = {
-    { id = "scare", name = "SCARE", mp_cost = 30 },
-    default_cast = do_special,
+    { id = "scare",   name = "SCARE",   mp_cost = 30, alternate = { name = "WAIL", mp_cost = 50, new_kit = true }, cast = kg.scare_or_wail(do_special), ai = ai.foe_within(130) },
+    { id = "siphon",  name = "SIPHON",  mp_cost = 30, new_kit = true, cast = kg.siphon,  ai = kg.ai_siphon },
+    { id = "possess", name = "POSSESS", mp_cost = 50, new_kit = true, cast = kg.possess, ai = kg.ai_possess },
+    { id = "phase",   name = "PHASE",   mp_cost = 60, new_kit = true, cast = kg.phase,   ai = kg.ai_phase },
   },
   default_weapon = "core:knife",
   flags = { "FLYING", "ANIMATE", "NO_RANGED", "ETHEREAL" },
@@ -48,7 +50,7 @@ og.family("living", {
   sprite = "ghost.png",
   animation = "standard",
   ai_line_of_sight = 12,
-  description = "Ghosts can pass through walls, trees, and anything else that gets in the way. Their chilling touch can bring death quickly at close range.\n\nSpecial: Scare",
+  description = "Ghosts can pass through walls, trees, and anything else that gets in the way. Their chilling touch can bring death quickly at close range.\n\nSpecials: Scare or Wail, Siphon, Possess, Phase",
   names = { "Casper", "Slimer", "Reaper", "Ecto", "Pepper", "Boo", "Banshee",
             "Nyx" },
   playable = true,
@@ -61,5 +63,21 @@ og.family("living", {
   radar_color = "none",
   radar_jitter = 0,
 
-  check_special_ai = ai.foe_within(130),  -- fixed per-tick AI gate
+  tuning = {
+    -- SIPHON: the touch's reach (px) and damage (base + per level); the
+    -- ghost heals half of what it deals.
+    siphon_reach = 24,
+    siphon_damage_base = 10,
+    siphon_damage_per_level = 2,
+    -- POSSESS: the touch's reach (px); the ride lasts possess_base +
+    -- possess_per_gap per level the ghost has over its host, at least
+    -- possess_min ticks, and for good from possess_permanent_gap levels.
+    possess_reach = 24,
+    possess_permanent_gap = 8,
+    possess_min = 60,
+    possess_base = 120,
+    possess_per_gap = 40,
+    -- PHASE: how many ticks the ghost stays spectral.
+    phase_ticks = 48,
+  },
 })
