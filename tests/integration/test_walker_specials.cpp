@@ -11,8 +11,10 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/pixdefs.h>
 #include <gtest/gtest.h>
 #include "test_sim_random_scope.h"
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -850,7 +852,8 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 }
 
 // The same sweep with New Specials on: the same casters, neighbourhood and
-// stream. Fifteen rows equal the classic table above; the six families with
+// stream, on open ground (below). Fifteen rows equal the classic table
+// above; the six families with
 // a new kit read as follows (each cast runs on the caster the previous one
 // left, slot by slot, so one cast's effect is the next one's world):
 //   thief     255  unchanged in the mask: Shift + slot 1 is now MINE, not
@@ -863,8 +866,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 //                  press right after it is IMMOLATE SETTLING (the ten-tick
 //                  latch), and with the fire still burning slots 3-5 refuse
 //                  QUENCH IMMOLATE FIRST.
-//   faerie    125  BLINK; SWAP is refused SWAP BLOCKED from where the
-//                  blink left her; GLIMMER both; HASTEN and HASTE SELF;
+//   faerie    127  BLINK and SWAP; GLIMMER both; HASTEN and HASTE SELF;
 //                  WISH raises the soldier's stain and pops her, so the
 //                  shifted slot 4 and slot 5 find her dead.
 //   ghost     127  SCARE and WAIL; SIPHON twice; POSSESS takes the orc and
@@ -892,7 +894,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
         {FAMILY_THIEF, "thief", 255u},
         {FAMILY_SKELETON, "skeleton", 240u},
         {FAMILY_FIREELEMENTAL, "fire elemental", 7u},
-        {FAMILY_FAERIE, "faerie", 125u},
+        {FAMILY_FAERIE, "faerie", 127u},
         {FAMILY_DRUID, "druid", 240u},
         {FAMILY_ORC, "orc", 3u},
         {FAMILY_BARBARIAN, "barbarian", 0u},
@@ -909,6 +911,30 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
     world.new_specials = 1;
+    // The new kits move walkers (BLINK, SWAP, SHOVE) and stand things up
+    // (BONE WALL, WAR BANNER), so their outcomes read the ground under the
+    // whole neighbourhood, not just the caster's cell. The session's grid
+    // is whatever level the tests before this one left, so for the sweep
+    // it is open grass everywhere, and put back afterwards.
+    struct OpenGround
+    {
+        GameWorld& world;
+        std::vector<unsigned char> saved;
+        explicit OpenGround(GameWorld& w)
+            : world(w)
+            , saved(w.grid.data.get(),
+                    w.grid.data.get() + static_cast<std::size_t>(w.grid.w) * w.grid.h)
+        {
+            std::fill(w.grid.data.get(), w.grid.data.get() + saved.size(),
+                      static_cast<unsigned char>(PIX_GRASS1));
+        }
+        ~OpenGround()
+        {
+            std::copy(saved.begin(), saved.end(), world.grid.data.get());
+        }
+        OpenGround(const OpenGround&) = delete;
+        OpenGround& operator=(const OpenGround&) = delete;
+    } open_ground(world);
 
     for (const SweepCase& sweep : kSweep)
     {
