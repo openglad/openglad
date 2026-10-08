@@ -26,9 +26,11 @@ struct PossessResult {
 };
 
 // The rider enters the host. Refuses (nothing written) unless both are
-// livings, the host is alive, not hidden or dormant, unlinked, not charmed
-// and not seat-driven, and the rider is unlinked and not hidden.
-// ticks 0 = permanent.
+// livings, the host is alive, not undead, not hidden or dormant, unlinked
+// and not seat-driven, neither side is charmed, and the rider is unlinked
+// and not hidden. ticks 0 = permanent. The caller's world must be the
+// current gameplay context: the rider's hide and move act on the collision
+// table of the world that is current.
 PossessResult possess(GameWorld& world, walker& rider, walker& host,
                       std::int16_t ticks);
 // Ends a possession from either side; does nothing on an unlinked walker.
