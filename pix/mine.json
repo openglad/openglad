@@ -1,0 +1,66 @@
+{
+  "frames": {
+    "mine 0.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 9,
+        "h": 9
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 9,
+        "h": 9
+      },
+      "sourceSize": {
+        "w": 9,
+        "h": 9
+      },
+      "duration": 100
+    },
+    "mine 1.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 9,
+        "w": 9,
+        "h": 9
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 9,
+        "h": 9
+      },
+      "sourceSize": {
+        "w": 9,
+        "h": 9
+      },
+      "duration": 100
+    }
+  },
+  "meta": {
+    "app": "https://www.aseprite.org/",
+    "version": "1.3.7",
+    "image": "mine.png",
+    "format": "I8",
+    "size": {
+      "w": 9,
+      "h": 18
+    },
+    "scale": "1",
+    "frameTags": [],
+    "layers": [
+      {
+        "name": "Layer 1",
+        "opacity": 255,
+        "blendMode": "normal"
+      }
+    ],
+    "slices": []
+  }
+}

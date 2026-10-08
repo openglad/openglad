@@ -61,6 +61,7 @@ static void json_entity(std::ostream& os, const walker* w, int index)
        << ",\"ncmd\":" << (w->stats() ? (w->stats()->has_commands() ? 1 : 0) : -1)
        << ",\"path_len\":" << w->path_to_foe.size()
        << ",\"dormant\":" << (w->dormant() ? "true" : "false")
+       << ",\"hidden\":" << (w->hidden() ? "true" : "false")
        << ",\"foe\":" << (w->foe() != nullptr ? w->foe()->entity_id() : 0)
        << ",\"dead\":" << (w->dead() ? "true" : "false")
        << "}";

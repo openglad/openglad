@@ -580,6 +580,10 @@ static void draw_mode_beacons(screen* s, viewscreen* view,
             world.find_by_id(static_cast<std::uint32_t>(beacon.entity_id));
         if (target == nullptr || target->dead() || target->dormant())
             continue;
+        // A hidden beacon target gives nothing away to other teams.
+        if (target->hidden() && (view->control == nullptr ||
+                                 target->team_num() != view->control->team_num()))
+            continue;
         // Multi-floor: beacons on another floor would project at a
         // meaningless spot; skip them (the radar's floor rule).
         if (world.floor_count() > 1 &&

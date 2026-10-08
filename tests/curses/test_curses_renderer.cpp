@@ -551,6 +551,75 @@ TEST(CursesRenderer, invisible_entities_are_skipped_but_avatar_is_not)
         << "an invisible enemy is hidden";
 }
 
+// A hidden walker (a dug-in skeleton, a ghost riding its host) shows only to
+// its own team: my team is world.my_team (0 here).
+TEST(CursesRenderer, hidden_entities_are_glyphed_only_for_my_team)
+{
+    HandWorld hw(16, 16);
+    hw.world().my_team = 0;
+    walker* hero = hw.add_creature(8, 8, FAMILY_SOLDIER, 0);
+    const std::uint32_t id = hero->entity_id();
+    walker* mine = hw.add_creature(10, 8, FAMILY_SKELETON, 0);
+    walker* theirs = hw.add_creature(6, 8, FAMILY_ORC, 1);
+
+    HeadlessTerminal term(21, 41);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), id);
+    ASSERT_EQ(count_in_viewport(term, U'k'), 1) << term.dump();
+    ASSERT_EQ(count_in_viewport(term, U'o'), 1) << term.dump();
+
+    // The flag only (these hand-built walkers are in no collision map).
+    mine->set_kit_state(KIT_HIDDEN);
+    theirs->set_kit_state(KIT_HIDDEN);
+    renderer.draw(term, hw.world(), id);
+    EXPECT_EQ(count_in_viewport(term, U'k'), 1)
+        << "my team's hidden skeleton still shows\n" << term.dump();
+    EXPECT_EQ(count_in_viewport(term, U'o'), 0)
+        << "the other team's hidden orc does not\n" << term.dump();
+
+    // The followed walker always shows, hidden or not, whatever its team.
+    renderer.draw(term, hw.world(), theirs->entity_id());
+    EXPECT_EQ(term.count_char(U'@'), 1)
+        << "a followed hidden walker is still '@'\n" << term.dump();
+}
+
+// An invisible non-living thing of my own team (a mine I laid) keeps its
+// glyph; one of another team stays hidden; an invisible creature stays
+// hidden even on my team (the thief's cloak is unchanged).
+TEST(CursesRenderer, own_team_invisible_fx_show_a_glyph)
+{
+    HandWorld hw(20, 20);
+    hw.world().my_team = 0;
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    const std::uint32_t id = hero->entity_id();
+    walker* ours = hw.add_effect(FAMILY_BOOMERANG, 12, 10);
+    walker* theirs = hw.add_effect(FAMILY_BOOMERANG, 8, 10);
+    walker* cloaked_ally = hw.add_creature(10, 12, FAMILY_THIEF, 0);
+    ASSERT_NE(ours, nullptr);
+    ASSERT_NE(theirs, nullptr);
+    ASSERT_NE(cloaked_ally, nullptr);
+    ours->set_team_num(0);
+    theirs->set_team_num(1);
+
+    HeadlessTerminal term(24, 60);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), id);
+    ASSERT_EQ(count_in_viewport(term, U'%'), 2) << term.dump();
+    const int thieves = count_in_viewport(term, U't');
+    ASSERT_EQ(thieves, 1) << term.dump();
+
+    ours->set_invisibility_left(20);
+    theirs->set_invisibility_left(20);
+    cloaked_ally->set_invisibility_left(50);
+    renderer.draw(term, hw.world(), id);
+    EXPECT_EQ(count_in_viewport(term, U'%'), 1)
+        << "my own invisible effect shows, the other team's does not\n"
+        << term.dump();
+    EXPECT_EQ(count_in_viewport(term, U't'), 0)
+        << "a cloaked thief vanishes even for its own team, as before\n"
+        << term.dump();
+}
+
 TEST(CursesRenderer, entities_outside_the_viewport_are_clipped)
 {
     HandWorld hw(60, 60);
