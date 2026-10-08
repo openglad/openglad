@@ -168,7 +168,7 @@ function M.possess(self)
   end
   con = og.max(con, 0)
   -- The orc howl's resist roll, in its order: level roll, then
-  -- constitution roll (LEFT-FIRST, living-14-orc.lua).
+  -- constitution roll (LEFT-FIRST, lib/orc_specials.lua).
   local level_roll = og.rand0(self.level * 10)
   local con_roll = og.rand0(con * 10)
   if con_roll > level_roll then
