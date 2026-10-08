@@ -4,6 +4,8 @@
 #include <openglad/interface/guy_create.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/specials_view.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
@@ -583,21 +585,18 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
 }
 
 
-// core:faerie declares `specials = {}` (living-07-faerie.lua). Every
-// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), so a faerie
+// The golem declares `specials = {}` (living-18-beast.lua). Every
+// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), so a golem
 // with an ordinary pool is refused at the cost gate (NoMP) before any
 // dispatch; hand it a pool it cannot possibly have in play and the dispatch
-// itself runs, finds no hook and declines. Either way nothing is spent: the
-// faerie's freezing sprinkle is a weapon, not a special.
-TEST_F(WalkerSpecials, faerie_has_no_special_and_spends_no_magic)
+// itself runs, finds no hook and declines. Either way nothing is spent.
+// (This was the faerie's test until New Specials gave her four slots; her
+// classic case, the setting off, is the next test.)
+TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
 {
-    // The classic faerie: explicit about the New Specials setting whatever
-    // the session default is (a level load re-stamps the world from the
-    // session save, so the flag is set after it).
     ensure_level_loaded();
-    og::runtime::current_session->myscreen_->world().new_specials = 0;
-    walker* w = make_special_guy(FAMILY_FAERIE);
-    ASSERT_NE(nullptr, w) << "faerie created";
+    walker* w = make_special_guy(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, w) << "golem created";
     w->set_current_special(1);
     EXPECT_EQ(static_cast<int>(kSpecialCostDisabled),
               static_cast<int>(w->stats()->special_cost(1)))
@@ -620,6 +619,42 @@ TEST_F(WalkerSpecials, faerie_has_no_special_and_spends_no_magic)
         << "the dispatch ran and declined; not Dead/NoStats/NotLiving";
     EXPECT_FLOAT_EQ(rich_mp_before, w->stats()->magicpoints())
         << "a declined special spends no magic either";
+
+    delete w;
+}
+
+// With New Specials off the faerie is the classic faerie: her BLINK slot is
+// declared and stamped at its price, but the engine prices it at the
+// disabled sentinel, so an ordinary pool is refused (NoMP) and nothing is
+// spent; with the setting on the same pool pays the declared price.
+TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
+{
+    // A level load re-stamps the world from the session save, so the flag
+    // is set after it, explicitly, whatever the session default is.
+    ensure_level_loaded();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.new_specials = 0;
+    walker* w = make_special_guy(FAMILY_FAERIE);
+    ASSERT_NE(nullptr, w) << "faerie created";
+    w->set_current_special(1);
+    EXPECT_EQ(static_cast<int>(kSpecialCostDisabled),
+              static_cast<int>(og::sim::cast_cost(*w, 1, false)))
+        << "a slot the setting hides costs the disabled sentinel";
+
+    const float mp_before = w->stats()->magicpoints();
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    ASSERT_FALSE(w->special(&why)) << "the classic faerie cannot cast a special";
+    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
+        << "the disabled sentinel cost puts the slot out of reach of any real pool";
+    EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
+        << "a refused special spends no magic";
+
+    world.new_specials = 1;
+    EXPECT_EQ(static_cast<int>(w->stats()->special_cost(1)),
+              static_cast<int>(og::sim::cast_cost(*w, 1, false)))
+        << "with the setting on BLINK costs its declared price";
+    EXPECT_GT(static_cast<int>(kSpecialCostDisabled),
+              static_cast<int>(og::sim::cast_cost(*w, 1, false)));
 
     delete w;
 }
