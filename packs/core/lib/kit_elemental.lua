@@ -36,15 +36,10 @@ function M.end_channel(self)
   end
 end
 
-local function end_marker(marker)
-  marker.dead = 1
-  marker:death()
-end
-
 -- The quench: the channel ends on the owner, then the marker dies.
 local function quench(owner, marker)
   M.end_channel(owner)
-  end_marker(marker)
+  km.finish(marker)
 end
 
 -- A flame-lick flash on the elemental (the first of the hit rows; no draw).
@@ -98,7 +93,7 @@ end
 local function immolation_act(marker)
   local owner = marker:owner()
   if not owner then
-    end_marker(marker)
+    km.finish(marker)
     return
   end
   local t = og.tuning(owner)
@@ -147,7 +142,7 @@ end
 local function meteor_rain_act(marker)
   local owner = marker:owner()
   if not owner then
-    end_marker(marker)
+    km.finish(marker)
     return
   end
   local t = og.tuning(owner)
@@ -156,7 +151,7 @@ local function meteor_rain_act(marker)
     strike(marker, owner, t)
   end
   if marker:lifetime() <= 0 then
-    end_marker(marker)
+    km.finish(marker)
   end
 end
 

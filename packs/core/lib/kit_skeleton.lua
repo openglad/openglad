@@ -43,12 +43,6 @@ local LEGION_FOES_RANGE = 100
 local FACING_X = { 0, 1, 1, 1, 0, -1, -1, -1 }
 local FACING_Y = { -1, -1, 0, 1, 1, 1, 0, -1 }
 
--- A marker's end: every exit of a role handler goes through here.
-local function end_marker(marker)
-  marker.dead = 1
-  marker:death()
-end
-
 -- hp below num/den of max_hp. hp and max_hp are C++ floats: one float
 -- multiply each side keeps the comparison free of decimal fractions.
 local function hp_below(self, num, den)
@@ -130,7 +124,7 @@ end
 -- Up out of the ground (the grow row), swinging at `foe` when there is one:
 -- the weapon leaves toward the foe at once, the way a melee swing does.
 local function pop_up(owner, marker, foe)
-  end_marker(marker)
+  km.finish(marker)
   stop_channel(owner)
   owner:set_hidden(0)
   owner.ani_type = C.ANI_TELE_IN
@@ -163,7 +157,7 @@ local function sink(marker, owner)
   -- A ghost that took the body during the sink keeps it visible: the
   -- burrow has nothing left to do.
   if not owner:hidden() then
-    end_marker(marker)
+    km.finish(marker)
   end
 end
 
@@ -189,7 +183,7 @@ end
 local function burrow(marker)
   local owner = marker:owner()
   if not owner then
-    end_marker(marker)
+    km.finish(marker)
     return
   end
   if owner:hidden() then
@@ -400,11 +394,11 @@ local function legion_window(marker)
   local left = marker:lifetime() - 1
   marker:set_lifetime(left)
   if left <= 0 then
-    end_marker(marker)
+    km.finish(marker)
     return
   end
   if not marker:owner() then
-    end_marker(marker)
+    km.finish(marker)
   end
 end
 

@@ -51,9 +51,14 @@ function M.on_act(self)
     handler(self)
     return true
   end
-  self.dead = 1
-  self:death()
+  M.finish(self)
   return true
+end
+
+-- A marker's end: every kit's role handlers end their markers through here.
+function M.finish(marker)
+  marker.dead = 1
+  marker:death()
 end
 
 -- The owner's live marker playing `role`, or nil. Markers are summoned, and
