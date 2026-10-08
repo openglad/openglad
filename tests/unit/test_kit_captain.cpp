@@ -726,6 +726,68 @@ TEST(KitCaptain, hook_eats_incoming_projectiles)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// The blade's guard cuts down shots, not scenery: an enemy war banner and an
+// enemy bone wall inside the guard's reach are passed by (no hitpoints
+// lost on either side), while a shot beside them is still cut down. Foes
+// must chop scenery down. The scenery stands right where the blade will be
+// on tick 2, so only the blocks_placement test can spare it.
+//
+// RED without it (the guard as the shield's): "scenery is passed by"
+// fails for both (dead on tick 2) and the blade reads 7 hitpoints
+// (30 - 9 - 9 - 5), not 25.
+TEST(KitCaptain, hook_guard_passes_scenery_by)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_captain(tw, 200, 200);
+    ASSERT_NE(nullptr, captain);
+    ASSERT_TRUE(cast(captain, 2, false).ok);
+    walker* blade = blades(tw).front();
+    blade->act();  // tick 1
+
+    const short base_x = static_cast<short>(
+        captain->xpos() + captain->sizex() / 2 - blade->sizex() / 2);
+    const short base_y = static_cast<short>(
+        captain->ypos() + captain->sizey() / 2 - blade->sizey() / 2);
+    const short spot_x = static_cast<short>(base_x - kHookRadius);
+    std::vector<walker*> scenery;
+    for (const char* id : {"core:war_banner", "core:bone_wall"}) {
+        walker* piece = tw.world().add_weap_ob(Order::Weapon, weapon_family(id));
+        ASSERT_NE(nullptr, piece) << id;
+        const WeaponFamilyDescriptor* wfd =
+            get_weapon_family_descriptor(piece->family());
+        ASSERT_NE(nullptr, wfd);
+        ASSERT_TRUE(wfd->blocks_placement) << id << " is solid scenery";
+        piece->set_team_num(kThem);
+        piece->setxy(spot_x, base_y);
+        piece->set_damage(9.0f);
+        piece->stats()->set_max_hitpoints(120.0f);
+        piece->stats()->set_hitpoints(120.0f);
+        piece->set_act_type(ACT_SIT);
+        scenery.push_back(piece);
+    }
+    walker* knife = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, knife);
+    knife->set_team_num(kThem);
+    knife->setxy(spot_x, base_y);
+    knife->set_damage(5.0f);
+
+    blade->act();  // tick 2: the blade sits on all three
+    EXPECT_TRUE(knife->dead()) << "the shot is still cut down";
+    for (walker* piece : scenery) {
+        EXPECT_FALSE(piece->dead()) << "family " << int(piece->family())
+                                    << ": scenery is passed by";
+        EXPECT_FLOAT_EQ(120.0f, piece->stats()->hitpoints());
+    }
+    EXPECT_FLOAT_EQ(static_cast<float>(kHookHp - 5),
+                    blade->stats()->hitpoints())
+        << "only the shot cost the blade";
+    EXPECT_FALSE(blade->dead());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // Shift + slot 2: three knives, at the facing and one point either side,
 // paid by the special (fire()'s per-knife charge is pre-paid), the aim
 // restored. A captain parked on the curdir -1 sentinel fans around its aim;
@@ -1153,9 +1215,11 @@ TEST(KitCaptain, banner_is_chopped_by_foes_and_passes_allies)
 
 // WARBAND: two grunts at level 10 (one more every three levels above it)
 // come in on the map edge nearest the captain, fearless, owned by him and
-// timed like a summoned elemental, and run to his standing banner (or to
-// him). Each edge is tried. The cap refuses a seventh; a walled edge
-// refuses with nothing spent.
+// timed like a summoned elemental, and run to the centre of his standing
+// banner (or to him). Each edge is tried. The cap refuses a seventh; a
+// walled edge refuses with nothing spent.
+// RED with the goal at the banner's top-left (the first shape): com1 and
+// com2 read 6 and 11 short of the centre of the 12x22 banner.
 TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -1186,8 +1250,9 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
             const command* go = front_command(g);
             ASSERT_NE(nullptr, go);
             EXPECT_EQ(COMMAND_GOTO, go->commandtype);
-            EXPECT_EQ(banner->xpos(), go->com1) << "to the banner";
-            EXPECT_EQ(banner->ypos(), go->com2);
+            EXPECT_EQ(banner->xpos() + banner->sizex() / 2, go->com1)
+                << "to the banner's centre";
+            EXPECT_EQ(banner->ypos() + banner->sizey() / 2, go->com2);
         }
     }
 
@@ -1358,6 +1423,15 @@ TEST(KitCaptain, ai_howl_fires_when_a_foe_is_near_and_eats_when_hurt)
         << "hurt, but the corpse is out of reach: howl";
     stain->center_on(s.captain);
     EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(1)) << "hurt: eat";
+    // Exactly 60 % is not below 60 %: the test is made from whole numbers
+    // (hp x 5 < max x 3), where a float 0.6 (0.6000000238) would call
+    // 120 of 200 hurt. RED with og.fmul(max_hp, 0.6): "at exactly 60 %:
+    // howl" reads (true, 1).
+    s.captain->stats()->set_hitpoints(120.0f);
+    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1))
+        << "at exactly 60 %: howl";
+    s.captain->stats()->set_hitpoints(119.0f);
+    EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(1)) << "just below: eat";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

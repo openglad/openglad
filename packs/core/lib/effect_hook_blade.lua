@@ -67,13 +67,17 @@ function M.on_act(self)
 
   -- While it spins it is a shield: foe shots that close in are cut down,
   -- each costing the blade its damage in hitpoints (the boomerang's guard).
+  -- Solid scenery (a bone wall, a war banner) is neither a shot nor a
+  -- shield: the blade passes it by, and foes must chop it down.
   local weapons = og.find_foe_weapons_in_range("weap", self:sizex() * 2, self)
   for i = 1, #weapons do
     local weapon = weapons[i]
-    -- hp is a C++ float: per-op rounding.
-    self.hp = og.fsub(self.hp, weapon:damage())
-    weapon.dead = 1
-    weapon:death()
+    if not weapon:blocks_placement() then
+      -- hp is a C++ float: per-op rounding.
+      self.hp = og.fsub(self.hp, weapon:damage())
+      weapon.dead = 1
+      weapon:death()
+    end
   end
   if self.hp <= 0 then
     retire(self)
