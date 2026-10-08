@@ -1598,6 +1598,23 @@ set_tests_properties(openglad_text_ffa PROPERTIES
     TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
 )
 
+# New Specials through the headless protocol: one level, crew and seed with
+# the setting off and on; a faerie crew's census must differ, and each
+# setting must repeat itself exactly. Driven by Python (a FATAL_ERROR
+# requirement at configure), never a bare .sh COMMAND.
+add_test(NAME openglad_text_new_specials
+    COMMAND ${CMAKE_COMMAND} -E env
+        OPENGLAD_TEXT_TIMEOUT=${OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT}
+        PYTHONDONTWRITEBYTECODE=1
+        ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/scripts/test_text_client_new_specials.py
+        $<TARGET_FILE:openglad_text>
+)
+set_tests_properties(openglad_text_new_specials PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
+)
+
 if(TARGET openglad_server)
     add_test(NAME openglad_server_cli
         COMMAND ${CMAKE_COMMAND} -E env
