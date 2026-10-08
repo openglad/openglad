@@ -77,8 +77,8 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255,
                  bool layer_active = true);
 // Multifloor FX pre-pass sprites (render-only, drawn before the normal entity
 // loops so entities overdraw them). Both apply to alive Living/Weapon walkers
-// that are neither phantom nor invisible, and return true when a blit was
-// issued (callers count for the per-pass TRACE).
+// that are neither phantom nor invisible nor hidden, and return true when a
+// blit was issued (callers count for the per-pass TRACE).
 // - Shadow: squashed black silhouette on the GROUND plane (no worldz raise),
 //   so an arcing projectile's height reads from the sprite/shadow gap.
 // - Reflection: vertically flipped sprite mirrored below the feet, masked to
