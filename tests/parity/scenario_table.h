@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:472 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:532 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -167,7 +167,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
-// Cycling gate: src/gameplay/sim_input_handler.cpp:201 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Cycling gate: src/gameplay/sim_input_handler.cpp:204 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
 // Firing gate: src/gameplay/living.cpp:587 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
