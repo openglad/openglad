@@ -280,6 +280,16 @@ end
 -- false there would skip the draw that follows it (the classic game had no
 -- gate and always answered true).
 
+-- The walker a bot's SWAP would take, or nil when there is none or the
+-- faerie cannot pay SWAP's own, higher price (the engine would refuse it
+-- for mana after the gate had already chosen it).
+local function affordable_swap_partner(self)
+  if self.magicpoints < self:alternate_cost(1) then
+    return nil
+  end
+  return swap_partner(self, og.tuning(self).swap_range)
+end
+
 -- Slot 1: SWAP a dying ally out when it is the walker SWAP would take (the
 -- nearest in sight) and its attacker is on it; else BLINK away from a foe
 -- that is close while the faerie is hurt.
@@ -287,7 +297,7 @@ function M.ai_blink(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  local partner = swap_partner(self, og.tuning(self).swap_range)
+  local partner = affordable_swap_partner(self)
   if partner then
     if self:is_friendly(partner) then
       -- max_hp is a C++ float: one float multiply
