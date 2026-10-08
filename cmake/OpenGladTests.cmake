@@ -1033,6 +1033,7 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gladiator_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_special_art.cpp
 )
 
 # test_builtin_archives byte-compares every staged-archive member
