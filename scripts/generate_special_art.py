@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generate the New Specials sprites: pix/{mine,banner,bonewall,ember}.png.
+"""Generate the New Specials sprites: pix/{mine,banner,bonewall,ember}.png
+and the blank pix/kit_marker.png.
 
 Deterministic, stdlib-only (struct + zlib) source of truth for the committed
 PNGs and their Aseprite "Hash" sidecars. Rerunning it reproduces the same
@@ -28,6 +29,11 @@ like they belong next to the old ones:
     flame of the meteor bolt (meteor.png frame 0) standing on it.
     Frame 2 is the dying ember. The flame keeps the cycled fire band
     224-231, so the palette rotation animates it like a torch.
+
+The kit marker (the invisible helper that times DIG IN, LEGION, IMMOLATE,
+PHASE and METEOR RAIN) needs a picture of its own size and nothing in it:
+kit_marker.png is one 40x60 frame of index 0, so the marker keeps the box it
+is centred with and draws nothing. It has no sidecar (one frame).
 
 Palette rules (pix/openglad.gpl, read_pixie_file in og_file.cpp):
   - index 0 is transparent;
@@ -435,6 +441,12 @@ SPRITES = (
 )
 
 
+# Blank sprites: name -> (width, height). One frame, every pixel transparent.
+BLANKS = (
+    ("kit_marker", 40, 60),
+)
+
+
 def check_bands(name, frames):
     """The palette rules the art test pins, checked before anything is written."""
     for fi, cv in enumerate(frames):
@@ -460,6 +472,9 @@ def build(palette):
         pixels = b"".join(bytes(cv.px) for cv in frames)
         png = encode_indexed_png(w, h * len(frames), pixels, palette)
         out[name] = (png, aseprite_sidecar(name, w, h, len(frames)))
+    for name, w, h in BLANKS:
+        blank = bytes([TRANSPARENT]) * (w * h)
+        out[name] = (encode_indexed_png(w, h, blank, palette), None)
     return out
 
 
@@ -474,8 +489,9 @@ def main(argv):
                 raise SystemExit(f"palette drift at entry {i} channel {c}")
     stale = []
     for name, (png, sidecar) in build(palette).items():
-        targets = ((os.path.join(PIX, f"{name}.png"), png, "wb"),
-                   (os.path.join(PIX, f"{name}.json"), sidecar, "w"))
+        targets = [(os.path.join(PIX, f"{name}.png"), png, "wb")]
+        if sidecar is not None:
+            targets.append((os.path.join(PIX, f"{name}.json"), sidecar, "w"))
         for path, data, mode in targets:
             if check:
                 want = data if isinstance(data, bytes) else data.encode()

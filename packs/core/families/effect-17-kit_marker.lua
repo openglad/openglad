@@ -9,7 +9,7 @@ og.family("effect", {
   loops_animation = false,
   creates_hit_effect = false,
   flags = { "NO_COLLIDE" },
-  sprite = "empty.png",
+  sprite = "kit_marker.png",
   glyph = " ",
   glyph_ascii = " ",
   glyph_color = "white",

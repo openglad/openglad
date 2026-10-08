@@ -2809,7 +2809,7 @@
   loops_animation = false
   creates_hit_effect = false
   init_bit_flags = 64
-  pix_filename = "empty.png"
+  pix_filename = "kit_marker.png"
   anim_row_count = 0
   anim_table = ~
   glyph.codepoint = 32
