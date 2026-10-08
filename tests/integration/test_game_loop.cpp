@@ -11097,3 +11097,1637 @@ TEST(GameLoop, snapshot_seeded_server_keeps_a_ward_a_legion_window_and_a_possess
 
     finish_scene();
 }
+
+// ---------------------------------------------------------------------------
+// New Specials films: one recording per new special, plus three of a bot
+// using one, for the pull request's media table.
+//
+// Each scene is the REAL game: glad_init, game_frame_with_result, the
+// transport shadow, the seat's input read from faked SDL key states. The
+// caster is the seat's own hero at level 10 with the New Specials setting
+// set on explicitly, on the slot the scene films and with a full mana pool;
+// Special and Shift are pressed for a short two-frame tap, the way a player
+// taps a key. Every other actor is staged on the AUTHORITATIVE server world
+// (the display is only a mirror of it) and must be on the mirror by frame
+// 0. Every scene asserts what the special visibly does (its tell), so a cast
+// that fizzles fails the test instead of filming nothing.
+//
+// Frames land in $OG_FX_CAPTURE_DIR/<scene>/NNN.ppm, with the frame that
+// best shows the tell written to $OG_FX_CAPTURE_DIR/<scene>/key.txt for the
+// encoder (scripts/media/capture_new_specials.sh). OG_FX_CAPTURE_ONLY=<scene>
+// records a single scene. Without OG_FX_CAPTURE_DIR the test skips, so a
+// normal test run never records anything.
+// ---------------------------------------------------------------------------
+#include <functional>
+#include <map>
+
+namespace new_specials_rec {
+
+// The three random streams, pinned per scene the way the clinic film pins
+// them: the display world (what a level load seeds the next world from),
+// the authoritative world, and libc rand().
+inline constexpr std::uint32_t kDisplayRngPin = 0x5eed5bc1u;
+inline constexpr std::uint32_t kAuthorityRngPin = 0x5eed5bc2u;
+inline constexpr unsigned int kLibcRandPin = 0x5bc3u;
+
+// The seat's keys, rebound to keycodes no shipped layout uses.
+inline constexpr SDL_Keycode kKeyUp = SDLK_F13;
+inline constexpr SDL_Keycode kKeyDown = SDLK_F14;
+inline constexpr SDL_Keycode kKeyLeft = SDLK_F15;
+inline constexpr SDL_Keycode kKeyRight = SDLK_F16;
+inline constexpr SDL_Keycode kKeySpecial = SDLK_F17;
+inline constexpr SDL_Keycode kKeyShift = SDLK_F18;
+inline constexpr SDL_Keycode kKeySwitch = SDLK_F19;
+inline constexpr SDL_Keycode kKeyFire = SDLK_F20;
+
+// A natural tap: the key is down for two frames.
+inline constexpr int kTapFrames = 2;
+
+// A bot film's bot gets its mana after this many frames, so the film shows
+// the scene before the bot acts.
+inline constexpr int kBotLeadIn = 16;
+
+struct Keys
+{
+    bool up = false;
+    bool down = false;
+    bool left = false;
+    bool right = false;
+    bool special = false;
+    bool shift = false;
+    bool switch_char = false;
+    bool fire = false;
+};
+
+bool tap(int frame, int at)
+{
+    return frame >= at && frame < at + kTapFrames;
+}
+
+bool during(int frame, int from, int to)
+{
+    return frame >= from && frame < to;
+}
+
+struct Film
+{
+    screen* display = nullptr;
+    screen* server = nullptr;
+    std::uint32_t hero_id = 0;
+    std::map<std::string, std::uint32_t> ids;
+    std::map<std::string, float> marks;
+    int frame = 0;
+
+    walker* on_server(std::uint32_t id) const
+    {
+        return server->world().find_by_id(id);
+    }
+    walker* on_mirror(std::uint32_t id) const
+    {
+        return display->world().find_by_id(id);
+    }
+    walker* hero() const { return on_server(hero_id); }
+    walker* hero_seen() const { return on_mirror(hero_id); }
+    walker* actor(const std::string& name) const
+    {
+        const auto it = ids.find(name);
+        return it == ids.end() ? nullptr : on_server(it->second);
+    }
+    walker* actor_seen(const std::string& name) const
+    {
+        const auto it = ids.find(name);
+        return it == ids.end() ? nullptr : on_mirror(it->second);
+    }
+    float mark(const std::string& name) const
+    {
+        const auto it = marks.find(name);
+        return it == marks.end() ? 0.0f : it->second;
+    }
+};
+
+// What the special visibly does, read on the display mirror after a tick.
+// It latches: the scene records the first frame it holds.
+struct Tell
+{
+    std::string what;
+    std::function<bool(Film&)> seen;
+};
+
+struct Scene
+{
+    const char* name = "";
+    int family = FAMILY_SOLDIER;
+    int slot = 1;
+    int frames = 120;
+    // Further roster families (heroes on the seat's team, AI-driven); the
+    // seat drives the first, the caster.
+    std::vector<int> roster_extra;
+    // Runs once on the server world with its gameplay context installed.
+    std::function<void(Film&)> stage;
+    // The seat's keys on each frame.
+    std::function<Keys(Film&, int)> keys;
+    // Optional server-side hold before each tick (a bot film keeps its bot
+    // where the camera can see it until the bot has cast).
+    std::function<void(Film&, int)> before_tick;
+    std::vector<Tell> tells;
+    // The key still is this many frames after the LAST tell first holds.
+    int key_offset = 4;
+};
+
+int family_of(Order order, const char* id)
+{
+    return og::families::resolve_family_string_id(order, id);
+}
+
+// Live entities of `order`/`family` (and owned by `owner_id` when nonzero)
+// anywhere in the world's three lists.
+int count_of(GameWorld& w, Order order, int family, std::uint32_t owner_id = 0)
+{
+    int n = 0;
+    for (const auto* list : {&w.oblist, &w.fxlist, &w.weaplist})
+        for (const auto& up : *list)
+        {
+            const walker* ob = up.get();
+            if (ob == nullptr || ob->dead() || ob->query_order() != order ||
+                ob->family() != family)
+                continue;
+            if (owner_id != 0 &&
+                (ob->owner() == nullptr || ob->owner()->entity_id() != owner_id))
+                continue;
+            ++n;
+        }
+    return n;
+}
+
+int count_living(GameWorld& w, int family, unsigned char team)
+{
+    int n = 0;
+    for (const auto& up : w.oblist)
+        if (up && !up->dead() && up->query_order() == Order::Living &&
+            up->family() == family && up->team_num() == team &&
+            !up->dormant())
+            ++n;
+    return n;
+}
+
+// Adds a living on the server beside the hero and names it.
+walker* add_actor(Film& film, const std::string& name, int family,
+                  unsigned char team, int dx, int dy)
+{
+    walker* const hero = film.hero();
+    walker* const a = film.server->world().add_ob(Order::Living, family);
+    EXPECT_NE(nullptr, a) << name;
+    if (a == nullptr || hero == nullptr)
+        return nullptr;
+    a->set_team_num(team);
+    a->setxy(static_cast<short>(hero->xpos() + dx),
+             static_cast<short>(hero->ypos() + dy));
+    film.ids[name] = a->entity_id();
+    return a;
+}
+
+void set_level(walker* a, int level)
+{
+    a->stats()->set_level(static_cast<short>(level));
+    a->set_difficulty(static_cast<std::uint32_t>(level));
+    a->stats()->set_hitpoints(a->stats()->max_hitpoints());
+    a->stats()->set_magicpoints(a->stats()->max_magicpoints());
+}
+
+// Stages a living and kills it where it stands, leaving its corpse stain.
+// The body itself is gone, so it is not one of the film's actors.
+void add_corpse(Film& film, int family, unsigned char team, int dx, int dy)
+{
+    walker* const a = add_actor(film, "corpse", family, team, dx, dy);
+    if (a == nullptr)
+        return;
+    film.ids.erase("corpse");
+    a->stats()->set_hitpoints(0.0f);
+    a->set_dead(1);
+    a->death();
+}
+
+// Gives `a` a full pool deep enough for `at_least` mana.
+void fill_mana(walker* a, float at_least)
+{
+    if (a->stats()->max_magicpoints() < at_least)
+        a->stats()->set_max_magicpoints(at_least);
+    a->stats()->set_magicpoints(a->stats()->max_magicpoints());
+}
+
+// The corpse stain nearest to `near` (stains live in the effect list).
+walker* nearest_stain(GameWorld& w, const walker& near)
+{
+    const int stain = family_of(Order::Treasure, "core:stain");
+    walker* best = nullptr;
+    int best_d = 0;
+    for (const auto& up : w.fxlist)
+    {
+        walker* const ob = up.get();
+        if (ob == nullptr || ob->dead() || ob->query_order() != Order::Treasure ||
+            ob->family() != stain)
+            continue;
+        const int d = std::abs(ob->xpos() - near.xpos()) +
+                      std::abs(ob->ypos() - near.ypos());
+        if (best == nullptr || d < best_d)
+        {
+            best = ob;
+            best_d = d;
+        }
+    }
+    return best;
+}
+
+std::uint32_t find_roster_hero(GameWorld& w, int family, std::uint32_t not_id)
+{
+    for (const auto& up : w.oblist)
+        if (up && !up->dead() && up->query_order() == Order::Living &&
+            up->team_num() == 0 && up->family() == family &&
+            up->myguy != nullptr && up->entity_id() != not_id)
+            return up->entity_id();
+    return 0;
+}
+
+struct Result
+{
+    int frames_run = 0;
+    int blank_frame = -1;
+    std::vector<int> tell_frames;
+    std::vector<std::string> missing_on_mirror;
+};
+
+void record(const Scene& sc, Result& out)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    std::vector<int> roster = {sc.family};
+    roster.insert(roster.end(), sc.roster_extra.begin(), sc.roster_extra.end());
+    gameplay_rec::build_save(s, "gladiator", 1, 1, roster, 10);
+    s->save_data.new_specials = 1;
+    s->world().rng_.state_ = kDisplayRngPin;
+    std::srand(kLibcRandPin);
+    glad_init();
+    gameplay_rec::all_capture_effects_on();
+    cfg.apply_setting("effects", "mini_hp_bar", "on");
+    gameplay_rec::force_weather(WeatherKind::None);
+
+    Film film;
+    film.display = s;
+    film.server = new_specials_mirror::server_screen();
+    ASSERT_NE(nullptr, film.server) << "the films need the transport shadow";
+    ASSERT_EQ(1, film.server->world().new_specials)
+        << "the films are recorded with New Specials on";
+    ASSERT_EQ(1, s->world().new_specials);
+    film.server->world().rng_.state_ = kAuthorityRngPin;
+
+    walker* const hero = gameplay_rec::find_seat_control(film.server->world());
+    ASSERT_NE(nullptr, hero) << "the seat's hero is the caster";
+    ASSERT_EQ(sc.family, hero->family());
+    film.hero_id = hero->entity_id();
+    std::vector<std::uint32_t> keep = {film.hero_id};
+    for (int fam : sc.roster_extra)
+    {
+        std::uint32_t not_id = film.hero_id;
+        for (std::uint32_t id : keep)
+            if (film.on_server(id)->family() == fam)
+                not_id = id;
+        const std::uint32_t id =
+            find_roster_hero(film.server->world(), fam, not_id);
+        ASSERT_NE(0u, id) << "roster hero of family " << fam;
+        keep.push_back(id);
+        film.ids["hero" + std::to_string(keep.size() - 1)] = id;
+    }
+    const std::uint32_t sentinel_id =
+        new_specials_mirror::strip_level(film.server->world(), keep, 0, 0);
+    ASSERT_NE(0u, sentinel_id) << "the level keeps one dormant hostile";
+    new_specials_mirror::strip_level(s->world(), keep, 0, sentinel_id);
+
+    {
+        ScopedServerWorldContext server_ctx(*film.server);
+        walker* const caster = film.hero();
+        caster->set_current_special(static_cast<char>(sc.slot));
+        fill_mana(caster, 0.0f);
+        if (sc.stage)
+            sc.stage(film);
+        ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    }
+
+    SessionKeyStateGuard keystates;
+    auto& keymap = og::runtime::current_session->player_keys_[0];
+    const std::array<int, 8> slots = {KEY_UP,      KEY_DOWN,    KEY_LEFT,
+                                      KEY_RIGHT,   KEY_SPECIAL, KEY_SHIFTER,
+                                      KEY_SWITCH,  KEY_FIRE};
+    const std::array<SDL_Keycode, 8> codes = {kKeyUp,      kKeyDown,
+                                              kKeyLeft,    kKeyRight,
+                                              kKeySpecial, kKeyShift,
+                                              kKeySwitch,  kKeyFire};
+    std::array<int, 8> saved{};
+    for (std::size_t i = 0; i < slots.size(); ++i)
+    {
+        saved[i] = keymap[slots[i]];
+        keymap[slots[i]] = static_cast<int>(codes[i]);
+    }
+    reset_viewscreen_input_debounce();
+
+    out.tell_frames.assign(sc.tells.size(), -1);
+    std::vector<std::string> messages;
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < sc.frames; ++f)
+    {
+        film.frame = f;
+        if (sc.before_tick)
+        {
+            ScopedServerWorldContext server_ctx(*film.server);
+            sc.before_tick(film, f);
+        }
+        const Keys k = sc.keys ? sc.keys(film, f) : Keys{};
+        keystates.set(kKeyUp, k.up);
+        keystates.set(kKeyDown, k.down);
+        keystates.set(kKeyLeft, k.left);
+        keystates.set(kKeyRight, k.right);
+        keystates.set(kKeySpecial, k.special);
+        keystates.set(kKeyShift, k.shift);
+        keystates.set(kKeySwitch, k.switch_char);
+        keystates.set(kKeyFire, k.fire);
+
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        out.frames_run = f + 1;
+
+        if (f == 0)
+        {
+            if (s->world().find_by_id(film.hero_id) == nullptr)
+                out.missing_on_mirror.push_back("hero");
+            for (const auto& [name, id] : film.ids)
+            {
+                walker* const seen = s->world().find_by_id(id);
+                if (seen == nullptr)
+                    out.missing_on_mirror.push_back(name);
+                // "Hurt" means below what the mirror showed on frame 0.
+                else if (film.marks.count(name + ".hp") != 0)
+                    film.marks[name + ".hp"] = seen->stats()->hitpoints();
+            }
+        }
+
+        // The viewport's message lines, logged as they appear (a refused
+        // cast says why there).
+        if (viewscreen* const vs = s->viewob[0].get())
+            for (int i = 0; i < MAX_MESSAGES; ++i)
+                if (!vs->textlist[i].empty() &&
+                    std::find(messages.begin(), messages.end(),
+                              vs->textlist[i]) == messages.end())
+                {
+                    messages.push_back(vs->textlist[i]);
+                    printf("  %s frame %d: \"%s\"\n", sc.name, f,
+                           vs->textlist[i].c_str());
+                }
+
+        s->redraw();
+        score_panel(s);
+        s->refresh();
+        s->swap();
+        gameplay_rec::dump_viewport(s, sc.name, f);
+        if (out.blank_frame < 0 && gameplay_rec::viewport_is_blank(s))
+            out.blank_frame = f;
+
+        for (std::size_t i = 0; i < sc.tells.size(); ++i)
+            if (out.tell_frames[i] < 0 && sc.tells[i].seen(film))
+                out.tell_frames[i] = f;
+
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+
+    int key = -1;
+    if (!out.tell_frames.empty() && out.tell_frames.back() >= 0)
+        key = std::min(out.frames_run - 1, out.tell_frames.back() + sc.key_offset);
+    char dir[512];
+    gameplay_rec::dump_dir_for(sc.name, dir, sizeof(dir));
+    if (FILE* fp = fopen((std::string(dir) + "/key.txt").c_str(), "w"))
+    {
+        fprintf(fp, "%d\n", key);
+        fclose(fp);
+    }
+    printf("new specials film %s: frames=%d key=%d", sc.name, out.frames_run,
+           key);
+    for (std::size_t i = 0; i < sc.tells.size(); ++i)
+        printf(" [%s @%d]", sc.tells[i].what.c_str(), out.tell_frames[i]);
+    printf("\n");
+    fflush(stdout);
+
+    for (std::size_t i = 0; i < slots.size(); ++i)
+        keymap[slots[i]] = saved[i];
+    reset_viewscreen_input_debounce();
+    new_specials_mirror::finish_scene();
+}
+
+// ---- the scenes -----------------------------------------------------------
+
+Keys special_at(int f, int at, bool shift = false)
+{
+    Keys k;
+    k.special = tap(f, at);
+    k.shift = k.special && shift;
+    return k;
+}
+
+float hp_of(walker* w)
+{
+    return w == nullptr ? -1.0f : w->stats()->hitpoints();
+}
+
+bool hurt_since_staging(Film& film, const std::string& name)
+{
+    walker* const w = film.actor_seen(name);
+    return w == nullptr || w->dead() ||
+           hp_of(w) < film.mark(name + ".hp");
+}
+
+void mark_hp(Film& film, const std::string& name)
+{
+    film.marks[name + ".hp"] = hp_of(film.actor(name));
+}
+
+std::vector<Scene> scenes()
+{
+    std::vector<Scene> all;
+    const int fx_mine = family_of(Order::FX, "core:mine");
+    const int fx_wail = family_of(Order::FX, "core:wail");
+    const int fx_hook = family_of(Order::FX, "core:hook_blade");
+    const int fx_ember = family_of(Order::FX, "core:ember");
+    const int fx_explosion = family_of(Order::FX, "core:explosion");
+    const int fx_marker = family_of(Order::FX, "core:kit_marker");
+    const int weap_bone_wall = family_of(Order::Weapon, "core:bone_wall");
+    const int weap_banner = family_of(Order::Weapon, "core:war_banner");
+    const int weap_knife = family_of(Order::Weapon, "core:knife");
+    const int weap_bone = family_of(Order::Weapon, "core:bone");
+    const int weap_sprinkle = family_of(Order::Weapon, "core:sprinkle");
+    (void)fx_marker;
+
+    // THIEF: Shift + Drop Bomb lays a MINE and the thief steps back; the
+    // first orc chasing it walks onto the mine. Then a second mine for the
+    // second orc.
+    {
+        Scene sc;
+        sc.name = "thief_mine";
+        sc.family = FAMILY_THIEF;
+        sc.slot = 1;
+        sc.stage = [](Film& film) {
+            add_actor(film, "orc1", FAMILY_ORC, 1, 64, -4)->set_act_type(ACT_GUARD);
+            mark_hp(film, "orc1");
+            walker* orc2 = add_actor(film, "orc2", FAMILY_ORC, 1, 150, -10);
+            orc2->set_act_type(ACT_GUARD);
+            orc2->set_guard_hold_post(true);
+            mark_hp(film, "orc2");
+        };
+        // The second orc holds back until the first mine has gone off.
+        sc.before_tick = [fx_mine](Film& film, int f) {
+            if (f > 26)
+                if (walker* orc2 = film.actor("orc2"))
+                    orc2->set_guard_hold_post(false);
+            (void)fx_mine;
+        };
+        sc.keys = [](Film&, int f) {
+            const Keys first = special_at(f, 10, true);
+            const Keys second = special_at(f, 44, true);
+            Keys k;
+            k.special = first.special || second.special;
+            k.shift = first.shift || second.shift;
+            k.left = during(f, 16, 24) || during(f, 50, 58);
+            return k;
+        };
+        sc.tells = {
+            {"a mine lies on the ground",
+             [fx_mine](Film& film) {
+                 return count_of(film.display->world(), Order::FX, fx_mine,
+                                 film.hero_id) > 0;
+             }},
+            {"the first orc walks onto it and it explodes",
+             [](Film& film) { return hurt_since_staging(film, "orc1"); }},
+            {"the second orc trips the second mine",
+             [](Film& film) {
+                 return film.frame > 44 && hurt_since_staging(film, "orc2");
+             }},
+        };
+        sc.key_offset = 2;
+        all.push_back(sc);
+    }
+
+    // GHOST: Shift + Scare is WAIL, a fright that hops from foe to foe. The
+    // ghost follows the fleeing orcs and wails at them again.
+    {
+        Scene sc;
+        sc.name = "ghost_wail";
+        sc.family = FAMILY_GHOST;
+        sc.slot = 1;
+        sc.stage = [](Film& film) {
+            fill_mana(film.hero(), 120.0f);
+            add_actor(film, "orc1", FAMILY_ORC, 1, -44, -6)->set_act_type(ACT_GUARD);
+            add_actor(film, "orc2", FAMILY_ORC, 1, -70, 14)->set_act_type(ACT_GUARD);
+            add_actor(film, "orc3", FAMILY_ORC, 1, -66, -30)->set_act_type(ACT_GUARD);
+        };
+        sc.keys = [](Film&, int f) {
+            const Keys first = special_at(f, 12, true);
+            const Keys second = special_at(f, 64, true);
+            Keys k;
+            k.special = first.special || second.special;
+            k.shift = first.shift || second.shift;
+            k.left = during(f, 26, 58);
+            return k;
+        };
+        sc.tells = {
+            {"the wail leaves the ghost",
+             [fx_wail](Film& film) {
+                 return count_of(film.display->world(), Order::FX, fx_wail) > 0;
+             }},
+            {"the wail hops on to a second foe",
+             [fx_wail](Film& film) {
+                 return count_of(film.display->world(), Order::FX, fx_wail) > 1;
+             }},
+            {"the second wail catches them again",
+             [fx_wail](Film& film) {
+                 return film.frame >= 64 &&
+                        count_of(film.display->world(), Order::FX, fx_wail) > 0;
+             }},
+        };
+        sc.key_offset = 1;
+        all.push_back(sc);
+    }
+
+    // GHOST: SIPHON, a touch that heals the ghost by half the harm it does.
+    {
+        Scene sc;
+        sc.name = "ghost_siphon";
+        sc.family = FAMILY_GHOST;
+        sc.slot = 2;
+        sc.stage = [](Film& film) {
+            walker* ghost = film.hero();
+            ghost->stats()->set_hitpoints(0.4f * ghost->stats()->max_hitpoints());
+            gameplay_rec::stop_hp_regen(ghost);
+            film.marks["ghost.hp"] = ghost->stats()->hitpoints();
+            add_actor(film, "orc", FAMILY_ORC, 1, 18, 0)->set_act_type(ACT_GUARD);
+            mark_hp(film, "orc");
+        };
+        // A second touch once the orc is back within reach.
+        sc.keys = [](Film& film, int f) {
+            Keys k = special_at(f, 12);
+            walker* g = film.hero();
+            walker* o = film.actor("orc");
+            if (film.marks.count("second") == 0 && f >= 50 && g && o &&
+                !o->dead() &&
+                std::abs(o->xpos() - g->xpos()) + std::abs(o->ypos() - g->ypos()) <= 20)
+                film.marks["second"] = static_cast<float>(f);
+            if (film.marks.count("second") != 0)
+                k.special = tap(f, static_cast<int>(film.mark("second")));
+            return k;
+        };
+        sc.tells = {
+            {"the orc is hurt",
+             [](Film& film) { return hurt_since_staging(film, "orc"); }},
+            {"the ghost is healed",
+             [](Film& film) {
+                 return hp_of(film.hero_seen()) > film.mark("ghost.hp");
+             }},
+        };
+        all.push_back(sc);
+    }
+
+    // GHOST: POSSESS a mage, walk it, cast the MAGE's own special (it
+    // teleports), then Switch Character to leave the body.
+    {
+        Scene sc;
+        sc.name = "ghost_possess";
+        sc.family = FAMILY_GHOST;
+        sc.slot = 3;
+        sc.frames = 130;
+        sc.stage = [](Film& film) {
+            walker* mage = add_actor(film, "mage", FAMILY_MAGE, 1, 20, 0);
+            mage->set_act_type(ACT_GUARD);
+            fill_mana(mage, 0.0f);
+        };
+        sc.keys = [](Film& film, int f) {
+            Keys k = special_at(f, 10);
+            k.right = during(f, 30, 48);
+            k.down = during(f, 48, 60);
+            k.special = k.special || tap(f, 72);
+            k.switch_char = tap(f, 102);
+            if (f == 29)
+            {
+                if (walker* m = film.actor_seen("mage"))
+                {
+                    film.marks["mage.x"] = m->xpos();
+                    film.marks["mage.y"] = m->ypos();
+                }
+            }
+            if (f == 71)
+            {
+                if (walker* m = film.actor_seen("mage"))
+                {
+                    film.marks["mage.x71"] = m->xpos();
+                    film.marks["mage.y71"] = m->ypos();
+                }
+            }
+            return k;
+        };
+        sc.tells = {
+            {"the seat drives the mage",
+             [](Film& film) {
+                 walker* c = film.display->viewob[0]->control;
+                 return c != nullptr && c->entity_id() == film.ids["mage"] &&
+                        film.hero_seen() != nullptr &&
+                        film.hero_seen()->hidden();
+             }},
+            {"the possessed mage walks",
+             [](Film& film) {
+                 walker* m = film.actor_seen("mage");
+                 return film.frame >= 50 && film.frame < 72 && m != nullptr &&
+                        film.display->viewob[0]->control == m &&
+                        std::abs(m->xpos() - film.mark("mage.x")) +
+                                std::abs(m->ypos() - film.mark("mage.y")) >= 24;
+             }},
+            {"the mage casts its own special and teleports",
+             [](Film& film) {
+                 walker* m = film.actor_seen("mage");
+                 return film.frame > 72 && film.frame < 100 && m != nullptr &&
+                        film.display->viewob[0]->control == m &&
+                        std::abs(m->xpos() - film.mark("mage.x71")) +
+                                std::abs(m->ypos() - film.mark("mage.y71")) >= 40;
+             }},
+            {"Switch Character brings the ghost back out",
+             [](Film& film) {
+                 walker* c = film.display->viewob[0]->control;
+                 return film.frame > 102 && c != nullptr &&
+                        c->entity_id() == film.hero_id && !c->hidden();
+             }},
+        };
+        sc.key_offset = 2;
+        all.push_back(sc);
+    }
+
+    // GHOST: PHASE, untouchable and fast for a few seconds.
+    {
+        Scene sc;
+        sc.name = "ghost_phase";
+        sc.family = FAMILY_GHOST;
+        sc.slot = 4;
+        sc.stage = [](Film& film) {
+            add_actor(film, "orc1", FAMILY_ORC, 1, 22, 0);
+            add_actor(film, "orc2", FAMILY_ORC, 1, -22, 8);
+        };
+        // Across the cobbles, where the phantom shimmer shows.
+        sc.keys = [](Film&, int f) {
+            Keys k = special_at(f, 14);
+            k.down = during(f, 24, 34);
+            k.left = during(f, 34, 54);
+            k.right = during(f, 54, 80);
+            return k;
+        };
+        sc.tells = {
+            {"the ghost is spectral",
+             [](Film& film) {
+                 walker* g = film.hero_seen();
+                 return g != nullptr &&
+                        g->stats()->query_bit_flags(BIT_PHANTOM) != 0;
+             }},
+        };
+        sc.key_offset = 10;
+        all.push_back(sc);
+    }
+
+    // FAERIE: BLINK (a short random hop), then Shift: SWAP places with an orc.
+    {
+        Scene sc;
+        sc.name = "faerie_blink_swap";
+        sc.family = FAMILY_FAERIE;
+        sc.slot = 1;
+        sc.stage = [](Film& film) {
+            add_actor(film, "orc", FAMILY_ORC, 1, 60, 10)->set_act_type(ACT_GUARD);
+        };
+        sc.keys = [](Film& film, int f) {
+            if (f == 11 || f == 59)
+            {
+                walker* h = film.hero_seen();
+                walker* o = film.actor_seen("orc");
+                const std::string at = f == 11 ? "blink" : "swap";
+                if (h == nullptr || o == nullptr)
+                    return Keys{};
+                film.marks[at + ".hx"] = h->xpos();
+                film.marks[at + ".hy"] = h->ypos();
+                film.marks[at + ".ox"] = o->xpos();
+                film.marks[at + ".oy"] = o->ypos();
+            }
+            Keys k = special_at(f, 12);
+            const Keys swap = special_at(f, 60, true);
+            k.special = k.special || swap.special || tap(f, 92);
+            k.shift = swap.shift;
+            return k;
+        };
+        sc.tells = {
+            {"the faerie blinks away",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 return film.frame >= 12 && film.frame < 60 && h != nullptr &&
+                        std::abs(h->xpos() - film.mark("blink.hx")) +
+                                std::abs(h->ypos() - film.mark("blink.hy")) >= 20;
+             }},
+            {"the faerie and the orc trade places",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 walker* o = film.actor_seen("orc");
+                 if (film.frame < 60 || h == nullptr || o == nullptr)
+                     return false;
+                 const float before = std::abs(film.mark("swap.hx") - film.mark("swap.ox")) +
+                                      std::abs(film.mark("swap.hy") - film.mark("swap.oy"));
+                 const float faerie_moved = std::abs(h->xpos() - film.mark("swap.hx")) +
+                                            std::abs(h->ypos() - film.mark("swap.hy"));
+                 const float orc_moved = std::abs(o->xpos() - film.mark("swap.ox")) +
+                                         std::abs(o->ypos() - film.mark("swap.oy"));
+                 return before >= 20 && faerie_moved >= before / 2 &&
+                        orc_moved >= before / 2;
+             }},
+        };
+        all.push_back(sc);
+    }
+
+    // FAERIE: GLIMMER, freezing powder in all eight directions.
+    {
+        Scene sc;
+        sc.name = "faerie_glimmer";
+        sc.family = FAMILY_FAERIE;
+        sc.slot = 2;
+        sc.stage = [](Film& film) {
+            add_actor(film, "orc1", FAMILY_ORC, 1, 44, 0);
+            add_actor(film, "orc2", FAMILY_ORC, 1, -44, 0);
+            add_actor(film, "orc3", FAMILY_ORC, 1, 0, -40);
+            add_actor(film, "orc4", FAMILY_ORC, 1, 36, 36);
+        };
+        sc.keys = [](Film&, int f) {
+            Keys k = special_at(f, 12);
+            k.special = k.special || tap(f, 64);
+            return k;
+        };
+        sc.tells = {
+            {"powder flies eight ways",
+             [weap_sprinkle](Film& film) {
+                 return count_of(film.display->world(), Order::Weapon,
+                                 weap_sprinkle) >= 6;
+             }},
+            {"two foes are frozen",
+             [](Film& film) {
+                 int frozen = 0;
+                 for (const char* n : {"orc1", "orc2", "orc3", "orc4"})
+                     if (walker* o = film.actor(n))
+                         frozen += o->stats()->frozen_delay() > 0 ? 1 : 0;
+                 return frozen >= 2;
+             }},
+        };
+        sc.key_offset = 1;
+        all.push_back(sc);
+    }
+
+    // FAERIE: HASTEN the soldier beside her; both soldiers then charge the
+    // orcs and the hastened one gets there first. Then Shift: HASTE SELF.
+    {
+        Scene sc;
+        sc.name = "faerie_hasten";
+        sc.family = FAMILY_FAERIE;
+        sc.slot = 3;
+        sc.stage = [](Film& film) {
+            for (const char* n : {"ally", "other"})
+            {
+                walker* a = add_actor(film, n, FAMILY_SOLDIER, 0, 18,
+                                      std::strcmp(n, "ally") == 0 ? 0 : -30);
+                a->set_act_type(ACT_GUARD);
+                a->set_guard_hold_post(true);
+            }
+            add_actor(film, "orc1", FAMILY_ORC, 1, 120, 0)->set_act_type(ACT_GUARD);
+            add_actor(film, "orc2", FAMILY_ORC, 1, 124, -30)->set_act_type(ACT_GUARD);
+        };
+        // Both soldiers hold their post until the haste lands, then charge.
+        sc.before_tick = [](Film& film, int) {
+            walker* ally = film.actor("ally");
+            if (ally == nullptr || ally->speed_bonus_left() == 0 ||
+                film.marks.count("charge") != 0)
+                return;
+            film.marks["charge"] = 1.0f;
+            for (const char* n : {"ally", "other"})
+                if (walker* a = film.actor(n))
+                {
+                    a->set_guard_hold_post(false);
+                    a->set_act_type(ACT_RANDOM);
+                }
+        };
+        sc.keys = [](Film&, int f) {
+            Keys k = special_at(f, 12);
+            const Keys self = special_at(f, 56, true);
+            k.special = k.special || self.special;
+            k.shift = self.shift;
+            k.right = during(f, 62, 100);
+            return k;
+        };
+        sc.tells = {
+            {"the soldier beside her is hastened",
+             [](Film& film) {
+                 walker* a = film.actor_seen("ally");
+                 walker* b = film.actor_seen("other");
+                 return a != nullptr && b != nullptr &&
+                        a->speed_bonus_left() > 0 && b->speed_bonus_left() == 0;
+             }},
+            {"the faerie hastens herself",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 return h != nullptr && h->speed_bonus_left() > 0;
+             }},
+        };
+        all.push_back(sc);
+    }
+
+    // FAERIE: WISH. The faerie pops; a fallen soldier rises at full health
+    // and the wounded heroes beside it are healed.
+    {
+        Scene sc;
+        sc.name = "faerie_wish";
+        sc.family = FAMILY_FAERIE;
+        sc.slot = 4;
+        sc.roster_extra = {FAMILY_SOLDIER, FAMILY_ELF};
+        sc.stage = [](Film& film) {
+            fill_mana(film.hero(), 100.0f);
+            add_corpse(film, FAMILY_SOLDIER, 0, 28, 6);
+            for (const char* n : {"hero1", "hero2"})
+            {
+                walker* h = film.actor(n);
+                ASSERT_NE(nullptr, h);
+                h->stats()->set_hitpoints(0.3f * h->stats()->max_hitpoints());
+                gameplay_rec::stop_hp_regen(h);
+                h->set_act_type(ACT_GUARD);
+                mark_hp(film, n);
+            }
+            walker* h1 = film.actor("hero1");
+            walker* h2 = film.actor("hero2");
+            walker* faerie = film.hero();
+            h1->setxy(static_cast<short>(faerie->xpos() - 26), faerie->ypos());
+            h2->setxy(faerie->xpos(), static_cast<short>(faerie->ypos() + 26));
+            film.marks["soldiers"] = static_cast<float>(
+                count_living(film.server->world(), FAMILY_SOLDIER, 0));
+        };
+        sc.keys = [](Film&, int f) { return special_at(f, 30); };
+        sc.tells = {
+            {"the faerie pops",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 return h == nullptr || h->dead();
+             }},
+            {"the fallen soldier stands again",
+             [](Film& film) {
+                 return count_living(film.display->world(), FAMILY_SOLDIER, 0) >
+                        static_cast<int>(film.mark("soldiers"));
+             }},
+            {"the wounded heroes are healed",
+             [](Film& film) {
+                 walker* a = film.actor_seen("hero1");
+                 walker* b = film.actor_seen("hero2");
+                 return a != nullptr && b != nullptr &&
+                        hp_of(a) >= 0.95f * a->stats()->max_hitpoints() &&
+                        hp_of(b) >= 0.95f * b->stats()->max_hitpoints();
+             }},
+        };
+        all.push_back(sc);
+    }
+
+    // ORC CAPTAIN: HOWL freezes the foes, then the captain steps onto a
+    // corpse and Shift: EAT CORPSE heals it.
+    {
+        Scene sc;
+        sc.name = "captain_howl_eat";
+        sc.family = FAMILY_BIG_ORC;
+        sc.slot = 1;
+        sc.stage = [](Film& film) {
+            walker* captain = film.hero();
+            captain->stats()->set_hitpoints(0.5f * captain->stats()->max_hitpoints());
+            gameplay_rec::stop_hp_regen(captain);
+            add_corpse(film, FAMILY_SOLDIER, 1, 30, 2);
+            walker* stain = nearest_stain(film.server->world(), *captain);
+            ASSERT_NE(nullptr, stain) << "the fallen soldier leaves a corpse";
+            film.marks["stain"] = static_cast<float>(stain->entity_id());
+            film.marks["stain.cx"] =
+                static_cast<float>(stain->xpos() + stain->sizex() / 2);
+            add_actor(film, "foe1", FAMILY_SOLDIER, 1, 60, -30);
+            add_actor(film, "foe2", FAMILY_SOLDIER, 1, 70, 26);
+            add_actor(film, "foe3", FAMILY_ELF, 1, -56, 10);
+        };
+        sc.keys = [](Film& film, int f) {
+            Keys k = special_at(f, 16);
+            if (f < 40)
+                return k;
+            walker* captain = film.hero();
+            if (captain == nullptr)
+                return k;
+            if (film.marks.count("arrived") == 0)
+            {
+                const int cx = captain->xpos() + captain->sizex() / 2;
+                if (static_cast<float>(cx) < film.mark("stain.cx") - 1.0f)
+                {
+                    k.right = true;
+                    return k;
+                }
+                film.marks["arrived"] = static_cast<float>(f);
+                film.marks["captain.hp"] = captain->stats()->hitpoints();
+            }
+            const Keys eat =
+                special_at(f, static_cast<int>(film.mark("arrived")) + 3, true);
+            k.special = eat.special;
+            k.shift = eat.shift;
+            return k;
+        };
+        sc.tells = {
+            {"the howl freezes a foe",
+             [](Film& film) {
+                 for (const char* n : {"foe1", "foe2", "foe3"})
+                     if (walker* o = film.actor(n))
+                         if (o->stats()->frozen_delay() > 0)
+                             return true;
+                 return false;
+             }},
+            {"the captain eats the corpse",
+             [](Film& film) {
+                 if (film.marks.count("arrived") == 0)
+                     return false;
+                 walker* stain = film.on_server(
+                     static_cast<std::uint32_t>(film.mark("stain")));
+                 return (stain == nullptr || stain->dead()) &&
+                        hp_of(film.hero_seen()) > film.mark("captain.hp");
+             }},
+        };
+        all.push_back(sc);
+    }
+
+    // ORC CAPTAIN: HOOK BLADE orbits and drags a foe in, then Shift: KNIFE FAN.
+    {
+        Scene sc;
+        sc.name = "captain_hook_fan";
+        sc.family = FAMILY_BIG_ORC;
+        sc.slot = 2;
+        sc.stage = [](Film& film) {
+            add_actor(film, "foe1", FAMILY_SOLDIER, 1, 34, 0)->set_act_type(ACT_GUARD);
+            add_actor(film, "foe2", FAMILY_SOLDIER, 1, 70, -24)->set_act_type(ACT_GUARD);
+            add_actor(film, "foe3", FAMILY_SOLDIER, 1, 74, 26)->set_act_type(ACT_GUARD);
+        };
+        sc.keys = [](Film&, int f) {
+            Keys k = special_at(f, 10);
+            k.right = during(f, 54, 56);
+            const Keys fan = special_at(f, 62, true);
+            k.special = k.special || fan.special;
+            k.shift = fan.shift;
+            return k;
+        };
+        sc.tells = {
+            {"the hook blade spins round the captain",
+             [fx_hook](Film& film) {
+                 return count_of(film.display->world(), Order::FX, fx_hook,
+                                 film.hero_id) > 0;
+             }},
+            {"a snagged foe is dragged in and stunned",
+             [](Film& film) {
+                 for (const char* n : {"foe1", "foe2", "foe3"})
+                     if (walker* o = film.actor(n))
+                         if (o->stats()->frozen_delay() > 0)
+                             return true;
+                 return false;
+             }},
+            {"three knives fly in a fan",
+             [weap_knife](Film& film) {
+                 return count_of(film.display->world(), Order::Weapon,
+                                 weap_knife, film.hero_id) >= 3;
+             }},
+        };
+        sc.key_offset = 3;
+        all.push_back(sc);
+    }
+
+    // ORC CAPTAIN: HURL ORC at a far foe, walk over, then Shift: SHOVE.
+    {
+        Scene sc;
+        sc.name = "captain_hurl_shove";
+        sc.family = FAMILY_BIG_ORC;
+        sc.slot = 3;
+        sc.stage = [](Film& film) {
+            walker* grunt = add_actor(film, "grunt", FAMILY_ORC, 0, 0, 18);
+            grunt->set_act_type(ACT_GUARD);
+            walker* foe = add_actor(film, "foe", FAMILY_SOLDIER, 1, 96, 0);
+            foe->set_act_type(ACT_GUARD);
+            mark_hp(film, "foe");
+            film.marks["grunt.x"] = grunt->xpos();
+            film.marks["grunt.y"] = grunt->ypos();
+        };
+        sc.keys = [](Film& film, int f) {
+            Keys k = special_at(f, 12);
+            k.right = during(f, 26, 50);
+            const Keys sh = special_at(f, 62, true);
+            k.special = k.special || sh.special;
+            k.shift = sh.shift;
+            if (f == 61)
+            {
+                walker* h = film.hero_seen();
+                walker* o = film.actor_seen("foe");
+                if (h && o)
+                    film.marks["gap61"] = static_cast<float>(
+                        std::abs(o->xpos() - h->xpos()) +
+                        std::abs(o->ypos() - h->ypos()));
+            }
+            return k;
+        };
+        sc.tells = {
+            {"the orc is thrown at the foe",
+             [](Film& film) {
+                 walker* g = film.actor_seen("grunt");
+                 return g != nullptr &&
+                        std::abs(g->xpos() - film.mark("grunt.x")) +
+                                std::abs(g->ypos() - film.mark("grunt.y")) >= 48 &&
+                        hurt_since_staging(film, "foe");
+             }},
+            {"the shove knocks the foe back",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 walker* o = film.actor_seen("foe");
+                 if (film.frame < 62 || h == nullptr || o == nullptr)
+                     return false;
+                 const float gap = static_cast<float>(
+                     std::abs(o->xpos() - h->xpos()) +
+                     std::abs(o->ypos() - h->ypos()));
+                 return gap >= film.mark("gap61") + 16;
+             }},
+        };
+        sc.key_offset = 3;
+        all.push_back(sc);
+    }
+
+    // ORC CAPTAIN: WAR BANNER on a corpse, then Shift: WARBAND from the edge.
+    {
+        Scene sc;
+        sc.name = "captain_banner_warband";
+        sc.family = FAMILY_BIG_ORC;
+        sc.slot = 4;
+        sc.frames = 130;
+        sc.stage = [](Film& film) {
+            fill_mana(film.hero(), 240.0f);
+            add_corpse(film, FAMILY_SOLDIER, 1, 6, 6);
+            add_actor(film, "ally1", FAMILY_ORC, 0, -24, 8)->set_act_type(ACT_GUARD);
+            add_actor(film, "ally2", FAMILY_SOLDIER, 0, -16, -22)->set_act_type(ACT_GUARD);
+            add_actor(film, "foe1", FAMILY_SOLDIER, 1, 110, 0);
+            add_actor(film, "foe2", FAMILY_ELF, 1, 116, 30);
+        };
+        sc.keys = [](Film&, int f) {
+            Keys k = special_at(f, 12);
+            k.left = during(f, 20, 30);
+            const Keys band = special_at(f, 40, true);
+            k.special = k.special || band.special;
+            k.shift = band.shift;
+            return k;
+        };
+        sc.tells = {
+            {"the banner stands on the corpse",
+             [weap_banner](Film& film) {
+                 return count_of(film.display->world(), Order::Weapon,
+                                 weap_banner, film.hero_id) > 0;
+             }},
+            {"the warband answers",
+             [](Film& film) {
+                 int grunts = 0;
+                 for (const auto& up : film.display->world().oblist)
+                     if (up && !up->dead() && up->query_order() == Order::Living &&
+                         up->family() == FAMILY_ORC && up->owner() != nullptr &&
+                         up->owner()->entity_id() == film.hero_id)
+                         ++grunts;
+                 return grunts >= 2;
+             }},
+        };
+        sc.key_offset = 30;
+        all.push_back(sc);
+    }
+
+    // SKELETON: DIG IN. It sinks (four frames), hides, and pops up swinging
+    // when a foe walks over it.
+    {
+        Scene sc;
+        sc.name = "skeleton_dig_in";
+        sc.family = FAMILY_SKELETON;
+        sc.slot = 2;
+        sc.stage = [](Film& film) {
+            walker* skel = film.hero();
+            skel->set_ani_type(ANI_WALK);
+            skel->set_cycle(0);
+            walker* ally = add_actor(film, "ally", FAMILY_SOLDIER, 0, -30, 0);
+            ally->set_act_type(ACT_GUARD);
+            ally->set_guard_hold_post(true);
+            walker* orc = add_actor(film, "orc", FAMILY_ORC, 1, 52, 0);
+            orc->set_foe(ally);
+        };
+        sc.keys = [](Film&, int f) { return special_at(f, 10); };
+        sc.tells = {
+            {"the skeleton is under the ground",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 return h != nullptr && h->hidden();
+             }},
+            {"it pops up as the orc walks over",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 return film.frame > 16 && h != nullptr && !h->hidden() &&
+                        film.marks.count("hid") != 0;
+             }},
+        };
+        sc.before_tick = [](Film& film, int) {
+            if (walker* h = film.hero(); h != nullptr && h->hidden())
+                film.marks["hid"] = 1.0f;
+        };
+        sc.key_offset = 3;
+        all.push_back(sc);
+    }
+
+    // SKELETON: BONE WALL across the foes' path, then Shift: BONE STORM.
+    {
+        Scene sc;
+        sc.name = "skeleton_wall_storm";
+        sc.family = FAMILY_SKELETON;
+        sc.slot = 3;
+        sc.stage = [](Film& film) {
+            walker* skel = film.hero();
+            skel->set_ani_type(ANI_WALK);
+            skel->set_cycle(0);
+            add_actor(film, "foe1", FAMILY_SOLDIER, 1, 90, -12);
+            add_actor(film, "foe2", FAMILY_SOLDIER, 1, 96, 16);
+        };
+        sc.keys = [](Film&, int f) {
+            Keys k;
+            k.right = during(f, 4, 6);
+            const Keys wall = special_at(f, 10);
+            const Keys storm = special_at(f, 70, true);
+            k.special = wall.special || storm.special;
+            k.shift = storm.shift;
+            return k;
+        };
+        sc.tells = {
+            {"a bone wall stands",
+             [weap_bone_wall](Film& film) {
+                 return count_of(film.display->world(), Order::Weapon,
+                                 weap_bone_wall, film.hero_id) >= 2;
+             }},
+            {"the storm shatters the wall into bones",
+             [weap_bone_wall, weap_bone](Film& film) {
+                 return film.frame >= 70 &&
+                        count_of(film.display->world(), Order::Weapon,
+                                 weap_bone_wall, film.hero_id) == 0 &&
+                        count_of(film.display->world(), Order::Weapon,
+                                 weap_bone) >= 12;
+             }},
+        };
+        sc.key_offset = 2;
+        all.push_back(sc);
+    }
+
+    // SKELETON: Shift: LEGION, then REASSEMBLE. A foe cuts it down and it
+    // stands back up; it fells that foe, who rises as a skeleton.
+    {
+        Scene sc;
+        sc.name = "skeleton_reassemble_legion";
+        sc.family = FAMILY_SKELETON;
+        sc.slot = 4;
+        sc.frames = 130;
+        sc.stage = [](Film& film) {
+            walker* skel = film.hero();
+            skel->set_ani_type(ANI_WALK);
+            skel->set_cycle(0);
+            fill_mana(skel, 200.0f);
+            skel->stats()->set_hitpoints(3.0f);
+            gameplay_rec::stop_hp_regen(skel);
+            add_actor(film, "foe", FAMILY_SOLDIER, 1, 70, 0);
+            film.marks["skeletons"] = static_cast<float>(
+                count_living(film.server->world(), FAMILY_SKELETON, 0));
+        };
+        sc.keys = [](Film& film, int f) {
+            const Keys legion = special_at(f, 6, true);
+            const Keys ward = special_at(f, 18);
+            Keys k;
+            k.special = legion.special || ward.special;
+            k.shift = legion.shift;
+            if (film.marks.count("rose") != 0)
+            {
+                walker* h = film.hero_seen();
+                walker* o = film.actor_seen("foe");
+                if (h && o && !o->dead())
+                {
+                    const int dx = o->xpos() - h->xpos();
+                    const int dy = o->ypos() - h->ypos();
+                    const int frame_in = f - static_cast<int>(film.mark("rose"));
+                    if (frame_in >= 4 && frame_in < 6)
+                    {
+                        k.right = dx > 8;
+                        k.left = dx < -8;
+                        k.down = dy > 8;
+                        k.up = dy < -8;
+                    }
+                    k.fire = frame_in >= 6;
+                }
+            }
+            return k;
+        };
+        sc.before_tick = [](Film& film, int f) {
+            walker* h = film.hero();
+            if (h == nullptr)
+                return;
+            if ((h->kit_state() & KIT_WARD) != 0)
+                film.marks["warded"] = 1.0f;
+            else if (film.marks.count("warded") != 0 &&
+                     film.marks.count("rose") == 0 && !h->dead())
+                film.marks["rose"] = static_cast<float>(f);
+        };
+        sc.tells = {
+            {"cut down, the skeleton stands back up",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 return film.marks.count("rose") != 0 && h != nullptr &&
+                        !h->dead() && (h->kit_state() & KIT_WARD) == 0;
+             }},
+            {"its kill rises as a skeleton",
+             [](Film& film) {
+                 return count_living(film.display->world(), FAMILY_SKELETON, 0) >
+                        static_cast<int>(film.mark("skeletons"));
+             }},
+        };
+        sc.key_offset = 6;
+        all.push_back(sc);
+    }
+
+    // FIRE ELEMENTAL: IMMOLATE, then walk: burning footprints behind it.
+    {
+        Scene sc;
+        sc.name = "elemental_immolate";
+        sc.family = FAMILY_FIREELEMENTAL;
+        sc.slot = 2;
+        sc.stage = [](Film& film) {
+            fill_mana(film.hero(), 400.0f);
+            add_actor(film, "orc", FAMILY_ORC, 1, -70, 0);
+            mark_hp(film, "orc");
+        };
+        sc.keys = [](Film&, int f) {
+            Keys k = special_at(f, 10);
+            k.right = during(f, 18, 40);
+            k.down = during(f, 40, 52);
+            k.left = during(f, 52, 70);
+            return k;
+        };
+        sc.tells = {
+            {"embers burn where it walked",
+             [fx_ember](Film& film) {
+                 return count_of(film.display->world(), Order::FX, fx_ember,
+                                 film.hero_id) >= 3;
+             }},
+            {"the orc is burned",
+             [](Film& film) { return hurt_since_staging(film, "orc"); }},
+        };
+        all.push_back(sc);
+    }
+
+    // FIRE ELEMENTAL: METEOR RAIN on a pack of orcs.
+    {
+        Scene sc;
+        sc.name = "elemental_meteor_rain";
+        sc.family = FAMILY_FIREELEMENTAL;
+        sc.slot = 3;
+        sc.stage = [](Film& film) {
+            fill_mana(film.hero(), 140.0f);
+            for (int i = 0; i < 3; ++i)
+            {
+                const std::string n = "orc" + std::to_string(i + 1);
+                add_actor(film, n, FAMILY_ORC, 1, 96 + 14 * i, -20 + 20 * i)
+                    ->set_act_type(ACT_GUARD);
+                mark_hp(film, n);
+            }
+        };
+        sc.keys = [](Film&, int f) { return special_at(f, 12); };
+        sc.tells = {
+            {"meteors strike",
+             [fx_explosion](Film& film) {
+                 return count_of(film.display->world(), Order::FX,
+                                 fx_explosion) > 0;
+             }},
+            {"a meteor hits an orc",
+             [fx_explosion](Film& film) {
+                 bool hit = false;
+                 for (const char* n : {"orc1", "orc2", "orc3"})
+                 {
+                     walker* o = film.actor_seen(n);
+                     const float hp = o == nullptr || o->dead() ? 0.0f : hp_of(o);
+                     const std::string key = std::string(n) + ".prev";
+                     if (film.frame > 12 && film.marks.count(key) != 0 &&
+                         hp < film.mark(key) &&
+                         count_of(film.display->world(), Order::FX,
+                                  fx_explosion) > 0)
+                         hit = true;
+                     film.marks[key] = hp;
+                 }
+                 return hit;
+             }},
+        };
+        all.push_back(sc);
+    }
+
+    // FIRE ELEMENTAL: REKINDLE mana into health, then Shift: SUPERNOVA.
+    {
+        Scene sc;
+        sc.name = "elemental_rekindle_supernova";
+        sc.family = FAMILY_FIREELEMENTAL;
+        sc.slot = 4;
+        sc.roster_extra = {FAMILY_SOLDIER};
+        sc.stage = [](Film& film) {
+            walker* el = film.hero();
+            fill_mana(el, 100.0f);
+            el->stats()->set_hitpoints(0.35f * el->stats()->max_hitpoints());
+            gameplay_rec::stop_hp_regen(el);
+            film.marks["el.hp"] = el->stats()->hitpoints();
+            walker* friend_ = film.actor("hero1");
+            ASSERT_NE(nullptr, friend_);
+            friend_->setxy(static_cast<short>(el->xpos() - 44), el->ypos());
+            friend_->set_act_type(ACT_GUARD);
+            friend_->set_guard_hold_post(true);
+            for (int i = 0; i < 3; ++i)
+            {
+                const std::string n = "orc" + std::to_string(i + 1);
+                add_actor(film, n, FAMILY_ORC, 1, 40 + 6 * i, -24 + 24 * i);
+                mark_hp(film, n);
+            }
+        };
+        sc.keys = [](Film&, int f) {
+            Keys k = special_at(f, 12);
+            const Keys nova = special_at(f, 56, true);
+            k.special = k.special || nova.special;
+            k.shift = nova.shift;
+            return k;
+        };
+        sc.tells = {
+            {"rekindled, the elemental's health rises",
+             [](Film& film) {
+                 return hp_of(film.hero_seen()) > film.mark("el.hp");
+             }},
+            {"the supernova spends the elemental",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 return film.frame >= 56 && (h == nullptr || h->dead());
+             }},
+            {"and burns the orcs",
+             [](Film& film) {
+                 return film.frame >= 56 &&
+                        (hurt_since_staging(film, "orc1") ||
+                         hurt_since_staging(film, "orc2") ||
+                         hurt_since_staging(film, "orc3"));
+             }},
+        };
+        sc.key_offset = 2;
+        all.push_back(sc);
+    }
+
+    // BOT GHOST: an enemy ghost possesses the seat's orc ally, which turns
+    // on the seat's soldier. The ghost is held beside the orc until it acts.
+    {
+        Scene sc;
+        sc.name = "bot_ghost_possess";
+        sc.family = FAMILY_SOLDIER;
+        sc.slot = 1;
+        sc.stage = [](Film& film) {
+            walker* orc = add_actor(film, "orc", FAMILY_ORC, 0, 46, 0);
+            orc->set_act_type(ACT_GUARD);
+            orc->set_guard_hold_post(true);
+            walker* ghost = add_actor(film, "ghost", FAMILY_GHOST, 1, 64, 0);
+            set_level(ghost, 10);
+        };
+        sc.before_tick = [](Film& film, int f) {
+            walker* ghost = film.actor("ghost");
+            walker* orc = film.actor("orc");
+            if (orc != nullptr && orc->possess_link() != 0)
+                orc->set_guard_hold_post(false); // the body goes after the soldier
+            if (ghost == nullptr || orc == nullptr || ghost->hidden() ||
+                orc->possess_link() != 0)
+                return;
+            ghost->setxy(static_cast<short>(orc->xpos() + 18), orc->ypos());
+            // An empty pool for the first second gives the film a lead-in:
+            // the bot cannot cast anything until its mana arrives.
+            if (f < kBotLeadIn)
+                ghost->stats()->set_magicpoints(0.0f);
+            else
+                fill_mana(ghost, 0.0f);
+        };
+        sc.tells = {
+            {"the bot ghost rides the orc",
+             [](Film& film) {
+                 walker* ghost = film.actor_seen("ghost");
+                 walker* orc = film.actor_seen("orc");
+                 return ghost != nullptr && orc != nullptr && ghost->hidden() &&
+                        orc->possess_link() == ghost->entity_id();
+             }},
+            {"the orc fights for the ghost's side",
+             [](Film& film) {
+                 walker* orc = film.actor_seen("orc");
+                 return orc != nullptr && orc->team_num() == 1;
+             }},
+        };
+        sc.key_offset = 4;
+        all.push_back(sc);
+    }
+
+    // BOT SKELETON: an enemy skeleton, hurt and outnumbered, digs in. The
+    // seat's soldier walks over the spot and it pops up swinging.
+    {
+        Scene sc;
+        sc.name = "bot_skeleton_dig_in";
+        sc.family = FAMILY_SOLDIER;
+        sc.slot = 1;
+        sc.stage = [](Film& film) {
+            walker* skel = add_actor(film, "skeleton", FAMILY_SKELETON, 1, 44, 0);
+            set_level(skel, 4);
+            skel->set_ani_type(ANI_WALK);
+            skel->set_cycle(0);
+            skel->stats()->set_hitpoints(0.45f * skel->stats()->max_hitpoints());
+            gameplay_rec::stop_hp_regen(skel);
+            skel->set_current_special(2);
+            walker* ally = add_actor(film, "ally", FAMILY_SOLDIER, 0, 30, 34);
+            ally->set_act_type(ACT_GUARD);
+            ally->set_guard_hold_post(true);
+        };
+        sc.before_tick = [](Film& film, int) {
+            walker* skel = film.actor("skeleton");
+            walker* hero = film.hero();
+            if (skel == nullptr || hero == nullptr)
+                return;
+            if (skel->hidden())
+                film.marks["hid"] = 1.0f;
+            if (film.marks.count("hid") != 0 ||
+                (skel->kit_state() & (KIT_CHANNEL | KIT_HIDDEN)) != 0)
+                return;
+            skel->setxy(static_cast<short>(hero->xpos() + 44), hero->ypos());
+            // A bot picks the slot it tries at random; the film picks DIG IN
+            // for it. Its own rule still decides: hurt and outnumbered, it
+            // digs in when it is struck.
+            skel->set_current_special(2);
+            fill_mana(skel, 0.0f);
+        };
+        sc.keys = [](Film& film, int f) {
+            Keys k;
+            if (film.marks.count("hid") == 0)
+            {
+                // The seat's soldier turns to the skeleton and attacks it.
+                k.right = f == 14;
+                k.fire = f > 16;
+                return k;
+            }
+            if (film.marks.count("popped") != 0)
+                return k;
+            walker* skel = film.actor("skeleton");
+            walker* hero = film.hero();
+            if (skel == nullptr || hero == nullptr)
+                return k;
+            if (!skel->hidden())
+            {
+                film.marks["popped"] = 1.0f;
+                return k;
+            }
+            if (film.frame < static_cast<int>(film.mark("hid_frame")) + 12)
+                return k;
+            const int dx = skel->xpos() - hero->xpos();
+            const int dy = skel->ypos() - hero->ypos();
+            k.right = dx > 2;
+            k.left = dx < -2;
+            k.down = dy > 2;
+            k.up = dy < -2;
+            return k;
+        };
+        sc.tells = {
+            {"the bot skeleton digs in",
+             [](Film& film) {
+                 walker* skel = film.actor_seen("skeleton");
+                 const bool hid = skel != nullptr && skel->hidden();
+                 if (hid && film.marks.count("hid_frame") == 0)
+                     film.marks["hid_frame"] = static_cast<float>(film.frame);
+                 return hid;
+             }},
+            {"it pops up under the seat's soldier",
+             [](Film& film) {
+                 walker* skel = film.actor_seen("skeleton");
+                 return film.marks.count("hid_frame") != 0 && skel != nullptr &&
+                        !skel->dead() && !skel->hidden();
+             }},
+        };
+        sc.key_offset = 3;
+        all.push_back(sc);
+    }
+
+    // BOT FAERIE: an allied faerie swaps a dying soldier out from under the
+    // orc that is killing it.
+    {
+        Scene sc;
+        sc.name = "bot_faerie_swap";
+        sc.family = FAMILY_SOLDIER;
+        sc.slot = 1;
+        sc.stage = [](Film& film) {
+            walker* faerie = add_actor(film, "faerie", FAMILY_FAERIE, 0, 0, -38);
+            fill_mana(faerie, 60.0f);
+            walker* ally = add_actor(film, "ally", FAMILY_SOLDIER, 0, 30, -38);
+            ally->stats()->set_hitpoints(0.25f * ally->stats()->max_hitpoints());
+            gameplay_rec::stop_hp_regen(ally);
+            walker* orc = add_actor(film, "orc", FAMILY_ORC, 1, 56, -38);
+            ally->set_foe(orc);
+            orc->set_foe(ally);
+            film.marks["fx"] = faerie->xpos();
+            film.marks["fy"] = faerie->ypos();
+            film.marks["ax"] = ally->xpos();
+            film.marks["ay"] = ally->ypos();
+        };
+        sc.before_tick = [](Film& film, int f) {
+            if (film.marks.count("swapped") != 0)
+                return;
+            walker* faerie = film.actor("faerie");
+            walker* ally = film.actor("ally");
+            walker* orc = film.actor("orc");
+            if (faerie == nullptr || ally == nullptr || orc == nullptr)
+                return;
+            if (std::abs(ally->xpos() - film.mark("fx")) +
+                    std::abs(ally->ypos() - film.mark("fy")) <= 4)
+            {
+                film.marks["swapped"] = 1.0f;
+                return;
+            }
+            faerie->setxy(static_cast<short>(film.mark("fx")),
+                          static_cast<short>(film.mark("fy")));
+            ally->setxy(static_cast<short>(film.mark("ax")),
+                        static_cast<short>(film.mark("ay")));
+            if (ally->foe() == nullptr)
+                ally->set_foe(orc);
+            if (f < kBotLeadIn)
+                faerie->stats()->set_magicpoints(0.0f);
+            else
+                fill_mana(faerie, 0.0f);
+        };
+        sc.tells = {
+            {"the faerie takes the dying soldier's place",
+             [](Film& film) {
+                 walker* faerie = film.actor_seen("faerie");
+                 walker* ally = film.actor_seen("ally");
+                 return faerie != nullptr && ally != nullptr && !ally->dead() &&
+                        std::abs(ally->xpos() - film.mark("fx")) +
+                                std::abs(ally->ypos() - film.mark("fy")) <= 4 &&
+                        std::abs(faerie->xpos() - film.mark("ax")) +
+                                std::abs(faerie->ypos() - film.mark("ay")) <= 8;
+             }},
+        };
+        sc.key_offset = 4;
+        all.push_back(sc);
+    }
+
+    (void)weap_bone;
+    return all;
+}
+
+} // namespace new_specials_rec
+
+TEST(GameLoop, zz_capture_new_specials)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+
+    const std::filesystem::path save0_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    og::test::ScopedPhysicalFileState save0_restore(save0_path);
+    ASSERT_TRUE(save0_restore.ready())
+        << "failed to snapshot save0: " << save0_restore.error().message();
+
+    int recorded = 0;
+    for (const new_specials_rec::Scene& sc : new_specials_rec::scenes())
+    {
+        if (only != nullptr && std::strcmp(only, sc.name) != 0)
+            continue;
+        SCOPED_TRACE(sc.name);
+        new_specials_rec::Result r;
+        new_specials_rec::record(sc, r);
+        ASSERT_FALSE(::testing::Test::HasFatalFailure());
+        ++recorded;
+        EXPECT_EQ(sc.frames, r.frames_run)
+            << "the level must stay open for the whole recording";
+        EXPECT_EQ(-1, r.blank_frame)
+            << "frame " << r.blank_frame << " composed nothing";
+        EXPECT_TRUE(r.missing_on_mirror.empty())
+            << "staged on the server but not on the mirror at frame 0: "
+            << (r.missing_on_mirror.empty() ? "" : r.missing_on_mirror[0]);
+        for (std::size_t i = 0; i < sc.tells.size(); ++i)
+        {
+            EXPECT_GE(r.tell_frames[i], 0)
+                << "never seen: " << sc.tells[i].what;
+            EXPECT_LE(r.tell_frames[i], sc.frames - 20)
+                << "seen too late to show for 20 frames: " << sc.tells[i].what;
+        }
+    }
+    EXPECT_GT(recorded, 0) << "OG_FX_CAPTURE_ONLY names no scene";
+}
