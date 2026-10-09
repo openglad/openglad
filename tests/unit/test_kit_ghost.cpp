@@ -677,7 +677,7 @@ TEST(KitGhost, empty_siphon_still_spends)
 // state below is chosen so that order resists and the other order would
 // not, so a swapped draw order turns this red. A resisted touch spends the
 // mana and the host strikes back; a landed one rides the host for
-// 120 + 40 x (7 - 1) = 360 ticks.
+// 120 + 2 x ln(1 + 6) x 100 = 510 ticks.
 //
 // Perturbation: the two roll lines swapped in the staged kit_ghost.lua
 // (constitution drawn first). RED: "the host resisted" (possess_link 2, not
@@ -743,7 +743,7 @@ TEST(KitGhost, possess_resist_roll_uses_howl_order)
         EXPECT_EQ(ghost->entity_id(), orc->possess_link());
         EXPECT_TRUE(ghost->hidden()) << "the ghost is inside its host";
         EXPECT_EQ(kGhostTeam, orc->team_num()) << "the host fights for the ghost";
-        EXPECT_EQ(360, orc->possess_ticks()) << "120 + 40 x the level gap of 6";
+        EXPECT_EQ(510, orc->possess_ticks()) << "120 + 2 x ln(7) x 100";
         EXPECT_EQ(1, ever_made(tw, Order::FX, FAMILY_GHOST_SCARE))
             << "the entrance burst";
         EXPECT_TRUE(notified(tw, "possesses"));
@@ -751,13 +751,18 @@ TEST(KitGhost, possess_resist_roll_uses_howl_order)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// From a level gap of possess_permanent_gap (8) the ride is for good
-// (ticks 0); below it the duration follows the gap, never under 60.
+// No ride is for good: the duration is possess_base + possess_log_scale x
+// ln(1 + gap) (the kit's table of ln x 100), never under possess_min for a
+// host that out-levels the ghost, and never past possess_cap, one minute.
 //
-// Perturbation: possess_permanent_gap = 99 in the staged ghost tuning. RED:
-// "a gap of 9 is permanent" (480 ticks, not 0) and "a gap of 8 is
-// permanent" (440, not 0).
-TEST(KitGhost, large_gap_is_permanent)
+// Perturbation: possess_cap = 0 in the staged ghost tuning. RED: every row
+// 0 ticks, "gap N: every ride lasts" for each gap 0 to 40.
+// Perturbation: the table read one step on (LN100[og.min(g + 2, 21)]).
+// RED: "a gap of 9" 600 not 580, "a gap of 8" 580 not 560 (and 536 not
+// 510 in the two gap-6 pins of the cast tests).
+// Perturbation: the cap dropped (return ticks). RED: "a gap of 24" 728,
+// not 720; "gap 20: one minute at most" 728 vs 720.
+TEST(KitGhost, duration_follows_the_log_curve_and_caps_at_a_minute)
 {
     og::test::ScopedHookFailureGuard guard;
     struct Row {
@@ -767,10 +772,11 @@ TEST(KitGhost, large_gap_is_permanent)
         const char* what;
     };
     const Row rows[] = {
-        {10, 1, 0, "a gap of 9 is permanent"},
-        {10, 2, 0, "a gap of 8 is permanent"},
-        {10, 3, 400, "a gap of 7: 120 + 40 x 7"},
-        {7, 9, 60, "out-levelled: never under possess_min"},
+        {10, 1, 580, "a gap of 9: 120 + 2 x 230"},
+        {10, 2, 560, "a gap of 8: 120 + 2 x 220"},
+        {7, 9, 120, "out-levelled: possess_min"},
+        {25, 1, 720, "a gap of 24: past the table, held at the cap"},
+        {30, 1, 720, "a gap of 29: held at the cap"},
     };
     for (const Row& row : rows) {
         const short gl = row.ghost_level;
@@ -790,6 +796,31 @@ TEST(KitGhost, large_gap_is_permanent)
         ASSERT_EQ(orc->entity_id(), ghost->possess_link()) << row.what;
         EXPECT_EQ(row.ticks, orc->possess_ticks()) << row.what;
     }
+    // Every gap from 0 to 40: never 0 (the engine's "for good"), never
+    // shorter than at a smaller gap, never past the minute.
+    int last = 0;
+    for (short gap = 0; gap <= 40; ++gap) {
+        const short gl = static_cast<short>(gap + 1);
+        const std::uint32_t lands = state_where([gl](og::sim::SimRandom& r) {
+            const std::uint32_t level_roll =
+                r.next(static_cast<std::uint32_t>(gl) * 10u);
+            return r.next(40) <= level_roll;
+        });
+        TestGameWorld tw;
+        tw.world().new_specials = 1;
+        walker* ghost = add_ghost(tw, gl, 100.0f);
+        walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 80, 64, 1, 140.0f);
+        tw.world().rng_.state_ = lands;
+        const CastResult r = cast(ghost, 3, false);
+        ASSERT_TRUE(r.ok) << r.reason << " gap " << gap;
+        ASSERT_EQ(orc->entity_id(), ghost->possess_link()) << "gap " << gap;
+        const int ticks = orc->possess_ticks();
+        EXPECT_GE(ticks, 120) << "gap " << gap << ": every ride lasts";
+        EXPECT_GE(ticks, last) << "gap " << gap << ": a bigger gap rides longer";
+        EXPECT_LE(ticks, 720) << "gap " << gap << ": one minute at most";
+        last = ticks;
+    }
+    EXPECT_EQ(720, last) << "a gap of 40 rides the full minute";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -923,7 +954,7 @@ TEST(KitGhost, bot_ghost_possesses_an_adjacent_bot_foe_only)
     const Outcome plain = run(Variant::Plain, seed);
     EXPECT_TRUE(plain.ghost_hidden);
     EXPECT_EQ(kGhostTeam, plain.host_team) << "the host fights for the ghost";
-    EXPECT_EQ(360, plain.ticks);
+    EXPECT_EQ(510, plain.ticks) << "a gap of 6: 120 + 2 x ln(7) x 100";
     EXPECT_FALSE(run(Variant::Hero, seed).possessed) << "never a seated hero";
     EXPECT_FALSE(run(Variant::Undead, seed).possessed) << "never the undead";
     EXPECT_FALSE(run(Variant::Far, seed).possessed) << "only a touching foe";
