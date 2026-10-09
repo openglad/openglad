@@ -87,6 +87,20 @@ local function flash_at(self)
   end
 end
 
+-- The ticks a drain that takes `drain` mana every `pulse` ticks can still
+-- pay for: a pulse for every `drain` left in the pool, plus the ticks to
+-- the next pulse (the full pulse right after one). DIG IN and REASSEMBLE
+-- clamp their marker's clock to this, so the countdown a player sees is
+-- the tick the effect really ends, whether the time or the mana runs out
+-- first.
+local function ticks_mana_buys(owner, left, drain, pulse)
+  local phase = og.mod(left, pulse)
+  if phase == 0 then
+    phase = pulse
+  end
+  return og.div(og.trunc(owner.magicpoints), drain) * pulse + phase
+end
+
 -- ---------------------------------------------------------------------------
 -- DIG IN
 -- ---------------------------------------------------------------------------
@@ -164,11 +178,23 @@ local function sink(marker, owner)
   end
 end
 
--- Buried: regenerate, and come up under the first foe that walks over, or
--- when the burrow's time is out.
+-- Buried: pay dig_drain mana every dig_drain_pulse ticks to stay down,
+-- regenerate, and come up under the first foe that walks over, when the
+-- burrow's time is out, or (plainly, nobody to swing at) when the mana
+-- runs dry. A buried skeleton regains no mana: the pool sets the stay.
 local function buried(marker, owner)
   local t = og.tuning(owner)
   local left = marker:lifetime() - 1
+  marker:set_lifetime(left)
+  if og.mod(left, t.dig_drain_pulse) == 0 then
+    if owner.magicpoints < t.dig_drain then
+      pop_up(owner, marker, nil)
+      return
+    end
+    -- magicpoints is a C++ float: per-op rounding.
+    owner.magicpoints = og.fsub(owner.magicpoints, t.dig_drain)
+  end
+  left = og.min(left, ticks_mana_buys(owner, left, t.dig_drain, t.dig_drain_pulse))
   marker:set_lifetime(left)
   if og.mod(left, t.dig_regen_pulse) == 0 then
     owner:heal_clamped(t.dig_regen)
@@ -205,7 +231,9 @@ end
 -- skeleton is HIDDEN (the engine charges a hidden walker nothing), and it
 -- is latched: a held key re-casts every tick, so the burrow ignores presses
 -- for its first kit_latch ticks (silently: a Lua refusal under a held key
--- is never voiced).
+-- is never voiced). Staying down costs mana, so the dig refuses unless at
+-- least dig_min_pool is left after the price: a burrow that would surface
+-- at once is no burrow.
 function M.dig_in(self)
   local t = og.tuning(self)
   local burrow_marker = km.find(self, km.BURROW)
@@ -221,6 +249,9 @@ function M.dig_in(self)
   end
   if lc.mid_teleport(self) then
     return false, "SPECIAL BUSY"
+  end
+  if lc.spare_mp(self, DIG_IN_SLOT) < t.dig_min_pool then
+    return false, "NEED MANA TO STAY DOWN"
   end
   if not km.spawn(self, km.BURROW, t.dig_max) then
     return false, "COULD NOT DIG IN"
@@ -473,6 +504,10 @@ function M.ai_dig_in(self)
     return false
   end
   if not hp_below(self, 6, 10) then
+    return false
+  end
+  -- A bot that cannot stay down does not dig.
+  if lc.spare_mp(self, DIG_IN_SLOT) < og.tuning(self).dig_min_pool then
     return false
   end
   return foe_count_within(self, DIG_FOES_RANGE) >= 2

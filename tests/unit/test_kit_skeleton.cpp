@@ -182,7 +182,9 @@ protected:
 
     // A skeleton that takes no decisions of its own (ACT_CONTROL with no
     // seat: no AI, and hit_response leaves it alone) with `mp` mana and no
-    // regeneration, so every MP and HP change in a test is the kit's.
+    // regeneration, so every MP and HP change in a test is the kit's (no
+    // per-round regeneration, and a magic delay it never reaches, or a
+    // skeleton that acts would still gain a point every few ticks).
     walker* add_skeleton(unsigned char team, short x, short y, float mp,
                          int level = 4)
     {
@@ -200,6 +202,7 @@ protected:
         w->stats()->set_max_magicpoints(mp);
         w->stats()->set_magicpoints(mp);
         w->stats()->set_magic_per_round(0.0f);
+        w->stats()->set_max_magic_delay(1000000);
         w->stats()->set_heal_per_round(0.0f);
         w->set_curdir(FACE_RIGHT);
         w->set_enddir(FACE_RIGHT);
@@ -243,18 +246,18 @@ protected:
 // sets them; the skeleton is held on the grow row, whose end is harmless,
 // rewound every tick), hidden on the fourth tick with frame 27 held and
 // ani_type parked on walk: the tele-out row (whose end is TUNNEL) is never
-// started, so the skeleton has not moved. 15 MP paid; the burrow marker is
-// the skeleton's.
+// started, so the skeleton has not moved. 15 MP paid (of 40, leaving a
+// pool to stay down on); the burrow marker is the skeleton's.
 //
 // Perturbation (staged: SINK_TICKS 4 -> 3): RED — "still sinking on tick
 // 3" and "and can still be hit" fail: it went under a tick early.
 TEST_F(KitSkeleton, dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     const Cast c = cast(skel, kSlotDigIn, 0);
     ASSERT_TRUE(c.ok) << c.reason;
-    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "DIG IN costs 15";
+    EXPECT_FLOAT_EQ(25.0f, skel->stats()->magicpoints()) << "DIG IN costs 15";
     EXPECT_EQ(ANI_TELE_IN, skel->ani_type()) << "held, not the tele-out row";
     EXPECT_EQ(24, skel->frame()) << "the first sink frame at once";
     EXPECT_EQ(1u, markers(world(), skel, 1).size()) << "one burrow";
@@ -296,7 +299,7 @@ TEST_F(KitSkeleton, seated_hero_digs_in_where_it_stands)
 {
     for (const bool walks : {false, true}) {
         SCOPED_TRACE(walks ? "walking from tick 2" : "standing still");
-        walker* skel = add_skeleton(0, 96, 96 + (walks ? 64 : 0), 15.0f);
+        walker* skel = add_skeleton(0, 96, 96 + (walks ? 64 : 0), 40.0f);
         ASSERT_NE(nullptr, skel);
         skel->set_user(0);
         skel->set_current_special(static_cast<char>(kSlotDigIn));
@@ -318,7 +321,7 @@ TEST_F(KitSkeleton, seated_hero_digs_in_where_it_stands)
             sim_process_player_input(pi, control, world(), 0, 0, debounce,
                                      &tw_->events);
             if (t == 1) {
-                EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints())
+                EXPECT_FLOAT_EQ(25.0f, skel->stats()->magicpoints())
                     << "the cast went through the seat";
                 EXPECT_EQ(1u, markers(world(), skel, 1).size());
             }
@@ -400,8 +403,9 @@ TEST_F(KitSkeleton, switching_special_while_sinking_keeps_dig_in_in_hand)
     }
 }
 
-// Buried, the skeleton heals dig_regen every dig_regen_pulse ticks (and
-// nothing else: a hidden walker does not act), a foe 40 px off does not
+// Buried, the skeleton heals dig_regen every dig_regen_pulse ticks and pays
+// dig_drain mana on the same beat (and nothing else: a hidden walker does
+// not act), a foe 40 px off does not
 // wake it, and the first foe that comes within dig_trigger brings it up
 // swinging at that foe.
 //
@@ -410,7 +414,7 @@ TEST_F(KitSkeleton, switching_special_while_sinking_keeps_dig_in_in_hand)
 // hidden), and the foe, the grow row and the swing all fail with it.
 TEST_F(KitSkeleton, dig_in_hides_regens_and_pops_when_a_foe_steps_close)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     walker* orc = add_orc(1, 200, 96);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, orc);
@@ -421,6 +425,8 @@ TEST_F(KitSkeleton, dig_in_hides_regens_and_pops_when_a_foe_steps_close)
     tick(8);
     EXPECT_FLOAT_EQ(32.0f, skel->stats()->hitpoints())
         << "1 hp every 4 buried ticks";
+    EXPECT_FLOAT_EQ(23.0f, skel->stats()->magicpoints())
+        << "and 1 mp every 4 buried ticks: 25 after the dig, less 2";
 
     orc->setxy(136, 96);  // 40 px: outside the trigger
     tick();
@@ -437,20 +443,22 @@ TEST_F(KitSkeleton, dig_in_hides_regens_and_pops_when_a_foe_steps_close)
     EXPECT_TRUE(markers(world(), skel, 1).empty());
 }
 
-// The skeleton that went down on its last 15 MP still comes up: a press
-// while buried costs nothing (the engine charges a hidden walker 0).
-TEST_F(KitSkeleton, second_press_pops_up_free_at_zero_mana)
+// The press that brings a buried skeleton up costs nothing (the engine
+// charges a hidden walker 0): 40 MP, 25 after the dig, 20 after twenty
+// buried ticks (one every four), and still 20 once it is up.
+TEST_F(KitSkeleton, second_press_pops_up_free_and_costs_nothing)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
+    EXPECT_FLOAT_EQ(25.0f, skel->stats()->magicpoints());
     ASSERT_EQ(4, ticks_until_hidden(skel));
-    tick(10);
-    skel->stats()->set_magicpoints(0.0f);
+    tick(20);
+    EXPECT_FLOAT_EQ(20.0f, skel->stats()->magicpoints()) << "20 buried ticks";
     const Cast up = cast(skel, kSlotDigIn, 0);
     EXPECT_TRUE(up.ok) << up.reason;
     EXPECT_FALSE(skel->hidden());
-    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "free";
+    EXPECT_FLOAT_EQ(20.0f, skel->stats()->magicpoints()) << "free";
     EXPECT_EQ(ANI_TELE_IN, skel->ani_type());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
 }
@@ -465,7 +473,7 @@ TEST_F(KitSkeleton, second_press_pops_up_free_at_zero_mana)
 // the later presses meet NOT ENOUGH MP instead of the silent refusal.
 TEST_F(KitSkeleton, held_special_does_not_pop_the_burrow)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     for (int age = 1; age <= 9; ++age) {
@@ -488,10 +496,12 @@ TEST_F(KitSkeleton, held_special_does_not_pop_the_burrow)
 }
 
 // With nobody coming, the burrow lets the skeleton up after dig_max ticks
-// (a hidden hostile cannot hold a level open for good).
+// (a hidden hostile cannot hold a level open for good). 100 MP: 85 after
+// the dig, more than the 75 that staying down all 300 ticks costs, so the
+// time runs out before the mana does.
 TEST_F(KitSkeleton, dig_in_expires_on_its_own)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 100.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     ASSERT_EQ(4, ticks_until_hidden(skel));
@@ -499,8 +509,79 @@ TEST_F(KitSkeleton, dig_in_expires_on_its_own)
     EXPECT_TRUE(skel->hidden()) << "299 buried ticks";
     tick();
     EXPECT_FALSE(skel->hidden()) << "up at dig_max (300)";
+    EXPECT_FLOAT_EQ(10.0f, skel->stats()->magicpoints())
+        << "75 paid over the 300 ticks";
     EXPECT_EQ(nullptr, skel->foe());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
+}
+
+// Staying down costs a mana every four buried ticks, and the burrow's clock
+// is kept to what the mana can still pay for, so the countdown the player
+// sees is when it really ends. 23 MP: 8 left after the dig. On the first
+// buried tick the clock reads 35 (eight more payments four ticks apart and
+// the three ticks to the first), the 32nd buried tick pays the last mana,
+// and on the 36th the clock reads 0 and the skeleton comes up plainly: no
+// foe, no swing, never below zero mana.
+//
+// RED (staged: the clamp line removed): the first buried reading is 299.
+// RED (staged: the dry pop removed): the 36th tick pays a mana it does not
+// have, and the pool reads -1.
+TEST_F(KitSkeleton, burrow_surfaces_when_the_mana_runs_dry)
+{
+    walker* skel = add_skeleton(0, 96, 96, 23.0f);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
+    EXPECT_FLOAT_EQ(8.0f, skel->stats()->magicpoints());
+    ASSERT_EQ(4, ticks_until_hidden(skel));
+    const auto burrows = markers(world(), skel, 1);
+    ASSERT_EQ(1u, burrows.size());
+    walker* burrow = burrows[0];
+    tick();
+    EXPECT_EQ(35, burrow->lifetime()) << "the first buried reading";
+    for (int t = 2; t <= 35; ++t) {
+        tick();
+        ASSERT_TRUE(skel->hidden()) << "buried tick " << t;
+        EXPECT_EQ(36 - t, burrow->lifetime()) << "buried tick " << t;
+        if (t == 31) {
+            EXPECT_FLOAT_EQ(1.0f, skel->stats()->magicpoints());
+        }
+        if (t == 32) {
+            EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints())
+                << "the 32nd buried tick pays the last";
+        }
+    }
+    // The 36th buried tick, acted by hand so the spent marker can still be
+    // read before the world sweeps it.
+    burrow->act();
+    EXPECT_TRUE(burrow->dead());
+    EXPECT_EQ(0, burrow->lifetime()) << "the clock reads 0 as it surfaces";
+    EXPECT_FALSE(skel->hidden()) << "up when the mana runs dry";
+    EXPECT_EQ(ANI_TELE_IN, skel->ani_type()) << "up through the grow row";
+    EXPECT_EQ(nullptr, skel->foe());
+    EXPECT_TRUE(alive(world(), Order::Weapon, FAMILY_BONE, skel).empty())
+        << "nobody to swing at";
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "never below zero";
+}
+
+// The dig refuses when it would leave under dig_min_pool (8) mana to stay
+// down on: 22 MP leaves 7 and is refused free; 23 leaves 8 and digs.
+//
+// RED (staged skeleton tuning dig_min_pool = 8 -> 0): 22 MP digs.
+TEST_F(KitSkeleton, dig_in_refuses_without_a_pool_to_stay_down)
+{
+    walker* skel = add_skeleton(0, 96, 96, 22.0f);
+    ASSERT_NE(nullptr, skel);
+    const Cast poor = cast(skel, kSlotDigIn, 0);
+    EXPECT_FALSE(poor.ok);
+    EXPECT_EQ("NEED MANA TO STAY DOWN", poor.reason);
+    EXPECT_FLOAT_EQ(22.0f, skel->stats()->magicpoints()) << "refused free";
+    EXPECT_TRUE(markers(world(), skel, 1).empty());
+    EXPECT_EQ(ANI_WALK, skel->ani_type());
+    skel->stats()->set_magicpoints(23.0f);
+    const Cast enough = cast(skel, kSlotDigIn, 0);
+    EXPECT_TRUE(enough.ok) << enough.reason;
+    EXPECT_FLOAT_EQ(8.0f, skel->stats()->magicpoints());
+    EXPECT_EQ(1u, markers(world(), skel, 1).size());
 }
 
 // A skeleton digging in on floor 1 stays on floor 1, buried and back up;
@@ -521,7 +602,7 @@ TEST_F(KitSkeleton, dig_in_on_floor_one_stays_on_floor_one)
                                         static_cast<unsigned char>(gh), buf);
         w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
     }
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     walker* orc = add_orc(1, 200, 96);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, orc);
@@ -543,7 +624,7 @@ TEST_F(KitSkeleton, dig_in_on_floor_one_stays_on_floor_one)
 // flyer hovering over it (by its flag or by a flight potion) do not.
 TEST_F(KitSkeleton, dig_in_ignores_flyers_and_generators_over_the_burrow)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     ASSERT_EQ(4, ticks_until_hidden(skel));
@@ -572,13 +653,13 @@ TEST_F(KitSkeleton, dig_in_ignores_flyers_and_generators_over_the_burrow)
 // seat): the cast refuses before it spends anything.
 TEST_F(KitSkeleton, possessed_body_cannot_dig_in)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     skel->set_possess_link(9999u);
     const Cast c = cast(skel, kSlotDigIn, 0);
     EXPECT_FALSE(c.ok);
     EXPECT_EQ("POSSESSED BODY", c.reason);
-    EXPECT_FLOAT_EQ(15.0f, skel->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(40.0f, skel->stats()->magicpoints());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
     skel->set_possess_link(0u);
     skel->set_ani_type(ANI_TELE_IN);
@@ -590,7 +671,7 @@ TEST_F(KitSkeleton, possessed_body_cannot_dig_in)
 // visible: the burrow gives up and leaves no channel behind.
 TEST_F(KitSkeleton, a_body_possessed_mid_sink_stays_up)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 40.0f);
     walker* ghost = add_orc(0, 300, 300);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, ghost);
@@ -611,7 +692,7 @@ TEST_F(KitSkeleton, a_body_possessed_mid_sink_stays_up)
 // free channelled press belongs to the dig.
 TEST_F(KitSkeleton, other_specials_wait_for_the_dig)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     for (const int slot : {kSlotWall, kSlotReassemble})
@@ -1264,11 +1345,13 @@ bool ask_gate(walker* w, int slot, short shift = 0)
 
 }  // namespace
 
-// DIG IN's gate: hurt below 60 % and two foes within 80; never a possessed
-// body.
+// DIG IN's gate: hurt below 60 % and two foes within 80, with the mana to
+// stay down (dig_min_pool left after the price); never a possessed body.
+//
+// RED (staged: the gate's pool test removed): 22 MP answers true.
 TEST_F(KitSkeleton, ai_dig_in_fires_when_hurt_and_outnumbered)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 40.0f);
     walker* a = add_orc(0, 150, 96);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, a);
@@ -1285,6 +1368,13 @@ TEST_F(KitSkeleton, ai_dig_in_fires_when_hurt_and_outnumbered)
     skel->set_possess_link(0u);
     b->setxy(96, 190);  // 94 px
     EXPECT_FALSE(ask_gate(skel, kSlotDigIn)) << "the second foe is too far";
+    b->setxy(96, 150);
+    ASSERT_TRUE(ask_gate(skel, kSlotDigIn));
+    skel->stats()->set_magicpoints(22.0f);
+    EXPECT_FALSE(ask_gate(skel, kSlotDigIn))
+        << "7 left after the price: it could not stay down";
+    skel->stats()->set_magicpoints(23.0f);
+    EXPECT_TRUE(ask_gate(skel, kSlotDigIn)) << "8 left: enough";
 }
 
 // BONE WALL's gate: hurt below 70 % with a foe within 60 → the wall

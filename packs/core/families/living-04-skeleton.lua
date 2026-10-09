@@ -92,6 +92,12 @@ og.family("living", {
     dig_regen = 1,
     dig_regen_pulse = 4,
     dig_trigger = 20,
+    -- Staying dug in costs dig_drain mana every dig_drain_pulse ticks (one
+    -- mana for each health it regains); the dig needs dig_min_pool mana
+    -- left after its price, enough to stay down a few seconds.
+    dig_drain = 1,
+    dig_drain_pulse = 4,
+    dig_min_pool = 8,
     wall_gap = 20,
     wall_hp_base = 40,
     wall_ticks = 360,
