@@ -64,19 +64,24 @@ og.family("living", {
   radar_jitter = 0,
 
   tuning = {
-    -- SIPHON: the touch's reach (px) and damage (base + per level); the
-    -- ghost heals half of what it deals.
+    -- SIPHON: the touch reaches siphon_reach px and hits for
+    -- siphon_damage_base + siphon_damage_per_level per ghost level (about
+    -- one swing of the ghost's own); the ghost heals half of what it deals.
+    -- A touch that finds a foe costs one attack's pause.
     siphon_reach = 24,
     siphon_damage_base = 10,
     siphon_damage_per_level = 2,
-    -- POSSESS: the touch's reach (px); the ride lasts possess_base +
-    -- possess_per_gap per level the ghost has over its host, at least
-    -- possess_min ticks, and for good from possess_permanent_gap levels.
+    -- POSSESS: the touch reaches possess_reach px. The game runs 12 ticks
+    -- a second. A host of the ghost's own level is ridden possess_base
+    -- ticks (10 s); every doubling of 1 + the levels the ghost has over it
+    -- adds about possess_log_scale x 0.7 ticks (11.5 s), up to possess_cap
+    -- (one minute, at 19 levels over). A host above the ghost's level is
+    -- ridden possess_min ticks. Every ride ends.
     possess_reach = 24,
-    possess_permanent_gap = 8,
-    possess_min = 60,
+    possess_min = 120,
     possess_base = 120,
-    possess_per_gap = 40,
+    possess_log_scale = 200,
+    possess_cap = 720,
     -- PHASE: how many ticks the ghost stays spectral.
     phase_ticks = 48,
   },
