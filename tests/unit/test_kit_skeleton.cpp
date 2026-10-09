@@ -1205,7 +1205,13 @@ TEST_F(KitSkeleton, unwarded_death_is_final)
 // as a skeleton on its team at half the victim's level, where it fell, and
 // its corpse and life gem are gone (the hook runs after death() left them).
 // An undead victim stays down; once the window closes, kills stay kills.
+// Each kill that could rise tosses a coin (the last draw of the blow: the
+// three draws of a killing melee or bone blow come first, two for a blast),
+// and the world's dice are set before each blow so all three land heads (a
+// bound of 1 matches any draw and still moves the dice on).
 //
+// RED (staged: the coin written og.rand(2) >= 0, every kill left down):
+// "one risen", "the bone kill rises" and "the blast kill rises" fail.
 // Perturbation (staged skeleton tuning legion_ticks = 300 -> 0): RED — the
 // window closes on the marker's first tick, so the second LEGION is cast
 // (60 MP spent, no LEGION ALREADY RISING) and nothing rises after it.
@@ -1213,6 +1219,10 @@ TEST_F(KitSkeleton, unwarded_death_is_final)
 // RED — "closed on tick 300" fails and the late kill rises (5, not 4).
 TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_window)
 {
+    const std::uint32_t kBlowHeads =
+        state_where_draws_are({1, 1, 1, 2}, {0, 0, 0, 1});
+    const std::uint32_t kBlastHeads =
+        state_where_draws_are({1, 1, 2}, {0, 0, 1});
     walker* skel = add_skeleton(0, 96, 96, 120.0f, 10);
     ASSERT_NE(nullptr, skel);
     const Cast c = cast(skel, kSlotReassemble, 1);
@@ -1231,6 +1241,7 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     ASSERT_NE(nullptr, melee);
     melee->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
     skel->set_damage(1000.0f);
+    world().rng_.state_ = kBlowHeads;
     ASSERT_TRUE(skel->attack(melee));
     ASSERT_TRUE(melee->dead());
     EXPECT_EQ(1, skeletons_on_team(world(), 0) - 1) << "one risen";
@@ -1259,6 +1270,7 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     bone->set_owner(skel);
     bone->setxy(184, 160);
     bone->set_damage(1000.0f);
+    world().rng_.state_ = kBlowHeads;
     ASSERT_TRUE(bone->attack(shot));
     EXPECT_EQ(3, skeletons_on_team(world(), 0)) << "the bone kill rises";
 
@@ -1270,6 +1282,7 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     boom->set_team_num(0);
     boom->set_owner(skel);
     boom->set_damage(1000.0f);
+    world().rng_.state_ = kBlastHeads;
     ASSERT_TRUE(boom->attack(blasted));
     EXPECT_EQ(4, skeletons_on_team(world(), 0)) << "the blast kill rises";
 
@@ -1291,6 +1304,40 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     ASSERT_TRUE(skel->attack(late));
     EXPECT_TRUE(late->dead());
     EXPECT_EQ(4, skeletons_on_team(world(), 0)) << "after the window: no rise";
+}
+
+// LEGION raises half its kills: when the kill's coin lands tails the foe
+// stays down, its corpse and a hero's life gem where they fell, and no
+// skeleton rises; the next kill, heads, rises as before.
+//
+// RED (staged: the coin removed): the tails kill rises and its corpse and
+// gem are consumed.
+TEST_F(KitSkeleton, legion_leaves_half_its_kills_down)
+{
+    walker* skel = add_skeleton(0, 96, 96, 120.0f, 10);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 1).ok);
+    skel->set_damage(1000.0f);
+    walker* down = add_orc(1, 112, 96, 6);
+    ASSERT_NE(nullptr, down);
+    down->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    world().rng_.state_ = state_where_draws_are({1, 1, 1, 2}, {0, 0, 0, 0});
+    ASSERT_TRUE(skel->attack(down));
+    ASSERT_TRUE(down->dead());
+    EXPECT_EQ(1, skeletons_on_team(world(), 0)) << "tails: nothing rises";
+    EXPECT_EQ(1u, alive(world(), Order::Treasure, FAMILY_STAIN).size())
+        << "the corpse stays";
+    EXPECT_EQ(1u, alive(world(), Order::Treasure, FAMILY_LIFE_GEM).size())
+        << "and the hero's gem";
+
+    walker* up = add_orc(1, 200, 160);
+    ASSERT_NE(nullptr, up);
+    world().rng_.state_ = state_where_draws_are({1, 1, 1, 2}, {0, 0, 0, 1});
+    ASSERT_TRUE(skel->attack(up));
+    ASSERT_TRUE(up->dead());
+    EXPECT_EQ(2, skeletons_on_team(world(), 0)) << "heads: it rises";
+    EXPECT_EQ(1u, alive(world(), Order::Treasure, FAMILY_STAIN).size())
+        << "the risen one's corpse is consumed, the first one's stays";
 }
 
 // A warded foe that gets back up inside death() was not killed: no hook,

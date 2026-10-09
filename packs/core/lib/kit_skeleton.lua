@@ -523,6 +523,11 @@ function M.on_kill(self, victim)
   if og.family_flag("living", victim:family(), "is_undead") then
     return true
   end
+  -- Half the kills rise: a coin, drawn only for a kill that could rise.
+  -- Tails leaves the corpse (and a hero's life gem) where it fell.
+  if og.rand(2) == 0 then
+    return true
+  end
   local risen = og.add_ob("living", LIVING_SKELETON)
   if not risen then
     return true
