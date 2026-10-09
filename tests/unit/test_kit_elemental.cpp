@@ -680,12 +680,13 @@ TEST(KitElemental, dying_while_immolating_still_fires_the_parting_starburst)
 // ---------------------------------------------------------------------------
 
 // Level 7 on a foe 100 px away: 70 MP; the rain marker sits on the foe and
-// a fire explosion lands every fifth tick of sixty (twelve strikes), each
+// a fire explosion lands every sixth tick of sixty (ten strikes), each
 // within 40 px of the spot, each the caster's own magical blast of
-// 10 + 2 x level. A foe out of range, or on another floor, is no target.
+// 8 + 2 x level. A foe out of range, or on another floor, is no target.
 // Perturbation (staged kit tuning rain_cadence = 999): one strike, at the
-// end -> red.
-TEST(KitElemental, meteor_rain_strikes_the_target_area_every_five_ticks)
+// end -> red. Perturbation (staged kit tuning rain_cadence = 6 -> 5, the
+// old cadence): a strike on the fifth tick and twelve in all -> red.
+TEST(KitElemental, meteor_rain_strikes_the_target_area_every_six_ticks)
 {
     og::test::ScopedHookFailureGuard guard;
     ElementalWorld w(1);
@@ -711,17 +712,17 @@ TEST(KitElemental, meteor_rain_strikes_the_target_area_every_five_ticks)
         after_tick.push_back(explosions(w).size());
     }
     EXPECT_TRUE(rain->dead()) << "the rain ends after sixty ticks";
-    EXPECT_EQ(0u, after_tick[3]) << "nothing before the fifth tick";
-    EXPECT_EQ(1u, after_tick[4]);
-    EXPECT_EQ(1u, after_tick[8]);
-    EXPECT_EQ(2u, after_tick[9]);
+    EXPECT_EQ(0u, after_tick[4]) << "nothing before the sixth tick";
+    EXPECT_EQ(1u, after_tick[5]);
+    EXPECT_EQ(1u, after_tick[10]);
+    EXPECT_EQ(2u, after_tick[11]);
     const auto strikes = explosions(w);
-    ASSERT_EQ(12u, strikes.size()) << "a strike every fifth tick of sixty";
+    ASSERT_EQ(10u, strikes.size()) << "a strike every sixth tick of sixty";
     for (walker* s : strikes) {
         EXPECT_EQ(e, s->owner());
         EXPECT_EQ(e->team_num(), s->team_num());
         EXPECT_EQ(7, s->stats()->level());
-        EXPECT_FLOAT_EQ(24.0f, s->damage());
+        EXPECT_FLOAT_EQ(22.0f, s->damage()) << "8 + 2 x level 7";
         EXPECT_EQ(ANI_EXPLODE, s->ani_type());
         EXPECT_TRUE(s->stats()->query_bit_flags(BIT_FIRE));
         EXPECT_EQ(100, s->skip_exit()) << "the caster's own magical blast";
