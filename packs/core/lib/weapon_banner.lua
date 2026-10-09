@@ -49,13 +49,19 @@ function M.on_animate(self)
   return true
 end
 
--- core:war_banner on_death: chopped down or worn out.
+-- core:war_banner on_death: chopped down or worn out, or struck by its own
+-- captain planting a new one (lib/kit_captain.lua marks that by setting the
+-- banner's leader). A struck banner only flashes: the new banner's own
+-- notice tells the tale, and a boom on top would be noise.
 function M.on_death(self)
   local flash = og.add_ob("fx", FX_FLASH)
   if flash then
     flash.ani_type = C.ANI_EXPAND_8
     flash:set_floor(self:floor())
     flash:center_on(self)
+  end
+  if self:leader() then
+    return true
   end
   og.emit_sound(C.SOUND_EXPLODE)
   og.emit_notification("The banner falls.")

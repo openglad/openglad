@@ -117,20 +117,25 @@ local function live_banner(self)
   return nil
 end
 
--- How many warband grunts this captain has alive: orcs it summoned.
-local function live_grunts(self)
+-- This captain's live warband grunts: orcs it summoned.
+local function own_grunts(self)
   local obs = og.oblist()
-  local n = 0
+  local grunts = {}
   for i = 1, #obs do
     local ob = obs[i]
     if ob:order() == C.ORDER_LIVING
         and ob:family() == LIVING_ORC
         and ob:dead() == 0
         and ob:owner() == self then
-      n = n + 1
+      grunts[#grunts + 1] = ob
     end
   end
-  return n
+  return grunts
+end
+
+-- How many warband grunts this captain has alive.
+local function live_grunts(self)
+  return #own_grunts(self)
 end
 
 -- A blood stain the captain stands on (within the squared reach), on its
@@ -243,6 +248,9 @@ local function war_banner(self)
   if not corpse then
     return false, "NO CORPSE TO PLANT ON"
   end
+  -- A banner of his already standing comes down once the new one is up
+  -- (found before the new one exists, so the scan cannot answer it).
+  local old = live_banner(self)
   local banner = og.add_weap_ob("weapon", WEAPON_WAR_BANNER)
   if not banner then
     return false, "COULD NOT RAISE BANNER"
@@ -260,6 +268,22 @@ local function war_banner(self)
   -- The fallen one's head goes on the pole: the corpse is used up.
   corpse.dead = 1
   corpse:death()
+  if old then
+    -- Struck quietly: lib/weapon_banner.lua reads the leader mark and
+    -- flashes without the fall's boom and notice.
+    old:set_leader(self)
+    old.dead = 1
+    old:death()
+    -- The captain moved his rally point: grunts marching to the old banner
+    -- turn to the new one.
+    local cx = banner:xpos() + og.div(banner:sizex(), 2)
+    local cy = banner:ypos() + og.div(banner:sizey(), 2)
+    local grunts = own_grunts(self)
+    for i = 1, #grunts do
+      grunts[i]:s_clear_command()
+      grunts[i]:s_add_command(C.COMMAND_GOTO, 200, cx, cy)
+    end
+  end
   og.emit_sound(C.SOUND_ROAR)
   og.emit_notification(og.entity_display_name(self, "Orc Captain")
     .. " raises a war banner!")

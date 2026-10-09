@@ -1185,6 +1185,126 @@ TEST(KitCaptain, banner_falls_when_its_time_is_up)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// A second banner strikes the first: the captain plants on one corpse,
+// walks to another 40 px off and plants again. The old banner comes down
+// quietly (a flash where it stood, no boom, no "The banner falls."), so one
+// banner stands, on the second corpse, and the raise notice covers it.
+//
+// Proof it can fail: `old:death()` deleted from the staged kit_captain.lua
+// printed
+//   Value of: first->dead() Actual: false Expected: true
+//   Expected equality of these values: 1u standing.size() Which is: 2
+// and the `if self:leader() then return true end` deleted from the staged
+// weapon_banner.lua printed
+//   Expected equality of these values: 0 count_sound(tw, SOUND_EXPLODE) Which is: 1
+//   Value of: notified(tw, "The banner falls.") Actual: true Expected: false
+TEST(KitCaptain, second_banner_strikes_the_first_quietly)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = nullptr;
+    walker* first = plant_banner(tw, captain);
+    ASSERT_NE(nullptr, first);
+    const short first_cx = static_cast<short>(first->xpos() + first->sizex() / 2);
+    const int flashes_before =
+        static_cast<int>(live_of(tw.world().oblist, Order::FX, FAMILY_FLASH).size());
+
+    captain->setxy(240, 200);
+    walker* corpse = add_stain(tw, captain);
+    ASSERT_NE(nullptr, corpse);
+    const Cast c = cast(captain, 4, false);
+    ASSERT_TRUE(c.ok) << c.reason;
+    EXPECT_TRUE(first->dead()) << "the old banner is struck";
+    const auto standing = banners(tw);
+    ASSERT_EQ(1u, standing.size()) << "one banner stands";
+    EXPECT_EQ(corpse->xpos() + corpse->sizex() / 2,
+              standing.front()->xpos() + standing.front()->sizex() / 2)
+        << "on the second corpse";
+    EXPECT_EQ(1, corpse->dead());
+    EXPECT_EQ(0, count_sound(tw, SOUND_EXPLODE)) << "no boom";
+    EXPECT_FALSE(notified(tw, "The banner falls.")) << "no fall notice";
+    const auto flashes = live_of(tw.world().oblist, Order::FX, FAMILY_FLASH);
+    ASSERT_EQ(flashes_before + 1, static_cast<int>(flashes.size()))
+        << "one flash, for the old banner";
+    EXPECT_EQ(first_cx, flashes.back()->xpos() + flashes.back()->sizex() / 2)
+        << "where the old banner stood";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The corpse comes first: a second press with no corpse underfoot is
+// refused, spends nothing, and the standing banner stays up.
+//
+// Proof it can fail: the old-banner strike put above the corpse check in
+// the staged kit_captain.lua printed
+//   Value of: first->dead() Actual: true Expected: false
+//   Expected equality of these values: 1u banners(tw).size() Which is: 0
+TEST(KitCaptain, refused_second_plant_keeps_the_first)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = nullptr;
+    walker* first = plant_banner(tw, captain);
+    ASSERT_NE(nullptr, first);
+    captain->setxy(300, 300);
+    const Cast c = cast(captain, 4, false);
+    EXPECT_FALSE(c.ok);
+    EXPECT_EQ("NO CORPSE TO PLANT ON", c.reason);
+    EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
+    EXPECT_FALSE(first->dead()) << "the first banner stands";
+    EXPECT_EQ(1u, banners(tw).size());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Grunts marching to the old banner turn to the new one: the captain moved
+// his rally point.
+//
+// Proof it can fail: the grunt re-point loop deleted from the staged
+// kit_captain.lua printed
+//   Expected equality of these values: new_cx Which is: 268
+//   go->com1 Which is: 208
+TEST(KitCaptain, grunts_turn_to_the_new_banner)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = nullptr;
+    walker* first = plant_banner(tw, captain);
+    ASSERT_NE(nullptr, first);
+    ASSERT_TRUE(cast(captain, 4, true).ok);
+    const auto grunts = grunts_of(tw, captain);
+    ASSERT_EQ(2u, grunts.size());
+    for (walker* g : grunts) {
+        const command* go = front_command(g);
+        ASSERT_NE(nullptr, go);
+        ASSERT_EQ(first->xpos() + first->sizex() / 2, go->com1)
+            << "marching to the first banner";
+    }
+
+    captain->setxy(260, 260);
+    walker* corpse = add_stain(tw, captain);
+    ASSERT_NE(nullptr, corpse);
+    ASSERT_TRUE(cast(captain, 4, false).ok);
+    const auto standing = banners(tw);
+    ASSERT_EQ(1u, standing.size());
+    const int new_cx = standing.front()->xpos() + standing.front()->sizex() / 2;
+    const int new_cy = standing.front()->ypos() + standing.front()->sizey() / 2;
+    ASSERT_NE(first->xpos() + first->sizex() / 2, new_cx);
+    for (walker* g : grunts) {
+        EXPECT_EQ(1u, g->stats()->commands.size()) << "the old order is gone";
+        const command* go = front_command(g);
+        ASSERT_NE(nullptr, go);
+        EXPECT_EQ(COMMAND_GOTO, go->commandtype);
+        EXPECT_EQ(new_cx, go->com1) << "to the new banner";
+        EXPECT_EQ(new_cy, go->com2);
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // An ally in the banner's radius never runs: the yell for help rallies its
 // friends but queues no flee walk, and a fright binding skips it. Out of
 // the radius, or with the setting off, it runs as before.
