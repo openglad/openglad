@@ -11739,6 +11739,7 @@ std::vector<Scene> scenes()
         sc.name = "ghost_wail";
         sc.family = FAMILY_GHOST;
         sc.slot = 1;
+        sc.frames = 100; // the third pack is gone by frame ~100
         sc.stage = [](Film& film) {
             fill_mana(film.hero(), 320.0f);
             const int at[9][2] = {{64, -6},    {80, 8},     {84, -22},
@@ -12840,6 +12841,7 @@ std::vector<Scene> scenes()
         sc.name = "elemental_rekindle_supernova";
         sc.family = FAMILY_FIREELEMENTAL;
         sc.slot = 4;
+        sc.frames = 100; // the blast is over by frame ~80
         sc.roster_extra = {FAMILY_SOLDIER};
         sc.stage = [](Film& film) {
             walker* el = film.hero();
@@ -12997,7 +12999,9 @@ std::vector<Scene> scenes()
             skel->stats()->set_hitpoints(0.45f * skel->stats()->max_hitpoints());
             gameplay_rec::stop_hp_regen(skel);
             skel->set_current_special(2);
-            walker* ally = add_actor(film, "ally", FAMILY_SOLDIER, 0, 30, 34);
+            // On the grass behind the seat's soldier, out of the
+            // skeleton's reach, so the soldier lands the first blows.
+            walker* ally = add_actor(film, "ally", FAMILY_SOLDIER, 0, -22, -14);
             ally->set_act_type(ACT_GUARD);
             ally->set_guard_hold_post(true);
         };
