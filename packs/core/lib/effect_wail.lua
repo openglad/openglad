@@ -1,13 +1,13 @@
--- core:wail — the ghost's wail: a homing fright bolt that hops foe to foe like chain lightning (cookbook: docs/lua-classpacks-design.md §3).
+-- core:wail — the ghost's wail: a homing puff of the scare's sparkles that hops foe to foe like chain lightning (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local FX_WAIL = assert(og.family_id("fx", "core:wail"))
 
 local hits = og.use("effect_common").hits
 
--- lightnin.png holds one frame per heading, in the chain bolt's order
--- (gloader.cpp's aniarrow rows): index curdir + 1 is the frame to show.
-local FRAME_BY_DIR = { 1, 5, 2, 6, 0, 4, 3, 7 }
+-- expand8.png is the scare's cloud, a dot (frame 0) growing to a ring
+-- (frame 7). The puff loops the small clusters: index + 1 is the frame.
+local SPARKLE_FRAMES = { 1, 2, 3, 2 }
 
 local M = {}
 
@@ -40,8 +40,9 @@ local function die(self)
   return true
 end
 
--- A foe the wail may hop to: a living on the struck bolt's floor, not the
--- one it just frightened, and not wailed at in the last three rounds.
+-- A foe the wail may hop to: a living on the struck bolt's floor within
+-- wail_fork_px of the one it just frightened, not that one, and not wailed
+-- at in the last three rounds.
 local function is_fork_target(self, leader, foe)
   if foe == leader then
     return false
@@ -50,6 +51,9 @@ local function is_fork_target(self, leader, foe)
     return false
   end
   if foe:floor() ~= self:floor() then
+    return false
+  end
+  if leader:distance_to_ob(foe) > og.tuning(self).wail_fork_px then
     return false
   end
   return foe:skip_exit() < 1
@@ -76,7 +80,11 @@ local function strike(self, leader, owner)
   if hops < 1 then
     return
   end
-  local foes = og.find_foes_in_range("ob", og.tuning(self).wail_fork_px, self)
+  -- The reach is measured from the struck foe, not from the puff, whose
+  -- corner sits well off its centre: every foe within wail_fork_px of the
+  -- struck one is within that plus the puff's own distance to it.
+  local reach = og.tuning(self).wail_fork_px + self:distance_to_ob(leader)
+  local foes = og.find_foes_in_range("ob", reach, self)
   -- One draw: the fork budget rolls off the ghost's level (the chain's
   -- shape), drawn even when no other foe is in reach.
   local forks_left = og.rand0(owner.level) + 1
@@ -93,30 +101,36 @@ local function strike(self, leader, owner)
 end
 
 -- One step toward the leader, turning the bolt to face where it flies
--- (effect_chain.lua's homing, float for float). Each axis steps at most the
--- distance left, so the bolt never overshoots and needs no final snap.
+-- (effect_chain.lua's homing, float for float). The puff is far bigger than
+-- its foe, so it steers its centre onto the foe's centre: the target is the
+-- foe's corner moved by half the difference in size (og.div truncates as C
+-- does). Each axis steps at most the distance left, so the bolt never
+-- overshoots and needs no final snap.
 local function home_on(self, leader)
+  local tx = leader:xpos() + og.div(leader:sizex() - self:sizex(), 2)
+  local ty = leader:ypos() + og.div(leader:sizey() - self:sizey(), 2)
   local xd, yd = 0, 0
-  if leader:xpos() > self:xpos() then
-    xd = og.min(self:stepsize(), leader:xpos() - self:xpos())
-  elseif leader:xpos() < self:xpos() then
-    xd = og.max(leader:xpos() - self:xpos(), -self:stepsize())
+  if tx > self:xpos() then
+    xd = og.min(self:stepsize(), tx - self:xpos())
+  elseif tx < self:xpos() then
+    xd = og.max(tx - self:xpos(), -self:stepsize())
   end
-  if leader:ypos() > self:ypos() then
-    yd = og.min(self:stepsize(), leader:ypos() - self:ypos())
-  elseif leader:ypos() < self:ypos() then
-    yd = og.max(leader:ypos() - self:ypos(), -self:stepsize())
+  if ty > self:ypos() then
+    yd = og.min(self:stepsize(), ty - self:ypos())
+  elseif ty < self:ypos() then
+    yd = og.max(ty - self:ypos(), -self:stepsize())
   end
   -- shim kept: facing() takes ints; xd/yd are floats: C truncation.
   self:set_curdir(self:facing(og.trunc(xd), og.trunc(yd)))
-  self:set_frame(FRAME_BY_DIR[self:curdir() + 1])
   -- shim kept: worldx/worldy are C++ floats: per-op float rounding.
   self:setworldxy(og.fadd(self:worldx(), xd), og.fadd(self:worldy(), yd))
 end
 
 -- core:wail on_act: the bolt homes on its leader; on contact it frightens
 -- it and forks. A bolt whose foe or ghost is gone, or that flew out its
--- life, fades without a fright.
+-- life, fades without a fright. Only the puff's 8x8 core strikes: its
+-- sparkles show smaller than its 48x40 frame, so the frame would strike
+-- before the puff is seen to touch.
 local function on_act(self)
   local leader = self:leader()
   local owner = self:owner()
@@ -126,12 +140,18 @@ local function on_act(self)
   if self:lineofsight() < 1 or leader:hidden() then
     return die(self)
   end
-  if hits(self:xpos(), self:ypos(), self:sizex(), self:sizey(),
+  local cx = self:xpos() + og.div(self:sizex(), 2)
+  local cy = self:ypos() + og.div(self:sizey(), 2)
+  if hits(cx - 4, cy - 4, 8, 8,
           leader:xpos(), leader:ypos(), leader:sizex(), leader:sizey()) then
     strike(self, leader, owner)
     return die(self)
   end
   self:set_lineofsight(self:lineofsight() - 1)
+  -- The lineofsight count is the puff's clock: one frame per
+  -- wail_frame_ticks ticks, round the small sparkles.
+  local step = og.div(self:lineofsight(), og.tuning(self).wail_frame_ticks)
+  self:set_frame(SPARKLE_FRAMES[og.mod(step, 4) + 1])
   home_on(self, leader)
   return true
 end

@@ -9,20 +9,24 @@ og.family("effect", {
   loops_animation = false,
   creates_hit_effect = false,
   flags = {},
-  sprite = "lightnin.png",
-  glyph = "~",
-  glyph_ascii = "~",
-  glyph_color = "cyan",
+  sprite = "expand8.png",
+  glyph = "*",
+  glyph_ascii = "*",
+  glyph_color = "magenta",
   glyph_bold = true,
   glyph_transparent = false,
   radar_color = "none",
   radar_jitter = 0,
 
   tuning = {
-    -- A bolt flies for wail_bolt_life ticks at wail_bolt_step px a tick
-    -- (the chain bolt's speed) before it gives up on its foe.
-    wail_bolt_life = 40,
-    wail_bolt_step = 12,
+    -- The wail is a puff of the scare's sparkles. It drifts for
+    -- wail_bolt_life ticks at wail_bolt_step px a tick (half the chain
+    -- bolt's speed, still faster than anyone running from it) before it
+    -- gives up on its foe: 360 px, past the farthest foe a wail aims at.
+    wail_bolt_life = 60,
+    wail_bolt_step = 6,
+    -- The puff shows one small sparkle frame per wail_frame_ticks ticks.
+    wail_frame_ticks = 2,
     -- On a hit the wail forks to foes within wail_fork_px of the struck
     -- one. The first bolt may hop wail_hops more times; a bolt with no
     -- hops left frightens its foe and forks no further, so the chain ends.

@@ -181,6 +181,11 @@ std::uint32_t state_where(const std::function<bool(og::sim::SimRandom&)>& want)
 // Perturbation: wail_fork_px = 0 in the staged effect-14-wail.lua tuning.
 // RED: "the second orc was frightened" and "the third orc was frightened"
 // (has_commands false), skip_exit 0 on both, and 1 bolt made, not 3.
+// Perturbation: wail_bolt_step = 60. RED: "at wail_bolt_step px a tick"
+// (stepsize 60, not 6) and the hops took 8 rounds, not 38.
+// Perturbation: the fork reach counted from the puff's corner again
+// (`+ self:distance_to_ob(leader)` dropped in the staged effect_wail.lua).
+// RED: "the second orc was frightened" false, 1 bolt made, not 3.
 TEST(KitGhost, wail_hops_foe_to_foe_and_frights_each_once)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -201,10 +206,15 @@ TEST(KitGhost, wail_hops_foe_to_foe_and_frights_each_once)
     EXPECT_EQ(a, first[0]->leader()) << "the first bolt flies at the nearest";
     EXPECT_EQ(ghost, first[0]->owner());
     EXPECT_EQ(3, first[0]->lifetime()) << "it carries wail_hops hops";
+    EXPECT_EQ(60, first[0]->lineofsight()) << "it drifts wail_bolt_life ticks";
+    EXPECT_FLOAT_EQ(6.0f, first[0]->stepsize()) << "at wail_bolt_step px a tick";
     EXPECT_EQ(0, ever_made(tw, Order::FX, FAMILY_GHOST_SCARE))
         << "a wail is not a scare";
 
-    EXPECT_LT(run_wails(tw), 400) << "the chain ends on its own";
+    const int rounds = run_wails(tw);
+    EXPECT_LT(rounds, 400) << "the chain ends on its own";
+    EXPECT_EQ(38, rounds)
+        << "the three hops take this many rounds at 6 px a tick";
     EXPECT_TRUE(a->stats()->has_commands()) << "the first orc was frightened";
     EXPECT_TRUE(b->stats()->has_commands()) << "the second orc was frightened";
     EXPECT_TRUE(c->stats()->has_commands()) << "the third orc was frightened";
@@ -302,8 +312,8 @@ walker* hand_bolt(TestGameWorld& tw, walker* ghost, walker* foe, int hops)
     bolt->stats()->set_level(ghost->stats()->level());
     bolt->center_on(ghost);
     bolt->set_leader(foe);
-    bolt->set_lineofsight(40);
-    bolt->set_stepsize(12.0f);
+    bolt->set_lineofsight(60);
+    bolt->set_stepsize(6.0f);
     bolt->set_lifetime(static_cast<short>(hops));
     return bolt;
 }
@@ -383,6 +393,116 @@ TEST(KitGhost, wail_bolt_homes_forks_only_where_it_may_and_fades)
         EXPECT_TRUE(to_sinks->dead()) << "a bolt whose foe hid fades";
         EXPECT_FALSE(sinks->stats()->has_commands());
     }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The puff's 48x40 frame is mostly empty air: only an 8x8 core at its
+// centre strikes. A bolt staged below and right of the orc, so its frame
+// overlaps the orc's box while its core does not, is not struck on its
+// first act; it steers its centre onto the orc's centre, 6 px an act up and
+// left, and the strike comes on the act the run pinned below. Steering the
+// puff's corner onto the orc's corner instead would park the core 4 px
+// right of the orc for good.
+//
+// Perturbation: the frame-box test restored (hits(self:xpos(), self:ypos(),
+// self:sizex(), self:sizey(), ...) in the staged effect_wail.lua). RED:
+// struck on act 1, not 4.
+// Perturbation: home_on steering the corner (tx = leader:xpos(), ty =
+// leader:ypos()). RED: struck_on 0 (never), the orc not frightened,
+// skip_exit 0.
+TEST(KitGhost, wail_strikes_from_its_core_not_its_cloud)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ghost = add_ghost(tw, 10, 100.0f, 100, 100);
+    walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 200, 100, 1, 140.0f);
+    walker* bolt = hand_bolt(tw, ghost, orc, 0);
+    ASSERT_NE(nullptr, bolt);
+    ASSERT_EQ(48, bolt->sizex());
+    ASSERT_EQ(40, bolt->sizey());
+    // Frame [210,258] x [110,150] overlaps the orc's [200,216] x [100,116];
+    // the core [230,238] x [126,134] does not.
+    bolt->setxy(210, 110);
+
+    int struck_on = 0;
+    for (int act = 1; act <= 60 && struck_on == 0; ++act) {
+        bolt->act();
+        if (bolt->dead())
+            struck_on = act;
+    }
+    EXPECT_EQ(4, struck_on) << "the core reaches the orc on this act";
+    EXPECT_TRUE(orc->stats()->has_commands()) << "the strike frightened the orc";
+    EXPECT_EQ(3, orc->skip_exit()) << "struck once";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The fork reach (wail_fork_px, 120) is counted from the orc the puff
+// struck, not from the puff's corner, which sits 16 px left of and 12 px
+// above a centred orc's. An orc 130 px from the struck one, up and left
+// (102 px from the puff's corner), is out of reach; one 115 px away down
+// and right (143 px from the corner) is in reach.
+//
+// Perturbation: is_fork_target's distance test deleted in the staged
+// effect_wail.lua. RED: "130 px from the struck orc" (frightened), its
+// skip_exit 3.
+// Perturbation: the reach counted from the puff (`+ self:distance_to_ob(
+// leader)` dropped). RED: "115 px from the struck orc" (not frightened).
+TEST(KitGhost, wail_forks_within_reach_of_the_struck_foe)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ghost = add_ghost(tw, 10, 100.0f, 60, 60);
+    walker* struck = add_living(tw, FAMILY_ORC, kFoeTeam, 300, 300, 1, 140.0f);
+    // Listed before the near orc, so a fork that wrongly reached it would
+    // take it first even with a single fork to spend.
+    walker* far = add_living(tw, FAMILY_ORC, kFoeTeam, 200, 270, 1, 140.0f);
+    walker* near = add_living(tw, FAMILY_ORC, kFoeTeam, 400, 315, 1, 140.0f);
+    ASSERT_NE(nullptr, near);
+    ASSERT_EQ(130, struck->distance_to_ob(far));
+    ASSERT_EQ(115, struck->distance_to_ob(near));
+    walker* bolt = hand_bolt(tw, ghost, struck, 1);
+    ASSERT_NE(nullptr, bolt);
+    bolt->setxy(284, 288);  // centred on the struck orc: strikes at once
+    ASSERT_EQ(102, bolt->distance_to_ob(far));
+    ASSERT_EQ(143, bolt->distance_to_ob(near));
+    bolt->act();
+    ASSERT_TRUE(bolt->dead()) << "struck on its first act";
+    EXPECT_EQ(3, struck->skip_exit());
+    run_wails(tw);
+    EXPECT_TRUE(near->stats()->has_commands()) << "115 px from the struck orc";
+    EXPECT_FALSE(far->stats()->has_commands()) << "130 px from the struck orc";
+    EXPECT_EQ(0, far->skip_exit()) << "never struck";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The puff loops the scare's small sparkle frames, 1, 2, 3, 2, one frame
+// per wail_frame_ticks (2) acts, off its own lineofsight count.
+//
+// The bolt's count starts at 60 and the frame is set after it drops, so the
+// first act shows 59 / 2 = 29, 29 mod 4 = 1: SPARKLE_FRAMES[2] = 2. The
+// sequence below is the one the run printed.
+//
+// Perturbation: wail_frame_ticks = 1 in the staged effect-14-wail.lua.
+// RED: frames { 2, 3, 2, 1, 2, 3, 2, 1 }.
+TEST(KitGhost, wail_cycles_the_small_sparkle_frames)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ghost = add_ghost(tw, 10, 100.0f, 100, 100);
+    walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 500, 100, 1, 140.0f);
+    walker* bolt = hand_bolt(tw, ghost, orc, 0);
+    ASSERT_NE(nullptr, bolt);
+    std::vector<int> frames;
+    for (int act = 0; act < 8; ++act) {
+        bolt->act();
+        ASSERT_FALSE(bolt->dead()) << "act " << act;
+        frames.push_back(bolt->frame());
+    }
+    EXPECT_EQ((std::vector<int>{2, 2, 1, 1, 2, 2, 3, 3}), frames)
+        << "the frame is set after the count drops: 59 / 2 = 29, 29 mod 4 = 1";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1054,21 +1174,25 @@ TEST(KitGhost, ai_off_answers_the_classic_gate)
 // Art and glyphs
 // ---------------------------------------------------------------------------
 
-// core:wail is effect wire 14 and wears the chain bolt's lightning (eight
-// headings), with a cyan bold `~` in the terminal clients.
+// core:wail is effect wire 14 and wears the scare's sparkle cloud (eight
+// frames, a dot growing to a ring), with the scare's magenta bold, as `*`,
+// in the terminal clients.
+//
+// Perturbation: sprite = "lightnin.png" in the staged effect-14-wail.lua.
+// RED: pix_filename "lightnin.png", not "expand8.png".
 TEST(KitGhost, new_kit_entities_load_art_and_glyphs)
 {
     ASSERT_EQ(14, wail_family()) << "core:wail is effect wire id 14";
     const EffectFamilyDescriptor* d = get_effect_family_descriptor(14);
     ASSERT_NE(nullptr, d);
     ASSERT_NE(nullptr, d->pix_filename);
-    EXPECT_EQ(std::string("lightnin.png"), d->pix_filename);
+    EXPECT_EQ(std::string("expand8.png"), d->pix_filename);
     const PixieData p = read_pixie_file(d->pix_filename);
     ASSERT_TRUE(p.valid());
-    EXPECT_EQ(8, static_cast<int>(p.frames)) << "one frame per heading";
-    EXPECT_EQ(U'~', d->glyph.codepoint);
-    EXPECT_EQ('~', d->glyph.ascii);
-    EXPECT_EQ(og::GlyphColor::Cyan, d->glyph.color);
+    EXPECT_EQ(8, static_cast<int>(p.frames)) << "the scare's eight frames";
+    EXPECT_EQ(U'*', d->glyph.codepoint);
+    EXPECT_EQ('*', d->glyph.ascii);
+    EXPECT_EQ(og::GlyphColor::Magenta, d->glyph.color);
     EXPECT_TRUE(d->glyph.bold);
     EXPECT_FALSE(d->glyph.transparent) << "the bolt is seen on every client";
 }
