@@ -115,7 +115,10 @@ end
 
 -- IMMOLATION marker: drains the owner's mana each tick, burns what touches
 -- it, drops an ember every ember_step ticks; goes out when the owner dies,
--- the mana runs dry or immolate_max ticks pass.
+-- the mana runs dry or immolate_max ticks pass. After each drain its clock
+-- is cut to what the mana left can pay for (one more tick for every
+-- immolate_drain, and the tick that finds the pool dry), so the countdown
+-- a player sees is the tick the fire really goes out.
 local function immolation_act(marker)
   local owner = marker:owner()
   if not owner then
@@ -134,6 +137,8 @@ local function immolation_act(marker)
   end
   -- magicpoints is a C++ float: per-op rounding.
   owner.magicpoints = og.fsub(owner.magicpoints, t.immolate_drain)
+  local paid = og.div(og.trunc(owner.magicpoints), t.immolate_drain) + 1
+  marker.lifetime = og.min(marker:lifetime(), paid)
   marker:center_on(owner)
   burn_contacts(marker, owner, t)
   if og.mod(marker:lifetime(), t.ember_step) == 0 then

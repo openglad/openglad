@@ -478,6 +478,39 @@ TEST(KitElemental, immolate_at_low_mana_goes_out)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// The fire's clock is kept to what the mana can still pay for, so the
+// countdown a player sees is when the fire really goes out. 37 MP: 7 after
+// lighting. The first tick drains 2 (5 left) and the clock reads 3: two
+// more ticks of 2 (5 -> 3 -> 1) and the third finds the pool dry. It reads
+// 2, then 1, and on the tick after that the fire is out.
+// Perturbation (staged: the clamp line removed): the first reading is 199
+// -> red.
+TEST(KitElemental, immolation_clock_reads_what_the_mana_buys)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* e = add_elemental(w, 4, 37.0f, 2);
+    ASSERT_NE(nullptr, e);
+    ASSERT_TRUE(cast(e).ok);
+    EXPECT_FLOAT_EQ(7.0f, mp(e));
+    walker* marker = markers(w).at(0);
+    EXPECT_EQ(200, marker->lifetime()) << "immolate_max until it burns";
+    ASSERT_TRUE(marker->act());
+    EXPECT_FLOAT_EQ(5.0f, mp(e));
+    EXPECT_EQ(3, marker->lifetime()) << "the first reading";
+    ASSERT_TRUE(marker->act());
+    EXPECT_EQ(2, marker->lifetime());
+    ASSERT_TRUE(marker->act());
+    EXPECT_EQ(1, marker->lifetime());
+    EXPECT_FLOAT_EQ(1.0f, mp(e));
+    EXPECT_TRUE(channelling(*e)) << "still burning on the last paid tick";
+    ASSERT_TRUE(marker->act());
+    EXPECT_TRUE(marker->dead()) << "out on the tick the clock said";
+    EXPECT_FALSE(channelling(*e));
+    EXPECT_FLOAT_EQ(1.0f, mp(e)) << "never below zero";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // With mana to spare the fire lasts immolate_max (200) ticks and no more.
 // Perturbation (staged kit tuning immolate_max = 5): out on tick 5 -> red.
 TEST(KitElemental, immolate_burns_out_after_its_longest_burn)
