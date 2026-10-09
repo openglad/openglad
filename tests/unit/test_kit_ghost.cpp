@@ -547,11 +547,20 @@ TEST(KitGhost, a_full_world_refuses_the_casts_that_need_an_entity)
 
 // A level-4 ghost's touch hits for 10 + 2 x 4 = 18 before armour; whatever
 // the foe loses, the ghost gains half of (whole points), never past its
-// maximum, and its own melee damage is back afterwards.
+// maximum, and its own melee damage is back afterwards. The touch costs the
+// ghost one attack's pause (its fire_frequency, read off the walker: a
+// hero's pause is shorter than a bare ghost's 7): a second press inside it
+// is refused for free, and once the pause has run out a touch lands again.
 //
 // Perturbation: og.fdiv(dealt, 2.0) -> og.fdiv(dealt, 1.0) in the staged
 // kit_ghost.lua. RED: "half of what the orc lost": 36 hp, not 28 (the
 // ghost drank all 16 it dealt).
+// Perturbation: the set_busy line deleted from the staged kit_ghost.lua.
+// RED: "the touch costs one attack's pause" (busy 0, not 7), "a second
+// touch inside the pause" landed (10 MP left, the orc 124 -> 108), 0 acts
+// of pause, not 7.
+// Perturbation: the SPECIAL BUSY guard deleted. RED: "a second touch
+// inside the pause" landed, reason "" not "SPECIAL BUSY", 14 acts of pause.
 TEST(KitGhost, siphon_heals_half_of_damage_dealt_never_above_max)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -573,23 +582,46 @@ TEST(KitGhost, siphon_heals_half_of_damage_dealt_never_above_max)
         << "half of what the orc lost";
     EXPECT_FLOAT_EQ(own_damage, ghost->damage())
         << "the touch's damage is swapped back out";
+    const float pause = ghost->fire_frequency();
+    ASSERT_GE(pause, 1.0f);
+    EXPECT_FLOAT_EQ(pause, ghost->busy()) << "the touch costs one attack's pause";
 
-    // Nearly full: the heal stops at the maximum.
+    // Nearly full, and pressed again at once: refused, nothing spent.
     ghost->stats()->set_hitpoints(99.0f);
     ghost->stats()->set_magicpoints(40.0f);
-    ASSERT_TRUE(cast(ghost, 2, false).ok);
+    const float orc_hp = orc->stats()->hitpoints();
+    const CastResult busy = cast(ghost, 2, false);
+    EXPECT_FALSE(busy.ok) << "a second touch inside the pause";
+    EXPECT_EQ("SPECIAL BUSY", busy.reason);
+    EXPECT_FLOAT_EQ(40.0f, ghost->stats()->magicpoints()) << "refused free";
+    EXPECT_FLOAT_EQ(orc_hp, orc->stats()->hitpoints()) << "no touch landed";
+
+    // The pause counts down one a tick in the ghost's own act; when it has
+    // run out the touch lands, and the heal stops at the maximum.
+    ghost->set_act_type(ACT_CONTROL);  // no AI: the test drives the acts
+    int acts = 0;
+    while (ghost->busy() > 0.0f && acts < 50) {
+        ghost->act();
+        ++acts;
+    }
+    EXPECT_EQ(static_cast<int>(pause), acts) << "one attack's pause, in acts";
+    ASSERT_TRUE(cast(ghost, 2, false).ok) << "the pause is over";
+    EXPECT_LT(orc->stats()->hitpoints(), orc_hp) << "the touch landed again";
     EXPECT_FLOAT_EQ(100.0f, ghost->stats()->hitpoints())
         << "never above max hp";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
 // A touch that finds nobody, or a foe that cannot be hurt, still costs the
-// 30 mana: SIPHON is not a free probe. With the setting off the slot does
-// not exist (refused for mana, nothing spent).
+// 30 mana: SIPHON is not a free probe. A touch that finds nobody costs no
+// attack's pause. With the setting off the slot does not exist (refused for
+// mana, nothing spent).
 //
 // Perturbation: the empty-touch arm returns `false, "NOTHING"` in the
 // staged kit_ghost.lua. RED: "an empty touch still spends" (r.ok false)
 // and 40 MP left, not 10.
+// Perturbation: the empty-touch arm sets the pause too. RED: "an empty
+// touch costs no attack's pause" (busy 7, not 0).
 TEST(KitGhost, empty_siphon_still_spends)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -603,6 +635,8 @@ TEST(KitGhost, empty_siphon_still_spends)
         EXPECT_FLOAT_EQ(10.0f, ghost->stats()->magicpoints());
         EXPECT_FLOAT_EQ(50.0f, ghost->stats()->hitpoints());
         EXPECT_TRUE(notified(tw, "touch finds nothing"));
+        EXPECT_FLOAT_EQ(0.0f, ghost->busy())
+            << "an empty touch costs no attack's pause";
     }
     {
         TestGameWorld tw;
@@ -616,6 +650,8 @@ TEST(KitGhost, empty_siphon_still_spends)
         EXPECT_FLOAT_EQ(10.0f, ghost->stats()->magicpoints());
         EXPECT_FLOAT_EQ(140.0f, orc->stats()->hitpoints());
         EXPECT_FLOAT_EQ(50.0f, ghost->stats()->hitpoints()) << "nothing to drink";
+        EXPECT_FLOAT_EQ(ghost->fire_frequency(), ghost->busy())
+            << "the touch found a foe: it costs the pause all the same";
     }
     {
         TestGameWorld tw;  // OFF twin

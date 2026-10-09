@@ -2,6 +2,7 @@
 
 local C = og.C
 local km = og.use("kit_marker")
+local lc = og.use("living_common")
 local wail_bolt = og.use("effect_wail")
 local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 
@@ -62,12 +63,18 @@ end
 
 -- ---------------------------------------------------------------------
 -- SIPHON (slot 2): a touch that heals the ghost by half the damage dealt.
--- A resisted or empty touch still spends the mana (it answers true).
+-- A resisted or empty touch still spends the mana (it answers true). A
+-- touch that finds a foe costs the ghost one attack's pause, as a swing of
+-- its own would: one touch a press, and one per pause while the key is held.
 -- ---------------------------------------------------------------------
 
 function M.siphon(self)
+  -- A phased ghost is held busy too; it hears why it cannot touch.
   if phased(self) then
     return false, "PHASED"
+  end
+  if lc.is_busy(self) then
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local foe = nearest_foe(self, t.siphon_reach)
@@ -90,6 +97,8 @@ function M.siphon(self)
   if heal > 0 then
     self:heal_clamped(heal)
   end
+  -- busy is a C++ float: per-op rounding.
+  self:set_busy(og.fadd(self:busy(), self:fire_frequency()))
   return true
 end
 

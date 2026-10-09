@@ -64,8 +64,10 @@ og.family("living", {
   radar_jitter = 0,
 
   tuning = {
-    -- SIPHON: the touch's reach (px) and damage (base + per level); the
-    -- ghost heals half of what it deals.
+    -- SIPHON: the touch reaches siphon_reach px and hits for
+    -- siphon_damage_base + siphon_damage_per_level per ghost level (about
+    -- one swing of the ghost's own); the ghost heals half of what it deals.
+    -- A touch that finds a foe costs one attack's pause.
     siphon_reach = 24,
     siphon_damage_base = 10,
     siphon_damage_per_level = 2,
