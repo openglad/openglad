@@ -226,6 +226,8 @@ for the rest of the level.
 - PHASE lasts 48 ticks at double speed, and the ghost cannot attack while
   it lasts, not even on the tick it casts. A bot ghost never phases again
   while its veil is up.
+- A phased ghost shows to everyone as a faint shimmer with its team's
+  outline, so friend and foe can see where it went.
 
 **Faerie.**
 - SWAP never drops a walker onto a spot it could not stand on, such as

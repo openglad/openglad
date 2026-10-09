@@ -604,8 +604,22 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 
 	if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
     {
-        fill_mode = PHANTOM_MODE;
-        phantom_mode = SHIFT_RANDOM;
+        if (w.query_order() == Order::Living)
+        {
+            // A phased living (the ghost's PHASE) is spectral, not gone: a
+            // light dither with its team's outline, for every viewer, so a
+            // player can follow the untouchable ghost. The classic phantoms
+            // (the wave weapons, the circle of protection, the magic
+            // shield) are not livings and keep the heat haze below.
+            fill_mode = INVISIBLE_MODE;
+            invisibility_amount = 20;
+            outline_style = w.query_team_color();
+        }
+        else
+        {
+            fill_mode = PHANTOM_MODE;
+            phantom_mode = SHIFT_RANDOM;
+        }
         should_draw_hp = false;
     }
 	else if ((w.invisibility_left() || w.hidden()) && view_buf->control != nullptr)  //WE ARE INVISIBLE

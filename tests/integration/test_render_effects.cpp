@@ -1265,6 +1265,110 @@ TEST_F(RenderEffects,
         << "its own team sees the cloak's dither";
 }
 
+namespace
+{
+
+// Pixels of `rect` whose colour the bare ground under it does not have at
+// all: what a sprite, an outline or a dither adds. A heat-haze copy of the
+// ground adds none.
+int foreign_pixels(const std::vector<RGB>& rect,
+                   const std::vector<RGB>& ground)
+{
+    int n = 0;
+    for (const RGB& c : rect)
+    {
+        const bool on_ground =
+            std::any_of(ground.begin(), ground.end(),
+                        [&](const RGB& g) { return same(c, g); });
+        if (!on_ground)
+            ++n;
+    }
+    return n;
+}
+
+} // namespace
+
+// PHASE: a phased ghost (BIT_PHANTOM on a living, set by the ghost's PHASE
+// special) is drawn as a light dither with its team's outline for every
+// viewer -- its own team, the other team and a spectator camera -- so a
+// player can see where the untouchable ghost went. The classic heat-haze
+// copy of the background stays for the classic things that carry the bit
+// (the wave weapons, the circle of protection, the magic shield): on the
+// ground it adds no colour of its own. Clearing the bit gives the plain
+// sprite back.
+//
+// Perturbation (the old draw: every BIT_PHANTOM walker in PHANTOM_MODE with
+// SHIFT_RANDOM): RED -- the phased ghost adds 0 pixels of its own colour in
+// all three viewports.
+TEST_F(RenderEffects, phased_ghost_shows_a_spectral_look_to_every_viewer)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "off");
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const ghost = scr()->world().add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost);
+    ghost->setxy(200, 120);
+    ghost->set_team_num(0);
+    ASSERT_NE(nullptr, ghost->bmp_data());
+    ASSERT_FALSE(ghost->stats()->query_bit_flags(BIT_PHANTOM));
+
+    constexpr Viewer kViewers[] = {Viewer::OwnTeam, Viewer::OtherTeam,
+                                   Viewer::Spectator};
+    const char* const kNames[] = {"own team", "other team", "spectator"};
+
+    ghost->set_dead(1);
+    const std::vector<RGB> ground = view_rect(scene, Viewer::OwnTeam, *ghost);
+    ghost->set_dead(0);
+    std::vector<std::vector<RGB>> plain;
+    for (Viewer v : kViewers)
+        plain.push_back(view_rect(scene, v, *ghost));
+    for (std::size_t i = 0; i < plain.size(); ++i)
+        ASSERT_GT(foreign_pixels(plain[i], ground), 0)
+            << kNames[i] << ": the ghost must paint";
+
+    ghost->stats()->set_bit_flags(BIT_PHANTOM, 1);
+    for (std::size_t i = 0; i < std::size(kViewers); ++i)
+    {
+        const std::vector<RGB> phased = view_rect(scene, kViewers[i], *ghost);
+        EXPECT_GT(foreign_pixels(phased, ground), 0)
+            << kNames[i] << ": the phased ghost is still seen";
+        EXPECT_FALSE(rects_equal(phased, plain[i]))
+            << kNames[i] << ": as a spectral dither, not the plain sprite";
+    }
+
+    ghost->stats()->set_bit_flags(BIT_PHANTOM, 0);
+    for (std::size_t i = 0; i < std::size(kViewers); ++i)
+        EXPECT_TRUE(rects_equal(view_rect(scene, kViewers[i], *ghost),
+                                plain[i]))
+            << kNames[i] << ": unphased, the ghost draws as it always did";
+
+    // The classic phantom: a wave carries the bit from its family and keeps
+    // the heat-haze copy of the ground.
+    ghost->set_dead(1);
+    walker* const wave = scr()->world().add_ob(Order::Weapon, FAMILY_WAVE);
+    ASSERT_NE(nullptr, wave);
+    wave->setxy(200, 120);
+    wave->set_team_num(0);
+    ASSERT_NE(nullptr, wave->bmp_data());
+    ASSERT_TRUE(wave->stats()->query_bit_flags(BIT_PHANTOM))
+        << "the wave is a classic phantom";
+    for (std::size_t i = 0; i < std::size(kViewers); ++i)
+        EXPECT_EQ(0, foreign_pixels(view_rect(scene, kViewers[i], *wave),
+                                    ground))
+            << kNames[i] << ": the wave is a haze over the ground";
+    wave->stats()->set_bit_flags(BIT_PHANTOM, 0);
+    EXPECT_GT(foreign_pixels(view_rect(scene, Viewer::OwnTeam, *wave), ground),
+              0)
+        << "without the bit the wave paints its sprite (the haze check bites)";
+}
+
 // effects "hit_anim" off hides the hit-spark FX in the tile draw: the call
 // still reports handled but paints nothing. Paired control: with hit_anim on
 // the same spark paints its sprite.
