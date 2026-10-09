@@ -665,9 +665,10 @@ TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
 
 // The faerie's BLINK with New Specials on, through the real walker::special()
 // on a level-loaded SDL session (the og_unit_kits rows drive the same cast on
-// a bare test world). A level-3 faerie hops within blink_base + per_level *
-// level = 24 + 6 * 3 = 42 px on each axis, pays the declared 8 MP, and
-// lands in the appear row (ANI_TELE_IN), so a held key the next tick is
+// a bare test world). A level-3 faerie hops blink_base + per_level * level =
+// 24 + 2 * 3 = 30 px along one of eight directions (a third of that, 10 px,
+// at the shortest when walls crowd her), pays the declared 20 MP, and rests
+// a second (busy: her attack pause plus 12), so a held key the next tick is
 // refused as SPECIAL BUSY and spends nothing.
 TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
 {
@@ -679,7 +680,7 @@ TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
     ASSERT_EQ(3, static_cast<int>(w->stats()->level()));
     w->set_current_special(1);
     w->set_shifter_down(0);
-    ASSERT_EQ(8, static_cast<int>(og::sim::cast_cost(*w, 1, false)))
+    ASSERT_EQ(20, static_cast<int>(og::sim::cast_cost(*w, 1, false)))
         << "BLINK's declared price";
     // One pinned stream, so where the hop lands is the same in every order.
     world.rng_.state_ = 0x5eedb11cu;
@@ -690,20 +691,23 @@ TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
     walker::SpecialFailure why = walker::SpecialFailure::None;
     std::string reason;
     ASSERT_TRUE(w->special(&why, &reason)) << "BLINK refused: " << reason;
-    constexpr Sint32 kRange = 24 + 6 * 3;
-    EXPECT_TRUE(w->xpos() != from_x || w->ypos() != from_y)
-        << "the faerie moved";
-    EXPECT_LE(std::abs(w->xpos() - from_x), kRange) << "within range in x";
-    EXPECT_LE(std::abs(w->ypos() - from_y), kRange) << "within range in y";
-    EXPECT_FLOAT_EQ(mp_before - 8.0f, w->stats()->magicpoints())
-        << "BLINK costs 8";
-    EXPECT_EQ(ANI_TELE_IN, w->ani_type()) << "she appears where she landed";
+    constexpr Sint32 kRange = 24 + 2 * 3;
+    const Sint32 moved_x = std::abs(w->xpos() - from_x);
+    const Sint32 moved_y = std::abs(w->ypos() - from_y);
+    EXPECT_LE(moved_x, kRange) << "within the hop in x";
+    EXPECT_LE(moved_y, kRange) << "within the hop in y";
+    EXPECT_GE(std::max(moved_x, moved_y), kRange / 3)
+        << "at least the shortest fallback hop";
+    EXPECT_FLOAT_EQ(mp_before - 20.0f, w->stats()->magicpoints())
+        << "BLINK costs 20";
+    EXPECT_FLOAT_EQ(w->fire_frequency() + 12.0f, w->busy())
+        << "a second's rest on top of her attack pause";
 
     const Sint32 landed_x = w->xpos();
     const float mp_landed = w->stats()->magicpoints();
     reason.clear();
     EXPECT_FALSE(w->special(&why, &reason))
-        << "a press while she appears is refused";
+        << "a press while she rests is refused";
     EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
     EXPECT_EQ("SPECIAL BUSY", reason);
     EXPECT_EQ(landed_x, w->xpos());

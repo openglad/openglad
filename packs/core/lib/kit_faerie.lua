@@ -8,6 +8,11 @@ local TREASURE_STAIN = assert(og.family_id("treasure", "core:stain"))
 
 local M = {}
 
+-- The eight directions BLINK may hop along, clockwise from straight up
+-- (the facing order: FACE_UP = 0).
+local HOP_X = { 0, 1, 1, 1, 0, -1, -1, -1 }
+local HOP_Y = { -1, -1, 0, 1, 1, 1, 0, -1 }
+
 -- The teleporter pad's flash, centred on `at`. Returns the flash, or nil
 -- when the world is full.
 local function flash_at(at)
@@ -153,32 +158,71 @@ local function wounded_allies(self, radius)
   return count
 end
 
--- BLINK: a short random hop on the same floor. The appear row that follows
--- keeps a held key from blinking again until it has played.
+-- Where BLINK lands: `len` px along one of the eight directions, the first
+-- clear spot found. The directions are tried clockwise from a random one,
+-- each at its full length, then two thirds, then one third of it (so a wall
+-- close by shortens the hop instead of cancelling it). Answers x, y, or nil
+-- when every spot is blocked. og.spawn_spot_clear is the eat-free probe.
+local function blink_spot(self, len)
+  local d0 = og.rand(8)
+  local x = self:xpos()
+  local y = self:ypos()
+  for k = 0, 7 do
+    local dir = og.mod(d0 + k, 8) + 1
+    for part = 3, 1, -1 do
+      local hop = og.div(len * part, 3)
+      local nx = x + HOP_X[dir] * hop
+      local ny = y + HOP_Y[dir] * hop
+      if og.spawn_spot_clear(self, nx, ny) then
+        return nx, ny
+      end
+    end
+  end
+  return nil
+end
+
+-- True while she rests after a hop. The rest rides busy on top of her
+-- attack pause (see rest), so only a hop's rest refuses BLINK and SWAP: the
+-- plain pause after a sprinkle (busy up to fire_frequency) does not, and a
+-- fighting faerie can still hop away between two sprinkles.
+local function resting(self)
+  return self:busy() > self:fire_frequency()
+end
+
+-- After a hop: a full attack pause plus blink_cooldown ticks of busy, so a
+-- held key cannot hop again for blink_cooldown ticks and she cannot sprinkle
+-- until the whole rest has run. busy is a C++ float: per-op rounding.
+local function rest(self, t)
+  self:set_busy(og.fadd(self:fire_frequency(), t.blink_cooldown))
+end
+
+-- BLINK: a short hop of a fixed length in a random direction, on the same
+-- floor, then a second's rest.
 local function blink(self)
-  if lc.mid_teleport(self) then
+  if resting(self) then
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
-  local from_x = self:xpos()
-  local from_y = self:ypos()
-  if not self:teleport_ranged(t.blink_base + t.blink_per_level * self.level) then
+  local x, y = blink_spot(self, t.blink_base + t.blink_per_level * self.level)
+  if x == nil then
     return false, "NOWHERE TO BLINK"
   end
-  -- One flash where she left (moved back from her landing), one where she lands.
-  local origin = flash_at(self)
-  if origin then
-    origin:setxy(origin:xpos() + from_x - self:xpos(), origin:ypos() + from_y - self:ypos())
-  end
+  -- One flash where she leaves, one where she lands.
   flash_at(self)
-  self.ani_type = C.ANI_TELE_IN
-  self:set_cycle(0)
+  self:setxy(x, y)
+  flash_at(self)
+  rest(self, t)
   return true
 end
 
--- SWAP: trade places with the nearest walker in sight, ally or foe.
+-- SWAP: trade places with the nearest walker in sight, ally or foe. It
+-- rests as long as BLINK does, so a held key cannot swap straight back.
 local function swap(self)
-  local partner = swap_partner(self, og.tuning(self).swap_range)
+  if resting(self) then
+    return false, "SPECIAL BUSY"
+  end
+  local t = og.tuning(self)
+  local partner = swap_partner(self, t.swap_range)
   if not partner then
     return false, "NO ONE IN SIGHT"
   end
@@ -192,6 +236,7 @@ local function swap(self)
   end
   flash_at(self)
   flash_at(partner)
+  rest(self, t)
   return true
 end
 
