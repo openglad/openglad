@@ -270,7 +270,7 @@ bool kit_on_death(GameWorld& world, walker& self)
     {
         // REASSEMBLE: the death is cancelled before death() marks it, takes
         // the walker out of the collision table or drops a life gem, so
-        // nothing has to be undone. The kill was already credited.
+        // nothing has to be undone. attack() then counts no kill for that blow.
         self.set_kit_state(static_cast<std::uint8_t>(self.kit_state() & ~KIT_WARD));
         self.set_dead(0);
         self.stats()->set_hitpoints(self.stats()->max_hitpoints() / 4.0f);
