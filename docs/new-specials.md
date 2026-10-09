@@ -281,10 +281,12 @@ for the rest of the level.
 - Holding Special repeats a mine, a hasten, a hurl or a shove once per tick
   while magic lasts, as it repeats a bomb. BLINK, GLIMMER, KNIFE FAN and
   BONE STORM wait out their own animation or pause before the next.
-- With the setting off one thing still looks different: in SDL a foe now
+- With the setting off two things still look different: in SDL a foe now
   sees the thief's poison cloud fade in and out instead of popping in at
   full, and a curses player sees their own team's cloud glyph during those
-  ticks. That is drawing only; the game plays the same.
+  ticks; and when a hero dies, its view holds still until the next hero is
+  picked instead of flashing the map's top-left corner for a frame. That is
+  drawing only; the game plays the same.
 
 ## Refusals at a glance
 

@@ -212,6 +212,9 @@ void cleanup_dead_view_controls(screen& self)
         {
             continue;
         }
+        // The view keeps its camera on this frame instead of flashing the
+        // map's corner before the seat moves to its next walker.
+        self.viewob[i]->hold_camera_for_lost_control(world.tick_count_);
         self.viewob[i]->control = nullptr;
     }
 }
