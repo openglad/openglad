@@ -406,14 +406,69 @@ local function warded(self)
 end
 
 -- REASSEMBLE (60 MP): the ward is a bit the engine spends at the top of
--- the next death (the skeleton gets up at a quarter health).
+-- the next death (the skeleton gets up at a quarter health). A WARD marker
+-- keeps the time: the ward lasts ward_ticks, costs ward_drain mana every
+-- ward_drain_pulse ticks while it is armed, and fades when either runs out.
 local function reassemble(self)
   if warded(self) then
     return false, "ALREADY WARDED"
   end
+  -- A ward a death spent this tick can still have its marker: retire it, or
+  -- its old clock would end the new ward.
+  local stale = km.find(self, km.WARD)
+  if stale then
+    km.finish(stale)
+  end
   self:set_kit_state(self:kit_state() | C.KIT_WARD)
+  if not km.spawn(self, km.WARD, og.tuning(self).ward_ticks) then
+    self:set_kit_state(self:kit_state() & ~C.KIT_WARD)
+    return false, "COULD NOT WARD"
+  end
   flash_at(self)
   return true
+end
+
+-- The ward runs out (time or mana): the bit goes, the marker goes, and the
+-- fade is told to the skeleton's seat. A bot skeleton has no seat, so its
+-- fade is told to everyone, the way the engine tells everyone a skeleton
+-- "reassembles!".
+local function ward_fades(owner, marker)
+  owner:set_kit_state(owner:kit_state() & ~C.KIT_WARD)
+  km.finish(marker)
+  og.emit_notification(og.entity_display_name(owner, "Skeleton")
+    .. "'s ward fades", nil, owner)
+end
+
+-- WARD marker. A death that spent the ward cleared the bit: the marker
+-- just goes, silently (the skeleton already stood up). Otherwise it counts
+-- down, drains, and keeps its clock to what the mana can still buy.
+local function ward_window(marker)
+  local owner = marker:owner()
+  if not owner then
+    km.finish(marker)
+    return
+  end
+  if not warded(owner) then
+    km.finish(marker)
+    return
+  end
+  local t = og.tuning(owner)
+  local left = marker:lifetime() - 1
+  marker:set_lifetime(left)
+  if left <= 0 then
+    ward_fades(owner, marker)
+    return
+  end
+  if og.mod(left, t.ward_drain_pulse) == 0 then
+    if owner.magicpoints < t.ward_drain then
+      ward_fades(owner, marker)
+      return
+    end
+    -- magicpoints is a C++ float: per-op rounding.
+    owner.magicpoints = og.fsub(owner.magicpoints, t.ward_drain)
+  end
+  left = og.min(left, ticks_mana_buys(owner, left, t.ward_drain, t.ward_drain_pulse))
+  marker:set_lifetime(left)
 end
 
 -- LEGION (60 MP): a window during which every foe this skeleton kills
@@ -578,6 +633,7 @@ end
 
 km.register(km.BURROW, burrow)
 km.register(km.LEGION, legion_window)
+km.register(km.WARD, ward_window)
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:skeleton  specials dig_in / bone_wall / reassemble, on_kill

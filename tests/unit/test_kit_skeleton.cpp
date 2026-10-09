@@ -34,6 +34,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/kit_marker_role.h>
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/obmap.h>
@@ -58,6 +59,9 @@ namespace {
 constexpr int kSlotDigIn = 2;
 constexpr int kSlotWall = 3;
 constexpr int kSlotReassemble = 4;
+
+// The REASSEMBLE ward's kit marker role.
+constexpr int kRoleWard = MARKER_WARD;
 
 struct Cast {
     bool ok = false;
@@ -953,7 +957,8 @@ TEST_F(KitSkeleton, bone_wall_off_twin_is_not_cast)
 // REASSEMBLE / LEGION
 // ---------------------------------------------------------------------------
 
-// REASSEMBLE sets the ward (60 MP, a flash); a second ward refuses free.
+// REASSEMBLE sets the ward (60 MP, a flash, and a WARD marker of the
+// skeleton's that keeps its 360-tick clock); a second ward refuses free.
 // A killing blow then stands the skeleton back up at a quarter health.
 //
 // Perturbation (staged: `self:kit_state() | C.KIT_WARD` written as
@@ -970,6 +975,9 @@ TEST_F(KitSkeleton, warded_skeleton_stands_back_up_at_a_quarter)
     EXPECT_NE(0, skel->kit_state() & KIT_WARD);
     EXPECT_FLOAT_EQ(60.0f, skel->stats()->magicpoints()) << "REASSEMBLE costs 60";
     EXPECT_EQ(1u, alive(world(), Order::FX, FAMILY_FLASH).size()) << "a flash";
+    const auto wards = markers(world(), skel, kRoleWard);
+    ASSERT_EQ(1u, wards.size()) << "the ward keeps time on a marker";
+    EXPECT_EQ(360, wards[0]->lifetime()) << "ward_ticks";
 
     const Cast again = cast(skel, kSlotReassemble, 0);
     EXPECT_FALSE(again.ok);
@@ -981,6 +989,175 @@ TEST_F(KitSkeleton, warded_skeleton_stands_back_up_at_a_quarter)
     EXPECT_FALSE(skel->dead()) << "it gets up";
     EXPECT_FLOAT_EQ(15.0f, skel->stats()->hitpoints()) << "a quarter of 60";
     EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "the ward is spent";
+}
+
+namespace {
+
+// The ward's fade notices since `from`.
+int ward_fade_notices(const TestGameWorld& tw, std::size_t from)
+{
+    int n = 0;
+    const auto& events = tw.events.events();
+    for (std::size_t i = from; i < events.size(); ++i)
+        if (events[i].kind == og::sim::EventKind::Notification &&
+            events[i].text.ends_with("'s ward fades"))
+            ++n;
+    return n;
+}
+
+}  // namespace
+
+// With mana to spare the ward lasts ward_ticks (360) and fades on the
+// 360th tick: the bit goes, the marker goes, the fade is told (this bot
+// skeleton has no seat, so everyone is), and a killing blow after that is
+// final.
+//
+// RED (staged: the out-of-time branch removed): still warded after 360
+// ticks, no notice, and the blow is survived.
+TEST_F(KitSkeleton, ward_fades_after_its_time)
+{
+    walker* skel = add_skeleton(0, 96, 96, 1060.0f);
+    walker* orc = add_orc(1, 300, 300);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    const std::size_t mark = tw_->events.events().size();
+    tick(359);
+    EXPECT_NE(0, skel->kit_state() & KIT_WARD) << "warded for 359 ticks";
+    ASSERT_EQ(1u, markers(world(), skel, kRoleWard).size());
+    EXPECT_EQ(1, markers(world(), skel, kRoleWard)[0]->lifetime());
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark));
+    tick();
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "faded on tick 360";
+    EXPECT_TRUE(markers(world(), skel, kRoleWard).empty());
+    EXPECT_EQ(1, ward_fade_notices(*tw_, mark)) << "the fade is told";
+    EXPECT_FLOAT_EQ(1000.0f - 59.0f, skel->stats()->magicpoints())
+        << "a mana every 6 ticks while it was armed";
+    orc->set_damage(500.0f);
+    ASSERT_TRUE(orc->attack(skel));
+    EXPECT_TRUE(skel->dead()) << "no ward, no revival";
+}
+
+// The ward costs a mana every six ticks, and its clock is kept to what the
+// mana can still pay for. 63 MP: 3 left after the price. The first reading
+// is 23 (three payments six ticks apart and the five ticks to the first:
+// the marker's first tick leaves 359, five short of the next payment); the
+// payments come on the 6th, 12th and 18th ticks, and on the 23rd the clock
+// reads 1 and on the 24th, as it reads 0, the ward fades with its notice.
+//
+// RED (staged: the clamp line removed): the first reading is 359.
+// RED (staged: the payment removed): the pool still reads 3 at the fade.
+TEST_F(KitSkeleton, ward_fades_when_the_mana_runs_dry)
+{
+    walker* skel = add_skeleton(0, 96, 96, 63.0f);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    EXPECT_FLOAT_EQ(3.0f, skel->stats()->magicpoints());
+    const auto wards = markers(world(), skel, kRoleWard);
+    ASSERT_EQ(1u, wards.size());
+    walker* ward = wards[0];
+    const std::size_t mark = tw_->events.events().size();
+    tick();
+    EXPECT_EQ(23, ward->lifetime()) << "the first reading";
+    for (int t = 2; t <= 23; ++t) {
+        tick();
+        ASSERT_NE(0, skel->kit_state() & KIT_WARD) << "tick " << t;
+        EXPECT_EQ(24 - t, ward->lifetime()) << "tick " << t;
+    }
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints())
+        << "paid on ticks 6, 12 and 18";
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark));
+    // The 24th tick, acted by hand so the spent marker can still be read.
+    ward->act();
+    EXPECT_TRUE(ward->dead());
+    EXPECT_EQ(0, ward->lifetime()) << "the clock reads 0 as the ward fades";
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "faded on the 24th tick";
+    EXPECT_EQ(1, ward_fade_notices(*tw_, mark));
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "never below zero";
+}
+
+// A death that spends the ward clears the bit; the marker then goes on its
+// next tick, silently (the skeleton already stood up), so a ward bought
+// again afterwards has one marker, its own, and keeps its full time.
+//
+// RED (staged: the spent-ward check in the marker removed): the old marker
+// lives on after the revival.
+TEST_F(KitSkeleton, a_spent_ward_retires_its_marker)
+{
+    walker* skel = add_skeleton(0, 96, 96, 180.0f);
+    walker* orc = add_orc(1, 112, 96);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    orc->set_damage(500.0f);
+    ASSERT_TRUE(orc->attack(skel));
+    ASSERT_FALSE(skel->dead()) << "it got up";
+    ASSERT_EQ(0, skel->kit_state() & KIT_WARD) << "the ward is spent";
+    const std::size_t mark = tw_->events.events().size();
+    tick();
+    EXPECT_TRUE(markers(world(), skel, kRoleWard).empty())
+        << "the spent ward's marker goes";
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark)) << "silently";
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok) << "bought again";
+    const auto wards = markers(world(), skel, kRoleWard);
+    ASSERT_EQ(1u, wards.size());
+    EXPECT_EQ(360, wards[0]->lifetime());
+}
+
+// A ward bought again in the same tick a death spent the old one, before
+// the old marker has acted: REASSEMBLE retires the old marker, so the new
+// ward has one marker, its own, and its full 360 ticks; the old clock
+// (100 ticks in) does not end it.
+//
+// RED (staged: the stale marker's retirement in REASSEMBLE removed): two
+// WARD markers, and the old one fades the new ward 260 ticks later.
+TEST_F(KitSkeleton, a_ward_bought_again_at_once_keeps_its_own_clock)
+{
+    walker* skel = add_skeleton(0, 96, 96, 250.0f);
+    walker* orc = add_orc(1, 300, 300);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    tick(100);
+    ASSERT_NE(0, skel->kit_state() & KIT_WARD) << "still warded";
+    orc->set_damage(500.0f);
+    ASSERT_TRUE(orc->attack(skel));
+    ASSERT_FALSE(skel->dead()) << "it got up";
+    ASSERT_EQ(0, skel->kit_state() & KIT_WARD) << "the ward is spent";
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok) << "bought again at once";
+    const auto wards = markers(world(), skel, kRoleWard);
+    EXPECT_EQ(1u, wards.size()) << "only the new ward's marker";
+    ASSERT_FALSE(wards.empty());
+    EXPECT_EQ(360, wards.back()->lifetime());
+    const std::size_t mark = tw_->events.events().size();
+    tick(359);
+    EXPECT_NE(0, skel->kit_state() & KIT_WARD) << "the new ward keeps its time";
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark)) << "nothing faded";
+    tick();
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "faded on its own 360th tick";
+}
+
+// A world with no room for the WARD marker cannot keep the ward's time:
+// REASSEMBLE is refused, the bit is left clear, nothing is spent.
+//
+// RED (staged: the bit's clearing on that refusal removed): the skeleton is
+// warded although the cast was refused and nothing was paid.
+TEST_F(KitSkeleton, a_full_world_cannot_ward)
+{
+    walker* skel = add_skeleton(0, 96, 96, 120.0f);
+    ASSERT_NE(nullptr, skel);
+    const auto factory = world().entity_factory;
+    world().entity_factory = [factory](Order order, std::int32_t family) {
+        if (order == Order::FX)
+            return std::unique_ptr<walker>();
+        return factory(order, family);
+    };
+    const Cast c = cast(skel, kSlotReassemble, 0);
+    world().entity_factory = factory;
+    EXPECT_FALSE(c.ok);
+    EXPECT_EQ("COULD NOT WARD", c.reason);
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD);
+    EXPECT_FLOAT_EQ(120.0f, skel->stats()->magicpoints());
 }
 
 // Without the ward the same blow is final.

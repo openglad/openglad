@@ -103,5 +103,10 @@ og.family("living", {
     wall_ticks = 360,
     storm_range = 6,
     legion_ticks = 300,
+    -- REASSEMBLE's ward lasts ward_ticks (30 seconds) and costs ward_drain
+    -- mana every ward_drain_pulse ticks while it is armed.
+    ward_ticks = 360,
+    ward_drain = 1,
+    ward_drain_pulse = 6,
   },
 })
