@@ -163,7 +163,8 @@ protected:
 // RED (run by hand): the "DIG IN" label spelled "DIG" in timed_effects.cpp
 // -> the DIG IN row reads DIG. Drop MARKER_PHASE_VEIL from kKitConstants in
 // bindings_kit.cpp -> the core pack's kit_marker.lua reads nil for the
-// phase role, the veil never gets one, and the PHASE row reads (none).
+// phase role, the ghost kit's role registration fails to load, and
+// core:kit_marker no longer resolves (the fixture's family check fails).
 TEST_F(TimedEffects, each_running_effect_answers_its_label_and_clock)
 {
     struct Row {

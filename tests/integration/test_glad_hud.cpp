@@ -2712,8 +2712,8 @@ TEST_F(GladHud, seat_timer_cell_draws_in_the_freeze_cells_manner)
 // and the seat's cell takes the row above it when the pane has one; a
 // quadrant pane has none, so there the seat's cell yields to the freeze.
 //
-// RED (run by hand): the `if (freeze_drew) row -= 6;` line deleted -> both
-// cells draw on bm-34 and the trace reads row=<bm-34> for the seat.
+// RED (run by hand): `row -= 6` made `row -= 0` -> the seat's cell draws on
+// the freeze's own row and the trace reads row=<bm-34> for the seat.
 TEST_F(GladHud, seat_timer_cell_steps_above_a_running_freeze)
 {
     HudObListSwap swap;
