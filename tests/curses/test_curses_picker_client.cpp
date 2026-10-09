@@ -700,7 +700,7 @@ TEST(CursesPickerClient, hire_full_team_reports_and_returns)
 }
 
 // Next/Previous family step the hire offer through kAllowableGuys and the
-// screen title says which one is on offer ("Hire: <FAMILY> (<n>/15)"); neither
+// screen title says which one is on offer ("Hire: <FAMILY> (<n>/14)"); neither
 // row hires. The last frame drawn carries the moved cursor, so each arm ends
 // on the family it navigated to.
 TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
@@ -710,7 +710,7 @@ TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
     ASSERT_NE(item, nullptr);
     const std::string second_family =
         og::ui::family_display_name(og::ui::kAllowableGuys[1]);
-    const std::string kSecond = "(2/15)";
+    const std::string kSecond = "(2/14)";
 
     {   // Next steps forward one family.
         PickerFixture f;
@@ -731,9 +731,9 @@ TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
     {   // Previous steps BACK one family, not to the start of the cycle.
         PickerFixture f;
         const int before_count = team_count(f.save());
-        pick(f.t(), 1); // Next family    -> 2/15
-        pick(f.t(), 1); // Next family    -> 3/15
-        pick(f.t(), 2); // Previous family-> 2/15
+        pick(f.t(), 1); // Next family    -> 2/14
+        pick(f.t(), 1); // Next family    -> 3/14
+        pick(f.t(), 2); // Previous family-> 2/14
         pick(f.t(), 3); // Back
         f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
 

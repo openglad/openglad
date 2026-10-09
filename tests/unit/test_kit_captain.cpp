@@ -1523,8 +1523,8 @@ TEST(KitCaptain, bot_captain_howls_through_check_special)
 // ------------------------------------------------------ art and glyphs
 
 // The two new entity families load their art and show in the character
-// clients: the blade is the knife's frames, the banner its own four; the
-// captain is on offer in the hire menu with a description.
+// clients: the blade is the knife's frames, the banner its own four. The
+// captain is not for hire: an orc becomes one by promotion only.
 TEST(KitCaptain, new_kit_entities_load_art_and_glyphs)
 {
     const int blade_id = fx_family("core:hook_blade");
@@ -1558,8 +1558,8 @@ TEST(KitCaptain, new_kit_entities_load_art_and_glyphs)
 
     const FamilyDescriptor* captain = get_family_descriptor(FAMILY_BIG_ORC);
     ASSERT_NE(nullptr, captain);
-    EXPECT_TRUE(captain->is_playable);
-    EXPECT_EQ(15, captain->playable_order);
+    EXPECT_FALSE(captain->is_playable) << "promotion only, never hired";
+    EXPECT_EQ(999, captain->playable_order);
 
     // The orc and the captain still level and scale as before.
     const FamilyDescriptor* orc = get_family_descriptor(FAMILY_ORC);

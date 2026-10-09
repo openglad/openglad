@@ -93,9 +93,8 @@ extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 #endif
 
-// Number of hireable character types in allowable_guys[] (the orc captain,
-// appended last, made it 15)
-#define NUM_HIRE_TYPES 15
+// Number of hireable character types in allowable_guys[]
+#define NUM_HIRE_TYPES 14
 
 static void cleanup_picker_state()
 {
