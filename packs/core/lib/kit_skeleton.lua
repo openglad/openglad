@@ -336,35 +336,30 @@ local function wall_burst(self, wall, range)
   end
 end
 
--- The skeleton's own eight-way burst (the elemental's starburst shape).
-local function storm_from_skeleton(self)
-  -- The aim is saved and restored as whole numbers, the way the
-  -- elemental's starburst does it (its C++ original kept the aim in ints).
-  local saved_aim_x = og.trunc(self:lastx())
-  local saved_aim_y = og.trunc(self:lasty())
-  -- magicpoints is a C++ float: per-op float rounding.
-  self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
-  for i = -1, 1 do
-    for j = -1, 1 do
-      if i ~= 0 or j ~= 0 then
-        self:set_lastx(i)
-        self:set_lasty(j)
-        self:fire()
+local function own_wall_standing(self)
+  local weapons = og.weaplist()
+  for i = 1, #weapons do
+    local wall = weapons[i]
+    if wall:family() == WEAP_BONE_WALL then
+      if wall:dead() == 0 then
+        if wall:owner() == self then
+          return true
+        end
       end
     end
   end
-  self:set_lastx(saved_aim_x)
-  self:set_lasty(saved_aim_y)
+  return false
 end
 
--- BONE STORM (45 MP): bones from the skeleton, then every standing wall of
--- THIS skeleton shatters into its own burst, wherever it stands.
+-- BONE STORM (45 MP): every standing wall of THIS skeleton shatters into
+-- its own eight-way burst, wherever it stands. Nothing leaves the skeleton
+-- itself, and with no wall standing there is nothing to shatter: refused,
+-- and a refusal spends nothing.
 local function bone_storm(self)
-  if lc.is_busy(self) then
-    return false, "SPECIAL BUSY"
+  if not own_wall_standing(self) then
+    return false, "NO WALL STANDING"
   end
   local t = og.tuning(self)
-  storm_from_skeleton(self)
   local weapons = og.weaplist()
   for i = 1, #weapons do
     local wall = weapons[i]
@@ -566,21 +561,6 @@ function M.ai_dig_in(self)
     return false
   end
   return foe_count_within(self, DIG_FOES_RANGE) >= 2
-end
-
-local function own_wall_standing(self)
-  local weapons = og.weaplist()
-  for i = 1, #weapons do
-    local wall = weapons[i]
-    if wall:family() == WEAP_BONE_WALL then
-      if wall:dead() == 0 then
-        if wall:owner() == self then
-          return true
-        end
-      end
-    end
-  end
-  return false
 end
 
 -- A wall when hurt with a foe close; the storm once a wall stands and the

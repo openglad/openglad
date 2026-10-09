@@ -49,6 +49,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <string>
@@ -894,13 +895,13 @@ TEST_F(KitSkeleton, wall_cracks_below_half)
     EXPECT_TRUE(seg->dead()) << "falls when its time is out";
 }
 
-// BONE STORM: eight bones from the skeleton, and every standing wall of
-// THIS skeleton (wherever it is) shatters into its own eight, owned by the
-// skeleton; another skeleton's wall stands.
+// BONE STORM: every standing wall of THIS skeleton (wherever it is)
+// shatters into its own eight bones, owned by the skeleton; nothing leaves
+// the skeleton itself; another skeleton's wall stands.
 //
-// Perturbation (staged: the wall_burst(...) call in bone_storm removed):
-// RED — 8 bones instead of 32, and 0 of them leave from the walls.
-TEST_F(KitSkeleton, bone_storm_bursts_from_every_wall_and_the_skeleton)
+// RED (staged: the skeleton's own eight-way burst restored, one
+// self:fire() per direction): 32 bones, 8 of them from the skeleton's spot.
+TEST_F(KitSkeleton, bone_storm_bursts_from_every_wall_only)
 {
     walker* skel = add_skeleton(0, 96, 96, 75.0f);
     walker* other = add_skeleton(0, 96, 300, 30.0f);
@@ -908,32 +909,59 @@ TEST_F(KitSkeleton, bone_storm_bursts_from_every_wall_and_the_skeleton)
     ASSERT_NE(nullptr, other);
     ASSERT_TRUE(cast(skel, kSlotWall, 0).ok);
     ASSERT_TRUE(cast(other, kSlotWall, 0).ok);
-    ASSERT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), skel).size());
+    const auto walls = alive(world(), Order::Weapon, bone_wall_family(), skel);
+    ASSERT_EQ(3u, walls.size());
+    struct Spot {
+        int x;
+        int y;
+    };
+    std::vector<Spot> wall_centres;
+    for (walker* wall : walls)
+        wall_centres.push_back({wall->xpos() + wall->sizex() / 2,
+                                wall->ypos() + wall->sizey() / 2});
     skel->setxy(300, 96);  // far from its wall: the storm finds it anyway
-    skel->set_busy(0.0f);
 
     const Cast storm = cast(skel, kSlotWall, 1);
     ASSERT_TRUE(storm.ok) << storm.reason;
     EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "BONE STORM costs 45";
     const auto bones = alive(world(), Order::Weapon, FAMILY_BONE, skel);
-    EXPECT_EQ(32u, bones.size()) << "8 from the skeleton + 8 from each wall";
-    int near_wall = 0;
+    EXPECT_EQ(24u, bones.size()) << "8 from each of the 3 walls, none else";
     for (walker* bone : bones) {
         EXPECT_EQ(0, bone->team_num());
-        if (bone->xpos() < 160)
-            ++near_wall;
+        const int bx = bone->xpos() + bone->sizex() / 2;
+        const int by = bone->ypos() + bone->sizey() / 2;
+        bool from_a_wall = false;
+        for (const Spot& c : wall_centres)
+            from_a_wall = from_a_wall ||
+                          (std::abs(bx - c.x) <= 1 && std::abs(by - c.y) <= 1);
+        EXPECT_TRUE(from_a_wall)
+            << "a bone at (" << bx << ", " << by << ") left from no wall";
     }
-    EXPECT_EQ(24, near_wall) << "the walls' bones leave from the walls";
     EXPECT_TRUE(alive(world(), Order::Weapon, bone_wall_family(), skel).empty())
         << "the walls shatter";
     EXPECT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), other).size())
         << "another skeleton's wall stands";
+}
 
-    skel->stats()->set_magicpoints(45.0f);
-    skel->set_busy(3.0f);
-    const Cast busy = cast(skel, kSlotWall, 1);
-    EXPECT_EQ("SPECIAL BUSY", busy.reason);
-    EXPECT_FLOAT_EQ(45.0f, skel->stats()->magicpoints());
+// With no wall of its own standing there is nothing to shatter: BONE STORM
+// is refused with its reason and spends nothing, and no bone is thrown
+// (another skeleton's wall does not count).
+//
+// RED (staged: the no-wall guard removed): the storm is cast for 45 MP and
+// throws nothing.
+TEST_F(KitSkeleton, bone_storm_refuses_with_no_wall)
+{
+    walker* skel = add_skeleton(0, 96, 96, 45.0f);
+    walker* other = add_skeleton(0, 96, 300, 30.0f);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, other);
+    ASSERT_TRUE(cast(other, kSlotWall, 0).ok);
+    const Cast storm = cast(skel, kSlotWall, 1);
+    EXPECT_FALSE(storm.ok);
+    EXPECT_EQ("NO WALL STANDING", storm.reason);
+    EXPECT_FLOAT_EQ(45.0f, skel->stats()->magicpoints()) << "refused free";
+    EXPECT_TRUE(alive(world(), Order::Weapon, FAMILY_BONE).empty());
+    EXPECT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), other).size());
 }
 
 // Setting OFF: BONE WALL and BONE STORM are not specials (NOT ENOUGH MP),
