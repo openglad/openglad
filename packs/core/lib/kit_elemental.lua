@@ -270,21 +270,45 @@ local function rekindle(self, t)
   return true
 end
 
--- SUPERNOVA: every hit point goes into one blast (its own level, so its
--- range, doubles the elemental's), then the elemental dies and on_death
--- fires the parting starburst on top.
-local function supernova(self, t)
+-- One fire blast of SUPERNOVA's, centred on `at` and moved by (dx, dy).
+local function nova_blast(self, at, dx, dy)
   local blast = og.add_ob("fx", FX_EXPLOSION)
   if blast then
     blast:set_owner(self)
     blast.team = self.team
     blast:set_floor(self:floor())
-    blast:center_on(self)
-    blast.level = og.min(self.level * 2, 24)
-    -- hp is a C++ float: per-op rounding.
-    blast.damage = og.fadd(self.hp, self.level * t.nova_per_level)
+    blast:center_on(at)
+    blast:setxy(blast:xpos() + dx, blast:ypos() + dy)
     blast.ani_type = C.ANI_EXPLODE
     blast:s_set_bit_flags(C.BIT_FIRE, 1)
+  end
+  return blast
+end
+
+-- SUPERNOVA: every hit point goes into one blast (its own level, so its
+-- range, doubles the elemental's), and eight blasts of half its damage go
+-- off in a ring nova_ring_px out, so the nova reaches past one blast's
+-- range. Each ring blast carries the main blast's level: the elemental is
+-- dead when they go off, so each blast reads its own level for its range.
+-- Then the elemental dies and on_death fires the parting starburst on top.
+local function supernova(self, t)
+  local blast = nova_blast(self, self, 0, 0)
+  if blast then
+    blast.level = og.min(self.level * 2, 24)
+    -- hp is a C++ float: per-op rounding.
+    blast.damage = og.fadd(og.fdiv(og.fmul(self.hp, 3), 2), self.level * t.nova_per_level)
+    local ring_damage = og.div(og.trunc(blast:damage()), 2)
+    for i = -1, 1 do
+      for j = -1, 1 do
+        if i ~= 0 or j ~= 0 then
+          local ring = nova_blast(self, blast, i * t.nova_ring_px, j * t.nova_ring_px)
+          if ring then
+            ring.level = blast.level
+            ring.damage = ring_damage
+          end
+        end
+      end
+    end
   end
   og.emit_sound(C.SOUND_EXPLODE)
   self.hp = 0

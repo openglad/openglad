@@ -840,12 +840,18 @@ TEST(KitElemental, rekindle_is_not_cast_with_new_specials_off)
     expect_off_slot_refused(4, 0);
 }
 
-// Shift + slot 4 at level 5 with 60 HP: 10 MP; one explosion of level
-// min(2 x 5, 24) = 10 carrying 60 + 5 x 5 = 85 damage, the elemental dies,
-// and on_death's free starburst follows (eight meteors; its 50 MP refunded
-// and spent). Detonated, the blast takes 85 off a foe beside the body.
-// Perturbation (staged kit tuning nova_per_level = 0): 60 damage -> red.
-TEST(KitElemental, supernova_spends_all_health_blasts_and_the_starburst_follows)
+// Shift + slot 4 at level 5 with 60 HP: 10 MP; the main explosion of level
+// min(2 x 5, 24) = 10 carrying 1.5 x 60 + 15 x 5 = 165 damage, and a ring
+// of eight more, 40 px out on each axis from its centre (the compass
+// points), each of half that, 82, carrying the main blast's level 10, the
+// elemental's owner and team, on fire. The elemental dies and on_death's
+// free starburst follows (eight meteors; its 50 MP refunded and spent).
+// Detonated, the main blast kills a 100-hp foe beside the body outright.
+//
+// RED (staged kit tuning nova_per_level = 15 -> 5): the main blast is 115.
+// RED (staged: the ring loop's bound 1 -> 0, so no ring blast): 1 blast,
+// not 9. RED (staged: ring.level = self.level): the ring reads level 5.
+TEST(KitElemental, supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows)
 {
     og::test::ScopedHookFailureGuard guard;
     ElementalWorld w(1);
@@ -853,28 +859,66 @@ TEST(KitElemental, supernova_spends_all_health_blasts_and_the_starburst_follows)
     ASSERT_NE(nullptr, e);
     e->stats()->set_hitpoints(60.0f);
     e->set_shifter_down(1);
+    const int cx = centre_x(e);
+    const int cy = centre_y(e);
     ASSERT_TRUE(cast(e).ok);
     EXPECT_TRUE(e->dead());
     EXPECT_FLOAT_EQ(90.0f, mp(e)) << "10 for SUPERNOVA; the starburst's 50 refunded";
     EXPECT_EQ(8u, meteors(w).size()) << "the death starburst on top";
     const auto blasts = explosions(w);
-    ASSERT_EQ(1u, blasts.size());
-    walker* blast = blasts[0];
-    EXPECT_EQ(e, blast->owner());
-    EXPECT_EQ(10, blast->stats()->level());
-    EXPECT_FLOAT_EQ(85.0f, blast->damage());
-    EXPECT_EQ(ANI_EXPLODE, blast->ani_type());
-    EXPECT_TRUE(blast->stats()->query_bit_flags(BIT_FIRE));
-    EXPECT_EQ(centre_x(e), centre_x(blast));
+    ASSERT_EQ(9u, blasts.size()) << "the main blast and a ring of eight";
+    walker* main_blast = nullptr;
+    std::vector<walker*> ring;
+    for (walker* b : blasts) {
+        EXPECT_EQ(e, b->owner());
+        EXPECT_EQ(e->team_num(), b->team_num());
+        EXPECT_EQ(10, b->stats()->level()) << "the main blast's level";
+        EXPECT_EQ(ANI_EXPLODE, b->ani_type());
+        EXPECT_TRUE(b->stats()->query_bit_flags(BIT_FIRE));
+        EXPECT_EQ(0, b->skip_exit()) << "a full-range blast";
+        if (centre_x(b) == cx && centre_y(b) == cy)
+            main_blast = b;
+        else
+            ring.push_back(b);
+    }
+    ASSERT_NE(nullptr, main_blast);
+    EXPECT_FLOAT_EQ(165.0f, main_blast->damage()) << "1.5 x 60 + 15 x 5";
+    ASSERT_EQ(8u, ring.size());
+    int spots = 0;
+    for (walker* b : ring) {
+        EXPECT_FLOAT_EQ(82.0f, b->damage()) << "half the main blast";
+        const int dx = centre_x(b) - cx;
+        const int dy = centre_y(b) - cy;
+        EXPECT_TRUE(dx == 0 || dx == 40 || dx == -40) << dx;
+        EXPECT_TRUE(dy == 0 || dy == 40 || dy == -40) << dy;
+        EXPECT_FALSE(dx == 0 && dy == 0);
+        spots |= 1 << ((dx / 40 + 1) * 3 + (dy / 40 + 1));
+    }
+    EXPECT_EQ(0x1EF, spots) << "one blast on each of the eight points";
 
     // A foe beside the body (placed after the cast, so no meteor of the
-    // starburst lands on it) takes the whole blast.
+    // starburst lands on it) is killed by the main blast alone.
     living* foe = add_living(w, FAMILY_SOLDIER, 1, 100, 120);
     ASSERT_NE(nullptr, foe);
-    const float before = hp(foe);
-    blast->set_dead(1);
-    blast->death();
-    EXPECT_TRUE(lost_one_hit_of(85.0f, before, hp(foe)));
+    main_blast->set_dead(1);
+    main_blast->death();
+    EXPECT_TRUE(foe->dead()) << "165 against 100 hp";
+
+    // An ally 60 px east of the centre, 20 px past the east ring blast,
+    // takes that blast in full: the elemental is dead when its blasts go
+    // off, so each blast answers for itself and spares nobody (the main
+    // blast always did the same).
+    living* ally = add_living(w, FAMILY_SOLDIER, 0, cx + 60 - 4, cy - 4);
+    ASSERT_NE(nullptr, ally);
+    walker* east = nullptr;
+    for (walker* b : ring)
+        if (centre_x(b) - cx == 40 && centre_y(b) == cy)
+            east = b;
+    ASSERT_NE(nullptr, east);
+    const float ally_before = hp(ally);
+    east->set_dead(1);
+    east->death();
+    EXPECT_TRUE(lost_one_hit_of(82.0f, ally_before, hp(ally)));
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
