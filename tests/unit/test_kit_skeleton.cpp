@@ -1024,6 +1024,120 @@ TEST_F(KitSkeleton, warded_victim_is_not_a_kill)
     EXPECT_EQ(1, skeletons_on_team(world(), 1));
 }
 
+// A blow the REASSEMBLE ward turns into a revival is not a death, for the
+// killer as much as for LEGION: like a hit that does not kill, nobody is
+// told "DIED!", the last-foe line "All foes defeated!" does not show while
+// the skeleton fights on, no blood splats and the soldier's kill count
+// stays where it was. The same blow on the same scene without the ward
+// tells all of it and counts the kill.
+//
+// Perturbation (the old kill block: the warded early return in
+// walker::attack removed): RED -- the warded blow reports "Rattles DIED!"
+// and "All foes defeated!", splats blood and counts a kill.
+TEST_F(KitSkeleton, warded_death_tells_nobody_and_counts_no_kill)
+{
+    walker* soldier = world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    soldier->set_team_num(0);
+    soldier->setxy(64, 96);
+    soldier->set_act_type(ACT_CONTROL);
+    soldier->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    soldier->set_damage(500.0f);
+    guy* const record = soldier->myguy;
+    ASSERT_NE(nullptr, record);
+
+    struct Told {
+        int died = 0;
+        int all_foes = 0;
+        int reassembles = 0;
+    };
+    const auto told_since = [&](std::size_t from) {
+        Told t;
+        const auto& events = tw_->events.events();
+        for (std::size_t i = from; i < events.size(); ++i) {
+            const auto& e = events[i];
+            if (e.kind != og::sim::EventKind::Notification)
+                continue;
+            if (e.text.find("DIED!") != std::string::npos)
+                ++t.died;
+            if (e.text == "All foes defeated!")
+                ++t.all_foes;
+            if (e.text.ends_with(" reassembles!"))
+                ++t.reassembles;
+        }
+        return t;
+    };
+    const auto blood_count = [&] {
+        return alive(world(), Order::Weapon, FAMILY_BLOOD).size();
+    };
+
+    // Unwarded: the named skeleton is the soldier's only foe, and the blow
+    // that kills it is a kill in full.
+    walker* plain = add_skeleton(1, 80, 96, 0.0f);
+    ASSERT_NE(nullptr, plain);
+    plain->stats()->name = "Rattles";
+    ASSERT_EQ(1, world().remaining_foes(soldier));
+    std::size_t mark = tw_->events.events().size();
+    const auto kills0 = record->kills;
+    const auto scen_kills0 = record->scen_kills;
+    const auto level_kills0 = record->level_kills;
+    const std::size_t blood0 = blood_count();
+    ASSERT_TRUE(soldier->attack(plain));
+    ASSERT_TRUE(plain->dead());
+    Told t = told_since(mark);
+    EXPECT_EQ(1, t.died) << "an unwarded death is told";
+    EXPECT_EQ(1, t.all_foes) << "and it was the last foe";
+    EXPECT_EQ(kills0 + 1, record->kills) << "the kill counts";
+    EXPECT_EQ(scen_kills0 + 1, record->scen_kills);
+    EXPECT_EQ(level_kills0 + plain->stats()->level(), record->level_kills);
+    EXPECT_EQ(blood0 + 1, blood_count()) << "and the blood splats";
+
+    // Warded: the same scene, the same blow.
+    walker* warded = add_skeleton(1, 80, 112, 0.0f);
+    ASSERT_NE(nullptr, warded);
+    warded->stats()->name = "Rattles";
+    warded->set_kit_state(KIT_WARD);
+    ASSERT_EQ(1, world().remaining_foes(soldier));
+    mark = tw_->events.events().size();
+    const auto kills1 = record->kills;
+    const auto scen_kills1 = record->scen_kills;
+    const auto level_kills1 = record->level_kills;
+    const std::size_t blood1 = blood_count();
+    ASSERT_TRUE(soldier->attack(warded));
+    ASSERT_FALSE(warded->dead()) << "the ward stood it back up";
+    EXPECT_FLOAT_EQ(15.0f, warded->stats()->hitpoints()) << "a quarter of 60";
+    t = told_since(mark);
+    EXPECT_EQ(1, t.reassembles) << "the only line is the ward's own";
+    EXPECT_EQ(0, t.died) << "nobody is told it died";
+    EXPECT_EQ(0, t.all_foes) << "and the level is not called won";
+    EXPECT_EQ(kills1, record->kills) << "no kill is counted";
+    EXPECT_EQ(scen_kills1, record->scen_kills);
+    EXPECT_EQ(level_kills1, record->level_kills);
+    EXPECT_EQ(blood1, blood_count()) << "no blood splats";
+    EXPECT_EQ(1, world().remaining_foes(soldier)) << "it fights on";
+
+    // A ward that cannot take -- this walker's death already ran once (a
+    // script stood it up without resetting it) -- leaves the walker dead,
+    // and then the blow is a kill in full after all.
+    warded->set_dead(1);
+    walker* stale = add_skeleton(1, 80, 128, 0.0f);
+    ASSERT_NE(nullptr, stale);
+    stale->stats()->name = "Rattles";
+    stale->set_kit_state(KIT_WARD);
+    stale->set_death_called(1);
+    mark = tw_->events.events().size();
+    const auto kills2 = record->kills;
+    const std::size_t blood2 = blood_count();
+    ASSERT_TRUE(soldier->attack(stale));
+    EXPECT_TRUE(stale->dead()) << "the ward did not take";
+    t = told_since(mark);
+    EXPECT_EQ(0, t.reassembles);
+    EXPECT_EQ(1, t.died) << "so the death is told";
+    EXPECT_EQ(1, t.all_foes);
+    EXPECT_EQ(kills2 + 1, record->kills) << "and counted";
+    EXPECT_EQ(blood2 + 1, blood_count());
+}
+
 // With the setting off the hook is inert: a LEGION window left from an ON
 // session raises nothing and scrubs nothing (its first statement is the
 // guard).

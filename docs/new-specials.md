@@ -118,8 +118,8 @@ seat claim, cannot be hit, and is drawn only for its own team (an outline
 and a dither in SDL, its glyph in curses). A FEARLESS walker never flees;
 so does any walker standing within a friendly war banner's
 `rally_radius` (96 pixels) on its floor while the setting is on. A WARD
-cancels the next death once (REASSEMBLE). The kill is still credited to
-whoever struck the blow.
+cancels the next death once (REASSEMBLE). That blow is not a kill: nobody
+is told of a death and whoever struck it is credited no kill.
 
 Timers and windows hang on one invisible helper effect,
 `core:kit_marker` (effect wire id 17). Its role sits in its animation byte,
@@ -262,7 +262,9 @@ for the rest of the level.
 - LEGION in a respawn mode: a hero killed under LEGION both respawns and
   leaves a risen skeleton, because the corpse a respawn waits on is never
   consumed.
-- A skeleton that REASSEMBLEs still counts as a kill for whoever felled it.
+- A skeleton that REASSEMBLEs was not killed: the blow that felled it shows
+  no death message and no "All foes defeated!", and counts no kill for
+  whoever struck it.
 
 **Fire elemental.**
 - Quenching IMMOLATE is free; until then the elemental casts nothing else.
