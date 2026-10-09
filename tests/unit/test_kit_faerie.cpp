@@ -570,6 +570,9 @@ TEST(KitFaerie, swap_is_no_special_when_off)
 // kit_faerie.lua printed
 //   Expected equality of these values: 8 sprinkles(tw) Which is: 5
 //   Expected equality of these values: 76.0f f->stats()->magicpoints() Which is: 82
+// and `shot:set_kit_state(C.KIT_QUARTER_FREEZE)` -> `shot:set_kit_state(0)`
+// printed
+//   Expected equality of these values: 8 marked Which is: 0
 TEST(KitFaerie, glimmer_fires_eight_sprinkles_and_prepays)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -590,12 +593,80 @@ TEST(KitFaerie, glimmer_fires_eight_sprinkles_and_prepays)
     EXPECT_FLOAT_EQ(1.0f, f->lastx());
     EXPECT_FLOAT_EQ(0.0f, f->lasty());
     EXPECT_FLOAT_EQ(f->fire_frequency(), f->busy());
+    int marked = 0;
+    for (const auto& uptr : tw.world().weaplist)
+        if (uptr && !uptr->dead() && uptr->family() == FAMILY_SPRINKLE &&
+            (uptr->kit_state() & KIT_QUARTER_FREEZE) != 0)
+            ++marked;
+    EXPECT_EQ(8, marked) << "every glimmer shot carries the quarter mark";
 
     const Cast held = cast(f, 2, false);
     EXPECT_FALSE(held.ok);
     EXPECT_EQ("SPECIAL BUSY", held.reason);
     EXPECT_EQ(8, sprinkles(tw));
     EXPECT_FLOAT_EQ(76.0f, f->stats()->magicpoints());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A glimmer shot freezes for a quarter of the rolled time; her plain
+// sprinkle, drawing the very same roll, freezes for all of it. The rng
+// state is searched for one where the level-4 roll comes out at 40, so the
+// two read 10 and 40.
+//
+// Proof it can fail: `1 + 3 * og.div(...)` -> `1 + 0 * og.div(...)` in the
+// staged weapon_animate.lua printed
+//   Expected equality of these values: 10
+//   freeze_from(glimmer, state) Which is: 40
+// and the mark dropped in kit_faerie.lua (`set_kit_state(0)`) printed the
+// same 40.
+TEST(KitFaerie, glimmer_sprinkle_freezes_a_quarter)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    living* f = add_faerie(tw, 4, 200.0f);
+    living* orc = add_living(tw, FAMILY_ORC, 0, 240, 240);
+    ASSERT_TRUE(f && orc);
+    f->set_act_type(ACT_CONTROL);
+    orc->set_act_type(ACT_CONTROL);
+    ASSERT_EQ(0, orc->stats()->frozen_delay_raw());
+
+    // One plain shot and one glimmer shot, both of the faerie's.
+    f->set_lastx(1);
+    f->set_lasty(0);
+    f->set_busy(0.0f);
+    walker* plain = f->fire();
+    ASSERT_NE(nullptr, plain);
+    ASSERT_EQ(0, plain->kit_state() & KIT_QUARTER_FREEZE);
+    f->set_busy(0.0f);
+    ASSERT_TRUE(cast(f, 2, false).ok);
+    walker* glimmer = nullptr;
+    for (const auto& uptr : tw.world().weaplist)
+        if (uptr && uptr.get() != plain && !uptr->dead() &&
+            uptr->family() == FAMILY_SPRINKLE)
+            glimmer = uptr.get();
+    ASSERT_NE(nullptr, glimmer);
+
+    // Each hit from the same rng state, on the same unfrozen orc.
+    const float plain_damage = plain->damage();
+    const float glimmer_damage = glimmer->damage();
+    ASSERT_FLOAT_EQ(plain_damage, glimmer_damage) << "the same sprinkle";
+    const auto freeze_from = [&](walker* shot, std::uint32_t state) {
+        // A hit wears the shot's damage down by one; put it back so every
+        // hit draws exactly the same numbers.
+        shot->set_damage(plain_damage);
+        orc->stats()->set_frozen_delay(0);
+        orc->stats()->set_hitpoints(5000.0f);
+        shot->stats()->set_hitpoints(100.0f);
+        tw.world().rng_.state_ = state;
+        shot->attack(orc);
+        return static_cast<int>(orc->stats()->frozen_delay());
+    };
+    std::uint32_t state = 1;
+    while (freeze_from(plain, state) != 40 && state < 100000)
+        ++state;
+    ASSERT_EQ(40, freeze_from(plain, state)) << "a plain shot freezes the full roll";
+    EXPECT_EQ(10, freeze_from(glimmer, state)) << "a glimmer shot freezes a quarter";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

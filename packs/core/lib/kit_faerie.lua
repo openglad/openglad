@@ -248,7 +248,8 @@ function M.blink_or_swap(self)
   return blink(self)
 end
 
--- GLIMMER: the faerie's freezing sprinkle in all eight directions.
+-- GLIMMER: the faerie's freezing sprinkle in all eight directions, each
+-- shot freezing a quarter as long as her plain sprinkle.
 function M.glimmer(self)
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
@@ -263,7 +264,12 @@ function M.glimmer(self)
       if i ~= 0 or j ~= 0 then
         self:set_lastx(i)
         self:set_lasty(j)
-        self:fire()
+        -- A glimmer shot freezes for a quarter of the rolled time
+        -- (lib/weapon_animate.lua reads the mark when it lands).
+        local shot = self:fire()
+        if shot then
+          shot:set_kit_state(C.KIT_QUARTER_FREEZE)
+        end
       end
     end
   end
