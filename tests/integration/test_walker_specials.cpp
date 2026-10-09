@@ -870,15 +870,17 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 //                  press right after it is IMMOLATE SETTLING (the ten-tick
 //                  latch), and with the fire still burning slots 3-5 refuse
 //                  QUENCH IMMOLATE FIRST.
-//   faerie    127  BLINK and SWAP; GLIMMER both; HASTEN and HASTE SELF;
-//                  WISH raises the soldier's stain and pops her, so the
-//                  shifted slot 4 and slot 5 find her dead.
+//   faerie    111  BLINK and SWAP; GLIMMER both; HASTEN finds no ally in
+//                  reach (the hop and the swap left her more than 40 px from
+//                  the soldier), HASTE SELF casts; WISH raises the soldier's
+//                  stain and pops her, so the shifted slot 4 and slot 5 find
+//                  her dead.
 //   ghost     127  SCARE and WAIL; SIPHON twice; POSSESS takes the orc and
 //                  the shifted press lets it go; PHASE, then ALREADY PHASED.
-//   big orc   205  the captain: HOWL, but EAT CORPSE is refused at full
-//                  health; HOOK BLADE and KNIFE FAN; HURL ORC finds NO ORC
-//                  BESIDE YOU and SHOVE NO ONE IN FRONT (the foe stands
-//                  behind the ally); WAR BANNER on the stain, then WARBAND.
+//   big orc   243  the captain: HOWL on both arms (it has no alternate, so
+//                  the shifted press is a howl too); EAT CORPSE is refused at
+//                  full health on both arms; HOOK BLADE and KNIFE FAN; WAR
+//                  BANNER on the stain, then WARBAND.
 TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
 {
     struct SweepCase
@@ -898,7 +900,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
         {FAMILY_THIEF, "thief", 255u},
         {FAMILY_SKELETON, "skeleton", 240u},
         {FAMILY_FIREELEMENTAL, "fire elemental", 7u},
-        {FAMILY_FAERIE, "faerie", 127u},
+        {FAMILY_FAERIE, "faerie", 111u},
         {FAMILY_DRUID, "druid", 240u},
         {FAMILY_ORC, "orc", 3u},
         {FAMILY_BARBARIAN, "barbarian", 0u},
@@ -906,7 +908,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
         {FAMILY_SMALL_SLIME, "small slime", 0u},
         {FAMILY_MEDIUM_SLIME, "medium slime", 0u},
         {FAMILY_SLIME, "slime", 3u},
-        {FAMILY_BIG_ORC, "big orc", 205u},
+        {FAMILY_BIG_ORC, "big orc", 243u},
         {FAMILY_GOLEM, "golem", 0u},
         {FAMILY_GIANT_SKELETON, "giant skeleton", 0u},
         {FAMILY_TOWER1, "tower", 0u},
