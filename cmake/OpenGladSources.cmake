@@ -94,6 +94,7 @@ set(OG_GAMEPLAY_ENTITY_SOURCES
     ${SRC_DIR}/gameplay/specials_view.cpp
     ${SRC_DIR}/gameplay/possession.cpp
     ${SRC_DIR}/gameplay/fearless.cpp
+    ${SRC_DIR}/gameplay/timed_effects.cpp
     ${SRC_DIR}/gameplay/placement.cpp
 )
 

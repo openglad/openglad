@@ -19,6 +19,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/timed_effects.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
 
@@ -384,6 +385,16 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
         if (world.enemy_freeze > 0)
             line1 += "  TIME " + std::to_string(
                 static_cast<int>(world.enemy_freeze));
+        // The seat's own timed effect (a possession, a phase, a haste...):
+        // the terminal twin of the SDL HUD's countdown cell, from the same
+        // shared model, in seconds. The followed walker is the host while
+        // a ghost possesses it.
+        if (followed != nullptr) {
+            const og::sim::SeatTimer timer = og::sim::seat_timer(world, *followed);
+            if (timer.label != nullptr)
+                line1 += std::string("  ") + timer.label + " " +
+                         std::to_string(og::sim::timer_seconds(timer.ticks)) + "s";
+        }
         // Scripted-mode (TYPE_SCRIPTED) group: the mode name + every
         // non-empty ModeState HUD line, then the followed walker's respawn
         // seconds — the terminal twin of the SDL mode panel.

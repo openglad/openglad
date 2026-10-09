@@ -6,8 +6,8 @@
  * (at your option) any later version.
  */
 // The New Specials Lua bindings: the per-walker kit state accessors, the
-// og.C.KIT_* constants and the kit verbs (og.possess and friends), installed
-// by one call from the entity-binding install site.
+// og.C.KIT_* and og.C.MARKER_* constants and the kit verbs (og.possess and
+// friends), installed by one call from the entity-binding install site.
 #include "script_internal.h"
 #include "script_raise.h"
 
@@ -16,6 +16,7 @@
 #include <openglad/gameplay/fearless.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/kit_marker_role.h>
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/placement.h>
 #include <openglad/gameplay/possession.h>
@@ -277,6 +278,13 @@ const KitConst kKitConstants[] = {
     {"KIT_FEARLESS", KIT_FEARLESS},
     {"KIT_WARD", KIT_WARD},
     {"KIT_CHANNEL", KIT_CHANNEL},
+    {"KIT_QUARTER_FREEZE", KIT_QUARTER_FREEZE},
+    {"MARKER_BURROW", MARKER_BURROW},
+    {"MARKER_LEGION", MARKER_LEGION},
+    {"MARKER_IMMOLATION", MARKER_IMMOLATION},
+    {"MARKER_PHASE_VEIL", MARKER_PHASE_VEIL},
+    {"MARKER_METEOR_RAIN", MARKER_METEOR_RAIN},
+    {"MARKER_WARD", MARKER_WARD},
 };
 
 }  // namespace
@@ -293,7 +301,7 @@ void register_kit_bindings(lua_State* L, VmState* st)
     for (const luaL_Reg* r = kOgKitFuncs; r->name != nullptr; r++)
         fence_world_entry(L, st, r->name);
 
-    // og.C.KIT_*: og.C exists by now (install_entity_bindings_into_og).
+    // og.C.KIT_* and og.C.MARKER_*: og.C exists by now (install_entity_bindings_into_og).
     lua_getfield(L, -1, "C");
     for (const KitConst& c : kKitConstants) {
         lua_pushinteger(L, c.value);

@@ -17,6 +17,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_util.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_game_loop.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_timed_effects_mirror.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_pause_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_load.cpp
@@ -462,6 +463,7 @@ og_add_test_group(og_test_game_core FILES
     test_gloader_funcs.cpp
     test_campaign_sprite_uaf.cpp
     test_game_loop.cpp
+    test_timed_effects_mirror.cpp
     test_game_launch.cpp
     test_go_no_team.cpp
     test_fairy_death.cpp
@@ -958,6 +960,7 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_captain.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_skeleton.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_elemental.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
 )
 
 og_add_unit_group(og_unit_script FILES

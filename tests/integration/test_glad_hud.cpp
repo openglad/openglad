@@ -2601,6 +2601,315 @@ TEST_F(GladHud, freeze_countdown_cell_never_lands_on_the_notification_feed)
 }
 
 // ---------------------------------------------------------------------------
+// The seat's own countdown (New Specials: POSSESS, PHASE, HASTE, DIG IN,
+// REASSEMBLE, IMMOLATE, LEGION), drawn in the frozen-time cell's manner:
+// the same left column and row rules, in seconds, read off the mirror
+// through og::sim::seat_timer.
+
+namespace {
+
+// The setting, restored from a destructor like FreezeGuard.
+struct NewSpecialsGuard
+{
+    GameWorld& world;
+    short saved;
+    explicit NewSpecialsGuard(GameWorld& w) : world(w), saved(w.new_specials) {}
+    ~NewSpecialsGuard() { world.new_specials = saved; }
+};
+
+// A possessed body's clock on `w` without a rider: the model reads the
+// host's link and ticks, which is all the HUD needs.
+void stage_possession(walker& w, std::int16_t ticks)
+{
+    w.set_possess_link(0xBEEFu);
+    w.set_possess_ticks(ticks);
+}
+
+} // namespace
+
+// "POSSESS: 60s" at the frozen-time cell's spot (lm+2, bm-34), YELLOW, for a
+// seat whose body is possessed; nothing with the setting off, nothing for a
+// view with no HUD of its own, nothing when no clock runs.
+//
+// RED (run by hand): the row rule in draw_seat_timer replaced by a constant
+// `bm - 60` -> the cell probe at bm-34 finds no pixels and the trace reads
+// row=<bm-60>.
+TEST_F(GladHud, seat_timer_cell_draws_in_the_freeze_cells_manner)
+{
+    HudObListSwap swap;
+    screen* const s = og::runtime::current_session->myscreen_;
+    viewscreen* const v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    GameWorld& world = s->world();
+    FreezeGuard freeze_guard(world);
+    NewSpecialsGuard specials_guard(world);
+    ViewHudStateGuard view_guard(*v);
+    world.enemy_freeze = 0;
+    world.new_specials = 1;
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    v->control = controlp;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // the score count-up uses rng()
+
+    // "POSSESS: 60s" at 6px per glyph, on the 6px-tall text row at bm-34.
+    const int cell_x0 = v->xloc + 2;
+    const int cell_x1 = cell_x0 + 12 * 6;
+    const int cell_y0 = v->endy - 34;
+    const int cell_y1 = cell_y0 + 6;
+    const auto cell_has_pixels = [&](const std::array<unsigned char, 64000>& frame) {
+        for (int y = cell_y0; y < cell_y1; ++y)
+            for (int x = cell_x0; x < cell_x1; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+                    return true;
+        return false;
+    };
+    const auto draw = [&]() {
+        s->clearbuffer();
+        EXPECT_EQ(1, (int)new_score_panel(s, 1));
+        return capture_rendered_frame(*s);
+    };
+
+    trace_clear();
+    EXPECT_FALSE(cell_has_pixels(draw())) << "no cell with no clock running";
+    EXPECT_FALSE(trace_contains("hud", "seat_timer"));
+
+    stage_possession(*controlp, 720);
+    trace_clear();
+    const auto frame = draw();
+    EXPECT_TRUE(cell_has_pixels(frame)) << "a possessed seat's clock draws";
+    const std::string drawn = "seat_timer label=POSSESS ticks=720 secs=60 row=" +
+                              std::to_string(cell_y0) + " text=POSSESS: 60s";
+    EXPECT_TRUE(trace_contains("hud", drawn.c_str()))
+        << "the cell says POSSESS: 60s on the frozen-time row";
+    bool yellow = false;
+    for (int y = cell_y0; y < cell_y1; ++y)
+        for (int x = cell_x0; x < cell_x1; ++x)
+            yellow = yellow || frame[static_cast<std::size_t>(y * 320 + x)] ==
+                                   canonical_palette_index(YELLOW);
+    EXPECT_TRUE(yellow) << "in the frozen-time cell's YELLOW";
+
+    world.new_specials = 0;
+    EXPECT_FALSE(cell_has_pixels(draw()))
+        << "with the setting off the classic HUD is untouched";
+    world.new_specials = 1;
+
+    controlp->set_user(-1);
+    EXPECT_FALSE(cell_has_pixels(draw()))
+        << "the cell rides the classic HUD gate, like the frozen-time cell";
+    controlp->set_user(0);
+}
+
+// A running time freeze keeps its row (the world's clock, the classic one)
+// and the seat's cell takes the row above it when the pane has one; a
+// quadrant pane has none, so there the seat's cell yields to the freeze.
+//
+// RED (run by hand): the `if (freeze_drew) row -= 6;` line deleted -> both
+// cells draw on bm-34 and the trace reads row=<bm-34> for the seat.
+TEST_F(GladHud, seat_timer_cell_steps_above_a_running_freeze)
+{
+    HudObListSwap swap;
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s->viewob[0] != nullptr);
+
+    GameWorld& world = s->world();
+    FreezeGuard freeze_guard(world);
+    NewSpecialsGuard specials_guard(world);
+    ViewCountGuard view_count_guard(*s);
+    world.new_specials = 1;
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    stage_possession(*controlp, 300);
+
+    {
+        viewscreen* const v = s->viewob[0].get();
+        ViewHudStateGuard view_guard(*v);
+        v->control = controlp;
+        v->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+
+        world.enemy_freeze = 30;
+        trace_clear();
+        s->clearbuffer();
+        ASSERT_EQ(1, (int)new_score_panel(s, 1));
+        const std::string freeze_row =
+            "freeze_countdown left=30 row=" + std::to_string(v->endy - 34);
+        const std::string seat_row = "seat_timer label=POSSESS ticks=300 secs=25 row=" +
+                                     std::to_string(v->endy - 40);
+        EXPECT_TRUE(trace_contains("hud", freeze_row.c_str()))
+            << "the freeze keeps its row";
+        EXPECT_TRUE(trace_contains("hud", seat_row.c_str()))
+            << "the seat's cell sits one row above it";
+        const auto frame = capture_rendered_frame(*s);
+        int seat_ink = 0;
+        for (int y = v->endy - 40; y < v->endy - 34; ++y)
+            for (int x = v->xloc + 2; x < v->xloc + 2 + 12 * 6; ++x)
+                seat_ink += frame[static_cast<std::size_t>(y * 320 + x)] != 0;
+        EXPECT_GT(seat_ink, 0) << "and paints there";
+    }
+
+    // Four quadrants: the freeze's row is the only clear one.
+    s->ready_for_battle(4);
+    ASSERT_EQ(4, static_cast<int>(s->numviews));
+    for (int i = 0; i < s->numviews; ++i)
+    {
+        ASSERT_TRUE(s->viewob[i] != nullptr);
+        s->viewob[i]->control = controlp;
+        s->viewob[i]->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+        s->viewob[i]->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+        s->viewob[i]->resize(static_cast<char>(PREF_VIEW_FULL));
+    }
+    world.enemy_freeze = 30; // ready_for_battle starts a fresh battle
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "freeze_countdown left=30"));
+    EXPECT_TRUE(trace_contains("hud", "seat_timer_suppressed label=POSSESS row="))
+        << "a quadrant has no row above the freeze: the seat's cell yields";
+    EXPECT_FALSE(trace_contains("hud", "seat_timer label=POSSESS"));
+
+    world.enemy_freeze = 0;
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "seat_timer label=POSSESS ticks=300"))
+        << "with no freeze the quadrant has room for the seat's cell";
+    for (int i = 0; i < s->numviews; ++i)
+        s->viewob[i]->control = nullptr;
+}
+
+// The seat's cell is held to the frozen-time cell's limits: never on the
+// notification feed, never on the radar block, the label dropped in a
+// narrow column and the whole cell dropped when even the seconds do not
+// fit.
+//
+// RED (run by hand): the `row + 6 > bm - 26` suppression removed -> the
+// 1p view3 probe paints on the feed band (the band assertion fires).
+TEST_F(GladHud, seat_timer_cell_never_lands_on_the_notification_feed)
+{
+    HudObListSwap swap;
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s->viewob[0] != nullptr);
+
+    GameWorld& world = s->world();
+    FreezeGuard freeze_guard(world);
+    NewSpecialsGuard specials_guard(world);
+    ViewCountGuard view_count_guard(*s);
+    world.enemy_freeze = 0;
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    stage_possession(*controlp, 720);
+
+    // Counts the pixels the setting adds (the seat's cell is the only thing
+    // it adds here) and pins each outside the feed band and radar block.
+    int seat_pixels = 0;
+    const auto probe = [&](const char* what) {
+        seat_pixels = 0;
+        for (int i = 0; i < s->numviews; ++i)
+        {
+            ASSERT_TRUE(s->viewob[i] != nullptr) << what;
+            s->viewob[i]->control = controlp;
+            s->viewob[i]->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+        }
+        world.new_specials = 0;
+        s->clearbuffer();
+        ASSERT_EQ(1, (int)new_score_panel(s, 1)) << what;
+        const auto without = capture_rendered_frame(*s);
+        world.new_specials = 1;
+        s->clearbuffer();
+        ASSERT_EQ(1, (int)new_score_panel(s, 1)) << what;
+        const auto with = capture_rendered_frame(*s);
+        for (int y = 0; y < 200; ++y)
+            for (int x = 0; x < 320; ++x)
+            {
+                const std::size_t i = static_cast<std::size_t>(y * 320 + x);
+                if (with[i] == without[i])
+                    continue;
+                ++seat_pixels;
+                for (int view = 0; view < s->numviews; ++view)
+                {
+                    const viewscreen& pane = *s->viewob[view];
+                    if (x < pane.xloc || x > pane.endx || y < pane.yloc ||
+                        y > pane.endy)
+                        continue;
+                    ASSERT_FALSE(y >= pane.yloc + 30 &&
+                                 y < pane.yloc + 30 + MAX_MESSAGES * 6)
+                        << what << ": seat pixel at (" << x << "," << y
+                        << ") is inside view " << view << "'s feed band";
+                    ASSERT_FALSE(x > pane.endx - 64 && y > pane.endy - 48)
+                        << what << ": seat pixel at (" << x << "," << y
+                        << ") is inside view " << view << "'s radar block";
+                }
+            }
+    };
+    const auto set_view_mode = [](viewscreen& view, signed char mode) {
+        view.prefs[PREF_VIEW] = mode;
+        view.resize(static_cast<char>(mode));
+    };
+
+    {
+        ViewHudStateGuard view_guard(*s->viewob[0]);
+        set_view_mode(*s->viewob[0], PREF_VIEW_FULL);
+        probe("1p full");
+        EXPECT_GT(seat_pixels, 0) << "a full-screen pane has room";
+
+        set_view_mode(*s->viewob[0], PREF_VIEW_3);
+        trace_clear();
+        probe("1p view3");
+        EXPECT_EQ(0, seat_pixels)
+            << "no clear row between feed and score box: nothing drawn";
+        EXPECT_TRUE(trace_contains("hud", "seat_timer_suppressed label=POSSESS row="));
+    }
+
+    // 100px columns: "POSSESS: 60s" would reach the radar; "60s" fits.
+    s->ready_for_battle(3);
+    ASSERT_EQ(3, static_cast<int>(s->numviews));
+    for (int i = 0; i < s->numviews; ++i)
+    {
+        ASSERT_TRUE(s->viewob[i] != nullptr);
+        set_view_mode(*s->viewob[i], PREF_VIEW_PANELS);
+    }
+    trace_clear();
+    probe("3p panels");
+    EXPECT_GT(seat_pixels, 0) << "a narrow column gets the seconds alone";
+    EXPECT_TRUE(trace_contains("hud", "secs=60 row="));
+    EXPECT_TRUE(trace_contains("hud", " text=60s"))
+        << "the label is dropped before the cell is";
+
+    // A clock too long even for its seconds (a stack of speed potions read
+    // as 10000 s: 36px against 32px of room) draws nothing.
+    controlp->set_possess_link(0u);
+    controlp->set_possess_ticks(0);
+    controlp->set_speed_bonus_left(120000);
+    trace_clear();
+    probe("3p panels, five-digit seconds");
+    EXPECT_EQ(0, seat_pixels) << "no room even for the seconds: nothing";
+    EXPECT_TRUE(trace_contains("hud", "seat_timer_suppressed label=HASTE x="));
+
+    controlp->set_speed_bonus_left(0);
+    stage_possession(*controlp, 720);
+    s->ready_for_battle(4);
+    ASSERT_EQ(4, static_cast<int>(s->numviews));
+    for (int i = 0; i < s->numviews; ++i)
+    {
+        ASSERT_TRUE(s->viewob[i] != nullptr);
+        set_view_mode(*s->viewob[i], PREF_VIEW_FULL);
+    }
+    probe("4p quadrants");
+    EXPECT_GT(seat_pixels, 0) << "a quadrant pane has room for the cell";
+    for (int i = 0; i < s->numviews; ++i)
+        s->viewob[i]->control = nullptr;
+}
+
+// ---------------------------------------------------------------------------
 // Q2: the counter box fits the rows it holds.
 //
 // The 2026 wave rows print unbounded numbers, and the base tree right-aligns

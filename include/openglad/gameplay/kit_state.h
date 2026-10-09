@@ -23,7 +23,10 @@
 //   KIT_WARD     the next death is cancelled once (REASSEMBLE).
 //   KIT_CHANNEL  a channelled special is running on this walker; the next
 //                press ends it and costs nothing (IMMOLATE).
+//   KIT_QUARTER_FREEZE  the freeze this weapon lays is a quarter of the
+//                rolled one (a faerie's GLIMMER sprinkle).
 inline constexpr std::uint8_t KIT_HIDDEN = 1;
 inline constexpr std::uint8_t KIT_FEARLESS = 2;
 inline constexpr std::uint8_t KIT_WARD = 4;
 inline constexpr std::uint8_t KIT_CHANNEL = 8;
+inline constexpr std::uint8_t KIT_QUARTER_FREEZE = 16;

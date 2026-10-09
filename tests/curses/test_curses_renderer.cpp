@@ -17,6 +17,7 @@
 #include <openglad/core/order.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -28,6 +29,7 @@
 
 #include <cstring>
 #include <memory>
+#include <string>
 
 using namespace og::curses;
 
@@ -1245,4 +1247,36 @@ TEST(CursesRenderer, freeze_countdown_shows_on_hud_row_one)
     renderer.draw(term, world, hero->entity_id());
     EXPECT_NE(term.text_row(1).find("TIME 42"), std::string::npos)
         << "row 1 shows the frozen-time countdown; got: " << term.text_row(1);
+}
+
+// The seat's own timed effect (New Specials) rides row 1 after TIME, from
+// the shared countdown model, in seconds: "POSSESS 49s" for a seat in a
+// possessed body with 580 ticks left. Nothing with the setting off.
+//
+// RED (run by hand): the seat_timer field removed from draw_hud -> row 1
+// has no "POSSESS 49s".
+TEST(CursesRenderer, hud_shows_the_seats_own_countdown)
+{
+    HandWorld hw(20, 20);
+    walker* host = hw.add_creature(10, 10, FAMILY_ORC, 0);
+    ASSERT_NE(nullptr, host);
+    host->set_user(0);
+    host->set_possess_link(777u);
+    host->set_possess_ticks(580);
+
+    GameWorld& world = hw.world();
+    world.new_specials = 1;
+    world.enemy_freeze = 42;
+    HeadlessTerminal term(24, 80);
+    CursesRenderer renderer;
+    renderer.draw(term, world, host->entity_id());
+    const std::string row = term.text_row(1);
+    EXPECT_NE(row.find("TIME 42  POSSESS 49s"), std::string::npos)
+        << "row 1 shows the possession's seconds after TIME; got: " << row;
+
+    world.new_specials = 0;
+    renderer.draw(term, world, host->entity_id());
+    EXPECT_EQ(term.text_row(1).find("POSSESS"), std::string::npos)
+        << "the classic HUD is untouched with the setting off; got: "
+        << term.text_row(1);
 }

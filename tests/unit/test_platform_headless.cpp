@@ -243,6 +243,8 @@ int text_picker_testing_campaign_select(const std::string& campaign,
                                         int& error_code);
 std::string text_protocol_testing_format_event_text(std::string_view text);
 std::string text_protocol_testing_json_mode(const GameWorld& world);
+std::string text_protocol_testing_json_entity(const GameWorld& world,
+                                              const walker& w, int index);
 }
 
 TEST(PlatformHeadless, production_platform_globals_preserve_headless_contracts)
@@ -714,6 +716,9 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
                   text.find("\"dormant\":false,\"hidden\":false"))
             << "every entity line reports whether it is hidden, beside dormant";
         EXPECT_NE(std::string::npos,
+                  text.find("\"dead\":false,\"timer\":\"\",\"timer_ticks\":0}"))
+            << "every entity line ends with the seat's countdown, empty here";
+        EXPECT_NE(std::string::npos,
                   text.find("\"cmd\":\"grid\",\"floor\":0,\"rows\":["));
         EXPECT_NE(std::string::npos, text.find("\"y\":0,\"cells\":[[0,"))
             << "negative grid bounds must be clipped";
@@ -895,6 +900,56 @@ TEST(PlatformHeadless, text_protocol_serializes_shipped_mode_state)
 
     EXPECT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
+}
+
+// The text client's HUD is its "state" line: every living carries the
+// seat's countdown from the shared model the SDL and curses HUDs read
+// (og::sim::seat_timer), appended after "dead" so the dormant/hidden
+// adjacency above stays put. A possessed body reads POSSESS and its ticks;
+// a plain living and a non-living read empty.
+//
+// RED (run by hand): the `timer.label != nullptr ? timer.label : ""` read
+// replaced by "" -> the possessed line prints "timer":"".
+TEST(PlatformHeadless, text_state_line_carries_the_seats_countdown)
+{
+    GameWorld world(996);
+    world.entity_factory = [](Order, std::int32_t) {
+        return std::make_unique<walker>();
+    };
+    world.new_specials = 1;
+    walker* host = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* plain = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = world.add_ob(Order::FX, 1);
+    ASSERT_TRUE(host && plain && fx);
+    host->set_order(Order::Living);
+    plain->set_order(Order::Living);
+    fx->set_order(Order::FX);
+    host->set_possess_link(4242u);
+    host->set_possess_ticks(580);
+    fx->set_speed_bonus_left(50);
+
+    const std::string possessed =
+        og::ui::text_protocol_testing_json_entity(world, *host, 0);
+    EXPECT_NE(std::string::npos,
+              possessed.find("\"dead\":false,\"timer\":\"POSSESS\","
+                             "\"timer_ticks\":580}"))
+        << possessed;
+    const std::string bare =
+        og::ui::text_protocol_testing_json_entity(world, *plain, 1);
+    EXPECT_NE(std::string::npos,
+              bare.find("\"timer\":\"\",\"timer_ticks\":0}"))
+        << bare;
+    const std::string effect =
+        og::ui::text_protocol_testing_json_entity(world, *fx, 2);
+    EXPECT_NE(std::string::npos,
+              effect.find("\"timer\":\"\",\"timer_ticks\":0}"))
+        << "only a living is asked for a countdown: " << effect;
+
+    world.new_specials = 0;
+    EXPECT_NE(std::string::npos,
+              og::ui::text_protocol_testing_json_entity(world, *host, 0)
+                  .find("\"timer\":\"\",\"timer_ticks\":0}"))
+        << "nothing with the setting off";
 }
 
 // The scripted-mode observability block, byte-pinned (the json_ctf literal

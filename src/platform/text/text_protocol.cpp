@@ -20,6 +20,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/timed_effects.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/server/match_stage.h>
 
@@ -40,8 +41,14 @@
 namespace og::ui {
 namespace {
 
-static void json_entity(std::ostream& os, const walker* w, int index)
+static void json_entity(std::ostream& os, const GameWorld& world,
+                        const walker* w, int index)
 {
+    // The seat's countdown (the text client's HUD is this state): the same
+    // shared model the SDL and curses HUDs read, answered for every living.
+    og::sim::SeatTimer timer{nullptr, 0};
+    if (w->query_order() == Order::Living)
+        timer = og::sim::seat_timer(world, *w);
     os << "{\"id\":" << index
        << ",\"eid\":" << w->entity_id()
        << ",\"order\":" << static_cast<int>(w->query_order())
@@ -64,6 +71,8 @@ static void json_entity(std::ostream& os, const walker* w, int index)
        << ",\"hidden\":" << (w->hidden() ? "true" : "false")
        << ",\"foe\":" << (w->foe() != nullptr ? w->foe()->entity_id() : 0)
        << ",\"dead\":" << (w->dead() ? "true" : "false")
+       << ",\"timer\":\"" << (timer.label != nullptr ? timer.label : "") << "\""
+       << ",\"timer_ticks\":" << (timer.label != nullptr ? timer.ticks : 0)
        << "}";
 }
 
@@ -206,19 +215,19 @@ static void cmd_state(const LevelRuntimeData& level)
     int idx = 0;
     for (auto& uptr : level.world().oblist) {
         if (idx > 0) os << ",";
-        json_entity(os, uptr.get(), idx++);
+        json_entity(os, level.world(), uptr.get(), idx++);
     }
     os << "],\"weapons\":[";
     idx = 0;
     for (auto& uptr : level.world().weaplist) {
         if (idx > 0) os << ",";
-        json_entity(os, uptr.get(), idx++);
+        json_entity(os, level.world(), uptr.get(), idx++);
     }
     os << "],\"fx\":[";
     idx = 0;
     for (auto& uptr : level.world().fxlist) {
         if (idx > 0) os << ",";
-        json_entity(os, uptr.get(), idx++);
+        json_entity(os, level.world(), uptr.get(), idx++);
     }
     os << "],\"mode\":";
     json_mode(os, level.world());
@@ -553,6 +562,16 @@ std::string text_protocol_testing_json_mode(const GameWorld& world)
 {
     std::ostringstream os;
     json_mode(os, world);
+    return os.str();
+}
+
+// One entity's "state" line, as the state command prints it: tests stage a
+// possessed body or a ward by hand, which no protocol command can.
+std::string text_protocol_testing_json_entity(const GameWorld& world,
+                                              const walker& w, int index)
+{
+    std::ostringstream os;
+    json_entity(os, world, &w, index);
     return os.str();
 }
 #endif
