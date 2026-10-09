@@ -118,8 +118,8 @@ seat claim, cannot be hit, and is drawn only for its own team (an outline
 and a dither in SDL, its glyph in curses). A FEARLESS walker never flees;
 so does any walker standing within a friendly war banner's
 `rally_radius` (96 pixels) on its floor while the setting is on. A WARD
-cancels the next death once (REASSEMBLE). The kill is still credited to
-whoever struck the blow.
+cancels the next death once (REASSEMBLE). That blow is not a kill: nobody
+is told of a death and whoever struck it is credited no kill.
 
 Timers and windows hang on one invisible helper effect,
 `core:kit_marker` (effect wire id 17). Its role sits in its animation byte,
@@ -226,6 +226,8 @@ for the rest of the level.
 - PHASE lasts 48 ticks at double speed, and the ghost cannot attack while
   it lasts, not even on the tick it casts. A bot ghost never phases again
   while its veil is up.
+- A phased ghost shows to everyone as a faint shimmer with its team's
+  outline, so friend and foe can see where it went.
 
 **Faerie.**
 - SWAP never drops a walker onto a spot it could not stand on, such as
@@ -262,7 +264,9 @@ for the rest of the level.
 - LEGION in a respawn mode: a hero killed under LEGION both respawns and
   leaves a risen skeleton, because the corpse a respawn waits on is never
   consumed.
-- A skeleton that REASSEMBLEs still counts as a kill for whoever felled it.
+- A skeleton that REASSEMBLEs was not killed: the blow that felled it shows
+  no death message and no "All foes defeated!", and counts no kill for
+  whoever struck it.
 
 **Fire elemental.**
 - Quenching IMMOLATE is free; until then the elemental casts nothing else.
@@ -277,10 +281,12 @@ for the rest of the level.
 - Holding Special repeats a mine, a hasten, a hurl or a shove once per tick
   while magic lasts, as it repeats a bomb. BLINK, GLIMMER, KNIFE FAN and
   BONE STORM wait out their own animation or pause before the next.
-- With the setting off one thing still looks different: in SDL a foe now
+- With the setting off two things still look different: in SDL a foe now
   sees the thief's poison cloud fade in and out instead of popping in at
   full, and a curses player sees their own team's cloud glyph during those
-  ticks. That is drawing only; the game plays the same.
+  ticks; and when a hero dies, its view holds still until the next hero is
+  picked instead of flashing the map's top-left corner for a frame. That is
+  drawing only; the game plays the same.
 
 ## Refusals at a glance
 
