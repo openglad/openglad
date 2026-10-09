@@ -915,7 +915,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
     world.new_specials = 1;
-    // The new kits move walkers (BLINK, SWAP, SHOVE) and stand things up
+    // The new kits move walkers (BLINK, SWAP) and stand things up
     // (BONE WALL, WAR BANNER), so their outcomes read the ground under the
     // whole neighbourhood, not just the caster's cell. The session's grid
     // is whatever level the tests before this one left, so for the sweep

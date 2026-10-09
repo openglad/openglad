@@ -1,4 +1,4 @@
--- core:orc_captain — howl and eat corpse, hook blade, hurl orc, war banner (cookbook: docs/lua-classpacks-design.md §3).
+-- core:orc_captain — howl, eat corpse, hook blade / knife fan, war banner / warband (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- (Descriptor .name "ORC CAPTAIN" → family id core:orc_captain.)
 local kc = og.use("kit_captain")
@@ -21,10 +21,10 @@ og.family("living", {
   -- New Specials: every slot is new_kit, so with the setting off the
   -- captain has no specials, exactly as before the setting existed.
   specials = {
-    { id = "howl",   name = "HOWL",       mp_cost = 25, new_kit = true, alternate = { name = "EAT CORPSE", mp_cost = 20 }, cast = kc.howl_or_eat,       ai = kc.ai_howl },
-    { id = "hook",   name = "HOOK BLADE", mp_cost = 40, new_kit = true, alternate = { name = "KNIFE FAN",  mp_cost = 30 }, cast = kc.hook_or_fan,       ai = kc.ai_hook },
-    { id = "hurl",   name = "HURL ORC",   mp_cost = 50, new_kit = true, alternate = { name = "SHOVE",      mp_cost = 30 }, cast = kc.hurl_or_shove,     ai = kc.ai_hurl },
-    { id = "banner", name = "WAR BANNER", mp_cost = 80, new_kit = true, alternate = { name = "WARBAND" },                  cast = kc.banner_or_warband, ai = kc.ai_banner },
+    { id = "howl",       name = "HOWL",       mp_cost = 25, new_kit = true, cast = kc.howl,       ai = kc.ai_howl },
+    { id = "eat_corpse", name = "EAT CORPSE", mp_cost = 20, new_kit = true, cast = kc.eat_corpse, ai = kc.ai_eat },
+    { id = "hook",       name = "HOOK BLADE", mp_cost = 40, new_kit = true, alternate = { name = "KNIFE FAN", mp_cost = 30 }, cast = kc.hook_or_fan,       ai = kc.ai_hook },
+    { id = "banner",     name = "WAR BANNER", mp_cost = 80, new_kit = true, alternate = { name = "WARBAND" },                 cast = kc.banner_or_warband, ai = kc.ai_banner },
   },
   default_weapon = "core:knife",
   flags = {},
@@ -41,7 +41,7 @@ og.family("living", {
   sprite = "orc2.png",
   animation = "standard",
   ai_line_of_sight = 25,
-  description = "Orc captains are stronger and smarter than the basic orc. They throw blades across the battlefield.\n\nSpecial: Howl / Eat Corpse, Hook Blade, Hurl Orc, War Banner",
+  description = "Orc captains are stronger and smarter than the basic orc. They throw blades across the battlefield.",
   names = { "Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog",
             "Krosh" },
   playable = false,
@@ -55,28 +55,24 @@ og.family("living", {
   radar_jitter = 0,
 
   tuning = {
-    -- HOWL / EAT CORPSE (lib/orc_specials.lua): the orc's five keys, same values
+    -- HOWL, EAT CORPSE (lib/orc_specials.lua): the orc's five keys, same values
     yell_stun_base = 10,
     yell_level_roll_mult = 10,
     yell_con_roll_mult = 10,
     corpse_eat_range = 24,
     corpse_heal_per_level = 5,
-    -- HOOK BLADE: orbit lifetime, guard hp, orbit radius (px), drag walk, stun
+    -- HOOK BLADE: the blade spirals out from hook_start px, growing
+    -- hook_growth px a tick to hook_reach px, then back in (hook_ticks in
+    -- all, out and back); guard hp; a snagged foe is reeled hook_reel_step
+    -- px a tick for at most hook_reel_max ticks, then stunned hook_stun more
     hook_ticks = 48,
     hook_hp = 30,
-    hook_radius = 16,
-    hook_drag_ticks = 6,
+    hook_start = 12,
+    hook_growth = 2,
+    hook_reach = 60,
+    hook_reel_step = 8,
+    hook_reel_max = 8,
     hook_stun = 12,
-    -- HURL ORC: grab reach, throw range, impact radius (px), damage, stun
-    hurl_adjacent = 20,
-    hurl_range = 120,
-    hurl_radius = 24,
-    hurl_damage_per_level = 6,
-    hurl_stun = 10,
-    -- SHOVE: reach (px), tiles of push, stun
-    shove_reach = 40,
-    shove_tiles = 2,
-    shove_stun = 10,
     -- WAR BANNER: plant reach (squared px), hp, lifetime; the aura's own
     -- numbers live on core:war_banner, which outlives its captain
     banner_plant_sq = 1024,
