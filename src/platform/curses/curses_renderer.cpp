@@ -264,6 +264,10 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
             const bool my_team =
                 w->team_num() == static_cast<unsigned char>(world.my_team);
 
+            // A ghost riding a possessed body shows to nobody: its cell is
+            // the host's, which alternates with the ghost's glyph below.
+            if (w->hidden() && w->possess_link() != 0)
+                continue;
             // A hidden walker (dug in, or riding a host) shows only to its
             // own team.
             if (w->hidden() && !is_followed && !my_team)
@@ -290,11 +294,29 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
             if (row < 0 || row >= height || col < 0 || col >= width)
                 continue;
 
-            const Glyph g = entity_glyph(w->query_order(), w->family(), w->team_num(),
-                                         is_followed,
-                                         static_cast<unsigned char>(world.my_team));
+            Glyph g = entity_glyph(w->query_order(), w->family(), w->team_num(),
+                                   is_followed,
+                                   static_cast<unsigned char>(world.my_team));
             if (g.skip)
                 continue;
+            // A possessed body twinkles: every other three-tick window its
+            // cell shows the rider's glyph (the ghost's g), bold, in the
+            // colours of the side the body now fights for. A terminal cell
+            // cannot wear the SDL ring, so the glyph itself is the twinkle.
+            if (w->possess_link() != 0 && !w->hidden() &&
+                w->query_order() == Order::Living &&
+                world.tick_count_ % 6 >= 3) {
+                const walker* rider = world.find_by_id(w->possess_link());
+                if (rider != nullptr) {
+                    const Glyph rg = entity_glyph(
+                        rider->query_order(), rider->family(), w->team_num(),
+                        is_followed, static_cast<unsigned char>(world.my_team));
+                    if (!rg.skip) {
+                        g = rg;
+                        g.bold = true;
+                    }
+                }
+            }
             // Scripted-mode beacon targets render bold (glyph_map already
             // team-tints; boldness is the terminal's beacon highlight).
             const bool beacon_bold =

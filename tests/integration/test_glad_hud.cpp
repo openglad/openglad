@@ -11,6 +11,11 @@
 #include <openglad/resources/packs.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/radar.h>
+#include <openglad/interface/game_context.h>
+#include <openglad/core/irandom.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
@@ -2907,6 +2912,70 @@ TEST_F(GladHud, seat_timer_cell_never_lands_on_the_notification_feed)
     EXPECT_GT(seat_pixels, 0) << "a quadrant pane has room for the cell";
     for (int i = 0; i < s->numviews; ++i)
         s->viewob[i]->control = nullptr;
+}
+
+// The possessing ghost (hidden, linked to its host) never blips on the
+// radar, not even for its own team: the host's blip is the seat's. A
+// hidden walker with no link (a dug-in skeleton) still blips for its team.
+//
+// RED (run by hand): the `ob->possess_link() != 0 ||` clause removed from
+// radar.cpp -> the linked rider blips in its team colour.
+TEST_F(GladHud, a_possessing_ghost_does_not_blip_on_the_radar)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    push_test_context(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; ++y)
+        for (int x = 0; x < d.world().grid.w; ++x)
+            d.world().grid.data[static_cast<std::size_t>(y * d.world().grid.w + x)] =
+                PIX_COBBLE_1;
+
+    walker* const own = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const rider = d.add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_TRUE(own != nullptr && rider != nullptr);
+    own->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
+    own->set_team_num(0);
+    rider->setxy(GRID_SIZE * 12, GRID_SIZE * 8);
+    rider->set_team_num(0);
+    // The flag only (this hand-built level is not the gameplay world).
+    rider->set_kit_state(KIT_HIDDEN);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* const saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    vs->control = own;
+    vs->radarstart = 1;
+
+    const auto rgb_at = [&](const radar& r, int gx, int gy) {
+        Uint8 red = 0, green = 0, blue = 0;
+        og::runtime::current_session->myscreen_->get_pixel(
+            r.xloc + gx - r.radarx, r.yloc + gy - r.radary, &red, &green, &blue);
+        return std::array<int, 3>{red, green, blue};
+    };
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+    const std::array<int, 3> terrain = rgb_at(r, 20, 20);
+    const std::array<int, 3> dug_in = rgb_at(r, 12, 8);
+    EXPECT_NE(terrain, dug_in) << "a hidden walker with no link blips for its team";
+
+    rider->set_possess_link(4242u);
+    og::runtime::current_session->myscreen_->clearbuffer();
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(terrain, rgb_at(r, 12, 8))
+        << "a possessing ghost leaves the terrain colour alone";
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    pop_test_context();
 }
 
 // ---------------------------------------------------------------------------
