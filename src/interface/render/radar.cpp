@@ -338,9 +338,12 @@ short radar::draw(LevelRuntimeData* data)
 		    // Delayed spawns: dormant walkers are not in the world yet.
 		    if (ob && ob->dormant())
 		        continue;
-		    // A hidden walker blips only for its own team.
+		    // A hidden walker blips only for its own team, and a ghost
+		    // riding a possessed body for nobody: the host's blip is the
+		    // seat's, and a second one on top of it says nothing.
 		    if (ob && ob->hidden() &&
-		        (control == nullptr || ob->team_num() != obteam))
+		        (ob->possess_link() != 0 || control == nullptr ||
+		         ob->team_num() != obteam))
 		        continue;
 		    // Multi-floor: only blip entities on the floor the radar shows
 		    // (the terrain floor baked just above).

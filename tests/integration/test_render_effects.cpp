@@ -19,6 +19,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
@@ -1146,6 +1147,132 @@ TEST_F(RenderEffects, hidden_walker_draws_only_for_its_team)
         << "another team sees bare ground";
     EXPECT_TRUE(rects_equal(spectator, empty))
         << "a spectator camera sees bare ground";
+}
+
+// A ghost riding a possessed body (hidden, linked to its host) is drawn to
+// nobody, its own team included: the seat is in the host. A dug-in
+// skeleton (hidden, no link) keeps its own-team dither, pinned above.
+//
+// RED (run by hand): the `w.hidden() && w.possess_link() != 0` skip removed
+// from draw_walker -> its own team sees the hidden-walker dither.
+TEST_F(RenderEffects, possessing_rider_is_drawn_to_nobody)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const rider = scr()->world().add_ob(Order::Living, FAMILY_GHOST);
+    walker* const host = scr()->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(rider != nullptr && host != nullptr);
+    rider->setxy(200, 120);
+    rider->set_team_num(0);
+    host->setxy(100, 200);
+    host->set_team_num(0);
+    ASSERT_NE(nullptr, rider->bmp_data());
+
+    rider->set_dead(1);
+    const std::vector<RGB> empty = view_rect(scene, Viewer::OwnTeam, *rider);
+    rider->set_dead(0);
+
+    rider->set_hidden(true);
+    const std::vector<RGB> dug_in = view_rect(scene, Viewer::OwnTeam, *rider);
+    ASSERT_FALSE(rects_equal(dug_in, empty))
+        << "a hidden walker with no link is still drawn for its team";
+
+    rider->set_possess_link(host->entity_id());
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::OwnTeam, *rider), empty))
+        << "the rider's own team sees no ghost";
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::OtherTeam, *rider), empty));
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::Spectator, *rider), empty));
+    rider->set_possess_link(0u);
+}
+
+// A possessed body is drawn whole with a one-pixel ring that twinkles
+// between WHITE and its team colour every three game ticks
+// (screen::framecount), for its own team, the other team and a spectator,
+// and still in the trees, where an elf would otherwise fade from sight.
+//
+// RED (run by hand): `framecount / 3` replaced by `0 / 3` -> the frame 0 and
+// frame 3 views are the same picture. Second RED: the possessed branch
+// moved below the FORESTWALK branch -> the host in the trees reads the same
+// faded picture with and without the link, in both frames.
+TEST_F(RenderEffects, possessed_host_twinkles_for_everyone)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "off");
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const host = scr()->world().add_ob(Order::Living, FAMILY_ELF);
+    walker* const rider = scr()->world().add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_TRUE(host != nullptr && rider != nullptr);
+    host->setxy(200, 120);
+    host->set_team_num(0);
+    rider->setxy(200, 120);
+    rider->set_team_num(0);
+    rider->set_hidden(true);
+    rider->set_possess_link(host->entity_id());
+    ASSERT_NE(nullptr, host->bmp_data());
+
+    struct FramecountGuard
+    {
+        Uint32 saved = scr()->framecount;
+        ~FramecountGuard() { scr()->framecount = saved; }
+    } framecount_guard;
+
+    const auto at_frame = [&](Uint32 frame, Viewer viewer) {
+        scr()->framecount = frame;
+        return view_rect(scene, viewer, *host);
+    };
+
+    for (const Viewer viewer :
+         {Viewer::OwnTeam, Viewer::OtherTeam, Viewer::Spectator})
+    {
+        host->set_possess_link(0u);
+        const std::vector<RGB> plain = at_frame(0, viewer);
+        host->set_possess_link(rider->entity_id());
+        host->set_possess_ticks(300);
+        const std::vector<RGB> white = at_frame(0, viewer);
+        const std::vector<RGB> team = at_frame(3, viewer);
+        const std::vector<RGB> white_again = at_frame(6, viewer);
+        const int v = static_cast<int>(viewer);
+        EXPECT_FALSE(rects_equal(white, plain)) << "viewer " << v << ": a ring";
+        EXPECT_FALSE(rects_equal(team, plain)) << "viewer " << v;
+        EXPECT_FALSE(rects_equal(white, team))
+            << "viewer " << v << ": the ring changes colour on tick 3";
+        EXPECT_TRUE(rects_equal(white, white_again))
+            << "viewer " << v << ": and back on tick 6";
+    }
+
+    // The host in the trees: an elf there fades to a forest dither for
+    // every viewer, but a possessed one keeps its twinkling ring.
+    host->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+    GameWorld& world = scr()->world();
+    for (int cy = 120 / GRID_SIZE; cy <= (120 + host->sizey()) / GRID_SIZE; ++cy)
+        for (int cx = 200 / GRID_SIZE; cx <= (200 + host->sizex()) / GRID_SIZE; ++cx)
+            world.grid.data[static_cast<std::size_t>(cy * world.grid.w + cx)] =
+                PIX_TREE_M1;
+    ASSERT_EQ(TYPE_TREES, world.mysmoother.query_genre_x_y(200 / GRID_SIZE,
+                                                            120 / GRID_SIZE));
+    host->set_possess_link(0u);
+    const std::vector<RGB> faded = at_frame(0, Viewer::OtherTeam);
+    host->set_possess_link(rider->entity_id());
+    const std::vector<RGB> trees_white = at_frame(0, Viewer::OtherTeam);
+    const std::vector<RGB> trees_team = at_frame(3, Viewer::OtherTeam);
+    EXPECT_FALSE(rects_equal(trees_white, faded))
+        << "a possessed elf in the trees is drawn, not faded";
+    EXPECT_FALSE(rects_equal(trees_white, trees_team))
+        << "and its ring still twinkles";
 }
 
 TEST_F(RenderEffects, hidden_walker_casts_no_shadow_or_reflection)

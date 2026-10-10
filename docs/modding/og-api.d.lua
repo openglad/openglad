@@ -593,8 +593,15 @@
 ---@field KIT_CHANNEL integer
 ---@field KIT_FEARLESS integer
 ---@field KIT_HIDDEN integer
+---@field KIT_QUARTER_FREEZE integer
 ---@field KIT_WARD integer
 ---@field MACE_LIFE_CAP integer
+---@field MARKER_BURROW integer
+---@field MARKER_IMMOLATION integer
+---@field MARKER_LEGION integer
+---@field MARKER_METEOR_RAIN integer
+---@field MARKER_PHASE_VEIL integer
+---@field MARKER_WARD integer
 ---@field MAXOBS integer
 ---@field MP_POOL_DAMAGE_CAP integer
 ---@field NUM_FACINGS integer

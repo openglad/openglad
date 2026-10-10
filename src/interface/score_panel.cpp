@@ -25,6 +25,7 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/timed_effects.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 
@@ -254,11 +255,13 @@ static void draw_respawn_countdown(screen* s, walker* control,
 // cell rides. A pane narrower than ~150px cannot hold the full string left of
 // it, so the cell shortens and then gives up. The block is reserved even for
 // a PREF_RADAR_OFF view, so a seat toggling its radar never moves the cell.
-static void draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
+//
+// Answers whether it drew, so the seat's own countdown below can step clear.
+static bool draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
                                   Sint32 bm)
 {
     if (s->world_.enemy_freeze <= 0)
-        return;
+        return false;
 
     // First 6px row clear of the notification banner.
     const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
@@ -267,7 +270,7 @@ static void draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
     {
         TRACE("hud", "freeze_countdown_suppressed row=%d",
               static_cast<int>(row));
-        return;
+        return false;
     }
 
     // Same left column as the SPC/XP/SC rows below the cell.
@@ -285,7 +288,7 @@ static void draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
     {
         TRACE("hud", "freeze_countdown_suppressed x=%d limit=%d",
               static_cast<int>(x), static_cast<int>(right_limit));
-        return;
+        return false;
     }
 
     s->text_normal.write_xy(x, row, message.c_str(),
@@ -293,6 +296,59 @@ static void draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
                             static_cast<short>(1));
     TRACE("hud", "freeze_countdown left=%d row=%d text=%s",
           static_cast<int>(s->world_.enemy_freeze), static_cast<int>(row),
+          message.c_str());
+    return true;
+}
+
+// The seat's own timed effect (a New Specials possession, phase, haste, dig
+// in, ward, fire or legion window), drawn in the frozen-time cell's manner:
+// the same left column and row rules, YELLOW, every frame off the mirror
+// (og::sim::seat_timer reads snapshot fields only). Seconds, like SCARED.
+// When the frozen-time cell drew this frame it keeps its row (it is the
+// world's clock and the classic one) and this cell takes the row above it,
+// if that row is still clear of the notification banner; otherwise it
+// yields. Too narrow a pane drops the label, then the cell.
+static void draw_seat_timer(screen* s, const walker& control, Sint32 lm,
+                            Sint32 tm, Sint32 rm, Sint32 bm, bool freeze_drew)
+{
+    const og::sim::SeatTimer timer = og::sim::seat_timer(s->world_, control);
+    if (timer.label == nullptr)
+        return;
+
+    const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
+    Sint32 row = std::max<Sint32>(bm - 34, banner_bottom);
+    if (freeze_drew)
+        row -= 6;
+    if (row < banner_bottom || row + 6 > bm - 26)
+    {
+        TRACE("hud", "seat_timer_suppressed label=%s row=%d", timer.label,
+              static_cast<int>(row));
+        return;
+    }
+
+    const Sint32 x = lm + 2;
+    const Sint32 right_limit = (row + 6 > bm - 48) ? (rm - 64) : rm;
+    const auto fits = [&](const std::string& text) {
+        return x + 6 * static_cast<Sint32>(text.size()) <= right_limit;
+    };
+
+    const int secs = og::sim::timer_seconds(timer.ticks);
+    std::string message = std::format("{}: {}s", timer.label, secs);
+    if (!fits(message))
+        message = std::format("{}s", secs);
+    if (!fits(message))
+    {
+        TRACE("hud", "seat_timer_suppressed label=%s x=%d limit=%d",
+              timer.label, static_cast<int>(x),
+              static_cast<int>(right_limit));
+        return;
+    }
+
+    s->text_normal.write_xy(x, row, message.c_str(),
+                            static_cast<unsigned char>(YELLOW),
+                            static_cast<short>(1));
+    TRACE("hud", "seat_timer label=%s ticks=%d secs=%d row=%d text=%s",
+          timer.label, timer.ticks, secs, static_cast<int>(row),
           message.c_str());
 }
 
@@ -846,7 +902,8 @@ short new_score_panel(screen* s, short /*do_it*/)
             // The frozen-time cell is part of the classic HUD block: it rides
             // the same left column, so a view that draws no HUD (a spectator
             // camera, a corpse waiting to respawn) must not draw it either.
-            draw_freeze_countdown(s, lm, tm, rm, bm);
+            const bool freeze_drew = draw_freeze_countdown(s, lm, tm, rm, bm);
+            draw_seat_timer(s, *control, lm, tm, rm, bm, freeze_drew);
 
             // Get the button-drawing info ..
             draw_button = s->viewob[players]->prefs[PREF_OVERLAY];

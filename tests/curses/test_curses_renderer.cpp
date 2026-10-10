@@ -17,6 +17,7 @@
 #include <openglad/core/order.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -28,6 +29,7 @@
 
 #include <cstring>
 #include <memory>
+#include <string>
 
 using namespace og::curses;
 
@@ -1245,4 +1247,85 @@ TEST(CursesRenderer, freeze_countdown_shows_on_hud_row_one)
     renderer.draw(term, world, hero->entity_id());
     EXPECT_NE(term.text_row(1).find("TIME 42"), std::string::npos)
         << "row 1 shows the frozen-time countdown; got: " << term.text_row(1);
+}
+
+// The seat's own timed effect (New Specials) rides row 1 after TIME, from
+// the shared countdown model, in seconds: "POSSESS 49s" for a seat in a
+// possessed body with 580 ticks left. Nothing with the setting off.
+//
+// RED (run by hand): the seat_timer field removed from draw_hud -> row 1
+// has no "POSSESS 49s".
+TEST(CursesRenderer, hud_shows_the_seats_own_countdown)
+{
+    HandWorld hw(20, 20);
+    walker* host = hw.add_creature(10, 10, FAMILY_ORC, 0);
+    ASSERT_NE(nullptr, host);
+    host->set_user(0);
+    host->set_possess_link(777u);
+    host->set_possess_ticks(580);
+
+    GameWorld& world = hw.world();
+    world.new_specials = 1;
+    world.enemy_freeze = 42;
+    HeadlessTerminal term(24, 80);
+    CursesRenderer renderer;
+    renderer.draw(term, world, host->entity_id());
+    const std::string row = term.text_row(1);
+    EXPECT_NE(row.find("TIME 42  POSSESS 49s"), std::string::npos)
+        << "row 1 shows the possession's seconds after TIME; got: " << row;
+
+    world.new_specials = 0;
+    renderer.draw(term, world, host->entity_id());
+    EXPECT_EQ(term.text_row(1).find("POSSESS"), std::string::npos)
+        << "the classic HUD is untouched with the setting off; got: "
+        << term.text_row(1);
+}
+
+// A possessed body twinkles in a terminal the only way a cell can: every
+// other three-tick window it shows the riding ghost's glyph, bold, in the
+// body's colours. The riding ghost itself is drawn by nobody (its own team
+// included), so the body's cell is the only one that says "ghost".
+//
+// RED (run by hand): `world.tick_count_ % 6 >= 3` replaced by `false` ->
+// tick 3 still shows 'o'. Second RED: the rider skip removed -> the hidden,
+// linked ghost shows its own 'g' to its team two columns left.
+TEST(CursesRenderer, possessed_host_alternates_with_the_ghost_glyph)
+{
+    HandWorld hw(24, 24);
+    hw.world().my_team = 0;
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    walker* host = hw.add_creature(12, 10, FAMILY_ORC, 0);
+    walker* rider = hw.add_creature(8, 10, FAMILY_GHOST, 0);
+    ASSERT_TRUE(hero && host && rider);
+    rider->set_kit_state(KIT_HIDDEN); // the flag only (no collision map here)
+    rider->set_possess_link(host->entity_id());
+    host->set_possess_link(rider->entity_id());
+
+    HeadlessTerminal term(21, 41);
+    CursesRenderer renderer;
+    const int center_row = 2 + (21 - 2 - 6) / 2;
+    const int center_col = 41 / 2;
+
+    const auto host_cell = [&](std::uint32_t tick) {
+        hw.world().tick_count_ = tick;
+        renderer.draw(term, hw.world(), hero->entity_id());
+        return term.cell_at(center_row, center_col + 2);
+    };
+
+    EXPECT_EQ(U'o', host_cell(0).ch) << term.dump();
+    EXPECT_EQ(0, count_in_viewport(term, U'g'))
+        << "the riding ghost is drawn by nobody\n" << term.dump();
+    EXPECT_EQ(U'o', host_cell(2).ch);
+    const Cell ghost_window = host_cell(3);
+    EXPECT_EQ(U'g', ghost_window.ch) << term.dump();
+    EXPECT_TRUE(ghost_window.bold);
+    EXPECT_EQ(Color::Red, ghost_window.fg) << "in the body's team colour";
+    EXPECT_EQ(1, count_in_viewport(term, U'g'))
+        << "one 'g', on the body's cell\n" << term.dump();
+    EXPECT_EQ(U'g', host_cell(5).ch);
+    EXPECT_EQ(U'o', host_cell(6).ch) << "and back";
+
+    // A body whose rider is gone from the world shows its own glyph only.
+    host->set_possess_link(999999u);
+    EXPECT_EQ(U'o', host_cell(3).ch);
 }

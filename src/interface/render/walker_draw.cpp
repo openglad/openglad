@@ -523,6 +523,12 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	if (w.hidden() && (view_buf->control == nullptr ||
 	                   w.team_num() != view_buf->control->team_num()))
 		return false;
+	// A ghost riding a possessed body is drawn to nobody, its own seat
+	// included: the seat is in the host, which wears the twinkling ring
+	// below. (A host is never hidden while possessed, so the hidden walker
+	// with a possession link is always the rider.)
+	if (w.hidden() && w.possess_link() != 0)
+		return false;
 	// An invisible effect, weapon or treasure (a mine) is drawn only to its
 	// own team. An invisible living (the thief's cloak) keeps its old look
 	// and is handled by the fill-mode choice below.
@@ -602,7 +608,22 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
     int invisibility_amount = 0;
     int phantom_mode = 0;
 
-	if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
+	// A possessed body: drawn whole, with a one-pixel ring that twinkles
+	// between the ghost's white and the side the body now fights for, every
+	// three game ticks, for every viewer. It comes first because being
+	// possessed is the fact the viewer needs: an elf host in the trees or a
+	// cloaked thief host would otherwise fade into the branches below.
+	// framecount is the screen's tick counter, not sim state.
+	if (w.possess_link() != 0 && !w.hidden() &&
+	    w.query_order() == Order::Living)
+	{
+		fill_mode = OUTLINE_MODE;
+		outline_style =
+		    (((og::runtime::current_session->myscreen_->framecount / 3) & 1) == 0)
+		        ? WHITE
+		        : w.query_team_color();
+	}
+	else if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
     {
         if (w.query_order() == Order::Living)
         {

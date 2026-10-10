@@ -7,12 +7,14 @@ local M = {}
 
 -- The roles a marker can play, stored in its ani_type byte. The engine never
 -- animates an effect whose on_act answers true, so the byte is free, and it
--- rides every snapshot.
-M.BURROW = 1
-M.LEGION = 2
-M.IMMOLATION = 3
-M.PHASE_VEIL = 4
-M.METEOR_RAIN = 5
+-- rides every snapshot. The numbers live in one place, the engine's
+-- kit_marker_role.h, because the HUD's countdown labels a marker by its role.
+M.BURROW = C.MARKER_BURROW
+M.LEGION = C.MARKER_LEGION
+M.IMMOLATION = C.MARKER_IMMOLATION
+M.PHASE_VEIL = C.MARKER_PHASE_VEIL
+M.METEOR_RAIN = C.MARKER_METEOR_RAIN
+M.WARD = C.MARKER_WARD
 
 -- role -> handler(marker). A dispatch table of functions, filled only while
 -- the kit libs load (each kit lib registers its own handlers), never written
