@@ -6525,7 +6525,7 @@ inline constexpr Mutation kMut_magic_damage_slime_scen99 = {
     "magic_damage_modifier = 2",
     "magic_damage_modifier = 1",
     "Removes the slime's magic susceptibility at its live source. walker_combat.cpp:291 then multiplies the MAGICAL meteor damage by 1.0 instead of 2.0, so the slime keeps roughly twice the hitpoints and falls outside WalkerHpRangeAtFinalTick(FAMILY_SLIME, ...) while the FAMILY_SOLDIER control band is unchanged.",
-    "    { id = \"split\", name = \"SPLIT\", mp_cost = 30 },"
+    "    { id = \"split\", name = \"SPLIT\", mp_cost = 30, detail = \"Divide into two smaller slimes.\" },"
 };
 
 // slime_death_split_scen99: the FAMILY_SLIME is the PLAYER-team walker so it
