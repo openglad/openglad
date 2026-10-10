@@ -2,6 +2,7 @@
 
 local C = og.C
 local km = og.use("kit_marker")
+local lc = og.use("living_common")
 local wail_bolt = og.use("effect_wail")
 local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 
@@ -62,12 +63,18 @@ end
 
 -- ---------------------------------------------------------------------
 -- SIPHON (slot 2): a touch that heals the ghost by half the damage dealt.
--- A resisted or empty touch still spends the mana (it answers true).
+-- A resisted or empty touch still spends the mana (it answers true). A
+-- touch that finds a foe costs the ghost one attack's pause, as a swing of
+-- its own would: one touch a press, and one per pause while the key is held.
 -- ---------------------------------------------------------------------
 
 function M.siphon(self)
+  -- A phased ghost is held busy too; it hears why it cannot touch.
   if phased(self) then
     return false, "PHASED"
+  end
+  if lc.is_busy(self) then
+    return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local foe = nearest_foe(self, t.siphon_reach)
@@ -90,6 +97,8 @@ function M.siphon(self)
   if heal > 0 then
     self:heal_clamped(heal)
   end
+  -- busy is a C++ float: per-op rounding.
+  self:set_busy(og.fadd(self:busy(), self:fire_frequency()))
   return true
 end
 
@@ -131,14 +140,22 @@ local function host_refusal(foe)
   return nil
 end
 
--- How long the ride lasts: longer the more the ghost out-levels its host,
--- never shorter than possess_min, and for good (0) at a large gap.
+-- ln(1 + gap) x 100 for gaps 0 to 20, in whole numbers: the ride's curve.
+local LN100 = { 0, 69, 110, 139, 161, 179, 195, 208, 220, 230, 240, 248, 256,
+                264, 271, 277, 283, 289, 294, 300, 304 }
+
+-- How long the ride lasts: possess_base ticks on a host of the ghost's own
+-- level, growing with the log of the levels the ghost has over its host and
+-- never past possess_cap; possess_min on a host that out-levels the ghost.
+-- Never 0 (the engine's "for good"): every ride ends.
 local function possess_ticks(self, foe, t)
   local gap = self.level - foe.level
-  if gap >= t.possess_permanent_gap then
-    return 0
+  if gap < 0 then
+    return t.possess_min
   end
-  return og.max(t.possess_min, t.possess_base + t.possess_per_gap * gap)
+  local g = og.min(gap, 20)
+  local ticks = t.possess_base + og.div(t.possess_log_scale * LN100[g + 1], 100)
+  return og.min(ticks, t.possess_cap)
 end
 
 function M.possess(self)
