@@ -684,9 +684,9 @@ TEST(FamilyBehaviors, check_special_default_families)
 //   faerie BLINK / SWAP (kit_faerie.lua ai_blink): with no ally to save and
 //     no foe within 30 px, false; hurt below half with a foe within 30 px,
 //     true, and the shift is dropped (BLINK away, not SWAP).
-//   captain HOWL / EAT CORPSE (kit_captain.lua ai_howl): with no corpse
-//     underfoot, the shift is dropped and the orc's own howl range decides:
-//     no foe in the world, false; a foe 100 px off (inside 130), true.
+//   captain HOWL (kit_captain.lua ai_howl): the orc's own howl range
+//     decides: no foe in the world, false; a foe 100 px off (inside 130),
+//     true. HOWL has no alternate, so the gate leaves the shift coin alone.
 TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -717,8 +717,6 @@ TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
         << "faerie: no one to save and no foe close, no BLINK";
     EXPECT_FALSE(captain->check_special())
         << "captain: no foe in howling range, no HOWL";
-    EXPECT_EQ(0, captain->shifter_down())
-        << "captain: no corpse underfoot, so not EAT CORPSE";
 
     walker* close_foe = add_living_to_level(FAMILY_SOLDIER, 1, 320, 300);
     ASSERT_TRUE(close_foe != nullptr);
@@ -733,7 +731,6 @@ TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
     captain->set_shifter_down(1);
     EXPECT_TRUE(captain->check_special())
         << "captain: a foe at 100 px is inside the 130 px howl";
-    EXPECT_EQ(0, captain->shifter_down()) << "HOWL, not EAT CORPSE";
 
     world.delete_objects();
 }

@@ -31,7 +31,9 @@
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
@@ -150,6 +152,16 @@ void set_tile(TestGameWorld& tw, int col, int row, int tile)
         static_cast<unsigned char>(tile);
 }
 
+// The first rng state from 1 up whose first next(bound) draw is `want`.
+std::uint32_t state_where_first_draw_is(std::uint32_t bound, std::uint32_t want)
+{
+    for (std::uint32_t seed = 1;; ++seed) {
+        og::sim::SimRandom probe(seed);
+        if (probe.next(bound) == want)
+            return seed;
+    }
+}
+
 }  // namespace
 
 // The faerie had no specials. With the setting on she has four, opening at
@@ -174,7 +186,7 @@ TEST(KitFaerie, four_slots_open_at_levels_1_4_7_10_and_none_when_off)
         unsigned short shifted_cost;
     };
     const Row rows[] = {
-        {1, "BLINK", "SWAP", 8, 20},
+        {1, "BLINK", "SWAP", 20, 24},
         {2, "GLIMMER", "NONE", 24, 24},
         {3, "HASTEN", "HASTE SELF", 30, 30},
         {4, "WISH", "NONE", 100, 100},
@@ -229,51 +241,147 @@ TEST(KitFaerie, faerie_levels_into_her_wish_budget)
     EXPECT_EQ(268, 10 + 3 * faerie.intelligence);
 }
 
-// BLINK: the engine's ranged hop with range blink_base + blink_per_level *
-// level (24 + 6 at level 1), a flash where she left and where she landed,
-// then the appear row, which refuses a held key until it has played.
+// BLINK: a hop of exactly blink_base + blink_per_level x level px (24 + 2
+// at level 1 = 26) along one of the eight directions, the first tried
+// picked by one og.rand(8) draw; a flash where she left and where she
+// landed; then a second's rest: busy is set to her attack pause plus 12, so
+// a held key's next press is refused for free and only after twelve of her
+// own acts does a blink land again (the attack pause left on top of that is
+// her sprinkle's, which does not stop a hop).
 //
-// Proof it can fail: blink_base = 24 -> 0 in the staged living-07-faerie.lua
-// printed
-//   Expected equality of these values: expected_x Which is: 134
-//   f->xpos() Which is: 158
-TEST(KitFaerie, blink_moves_within_range_and_flashes_then_is_busy_while_appearing)
+// Proof it can fail: `rest(self, t)` deleted from blink in the staged
+// kit_faerie.lua printed
+//   Expected equality of these values: pause + 12.0f Which is: 21
+//   f->busy() Which is: 0
+//   Value of: held.ok Actual: true Expected: false
+// and blink_per_level = 2 -> 6 in the staged living-07-faerie.lua printed
+//   Expected equality of these values: 160 + 26 Which is: 186
+//   f->xpos() Which is: 190
+TEST(KitFaerie, blink_hops_a_fixed_length_then_rests_a_second)
 {
     og::test::ScopedHookFailureGuard guard;
     TestGameWorld tw;
     tw.world().new_specials = 1;
     living* f = add_faerie(tw, 1, 52.0f);
     ASSERT_NE(nullptr, f);
+    f->set_act_type(ACT_CONTROL);  // no AI: the test drives her acts
 
-    // teleport_ranged draws x then y from next(2 * range), first try lands
-    // on open grass.
-    const int range = 24 + 6 * 1;
+    // The first direction tried is og.rand(8): 2 is east (x + 26).
+    tw.world().rng_.state_ = state_where_first_draw_is(8, 2);
     og::sim::SimRandom probe(tw.world().rng_.state_);
-    const int expected_x = static_cast<int>(probe.next(2 * range)) - range + 160;
-    const int expected_y = static_cast<int>(probe.next(2 * range)) - range + 160;
+    ASSERT_EQ(2u, probe.next(8));
 
     const Cast first = cast(f, 1, false);
     ASSERT_TRUE(first.ok) << first.reason;
-    EXPECT_EQ(expected_x, f->xpos());
-    EXPECT_EQ(expected_y, f->ypos());
-    EXPECT_EQ(probe.state_, tw.world().rng_.state_) << "two draws, no more";
-    EXPECT_FLOAT_EQ(44.0f, f->stats()->magicpoints()) << "BLINK costs 8";
+    EXPECT_EQ(160 + 26, f->xpos()) << "the full hop, east";
+    EXPECT_EQ(160, f->ypos());
+    EXPECT_EQ(probe.state_, tw.world().rng_.state_) << "one draw, no more";
+    EXPECT_FLOAT_EQ(32.0f, f->stats()->magicpoints()) << "BLINK costs 20";
     EXPECT_EQ(2, flashes(tw)) << "a flash where she left and where she landed";
-    EXPECT_EQ(ANI_TELE_IN, f->ani_type());
-    EXPECT_EQ(0, f->cycle());
+    const float pause = f->fire_frequency();
+    ASSERT_GE(pause, 1.0f);
+    EXPECT_FLOAT_EQ(pause + 12.0f, f->busy()) << "a second's rest on her pause";
+    EXPECT_NE(ANI_TELE_IN, f->ani_type()) << "no appear row any more";
 
-    // The next tick's press (a held key) meets the appear row.
+    // The next tick's press (a held key) meets the rest.
     const Cast held = cast(f, 1, false);
     EXPECT_FALSE(held.ok);
     EXPECT_EQ(Failure::ScriptDeclined, held.why);
     EXPECT_EQ("SPECIAL BUSY", held.reason);
-    EXPECT_FLOAT_EQ(44.0f, f->stats()->magicpoints()) << "a refusal is free";
-    EXPECT_EQ(expected_x, f->xpos());
+    EXPECT_FLOAT_EQ(32.0f, f->stats()->magicpoints()) << "a refusal is free";
+    EXPECT_EQ(160 + 26, f->xpos());
+
+    // The rest counts down one a tick in her own act.
+    int acts = 0;
+    while (f->busy() > pause && acts < 50) {
+        f->act();
+        ++acts;
+    }
+    EXPECT_EQ(12, acts) << "the rest is twelve of her acts";
+    const int before_x = f->xpos();
+    const int before_y = f->ypos();
+    const float before_mp = f->stats()->magicpoints();
+    const Cast again = cast(f, 1, false);
+    ASSERT_TRUE(again.ok) << again.reason;
+    const int dx = std::abs(f->xpos() - before_x);
+    const int dy = std::abs(f->ypos() - before_y);
+    EXPECT_TRUE((dx == 0 || dx == 26) && (dy == 0 || dy == 26) && dx + dy > 0)
+        << "a full hop along one of the eight directions: dx " << dx
+        << " dy " << dy;
+    EXPECT_FLOAT_EQ(before_mp - 20.0f, f->stats()->magicpoints());
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Walled in on every side: the hop finds no landing in its tries, so BLINK
-// refuses and nothing is spent, flashed or started.
+// The pause after a plain sprinkle does not stop a hop: a faerie in a fight
+// sprinkles whenever she can, so a rest that counted that pause would keep
+// her (and a bot faerie, whose special is tried when she is hit) from ever
+// blinking away. Only a hop's own rest refuses one.
+//
+// Proof it can fail: `return self:busy() > self:fire_frequency()` ->
+// `return self:busy() > 0` in the staged kit_faerie.lua printed
+//   Value of: hop.ok Actual: false Expected: true
+//   SPECIAL BUSY
+TEST(KitFaerie, blink_slips_out_between_sprinkles)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    living* f = add_faerie(tw, 1, 52.0f);
+    ASSERT_NE(nullptr, f);
+    // The pause a sprinkle leaves: walker::init_fire adds fire_frequency
+    // to busy (0 before it, or the sprinkle would not have flown).
+    f->set_busy(f->fire_frequency());
+    ASSERT_GE(f->busy(), 1.0f);
+    const Cast hop = cast(f, 1, false);
+    ASSERT_TRUE(hop.ok) << hop.reason;
+    EXPECT_FLOAT_EQ(f->fire_frequency() + 12.0f, f->busy())
+        << "the rest starts from a full pause";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A walker standing on every full-length landing: the first direction
+// tried (east, pinned) is tried again at two thirds of the hop (17 px) and
+// she lands there, rather than giving up or turning.
+//
+// Proof it can fail: `for part = 3, 1, -1 do` -> `for part = 3, 3, -1 do`
+// in the staged kit_faerie.lua printed
+//   Value of: hop.ok Actual: false Expected: true
+//   NOWHERE TO BLINK
+TEST(KitFaerie, blink_falls_back_to_a_shorter_hop_when_hemmed_in)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    living* f = add_faerie(tw, 1, 52.0f);
+    ASSERT_NE(nullptr, f);
+    const int dir_x[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+    const int dir_y[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    for (int d = 0; d < 8; ++d) {
+        living* wall = add_living(tw, FAMILY_SOLDIER, 0,
+                                  static_cast<short>(160 + dir_x[d] * 26),
+                                  static_cast<short>(160 + dir_y[d] * 26));
+        ASSERT_NE(nullptr, wall);
+        wall->set_act_type(ACT_CONTROL);
+        ASSERT_FALSE(og::sim::respawn_spot_clear(
+            tw.world(), f, static_cast<short>(160 + dir_x[d] * 26),
+            static_cast<short>(160 + dir_y[d] * 26), -1))
+            << "direction " << d << " is blocked at full length";
+    }
+    ASSERT_TRUE(og::sim::respawn_spot_clear(tw.world(), f, 160 + 17, 160, -1))
+        << "two thirds of the way east is clear";
+
+    tw.world().rng_.state_ = state_where_first_draw_is(8, 2);
+    const Cast hop = cast(f, 1, false);
+    ASSERT_TRUE(hop.ok) << hop.reason;
+    EXPECT_EQ(160 + 17, f->xpos()) << "two thirds of 26, east";
+    EXPECT_EQ(160, f->ypos());
+    EXPECT_FLOAT_EQ(f->fire_frequency() + 12.0f, f->busy());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Walled in on every side: none of the 24 landings (eight directions at
+// full, two-thirds and one-third length) is clear, so BLINK refuses and
+// nothing is spent, flashed or rested.
 TEST(KitFaerie, blink_with_nowhere_to_land_refuses_and_spends_nothing)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -293,7 +401,7 @@ TEST(KitFaerie, blink_with_nowhere_to_land_refuses_and_spends_nothing)
     EXPECT_EQ(160, f->ypos());
     EXPECT_FLOAT_EQ(52.0f, f->stats()->magicpoints());
     EXPECT_EQ(0, flashes(tw));
-    EXPECT_NE(ANI_TELE_IN, f->ani_type());
+    EXPECT_FLOAT_EQ(0.0f, f->busy()) << "a refused blink costs no rest";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -349,9 +457,11 @@ TEST(KitFaerie, swap_trades_places_only_in_line_of_sight)
     EXPECT_EQ(160, ally->xpos());
     EXPECT_EQ(160, ally->ypos()) << "the ally stands where the faerie was";
     EXPECT_EQ(192, walled->xpos()) << "the foe behind the wall is untouched";
-    EXPECT_FLOAT_EQ(32.0f, f->stats()->magicpoints()) << "SWAP costs 20";
+    EXPECT_FLOAT_EQ(28.0f, f->stats()->magicpoints()) << "SWAP costs 24";
     EXPECT_EQ(2, flashes(tw));
     EXPECT_NE(ANI_TELE_IN, f->ani_type()) << "a swap is not a blink";
+    EXPECT_FLOAT_EQ(f->fire_frequency() + 12.0f, f->busy())
+        << "a swap rests as long as a blink";
 
     // Alone in sight: refused, nothing spent.
     TestGameWorld lonely;
@@ -365,6 +475,50 @@ TEST(KitFaerie, swap_trades_places_only_in_line_of_sight)
     EXPECT_EQ("NO ONE IN SIGHT", nobody.reason);
     EXPECT_FLOAT_EQ(52.0f, alone->stats()->magicpoints());
     EXPECT_EQ(160, alone->xpos());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// SWAP rests as long as BLINK: a held key's next press does not swap the
+// pair straight back, a blink just after a swap is refused too, and a swap
+// just after a blink. Every refusal is free.
+//
+// Proof it can fail: the `resting` guard deleted from swap in the staged
+// kit_faerie.lua printed
+//   Value of: back.ok Actual: true Expected: false
+//   Expected equality of these values: 208 f->ypos() Which is: 160
+TEST(KitFaerie, swap_refuses_while_resting)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    living* f = add_faerie(tw, 1, 100.0f, 160, 160);
+    living* ally = add_living(tw, FAMILY_SOLDIER, 1, 160, 208);
+    ASSERT_TRUE(f && ally);
+    f->set_act_type(ACT_CONTROL);
+    ally->set_act_type(ACT_CONTROL);
+
+    const Cast swapped = cast(f, 1, true);
+    ASSERT_TRUE(swapped.ok) << swapped.reason;
+    ASSERT_EQ(208, f->ypos());
+    ASSERT_FLOAT_EQ(76.0f, f->stats()->magicpoints());
+
+    const Cast back = cast(f, 1, true);
+    EXPECT_FALSE(back.ok) << "a held key does not swap straight back";
+    EXPECT_EQ("SPECIAL BUSY", back.reason);
+    EXPECT_EQ(208, f->ypos());
+    EXPECT_EQ(160, ally->ypos());
+    const Cast blink_now = cast(f, 1, false);
+    EXPECT_FALSE(blink_now.ok);
+    EXPECT_EQ("SPECIAL BUSY", blink_now.reason);
+    EXPECT_FLOAT_EQ(76.0f, f->stats()->magicpoints()) << "refusals are free";
+
+    // Rested: a blink, then a swap at once is refused.
+    f->set_busy(0.0f);
+    ASSERT_TRUE(cast(f, 1, false).ok);
+    const Cast after_blink = cast(f, 1, true);
+    EXPECT_FALSE(after_blink.ok) << "no swap inside a blink's rest";
+    EXPECT_EQ("SPECIAL BUSY", after_blink.reason);
+    EXPECT_FLOAT_EQ(56.0f, f->stats()->magicpoints());
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -416,6 +570,9 @@ TEST(KitFaerie, swap_is_no_special_when_off)
 // kit_faerie.lua printed
 //   Expected equality of these values: 8 sprinkles(tw) Which is: 5
 //   Expected equality of these values: 76.0f f->stats()->magicpoints() Which is: 82
+// and `shot:set_kit_state(C.KIT_QUARTER_FREEZE)` -> `shot:set_kit_state(0)`
+// printed
+//   Expected equality of these values: 8 marked Which is: 0
 TEST(KitFaerie, glimmer_fires_eight_sprinkles_and_prepays)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -436,12 +593,80 @@ TEST(KitFaerie, glimmer_fires_eight_sprinkles_and_prepays)
     EXPECT_FLOAT_EQ(1.0f, f->lastx());
     EXPECT_FLOAT_EQ(0.0f, f->lasty());
     EXPECT_FLOAT_EQ(f->fire_frequency(), f->busy());
+    int marked = 0;
+    for (const auto& uptr : tw.world().weaplist)
+        if (uptr && !uptr->dead() && uptr->family() == FAMILY_SPRINKLE &&
+            (uptr->kit_state() & KIT_QUARTER_FREEZE) != 0)
+            ++marked;
+    EXPECT_EQ(8, marked) << "every glimmer shot carries the quarter mark";
 
     const Cast held = cast(f, 2, false);
     EXPECT_FALSE(held.ok);
     EXPECT_EQ("SPECIAL BUSY", held.reason);
     EXPECT_EQ(8, sprinkles(tw));
     EXPECT_FLOAT_EQ(76.0f, f->stats()->magicpoints());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A glimmer shot freezes for a quarter of the rolled time; her plain
+// sprinkle, drawing the very same roll, freezes for all of it. The rng
+// state is searched for one where the level-4 roll comes out at 40, so the
+// two read 10 and 40.
+//
+// Proof it can fail: `1 + 3 * og.div(...)` -> `1 + 0 * og.div(...)` in the
+// staged weapon_animate.lua printed
+//   Expected equality of these values: 10
+//   freeze_from(glimmer, state) Which is: 40
+// and the mark dropped in kit_faerie.lua (`set_kit_state(0)`) printed the
+// same 40.
+TEST(KitFaerie, glimmer_sprinkle_freezes_a_quarter)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    living* f = add_faerie(tw, 4, 200.0f);
+    living* orc = add_living(tw, FAMILY_ORC, 0, 240, 240);
+    ASSERT_TRUE(f && orc);
+    f->set_act_type(ACT_CONTROL);
+    orc->set_act_type(ACT_CONTROL);
+    ASSERT_EQ(0, orc->stats()->frozen_delay_raw());
+
+    // One plain shot and one glimmer shot, both of the faerie's.
+    f->set_lastx(1);
+    f->set_lasty(0);
+    f->set_busy(0.0f);
+    walker* plain = f->fire();
+    ASSERT_NE(nullptr, plain);
+    ASSERT_EQ(0, plain->kit_state() & KIT_QUARTER_FREEZE);
+    f->set_busy(0.0f);
+    ASSERT_TRUE(cast(f, 2, false).ok);
+    walker* glimmer = nullptr;
+    for (const auto& uptr : tw.world().weaplist)
+        if (uptr && uptr.get() != plain && !uptr->dead() &&
+            uptr->family() == FAMILY_SPRINKLE)
+            glimmer = uptr.get();
+    ASSERT_NE(nullptr, glimmer);
+
+    // Each hit from the same rng state, on the same unfrozen orc.
+    const float plain_damage = plain->damage();
+    const float glimmer_damage = glimmer->damage();
+    ASSERT_FLOAT_EQ(plain_damage, glimmer_damage) << "the same sprinkle";
+    const auto freeze_from = [&](walker* shot, std::uint32_t state) {
+        // A hit wears the shot's damage down by one; put it back so every
+        // hit draws exactly the same numbers.
+        shot->set_damage(plain_damage);
+        orc->stats()->set_frozen_delay(0);
+        orc->stats()->set_hitpoints(5000.0f);
+        shot->stats()->set_hitpoints(100.0f);
+        tw.world().rng_.state_ = state;
+        shot->attack(orc);
+        return static_cast<int>(orc->stats()->frozen_delay());
+    };
+    std::uint32_t state = 1;
+    while (freeze_from(plain, state) != 40 && state < 100000)
+        ++state;
+    ASSERT_EQ(40, freeze_from(plain, state)) << "a plain shot freezes the full roll";
+    EXPECT_EQ(10, freeze_from(glimmer, state)) << "a glimmer shot freezes a quarter";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -712,7 +937,7 @@ TEST(KitFaerie, ai_off_answers_the_classic_gate)
 //   Value of: og::test::check_special_ai(*fd, f)  Actual: false  Expected: true
 //   Expected equality of these values: 0 f->shifter_down() Which is: 1
 // Without the price check (the gate before it could read SWAP's price),
-// "BLINK, not an unaffordable SWAP" read shift 1 and "19 MP, not cornered:
+// "BLINK, not an unaffordable SWAP" read shift 1 and "23 MP, not cornered:
 // hold" answered true.
 TEST(KitFaerie, ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered)
 {
@@ -751,25 +976,25 @@ TEST(KitFaerie, ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_c
     EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "cornered and hurt";
     EXPECT_EQ(0, f->shifter_down()) << "BLINK";
 
-    // SWAP costs 20, BLINK 8: with the dying ally back in play, a faerie
+    // SWAP costs 24, BLINK 20: with the dying ally back in play, a faerie
     // that cannot pay for SWAP does not pick it (the engine would refuse it
     // for mana); cornered, she blinks instead, and with nothing else to do
     // she holds.
     attacker->set_dead(0);
     ally->setxy(180, 160);  // 20: nearer than the close foe (24), so the
                             // dying ally is SWAP's partner again
-    f->stats()->set_magicpoints(20.0f);
+    f->stats()->set_magicpoints(24.0f);
     f->set_shifter_down(0);
-    EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "20 MP pays for SWAP";
-    EXPECT_EQ(1, f->shifter_down()) << "SWAP at 20 MP";
-    f->stats()->set_magicpoints(19.0f);
+    EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "24 MP pays for SWAP";
+    EXPECT_EQ(1, f->shifter_down()) << "SWAP at 24 MP";
+    f->stats()->set_magicpoints(23.0f);
     f->set_shifter_down(1);
-    EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "19 MP, cornered";
+    EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "23 MP, cornered";
     EXPECT_EQ(0, f->shifter_down()) << "BLINK, not an unaffordable SWAP";
     set_hp(f, 75.0f, 75.0f);
     f->set_shifter_down(7);
     EXPECT_FALSE(og::test::check_special_ai(*fd, f))
-        << "19 MP, not cornered: hold";
+        << "23 MP, not cornered: hold";
     EXPECT_EQ(7, f->shifter_down()) << "no shift chosen";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
@@ -806,7 +1031,7 @@ TEST(KitFaerie, bot_faerie_swaps_a_dying_ally_out)
         ASSERT_TRUE(f->special()) << "coin " << coin;
         EXPECT_EQ(200, f->xpos()) << "coin " << coin;
         EXPECT_EQ(160, ally->xpos()) << "coin " << coin;
-        EXPECT_FLOAT_EQ(32.0f, f->stats()->magicpoints()) << "coin " << coin;
+        EXPECT_FLOAT_EQ(28.0f, f->stats()->magicpoints()) << "coin " << coin;
         EXPECT_EQ(0u, guard.count()) << guard.message();
     }
 }
@@ -985,7 +1210,9 @@ Skirmish run_skirmish(short new_specials, int ticks)
 // appears); with the setting off she is the classic faerie and none of
 // those ever happen. OG_FAERIE_SKIRMISH_LOG=1 prints both timelines. (Seen
 // when this was written: on, the orc's hits make her blink away at tick 56
-// and she lasts to tick 206; off, she has no special and falls at tick 69.)
+// and again at tick 224, and she outlasts the 400 ticks; off, she has no
+// special and falls at tick 69. A blink that the plain pause after each
+// sprinkle refused never came at all: on read exactly as off.)
 //
 // Proof it can fail: `self.hp < og.fdiv(self.max_hp, 2.0)` -> `self.hp <
 // 0.0` in the staged kit_faerie.lua (she never feels cornered) printed

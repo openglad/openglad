@@ -1,14 +1,12 @@
--- core lib: kit_captain — the orc captain's New Specials: howl/eat corpse, hook blade/knife fan, hurl orc/shove, war banner/warband, and their bot gates (cookbook: docs/lua-classpacks-design.md §3).
+-- core lib: kit_captain — the orc captain's New Specials: howl, eat corpse, hook blade/knife fan, war banner/warband, and their bot gates (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
 local lc = og.use("living_common")
 local orc = og.use("orc_specials")
 
 local FX_HOOK_BLADE = assert(og.family_id("fx", "core:hook_blade"))
-local FX_FLASH = assert(og.family_id("fx", "core:flash"))
 local WEAPON_WAR_BANNER = assert(og.family_id("weapon", "core:war_banner"))
 local LIVING_ORC = assert(og.family_id("living", "core:orc"))
-local LIVING_ORC_CAPTAIN = assert(og.family_id("living", "core:orc_captain"))
 
 -- The eight facings, indexed curdir + 1 (FACE_UP = 0, clockwise).
 local DIR_X = { 0, 1, 1, 1, 0, -1, -1, -1 }
@@ -34,11 +32,6 @@ local function facing_index(self)
     end
   end
   return C.FACE_DOWN
-end
-
-local function is_orc(w)
-  local fam = w:family()
-  return fam == LIVING_ORC or fam == LIVING_ORC_CAPTAIN
 end
 
 -- A living foe on the walker's own floor (the finders are floor-blind and
@@ -124,20 +117,25 @@ local function live_banner(self)
   return nil
 end
 
--- How many warband grunts this captain has alive: orcs it summoned.
-local function live_grunts(self)
+-- This captain's live warband grunts: orcs it summoned.
+local function own_grunts(self)
   local obs = og.oblist()
-  local n = 0
+  local grunts = {}
   for i = 1, #obs do
     local ob = obs[i]
     if ob:order() == C.ORDER_LIVING
         and ob:family() == LIVING_ORC
         and ob:dead() == 0
         and ob:owner() == self then
-      n = n + 1
+      grunts[#grunts + 1] = ob
     end
   end
-  return n
+  return grunts
+end
+
+-- How many warband grunts this captain has alive.
+local function live_grunts(self)
+  return #own_grunts(self)
 end
 
 -- A blood stain the captain stands on (within the squared reach), on its
@@ -156,28 +154,14 @@ local function corpse_underfoot(self, reach_sq)
   return corpse
 end
 
-local function flash_at(where)
-  local flash = og.add_ob("fx", FX_FLASH)
-  if flash then
-    flash.ani_type = C.ANI_EXPAND_8
-    flash:set_floor(where:floor())
-    flash:center_on(where)
-  end
-end
+-- ------------------------------------------- slots 1 and 2: HOWL, EAT CORPSE
 
--- ------------------------------------------------- slot 1: HOWL / EAT CORPSE
+-- The orc's own two specials, each on its own slot as the orc has them, so
+-- an orc promoted at level 5 keeps both.
+M.howl = orc.yell
+M.eat_corpse = orc.eat_corpse
 
--- The orc's own two specials, carried over onto one slot, so an orc promoted
--- at level 5 keeps both. The whole slot is new-kit, so with the setting off
--- neither is in play and a plain shifter_down is the right test.
-function M.howl_or_eat(self)
-  if self:shifter_down() ~= 0 then
-    return orc.eat_corpse(self)
-  end
-  return orc.yell(self)
-end
-
--- ------------------------------------------------ slot 2: HOOK BLADE / FAN
+-- ------------------------------------------------ slot 3: HOOK BLADE / FAN
 
 local function hook_blade(self)
   if live_blade(self) then
@@ -196,6 +180,8 @@ local function hook_blade(self)
   if not blade then
     return false, "COULD NOT MAKE A BLADE"
   end
+  -- Not on the hook yet (lib/effect_hook_blade.lua reads 1 as reeling).
+  blade:set_lineofsight(0)
   og.emit_sound(C.SOUND_FWIP)
   return true
 end
@@ -232,155 +218,26 @@ function M.hook_or_fan(self)
   return hook_blade(self)
 end
 
--- The blade has caught `foe`: cut it, drag it to the captain's feet and
--- stun it. Called by lib/effect_hook_blade.lua, which then retires the blade.
+-- The blade has caught `foe`: cut it and, if it lives, hook it: the foe
+-- becomes the blade's leader, the blade is marked as reeling (lineofsight
+-- 1), the foe is frozen for the whole reel and hook_stun ticks more, and
+-- the blade's lifetime becomes the reel's budget; lib/effect_hook_blade.lua
+-- then reels the foe in, one step a tick. Answers true when the foe is on the hook,
+-- false when the cut killed it (the blade then goes).
 function M.snag(blade, owner, foe)
   local t = og.tuning(owner)
   -- attack() looks pure but draws from the gameplay stream.
   blade:attack(foe)
   if foe:dead() ~= 0 then
-    return
+    return false
   end
-  local x, y = M.ring_spot(foe, owner, foe:xpos(), foe:ypos())
-  if x ~= nil and y ~= nil then
-    foe:set_floor(owner:floor())
-    foe:setxy(x, y)
-  else
-    -- Nowhere to land beside the captain: the chain hauls it a few steps.
-    local dx = og.sign(owner:xpos() - foe:xpos())
-    local dy = og.sign(owner:ypos() - foe:ypos())
-    foe:s_force_command(C.COMMAND_WALK, t.hook_drag_ticks, dx, dy)
-  end
-  foe:add_frozen_stun(t.hook_stun)
+  blade:set_leader(foe)
+  blade:set_lineofsight(1)
+  blade.lifetime = t.hook_reel_max
+  foe:add_frozen_stun(t.hook_reel_max + t.hook_stun)
   foe:set_foe(owner)
   og.emit_sound(C.SOUND_CLANG)
-end
-
--- -------------------------------------------------- slot 3: HURL ORC / SHOVE
-
--- The nearest allied orc (orc or captain) beside the captain that no seat
--- drives, or nil.
-local function orc_beside(self, reach)
-  local friends = og.find_friends_in_range("ob", reach, self)
-  local best = nil
-  local best_d = 0
-  for i = 1, #friends do
-    local w = friends[i]
-    local d = self:distance_to_ob(w)
-    local closer = best == nil or d < best_d
-    local unseated = w:user() == -1
-    local candidate = is_orc(w) and unseated
-    local same_floor = w:floor() == self:floor()
-    if closer and candidate then
-      if same_floor then
-        best = w
-        best_d = d
-      end
-    end
-  end
-  return best
-end
-
--- A foe worth throwing at: alive, on the captain's floor, in range and in
--- plain sight.
-local function hurl_target_ok(self, w, range)
-  if not w or w:dead() ~= 0 then
-    return false
-  end
-  if self:is_friendly(w) or w:floor() ~= self:floor() then
-    return false
-  end
-  if self:distance_to_ob(w) > range then
-    return false
-  end
-  return og.line_clear(self, w)
-end
-
-local function hurl_orc(self)
-  local t = og.tuning(self)
-  local thrown = orc_beside(self, t.hurl_adjacent)
-  if not thrown then
-    return false, "NO ORC BESIDE YOU"
-  end
-  local target = self:foe()
-  if not hurl_target_ok(self, target, t.hurl_range) then
-    target = og.find_near_foe(self)
-  end
-  if not target then
-    return false, "NO TARGET"
-  end
-  if not hurl_target_ok(self, target, t.hurl_range) then
-    return false, "NO TARGET"
-  end
-  local x, y = M.ring_spot(thrown, target, self:xpos(), self:ypos())
-  if x == nil or y == nil then
-    return false, "NO LANDING SPOT"
-  end
-  thrown:set_floor(target:floor())
-  thrown:setxy(x, y)
-  -- The impact: every living foe around the landing takes the orc's weight.
-  local saved_damage = thrown:damage()
-  thrown.damage = thrown.level * t.hurl_damage_per_level
-  local foes = og.find_foes_in_range("ob", t.hurl_radius, thrown)
-  for i = 1, #foes do
-    local w = foes[i]
-    if living_on_floor(w, thrown:floor()) then
-      -- attack() draws from the gameplay stream, once per foe
-      thrown:attack(w)
-      w:add_frozen_stun(t.hurl_stun)
-    end
-  end
-  thrown.damage = saved_damage
-  -- ... and the orc fights where it lands.
-  thrown:set_foe(target)
-  thrown.ani_type = C.ANI_ATTACK
-  thrown:set_cycle(0)
-  flash_at(thrown)
-  og.emit_sound(C.SOUND_CLANG)
   return true
-end
-
--- Push one foe up to `tiles` tiles along (dx, dy), a tile at a time; the
--- first blocked tile stops it.
-local function push_back(foe, dx, dy, tiles)
-  for _ = 1, tiles do
-    local x = foe:xpos() + dx * C.GRID_SIZE
-    local y = foe:ypos() + dy * C.GRID_SIZE
-    if not og.spawn_spot_clear(foe, x, y) then
-      return
-    end
-    foe:setxy(x, y)
-  end
-end
-
-local function shove(self)
-  local t = og.tuning(self)
-  local facing = facing_index(self) + 1
-  local dx = DIR_X[facing]
-  local dy = DIR_Y[facing]
-  local foes = og.find_foes_in_range("ob", t.shove_reach, self)
-  local shoved = 0
-  for i = 1, #foes do
-    local w = foes[i]
-    local ahead = (w:xpos() - self:xpos()) * dx + (w:ypos() - self:ypos()) * dy
-    if ahead > 0 and living_on_floor(w, self:floor()) then
-      push_back(w, dx, dy, t.shove_tiles)
-      w:add_frozen_stun(t.shove_stun)
-      shoved = shoved + 1
-    end
-  end
-  if shoved == 0 then
-    return false, "NO ONE IN FRONT"
-  end
-  og.emit_sound(C.SOUND_CHARGE)
-  return true
-end
-
-function M.hurl_or_shove(self)
-  if self:shifter_down() ~= 0 then
-    return shove(self)
-  end
-  return hurl_orc(self)
 end
 
 -- ------------------------------------------- slot 4: WAR BANNER / WARBAND
@@ -391,6 +248,9 @@ local function war_banner(self)
   if not corpse then
     return false, "NO CORPSE TO PLANT ON"
   end
+  -- A banner of his already standing comes down once the new one is up
+  -- (found before the new one exists, so the scan cannot answer it).
+  local old = live_banner(self)
   local banner = og.add_weap_ob("weapon", WEAPON_WAR_BANNER)
   if not banner then
     return false, "COULD NOT RAISE BANNER"
@@ -408,6 +268,22 @@ local function war_banner(self)
   -- The fallen one's head goes on the pole: the corpse is used up.
   corpse.dead = 1
   corpse:death()
+  if old then
+    -- Struck quietly: lib/weapon_banner.lua reads the leader mark and
+    -- flashes without the fall's boom and notice.
+    old:set_leader(self)
+    old.dead = 1
+    old:death()
+    -- The captain moved his rally point: grunts marching to the old banner
+    -- turn to the new one.
+    local cx = banner:xpos() + og.div(banner:sizex(), 2)
+    local cy = banner:ypos() + og.div(banner:sizey(), 2)
+    local grunts = own_grunts(self)
+    for i = 1, #grunts do
+      grunts[i]:s_clear_command()
+      grunts[i]:s_add_command(C.COMMAND_GOTO, 200, cx, cy)
+    end
+  end
   og.emit_sound(C.SOUND_ROAR)
   og.emit_notification(og.entity_display_name(self, "Orc Captain")
     .. " raises a war banner!")
@@ -527,21 +403,29 @@ end
 -- answers true, exactly as no gate at all. Ranges are code constants (see
 -- lib/ai.lua on per-call tuning reads in gates).
 
--- Howl at a foe within 130 (the orc's own gate); eat when hurt and standing
--- on a corpse.
+-- Howl at a foe within 130 (the orc's own gate). HOWL has no alternate, so
+-- the shift coin the engine drew is left alone.
 function M.ai_howl(self)
+  if og.match_setting("new_specials") == 0 then
+    return true
+  end
+  return og.check_special_ai_distance(self, 130)
+end
+
+-- Eat when below 60 % health and standing on a corpse; otherwise hold. (The
+-- orc's own bot tries its meal whenever a foe is within 130 and lets the
+-- cast refuse; the captain keeps the stricter rule its shifted howl had.)
+function M.ai_eat(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
   -- Below 60 %, from whole numbers: hp and max_hp are C++ floats, one
   -- float multiply each side, and no decimal fraction to round.
   local hurt = og.fmul(self.hp, 5) < og.fmul(self.max_hp, 3)
-  if hurt and corpse_underfoot(self, 24) then
-    self:set_shifter_down(1)
-    return true
+  if not hurt then
+    return false
   end
-  self:set_shifter_down(0)
-  return og.check_special_ai_distance(self, 130)
+  return corpse_underfoot(self, 24) ~= nil
 end
 
 -- Hook a foe within 90 while no blade is out; fan knives into a crowd.
@@ -555,24 +439,6 @@ function M.ai_hook(self)
     return true
   end
   if near >= 2 then
-    self:set_shifter_down(1)
-    return true
-  end
-  return false
-end
-
--- Throw an orc standing beside the captain at a foe within 120; shove a
--- crowd at arm's length.
-function M.ai_hurl(self)
-  if og.match_setting("new_specials") == 0 then
-    return true
-  end
-  local thrower = orc_beside(self, 20) ~= nil
-  if thrower and count_living_foes(self, 120) >= 1 then
-    self:set_shifter_down(0)
-    return true
-  end
-  if count_living_foes(self, 40) >= 2 then
     self:set_shifter_down(1)
     return true
   end
@@ -601,5 +467,5 @@ end
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:orc_captain  every specials entry's cast and ai
---   core:hook_blade   (lib/effect_hook_blade.lua calls M.snag)
+--   core:hook_blade   (lib/effect_hook_blade.lua calls M.snag and M.ring_spot)
 return M

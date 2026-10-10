@@ -6,8 +6,8 @@
  * (at your option) any later version.
  */
 
-// New Specials, orc captain: HOWL / EAT CORPSE, HOOK BLADE / KNIFE FAN,
-// HURL ORC / SHOVE, WAR BANNER / WARBAND (packs/core/lib/kit_captain.lua,
+// New Specials, orc captain: HOWL, EAT CORPSE, HOOK BLADE / KNIFE FAN,
+// WAR BANNER / WARBAND (packs/core/lib/kit_captain.lua,
 // lib/orc_specials.lua, lib/effect_hook_blade.lua, lib/weapon_banner.lua).
 //
 // Every cast goes through the REAL walker::special() (the engine's price
@@ -19,28 +19,20 @@
 // Perturbation proofs (one per special, each run once against the staged
 // copy under build/ci-test/packs/core and then restored; the failing line
 // is quoted where it was seen):
-//   HOWL / EAT CORPSE  lib/orc_specials.lua `foe:add_frozen_stun(stun)` ->
+//   HOWL, EAT CORPSE   lib/orc_specials.lua `foe:add_frozen_stun(stun)` ->
 //                      `foe:add_frozen_stun(0)` (the moved orc pin):
 //                      captain_howl_stuns_like_the_orc fails on the stun.
 //                      `corpse_heal_per_level = 5` -> 0 in the captain's
 //                      tuning: captain_eats_a_corpse_when_hurt fails on hp.
-//                      kit_captain.howl_or_eat's shifted
-//                      `return orc.eat_corpse(self)` -> `orc.yell(self)`:
-//                      promoted_orc_keeps_howl_and_eat_corpse fails on hp
-//                      (65 wanted, 50 read) and the uneaten corpse; the
-//                      WAR BANNER row's `mp_cost = 80` -> 81: the same test
-//                      fails on the promoted body's cast_cost (81).
-//   HOOK BLADE         `hook_radius = 16` -> 48: hook_orbits_tight_and_fast
-//                      fails on every orbit step; `hook_stun = 12` -> 0:
-//                      hook_snags_drags_and_stuns fails on the stun.
+//                      The WAR BANNER row's `mp_cost = 80` -> 81:
+//                      promoted_orc_keeps_howl_and_eat_corpse fails on the
+//                      promoted body's cast_cost (81).
+//   HOOK BLADE         each hook test names its own (the spiral, the reel,
+//                      the late snag, the wall, the ring).
 //   KNIFE FAN          `for spread = -1, 1` -> `for spread = 0, 0`:
 //                      knife_fan_throws_three counts one knife. Restoring
 //                      the aim through og.trunc: the same test reads a
 //                      0.75 aim back as 0.
-//   HURL ORC           `hurl_radius = 24` -> 0: hurled_orc_lands_clear_...
-//                      fails on both foes' stun.
-//   SHOVE              `shove_tiles = 2` -> 0: shove_displaces_... fails on
-//                      the pushed foe's position.
 //   WAR BANNER         `banner_regen = 1` -> 0 (core:war_banner tuning):
 //                      banner_regens_allies_... fails on the ally's hp.
 //   WARBAND            `warband_base = 2` -> 0: warband_arrives_... counts
@@ -71,6 +63,7 @@
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -89,12 +82,14 @@ constexpr unsigned char kUs = 0;
 constexpr unsigned char kThem = 1;
 
 // The captain's tuning, restated where a test checks an exact consequence.
-constexpr int kHookRadius = 16;
 constexpr int kHookTicks = 48;
 constexpr int kHookHp = 30;
+constexpr int kHookStart = 12;
+constexpr int kHookGrowth = 2;
+constexpr int kHookReach = 60;
+constexpr int kHookReelStep = 8;
+constexpr int kHookReelMax = 8;
 constexpr int kHookStun = 12;
-constexpr int kHurlStun = 10;
-constexpr int kShoveStun = 10;
 constexpr int kBannerHpBase = 120;
 constexpr int kBannerTicks = 900;
 constexpr int kWarbandLifetime = 400;
@@ -104,6 +99,26 @@ constexpr std::array<int, 16> kOrbitX = {0,  -9, -17, -22, -24, -22, -17, -9,
                                          0,  9,  17,  22,  24,  22,  17,  9};
 constexpr std::array<int, 16> kOrbitY = {-24, -22, -17, -9, 0,  9,  17, 22,
                                          24,  22,  17,  9,  0,  -9, -17, -22};
+
+// The spiral's radius on the blade's tick-th act (lib/effect_hook_blade.lua):
+// out from 12 px, 2 px a tick, to 60 px at tick 24, then back in.
+int hook_radius_at(int tick)
+{
+    const int turn = (kHookReach - kHookStart) / kHookGrowth;
+    if (tick <= turn)
+        return kHookStart + kHookGrowth * tick;
+    return kHookReach - kHookGrowth * (tick - turn);
+}
+
+// The blade's offset from its centred spot on its tick-th act: one step of
+// the 16-step circle a tick, scaled to the radius (the lib's float math).
+std::pair<float, float> hook_offset_at(int tick)
+{
+    const std::size_t idx = static_cast<std::size_t>(tick % 16);
+    const float r = static_cast<float>(hook_radius_at(tick));
+    return {static_cast<float>(kOrbitX[idx]) * r / 24.0f,
+            static_cast<float>(kOrbitY[idx]) * r / 24.0f};
+}
 
 int fx_family(const char* id)
 {
@@ -340,13 +355,16 @@ TEST(KitCaptain, captain_has_no_specials_when_off)
     EXPECT_TRUE(grunts_of(tw, captain).empty());
     EXPECT_EQ(0, count_sound(tw, SOUND_ROAR));
 
-    // ... and with it on, the same captain sees its four slots.
+    // ... and with it on, the same captain sees its four slots: HOWL, EAT
+    // CORPSE (each on its own, so the shift changes neither price), HOOK
+    // BLADE / KNIFE FAN, WAR BANNER / WARBAND.
     tw.world().new_specials = 1;
     EXPECT_EQ(25, og::sim::cast_cost(*captain, 1, false));
-    EXPECT_EQ(20, og::sim::cast_cost(*captain, 1, true));
-    EXPECT_EQ(40, og::sim::cast_cost(*captain, 2, false));
-    EXPECT_EQ(30, og::sim::cast_cost(*captain, 2, true));
-    EXPECT_EQ(50, og::sim::cast_cost(*captain, 3, false));
+    EXPECT_EQ(25, og::sim::cast_cost(*captain, 1, true))
+        << "EAT CORPSE is no longer HOWL's shift";
+    EXPECT_EQ(20, og::sim::cast_cost(*captain, 2, false));
+    EXPECT_EQ(20, og::sim::cast_cost(*captain, 2, true));
+    EXPECT_EQ(40, og::sim::cast_cost(*captain, 3, false));
     EXPECT_EQ(30, og::sim::cast_cost(*captain, 3, true));
     EXPECT_EQ(80, og::sim::cast_cost(*captain, 4, false));
     EXPECT_EQ(80, og::sim::cast_cost(*captain, 4, true));
@@ -384,7 +402,7 @@ TEST(KitCaptain, ai_off_answers_the_classic_gate)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// --------------------------------------------------- HOWL / EAT CORPSE
+// ---------------------------------------------------- HOWL, EAT CORPSE
 
 // The captain's HOWL is the orc's own yell (one body in lib/orc_specials.lua):
 // the same pinned stream gives the same stun on the same foe and leaves the
@@ -421,8 +439,8 @@ TEST(KitCaptain, captain_howl_refuses_while_busy)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Shift + slot 1: the orc's corpse meal at the alternate's price (20). Its
-// refusals carry over too: full health, no corpse, a corpse out of reach.
+// Slot 2: the orc's corpse meal at its own price (20). Its refusals carry
+// over too: full health, no corpse, a corpse out of reach.
 TEST(KitCaptain, captain_eats_a_corpse_when_hurt)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -434,22 +452,22 @@ TEST(KitCaptain, captain_eats_a_corpse_when_hurt)
     captain->set_owned_myguy(std::make_unique<guy>(FAMILY_BIG_ORC));
     captain->myguy->exp = 0;
 
-    Cast c = cast(captain, 1, true);
+    Cast c = cast(captain, 2, false);
     EXPECT_EQ("ALREADY AT FULL HEALTH", c.reason);
 
     captain->stats()->set_hitpoints(50.0f);
-    c = cast(captain, 1, true);
+    c = cast(captain, 2, false);
     EXPECT_EQ("NO CORPSE NEARBY", c.reason);
 
     walker* stain = add_stain(tw, captain, 3);
     ASSERT_NE(nullptr, stain);
     stain->setxy(stain->xpos() + 4, stain->ypos() + 4);  // 32 > 24 squared px
-    c = cast(captain, 1, true);
+    c = cast(captain, 2, false);
     EXPECT_EQ("NO CORPSE IN RANGE", c.reason);
     EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
 
     stain->center_on(captain);
-    c = cast(captain, 1, true);
+    c = cast(captain, 2, false);
     EXPECT_TRUE(c.ok) << c.reason;
     EXPECT_FLOAT_EQ(20.0f, c.mp_spent) << "EAT CORPSE's own price";
     EXPECT_FLOAT_EQ(65.0f, captain->stats()->hitpoints())
@@ -462,16 +480,18 @@ TEST(KitCaptain, captain_eats_a_corpse_when_hurt)
     captain->stats()->set_hitpoints(195.0f);
     walker* second = add_stain(tw, captain, 3);
     ASSERT_NE(nullptr, second);
-    c = cast(captain, 1, true);
+    c = cast(captain, 2, false);
     EXPECT_TRUE(c.ok) << c.reason;
     EXPECT_FLOAT_EQ(200.0f, captain->stats()->hitpoints()) << "clamped to max";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
 // The bug the kit fixes: an orc promoted to captain kept no specials. Now
-// the promoted body carries the captain's whole price table (a stale orc
-// table would read 25/20/5000/5000), howls, and eats a corpse at EAT
-// CORPSE's own price (setting on).
+// the promoted body carries the captain's whole price table, howls, and
+// eats a corpse at EAT CORPSE's own price (setting on). The orc's own table
+// reads 25 and 20 on its first two slots as well, so the proof that the
+// body took the captain's table rests on slots 3 and 4 (40 and 80; an orc
+// has nothing there and reads 5000).
 TEST(KitCaptain, promoted_orc_keeps_howl_and_eat_corpse)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -487,9 +507,8 @@ TEST(KitCaptain, promoted_orc_keeps_howl_and_eat_corpse)
     orc->transform_to(Order::Living, FAMILY_BIG_ORC);
     ASSERT_EQ(FAMILY_BIG_ORC, orc->family());
     EXPECT_EQ(25, og::sim::cast_cost(*orc, 1, false));
-    EXPECT_EQ(20, og::sim::cast_cost(*orc, 1, true));
-    EXPECT_EQ(40, og::sim::cast_cost(*orc, 2, false));
-    EXPECT_EQ(50, og::sim::cast_cost(*orc, 3, false));
+    EXPECT_EQ(20, og::sim::cast_cost(*orc, 2, false));
+    EXPECT_EQ(40, og::sim::cast_cost(*orc, 3, false));
     EXPECT_EQ(80, og::sim::cast_cost(*orc, 4, false));
 
     orc->stats()->set_max_magicpoints(100.0f);
@@ -504,7 +523,7 @@ TEST(KitCaptain, promoted_orc_keeps_howl_and_eat_corpse)
     orc->stats()->set_hitpoints(50.0f);
     walker* stain = add_stain(tw, orc, 3);
     ASSERT_NE(nullptr, stain);
-    c = cast(orc, 1, true);
+    c = cast(orc, 2, false);
     EXPECT_TRUE(c.ok) << c.reason;
     EXPECT_FLOAT_EQ(20.0f, c.mp_spent) << "EAT CORPSE's own price";
     EXPECT_FLOAT_EQ(65.0f, orc->stats()->hitpoints())
@@ -515,11 +534,16 @@ TEST(KitCaptain, promoted_orc_keeps_howl_and_eat_corpse)
 
 // ------------------------------------------------- HOOK BLADE / KNIFE FAN
 
-// The blade orbits the captain two steps of the 16-step circle per tick
-// (twice the shield's speed) at hook_radius 16 px (two thirds of the
-// shield's 24), re-centred on the captain each tick; one blade at a time;
-// it wears out after hook_ticks.
-TEST(KitCaptain, hook_orbits_tight_and_fast)
+// The blade spirals like the boomerang: one step of the 16-step circle a
+// tick, the radius growing from 12 px by 2 px a tick to 60 px at tick 24
+// and shrinking back to 12 at tick 48, re-centred on the captain each tick;
+// one blade at a time; it wears out after hook_ticks (48).
+//
+// Proof it can fail: `hook_growth = 2` -> 1 in the staged
+// living-15-orc_captain.lua printed, from tick 1 on,
+//   Expected equality of these values: base_x + dx Which is: 199.75
+//   blade->worldx() Which is: 200.125
+TEST(KitCaptain, hook_spirals_out_and_back)
 {
     og::test::ScopedHookFailureGuard guard;
     TestGameWorld tw;
@@ -528,7 +552,7 @@ TEST(KitCaptain, hook_orbits_tight_and_fast)
     walker* captain = add_captain(tw, 200, 200);
     ASSERT_NE(nullptr, captain);
 
-    Cast c = cast(captain, 2, false);
+    Cast c = cast(captain, 3, false);
     ASSERT_TRUE(c.ok) << c.reason;
     EXPECT_FLOAT_EQ(40.0f, c.mp_spent);
     EXPECT_EQ(1, count_sound(tw, SOUND_FWIP));
@@ -536,8 +560,9 @@ TEST(KitCaptain, hook_orbits_tight_and_fast)
     walker* blade = blades(tw).front();
     EXPECT_EQ(captain, blade->owner());
     EXPECT_FLOAT_EQ(static_cast<float>(kHookHp), blade->stats()->hitpoints());
+    EXPECT_EQ(0, blade->lineofsight()) << "not on the hook";
 
-    c = cast(captain, 2, false);
+    c = cast(captain, 3, false);
     EXPECT_FALSE(c.ok);
     EXPECT_EQ("BLADE ALREADY OUT", c.reason);
     EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
@@ -546,31 +571,24 @@ TEST(KitCaptain, hook_orbits_tight_and_fast)
         captain->xpos() + captain->sizex() / 2 - blade->sizex() / 2);
     const float base_y = static_cast<float>(
         captain->ypos() + captain->sizey() / 2 - blade->sizey() / 2);
-    for (int tick = 1; tick <= 8; ++tick) {
+    float widest = 0.0f;
+    for (int tick = 1; tick <= kHookTicks; ++tick) {
         blade->act();
-        const std::size_t idx = static_cast<std::size_t>((2 * tick) % 16);
-        const float want_x = base_x + static_cast<float>(kOrbitX[idx]) *
-                                          static_cast<float>(kHookRadius) /
-                                          24.0f;
-        const float want_y = base_y + static_cast<float>(kOrbitY[idx]) *
-                                          static_cast<float>(kHookRadius) /
-                                          24.0f;
-        EXPECT_FLOAT_EQ(want_x, blade->worldx()) << "tick " << tick;
-        EXPECT_FLOAT_EQ(want_y, blade->worldy()) << "tick " << tick;
-        EXPECT_LE(std::abs(blade->worldx() - base_x), 16.0f);
+        ASSERT_FALSE(blade->dead()) << "tick " << tick;
+        const auto [dx, dy] = hook_offset_at(tick);
+        EXPECT_FLOAT_EQ(base_x + dx, blade->worldx()) << "tick " << tick;
+        EXPECT_FLOAT_EQ(base_y + dy, blade->worldy()) << "tick " << tick;
+        widest = std::max(widest, std::max(std::abs(blade->worldx() - base_x),
+                                            std::abs(blade->worldy() - base_y)));
     }
+    EXPECT_FLOAT_EQ(60.0f, widest) << "out to 60 px (tick 24, straight down)";
 
-    // It wears out: hook_ticks of life in all.
-    int acts = 8;
-    while (!blade->dead() && acts < 200) {
-        blade->act();
-        ++acts;
-    }
-    EXPECT_TRUE(blade->dead());
-    EXPECT_EQ(kHookTicks + 1, acts) << "48 ticks of orbit, gone on the 49th";
+    // It wears out: hook_ticks of life in all, gone on the next act.
+    blade->act();
+    EXPECT_TRUE(blade->dead()) << "48 ticks of spiral, gone on the 49th";
 
     // The captain may throw a new one once it is gone.
-    c = cast(captain, 2, false);
+    c = cast(captain, 3, false);
     EXPECT_TRUE(c.ok) << c.reason;
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
@@ -584,7 +602,7 @@ TEST(KitCaptain, hook_blade_dies_with_its_captain)
     tw.world().new_specials = 1;
     walker* captain = add_captain(tw, 200, 200);
     ASSERT_NE(nullptr, captain);
-    ASSERT_TRUE(cast(captain, 2, false).ok);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
     walker* blade = blades(tw).front();
     captain->set_dead(1);
     blade->act();
@@ -592,41 +610,164 @@ TEST(KitCaptain, hook_blade_dies_with_its_captain)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// The first foe the spinning blade touches is cut, dragged to the clear spot
-// beside the captain nearest where it stood, stunned for hook_stun, and set
-// on the captain; the blade is spent.
-TEST(KitCaptain, hook_snags_drags_and_stuns)
+namespace {
+
+// Act `blade` until `foe` is frozen (the snag) or the blade is gone; the
+// act count, or -1 when it never snagged.
+int act_until_snagged(walker* blade, walker* foe, int limit = 60)
+{
+    for (int tick = 1; tick <= limit; ++tick) {
+        blade->act();
+        if (frozen(foe) > 0)
+            return tick;
+        if (blade->dead())
+            return -1;
+    }
+    return -1;
+}
+
+}  // namespace
+
+// The first foe the spiral touches is cut, frozen for the whole reel and
+// the stun after it (8 + 12 = 20), set on the captain, and reeled in 8 px a
+// tick, the blade riding it, until it stands on the clear spot beside the
+// captain (2 px from him); then the blade is spent. A soldier 56 px east of
+// the captain (edge to edge 40) is passed on the way out and touched on the
+// way back, on tick 28.
+//
+// Proof it can fail: `hook_reel_step = 8` -> 0 in the staged
+// living-15-orc_captain.lua printed
+//   Expected equality of these values:
+//   (std::vector<short>{248, 240, 232, 224, 218}) Which is: { 248, 240, 232, 224, 218 }
+//   path Which is: { 256, 256, 256, 256, 256, 256, 256, 256, 256 }
+TEST(KitCaptain, hook_reels_the_foe_to_the_captains_feet)
 {
     og::test::ScopedHookFailureGuard guard;
     TestGameWorld tw;
     open_field(tw);
     tw.world().new_specials = 1;
     walker* captain = add_captain(tw, 200, 200);
-    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 222, 222);
+    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 256, 200);
     ASSERT_NE(nullptr, captain);
     ASSERT_NE(nullptr, foe);
-    ASSERT_TRUE(cast(captain, 2, false).ok);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
     walker* blade = blades(tw).front();
 
     const float hp_before = foe->stats()->hitpoints();
-    int acts = 0;
-    while (!blade->dead() && acts < 16) {
-        blade->act();
-        ++acts;
-    }
-    ASSERT_TRUE(blade->dead()) << "the blade reaches the foe within a turn";
+    const int snag = act_until_snagged(blade, foe);
+    EXPECT_EQ(28, snag) << "touched on the way back";
+    ASSERT_GT(snag, 0);
     EXPECT_LT(foe->stats()->hitpoints(), hp_before) << "cut";
-    // The down-right spot beside a 16x16 captain at (200,200): 2 px apart.
-    EXPECT_EQ(218, foe->xpos()) << "dragged to the captain's feet";
-    EXPECT_EQ(218, foe->ypos());
-    EXPECT_EQ(kHookStun, frozen(foe));
+    EXPECT_EQ(kHookReelMax + kHookStun, frozen(foe)) << "frozen for the reel and the stun";
     EXPECT_EQ(captain, foe->foe());
     EXPECT_EQ(1, count_sound(tw, SOUND_CLANG));
+    EXPECT_EQ(256, foe->xpos()) << "the snag itself moves nothing";
+    ASSERT_FALSE(blade->dead()) << "the blade holds the foe";
+    EXPECT_EQ(foe, blade->leader());
+    EXPECT_EQ(1, blade->lineofsight()) << "on the hook";
+
+    // 8 px a tick: 248, 240, 232, 224; the next step would reach the
+    // captain, so it takes the spot beside him (218) and the blade goes.
+    std::vector<short> path;
+    while (!blade->dead() && path.size() < 20) {
+        blade->act();
+        path.push_back(foe->xpos());
+        EXPECT_EQ(200, foe->ypos());
+        if (!blade->dead()) {
+            EXPECT_EQ(foe->xpos() + foe->sizex() / 2,
+                      blade->xpos() + blade->sizex() / 2)
+                << "the blade rides the foe in";
+        }
+    }
+    EXPECT_EQ((std::vector<short>{248, 240, 232, 224, 218}), path);
+    EXPECT_EQ(218, foe->xpos()) << "at the captain's feet, 2 px from him";
+    EXPECT_EQ(kHookReelMax + kHookStun, frozen(foe))
+        << "still frozen: only its own acts thaw it";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// A foe the blade's cut kills is not dragged: its body stays where it fell.
-TEST(KitCaptain, hook_kills_a_dying_foe_without_dragging_it)
+// The same reel from the other side: a soldier 56 px west of the captain is
+// touched on the way out (tick 20) and slides east 8 px a tick to the spot
+// on the captain's west side.
+//
+// Proof it can fail: `return from + og.min(step, to - from)` ->
+// `return from` in the staged effect_hook_blade.lua printed
+//   Expected equality of these values:
+//   (std::vector<short>{152, 160, 168, 176, 182}) ...
+//   path Which is: { 144, 144, 144, 144, 144, 144, 144, 144, 144 }
+TEST(KitCaptain, hook_reels_a_foe_in_from_the_west)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_captain(tw, 200, 200);
+    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 144, 200);
+    ASSERT_NE(nullptr, captain);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
+    walker* blade = blades(tw).front();
+    EXPECT_EQ(20, act_until_snagged(blade, foe)) << "touched on the way out";
+    std::vector<short> path;
+    while (!blade->dead() && path.size() < 20) {
+        blade->act();
+        path.push_back(foe->xpos());
+        EXPECT_EQ(200, foe->ypos());
+    }
+    EXPECT_EQ((std::vector<short>{152, 160, 168, 176, 182}), path);
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A foe snagged late on the way back is still reeled all the way, even
+// while the captain walks off with it: at the snag the blade's lifetime
+// becomes the reel's budget (8 ticks), so the spiral's clock, nearly spent,
+// cannot cut the reel short. The foe turns up after tick 40, beside the
+// captain's path, and the captain backs away 7 px a tick for six ticks.
+//
+// Proof it can fail: `blade.lifetime = t.hook_reel_max` deleted from the
+// staged kit_captain.lua printed
+//   Expected equality of these values: kHookReelMax Which is: 8
+//   blade->lifetime() Which is: 5
+//   ... captain->xpos() + captain->sizex() + 2 Which is: 176
+//   foe->xpos() Which is: 186
+//   ... 7 reel_acts Which is: 6
+// (the spiral's clock ran out mid-reel and left the foe short of him).
+TEST(KitCaptain, a_late_snag_still_reels_home)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_captain(tw, 200, 200);
+    ASSERT_NE(nullptr, captain);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
+    walker* blade = blades(tw).front();
+    for (int tick = 1; tick <= 40; ++tick)
+        blade->act();
+    ASSERT_FALSE(blade->dead());
+    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 226, 200);
+    ASSERT_NE(nullptr, foe);
+    const int snag = act_until_snagged(blade, foe, 8);
+    ASSERT_GT(snag, 0);
+    EXPECT_EQ(3, snag) << "touched on tick 43";
+    EXPECT_EQ(kHookReelMax, blade->lifetime()) << "the reel's budget";
+
+    int reel_acts = 0;
+    while (!blade->dead() && reel_acts < 20) {
+        if (reel_acts < 6)
+            captain->setxy(static_cast<short>(captain->xpos() - 7), short{200});
+        blade->act();
+        ++reel_acts;
+    }
+    EXPECT_EQ(captain->xpos() + captain->sizex() + 2, foe->xpos())
+        << "reeled to the captain's feet";
+    EXPECT_EQ(7, reel_acts) << "more reel ticks than the spiral had left (5)";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A foe the blade's cut kills is not reeled: its body stays where it fell
+// and the blade is spent.
+TEST(KitCaptain, hook_kills_a_dying_foe_without_reeling_it)
 {
     og::test::ScopedHookFailureGuard guard;
     TestGameWorld tw;
@@ -637,49 +778,135 @@ TEST(KitCaptain, hook_kills_a_dying_foe_without_dragging_it)
     ASSERT_NE(nullptr, captain);
     ASSERT_NE(nullptr, foe);
     foe->stats()->set_hitpoints(1.0f);
-    ASSERT_TRUE(cast(captain, 2, false).ok);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
     walker* blade = blades(tw).front();
     int acts = 0;
-    while (!blade->dead() && acts < 16) {
+    while (!blade->dead() && acts < kHookTicks) {
         blade->act();
         ++acts;
     }
     ASSERT_TRUE(blade->dead());
+    EXPECT_LT(acts, kHookTicks) << "spent on the cut, not worn out";
     EXPECT_TRUE(foe->dead()) << "the cut kills";
-    EXPECT_EQ(222, foe->xpos()) << "not dragged";
+    EXPECT_EQ(222, foe->xpos()) << "not reeled";
     EXPECT_EQ(0, frozen(foe)) << "not stunned";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// No clear spot beside the captain: the chain hauls the foe a few steps
-// toward him instead (a forced walk), and it is still stunned.
-TEST(KitCaptain, hook_hauls_a_foe_when_no_spot_is_clear)
+// The reel never drags a foe through a wall: the first step that is not
+// clear ends it where the foe stands, still frozen. A wall tile (x 224..239)
+// stands between the captain and a soldier 56 px east of him.
+//
+// Proof it can fail: `if not og.spawn_spot_clear(foe, nx, ny) then` ->
+// `if false then` in the staged effect_hook_blade.lua printed
+//   Expected equality of these values: 240 foe->xpos() Which is: 224
+// (dragged into the wall).
+TEST(KitCaptain, reel_stops_at_a_wall)
 {
     og::test::ScopedHookFailureGuard guard;
     TestGameWorld tw;
     open_field(tw);
     tw.world().new_specials = 1;
+    wall_tile(tw, 14, 12);
+    wall_tile(tw, 14, 13);
+    tw.world().mysmoother.set_target(tw.world().grid);
     walker* captain = add_captain(tw, 200, 200);
+    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 256, 200);
     ASSERT_NE(nullptr, captain);
-    fence_in(tw, captain, kUs);
-    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 222, 222);
     ASSERT_NE(nullptr, foe);
-    ASSERT_TRUE(cast(captain, 2, false).ok);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
     walker* blade = blades(tw).front();
+    ASSERT_GT(act_until_snagged(blade, foe), 0);
     int acts = 0;
-    while (!blade->dead() && acts < 16) {
+    while (!blade->dead() && acts < 20) {
         blade->act();
         ++acts;
     }
-    ASSERT_TRUE(blade->dead());
-    EXPECT_EQ(222, foe->xpos()) << "nowhere to land: not moved";
-    const command* walk = front_command(foe);
-    ASSERT_NE(nullptr, walk);
-    EXPECT_EQ(COMMAND_WALK, walk->commandtype);
-    EXPECT_EQ(-1, walk->com1) << "toward the captain";
-    EXPECT_EQ(-1, walk->com2);
-    EXPECT_EQ(kHookStun, frozen(foe));
+    EXPECT_TRUE(blade->dead());
+    EXPECT_EQ(240, foe->xpos()) << "stopped at the wall's edge";
+    EXPECT_EQ(kHookReelMax + kHookStun, frozen(foe)) << "frozen all the same";
     EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The last step lands only on a clear spot beside the captain no more than
+// one reel step away: with every spot beside him taken the foe stays where
+// the reel left it, and with only the far side open it is never hauled past
+// him to get there.
+//
+// Proof it can fail: `if og.max(dx, dy) <= step then` -> `if true then` in
+// the staged effect_hook_blade.lua printed
+//   Expected equality of these values: 220 foe->xpos() Which is: 182
+TEST(KitCaptain, reel_never_hauls_a_foe_past_the_captain)
+{
+    for (const bool far_side_open : {false, true}) {
+        og::test::ScopedHookFailureGuard guard;
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().new_specials = 1;
+        walker* captain = add_captain(tw, 200, 200);
+        ASSERT_NE(nullptr, captain);
+        // The eight spots beside the captain taken, or all but the west
+        // three when the far side is open.
+        if (!far_side_open) {
+            fence_in(tw, captain, kUs);
+        } else {
+            for (const short x : {short{200}, short{218}}) {
+                for (const short y : {short{182}, short{200}, short{218}}) {
+                    if (x == 200 && y == 200)
+                        continue;
+                    ASSERT_NE(nullptr, add_living(tw, FAMILY_SOLDIER, kUs, x, y));
+                }
+            }
+        }
+        walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 220, 200);
+        ASSERT_NE(nullptr, foe);
+        ASSERT_TRUE(cast(captain, 3, false).ok);
+        walker* blade = blades(tw).front();
+        ASSERT_GT(act_until_snagged(blade, foe), 0) << "far side " << far_side_open;
+        blade->act();
+        EXPECT_TRUE(blade->dead()) << "far side " << far_side_open;
+        EXPECT_EQ(220, foe->xpos())
+            << "far side " << far_side_open << ": left where it was";
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
+}
+
+// The reel ends, blade and all, when the hooked foe dies on the way in or
+// the captain leaves its floor.
+//
+// Proof it can fail: `if not foe or foe:floor() ~= owner:floor() then` ->
+// `if not foe then` in the staged effect_hook_blade.lua printed (captain
+// gone upstairs)
+//   Value of: blade->dead() Actual: false Expected: true
+//   Expected equality of these values: 248 foe->xpos() Which is: 240
+// and -> `if foe:floor() ~= owner:floor() then` (no nil test) printed (foe
+// died) the same blade->dead() line and a script error for the guard.
+TEST(KitCaptain, reel_ends_when_the_foe_falls_or_the_captain_leaves_the_floor)
+{
+    for (const bool foe_dies : {true, false}) {
+        og::test::ScopedHookFailureGuard guard;
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().set_floor_count(2);
+        tw.world().new_specials = 1;
+        walker* captain = add_captain(tw, 200, 200);
+        walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 256, 200);
+        ASSERT_NE(nullptr, captain);
+        ASSERT_NE(nullptr, foe);
+        ASSERT_TRUE(cast(captain, 3, false).ok);
+        walker* blade = blades(tw).front();
+        ASSERT_GT(act_until_snagged(blade, foe), 0);
+        blade->act();
+        ASSERT_EQ(248, foe->xpos()) << "one reel step";
+        if (foe_dies)
+            foe->set_dead(1);
+        else
+            captain->set_floor(1);
+        blade->act();
+        EXPECT_TRUE(blade->dead()) << (foe_dies ? "foe died" : "captain left");
+        EXPECT_EQ(248, foe->xpos()) << "no further";
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
 }
 
 // While it spins the blade is a shield: a foe's shot that closes in is cut
@@ -693,19 +920,21 @@ TEST(KitCaptain, hook_eats_incoming_projectiles)
     tw.world().new_specials = 1;
     walker* captain = add_captain(tw, 200, 200);
     ASSERT_NE(nullptr, captain);
-    ASSERT_TRUE(cast(captain, 2, false).ok);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
     walker* blade = blades(tw).front();
     blade->act();  // tick 1
 
-    // Where the blade will be on tick 2: the left of the circle.
+    // Where the blade will be on tick 2: up and left, 16 px out.
     const short base_x = static_cast<short>(
         captain->xpos() + captain->sizex() / 2 - blade->sizex() / 2);
     const short base_y = static_cast<short>(
         captain->ypos() + captain->sizey() / 2 - blade->sizey() / 2);
+    const auto at2 = hook_offset_at(2);
     walker* knife = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, knife);
     knife->set_team_num(kThem);
-    knife->setxy(static_cast<short>(base_x - kHookRadius), base_y);
+    knife->setxy(static_cast<short>(base_x + std::lround(at2.first)),
+                 static_cast<short>(base_y + std::lround(at2.second)));
     knife->set_damage(5.0f);
     blade->act();  // tick 2
     EXPECT_TRUE(knife->dead()) << "the shot is cut down";
@@ -717,9 +946,10 @@ TEST(KitCaptain, hook_eats_incoming_projectiles)
     ASSERT_NE(nullptr, boulder);
     boulder->set_team_num(kThem);
     boulder->set_damage(100.0f);
-    // tick 3 sits at index 6: (-17, 17) * 16 / 24 from the centre.
-    boulder->setxy(static_cast<short>(base_x - 11),
-                   static_cast<short>(base_y + 11));
+    // Where the blade will be on tick 3.
+    const auto at3 = hook_offset_at(3);
+    boulder->setxy(static_cast<short>(base_x + std::lround(at3.first)),
+                   static_cast<short>(base_y + std::lround(at3.second)));
     blade->act();
     EXPECT_TRUE(boulder->dead());
     EXPECT_TRUE(blade->dead()) << "a shot heavier than the blade breaks it";
@@ -743,7 +973,7 @@ TEST(KitCaptain, hook_guard_passes_scenery_by)
     tw.world().new_specials = 1;
     walker* captain = add_captain(tw, 200, 200);
     ASSERT_NE(nullptr, captain);
-    ASSERT_TRUE(cast(captain, 2, false).ok);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
     walker* blade = blades(tw).front();
     blade->act();  // tick 1
 
@@ -751,7 +981,9 @@ TEST(KitCaptain, hook_guard_passes_scenery_by)
         captain->xpos() + captain->sizex() / 2 - blade->sizex() / 2);
     const short base_y = static_cast<short>(
         captain->ypos() + captain->sizey() / 2 - blade->sizey() / 2);
-    const short spot_x = static_cast<short>(base_x - kHookRadius);
+    const auto at2 = hook_offset_at(2);
+    const short spot_x = static_cast<short>(base_x + std::lround(at2.first));
+    const short spot_y = static_cast<short>(base_y + std::lround(at2.second));
     std::vector<walker*> scenery;
     for (const char* id : {"core:war_banner", "core:bone_wall"}) {
         walker* piece = tw.world().add_weap_ob(Order::Weapon, weapon_family(id));
@@ -761,7 +993,7 @@ TEST(KitCaptain, hook_guard_passes_scenery_by)
         ASSERT_NE(nullptr, wfd);
         ASSERT_TRUE(wfd->blocks_placement) << id << " is solid scenery";
         piece->set_team_num(kThem);
-        piece->setxy(spot_x, base_y);
+        piece->setxy(spot_x, spot_y);
         piece->set_damage(9.0f);
         piece->stats()->set_max_hitpoints(120.0f);
         piece->stats()->set_hitpoints(120.0f);
@@ -771,7 +1003,7 @@ TEST(KitCaptain, hook_guard_passes_scenery_by)
     walker* knife = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, knife);
     knife->set_team_num(kThem);
-    knife->setxy(spot_x, base_y);
+    knife->setxy(spot_x, spot_y);
     knife->set_damage(5.0f);
 
     blade->act();  // tick 2: the blade sits on all three
@@ -788,7 +1020,7 @@ TEST(KitCaptain, hook_guard_passes_scenery_by)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Shift + slot 2: three knives, at the facing and one point either side,
+// Shift + slot 3: three knives, at the facing and one point either side,
 // paid by the special (fire()'s per-knife charge is pre-paid), the aim
 // restored. A captain parked on the curdir -1 sentinel fans around its aim;
 // a captain with no aim at all fans downward. Busy refuses.
@@ -813,7 +1045,7 @@ TEST(KitCaptain, knife_fan_throws_three)
         captain->set_lastx(aim_x);
         captain->set_lasty(aim_y);
         captain->set_busy(0);
-        const Cast c = cast(captain, 2, true);
+        const Cast c = cast(captain, 3, true);
         EXPECT_TRUE(c.ok) << c.reason;
         EXPECT_FLOAT_EQ(30.0f, c.mp_spent) << "KNIFE FAN's price, no more";
         EXPECT_FLOAT_EQ(aim_x, captain->lastx()) << "aim restored";
@@ -856,155 +1088,9 @@ TEST(KitCaptain, knife_fan_throws_three)
     EXPECT_GT(v[2].first, 0.5f * v[2].second) << "down and east";
 
     captain->set_busy(4.0f);
-    const Cast busy = cast(captain, 2, true);
+    const Cast busy = cast(captain, 3, true);
     EXPECT_EQ("SPECIAL BUSY", busy.reason);
     EXPECT_FLOAT_EQ(0.0f, busy.mp_spent);
-    EXPECT_EQ(0u, guard.count()) << guard.message();
-}
-
-// --------------------------------------------------- HURL ORC / SHOVE
-
-// HURL ORC needs an allied orc beside the captain (not a seated hero, not
-// another family) and a foe in range and in sight; each missing piece is
-// its own refusal and costs nothing.
-TEST(KitCaptain, hurl_needs_an_adjacent_orc_and_a_target)
-{
-    og::test::ScopedHookFailureGuard guard;
-    TestGameWorld tw;
-    open_field(tw);
-    tw.world().new_specials = 1;
-    walker* captain = add_captain(tw, 100, 100);
-    ASSERT_NE(nullptr, captain);
-
-    Cast c = cast(captain, 3, false);
-    EXPECT_EQ("NO ORC BESIDE YOU", c.reason);
-    walker* soldier = add_living(tw, FAMILY_SOLDIER, kUs, 118, 100);
-    ASSERT_NE(nullptr, soldier);
-    c = cast(captain, 3, false);
-    EXPECT_EQ("NO ORC BESIDE YOU", c.reason) << "only orcs are thrown";
-    walker* hero = add_living(tw, FAMILY_ORC, kUs, 100, 118);
-    ASSERT_NE(nullptr, hero);
-    hero->set_user(1);
-    c = cast(captain, 3, false);
-    EXPECT_EQ("NO ORC BESIDE YOU", c.reason) << "a seated hero is not thrown";
-    walker* grunt = add_living(tw, FAMILY_ORC, kUs, 82, 100);
-    ASSERT_NE(nullptr, grunt);
-
-    captain->set_foe(soldier);
-    c = cast(captain, 3, false);
-    EXPECT_EQ("NO TARGET", c.reason) << "an ally is no target, and no foe";
-    walker* far = add_living(tw, FAMILY_SOLDIER, kThem, 300, 300);
-    ASSERT_NE(nullptr, far);
-    captain->set_foe(far);
-    c = cast(captain, 3, false);
-    EXPECT_EQ("NO TARGET", c.reason) << "out of range";
-
-    // In range but behind a wall: not in sight.
-    walker* hidden_foe = add_living(tw, FAMILY_SOLDIER, kThem, 160, 100);
-    ASSERT_NE(nullptr, hidden_foe);
-    wall_tile(tw, 8, 6);
-    wall_tile(tw, 8, 7);
-    tw.world().mysmoother.set_target(tw.world().grid);
-    captain->set_foe(hidden_foe);
-    c = cast(captain, 3, false);
-    EXPECT_EQ("NO TARGET", c.reason) << "behind a wall";
-    EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
-
-    // In sight but hemmed in: nowhere to land.
-    walker* hemmed = add_living(tw, FAMILY_SOLDIER, kThem, 100, 200);
-    ASSERT_NE(nullptr, hemmed);
-    fence_in(tw, hemmed, kThem);
-    captain->set_foe(hemmed);
-    c = cast(captain, 3, false);
-    EXPECT_EQ("NO LANDING SPOT", c.reason);
-    EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
-    EXPECT_EQ(100, grunt->ypos()) << "nothing moved";
-    EXPECT_EQ(0u, guard.count()) << guard.message();
-}
-
-// The orc lands on the clear spot beside the target nearest the captain,
-// hits every living foe within hurl_radius of its landing and stuns each,
-// leaves a foe further off alone, and turns on the target.
-TEST(KitCaptain, hurled_orc_lands_clear_damages_and_stuns_the_ring)
-{
-    og::test::ScopedHookFailureGuard guard;
-    TestGameWorld tw;
-    open_field(tw);
-    tw.world().new_specials = 1;
-    walker* captain = add_captain(tw, 100, 100);
-    walker* grunt = add_living(tw, FAMILY_ORC, kUs, 118, 100, 4);
-    walker* target = add_living(tw, FAMILY_SOLDIER, kThem, 200, 100);
-    walker* beside = add_living(tw, FAMILY_SOLDIER, kThem, 182, 120);
-    walker* aloof = add_living(tw, FAMILY_SOLDIER, kThem, 300, 300);
-    ASSERT_TRUE(captain && grunt && target && beside && aloof);
-    captain->set_foe(target);
-    const float target_hp = target->stats()->hitpoints();
-    const float beside_hp = beside->stats()->hitpoints();
-
-    const Cast c = cast(captain, 3, false);
-    ASSERT_TRUE(c.ok) << c.reason;
-    EXPECT_FLOAT_EQ(50.0f, c.mp_spent);
-    EXPECT_EQ(182, grunt->xpos()) << "the spot left of the target";
-    EXPECT_EQ(100, grunt->ypos());
-    EXPECT_LT(target->stats()->hitpoints(), target_hp);
-    EXPECT_LT(beside->stats()->hitpoints(), beside_hp);
-    EXPECT_EQ(kHurlStun, frozen(target));
-    EXPECT_EQ(kHurlStun, frozen(beside));
-    EXPECT_EQ(0, frozen(aloof));
-    EXPECT_EQ(target, grunt->foe()) << "it fights where it lands";
-    EXPECT_EQ(ANI_ATTACK, grunt->ani_type());
-    EXPECT_EQ(1, count_sound(tw, SOUND_CLANG));
-
-    // With no foe set, the captain finds the nearest one itself.
-    walker* grunt2 = add_living(tw, FAMILY_ORC, kUs, 100, 82, 4);
-    ASSERT_NE(nullptr, grunt2);
-    captain->set_foe(nullptr);
-    const Cast found = cast(captain, 3, false);
-    EXPECT_TRUE(found.ok) << found.reason;
-    EXPECT_EQ(0u, guard.count()) << guard.message();
-}
-
-// Shift + slot 3: every living foe within shove_reach IN FRONT of the
-// captain is pushed up to shove_tiles tiles along the facing (a wall stops
-// it after one) and stunned; a foe behind is untouched.
-TEST(KitCaptain, shove_displaces_the_front_half_two_tiles_and_stuns)
-{
-    og::test::ScopedHookFailureGuard guard;
-    TestGameWorld tw;
-    open_field(tw);
-    tw.world().new_specials = 1;
-    walker* captain = add_captain(tw, 160, 160);
-    walker* ahead = add_living(tw, FAMILY_SOLDIER, kThem, 180, 160);
-    walker* walled = add_living(tw, FAMILY_SOLDIER, kThem, 184, 176);
-    walker* behind = add_living(tw, FAMILY_SOLDIER, kThem, 140, 160);
-    ASSERT_TRUE(captain && ahead && walled && behind);
-    // A foe's tent straight above is not a body to shove.
-    walker* tent = tw.world().add_ob(Order::Generator, FAMILY_TENT);
-    ASSERT_NE(nullptr, tent);
-    tent->set_team_num(kThem);
-    tent->setxy(160, 128);
-    wall_tile(tw, 14, 11);
-    tw.world().mysmoother.set_target(tw.world().grid);
-
-    captain->set_curdir(static_cast<char>(FACE_UP));
-    Cast c = cast(captain, 3, true);
-    EXPECT_EQ("NO ONE IN FRONT", c.reason)
-        << "facing up: the foes are beside, and only the tent is ahead";
-    EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
-
-    captain->set_curdir(static_cast<char>(FACE_RIGHT));
-    c = cast(captain, 3, true);
-    ASSERT_TRUE(c.ok) << c.reason;
-    EXPECT_FLOAT_EQ(30.0f, c.mp_spent);
-    EXPECT_EQ(212, ahead->xpos()) << "two tiles east";
-    EXPECT_EQ(160, ahead->ypos());
-    EXPECT_EQ(200, walled->xpos()) << "one tile, then the wall";
-    EXPECT_EQ(140, behind->xpos()) << "behind the captain: untouched";
-    EXPECT_EQ(128, tent->ypos()) << "a generator stays put";
-    EXPECT_EQ(kShoveStun, frozen(ahead));
-    EXPECT_EQ(kShoveStun, frozen(walled));
-    EXPECT_EQ(0, frozen(behind));
-    EXPECT_EQ(1, count_sound(tw, SOUND_CHARGE));
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1128,6 +1214,126 @@ TEST(KitCaptain, banner_falls_when_its_time_is_up)
     EXPECT_TRUE(banner->dead());
     EXPECT_TRUE(notified(tw, "The banner falls."));
     EXPECT_EQ(1, count_sound(tw, SOUND_EXPLODE));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A second banner strikes the first: the captain plants on one corpse,
+// walks to another 40 px off and plants again. The old banner comes down
+// quietly (a flash where it stood, no boom, no "The banner falls."), so one
+// banner stands, on the second corpse, and the raise notice covers it.
+//
+// Proof it can fail: `old:death()` deleted from the staged kit_captain.lua
+// printed
+//   Value of: first->dead() Actual: false Expected: true
+//   Expected equality of these values: 1u standing.size() Which is: 2
+// and the `if self:leader() then return true end` deleted from the staged
+// weapon_banner.lua printed
+//   Expected equality of these values: 0 count_sound(tw, SOUND_EXPLODE) Which is: 1
+//   Value of: notified(tw, "The banner falls.") Actual: true Expected: false
+TEST(KitCaptain, second_banner_strikes_the_first_quietly)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = nullptr;
+    walker* first = plant_banner(tw, captain);
+    ASSERT_NE(nullptr, first);
+    const short first_cx = static_cast<short>(first->xpos() + first->sizex() / 2);
+    const int flashes_before =
+        static_cast<int>(live_of(tw.world().oblist, Order::FX, FAMILY_FLASH).size());
+
+    captain->setxy(240, 200);
+    walker* corpse = add_stain(tw, captain);
+    ASSERT_NE(nullptr, corpse);
+    const Cast c = cast(captain, 4, false);
+    ASSERT_TRUE(c.ok) << c.reason;
+    EXPECT_TRUE(first->dead()) << "the old banner is struck";
+    const auto standing = banners(tw);
+    ASSERT_EQ(1u, standing.size()) << "one banner stands";
+    EXPECT_EQ(corpse->xpos() + corpse->sizex() / 2,
+              standing.front()->xpos() + standing.front()->sizex() / 2)
+        << "on the second corpse";
+    EXPECT_EQ(1, corpse->dead());
+    EXPECT_EQ(0, count_sound(tw, SOUND_EXPLODE)) << "no boom";
+    EXPECT_FALSE(notified(tw, "The banner falls.")) << "no fall notice";
+    const auto flashes = live_of(tw.world().oblist, Order::FX, FAMILY_FLASH);
+    ASSERT_EQ(flashes_before + 1, static_cast<int>(flashes.size()))
+        << "one flash, for the old banner";
+    EXPECT_EQ(first_cx, flashes.back()->xpos() + flashes.back()->sizex() / 2)
+        << "where the old banner stood";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The corpse comes first: a second press with no corpse underfoot is
+// refused, spends nothing, and the standing banner stays up.
+//
+// Proof it can fail: the old-banner strike put above the corpse check in
+// the staged kit_captain.lua printed
+//   Value of: first->dead() Actual: true Expected: false
+//   Expected equality of these values: 1u banners(tw).size() Which is: 0
+TEST(KitCaptain, refused_second_plant_keeps_the_first)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = nullptr;
+    walker* first = plant_banner(tw, captain);
+    ASSERT_NE(nullptr, first);
+    captain->setxy(300, 300);
+    const Cast c = cast(captain, 4, false);
+    EXPECT_FALSE(c.ok);
+    EXPECT_EQ("NO CORPSE TO PLANT ON", c.reason);
+    EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
+    EXPECT_FALSE(first->dead()) << "the first banner stands";
+    EXPECT_EQ(1u, banners(tw).size());
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Grunts marching to the old banner turn to the new one: the captain moved
+// his rally point.
+//
+// Proof it can fail: the grunt re-point loop deleted from the staged
+// kit_captain.lua printed
+//   Expected equality of these values: new_cx Which is: 268
+//   go->com1 Which is: 208
+TEST(KitCaptain, grunts_turn_to_the_new_banner)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = nullptr;
+    walker* first = plant_banner(tw, captain);
+    ASSERT_NE(nullptr, first);
+    ASSERT_TRUE(cast(captain, 4, true).ok);
+    const auto grunts = grunts_of(tw, captain);
+    ASSERT_EQ(2u, grunts.size());
+    for (walker* g : grunts) {
+        const command* go = front_command(g);
+        ASSERT_NE(nullptr, go);
+        ASSERT_EQ(first->xpos() + first->sizex() / 2, go->com1)
+            << "marching to the first banner";
+    }
+
+    captain->setxy(260, 260);
+    walker* corpse = add_stain(tw, captain);
+    ASSERT_NE(nullptr, corpse);
+    ASSERT_TRUE(cast(captain, 4, false).ok);
+    const auto standing = banners(tw);
+    ASSERT_EQ(1u, standing.size());
+    const int new_cx = standing.front()->xpos() + standing.front()->sizex() / 2;
+    const int new_cy = standing.front()->ypos() + standing.front()->sizey() / 2;
+    ASSERT_NE(first->xpos() + first->sizex() / 2, new_cx);
+    for (walker* g : grunts) {
+        EXPECT_EQ(1u, g->stats()->commands.size()) << "the old order is gone";
+        const command* go = front_command(g);
+        ASSERT_NE(nullptr, go);
+        EXPECT_EQ(COMMAND_GOTO, go->commandtype);
+        EXPECT_EQ(new_cx, go->com1) << "to the new banner";
+        EXPECT_EQ(new_cy, go->com2);
+    }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1403,73 +1609,87 @@ struct BotScene {
 
 }  // namespace
 
-// Slot 1: howl at a foe within 130 (the orc's own gate); eat (shift) when
-// below 60 % health and standing on a corpse.
-TEST(KitCaptain, ai_howl_fires_when_a_foe_is_near_and_eats_when_hurt)
+// Slot 1: howl at a foe within 130 (the orc's own gate). HOWL has no
+// alternate, so the gate leaves the engine's shift coin alone: every
+// answer reads "untouched" (-1). A corpse underfoot and a wound change
+// nothing here; the meal is slot 2's.
+//
+// Proof it can fail: `self:set_shifter_down(0)` added to the staged
+// kit_captain.lua's ai_howl printed
+//   Expected equality of these values: (std::pair<bool, int>{false, -1})
+//   Which is: (false, -1) s.ask(1) Which is: (false, 0)
+// and the same (true, 0) for each howl.
+TEST(KitCaptain, ai_howl_fires_when_a_foe_is_near)
 {
     og::test::ScopedHookFailureGuard guard;
     BotScene s;
     ASSERT_NE(nullptr, s.bot);
-    EXPECT_EQ((std::pair<bool, int>{false, 0}), s.ask(1)) << "nobody near";
+    EXPECT_EQ((std::pair<bool, int>{false, -1}), s.ask(1)) << "nobody near";
     walker* foe = add_living(s.tw, FAMILY_SOLDIER, kThem, 300, 200);
     ASSERT_NE(nullptr, foe);
-    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1)) << "howl";
+    EXPECT_EQ((std::pair<bool, int>{true, -1}), s.ask(1)) << "howl";
     walker* stain = add_stain(s.tw, s.captain);
     ASSERT_NE(nullptr, stain);
-    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1)) << "healthy: howl";
-    s.captain->stats()->set_hitpoints(100.0f);  // 100 < 0.6 * 200
-    stain->setxy(stain->xpos() + 4, stain->ypos() + 4);  // 32 > 24 squared px
-    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1))
-        << "hurt, but the corpse is out of reach: howl";
-    stain->center_on(s.captain);
-    EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(1)) << "hurt: eat";
-    // Exactly 60 % is not below 60 %: the test is made from whole numbers
-    // (hp x 5 < max x 3), where a float 0.6 (0.6000000238) would call
-    // 120 of 200 hurt. RED with og.fmul(max_hp, 0.6): "at exactly 60 %:
-    // howl" reads (true, 1).
-    s.captain->stats()->set_hitpoints(120.0f);
-    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(1))
-        << "at exactly 60 %: howl";
-    s.captain->stats()->set_hitpoints(119.0f);
-    EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(1)) << "just below: eat";
+    s.captain->stats()->set_hitpoints(100.0f);
+    EXPECT_EQ((std::pair<bool, int>{true, -1}), s.ask(1))
+        << "hurt on a corpse: still a howl";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Slot 2: hook a foe within 90 while no blade is out; fan (shift) into two
+// Slot 2: eat when below 60 % health and standing on a corpse; otherwise
+// hold. The shift is left alone throughout.
+// Exactly 60 % is not below 60 %: the test is made from whole numbers
+// (hp x 5 < max x 3), where a float 0.6 (0.6000000238) would call 120 of
+// 200 hurt.
+//
+// Proof it can fail: `og.fmul(self.max_hp, 3)` ->
+// `og.fmul(og.fmul(self.max_hp, 0.6), 5)` in the staged kit_captain.lua
+// printed, at exactly 60 %,
+//   Expected equality of these values: (std::pair<bool, int>{false, -1})
+//   Which is: (false, -1) s.ask(2) Which is: (true, -1)
+TEST(KitCaptain, ai_eat_fires_when_hurt_on_a_corpse)
+{
+    og::test::ScopedHookFailureGuard guard;
+    BotScene s;
+    ASSERT_NE(nullptr, s.bot);
+    walker* stain = add_stain(s.tw, s.captain);
+    ASSERT_NE(nullptr, stain);
+    EXPECT_EQ((std::pair<bool, int>{false, -1}), s.ask(2))
+        << "full health on a corpse: hold";
+    stain->set_dead(1);
+    s.captain->stats()->set_hitpoints(100.0f);  // 100 < 0.6 * 200
+    EXPECT_EQ((std::pair<bool, int>{false, -1}), s.ask(2))
+        << "hurt, no corpse: hold";
+    walker* corpse = add_stain(s.tw, s.captain);
+    ASSERT_NE(nullptr, corpse);
+    corpse->setxy(corpse->xpos() + 4, corpse->ypos() + 4);  // 32 > 24 squared px
+    EXPECT_EQ((std::pair<bool, int>{false, -1}), s.ask(2))
+        << "hurt, the corpse out of reach: hold";
+    corpse->center_on(s.captain);
+    EXPECT_EQ((std::pair<bool, int>{true, -1}), s.ask(2)) << "hurt: eat";
+    s.captain->stats()->set_hitpoints(120.0f);
+    EXPECT_EQ((std::pair<bool, int>{false, -1}), s.ask(2))
+        << "at exactly 60 %: hold";
+    s.captain->stats()->set_hitpoints(119.0f);
+    EXPECT_EQ((std::pair<bool, int>{true, -1}), s.ask(2)) << "just below: eat";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Slot 3: hook a foe within 90 while no blade is out; fan (shift) into two
 // or more; otherwise hold.
 TEST(KitCaptain, ai_hook_fires_when_a_foe_is_near_and_fans_into_a_crowd)
 {
     og::test::ScopedHookFailureGuard guard;
     BotScene s;
     ASSERT_NE(nullptr, s.bot);
-    EXPECT_FALSE(s.ask(2).first) << "nobody near";
+    EXPECT_FALSE(s.ask(3).first) << "nobody near";
     walker* foe = add_living(s.tw, FAMILY_SOLDIER, kThem, 260, 200);
     ASSERT_NE(nullptr, foe);
-    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(2)) << "hook";
-    ASSERT_TRUE(cast(s.captain, 2, false).ok);
-    EXPECT_FALSE(s.ask(2).first) << "blade out, one foe: hold";
+    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(3)) << "hook";
+    ASSERT_TRUE(cast(s.captain, 3, false).ok);
+    EXPECT_FALSE(s.ask(3).first) << "blade out, one foe: hold";
     add_living(s.tw, FAMILY_SOLDIER, kThem, 200, 260);
-    EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(2)) << "fan";
-    EXPECT_EQ(0u, guard.count()) << guard.message();
-}
-
-// Slot 3: hurl when an allied orc stands beside the captain and a foe is
-// within 120; shove (shift) two or more within 40; otherwise hold.
-TEST(KitCaptain, ai_hurl_fires_with_an_orc_beside_and_shoves_a_crowd)
-{
-    og::test::ScopedHookFailureGuard guard;
-    BotScene s;
-    ASSERT_NE(nullptr, s.bot);
-    walker* foe = add_living(s.tw, FAMILY_SOLDIER, kThem, 300, 200);
-    ASSERT_NE(nullptr, foe);
-    EXPECT_FALSE(s.ask(3).first) << "no orc beside, one foe far off";
-    walker* grunt = add_living(s.tw, FAMILY_ORC, kUs, 218, 200);
-    ASSERT_NE(nullptr, grunt);
-    EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(3)) << "hurl";
-    grunt->setxy(400, 400);
-    add_living(s.tw, FAMILY_SOLDIER, kThem, 220, 200);
-    add_living(s.tw, FAMILY_SOLDIER, kThem, 200, 220);
-    EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(3)) << "shove";
+    EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(3)) << "fan";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1514,17 +1734,81 @@ TEST(KitCaptain, bot_captain_howls_through_check_special)
     s.bot->set_current_special(1);
     s.tw.world().rng_.state_ = 4242u;
     ASSERT_TRUE(s.bot->check_special());
-    EXPECT_EQ(0, s.bot->shifter_down()) << "the gate picked the howl";
     ASSERT_TRUE(s.bot->special());
     EXPECT_GT(frozen(foe), 0);
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// End to end through the engine's bot path on slot 2: a captain at 50 of
+// 200 hp standing on a corpse; check_special() draws its coin and the gate
+// says yes; special() eats the corpse.
+//
+// Proof it can fail: `if not hurt then return false end` ->
+// `if hurt then return false end` in the staged kit_captain.lua printed
+//   Value of: s.bot->check_special() Actual: false Expected: true
+TEST(KitCaptain, bot_captain_eats_through_check_special)
+{
+    og::test::ScopedHookFailureGuard guard;
+    BotScene s;
+    ASSERT_NE(nullptr, s.bot);
+    s.captain->stats()->set_hitpoints(50.0f);
+    walker* stain = add_stain(s.tw, s.captain, 3);
+    ASSERT_NE(nullptr, stain);
+    s.bot->set_current_special(2);
+    s.tw.world().rng_.state_ = 4242u;
+    ASSERT_TRUE(s.bot->check_special());
+    EXPECT_EQ(2, s.bot->current_special()) << "the meal is affordable";
+    ASSERT_TRUE(s.bot->special());
+    EXPECT_FLOAT_EQ(65.0f, s.captain->stats()->hitpoints())
+        << "50 + corpse level 3 * corpse_heal_per_level 5";
+    EXPECT_EQ(1, stain->dead()) << "the corpse is eaten";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A freshly promoted captain restarts at level 1, so the player's cycling
+// key walks HOWL alone until level 4, then HOWL and EAT CORPSE, the hook at
+// 7 and the banner at 10, wrapping to slot 1 each time.
+//
+// Proof it can fail: the eat_corpse row deleted from the staged
+// living-15-orc_captain.lua (HOOK BLADE back on slot 2) printed
+//   Expected equality of these values: "12341" walk(10) Which is: "12312"
+//   Expected equality of these values: "EAT CORPSE" ... Which is: "HOOK BLADE"
+//   Expected equality of these values: "NONE" ... Which is: "KNIFE FAN"
+TEST(KitCaptain, fresh_captain_has_howl_only_until_level_4)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_captain(tw, 200, 200, 1);
+    ASSERT_NE(nullptr, captain);
+    const auto walk = [&](short level) {
+        captain->stats()->set_level(level);
+        captain->set_current_special(1);
+        std::string seen = "1";
+        for (int press = 0; press < level / 3 + 1; ++press) {
+            sim_advance_current_special(tw.world(), *captain);
+            seen += std::to_string(static_cast<int>(captain->current_special()));
+        }
+        return seen;
+    };
+    EXPECT_EQ("11", walk(1));
+    EXPECT_EQ("121", walk(4));
+    EXPECT_EQ("1231", walk(7));
+    EXPECT_EQ("12341", walk(10));
+    EXPECT_STREQ("HOWL", og::sim::special_name(get_family_descriptor(FAMILY_BIG_ORC), 1, 1));
+    EXPECT_STREQ("EAT CORPSE", og::sim::special_name(get_family_descriptor(FAMILY_BIG_ORC), 2, 1));
+    EXPECT_STREQ("NONE", og::sim::alternate_name(get_family_descriptor(FAMILY_BIG_ORC), 1, 1))
+        << "HOWL has no alternate";
+    EXPECT_STREQ("NONE", og::sim::alternate_name(get_family_descriptor(FAMILY_BIG_ORC), 2, 1));
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
 // ------------------------------------------------------ art and glyphs
 
 // The two new entity families load their art and show in the character
-// clients: the blade is the knife's frames, the banner its own four; the
-// captain is on offer in the hire menu with a description.
+// clients: the blade is the knife's frames, the banner its own four. The
+// captain is not for hire: an orc becomes one by promotion only.
 TEST(KitCaptain, new_kit_entities_load_art_and_glyphs)
 {
     const int blade_id = fx_family("core:hook_blade");
@@ -1558,8 +1842,8 @@ TEST(KitCaptain, new_kit_entities_load_art_and_glyphs)
 
     const FamilyDescriptor* captain = get_family_descriptor(FAMILY_BIG_ORC);
     ASSERT_NE(nullptr, captain);
-    EXPECT_TRUE(captain->is_playable);
-    EXPECT_EQ(15, captain->playable_order);
+    EXPECT_FALSE(captain->is_playable) << "promotion only, never hired";
+    EXPECT_EQ(999, captain->playable_order);
 
     // The orc and the captain still level and scale as before.
     const FamilyDescriptor* orc = get_family_descriptor(FAMILY_ORC);

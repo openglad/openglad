@@ -427,8 +427,7 @@ TEST(PickerCommon, reset_for_new_game)
 // lines (the 8px fallback pitch ceiling) and no line over 27 chars. This is
 // the regression guard that a future pack edit cannot silently overflow the
 // box. The hire list itself is covered too, whatever its families' playable
-// flags say: the orc captain is on offer there, and every family on offer
-// must ship a description for the box.
+// flags say: every family on offer must ship a description for the box.
 TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
 {
     init_family_registry();
@@ -445,14 +444,12 @@ TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
                          family_id) != og::ui::kAllowableGuys.end();
     };
     int checked = 0;
-    bool checked_captain = false;
     for (int family_id = 0; family_id < 256; family_id++)
     {
         const auto* fd = get_family_descriptor(family_id);
         if (fd == nullptr || fd->description == nullptr ||
             (!fd->is_playable && !on_hire_list(family_id)))
             continue;
-        checked_captain |= family_id == FAMILY_BIG_ORC;
         const std::vector<std::string> flowed = og::core::wrap_text(
             fd->description, 27, og::core::WrapMode::Paragraphs);
         EXPECT_LE(flowed.size(), 10u)
@@ -464,7 +461,6 @@ TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
         checked++;
     }
     EXPECT_GE(checked, 10) << "core class pack not installed";
-    EXPECT_TRUE(checked_captain) << "the hire box shows the captain's text too";
 }
 
 // --- family_display_name ---
@@ -503,12 +499,10 @@ TEST(PickerCommon, family_hiring_base_cost)
 
 TEST(PickerCommon, allowable_guys_constants)
 {
-    ASSERT_TRUE(og::ui::kAllowableGuys.size() == 15);
+    ASSERT_TRUE(og::ui::kAllowableGuys.size() == 14);
     ASSERT_TRUE(og::ui::kAllowableGuys[0] == FAMILY_SOLDIER);
     ASSERT_TRUE(og::ui::kAllowableGuys[1] == FAMILY_BARBARIAN);
     ASSERT_TRUE(og::ui::kAllowableGuys[13] == FAMILY_GHOST);
-    // The orc captain is hireable, appended so no earlier position moved.
-    ASSERT_TRUE(og::ui::kAllowableGuys[14] == FAMILY_BIG_ORC);
 }
 
 // --- kDifficultyNames ---
@@ -801,8 +795,8 @@ TEST(PickerCommon, hire_session_cycle)
     ASSERT_TRUE(session.current_recruit() != nullptr);
     ASSERT_TRUE(session.current_recruit()->family == FAMILY_SOLDIER);
 
-    // Cycle forward through all 15 families
-    for (int i = 1; i < 15; i++) {
+    // Cycle forward through all 14 families
+    for (int i = 1; i < 14; i++) {
         session.next_family();
         ASSERT_TRUE(session.family_index() == i);
         ASSERT_TRUE(session.current_recruit() != nullptr);
@@ -814,11 +808,7 @@ TEST(PickerCommon, hire_session_cycle)
     ASSERT_TRUE(session.family_index() == 0);
     ASSERT_TRUE(session.current_recruit()->family == FAMILY_SOLDIER);
 
-    // Cycle backward wraps to 14 (ORC CAPTAIN)
-    session.prev_family();
-    ASSERT_TRUE(session.family_index() == 14);
-    ASSERT_TRUE(session.current_recruit()->family == FAMILY_BIG_ORC);
-    // ... and one more step back is the ghost, where the list used to end.
+    // Cycle backward wraps to 13 (GHOST)
     session.prev_family();
     ASSERT_TRUE(session.family_index() == 13);
     ASSERT_TRUE(session.current_recruit()->family == FAMILY_GHOST);

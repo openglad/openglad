@@ -36,7 +36,7 @@ namespace og::ui {
 // please also change in guy.cpp
 inline constexpr float kStatCostExponent = 1.85f;
 
-inline constexpr std::array<int, 15> kAllowableGuys = {
+inline constexpr std::array<int, 14> kAllowableGuys = {
     FAMILY_SOLDIER,
     FAMILY_BARBARIAN,
     FAMILY_ELF,
@@ -51,11 +51,6 @@ inline constexpr std::array<int, 15> kAllowableGuys = {
     FAMILY_SMALL_SLIME,
     FAMILY_FAERIE,
     FAMILY_GHOST,
-    // Appended last so every earlier hire position keeps its family. Hiring
-    // is picker state, so the captain is on offer whatever the New Specials
-    // setting says; with it off a hired captain has no specials, exactly
-    // like an orc promoted at level 5.
-    FAMILY_BIG_ORC,
 };
 
 inline constexpr int kNewGameStartingGold = 5000;
