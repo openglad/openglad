@@ -532,8 +532,9 @@ leaves the key out or writes `specials = {}`. Each entry takes:
 | `mp_cost` | required, magic points per cast |
 | `cast` | optional function: the handler for this slot |
 | `ai` | optional function: sugar for one family-level `check_special_ai` |
-| `alternate = { name = "...", mp_cost = N, new_kit = true }` | optional; `name` (required) is shown while Shift is held; `mp_cost` (optional) is the alternate's own price, gated and charged while Shift is held, else the slot's `mp_cost`; `new_kit` (optional) hides the alternate while the New Specials setting is off. No other key is accepted |
+| `alternate = { name = "...", mp_cost = N, new_kit = true, detail = "..." }` | optional; `name` (required) is shown while Shift is held; `mp_cost` (optional) is the alternate's own price, gated and charged while Shift is held, else the slot's `mp_cost`; `new_kit` (optional) hides the alternate while the New Specials setting is off; `detail` (optional) is its one-line DETAILS page prose, at most 23 characters. No other key is accepted |
 | `new_kit` | optional boolean: the slot exists only while the New Specials setting is on; with it off the slot reads `"NONE"` at cost 5000 everywhere (see [new-specials.md](new-specials.md)) |
+| `detail` | optional string: the prose the TRAIN -> DETAILS page shows under the special's name, wrapped at 23 characters (at most four lines, three beside an alternate) |
 | `slot = N` | optional, 2..5, to skip a hole |
 
 **Absence is how a slot is disabled.** 5000 is the registry's own marker for

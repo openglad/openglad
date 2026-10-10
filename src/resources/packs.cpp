@@ -715,6 +715,8 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_new_kit[i] = false;
         d.alternate_new_kit[i] = false;
         d.alternate_cost[i] = 0;
+        d.special_details[i] = nullptr;
+        d.alternate_details[i] = nullptr;
     }
     for (const og::data::ClasspackSpecialEntry& s : list) {
         // The parser guarantees 1..kMaxSpecialSlot, strictly increasing.
@@ -728,6 +730,10 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_new_kit[s.slot] = s.new_kit;
         d.alternate_new_kit[s.slot] = s.alternate_new_kit;
         d.alternate_cost[s.slot] = static_cast<unsigned short>(s.alternate_cost);
+        // The DETAILS page prose (the picker's only; nullptr = none).
+        d.special_details[s.slot] = s.detail ? s.detail->c_str() : nullptr;
+        d.alternate_details[s.slot] =
+            s.alternate_detail ? s.alternate_detail->c_str() : nullptr;
     }
 }
 

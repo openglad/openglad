@@ -25,6 +25,7 @@
 
 class guy;
 class GameWorld;
+struct FamilyDescriptor;
 struct LevelDataHooks;
 class IRandom;
 class cfg_store;
@@ -2032,6 +2033,62 @@ std::vector<std::string> format_match_rules_lines(
 // is pending, so the campaign's answer costs one call per cursor change
 // and never one per frame.
 std::int16_t arena_deal_fill_code(const SaveData& save);
+
+// --- TRAIN -> DETAILS page and the HIRE box's "Special:" line ---
+//
+// Both are composed from the specials table as the session sees it (the New
+// Specials setting hides or shows the new kits), so the text can never name
+// a special the character does not have.
+
+// The DETAILS panel: draw_dialog(5, 68, 315, 167), two columns at x 11 and
+// 164, rows at y = 90 + 6*row (picker.cpp detail_line_y); row 11 ends at
+// y 162 and the dialog at 167, so twelve rows is the panel. 25 characters
+// at 6 px end at x 161 (left; the divider is at 160-162) and 314 (right).
+inline constexpr int kDetailLineChars = 25;
+inline constexpr int kDetailProseChars = 23;   // after the two-space indent
+inline constexpr int kDetailRows = 12;         // rows 0..11
+inline constexpr int kDetailLeftFirstRow = 2;  // rows 0-1 carry the title
+
+enum class DetailInk { Title, Name, Prose };
+
+struct DetailLine {
+    bool right;        // false = left column (x 11), true = right (x 164)
+    int row;           // 0..kDetailRows-1
+    DetailInk ink;     // Title: dark blue with a shadow; Name: red; Prose: dark blue
+    std::string text;  // at most kDetailLineChars characters
+};
+
+struct DetailPage {
+    std::vector<DetailLine> lines;
+    int dropped = 0;   // lines that did not fit a column (0 for every core family)
+    int cut = 0;       // lines shortened to kDetailLineChars (0 for every core family)
+};
+
+// "EAT CORPSE" -> "Eat Corpse", "LOTS OF ROCKS" -> "Lots of Rocks": the HUD
+// name with each word title-cased; "of" after the first word stays lower.
+[[nodiscard]] std::string special_title(std::string_view hud_name);
+
+// The page for a character of this family at this level, under this New
+// Specials value (SaveData::new_specials). Pure: reads the descriptor and
+// og::sim::special_in_play / alternate_in_play / special_name /
+// alternate_name only, never the world or the session. A null descriptor
+// gives the title and "No special abilities.". Every line, the title too,
+// is cut to kDetailLineChars and counted in cut.
+[[nodiscard]] DetailPage detail_page(const FamilyDescriptor* fd, int level,
+                                     short new_specials);
+
+// "Special: Howl, Eat Corpse, Hook Blade, War Banner": the slot names in
+// play (special_name not "NONE"), title-cased, in slot order, alternates
+// not listed (the DETAILS page has them); "Special: none" when no slot is
+// in play.
+[[nodiscard]] std::string specials_summary(const FamilyDescriptor* fd,
+                                           short new_specials);
+
+// fd->description + "\n\n" + specials_summary(fd, new_specials); "" when fd
+// or its description is null (the HIRE box's text; the pack prose no longer
+// carries a Special line of its own).
+[[nodiscard]] std::string hire_description(const FamilyDescriptor* fd,
+                                           short new_specials);
 
 // --- Template implementations ---
 

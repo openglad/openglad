@@ -309,10 +309,10 @@ og.family("living", {
              train = { strength = 15, dexterity = 15, constitution = 9,
                        intelligence = 6, armor = 50, level = 200 } },
   specials = {
-    { id = "heal",         name = "HEAL",         mp_cost = 2,   alternate = { name = "MYSTIC MACE" }, cast = heal_or_mace },
-    { id = "raise_undead", name = "RAISE UNDEAD", mp_cost = 20,  alternate = { name = "TURN UNDEAD" }, cast = raise_skeleton },
-    { id = "raise_ghost",  name = "RAISE GHOST",  mp_cost = 50,  alternate = { name = "TURN UNDEAD" }, cast = raise_ghost },
-    { id = "resurrect",    name = "RESURRECT",    mp_cost = 150 },
+    { id = "heal",         name = "HEAL",         mp_cost = 2,   alternate = { name = "MYSTIC MACE", detail = "Orbiting mace, 50 Int." }, cast = heal_or_mace, detail = "Heal nearby friends with all your SP." },
+    { id = "raise_undead", name = "RAISE UNDEAD", mp_cost = 20,  alternate = { name = "TURN UNDEAD", detail = "Turning needs 60 Int." }, cast = raise_skeleton, detail = "Raise the gore of any victim to a skeleton." },
+    { id = "raise_ghost",  name = "RAISE GHOST",  mp_cost = 50,  alternate = { name = "TURN UNDEAD", detail = "Turning needs 60 Int." }, cast = raise_ghost, detail = "A more powerful raise, you can now get ghosts to fly and wail." },
+    { id = "resurrect",    name = "RESURRECT",    mp_cost = 150, detail = "Restores dead friends to life, or enemies to undead. Beware: this uses your own EXP to cast!" },
     default_cast = resurrect,  -- case 4 and every unmapped slot
   },
   default_weapon = "core:glow",
@@ -330,7 +330,7 @@ og.family("living", {
   sprite = "cleric.png",
   animation = "standard",
   ai_line_of_sight = 4,
-  description = "Clerics, like mages, are slow, but have a stronger hand-to-hand attack. Clerics possess abilities related to healing and interaction with the dead.\n\nSpecial: Heal",
+  description = "Clerics, like mages, are slow, but have a stronger hand-to-hand attack. Clerics possess abilities related to healing and interaction with the dead.",
   names = { "Tuck", "Brother", "Pater", "Drake", "Friar", "Francis",
             "John Paul", "Medic" },
   playable = true,

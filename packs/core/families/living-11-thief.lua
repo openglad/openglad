@@ -204,10 +204,10 @@ og.family("living", {
              train = { strength = 15, dexterity = 6, constitution = 9,
                        intelligence = 10, armor = 50, level = 200 } },
   specials = {
-    { id = "drop_bomb",    name = "DROP BOMB",    mp_cost = 35,  alternate = { name = "MINE", mp_cost = 70, new_kit = true }, cast = kt.bomb_or_mine(drop_bomb) },
-    { id = "cloak",        name = "CLOAK",        mp_cost = 125, cast = cloak },
-    { id = "taunt_enemy",  name = "TAUNT ENEMY",  mp_cost = 100, alternate = { name = "CHARM OPPONENT" }, cast = taunt_or_charm },
-    { id = "poison_cloud", name = "POISON CLOUD", mp_cost = 150 },
+    { id = "drop_bomb",    name = "DROP BOMB",    mp_cost = 35,  alternate = { name = "MINE", mp_cost = 70, new_kit = true, detail = "Waits unseen for a foe." }, cast = kt.bomb_or_mine(drop_bomb), detail = "Leave a burning bomb to explode and hurt the unwary, friend or foe!" },
+    { id = "cloak",        name = "CLOAK",        mp_cost = 125, cast = cloak, detail = "Cloak yourself in the shadows, slipping past your enemies." },
+    { id = "taunt_enemy",  name = "TAUNT ENEMY",  mp_cost = 100, alternate = { name = "CHARM OPPONENT", detail = "One foe fights for you." }, cast = taunt_or_charm, detail = "Beckon your enemies to you with jeers, and confuse their attack." },
+    { id = "poison_cloud", name = "POISON CLOUD", mp_cost = 150, detail = "Release a cloud of poisonous gas to roam at will and sicken your foes." },
     default_cast = poison_cloud,  -- case 4 and every unmapped slot
   },
   default_weapon = "core:knife",
@@ -225,7 +225,7 @@ og.family("living", {
   sprite = "thief.png",
   animation = "standard",
   ai_line_of_sight = 10,
-  description = "Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs.\n\nSpecial: Drop Bomb / Mine",
+  description = "Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs.",
   names = { "Shinobi", "Dismas", "Shadow", "Stabby", "Swiftstrike", "Scourge",
             "Rogue" },
   playable = true,
