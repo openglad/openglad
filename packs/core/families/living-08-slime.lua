@@ -173,7 +173,7 @@ og.family("living", {   -- SLIME
              train = { strength = 20, dexterity = 20, constitution = 8,
                        intelligence = 14, armor = 50, level = 200 } },
   specials = {
-    { id = "split", name = "SPLIT", mp_cost = 30 },
+    { id = "split", name = "SPLIT", mp_cost = 30, detail = "Divide into two smaller slimes." },
     default_cast = slime_do_special,
   },
   default_weapon = "core:blob",
