@@ -10572,6 +10572,7 @@ TEST(GameLoop, local_shadow_seeds_server_world_with_session_new_specials)
 // and read back on the DISPLAY world the player sees.
 // ---------------------------------------------------------------------------
 #include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/kit_marker_role.h>
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/possession.h>
 #include <openglad/interface/level_visuals.h>
@@ -10703,6 +10704,37 @@ walker* find_fx(GameWorld& w, int family)
                 up->family() == family)
                 return up.get();
     return nullptr;
+}
+
+// The live kit marker `owner` holds in `role` (its ani_type: LEGION 2,
+// WARD 6, ...). A skeleton that casts REASSEMBLE and LEGION owns two
+// markers, so a lookup by family alone answers whichever comes first.
+walker* find_marker(GameWorld& w, int family, const walker* owner, int role)
+{
+    for (const auto* list : {&w.oblist, &w.fxlist, &w.weaplist})
+        for (const auto& up : *list)
+            if (up && !up->dead() && up->query_order() == Order::FX &&
+                up->family() == family && up->owner() == owner &&
+                up->ani_type() == role)
+                return up.get();
+    return nullptr;
+}
+
+// The first world-RNG state whose next draws are exactly `want` under the
+// matching bounds. A bound of 1 matches any draw and still steps the
+// generator (the LCG's step does not depend on the bound).
+std::uint32_t state_where_draws_are(const std::vector<std::uint32_t>& bounds,
+                                    const std::vector<std::uint32_t>& want)
+{
+    for (std::uint32_t seed = 1;; ++seed)
+    {
+        og::sim::SimRandom probe(seed);
+        bool match = true;
+        for (std::size_t i = 0; i < bounds.size() && match; ++i)
+            match = probe.next(bounds[i]) == want[i];
+        if (match)
+            return seed;
+    }
 }
 
 struct ViewPixels
@@ -10982,7 +11014,8 @@ TEST(GameLoop, mirror_hides_a_dug_in_skeleton_from_the_other_team)
 // path). A skeleton's REASSEMBLE ward, its LEGION window (a kit marker it
 // owns) and a ghost's possession of an orc are staged on the display, the
 // shadow is re-installed, and the seeded server must hold all three: the
-// kit fields, the marker with its owner resolved, the possession linked
+// kit fields, both markers (the ward's clock and the LEGION window, each
+// found by its role) with their owner resolved, the possession linked
 // both ways. A kill by the skeleton then still raises a skeleton, and the
 // mirror carries every field back.
 TEST(GameLoop, snapshot_seeded_server_keeps_a_ward_a_legion_window_and_a_possession)
@@ -11031,10 +11064,12 @@ TEST(GameLoop, snapshot_seeded_server_keeps_a_ward_a_legion_window_and_a_possess
     ASSERT_NE(0, skel->kit_state() & KIT_WARD);
     const int marker_family =
         og::families::resolve_family_string_id(Order::FX, "core:kit_marker");
-    walker* const window = find_fx(display, marker_family);
+    walker* const window = find_marker(display, marker_family, skel, MARKER_LEGION);
     ASSERT_NE(nullptr, window) << "LEGION opened its window";
-    ASSERT_EQ(skel, window->owner());
+    walker* const ward = find_marker(display, marker_family, skel, MARKER_WARD);
+    ASSERT_NE(nullptr, ward) << "REASSEMBLE started its ward's clock";
     const std::uint32_t window_id = window->entity_id();
+    const std::uint32_t ward_id = ward->entity_id();
     ASSERT_TRUE(og::sim::possess(display, *ghost, *orc, 500).ok);
 
     og::runtime::reset_local_transport_shadow(
@@ -11051,12 +11086,16 @@ TEST(GameLoop, snapshot_seeded_server_keeps_a_ward_a_legion_window_and_a_possess
     walker* const s_ghost = seeded.find_by_id(ghost_id);
     walker* const s_orc = seeded.find_by_id(orc_id);
     walker* const s_window = seeded.find_by_id(window_id);
-    ASSERT_TRUE(s_skel && s_ghost && s_orc && s_window);
+    walker* const s_ward = seeded.find_by_id(ward_id);
+    ASSERT_TRUE(s_skel && s_ghost && s_orc && s_window && s_ward);
     EXPECT_NE(0, s_skel->kit_state() & KIT_WARD) << "the ward came across";
     EXPECT_EQ(marker_family, s_window->family());
-    EXPECT_EQ(2, s_window->ani_type()) << "the marker still plays LEGION";
+    EXPECT_EQ(MARKER_LEGION, s_window->ani_type()) << "the marker still plays LEGION";
     EXPECT_EQ(s_skel, s_window->owner()) << "its owner resolves on the server";
     EXPECT_GT(s_window->lifetime(), 0);
+    EXPECT_EQ(MARKER_WARD, s_ward->ani_type()) << "the ward's clock came across";
+    EXPECT_EQ(s_skel, s_ward->owner());
+    EXPECT_GT(s_ward->lifetime(), 0);
     EXPECT_TRUE(s_ghost->hidden());
     EXPECT_EQ(orc_id, s_ghost->possess_link());
     EXPECT_EQ(ghost_id, s_orc->possess_link());
@@ -11076,6 +11115,14 @@ TEST(GameLoop, snapshot_seeded_server_keeps_a_ward_a_legion_window_and_a_possess
         victim->set_team_num(1);
         victim->setxy(static_cast<short>(s_skel->xpos() + 16), s_skel->ypos());
         s_skel->set_damage(1000.0f);
+        // LEGION's coin (half the kills rise) is drawn after the eight
+        // draws this killing blow makes first; pin the world's generator so
+        // the coin lands on the rising side and the window is what is proven.
+        std::vector<std::uint32_t> bounds(8, 1u);
+        std::vector<std::uint32_t> want(8, 0u);
+        bounds.push_back(2u);
+        want.push_back(1u);
+        seeded.rng_.state_ = state_where_draws_are(bounds, want);
         ASSERT_TRUE(s_skel->attack(victim));
         ASSERT_TRUE(victim->dead());
         int skeletons_after = 0;
