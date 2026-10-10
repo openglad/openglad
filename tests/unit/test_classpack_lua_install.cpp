@@ -364,3 +364,36 @@ TEST(LuaPackInstall, unmounting_the_pack_removes_its_families)
     EXPECT_EQ(nullptr, og::script::lua_declared_family_pack(Order::FX, family))
         << "the Lua-declared ledger must be rebuilt with the registries";
 }
+
+// The DETAILS page prose reaches the descriptor slot by slot: a row's
+// `detail` in special_details, its alternate's in alternate_details, and
+// nullptr wherever a pack declared none (slot 0, an empty slot, a special
+// with no alternate). The installed core pack is the declaration.
+TEST(LuaPackInstall, special_details_reach_the_descriptor_by_slot)
+{
+    init_all_registries();
+    const FamilyDescriptor* thief = get_family_descriptor(FAMILY_THIEF);
+    ASSERT_NE(nullptr, thief);
+    ASSERT_NE(nullptr, thief->special_details[1]);
+    EXPECT_STREQ("Leave a burning bomb to explode and hurt the unwary, "
+                 "friend or foe!",
+                 thief->special_details[1]);
+    ASSERT_NE(nullptr, thief->alternate_details[1]);
+    EXPECT_STREQ("Waits unseen for a foe.", thief->alternate_details[1]);
+    ASSERT_NE(nullptr, thief->special_details[4]);
+    EXPECT_STREQ("Release a cloud of poisonous gas to roam at will and "
+                 "sicken your foes.",
+                 thief->special_details[4]);
+    EXPECT_EQ(nullptr, thief->alternate_details[2])
+        << "CLOAK has no alternate, so no alternate prose";
+    EXPECT_EQ(nullptr, thief->special_details[0]) << "slot 0 is never a special";
+    EXPECT_EQ(nullptr, thief->special_details[5]) << "the thief has no fifth slot";
+
+    // A family that declares no specials at all reads none anywhere.
+    const FamilyDescriptor* golem = get_family_descriptor(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, golem);
+    for (int slot = 0; slot < FD_NUM_SPECIALS; ++slot) {
+        EXPECT_EQ(nullptr, golem->special_details[slot]) << "slot " << slot;
+        EXPECT_EQ(nullptr, golem->alternate_details[slot]) << "slot " << slot;
+    }
+}

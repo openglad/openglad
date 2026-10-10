@@ -21,10 +21,10 @@ og.family("living", {
   -- New Specials: every slot is new_kit, so with the setting off the
   -- captain has no specials, exactly as before the setting existed.
   specials = {
-    { id = "howl",       name = "HOWL",       mp_cost = 25, new_kit = true, cast = kc.howl,       ai = kc.ai_howl },
-    { id = "eat_corpse", name = "EAT CORPSE", mp_cost = 20, new_kit = true, cast = kc.eat_corpse, ai = kc.ai_eat },
-    { id = "hook",       name = "HOOK BLADE", mp_cost = 40, new_kit = true, alternate = { name = "KNIFE FAN", mp_cost = 30 }, cast = kc.hook_or_fan,       ai = kc.ai_hook },
-    { id = "banner",     name = "WAR BANNER", mp_cost = 80, new_kit = true, alternate = { name = "WARBAND" },                 cast = kc.banner_or_warband, ai = kc.ai_banner },
+    { id = "howl",       name = "HOWL",       mp_cost = 25, new_kit = true, cast = kc.howl,       ai = kc.ai_howl, detail = "Howl in rage, stunning nearby enemies in their tracks." },
+    { id = "eat_corpse", name = "EAT CORPSE", mp_cost = 20, new_kit = true, cast = kc.eat_corpse, ai = kc.ai_eat, detail = "Regain health by devouring the corpses of your foes." },
+    { id = "hook",       name = "HOOK BLADE", mp_cost = 40, new_kit = true, alternate = { name = "KNIFE FAN", mp_cost = 30, detail = "Three knives in a fan." }, cast = kc.hook_or_fan,       ai = kc.ai_hook, detail = "A knife spirals out; the first foe it snags is reeled to your feet." },
+    { id = "banner",     name = "WAR BANNER", mp_cost = 80, new_kit = true, alternate = { name = "WARBAND", detail = "Grunts come running in." },                 cast = kc.banner_or_warband, ai = kc.ai_banner, detail = "Plant a standard on a corpse: allies near it mend and never flee." },
   },
   default_weapon = "core:knife",
   flags = {},

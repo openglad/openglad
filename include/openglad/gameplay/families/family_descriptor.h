@@ -156,6 +156,13 @@ struct FamilyDescriptor {
     bool alternate_new_kit[FD_NUM_SPECIALS] = {};
     unsigned short alternate_cost[FD_NUM_SPECIALS] = {};
 
+    // The DETAILS page prose of each slot and of its alternate (`detail =
+    // "..."` on the specials row and inside its `alternate` table);
+    // nullptr = none declared. Read by the picker only, never by the sim.
+    // Borrowed from the process-lifetime ClasspackStore, like special_ids.
+    const char* special_details[FD_NUM_SPECIALS] = {};
+    const char* alternate_details[FD_NUM_SPECIALS] = {};
+
     // Flags
     bool leaves_bloodspot;                     // false for ghost/skeleton/tower
     float magic_damage_modifier;               // multiplier for incoming magical damage (1.0 = normal)

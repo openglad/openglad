@@ -38,6 +38,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -421,13 +422,17 @@ TEST(PickerCommon, reset_for_new_game)
 
 // --- class description budget (issue #152) ---
 
-// Every playable family's description, flowed exactly as the HIRE screen
-// flows it (Paragraphs mode at the description box's 27-char budget:
-// description_box_content.w / 6 = 164 / 6), must fit the box — at most 10
-// lines (the 8px fallback pitch ceiling) and no line over 27 chars. This is
-// the regression guard that a future pack edit cannot silently overflow the
-// box. The hire list itself is covered too, whatever its families' playable
-// flags say: every family on offer must ship a description for the box.
+// Every playable family's HIRE text (its description and the generated
+// "Special:" line, og::ui::hire_description), flowed exactly as the HIRE
+// screen flows it (Paragraphs mode at the description box's 27-char budget:
+// description_box_content.w / 6 = 164 / 6), must fit the box under either
+// New Specials value — at most 10 lines (the 8px fallback pitch ceiling) and
+// no line over 27 chars. This is the regression guard that a future pack
+// edit cannot silently overflow the box. The hire list itself is covered
+// too, whatever its families' playable flags say: every family on offer
+// must ship a description for the box. And no pack description carries a
+// "Special:" line of its own any more: the line is generated, so a static
+// one would print twice and go stale.
 TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
 {
     init_family_registry();
@@ -447,20 +452,407 @@ TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
     for (int family_id = 0; family_id < 256; family_id++)
     {
         const auto* fd = get_family_descriptor(family_id);
-        if (fd == nullptr || fd->description == nullptr ||
-            (!fd->is_playable && !on_hire_list(family_id)))
+        if (fd == nullptr || fd->description == nullptr)
             continue;
-        const std::vector<std::string> flowed = og::core::wrap_text(
-            fd->description, 27, og::core::WrapMode::Paragraphs);
-        EXPECT_LE(flowed.size(), 10u)
+        EXPECT_EQ(std::string_view(fd->description).find("Special:"),
+                  std::string_view::npos)
             << "family " << family_id
-            << " description overflows the HIRE box (27 chars x 10 lines)";
-        for (const std::string& line : flowed)
-            EXPECT_LE(line.size(), 27u)
-                << "family " << family_id << " over-wide line: " << line;
+            << " description still carries its own Special line: "
+            << fd->description;
+        if (!fd->is_playable && !on_hire_list(family_id))
+            continue;
+        for (const short new_specials : {short{0}, short{1}})
+        {
+            const std::string text =
+                og::ui::hire_description(fd, new_specials);
+            const std::vector<std::string> flowed = og::core::wrap_text(
+                text, 27, og::core::WrapMode::Paragraphs);
+            EXPECT_LE(flowed.size(), 10u)
+                << "family " << family_id << " new_specials " << new_specials
+                << " HIRE text overflows the box (27 chars x 10 lines): "
+                << text;
+            for (const std::string& line : flowed)
+            {
+                EXPECT_LE(line.size(), 27u)
+                    << "family " << family_id << " over-wide line: " << line;
+            }
+        }
         checked++;
     }
     EXPECT_GE(checked, 10) << "core class pack not installed";
+}
+
+// --- TRAIN -> DETAILS page (og::ui::detail_page) ---
+
+namespace {
+
+// The texts of a page, in emission order.
+std::vector<std::string> page_texts(const og::ui::DetailPage& page)
+{
+    std::vector<std::string> out;
+    for (const og::ui::DetailLine& line : page.lines)
+        out.push_back(line.text);
+    return out;
+}
+
+// The one line with exactly this text, or nullptr.
+const og::ui::DetailLine* line_named(const og::ui::DetailPage& page,
+                                     std::string_view text)
+{
+    const og::ui::DetailLine* found = nullptr;
+    for (const og::ui::DetailLine& line : page.lines)
+    {
+        if (line.text != text)
+            continue;
+        EXPECT_EQ(nullptr, found) << "two lines read '" << text << "'";
+        found = &line;
+    }
+    return found;
+}
+
+// The Name-ink lines that open a block (not the Shift lines), in order.
+std::vector<std::string> block_names(const og::ui::DetailPage& page)
+{
+    std::vector<std::string> out;
+    for (const og::ui::DetailLine& line : page.lines)
+        if (line.ink == og::ui::DetailInk::Name &&
+            line.text.rfind(" Shift: ", 0) != 0)
+            out.push_back(line.text);
+    return out;
+}
+
+std::vector<std::string> shift_names(const og::ui::DetailPage& page)
+{
+    std::vector<std::string> out;
+    for (const og::ui::DetailLine& line : page.lines)
+        if (line.ink == og::ui::DetailInk::Name &&
+            line.text.rfind(" Shift: ", 0) == 0)
+            out.push_back(line.text);
+    return out;
+}
+
+const FamilyDescriptor& core_family(int family_id)
+{
+    const FamilyDescriptor* fd = get_family_descriptor(family_id);
+    EXPECT_NE(nullptr, fd) << "family " << family_id;
+    static const FamilyDescriptor empty{};
+    return fd != nullptr ? *fd : empty;
+}
+
+}  // namespace
+
+// Every core family's page fits the panel at every slot level under either
+// setting: nothing dropped, nothing cut, every row inside its column, no
+// two lines on one row, and no " Shift: None" under a classic slot that
+// has no alternate. Proof it can fail: kDetailProseChars 23 -> 20 or
+// kDetailRows 12 -> 10 drops lines; dropping the "NONE" test on the Shift
+// line prints " Shift: None" under the soldier's slots; spelling the locked
+// line "level" cuts " Exploding Boulder: level 4" (27).
+TEST(PickerCommon, detail_pages_fit_the_panel_for_every_core_family)
+{
+    init_family_registry();
+    int families = 0;
+    for (int family_id = 0; family_id < 256; family_id++)
+    {
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        if (fd == nullptr)
+            continue;
+        families++;
+        for (const short new_specials : {short{0}, short{1}})
+        {
+            for (const int level : {1, 4, 7, 10, 13})
+            {
+                const og::ui::DetailPage page =
+                    og::ui::detail_page(fd, level, new_specials);
+                const std::string where = std::format(
+                    "{} level {} new_specials {}", fd->name, level,
+                    new_specials);
+                EXPECT_EQ(0, page.dropped) << where;
+                EXPECT_EQ(0, page.cut) << where;
+                ASSERT_FALSE(page.lines.empty()) << where;
+                EXPECT_EQ(og::ui::DetailInk::Title, page.lines[0].ink) << where;
+                EXPECT_EQ(std::format("Level {} ", level),
+                          page.lines[0].text.substr(0, std::format("Level {} ", level).size()))
+                    << where;
+                std::set<std::pair<bool, int>> taken;
+                for (const og::ui::DetailLine& line : page.lines)
+                {
+                    EXPECT_LE(line.text.size(),
+                              static_cast<std::size_t>(og::ui::kDetailLineChars))
+                        << where << ": " << line.text;
+                    EXPECT_GE(line.row, 0) << where << ": " << line.text;
+                    EXPECT_LT(line.row, og::ui::kDetailRows)
+                        << where << ": " << line.text;
+                    if (!line.right && line.ink != og::ui::DetailInk::Title)
+                    {
+                        EXPECT_GE(line.row, og::ui::kDetailLeftFirstRow)
+                            << where << ": " << line.text;
+                    }
+                    EXPECT_TRUE(taken.insert({line.right, line.row}).second)
+                        << where << ": two lines on one row at " << line.text;
+                    EXPECT_NE(" Shift: None", line.text) << where;
+                }
+            }
+        }
+    }
+    EXPECT_GE(families, 21) << "core class pack not installed";
+}
+
+// An alternate's prose is ONE line under its Shift line: the column budget
+// (two blocks with alternates and three-line primaries fill twelve rows)
+// counts on it. Proof it can fail: lengthen any alternate's `detail` in a
+// pack past 23 characters.
+TEST(PickerCommon, alternate_details_are_one_line)
+{
+    init_family_registry();
+    int alternates = 0;
+    for (int family_id = 0; family_id < 256; family_id++)
+    {
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        if (fd == nullptr)
+            continue;
+        for (int slot = 0; slot < FD_NUM_SPECIALS; ++slot)
+        {
+            const char* detail = fd->alternate_details[slot];
+            if (detail == nullptr)
+                continue;
+            alternates++;
+            EXPECT_LE(std::strlen(detail),
+                      static_cast<std::size_t>(og::ui::kDetailProseChars))
+                << fd->name << " slot " << slot << ": " << detail;
+            EXPECT_EQ(nullptr, std::strchr(detail, '\n'))
+                << fd->name << " slot " << slot << ": " << detail;
+        }
+    }
+    // mage 1, archmage 3, cleric 3, thief 2, captain 2, skeleton 2,
+    // elemental 1, faerie 2, ghost 1.
+    EXPECT_EQ(17, alternates);
+}
+
+// The page is the specials table AS THE SETTING SEES IT, and a slot above
+// the character's level shows only its name and the level it opens at.
+// Proof it can fail: drop the level test in detail_page and every slot is
+// a full block at level 1 (the captain's locked lines vanish).
+TEST(PickerCommon, detail_page_follows_the_setting)
+{
+    init_family_registry();
+
+    const auto thief_on = og::ui::detail_page(&core_family(FAMILY_THIEF), 10, 1);
+    EXPECT_NE(nullptr, line_named(thief_on, " Shift: Mine"));
+    EXPECT_NE(nullptr, line_named(thief_on, "  Waits unseen for a foe."));
+    const auto thief_off = og::ui::detail_page(&core_family(FAMILY_THIEF), 10, 0);
+    for (const std::string& text : page_texts(thief_off))
+        EXPECT_EQ(std::string::npos, text.find("Mine")) << text;
+    EXPECT_EQ((std::vector<std::string>{" Shift: Charm Opponent"}),
+              shift_names(thief_off));
+
+    const auto skel_on = og::ui::detail_page(&core_family(FAMILY_SKELETON), 10, 1);
+    EXPECT_EQ((std::vector<std::string>{" Tunnel", " Dig In", " Bone Wall",
+                                        " Reassemble"}),
+              block_names(skel_on));
+    EXPECT_EQ((std::vector<std::string>{" Shift: Bone Storm", " Shift: Legion"}),
+              shift_names(skel_on));
+    const auto skel_off = og::ui::detail_page(&core_family(FAMILY_SKELETON), 10, 0);
+    EXPECT_EQ((std::vector<std::string>{" Tunnel"}), block_names(skel_off));
+    EXPECT_TRUE(shift_names(skel_off).empty());
+
+    const std::vector<std::string> nothing{"Level 10 Faerie has:",
+                                           " No special abilities."};
+    const auto faerie_off = og::ui::detail_page(&core_family(FAMILY_FAERIE), 10, 0);
+    EXPECT_EQ(nothing, page_texts(faerie_off));
+    ASSERT_EQ(2u, faerie_off.lines.size());
+    EXPECT_FALSE(faerie_off.lines[1].right);
+    EXPECT_EQ(og::ui::kDetailLeftFirstRow, faerie_off.lines[1].row);
+    EXPECT_EQ(og::ui::DetailInk::Prose, faerie_off.lines[1].ink);
+    for (const short new_specials : {short{0}, short{1}})
+        EXPECT_EQ((std::vector<std::string>{"Level 4 Golem has:",
+                                            " No special abilities."}),
+                  page_texts(og::ui::detail_page(&core_family(FAMILY_GOLEM),
+                                                 4, new_specials)));
+
+    // A fresh captain (level 1): HOWL's block, then each locked slot's
+    // name and level at the foot of its column, in slot order.
+    const auto cap1 = og::ui::detail_page(&core_family(FAMILY_BIG_ORC), 1, 1);
+    EXPECT_EQ((std::vector<std::string>{" Howl"}), block_names(cap1));
+    const auto* howl = line_named(cap1, " Howl");
+    const auto* eat = line_named(cap1, " Eat Corpse: lvl 4");
+    const auto* hook = line_named(cap1, " Hook Blade: lvl 7");
+    const auto* banner = line_named(cap1, " War Banner: lvl 10");
+    ASSERT_NE(nullptr, howl);
+    ASSERT_NE(nullptr, eat);
+    ASSERT_NE(nullptr, hook);
+    ASSERT_NE(nullptr, banner);
+    EXPECT_FALSE(howl->right);
+    EXPECT_EQ(og::ui::kDetailLeftFirstRow, howl->row);
+    EXPECT_FALSE(eat->right);
+    EXPECT_EQ(og::ui::DetailInk::Prose, eat->ink);
+    // Howl's name and three prose lines, the breathing row, then the lock.
+    EXPECT_EQ(howl->row + 5, eat->row);
+    EXPECT_TRUE(hook->right);
+    EXPECT_TRUE(banner->right);
+    EXPECT_EQ(0, hook->row);
+    EXPECT_EQ(1, banner->row);
+    EXPECT_EQ(cap1.lines.back().text, " War Banner: lvl 10");
+
+    const auto cap4 = og::ui::detail_page(&core_family(FAMILY_BIG_ORC), 4, 1);
+    EXPECT_EQ((std::vector<std::string>{" Howl", " Eat Corpse"}),
+              block_names(cap4));
+    EXPECT_EQ(nullptr, line_named(cap4, " Eat Corpse: lvl 4"));
+    EXPECT_NE(nullptr, line_named(cap4, " Hook Blade: lvl 7"));
+    EXPECT_NE(nullptr, line_named(cap4, " War Banner: lvl 10"));
+
+    // The longest locked line of the core families fits exactly.
+    const auto barb = og::ui::detail_page(&core_family(FAMILY_BARBARIAN), 1, 0);
+    const auto* boulder = line_named(barb, " Exploding Boulder: lvl 4");
+    ASSERT_NE(nullptr, boulder);
+    EXPECT_EQ(25u, boulder->text.size());
+    EXPECT_EQ(0, barb.cut);
+}
+
+// The 2002 page's shape survives the move into the packs: slots 1-2 on the
+// left from row 2, slots 3-5 on the right from row 0, in slot order.
+TEST(PickerCommon, detail_page_keeps_the_classic_layout)
+{
+    init_family_registry();
+
+    const auto soldier = og::ui::detail_page(&core_family(FAMILY_SOLDIER), 10, 0);
+    EXPECT_EQ("Level 10 Soldier has:", soldier.lines[0].text);
+    const auto* charge = line_named(soldier, " Charge");
+    const auto* boomerang = line_named(soldier, " Boomerang");
+    const auto* whirlwind = line_named(soldier, " Whirlwind");
+    const auto* disarm = line_named(soldier, " Disarm");
+    ASSERT_NE(nullptr, charge);
+    ASSERT_NE(nullptr, boomerang);
+    ASSERT_NE(nullptr, whirlwind);
+    ASSERT_NE(nullptr, disarm);
+    EXPECT_FALSE(charge->right);
+    EXPECT_EQ(2, charge->row);
+    EXPECT_EQ(og::ui::DetailInk::Name, charge->ink);
+    const auto* charge_prose = line_named(soldier, "  Charge causes you to");
+    ASSERT_NE(nullptr, charge_prose);
+    EXPECT_EQ(og::ui::DetailInk::Prose, charge_prose->ink);
+    EXPECT_EQ(3, charge_prose->row);
+    EXPECT_FALSE(boomerang->right);
+    EXPECT_GT(boomerang->row, charge_prose->row);
+    EXPECT_TRUE(whirlwind->right);
+    EXPECT_EQ(0, whirlwind->row);
+    EXPECT_TRUE(disarm->right);
+    EXPECT_GT(disarm->row, whirlwind->row);
+    EXPECT_TRUE(shift_names(soldier).empty());
+
+    const auto druid = og::ui::detail_page(&core_family(FAMILY_DRUID), 10, 0);
+    const auto* reveal = line_named(druid, " Reveal");
+    const auto* protection = line_named(druid, " Protection");
+    ASSERT_NE(nullptr, reveal);
+    ASSERT_NE(nullptr, protection);
+    EXPECT_TRUE(reveal->right);
+    EXPECT_EQ(0, reveal->row);
+    EXPECT_TRUE(protection->right);
+    EXPECT_GT(protection->row, reveal->row);
+
+    const auto mage = og::ui::detail_page(&core_family(FAMILY_MAGE), 13, 0);
+    const auto* wave = line_named(mage, " Energy Wave");
+    const auto* burst = line_named(mage, " Heartburst");
+    ASSERT_NE(nullptr, wave);
+    ASSERT_NE(nullptr, burst);
+    EXPECT_TRUE(burst->right);
+    EXPECT_GT(burst->row, wave->row);
+    EXPECT_EQ((std::vector<std::string>{" Shift: Teleport Marker"}),
+              shift_names(mage));
+    EXPECT_EQ(nullptr, line_named(og::ui::detail_page(
+                                      &core_family(FAMILY_MAGE), 10, 0),
+                                  " Heartburst"))
+        << "the fifth slot opens at level 13";
+
+    const auto slime = og::ui::detail_page(&core_family(FAMILY_SLIME), 1, 0);
+    const auto* split = line_named(slime, " Split");
+    ASSERT_NE(nullptr, split);
+    EXPECT_FALSE(split->right);
+    EXPECT_EQ(2, split->row);
+}
+
+// A mod's page that does not fit degrades: an over-long line is cut to the
+// column and counted, a row past the panel is not drawn and counted. No
+// core family hits either; this is a page made to.
+TEST(PickerCommon, detail_page_cuts_and_drops_what_does_not_fit)
+{
+    init_family_registry();
+    FamilyDescriptor fd = core_family(FAMILY_SOLDIER);
+    const char* long_prose =
+        "One two three four five six seven eight nine ten eleven twelve "
+        "thirteen fourteen fifteen sixteen seventeen eighteen nineteen.";
+    fd.special_names[1] = "AN EXTREMELY LONG SPECIAL NAME";
+    fd.special_details[1] = long_prose;
+    fd.special_details[2] = long_prose;
+    const og::ui::DetailPage page = og::ui::detail_page(&fd, 10, 0);
+    EXPECT_EQ(1, page.cut) << "the name line, 31 characters";
+    const auto* cut_line = line_named(page, " An Extremely Long Specia");
+    ASSERT_NE(nullptr, cut_line);
+    EXPECT_GT(page.dropped, 0);
+    for (const og::ui::DetailLine& line : page.lines)
+    {
+        EXPECT_LT(line.row, og::ui::kDetailRows) << line.text;
+        EXPECT_LE(line.text.size(),
+                  static_cast<std::size_t>(og::ui::kDetailLineChars));
+    }
+
+    // A family name too long for the title line is cut there too.
+    FamilyDescriptor long_named = core_family(FAMILY_SOLDIER);
+    long_named.name = "VERY LONG NAMED FAMILY";
+    const og::ui::DetailPage titled = og::ui::detail_page(&long_named, 10, 0);
+    EXPECT_EQ("Level 10 Very Long Named ", titled.lines[0].text);
+    EXPECT_EQ(1, titled.cut) << "the title, 36 characters";
+
+    // No descriptor at all: a title and the empty-page line.
+    EXPECT_EQ((std::vector<std::string>{"Level 3 Character has:",
+                                        " No special abilities."}),
+              page_texts(og::ui::detail_page(nullptr, 3, 1)));
+}
+
+TEST(PickerCommon, special_title_title_cases_hud_names)
+{
+    EXPECT_EQ("Eat Corpse", og::ui::special_title("EAT CORPSE"));
+    EXPECT_EQ("Heartburst", og::ui::special_title("HEARTBURST"));
+    EXPECT_EQ("Haste Self", og::ui::special_title("HASTE SELF"));
+    EXPECT_EQ("Lots of Rocks", og::ui::special_title("LOTS OF ROCKS"));
+    EXPECT_EQ("Of Mice", og::ui::special_title("OF MICE"))
+        << "a first word is capitalised whatever it is";
+    EXPECT_EQ("", og::ui::special_title(""));
+}
+
+// The HIRE box's line: every slot in play, slot order, no alternates.
+TEST(PickerCommon, specials_summary_lists_the_slots_in_play)
+{
+    init_family_registry();
+    for (const short new_specials : {short{0}, short{1}})
+        EXPECT_EQ("Special: Charge, Boomerang, Whirlwind, Disarm",
+                  og::ui::specials_summary(&core_family(FAMILY_SOLDIER),
+                                           new_specials));
+    EXPECT_EQ("Special: Teleport, Warp Space, Freeze Time, Energy Wave, "
+              "Heartburst",
+              og::ui::specials_summary(&core_family(FAMILY_MAGE), 1));
+    EXPECT_EQ("Special: Scare, Siphon, Possess, Phase",
+              og::ui::specials_summary(&core_family(FAMILY_GHOST), 1));
+    EXPECT_EQ("Special: Scare",
+              og::ui::specials_summary(&core_family(FAMILY_GHOST), 0));
+    EXPECT_EQ("Special: Howl, Eat Corpse, Hook Blade, War Banner",
+              og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 1));
+    EXPECT_EQ("Special: none",
+              og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 0));
+    EXPECT_EQ("Special: none",
+              og::ui::specials_summary(&core_family(FAMILY_FAERIE), 0));
+    EXPECT_EQ("Special: Split",
+              og::ui::specials_summary(&core_family(FAMILY_SLIME), 0));
+    EXPECT_EQ("Special: none", og::ui::specials_summary(nullptr, 1));
+
+    // The HIRE text is the prose, a blank line, then the summary.
+    const FamilyDescriptor& orc = core_family(FAMILY_ORC);
+    EXPECT_EQ(std::string(orc.description) + "\n\nSpecial: Howl, Eat Corpse",
+              og::ui::hire_description(&orc, 0));
+    EXPECT_EQ("", og::ui::hire_description(nullptr, 1));
+    FamilyDescriptor silent = orc;
+    silent.description = nullptr;
+    EXPECT_EQ("", og::ui::hire_description(&silent, 1));
 }
 
 // --- family_display_name ---

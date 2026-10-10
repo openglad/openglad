@@ -144,8 +144,10 @@ combine both flags.
 
 `description` is plain prose: the HIRE screen auto-flows it to its box at
 render time, so do NOT hand-wrap it to a column or pad it with trailing
-spaces. `'\n\n'` is a paragraph break (the core families use it before
-their `Special: ...` line); a single `'\n'` is soft and joins with a space.
+spaces. `'\n\n'` is a paragraph break; a single `'\n'` is soft and joins
+with a space. Do not end it with a `Special: ...` line: the HIRE screen adds
+one, generated from the family's `specials` as the New Specials setting sees
+them.
 
 ## Hooks
 
@@ -371,8 +373,8 @@ left unhandled is that pack's error, and a slot the engine filled from C++
 (`install_classpack_data`) only warns.
 
 **Alternates.** A special may declare `alternate = { name = "...", mp_cost = N,
-new_kit = true }`. Those three keys are the only ones accepted (any other is
-a load error), and `name` is required. The name is shown while Shift is
+new_kit = true, detail = "..." }`. Those four keys are the only ones accepted
+(any other is a load error), and `name` is required. The name is shown while Shift is
 held. There is no separate engine dispatch: the slot's handler forks on
 `self:shifter_down()` (or `self:alternate_down()`, below). Without
 `mp_cost` the alternate spends the slot's own `mp_cost`, as every classic
@@ -381,6 +383,17 @@ alternate does. With `mp_cost` it has its own price: while Shift is held
 charges it, turns the HUD cost red below it, and a bot that rolled Shift but
 cannot pay it drops the Shift before choosing. The same 5000-and-up and
 negative refusals apply as for a slot's `mp_cost`.
+
+**Details (`detail`).** A `specials` entry, and its `alternate`, may carry
+`detail = "..."`: the prose the TRAIN -> DETAILS page shows under the
+special's name (the alternate's under a `Shift: <name>` line). Write it as
+plain prose; the page wraps it at 23 characters. A primary's `detail` should
+make at most four lines (three when the slot has an alternate), and an
+alternate's is ONE line of at most 23 characters, so two slots with
+alternates still fit a column. Without `detail` the page shows the name
+alone. The page and the HIRE screen's `Special:` line follow the New
+Specials setting: a hidden slot or alternate is not listed, and a slot above
+the character's level shows as `<Name>: lvl <N>`.
 
 **New Specials (`new_kit`).** `new_kit = true` on a `specials` entry, or
 inside its `alternate`, puts that special behind the New Specials setting.

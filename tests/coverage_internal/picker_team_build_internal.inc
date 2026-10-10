@@ -640,8 +640,8 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     check(!g_start_game_requested);
 #endif
 
-    check(!get_class_description(FAMILY_SOLDIER).empty());
-    check(get_class_description(250).empty());
+    check(!get_class_description(FAMILY_SOLDIER, 1).empty());
+    check(get_class_description(250, 0).empty());
     // The HIRE/TRAIN star faces of every hireable family, spelled out from
     // the core pack's train prices (STR, DEX, CON, INT, ARMOR) rather than
     // recomputed from the product's own ((55 / cost) * 5) / 11 -- a test that

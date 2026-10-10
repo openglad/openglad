@@ -182,6 +182,11 @@ struct ClasspackSpecialEntry {
     bool new_kit = false;
     bool alternate_new_kit = false;
     std::int32_t alternate_cost = 0;
+    // `detail = "..."` on the entry and inside its `alternate` table: the
+    // prose the TRAIN -> DETAILS page shows under the special's name.
+    // Absent = the page shows the name alone.
+    std::optional<std::string> detail;
+    std::optional<std::string> alternate_detail;
 };
 
 // One entry declared by og.family("living", ...). Keys per design doc §4;

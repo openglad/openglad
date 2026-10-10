@@ -1607,12 +1607,12 @@ Sint32 create_progress_menu(Sint32 arg1)
     return MENU_REDRAW;
 }
 
-std::string get_class_description(unsigned char family)
+// The HIRE box's text: the family's prose and the "Special:" line for the
+// specials in play under this New Specials value. Reads no session, so it
+// answers with no picker open.
+std::string get_class_description(unsigned char family, short new_specials)
 {
-    const auto* fd = get_family_descriptor(family);
-    if (fd && fd->description)
-        return fd->description;
-    return {};
+    return og::ui::hire_description(get_family_descriptor(family), new_specials);
 }
 
 // stat is a StatAxis index (the caller walks the priced axes at runtime,
@@ -1680,6 +1680,10 @@ struct HireEngineState
 {
     Sint32 start_time = 0;
     unsigned char last_family = 0;
+    // The New Specials value the description was built under; empty until
+    // a frame or the entry records it (a state filled by hand keeps the
+    // text it was given until the setting actually changes).
+    std::optional<short> last_new_specials;
     std::string description;
     std::vector<std::string> desc;
     const char* family_name = "";
@@ -1755,11 +1759,18 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         l.description_box_inner.x, l.description_box_inner.y,
         static_cast<Uint32>(l.description_box_inner.w), static_cast<Uint32>(l.description_box_inner.h));
 
-    if(og::runtime::current_session->current_guy_->family != state->last_family)
+    // A lobby can change the host's New Specials value while HIRE is open,
+    // and the "Special:" line follows it.
+    const short new_specials = og::runtime::current_session->myscreen_->save_data.new_specials;
+    if (!state->last_new_specials)
+        state->last_new_specials = new_specials;
+    if(og::runtime::current_session->current_guy_->family != state->last_family ||
+       new_specials != *state->last_new_specials)
     {
         // Update description
         state->last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
-        state->description = get_class_description(state->last_family);
+        state->last_new_specials = new_specials;
+        state->description = get_class_description(state->last_family, new_specials);
         state->desc = og::core::wrap_text(state->description,
                                           l.description_box_content.w / 6,
                                           og::core::WrapMode::Paragraphs);
@@ -1885,7 +1896,8 @@ Sint32 create_hire_menu(Sint32 /*arg1*/)
     HireEngineState state;
     state.start_time = query_timer();
     state.last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
-    state.description = get_class_description(state.last_family);
+    state.last_new_specials = og::runtime::current_session->myscreen_->save_data.new_specials;
+    state.description = get_class_description(state.last_family, *state.last_new_specials);
     state.desc = og::core::wrap_text(state.description,
                                      HireMenuLayout{}.description_box_content.w / 6,
                                      og::core::WrapMode::Paragraphs);

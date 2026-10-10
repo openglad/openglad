@@ -192,8 +192,9 @@ constexpr int kAbilityTextY2 = 163;
 // create_detail_menu returns MENU_REDRAW from FOUR places (the two early-outs
 // for an unseated/empty slot, the promote branch, and the BACK tail), so the
 // return code alone proves nothing. Pin the painted frame: the loop must have
-// run, drawn the abilities dialog, and rendered the family's OWN ability text
-// (a family with no ability table paints the panel and no text at all).
+// run, drawn the abilities dialog, and rendered the family's OWN ability text,
+// composed from the specials table as the session's New Specials setting
+// sees it (the skeleton's page grows with the setting on).
 TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abilities_then_exits_on_back)
 {
     PickerStateGuard guard;
@@ -205,17 +206,21 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abiliti
     {
         int family;
         const char* what;
-        bool has_ability_table;   // get_family_detail() knows this family
+        short new_specials;       // SaveData::new_specials for this pass
     };
     const Case cases[] = {
-        { FAMILY_SOLDIER,  "soldier",  true  },
-        { FAMILY_THIEF,    "thief",    true  },
-        { FAMILY_SKELETON, "skeleton", false },
+        { FAMILY_SOLDIER,  "soldier",                1 },
+        { FAMILY_THIEF,    "thief",                  1 },
+        { FAMILY_SKELETON, "skeleton (new specials)", 1 },
+        { FAMILY_SKELETON, "skeleton (classic)",      0 },
     };
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const short saved_new_specials = save.new_specials;
     std::size_t soldier_ability_ink = 0;
     std::size_t thief_ability_ink = 0;
+    std::size_t skeleton_on_ink = 0;
+    std::size_t skeleton_off_ink = 0;
 
     for (const Case& c : cases)
     {
@@ -224,6 +229,7 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abiliti
         save.team_list[0].reset(new guy(c.family));
         save.team_list[0]->name = "TEAM_GUY";
         save.team_list[0]->level = 10;
+        save.new_specials = c.new_specials;
         og::runtime::current_session->current_guy_ =
             std::make_unique<guy>(*save.team_list[0]);
 
@@ -262,24 +268,22 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abiliti
         EXPECT_GT(header_red, 40u)
             << "the detail loop must paint its 'Character Special Abilities' "
                "header for " << c.what;
-        if (c.has_ability_table)
-        {
-            EXPECT_GT(ability_ink, 40u)
-                << "render_family_abilities must write the class line and "
-                   "ability text for " << c.what;
-        }
-        else
-        {
-            EXPECT_EQ(0u, ability_ink)
-                << "a family with no ability table paints the panel and no "
-                   "ability text (" << c.what << ")";
-        }
+        EXPECT_GT(ability_ink, 40u)
+            << "render_family_abilities must write the class line and "
+               "ability text for " << c.what;
 
         if (c.family == FAMILY_SOLDIER)
             soldier_ability_ink = ability_ink;
         if (c.family == FAMILY_THIEF)
             thief_ability_ink = ability_ink;
+        if (c.family == FAMILY_SKELETON)
+            (c.new_specials != 0 ? skeleton_on_ink : skeleton_off_ink) = ability_ink;
     }
+    save.new_specials = saved_new_specials;
+
+    EXPECT_NE(skeleton_on_ink, skeleton_off_ink)
+        << "the page reads the setting: with New Specials on the skeleton's "
+           "left column carries DIG IN under TUNNEL, with it off TUNNEL alone";
 
     EXPECT_NE(soldier_ability_ink, thief_ability_ink)
         << "the panel text is derived from the seated family, not a fixed "
