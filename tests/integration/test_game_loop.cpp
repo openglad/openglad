@@ -11167,8 +11167,24 @@ TEST(GameLoop, snapshot_seeded_server_keeps_a_ward_a_legion_window_and_a_possess
 // ---------------------------------------------------------------------------
 #include <functional>
 #include <map>
+#include <openglad/gameplay/script/family_tuning.h>
+#include <openglad/gameplay/timed_effects.h>
 
 namespace new_specials_rec {
+
+// An integer tuning value of a living family as its pack declares it (0
+// when the key is not there), so a film's tell follows the shipped number.
+int living_tuning(int family, const char* key)
+{
+    const og::script::TuningMap* map =
+        og::script::family_tuning(Order::Living, family);
+    if (map == nullptr)
+        return 0;
+    for (const og::script::TuningPair& pair : *map)
+        if (pair.key == key)
+            return static_cast<int>(pair.value.integer);
+    return 0;
+}
 
 // The three random streams, pinned per scene the way the clinic film pins
 // them: the display world (what a level load seeds the next world from),
@@ -11194,11 +11210,11 @@ inline constexpr int kTapFrames = 2;
 // the scene before the bot acts.
 inline constexpr int kBotLeadIn = 16;
 
-// The siphon film's orc lasts nine and a half touches of a level-10
-// ghost's SIPHON (10 + 2 per level = 30 before armour), so the tenth one
-// kills it; each touch heals the ghost by at least this much.
-inline constexpr float kSiphonOrcHp = 285.0f;
-inline constexpr float kSiphonHealPerTouch = 10.0f;
+// The siphon film's ghost taps SIPHON at these frames, ten apart: more
+// than a ghost's attack pause, so every tap is one touch. A level-10
+// ghost's touch is 10 + 2 per level = 30 before armour (27-32 rolled), so a
+// plain orc's 140 hp is gone by the fifth or sixth touch.
+inline constexpr std::array<int, 6> kSiphonTaps = {12, 22, 32, 42, 52, 62};
 
 // The game's shipped effect settings (cfg's defaults), so a film looks like
 // a fresh install: the test process starts with none of them set.
@@ -11429,6 +11445,8 @@ void record(const Scene& sc, Result& out)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, s);
+    // Each scene reads only its own HUD lines (hud_drew below).
+    trace_clear();
     std::vector<int> roster = {sc.family};
     roster.insert(roster.end(), sc.roster_extra.begin(), sc.roster_extra.end());
     gameplay_rec::build_save(s, "gladiator", 1, 1, roster, 10);
@@ -11676,6 +11694,27 @@ walker* seat_seen(Film& film)
     return vs == nullptr ? nullptr : vs->control;
 }
 
+// The seat's countdown cell drew exactly `text` ("POSSESS: 49s") on a frame
+// of this scene: the HUD's own trace of what it put on the screen.
+bool hud_drew(const std::string& text)
+{
+    return trace_contains("hud", (" text=" + text).c_str());
+}
+
+// The seat's countdown as the model answers it on the mirror right now, in
+// the HUD cell's words ("" when nothing runs).
+std::string seat_timer_text(Film& film)
+{
+    walker* const c = seat_seen(film);
+    if (c == nullptr)
+        return {};
+    const og::sim::SeatTimer t = og::sim::seat_timer(film.display->world(), *c);
+    if (t.label == nullptr)
+        return {};
+    return std::string(t.label) + ": " +
+           std::to_string(og::sim::timer_seconds(t.ticks)) + "s";
+}
+
 // The keys a player presses to fight `foe`: walk at it (a step into it
 // only turns to face it), and hold Fire once it is in reach. A thrower
 // (`back_off` > 0) steps back out of point-blank range and throws from
@@ -11864,9 +11903,11 @@ std::vector<Scene> scenes()
         all.push_back(sc);
     }
 
-    // GHOST: SIPHON, a touch that heals the ghost by half the harm it does.
-    // A badly hurt ghost (its bar red) touches the orc beside it again and
-    // again: the orc's bar drains to its death while the ghost's climbs.
+    // GHOST: SIPHON, a touch that heals the ghost by half the harm it does,
+    // once per attack pause. A badly hurt ghost (its bar red) taps it on a
+    // plain orc beside it, on its own mana: every tap takes one step off the
+    // orc's bar and puts half of it on the ghost's, and the orc is dead by
+    // the sixth.
     {
         Scene sc;
         sc.name = "ghost_siphon";
@@ -11875,55 +11916,63 @@ std::vector<Scene> scenes()
         sc.frames = 100;
         sc.stage = [](Film& film) {
             walker* ghost = film.hero();
-            fill_mana(ghost, 320.0f);
             ghost->stats()->set_hitpoints(0.28f * ghost->stats()->max_hitpoints());
             gameplay_rec::stop_hp_regen(ghost);
             film.marks["ghost.hp"] = ghost->stats()->hitpoints();
             walker* orc = add_actor(film, "orc", FAMILY_ORC, 1, 18, 0);
             orc->set_act_type(ACT_GUARD);
             orc->set_guard_hold_post(true);
-            orc->stats()->set_max_hitpoints(kSiphonOrcHp);
-            orc->stats()->set_hitpoints(kSiphonOrcHp);
             gameplay_rec::stop_hp_regen(orc);
             // It stands its ground: a hurt enemy yells and runs only when its
             // yell is ready, and this one has just yelled.
             orc->set_yo_delay(10000);
             mark_hp(film, "orc");
-            printf("  ghost_siphon: ghost hp %.1f of %.1f, orc hp %.1f\n",
+            printf("  ghost_siphon: ghost hp %.1f of %.1f, mp %.1f, orc hp %.1f\n",
                    ghost->stats()->hitpoints(), ghost->stats()->max_hitpoints(),
-                   orc->stats()->hitpoints());
+                   ghost->stats()->magicpoints(), orc->stats()->hitpoints());
         };
+        // Every change of the orc's health is a step; the ghost never swings,
+        // so each one is a touch.
         sc.before_tick = [](Film& film, int f) {
             walker* o = film.actor("orc");
-            const float hp = o == nullptr ? 0.0f : hp_of(o);
+            const float hp = o == nullptr || o->dead() ? 0.0f : hp_of(o);
             if (film.marks.count("orc.last") != 0 && hp != film.mark("orc.last"))
+            {
+                film.marks["orc.steps"] += 1.0f;
                 printf("  ghost_siphon frame %d: orc hp %.1f -> %.1f, ghost %.1f\n",
                        f, film.mark("orc.last"), hp, hp_of(film.hero()));
+            }
             film.marks["orc.last"] = hp;
         };
-        // A tap every fourteen frames while the orc lives.
+        // Six taps, ten frames apart, while the orc lives.
         sc.keys = [](Film& film, int f) {
             Keys k;
             walker* o = film.actor_seen("orc");
             if (o == nullptr || o->dead())
                 return k;
-            for (int at : {12, 26, 40, 54, 68})
+            for (int at : kSiphonTaps)
                 k.special = k.special || tap(f, at);
             return k;
         };
         sc.tells = {
-            {"the orc is hurt",
-             [](Film& film) { return hurt_since_staging(film, "orc"); }},
-            {"the ghost is healed",
+            {"the first tap takes one step off the orc and heals the ghost",
              [](Film& film) {
-                 return hp_of(film.hero_seen()) > film.mark("ghost.hp");
+                 return film.mark("orc.steps") == 1.0f &&
+                        hp_of(film.hero_seen()) > film.mark("ghost.hp");
              }},
-            {"the last touch kills the orc, and the ghost has climbed",
+            {"one step per tap: three taps, three steps",
+             [](Film& film) {
+                 return film.frame >= kSiphonTaps[2] + 4 &&
+                        film.frame < kSiphonTaps[3] &&
+                        film.mark("orc.steps") == 3.0f;
+             }},
+            {"the orc is dead by the sixth touch, and the ghost has climbed",
              [](Film& film) {
                  walker* o = film.actor_seen("orc");
                  walker* g = film.hero_seen();
                  return (o == nullptr || o->dead()) && g != nullptr &&
-                        hp_of(g) >= film.mark("ghost.hp") + 8.0f * kSiphonHealPerTouch;
+                        film.mark("orc.steps") <= 6.0f &&
+                        hp_of(g) >= film.mark("ghost.hp") + 40.0f;
              }},
         };
         all.push_back(sc);
@@ -11996,7 +12045,15 @@ std::vector<Scene> scenes()
                  return film.frame > 102 && c != nullptr &&
                         c->entity_id() == film.hero_id && !c->hidden();
              }},
+            // A level-10 ghost on a level-1 mage rides 580 ticks.
+            {"the seat's HUD reads POSSESS: 49s at the cast",
+             [](Film&) { return hud_drew("POSSESS: 49s"); }},
+            {"and counts down (POSSESS: 45s four seconds on)",
+             [](Film&) { return hud_drew("POSSESS: 45s"); }},
         };
+        // The key still: the possessed mage walking, its ring and the
+        // countdown in frame.
+        sc.key_tell = 1;
         sc.key_offset = 2;
         all.push_back(sc);
     }
@@ -12057,12 +12114,20 @@ std::vector<Scene> scenes()
                  return film.frame >= 92 && g != nullptr &&
                         g->stats()->query_bit_flags(BIT_PHANTOM) != 0;
              }},
+            // PHASE lasts 48 ticks: four seconds on the HUD, counting down.
+            {"the seat's HUD reads PHASE: 4s",
+             [](Film&) { return hud_drew("PHASE: 4s"); }},
+            {"and counts down to PHASE: 1s",
+             [](Film&) { return hud_drew("PHASE: 1s"); }},
         };
+        sc.key_tell = 2;
         sc.key_offset = 8;
         all.push_back(sc);
     }
 
-    // FAERIE: BLINK (a short random hop), then Shift: SWAP places with an orc.
+    // FAERIE: BLINK (a short hop of a fixed length in a random direction),
+    // then a six-frame hold that hops her once (the rest after a hop stops a
+    // held key from chaining), then Shift: SWAP places with an orc.
     {
         Scene sc;
         sc.name = "faerie_blink_swap";
@@ -12070,33 +12135,58 @@ std::vector<Scene> scenes()
         sc.slot = 1;
         sc.stage = [](Film& film) {
             add_actor(film, "orc", FAMILY_ORC, 1, 60, 10)->set_act_type(ACT_GUARD);
+            // A level-10 faerie hops 24 + 2 x 10 = 44 px.
+            film.marks["hop"] = static_cast<float>(
+                living_tuning(FAMILY_FAERIE, "blink_base") +
+                living_tuning(FAMILY_FAERIE, "blink_per_level") * 10);
+            ASSERT_EQ(44.0f, film.mark("hop"));
+        };
+        // Every move of the faerie on the mirror, counted.
+        sc.before_tick = [](Film& film, int) {
+            walker* h = film.hero_seen();
+            if (h == nullptr)
+                return;
+            if (film.marks.count("hx") != 0 &&
+                (h->xpos() != film.mark("hx") || h->ypos() != film.mark("hy")))
+                film.marks["moves"] += 1.0f;
+            film.marks["hx"] = h->xpos();
+            film.marks["hy"] = h->ypos();
         };
         sc.keys = [](Film& film, int f) {
-            if (f == 11 || f == 59)
+            if (f == 11 || f == 35 || f == 59)
             {
                 walker* h = film.hero_seen();
                 walker* o = film.actor_seen("orc");
-                const std::string at = f == 11 ? "blink" : "swap";
+                const std::string at = f == 11 ? "blink" : f == 35 ? "hold" : "swap";
                 if (h == nullptr || o == nullptr)
                     return Keys{};
                 film.marks[at + ".hx"] = h->xpos();
                 film.marks[at + ".hy"] = h->ypos();
                 film.marks[at + ".ox"] = o->xpos();
                 film.marks[at + ".oy"] = o->ypos();
+                film.marks[at + ".moves"] = film.mark("moves");
             }
             Keys k = special_at(f, 12);
             const Keys swap = special_at(f, 60, true);
-            k.special = k.special || swap.special || tap(f, 92);
+            k.special = k.special || during(f, 36, 42) || swap.special;
             k.shift = swap.shift;
             return k;
         };
         sc.tells = {
-            {"the faerie blinks away",
+            {"the faerie hops at least 10 px and at most the hop on each axis",
              [](Film& film) {
                  walker* h = film.hero_seen();
-                 return film.frame >= 12 && film.frame < 60 && h != nullptr &&
-                        std::abs(h->xpos() - film.mark("blink.hx")) +
-                                std::abs(h->ypos() - film.mark("blink.hy")) >= 20;
+                 if (film.frame < 12 || film.frame >= 36 || h == nullptr)
+                     return false;
+                 const float dx = std::abs(h->xpos() - film.mark("blink.hx"));
+                 const float dy = std::abs(h->ypos() - film.mark("blink.hy"));
+                 return std::max(dx, dy) >= 10.0f && dx <= film.mark("hop") &&
+                        dy <= film.mark("hop");
+             }},
+            {"a six-frame hold hops her exactly once",
+             [](Film& film) {
+                 return film.frame >= 56 && film.frame < 60 &&
+                        film.mark("moves") - film.mark("hold.moves") == 1.0f;
              }},
             {"the faerie and the orc trade places",
              [](Film& film) {
@@ -12263,7 +12353,13 @@ std::vector<Scene> scenes()
                  walker* h = film.hero_seen();
                  return h != nullptr && h->speed_bonus_left() > 0;
              }},
+            {"and her HUD counts the haste down (HASTE: Ns)",
+             [](Film& film) {
+                 const std::string t = seat_timer_text(film);
+                 return t.rfind("HASTE: ", 0) == 0 && hud_drew(t);
+             }},
         };
+        sc.key_tell = 1;
         all.push_back(sc);
     }
 
@@ -12352,8 +12448,11 @@ std::vector<Scene> scenes()
         all.push_back(sc);
     }
 
-    // ORC CAPTAIN: HOWL freezes the soldiers charging him, Shift: EAT CORPSE
-    // on the body at his feet heals him, and the soldiers thaw and fight on.
+    // ORC CAPTAIN: HOWL (slot 1) freezes the soldiers charging him, EAT
+    // CORPSE (slot 2) on the body at his feet heals him, and the soldiers
+    // thaw and fight on. The films hold no "next special" key, so once the
+    // captain stands on the corpse the scene puts the seat's hero on slot 2,
+    // as a press of that key would.
     {
         Scene sc;
         sc.name = "captain_howl_eat";
@@ -12375,6 +12474,24 @@ std::vector<Scene> scenes()
             add_actor(film, "foe3", FAMILY_SOLDIER, 1, -80, -6)->set_act_type(ACT_GUARD);
             for (const char* n : {"foe1", "foe2", "foe3"})
                 mark_hp(film, n);
+        };
+        sc.before_tick = [](Film& film, int) {
+            walker* const captain = film.hero();
+            if (captain == nullptr)
+                return;
+            if (film.marks.count("arrived") != 0 &&
+                film.marks.count("slot2") == 0)
+            {
+                captain->set_current_special(2);
+                film.marks["slot2"] = 1.0f;
+            }
+            // The slot the captain is on when the corpse goes.
+            walker* stain = film.on_server(
+                static_cast<std::uint32_t>(film.mark("stain")));
+            if (film.marks.count("meal.slot") == 0 &&
+                (stain == nullptr || stain->dead()))
+                film.marks["meal.slot"] =
+                    static_cast<float>(captain->current_special());
         };
         sc.keys = [](Film& film, int f) {
             walker* const captain = film.hero_seen();
@@ -12398,12 +12515,7 @@ std::vector<Scene> scenes()
             }
             const int arrived = static_cast<int>(film.mark("arrived"));
             if (f < arrived + 8)
-            {
-                const Keys eat = special_at(f, arrived + 2, true);
-                k.special = eat.special;
-                k.shift = eat.shift;
-                return k;
-            }
+                return special_at(f, arrived + 2);
             return fight_keys(captain,
                               nearest_seen(film, captain, {"foe1", "foe2", "foe3"}));
         };
@@ -12425,6 +12537,8 @@ std::vector<Scene> scenes()
                  return (stain == nullptr || stain->dead()) &&
                         hp_of(film.hero_seen()) > film.mark("captain.hp");
              }},
+            {"the meal came from slot 2, EAT CORPSE, unshifted",
+             [](Film& film) { return film.mark("meal.slot") == 2.0f; }},
             {"the soldiers thaw and the fight goes on",
              [](Film& film) {
                  return film.marks.count("arrived") != 0 &&
@@ -12439,31 +12553,68 @@ std::vector<Scene> scenes()
         all.push_back(sc);
     }
 
-    // ORC CAPTAIN: HOOK BLADE orbits and drags a foe in, then Shift: KNIFE FAN.
+    // ORC CAPTAIN: HOOK BLADE (slot 3) spirals out from the captain like a
+    // boomerang; the first soldier it touches slides in to his feet over
+    // several frames, frozen on the hook. Then Shift: KNIFE FAN at the two
+    // that close in.
     {
         Scene sc;
         sc.name = "captain_hook_fan";
         sc.family = FAMILY_BIG_ORC;
-        sc.slot = 2;
-        sc.frames = 98;
+        sc.slot = 3;
+        sc.frames = 120;
         sc.stage = [](Film& film) {
-            // Two more soldiers come on from further out, on the grass.
-            add_actor(film, "foe1", FAMILY_SOLDIER, 1, 34, 0)->set_act_type(ACT_GUARD);
-            add_actor(film, "foe2", FAMILY_SOLDIER, 1, 110, -30)->set_act_type(ACT_GUARD);
-            add_actor(film, "foe3", FAMILY_SOLDIER, 1, 116, 12)->set_act_type(ACT_GUARD);
+            // The first soldier stands near the spiral's rim (60 px), so
+            // the blade is well out when it touches him and the reel is long
+            // enough to watch; two more come on from further out, on the
+            // grass.
+            walker* first = add_actor(film, "foe1", FAMILY_SOLDIER, 1, 56, 0);
+            first->set_act_type(ACT_GUARD);
+            first->set_guard_hold_post(true);
+            add_actor(film, "foe2", FAMILY_SOLDIER, 1, 120, -30)->set_act_type(ACT_GUARD);
+            add_actor(film, "foe3", FAMILY_SOLDIER, 1, 126, 12)->set_act_type(ACT_GUARD);
             for (const char* n : {"foe1", "foe2", "foe3"})
                 mark_hp(film, n);
         };
-        // The hook drags the first soldier in and the captain fights it; when
-        // the other two close in he turns to them and throws the fan.
+        // How far the blade gets from the captain, and every frame a frozen
+        // soldier moves (the reel), on the server.
+        sc.before_tick = [fx_hook](Film& film, int) {
+            walker* const me = film.hero();
+            for (const auto* list : {&film.server->world().oblist,
+                                     &film.server->world().fxlist,
+                                     &film.server->world().weaplist})
+                for (const auto& up : *list)
+                    if (up && !up->dead() && up->query_order() == Order::FX &&
+                        up->family() == fx_hook && up->owner() == me)
+                        film.marks["blade.reach"] =
+                            std::max(film.mark("blade.reach"), gap(me, up.get()));
+            for (const char* n : {"foe1", "foe2", "foe3"})
+            {
+                walker* const o = film.actor(n);
+                if (o == nullptr || o->dead())
+                    continue;
+                const std::string at = std::string(n) + ".at";
+                const float here = static_cast<float>(o->xpos() * 1000 + o->ypos());
+                if (film.marks.count(at) != 0 && here != film.mark(at) &&
+                    o->stats()->frozen_delay() > 0)
+                {
+                    film.marks[std::string(n) + ".slid"] += 1.0f;
+                    film.marks["reeled"] = 1.0f;
+                }
+                film.marks[at] = here;
+            }
+        };
+        // He stands while the blade is out; once a soldier is on the hook
+        // he fights it, and when the other two close in he turns to them and
+        // throws the fan.
         sc.keys = [](Film& film, int f) {
             walker* const me = film.hero_seen();
             walker* const next = nearest_seen(film, me, {"foe2", "foe3"});
             Keys k = special_at(f, 10);
-            if (f >= 24)
+            if (f >= 24 && (film.marks.count("reeled") != 0 || f >= 70))
                 k = fight_keys(me, film.actor_seen("foe1"));
-            if (film.marks.count("aim") == 0 && f >= 24 &&
-                (gap(me, next) <= 56.0f || f >= 70))
+            if (film.marks.count("aim") == 0 && f >= 40 &&
+                (gap(me, next) <= 56.0f || f >= 90))
                 film.marks["aim"] = static_cast<float>(f);
             if (film.marks.count("aim") != 0)
             {
@@ -12481,17 +12632,13 @@ std::vector<Scene> scenes()
             return k;
         };
         sc.tells = {
-            {"the hook blade spins round the captain",
-             [fx_hook](Film& film) {
-                 return count_of(film.display->world(), Order::FX, fx_hook,
-                                 film.hero_id) > 0;
-             }},
-            {"a snagged foe is dragged in and stunned",
+            {"the hook blade spirals out from the captain (40 px and more)",
+             [](Film& film) { return film.mark("blade.reach") >= 40.0f; }},
+            {"a snagged soldier slides in over several frames, frozen",
              [](Film& film) {
                  for (const char* n : {"foe1", "foe2", "foe3"})
-                     if (walker* o = film.actor(n))
-                         if (o->stats()->frozen_delay() > 0)
-                             return true;
+                     if (film.mark(std::string(n) + ".slid") >= 3.0f)
+                         return gap(film.hero_seen(), film.actor_seen(n)) <= 28.0f;
                  return false;
              }},
             // Point-blank knives can land the tick they are thrown, so the
@@ -12509,68 +12656,14 @@ std::vector<Scene> scenes()
                                          hurt_since_staging(film, "foe3")));
              }},
         };
-        sc.key_offset = 3;
+        sc.key_tell = 1;
+        sc.key_offset = 0;
         all.push_back(sc);
     }
 
-    // ORC CAPTAIN: HURL ORC at a far foe, walk over, then Shift: SHOVE.
-    {
-        Scene sc;
-        sc.name = "captain_hurl_shove";
-        sc.family = FAMILY_BIG_ORC;
-        sc.slot = 3;
-        sc.stage = [](Film& film) {
-            walker* grunt = add_actor(film, "grunt", FAMILY_ORC, 0, 0, 18);
-            grunt->set_act_type(ACT_GUARD);
-            walker* foe = add_actor(film, "foe", FAMILY_SOLDIER, 1, 96, 0);
-            foe->set_act_type(ACT_GUARD);
-            mark_hp(film, "foe");
-            film.marks["grunt.x"] = grunt->xpos();
-            film.marks["grunt.y"] = grunt->ypos();
-        };
-        sc.keys = [](Film& film, int f) {
-            Keys k = special_at(f, 12);
-            k.right = during(f, 26, 50);
-            const Keys sh = special_at(f, 62, true);
-            k.special = k.special || sh.special;
-            k.shift = sh.shift;
-            if (f == 61)
-            {
-                walker* h = film.hero_seen();
-                walker* o = film.actor_seen("foe");
-                if (h && o)
-                    film.marks["gap61"] = static_cast<float>(
-                        std::abs(o->xpos() - h->xpos()) +
-                        std::abs(o->ypos() - h->ypos()));
-            }
-            return k;
-        };
-        sc.tells = {
-            {"the orc is thrown at the foe",
-             [](Film& film) {
-                 walker* g = film.actor_seen("grunt");
-                 return g != nullptr &&
-                        std::abs(g->xpos() - film.mark("grunt.x")) +
-                                std::abs(g->ypos() - film.mark("grunt.y")) >= 48 &&
-                        hurt_since_staging(film, "foe");
-             }},
-            {"the shove knocks the foe back",
-             [](Film& film) {
-                 walker* h = film.hero_seen();
-                 walker* o = film.actor_seen("foe");
-                 if (film.frame < 62 || h == nullptr || o == nullptr)
-                     return false;
-                 const float gap = static_cast<float>(
-                     std::abs(o->xpos() - h->xpos()) +
-                     std::abs(o->ypos() - h->ypos()));
-                 return gap >= film.mark("gap61") + 16;
-             }},
-        };
-        sc.key_offset = 3;
-        all.push_back(sc);
-    }
-
-    // ORC CAPTAIN: WAR BANNER on a corpse, then Shift: WARBAND from the edge.
+    // ORC CAPTAIN: WAR BANNER (slot 4) on a corpse, then Shift: WARBAND
+    // from the edge. Then he walks to a second body and plants again: the
+    // first banner is struck quietly and the grunts turn to the new one.
     {
         Scene sc;
         sc.name = "captain_banner_warband";
@@ -12578,20 +12671,84 @@ std::vector<Scene> scenes()
         sc.slot = 4;
         sc.frames = 130;
         sc.stage = [](Film& film) {
-            fill_mana(film.hero(), 240.0f);
+            // A held tap calls the warband on both of its frames (the cap of
+            // six grunts is the only refusal): enough mana for that and for
+            // the second banner, with some over, so the plant's held second
+            // frame is the quiet "no corpse" refusal and not a price one.
+            fill_mana(film.hero(), 400.0f);
             add_corpse(film, FAMILY_SOLDIER, 1, 6, 6);
-            add_actor(film, "ally1", FAMILY_ORC, 0, -24, 8)->set_act_type(ACT_GUARD);
-            add_actor(film, "ally2", FAMILY_SOLDIER, 0, -16, -22)->set_act_type(ACT_GUARD);
-            add_actor(film, "foe1", FAMILY_SOLDIER, 1, 110, 0);
-            add_actor(film, "foe2", FAMILY_ELF, 1, 116, 30);
+            add_corpse(film, FAMILY_SOLDIER, 1, -64, 2);
+            walker* captain = film.hero();
+            walker* second = nullptr;
+            for (const auto& up : film.server->world().fxlist)
+            {
+                walker* const ob = up.get();
+                if (ob != nullptr && !ob->dead() &&
+                    ob->query_order() == Order::Treasure &&
+                    ob->family() == family_of(Order::Treasure, "core:stain") &&
+                    ob->xpos() < captain->xpos() - 30)
+                    second = ob;
+            }
+            ASSERT_NE(nullptr, second) << "the second body leaves a corpse";
+            film.marks["stain2.cx"] =
+                static_cast<float>(second->xpos() + second->sizex() / 2);
+            film.marks["stain2.cy"] =
+                static_cast<float>(second->ypos() + second->sizey() / 2);
+            add_actor(film, "ally1", FAMILY_ORC, 0, -24, 26)->set_act_type(ACT_GUARD);
+            add_actor(film, "ally2", FAMILY_SOLDIER, 0, -16, -30)->set_act_type(ACT_GUARD);
+            // No foe on the field: the grunts have nothing to chase, so the
+            // film shows where they go, to the first banner and then to the
+            // second.
         };
-        sc.keys = [](Film&, int f) {
+        // The grunts' distance to the second banner when it goes up, and the
+        // closest any of them gets afterwards.
+        sc.before_tick = [weap_banner](Film& film, int) {
+            if (film.marks.count("plant2") == 0)
+                return;
+            walker* banner = nullptr;
+            for (const auto& up : film.server->world().weaplist)
+                if (up && !up->dead() && up->family() == weap_banner &&
+                    up->owner() == film.hero())
+                    banner = up.get();
+            if (banner == nullptr)
+                return;
+            float nearest = 1.0e9f;
+            for (const auto& up : film.server->world().oblist)
+                if (up && !up->dead() && up->query_order() == Order::Living &&
+                    up->family() == FAMILY_ORC && up->owner() == film.hero())
+                    nearest = std::min(nearest, gap(up.get(), banner));
+            if (film.marks.count("grunts.at_plant2") == 0)
+                film.marks["grunts.at_plant2"] = nearest;
+            film.marks["grunts.nearest2"] = nearest;
+        };
+        sc.keys = [](Film& film, int f) {
             Keys k = special_at(f, 12);
-            k.left = during(f, 20, 30);
-            const Keys band = special_at(f, 40, true);
+            const Keys band = special_at(f, 30, true);
             k.special = k.special || band.special;
             k.shift = band.shift;
-            return k;
+            walker* const captain = film.hero_seen();
+            if (f < 44 || captain == nullptr)
+                return k;
+            if (film.marks.count("on2") == 0)
+            {
+                const float cx = static_cast<float>(captain->xpos() + captain->sizex() / 2);
+                const float cy = static_cast<float>(captain->ypos() + captain->sizey() / 2);
+                const float dx = film.mark("stain2.cx") - cx;
+                const float dy = film.mark("stain2.cy") - cy;
+                if (std::abs(dx) > 2.0f || std::abs(dy) > 2.0f)
+                {
+                    k.left = dx < -2.0f;
+                    k.right = dx > 2.0f;
+                    k.up = dy < -2.0f;
+                    k.down = dy > 2.0f;
+                    return k;
+                }
+                film.marks["on2"] = static_cast<float>(f);
+            }
+            const int on2 = static_cast<int>(film.mark("on2"));
+            if (f == on2 + 2)
+                film.marks["plant2"] = static_cast<float>(f);
+            return special_at(f, on2 + 2);
         };
         sc.tells = {
             {"the banner stands on the corpse",
@@ -12609,8 +12766,33 @@ std::vector<Scene> scenes()
                          ++grunts;
                  return grunts >= 2;
              }},
+            {"a second plant strikes the first banner: one stands, on the second body",
+             [weap_banner](Film& film) {
+                 if (film.frame <= cued(film, "plant2"))
+                     return false;
+                 walker* banner = nullptr;
+                 int banners = 0;
+                 for (const auto& up : film.display->world().weaplist)
+                     if (up && !up->dead() && up->family() == weap_banner &&
+                         up->owner() != nullptr &&
+                         up->owner()->entity_id() == film.hero_id)
+                     {
+                         banner = up.get();
+                         ++banners;
+                     }
+                 return banners == 1 &&
+                        std::abs(banner->xpos() + banner->sizex() / 2 -
+                                 film.mark("stain2.cx")) <= 12.0f;
+             }},
+            {"the grunts turn to the new banner",
+             [](Film& film) {
+                 return film.marks.count("grunts.at_plant2") != 0 &&
+                        film.mark("grunts.nearest2") <=
+                            film.mark("grunts.at_plant2") - 16.0f;
+             }},
         };
-        sc.key_offset = 30;
+        sc.key_tell = 2;
+        sc.key_offset = 1;
         all.push_back(sc);
     }
 
@@ -12675,6 +12857,21 @@ std::vector<Scene> scenes()
                  return film.marks.count("popped") != 0 &&
                         hurt_since_staging(film, "orc");
              }},
+            // On its own pool: one mana every four buried ticks.
+            {"buried, it pays mana (its bar steps down)",
+             [](Film& film) {
+                 walker* h = film.hero_seen();
+                 if (h == nullptr || !h->hidden())
+                     return false;
+                 if (film.marks.count("mp.hid") == 0)
+                     film.marks["mp.hid"] = h->stats()->magicpoints();
+                 return h->stats()->magicpoints() <= film.mark("mp.hid") - 2.0f;
+             }},
+            {"the seat's HUD counts the burrow down (DIG IN: Ns)",
+             [](Film& film) {
+                 const std::string t = seat_timer_text(film);
+                 return t.rfind("DIG IN: ", 0) == 0 && hud_drew(t);
+             }},
         };
         sc.key_tell = 1;
         sc.key_offset = 2;
@@ -12725,13 +12922,41 @@ std::vector<Scene> scenes()
                         count_of(film.display->world(), Order::Weapon,
                                  weap_bone) >= 12;
              }},
+            // The bursts are the walls' own: on the storm's frame there are
+            // eight bones for every wall that stood, and none more (a burst
+            // from the skeleton would add eight).
+            {"eight bones a wall and none from the skeleton",
+             [weap_bone_wall, weap_bone](Film& film) {
+                 GameWorld& w = film.display->world();
+                 const int walls = count_of(w, Order::Weapon, weap_bone_wall,
+                                            film.hero_id);
+                 const int bones = count_of(w, Order::Weapon, weap_bone);
+                 if (walls > 0)
+                 {
+                     film.marks["walls"] = static_cast<float>(walls);
+                     return false;
+                 }
+                 if (film.frame < 40 || film.marks.count("storm.bones") != 0)
+                     return false;
+                 film.marks["storm.bones"] = static_cast<float>(bones);
+                 printf("  skeleton_wall_storm frame %d: %d walls stood, %d bones\n",
+                        film.frame, static_cast<int>(film.mark("walls")), bones);
+                 return bones > 0 &&
+                        bones <= 8 * static_cast<int>(film.mark("walls")) &&
+                        bones >= 8 * static_cast<int>(film.mark("walls")) - 6;
+             }},
         };
+        sc.key_tell = 1;
         sc.key_offset = 2;
         all.push_back(sc);
     }
 
-    // SKELETON: Shift: LEGION, then REASSEMBLE. A foe cuts it down and it
-    // stands back up; it fells that foe, who rises as a skeleton.
+    // SKELETON: REASSEMBLE, then Shift: LEGION, on the skeleton's own pool.
+    // The HUD counts the ward down from 30 s; LEGION's price leaves the ward
+    // only what the rest of the mana buys, and the clock says so. A soldier
+    // cuts the skeleton down and it stands back up at a quarter health; it
+    // fells him, then a second soldier, and at least one of the two rises as
+    // a skeleton on its side (LEGION raises half its kills).
     {
         Scene sc;
         sc.name = "skeleton_reassemble_legion";
@@ -12742,29 +12967,38 @@ std::vector<Scene> scenes()
             walker* skel = film.hero();
             skel->set_ani_type(ANI_WALK);
             skel->set_cycle(0);
-            fill_mana(skel, 200.0f);
             skel->stats()->set_hitpoints(3.0f);
             gameplay_rec::stop_hp_regen(skel);
             add_actor(film, "foe", FAMILY_SOLDIER, 1, 70, 0);
+            walker* second = add_actor(film, "foe2", FAMILY_SOLDIER, 1, 120, 24);
+            second->set_act_type(ACT_GUARD);
+            second->set_guard_hold_post(true);
             film.marks["skeletons"] = static_cast<float>(
                 count_living(film.server->world(), FAMILY_SKELETON, 0));
+            printf("  skeleton_reassemble_legion: mp %.1f of %.1f\n",
+                   skel->stats()->magicpoints(), skel->stats()->max_magicpoints());
         };
         sc.keys = [](Film& film, int f) {
-            const Keys legion = special_at(f, 6, true);
-            const Keys ward = special_at(f, 18);
+            const Keys ward = special_at(f, 6);
+            // A quick one-frame tap: LEGION leaves too little mana for a
+            // held second frame, whose price refusal would sit on screen.
+            Keys legion;
+            legion.special = f == 18;
+            legion.shift = legion.special;
             Keys k;
-            k.special = legion.special || ward.special;
+            k.special = ward.special || legion.special;
             k.shift = legion.shift;
             if (film.marks.count("rose") != 0)
             {
                 walker* h = film.hero_seen();
-                walker* o = film.actor_seen("foe");
+                walker* o = nearest_seen(film, h, {"foe", "foe2"});
                 if (h && o && !o->dead())
                 {
                     const int dx = o->xpos() - h->xpos();
                     const int dy = o->ypos() - h->ypos();
                     const int frame_in = f - static_cast<int>(film.mark("rose"));
-                    if (frame_in >= 4 && frame_in < 6)
+                    if (frame_in >= 4 && (frame_in < 6 || std::abs(dx) > 20 ||
+                                          std::abs(dy) > 20))
                     {
                         k.right = dx > 8;
                         k.left = dx < -8;
@@ -12776,6 +13010,9 @@ std::vector<Scene> scenes()
             }
             return k;
         };
+        // The stand-up is the ward spent by a death: the bit goes and the
+        // health jumps to a quarter (a ward that fades leaves both alone).
+        // The second soldier comes on once the first is down.
         sc.before_tick = [](Film& film, int f) {
             walker* h = film.hero();
             if (h == nullptr)
@@ -12783,22 +13020,38 @@ std::vector<Scene> scenes()
             if ((h->kit_state() & KIT_WARD) != 0)
                 film.marks["warded"] = 1.0f;
             else if (film.marks.count("warded") != 0 &&
-                     film.marks.count("rose") == 0 && !h->dead())
+                     film.marks.count("rose") == 0 && !h->dead() &&
+                     hp_of(h) >= 0.25f * h->stats()->max_hitpoints() - 1.0f)
                 film.marks["rose"] = static_cast<float>(f);
+            walker* first = film.actor("foe");
+            if (first == nullptr || first->dead())
+                if (walker* second = film.actor("foe2"))
+                    second->set_guard_hold_post(false);
         };
         sc.tells = {
-            {"cut down, the skeleton stands back up",
+            {"the seat's HUD reads REASSEMBLE: 30s",
+             [](Film&) { return hud_drew("REASSEMBLE: 30s"); }},
+            {"after LEGION's price the ward's clock reads what the mana buys",
+             [](Film& film) {
+                 const std::string t = seat_timer_text(film);
+                 if (film.frame < 20 || t.rfind("REASSEMBLE: ", 0) != 0 ||
+                     !hud_drew(t))
+                     return false;
+                 return std::stoi(t.substr(12)) <= 10;
+             }},
+            {"cut down, the skeleton stands back up at a quarter health",
              [](Film& film) {
                  walker* h = film.hero_seen();
                  return film.marks.count("rose") != 0 && h != nullptr &&
                         !h->dead() && (h->kit_state() & KIT_WARD) == 0;
              }},
-            {"its kill rises as a skeleton",
+            {"at least one of its kills rises as a skeleton",
              [](Film& film) {
                  return count_living(film.display->world(), FAMILY_SKELETON, 0) >
                         static_cast<int>(film.mark("skeletons"));
              }},
         };
+        sc.key_tell = 2;
         sc.key_offset = 6;
         all.push_back(sc);
     }
@@ -12834,7 +13087,13 @@ std::vector<Scene> scenes()
              }},
             {"the orc is burned",
              [](Film& film) { return hurt_since_staging(film, "orc"); }},
+            {"the seat's HUD counts the fire down (IMMOLATE: Ns)",
+             [](Film& film) {
+                 const std::string t = seat_timer_text(film);
+                 return t.rfind("IMMOLATE: ", 0) == 0 && hud_drew(t);
+             }},
         };
+        sc.key_tell = 1;
         all.push_back(sc);
     }
 
@@ -12898,9 +13157,17 @@ std::vector<Scene> scenes()
             film.marks["el.hp"] = el->stats()->hitpoints();
             walker* friend_ = film.actor("hero1");
             ASSERT_NE(nullptr, friend_);
-            friend_->setxy(static_cast<short>(el->xpos() - 44), el->ypos());
+            // Allies take every nova blast in full, and inside the ring a
+            // level-10 soldier would die with the elemental (the level ends
+            // when the last hero falls): he stands at the ring's edge, where
+            // only the nearest ring blasts still reach him.
+            friend_->setxy(static_cast<short>(el->xpos() - 128), el->ypos());
             friend_->set_act_type(ACT_GUARD);
             friend_->set_guard_hold_post(true);
+            gameplay_rec::stop_hp_regen(friend_);
+            film.marks["friend.hp"] = hp_of(friend_);
+            printf("  supernova: elemental hp %.1f of %.1f, soldier hp %.1f\n",
+                   hp_of(el), el->stats()->max_hitpoints(), hp_of(friend_));
             for (int i = 0; i < 3; ++i)
             {
                 const std::string n = "orc" + std::to_string(i + 1);
@@ -12932,7 +13199,25 @@ std::vector<Scene> scenes()
                          hurt_since_staging(film, "orc2") ||
                          hurt_since_staging(film, "orc3"));
              }},
+            {"the blast and its ring of eight go off together",
+             [fx_explosion](Film& film) {
+                 return film.frame >= 56 &&
+                        count_of(film.display->world(), Order::FX,
+                                 fx_explosion) >= 9;
+             }},
+            // Allies take every nova blast in full: the soldier at the
+            // ring's edge is badly hurt.
+            {"the soldier 128 px off, at the ring's edge, is badly hurt",
+             [](Film& film) {
+                 walker* a = film.actor_seen("hero1");
+                 if (a != nullptr && film.frame >= 56 && film.frame <= 60)
+                     printf("  supernova frame %d: soldier hp %.1f\n", film.frame,
+                            hp_of(a));
+                 return film.frame >= 56 && a != nullptr && !a->dead() &&
+                        hp_of(a) <= 0.6f * film.mark("friend.hp");
+             }},
         };
+        sc.key_tell = 3;
         sc.key_offset = 2;
         all.push_back(sc);
     }
