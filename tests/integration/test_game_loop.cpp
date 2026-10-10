@@ -11192,6 +11192,11 @@ int living_tuning(int family, const char* key)
 inline constexpr std::uint32_t kDisplayRngPin = 0x5eed5bc1u;
 inline constexpr std::uint32_t kAuthorityRngPin = 0x5eed5bc2u;
 inline constexpr unsigned int kLibcRandPin = 0x5bc3u;
+// LEGION raises half its kills on a coin. The Legion film shows both sides:
+// its first kill rises on the scene's own pin, and when the second soldier
+// is let go the authoritative world's generator is set to this state, under
+// which (measured) the skeleton's second kill stays down.
+inline constexpr std::uint32_t kLegionSecondCoinPin = 1u;
 
 // The seat's keys, rebound to keycodes no shipped layout uses.
 inline constexpr SDL_Keycode kKeyUp = SDLK_F13;
@@ -12268,10 +12273,16 @@ std::vector<Scene> scenes()
             // While they thaw she flits away to the left, so they have to
             // walk after her; the second glimmer meets them on the way.
             k.left = during(f, g1 + 18, g1 + 32);
-            k.special = k.special ||
-                        cue(film, "glimmer2", f,
-                            f >= g1 + 34 && thawed >= 2 && gap(me, near_orc) <= 66.0f,
-                            g1 + 70);
+            // A one-frame tap, pressed once her attack pause has run out: a
+            // press inside the pause is refused, and "SPECIAL BUSY" would
+            // sit over the orcs as they freeze.
+            const walker* const caster = film.hero();
+            const bool rested = caster != nullptr && caster->busy() <= 0.0f;
+            const bool g2 = cue(film, "glimmer2", f,
+                                f >= g1 + 34 && thawed >= 2 && rested &&
+                                    gap(me, near_orc) <= 66.0f,
+                                g1 + 70);
+            k.special = k.special || (g2 && f == cued(film, "glimmer2"));
             if (f >= cued(film, "glimmer2") + 6)
                 k = fight_keys(me, near_orc, 40);
             return k;
@@ -12656,8 +12667,9 @@ std::vector<Scene> scenes()
                                          hurt_since_staging(film, "foe3")));
              }},
         };
-        sc.key_tell = 1;
-        sc.key_offset = 0;
+        // The key still: the blade near its rim, well out from the captain.
+        sc.key_tell = 0;
+        sc.key_offset = 6;
         all.push_back(sc);
     }
 
@@ -12955,8 +12967,9 @@ std::vector<Scene> scenes()
     // The HUD counts the ward down from 30 s; LEGION's price leaves the ward
     // only what the rest of the mana buys, and the clock says so. A soldier
     // cuts the skeleton down and it stands back up at a quarter health; it
-    // fells him, then a second soldier, and at least one of the two rises as
-    // a skeleton on its side (LEGION raises half its kills).
+    // fells him, then a second soldier. LEGION raises half its kills on a
+    // coin: the first rises as a skeleton on its side, the second stays
+    // where it fell (the second coin is pinned, kLegionSecondCoinPin).
     {
         Scene sc;
         sc.name = "skeleton_reassemble_legion";
@@ -13012,7 +13025,10 @@ std::vector<Scene> scenes()
         };
         // The stand-up is the ward spent by a death: the bit goes and the
         // health jumps to a quarter (a ward that fades leaves both alone).
-        // The second soldier comes on once the first is down.
+        // The second soldier comes on once the first is down, with the
+        // second coin pinned. Each soldier's fall is read one tick later:
+        // whether the skeleton's own record gained the kill, whether a
+        // skeleton rose on its side, and whether the body still lies there.
         sc.before_tick = [](Film& film, int f) {
             walker* h = film.hero();
             if (h == nullptr)
@@ -13023,10 +13039,59 @@ std::vector<Scene> scenes()
                      film.marks.count("rose") == 0 && !h->dead() &&
                      hp_of(h) >= 0.25f * h->stats()->max_hitpoints() - 1.0f)
                 film.marks["rose"] = static_cast<float>(f);
+            GameWorld& w = film.server->world();
+            const float kills =
+                h->myguy != nullptr ? static_cast<float>(h->myguy->scen_kills) : 0.0f;
+            const float risen =
+                static_cast<float>(count_living(w, FAMILY_SKELETON, 0));
+            for (const char* n : {"foe", "foe2"})
+            {
+                const std::string name = n;
+                walker* o = film.actor(name);
+                if (o != nullptr && !o->dead())
+                {
+                    film.marks[name + ".x"] =
+                        static_cast<float>(o->xpos() + o->sizex() / 2);
+                    film.marks[name + ".y"] =
+                        static_cast<float>(o->ypos() + o->sizey() / 2);
+                    continue;
+                }
+                if (film.marks.count(name + ".fell") != 0 ||
+                    film.marks.count(name + ".x") == 0)
+                    continue;
+                film.marks[name + ".fell"] = static_cast<float>(f);
+                film.marks[name + ".by_skeleton"] =
+                    kills > film.mark("kills") ? 1.0f : 0.0f;
+                film.marks[name + ".rose"] =
+                    risen > film.mark("risen") ? 1.0f : 0.0f;
+                const int stain = family_of(Order::Treasure, "core:stain");
+                for (const auto& up : w.fxlist)
+                    if (up && !up->dead() && up->query_order() == Order::Treasure &&
+                        up->family() == stain &&
+                        std::abs(up->xpos() + up->sizex() / 2 -
+                                 film.mark(name + ".x")) <= 12.0f &&
+                        std::abs(up->ypos() + up->sizey() / 2 -
+                                 film.mark(name + ".y")) <= 12.0f)
+                        film.marks[name + ".body"] = 1.0f;
+                printf("  skeleton_reassemble_legion frame %d: %s fell, "
+                       "skeleton's kill %d, rose %d, body left %d\n",
+                       f, n, static_cast<int>(film.mark(name + ".by_skeleton")),
+                       static_cast<int>(film.mark(name + ".rose")),
+                       film.marks.count(name + ".body") != 0 ? 1 : 0);
+            }
+            film.marks["kills"] = kills;
+            film.marks["risen"] = risen;
             walker* first = film.actor("foe");
             if (first == nullptr || first->dead())
                 if (walker* second = film.actor("foe2"))
+                {
                     second->set_guard_hold_post(false);
+                    if (film.marks.count("coin2.pinned") == 0)
+                    {
+                        w.rng_.state_ = kLegionSecondCoinPin;
+                        film.marks["coin2.pinned"] = static_cast<float>(f);
+                    }
+                }
         };
         sc.tells = {
             {"the seat's HUD reads REASSEMBLE: 30s",
@@ -13045,10 +13110,18 @@ std::vector<Scene> scenes()
                  return film.marks.count("rose") != 0 && h != nullptr &&
                         !h->dead() && (h->kit_state() & KIT_WARD) == 0;
              }},
-            {"at least one of its kills rises as a skeleton",
+            {"its first kill rises as a skeleton on its side",
              [](Film& film) {
-                 return count_living(film.display->world(), FAMILY_SKELETON, 0) >
-                        static_cast<int>(film.mark("skeletons"));
+                 return film.mark("foe.by_skeleton") == 1.0f &&
+                        film.mark("foe.rose") == 1.0f &&
+                        count_living(film.display->world(), FAMILY_SKELETON, 0) >
+                            static_cast<int>(film.mark("skeletons"));
+             }},
+            {"its second kill stays down where it fell (the coin)",
+             [](Film& film) {
+                 return film.mark("foe2.by_skeleton") == 1.0f &&
+                        film.mark("foe2.rose") == 0.0f &&
+                        film.marks.count("foe2.body") != 0;
              }},
         };
         sc.key_tell = 2;
@@ -13218,7 +13291,7 @@ std::vector<Scene> scenes()
              }},
         };
         sc.key_tell = 3;
-        sc.key_offset = 2;
+        sc.key_offset = 0; // the whole nova, in the elemental's own view
         all.push_back(sc);
     }
 
