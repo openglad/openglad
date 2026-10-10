@@ -181,6 +181,11 @@ std::uint32_t state_where(const std::function<bool(og::sim::SimRandom&)>& want)
 // Perturbation: wail_fork_px = 0 in the staged effect-14-wail.lua tuning.
 // RED: "the second orc was frightened" and "the third orc was frightened"
 // (has_commands false), skip_exit 0 on both, and 1 bolt made, not 3.
+// Perturbation: wail_bolt_step = 60. RED: "at wail_bolt_step px a tick"
+// (stepsize 60, not 6) and the hops took 8 rounds, not 38.
+// Perturbation: the fork reach counted from the puff's corner again
+// (`+ self:distance_to_ob(leader)` dropped in the staged effect_wail.lua).
+// RED: "the second orc was frightened" false, 1 bolt made, not 3.
 TEST(KitGhost, wail_hops_foe_to_foe_and_frights_each_once)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -201,10 +206,15 @@ TEST(KitGhost, wail_hops_foe_to_foe_and_frights_each_once)
     EXPECT_EQ(a, first[0]->leader()) << "the first bolt flies at the nearest";
     EXPECT_EQ(ghost, first[0]->owner());
     EXPECT_EQ(3, first[0]->lifetime()) << "it carries wail_hops hops";
+    EXPECT_EQ(60, first[0]->lineofsight()) << "it drifts wail_bolt_life ticks";
+    EXPECT_FLOAT_EQ(6.0f, first[0]->stepsize()) << "at wail_bolt_step px a tick";
     EXPECT_EQ(0, ever_made(tw, Order::FX, FAMILY_GHOST_SCARE))
         << "a wail is not a scare";
 
-    EXPECT_LT(run_wails(tw), 400) << "the chain ends on its own";
+    const int rounds = run_wails(tw);
+    EXPECT_LT(rounds, 400) << "the chain ends on its own";
+    EXPECT_EQ(38, rounds)
+        << "the three hops take this many rounds at 6 px a tick";
     EXPECT_TRUE(a->stats()->has_commands()) << "the first orc was frightened";
     EXPECT_TRUE(b->stats()->has_commands()) << "the second orc was frightened";
     EXPECT_TRUE(c->stats()->has_commands()) << "the third orc was frightened";
@@ -302,8 +312,8 @@ walker* hand_bolt(TestGameWorld& tw, walker* ghost, walker* foe, int hops)
     bolt->stats()->set_level(ghost->stats()->level());
     bolt->center_on(ghost);
     bolt->set_leader(foe);
-    bolt->set_lineofsight(40);
-    bolt->set_stepsize(12.0f);
+    bolt->set_lineofsight(60);
+    bolt->set_stepsize(6.0f);
     bolt->set_lifetime(static_cast<short>(hops));
     return bolt;
 }
@@ -386,6 +396,116 @@ TEST(KitGhost, wail_bolt_homes_forks_only_where_it_may_and_fades)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// The puff's 48x40 frame is mostly empty air: only an 8x8 core at its
+// centre strikes. A bolt staged below and right of the orc, so its frame
+// overlaps the orc's box while its core does not, is not struck on its
+// first act; it steers its centre onto the orc's centre, 6 px an act up and
+// left, and the strike comes on the act the run pinned below. Steering the
+// puff's corner onto the orc's corner instead would park the core 4 px
+// right of the orc for good.
+//
+// Perturbation: the frame-box test restored (hits(self:xpos(), self:ypos(),
+// self:sizex(), self:sizey(), ...) in the staged effect_wail.lua). RED:
+// struck on act 1, not 4.
+// Perturbation: home_on steering the corner (tx = leader:xpos(), ty =
+// leader:ypos()). RED: struck_on 0 (never), the orc not frightened,
+// skip_exit 0.
+TEST(KitGhost, wail_strikes_from_its_core_not_its_cloud)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ghost = add_ghost(tw, 10, 100.0f, 100, 100);
+    walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 200, 100, 1, 140.0f);
+    walker* bolt = hand_bolt(tw, ghost, orc, 0);
+    ASSERT_NE(nullptr, bolt);
+    ASSERT_EQ(48, bolt->sizex());
+    ASSERT_EQ(40, bolt->sizey());
+    // Frame [210,258] x [110,150] overlaps the orc's [200,216] x [100,116];
+    // the core [230,238] x [126,134] does not.
+    bolt->setxy(210, 110);
+
+    int struck_on = 0;
+    for (int act = 1; act <= 60 && struck_on == 0; ++act) {
+        bolt->act();
+        if (bolt->dead())
+            struck_on = act;
+    }
+    EXPECT_EQ(4, struck_on) << "the core reaches the orc on this act";
+    EXPECT_TRUE(orc->stats()->has_commands()) << "the strike frightened the orc";
+    EXPECT_EQ(3, orc->skip_exit()) << "struck once";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The fork reach (wail_fork_px, 120) is counted from the orc the puff
+// struck, not from the puff's corner, which sits 16 px left of and 12 px
+// above a centred orc's. An orc 130 px from the struck one, up and left
+// (102 px from the puff's corner), is out of reach; one 115 px away down
+// and right (143 px from the corner) is in reach.
+//
+// Perturbation: is_fork_target's distance test deleted in the staged
+// effect_wail.lua. RED: "130 px from the struck orc" (frightened), its
+// skip_exit 3.
+// Perturbation: the reach counted from the puff (`+ self:distance_to_ob(
+// leader)` dropped). RED: "115 px from the struck orc" (not frightened).
+TEST(KitGhost, wail_forks_within_reach_of_the_struck_foe)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ghost = add_ghost(tw, 10, 100.0f, 60, 60);
+    walker* struck = add_living(tw, FAMILY_ORC, kFoeTeam, 300, 300, 1, 140.0f);
+    // Listed before the near orc, so a fork that wrongly reached it would
+    // take it first even with a single fork to spend.
+    walker* far = add_living(tw, FAMILY_ORC, kFoeTeam, 200, 270, 1, 140.0f);
+    walker* near = add_living(tw, FAMILY_ORC, kFoeTeam, 400, 315, 1, 140.0f);
+    ASSERT_NE(nullptr, near);
+    ASSERT_EQ(130, struck->distance_to_ob(far));
+    ASSERT_EQ(115, struck->distance_to_ob(near));
+    walker* bolt = hand_bolt(tw, ghost, struck, 1);
+    ASSERT_NE(nullptr, bolt);
+    bolt->setxy(284, 288);  // centred on the struck orc: strikes at once
+    ASSERT_EQ(102, bolt->distance_to_ob(far));
+    ASSERT_EQ(143, bolt->distance_to_ob(near));
+    bolt->act();
+    ASSERT_TRUE(bolt->dead()) << "struck on its first act";
+    EXPECT_EQ(3, struck->skip_exit());
+    run_wails(tw);
+    EXPECT_TRUE(near->stats()->has_commands()) << "115 px from the struck orc";
+    EXPECT_FALSE(far->stats()->has_commands()) << "130 px from the struck orc";
+    EXPECT_EQ(0, far->skip_exit()) << "never struck";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The puff loops the scare's small sparkle frames, 1, 2, 3, 2, one frame
+// per wail_frame_ticks (2) acts, off its own lineofsight count.
+//
+// The bolt's count starts at 60 and the frame is set after it drops, so the
+// first act shows 59 / 2 = 29, 29 mod 4 = 1: SPARKLE_FRAMES[2] = 2. The
+// sequence below is the one the run printed.
+//
+// Perturbation: wail_frame_ticks = 1 in the staged effect-14-wail.lua.
+// RED: frames { 2, 3, 2, 1, 2, 3, 2, 1 }.
+TEST(KitGhost, wail_cycles_the_small_sparkle_frames)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    walker* ghost = add_ghost(tw, 10, 100.0f, 100, 100);
+    walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 500, 100, 1, 140.0f);
+    walker* bolt = hand_bolt(tw, ghost, orc, 0);
+    ASSERT_NE(nullptr, bolt);
+    std::vector<int> frames;
+    for (int act = 0; act < 8; ++act) {
+        bolt->act();
+        ASSERT_FALSE(bolt->dead()) << "act " << act;
+        frames.push_back(bolt->frame());
+    }
+    EXPECT_EQ((std::vector<int>{2, 2, 1, 1, 2, 2, 3, 3}), frames)
+        << "the frame is set after the count drops: 59 / 2 = 29, 29 mod 4 = 1";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // A full world: no bolt, no veil, no burst can be made. The casts that need
 // one refuse for free; POSSESS still lands without its entrance burst.
 TEST(KitGhost, a_full_world_refuses_the_casts_that_need_an_entity)
@@ -427,11 +547,20 @@ TEST(KitGhost, a_full_world_refuses_the_casts_that_need_an_entity)
 
 // A level-4 ghost's touch hits for 10 + 2 x 4 = 18 before armour; whatever
 // the foe loses, the ghost gains half of (whole points), never past its
-// maximum, and its own melee damage is back afterwards.
+// maximum, and its own melee damage is back afterwards. The touch costs the
+// ghost one attack's pause (its fire_frequency, read off the walker: a
+// hero's pause is shorter than a bare ghost's 7): a second press inside it
+// is refused for free, and once the pause has run out a touch lands again.
 //
 // Perturbation: og.fdiv(dealt, 2.0) -> og.fdiv(dealt, 1.0) in the staged
 // kit_ghost.lua. RED: "half of what the orc lost": 36 hp, not 28 (the
 // ghost drank all 16 it dealt).
+// Perturbation: the set_busy line deleted from the staged kit_ghost.lua.
+// RED: "the touch costs one attack's pause" (busy 0, not 7), "a second
+// touch inside the pause" landed (10 MP left, the orc 124 -> 108), 0 acts
+// of pause, not 7.
+// Perturbation: the SPECIAL BUSY guard deleted. RED: "a second touch
+// inside the pause" landed, reason "" not "SPECIAL BUSY", 14 acts of pause.
 TEST(KitGhost, siphon_heals_half_of_damage_dealt_never_above_max)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -453,23 +582,46 @@ TEST(KitGhost, siphon_heals_half_of_damage_dealt_never_above_max)
         << "half of what the orc lost";
     EXPECT_FLOAT_EQ(own_damage, ghost->damage())
         << "the touch's damage is swapped back out";
+    const float pause = ghost->fire_frequency();
+    ASSERT_GE(pause, 1.0f);
+    EXPECT_FLOAT_EQ(pause, ghost->busy()) << "the touch costs one attack's pause";
 
-    // Nearly full: the heal stops at the maximum.
+    // Nearly full, and pressed again at once: refused, nothing spent.
     ghost->stats()->set_hitpoints(99.0f);
     ghost->stats()->set_magicpoints(40.0f);
-    ASSERT_TRUE(cast(ghost, 2, false).ok);
+    const float orc_hp = orc->stats()->hitpoints();
+    const CastResult busy = cast(ghost, 2, false);
+    EXPECT_FALSE(busy.ok) << "a second touch inside the pause";
+    EXPECT_EQ("SPECIAL BUSY", busy.reason);
+    EXPECT_FLOAT_EQ(40.0f, ghost->stats()->magicpoints()) << "refused free";
+    EXPECT_FLOAT_EQ(orc_hp, orc->stats()->hitpoints()) << "no touch landed";
+
+    // The pause counts down one a tick in the ghost's own act; when it has
+    // run out the touch lands, and the heal stops at the maximum.
+    ghost->set_act_type(ACT_CONTROL);  // no AI: the test drives the acts
+    int acts = 0;
+    while (ghost->busy() > 0.0f && acts < 50) {
+        ghost->act();
+        ++acts;
+    }
+    EXPECT_EQ(static_cast<int>(pause), acts) << "one attack's pause, in acts";
+    ASSERT_TRUE(cast(ghost, 2, false).ok) << "the pause is over";
+    EXPECT_LT(orc->stats()->hitpoints(), orc_hp) << "the touch landed again";
     EXPECT_FLOAT_EQ(100.0f, ghost->stats()->hitpoints())
         << "never above max hp";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
 // A touch that finds nobody, or a foe that cannot be hurt, still costs the
-// 30 mana: SIPHON is not a free probe. With the setting off the slot does
-// not exist (refused for mana, nothing spent).
+// 30 mana: SIPHON is not a free probe. A touch that finds nobody costs no
+// attack's pause. With the setting off the slot does not exist (refused for
+// mana, nothing spent).
 //
 // Perturbation: the empty-touch arm returns `false, "NOTHING"` in the
 // staged kit_ghost.lua. RED: "an empty touch still spends" (r.ok false)
 // and 40 MP left, not 10.
+// Perturbation: the empty-touch arm sets the pause too. RED: "an empty
+// touch costs no attack's pause" (busy 7, not 0).
 TEST(KitGhost, empty_siphon_still_spends)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -483,6 +635,8 @@ TEST(KitGhost, empty_siphon_still_spends)
         EXPECT_FLOAT_EQ(10.0f, ghost->stats()->magicpoints());
         EXPECT_FLOAT_EQ(50.0f, ghost->stats()->hitpoints());
         EXPECT_TRUE(notified(tw, "touch finds nothing"));
+        EXPECT_FLOAT_EQ(0.0f, ghost->busy())
+            << "an empty touch costs no attack's pause";
     }
     {
         TestGameWorld tw;
@@ -496,6 +650,8 @@ TEST(KitGhost, empty_siphon_still_spends)
         EXPECT_FLOAT_EQ(10.0f, ghost->stats()->magicpoints());
         EXPECT_FLOAT_EQ(140.0f, orc->stats()->hitpoints());
         EXPECT_FLOAT_EQ(50.0f, ghost->stats()->hitpoints()) << "nothing to drink";
+        EXPECT_FLOAT_EQ(ghost->fire_frequency(), ghost->busy())
+            << "the touch found a foe: it costs the pause all the same";
     }
     {
         TestGameWorld tw;  // OFF twin
@@ -521,7 +677,7 @@ TEST(KitGhost, empty_siphon_still_spends)
 // state below is chosen so that order resists and the other order would
 // not, so a swapped draw order turns this red. A resisted touch spends the
 // mana and the host strikes back; a landed one rides the host for
-// 120 + 40 x (7 - 1) = 360 ticks.
+// 120 + 2 x ln(1 + 6) x 100 = 510 ticks.
 //
 // Perturbation: the two roll lines swapped in the staged kit_ghost.lua
 // (constitution drawn first). RED: "the host resisted" (possess_link 2, not
@@ -587,7 +743,7 @@ TEST(KitGhost, possess_resist_roll_uses_howl_order)
         EXPECT_EQ(ghost->entity_id(), orc->possess_link());
         EXPECT_TRUE(ghost->hidden()) << "the ghost is inside its host";
         EXPECT_EQ(kGhostTeam, orc->team_num()) << "the host fights for the ghost";
-        EXPECT_EQ(360, orc->possess_ticks()) << "120 + 40 x the level gap of 6";
+        EXPECT_EQ(510, orc->possess_ticks()) << "120 + 2 x ln(7) x 100";
         EXPECT_EQ(1, ever_made(tw, Order::FX, FAMILY_GHOST_SCARE))
             << "the entrance burst";
         EXPECT_TRUE(notified(tw, "possesses"));
@@ -595,13 +751,18 @@ TEST(KitGhost, possess_resist_roll_uses_howl_order)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// From a level gap of possess_permanent_gap (8) the ride is for good
-// (ticks 0); below it the duration follows the gap, never under 60.
+// No ride is for good: the duration is possess_base + possess_log_scale x
+// ln(1 + gap) (the kit's table of ln x 100), never under possess_min for a
+// host that out-levels the ghost, and never past possess_cap, one minute.
 //
-// Perturbation: possess_permanent_gap = 99 in the staged ghost tuning. RED:
-// "a gap of 9 is permanent" (480 ticks, not 0) and "a gap of 8 is
-// permanent" (440, not 0).
-TEST(KitGhost, large_gap_is_permanent)
+// Perturbation: possess_cap = 0 in the staged ghost tuning. RED: every row
+// 0 ticks, "gap N: every ride lasts" for each gap 0 to 40.
+// Perturbation: the table read one step on (LN100[og.min(g + 2, 21)]).
+// RED: "a gap of 9" 600 not 580, "a gap of 8" 580 not 560 (and 536 not
+// 510 in the two gap-6 pins of the cast tests).
+// Perturbation: the cap dropped (return ticks). RED: "a gap of 24" 728,
+// not 720; "gap 20: one minute at most" 728 vs 720.
+TEST(KitGhost, duration_follows_the_log_curve_and_caps_at_a_minute)
 {
     og::test::ScopedHookFailureGuard guard;
     struct Row {
@@ -611,10 +772,11 @@ TEST(KitGhost, large_gap_is_permanent)
         const char* what;
     };
     const Row rows[] = {
-        {10, 1, 0, "a gap of 9 is permanent"},
-        {10, 2, 0, "a gap of 8 is permanent"},
-        {10, 3, 400, "a gap of 7: 120 + 40 x 7"},
-        {7, 9, 60, "out-levelled: never under possess_min"},
+        {10, 1, 580, "a gap of 9: 120 + 2 x 230"},
+        {10, 2, 560, "a gap of 8: 120 + 2 x 220"},
+        {7, 9, 120, "out-levelled: possess_min"},
+        {25, 1, 720, "a gap of 24: past the table, held at the cap"},
+        {30, 1, 720, "a gap of 29: held at the cap"},
     };
     for (const Row& row : rows) {
         const short gl = row.ghost_level;
@@ -634,6 +796,31 @@ TEST(KitGhost, large_gap_is_permanent)
         ASSERT_EQ(orc->entity_id(), ghost->possess_link()) << row.what;
         EXPECT_EQ(row.ticks, orc->possess_ticks()) << row.what;
     }
+    // Every gap from 0 to 40: never 0 (the engine's "for good"), never
+    // shorter than at a smaller gap, never past the minute.
+    int last = 0;
+    for (short gap = 0; gap <= 40; ++gap) {
+        const short gl = static_cast<short>(gap + 1);
+        const std::uint32_t lands = state_where([gl](og::sim::SimRandom& r) {
+            const std::uint32_t level_roll =
+                r.next(static_cast<std::uint32_t>(gl) * 10u);
+            return r.next(40) <= level_roll;
+        });
+        TestGameWorld tw;
+        tw.world().new_specials = 1;
+        walker* ghost = add_ghost(tw, gl, 100.0f);
+        walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 80, 64, 1, 140.0f);
+        tw.world().rng_.state_ = lands;
+        const CastResult r = cast(ghost, 3, false);
+        ASSERT_TRUE(r.ok) << r.reason << " gap " << gap;
+        ASSERT_EQ(orc->entity_id(), ghost->possess_link()) << "gap " << gap;
+        const int ticks = orc->possess_ticks();
+        EXPECT_GE(ticks, 120) << "gap " << gap << ": every ride lasts";
+        EXPECT_GE(ticks, last) << "gap " << gap << ": a bigger gap rides longer";
+        EXPECT_LE(ticks, 720) << "gap " << gap << ": one minute at most";
+        last = ticks;
+    }
+    EXPECT_EQ(720, last) << "a gap of 40 rides the full minute";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -767,7 +954,7 @@ TEST(KitGhost, bot_ghost_possesses_an_adjacent_bot_foe_only)
     const Outcome plain = run(Variant::Plain, seed);
     EXPECT_TRUE(plain.ghost_hidden);
     EXPECT_EQ(kGhostTeam, plain.host_team) << "the host fights for the ghost";
-    EXPECT_EQ(360, plain.ticks);
+    EXPECT_EQ(510, plain.ticks) << "a gap of 6: 120 + 2 x ln(7) x 100";
     EXPECT_FALSE(run(Variant::Hero, seed).possessed) << "never a seated hero";
     EXPECT_FALSE(run(Variant::Undead, seed).possessed) << "never the undead";
     EXPECT_FALSE(run(Variant::Far, seed).possessed) << "only a touching foe";
@@ -1054,21 +1241,25 @@ TEST(KitGhost, ai_off_answers_the_classic_gate)
 // Art and glyphs
 // ---------------------------------------------------------------------------
 
-// core:wail is effect wire 14 and wears the chain bolt's lightning (eight
-// headings), with a cyan bold `~` in the terminal clients.
+// core:wail is effect wire 14 and wears the scare's sparkle cloud (eight
+// frames, a dot growing to a ring), with the scare's magenta bold, as `*`,
+// in the terminal clients.
+//
+// Perturbation: sprite = "lightnin.png" in the staged effect-14-wail.lua.
+// RED: pix_filename "lightnin.png", not "expand8.png".
 TEST(KitGhost, new_kit_entities_load_art_and_glyphs)
 {
     ASSERT_EQ(14, wail_family()) << "core:wail is effect wire id 14";
     const EffectFamilyDescriptor* d = get_effect_family_descriptor(14);
     ASSERT_NE(nullptr, d);
     ASSERT_NE(nullptr, d->pix_filename);
-    EXPECT_EQ(std::string("lightnin.png"), d->pix_filename);
+    EXPECT_EQ(std::string("expand8.png"), d->pix_filename);
     const PixieData p = read_pixie_file(d->pix_filename);
     ASSERT_TRUE(p.valid());
-    EXPECT_EQ(8, static_cast<int>(p.frames)) << "one frame per heading";
-    EXPECT_EQ(U'~', d->glyph.codepoint);
-    EXPECT_EQ('~', d->glyph.ascii);
-    EXPECT_EQ(og::GlyphColor::Cyan, d->glyph.color);
+    EXPECT_EQ(8, static_cast<int>(p.frames)) << "the scare's eight frames";
+    EXPECT_EQ(U'*', d->glyph.codepoint);
+    EXPECT_EQ('*', d->glyph.ascii);
+    EXPECT_EQ(og::GlyphColor::Magenta, d->glyph.color);
     EXPECT_TRUE(d->glyph.bold);
     EXPECT_FALSE(d->glyph.transparent) << "the bolt is seen on every client";
 }
