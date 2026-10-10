@@ -83,8 +83,8 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
             w->set_current_weapon(s.current_weapon);
 
         // Phase 01 (semantic-parity): caster preconditions for special slots
-        // >= 2. Cycling gate: src/gameplay/sim_input_handler.cpp:196 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
-        // Firing gate: src/gameplay/living.cpp:586 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
+        // >= 2. Cycling gate: src/gameplay/sim_input_handler.cpp:204 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
+        // Firing gate: src/gameplay/living.cpp:588 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
         // Zero defaults preserve byte-mirror layout for rows that don't need
         // either; the harness raises level/MP only when the SpawnSpec asks
         // for it.
@@ -205,13 +205,13 @@ void cycle_next_character(GameWorld& world,
         sim_claim_control(world, *driver.control, 0);
 }
 
-void cycle_special(walker* control)
+void cycle_special(const GameWorld& world, walker* control)
 {
     // The cycling rule itself lives once, in the game
     // (sim_advance_current_special); the null guards are the harness's own
     // preconditions, and the press edge is detected by the caller.
     if (control && control->stats())
-        sim_advance_current_special(*control);
+        sim_advance_current_special(world, *control);
 }
 
 } // namespace
@@ -256,7 +256,7 @@ void apply_inputs_at_tick(GameWorld& world,
         if (driver.control->user() != 0)
         {
             if (held(pressed, K_SPECIAL_SWITCH))
-                cycle_special(driver.control);
+                cycle_special(world, driver.control);
             driver.prev_mask = driver.held_mask;
             return;
         }
@@ -271,7 +271,7 @@ void apply_inputs_at_tick(GameWorld& world,
     control->set_shifter_down(held(driver.held_mask, K_SHIFT) ? 1 : 0);
 
     if (held(pressed, K_SPECIAL_SWITCH))
-        cycle_special(control);
+        cycle_special(world, control);
 
     if (control->stats() != nullptr && control->stats()->commands.empty())
     {

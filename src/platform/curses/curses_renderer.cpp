@@ -15,9 +15,11 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/timed_effects.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
 
@@ -68,8 +70,10 @@ bool is_mode_beacon_entity(const GameWorld& world, std::uint32_t id)
 }
 
 // Name of the walker's currently selected special ability, or "" if it has none
-// (family with no specials, or the special slot is empty/"NONE").
-std::string current_special_name(const walker* w)
+// (family with no specials, or the special slot is empty/"NONE"), as this
+// session's New Specials setting shows the table. While the shift is held the
+// alternate's name shows instead, when the slot has one in play.
+std::string current_special_name(const walker* w, const GameWorld& world)
 {
     const int sp = static_cast<int>(w->current_special());
     if (sp < 0 || sp >= FD_NUM_SPECIALS)
@@ -77,9 +81,13 @@ std::string current_special_name(const walker* w)
     const FamilyDescriptor* fd = get_family_descriptor(w->family());
     if (!fd)
         return {};
-    const char* name = fd->special_names[sp];
+    const char* name = og::sim::special_name(fd, sp, world.new_specials);
     if (!name || name[0] == '\0' || std::strcmp(name, "NONE") == 0)
         return {};
+    const char* alternate = og::sim::alternate_name(fd, sp, world.new_specials);
+    if (w->shifter_down() != 0 && alternate != nullptr &&
+        alternate[0] != '\0' && std::strcmp(alternate, "NONE") != 0)
+        return alternate;
     return name;
 }
 
@@ -253,9 +261,24 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
 
             const bool is_followed = (followed_id != 0 && w->entity_id() == followed_id);
 
+            const bool my_team =
+                w->team_num() == static_cast<unsigned char>(world.my_team);
+
+            // A ghost riding a possessed body shows to nobody: its cell is
+            // the host's, which alternates with the ghost's glyph below.
+            if (w->hidden() && w->possess_link() != 0)
+                continue;
+            // A hidden walker (dug in, or riding a host) shows only to its
+            // own team.
+            if (w->hidden() && !is_followed && !my_team)
+                continue;
+
             // Invisible dudes vanish from the map, except the player's own
-            // followed avatar (you always see yourself).
-            if (w->invisibility_left() > 0 && !is_followed)
+            // followed avatar (you always see yourself). An invisible
+            // non-living thing of our own (a mine we laid) still shows; an
+            // invisible creature, ours or not, stays hidden as before.
+            if (w->invisibility_left() > 0 && !is_followed &&
+                !(w->query_order() != Order::Living && my_team))
                 continue;
 
             // Multi-floor: only entities on the followed walker's floor show.
@@ -271,11 +294,29 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
             if (row < 0 || row >= height || col < 0 || col >= width)
                 continue;
 
-            const Glyph g = entity_glyph(w->query_order(), w->family(), w->team_num(),
-                                         is_followed,
-                                         static_cast<unsigned char>(world.my_team));
+            Glyph g = entity_glyph(w->query_order(), w->family(), w->team_num(),
+                                   is_followed,
+                                   static_cast<unsigned char>(world.my_team));
             if (g.skip)
                 continue;
+            // A possessed body twinkles: every other three-tick window its
+            // cell shows the rider's glyph (the ghost's g), bold, in the
+            // colours of the side the body now fights for. A terminal cell
+            // cannot wear the SDL ring, so the glyph itself is the twinkle.
+            if (w->possess_link() != 0 && !w->hidden() &&
+                w->query_order() == Order::Living &&
+                world.tick_count_ % 6 >= 3) {
+                const walker* rider = world.find_by_id(w->possess_link());
+                if (rider != nullptr) {
+                    const Glyph rg = entity_glyph(
+                        rider->query_order(), rider->family(), w->team_num(),
+                        is_followed, static_cast<unsigned char>(world.my_team));
+                    if (!rg.skip) {
+                        g = rg;
+                        g.bold = true;
+                    }
+                }
+            }
             // Scripted-mode beacon targets render bold (glyph_map already
             // team-tints; boldness is the terminal's beacon highlight).
             const bool beacon_bold =
@@ -366,6 +407,16 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
         if (world.enemy_freeze > 0)
             line1 += "  TIME " + std::to_string(
                 static_cast<int>(world.enemy_freeze));
+        // The seat's own timed effect (a possession, a phase, a haste...):
+        // the terminal twin of the SDL HUD's countdown cell, from the same
+        // shared model, in seconds. The followed walker is the host while
+        // a ghost possesses it.
+        if (followed != nullptr) {
+            const og::sim::SeatTimer timer = og::sim::seat_timer(world, *followed);
+            if (timer.label != nullptr)
+                line1 += std::string("  ") + timer.label + " " +
+                         std::to_string(og::sim::timer_seconds(timer.ticks)) + "s";
+        }
         // Scripted-mode (TYPE_SCRIPTED) group: the mode name + every
         // non-empty ModeState HUD line, then the followed walker's respawn
         // seconds — the terminal twin of the SDL mode panel.
@@ -401,7 +452,7 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
         // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the
         // player can see what casting fire/special will do.
         if (followed) {
-            const std::string special = current_special_name(followed);
+            const std::string special = current_special_name(followed, world);
             if (!special.empty())
                 line1 += "  Sp:" + special;
         }

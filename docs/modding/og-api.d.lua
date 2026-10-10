@@ -65,9 +65,12 @@
 ---@class og.Walker
 ---@field act_type fun(self: og.Walker): integer
 ---@field add_frozen_stun fun(self: og.Walker, add: integer) # ob:add_frozen_stun(n) — the universal application pattern for stun_total, fused into one verb: ob:s_set_frozen_delay(stun_total(ob:s_frozen_delay_raw(), n))...
+---@field alternate_cost fun(self: og.Walker, slot: integer): integer # walker:alternate_cost(slot) -> integer: the price of the slot's shifted alternate as this session sees it (the New Specials setting hides a new-kit alternate...
+---@field alternate_down fun(self: og.Walker): boolean # walker:alternate_down() -> boolean: the shift is held AND the current slot's alternate is in play this session (the New Specials setting hides a new-kit alte...
 ---@field ani_type integer|fun(self: og.Walker): integer # write-through property: `self.ani_type = v` runs m_set_ani_type; reads answer the method (method-first)
 ---@field animate fun(self: og.Walker): boolean
 ---@field attack fun(self: og.Walker, target: og.Walker): boolean
+---@field blocks_placement fun(self: og.Walker): boolean # walker:blocks_placement() -> boolean: a weapon whose family declares blocks_placement (solid scenery: a bone wall, a war banner).
 ---@field bonus_rounds fun(self: og.Walker): integer
 ---@field busy number|fun(self: og.Walker): number # write-through property: `self.busy = v` runs m_set_busy; reads answer the method (method-first)
 ---@field can_approach_weapon_range fun(self: og.Walker, objective: og.Walker): boolean # walker:can_approach_weapon_range(objective) -> bool.
@@ -126,12 +129,16 @@
 ---@field g_upgrade_to_level fun(self: og.Walker, new_level: integer, arg3: any?)
 ---@field has_guy fun(self: og.Walker): boolean
 ---@field heal_clamped fun(self: og.Walker, amount: integer, source: og.Walker?) # walker:heal_clamped(amount[, source]) — fused self-heal with a fixed operation order.
+---@field hidden fun(self: og.Walker): boolean # walker:hidden() -> boolean
 ---@field hp number # read/write property over s_hitpoints/s_set_hitpoints (write-through, same narrowing)
 ---@field in_act fun(self: og.Walker): boolean
+---@field init_fire fun(self: og.Walker): boolean # walker:init_fire() -> boolean.
 ---@field invisibility_left fun(self: og.Walker): integer
 ---@field invulnerable_left fun(self: og.Walker): integer
 ---@field is_friendly fun(self: og.Walker, other: og.Walker): boolean
 ---@field keys fun(self: og.Walker): integer
+---@field kit_state fun(self: og.Walker): integer # walker:kit_state() -> integer (the KIT_* bits)
+---@field last_attacker_id fun(self: og.Walker): integer # walker:last_attacker_id() -> integer (the entity id of whoever last damaged this walker, 0 = nobody yet; resolve it with og.find_by_id)
 ---@field last_self_teleport_tick fun(self: og.Walker): integer # walker:last_self_teleport_tick() — the world tick this walker last began a SELF-teleport (blinks and marker beacons; map teleporter pads never stamp).
 ---@field lastx fun(self: og.Walker): number
 ---@field lasty fun(self: og.Walker): number
@@ -145,6 +152,8 @@
 ---@field move_myguy_to fun(self: og.Walker, target: og.Walker)
 ---@field order fun(self: og.Walker): integer
 ---@field owner fun(self: og.Walker): og.Walker?
+---@field possess_link fun(self: og.Walker): integer # walker:possess_link() -> integer (the partner's entity id, 0 = none)
+---@field possess_ticks fun(self: og.Walker): integer # walker:possess_ticks() -> integer (the host's countdown, 0 = permanent)
 ---@field real_team_num fun(self: og.Walker): integer
 ---@field restore_act_type fun(self: og.Walker) # walker:restore_act_type() — one-deep undo of set_act_type.
 ---@field s_add_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
@@ -219,10 +228,12 @@
 ---@field set_floor fun(self: og.Walker, value: integer)
 ---@field set_foe fun(self: og.Walker, value: og.Walker?)
 ---@field set_frame fun(self: og.Walker, value: integer): integer
+---@field set_hidden fun(self: og.Walker, value: any) # walker:set_hidden(0|1|boolean)
 ---@field set_ignore fun(self: og.Walker, value: integer)
 ---@field set_invisibility_left fun(self: og.Walker, value: integer)
 ---@field set_invulnerable_left fun(self: og.Walker, value: integer)
 ---@field set_keys fun(self: og.Walker, value: integer)
+---@field set_kit_state fun(self: og.Walker, n: integer) # walker:set_kit_state(n) -- narrows to a byte like every byte setter.
 ---@field set_lastx fun(self: og.Walker, value: number)
 ---@field set_lasty fun(self: og.Walker, value: number)
 ---@field set_leader fun(self: og.Walker, value: og.Walker?)
@@ -313,6 +324,7 @@
 ---@field on_create? fun(self: og.Walker)
 ---@field on_death? fun(self: og.Walker): boolean
 ---@field on_fire_weapon? fun(self: og.Walker, weapon: og.Walker): boolean
+---@field on_kill? fun(self: og.Walker, victim: og.Walker)
 ---@field on_melee_hit? fun(self: og.Walker, target: og.Walker)
 ---@field on_shoved? fun(target: og.Walker)
 ---@field set_difficulty? fun(self: og.Walker, level: integer)
@@ -578,7 +590,18 @@
 ---@field FFA_TEAM_BASE integer
 ---@field FFA_TEAM_COUNT integer
 ---@field GRID_SIZE integer
+---@field KIT_CHANNEL integer
+---@field KIT_FEARLESS integer
+---@field KIT_HIDDEN integer
+---@field KIT_QUARTER_FREEZE integer
+---@field KIT_WARD integer
 ---@field MACE_LIFE_CAP integer
+---@field MARKER_BURROW integer
+---@field MARKER_IMMOLATION integer
+---@field MARKER_LEGION integer
+---@field MARKER_METEOR_RAIN integer
+---@field MARKER_PHASE_VEIL integer
+---@field MARKER_WARD integer
 ---@field MAXOBS integer
 ---@field MP_POOL_DAMAGE_CAP integer
 ---@field NUM_FACINGS integer
@@ -708,6 +731,7 @@
 ---@field family_flag fun(order: og.OrderName, fam: integer, flag: "has_returning_weapon"|"is_stationary"|"is_undead"|"leaves_bloodspot"): boolean? # og.family_flag("living", family_byte, flag_name) → descriptor boolean.
 ---@field family_id fun(order_str: og.OrderName, family_str: string): integer? # og.family_id(order, family_str) → wire byte (tests/diagnostics; also lets scripts compare walker:family() against named families).
 ---@field fdiv fun(a: number, b: number): number
+---@field fearless fun(entity: og.Walker): boolean # og.fearless(ent) -> boolean (og::sim::fearless: the kit mark, or a friendly banner's rally aura with the setting on)
 ---@field find_by_id fun(id: integer): og.Walker? # og.find_by_id(id) — entity id -> handle; nil for 0, absent, or dead-and-swept ids.
 ---@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap", and allegiance follows the owner chain.
 ---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
@@ -731,9 +755,11 @@
 ---@field level_done fun(): integer
 ---@field level_id fun(): integer
 ---@field level_tick fun(): integer
+---@field line_clear fun(first: og.Walker, second: og.Walker): boolean # og.line_clear(a, b) -> boolean: no wall cell between the two walkers' centres (false across floors).
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
----@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
+---@field map_size fun(): integer, integer, integer # og.map_size() -> pixmaxx, pixmaxy, floor_count (every floor shares the pixel footprint)
+---@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"new_specials"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer
@@ -743,6 +769,7 @@
 ---@field my_team fun(): integer
 ---@field oblist fun(): og.Walker[]
 ---@field pack fun(arg1: table)
+---@field possess fun(rider: og.Walker, host: og.Walker, ticks: integer): boolean, string # og.possess(rider, host, ticks) -> true | false, reason.
 ---@field query_genre fun(tx: integer, ty: integer, floor: integer?): integer # og.query_genre(tile_x, tile_y [, floor]) → int — the smoother's terrain genre for a TILE coordinate (the passable queries above all take pixels; this one doe...
 ---@field query_grid_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
 ---@field query_object_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
@@ -753,6 +780,8 @@
 ---@field register_default_lineup fun(hooks: og.CampaignLineup) # og.register_default_lineup({ power = fn }) — the DEFAULT lineup pricing a shipped pack registers for every campaign that names none of its own (docs/lineup-d...
 ---@field register_hooks fun(order_str: og.OrderName, family_str: string, hooks: og.FxHooks|og.GeneratorHooks|og.LivingHooks|og.TreasureHooks|og.WeaponHooks)
 ---@field register_level_hooks fun(level_id: integer, hooks: og.LevelHooks) # og.register_level_hooks(level_id, { on_load=, on_tick=, on_entity_death=, on_entity_spawn= }).
+---@field rejoin_obmap fun(entity: og.Walker) # og.rejoin_obmap(ent): put a walker that a kit took out of the collision table back in at its current spot (never a dead, dormant, hidden or ignored one).
+---@field release_possession fun(entity: og.Walker): og.Walker? # og.release_possession(ent) -> the rider, or nil when `ent` (either side) was not in a possession.
 ---@field remaining_foes fun(entity: og.Walker): integer
 ---@field respawn_anchor fun(team: integer, i: integer): integer, integer # og.respawn_anchor(team, i) — anchor i (0-based) for a team as x, y; errors when i is outside the recorded count.
 ---@field respawn_anchor_count fun(team: integer): integer # og.respawn_anchor_count(team) — authored start-marker anchors recorded for a team (filled at CTF init / the first scripted tick).
@@ -776,6 +805,7 @@
 ---@field spawn_spot_clear fun(entity: og.Walker, x: integer, y: integer, floor: integer?): boolean # og.spawn_spot_clear(ent, x, y [, floor]) — the eat-free placement probe (NEVER og.query_passable: its obmap route dispatches eat_me, so a probe could eat a d...
 ---@field summon fun(summoner: og.Walker, order: og.OrderName, fam: integer): og.Walker?
 ---@field summon_configured fun(summoner: og.Walker, order: og.OrderName, fam: integer, arg4: table): og.Walker? # og.summon_configured(self, order, family, {ani_type=, lifetime=, hp_add=, max_hp_from_hp=, damage_add=}) → handle | nil — summon plus setters in fixed, parit...
+---@field swap_places fun(first: og.Walker, second: og.Walker): boolean # og.swap_places(a, b) -> boolean: the two walkers trade positions and floors (false, nothing moved, for a dead, dormant or hidden walker or the same walker tw...
 ---@field team_color_name fun(team: integer): string # og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW" for score teams, the 16 band names for FFA bytes 16-31, matching the rendered palette ramps; errors out...
 ---@field team_score fun(team: integer): integer # og.team_score(t) — read GameWorld::m_score[t] (og.award_score's counter); errors outside [0, 3].
 ---@field trunc fun(x: number): integer

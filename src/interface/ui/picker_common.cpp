@@ -9,6 +9,7 @@
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/campaign_state_providers.h> // G4 my_team fallback
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/constants.h>
@@ -19,6 +20,7 @@
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
@@ -39,6 +41,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <format>
 #include <functional>
@@ -1000,6 +1003,27 @@ void cycle_generator_rate(SaveData& save)
 void toggle_infinite_gold(SaveData& save)
 {
     save.infinite_gold = static_cast<short>(save.infinite_gold != 0 ? 0 : 1);
+}
+
+void seed_new_specials_from_cfg(SaveData& save, cfg_store& config)
+{
+    save.new_specials =
+        static_cast<short>(config.is_on("gameplay", "new_specials") ? 1 : 0);
+}
+
+void set_new_specials(SaveData& save, cfg_store& config, bool on,
+                      bool decides_session)
+{
+    config.apply_setting("gameplay", "new_specials", on ? "on" : "off");
+    if (decides_session)
+        save.new_specials = static_cast<short>(on ? 1 : 0);
+}
+
+void apply_new_specials_toggle(SaveData& save, cfg_store& config,
+                               bool decides_session)
+{
+    set_new_specials(save, config, !config.is_on("gameplay", "new_specials"),
+                     decides_session);
 }
 
 void toggle_cross_control(SaveData& save)
@@ -2357,6 +2381,11 @@ std::string format_generator_rate_label(const SaveData& save)
 std::string format_infinite_gold_label(const SaveData& save)
 {
     return gold_is_infinite(save) ? "Infinite Gold: On" : "Infinite Gold: Off";
+}
+
+std::string format_new_specials_label(const SaveData& save)
+{
+    return save.new_specials != 0 ? "NEW SPECIALS: ON" : "NEW SPECIALS: OFF";
 }
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---
@@ -4978,12 +5007,12 @@ std::uint64_t match_settings_fingerprint(const SaveData& save)
     // through the frame-tick reload guard, and double-triggering would hide
     // a broken guard from the tests.
     std::string composed = std::format(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         save.current_campaign, save.allied_mode, save.ctf_team_count,
         save.ctf_capture_limit, save.ctf_respawn_ticks,
         save.ctf_strip_scenario_troops, save.respawn_mode,
         save.generator_rate, save.keep_fallen_heroes, save.cross_control,
-        save.infinite_gold, save.time_limit);
+        save.infinite_gold, save.time_limit, save.new_specials);
     // The eight per-team bot knobs (LINEUP §3.1) are lobby-synced like the
     // rest: a host cycling a squad preset must refresh the missions surface.
     for (std::size_t team = 0; team < save.fill.size(); ++team)
@@ -5125,6 +5154,7 @@ std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs)
                      match_upper(format_difficulty_label(inputs.difficulty))});
     faces.push_back(
         {kRulesRowInfiniteGold, match_upper(format_infinite_gold_label(save))});
+    faces.push_back({kRulesRowNewSpecials, format_new_specials_label(save)});
     if (inputs.networked)
     {
         faces.push_back({kRulesRowCrossControl,
@@ -5160,6 +5190,183 @@ std::vector<std::string> format_match_rules_lines(
         ++i;
     }
     return lines;
+}
+
+// --- TRAIN -> DETAILS page and the HIRE box's "Special:" line ---
+
+std::string special_title(std::string_view hud_name)
+{
+    std::string out;
+    out.reserve(hud_name.size());
+    std::size_t start = 0;
+    bool first_word = true;
+    while (start <= hud_name.size()) {
+        std::size_t end = hud_name.find(' ', start);
+        if (end == std::string_view::npos)
+            end = hud_name.size();
+        const std::string_view word = hud_name.substr(start, end - start);
+        std::string titled(word);
+        for (std::size_t i = 0; i < titled.size(); ++i) {
+            const auto c = static_cast<unsigned char>(titled[i]);
+            titled[i] = static_cast<char>(i == 0 ? std::toupper(c)
+                                                 : std::tolower(c));
+        }
+        // "Lots of Rocks": a small word after the first stays lower.
+        if (!first_word && titled == "Of")
+            titled = "of";
+        if (!word.empty())
+            first_word = false;
+        out += titled;
+        if (end == hud_name.size())
+            break;
+        out += ' ';
+        start = end + 1;
+    }
+    return out;
+}
+
+namespace {
+
+bool names_a_special(const char* name)
+{
+    return name != nullptr && std::strcmp(name, kSpecialNameNone) != 0;
+}
+
+struct DetailText {
+    DetailInk ink;
+    std::string text;
+};
+
+// The prose under a name: wrapped at kDetailProseChars, two spaces in.
+void append_detail_prose(std::vector<DetailText>& block, const char* detail)
+{
+    if (detail == nullptr)
+        return;
+    for (const std::string& line : og::core::wrap_text(
+             detail, kDetailProseChars, og::core::WrapMode::Paragraphs))
+        block.push_back({DetailInk::Prose, "  " + line});
+}
+
+}  // namespace
+
+DetailPage detail_page(const FamilyDescriptor* fd, int level,
+                       short new_specials)
+{
+    DetailPage page;
+    const std::string family =
+        (fd != nullptr && fd->name != nullptr) ? special_title(fd->name)
+                                               : std::string("Character");
+    // A mod family's long name is cut like any other line, so the title
+    // never runs over the divider at x 160.
+    std::string title = std::format("Level {} {} has:", level, family);
+    if (title.size() > static_cast<std::size_t>(kDetailLineChars)) {
+        title.resize(static_cast<std::size_t>(kDetailLineChars));
+        ++page.cut;
+    }
+    page.lines.push_back({false, 0, DetailInk::Title, std::move(title)});
+
+    // [0] = left column (slots 1-2), [1] = right column (slots 3-5).
+    std::vector<std::vector<DetailText>> blocks[2];
+    std::vector<DetailText> locked[2];
+    bool any_in_play = false;
+    for (int slot = 1; fd != nullptr && slot < FD_NUM_SPECIALS; ++slot) {
+        const char* name = og::sim::special_name(fd, slot, new_specials);
+        if (!names_a_special(name))
+            continue;
+        any_in_play = true;
+        const int column = slot >= 3 ? 1 : 0;
+        // The level a slot opens at: the cycle key's own rule.
+        const int opens_at = 3 * slot - 2;
+        if (level < opens_at) {
+            locked[column].push_back(
+                {DetailInk::Prose,
+                 std::format(" {}: lvl {}", special_title(name), opens_at)});
+            continue;
+        }
+        std::vector<DetailText> block;
+        block.push_back({DetailInk::Name, " " + special_title(name)});
+        append_detail_prose(block, fd->special_details[slot]);
+        // A classic slot with no alternate is "in play" and named NONE:
+        // only a named alternate earns a Shift line.
+        const char* alternate = og::sim::alternate_name(fd, slot, new_specials);
+        if (og::sim::alternate_in_play(fd, slot, new_specials) &&
+            names_a_special(alternate)) {
+            block.push_back(
+                {DetailInk::Name, " Shift: " + special_title(alternate)});
+            append_detail_prose(block, fd->alternate_details[slot]);
+        }
+        blocks[column].push_back(std::move(block));
+    }
+
+    if (!any_in_play) {
+        page.lines.push_back({false, kDetailLeftFirstRow, DetailInk::Prose,
+                              " No special abilities."});
+        return page;
+    }
+
+    for (int column = 0; column < 2; ++column) {
+        const int first_row = column == 0 ? kDetailLeftFirstRow : 0;
+        const int room = kDetailRows - first_row;
+        std::size_t needed = locked[column].size();
+        for (const auto& block : blocks[column])
+            needed += block.size();
+        const std::size_t block_count = blocks[column].size();
+        std::size_t gaps = block_count > 0 ? block_count - 1 : 0;
+        if (block_count > 0 && !locked[column].empty())
+            ++gaps;
+        // The 2002 page breathed between blocks; it still does when every
+        // gap fits, and packs tight when not all of them do.
+        const bool breathe =
+            needed + gaps <= static_cast<std::size_t>(room);
+
+        int row = first_row;
+        auto place = [&](const DetailText& line) {
+            if (row >= kDetailRows) {
+                ++page.dropped;
+                return;
+            }
+            std::string text = line.text;
+            if (text.size() > static_cast<std::size_t>(kDetailLineChars)) {
+                text.resize(static_cast<std::size_t>(kDetailLineChars));
+                ++page.cut;
+            }
+            page.lines.push_back({column == 1, row, line.ink, std::move(text)});
+            ++row;
+        };
+        for (std::size_t b = 0; b < block_count; ++b) {
+            if (b > 0 && breathe)
+                ++row;
+            for (const DetailText& line : blocks[column][b])
+                place(line);
+        }
+        if (breathe && block_count > 0 && !locked[column].empty())
+            ++row;
+        for (const DetailText& line : locked[column])
+            place(line);
+    }
+    return page;
+}
+
+std::string specials_summary(const FamilyDescriptor* fd, short new_specials)
+{
+    std::string names;
+    for (int slot = 1; fd != nullptr && slot < FD_NUM_SPECIALS; ++slot) {
+        const char* name = og::sim::special_name(fd, slot, new_specials);
+        if (!names_a_special(name))
+            continue;
+        if (!names.empty())
+            names += ", ";
+        names += special_title(name);
+    }
+    return "Special: " + (names.empty() ? std::string("none") : names);
+}
+
+std::string hire_description(const FamilyDescriptor* fd, short new_specials)
+{
+    if (fd == nullptr || fd->description == nullptr)
+        return {};
+    return std::string(fd->description) + "\n\n" +
+           specials_summary(fd, new_specials);
 }
 
 } // namespace og::ui

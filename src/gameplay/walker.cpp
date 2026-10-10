@@ -51,6 +51,7 @@
 #include <format>
 #include <limits>
 #include <span>
+#include <openglad/gameplay/possession.h>
 
 // ************************************************************
 //  WALKER -- graphics routines
@@ -1312,7 +1313,7 @@ std::int32_t walker::prospective_weapon_reach(short xdelta, short ydelta)
 
 bool walker::can_approach_weapon_range(const walker* objective)
 {
-	if (objective == nullptr || objective->dead() || objective->dormant() ||
+	if (objective == nullptr || objective->dead() || objective->dormant() || objective->hidden() ||
 	    objective->floor() != floor() || query_order() != Order::Living ||
 	    current_game == nullptr || current_game->world == nullptr)
 	{
@@ -1526,7 +1527,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	// The normal range, mana, facing and terrain gates above/below remain the
 	// authority; generic ignored effects remain non-colliding.
 	walker* const ignored_foe =
-		foe()->ignore() && !foe()->dead() && !foe()->dormant() &&
+		foe()->ignore() && !foe()->dead() && !foe()->dormant() && !foe()->hidden() &&
 		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe())
 			? foe()
 			: nullptr;
@@ -1905,6 +1906,11 @@ bool walker::death()
 
 	if (death_called())
 		return 0;
+	// New Specials: a possession ends here (the host frees its rider, or the
+	// rider frees its host), and a REASSEMBLE ward cancels the death outright.
+	if (current_game != nullptr && current_game->world != nullptr &&
+	    og::sim::kit_on_death(*current_game->world, *this))
+		return 0;
 
 	set_death_called(1);
 	fall_stories_ = 0; // a corpse's cascade ends here (classic respawn revives this same object)
@@ -2115,7 +2121,7 @@ void walker::change_floor(short new_floor)
 		m->remove(this);
 	set_floor(new_floor);
 	set_worldz(0.0f);
-	if (m != nullptr && !ignore() && !dormant()) // dormant: stay unregistered
+	if (m != nullptr && !ignore() && !dormant() && !hidden()) // dormant: stay unregistered
 		m->add(this, xpos(), ypos());
 }
 
@@ -2575,3 +2581,39 @@ void walker::update_exit_latch()
 
 // attach_render, set_data, bmp_data, set_frame, set_direct_frame, ~walker
 // are all in src/runtime/walker_render_bridge.cpp.
+
+// New Specials: hide or reveal (see walker.h). The same collision-table
+// bookkeeping as set_dormant: a hidden walker is out of the obmap, and a
+// revealed one re-enters at the spot it already occupies.
+void walker::set_hidden(bool value)
+{
+	if (hidden() == value)
+		return;
+	// A possessed body never hides. A possession tells its rider from its
+	// host by which side is hidden (possession.cpp), and a hidden host would
+	// stop acting, so its countdown would stall and Switch Character could
+	// not find it. A walker whose partner is already hidden is a host, and
+	// is turned away (a possessed skeleton trying to DIG IN). A link to a
+	// walker that is gone is left alone: the host's next act drops it.
+	if (value && possess_link() != 0 && current_game != nullptr &&
+	    current_game->world != nullptr)
+	{
+		const walker* partner = current_game->world->find_by_id(possess_link());
+		if (partner != nullptr && partner->hidden())
+			return;
+	}
+	const std::uint8_t state = kit_state();
+	set_kit_state(static_cast<std::uint8_t>(
+	    value ? (state | KIT_HIDDEN) : (state & ~KIT_HIDDEN)));
+	set_outline(0);
+
+	obmap* map = (current_game != nullptr && current_game->world != nullptr)
+	    ? current_game->world->myobmap.get()
+	    : nullptr;
+	if (map == nullptr)
+		return;
+	if (value)
+		map->remove(this);
+	else if (!ignore() && !dormant())
+		map->add(this, xpos(), ypos());
+}

@@ -25,8 +25,10 @@
 
 class guy;
 class GameWorld;
+struct FamilyDescriptor;
 struct LevelDataHooks;
 class IRandom;
+class cfg_store;
 
 namespace og::ui {
 
@@ -513,6 +515,24 @@ void cycle_generator_rate(SaveData& save);
 // Toggle infinite gold: infinite_gold 0 (classic economy) <-> 1 (free
 // purchases). SESSION-ONLY, so no company autosave follows a toggle.
 void toggle_infinite_gold(SaveData& save);
+
+// New Specials (cfg gameplay/new_specials, SaveData::new_specials). The
+// per-machine preference seeds the session value once; the lobby then
+// negotiates it (host wins) and the seeded value never reaches the .gtl.
+// The preference reads exactly as the Gameplay FX row's face does: "on" is
+// on, anything else (a process that never loaded its settings included) is
+// off.
+void seed_new_specials_from_cfg(SaveData& save, cfg_store& config);
+// Write the preference, and mirror it into the session save only when this
+// machine decides the session (no lobby, or the host). A joiner's choice
+// records what it will host next time; the session keeps the host's value.
+// The text and curses Game Settings prompts set a value through this.
+void set_new_specials(SaveData& save, cfg_store& config, bool on,
+                      bool decides_session);
+// The Gameplay FX row: flips the preference (set_new_specials with the
+// opposite of the current preference).
+void apply_new_specials_toggle(SaveData& save, cfg_store& config,
+                               bool decides_session);
 
 // Toggle cross control: cross_control 0 (own seats) <-> 1 (all seats).
 // The pure save write behind change_cross_control()'s popup/sync tail, so
@@ -1245,6 +1265,10 @@ std::string format_generator_rate_label(const SaveData& save);
 // "Infinite Gold: Off" / "Infinite Gold: On".
 std::string format_infinite_gold_label(const SaveData& save);
 
+// "NEW SPECIALS: ON" / "NEW SPECIALS: OFF" (the session value, any nonzero
+// reads as on). The lobby RULES face, so a joiner sees the host's choice.
+std::string format_new_specials_label(const SaveData& save);
+
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 // (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:
 // the filename teaches nothing; companies are fully managed in-game on
@@ -1911,7 +1935,7 @@ bool local_seats_deployed_for_go(const SaveData& save,
                                  bool networked);
 
 // The lobby-synced knobs an applied settings change rewrites under an open
-// screen: the 12 scalars plus the eight per-team band knobs. scen_num is
+// screen: the 13 scalars plus the eight per-team band knobs. scen_num is
 // deliberately EXCLUDED: level changes already refetch through the frame-
 // tick reload guard, and double-triggering would hide a broken guard from
 // the tests. Every surface that watches for "the settings moved" hashes
@@ -1988,6 +2012,7 @@ inline constexpr std::string_view kRulesRowPermadeath = "permadeath";
 inline constexpr std::string_view kRulesRowGenerators = "generators";
 inline constexpr std::string_view kRulesRowDifficulty = "difficulty";
 inline constexpr std::string_view kRulesRowInfiniteGold = "infinite_gold";
+inline constexpr std::string_view kRulesRowNewSpecials = "new_specials";
 inline constexpr std::string_view kRulesRowCrossControl = "cross_control";
 std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs);
 
@@ -2008,6 +2033,62 @@ std::vector<std::string> format_match_rules_lines(
 // is pending, so the campaign's answer costs one call per cursor change
 // and never one per frame.
 std::int16_t arena_deal_fill_code(const SaveData& save);
+
+// --- TRAIN -> DETAILS page and the HIRE box's "Special:" line ---
+//
+// Both are composed from the specials table as the session sees it (the New
+// Specials setting hides or shows the new kits), so the text can never name
+// a special the character does not have.
+
+// The DETAILS panel: draw_dialog(5, 68, 315, 167), two columns at x 11 and
+// 164, rows at y = 90 + 6*row (picker.cpp detail_line_y); row 11 ends at
+// y 162 and the dialog at 167, so twelve rows is the panel. 25 characters
+// at 6 px end at x 161 (left; the divider is at 160-162) and 314 (right).
+inline constexpr int kDetailLineChars = 25;
+inline constexpr int kDetailProseChars = 23;   // after the two-space indent
+inline constexpr int kDetailRows = 12;         // rows 0..11
+inline constexpr int kDetailLeftFirstRow = 2;  // rows 0-1 carry the title
+
+enum class DetailInk { Title, Name, Prose };
+
+struct DetailLine {
+    bool right;        // false = left column (x 11), true = right (x 164)
+    int row;           // 0..kDetailRows-1
+    DetailInk ink;     // Title: dark blue with a shadow; Name: red; Prose: dark blue
+    std::string text;  // at most kDetailLineChars characters
+};
+
+struct DetailPage {
+    std::vector<DetailLine> lines;
+    int dropped = 0;   // lines that did not fit a column (0 for every core family)
+    int cut = 0;       // lines shortened to kDetailLineChars (0 for every core family)
+};
+
+// "EAT CORPSE" -> "Eat Corpse", "LOTS OF ROCKS" -> "Lots of Rocks": the HUD
+// name with each word title-cased; "of" after the first word stays lower.
+[[nodiscard]] std::string special_title(std::string_view hud_name);
+
+// The page for a character of this family at this level, under this New
+// Specials value (SaveData::new_specials). Pure: reads the descriptor and
+// og::sim::special_in_play / alternate_in_play / special_name /
+// alternate_name only, never the world or the session. A null descriptor
+// gives the title and "No special abilities.". Every line, the title too,
+// is cut to kDetailLineChars and counted in cut.
+[[nodiscard]] DetailPage detail_page(const FamilyDescriptor* fd, int level,
+                                     short new_specials);
+
+// "Special: Howl, Eat Corpse, Hook Blade, War Banner": the slot names in
+// play (special_name not "NONE"), title-cased, in slot order, alternates
+// not listed (the DETAILS page has them); "Special: none" when no slot is
+// in play.
+[[nodiscard]] std::string specials_summary(const FamilyDescriptor* fd,
+                                           short new_specials);
+
+// fd->description + "\n\n" + specials_summary(fd, new_specials); "" when fd
+// or its description is null (the HIRE box's text; the pack prose no longer
+// carries a Special line of its own).
+[[nodiscard]] std::string hire_description(const FamilyDescriptor* fd,
+                                           short new_specials);
 
 // --- Template implementations ---
 

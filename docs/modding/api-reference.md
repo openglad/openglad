@@ -120,6 +120,18 @@ Non-living orders (`weapon`, `effect`/`fx`, `treasure`, `generator`) take an
 weapon HP is what gives shipped scenery its durability. Omit it (or declare
 `0`) to keep whatever the engine's row supplies.
 
+Two weapon keys make a weapon family act as standing scenery (the New
+Specials bone wall and war banner use both):
+
+- `blocks_placement = true`: no teleport, respawn or floor landing puts a
+  walker on a live weapon of this family, exactly as for a door, tree or
+  boulder. Allies still walk through it and enemy missiles still pass it
+  about six probes in ten (the obmap's weapon-against-weapon miss roll).
+- `rally_radius = N` (pixels, default 0): while the New Specials setting is
+  on, every walker friendly to a live weapon of this family, on its floor
+  and within `N` pixels of it, never flees (`og.fearless`). `N` may not be
+  negative.
+
 `radar_landmark` and `radar_ping` are independent presentation fields.
 `radar_landmark` is accepted only on treasure and effect families; with a
 drawable `radar_color`, it makes treasure blips visible without treasure sight
@@ -132,8 +144,10 @@ combine both flags.
 
 `description` is plain prose: the HIRE screen auto-flows it to its box at
 render time, so do NOT hand-wrap it to a column or pad it with trailing
-spaces. `'\n\n'` is a paragraph break (the core families use it before
-their `Special: ...` line); a single `'\n'` is soft and joins with a space.
+spaces. `'\n\n'` is a paragraph break; a single `'\n'` is soft and joins
+with a space. Do not end it with a `Special: ...` line: the HIRE screen adds
+one, generated from the family's `specials` as the New Specials setting sees
+them.
 
 ## Hooks
 
@@ -232,6 +246,8 @@ return anything; it is ignored.
 | `customize_weapon` | `(self, weapon)` | |
 | `on_ani_complete` | `(self) → bool` | |
 | `on_melee_hit` | `(self, target)` | |
+| `on_act_override` | `(self) → bool` | Called in the living's act right after `on_act_living`; `true` means the act is handled and the rest of it (animation, commands, AI) is skipped for the tick. No C++ family carries it. |
+| `on_kill` | `(self, victim)` | `self` killed `victim`, a living. Runs after the victim's `death()` has returned, so its corpse stain and a hero's life gem already exist; it does not run when the victim got back up inside `death()` (a REASSEMBLE ward). `self` is the head of the owner chain (the owner of the knife, explosion or cloud that landed the blow) and must be a living; it may itself already be dead, so test `self:dead()` before acting for it. The return is ignored. |
 
 **weapon**: `on_death(self) → bool`, `on_animate(self) → bool` (`false` = die),
 `on_hit_target(weapon, target, owner)`.
@@ -253,7 +269,7 @@ A special's handler is written into the entry that declares it:
 og.family("living", {
   id = "core:orc",
   specials = {
-    { id = "howl", name = "YELL", mp_cost = 20, cast = yell },
+    { id = "howl", name = "HOWL", mp_cost = 25, cast = yell },
     default_cast = eat_corpse,   -- every other slot
   },
   ...
@@ -356,10 +372,68 @@ about it depends on who could have known: a slot the declaring pack itself
 left unhandled is that pack's error, and a slot the engine filled from C++
 (`install_classpack_data`) only warns.
 
-**Alternates.** A special may declare `alternate = { name = "..." }`, which is a
-DISPLAY name shown while Shift is held. There is no separate cost and no
-engine dispatch for it: the handler forks on `self:shifter_down()` and
-spends the same `mp_cost`.
+**Alternates.** A special may declare `alternate = { name = "...", mp_cost = N,
+new_kit = true, detail = "..." }`. Those four keys are the only ones accepted
+(any other is a load error), and `name` is required. The name is shown while Shift is
+held. There is no separate engine dispatch: the slot's handler forks on
+`self:shifter_down()` (or `self:alternate_down()`, below). Without
+`mp_cost` the alternate spends the slot's own `mp_cost`, as every classic
+alternate does. With `mp_cost` it has its own price: while Shift is held
+(and the alternate is in play) the engine gates the cast on that price,
+charges it, turns the HUD cost red below it, and a bot that rolled Shift but
+cannot pay it drops the Shift before choosing. The same 5000-and-up and
+negative refusals apply as for a slot's `mp_cost`.
+
+**Details (`detail`).** A `specials` entry, and its `alternate`, may carry
+`detail = "..."`: the prose the TRAIN -> DETAILS page shows under the
+special's name (the alternate's under a `Shift: <name>` line). Write it as
+plain prose; the page wraps it at 23 characters. A primary's `detail` should
+make at most four lines (three when the slot has an alternate), and an
+alternate's is ONE line of at most 23 characters, so two slots with
+alternates still fit a column. Without `detail` the page shows the name
+alone. The page and the HIRE screen's `Special:` line follow the New
+Specials setting: a hidden slot or alternate is not listed, and a slot above
+the character's level shows as `<Name>: lvl <N>`.
+
+**New Specials (`new_kit`).** `new_kit = true` on a `specials` entry, or
+inside its `alternate`, puts that special behind the New Specials setting.
+`og.match_setting("new_specials")` answers the setting as this session plays
+it: `1` on, `0` the classic kits. With the setting off the engine reads the
+table as if the entry were not there:
+
+- a hidden slot's name reads `"NONE"` and its cost 5000, so the player's
+  special cycling skips it and a bot's slot pick passes over it;
+- a hidden alternate's name reads `"NONE"`, `self:alternate_down()` answers
+  `false`, and its price is never charged;
+- an alternate is never in play on a slot that is hidden, whatever its own
+  `new_kit` says.
+
+The loader still stamps the declared price into the walker's stats
+(`s_special_cost(i)` reads it); the substitution happens where the price is
+read, so nothing a snapshot carries changes with the setting.
+
+Two rules keep a setting-off game identical to the game before the kits:
+
+- A per-entry `ai` gate on a `new_kit` slot can still be called with the
+  setting off (a struck bot asks its current slot, and slot 1 can be new).
+  Make `if og.match_setting("new_specials") == 0 then return true end` its
+  FIRST statement, before any finder, list scan or RNG call. It must answer
+  `true`: the engine's caller short-circuits on a `false` and skips an RNG
+  draw the classic game makes.
+- An `on_kill` hook is called whatever the setting, so a kit's `on_kill`
+  starts with the same guard (`return` instead of `return true` is fine
+  there; the result is ignored).
+
+**Two free-press states.** While a walker carries `og.C.KIT_HIDDEN` (dug in,
+or a ghost riding a body) or `og.C.KIT_CHANNEL` (a channelled special is
+running), every slot costs it 0: the press that surfaces or ends the special
+must not need magic the walker cannot regain. Two consequences for a kit:
+a channelling special must refuse the walker's OTHER specials itself while
+it runs (the fire elemental refuses with `QUENCH IMMOLATE FIRST`), and a
+toggle should refuse its own second arm for a few ticks after the first
+(the core kits refuse for `kit_latch`, 10 ticks, with a `<NAME> SETTLING`
+reason). A refusal is silent under a held key, so a held key cannot flip a
+toggle straight back.
 
 ### Duplicate registration: last one wins
 
@@ -475,8 +549,14 @@ keying rule).
 
 `lastx()/set_lastx(v)` `lasty()/set_lasty(v)` `stepsize()/set_stepsize(v)`
 `curdir()/set_curdir(v)` `ani_type()/set_ani_type(v)` `cycle()/set_cycle(v)`
-`drawcycle()` `set_frame(v) → int` `animate() → bool` `act_type()`
-`in_act() → bool` `set_ignore(v)` `lineofsight()/set_lineofsight(v)`.
+`drawcycle()` `set_frame(v) → int` `animate() → bool` `in_act() → bool`
+`set_ignore(v)` `lineofsight()/set_lineofsight(v)`.
+
+`act_type()` / `set_act_type(n)` / `restore_act_type()`: the AI act type
+(`og.C.ACT_*`). `set_act_type` refuses `ACT_CONTROL` (that belongs to player
+seats); `restore_act_type()` is a one-deep undo of the last `set_act_type`.
+A weapon that stands as scenery sets `ACT_SIT` (pair it with
+`skip_sit_notify = true` in the declaration).
 
 ### Identity, team, life state
 
@@ -496,6 +576,27 @@ census; waking it is the engine's decision)
 `charm_left()` `speed_bonus()` `speed_bonus_left()` `bonus_rounds()`
 `weapons_left()` `keys()` `view_all()` `skip_exit()` `shifter_down()` — each
 with a matching `set_*`.
+
+`alternate_down() → bool`: Shift is held AND the current slot's alternate
+is in play this session. A slot cast whose alternate is `new_kit` forks on
+this instead of `shifter_down()`, so the classic special still runs with
+the setting off. It also answers `true` on a shifted classic slot that
+declares no alternate at all (it means "not hidden by the setting").
+
+### Kit state (New Specials)
+
+| Method | Result |
+|---|---|
+| `kit_state() → int` | The walker's kit marks, a byte of `og.C.KIT_*` bits: `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one). Separate from the classic bit flags: a corpse stain never inherits it and a transform never wipes it. Rides every snapshot. |
+| `set_kit_state(n)` | Writes the byte. A change of the HIDDEN bit goes through `set_hidden`, so it may be turned away (a possessed body never hides); the other bits land as written. |
+| `hidden() → bool` | The HIDDEN bit: the walker does not act, is out of the collision table, is skipped by every finder and target scan, cannot be hit, and is drawn only to its own team. It stays in snapshots. |
+| `set_hidden(v)` | `v` is a boolean or `0`/`1`. Hides or reveals (a revealed walker rejoins the collision table unless it is ignored or dormant). Refused for a walker whose possession partner is hidden. |
+| `possess_link() → int` | The entity id of the walker's possession partner, 0 when none. Resolve it with `og.find_by_id`. |
+| `possess_ticks() → int` | On a possessed host: the ticks left (0 = for good). |
+| `last_attacker_id() → int` | The entity id of whoever last damaged this walker, 0 when nobody has. |
+| `init_fire() → bool` | The engine's own attack start: turns toward the facing first, refuses while busy, otherwise starts the attack row so the weapon leaves at its end (`fire()` at once for a walker with no attack row). |
+| `blocks_placement() → bool` | True for a weapon whose family declares `blocks_placement` (solid scenery: a bone wall, a war banner); false for anything else. A guard that cuts down incoming shots uses it to leave scenery standing. |
+| `alternate_cost(slot) → int` | The price of the slot's shifted alternate as this game sees it: 0 when the alternate has no price of its own (it costs the slot's price) or is not in play (a `new_kit` alternate with the setting off). `slot` outside 0..5 raises `alternate_cost index out of range`. |
 
 ### Combat and weapons
 
@@ -594,7 +695,9 @@ s_current_magic_delay` — each with `s_set_*`.
 **Specials and flags**
 
 `s_special_cost(i) → int` and `s_set_special_cost(i, v)` — `i` must be in
-`[0, og.C.NUM_SPECIALS)`, out-of-range is an error, not a clamp.
+`[0, og.C.NUM_SPECIALS)`, out-of-range is an error, not a clamp. These read
+and write the raw stamped price: a slot the New Specials setting hides still
+reads its declared cost here, and a priced alternate's cost is not in it.
 `s_query_bit_flags(flag) → bool` and `s_set_bit_flags(flag, 0|1)`, with flag
 values from `og.C.BIT_*`.
 
@@ -608,7 +711,9 @@ values from `og.C.BIT_*`.
 | `s_clear_command()` | Empty the queue, reset the weapon to the default and clear the leader. Never touches the team: a charm ends on its `charm_left` timer (#317). |
 | `s_has_commands() → bool` | |
 | `s_do_command() → int` | Execute one queued step. The only binding that *runs* the queue; the rest only edit it. |
-| `s_force_fright(iterations, info1, info2)` | The ghost-scare fright injection (`statistics::force_fright`). NOT interchangeable with `s_force_command`: it MERGES into an existing forced `COMMAND_WALK` at the queue front so overlapping scares cannot stack end to end. |
+| `s_force_fright(iterations, info1, info2)` | The ghost-scare fright injection (`statistics::force_fright`). NOT interchangeable with `s_force_command`: it MERGES into an existing forced `COMMAND_WALK` at the queue front so overlapping scares cannot stack end to end. Does nothing to a fearless walker (`og.fearless`). |
+| `s_front_command() → int` | The front queue entry's command type, 0 when the queue is empty. |
+| `s_refresh_front(iterations, com1, com2)` | Rewrites the FRONT entry's lease and payload in place, never its type and never growing the queue (the refresh-in-place idiom a mode director uses when `s_front_command()` already answers the wanted type). Errors on an empty queue. |
 | `s_forward_blocked() → bool` | |
 
 ## Guy record (`g_` prefix)
@@ -658,7 +763,10 @@ which accepts either a guy handle or a walker.
 | `og.find_friends_in_range(list, range, self)` | Array, count. Other live friendly Living actors in range; excludes `self`. |
 | `og.find_in_range(list, range, self)` | Array, count. |
 | `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`, and allegiance follows the owner chain. |
-| `og.oblist()` | Array of every entity in the ob list, in list order. |
+| `og.oblist()` | Array of every entity in the ob list, in list order. `og.add_ob` and `og.summon` put every non-weapon here, effects included, so this is the list to scan for a live effect a kit spawned. |
+| `og.fxlist()` | Array of the fx list, in list order: what `og.add_fx_ob` adds (flags, exit pads, balls, stains). |
+| `og.weaplist()` | Array of the weapon list, in list order. |
+| `og.find_by_id(id)` | Entity id → handle; `nil` for 0, an absent id or one already swept. |
 | `og.living_count()` | The world's living head-count field. NOT derivable from an `og.oblist()` scan — the counter can legitimately drift (an editor map resize erases livings without decrementing), so a script that needs the head count reads this field. |
 | `og.remaining_foes(self)` | `int`. |
 
@@ -672,6 +780,15 @@ order; walk them with `for i = 1, #t` (there is no `pairs`).
 `og.query_grid_passable(...)`, `og.query_object_passable(...)` — all
 `→ bool`, all take pixel coordinates. `og.query_object_passable` **draws from
 the RNG** through the obmap miss roll.
+
+`og.spawn_spot_clear(ent, x, y [, floor]) → bool` is the placement probe:
+can `ent` stand at pixel `(x, y)`? It eats nothing and opens nothing (never
+use `og.query_passable` to probe: its collision route can eat a drumstick or
+pick up a flag). Without `floor` it probes `ent`'s own floor.
+`og.scrub_corpse_stain(x, y [, floor])` removes the fresh stain and life gem
+dropped at a corpse's top-left corner, so the body cannot be raised again or
+farmed for gem score; a stain a pending respawn is waiting on is kept.
+Without `floor` it scrubs every floor.
 
 `og.query_genre(tile_x, tile_y [, floor]) → int` asks what the terrain *is*
 rather than whether it can be walked on — compare the result against
@@ -756,6 +873,8 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 |---|---|
 | `og.level_id()` | The world's level id. |
 | `og.level_tick()` | Tick counter for this level. |
+| `og.world_tick()` | The absolute world tick counter (snapshotted, so it survives a mid-level restore). |
+| `og.match_setting(name)` | A session setting by name, read from the live world. `"new_specials"` is the New Specials setting (1 on, 0 the classic kits); the match knobs (`"team_count"`, `"respawn_mode"`, `"time_limit"`, `"difficulty"` and the rest) are read the same way. |
 | `og.level_done()` | `int`. |
 | `og.game_ended()` | `bool`. |
 | `og.my_team()` | The local team number. |
@@ -795,6 +914,20 @@ them or risk changing their RNG draws.
 | `og.apply_level_up(guy, diff, str, dex, con, intel, armor)` | — |
 | `og.apply_difficulty_scaling(self, level, hp, mp, dmg, armor)` | — Livings only. |
 | `og.check_special_ai_distance(self, threshold) → bool` | Livings only. |
+
+### New Specials verbs
+
+All are RNG-free.
+
+| Function | Result |
+|---|---|
+| `og.possess(rider, host, ticks)` | `true`, or `false, reason`. The rider enters the host for `ticks` ticks (0 = for good, at most 32767): the rider hides and follows the host, the host fights on the rider's team, and a seat that drove the rider now drives the host. Reasons: `CANNOT POSSESS` (rider and host the same walker, either not a living, or the rider dead, hidden, dormant, already linked or charmed), `NO HOST IN REACH` (host dead, hidden or dormant), `ALREADY POSSESSED`, `UNDEAD RESIST`, `HERO RESISTS` (a seat drives the host), `HOST IS CHARMED`. |
+| `og.release_possession(ent)` | Ends the possession from either side and answers the rider, or `nil` when `ent` was not in one. |
+| `og.fearless(ent) → bool` | The walker never flees: it carries `KIT_FEARLESS`, or (setting on) it stands within a friendly live weapon's `rally_radius` on its floor. |
+| `og.map_size()` | `pixmaxx, pixmaxy, floor_count` (every floor shares the pixel footprint). |
+| `og.line_clear(a, b) → bool` | No wall between the two walkers' centres; `false` across floors. |
+| `og.swap_places(a, b) → bool` | The two walkers trade position and floor. Probes nothing (nothing underfoot is eaten); `false`, nothing moved, for a dead, dormant or hidden walker or the same walker twice. |
+| `og.rejoin_obmap(ent)` | Puts a walker a kit took out of the collision table back at its current spot (never a dead, dormant, hidden or ignored one). |
 
 ### `og.combat.*` — combat_math.h, bound directly
 
@@ -942,6 +1075,7 @@ pack mounts and unmounts with the campaign.
 | Combat caps | `SHOT_DRAIN_CAP MP_POOL_DAMAGE_CAP ENEMY_FREEZE_BANK_CAP STARBURST_ADD_CAP MACE_LIFE_CAP SPRINKLE_REFRESH_OWNER_LEVEL SPRINKLE_REFRESH_FLOOR` |
 | Facings | `FACE_` + `UP UP_RIGHT RIGHT DOWN_RIGHT DOWN DOWN_LEFT LEFT UP_LEFT`, plus `NUM_FACINGS` |
 | Terrain genres | `TYPE_` + `GRASS WATER TREES DIRT COBBLE GRASS_DARK DIRT_DARK WALL CARPET GRASS_LIGHT AIR GLASS DROP_BLOCK ZSTAIRS SNOW LAVA MARSH ASH UNKNOWN` |
+| Kit marks | `KIT_` + `HIDDEN FEARLESS WARD CHANNEL` (the `kit_state()` bits) |
 | Misc | `GRID_SIZE NUM_SPECIALS MAXOBS` |
 
 ## Script errors and logging
@@ -1013,7 +1147,7 @@ data block, the animation table, and the hooks — all three in one file.
 ```lua
 og.family("living", {
   id = "example:emberwisp",
-  wire_id = "auto",                   -- next free id >= 21, deterministic
+  wire_id = "auto",                   -- next free id >= 21 (weapons >= 22), deterministic
   name = "EMBERWISP",                 -- THE identity hooks resolve against
   stats = {                           -- all six required
     strength = 8, dexterity = 14, constitution = 7,
@@ -1175,7 +1309,8 @@ where its contract fits.
 | Pattern | Read |
 |---|---|
 | A whole family, canonical style | `packs/core/families/living-00-soldier.lua` — one file: behavior, then the declaration that names it |
-| Specials, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/families/living-14-orc.lua` |
+| Specials, `og.rand0`, tuning reads, `add_frozen_stun` | `packs/core/lib/orc_specials.lua` (the orc's HOWL and EAT CORPSE, shared with the orc captain), cast from `packs/core/families/living-14-orc.lua` |
+| The New Specials kits (`new_kit`, priced alternates, setting guards, `on_kill`, helper markers) | `packs/core/lib/kit_*.lua`; the player and engine notes are in [new-specials.md](../new-specials.md) |
 | `og.use` lib modules (shared preludes, parameterized AI gates, shared effect geometry) | `packs/core/lib/living_common.lua`, `packs/core/lib/ai.lua`, `packs/core/lib/effect_common.lua` |
 | Level hooks, per-entity hooks, generator `customize_spawn` | `campaigns/concept/packs/concept.showcase/scripts/court.lua` |
 | Every descriptor key, per order | [design doc §4](../lua-classpacks-design.md) |

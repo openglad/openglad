@@ -1,6 +1,6 @@
--- core:faerie — level_up only (cookbook: docs/lua-classpacks-design.md §3).
+-- core:faerie — level_up, and the New Specials blink/swap, glimmer, hasten and wish (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
-
+local kf = og.use("kit_faerie")
 local function level_up(guy, level_diff)
   og.apply_level_up(guy, level_diff, 4, 12, 4, 8, 1)
 end
@@ -17,7 +17,12 @@ og.family("living", {
   costs  = { hire = 450,
              train = { strength = 25, dexterity = 6, constitution = 12,
                        intelligence = 8, armor = 50, level = 200 } },
-  specials = {},
+  specials = {
+    { id = "blink",   name = "BLINK",   mp_cost = 20,  new_kit = true, alternate = { name = "SWAP", mp_cost = 24, detail = "Swap spots with anyone." }, cast = kf.blink_or_swap, ai = kf.ai_blink, detail = "A short hop in a random direction." },
+    { id = "glimmer", name = "GLIMMER", mp_cost = 24,  new_kit = true, cast = kf.glimmer, ai = kf.ai_glimmer, detail = "A freezing sprinkle in all eight directions, a quarter as long as the normal freeze." },
+    { id = "hasten",  name = "HASTEN",  mp_cost = 30,  new_kit = true, alternate = { name = "HASTE SELF", detail = "Speed yourself up." }, cast = kf.hasten, ai = kf.ai_hasten, detail = "Touch an ally to speed it up for a while." },
+    { id = "wish",    name = "WISH",    mp_cost = 100, new_kit = true, cast = kf.wish, ai = kf.ai_wish, detail = "The faerie dies and a fallen ally rises at full health; every ally nearby is healed." },
+  },
   default_weapon = "core:sprinkle",
   flags = { "FLYING", "ANIMATE" },
   init_ani_type = 0,
@@ -33,7 +38,7 @@ og.family("living", {
   sprite = "faerie.png",
   animation = "standard",
   ai_line_of_sight = 8,
-  description = "The faerie are small, flying above friends and enemies alike unnoticed. Although they are delicate and easily destroyed, faeries can sprinkle a magic powder which freezes their enemies.",
+  description = "Faeries are small, flying above friends and enemies alike unnoticed. Delicate and easily destroyed, they sprinkle a magic powder which freezes their enemies.",
   names = { "Tink", "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin",
             "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle",
             "Violet", "Daisy", "Lily" },
@@ -46,6 +51,24 @@ og.family("living", {
   glyph_transparent = false,
   radar_color = "none",
   radar_jitter = 0,
+
+  tuning = {
+    -- Blink: hop length = base + per_level * level (px, same floor; shorter
+    -- only when a wall is in the way); the rest after a blink or a swap
+    -- (ticks before she may hop again, on top of her attack pause)
+    blink_base = 24,
+    blink_per_level = 2,
+    blink_cooldown = 12,
+    -- Swap: reach (px) to the nearest walker in sight, ally or foe
+    swap_range = 80,
+    -- Hasten: reach (px) to an ally; the speed potion's timer (ticks) and bonus (px/tick)
+    hasten_reach = 40,
+    hasten_ticks = 150,
+    hasten_bonus = 2,
+    -- Wish: reach (px) to a fallen ally's stain; radius (px) of the full heal
+    wish_range = 120,
+    wish_heal_radius = 96,
+  },
 
   level_up = level_up,
 })

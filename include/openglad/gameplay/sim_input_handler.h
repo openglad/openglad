@@ -96,8 +96,9 @@ walker* sim_find_next_control(GameWorld& level, short my_team);
 // is out of range, unnamed/NONE in the LIVE family registry, or above the level
 // gate (special-1)*3+1 (issue #321). Precondition: control.stats() != nullptr.
 // The ONE home of the cycling rule: sim_process_player_input (debounced) and the
-// parity harness (scenario_runtime.cpp) both call it.
-void sim_advance_current_special(walker& control);
+// parity harness (scenario_runtime.cpp) both call it. A slot the New Specials
+// setting hides (level.new_specials == 0) reads as NONE and is skipped.
+void sim_advance_current_special(const GameWorld& level, walker& control);
 
 // The ONE home of the SwitchChar rule: sim_process_player_input (debounced,
 // Cheat-gated) and the parity harness (scenario_runtime.cpp) both call it.

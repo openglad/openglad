@@ -215,6 +215,10 @@ bool cfg_store::load_settings()
     // start. 6 == og::sim::DEFAULT_TIMER_WAIT == the SPEED 8 the old in-game
     // options menu showed.
     apply_setting("gameplay", "timer_wait", "6");
+    // The New Specials preference (Game Settings -> Gameplay FX). It seeds
+    // the session's setting once per client session; in a networked game
+    // the host's value wins. On by default, and RESTORE SETTINGS keeps that.
+    apply_setting("gameplay", "new_specials", "on");
 
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");

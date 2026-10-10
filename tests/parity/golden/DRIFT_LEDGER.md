@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `351c8cc6`
+Old-game commit the goldens are captured from: `6088662c`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -11,7 +11,7 @@ now `cmp` equal to a full capture from the old game at the pin above. That PR re
 (9 whose bytes changed only in notification `a`/`b`, 2 whose level-ending tick changed its event order, and the
 archmage marker row); the other 211 were already byte-identical to the capture. The sim-correctness batch (#320, #350;
 2026-10-06) ported two more fixes (`cd97028a`, `a4491684`), added two rows, reshaped one, and moved the pin to `04611243`; 225 of 225
-goldens `cmp` equal to a full capture at that pin. The charm timer port (#317; 2026-10-07) ported one fix (`95154fd3`), added two rows and moved the pin to `351c8cc6`; 227 of 227 goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
+goldens `cmp` equal to a full capture at that pin. The charm timer port (#317; 2026-10-07) ported one fix (`95154fd3`), added two rows and moved the pin to `351c8cc6`; 227 of 227 goldens `cmp` equal to a full capture at that pin. The New Specials table mirror (2026-10-08) ported nothing and added no row; it re-pointed pins and moved the pin to `e4f49847`; 227 of 227 goldens `cmp` equal to a full capture at that pin. Its second mirror (2026-10-10) followed one pin's context line and moved the pin to `6088662c`; 227 of 227 goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
 game" below rebuilds the old game at the pin and reproduces every golden. When the current game departs from
 classic behaviour on purpose, the same fix is ported into the old game's C++, one fix per commit (the message names the
 current-game commit), the affected goldens are captured from the old game again, and the pin moves to the new old-game
@@ -354,6 +354,28 @@ the current game's dump with the fix in place, and the current game dumps each t
 in words with its pre-squash commit in parentheses, so no cell cites a sha master cannot reach; once the PR is
 squashed, the next PR that edits this ledger rewrites them to the per-golden header's form,
 `` `<squash>` (`3111ecb0`; #356) ``.
+
+### New Specials table mirror (2026-10-08)
+
+No fix was ported: New Specials is a setting, and every parity row runs with it off (`parity_runner.cpp` sets
+`world.new_specials = 0`), so the old game needs no behaviour change. The current game's code moved under several
+pins (the orc's howl into `packs/core/lib/orc_specials.lua`, new rows in the skeleton and elemental family files, the
+elemental's `on_death`, inserts in `walker.cpp` and `world_snapshot.cpp`, restored include separators in
+`living.cpp`, `stats.cpp`, `game_world.cpp` and `walker.cpp`), so the table was re-pointed and mirrored.
+
+Proof that the mirror moves nothing: every id was captured from the old game at `351c8cc6` before the mirror and
+again after it, with the dumper rebuilt from an emptied `obj/` (`capture_master_golden.sh --all --out-dir`,
+`OG_PARITY_SCEN99_FSS` exported; neither log has a `using embedded fixture` line). `diff -rq` of the two
+directories is empty, and each of the 227 captures `cmp`s equal to its committed golden.
+
+`e4f49847` is the table mirror (recorder-only, `tools/` only).
+
+Second mirror (2026-10-10): the big slime's Split row (`living-08-slime.lua:176`) gained its DETAILS blurb
+(`detail = "Divide into two smaller slimes."`), and `kMut_magic_damage_slime_scen99` quotes that line as its
+`context_before`, so the table changed and was mirrored again. Every id was captured from the old game before and
+after the mirror (the dumper rebuilt from an emptied `obj/`; neither log has a `using embedded fixture` line):
+`diff -rq` of the two directories is empty, and each of the 227 captures `cmp`s equal to its committed golden.
+`6088662c` is the table mirror (recorder-only, `tools/` only) and the pin.
 
 ### Earlier ports (before the 2026-10-04 rule)
 

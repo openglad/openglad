@@ -28,6 +28,7 @@
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -271,6 +272,22 @@ W_SET_INT(ignore, char)
 W_GET_BOOL(in_act)
 W_GET_INT(shifter_down)
 W_SET_INT(shifter_down, short)
+// walker:alternate_down() -> boolean: the shift is held AND the current
+// slot's alternate is in play this session (the New Specials setting hides
+// a new-kit alternate). The casts whose alternate is new branch on this;
+// every classic shifter_down() fork keeps its spelling.
+int m_alternate_down(lua_State* L)
+{
+    walker* w = self_arg(L);
+    const FamilyDescriptor* fd = get_family_descriptor(
+        static_cast<int>(static_cast<unsigned char>(w->family())));
+    const bool down =
+        w->shifter_down() != 0 &&
+        og::sim::alternate_in_play(fd, static_cast<int>(w->current_special()),
+                                   og::sim::session_new_specials());
+    lua_pushboolean(L, down ? 1 : 0);
+    return 1;
+}
 W_GET_INT(skip_exit)
 W_SET_INT(skip_exit, short)
 W_GET_INT(lifetime)
@@ -842,10 +859,10 @@ int s_controller(lua_State* L)
 // scares cannot stack end-to-end.
 int s_force_fright(lua_State* L)
 {
-    stats_arg(L)->force_fright(
-        static_cast<std::int32_t>(luaL_checkinteger(L, 2)),
-        static_cast<std::int32_t>(luaL_checkinteger(L, 3)),
-        static_cast<std::int32_t>(luaL_checkinteger(L, 4)));
+    const auto iterations = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    const auto info1 = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
+    const auto info2 = static_cast<std::int32_t>(luaL_checkinteger(L, 4));
+    if (!og::sim::fearless(*self_arg(L))) stats_arg(L)->force_fright(iterations, info1, info2);  // a rallied walker holds
     return 0;
 }
 
@@ -2849,13 +2866,17 @@ int og_team_color_name(lua_State* L)
 // "map_units_1".."map_units_4" (the per-team MAP UNITS box: 0 = the map's
 // own authored units are fielded, 1 = they are not),
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
-// bot-squad level formula reads it).
+// bot-squad level formula reads it),
+// "new_specials" (the New Specials setting, 0 = the classic kits; every
+// New Specials bot gate asks it first).
 int og_match_setting(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const char* s = luaL_checkstring(L, 1);
     lua_Integer value = 0;
-    if (std::strcmp(s, "team_count") == 0)
+    if (std::strcmp(s, "new_specials") == 0)
+        value = world->new_specials;
+    else if (std::strcmp(s, "team_count") == 0)
         value = world->ctf_requested_team_count;
     else if (std::strcmp(s, "score_limit") == 0)
         value = world->ctf_requested_capture_limit;
@@ -3110,6 +3131,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"in_act", m_in_act},
     {"shifter_down", m_shifter_down},
     {"set_shifter_down", m_set_shifter_down},
+    {"alternate_down", m_alternate_down},
     {"skip_exit", m_skip_exit}, {"set_skip_exit", m_set_skip_exit},
     {"lifetime", m_lifetime}, {"set_lifetime", m_set_lifetime},
     {"speed_bonus", m_speed_bonus}, {"set_speed_bonus", m_set_speed_bonus},
@@ -3662,6 +3684,8 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st)
         lua_setfield(L, -2, c.name);
     }
     lua_setfield(L, -2, "C");
+    // New Specials bindings (bindings_kit.cpp).
+    register_kit_bindings(L, st);
 }
 
 }  // namespace og::script

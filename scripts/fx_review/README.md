@@ -34,6 +34,16 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
      (2) and the Dead Marshes (19) as real gameplay; then the Long Season
      scenes (2 The Ferry Right, 14 The Long Toll, 17 Ashfall Gate, 18 The
      Warm Mint). `OG_FX_CAPTURE_ONLY=<level id>` records a single scene.
+   - `GameLoop.zz_capture_new_specials` (`tests/integration/test_game_loop.cpp`)
+     — one film per New Specials move (the thief's mine; the ghost's wail,
+     siphon, possess and phase; the faerie's blink and swap, glimmer, hasten
+     and wish; the orc captain's howl, eat corpse, hook blade and knife
+     fan, war banner and warband; the skeleton's dig in,
+     bone wall and bone storm, reassemble and legion; the fire elemental's
+     immolate, meteor rain, rekindle and supernova) plus three of a bot
+     using one, each cast by the seat's own keys and asserted.
+     `OG_FX_CAPTURE_ONLY=<scene>` records a single scene;
+     `scripts/media/capture_new_specials.sh` records and encodes them all.
    - `MenuCapture.zz_capture_menu_tour` / `zz_capture_menu_effects` /
      `zz_capture_menu_difficulty`
      (`tests/integration/test_menu_capture.cpp`) — injector-driven menu

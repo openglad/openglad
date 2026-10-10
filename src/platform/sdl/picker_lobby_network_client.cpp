@@ -1521,6 +1521,7 @@ std::optional<og::sim::LobbySaveDataEquivalent> build_save_data_equivalent_from_
     equivalent.respawn_mode = state.settings.respawn_mode;
     equivalent.generator_rate = state.settings.generator_rate;
     equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
+    equivalent.new_specials = state.settings.new_specials;
     equivalent.cross_control = state.settings.cross_control;
     equivalent.infinite_gold = state.settings.infinite_gold;
     equivalent.time_limit = state.settings.time_limit;
@@ -1611,6 +1612,7 @@ LobbyStateApplyResult apply_lobby_state_to_save(
     save.respawn_mode = state.settings.respawn_mode;
     save.generator_rate = state.settings.generator_rate;
     save.keep_fallen_heroes = state.settings.keep_fallen_heroes;
+    save.new_specials = state.settings.new_specials;
     save.cross_control = state.settings.cross_control;
     save.infinite_gold = state.settings.infinite_gold;
     save.time_limit = state.settings.time_limit;
@@ -1919,6 +1921,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.respawn_mode = save.respawn_mode;
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
+    settings.new_specials = save.new_specials;
     settings.cross_control = save.cross_control;
     settings.infinite_gold = save.infinite_gold;
     settings.time_limit = save.time_limit;

@@ -1,6 +1,6 @@
 -- core:skeleton — ranged self-teleport special (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
-
+local ks = og.use("kit_skeleton")
 local C = og.C
 local lc = og.use("living_common")
 
@@ -46,7 +46,10 @@ og.family("living", {
              train = { strength = 15, dexterity = 6, constitution = 16,
                        intelligence = 25, armor = 50, level = 200 } },
   specials = {
-    { id = "tunnel", name = "TUNNEL", mp_cost = 10 },
+    { id = "tunnel",     name = "TUNNEL",     mp_cost = 10, ai = check_special_ai, detail = "Tunnel under the ground to a spot nearby." },
+    { id = "dig_in",     name = "DIG IN",     mp_cost = 15, new_kit = true, cast = ks.dig_in, ai = ks.ai_dig_in, detail = "Sink into the floor, unseen and mending, while your magic lasts." },
+    { id = "bone_wall",  name = "BONE WALL",  mp_cost = 30, new_kit = true, alternate = { name = "BONE STORM", mp_cost = ks.STORM_COST, detail = "Shatter all your walls." }, cast = ks.wall_or_storm, ai = ks.ai_wall, detail = "Throw a line of bones that stands as a barricade for a while." },
+    { id = "reassemble", name = "REASSEMBLE", mp_cost = 60, new_kit = true, alternate = { name = "LEGION", mp_cost = 60, detail = "The slain rise for you." }, cast = ks.reassemble_or_legion, ai = ks.ai_reassemble, detail = "Ward your next death: fall, then stand back up at a quarter health." },
     default_cast = do_special,
   },
   default_weapon = "core:bone",
@@ -64,7 +67,7 @@ og.family("living", {
   sprite = "skeleton.png",
   animation = "skeleton",
   ai_line_of_sight = 7,
-  description = "Skeletons are the pathetic remains of those who once were among the living. They are not particularly dangerous, but they move with blinding speed.\n\nSpecial: Tunnel",
+  description = "Skeletons are the pathetic remains of those who once were among the living. They are not particularly dangerous, but they move with blinding speed.",
   names = { "Drybones", "Blackbeard", "Boney", "Femur", "Patella", "Humerus",
             "Scapula" },
   playable = true,
@@ -77,7 +80,33 @@ og.family("living", {
   radar_color = "none",
   radar_jitter = 0,
 
-  check_special_ai = check_special_ai,
+  on_kill = ks.on_kill,
   level_up = level_up,
   handle_teleport = handle_teleport,
+
+  -- New Specials: DIG IN, BONE WALL / BONE STORM, REASSEMBLE / LEGION
+  -- (lib/kit_skeleton.lua). kit_latch is the second-press latch in ticks.
+  tuning = {
+    kit_latch = 10,
+    dig_max = 300,
+    dig_regen = 1,
+    dig_regen_pulse = 4,
+    dig_trigger = 20,
+    -- Staying dug in costs dig_drain mana every dig_drain_pulse ticks (one
+    -- mana for each health it regains); the dig needs dig_min_pool mana
+    -- left after its price, enough to stay down a few seconds.
+    dig_drain = 1,
+    dig_drain_pulse = 4,
+    dig_min_pool = 8,
+    wall_gap = 20,
+    wall_hp_base = 40,
+    wall_ticks = 360,
+    storm_range = 6,
+    legion_ticks = 300,
+    -- REASSEMBLE's ward lasts ward_ticks (30 seconds) and costs ward_drain
+    -- mana every ward_drain_pulse ticks while it is armed.
+    ward_ticks = 360,
+    ward_drain = 1,
+    ward_drain_pulse = 6,
+  },
 })

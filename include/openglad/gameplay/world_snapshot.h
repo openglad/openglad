@@ -32,7 +32,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 14;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 15;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -155,6 +155,12 @@ struct EntitySnapshot {
     std::int16_t spawn_x = -1;
     std::int16_t spawn_y = -1;
     std::uint8_t spawn_floor = 0;
+
+    // New Specials entity state (dirty bits 93-95, snapshot v15). All 0 on
+    // every walker a New Specials kit never touched.
+    std::uint32_t possess_link = 0;
+    std::uint8_t kit_state = 0;
+    std::int16_t possess_ticks = 0;
 };
 
 struct GuySnapshot {
@@ -273,6 +279,9 @@ struct WorldSnapshot {
     std::array<std::uint8_t, kMaxGlobalPlayers> player_machine = {
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    // Snapshot v15: the session's New Specials setting (GameWorld scalar),
+    // serialized right after the player_machine map.
+    std::uint8_t new_specials = 0;
 
     std::uint8_t grid_width = 0;
     std::uint8_t grid_height = 0;
@@ -494,6 +503,12 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, spawn_y))},
     {og::dirty::BIT_SPAWN_FLOOR, sizeof(std::uint8_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, spawn_floor))},
+    {og::dirty::BIT_POSSESS_LINK, sizeof(std::uint32_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, possess_link))},
+    {og::dirty::BIT_KIT_STATE, sizeof(std::uint8_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, kit_state))},
+    {og::dirty::BIT_POSSESS_TICKS, sizeof(std::int16_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, possess_ticks))},
 };
 
 inline constexpr std::size_t kEntitySnapshotTableFieldCount =

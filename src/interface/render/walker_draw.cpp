@@ -517,6 +517,25 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
 	// (the editor always draws with editor_floor_override_ set).
 	if (w.dormant() && view_buf->editor_floor_override_ < 0)
 		return false;
+	// A hidden walker (a dug-in skeleton, a ghost riding its host) is drawn
+	// only to its own team, as a dither below; foes and spectator cameras
+	// see nothing.
+	if (w.hidden() && (view_buf->control == nullptr ||
+	                   w.team_num() != view_buf->control->team_num()))
+		return false;
+	// A ghost riding a possessed body is drawn to nobody, its own seat
+	// included: the seat is in the host, which wears the twinkling ring
+	// below. (A host is never hidden while possessed, so the hidden walker
+	// with a possession link is always the rider.)
+	if (w.hidden() && w.possess_link() != 0)
+		return false;
+	// An invisible effect, weapon or treasure (a mine) is drawn only to its
+	// own team. An invisible living (the thief's cloak) keeps its old look
+	// and is handled by the fill-mode choice below.
+	if (w.invisibility_left() && w.query_order() != Order::Living &&
+	    (view_buf->control == nullptr ||
+	     w.team_num() != view_buf->control->team_num()))
+		return false;
 	// drawcycle is advanced by the authoritative sim (effect::act / living::act),
 	// NOT here — render must not write sim-read entity state (it freezes in the
 	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
@@ -589,19 +608,52 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
     int invisibility_amount = 0;
     int phantom_mode = 0;
 
-	if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
+	// A possessed body: drawn whole, with a one-pixel ring that twinkles
+	// between the ghost's white and the side the body now fights for, every
+	// three game ticks, for every viewer. It comes first because being
+	// possessed is the fact the viewer needs: an elf host in the trees or a
+	// cloaked thief host would otherwise fade into the branches below.
+	// framecount is the screen's tick counter, not sim state.
+	if (w.possess_link() != 0 && !w.hidden() &&
+	    w.query_order() == Order::Living)
+	{
+		fill_mode = OUTLINE_MODE;
+		outline_style =
+		    (((og::runtime::current_session->myscreen_->framecount / 3) & 1) == 0)
+		        ? WHITE
+		        : w.query_team_color();
+	}
+	else if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
     {
-        fill_mode = PHANTOM_MODE;
-        phantom_mode = SHIFT_RANDOM;
+        if (w.query_order() == Order::Living)
+        {
+            // A phased living (the ghost's PHASE) is spectral, not gone: a
+            // light dither with its team's outline, for every viewer, so a
+            // player can follow the untouchable ghost. The classic phantoms
+            // (the wave weapons, the circle of protection, the magic
+            // shield) are not livings and keep the heat haze below.
+            fill_mode = INVISIBLE_MODE;
+            invisibility_amount = 20;
+            outline_style = w.query_team_color();
+        }
+        else
+        {
+            fill_mode = PHANTOM_MODE;
+            phantom_mode = SHIFT_RANDOM;
+        }
         should_draw_hp = false;
     }
-	else if (w.invisibility_left() && view_buf->control != nullptr)  //WE ARE INVISIBLE
+	else if ((w.invisibility_left() || w.hidden()) && view_buf->control != nullptr)  //WE ARE INVISIBLE
 	{
 		if (w.team_num() == view_buf->control->team_num())
         {
             fill_mode = INVISIBLE_MODE;
-            invisibility_amount = (w.invisibility_left() + 10);
-	            outline_style = w.outline();
+            // A hidden walker with no invisibility of its own gets a fixed
+            // light dither and its team's outline.
+            invisibility_amount = w.invisibility_left()
+                ? (w.invisibility_left() + 10) : 20;
+	            outline_style = w.invisibility_left()
+	                ? w.outline() : w.query_team_color();
             should_draw_hp = false;
         }
 	}
@@ -771,8 +823,8 @@ inline constexpr Sint32 SHADOW_NUDGE_X = 2;
 inline constexpr Uint8 SHADOW_ALPHA = 90;
 inline constexpr Uint8 REFLECTION_ALPHA = 80;
 
-// Alive Living/Weapon walkers cast shadows and reflections; phantoms and
-// invisible units cast neither (their FX must not give them away). Every
+// Alive Living/Weapon walkers cast shadows and reflections; phantoms,
+// invisible and hidden units cast neither (their FX must not give them away). Every
 // caller's entity loop already skips dead walkers.
 static bool casts_ground_effects(const walker& w)
 {
@@ -780,6 +832,8 @@ static bool casts_ground_effects(const walker& w)
     if (order != Order::Living && order != Order::Weapon)
         return false;
     if (w.dormant()) // delayed spawn: not in the world yet
+        return false;
+    if (w.hidden()) // dug in, or riding a host: not on the ground
         return false;
     if (w.stats()->query_bit_flags(BIT_PHANTOM))
         return false;

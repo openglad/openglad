@@ -570,8 +570,9 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v13**, world
-snapshot format **v10**, and replay format **v15**. Protocol v13 adds the
+The current network compatibility line is lobby/gameplay protocol **v19**, world
+snapshot format **v15**, and replay format **v21** (New Specials, below).
+Protocol v13 added the
 staged-lobby channel: `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
 complete InitialSetup / keyframe snapshot of the host's staged world so every
 peer previews the exact match before GO, plus `StartDenialReason::StageFailed`.
@@ -583,6 +584,16 @@ Company/Base Camp multiplayer state introduced by v8. Team changes
 and exact-seat removal use that identity rather than the mutable dense `P#`.
 Peers reject incompatible versions during the handshake, while snapshot and
 replay readers independently reject unsupported payload formats.
+
+New Specials (protocol v19, snapshot v15, replay v21) adds three per-entity
+snapshot fields, `possess_link` (u32, dirty bit 93), `kit_state` (u8, 94) and
+`possess_ticks` (i16, 95), plus the world's `new_specials` byte; see
+[new-specials.md](new-specials.md). The countdown each seat sees for its own
+running timed effect (`og::sim::seat_timer`, `src/gameplay/timed_effects.cpp`)
+reads only fields that already ride every snapshot (`possess_ticks`, a kit
+marker's role, owner and lifetime, `speed_bonus_left`), so a display mirror
+answers what the host would; the SDL HUD, the curses status line and the
+text client's state all read it.
 
 ### Core components (`og_gameplay`, SDL-free)
 

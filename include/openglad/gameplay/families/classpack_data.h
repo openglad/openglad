@@ -176,6 +176,17 @@ struct ClasspackSpecialEntry {
     std::int32_t mp_cost = 0;      // required
     std::optional<std::string> alternate_name;  // alternate = { name = }
     std::int32_t slot = 0;         // 1..5, from list order or `slot`
+    // New Specials: `new_kit = true` on the entry, and `mp_cost` /
+    // `new_kit` inside its `alternate` table. alternate_cost 0 = the
+    // primary's price.
+    bool new_kit = false;
+    bool alternate_new_kit = false;
+    std::int32_t alternate_cost = 0;
+    // `detail = "..."` on the entry and inside its `alternate` table: the
+    // prose the TRAIN -> DETAILS page shows under the special's name.
+    // Absent = the page shows the name alone.
+    std::optional<std::string> detail;
+    std::optional<std::string> alternate_detail;
 };
 
 // One entry declared by og.family("living", ...). Keys per design doc §4;
@@ -230,6 +241,8 @@ struct ClasspackWeaponEntry {
     std::optional<std::int32_t> sizez;     // WeaponFamilyDescriptor.init_sizez
     std::optional<bool> can_drop_floors;
     std::optional<float> hp;          // base hitpoints (0/absent = keep the core row)
+    std::optional<std::int32_t> rally_radius;  // New Specials banner aura (px)
+    std::optional<bool> blocks_placement;      // New Specials solid scenery
     NullableString sprite;
     std::optional<std::string> animation;  // og.anims set name
     ClasspackPresentation presentation;

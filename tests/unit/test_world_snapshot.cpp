@@ -2,6 +2,9 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/kit_state.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/obmap.h>
@@ -554,6 +557,9 @@ void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
     EXPECT_EQ(expected.spawn_x, actual.spawn_x);
     EXPECT_EQ(expected.spawn_y, actual.spawn_y);
     EXPECT_EQ(expected.spawn_floor, actual.spawn_floor);
+    EXPECT_EQ(expected.possess_link, actual.possess_link);
+    EXPECT_EQ(expected.kit_state, actual.kit_state);
+    EXPECT_EQ(expected.possess_ticks, actual.possess_ticks);
 }
 
 void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
@@ -588,6 +594,7 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.generator_rate, actual.generator_rate);
     EXPECT_EQ(expected.control_policy, actual.control_policy);
     EXPECT_EQ(expected.player_machine, actual.player_machine);
+    EXPECT_EQ(expected.new_specials, actual.new_specials);
     EXPECT_EQ(expected.grid_width, actual.grid_width);
     EXPECT_EQ(expected.grid_height, actual.grid_height);
     EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
@@ -707,7 +714,7 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
 {
     static_assert(std::is_standard_layout_v<og::sim::EntitySnapshot>);
     static_assert(std::is_trivially_copyable_v<og::sim::EntitySnapshot>);
-    EXPECT_EQ(91u, og::sim::kEntitySnapshotTableFieldCount);
+    EXPECT_EQ(94u, og::sim::kEntitySnapshotTableFieldCount);
     EXPECT_EQ(2u, og::sim::kEntitySnapshotManualFieldCount);
     EXPECT_EQ(og::dirty::FIELD_COUNT, og::sim::kEntitySnapshotTrackedFieldCount);
 
@@ -2455,13 +2462,15 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 537 bytes of world state (72 pre-block scalars, the v11 respawn block
+    // 538 bytes of world state (72 pre-block scalars, the v11 respawn block
     // at its empty size 9, the fixed 409-byte mode block — v13 appended the
     // one 5-byte camera-view slot — the 26 match-knob bytes, and the trailing
-    // respawn_mode/generator_rate/control_policy/player_machine 21) + 4 grid
-    // bytes. Not to be confused with the world-state size itself, which v13
-    // moved to 537: the two constants collide numerically one bump apart.
-    constexpr std::size_t kEntityCountOffset = 542;
+    // respawn_mode/generator_rate/control_policy/player_machine/new_specials
+    // 22; v15 appended new_specials) + 4 grid bytes. Not to be confused with
+    // the world-state size itself (kSerializedWorldStateBytes in
+    // test_world_snapshot_coverage.cpp, 538 since v15), from which this is
+    // derived: 1 + 538 + 4.
+    constexpr std::size_t kEntityCountOffset = 543;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;
@@ -3446,3 +3455,329 @@ TEST(WorldSnapshot, campaign_tag_does_not_ride_the_snapshot_wire_but_survives_th
         << "a joiner's won level must not un-assign its own company";
 }
 
+
+// New Specials (snapshot v15): the session setting is world state on the
+// wire. It must survive capture -> serialize -> deserialize -> apply and the
+// delta merge, and apply clamps a crafted value to 0/1.
+TEST(WorldSnapshot, new_specials_round_trips_keyframe_and_delta)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    source.new_specials = 1;
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    EXPECT_EQ(1, keyframe.new_specials);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(keyframe));
+    EXPECT_EQ(1, decoded.new_specials);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_EQ(0, mirror.new_specials);
+    og::sim::apply_snapshot(mirror, decoded);
+    EXPECT_EQ(1, mirror.new_specials)
+        << "new_specials must reach the mirror world through apply";
+
+    // The delta path: a delta carries the world scalars, and the merge puts
+    // them on a stale baseline.
+    og::sim::WorldSnapshot delta;
+    delta.new_specials = 1;
+    const og::sim::WorldSnapshot delta_decoded =
+        og::sim::deserialize_delta(og::sim::serialize_delta(delta));
+    EXPECT_EQ(1, delta_decoded.new_specials);
+    og::sim::WorldSnapshot baseline;
+    og::sim::apply_delta(baseline, delta_decoded);
+    EXPECT_EQ(1, baseline.new_specials);
+
+    // A crafted value clamps to 1 on apply; 0 turns the mirror back off.
+    og::sim::WorldSnapshot crafted = decoded;
+    crafted.new_specials = 7;
+    og::sim::apply_snapshot(mirror, crafted);
+    EXPECT_EQ(1, mirror.new_specials) << "apply clamps the setting to 0/1";
+    crafted.new_specials = 0;
+    og::sim::apply_snapshot(mirror, crafted);
+    EXPECT_EQ(0, mirror.new_specials);
+}
+
+// The three New Specials entity fields ride dirty bits 93-95: each setter
+// marks its own bit, and the values survive the wire to a mirror walker.
+TEST(WorldSnapshot, kit_fields_round_trip_and_mark_dirty_bits_93_to_95)
+{
+    EXPECT_EQ(93, og::dirty::BIT_POSSESS_LINK);
+    EXPECT_EQ(94, og::dirty::BIT_KIT_STATE);
+    EXPECT_EQ(95, og::dirty::BIT_POSSESS_TICKS);
+
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+    world.resize_grid(32, 32);
+    fill_world_grid(world, PIX_GRASS1);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, actor);
+    actor->setxy(80, 80);
+    actor->clear_dirty();
+    actor->set_possess_link(4242u);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_POSSESS_LINK));
+    EXPECT_FALSE(actor->is_dirty(og::dirty::BIT_KIT_STATE));
+    actor->set_kit_state(static_cast<std::uint8_t>(KIT_FEARLESS | KIT_WARD));
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_KIT_STATE));
+    EXPECT_FALSE(actor->is_dirty(og::dirty::BIT_POSSESS_TICKS));
+    actor->set_possess_ticks(-123);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_POSSESS_TICKS));
+    const std::uint32_t actor_id = actor->entity_id();
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    const og::sim::EntitySnapshot* captured = nullptr;
+    for (const auto& entity : keyframe.oblist)
+        if (entity.entity_id == actor_id)
+            captured = &entity;
+    ASSERT_NE(nullptr, captured);
+    EXPECT_EQ(4242u, captured->possess_link);
+    EXPECT_EQ(KIT_FEARLESS | KIT_WARD, captured->kit_state);
+    EXPECT_EQ(-123, captured->possess_ticks);
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(keyframe));
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, decoded);
+    walker* mirrored = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_EQ(4242u, mirrored->possess_link());
+    EXPECT_EQ(KIT_FEARLESS | KIT_WARD, mirrored->kit_state());
+    EXPECT_EQ(-123, mirrored->possess_ticks());
+    EXPECT_FALSE(mirrored->hidden());
+}
+
+// A flip of KIT_HIDDEN arriving in a snapshot goes through set_hidden, so the
+// mirror's collision table follows it: hidden = out of the obmap, revealed =
+// back in at its spot.
+TEST(WorldSnapshot, hidden_bit_apply_keeps_the_mirror_obmap_in_step)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* actor = source.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, actor);
+    actor->setxy(96, 96);
+    const std::uint32_t actor_id = actor->entity_id();
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    mirror.resize_grid(32, 32);
+    fill_world_grid(mirror, PIX_GRASS1);
+    og::sim::apply_snapshot(mirror, og::sim::capture_keyframe_snapshot(source));
+    walker* mirrored = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, mirrored);
+    const auto registered = [&mirror](walker* w) {
+        return mirror.myobmap->walker_to_pos.count(w) != 0;
+    };
+    ASSERT_TRUE(registered(mirrored)) << "a visible walker is in the obmap";
+
+    og::sim::WorldSnapshot hidden = og::sim::capture_keyframe_snapshot(source);
+    for (auto& entity : hidden.oblist)
+        if (entity.entity_id == actor_id)
+            entity.kit_state = KIT_HIDDEN;
+    og::sim::apply_snapshot(mirror, hidden);
+    mirrored = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_TRUE(mirrored->hidden());
+    EXPECT_FALSE(registered(mirrored))
+        << "a hidden walker leaves the mirror's obmap";
+
+    og::sim::apply_snapshot(mirror, og::sim::capture_keyframe_snapshot(source));
+    mirrored = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_FALSE(mirrored->hidden());
+    EXPECT_TRUE(registered(mirrored))
+        << "a revealed walker re-enters the mirror's obmap at its spot";
+}
+
+// A possession rides the snapshot: both links, the host's countdown, the
+// rider's hidden bit and its record of the host's team, and the seat's tag
+// on the host. Each link resolves to its partner by id in the seeded world;
+// a link to an id the world does not hold resolves to nothing.
+TEST(WorldSnapshot, possess_link_survives_snapshot_seed_and_resolves_by_id)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* ghost = source.add_ob(Order::Living, FAMILY_GHOST);
+    walker* orc = source.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(ghost && orc);
+    ghost->set_team_num(0);
+    ghost->setxy(64, 64);
+    orc->set_team_num(1);
+    orc->setxy(96, 64);
+    ghost->set_user(0);
+    ghost->set_act_type(ACT_CONTROL);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 77).ok);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+
+    TestGameWorld seeded_fx;
+    GameWorld& seeded = seeded_fx.world();
+    seeded.resize_grid(32, 32);
+    fill_world_grid(seeded, PIX_GRASS1);
+    og::sim::apply_snapshot(
+        seeded, og::sim::deserialize_snapshot(og::sim::serialize_snapshot(
+                    og::sim::capture_keyframe_snapshot(source))));
+    walker* rider = seeded.find_by_id(ghost_id);
+    walker* host = seeded.find_by_id(orc_id);
+    ASSERT_TRUE(rider && host);
+    EXPECT_EQ(host, seeded.find_by_id(rider->possess_link()));
+    EXPECT_EQ(rider, seeded.find_by_id(host->possess_link()));
+    EXPECT_EQ(77, host->possess_ticks());
+    EXPECT_TRUE(rider->hidden());
+    EXPECT_EQ(0u, seeded.myobmap->walker_to_pos.count(rider))
+        << "the seeded rider stays out of the obmap";
+    EXPECT_EQ(1u, seeded.myobmap->walker_to_pos.count(host));
+    EXPECT_EQ(0, host->team_num());
+    EXPECT_EQ(1, rider->real_team_num());
+    EXPECT_EQ(0, host->user());
+    EXPECT_EQ(-1, rider->user());
+
+    og::sim::WorldSnapshot stale = og::sim::capture_keyframe_snapshot(source);
+    for (auto& entity : stale.oblist)
+        if (entity.entity_id == orc_id)
+            entity.possess_link = 0x7ffffff0u;
+    og::sim::apply_snapshot(seeded, stale);
+    host = seeded.find_by_id(orc_id);
+    ASSERT_NE(nullptr, host);
+    EXPECT_EQ(0x7ffffff0u, host->possess_link());
+    EXPECT_EQ(nullptr, seeded.find_by_id(host->possess_link()))
+        << "a stale link resolves to nothing";
+}
+
+// A mirror that already holds the ghost, visible and in its obmap, follows
+// the authoritative side into a possession: the rider is hidden and leaves
+// the mirror's obmap although it arrives linked (only a walker whose partner
+// is hidden is refused a hide), and the host stays. The release brings the
+// rider back into the obmap.
+//
+// The three snapshots are captured BEFORE the mirror exists: the possession
+// verbs hide and move through the current gameplay context, and a
+// TestGameWorld makes itself current when it is built. With the mirror
+// built first, the source's hide and reveal would land in the mirror's
+// collision table (two stale entries, and the "obmap::walker_to_pos has N
+// elements left" line at the mirror's teardown).
+TEST(WorldSnapshot, possession_apply_moves_a_mirror_rider_out_of_the_obmap)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* ghost = source.add_ob(Order::Living, FAMILY_GHOST);
+    walker* orc = source.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(ghost && orc);
+    ghost->set_team_num(0);
+    ghost->setxy(64, 64);
+    orc->set_team_num(1);
+    orc->setxy(96, 64);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+
+    const og::sim::WorldSnapshot before =
+        og::sim::capture_keyframe_snapshot(source);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 50).ok);
+    ASSERT_EQ(0u, source.myobmap->walker_to_pos.count(ghost))
+        << "the source's rider left the source's obmap";
+    const og::sim::WorldSnapshot possessed =
+        og::sim::capture_keyframe_snapshot(source);
+    og::sim::release_possession(source, *orc);
+    ASSERT_EQ(1u, source.myobmap->walker_to_pos.count(ghost))
+        << "and came back into it on release";
+    const og::sim::WorldSnapshot released =
+        og::sim::capture_keyframe_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    mirror.resize_grid(32, 32);
+    fill_world_grid(mirror, PIX_GRASS1);
+    og::sim::apply_snapshot(mirror, before);
+    const auto registered = [&mirror](std::uint32_t id) {
+        return mirror.myobmap->walker_to_pos.count(mirror.find_by_id(id)) != 0;
+    };
+    ASSERT_TRUE(registered(ghost_id)) << "the mirror's ghost starts visible";
+
+    og::sim::apply_snapshot(mirror, possessed);
+    walker* rider = mirror.find_by_id(ghost_id);
+    ASSERT_NE(nullptr, rider);
+    EXPECT_TRUE(rider->hidden());
+    EXPECT_EQ(orc_id, rider->possess_link());
+    EXPECT_FALSE(registered(ghost_id))
+        << "the mirror's rider left the obmap although it arrived linked";
+    EXPECT_TRUE(registered(orc_id)) << "the host stays in it";
+
+    og::sim::apply_snapshot(mirror, released);
+    EXPECT_FALSE(mirror.find_by_id(ghost_id)->hidden());
+    EXPECT_TRUE(registered(ghost_id)) << "released, the rider is back";
+}
+
+// A world seeded from a snapshot (the shadow server's restart path) carries
+// on where the source stopped: the possession counts down and releases with
+// the host's true team, and a REASSEMBLE ward still cancels a death.
+TEST(WorldSnapshot, snapshot_seeded_world_resumes_a_possession_and_keeps_a_ward)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* ghost = source.add_ob(Order::Living, FAMILY_GHOST);
+    walker* orc = source.add_ob(Order::Living, FAMILY_ORC);
+    walker* skeleton = source.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_TRUE(ghost && orc && skeleton);
+    ghost->set_team_num(0);
+    ghost->setxy(64, 64);
+    orc->set_team_num(1);
+    orc->setxy(96, 64);
+    skeleton->set_team_num(0);
+    skeleton->setxy(160, 160);
+    skeleton->stats()->set_max_hitpoints(40.0f);
+    skeleton->set_kit_state(KIT_WARD);
+    ASSERT_TRUE(og::sim::possess(source, *ghost, *orc, 2).ok);
+    const std::uint32_t ghost_id = ghost->entity_id();
+    const std::uint32_t orc_id = orc->entity_id();
+    const std::uint32_t skeleton_id = skeleton->entity_id();
+
+    TestGameWorld seeded_fx;
+    GameWorld& seeded = seeded_fx.world();
+    seeded.resize_grid(32, 32);
+    fill_world_grid(seeded, PIX_GRASS1);
+    og::sim::apply_snapshot(seeded, og::sim::capture_keyframe_snapshot(source));
+    auto* host = dynamic_cast<living*>(seeded.find_by_id(orc_id));
+    walker* rider = seeded.find_by_id(ghost_id);
+    walker* warded = seeded.find_by_id(skeleton_id);
+    ASSERT_TRUE(host && rider && warded);
+
+    og::sim::possession_host_tick(seeded, *host);
+    EXPECT_EQ(1, host->possess_ticks());
+    EXPECT_TRUE(rider->hidden());
+    og::sim::possession_host_tick(seeded, *host);
+    EXPECT_EQ(0u, host->possess_link()) << "the countdown ran out";
+    EXPECT_FALSE(rider->hidden());
+    EXPECT_EQ(1u, seeded.myobmap->walker_to_pos.count(rider));
+    EXPECT_EQ(1, host->team_num()) << "the host's true team came with the seed";
+    EXPECT_EQ(255, rider->real_team_num());
+
+    EXPECT_EQ(KIT_WARD, warded->kit_state());
+    warded->stats()->set_hitpoints(-3.0f);
+    warded->set_dead(1);
+    warded->death();
+    EXPECT_FALSE(warded->dead()) << "the seeded ward still holds";
+    EXPECT_FLOAT_EQ(10.0f, warded->stats()->hitpoints());
+}

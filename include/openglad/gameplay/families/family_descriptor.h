@@ -145,6 +145,24 @@ struct FamilyDescriptor {
     // Borrowed from the process-lifetime ClasspackStore, like `name`.
     const char* special_ids[FD_NUM_SPECIALS];
 
+    // New Specials (the setting). A slot or an alternate declared with
+    // `new_kit = true` exists only while the session's New Specials setting
+    // is on; og::sim::specials_view answers "NONE" / kSpecialCostDisabled
+    // for it while the setting is off, so the classic kits are exactly what
+    // they were. alternate_cost is the alternate's own price (`alternate =
+    // { mp_cost = N }`); 0 = the primary's price, which is every classic
+    // alternate.
+    bool special_new_kit[FD_NUM_SPECIALS] = {};
+    bool alternate_new_kit[FD_NUM_SPECIALS] = {};
+    unsigned short alternate_cost[FD_NUM_SPECIALS] = {};
+
+    // The DETAILS page prose of each slot and of its alternate (`detail =
+    // "..."` on the specials row and inside its `alternate` table);
+    // nullptr = none declared. Read by the picker only, never by the sim.
+    // Borrowed from the process-lifetime ClasspackStore, like special_ids.
+    const char* special_details[FD_NUM_SPECIALS] = {};
+    const char* alternate_details[FD_NUM_SPECIALS] = {};
+
     // Flags
     bool leaves_bloodspot;                     // false for ghost/skeleton/tower
     float magic_damage_modifier;               // multiplier for incoming magical damage (1.0 = normal)

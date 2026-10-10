@@ -822,10 +822,10 @@ TEST_F(SpecialsByIdTest, a_slot_number_beside_its_id_is_still_a_load_error)
 
 TEST_F(SpecialsDispatchTest, an_id_key_on_a_family_that_declares_none_says_so)
 {
-    // core:faerie has no castable slot and so declares no id; the error has
+    // core:#19 has no castable slot and so declares no id; the error has
     // to say that rather than list an empty set.
     register_chunk(
-        "og.register_hooks('living', 'core:faerie', {\n"
+        "og.register_hooks('living', 'core:#19', {\n"
         "  specials = { flutter = function(self) return true end },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());

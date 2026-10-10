@@ -139,6 +139,13 @@ public:
     // file (like cross_control), which also keeps every company autosave
     // from baking a cheat balance into the player's file.
     short infinite_gold = 0;
+    // New Specials (protocol v19): 0 = the classic kits, 1 = the new
+    // specials. The per-machine preference (cfg gameplay/new_specials)
+    // seeds it once per client session; a lobby then negotiates it (the host
+    // wins). Default 0 so every hand-built save is classic unless it says
+    // otherwise. SESSION-ONLY — never serialized to the GTL file (like
+    // cross_control); reset() and load() never touch it.
+    short new_specials = 0;
     // Tower Climb persistence (GTL v13; docs/tower-triple-design.md D2/D6).
     // Floors climbed is DERIVED (scen_num - kTowerGateLevel), never stored as
     // a run counter; only the lifetime best and the current run's generation

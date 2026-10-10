@@ -419,9 +419,11 @@ const std::set<std::string> kDisplayScreenIds = {
 
 // A film toggle and the cfg flag it writes -- the value the click ladder
 // reads to prove the press was CONSUMED (the row's colour is not readable
-// from an injector).
+// from an injector). Most rows write "effects"; New Specials writes
+// "gameplay".
 struct FxFilmToggle {
     const char* id;
+    const char* category;
     const char* key;
 };
 
@@ -441,26 +443,28 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
     static const std::vector<FxScreenPlan> plans = {
         {"gameplay_fx",
          "gameplay_fx_back",
-         {"toggle_hit_recoil", "toggle_attack_lunge"},
-         {{"toggle_hit_recoil", "hit_recoil"},
-          {"toggle_attack_lunge", "attack_lunge"}},
-         {"gameplay_fx_back", "toggle_hit_recoil", "toggle_attack_lunge"}},
+         {"toggle_hit_recoil", "toggle_attack_lunge", "toggle_new_specials"},
+         {{"toggle_hit_recoil", "effects", "hit_recoil"},
+          {"toggle_attack_lunge", "effects", "attack_lunge"},
+          {"toggle_new_specials", "gameplay", "new_specials"}},
+         {"gameplay_fx_back", "toggle_hit_recoil", "toggle_attack_lunge",
+          "toggle_new_specials"}},
         {"ui_fx",
          "ui_fx_back",
          {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers"},
-         {{"toggle_mini_hp_bar", "mini_hp_bar"},
-          {"toggle_damage_numbers", "damage_numbers"},
-          {"toggle_heal_numbers", "heal_numbers"}},
+         {{"toggle_mini_hp_bar", "effects", "mini_hp_bar"},
+          {"toggle_damage_numbers", "effects", "damage_numbers"},
+          {"toggle_heal_numbers", "effects", "heal_numbers"}},
          {"ui_fx_back", "toggle_mini_hp_bar", "toggle_damage_numbers",
           "toggle_heal_numbers"}},
         {"graphics_fx",
          "graphics_fx_back",
          {"toggle_hit_flash", "toggle_shadows", "toggle_dust",
           "toggle_fire_glow", "toggle_floor_glide"},
-         {{"toggle_weather", "weather"},
-          {"toggle_shadows", "shadows"},
-          {"toggle_fire_glow", "fire_glow"},
-          {"toggle_screen_shake", "screen_shake"}},
+         {{"toggle_weather", "effects", "weather"},
+          {"toggle_shadows", "effects", "shadows"},
+          {"toggle_fire_glow", "effects", "fire_glow"},
+          {"toggle_screen_shake", "effects", "screen_shake"}},
          {"graphics_fx_back", "toggle_hit_flash", "toggle_hit_sparks",
           "toggle_gore", "toggle_shadows", "toggle_reflections",
           "toggle_weather", "toggle_dust", "depth_fx", "toggle_trails",
@@ -472,9 +476,10 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
 
 // The cfg keys menu_effects flips on film; the flip-twice discipline must
 // leave every one of them exactly as it found it.
-constexpr std::array<std::pair<const char*, const char*>, 9> kEffectsCfgKeys = {{
+constexpr std::array<std::pair<const char*, const char*>, 10> kEffectsCfgKeys = {{
     {"effects", "hit_recoil"},
     {"effects", "attack_lunge"},
+    {"gameplay", "new_specials"},
     {"effects", "mini_hp_bar"},
     {"effects", "damage_numbers"},
     {"effects", "heal_numbers"},
@@ -659,10 +664,11 @@ int menu_effects_injector(void* data)
                 // player's settings end where they started. Each click is
                 // proven consumed by the cfg flag the row writes, so an even
                 // number of LOST clicks can no longer read as a round trip.
+                const char* const category = toggle.category;
                 const char* const key = toggle.key;
                 for (int pass = 0; pass < 2; ++pass) {
-                    click_until_value_moves(toggle.id, 1, [key] {
-                        return cfg.is_on("effects", key) ? 1 : 0;
+                    click_until_value_moves(toggle.id, 1, [category, key] {
+                        return cfg.is_on(category, key) ? 1 : 0;
                     });
                     hold_camera(state);
                 }
@@ -881,8 +887,8 @@ TEST(MenuCapture, zz_capture_menu_effects)
                                              menu_effects_injector, state,
                                              injector_result));
 
-    // 2 + 3 + 5 nav steps down the three screens' left columns.
-    expect_scene_completed(state, injector_result, 10, 3);
+    // 3 + 3 + 5 nav steps down the three screens' left columns.
+    expect_scene_completed(state, injector_result, 11, 3);
     verify_captured_frames("menu_effects", 3);
     const std::vector<FxScreenPlan>& plans = fx_screen_plans();
     for (std::size_t i = 0; i < plans.size(); ++i)

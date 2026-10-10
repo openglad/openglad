@@ -596,6 +596,14 @@ public:
     // (the hero's growth already survives — full salvage would double-dip).
     // Default 0 keeps parity scenarios and legacy content byte-identical.
     short keep_fallen_heroes = 0;
+    // The New Specials setting as this session plays it (SaveData::
+    // new_specials, synced by both sync_world_from_save_data twins, by
+    // InitialSetup and by the snapshot). 0 = classic kits. Parity,
+    // hand-built and load-time scratch worlds stay classic with no code
+    // running; both sync twins, InitialSetup and the snapshot stamp 1 when
+    // the session has it on. Deliberately NOT reset in clear(): every
+    // install path re-stamps it, like respawn_mode and generator_rate.
+    short new_specials = 0;
     // Networked control policy (protocol v8 / snapshot v9, company-basecamp
     // design §4.1/§4.4): 0 = legacy (any seat may claim any walker — every
     // local/solo session and cross-control-ON lobbies), 1 = owner-locked

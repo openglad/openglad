@@ -30,6 +30,15 @@ void write_u32_le(std::vector<std::uint8_t>& bytes,
     bytes[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
 }
 
+std::uint32_t read_u32_le_for_test(const std::vector<std::uint8_t>& bytes,
+                                   std::size_t offset)
+{
+    return static_cast<std::uint32_t>(bytes[offset]) |
+           (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+           (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+           (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+}
+
 class MockTransport final : public og::sim::ITransport
 {
 public:
@@ -264,7 +273,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x12, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x13, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -1403,8 +1412,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x12, 0x01, 0x17, 0x00,
-            0x12, 0x12, 0x03,
+            0x13, 0x01, 0x17, 0x00,
+            0x13, 0x13, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -1458,16 +1467,32 @@ TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
         og::sim::InitialSetupMessage{});
 
     // Offsets: the guy-count u32 sits after the fixed scalar block, which
-    // v13 grew by the 4-byte setup_generation (37 -> 41); the level-count
-    // u32 follows the (empty) guy list.
+    // v13 grew by the 4-byte setup_generation (37 -> 41) and v19 by the
+    // 2-byte new_specials (41 -> 43); the level-count u32 follows the
+    // (empty) guy list. Both are proven by reading them back from a message
+    // whose counts are known, so a stale offset fails here instead of
+    // corrupting some other field and passing by luck.
+    constexpr std::size_t kGuyCountOffset = 43;
+    constexpr std::size_t kLevelCountOffset = 47;
+    {
+        og::sim::InitialSetupMessage counted;
+        counted.completed_levels = {5, 6, 7};
+        const auto counted_bytes =
+            og::sim::serialize_initial_setup_message(counted);
+        ASSERT_GE(counted_bytes.size(), kLevelCountOffset + 4u);
+        EXPECT_EQ(0u, read_u32_le_for_test(counted_bytes, kGuyCountOffset))
+            << "the guy count (empty list) lives here";
+        EXPECT_EQ(3u, read_u32_le_for_test(counted_bytes, kLevelCountOffset))
+            << "the completed-level count lives here";
+    }
     auto oversized_guy_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_guy_count, 41, 0xffffffffu);
+    write_u32_le(oversized_guy_count, kGuyCountOffset, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_guy_count)
             .has_value());
 
     auto oversized_level_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_level_count, 45, 0xffffffffu);
+    write_u32_le(oversized_level_count, kLevelCountOffset, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_level_count)
             .has_value());
@@ -3170,11 +3195,11 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
-    // Wire layout of an empty LobbyState (protocol v16): 4-byte transport
-    // header, then the settings block (4-byte empty campaign string + 22 i16
-    // fields and the authored-team-mask u8 = 49 bytes), then the 1-byte host
+    // Wire layout of an empty LobbyState (protocol v19): 4-byte transport
+    // header, then the settings block (4-byte empty campaign string + 23 i16
+    // fields and the authored-team-mask u8 = 51 bytes), then the 1-byte host
     // player id, 1-byte last_start_denial echo, and u32 request correlation —
-    // so player-count sits at offset 59. A trailing u8 local-seat-id count
+    // so player-count sits at offset 61. A trailing u8 local-seat-id count
     // follows the players, then a u32 recipient-specific Join acknowledgement
     // and a bool recipient-host flag.
     //
@@ -3182,14 +3207,25 @@ TEST(NetTransport,
     // ctf_capture_limit, ctf_respawn_ticks, ctf_strip_scenario_troops,
     // respawn_mode, generator_rate, keep_fallen_heroes, cross_control,
     // infinite_gold, shared_teams, time_limit, then the v16 fill[4] and
-    // map_units[4]. Re-derived from the field list, not bumped by +16: two
-    // of these offsets were silently stale for months once.
+    // map_units[4], then the v19 new_specials. Re-derived from the field
+    // list, not bumped by +2: two of these offsets were silently stale for
+    // months once, and the read-back below now catches a stale one.
+    constexpr std::size_t kPlayerCountOffset = 61;
+    {
+        og::sim::LobbyState two_players;
+        two_players.players.resize(2);
+        const auto counted =
+            og::sim::serialize_lobby_state_message(two_players);
+        ASSERT_GE(counted.size(), kPlayerCountOffset + 4u);
+        EXPECT_EQ(2u, read_u32_le_for_test(counted, kPlayerCountOffset))
+            << "the player count lives here";
+    }
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 59, 0xffffffffu);
+    write_u32_le(oversized_player_count, kPlayerCountOffset, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -3242,9 +3278,18 @@ TEST(NetTransport,
                                   player_state_bytes.end());
     // First player record (v9): index u8 + seat-id u32 + machine-id u32 +
     // empty-name u32 + empty-company u32 + team i16 + ready/host bools =
-    // 21 bytes after the player-count u32 at 59 (v16 settings block), putting
-    // its slot-count u32 at 84.
-    write_u32_le(oversized_slot_count, 84, 0xffffffffu);
+    // 21 bytes after the player-count u32 at 61 (v19 settings block), putting
+    // its slot-count u32 at 86.
+    constexpr std::size_t kFirstSlotCountOffset = 86;
+    {
+        og::sim::LobbyState one_slot = state_with_player;
+        one_slot.players.front().character_slots.resize(1);
+        const auto counted = og::sim::serialize_lobby_state_message(one_slot);
+        ASSERT_GE(counted.size(), kFirstSlotCountOffset + 4u);
+        EXPECT_EQ(1u, read_u32_le_for_test(counted, kFirstSlotCountOffset))
+            << "the first player's slot count lives here";
+    }
+    write_u32_le(oversized_slot_count, kFirstSlotCountOffset, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());
@@ -4473,4 +4518,56 @@ TEST(NetTransport, game_client_control_change_reaches_high_player_indices)
     client.poll_messages();
     for (const std::uint32_t entity_id : client.controlled_entity_ids())
         EXPECT_NE(888u, entity_id);
+}
+
+// New Specials (protocol v19). Both directions carry the non-default value
+// 1 here (the struct default is 0), so a reader that skipped the field
+// would decode 0 and fail. The lobby field is appended LAST: the settings
+// block of a state whose only non-default is new_specials differs from the
+// all-default one in exactly the two bytes the field occupies.
+TEST(NetTransport, lobby_settings_round_trip_carries_new_specials)
+{
+    og::sim::LobbyState state = make_lobby_state_for_test();
+    state.settings.new_specials = 1;
+    const auto bytes = og::sim::serialize_lobby_state_message(state);
+    const auto decoded = og::sim::deserialize_lobby_state_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(1, decoded->settings.new_specials);
+    EXPECT_EQ(state.settings, decoded->settings);
+
+    og::sim::LobbyState plain;
+    og::sim::LobbyState with_flag;
+    with_flag.settings.new_specials = 1;
+    const auto plain_bytes = og::sim::serialize_lobby_state_message(plain);
+    const auto flag_bytes = og::sim::serialize_lobby_state_message(with_flag);
+    ASSERT_EQ(plain_bytes.size(), flag_bytes.size());
+    std::vector<std::size_t> differing;
+    for (std::size_t i = 0; i < plain_bytes.size(); ++i)
+        if (plain_bytes[i] != flag_bytes[i])
+            differing.push_back(i);
+    // The settings block ends just before the host player id u8, the
+    // denial echo u8 and the u32 request id: 4 + 51 = 55 bytes from the
+    // start, so the i16 sits at 53..54 (low byte 1 at 53).
+    ASSERT_EQ(1u, differing.size());
+    EXPECT_EQ(53u, differing.front())
+        << "new_specials is the last i16 of the settings block";
+}
+
+TEST(NetTransport, initial_setup_round_trip_carries_new_specials)
+{
+    og::sim::InitialSetupMessage expected;
+    expected.level_id = 3;
+    expected.setup_generation = 0x01020304u;
+    expected.new_specials = 1;
+    expected.completed_levels = {9};
+    const auto bytes = og::sim::serialize_initial_setup_message(expected);
+    const auto decoded = og::sim::deserialize_initial_setup_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(1, decoded->new_specials);
+    EXPECT_EQ(0x01020304u, decoded->setup_generation)
+        << "the field after setup_generation must not shift it";
+    ASSERT_EQ(1u, decoded->completed_levels.size());
+    EXPECT_EQ(9, decoded->completed_levels.front())
+        << "the guy and level lists after the field still decode";
+    EXPECT_EQ(expected, *decoded);
 }

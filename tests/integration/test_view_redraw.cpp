@@ -754,6 +754,118 @@ TEST(ViewRedraw, no_control_takes_the_camera_from_the_level_position)
 }
 
 
+// A seat whose walker dies keeps its camera. The killing blow is a real
+// attack, and the screen lets go of the dead walker in its per-frame event
+// dispatch; on that frame the view has no control, and it used to take the
+// level's stored free camera -- the map's top-left corner -- for one frame
+// before the seat moved to the next hero (a flash of the corner on every
+// hero death). It now holds where it was, float camera included, until a
+// control is back. A new level (the world clock restarts at 0) never
+// inherits that hold: with no control, its first frame takes the level's
+// own camera.
+//
+// Perturbation (the old no-control branch: always the level camera): RED --
+// the death frame's topx/topy are 0/0, the map corner.
+// Perturbation (the hold kept across the clock restart): RED -- the fresh
+// level's first frame shows the dead hero's spot instead of 0/0.
+TEST(ViewRedraw, a_dead_seat_keeps_its_camera_and_a_new_level_does_not)
+{
+    prepare_view_world();
+    GameplayActiveGuard gameplay_active;
+    og::runtime::reset_runtime_trace_capture_state();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    GameWorld& world = active->world();
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(nullptr, 1.0f);
+
+    const Sint32 level_topx_before = active->level_visuals_.topx;
+    const Sint32 level_topy_before = active->level_visuals_.topy;
+    active->level_visuals_.topx = 0; // the map corner
+    active->level_visuals_.topy = 0;
+
+    walker* const hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const next = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, hero);
+    ASSERT_NE(nullptr, next);
+    ASSERT_NE(nullptr, foe);
+    hero->set_team_num(0);
+    hero->setworldxy(480.5f, 400.5f);
+    next->set_team_num(0);
+    next->setxy(240, 240);
+    foe->set_team_num(1);
+    foe->setxy(496, 400);
+    world.tick_count_ = 50u;
+
+    vs->control = hero;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    const Sint32 alive_topx = vs->topx;
+    const Sint32 alive_topy = vs->topy;
+    auto sample = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(sample.has_value());
+    const float alive_topx_float = sample->camera_topx_float;
+    const float alive_topy_float = sample->camera_topy_float;
+    ASSERT_GT(alive_topx, 0) << "the hero is far from the corner";
+    ASSERT_GT(alive_topy, 0);
+
+    foe->set_damage(1000.0f);
+    ASSERT_TRUE(foe->attack(hero));
+    ASSERT_TRUE(hero->dead()) << "the blow kills the hero";
+    world.tick_count_ = 51u;
+    active->dispatch_sim_event_batch(og::sim::SimEventBatch{});
+    ASSERT_EQ(nullptr, vs->control) << "the screen let go of the dead hero";
+
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    EXPECT_EQ(alive_topx, vs->topx) << "the death frame keeps the camera";
+    EXPECT_EQ(alive_topy, vs->topy);
+    sample = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(sample.has_value());
+    EXPECT_FLOAT_EQ(alive_topx_float, sample->camera_topx_float)
+        << "and the float camera with it";
+    EXPECT_FLOAT_EQ(alive_topy_float, sample->camera_topy_float);
+    world.tick_count_ = 52u;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    EXPECT_EQ(alive_topx, vs->topx) << "it holds while no hero is chosen";
+    EXPECT_EQ(alive_topy, vs->topy);
+
+    // The seat moves to the next hero: the camera follows it as always.
+    vs->control = next;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    EXPECT_EQ(static_cast<Sint32>(240.0f - static_cast<float>(
+                  vs->xview - next->sizex()) / 2.0f),
+              vs->topx);
+
+    // A deliberate free camera (no hero ever lost on it) is untouched: the
+    // control dropped by hand takes the level camera at once.
+    vs->control = nullptr;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    EXPECT_EQ(0, vs->topx) << "no death, no hold";
+    EXPECT_EQ(0, vs->topy);
+
+    // The next hero dies too, and the level ends on that frame: a fresh
+    // level starts its clock at 0 and must not inherit the dead hero's spot.
+    vs->control = next;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    next->set_dead(1);
+    active->dispatch_sim_event_batch(og::sim::SimEventBatch{});
+    ASSERT_EQ(nullptr, vs->control);
+    prepare_view_world(); // the world clock restarts at 0
+    active->level_visuals_.topx = 0;
+    active->level_visuals_.topy = 0;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    EXPECT_EQ(0, vs->topx) << "a fresh level places its own camera";
+    EXPECT_EQ(0, vs->topy);
+
+    vs->control = nullptr;
+    active->level_visuals_.topx = level_topx_before;
+    active->level_visuals_.topy = level_topy_before;
+}
+
+
 // A control near the map's top-left corner drives the camera NEGATIVE — the
 // case redraw() flags with xneg/yneg and fills with wall tiles. The control
 // must be in the world's lists or sanitize_control_pointer drops it and the

@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/terrain_types.h>
-#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
@@ -34,6 +34,7 @@
 #include <openglad/core/util.h>
 #include <cstring>
 
+#include <openglad/gameplay/possession.h>
 #include "sim_difficulty.h"
 
 // RNG now comes from current_game->world->rng_.
@@ -89,7 +90,7 @@ bool living::act()
 	update_exit_latch();
 
 	// Make sure everyone we're pointing to is valid. invisibility_left is a raw short written straight from snapshots (world_snapshot.cpp) and from Lua (set_invisibility_left), so it is NOT guaranteed non-negative; a negative divided by 20 and cast to IRandom::next's uint32 wrapped to a ~4e9 bound, which drops the foe on nearly every tick. Clamp the cloak counter to 0 first: for every non-negative value this is the identical expression, and next(0) == 0 keeps the lock exactly as before.
-	if (foe() && (foe()->dead() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left() > 0 ? foe()->invisibility_left()/20 : 0)) > 0) ) )
+	if (foe() && (foe()->dead() || foe()->hidden() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left() > 0 ? foe()->invisibility_left()/20 : 0)) > 0) ) )
 		set_foe(nullptr);
 	if (is_friendly(foe()))
 		set_foe(nullptr);
@@ -212,7 +213,7 @@ bool living::act()
 			set_real_team_num(255);
 		}
 	}
-
+	og::sim::possession_host_tick(*current_game->world, *this); // New Specials: a possessed host carries its rider and its countdown
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
 	            current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
@@ -360,7 +361,7 @@ bool living::act()
 				if (!current_game->world->rng_.next(5) ) //1 in 5 to do our special
 				{
 					// Should we do our special? Are we full of magic?
-					if (stats_->magicpoints() >= stats_->special_cost(1))
+					if (stats_->magicpoints() >= og::sim::cast_cost(*this, 1, false))
 					{
 						set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>((stats_->level()+2)/3)) + 1));
 						const FamilyDescriptor* special_fd = get_family_descriptor(family());
@@ -368,7 +369,7 @@ bool living::act()
 						        (current_special() < 1) ||
 						        (current_special() >= FD_NUM_SPECIALS) ||
 						        (special_fd == nullptr) ||
-						        (strcmp(special_fd->special_names[static_cast<int>(current_special())], "NONE") == 0)
+						        (strcmp(og::sim::special_name(special_fd, static_cast<int>(current_special()), current_game->world->new_specials), "NONE") == 0)
 						   )
 							set_current_special(1);
 						if (check_special() )
@@ -581,10 +582,13 @@ bool living::check_special()
 		return false;
 
 	set_shifter_down(static_cast<short>(current_game->world->rng_.next(2))); // on or off, randomly ..
-
+	// New Specials: a bot cannot pay for a priced alternate -> no shift (never with the setting off).
+	if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);
 	// Make sure we have enough ..
-	if (stats_->magicpoints() < stats_->special_cost(static_cast<int>(current_special())))
+	if (stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))
 		set_current_special(1); // make us do default ..
+	// ... and again for the default slot the line above may have fallen back to.
+	if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);
 
 	auto* fd = get_family_descriptor(family());
 	if (auto hook_result = og::script::hooks::check_special_ai(fd, this))

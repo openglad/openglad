@@ -20,6 +20,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/placement.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -1222,7 +1223,7 @@ walker* GameWorld::find_nearest_foe(walker* ob)
     for (auto& uptr : oblist)
     {
         walker* foe = uptr.get();
-        if (foe == nullptr || foe->dead() || foe->dormant())
+        if (foe == nullptr || foe->dead() || foe->dormant() || foe->hidden())
             continue;
 
         sanitize_owner_chain_link(*this, foe);
@@ -1283,7 +1284,7 @@ walker* GameWorld::find_nearest_player(walker* ob)
     for (auto& uptr : oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dormant() && w->user() != -1)
+        if (w && !w->dormant() && !w->hidden() && w->user() != -1)
         {
             const std::uint32_t tempdistance = static_cast<std::uint32_t>(ob->distance_to_ob(w));
             if (tempdistance < distance)
@@ -1311,7 +1312,7 @@ std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walk
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() && ob->distance_to_ob(w) <= range)
+        if (w && !w->dead() && !w->dormant() && !w->hidden() && ob->distance_to_ob(w) <= range)
         {
             result.push_back(w);
             (*howmany)++;
@@ -1335,7 +1336,7 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() &&
+        if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             (w->query_order() == Order::Living ||
              w->query_order() == Order::Generator) &&
             (ob->is_friendly(w) == 0) &&
@@ -1363,7 +1364,7 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(const std::list<std::uni
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() &&
+        if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->query_order() == Order::Weapon &&
             !ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1390,7 +1391,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && w != ob && !w->dead() && !w->dormant() &&
+        if (w && w != ob && !w->dead() && !w->dormant() && !w->hidden() &&
             w->query_order() == Order::Living &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1775,11 +1776,11 @@ void GameWorld::tick()
         // Delayed spawns: dormant walkers do not act (and are absent from the
         // obmap, draw, and snapshots), but their team still counts as alive so
         // a defenders-arrive-later scenario doesn't end before they appear.
-        if (ob != nullptr && !ob->dead() && ob->dormant())
+        if (ob != nullptr && !ob->dead() && (ob->dormant() || ob->hidden()))
         {
-            if (level_tick_count_ > ob->spawn_delay())
+            if (ob->dormant() && level_tick_count_ > ob->spawn_delay())
                 wake_delayed_spawn(ob);
-            if (ob->dormant())
+            if (ob->dormant() || ob->hidden())
             {
                 if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                     ob->query_order() == Order::Living)
@@ -2090,14 +2091,15 @@ namespace
 [[nodiscard]] bool landing_blocked_by(const walker* other, const walker* ob,
                                       std::int32_t x, std::int32_t y)
 {
-    if (other == nullptr || other == ob || other->dead())
+    if (other == nullptr || other == ob || other->dead() || other->hidden())
         return false;
     const Order order = other->query_order();
     const bool blocking =
         order == Order::Living || order == Order::Generator ||
         (order == Order::Weapon &&
          (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
-          other->family() == FAMILY_BOULDER));
+          other->family() == FAMILY_BOULDER ||
+          og::sim::declares_blocks_placement(*other)));
     if (!blocking)
         return false;
     return x + ob->sizex() > other->xpos() &&

@@ -1047,6 +1047,23 @@ TEST_F(LuaFamilyDeclTest, a_special_entry_is_type_checked_field_by_field)
     EXPECT_EQ(7, entry.mp_cost);
     EXPECT_EQ(2, entry.slot);
     EXPECT_EQ("ALT", *entry.alternate_name);
+    // No `detail` declared reads as none, on the row and on its alternate.
+    EXPECT_FALSE(entry.detail.has_value());
+    EXPECT_FALSE(entry.alternate_detail.has_value());
+
+    // `detail` is the DETAILS page prose, on the row and inside its
+    // alternate, harvested verbatim (the page wraps it, the loader does not).
+    ClasspackData told;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', specials = "
+                        "{ { id = 'a', name = 'A', mp_cost = 7, "
+                        "detail = 'Throws a  rock, far.', "
+                        "alternate = { name = 'ALT', detail = 'Two rocks.' } } } })",
+                        told).ok);
+    const auto& described = (*told.living[0].specials)[0];
+    ASSERT_TRUE(described.detail.has_value());
+    EXPECT_EQ("Throws a  rock, far.", *described.detail);
+    ASSERT_TRUE(described.alternate_detail.has_value());
+    EXPECT_EQ("Two rocks.", *described.alternate_detail);
 
     // The empty id is a special case of the charset rule: it passes the
     // string reader and still names nothing.
@@ -1071,6 +1088,16 @@ TEST_F(LuaFamilyDeclTest, a_special_entry_is_type_checked_field_by_field)
                             "{ { id = 'a', name = 'A', mp_cost = 1, "
                             "alternate = { name = 7 } } } })"),
                     "og.family living 'v3:x'.specials[1] 'a'.alternate.name: "
+                    "expected a string, got number");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "detail = 7 } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.detail: expected "
+                    "a string, got number");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "alternate = { name = 'ALT', detail = 7 } } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.alternate.detail: "
                     "expected a string, got number");
 }
 

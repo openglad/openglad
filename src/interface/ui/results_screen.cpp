@@ -16,6 +16,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -318,10 +319,12 @@ std::vector<std::string> TroopResult::get_gained_specials() const
     if ( !(test1%3) ) // we're on a special-gaining level
     {
         test1 = (test1 / 3) + 1; // this is the special #
+        // New Specials: the slot as this session's setting shows it.
+        const short new_specials = og::sim::session_new_specials();
         if ( (test1 <= 4) // raise this when we have more than 4 specials
-                && (std::strcmp(fd->special_names[test1], kSpecialNameNone) != 0) )
+                && (std::strcmp(og::sim::special_name(fd, test1, new_specials), kSpecialNameNone) != 0) )
         {
-            result.push_back(fd->special_names[test1]);
+            result.push_back(og::sim::special_name(fd, test1, new_specials));
         }
     }
     

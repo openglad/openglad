@@ -17,6 +17,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_util.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_game_loop.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_timed_effects_mirror.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_pause_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_save_load.cpp
@@ -462,6 +463,7 @@ og_add_test_group(og_test_game_core FILES
     test_gloader_funcs.cpp
     test_campaign_sprite_uaf.cpp
     test_game_loop.cpp
+    test_timed_effects_mirror.cpp
     test_game_launch.cpp
     test_go_no_team.cpp
     test_fairy_death.cpp
@@ -944,6 +946,23 @@ og_add_unit_group(og_unit_families FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_save_client.cpp
 )
 
+# New Specials: the setting's view of the specials table, the engine seams
+# the kits stand on, and one test file per kit.
+og_add_unit_group(og_unit_kits FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_specials_view.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_possession.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_seams_hidden.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_seams_small.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_bots.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_thief.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_ghost.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_faerie.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_captain.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_skeleton.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_elemental.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
+)
+
 og_add_unit_group(og_unit_script FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_host.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_errors.cpp
@@ -1017,6 +1036,7 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gladiator_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_special_art.cpp
 )
 
 # test_builtin_archives byte-compares every staged-archive member
@@ -1577,6 +1597,23 @@ add_test(NAME openglad_text_ffa
         $<TARGET_FILE:openglad_text>
 )
 set_tests_properties(openglad_text_ffa PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
+)
+
+# New Specials through the headless protocol: one level, crew and seed with
+# the setting off and on; a faerie crew's census must differ, and each
+# setting must repeat itself exactly. Driven by Python (a FATAL_ERROR
+# requirement at configure), never a bare .sh COMMAND.
+add_test(NAME openglad_text_new_specials
+    COMMAND ${CMAKE_COMMAND} -E env
+        OPENGLAD_TEXT_TIMEOUT=${OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT}
+        PYTHONDONTWRITEBYTECODE=1
+        ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/scripts/test_text_client_new_specials.py
+        $<TARGET_FILE:openglad_text>
+)
+set_tests_properties(openglad_text_new_specials PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
 )

@@ -258,16 +258,22 @@ std::map<std::string, ParsedPack>& parsed_pack_memo()
 }
 
 // Deterministic wire-id assignment for one install run: core packs pin
-// explicit ids; wire_id auto/absent takes the next id >= 21 per order in
-// encounter order (packs are visited pack-id-lexicographically, entries in
-// declaration order). Ids 0..20 are reserved for the core pins, and every
-// install pass starts from a registry whose mod slots were just freed, so the
-// counter reproduces the same assignment on every peer. A pack that pins an
-// id >= 21 explicitly can still collide with an auto id — pin the whole
-// pack or none of it. Entries past a registry's capacity (256 ids per
-// order) are rejected by the slot lookup.
+// explicit ids; wire_id auto/absent takes the next id at or above its
+// order's floor in encounter order (packs are visited
+// pack-id-lexicographically, entries in declaration order). The floor is 21
+// for every order except weapons, whose floor is 22: New Specials reserves
+// core weapon ids 20 (bone wall) and 21 (war banner). Ids below the
+// floor are reserved for the core pins, and every install pass starts from a
+// registry whose mod slots were just freed, so the counter reproduces the
+// same assignment on every peer. A pack that pins an id at or above the
+// floor explicitly can still collide with an auto id — pin the whole pack or
+// none of it. Entries past a registry's capacity (256 ids per order) are
+// rejected by the slot lookup.
 struct AutoWireIds {
-    std::int32_t next[8] = {21, 21, 21, 21, 21, 21, 21, 21};
+    // Indexed by Order: Living, Weapon, Treasure, Generator, FX, ...
+    static_assert(static_cast<int>(Order::Weapon) == 1,
+                  "the weapon floor below sits at Order::Weapon");
+    std::int32_t next[8] = {21, 22, 21, 21, 21, 21, 21, 21};
 
     int take(Order order)
     {
@@ -706,6 +712,11 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_names[i] = kSpecialNameNone;
         d.alternate_names[i] = kSpecialNameNone;
         d.special_ids[i] = nullptr;
+        d.special_new_kit[i] = false;
+        d.alternate_new_kit[i] = false;
+        d.alternate_cost[i] = 0;
+        d.special_details[i] = nullptr;
+        d.alternate_details[i] = nullptr;
     }
     for (const og::data::ClasspackSpecialEntry& s : list) {
         // The parser guarantees 1..kMaxSpecialSlot, strictly increasing.
@@ -714,6 +725,15 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_ids[s.slot] = s.id.c_str();
         if (s.alternate_name)
             d.alternate_names[s.slot] = s.alternate_name->c_str();
+        // New Specials: what the setting hides, and the alternate's own
+        // price (the parser bounds it below kSpecialCostDisabled).
+        d.special_new_kit[s.slot] = s.new_kit;
+        d.alternate_new_kit[s.slot] = s.alternate_new_kit;
+        d.alternate_cost[s.slot] = static_cast<unsigned short>(s.alternate_cost);
+        // The DETAILS page prose (the picker's only; nullptr = none).
+        d.special_details[s.slot] = s.detail ? s.detail->c_str() : nullptr;
+        d.alternate_details[s.slot] =
+            s.alternate_detail ? s.alternate_detail->c_str() : nullptr;
     }
 }
 
@@ -871,6 +891,10 @@ bool install_weapon(const og::data::ClasspackWeaponEntry& e, int id,
         d.skip_sit_notify = *e.skip_sit_notify;
     if (e.is_auto_attackable)
         d.is_auto_attackable = *e.is_auto_attackable;
+    if (e.rally_radius)
+        d.rally_radius = *e.rally_radius;
+    if (e.blocks_placement)
+        d.blocks_placement = *e.blocks_placement;
     if (e.init_bit_flags) {
         std::int32_t flags = 0;
         if (fold_bit_flags(*e.init_bit_flags, flags, e.id))

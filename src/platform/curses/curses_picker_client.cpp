@@ -44,6 +44,7 @@
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/level_file_io.h>
@@ -1298,6 +1299,12 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families, 0,
                                      &recruit_names_);
+    // New Specials: the cfg preference seeds the session once; an explicit
+    // --new-specials overrides it for this run.
+    og::ui::seed_new_specials_from_cfg(save_data_, cfg);
+    if (config_.new_specials >= 0)
+        save_data_.new_specials =
+            static_cast<short>(config_.new_specials != 0 ? 1 : 0);
     // Terminal slot authority ([SAVE-R2]): company-level writes must target
     // this client's chosen slot, never save0. An unsafe name is rejected by
     // the setter and leaves the previous active slot in place.
@@ -1779,6 +1786,22 @@ void CursesPickerClient::show_options()
                            {"Invalid seed; keeping current."});
         else
             config_.seed = static_cast<std::uint32_t>(*value);
+    }
+
+    // The terminal twin of the Gameplay FX row: the preference, and the
+    // session's setting. The curses picker holds no networked lobby, so it
+    // always decides its own session. Accepting the prefilled value keeps
+    // everything as it was.
+    accepted = false;
+    const std::string current = save_data_.new_specials != 0 ? "on" : "off";
+    const std::string specials = menu.prompt("Game Settings",
+        "New specials (on/off): ", current, accepted);
+    if (accepted && specials != current) {
+        if (specials == "on" || specials == "off")
+            og::ui::set_new_specials(save_data_, cfg, specials == "on",
+                                     /*decides_session=*/true);
+        else
+            menu.show_text("Game Settings", {"Invalid value; on or off."});
     }
 }
 

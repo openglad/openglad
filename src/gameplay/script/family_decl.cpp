@@ -620,16 +620,46 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                           got);
         }
         const int alt = lua_gettop(L);
+        const std::string awhere = named + ".alternate";
         std::optional<std::string> alt_name;
-        const bool ok = opt_string(h, alt, named + ".alternate", "name",
-                                   alt_name);
+        std::optional<std::int32_t> alt_cost;
+        std::optional<bool> alt_new_kit;
+        std::optional<std::string> alt_detail;
+        // New Specials: an alternate may carry its own price and may exist
+        // only while the setting is on. Same refusals as the primary's cost.
+        bool ok = opt_string(h, alt, awhere, "name", alt_name) &&
+                  opt_int(h, alt, awhere, "mp_cost", alt_cost) &&
+                  opt_bool(h, alt, awhere, "new_kit", alt_new_kit) &&
+                  opt_string(h, alt, awhere, "detail", alt_detail) &&
+                  check_keys(h, alt, awhere,
+                             {"name", "mp_cost", "new_kit", "detail"});
         lua_pop(L, 1);
         if (!ok)
             return false;
         if (!alt_name.has_value())
-            return h.fail(named + ".alternate: needs a name");
+            return h.fail(awhere + ": needs a name");
+        if (alt_cost && *alt_cost >= static_cast<std::int32_t>(kSpecialCostDisabled))
+            return h.fail(awhere + ".mp_cost " + std::to_string(*alt_cost) +
+                          ": " + std::to_string(kSpecialCostDisabled) +
+                          " and up is the registry's own \"disabled\" "
+                          "marker — an alternate is either castable or "
+                          "left out");
+        if (alt_cost && *alt_cost < 0)
+            return h.fail(awhere + ".mp_cost " + std::to_string(*alt_cost) +
+                          ": a special cannot cost negative magic");
         out.alternate_name = std::move(alt_name);
+        out.alternate_cost = alt_cost.value_or(0);
+        out.alternate_new_kit = alt_new_kit.value_or(false);
+        out.alternate_detail = std::move(alt_detail);
     }
+    // New Specials: `new_kit = true` puts the slot behind the setting.
+    std::optional<bool> new_kit;
+    if (!opt_bool(h, tbl, named, "new_kit", new_kit))
+        return false;
+    out.new_kit = new_kit.value_or(false);
+    // The DETAILS page prose under the special's name (optional).
+    if (!opt_string(h, tbl, named, "detail", out.detail))
+        return false;
     for (const char* key : {"cast", "ai"}) {
         if (!has_field(L, tbl, key))
             continue;
@@ -651,7 +681,7 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
     }
     return check_keys(h, tbl, named,
                       {"id", "name", "mp_cost", "slot", "cast", "ai",
-                       "alternate"});
+                       "alternate", "new_kit", "detail"});
 }
 
 // `specials` — an ARRAY, position giving slots 1..5, with `slot = N` to
@@ -1019,18 +1049,24 @@ bool harvest_weapon(Harvest& h, int tbl, const std::string& where,
         !opt_int(h, tbl, where, "sizez", e.sizez) ||
         !opt_bool(h, tbl, where, "can_drop_floors", e.can_drop_floors) ||
         !opt_number(h, tbl, where, "hp", e.hp) ||
+        !opt_int(h, tbl, where, "rally_radius", e.rally_radius) ||
+        !opt_bool(h, tbl, where, "blocks_placement", e.blocks_placement) ||
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !harvest_presentation(h, tbl, where, e.presentation) ||
         !harvest_tuning(h, tbl, where, e.tuning) ||
         !check_hook_types(h, tbl, where, oi))
         return false;
+    if (e.rally_radius && *e.rally_radius < 0)
+        return h.fail(where + ".rally_radius " +
+                      std::to_string(*e.rally_radius) +
+                      ": a rally radius cannot be negative (0 = no rally)");
     std::vector<const char*> keys;
     append_common_keys(keys);
     for (const char* k :
          {"fire_sound", "skip_sit_notify", "is_auto_attackable", "flags",
           "init_lifetime", "init_ani_type", "vz", "gravity", "sizez",
-          "can_drop_floors", "hp"})
+          "can_drop_floors", "hp", "rally_radius", "blocks_placement"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);

@@ -23,7 +23,8 @@ reference documents, in reading order for any non-trivial task:
 
 Real code to read: `packs/core/families/living-00-soldier.lua` (the
 canonical shape — behavior first, then the `og.family` block that names it),
-`packs/core/families/living-14-orc.lua`
+`packs/core/lib/orc_specials.lua`, cast from `living-14-orc.lua` and
+`living-15-orc_captain.lua`
 (specials with casts, `og.rand0`, tuning reads, `add_frozen_stun`, guy exp),
 `packs/core/lib/living_common.lua` + `ai.lua` + `effect_common.lua` (what
 `og.use` modules look like), and the Ninefold Court's `court.lua` at
@@ -84,6 +85,15 @@ The rules worth knowing before your first load error:
   special here" marker) is a load error. A declared slot that is castable
   with no `cast`, no `default_cast` and no `do_special` is a pack error;
   `cast = false` is the deliberate charged no-op.
+- `new_kit = true` on an entry (or inside its `alternate`) puts it behind
+  the New Specials setting: with the setting off an entry reads `"NONE"` at
+  cost 5000 everywhere; a hidden alternate reads `"NONE"` and its price is
+  never charged (the slot keeps its own). An `alternate` may carry its own `mp_cost`
+  and its own `detail` (one DETAILS-page line of at most 23 characters). Every `ai`
+  gate on a new-kit slot, and any `on_kill`, starts with
+  `if og.match_setting("new_specials") == 0 then return true end` (a gate
+  that answered `false` would skip a classic RNG draw). See
+  `docs/new-specials.md`.
 - `costs.train.level` is vestigial — nothing reads it — but the core files
   ship 200, so an override must restate it.
 - Omitting a key keeps whatever the slot already had; `og.NIL` on a
@@ -315,8 +325,10 @@ short-circuiting them changes the stream even if nothing else differs.
    shape (properties, `og.tuning`, a special with its `cast`). Balance
    constants go in the family's `tuning` block, not inline; each special
    carries its own `cast`, and the engine gates and charges its `mp_cost`.
-5. Stage, then run the game or `openglad_text`. A `playable = true` family
-   appears in the hire menu.
+5. Stage, then run the game or `openglad_text`. A family appears in the
+   hire menu when it declares `playable = true` AND `og::ui::kAllowableGuys`
+   (include/openglad/interface/ui/picker_common.h) lists it; `playable`
+   alone does nothing in the game.
 
 ## Shipping a family that replaces a core one
 

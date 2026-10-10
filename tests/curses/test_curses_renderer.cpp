@@ -17,6 +17,7 @@
 #include <openglad/core/order.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -28,6 +29,7 @@
 
 #include <cstring>
 #include <memory>
+#include <string>
 
 using namespace og::curses;
 
@@ -549,6 +551,75 @@ TEST(CursesRenderer, invisible_entities_are_skipped_but_avatar_is_not)
         << "the followed avatar is always visible, even when invisible";
     EXPECT_EQ(term.count_char(U'g'), 0)
         << "an invisible enemy is hidden";
+}
+
+// A hidden walker (a dug-in skeleton, a ghost riding its host) shows only to
+// its own team: my team is world.my_team (0 here).
+TEST(CursesRenderer, hidden_entities_are_glyphed_only_for_my_team)
+{
+    HandWorld hw(16, 16);
+    hw.world().my_team = 0;
+    walker* hero = hw.add_creature(8, 8, FAMILY_SOLDIER, 0);
+    const std::uint32_t id = hero->entity_id();
+    walker* mine = hw.add_creature(10, 8, FAMILY_SKELETON, 0);
+    walker* theirs = hw.add_creature(6, 8, FAMILY_ORC, 1);
+
+    HeadlessTerminal term(21, 41);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), id);
+    ASSERT_EQ(count_in_viewport(term, U'k'), 1) << term.dump();
+    ASSERT_EQ(count_in_viewport(term, U'o'), 1) << term.dump();
+
+    // The flag only (these hand-built walkers are in no collision map).
+    mine->set_kit_state(KIT_HIDDEN);
+    theirs->set_kit_state(KIT_HIDDEN);
+    renderer.draw(term, hw.world(), id);
+    EXPECT_EQ(count_in_viewport(term, U'k'), 1)
+        << "my team's hidden skeleton still shows\n" << term.dump();
+    EXPECT_EQ(count_in_viewport(term, U'o'), 0)
+        << "the other team's hidden orc does not\n" << term.dump();
+
+    // The followed walker always shows, hidden or not, whatever its team.
+    renderer.draw(term, hw.world(), theirs->entity_id());
+    EXPECT_EQ(term.count_char(U'@'), 1)
+        << "a followed hidden walker is still '@'\n" << term.dump();
+}
+
+// An invisible non-living thing of my own team (a mine I laid) keeps its
+// glyph; one of another team stays hidden; an invisible creature stays
+// hidden even on my team (the thief's cloak is unchanged).
+TEST(CursesRenderer, own_team_invisible_fx_show_a_glyph)
+{
+    HandWorld hw(20, 20);
+    hw.world().my_team = 0;
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    const std::uint32_t id = hero->entity_id();
+    walker* ours = hw.add_effect(FAMILY_BOOMERANG, 12, 10);
+    walker* theirs = hw.add_effect(FAMILY_BOOMERANG, 8, 10);
+    walker* cloaked_ally = hw.add_creature(10, 12, FAMILY_THIEF, 0);
+    ASSERT_NE(ours, nullptr);
+    ASSERT_NE(theirs, nullptr);
+    ASSERT_NE(cloaked_ally, nullptr);
+    ours->set_team_num(0);
+    theirs->set_team_num(1);
+
+    HeadlessTerminal term(24, 60);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), id);
+    ASSERT_EQ(count_in_viewport(term, U'%'), 2) << term.dump();
+    const int thieves = count_in_viewport(term, U't');
+    ASSERT_EQ(thieves, 1) << term.dump();
+
+    ours->set_invisibility_left(20);
+    theirs->set_invisibility_left(20);
+    cloaked_ally->set_invisibility_left(50);
+    renderer.draw(term, hw.world(), id);
+    EXPECT_EQ(count_in_viewport(term, U'%'), 1)
+        << "my own invisible effect shows, the other team's does not\n"
+        << term.dump();
+    EXPECT_EQ(count_in_viewport(term, U't'), 0)
+        << "a cloaked thief vanishes even for its own team, as before\n"
+        << term.dump();
 }
 
 TEST(CursesRenderer, entities_outside_the_viewport_are_clipped)
@@ -1176,4 +1247,85 @@ TEST(CursesRenderer, freeze_countdown_shows_on_hud_row_one)
     renderer.draw(term, world, hero->entity_id());
     EXPECT_NE(term.text_row(1).find("TIME 42"), std::string::npos)
         << "row 1 shows the frozen-time countdown; got: " << term.text_row(1);
+}
+
+// The seat's own timed effect (New Specials) rides row 1 after TIME, from
+// the shared countdown model, in seconds: "POSSESS 49s" for a seat in a
+// possessed body with 580 ticks left. Nothing with the setting off.
+//
+// RED (run by hand): the seat_timer field removed from draw_hud -> row 1
+// has no "POSSESS 49s".
+TEST(CursesRenderer, hud_shows_the_seats_own_countdown)
+{
+    HandWorld hw(20, 20);
+    walker* host = hw.add_creature(10, 10, FAMILY_ORC, 0);
+    ASSERT_NE(nullptr, host);
+    host->set_user(0);
+    host->set_possess_link(777u);
+    host->set_possess_ticks(580);
+
+    GameWorld& world = hw.world();
+    world.new_specials = 1;
+    world.enemy_freeze = 42;
+    HeadlessTerminal term(24, 80);
+    CursesRenderer renderer;
+    renderer.draw(term, world, host->entity_id());
+    const std::string row = term.text_row(1);
+    EXPECT_NE(row.find("TIME 42  POSSESS 49s"), std::string::npos)
+        << "row 1 shows the possession's seconds after TIME; got: " << row;
+
+    world.new_specials = 0;
+    renderer.draw(term, world, host->entity_id());
+    EXPECT_EQ(term.text_row(1).find("POSSESS"), std::string::npos)
+        << "the classic HUD is untouched with the setting off; got: "
+        << term.text_row(1);
+}
+
+// A possessed body twinkles in a terminal the only way a cell can: every
+// other three-tick window it shows the riding ghost's glyph, bold, in the
+// body's colours. The riding ghost itself is drawn by nobody (its own team
+// included), so the body's cell is the only one that says "ghost".
+//
+// RED (run by hand): `world.tick_count_ % 6 >= 3` replaced by `false` ->
+// tick 3 still shows 'o'. Second RED: the rider skip removed -> the hidden,
+// linked ghost shows its own 'g' to its team two columns left.
+TEST(CursesRenderer, possessed_host_alternates_with_the_ghost_glyph)
+{
+    HandWorld hw(24, 24);
+    hw.world().my_team = 0;
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    walker* host = hw.add_creature(12, 10, FAMILY_ORC, 0);
+    walker* rider = hw.add_creature(8, 10, FAMILY_GHOST, 0);
+    ASSERT_TRUE(hero && host && rider);
+    rider->set_kit_state(KIT_HIDDEN); // the flag only (no collision map here)
+    rider->set_possess_link(host->entity_id());
+    host->set_possess_link(rider->entity_id());
+
+    HeadlessTerminal term(21, 41);
+    CursesRenderer renderer;
+    const int center_row = 2 + (21 - 2 - 6) / 2;
+    const int center_col = 41 / 2;
+
+    const auto host_cell = [&](std::uint32_t tick) {
+        hw.world().tick_count_ = tick;
+        renderer.draw(term, hw.world(), hero->entity_id());
+        return term.cell_at(center_row, center_col + 2);
+    };
+
+    EXPECT_EQ(U'o', host_cell(0).ch) << term.dump();
+    EXPECT_EQ(0, count_in_viewport(term, U'g'))
+        << "the riding ghost is drawn by nobody\n" << term.dump();
+    EXPECT_EQ(U'o', host_cell(2).ch);
+    const Cell ghost_window = host_cell(3);
+    EXPECT_EQ(U'g', ghost_window.ch) << term.dump();
+    EXPECT_TRUE(ghost_window.bold);
+    EXPECT_EQ(Color::Red, ghost_window.fg) << "in the body's team colour";
+    EXPECT_EQ(1, count_in_viewport(term, U'g'))
+        << "one 'g', on the body's cell\n" << term.dump();
+    EXPECT_EQ(U'g', host_cell(5).ch);
+    EXPECT_EQ(U'o', host_cell(6).ch) << "and back";
+
+    // A body whose rider is gone from the world shows its own glyph only.
+    host->set_possess_link(999999u);
+    EXPECT_EQ(U'o', host_cell(3).ch);
 }

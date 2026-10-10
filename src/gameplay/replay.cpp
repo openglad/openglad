@@ -294,6 +294,9 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(spawn_x);
     OG_REPLAY_COMPARE(spawn_y);
     OG_REPLAY_COMPARE(spawn_floor);
+    OG_REPLAY_COMPARE(possess_link);
+    OG_REPLAY_COMPARE(kit_state);
+    OG_REPLAY_COMPARE(possess_ticks);
 
 #undef OG_REPLAY_COMPARE
     return true;
@@ -499,6 +502,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(ctf_requested_time_limit);
     OG_REPLAY_COMPARE(respawn_mode);
     OG_REPLAY_COMPARE(generator_rate);
+    OG_REPLAY_COMPARE(new_specials);
     OG_REPLAY_COMPARE(grid_width);
     OG_REPLAY_COMPARE(grid_height);
     OG_REPLAY_COMPARE(grid_dirty);

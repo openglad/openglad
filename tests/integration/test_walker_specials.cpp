@@ -4,13 +4,19 @@
 #include <openglad/interface/guy_create.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/specials_view.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/pixdefs.h>
 #include <gtest/gtest.h>
 #include "test_sim_random_scope.h"
+#include <algorithm>
+#include <cstdlib>
+#include <string>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -583,16 +589,18 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
 }
 
 
-// core:faerie declares `specials = {}` (living-07-faerie.lua). Every
-// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), so a faerie
+// The golem declares `specials = {}` (living-18-beast.lua). Every
+// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), so a golem
 // with an ordinary pool is refused at the cost gate (NoMP) before any
 // dispatch; hand it a pool it cannot possibly have in play and the dispatch
-// itself runs, finds no hook and declines. Either way nothing is spent: the
-// faerie's freezing sprinkle is a weapon, not a special.
-TEST_F(WalkerSpecials, faerie_has_no_special_and_spends_no_magic)
+// itself runs, finds no hook and declines. Either way nothing is spent.
+// (This was the faerie's test until New Specials gave her four slots; her
+// classic case, the setting off, is the next test.)
+TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
 {
-    walker* w = make_special_guy(FAMILY_FAERIE);
-    ASSERT_NE(nullptr, w) << "faerie created";
+    ensure_level_loaded();
+    walker* w = make_special_guy(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, w) << "golem created";
     w->set_current_special(1);
     EXPECT_EQ(static_cast<int>(kSpecialCostDisabled),
               static_cast<int>(w->stats()->special_cost(1)))
@@ -619,6 +627,159 @@ TEST_F(WalkerSpecials, faerie_has_no_special_and_spends_no_magic)
     delete w;
 }
 
+// With New Specials off the faerie is the classic faerie: her BLINK slot is
+// declared and stamped at its price, but the engine prices it at the
+// disabled sentinel, so an ordinary pool is refused (NoMP) and nothing is
+// spent; with the setting on the same pool pays the declared price.
+TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
+{
+    // A level load re-stamps the world from the session save, so the flag
+    // is set after it, explicitly, whatever the session default is.
+    ensure_level_loaded();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.new_specials = 0;
+    walker* w = make_special_guy(FAMILY_FAERIE);
+    ASSERT_NE(nullptr, w) << "faerie created";
+    w->set_current_special(1);
+    EXPECT_EQ(static_cast<int>(kSpecialCostDisabled),
+              static_cast<int>(og::sim::cast_cost(*w, 1, false)))
+        << "a slot the setting hides costs the disabled sentinel";
+
+    const float mp_before = w->stats()->magicpoints();
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    ASSERT_FALSE(w->special(&why)) << "the classic faerie cannot cast a special";
+    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
+        << "the disabled sentinel cost puts the slot out of reach of any real pool";
+    EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
+        << "a refused special spends no magic";
+
+    world.new_specials = 1;
+    EXPECT_EQ(static_cast<int>(w->stats()->special_cost(1)),
+              static_cast<int>(og::sim::cast_cost(*w, 1, false)))
+        << "with the setting on BLINK costs its declared price";
+    EXPECT_GT(static_cast<int>(kSpecialCostDisabled),
+              static_cast<int>(og::sim::cast_cost(*w, 1, false)));
+
+    delete w;
+}
+
+// The faerie's BLINK with New Specials on, through the real walker::special()
+// on a level-loaded SDL session (the og_unit_kits rows drive the same cast on
+// a bare test world). A level-3 faerie hops blink_base + per_level * level =
+// 24 + 2 * 3 = 30 px along one of eight directions (a third of that, 10 px,
+// at the shortest when walls crowd her), pays the declared 20 MP, and rests
+// a second (busy: her attack pause plus 12), so a held key the next tick is
+// refused as SPECIAL BUSY and spends nothing.
+TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
+{
+    ensure_level_loaded();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.new_specials = 1;
+    walker* w = make_special_guy(FAMILY_FAERIE);
+    ASSERT_NE(nullptr, w) << "faerie created";
+    ASSERT_EQ(3, static_cast<int>(w->stats()->level()));
+    w->set_current_special(1);
+    w->set_shifter_down(0);
+    ASSERT_EQ(20, static_cast<int>(og::sim::cast_cost(*w, 1, false)))
+        << "BLINK's declared price";
+    // One pinned stream, so where the hop lands is the same in every order.
+    world.rng_.state_ = 0x5eedb11cu;
+
+    const Sint32 from_x = w->xpos();
+    const Sint32 from_y = w->ypos();
+    const float mp_before = w->stats()->magicpoints();
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+    ASSERT_TRUE(w->special(&why, &reason)) << "BLINK refused: " << reason;
+    constexpr Sint32 kRange = 24 + 2 * 3;
+    const Sint32 moved_x = std::abs(w->xpos() - from_x);
+    const Sint32 moved_y = std::abs(w->ypos() - from_y);
+    EXPECT_LE(moved_x, kRange) << "within the hop in x";
+    EXPECT_LE(moved_y, kRange) << "within the hop in y";
+    EXPECT_GE(std::max(moved_x, moved_y), kRange / 3)
+        << "at least the shortest fallback hop";
+    EXPECT_FLOAT_EQ(mp_before - 20.0f, w->stats()->magicpoints())
+        << "BLINK costs 20";
+    EXPECT_FLOAT_EQ(w->fire_frequency() + 12.0f, w->busy())
+        << "a second's rest on top of her attack pause";
+
+    const Sint32 landed_x = w->xpos();
+    const float mp_landed = w->stats()->magicpoints();
+    reason.clear();
+    EXPECT_FALSE(w->special(&why, &reason))
+        << "a press while she rests is refused";
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+    EXPECT_EQ("SPECIAL BUSY", reason);
+    EXPECT_EQ(landed_x, w->xpos());
+    EXPECT_FLOAT_EQ(mp_landed, w->stats()->magicpoints()) << "a refusal is free";
+
+    delete w;
+    world.delete_objects();
+}
+
+
+// One family's row of the sweep: the caster, an ally, a foe and a corpse in
+// a fixed neighbourhood, every slot 1..5 cast with and without the shifter
+// from the same re-seeded stream. The bitmask of casts that returned true
+// is written to `mask` (bit (slot-1)*2 + shifter). The two sweeps below
+// share it: the classic table with the New Specials setting off, and its
+// twin with the setting on.
+static void sweep_family_special_mask(GameWorld& world, char family,
+                                      const char* name, unsigned& mask)
+{
+    mask = 0;
+    world.delete_objects();
+
+    walker* caster = world.add_ob(Order::Living, family);
+    walker* ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* blood = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, caster) << "sweep caster created for " << name;
+    ASSERT_NE(nullptr, ally) << "sweep ally created for " << name;
+    ASSERT_NE(nullptr, foe) << "sweep foe created for " << name;
+    ASSERT_NE(nullptr, blood) << "sweep corpse created for " << name;
+
+    caster->set_team_num(1);
+    ally->set_team_num(1);
+    foe->set_team_num(2);
+    caster->setxy(100, 100);
+    ally->setxy(104, 100);
+    foe->setxy(112, 100);
+    blood->setxy(106, 100);
+    caster->set_lastx(caster->stepsize());
+    caster->set_lasty(0);
+    caster->stats()->set_max_magicpoints(1500);
+    if (caster->myguy)
+    {
+        caster->myguy->intelligence = 180;
+        caster->myguy->strength = 180;
+        caster->myguy->constitution = 180;
+        caster->myguy->teamnum = 1;
+    }
+    blood->stats()->set_old_family(FAMILY_SOLDIER);
+    blood->set_team_num(1);
+
+    for (int slot = 1; slot <= 5; ++slot)
+    {
+        for (int shift = 0; shift <= 1; ++shift)
+        {
+            world.rng_.state_ = 2468013579u; // one fixed stream per cast
+            caster->set_current_special(static_cast<char>(slot));
+            caster->set_busy(0);
+            caster->set_shifter_down(static_cast<short>(shift));
+            caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
+            // (The "a cost-gate refusal spends nothing" rule used to be
+            // asserted here under `why == NoMP`. It could not fail: every
+            // one-line break of the gate ALSO stops `why` from being NoMP,
+            // so the assertion simply stopped running. It is pinned
+            // falsifiably in WalkerSpecials.no_magic instead.)
+            if (caster->special())
+            {
+                mask |= 1u << ((slot - 1) * 2 + shift);
+            }
+        }
+    }
+}
 
 // Whole-registry sweep: every living family in the table below, every special
 // slot 1..5, with and without the shifter, cast from one fixed world state
@@ -632,8 +793,9 @@ TEST_F(WalkerSpecials, faerie_has_no_special_and_spends_no_magic)
 // for the per-special tests: what each cast DOES is asserted by the
 // *_drives_simulation block further down, and those tests build their casters
 // the way the game does. A zero row here means no slot fires from this bare
-// add_ob caster -- because the family declares no specials at all (faerie,
-// big orc, golem, giant skeleton, tower), because it spawns mid-animation
+// add_ob caster -- because the family has no specials in the classic kits
+// (faerie and big orc: the setting off hides their four; golem, giant
+// skeleton, tower declare none), because it spawns mid-animation
 // (skeleton), or because its cast declines against this fixed neighbourhood
 // (elf, barbarian, the small slimes). Those rows still carry the cost-gate
 // assertion below, which is family-independent.
@@ -656,7 +818,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
         {FAMILY_THIEF, "thief", 255u},            // slots 1-4, both shifters
         {FAMILY_SKELETON, "skeleton", 0u},        // spawns in ANI_SKEL_GROW: mid-teleport
         {FAMILY_FIREELEMENTAL, "fire elemental", 3u}, // slot 1, both shifters
-        {FAMILY_FAERIE, "faerie", 0u},            // declares no specials at all
+        {FAMILY_FAERIE, "faerie", 0u},            // no specials with the setting off
         {FAMILY_DRUID, "druid", 240u},            // slots 3-4, both shifters
         {FAMILY_ORC, "orc", 3u},                  // slot 1, both shifters
         {FAMILY_BARBARIAN, "barbarian", 0u},      // boulder declines here (see below)
@@ -664,7 +826,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
         {FAMILY_SMALL_SLIME, "small slime", 0u},  // no room to grow beside the ally
         {FAMILY_MEDIUM_SLIME, "medium slime", 0u},// no room to grow beside the ally
         {FAMILY_SLIME, "slime", 3u},              // slot 1, both shifters
-        {FAMILY_BIG_ORC, "big orc", 0u},          // declares no specials at all
+        {FAMILY_BIG_ORC, "big orc", 0u},          // no specials with the setting off
         {FAMILY_GOLEM, "golem", 0u},              // declares no specials at all
         {FAMILY_GIANT_SKELETON, "giant skeleton", 0u}, // declares no specials at all
         {FAMILY_TOWER1, "tower", 0u},             // declares no specials at all
@@ -675,64 +837,120 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
     // in a filtered subset, and every passability probe answers differently.
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
+    // This table is the classic kits: the New Specials setting is off,
+    // explicitly, whatever the session default is.
+    world.new_specials = 0;
 
     for (const SweepCase& sweep : kSweep)
     {
-        world.delete_objects();
-
-        walker* caster = world.add_ob(Order::Living, sweep.family);
-        walker* ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
-        walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
-        walker* blood = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
-        ASSERT_NE(nullptr, caster) << "sweep caster created for " << sweep.name;
-        ASSERT_NE(nullptr, ally) << "sweep ally created for " << sweep.name;
-        ASSERT_NE(nullptr, foe) << "sweep foe created for " << sweep.name;
-        ASSERT_NE(nullptr, blood) << "sweep corpse created for " << sweep.name;
-
-        caster->set_team_num(1);
-        ally->set_team_num(1);
-        foe->set_team_num(2);
-        caster->setxy(100, 100);
-        ally->setxy(104, 100);
-        foe->setxy(112, 100);
-        blood->setxy(106, 100);
-        caster->set_lastx(caster->stepsize());
-        caster->set_lasty(0);
-        caster->stats()->set_max_magicpoints(1500);
-        if (caster->myguy)
-        {
-            caster->myguy->intelligence = 180;
-            caster->myguy->strength = 180;
-            caster->myguy->constitution = 180;
-            caster->myguy->teamnum = 1;
-        }
-        blood->stats()->set_old_family(FAMILY_SOLDIER);
-        blood->set_team_num(1);
-
         unsigned mask = 0;
-        for (int slot = 1; slot <= 5; ++slot)
-        {
-            for (int shift = 0; shift <= 1; ++shift)
-            {
-                world.rng_.state_ = 2468013579u; // one fixed stream per cast
-                caster->set_current_special(static_cast<char>(slot));
-                caster->set_busy(0);
-                caster->set_shifter_down(static_cast<short>(shift));
-                caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
-                // (The "a cost-gate refusal spends nothing" rule used to be
-                // asserted here under `why == NoMP`. It could not fail: every
-                // one-line break of the gate ALSO stops `why` from being NoMP,
-                // so the assertion simply stopped running. It is pinned
-                // falsifiably in WalkerSpecials.no_magic instead.)
-                if (caster->special())
-                {
-                    mask |= 1u << ((slot - 1) * 2 + shift);
-                }
-            }
-        }
+        sweep_family_special_mask(world, sweep.family, sweep.name, mask);
+        if (::testing::Test::HasFatalFailure())
+            return;
         EXPECT_EQ(sweep.expected_mask, mask)
             << "special() outcomes changed for family " << sweep.name
             << " (bit (slot-1)*2+shifter)";
+    }
+
+    world.delete_objects();
+}
+
+// The same sweep with New Specials on: the same casters, neighbourhood and
+// stream, on open ground (below). Fifteen rows equal the classic table
+// above; the six families with
+// a new kit read as follows (each cast runs on the caster the previous one
+// left, slot by slot, so one cast's effect is the next one's world):
+//   thief     255  unchanged in the mask: Shift + slot 1 is now MINE, not
+//                  a second bomb, and it lays too.
+//   skeleton  240  slots 1-2 (TUNNEL, DIG IN) are refused SPECIAL BUSY: the
+//                  caster spawns in its rising row, a teleport row; slot 3
+//                  BONE WALL / BONE STORM and slot 4 REASSEMBLE / LEGION all
+//                  cast.
+//   elemental 7    slot 1 both arms; slot 2 IMMOLATE lights, the shifted
+//                  press right after it is IMMOLATE SETTLING (the ten-tick
+//                  latch), and with the fire still burning slots 3-5 refuse
+//                  QUENCH IMMOLATE FIRST.
+//   faerie    111  BLINK and SWAP; GLIMMER both; HASTEN finds no ally in
+//                  reach (the hop and the swap left her more than 40 px from
+//                  the soldier), HASTE SELF casts; WISH raises the soldier's
+//                  stain and pops her, so the shifted slot 4 and slot 5 find
+//                  her dead.
+//   ghost     127  SCARE and WAIL; SIPHON twice; POSSESS takes the orc and
+//                  the shifted press lets it go; PHASE, then ALREADY PHASED.
+//   big orc   243  the captain: HOWL on both arms (it has no alternate, so
+//                  the shifted press is a howl too); EAT CORPSE is refused at
+//                  full health on both arms; HOOK BLADE and KNIFE FAN; WAR
+//                  BANNER on the stain, then WARBAND.
+TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
+{
+    struct SweepCase
+    {
+        char family;
+        const char* name;
+        unsigned expected_mask;
+    };
+
+    static const SweepCase kSweep[] = {
+        {FAMILY_SOLDIER, "soldier", 255u},
+        {FAMILY_ARCHER, "archer", 63u},
+        {FAMILY_CLERIC, "cleric", 2u},
+        {FAMILY_MAGE, "mage", 829u},
+        {FAMILY_ARCHMAGE, "archmage", 125u},
+        {FAMILY_ELF, "elf", 0u},
+        {FAMILY_THIEF, "thief", 255u},
+        {FAMILY_SKELETON, "skeleton", 240u},
+        {FAMILY_FIREELEMENTAL, "fire elemental", 7u},
+        {FAMILY_FAERIE, "faerie", 111u},
+        {FAMILY_DRUID, "druid", 240u},
+        {FAMILY_ORC, "orc", 3u},
+        {FAMILY_BARBARIAN, "barbarian", 0u},
+        {FAMILY_GHOST, "ghost", 127u},
+        {FAMILY_SMALL_SLIME, "small slime", 0u},
+        {FAMILY_MEDIUM_SLIME, "medium slime", 0u},
+        {FAMILY_SLIME, "slime", 3u},
+        {FAMILY_BIG_ORC, "big orc", 243u},
+        {FAMILY_GOLEM, "golem", 0u},
+        {FAMILY_GIANT_SKELETON, "giant skeleton", 0u},
+        {FAMILY_TOWER1, "tower", 0u},
+    };
+
+    ensure_level_loaded();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.new_specials = 1;
+    // The new kits move walkers (BLINK, SWAP) and stand things up
+    // (BONE WALL, WAR BANNER), so their outcomes read the ground under the
+    // whole neighbourhood, not just the caster's cell. The session's grid
+    // is whatever level the tests before this one left, so for the sweep
+    // it is open grass everywhere, and put back afterwards.
+    struct OpenGround
+    {
+        GameWorld& world;
+        std::vector<unsigned char> saved;
+        explicit OpenGround(GameWorld& w)
+            : world(w)
+            , saved(w.grid.data.get(),
+                    w.grid.data.get() + static_cast<std::size_t>(w.grid.w) * w.grid.h)
+        {
+            std::fill(w.grid.data.get(), w.grid.data.get() + saved.size(),
+                      static_cast<unsigned char>(PIX_GRASS1));
+        }
+        ~OpenGround()
+        {
+            std::copy(saved.begin(), saved.end(), world.grid.data.get());
+        }
+        OpenGround(const OpenGround&) = delete;
+        OpenGround& operator=(const OpenGround&) = delete;
+    } open_ground(world);
+
+    for (const SweepCase& sweep : kSweep)
+    {
+        unsigned mask = 0;
+        sweep_family_special_mask(world, sweep.family, sweep.name, mask);
+        if (::testing::Test::HasFatalFailure())
+            return;
+        EXPECT_EQ(sweep.expected_mask, mask)
+            << "special() outcomes with New Specials on changed for family "
+            << sweep.name << " (bit (slot-1)*2+shifter)";
     }
 
     world.delete_objects();
@@ -1532,7 +1750,7 @@ TEST_F(WalkerSpecials, druid_protection_tops_up_an_existing_circle)
 // special 2 (EAT CORPSE) heals corpse.level * corpse_heal_per_level and eats
 // the stain; barbarian special 2 hurls one boulder carrying the legacy 5000
 // "explode on impact" sentinel, at 1 + slot*5 busy
-// (living-14-orc.lua eat_corpse; living-16-barbarian.lua do_special).
+// (lib/orc_specials.lua eat_corpse; living-16-barbarian.lua do_special).
 TEST_F(WalkerSpecials, npc_orc_eats_a_corpse_and_npc_barbarian_arms_its_boulder)
 {
     auto& world = og::runtime::current_session->myscreen_->world();
