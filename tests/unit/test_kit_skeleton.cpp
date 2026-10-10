@@ -34,6 +34,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/kit_marker_role.h>
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/obmap.h>
@@ -48,6 +49,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <string>
@@ -58,6 +60,9 @@ namespace {
 constexpr int kSlotDigIn = 2;
 constexpr int kSlotWall = 3;
 constexpr int kSlotReassemble = 4;
+
+// The REASSEMBLE ward's kit marker role.
+constexpr int kRoleWard = MARKER_WARD;
 
 struct Cast {
     bool ok = false;
@@ -182,7 +187,9 @@ protected:
 
     // A skeleton that takes no decisions of its own (ACT_CONTROL with no
     // seat: no AI, and hit_response leaves it alone) with `mp` mana and no
-    // regeneration, so every MP and HP change in a test is the kit's.
+    // regeneration, so every MP and HP change in a test is the kit's (no
+    // per-round regeneration, and a magic delay it never reaches, or a
+    // skeleton that acts would still gain a point every few ticks).
     walker* add_skeleton(unsigned char team, short x, short y, float mp,
                          int level = 4)
     {
@@ -200,6 +207,7 @@ protected:
         w->stats()->set_max_magicpoints(mp);
         w->stats()->set_magicpoints(mp);
         w->stats()->set_magic_per_round(0.0f);
+        w->stats()->set_max_magic_delay(1000000);
         w->stats()->set_heal_per_round(0.0f);
         w->set_curdir(FACE_RIGHT);
         w->set_enddir(FACE_RIGHT);
@@ -243,18 +251,18 @@ protected:
 // sets them; the skeleton is held on the grow row, whose end is harmless,
 // rewound every tick), hidden on the fourth tick with frame 27 held and
 // ani_type parked on walk: the tele-out row (whose end is TUNNEL) is never
-// started, so the skeleton has not moved. 15 MP paid; the burrow marker is
-// the skeleton's.
+// started, so the skeleton has not moved. 15 MP paid (of 40, leaving a
+// pool to stay down on); the burrow marker is the skeleton's.
 //
 // Perturbation (staged: SINK_TICKS 4 -> 3): RED — "still sinking on tick
 // 3" and "and can still be hit" fail: it went under a tick early.
 TEST_F(KitSkeleton, dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     const Cast c = cast(skel, kSlotDigIn, 0);
     ASSERT_TRUE(c.ok) << c.reason;
-    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "DIG IN costs 15";
+    EXPECT_FLOAT_EQ(25.0f, skel->stats()->magicpoints()) << "DIG IN costs 15";
     EXPECT_EQ(ANI_TELE_IN, skel->ani_type()) << "held, not the tele-out row";
     EXPECT_EQ(24, skel->frame()) << "the first sink frame at once";
     EXPECT_EQ(1u, markers(world(), skel, 1).size()) << "one burrow";
@@ -296,7 +304,7 @@ TEST_F(KitSkeleton, seated_hero_digs_in_where_it_stands)
 {
     for (const bool walks : {false, true}) {
         SCOPED_TRACE(walks ? "walking from tick 2" : "standing still");
-        walker* skel = add_skeleton(0, 96, 96 + (walks ? 64 : 0), 15.0f);
+        walker* skel = add_skeleton(0, 96, 96 + (walks ? 64 : 0), 40.0f);
         ASSERT_NE(nullptr, skel);
         skel->set_user(0);
         skel->set_current_special(static_cast<char>(kSlotDigIn));
@@ -318,7 +326,7 @@ TEST_F(KitSkeleton, seated_hero_digs_in_where_it_stands)
             sim_process_player_input(pi, control, world(), 0, 0, debounce,
                                      &tw_->events);
             if (t == 1) {
-                EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints())
+                EXPECT_FLOAT_EQ(25.0f, skel->stats()->magicpoints())
                     << "the cast went through the seat";
                 EXPECT_EQ(1u, markers(world(), skel, 1).size());
             }
@@ -400,8 +408,9 @@ TEST_F(KitSkeleton, switching_special_while_sinking_keeps_dig_in_in_hand)
     }
 }
 
-// Buried, the skeleton heals dig_regen every dig_regen_pulse ticks (and
-// nothing else: a hidden walker does not act), a foe 40 px off does not
+// Buried, the skeleton heals dig_regen every dig_regen_pulse ticks and pays
+// dig_drain mana on the same beat (and nothing else: a hidden walker does
+// not act), a foe 40 px off does not
 // wake it, and the first foe that comes within dig_trigger brings it up
 // swinging at that foe.
 //
@@ -410,7 +419,7 @@ TEST_F(KitSkeleton, switching_special_while_sinking_keeps_dig_in_in_hand)
 // hidden), and the foe, the grow row and the swing all fail with it.
 TEST_F(KitSkeleton, dig_in_hides_regens_and_pops_when_a_foe_steps_close)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     walker* orc = add_orc(1, 200, 96);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, orc);
@@ -421,6 +430,8 @@ TEST_F(KitSkeleton, dig_in_hides_regens_and_pops_when_a_foe_steps_close)
     tick(8);
     EXPECT_FLOAT_EQ(32.0f, skel->stats()->hitpoints())
         << "1 hp every 4 buried ticks";
+    EXPECT_FLOAT_EQ(23.0f, skel->stats()->magicpoints())
+        << "and 1 mp every 4 buried ticks: 25 after the dig, less 2";
 
     orc->setxy(136, 96);  // 40 px: outside the trigger
     tick();
@@ -437,20 +448,22 @@ TEST_F(KitSkeleton, dig_in_hides_regens_and_pops_when_a_foe_steps_close)
     EXPECT_TRUE(markers(world(), skel, 1).empty());
 }
 
-// The skeleton that went down on its last 15 MP still comes up: a press
-// while buried costs nothing (the engine charges a hidden walker 0).
-TEST_F(KitSkeleton, second_press_pops_up_free_at_zero_mana)
+// The press that brings a buried skeleton up costs nothing (the engine
+// charges a hidden walker 0): 40 MP, 25 after the dig, 20 after twenty
+// buried ticks (one every four), and still 20 once it is up.
+TEST_F(KitSkeleton, second_press_pops_up_free_and_costs_nothing)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
+    EXPECT_FLOAT_EQ(25.0f, skel->stats()->magicpoints());
     ASSERT_EQ(4, ticks_until_hidden(skel));
-    tick(10);
-    skel->stats()->set_magicpoints(0.0f);
+    tick(20);
+    EXPECT_FLOAT_EQ(20.0f, skel->stats()->magicpoints()) << "20 buried ticks";
     const Cast up = cast(skel, kSlotDigIn, 0);
     EXPECT_TRUE(up.ok) << up.reason;
     EXPECT_FALSE(skel->hidden());
-    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "free";
+    EXPECT_FLOAT_EQ(20.0f, skel->stats()->magicpoints()) << "free";
     EXPECT_EQ(ANI_TELE_IN, skel->ani_type());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
 }
@@ -465,7 +478,7 @@ TEST_F(KitSkeleton, second_press_pops_up_free_at_zero_mana)
 // the later presses meet NOT ENOUGH MP instead of the silent refusal.
 TEST_F(KitSkeleton, held_special_does_not_pop_the_burrow)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     for (int age = 1; age <= 9; ++age) {
@@ -488,10 +501,12 @@ TEST_F(KitSkeleton, held_special_does_not_pop_the_burrow)
 }
 
 // With nobody coming, the burrow lets the skeleton up after dig_max ticks
-// (a hidden hostile cannot hold a level open for good).
+// (a hidden hostile cannot hold a level open for good). 100 MP: 85 after
+// the dig, more than the 75 that staying down all 300 ticks costs, so the
+// time runs out before the mana does.
 TEST_F(KitSkeleton, dig_in_expires_on_its_own)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 100.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     ASSERT_EQ(4, ticks_until_hidden(skel));
@@ -499,8 +514,79 @@ TEST_F(KitSkeleton, dig_in_expires_on_its_own)
     EXPECT_TRUE(skel->hidden()) << "299 buried ticks";
     tick();
     EXPECT_FALSE(skel->hidden()) << "up at dig_max (300)";
+    EXPECT_FLOAT_EQ(10.0f, skel->stats()->magicpoints())
+        << "75 paid over the 300 ticks";
     EXPECT_EQ(nullptr, skel->foe());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
+}
+
+// Staying down costs a mana every four buried ticks, and the burrow's clock
+// is kept to what the mana can still pay for, so the countdown the player
+// sees is when it really ends. 23 MP: 8 left after the dig. On the first
+// buried tick the clock reads 35 (eight more payments four ticks apart and
+// the three ticks to the first), the 32nd buried tick pays the last mana,
+// and on the 36th the clock reads 0 and the skeleton comes up plainly: no
+// foe, no swing, never below zero mana.
+//
+// RED (staged: the clamp line removed): the first buried reading is 299.
+// RED (staged: the dry pop removed): the 36th tick pays a mana it does not
+// have, and the pool reads -1.
+TEST_F(KitSkeleton, burrow_surfaces_when_the_mana_runs_dry)
+{
+    walker* skel = add_skeleton(0, 96, 96, 23.0f);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
+    EXPECT_FLOAT_EQ(8.0f, skel->stats()->magicpoints());
+    ASSERT_EQ(4, ticks_until_hidden(skel));
+    const auto burrows = markers(world(), skel, 1);
+    ASSERT_EQ(1u, burrows.size());
+    walker* burrow = burrows[0];
+    tick();
+    EXPECT_EQ(35, burrow->lifetime()) << "the first buried reading";
+    for (int t = 2; t <= 35; ++t) {
+        tick();
+        ASSERT_TRUE(skel->hidden()) << "buried tick " << t;
+        EXPECT_EQ(36 - t, burrow->lifetime()) << "buried tick " << t;
+        if (t == 31) {
+            EXPECT_FLOAT_EQ(1.0f, skel->stats()->magicpoints());
+        }
+        if (t == 32) {
+            EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints())
+                << "the 32nd buried tick pays the last";
+        }
+    }
+    // The 36th buried tick, acted by hand so the spent marker can still be
+    // read before the world sweeps it.
+    burrow->act();
+    EXPECT_TRUE(burrow->dead());
+    EXPECT_EQ(0, burrow->lifetime()) << "the clock reads 0 as it surfaces";
+    EXPECT_FALSE(skel->hidden()) << "up when the mana runs dry";
+    EXPECT_EQ(ANI_TELE_IN, skel->ani_type()) << "up through the grow row";
+    EXPECT_EQ(nullptr, skel->foe());
+    EXPECT_TRUE(alive(world(), Order::Weapon, FAMILY_BONE, skel).empty())
+        << "nobody to swing at";
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "never below zero";
+}
+
+// The dig refuses when it would leave under dig_min_pool (8) mana to stay
+// down on: 22 MP leaves 7 and is refused free; 23 leaves 8 and digs.
+//
+// RED (staged skeleton tuning dig_min_pool = 8 -> 0): 22 MP digs.
+TEST_F(KitSkeleton, dig_in_refuses_without_a_pool_to_stay_down)
+{
+    walker* skel = add_skeleton(0, 96, 96, 22.0f);
+    ASSERT_NE(nullptr, skel);
+    const Cast poor = cast(skel, kSlotDigIn, 0);
+    EXPECT_FALSE(poor.ok);
+    EXPECT_EQ("NEED MANA TO STAY DOWN", poor.reason);
+    EXPECT_FLOAT_EQ(22.0f, skel->stats()->magicpoints()) << "refused free";
+    EXPECT_TRUE(markers(world(), skel, 1).empty());
+    EXPECT_EQ(ANI_WALK, skel->ani_type());
+    skel->stats()->set_magicpoints(23.0f);
+    const Cast enough = cast(skel, kSlotDigIn, 0);
+    EXPECT_TRUE(enough.ok) << enough.reason;
+    EXPECT_FLOAT_EQ(8.0f, skel->stats()->magicpoints());
+    EXPECT_EQ(1u, markers(world(), skel, 1).size());
 }
 
 // A skeleton digging in on floor 1 stays on floor 1, buried and back up;
@@ -521,7 +607,7 @@ TEST_F(KitSkeleton, dig_in_on_floor_one_stays_on_floor_one)
                                         static_cast<unsigned char>(gh), buf);
         w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
     }
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     walker* orc = add_orc(1, 200, 96);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, orc);
@@ -543,7 +629,7 @@ TEST_F(KitSkeleton, dig_in_on_floor_one_stays_on_floor_one)
 // flyer hovering over it (by its flag or by a flight potion) do not.
 TEST_F(KitSkeleton, dig_in_ignores_flyers_and_generators_over_the_burrow)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     ASSERT_EQ(4, ticks_until_hidden(skel));
@@ -572,13 +658,13 @@ TEST_F(KitSkeleton, dig_in_ignores_flyers_and_generators_over_the_burrow)
 // seat): the cast refuses before it spends anything.
 TEST_F(KitSkeleton, possessed_body_cannot_dig_in)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     skel->set_possess_link(9999u);
     const Cast c = cast(skel, kSlotDigIn, 0);
     EXPECT_FALSE(c.ok);
     EXPECT_EQ("POSSESSED BODY", c.reason);
-    EXPECT_FLOAT_EQ(15.0f, skel->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(40.0f, skel->stats()->magicpoints());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
     skel->set_possess_link(0u);
     skel->set_ani_type(ANI_TELE_IN);
@@ -590,7 +676,7 @@ TEST_F(KitSkeleton, possessed_body_cannot_dig_in)
 // visible: the burrow gives up and leaves no channel behind.
 TEST_F(KitSkeleton, a_body_possessed_mid_sink_stays_up)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 40.0f);
     walker* ghost = add_orc(0, 300, 300);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, ghost);
@@ -611,7 +697,7 @@ TEST_F(KitSkeleton, a_body_possessed_mid_sink_stays_up)
 // free channelled press belongs to the dig.
 TEST_F(KitSkeleton, other_specials_wait_for_the_dig)
 {
-    walker* skel = add_skeleton(0, 96, 96, 15.0f);
+    walker* skel = add_skeleton(0, 96, 96, 40.0f);
     ASSERT_NE(nullptr, skel);
     ASSERT_TRUE(cast(skel, kSlotDigIn, 0).ok);
     for (const int slot : {kSlotWall, kSlotReassemble})
@@ -809,13 +895,13 @@ TEST_F(KitSkeleton, wall_cracks_below_half)
     EXPECT_TRUE(seg->dead()) << "falls when its time is out";
 }
 
-// BONE STORM: eight bones from the skeleton, and every standing wall of
-// THIS skeleton (wherever it is) shatters into its own eight, owned by the
-// skeleton; another skeleton's wall stands.
+// BONE STORM: every standing wall of THIS skeleton (wherever it is)
+// shatters into its own eight bones, owned by the skeleton; nothing leaves
+// the skeleton itself; another skeleton's wall stands.
 //
-// Perturbation (staged: the wall_burst(...) call in bone_storm removed):
-// RED — 8 bones instead of 32, and 0 of them leave from the walls.
-TEST_F(KitSkeleton, bone_storm_bursts_from_every_wall_and_the_skeleton)
+// RED (staged: the skeleton's own eight-way burst restored, one
+// self:fire() per direction): 32 bones, 8 of them from the skeleton's spot.
+TEST_F(KitSkeleton, bone_storm_bursts_from_every_wall_only)
 {
     walker* skel = add_skeleton(0, 96, 96, 75.0f);
     walker* other = add_skeleton(0, 96, 300, 30.0f);
@@ -823,32 +909,59 @@ TEST_F(KitSkeleton, bone_storm_bursts_from_every_wall_and_the_skeleton)
     ASSERT_NE(nullptr, other);
     ASSERT_TRUE(cast(skel, kSlotWall, 0).ok);
     ASSERT_TRUE(cast(other, kSlotWall, 0).ok);
-    ASSERT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), skel).size());
+    const auto walls = alive(world(), Order::Weapon, bone_wall_family(), skel);
+    ASSERT_EQ(3u, walls.size());
+    struct Spot {
+        int x;
+        int y;
+    };
+    std::vector<Spot> wall_centres;
+    for (walker* wall : walls)
+        wall_centres.push_back({wall->xpos() + wall->sizex() / 2,
+                                wall->ypos() + wall->sizey() / 2});
     skel->setxy(300, 96);  // far from its wall: the storm finds it anyway
-    skel->set_busy(0.0f);
 
     const Cast storm = cast(skel, kSlotWall, 1);
     ASSERT_TRUE(storm.ok) << storm.reason;
     EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "BONE STORM costs 45";
     const auto bones = alive(world(), Order::Weapon, FAMILY_BONE, skel);
-    EXPECT_EQ(32u, bones.size()) << "8 from the skeleton + 8 from each wall";
-    int near_wall = 0;
+    EXPECT_EQ(24u, bones.size()) << "8 from each of the 3 walls, none else";
     for (walker* bone : bones) {
         EXPECT_EQ(0, bone->team_num());
-        if (bone->xpos() < 160)
-            ++near_wall;
+        const int bx = bone->xpos() + bone->sizex() / 2;
+        const int by = bone->ypos() + bone->sizey() / 2;
+        bool from_a_wall = false;
+        for (const Spot& c : wall_centres)
+            from_a_wall = from_a_wall ||
+                          (std::abs(bx - c.x) <= 1 && std::abs(by - c.y) <= 1);
+        EXPECT_TRUE(from_a_wall)
+            << "a bone at (" << bx << ", " << by << ") left from no wall";
     }
-    EXPECT_EQ(24, near_wall) << "the walls' bones leave from the walls";
     EXPECT_TRUE(alive(world(), Order::Weapon, bone_wall_family(), skel).empty())
         << "the walls shatter";
     EXPECT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), other).size())
         << "another skeleton's wall stands";
+}
 
-    skel->stats()->set_magicpoints(45.0f);
-    skel->set_busy(3.0f);
-    const Cast busy = cast(skel, kSlotWall, 1);
-    EXPECT_EQ("SPECIAL BUSY", busy.reason);
-    EXPECT_FLOAT_EQ(45.0f, skel->stats()->magicpoints());
+// With no wall of its own standing there is nothing to shatter: BONE STORM
+// is refused with its reason and spends nothing, and no bone is thrown
+// (another skeleton's wall does not count).
+//
+// RED (staged: the no-wall guard removed): the storm is cast for 45 MP and
+// throws nothing.
+TEST_F(KitSkeleton, bone_storm_refuses_with_no_wall)
+{
+    walker* skel = add_skeleton(0, 96, 96, 45.0f);
+    walker* other = add_skeleton(0, 96, 300, 30.0f);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, other);
+    ASSERT_TRUE(cast(other, kSlotWall, 0).ok);
+    const Cast storm = cast(skel, kSlotWall, 1);
+    EXPECT_FALSE(storm.ok);
+    EXPECT_EQ("NO WALL STANDING", storm.reason);
+    EXPECT_FLOAT_EQ(45.0f, skel->stats()->magicpoints()) << "refused free";
+    EXPECT_TRUE(alive(world(), Order::Weapon, FAMILY_BONE).empty());
+    EXPECT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), other).size());
 }
 
 // Setting OFF: BONE WALL and BONE STORM are not specials (NOT ENOUGH MP),
@@ -872,7 +985,8 @@ TEST_F(KitSkeleton, bone_wall_off_twin_is_not_cast)
 // REASSEMBLE / LEGION
 // ---------------------------------------------------------------------------
 
-// REASSEMBLE sets the ward (60 MP, a flash); a second ward refuses free.
+// REASSEMBLE sets the ward (60 MP, a flash, and a WARD marker of the
+// skeleton's that keeps its 360-tick clock); a second ward refuses free.
 // A killing blow then stands the skeleton back up at a quarter health.
 //
 // Perturbation (staged: `self:kit_state() | C.KIT_WARD` written as
@@ -889,6 +1003,9 @@ TEST_F(KitSkeleton, warded_skeleton_stands_back_up_at_a_quarter)
     EXPECT_NE(0, skel->kit_state() & KIT_WARD);
     EXPECT_FLOAT_EQ(60.0f, skel->stats()->magicpoints()) << "REASSEMBLE costs 60";
     EXPECT_EQ(1u, alive(world(), Order::FX, FAMILY_FLASH).size()) << "a flash";
+    const auto wards = markers(world(), skel, kRoleWard);
+    ASSERT_EQ(1u, wards.size()) << "the ward keeps time on a marker";
+    EXPECT_EQ(360, wards[0]->lifetime()) << "ward_ticks";
 
     const Cast again = cast(skel, kSlotReassemble, 0);
     EXPECT_FALSE(again.ok);
@@ -900,6 +1017,175 @@ TEST_F(KitSkeleton, warded_skeleton_stands_back_up_at_a_quarter)
     EXPECT_FALSE(skel->dead()) << "it gets up";
     EXPECT_FLOAT_EQ(15.0f, skel->stats()->hitpoints()) << "a quarter of 60";
     EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "the ward is spent";
+}
+
+namespace {
+
+// The ward's fade notices since `from`.
+int ward_fade_notices(const TestGameWorld& tw, std::size_t from)
+{
+    int n = 0;
+    const auto& events = tw.events.events();
+    for (std::size_t i = from; i < events.size(); ++i)
+        if (events[i].kind == og::sim::EventKind::Notification &&
+            events[i].text.ends_with("'s ward fades"))
+            ++n;
+    return n;
+}
+
+}  // namespace
+
+// With mana to spare the ward lasts ward_ticks (360) and fades on the
+// 360th tick: the bit goes, the marker goes, the fade is told (this bot
+// skeleton has no seat, so everyone is), and a killing blow after that is
+// final.
+//
+// RED (staged: the out-of-time branch removed): still warded after 360
+// ticks, no notice, and the blow is survived.
+TEST_F(KitSkeleton, ward_fades_after_its_time)
+{
+    walker* skel = add_skeleton(0, 96, 96, 1060.0f);
+    walker* orc = add_orc(1, 300, 300);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    const std::size_t mark = tw_->events.events().size();
+    tick(359);
+    EXPECT_NE(0, skel->kit_state() & KIT_WARD) << "warded for 359 ticks";
+    ASSERT_EQ(1u, markers(world(), skel, kRoleWard).size());
+    EXPECT_EQ(1, markers(world(), skel, kRoleWard)[0]->lifetime());
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark));
+    tick();
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "faded on tick 360";
+    EXPECT_TRUE(markers(world(), skel, kRoleWard).empty());
+    EXPECT_EQ(1, ward_fade_notices(*tw_, mark)) << "the fade is told";
+    EXPECT_FLOAT_EQ(1000.0f - 59.0f, skel->stats()->magicpoints())
+        << "a mana every 6 ticks while it was armed";
+    orc->set_damage(500.0f);
+    ASSERT_TRUE(orc->attack(skel));
+    EXPECT_TRUE(skel->dead()) << "no ward, no revival";
+}
+
+// The ward costs a mana every six ticks, and its clock is kept to what the
+// mana can still pay for. 63 MP: 3 left after the price. The first reading
+// is 23 (three payments six ticks apart and the five ticks to the first:
+// the marker's first tick leaves 359, five short of the next payment); the
+// payments come on the 6th, 12th and 18th ticks, and on the 23rd the clock
+// reads 1 and on the 24th, as it reads 0, the ward fades with its notice.
+//
+// RED (staged: the clamp line removed): the first reading is 359.
+// RED (staged: the payment removed): the pool still reads 3 at the fade.
+TEST_F(KitSkeleton, ward_fades_when_the_mana_runs_dry)
+{
+    walker* skel = add_skeleton(0, 96, 96, 63.0f);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    EXPECT_FLOAT_EQ(3.0f, skel->stats()->magicpoints());
+    const auto wards = markers(world(), skel, kRoleWard);
+    ASSERT_EQ(1u, wards.size());
+    walker* ward = wards[0];
+    const std::size_t mark = tw_->events.events().size();
+    tick();
+    EXPECT_EQ(23, ward->lifetime()) << "the first reading";
+    for (int t = 2; t <= 23; ++t) {
+        tick();
+        ASSERT_NE(0, skel->kit_state() & KIT_WARD) << "tick " << t;
+        EXPECT_EQ(24 - t, ward->lifetime()) << "tick " << t;
+    }
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints())
+        << "paid on ticks 6, 12 and 18";
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark));
+    // The 24th tick, acted by hand so the spent marker can still be read.
+    ward->act();
+    EXPECT_TRUE(ward->dead());
+    EXPECT_EQ(0, ward->lifetime()) << "the clock reads 0 as the ward fades";
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "faded on the 24th tick";
+    EXPECT_EQ(1, ward_fade_notices(*tw_, mark));
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "never below zero";
+}
+
+// A death that spends the ward clears the bit; the marker then goes on its
+// next tick, silently (the skeleton already stood up), so a ward bought
+// again afterwards has one marker, its own, and keeps its full time.
+//
+// RED (staged: the spent-ward check in the marker removed): the old marker
+// lives on after the revival.
+TEST_F(KitSkeleton, a_spent_ward_retires_its_marker)
+{
+    walker* skel = add_skeleton(0, 96, 96, 180.0f);
+    walker* orc = add_orc(1, 112, 96);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    orc->set_damage(500.0f);
+    ASSERT_TRUE(orc->attack(skel));
+    ASSERT_FALSE(skel->dead()) << "it got up";
+    ASSERT_EQ(0, skel->kit_state() & KIT_WARD) << "the ward is spent";
+    const std::size_t mark = tw_->events.events().size();
+    tick();
+    EXPECT_TRUE(markers(world(), skel, kRoleWard).empty())
+        << "the spent ward's marker goes";
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark)) << "silently";
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok) << "bought again";
+    const auto wards = markers(world(), skel, kRoleWard);
+    ASSERT_EQ(1u, wards.size());
+    EXPECT_EQ(360, wards[0]->lifetime());
+}
+
+// A ward bought again in the same tick a death spent the old one, before
+// the old marker has acted: REASSEMBLE retires the old marker, so the new
+// ward has one marker, its own, and its full 360 ticks; the old clock
+// (100 ticks in) does not end it.
+//
+// RED (staged: the stale marker's retirement in REASSEMBLE removed): two
+// WARD markers, and the old one fades the new ward 260 ticks later.
+TEST_F(KitSkeleton, a_ward_bought_again_at_once_keeps_its_own_clock)
+{
+    walker* skel = add_skeleton(0, 96, 96, 250.0f);
+    walker* orc = add_orc(1, 300, 300);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok);
+    tick(100);
+    ASSERT_NE(0, skel->kit_state() & KIT_WARD) << "still warded";
+    orc->set_damage(500.0f);
+    ASSERT_TRUE(orc->attack(skel));
+    ASSERT_FALSE(skel->dead()) << "it got up";
+    ASSERT_EQ(0, skel->kit_state() & KIT_WARD) << "the ward is spent";
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 0).ok) << "bought again at once";
+    const auto wards = markers(world(), skel, kRoleWard);
+    EXPECT_EQ(1u, wards.size()) << "only the new ward's marker";
+    ASSERT_FALSE(wards.empty());
+    EXPECT_EQ(360, wards.back()->lifetime());
+    const std::size_t mark = tw_->events.events().size();
+    tick(359);
+    EXPECT_NE(0, skel->kit_state() & KIT_WARD) << "the new ward keeps its time";
+    EXPECT_EQ(0, ward_fade_notices(*tw_, mark)) << "nothing faded";
+    tick();
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD) << "faded on its own 360th tick";
+}
+
+// A world with no room for the WARD marker cannot keep the ward's time:
+// REASSEMBLE is refused, the bit is left clear, nothing is spent.
+//
+// RED (staged: the bit's clearing on that refusal removed): the skeleton is
+// warded although the cast was refused and nothing was paid.
+TEST_F(KitSkeleton, a_full_world_cannot_ward)
+{
+    walker* skel = add_skeleton(0, 96, 96, 120.0f);
+    ASSERT_NE(nullptr, skel);
+    const auto factory = world().entity_factory;
+    world().entity_factory = [factory](Order order, std::int32_t family) {
+        if (order == Order::FX)
+            return std::unique_ptr<walker>();
+        return factory(order, family);
+    };
+    const Cast c = cast(skel, kSlotReassemble, 0);
+    world().entity_factory = factory;
+    EXPECT_FALSE(c.ok);
+    EXPECT_EQ("COULD NOT WARD", c.reason);
+    EXPECT_EQ(0, skel->kit_state() & KIT_WARD);
+    EXPECT_FLOAT_EQ(120.0f, skel->stats()->magicpoints());
 }
 
 // Without the ward the same blow is final.
@@ -919,7 +1205,13 @@ TEST_F(KitSkeleton, unwarded_death_is_final)
 // as a skeleton on its team at half the victim's level, where it fell, and
 // its corpse and life gem are gone (the hook runs after death() left them).
 // An undead victim stays down; once the window closes, kills stay kills.
+// Each kill that could rise tosses a coin (the last draw of the blow: the
+// three draws of a killing melee or bone blow come first, two for a blast),
+// and the world's dice are set before each blow so all three land heads (a
+// bound of 1 matches any draw and still moves the dice on).
 //
+// RED (staged: the coin written og.rand(2) >= 0, every kill left down):
+// "one risen", "the bone kill rises" and "the blast kill rises" fail.
 // Perturbation (staged skeleton tuning legion_ticks = 300 -> 0): RED — the
 // window closes on the marker's first tick, so the second LEGION is cast
 // (60 MP spent, no LEGION ALREADY RISING) and nothing rises after it.
@@ -927,6 +1219,10 @@ TEST_F(KitSkeleton, unwarded_death_is_final)
 // RED — "closed on tick 300" fails and the late kill rises (5, not 4).
 TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_window)
 {
+    const std::uint32_t kBlowHeads =
+        state_where_draws_are({1, 1, 1, 2}, {0, 0, 0, 1});
+    const std::uint32_t kBlastHeads =
+        state_where_draws_are({1, 1, 2}, {0, 0, 1});
     walker* skel = add_skeleton(0, 96, 96, 120.0f, 10);
     ASSERT_NE(nullptr, skel);
     const Cast c = cast(skel, kSlotReassemble, 1);
@@ -945,6 +1241,7 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     ASSERT_NE(nullptr, melee);
     melee->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
     skel->set_damage(1000.0f);
+    world().rng_.state_ = kBlowHeads;
     ASSERT_TRUE(skel->attack(melee));
     ASSERT_TRUE(melee->dead());
     EXPECT_EQ(1, skeletons_on_team(world(), 0) - 1) << "one risen";
@@ -973,6 +1270,7 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     bone->set_owner(skel);
     bone->setxy(184, 160);
     bone->set_damage(1000.0f);
+    world().rng_.state_ = kBlowHeads;
     ASSERT_TRUE(bone->attack(shot));
     EXPECT_EQ(3, skeletons_on_team(world(), 0)) << "the bone kill rises";
 
@@ -984,6 +1282,7 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     boom->set_team_num(0);
     boom->set_owner(skel);
     boom->set_damage(1000.0f);
+    world().rng_.state_ = kBlastHeads;
     ASSERT_TRUE(boom->attack(blasted));
     EXPECT_EQ(4, skeletons_on_team(world(), 0)) << "the blast kill rises";
 
@@ -1005,6 +1304,40 @@ TEST_F(KitSkeleton, legion_raises_melee_bone_and_explosion_kills_within_the_wind
     ASSERT_TRUE(skel->attack(late));
     EXPECT_TRUE(late->dead());
     EXPECT_EQ(4, skeletons_on_team(world(), 0)) << "after the window: no rise";
+}
+
+// LEGION raises half its kills: when the kill's coin lands tails the foe
+// stays down, its corpse and a hero's life gem where they fell, and no
+// skeleton rises; the next kill, heads, rises as before.
+//
+// RED (staged: the coin removed): the tails kill rises and its corpse and
+// gem are consumed.
+TEST_F(KitSkeleton, legion_leaves_half_its_kills_down)
+{
+    walker* skel = add_skeleton(0, 96, 96, 120.0f, 10);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_TRUE(cast(skel, kSlotReassemble, 1).ok);
+    skel->set_damage(1000.0f);
+    walker* down = add_orc(1, 112, 96, 6);
+    ASSERT_NE(nullptr, down);
+    down->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    world().rng_.state_ = state_where_draws_are({1, 1, 1, 2}, {0, 0, 0, 0});
+    ASSERT_TRUE(skel->attack(down));
+    ASSERT_TRUE(down->dead());
+    EXPECT_EQ(1, skeletons_on_team(world(), 0)) << "tails: nothing rises";
+    EXPECT_EQ(1u, alive(world(), Order::Treasure, FAMILY_STAIN).size())
+        << "the corpse stays";
+    EXPECT_EQ(1u, alive(world(), Order::Treasure, FAMILY_LIFE_GEM).size())
+        << "and the hero's gem";
+
+    walker* up = add_orc(1, 200, 160);
+    ASSERT_NE(nullptr, up);
+    world().rng_.state_ = state_where_draws_are({1, 1, 1, 2}, {0, 0, 0, 1});
+    ASSERT_TRUE(skel->attack(up));
+    ASSERT_TRUE(up->dead());
+    EXPECT_EQ(2, skeletons_on_team(world(), 0)) << "heads: it rises";
+    EXPECT_EQ(1u, alive(world(), Order::Treasure, FAMILY_STAIN).size())
+        << "the risen one's corpse is consumed, the first one's stays";
 }
 
 // A warded foe that gets back up inside death() was not killed: no hook,
@@ -1264,11 +1597,13 @@ bool ask_gate(walker* w, int slot, short shift = 0)
 
 }  // namespace
 
-// DIG IN's gate: hurt below 60 % and two foes within 80; never a possessed
-// body.
+// DIG IN's gate: hurt below 60 % and two foes within 80, with the mana to
+// stay down (dig_min_pool left after the price); never a possessed body.
+//
+// RED (staged: the gate's pool test removed): 22 MP answers true.
 TEST_F(KitSkeleton, ai_dig_in_fires_when_hurt_and_outnumbered)
 {
-    walker* skel = add_skeleton(1, 96, 96, 15.0f);
+    walker* skel = add_skeleton(1, 96, 96, 40.0f);
     walker* a = add_orc(0, 150, 96);
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, a);
@@ -1285,6 +1620,13 @@ TEST_F(KitSkeleton, ai_dig_in_fires_when_hurt_and_outnumbered)
     skel->set_possess_link(0u);
     b->setxy(96, 190);  // 94 px
     EXPECT_FALSE(ask_gate(skel, kSlotDigIn)) << "the second foe is too far";
+    b->setxy(96, 150);
+    ASSERT_TRUE(ask_gate(skel, kSlotDigIn));
+    skel->stats()->set_magicpoints(22.0f);
+    EXPECT_FALSE(ask_gate(skel, kSlotDigIn))
+        << "7 left after the price: it could not stay down";
+    skel->stats()->set_magicpoints(23.0f);
+    EXPECT_TRUE(ask_gate(skel, kSlotDigIn)) << "8 left: enough";
 }
 
 // BONE WALL's gate: hurt below 70 % with a foe within 60 → the wall
