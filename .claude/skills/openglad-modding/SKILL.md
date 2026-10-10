@@ -57,7 +57,7 @@ og.family("living", {
     hire = 400,
     train = { strength = 20, intelligence = 6 },         -- omitted axis = 0
   },
-  specials = {               -- order = slot; slot N usable at level (N-1)*3+1
+  specials = {               -- order = slot; slot N usable at level (N-1)*3+1, or `level = N`
     { id = "hex",            -- the id the cast is joined to
       name = "HEX",          -- HUD string
       mp_cost = 20,          -- MAGIC POINTS

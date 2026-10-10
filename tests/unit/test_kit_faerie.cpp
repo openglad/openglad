@@ -165,7 +165,7 @@ std::uint32_t state_where_first_draw_is(std::uint32_t bound, std::uint32_t want)
 }  // namespace
 
 // The faerie had no specials. With the setting on she has four, opening at
-// levels 1, 4, 7 and 10 like every class's; with it off she has none, on
+// levels 1, 4, 7 and 10, by default (slot_open_level); with it off she has none, on
 // the HUD view, the price and the player's special-cycling key alike.
 //
 // Proof it can fail: dropping GLIMMER's `new_kit = true` in the staged

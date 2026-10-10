@@ -521,7 +521,8 @@ is tightened, because a default in any of them would be a gameplay trap.
 
 `specials` is a list of up to five entries and its ORDER is the slot:
 entry *i* is slot *i+1*, which the player can select from level
-`(N-1)*3+1` — so slot 5 unlocks at 13. An entry may name its own `slot = N`
+`(N-1)*3+1` — so slot 5 unlocks at 13 — unless the entry says `level = N`.
+An entry may name its own `slot = N`
 to leave a hole; slots must strictly increase. A family with no specials
 leaves the key out or writes `specials = {}`. Each entry takes:
 
@@ -536,6 +537,7 @@ leaves the key out or writes `specials = {}`. Each entry takes:
 | `new_kit` | optional boolean: the slot exists only while the New Specials setting is on; with it off the slot reads `"NONE"` at cost 5000 everywhere (see [new-specials.md](new-specials.md)) |
 | `detail` | optional string: the prose the TRAIN -> DETAILS page shows under the special's name, wrapped at 23 characters (at most four lines, three beside an alternate) |
 | `slot = N` | optional, 2..5, to skip a hole |
+| `level = N` | optional integer, the level the slot opens at: 1 up to its default `(N-1)*3+1`, never below the previous entry's level (the open slots stay a run from slot 1). Not accepted inside `alternate`: an alternate opens with its slot |
 
 **Absence is how a slot is disabled.** 5000 is the registry's own marker for
 "this slot holds no special", so an `mp_cost` at or above it is a load error

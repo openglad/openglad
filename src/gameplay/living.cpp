@@ -363,8 +363,8 @@ bool living::act()
 					// Should we do our special? Are we full of magic?
 					if (stats_->magicpoints() >= og::sim::cast_cost(*this, 1, false))
 					{
-						set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>((stats_->level()+2)/3)) + 1));
 						const FamilyDescriptor* special_fd = get_family_descriptor(family());
+						set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>(og::sim::bot_slot_roll_bound(special_fd, stats_->level(), current_game->world->new_specials))) + 1));
 						if ( (current_special() > 4) ||
 						        (current_special() < 1) ||
 						        (current_special() >= FD_NUM_SPECIALS) ||

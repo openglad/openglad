@@ -169,6 +169,41 @@ int results_screen_test_exercise_internal()
         std::all_of(gained_specials.begin(), gained_specials.end(),
                     [](const std::string& name) { return !name.empty(); }));
 
+    // A slot opened early by its row's `level = N` is not announced again at
+    // the level it would have opened at by default: the orc captain's EAT
+    // CORPSE row says `level = 1`, so a captain going from 3 to 4 gains
+    // nothing new. The captain's rows exist only with New Specials on, which
+    // the results screen reads from the session's world, so the check turns
+    // the setting on and puts it back.
+    // RED (checked by hand): with the classic `(level - 1) % 3` test back in
+    // get_gained_specials the list reads {"EAT CORPSE"} and this check fails.
+    {
+        GameWorld* const world =
+            current_game != nullptr ? current_game->world : nullptr;
+        check(world != nullptr);
+        if (world != nullptr)
+        {
+            const short saved_new_specials = world->new_specials;
+            world->new_specials = 1;
+            guy captain_before{};
+            captain_before.name = "Captain";
+            captain_before.family = FAMILY_BIG_ORC;
+            captain_before.level = 3;
+            captain_before.exp = calculate_exp(captain_before.level) + 10;
+            walker captain_after(one_px);
+            auto captain_guy = std::make_unique<guy>(FAMILY_BIG_ORC);
+            captain_guy->name = "Captain";
+            captain_guy->family = FAMILY_BIG_ORC;
+            captain_guy->level = 4;
+            captain_guy->exp = calculate_exp(captain_guy->level) + 5;
+            captain_after.set_owned_myguy(std::move(captain_guy));
+            TroopResult captain(&captain_before, &captain_after);
+            check(captain.gained_level() && captain.get_level() == 4);
+            check(captain.get_gained_specials().empty());
+            world->new_specials = saved_new_specials;
+        }
+    }
+
     // lost level branch
     before.level = 6;
     before.exp = calculate_exp(before.level);

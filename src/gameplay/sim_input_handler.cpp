@@ -201,7 +201,7 @@ void sim_advance_current_special(const GameWorld& level, walker& control)
 
     if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
         || special_missing
-        || (((control.current_special() - 1) * 3 + 1) > control.stats()->level()))
+        || !og::sim::slot_open(descriptor, special_index, control.stats()->level())) // open by default when (control.current_special() - 1) * 3 + 1 <= level
         control.set_current_special(1);
 }
 

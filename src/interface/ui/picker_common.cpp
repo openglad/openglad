@@ -5275,8 +5275,8 @@ DetailPage detail_page(const FamilyDescriptor* fd, int level,
             continue;
         any_in_play = true;
         const int column = slot >= 3 ? 1 : 0;
-        // The level a slot opens at: the cycle key's own rule.
-        const int opens_at = 3 * slot - 2;
+        // The level a slot opens at: the one rule, slot_open_level.
+        const int opens_at = og::sim::slot_open_level(fd, slot);
         if (level < opens_at) {
             locked[column].push_back(
                 {DetailInk::Prose,

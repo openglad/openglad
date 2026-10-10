@@ -1717,7 +1717,7 @@ TEST_F(KitSkeleton, ai_off_answers_the_classic_gate)
 // gate, the cast. One foe fewer (or the setting off) and it does not.
 TEST_F(KitSkeleton, bot_skeleton_digs_in_when_outnumbered)
 {
-    // level 4: the slot roll is next((4 + 2) / 3) + 1, so next(2) == 1 is
+    // level 4: the slot roll is next((4 + 2) / 3) + 1 by default, so next(2) == 1 is
     // slot 2. The coin (next(2)) can land either way: DIG IN has no
     // alternate.
     const std::uint32_t seed = state_where_draws_are({5, 2}, {0, 1});

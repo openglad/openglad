@@ -448,6 +448,88 @@ TEST(SpecialsView, cycle_skips_hidden_new_kit_slots)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// The probe with its slot-2 row opened at level 1 (`level = 1`), the way
+// the orc captain's EAT CORPSE row is. Slot 2 is a new-kit slot, so with
+// the setting off it is hidden whatever level it opens at.
+constexpr const char* kEarlySlotProbeDecl =
+    "og.family('living', { id = 'kitprobe:golem', wire_id = 18,\n"
+    "  specials = {\n"
+    "    { id = 'bomb', name = 'DROP BOMB', mp_cost = 35,\n"
+    "      alternate = { name = 'MINE', mp_cost = 70, new_kit = true } },\n"
+    "    { id = 'dig', name = 'DIG IN', mp_cost = 40, new_kit = true,\n"
+    "      level = 1, alternate = { name = 'BONE STORM', mp_cost = 90 } },\n"
+    "    { id = 'heal', name = 'HEAL', mp_cost = 2,\n"
+    "      alternate = { name = 'MYSTIC MACE' } },\n"
+    "    { id = 'phase', name = 'PHASE', mp_cost = 60, new_kit = true },\n"
+    "  } })\n";
+
+// The one rule for "is this slot open yet": 3*slot - 2 (1, 4, 7, 10, 13) for
+// every row that says nothing, the row's own `level` when it does.
+TEST(SpecialsView, a_slot_opens_at_its_own_level_or_at_three_n_minus_two)
+{
+    og::test::ScopedHookFailureGuard guard;
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    for (int slot = 1; slot <= 5; ++slot) {
+        EXPECT_EQ(3 * slot - 2, og::sim::slot_open_level(soldier, slot))
+            << "slot " << slot;
+        EXPECT_EQ(3 * slot - 2, og::sim::slot_open_level(nullptr, slot))
+            << "a null descriptor reads as a classic family, slot " << slot;
+    }
+    EXPECT_EQ(16, og::sim::slot_open_level(soldier, 6))
+        << "an out-of-range slot reads as a classic family";
+    // The boundary of a default slot 2: closed at 3, open at 4.
+    EXPECT_FALSE(og::sim::slot_open(soldier, 2, 3));
+    EXPECT_TRUE(og::sim::slot_open(soldier, 2, 4));
+
+    ProbeFamily probe(kEarlySlotProbeDecl);
+    ASSERT_EQ(1, probe.installed());
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, fd);
+    EXPECT_EQ(1, og::sim::slot_open_level(fd, 1));
+    EXPECT_EQ(1, og::sim::slot_open_level(fd, 2)) << "the row's own level";
+    EXPECT_EQ(7, og::sim::slot_open_level(fd, 3));
+    EXPECT_TRUE(og::sim::slot_open(fd, 2, 1));
+    EXPECT_FALSE(og::sim::slot_open(fd, 3, 6));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A bot's slot roll draws rng.next(bound) + 1. With no `level` on any row
+// the bound is exactly the classic (level + 2) / 3, uncapped, so the draw
+// sequence of every classic family is what it always was; a row opened
+// early raises it while that row is in play.
+// RED (checked by hand): with the bound capped at 5 the level-16 and later
+// rows fail ("level 16 ... Which is: 5", 6 wanted); with the slot term alone
+// (no (level + 2) / 3) the rows from level 13 fail ("level 13 ... Which is:
+// 4", 5 wanted: the soldier has four named slots).
+TEST(SpecialsView, the_bot_slot_roll_bound_is_the_classic_count_unless_a_row_opens_early)
+{
+    og::test::ScopedHookFailureGuard guard;
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    for (int level = 0; level <= 20; ++level) {
+        EXPECT_EQ((level + 2) / 3,
+                  og::sim::bot_slot_roll_bound(soldier, level, 0))
+            << "level " << level;
+        EXPECT_EQ((level + 2) / 3,
+                  og::sim::bot_slot_roll_bound(soldier, level, 1))
+            << "level " << level << ", setting on";
+    }
+    EXPECT_EQ(0, og::sim::bot_slot_roll_bound(soldier, 0, 0));
+    EXPECT_EQ(6, og::sim::bot_slot_roll_bound(soldier, 16, 0));
+
+    ProbeFamily probe(kEarlySlotProbeDecl);
+    ASSERT_EQ(1, probe.installed());
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, fd);
+    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(fd, 1, 1))
+        << "the slot opened at level 1 is rolled at level 1";
+    EXPECT_EQ(1, og::sim::bot_slot_roll_bound(fd, 1, 0))
+        << "with the setting off the new-kit slot is hidden and not counted";
+    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(fd, 4, 1));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // The weapon declaration's blocks_placement reaches the descriptor and the
 // placement predicate; a classic weapon and a non-weapon never block.
 TEST(SpecialsView, blocks_placement_reaches_the_predicate)

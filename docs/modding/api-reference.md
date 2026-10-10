@@ -332,7 +332,7 @@ handler, and a misspelling on either side is a load error naming the ids the
 family does declare.
 
 Which slot an id is, and when a player can reach it, is the list order:
-entry *i* is slot *i+1*, selectable from level `(N-1)*3+1`.
+entry *i* is slot *i+1*, selectable from level `(N-1)*3+1` unless the entry says `level = N`.
 
 Rules:
 
@@ -374,7 +374,7 @@ left unhandled is that pack's error, and a slot the engine filled from C++
 
 **Alternates.** A special may declare `alternate = { name = "...", mp_cost = N,
 new_kit = true, detail = "..." }`. Those four keys are the only ones accepted
-(any other is a load error), and `name` is required. The name is shown while Shift is
+(any other, `level` included, is a load error), and `name` is required. The name is shown while Shift is
 held. There is no separate engine dispatch: the slot's handler forks on
 `self:shifter_down()` (or `self:alternate_down()`, below). Without
 `mp_cost` the alternate spends the slot's own `mp_cost`, as every classic
@@ -1168,7 +1168,7 @@ og.family("living", {
               intelligence = 8, armor = 60 },
   },
   specials = {                        -- order = slot; slot N at level
-    { id = "flare_burst",             -- (N-1)*3+1
+    { id = "flare_burst",             -- (N-1)*3+1, or `level = N`
       name = "FLARE BURST",           -- HUD string
       mp_cost = 5,                    -- engine-gated, engine-deducted
       cast = flare_burst },           -- the handler, right here

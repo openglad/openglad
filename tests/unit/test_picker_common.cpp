@@ -632,7 +632,7 @@ TEST(PickerCommon, alternate_details_are_one_line)
 // The page is the specials table AS THE SETTING SEES IT, and a slot above
 // the character's level shows only its name and the level it opens at.
 // Proof it can fail: drop the level test in detail_page and every slot is
-// a full block at level 1 (the captain's locked lines vanish).
+// a full block at level 1 (the captain's Hook Blade and War Banner lines vanish).
 TEST(PickerCommon, detail_page_follows_the_setting)
 {
     init_family_registry();
@@ -670,12 +670,18 @@ TEST(PickerCommon, detail_page_follows_the_setting)
                   page_texts(og::ui::detail_page(&core_family(FAMILY_GOLEM),
                                                  4, new_specials)));
 
-    // A fresh captain (level 1): HOWL's block, then each locked slot's
-    // name and level at the foot of its column, in slot order.
+    // A fresh captain (level 1): HOWL's and EAT CORPSE's blocks (the EAT
+    // CORPSE row opens at level 1), then each locked slot's name and level
+    // at the foot of the right column, in slot order. RED (checked by hand):
+    // with `3 * slot - 2` back in detail_page in place of slot_open_level the
+    // blocks read { " Howl" } and a " Eat Corpse: lvl 4" line appears.
     const auto cap1 = og::ui::detail_page(&core_family(FAMILY_BIG_ORC), 1, 1);
-    EXPECT_EQ((std::vector<std::string>{" Howl"}), block_names(cap1));
+    EXPECT_EQ((std::vector<std::string>{" Howl", " Eat Corpse"}),
+              block_names(cap1));
+    for (const std::string& text : page_texts(cap1))
+        EXPECT_EQ(std::string::npos, text.find("Eat Corpse: lvl")) << text;
     const auto* howl = line_named(cap1, " Howl");
-    const auto* eat = line_named(cap1, " Eat Corpse: lvl 4");
+    const auto* eat = line_named(cap1, " Eat Corpse");
     const auto* hook = line_named(cap1, " Hook Blade: lvl 7");
     const auto* banner = line_named(cap1, " War Banner: lvl 10");
     ASSERT_NE(nullptr, howl);
@@ -685,8 +691,8 @@ TEST(PickerCommon, detail_page_follows_the_setting)
     EXPECT_FALSE(howl->right);
     EXPECT_EQ(og::ui::kDetailLeftFirstRow, howl->row);
     EXPECT_FALSE(eat->right);
-    EXPECT_EQ(og::ui::DetailInk::Prose, eat->ink);
-    // Howl's name and three prose lines, the breathing row, then the lock.
+    EXPECT_EQ(og::ui::DetailInk::Name, eat->ink);
+    // Howl's name and three prose lines, the breathing row, then Eat Corpse.
     EXPECT_EQ(howl->row + 5, eat->row);
     EXPECT_TRUE(hook->right);
     EXPECT_TRUE(banner->right);
