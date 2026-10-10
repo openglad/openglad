@@ -686,6 +686,38 @@ TEST(KitCaptain, hook_reels_the_foe_to_the_captains_feet)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// The same reel from the other side: a soldier 56 px west of the captain is
+// touched on the way out (tick 20) and slides east 8 px a tick to the spot
+// on the captain's west side.
+//
+// Proof it can fail: `return from + og.min(step, to - from)` ->
+// `return from` in the staged effect_hook_blade.lua printed
+//   Expected equality of these values:
+//   (std::vector<short>{152, 160, 168, 176, 182}) ...
+//   path Which is: { 144, 144, 144, 144, 144, 144, 144, 144, 144 }
+TEST(KitCaptain, hook_reels_a_foe_in_from_the_west)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_captain(tw, 200, 200);
+    walker* foe = add_living(tw, FAMILY_SOLDIER, kThem, 144, 200);
+    ASSERT_NE(nullptr, captain);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_TRUE(cast(captain, 3, false).ok);
+    walker* blade = blades(tw).front();
+    EXPECT_EQ(20, act_until_snagged(blade, foe)) << "touched on the way out";
+    std::vector<short> path;
+    while (!blade->dead() && path.size() < 20) {
+        blade->act();
+        path.push_back(foe->xpos());
+        EXPECT_EQ(200, foe->ypos());
+    }
+    EXPECT_EQ((std::vector<short>{152, 160, 168, 176, 182}), path);
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // A foe snagged late on the way back is still reeled all the way, even
 // while the captain walks off with it: at the snag the blade's lifetime
 // becomes the reel's budget (8 ticks), so the spiral's clock, nearly spent,
