@@ -587,7 +587,7 @@ declares no alternate at all (it means "not hidden by the setting").
 
 | Method | Result |
 |---|---|
-| `kit_state() → int` | The walker's kit marks, a byte of `og.C.KIT_*` bits: `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8. Separate from the classic bit flags: a corpse stain never inherits it and a transform never wipes it. Rides every snapshot. |
+| `kit_state() → int` | The walker's kit marks, a byte of `og.C.KIT_*` bits: `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one). Separate from the classic bit flags: a corpse stain never inherits it and a transform never wipes it. Rides every snapshot. |
 | `set_kit_state(n)` | Writes the byte. A change of the HIDDEN bit goes through `set_hidden`, so it may be turned away (a possessed body never hides); the other bits land as written. |
 | `hidden() → bool` | The HIDDEN bit: the walker does not act, is out of the collision table, is skipped by every finder and target scan, cannot be hit, and is drawn only to its own team. It stays in snapshots. |
 | `set_hidden(v)` | `v` is a boolean or `0`/`1`. Hides or reveals (a revealed walker rejoins the collision table unless it is ignored or dormant). Refused for a walker whose possession partner is hidden. |

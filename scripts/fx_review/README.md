@@ -37,8 +37,8 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
    - `GameLoop.zz_capture_new_specials` (`tests/integration/test_game_loop.cpp`)
      — one film per New Specials move (the thief's mine; the ghost's wail,
      siphon, possess and phase; the faerie's blink and swap, glimmer, hasten
-     and wish; the orc captain's howl and eat corpse, hook blade and knife
-     fan, hurl orc and shove, war banner and warband; the skeleton's dig in,
+     and wish; the orc captain's howl, eat corpse, hook blade and knife
+     fan, war banner and warband; the skeleton's dig in,
      bone wall and bone storm, reassemble and legion; the fire elemental's
      immolate, meteor rain, rekindle and supernova) plus three of a bot
      using one, each cast by the seat's own keys and asserted.

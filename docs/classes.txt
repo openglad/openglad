@@ -313,31 +313,27 @@ Druid:  Druids are the magicians of nature, and have
 
 
 Orc Captain:  An orc of level 5 or more may be promoted to
-        Orc Captain (starting again at level 1), and captains can
-        also be hired outright.  Captains are stronger and smarter
-        than the basic orc, and throw blades across the field.
-        Before the New Specials kits a promoted orc lost its Howl
-        and Eat Corpse; with the setting on, it keeps them.
-        1. + Howl (25): The orc's howl of rage, as above.
-             SHIFTER: Eat Corpse (20): The orc's corpse feast, as
-             above.
-        2. + Hook Blade (40): A chained knife spins around the
-             captain, tighter and faster than a soldier's boomerang,
-             cutting down enemy missiles that come near.  The first
-             foe it touches is hooked, dragged to the captain's feet
-             and stunned for 12 ticks.  The blade spins for 48 ticks
-             at most, and only one may be out at a time.
+        Orc Captain on the DETAILS screen; captains cannot be hired.
+        The promoted captain starts again at level 1, with Howl
+        alone; Eat Corpse comes back at level 4.  Captains are
+        stronger and smarter than the basic orc, and throw blades
+        across the field.  Before the New Specials kits a promoted
+        orc lost its Howl and Eat Corpse; with the setting on, it
+        keeps them.
+        1. + Howl (25): The orc's howl of rage, as above.  A bot
+             captain howls when a foe is within 130 pixels.
+        2. + Eat Corpse (20): The orc's corpse feast, as above.  A
+             bot captain eats only below 60 percent of its health,
+             standing on a corpse.
+        3. + Hook Blade (40): A chained knife spirals out from the
+             captain like a boomerang, from 12 to 60 pixels over 24
+             ticks and back over 24, cutting down enemy missiles that
+             come near.  The first foe it touches is frozen and
+             reeled to the captain's feet, 8 pixels a tick, then
+             stays frozen 12 ticks more; a wall stops the reel.  Only
+             one blade may be out at a time.
              SHIFTER: Knife Fan (30): Three plain knives thrown in a
              spread.
-        3. + Hurl Orc (50): The captain seizes an allied orc (or
-             captain) standing beside him that no player is driving,
-             and throws it at a foe up to 120 pixels away in plain
-             sight.  Every foe within 24 pixels of where it lands is
-             struck for 6 damage per level of the thrown orc and
-             stunned for 10 ticks, and the orc fights on from there.
-             SHIFTER: Shove (30): A shoulder charge.  Every foe within
-             40 pixels in front of the captain is knocked back up to
-             two tiles and stunned for 10 ticks.
         4. + War Banner (80): A banner can only be planted on a
              corpse within 32 pixels, which it consumes: the fallen
              one's head goes on the pole.  It has 120 hitpoints plus
@@ -346,6 +342,8 @@ Orc Captain:  An orc of level 5 or more may be promoted to
              within 96 pixels by 1, and frightens every foe within
              that radius whose level is below the captain's; allies
              in its radius never flee.  Enemies can chop it down.
+             Planting a second banner strikes the captain's first one
+             quietly and sends his grunts to the new one.
              SHIFTER: Warband (80): Orc grunts charge in from the
              nearest map edge: two at level 10, one more for every
              three levels after that, never more than six alive at
@@ -375,15 +373,17 @@ Orc Captain:  An orc of level 5 or more may be promoted to
              until then the elemental casts nothing else.  The fire
              goes out on its own when the magic runs dry.
         3. + Meteor Rain (70): Meteors fall around a foe up to 160
-             pixels away for 60 ticks, one every 5 ticks, each a
-             blast of 10 damage plus twice the level landing within 40
+             pixels away for 60 ticks, one every 6 ticks, each a
+             blast of 8 damage plus twice the level landing within 40
              pixels of the spot.  The elemental is never hurt by its
              own rain.
         4. + Rekindle (40): Burns magic into health: 40 hitpoints
              plus 4 per level.
              SHIFTER: Supernova (10): The elemental gives up all of
-             its health for one enormous explosion, and its parting
-             starburst fires on top of it.
+             its health for one enormous explosion: one and a half
+             times its health plus 15 per level, with eight more
+             blasts of half that 40 pixels out around it.  Allies are
+             hit in full.  Its parting starburst fires on top of it.
 
 ® Skeleton:   Skeletons are the pathetic remains of those
         who once were among the living.  Although they are
@@ -396,24 +396,30 @@ Orc Captain:  An orc of level 5 or more may be promoted to
              mind, this ability also allows them to tunnel under walls
              and come at the enemy from the rear.
         2. + Dig In (15): The skeleton sinks into the floor, hidden
-             from its enemies and regaining 1 hitpoint every 4 ticks.
-             When a foe on foot comes within 20 pixels it bursts up
-             swinging at it; it also comes up when special is pressed
-             again (free) or after 300 ticks.
+             from its enemies, trading 1 magic for 1 hitpoint every 4
+             ticks.  When a foe on foot comes within 20 pixels it
+             bursts up swinging at it; it also comes up when special
+             is pressed again (free), when its magic runs out, or
+             after 300 ticks.  It needs 8 magic to spare after the
+             price to go down at all.
         3. + Bone Wall (30): A line of three bone barricades rises in
              front of the skeleton, each with 40 hitpoints plus 4 per
              level, standing for 360 ticks.  Allies pass through;
              enemies must go around or hack them down.  Enemy missiles
              often pass through the gaps.
-             SHIFTER: Bone Storm (45): Bones fly in all eight
-             directions from the skeleton, and every bone wall it has
-             standing shatters into its own eight-way burst.
+             SHIFTER: Bone Storm (45): Every bone wall the skeleton
+             has standing shatters into its own eight-way burst.
+             Nothing flies from the skeleton itself, and with no wall
+             standing the storm is refused.
         4. + Reassemble (60): Wards the skeleton against its next
              death: it falls apart, then stands back up with a
-             quarter of its full health.
-             SHIFTER: Legion (60): For the next 300 ticks every foe
-             this skeleton kills (save the undead) rises as a skeleton
-             on its team, at half the fallen foe's level.
+             quarter of its full health.  The ward lasts 360 ticks
+             and costs 1 magic every 6 ticks; it fades when either
+             runs out.
+             SHIFTER: Legion (60): For the next 300 ticks half the
+             foes this skeleton kills (save the undead), on the toss
+             of a coin, rise as skeletons on its team, at half the
+             fallen foe's level; the others stay where they fell.
 
 ® Ghost: A more fearsome type of undead, ghosts can pass
         through walls, trees, and anything else that gets
@@ -425,24 +431,27 @@ Orc Captain:  An orc of level 5 or more may be promoted to
              enemies will flee away from the ghost; how far they run, 
              and how long the effect lasts, is determined by the power 
              of the ghost and the resistance of the targets.
-           + SHIFTER: Wail (50): A fright that leaps from foe to foe
-             like chain lightning.  The wail flies at the nearest foe
-             in scare range; each foe it strikes flees as from a scare,
-             and the wail may split toward other foes within 120
-             pixels, leaping at most three more times.
+           + SHIFTER: Wail (50): A fright that leaps from foe to foe.
+             A small cloud of the scare's sparkles drifts at the
+             nearest foe in scare range, slower than a bolt; each foe
+             it strikes flees as from a scare, and it may split toward
+             other foes within 120 pixels of the one it struck,
+             leaping at most three more times.
         2. + Siphon (30): The ghost's chilling touch (24 pixels)
              deals 10 damage plus 2 per level and heals the ghost by
-             half of what it dealt, never above its full health.  A
-             touch that finds no one still spends the magic.
+             half of what it dealt, never above its full health.  It
+             touches once per attack pause, however long the key is
+             held.  A touch that finds no one still spends the magic.
         3. + Possess (50): The ghost slips inside a foe within 24
              pixels and drives it: the host's own weapon, the host's
              own specials.  The host may resist (the ghost's level
              against its constitution); a resisting host strikes back
              once.  Undead, heroes driven by a player, and foes
              already possessed or charmed cannot be taken.  The ride
-             lasts 120 ticks plus 40 for each level the ghost has over
-             its host (never less than 60), and a ghost 8 or more
-             levels above its host keeps it for the rest of the level.
+             lasts 120 ticks (10 seconds) on a host of the ghost's own
+             level or higher, and grows with the log of the levels the
+             ghost has over it: 29 seconds two levels up, 49 seconds
+             nine levels up, never more than a minute.
              It ends when time runs out, when the host dies (the ghost
              takes half of the killing blow's excess as damage), or
              when the player presses Switch Character.  The ghost
@@ -456,14 +465,17 @@ Orc Captain:  An orc of level 5 or more may be promoted to
         Although they are delicate and easily destroyed,
         faeries can sprinkle a magic powder which can
         freeze their enemies in place.
-        1. + Blink (8): A short hop to a random spot nearby (24
-             pixels plus 6 per level).
-             SHIFTER: Swap (20): The faerie trades places with the
+        1. + Blink (20): A hop of 24 pixels plus 2 per level in a
+             random direction (a shorter one when that way is
+             blocked), then a rest of one second on top of her attack
+             pause, so a held key hops once.
+             SHIFTER: Swap (24): The faerie trades places with the
              nearest friend or foe within 80 pixels in plain sight.  A
              walker is never swapped onto a spot it could not stand on,
              such as water.
         2. + Glimmer (24): Freezing powder sprinkled in all eight
-             directions at once.
+             directions at once; it freezes for a quarter of the
+             normal sprinkle's time.
         3. + Hasten (30): Touches an ally within 40 pixels with speed
              for 150 ticks (a speed potion's bonus; a stronger bonus
              already running is kept).

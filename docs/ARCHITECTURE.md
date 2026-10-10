@@ -588,7 +588,12 @@ replay readers independently reject unsupported payload formats.
 New Specials (protocol v19, snapshot v15, replay v21) adds three per-entity
 snapshot fields, `possess_link` (u32, dirty bit 93), `kit_state` (u8, 94) and
 `possess_ticks` (i16, 95), plus the world's `new_specials` byte; see
-[new-specials.md](new-specials.md).
+[new-specials.md](new-specials.md). The countdown each seat sees for its own
+running timed effect (`og::sim::seat_timer`, `src/gameplay/timed_effects.cpp`)
+reads only fields that already ride every snapshot (`possess_ticks`, a kit
+marker's role, owner and lifetime, `speed_bonus_left`), so a display mirror
+answers what the host would; the SDL HUD, the curses status line and the
+text client's state all read it.
 
 ### Core components (`og_gameplay`, SDL-free)
 

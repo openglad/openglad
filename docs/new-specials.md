@@ -65,10 +65,11 @@ it:
 - **A hidden alternate** reads `NONE`, `walker:alternate_down()` answers
   false, and its price is never charged. An alternate on a hidden slot is
   hidden too, whatever its own mark says.
-- **A priced alternate.** `alternate = { name, mp_cost, new_kit }`: with
-  Shift held, the engine gates and charges the alternate's own price, and
-  the HUD turns red below it. Without `mp_cost` it costs the slot's price,
-  as every classic alternate does.
+- **A priced alternate.** `alternate = { name, mp_cost, new_kit, detail }`:
+  with Shift held, the engine gates and charges the alternate's own price,
+  and the HUD turns red below it. Without `mp_cost` it costs the slot's
+  price, as every classic alternate does. `detail` is the one line the
+  DETAILS screen prints under the alternate's Shift line (below).
 - **The bot drops a shift it cannot pay.** A bot draws its Shift coin as it
   always did. If the coin says Shift and the slot's alternate has a price
   the bot cannot pay, the Shift is dropped. No classic alternate has a price,
@@ -107,9 +108,9 @@ Three per-entity fields, all in every snapshot:
 
 | field | type | dirty bit | meaning |
 |---|---|---|---|
-| `kit_state` | `uint8` | 94 | `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8 |
+| `kit_state` | `uint8` | 94 | `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one; GLIMMER's sprinkles) |
 | `possess_link` | `uint32` | 93 | the entity id of the possession partner, 0 when none |
-| `possess_ticks` | `int16` | 95 | on the host: ticks left, 0 = for good |
+| `possess_ticks` | `int16` | 95 | on the host: ticks left; 0 = for good, which the core kit never asks for |
 
 They are kept apart from the classic bit flags because those are copied
 onto a corpse stain and wiped by a transform. A hidden walker does not act,
@@ -124,7 +125,9 @@ is told of a death and whoever struck it is credited no kill.
 Timers and windows hang on one invisible helper effect,
 `core:kit_marker` (effect wire id 17). Its role sits in its animation byte,
 its lifetime counts down in its handler, and its age is measured from the
-tick it was spawned:
+tick it was spawned. The role numbers are engine constants
+(`include/openglad/gameplay/kit_marker_role.h`), exported to Lua as
+`og.C.MARKER_*`:
 
 | role | value | used by |
 |---|---|---|
@@ -133,6 +136,7 @@ tick it was spawned:
 | `IMMOLATION` | 3 | fire elemental IMMOLATE (drain, contact burn, embers) |
 | `PHASE_VEIL` | 4 | ghost PHASE |
 | `METEOR_RAIN` | 5 | fire elemental METEOR RAIN |
+| `WARD` | 6 | skeleton REASSEMBLE's clock (the ward bit is still what the engine spends) |
 
 New wire ids: effects 13 `core:mine`, 14 `core:wail`, 15 `core:hook_blade`,
 16 `core:ember`, 17 `core:kit_marker`; weapons 20 `core:bone_wall`, 21
@@ -165,9 +169,21 @@ Past the refusals the host may resist: the ghost rolls against its level,
 the host against its constitution. A host that resists strikes the ghost
 once, and the magic is spent.
 
-**How long.** 120 ticks plus 40 for every level the ghost has over its
-host, never less than 60. A ghost 8 or more levels above its host keeps it
-for the rest of the level.
+**How long.** The ride grows with the log of the levels the ghost has over
+its host and is capped at one minute: `possess_base` (120 ticks, 10 s)
+plus `possess_log_scale` (200) times ln(1 + gap), read from a whole-number
+table, never past `possess_cap` (720 ticks). A host that out-levels the
+ghost is ridden `possess_min` (120 ticks). Every ride ends.
+
+| levels the ghost has over its host | ticks | seconds on the HUD |
+|---|---|---|
+| none, or the host is higher | 120 | 10 |
+| 1 | 258 | 22 |
+| 2 | 340 | 29 |
+| 5 | 478 | 40 |
+| 6 | 510 | 43 |
+| 9 (a level-10 ghost on a level-1 mage) | 580 | 49 |
+| 19 and more | 720 | 60 |
 
 **How it ends.**
 
@@ -218,9 +234,18 @@ for the rest of the level.
   mine was laid for.
 
 **Ghost.**
-- WAIL leaps at most three more times after its first foe, and does not
-  treat fliers differently. Its numbers (`wail_bolt_life`, `wail_bolt_step`,
-  `wail_fork_px`, `wail_hops`) are on the `core:wail` family, not the ghost.
+- WAIL is a small puff of the scare's own sparkles (`expand8.png`), not a
+  bolt. It travels 6 pixels a tick for up to 60 ticks, homes on its foe's
+  centre and frights it when its 8x8 core touches; then a fresh puff hops
+  on to a foe within 120 pixels of the one it struck, at most three more
+  times. It does not treat fliers differently. Its numbers
+  (`wail_bolt_life`, `wail_bolt_step`, `wail_fork_px`, `wail_hops`,
+  `wail_frame_ticks`) are on the `core:wail` family, not the ghost.
+- SIPHON touches once per attack pause: a tap is one touch, and a held key
+  touches again only when the ghost's pause has run (7 ticks for a bare
+  ghost, a little less for a nimble hero). Inside the pause it answers
+  `SPECIAL BUSY` and spends nothing. A touch that finds no foe still spends
+  its mana and sets no pause.
 - A resisted POSSESS lets the host strike once.
 - A ghost riding a body regains no magic.
 - PHASE lasts 48 ticks at double speed, and the ghost cannot attack while
@@ -230,18 +255,41 @@ for the rest of the level.
   outline, so friend and foe can see where it went.
 
 **Faerie.**
+- BLINK hops `blink_base` + `blink_per_level` x level pixels (26 at level
+  1, 44 at level 10) in one of eight directions, picked at random; when
+  that spot is blocked it tries the other directions, then two thirds and
+  one third of the hop. It costs 20 magic, SWAP 24.
+- After a BLINK or a SWAP the faerie rests: her attack pause plus
+  `blink_cooldown` (12 ticks, one second). A held key cannot hop again
+  until the rest is over, and she cannot sprinkle or SWAP during it. The
+  pause after an ordinary sprinkle does not block a hop, so a fighting
+  faerie can still slip away between two sprinkles.
 - SWAP never drops a walker onto a spot it could not stand on, such as
   water (`SWAP BLOCKED`).
 - A bot faerie only picks SWAP when it can pay for it; short of the price it
   blinks away instead, or holds.
 - HASTEN keeps a stronger speed bonus already running (a high-level speed
   potion is not cut down to the haste).
-- GLIMMER pauses the faerie like one attack.
+- GLIMMER pauses the faerie like one attack. Each of its sprinkles is
+  marked, and the freeze it lays is a quarter of the rolled one (about
+  half a second at level 4); the roll itself is drawn as for any sprinkle.
 - WISH kills the faerie: her stain and, for a hero, her life gem stay.
 
 **Orc captain.**
-- The captain can be hired whatever the setting; with it off a hired
-  captain has no specials, like a promoted one in the old game.
+- The captain cannot be hired: it is the orc's promotion only (an orc of
+  level 5, on the DETAILS screen). As in the classic game the promoted
+  captain starts again at level 1, with HOWL alone; EAT CORPSE opens at
+  level 4, HOOK BLADE / KNIFE FAN at 7, WAR BANNER / WARBAND at 10. With
+  the setting off the captain has no specials, as in the classic game.
+- HOOK BLADE spirals out from the captain like the boomerang, from 12 to
+  60 pixels over 24 ticks and back over 24, one turn every 16 ticks. The
+  first foe it touches is frozen and reeled to the captain's feet, 8
+  pixels a tick, then stays frozen 12 ticks more. A wall stops the reel
+  where the foe stands.
+- Planting a WAR BANNER while one of this captain's banners stands
+  strikes the old one quietly (a flash, no explosion, no notice) and turns
+  his warband grunts to the new one. A refused plant (no corpse) leaves
+  the old banner standing.
 - The banner's aura numbers (`banner_pulse`, `banner_radius`,
   `banner_regen`, `banner_fright`) are on the `core:war_banner` family,
   because a banner outlives its captain.
@@ -251,12 +299,26 @@ for the rest of the level.
 - The hook blade cuts down any enemy missile that comes close while it
   spins, but passes an enemy war banner or bone wall by: those have to be
   chopped down.
-- HOWL's bot answer counts the captain as hurt below 60 percent of its
-  health; at exactly 60 percent it still howls.
+- A bot captain howls when a foe is within 130 pixels. EAT CORPSE has its
+  own bot gate: it eats only below 60 percent of its health (at exactly 60
+  percent it does not) and standing on a corpse.
 
 **Skeleton.**
-- A dug-in skeleton comes up on its own after 300 ticks, and coming up is
-  free. A dug-in enemy skeleton keeps the level open until it surfaces.
+- DIG IN costs one magic every 4 ticks while the skeleton is buried, and
+  it surfaces when the magic runs out, or after 300 ticks, whichever comes
+  first; coming up is free. The cast refuses (`NEED MANA TO STAY DOWN`)
+  when the pool after the price would be under 8. A dug-in enemy skeleton
+  keeps the level open until it surfaces.
+- REASSEMBLE's ward lasts 360 ticks (30 seconds) and costs one magic every
+  6 ticks while it is armed; it fades when either runs out, with a notice
+  ("<name>'s ward fades"). A seated hero's notice goes to that seat; a bot
+  skeleton has no seat, so its notice goes to everyone. A skeleton that is
+  buried and warded pays both drains.
+- BONE STORM shatters this skeleton's standing walls, each into eight
+  bones, and throws nothing from the skeleton; with no wall standing it
+  refuses (`NO WALL STANDING`) and spends nothing.
+- LEGION raises half its kills: a coin is drawn for every kill that could
+  rise, and on the other side the corpse stays where it fell.
 - While it sinks and while it is buried, a skeleton keeps DIG IN in hand:
   Switch Special cannot turn the next press into a TUNNEL.
 - Bone walls stop bodies, not most missiles: an enemy missile passes a wall
@@ -270,6 +332,14 @@ for the rest of the level.
 
 **Fire elemental.**
 - Quenching IMMOLATE is free; until then the elemental casts nothing else.
+- METEOR RAIN strikes every 6 ticks (10 strikes over its 60 ticks), each
+  for 8 + 2 a level (22 at level 7, 28 at level 10) before armour.
+- SUPERNOVA's main blast does one and a half times the elemental's health
+  plus 15 a level, and eight more blasts go off around it, 40 pixels out
+  on each axis (the diagonal ones about 56 pixels out), each with half the
+  main blast's damage and its reach: about 135 pixels from the elemental
+  at level 10. The elemental is gone when they go off, so each blast is
+  its own owner, and allies take every one of them in full.
 - A standing burner keeps one ember under its feet: a new one drops (every
   4 ticks) only where no ember of its own still burns, so embers trail
   behind a moving elemental and do not pile up under a still one.
@@ -278,9 +348,10 @@ for the rest of the level.
 
 **Everyone.**
 - A toggle (DIG IN, IMMOLATE) ignores its own second press for 10 ticks.
-- Holding Special repeats a mine, a hasten, a hurl or a shove once per tick
-  while magic lasts, as it repeats a bomb. BLINK, GLIMMER, KNIFE FAN and
-  BONE STORM wait out their own animation or pause before the next.
+- Holding Special repeats a mine, a hasten or a WARBAND call once per tick
+  while magic lasts, as it repeats a bomb (a WARBAND call stops at six
+  grunts). BLINK and SWAP wait out their rest, and SIPHON, GLIMMER and
+  KNIFE FAN their attack pause, before the next.
 - With the setting off two things still look different: in SDL a foe now
   sees the thief's poison cloud fade in and out instead of popping in at
   full, and a curses player sees their own team's cloud glyph during those
@@ -297,21 +368,59 @@ Every refusal is at most 24 characters, so it fits the compact HUD. The
 |---|---|
 | MINE | `MINE LIMIT REACHED`, `COULD NOT CREATE MINE` |
 | WAIL | `NO FOE TO WAIL AT`, `COULD NOT CREATE WAIL` |
-| SIPHON | `PHASED` (an empty touch still spends) |
+| SIPHON | `PHASED`, `SPECIAL BUSY` (an empty touch still spends) |
 | POSSESS | see the table above |
 | PHASE | `ALREADY PHASED`, `COULD NOT PHASE` |
 | BLINK / SWAP | `SPECIAL BUSY`, `NOWHERE TO BLINK` / `NO ONE IN SIGHT`, `SWAP BLOCKED` |
 | GLIMMER | `SPECIAL BUSY` |
 | HASTEN / HASTE SELF | `NO ALLY IN REACH` |
 | WISH | `NO FALLEN ALLY NEARBY`, `COULD NOT RESURRECT` |
-| HOWL / EAT CORPSE | the orc's own |
+| HOWL | the orc's own (`SPECIAL BUSY`) |
+| EAT CORPSE | the orc's own (`ALREADY AT FULL HEALTH`, `NO CORPSE NEARBY`, `NO CORPSE IN RANGE`) |
 | HOOK BLADE / KNIFE FAN | `BLADE ALREADY OUT`, `COULD NOT MAKE A BLADE` / `SPECIAL BUSY` |
-| HURL ORC / SHOVE | `NO ORC BESIDE YOU`, `NO TARGET`, `NO LANDING SPOT` / `NO ONE IN FRONT` |
 | WAR BANNER / WARBAND | `NO CORPSE TO PLANT ON`, `COULD NOT RAISE BANNER` / `WARBAND ALREADY HERE`, `NO ROOM AT THE EDGE` |
-| DIG IN | `SPECIAL BUSY`, `DIG IN SETTLING`, `POSSESSED BODY`, `COULD NOT DIG IN` |
-| BONE WALL / BONE STORM | `NO ROOM FOR A WALL`, `SPECIAL BUSY` |
-| REASSEMBLE / LEGION | `ALREADY WARDED` / `LEGION ALREADY RISING`, `COULD NOT CALL LEGION`; both `SPECIAL BUSY` while dug in |
+| DIG IN | `SPECIAL BUSY`, `DIG IN SETTLING`, `POSSESSED BODY`, `NEED MANA TO STAY DOWN`, `COULD NOT DIG IN` |
+| BONE WALL / BONE STORM | `NO ROOM FOR A WALL` / `NO WALL STANDING`; both `SPECIAL BUSY` while dug in |
+| REASSEMBLE / LEGION | `ALREADY WARDED`, `COULD NOT WARD` / `LEGION ALREADY RISING`, `COULD NOT CALL LEGION`; both `SPECIAL BUSY` while dug in |
 | STARBURST | `QUENCH IMMOLATE FIRST` while IMMOLATE burns (otherwise the classic starburst) |
 | IMMOLATE | `IMMOLATE SETTLING`, `COULD NOT IGNITE` |
 | METEOR RAIN | `NO TARGET IN RANGE`, `COULD NOT CALL METEORS`, `QUENCH IMMOLATE FIRST` |
 | REKINDLE / SUPERNOVA | `ALREADY AT FULL HEALTH`, `QUENCH IMMOLATE FIRST` |
+
+## What the HUD shows
+
+The seat that owns a running timed effect sees how long it has left, in
+seconds, in the manner of the frozen-time cell: `POSSESS: 49s`, `PHASE: 4s`,
+`HASTE: 8s`, `DIG IN: 25s`, `REASSEMBLE: 30s`, `IMMOLATE: 12s`,
+`LEGION: 25s`. The SDL HUD draws it in yellow at the foot of the seat's
+view (one row above a running time freeze, which keeps its own row), the
+curses status line adds `POSSESS 49s` after the time, and the text client's
+`state` line gives every living `"timer"` and `"timer_ticks"`. All three
+read one answer, `og::sim::seat_timer`, from fields every snapshot already
+carries, so a mirror shows what the host would. When several run, the one
+ending soonest is shown. With the setting off nothing is shown, the speed
+potion's haste included, so the classic HUD does not change. The banner,
+bone walls, mines, warband grunts and meteor rain are things on the map,
+not countdowns, and are not shown.
+
+The number is the effect's real end. DIG IN, REASSEMBLE and IMMOLATE end
+when their clock or the mana runs out, whichever is first, so after every
+drain their handler cuts the marker's clock down to what the remaining
+mana can buy: a ward bought with 136 magic reads 30 s, and the same ward
+after LEGION has spent the pool reads what the last 16 magic buy (8 s).
+
+## What the DETAILS screen shows
+
+TRAIN -> DETAILS composes the "Character Special Abilities" page from the
+specials table as the session sees it (`og::ui::detail_page`), so the page
+changes with the New Specials setting and can never name a special the
+character does not have. Each special's text is the `detail` on its row in
+the pack. A slot the character has reached is a block: the name in red
+and its text under it; a slot with an alternate in play adds a
+`Shift: <name>` line and the alternate's one-line `detail`. A slot the
+character has not reached yet is one line at the foot of its column,
+`Eat Corpse: lvl 4`. Slots 1 and 2 are in the left column, 3 to 5 in the
+right. A character with no special in play reads `No special abilities.`
+The HIRE box's last line is generated the same way
+(`og::ui::specials_summary`): `Special:` and the slot names in play, in
+slot order.
