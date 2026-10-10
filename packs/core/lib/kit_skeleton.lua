@@ -87,6 +87,20 @@ local function flash_at(self)
   end
 end
 
+-- The ticks a drain that takes `drain` mana every `pulse` ticks can still
+-- pay for: a pulse for every `drain` left in the pool, plus the ticks to
+-- the next pulse (the full pulse right after one). DIG IN and REASSEMBLE
+-- clamp their marker's clock to this, so the countdown a player sees is
+-- the tick the effect really ends, whether the time or the mana runs out
+-- first.
+local function ticks_mana_buys(owner, left, drain, pulse)
+  local phase = og.mod(left, pulse)
+  if phase == 0 then
+    phase = pulse
+  end
+  return og.div(og.trunc(owner.magicpoints), drain) * pulse + phase
+end
+
 -- ---------------------------------------------------------------------------
 -- DIG IN
 -- ---------------------------------------------------------------------------
@@ -164,11 +178,23 @@ local function sink(marker, owner)
   end
 end
 
--- Buried: regenerate, and come up under the first foe that walks over, or
--- when the burrow's time is out.
+-- Buried: pay dig_drain mana every dig_drain_pulse ticks to stay down,
+-- regenerate, and come up under the first foe that walks over, when the
+-- burrow's time is out, or (plainly, nobody to swing at) when the mana
+-- runs dry. A buried skeleton regains no mana: the pool sets the stay.
 local function buried(marker, owner)
   local t = og.tuning(owner)
   local left = marker:lifetime() - 1
+  marker:set_lifetime(left)
+  if og.mod(left, t.dig_drain_pulse) == 0 then
+    if owner.magicpoints < t.dig_drain then
+      pop_up(owner, marker, nil)
+      return
+    end
+    -- magicpoints is a C++ float: per-op rounding.
+    owner.magicpoints = og.fsub(owner.magicpoints, t.dig_drain)
+  end
+  left = og.min(left, ticks_mana_buys(owner, left, t.dig_drain, t.dig_drain_pulse))
   marker:set_lifetime(left)
   if og.mod(left, t.dig_regen_pulse) == 0 then
     owner:heal_clamped(t.dig_regen)
@@ -205,7 +231,9 @@ end
 -- skeleton is HIDDEN (the engine charges a hidden walker nothing), and it
 -- is latched: a held key re-casts every tick, so the burrow ignores presses
 -- for its first kit_latch ticks (silently: a Lua refusal under a held key
--- is never voiced).
+-- is never voiced). Staying down costs mana, so the dig refuses unless at
+-- least dig_min_pool is left after the price: a burrow that would surface
+-- at once is no burrow.
 function M.dig_in(self)
   local t = og.tuning(self)
   local burrow_marker = km.find(self, km.BURROW)
@@ -221,6 +249,9 @@ function M.dig_in(self)
   end
   if lc.mid_teleport(self) then
     return false, "SPECIAL BUSY"
+  end
+  if lc.spare_mp(self, DIG_IN_SLOT) < t.dig_min_pool then
+    return false, "NEED MANA TO STAY DOWN"
   end
   if not km.spawn(self, km.BURROW, t.dig_max) then
     return false, "COULD NOT DIG IN"
@@ -305,35 +336,30 @@ local function wall_burst(self, wall, range)
   end
 end
 
--- The skeleton's own eight-way burst (the elemental's starburst shape).
-local function storm_from_skeleton(self)
-  -- The aim is saved and restored as whole numbers, the way the
-  -- elemental's starburst does it (its C++ original kept the aim in ints).
-  local saved_aim_x = og.trunc(self:lastx())
-  local saved_aim_y = og.trunc(self:lasty())
-  -- magicpoints is a C++ float: per-op float rounding.
-  self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
-  for i = -1, 1 do
-    for j = -1, 1 do
-      if i ~= 0 or j ~= 0 then
-        self:set_lastx(i)
-        self:set_lasty(j)
-        self:fire()
+local function own_wall_standing(self)
+  local weapons = og.weaplist()
+  for i = 1, #weapons do
+    local wall = weapons[i]
+    if wall:family() == WEAP_BONE_WALL then
+      if wall:dead() == 0 then
+        if wall:owner() == self then
+          return true
+        end
       end
     end
   end
-  self:set_lastx(saved_aim_x)
-  self:set_lasty(saved_aim_y)
+  return false
 end
 
--- BONE STORM (45 MP): bones from the skeleton, then every standing wall of
--- THIS skeleton shatters into its own burst, wherever it stands.
+-- BONE STORM (45 MP): every standing wall of THIS skeleton shatters into
+-- its own eight-way burst, wherever it stands. Nothing leaves the skeleton
+-- itself, and with no wall standing there is nothing to shatter: refused,
+-- and a refusal spends nothing.
 local function bone_storm(self)
-  if lc.is_busy(self) then
-    return false, "SPECIAL BUSY"
+  if not own_wall_standing(self) then
+    return false, "NO WALL STANDING"
   end
   local t = og.tuning(self)
-  storm_from_skeleton(self)
   local weapons = og.weaplist()
   for i = 1, #weapons do
     local wall = weapons[i]
@@ -375,14 +401,69 @@ local function warded(self)
 end
 
 -- REASSEMBLE (60 MP): the ward is a bit the engine spends at the top of
--- the next death (the skeleton gets up at a quarter health).
+-- the next death (the skeleton gets up at a quarter health). A WARD marker
+-- keeps the time: the ward lasts ward_ticks, costs ward_drain mana every
+-- ward_drain_pulse ticks while it is armed, and fades when either runs out.
 local function reassemble(self)
   if warded(self) then
     return false, "ALREADY WARDED"
   end
+  -- A ward a death spent this tick can still have its marker: retire it, or
+  -- its old clock would end the new ward.
+  local stale = km.find(self, km.WARD)
+  if stale then
+    km.finish(stale)
+  end
   self:set_kit_state(self:kit_state() | C.KIT_WARD)
+  if not km.spawn(self, km.WARD, og.tuning(self).ward_ticks) then
+    self:set_kit_state(self:kit_state() & ~C.KIT_WARD)
+    return false, "COULD NOT WARD"
+  end
   flash_at(self)
   return true
+end
+
+-- The ward runs out (time or mana): the bit goes, the marker goes, and the
+-- fade is told to the skeleton's seat. A bot skeleton has no seat, so its
+-- fade is told to everyone, the way the engine tells everyone a skeleton
+-- "reassembles!".
+local function ward_fades(owner, marker)
+  owner:set_kit_state(owner:kit_state() & ~C.KIT_WARD)
+  km.finish(marker)
+  og.emit_notification(og.entity_display_name(owner, "Skeleton")
+    .. "'s ward fades", nil, owner)
+end
+
+-- WARD marker. A death that spent the ward cleared the bit: the marker
+-- just goes, silently (the skeleton already stood up). Otherwise it counts
+-- down, drains, and keeps its clock to what the mana can still buy.
+local function ward_window(marker)
+  local owner = marker:owner()
+  if not owner then
+    km.finish(marker)
+    return
+  end
+  if not warded(owner) then
+    km.finish(marker)
+    return
+  end
+  local t = og.tuning(owner)
+  local left = marker:lifetime() - 1
+  marker:set_lifetime(left)
+  if left <= 0 then
+    ward_fades(owner, marker)
+    return
+  end
+  if og.mod(left, t.ward_drain_pulse) == 0 then
+    if owner.magicpoints < t.ward_drain then
+      ward_fades(owner, marker)
+      return
+    end
+    -- magicpoints is a C++ float: per-op rounding.
+    owner.magicpoints = og.fsub(owner.magicpoints, t.ward_drain)
+  end
+  left = og.min(left, ticks_mana_buys(owner, left, t.ward_drain, t.ward_drain_pulse))
+  marker:set_lifetime(left)
 end
 
 -- LEGION (60 MP): a window during which every foe this skeleton kills
@@ -442,6 +523,11 @@ function M.on_kill(self, victim)
   if og.family_flag("living", victim:family(), "is_undead") then
     return true
   end
+  -- Half the kills rise: a coin, drawn only for a kill that could rise.
+  -- Tails leaves the corpse (and a hero's life gem) where it fell.
+  if og.rand(2) == 0 then
+    return true
+  end
   local risen = og.add_ob("living", LIVING_SKELETON)
   if not risen then
     return true
@@ -475,22 +561,11 @@ function M.ai_dig_in(self)
   if not hp_below(self, 6, 10) then
     return false
   end
-  return foe_count_within(self, DIG_FOES_RANGE) >= 2
-end
-
-local function own_wall_standing(self)
-  local weapons = og.weaplist()
-  for i = 1, #weapons do
-    local wall = weapons[i]
-    if wall:family() == WEAP_BONE_WALL then
-      if wall:dead() == 0 then
-        if wall:owner() == self then
-          return true
-        end
-      end
-    end
+  -- A bot that cannot stay down does not dig.
+  if lc.spare_mp(self, DIG_IN_SLOT) < og.tuning(self).dig_min_pool then
+    return false
   end
-  return false
+  return foe_count_within(self, DIG_FOES_RANGE) >= 2
 end
 
 -- A wall when hurt with a foe close; the storm once a wall stands and the
@@ -543,6 +618,7 @@ end
 
 km.register(km.BURROW, burrow)
 km.register(km.LEGION, legion_window)
+km.register(km.WARD, ward_window)
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:skeleton  specials dig_in / bone_wall / reassemble, on_kill

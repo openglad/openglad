@@ -144,13 +144,16 @@ og.family("living", {
     -- (plus twice the level).
     rain_range = 160,
     rain_ticks = 60,
-    rain_cadence = 5,
+    rain_cadence = 6,
     rain_spread = 40,
-    rain_damage_base = 10,
-    -- REKINDLE heals rekindle_hp plus 4 per level; SUPERNOVA's blast adds
-    -- nova_per_level per level to the health it burns.
+    rain_damage_base = 8,
+    -- REKINDLE heals rekindle_hp plus 4 per level; SUPERNOVA's blast is
+    -- one and a half times the health it burns plus nova_per_level per
+    -- level, and eight blasts of half that go off in a ring nova_ring_px
+    -- out from it.
     rekindle_hp = 40,
-    nova_per_level = 5,
+    nova_per_level = 15,
+    nova_ring_px = 40,
   },
 
   level_up = level_up,
