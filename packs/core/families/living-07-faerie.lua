@@ -18,7 +18,7 @@ og.family("living", {
              train = { strength = 25, dexterity = 6, constitution = 12,
                        intelligence = 8, armor = 50, level = 200 } },
   specials = {
-    { id = "blink",   name = "BLINK",   mp_cost = 8,   new_kit = true, alternate = { name = "SWAP", mp_cost = 20 }, cast = kf.blink_or_swap, ai = kf.ai_blink },
+    { id = "blink",   name = "BLINK",   mp_cost = 20,  new_kit = true, alternate = { name = "SWAP", mp_cost = 24 }, cast = kf.blink_or_swap, ai = kf.ai_blink },
     { id = "glimmer", name = "GLIMMER", mp_cost = 24,  new_kit = true, cast = kf.glimmer, ai = kf.ai_glimmer },
     { id = "hasten",  name = "HASTEN",  mp_cost = 30,  new_kit = true, alternate = { name = "HASTE SELF" }, cast = kf.hasten, ai = kf.ai_hasten },
     { id = "wish",    name = "WISH",    mp_cost = 100, new_kit = true, cast = kf.wish, ai = kf.ai_wish },
@@ -53,9 +53,12 @@ og.family("living", {
   radar_jitter = 0,
 
   tuning = {
-    -- Blink: hop range = base + per_level * level (px, same floor)
+    -- Blink: hop length = base + per_level * level (px, same floor; shorter
+    -- only when a wall is in the way); the rest after a blink or a swap
+    -- (ticks before she may hop again, on top of her attack pause)
     blink_base = 24,
-    blink_per_level = 6,
+    blink_per_level = 2,
+    blink_cooldown = 12,
     -- Swap: reach (px) to the nearest walker in sight, ally or foe
     swap_range = 80,
     -- Hasten: reach (px) to an ally; the speed potion's timer (ticks) and bonus (px/tick)

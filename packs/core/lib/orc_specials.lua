@@ -88,5 +88,5 @@ end
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:orc          HOWL cast = orc_specials.yell, default_cast = orc_specials.eat_corpse
---   core:orc_captain  through kit_captain.howl_or_eat (the shift picks EAT CORPSE)
+--   core:orc_captain  through kit_captain.howl and kit_captain.eat_corpse
 return M

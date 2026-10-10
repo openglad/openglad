@@ -665,9 +665,10 @@ TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
 
 // The faerie's BLINK with New Specials on, through the real walker::special()
 // on a level-loaded SDL session (the og_unit_kits rows drive the same cast on
-// a bare test world). A level-3 faerie hops within blink_base + per_level *
-// level = 24 + 6 * 3 = 42 px on each axis, pays the declared 8 MP, and
-// lands in the appear row (ANI_TELE_IN), so a held key the next tick is
+// a bare test world). A level-3 faerie hops blink_base + per_level * level =
+// 24 + 2 * 3 = 30 px along one of eight directions (a third of that, 10 px,
+// at the shortest when walls crowd her), pays the declared 20 MP, and rests
+// a second (busy: her attack pause plus 12), so a held key the next tick is
 // refused as SPECIAL BUSY and spends nothing.
 TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
 {
@@ -679,7 +680,7 @@ TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
     ASSERT_EQ(3, static_cast<int>(w->stats()->level()));
     w->set_current_special(1);
     w->set_shifter_down(0);
-    ASSERT_EQ(8, static_cast<int>(og::sim::cast_cost(*w, 1, false)))
+    ASSERT_EQ(20, static_cast<int>(og::sim::cast_cost(*w, 1, false)))
         << "BLINK's declared price";
     // One pinned stream, so where the hop lands is the same in every order.
     world.rng_.state_ = 0x5eedb11cu;
@@ -690,20 +691,23 @@ TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
     walker::SpecialFailure why = walker::SpecialFailure::None;
     std::string reason;
     ASSERT_TRUE(w->special(&why, &reason)) << "BLINK refused: " << reason;
-    constexpr Sint32 kRange = 24 + 6 * 3;
-    EXPECT_TRUE(w->xpos() != from_x || w->ypos() != from_y)
-        << "the faerie moved";
-    EXPECT_LE(std::abs(w->xpos() - from_x), kRange) << "within range in x";
-    EXPECT_LE(std::abs(w->ypos() - from_y), kRange) << "within range in y";
-    EXPECT_FLOAT_EQ(mp_before - 8.0f, w->stats()->magicpoints())
-        << "BLINK costs 8";
-    EXPECT_EQ(ANI_TELE_IN, w->ani_type()) << "she appears where she landed";
+    constexpr Sint32 kRange = 24 + 2 * 3;
+    const Sint32 moved_x = std::abs(w->xpos() - from_x);
+    const Sint32 moved_y = std::abs(w->ypos() - from_y);
+    EXPECT_LE(moved_x, kRange) << "within the hop in x";
+    EXPECT_LE(moved_y, kRange) << "within the hop in y";
+    EXPECT_GE(std::max(moved_x, moved_y), kRange / 3)
+        << "at least the shortest fallback hop";
+    EXPECT_FLOAT_EQ(mp_before - 20.0f, w->stats()->magicpoints())
+        << "BLINK costs 20";
+    EXPECT_FLOAT_EQ(w->fire_frequency() + 12.0f, w->busy())
+        << "a second's rest on top of her attack pause";
 
     const Sint32 landed_x = w->xpos();
     const float mp_landed = w->stats()->magicpoints();
     reason.clear();
     EXPECT_FALSE(w->special(&why, &reason))
-        << "a press while she appears is refused";
+        << "a press while she rests is refused";
     EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
     EXPECT_EQ("SPECIAL BUSY", reason);
     EXPECT_EQ(landed_x, w->xpos());
@@ -866,15 +870,17 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 //                  press right after it is IMMOLATE SETTLING (the ten-tick
 //                  latch), and with the fire still burning slots 3-5 refuse
 //                  QUENCH IMMOLATE FIRST.
-//   faerie    127  BLINK and SWAP; GLIMMER both; HASTEN and HASTE SELF;
-//                  WISH raises the soldier's stain and pops her, so the
-//                  shifted slot 4 and slot 5 find her dead.
+//   faerie    111  BLINK and SWAP; GLIMMER both; HASTEN finds no ally in
+//                  reach (the hop and the swap left her more than 40 px from
+//                  the soldier), HASTE SELF casts; WISH raises the soldier's
+//                  stain and pops her, so the shifted slot 4 and slot 5 find
+//                  her dead.
 //   ghost     127  SCARE and WAIL; SIPHON twice; POSSESS takes the orc and
 //                  the shifted press lets it go; PHASE, then ALREADY PHASED.
-//   big orc   205  the captain: HOWL, but EAT CORPSE is refused at full
-//                  health; HOOK BLADE and KNIFE FAN; HURL ORC finds NO ORC
-//                  BESIDE YOU and SHOVE NO ONE IN FRONT (the foe stands
-//                  behind the ally); WAR BANNER on the stain, then WARBAND.
+//   big orc   243  the captain: HOWL on both arms (it has no alternate, so
+//                  the shifted press is a howl too); EAT CORPSE is refused at
+//                  full health on both arms; HOOK BLADE and KNIFE FAN; WAR
+//                  BANNER on the stain, then WARBAND.
 TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
 {
     struct SweepCase
@@ -894,7 +900,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
         {FAMILY_THIEF, "thief", 255u},
         {FAMILY_SKELETON, "skeleton", 240u},
         {FAMILY_FIREELEMENTAL, "fire elemental", 7u},
-        {FAMILY_FAERIE, "faerie", 127u},
+        {FAMILY_FAERIE, "faerie", 111u},
         {FAMILY_DRUID, "druid", 240u},
         {FAMILY_ORC, "orc", 3u},
         {FAMILY_BARBARIAN, "barbarian", 0u},
@@ -902,7 +908,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
         {FAMILY_SMALL_SLIME, "small slime", 0u},
         {FAMILY_MEDIUM_SLIME, "medium slime", 0u},
         {FAMILY_SLIME, "slime", 3u},
-        {FAMILY_BIG_ORC, "big orc", 205u},
+        {FAMILY_BIG_ORC, "big orc", 243u},
         {FAMILY_GOLEM, "golem", 0u},
         {FAMILY_GIANT_SKELETON, "giant skeleton", 0u},
         {FAMILY_TOWER1, "tower", 0u},
@@ -911,7 +917,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
     world.new_specials = 1;
-    // The new kits move walkers (BLINK, SWAP, SHOVE) and stand things up
+    // The new kits move walkers (BLINK, SWAP) and stand things up
     // (BONE WALL, WAR BANNER), so their outcomes read the ground under the
     // whole neighbourhood, not just the caster's cell. The session's grid
     // is whatever level the tests before this one left, so for the sweep
