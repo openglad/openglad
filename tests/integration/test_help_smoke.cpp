@@ -3,6 +3,9 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/ui/picker_state.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/interface/ui/scroll_view_layout.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -13,6 +16,7 @@
 #include <functional>
 #include <list>
 #include <string>
+#include <string_view>
 #include <memory>
 #include <unistd.h>
 
@@ -29,6 +33,8 @@ Sint32 help_testing_exercise_menu_hooks();
 void help_testing_set_force_scroll_text(bool enabled);
 void help_testing_set_page_state(bool page_up, bool page_down);
 Sint32 help_testing_controls_flowed_max_width();
+Sint32 help_testing_classes_flowed_max_width();
+std::string help_testing_classes_text();
 void help_testing_set_line_key_state(bool line_up, bool line_down);
 void help_testing_set_jump_key_state(bool home_down, bool end_down);
 Sint32 help_testing_query_linesdown();
@@ -469,6 +475,67 @@ TEST(HelpSmoke, controls_help_lines_flow_within_frame_budget)
         << "a Controls line wrapped against the full-width budget (or the "
            "wide action-key lines were removed)";
     EXPECT_LE(max_width, 50);
+}
+
+// The CLASSES tab (cfg/help_classes.txt) is written to fit the same 50-char
+// frame budget: nothing wraps. A file that failed to load is replaced by a
+// one-line error message that would also fit, so the test checks that the
+// real file's first line is there as well.
+// RED: append a 51-character line to cfg/help_classes.txt -> -1.
+TEST(HelpSmoke, classes_help_lines_flow_within_frame_budget)
+{
+    const Sint32 max_width = help_testing_classes_flowed_max_width();
+    ASSERT_NE(-1, max_width)
+        << "a line of cfg/help_classes.txt wrapped against the full-width "
+           "budget";
+    EXPECT_LE(max_width, 50);
+    EXPECT_NE(std::string::npos,
+              help_testing_classes_text().find("*** CHARACTER CLASSES ***"))
+        << "cfg/help_classes.txt did not load";
+}
+
+// The CLASSES tab names every special the New Specials setting adds, and
+// says once that they need the setting. The list comes from the specials
+// table the game loads, so a special added to a class pack without a line
+// in the help file fails here. An alternate counts as new when its own row
+// is new or when it sits on a new slot (a hidden slot hides its alternate).
+// REDs: delete the GHOST entry (Siphon, Possess, Phase are missing); delete
+// the text "Haste Self"; delete the note's two lines.
+TEST(HelpSmoke, classes_help_names_every_new_special)
+{
+    const std::string text = help_testing_classes_text();
+    int checked = 0;
+    const auto expect_named = [&](const char* hud_name, int family_id) {
+        const std::string title = og::ui::special_title(hud_name);
+        ++checked;
+        EXPECT_NE(std::string::npos, text.find(title))
+            << "family " << family_id << ": the HELP tab's CLASSES page "
+            << "does not name \"" << title << "\"";
+    };
+    for (int family_id = 0; family_id < 256; family_id++)
+    {
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        if (fd == nullptr)
+            continue;
+        for (int slot = 1; slot < FD_NUM_SPECIALS; slot++)
+        {
+            if (fd->special_new_kit[slot])
+                expect_named(fd->special_names[slot], family_id);
+            const bool new_alternate =
+                fd->special_new_kit[slot] || fd->alternate_new_kit[slot];
+            if (new_alternate &&
+                std::string_view(fd->alternate_names[slot]) != "NONE")
+                expect_named(fd->alternate_names[slot], family_id);
+        }
+    }
+    // 25 starred names in the file plus Haste Self. This moves only when a
+    // new special is added or removed; it also proves the family table was
+    // loaded, so the loop above cannot pass by checking nothing.
+    EXPECT_EQ(26, checked);
+    EXPECT_NE(std::string::npos,
+              text.find("* needs Game Settings -> Gameplay FX\n"
+                        "  -> New Specials (on by default)."))
+        << "the note naming the New Specials setting is missing";
 }
 
 static int overlong_scenario_injector_thread(void* data)

@@ -52,6 +52,49 @@ Sint32 help_testing_controls_flowed_max_width()
 	return static_cast<Sint32>(max_len);
 }
 
+// The CLASSES tab's text, read fresh from cfg/help_classes.txt: the cache is
+// dropped first so the real file is read whatever an earlier test left in it.
+static void help_testing_reload_help_files()
+{
+	help_files_loaded = false;
+	load_help_files();
+}
+
+// The CLASSES twin of the Controls measure above: flow the loaded file the
+// way the help screen does (help_flow_tab_lines) and report the widest line,
+// or -1 if any authored line had to wrap.
+Sint32 help_testing_classes_flowed_max_width()
+{
+	help_testing_reload_help_files();
+	std::list<std::string> source(classes_help_lines.begin(),
+	                              classes_help_lines.end());
+	const std::vector<std::string> flowed =
+		og::core::wrap_lines(source, help_char_budget(kHelpTextBoxWidth));
+	if (flowed.size() != classes_help_lines.size())
+		return -1;
+	std::size_t max_len = 0;
+	for (const std::string& line : flowed)
+	{
+		if (line.size() > max_len)
+			max_len = line.size();
+	}
+	return static_cast<Sint32>(max_len);
+}
+
+// The CLASSES tab's lines as loaded, joined by newlines.
+std::string help_testing_classes_text()
+{
+	help_testing_reload_help_files();
+	std::string text;
+	for (const std::string& line : classes_help_lines)
+	{
+		if (&line != &classes_help_lines.front())
+			text += '\n';
+		text += line;
+	}
+	return text;
+}
+
 // #168: injector probes for the full-screen help screen — the active tab and
 // the active tab's current page, published by the engine hooks.
 Sint32 help_testing_query_active_tab()
