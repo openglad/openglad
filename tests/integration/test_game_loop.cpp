@@ -11910,8 +11910,9 @@ std::vector<Scene> scenes()
             {"the second wail scatters the second pack", pack_wailed(1)},
             {"the third wail scatters the third", pack_wailed(2)},
         };
-        sc.key_tell = 3;
-        sc.key_offset = 2;
+        // The key still: the first wail's cloud among the first pack.
+        sc.key_tell = 0;
+        sc.key_offset = 4;
         all.push_back(sc);
     }
 
@@ -11987,6 +11988,10 @@ std::vector<Scene> scenes()
                         hp_of(g) >= film.mark("ghost.hp") + 40.0f;
              }},
         };
+        // The key still: the first touch, the orc beside the ghost and the
+        // heal number over it.
+        sc.key_tell = 0;
+        sc.key_offset = 2;
         all.push_back(sc);
     }
 
@@ -13598,8 +13603,8 @@ std::vector<Scene> scenes()
     // THE CLASSIC TIMERS, with New Specials OFF on server and display: a
     // level-10 thief casts CLOAK (slot 2) and stands. The countdown cell
     // reads INVISIBLE and counts the cloak down, beside the classic HUD.
-    // CLOAK costs 125, more than a level-10 thief's pool, so the scene
-    // fills the pool to 125 first. The cloak lasts 20 + rand(20) * 10
+    // CLOAK costs 125; a level-10 thief's own pool (256) pays for it, and
+    // the scene starts that pool full. The cloak lasts 20 + rand(20) * 10
     // ticks; the pinned generator rolls the same length every run, so the
     // two readings below are the run's own.
     {
@@ -13608,7 +13613,13 @@ std::vector<Scene> scenes()
         sc.family = FAMILY_THIEF;
         sc.slot = 2;
         sc.new_specials = 0;
-        sc.stage = [](Film& film) { fill_mana(film.hero(), 125.0f); };
+        sc.stage = [](Film& film) {
+            walker* thief = film.hero();
+            fill_mana(thief, 0.0f);
+            printf("  classic_cloak_countdown: thief mp %.1f of %.1f\n",
+                   thief->stats()->magicpoints(),
+                   thief->stats()->max_magicpoints());
+        };
         // A one-frame tap: the pool pays for one cloak.
         sc.keys = [](Film&, int f) {
             Keys k;
@@ -13646,6 +13657,12 @@ std::vector<Scene> scenes()
                  return film.frame > 65 && t != nullptr &&
                         t->invisibility_left() == 0 &&
                         seat_timer_text(film).empty();
+             }},
+            {"the thief's own pool is deep enough for the cloak",
+             [](Film& film) {
+                 walker* t = film.hero();
+                 return film.frame == 0 && t != nullptr &&
+                        t->stats()->max_magicpoints() >= 125.0f;
              }},
         };
         sc.frames = 133;
