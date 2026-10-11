@@ -10665,18 +10665,20 @@ std::uint32_t strip_level(GameWorld& w, const std::vector<std::uint32_t>& keep,
 }
 
 // Loads gladiator level 1 for one seat with `family` at level 10 and the
-// New Specials setting on, and strips it to that hero (plus the dormant
-// sentinel). Returns the hero's entity id, 0 on failure.
-std::uint32_t load_one_hero(int family, std::uint32_t& sentinel_id)
+// New Specials setting as given (on unless a test says otherwise), and
+// strips it to that hero (plus the dormant sentinel). Returns the hero's
+// entity id, 0 on failure or when the server does not read that setting.
+std::uint32_t load_one_hero(int family, std::uint32_t& sentinel_id,
+                            short new_specials = 1)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     gameplay_rec::build_save(s, "gladiator", 1, 1, {family}, 10);
-    s->save_data.new_specials = 1;
+    s->save_data.new_specials = new_specials;
     s->world().rng_.state_ = kScenarioDisplayRngPin;
     std::srand(gameplay_rec::kClinicLibcRandPin);
     glad_init();
     screen* const server = server_screen();
-    if (server == nullptr || server->world().new_specials != 1)
+    if (server == nullptr || server->world().new_specials != new_specials)
         return 0;
     server->world().rng_.state_ = kScenarioAuthorityRngPin;
     walker* const hero = gameplay_rec::find_seat_control(server->world());
@@ -11307,6 +11309,10 @@ struct Scene
     int family = FAMILY_SOLDIER;
     int slot = 1;
     int frames = 120;
+    // The level every roster hero starts at, and the New Specials setting
+    // the scene is played with (on server and display alike).
+    int level = 10;
+    short new_specials = 1;
     // Further roster families (heroes on the seat's team, AI-driven); the
     // seat drives the first, the caster.
     std::vector<int> roster_extra;
@@ -11454,8 +11460,8 @@ void record(const Scene& sc, Result& out)
     trace_clear();
     std::vector<int> roster = {sc.family};
     roster.insert(roster.end(), sc.roster_extra.begin(), sc.roster_extra.end());
-    gameplay_rec::build_save(s, "gladiator", 1, 1, roster, 10);
-    s->save_data.new_specials = 1;
+    gameplay_rec::build_save(s, "gladiator", 1, 1, roster, sc.level);
+    s->save_data.new_specials = sc.new_specials;
     s->world().rng_.state_ = kDisplayRngPin;
     std::srand(kLibcRandPin);
     glad_init();
@@ -11469,9 +11475,10 @@ void record(const Scene& sc, Result& out)
     film.display = s;
     film.server = new_specials_mirror::server_screen();
     ASSERT_NE(nullptr, film.server) << "the films need the transport shadow";
-    ASSERT_EQ(1, film.server->world().new_specials)
-        << "the films are recorded with New Specials on";
-    ASSERT_EQ(1, s->world().new_specials);
+    ASSERT_EQ(sc.new_specials, film.server->world().new_specials)
+        << "the server plays the scene with its own New Specials setting";
+    ASSERT_EQ(sc.new_specials, s->world().new_specials)
+        << "the display mirrors the scene's New Specials setting";
     film.server->world().rng_.state_ = kAuthorityRngPin;
 
     walker* const hero = gameplay_rec::find_seat_control(film.server->world());
@@ -12459,16 +12466,22 @@ std::vector<Scene> scenes()
         all.push_back(sc);
     }
 
-    // ORC CAPTAIN: HOWL (slot 1) freezes the soldiers charging him, EAT
-    // CORPSE (slot 2) on the body at his feet heals him, and the soldiers
-    // thaw and fight on. The films hold no "next special" key, so once the
-    // captain stands on the corpse the scene puts the seat's hero on slot 2,
-    // as a press of that key would.
+    // ORC CAPTAIN at level 1 (a freshly promoted orc): HOWL (slot 1) and
+    // EAT CORPSE (slot 2) are both open from level 1. The howl freezes the
+    // elves charging him (an elf's constitution is low, so a level-1 howl
+    // still stuns it), he steps onto the body at his feet, and EAT CORPSE
+    // heals him; the elves thaw and fight on. The films hold no "next
+    // special" key, so once the captain stands on the corpse the scene puts
+    // the seat's hero on slot 2, as a press of that key would. His pool is
+    // 25 and the howl spends all of it; a level-1 captain wins back one
+    // point in about seven ticks, so the scene refills his pool when he
+    // reaches the corpse (the meal costs 20).
     {
         Scene sc;
         sc.name = "captain_howl_eat";
         sc.family = FAMILY_BIG_ORC;
         sc.slot = 1;
+        sc.level = 1;
         sc.stage = [](Film& film) {
             walker* captain = film.hero();
             captain->stats()->set_hitpoints(0.5f * captain->stats()->max_hitpoints());
@@ -12480,9 +12493,9 @@ std::vector<Scene> scenes()
             film.marks["stain.cx"] =
                 static_cast<float>(stain->xpos() + stain->sizex() / 2);
             // On the grass: the cobbles below the captain are a wall top.
-            add_actor(film, "foe1", FAMILY_SOLDIER, 1, 84, -10)->set_act_type(ACT_GUARD);
-            add_actor(film, "foe2", FAMILY_SOLDIER, 1, 100, 12)->set_act_type(ACT_GUARD);
-            add_actor(film, "foe3", FAMILY_SOLDIER, 1, -80, -6)->set_act_type(ACT_GUARD);
+            add_actor(film, "foe1", FAMILY_ELF, 1, 84, -10)->set_act_type(ACT_GUARD);
+            add_actor(film, "foe2", FAMILY_ELF, 1, 100, 12)->set_act_type(ACT_GUARD);
+            add_actor(film, "foe3", FAMILY_ELF, 1, -80, -6)->set_act_type(ACT_GUARD);
             for (const char* n : {"foe1", "foe2", "foe3"})
                 mark_hp(film, n);
         };
@@ -12494,6 +12507,7 @@ std::vector<Scene> scenes()
                 film.marks.count("slot2") == 0)
             {
                 captain->set_current_special(2);
+                fill_mana(captain, 0.0f);
                 film.marks["slot2"] = 1.0f;
             }
             // The slot the captain is on when the corpse goes.
@@ -12509,7 +12523,10 @@ std::vector<Scene> scenes()
             const float near =
                 gap(captain, nearest_seen(film, captain, {"foe1", "foe2", "foe3"}));
             Keys k;
-            k.special = cue(film, "howl", f, f >= 8 && near <= 36.0f, 40);
+            // One-frame taps: the pool pays for one cast, and a held second
+            // frame would only put "NOT ENOUGH MP" on the screen.
+            k.special = cue(film, "howl", f, f >= 8 && near <= 36.0f, 40) &&
+                        f == cued(film, "howl");
             const int howl = cued(film, "howl");
             if (f < howl + 4 || captain == nullptr)
                 return k;
@@ -12526,15 +12543,27 @@ std::vector<Scene> scenes()
             }
             const int arrived = static_cast<int>(film.mark("arrived"));
             if (f < arrived + 8)
-                return special_at(f, arrived + 2);
+            {
+                Keys eat;
+                eat.special = f == arrived + 2;
+                return eat;
+            }
             return fight_keys(captain,
                               nearest_seen(film, captain, {"foe1", "foe2", "foe3"}));
         };
         sc.tells = {
-            {"the howl freezes a charging foe",
+            {"the captain is level 1",
              [](Film& film) {
+                 walker* c = film.hero_seen();
+                 return film.frame == 0 && c != nullptr &&
+                        c->stats()->level() == 1;
+             }},
+            {"the howl freezes a charging elf",
+             [](Film& film) {
+                 if (film.frame <= cued(film, "howl"))
+                     return false;
                  for (const char* n : {"foe1", "foe2", "foe3"})
-                     if (walker* o = film.actor(n))
+                     if (walker* o = film.actor_seen(n))
                          if (o->stats()->frozen_delay() > 0)
                              return true;
                  return false;
@@ -12550,7 +12579,7 @@ std::vector<Scene> scenes()
              }},
             {"the meal came from slot 2, EAT CORPSE, unshifted",
              [](Film& film) { return film.mark("meal.slot") == 2.0f; }},
-            {"the soldiers thaw and the fight goes on",
+            {"the elves thaw and the fight goes on",
              [](Film& film) {
                  return film.marks.count("arrived") != 0 &&
                         film.frame > static_cast<int>(film.mark("arrived")) + 8 &&
@@ -12559,7 +12588,7 @@ std::vector<Scene> scenes()
                          hurt_since_staging(film, "foe3"));
              }},
         };
-        sc.key_tell = 1;
+        sc.key_tell = 2;
         sc.key_offset = 3;
         all.push_back(sc);
     }
@@ -13563,6 +13592,66 @@ std::vector<Scene> scenes()
         };
         sc.key_tell = 0;
         sc.key_offset = 4;
+        all.push_back(sc);
+    }
+
+    // THE CLASSIC TIMERS, with New Specials OFF on server and display: a
+    // level-10 thief casts CLOAK (slot 2) and stands. The countdown cell
+    // reads INVISIBLE and counts the cloak down, beside the classic HUD.
+    // CLOAK costs 125, more than a level-10 thief's pool, so the scene
+    // fills the pool to 125 first. The cloak lasts 20 + rand(20) * 10
+    // ticks; the pinned generator rolls the same length every run, so the
+    // two readings below are the run's own.
+    {
+        Scene sc;
+        sc.name = "classic_cloak_countdown";
+        sc.family = FAMILY_THIEF;
+        sc.slot = 2;
+        sc.new_specials = 0;
+        sc.stage = [](Film& film) { fill_mana(film.hero(), 125.0f); };
+        // A one-frame tap: the pool pays for one cloak.
+        sc.keys = [](Film&, int f) {
+            Keys k;
+            k.special = f == 4;
+            return k;
+        };
+        sc.tells = {
+            {"the display plays with New Specials off",
+             [](Film& film) {
+                 return film.frame == 0 &&
+                        film.display->world().new_specials == 0;
+             }},
+            {"the thief is cloaked",
+             [](Film& film) {
+                 walker* t = film.hero_seen();
+                 return t != nullptr && t->invisibility_left() > 0;
+             }},
+            // This run's roll: 20 + 9 * 10 = 110 ticks, 109 left once the
+            // cast frame has ticked, 108 on the frame after (9 s).
+            {"the cell reads INVISIBLE: 9s the frame after the cast",
+             [](Film& film) {
+                 return film.frame == 5 &&
+                        seat_timer_text(film) == "INVISIBLE: 9s" &&
+                        hud_drew("INVISIBLE: 9s");
+             }},
+            {"and counts down (INVISIBLE: 4s five seconds on)",
+             [](Film& film) {
+                 return film.frame == 65 &&
+                        seat_timer_text(film) == "INVISIBLE: 4s" &&
+                        hud_drew("INVISIBLE: 4s");
+             }},
+            {"the cloak runs out and the cell clears",
+             [](Film& film) {
+                 walker* t = film.hero_seen();
+                 return film.frame > 65 && t != nullptr &&
+                        t->invisibility_left() == 0 &&
+                        seat_timer_text(film).empty();
+             }},
+        };
+        sc.frames = 133;
+        // The key still: the cloaked thief and the cell a few seconds on.
+        sc.key_tell = 3;
+        sc.key_offset = 0;
         all.push_back(sc);
     }
 
