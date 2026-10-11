@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# New Specials proof media: one GIF per new special, plus three of a bot
-# using one.
+# New Specials proof media: one GIF per new special, three of a bot using
+# one, and one of a classic special's countdown with the setting off.
 #
 # Runs GameLoop.zz_capture_new_specials (tests/integration/test_game_loop.cpp)
 # from the repository root with SDL's dummy drivers and a throwaway config
 # directory, so a run can never rewrite cfg/openglad.yaml. The test plays each
-# scene in the real game with the New Specials setting on, presses the keys a
-# player would, and fails if the special does not visibly happen. It writes
+# scene in the real game with the New Specials setting the scene names (on,
+# except where a scene turns it off), presses the keys a player would, and
+# fails if the special does not visibly happen. It writes
 # one P6 frame per game tick plus key.txt (the frame that shows the special).
 #
 # For every scene this script writes, into the output directory:
