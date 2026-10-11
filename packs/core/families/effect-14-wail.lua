@@ -32,6 +32,9 @@ og.family("effect", {
     -- hops left frightens its foe and forks no further, so the chain ends.
     wail_fork_px = 120,
     wail_hops = 3,
+    -- A wailed foe flees for the scare's fright divided by
+    -- wail_fright_divisor: a start, not the scare's long rout.
+    wail_fright_divisor = 4,
   },
 
   on_act = wail.on_act,

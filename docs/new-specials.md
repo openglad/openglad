@@ -236,11 +236,14 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 **Ghost.**
 - WAIL is a small puff of the scare's own sparkles (`expand8.png`), not a
   bolt. It travels 6 pixels a tick for up to 60 ticks, homes on its foe's
-  centre and frights it when its 8x8 core touches; then a fresh puff hops
-  on to a foe within 120 pixels of the one it struck, at most three more
-  times. It does not treat fliers differently. Its numbers
-  (`wail_bolt_life`, `wail_bolt_step`, `wail_fork_px`, `wail_hops`,
-  `wail_frame_ticks`) are on the `core:wail` family, not the ghost.
+  centre and frights it when its 8x8 core touches, for a quarter of the
+  scare's time (the scare's fright divided by `wail_fright_divisor`, a
+  hero's constitution roll taken off after the cut: 62 ticks from a level
+  10 ghost, 93 at the scare's ceiling); then a fresh puff hops on to a
+  foe within 120 pixels of the one it struck, at most three more times.
+  It does not treat fliers differently. Its numbers (`wail_bolt_life`,
+  `wail_bolt_step`, `wail_fork_px`, `wail_hops`, `wail_frame_ticks`,
+  `wail_fright_divisor`) are on the `core:wail` family, not the ghost.
 - SIPHON touches once per attack pause: a tap is one touch, and a held key
   touches again only when the ghost's pause has run (7 ticks for a bare
   ghost, a little less for a nimble hero). Inside the pause it answers

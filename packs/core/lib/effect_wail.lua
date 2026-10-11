@@ -61,9 +61,11 @@ end
 
 -- The bolt reached its foe: frighten it away from the ghost, then fork.
 local function strike(self, leader, owner)
-  -- The scare's own fright and draw order (effect_ghost_scare.lua): the
-  -- duration first, then the constitution resist, drawn only for a hero.
-  local fright = og.scare_duration(owner.level)
+  -- The scare's own draw order (effect_ghost_scare.lua): the duration
+  -- first, a wail_fright_divisor-th of the scare's, then the constitution
+  -- resist, drawn only for a hero.
+  local fright = og.div(og.scare_duration(owner.level),
+                        og.tuning(self).wail_fright_divisor)
   if leader:has_guy() then
     local con_roll = og.rand0(leader:g_constitution())
     fright = fright - con_roll

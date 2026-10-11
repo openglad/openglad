@@ -2837,11 +2837,12 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  tuning.count = 5
+  tuning.count = 6
   tuning[wail_bolt_life] = int 60
   tuning[wail_bolt_step] = int 6
   tuning[wail_fork_px] = int 120
   tuning[wail_frame_ticks] = int 2
+  tuning[wail_fright_divisor] = int 4
   tuning[wail_hops] = int 3
 [effect 15]
   declared_id = "core:hook_blade"

@@ -434,9 +434,9 @@ Orc Captain:  An orc of level 5 or more may be promoted to
            + SHIFTER: Wail (50): A fright that leaps from foe to foe.
              A small cloud of the scare's sparkles drifts at the
              nearest foe in scare range, slower than a bolt; each foe
-             it strikes flees as from a scare, and it may split toward
-             other foes within 120 pixels of the one it struck,
-             leaping at most three more times.
+             it strikes flees for a quarter of a scare's time, and it
+             may split toward other foes within 120 pixels of the one
+             it struck, leaping at most three more times.
         2. + Siphon (30): The ghost's chilling touch (24 pixels)
              deals 10 damage plus 2 per level and heals the ghost by
              half of what it dealt, never above its full health.  It

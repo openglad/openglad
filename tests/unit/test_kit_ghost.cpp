@@ -186,6 +186,8 @@ std::uint32_t state_where(const std::function<bool(og::sim::SimRandom&)>& want)
 // Perturbation: the fork reach counted from the puff's corner again
 // (`+ self:distance_to_ob(leader)` dropped in the staged effect_wail.lua).
 // RED: "the second orc was frightened" false, 1 bolt made, not 3.
+// Perturbation: wail_fright_divisor = 1 (the scare's whole fright).
+// RED: "a quarter of the scare's 250 ticks" (250, not 62).
 TEST(KitGhost, wail_hops_foe_to_foe_and_frights_each_once)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -221,6 +223,11 @@ TEST(KitGhost, wail_hops_foe_to_foe_and_frights_each_once)
     EXPECT_EQ(3, a->skip_exit()) << "struck once";
     EXPECT_EQ(3, b->skip_exit()) << "struck once";
     EXPECT_EQ(3, c->skip_exit()) << "struck once";
+    ASSERT_FALSE(a->stats()->commands.empty());
+    EXPECT_EQ(62, a->stats()->commands.front().commandcount)
+        << "a quarter of the scare's 250 ticks at level 10";
+    EXPECT_EQ(62, c->stats()->commands.front().commandcount)
+        << "the last hop frightens no longer than the first";
     EXPECT_EQ(3, ever_made(tw, Order::FX, wail_family()))
         << "one bolt per orc, no bolt back to an orc already wailed at";
     EXPECT_FLOAT_EQ(0.0f, a->stats()->hitpoints() - 140.0f)
