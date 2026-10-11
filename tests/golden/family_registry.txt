@@ -1497,6 +1497,7 @@
   special[2].alternate = "NONE"
   special[2].cost = 20
   special[2].new_kit = true
+  special[2].level = 1
   special[2].detail = "Regain health by devouring the corpses of your foes."
   special[3].id = "hook"
   special[3].name = "HOOK BLADE"
