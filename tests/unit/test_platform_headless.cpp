@@ -906,7 +906,8 @@ TEST(PlatformHeadless, text_protocol_serializes_shipped_mode_state)
 // seat's countdown from the shared model the SDL and curses HUDs read
 // (og::sim::seat_timer), appended after "dead" so the dormant/hidden
 // adjacency above stays put. A possessed body reads POSSESS and its ticks;
-// a plain living and a non-living read empty.
+// a plain living and a non-living read empty; with the setting off the
+// kit's possession is gone and a classic potion's clock still shows.
 //
 // RED (run by hand): the `timer.label != nullptr ? timer.label : ""` read
 // replaced by "" -> the possessed line prints "timer":"".
@@ -949,7 +950,18 @@ TEST(PlatformHeadless, text_state_line_carries_the_seats_countdown)
     EXPECT_NE(std::string::npos,
               og::ui::text_protocol_testing_json_entity(world, *host, 0)
                   .find("\"timer\":\"\",\"timer_ticks\":0}"))
-        << "nothing with the setting off";
+        << "a kit's possession is not shown with the setting off";
+
+    // The classic timers show with the setting off: the invulnerability
+    // potion's clock.
+    // RED (run by hand): the classic offers dropped from seat_timer (the old
+    // OFF return put back) -> the plain line prints "timer":"".
+    plain->set_invulnerable_left(36);
+    const std::string potion =
+        og::ui::text_protocol_testing_json_entity(world, *plain, 1);
+    EXPECT_NE(std::string::npos,
+              potion.find("\"timer\":\"INVINCIBLE\",\"timer_ticks\":36}"))
+        << "a classic timer shows with the setting off: " << potion;
 }
 
 // The scripted-mode observability block, byte-pinned (the json_ctf literal

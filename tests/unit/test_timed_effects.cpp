@@ -6,7 +6,9 @@
  * (at your option) any later version.
  */
 // The seat's countdown (og::sim::seat_timer, timed_effects.h): which of a
-// walker's New Specials effects the HUDs show, and that a mirror built
+// walker's timed effects (the New Specials kits' and the classic ones:
+// potions, cloak, charm, stun, a summoned body) the HUDs show, and that a
+// mirror built
 // from a snapshot answers the same. Also the one list of kit marker roles
 // (kit_marker_role.h) as the Lua kits read it, og.C.MARKER_*.
 //
@@ -226,12 +228,68 @@ TEST_F(TimedEffects, each_running_effect_answers_its_label_and_clock)
     EXPECT_EQ(nullptr, seat_timer(world(), *rider).label)
         << "the hidden rider has no clock of its own: its seat is the host";
 
-    // HASTE: the speed bonus (a potion or a faerie's HASTEN).
+    // HASTE: the speed bonus (a potion or a faerie's HASTEN). The field
+    // counts down only while above 1 and sticks at 1, so 75 is 74 ticks of
+    // haste.
+    // RED (run by hand): `speed_bonus_left() - 1` put back to the plain
+    // value -> reads 75.
     walker* quick = add_living(FAMILY_SOLDIER, 0, 64, 192, 3);
     quick->set_speed_bonus_left(75);
     t = seat_timer(world(), *quick);
     EXPECT_EQ("HASTE", label_of(t));
-    EXPECT_EQ(75, t.ticks);
+    EXPECT_EQ(74, t.ticks);
+
+    // The classic timers, each made the way a player makes it where the
+    // game has a way.
+    // RED (run by hand): the INVISIBLE offer dropped from seat_timer -> the
+    // cloaked thief reads (none); likewise each row below for its own offer.
+    //
+    // INVISIBLE: a level-4 thief's CLOAK (slot 2).
+    walker* thief = add_living(FAMILY_THIEF, 0, 128, 192, 4);
+    ASSERT_NE(nullptr, thief);
+    ASSERT_EQ("", cast(thief, 2, 0));
+    ASSERT_GT(thief->invisibility_left(), 0) << "the cloak cast";
+    t = seat_timer(world(), *thief);
+    EXPECT_EQ("INVISIBLE", label_of(t));
+    EXPECT_EQ(thief->invisibility_left(), t.ticks);
+
+    // SUMMONED: a body summoned with its own lifetime (a druid's faerie, an
+    // archmage's elemental), which a seat can drive.
+    walker* summoner = add_living(FAMILY_SOLDIER, 0, 192, 192, 3);
+    ASSERT_NE(nullptr, summoner);
+    walker* summon = summoner->do_summon(FAMILY_FAERIE, 90);
+    ASSERT_NE(nullptr, summon);
+    ASSERT_EQ(90, summon->lifetime()) << "the summon's own clock";
+    t = seat_timer(world(), *summon);
+    EXPECT_EQ("SUMMONED", label_of(t));
+    EXPECT_EQ(summon->lifetime(), t.ticks);
+
+    // CHARMED: on another team until the charm runs out.
+    walker* charmed = add_living(FAMILY_SOLDIER, 0, 256, 192, 3);
+    charmed->set_charm_left(66);
+    t = seat_timer(world(), *charmed);
+    EXPECT_EQ("CHARMED", label_of(t));
+    EXPECT_EQ(66, t.ticks);
+
+    // STUNNED: frozen (HOWL, a sprinkle).
+    walker* stunned = add_living(FAMILY_SOLDIER, 0, 64, 256, 3);
+    stunned->stats()->set_frozen_delay(33);
+    t = seat_timer(world(), *stunned);
+    EXPECT_EQ("STUNNED", label_of(t));
+    EXPECT_EQ(33, t.ticks);
+
+    // INVINCIBLE and FLYING: the potions' fields.
+    walker* armored = add_living(FAMILY_SOLDIER, 0, 128, 256, 3);
+    armored->set_invulnerable_left(150);
+    t = seat_timer(world(), *armored);
+    EXPECT_EQ("INVINCIBLE", label_of(t));
+    EXPECT_EQ(150, t.ticks);
+
+    walker* flier = add_living(FAMILY_SOLDIER, 0, 192, 256, 3);
+    flier->set_flight_left(140);
+    t = seat_timer(world(), *flier);
+    EXPECT_EQ("FLYING", label_of(t));
+    EXPECT_EQ(140, t.ticks);
 }
 
 // Several at once: the one ending soonest is shown, whichever it is.
@@ -255,17 +313,22 @@ TEST_F(TimedEffects, the_soonest_ending_effect_is_shown)
     EXPECT_EQ("LEGION", label_of(t));
     EXPECT_EQ(300, t.ticks);
 
+    // RED (run by hand): `speed_bonus_left() - 1` put back to the plain
+    // value -> reads 299.
     skel->set_speed_bonus_left(299);
     t = seat_timer(world(), *skel);
-    EXPECT_EQ("HASTE", label_of(t)) << "a haste one tick sooner";
-    EXPECT_EQ(299, t.ticks);
+    EXPECT_EQ("HASTE", label_of(t)) << "a haste two ticks sooner";
+    EXPECT_EQ(298, t.ticks);
 }
 
 // A tie goes to the table order: POSSESS, PHASE, DIG IN, REASSEMBLE,
-// IMMOLATE, LEGION, HASTE.
+// IMMOLATE, LEGION, then the classic SUMMONED, CHARMED, STUNNED, INVISIBLE,
+// INVINCIBLE, FLYING, HASTE.
 //
 // RED (run by hand): `candidate_rank < rank` flipped to `>` -> every row
-// below answers the last of its tied effects instead of the first.
+// below answers the last of its tied effects instead of the first. The
+// HASTE threshold put back to `> 0` with the plain value -> the speed of 51
+// reads 51 and the last round still says HASTE but with 51 ticks.
 TEST_F(TimedEffects, a_tie_goes_to_the_table_order)
 {
     walker* rider = add_living(FAMILY_GHOST, 0, 64, 64, 10);
@@ -273,7 +336,15 @@ TEST_F(TimedEffects, a_tie_goes_to_the_table_order)
     ASSERT_TRUE(rider != nullptr && host != nullptr);
     host->set_act_type(ACT_GUARD);
     ASSERT_TRUE(og::sim::possess(world(), *rider, *host, 50).ok);
-    host->set_speed_bonus_left(50);
+    // The classic fields, each 50 ticks from its end. The fixture never
+    // ticks, so a lifetime on a body with no owner cannot end it here.
+    host->set_lifetime(50);
+    host->set_charm_left(50);
+    host->stats()->set_frozen_delay(50);
+    host->set_invisibility_left(50);
+    host->set_invulnerable_left(50);
+    host->set_flight_left(50);
+    host->set_speed_bonus_left(51);  // 50 ticks of haste left
     // The walker's own markers, listed in the reverse of the table order so
     // the list order cannot decide the tie.
     walker* legion = add_marker(host, MARKER_LEGION, 50);
@@ -283,8 +354,11 @@ TEST_F(TimedEffects, a_tie_goes_to_the_table_order)
     walker* veil = add_marker(host, MARKER_PHASE_VEIL, 50);
     ASSERT_TRUE(legion && fire && ward && burrow && veil);
 
-    const char* expected[] = {"POSSESS", "PHASE", "DIG IN", "REASSEMBLE",
-                              "IMMOLATE", "LEGION", "HASTE"};
+    const char* expected[] = {"POSSESS",   "PHASE",      "DIG IN",
+                              "REASSEMBLE", "IMMOLATE",  "LEGION",
+                              "SUMMONED",  "CHARMED",    "STUNNED",
+                              "INVISIBLE", "INVINCIBLE", "FLYING",
+                              "HASTE"};
     // Retire the winner each round and the next in the order steps up.
     std::vector<std::function<void()>> retire = {
         [&] { host->set_possess_ticks(0); },
@@ -293,8 +367,15 @@ TEST_F(TimedEffects, a_tie_goes_to_the_table_order)
         [&] { ward->set_dead(1); },
         [&] { fire->set_dead(1); },
         [&] { legion->set_dead(1); },
+        [&] { host->set_lifetime(0); },
+        [&] { host->set_charm_left(0); },
+        [&] { host->stats()->set_frozen_delay(0); },
+        [&] { host->set_invisibility_left(0); },
+        [&] { host->set_invulnerable_left(0); },
+        [&] { host->set_flight_left(0); },
         [&] { host->set_speed_bonus_left(0); },
     };
+    ASSERT_EQ(std::size(expected), retire.size());
     for (std::size_t i = 0; i < retire.size(); ++i) {
         const SeatTimer t = seat_timer(world(), *host);
         EXPECT_EQ(std::string(expected[i]), label_of(t)) << "round " << i;
@@ -305,12 +386,14 @@ TEST_F(TimedEffects, a_tie_goes_to_the_table_order)
         << "with everything retired nothing is shown";
 }
 
-// With the setting off nothing is ever shown, a speed potion included, so
-// the classic HUD does not change.
+// With the setting off the classic timers still show (a potion, the cloak)
+// and the kit's never do, even when one is staged by hand.
 //
-// RED (run by hand): the `world.new_specials == 0` return deleted -> the
-// host reads POSSESS and the potion drinker HASTE with the setting off.
-TEST_F(TimedEffects, nothing_is_shown_with_the_setting_off)
+// RED (run by hand): the `world.new_specials != 0` gate around the
+// possession and the marker scan dropped -> the host reads POSSESS with the
+// setting off. The classic offers dropped (the old OFF return put back) ->
+// the speed potion and the invisible walker read (none).
+TEST_F(TimedEffects, classic_timers_show_with_the_setting_off_and_kit_timers_do_not)
 {
     walker* rider = add_living(FAMILY_GHOST, 0, 64, 64, 10);
     walker* host = add_living(FAMILY_ORC, 1, 96, 64, 1);
@@ -320,13 +403,124 @@ TEST_F(TimedEffects, nothing_is_shown_with_the_setting_off)
     ASSERT_NE(nullptr, add_marker(host, MARKER_LEGION, 300));
     walker* potion = add_living(FAMILY_SOLDIER, 0, 64, 128, 3);
     potion->set_speed_bonus_left(60);
+    walker* unseen = add_living(FAMILY_SOLDIER, 0, 128, 128, 3);
+    unseen->set_invisibility_left(240);
     ASSERT_EQ("POSSESS", label_of(seat_timer(world(), *host)));
 
     world().new_specials = 0;
-    EXPECT_EQ(nullptr, seat_timer(world(), *host).label);
+    EXPECT_EQ(nullptr, seat_timer(world(), *host).label)
+        << "a kit's possession and marker are not read with the setting off";
     EXPECT_EQ(0, seat_timer(world(), *host).ticks);
-    EXPECT_EQ(nullptr, seat_timer(world(), *potion).label)
-        << "the classic potion keeps the classic HUD";
+    SeatTimer t = seat_timer(world(), *potion);
+    EXPECT_EQ("HASTE", label_of(t)) << "the classic speed potion";
+    EXPECT_EQ(59, t.ticks);
+    t = seat_timer(world(), *unseen);
+    EXPECT_EQ("INVISIBLE", label_of(t)) << "the classic invisibility";
+    EXPECT_EQ(240, t.ticks);
+}
+
+// PHASE writes the ghost's invulnerability and speed itself: while its veil
+// runs those two are the phase, and once the veil is gone they answer for
+// themselves. The veil is staged one tick after the two fields, so only the
+// rule (not the tie order) can keep PHASE on the cell.
+//
+// RED (run by hand): the `!phased` test dropped from the INVINCIBLE offer
+// -> the first reading is INVINCIBLE 48; dropped from the HASTE offer ->
+// the second reading is HASTE 48.
+TEST_F(TimedEffects, phase_owns_its_fields)
+{
+    walker* ghost = add_living(FAMILY_GHOST, 0, 64, 64, 10);
+    ASSERT_NE(nullptr, ghost);
+    walker* veil = add_marker(ghost, MARKER_PHASE_VEIL, 49);
+    ASSERT_NE(nullptr, veil);
+    ghost->set_invulnerable_left(48);
+    ghost->set_speed_bonus_left(49);  // 48 ticks of speed
+    SeatTimer t = seat_timer(world(), *ghost);
+    EXPECT_EQ("PHASE", label_of(t))
+        << "the phase's own shield does not stand in for it";
+    EXPECT_EQ(49, t.ticks);
+
+    ghost->set_invulnerable_left(0);
+    t = seat_timer(world(), *ghost);
+    EXPECT_EQ("PHASE", label_of(t))
+        << "the phase's own speed does not stand in for it";
+    EXPECT_EQ(49, t.ticks);
+
+    ghost->set_invulnerable_left(48);
+    veil->set_dead(1);
+    t = seat_timer(world(), *ghost);
+    EXPECT_EQ("INVINCIBLE", label_of(t))
+        << "the veil gone, a tie at 48 goes to INVINCIBLE by the order";
+    EXPECT_EQ(48, t.ticks);
+    ghost->set_invulnerable_left(0);
+    t = seat_timer(world(), *ghost);
+    EXPECT_EQ("HASTE", label_of(t));
+    EXPECT_EQ(48, t.ticks);
+}
+
+// The speed bonus sticks at 1 once it has run out, for good: 1 is not a
+// haste, 2 is one tick of it.
+//
+// RED (run by hand): `> 1` put back to `> 0` -> 1 reads HASTE.
+TEST_F(TimedEffects, haste_stuck_at_one_is_not_shown)
+{
+    walker* w = add_living(FAMILY_SOLDIER, 0, 64, 64, 3);
+    ASSERT_NE(nullptr, w);
+    w->set_speed_bonus_left(1);
+    EXPECT_EQ(nullptr, seat_timer(world(), *w).label);
+    w->set_speed_bonus_left(2);
+    const SeatTimer t = seat_timer(world(), *w);
+    EXPECT_EQ("HASTE", label_of(t));
+    EXPECT_EQ(1, t.ticks);
+}
+
+// A walker over ground it cannot stand on is put back to flight 1 every
+// tick: that is a hover, not a flight that is ending.
+//
+// RED (run by hand): the FLYING `> 1` put to `> 0` -> 1 reads FLYING.
+TEST_F(TimedEffects, flight_hover_tick_is_not_shown)
+{
+    walker* w = add_living(FAMILY_SOLDIER, 0, 64, 64, 3);
+    ASSERT_NE(nullptr, w);
+    w->set_flight_left(1);
+    EXPECT_EQ(nullptr, seat_timer(world(), *w).label);
+    // Flight counts down to 0 (it does not stick like the speed bonus), so
+    // 2 is two ticks of flight.
+    w->set_flight_left(2);
+    const SeatTimer t = seat_timer(world(), *w);
+    EXPECT_EQ("FLYING", label_of(t));
+    EXPECT_EQ(2, t.ticks);
+}
+
+// SUMMONED is the seat's OWN body on a clock, not the things it summoned:
+// the summons' clocks and an orbiting effect with a lifetime (the mystic
+// mace's shape) are not the seat's.
+//
+// RED (run by hand): the SUMMONED offer reading any living the control owns
+// (an owner() == &control scan over Order::Living added beside the marker
+// scan) -> the summoner reads SUMMONED 50. The SUMMONED offer dropped -> the
+// summoned body reads (none).
+TEST_F(TimedEffects, only_the_seats_own_body_counts)
+{
+    walker* control = add_living(FAMILY_SOLDIER, 0, 64, 64, 3);
+    ASSERT_NE(nullptr, control);
+    walker* minion = add_living(FAMILY_FAERIE, 0, 96, 64, 3);
+    ASSERT_NE(nullptr, minion);
+    minion->set_owner(control);
+    minion->set_lifetime(50);
+    walker* mace = world().add_ob(
+        Order::FX, og::families::resolve_family_string_id(
+                       Order::FX, "core:ghost_scare"));
+    ASSERT_NE(nullptr, mace);
+    mace->set_owner(control);
+    mace->set_lifetime(40);
+    EXPECT_EQ(nullptr, seat_timer(world(), *control).label)
+        << "a summon's clock and an orbiting effect are not the seat's";
+
+    control->set_lifetime(200);
+    const SeatTimer t = seat_timer(world(), *control);
+    EXPECT_EQ("SUMMONED", label_of(t));
+    EXPECT_EQ(200, t.ticks);
 }
 
 // The model reads the walker's OWN markers, and only the running, counting
@@ -405,7 +599,8 @@ TEST(TimedEffectsSeconds, ticks_round_up_to_whole_seconds)
 //
 // RED (run by hand): the owner compare in seat_timer dropped -> the
 // mirror's possessed orc reads the skeleton's REASSEMBLE 123 (sooner than
-// its own 456), and so does the server's.
+// its own 456), and so does the server's. The INVISIBLE offer dropped -> the
+// cloaked soldier reads (none) on both.
 TEST_F(TimedEffects, a_mirror_built_from_a_snapshot_answers_the_same)
 {
     walker* skel = add_living(FAMILY_SKELETON, 0, 64, 64, 10);
@@ -415,6 +610,11 @@ TEST_F(TimedEffects, a_mirror_built_from_a_snapshot_answers_the_same)
     host->set_act_type(ACT_GUARD);
     ASSERT_NE(nullptr, add_marker(skel, MARKER_WARD, 123));
     ASSERT_TRUE(og::sim::possess(world(), *rider, *host, 456).ok);
+    walker* unseen = add_living(FAMILY_SOLDIER, 0, 192, 64, 3);
+    ASSERT_NE(nullptr, unseen);
+    unseen->set_invisibility_left(300);
+    const std::uint32_t unseen_id = unseen->entity_id();
+    ASSERT_EQ("INVISIBLE", label_of(seat_timer(world(), *unseen)));
     const std::uint32_t skel_id = skel->entity_id();
     const std::uint32_t host_id = host->entity_id();
     const std::uint32_t rider_id = rider->entity_id();
@@ -444,6 +644,11 @@ TEST_F(TimedEffects, a_mirror_built_from_a_snapshot_answers_the_same)
     EXPECT_EQ("POSSESS", label_of(t));
     EXPECT_EQ(456, t.ticks);
     EXPECT_EQ(nullptr, seat_timer(mirror, *m_rider).label);
+    const walker* m_unseen = mirror.find_by_id(unseen_id);
+    ASSERT_NE(nullptr, m_unseen);
+    t = seat_timer(mirror, *m_unseen);
+    EXPECT_EQ("INVISIBLE", label_of(t));
+    EXPECT_EQ(300, t.ticks);
 }
 
 // og.C.MARKER_* and og.C.KIT_QUARTER_FREEZE carry the engine's numbers, so

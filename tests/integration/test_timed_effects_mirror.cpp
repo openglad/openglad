@@ -9,7 +9,8 @@
 // the player looks at, through the real local transport shadow: the server
 // possesses an orc with a ghost hero and later phases the ghost, and the
 // display, which runs no sim of its own, answers the same countdown and
-// draws it in the HUD.
+// draws it in the HUD. With the setting off a classic timer (an
+// invisibility) reaches the display the same way.
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
@@ -126,8 +127,9 @@ std::uint32_t strip_level(GameWorld& w, std::uint32_t keep,
 }
 
 // Gladiator level 1 with one level-10 ghost hero and the New Specials
-// setting on, stripped to the hero. Returns its id, 0 on failure.
-std::uint32_t load_ghost_hero()
+// setting as given (on by default), stripped to the hero. Returns its id,
+// 0 on failure, and 0 unless the server reads the setting it was given.
+std::uint32_t load_ghost_hero(short new_specials = 1)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     s->save_data.reset();
@@ -142,12 +144,12 @@ std::uint32_t load_ghost_hero()
     s->save_data.team_size = 1;
     if (!s->save_data.save("save0"))
         return 0;
-    s->save_data.new_specials = 1;
+    s->save_data.new_specials = new_specials;
     s->world().rng_.state_ = 0x71e3d00du;
     std::srand(0x71e3d00du);
     glad_init();
     screen* const server = server_screen();
-    if (server == nullptr || server->world().new_specials != 1)
+    if (server == nullptr || server->world().new_specials != new_specials)
         return 0;
     server->world().rng_.state_ = 0x71e3d00eu;
     walker* hero = nullptr;
@@ -272,6 +274,55 @@ TEST(TimedEffectsMirror, the_display_shows_the_servers_countdown)
     trace_clear();
     new_score_panel(s, 1);
     EXPECT_TRUE(trace_contains("hud", "seat_timer label=PHASE"));
+
+    finish_scene();
+}
+
+// With the setting off on the server, a classic timer still reaches the
+// display's cell: the hero turned invisible on the server reads INVISIBLE on
+// the display and its HUD draws it.
+//
+// RED (run by hand): the classic offers dropped from seat_timer (the old OFF
+// return put back) -> the display and the server answer nothing and the
+// HUD trace has no INVISIBLE cell.
+TEST(TimedEffectsMirror, a_classic_timer_reaches_the_display_with_the_setting_off)
+{
+    const std::uint32_t ghost_id = load_ghost_hero(0);
+    ASSERT_NE(0u, ghost_id) << "a level-10 ghost seated on gladiator 1, setting off";
+    screen* const s = og::runtime::current_session->myscreen_;
+    screen* const server = server_screen();
+    ASSERT_NE(nullptr, server);
+    GameWorld& display = s->world();
+    ASSERT_NE(&display, &server->world());
+    ASSERT_EQ(0, server->world().new_specials);
+
+    {
+        ServerContext ctx(*server);
+        walker* const ghost = server->world().find_by_id(ghost_id);
+        ASSERT_NE(nullptr, ghost);
+        ghost->set_invisibility_left(300);
+    }
+    drive_tick();
+    drive_tick();
+    ASSERT_EQ(0, display.new_specials) << "the display reads the server's setting";
+    walker* const control = s->viewob[0]->control;
+    ASSERT_NE(nullptr, control);
+    ASSERT_EQ(ghost_id, control->entity_id());
+
+    const walker* const s_ghost = server->world().find_by_id(ghost_id);
+    ASSERT_NE(nullptr, s_ghost);
+    const og::sim::SeatTimer on_server = og::sim::seat_timer(server->world(), *s_ghost);
+    const og::sim::SeatTimer on_display = og::sim::seat_timer(display, *control);
+    EXPECT_EQ("INVISIBLE", label_of(on_server));
+    EXPECT_EQ("INVISIBLE", label_of(on_display));
+    EXPECT_GT(on_display.ticks, 290) << "the clock runs from 300";
+    EXPECT_LE(std::abs(on_display.ticks - on_server.ticks), 1)
+        << "the display's clock is the server's";
+
+    trace_clear();
+    new_score_panel(s, 1);
+    EXPECT_TRUE(trace_contains("hud", "seat_timer label=INVISIBLE"))
+        << "the display's HUD draws the cell with the setting off";
 
     finish_scene();
 }

@@ -300,9 +300,9 @@ static bool draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
     return true;
 }
 
-// The seat's own timed effect (a New Specials possession, phase, haste, dig
-// in, ward, fire or legion window), drawn in the frozen-time cell's manner:
-// the same left column and row rules, YELLOW, every frame off the mirror
+// The seat's own timed effect, a kit's or a classic one's (a possession,
+// a potion, a stun...), drawn in the frozen-time cell's manner: the same
+// left column and row rules, YELLOW, every frame off the mirror
 // (og::sim::seat_timer reads snapshot fields only). Seconds, like SCARED.
 // When the frozen-time cell drew this frame it keeps its row (it is the
 // world's clock and the classic one) and this cell takes the row above it,

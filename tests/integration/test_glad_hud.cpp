@@ -16,6 +16,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/kit_state.h>
+#include <openglad/gameplay/timed_effects.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
@@ -2606,8 +2607,8 @@ TEST_F(GladHud, freeze_countdown_cell_never_lands_on_the_notification_feed)
 }
 
 // ---------------------------------------------------------------------------
-// The seat's own countdown (New Specials: POSSESS, PHASE, HASTE, DIG IN,
-// REASSEMBLE, IMMOLATE, LEGION), drawn in the frozen-time cell's manner:
+// The seat's own countdown (the kits' POSSESS, PHASE, DIG IN, REASSEMBLE,
+// IMMOLATE, LEGION and the classic timers), drawn in the frozen-time cell's manner:
 // the same left column and row rules, in seconds, read off the mirror
 // through og::sim::seat_timer.
 
@@ -2699,7 +2700,24 @@ TEST_F(GladHud, seat_timer_cell_draws_in_the_freeze_cells_manner)
 
     world.new_specials = 0;
     EXPECT_FALSE(cell_has_pixels(draw()))
-        << "with the setting off the classic HUD is untouched";
+        << "with the setting off a kit's possession is not shown";
+
+    // With the setting off the classic timers still draw: an invisible seat
+    // (the thief's cloak, the potion) sees its clock.
+    // RED (run by hand): the classic offers dropped from seat_timer (the old
+    // OFF return put back) -> no pixels and no trace here.
+    controlp->set_possess_link(0u);
+    controlp->set_possess_ticks(0);
+    controlp->set_invisibility_left(240);
+    trace_clear();
+    EXPECT_TRUE(cell_has_pixels(draw()))
+        << "a classic timer draws with the setting off";
+    const std::string unseen = "seat_timer label=INVISIBLE ticks=240 secs=20 row=" +
+                               std::to_string(cell_y0);
+    EXPECT_TRUE(trace_contains("hud", unseen.c_str()))
+        << "the cell says INVISIBLE: 20s on the frozen-time row";
+    controlp->set_invisibility_left(0);
+    stage_possession(*controlp, 720);
     world.new_specials = 1;
 
     controlp->set_user(-1);
@@ -2813,9 +2831,12 @@ TEST_F(GladHud, seat_timer_cell_never_lands_on_the_notification_feed)
     world.oblist.push_back(std::move(control));
     stage_possession(*controlp, 720);
 
-    // Counts the pixels the setting adds (the seat's cell is the only thing
-    // it adds here) and pins each outside the feed band and radar block.
+    // Counts the pixels the running clock adds (the seat's cell is the only
+    // thing it adds here) and pins each outside the feed band and radar
+    // block. The "without" frame zeroes the clocks this test stages (the
+    // possession and the speed bonus) and the "with" frame puts them back.
     int seat_pixels = 0;
+    world.new_specials = 1;
     const auto probe = [&](const char* what) {
         seat_pixels = 0;
         for (int i = 0; i < s->numviews; ++i)
@@ -2824,11 +2845,18 @@ TEST_F(GladHud, seat_timer_cell_never_lands_on_the_notification_feed)
             s->viewob[i]->control = controlp;
             s->viewob[i]->prefs[PREF_SCORE] = PREF_SCORE_OFF;
         }
-        world.new_specials = 0;
+        const std::uint32_t link = controlp->possess_link();
+        const auto ticks = controlp->possess_ticks();
+        const auto speed = controlp->speed_bonus_left();
+        controlp->set_possess_link(0u);
+        controlp->set_possess_ticks(0);
+        controlp->set_speed_bonus_left(0);
         s->clearbuffer();
         ASSERT_EQ(1, (int)new_score_panel(s, 1)) << what;
         const auto without = capture_rendered_frame(*s);
-        world.new_specials = 1;
+        controlp->set_possess_link(link);
+        controlp->set_possess_ticks(ticks);
+        controlp->set_speed_bonus_left(speed);
         s->clearbuffer();
         ASSERT_EQ(1, (int)new_score_panel(s, 1)) << what;
         const auto with = capture_rendered_frame(*s);
@@ -2890,10 +2918,13 @@ TEST_F(GladHud, seat_timer_cell_never_lands_on_the_notification_feed)
         << "the label is dropped before the cell is";
 
     // A clock too long even for its seconds (a stack of speed potions read
-    // as 10000 s: 36px against 32px of room) draws nothing.
+    // as 10000 s: 36px against 32px of room) draws nothing. The field sticks
+    // at 1 once the bonus has run out, so 120000 is 119999 ticks of haste.
     controlp->set_possess_link(0u);
     controlp->set_possess_ticks(0);
     controlp->set_speed_bonus_left(120000);
+    EXPECT_EQ(119999, og::sim::seat_timer(world, *controlp).ticks);
+    EXPECT_EQ(10000, og::sim::timer_seconds(119999));
     trace_clear();
     probe("3p panels, five-digit seconds");
     EXPECT_EQ(0, seat_pixels) << "no room even for the seconds: nothing";
