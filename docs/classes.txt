@@ -315,16 +315,16 @@ Druid:  Druids are the magicians of nature, and have
 Orc Captain:  An orc of level 5 or more may be promoted to
         Orc Captain on the DETAILS screen; captains cannot be hired.
         The promoted captain starts again at level 1, with Howl
-        alone; Eat Corpse comes back at level 4.  Captains are
+        and Eat Corpse.  Captains are
         stronger and smarter than the basic orc, and throw blades
         across the field.  Before the New Specials kits a promoted
         orc lost its Howl and Eat Corpse; with the setting on, it
         keeps them.
         1. + Howl (25): The orc's howl of rage, as above.  A bot
              captain howls when a foe is within 130 pixels.
-        2. + Eat Corpse (20): The orc's corpse feast, as above.  A
-             bot captain eats only below 60 percent of its health,
-             standing on a corpse.
+        2. + Eat Corpse (20): The orc's corpse feast, as above,
+             there from level 1 like Howl.  A bot captain eats only
+             below 60 percent of its health, standing on a corpse.
         3. + Hook Blade (40): A chained knife spirals out from the
              captain like a boomerang, from 12 to 60 pixels over 24
              ticks and back over 24, cutting down enemy missiles that

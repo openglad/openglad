@@ -278,9 +278,15 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 **Orc captain.**
 - The captain cannot be hired: it is the orc's promotion only (an orc of
   level 5, on the DETAILS screen). As in the classic game the promoted
-  captain starts again at level 1, with HOWL alone; EAT CORPSE opens at
-  level 4, HOOK BLADE / KNIFE FAN at 7, WAR BANNER / WARBAND at 10. With
-  the setting off the captain has no specials, as in the classic game.
+  captain starts again at level 1, with HOWL and EAT CORPSE both open;
+  HOOK BLADE / KNIFE FAN opens at 7, WAR BANNER / WARBAND at 10. With the
+  setting off the captain has no specials, as in the classic game.
+- EAT CORPSE's row in the specials table says `level = 1`: it is the one
+  slot in the game that opens before the classic level for its place
+  (slot N at level 3N - 2). The cycle key, a bot's slot roll, the DETAILS
+  page and the results screen all ask the same rule
+  (`og::sim::slot_open_level`). A level-1 captain has a 25-point pool, so
+  one HOWL (25) or one EAT CORPSE (20) a full pool.
 - HOOK BLADE spirals out from the captain like the boomerang, from 12 to
   60 pixels over 24 ticks and back over 24, one turn every 16 ticks. The
   first foe it touches is frozen and reeled to the captain's feet, 8
@@ -392,16 +398,29 @@ Every refusal is at most 24 characters, so it fits the compact HUD. The
 The seat that owns a running timed effect sees how long it has left, in
 seconds, in the manner of the frozen-time cell: `POSSESS: 49s`, `PHASE: 4s`,
 `HASTE: 8s`, `DIG IN: 25s`, `REASSEMBLE: 30s`, `IMMOLATE: 12s`,
-`LEGION: 25s`. The SDL HUD draws it in yellow at the foot of the seat's
+`LEGION: 25s`, and for the classic timers on the seat's own character
+`SUMMONED` (a summoned body the seat drives), `CHARMED`, `STUNNED`,
+`INVISIBLE` (the thief's CLOAK, the invisibility potion), `INVINCIBLE` (the
+invulnerability potion) and `FLYING` (the flight potion). The SDL HUD draws it in yellow at the foot of the seat's
 view (one row above a running time freeze, which keeps its own row), the
 curses status line adds `POSSESS 49s` after the time, and the text client's
 `state` line gives every living `"timer"` and `"timer_ticks"`. All three
 read one answer, `og::sim::seat_timer`, from fields every snapshot already
 carries, so a mirror shows what the host would. When several run, the one
-ending soonest is shown. With the setting off nothing is shown, the speed
-potion's haste included, so the classic HUD does not change. The banner,
-bone walls, mines, warband grunts and meteor rain are things on the map,
-not countdowns, and are not shown.
+ending soonest is shown; a tie goes to the kit's effects first (POSSESS,
+PHASE, DIG IN, REASSEMBLE, IMMOLATE, LEGION), then SUMMONED, CHARMED,
+STUNNED, INVISIBLE, INVINCIBLE, FLYING, HASTE. With the setting off the
+kit's effects cannot exist and are never shown, but the classic timers
+are: this is a general HUD fix, drawing only, and the game itself does not
+change. FLYING and HASTE show only above 1 tick: a walker held over water
+keeps a flight of 1 every tick, and the speed field stays at 1 for good
+once any haste has run, so HASTE shows the field minus one. PHASE writes
+its own invulnerability and speed beside its veil, so while the veil runs
+the cell says PHASE and never INVINCIBLE or HASTE. The banner, bone walls,
+mines, warband grunts, the seat's own summons, the cleric's mace and
+meteor rain are things on the map, not countdowns, and are not shown;
+nor is the druid's reveal (the radar shows it) or fright (its own SCARED
+row).
 
 The number is the effect's real end. DIG IN, REASSEMBLE and IMMOLATE end
 when their clock or the mana runs out, whichever is first, so after every
@@ -419,7 +438,7 @@ the pack. A slot the character has reached is a block: the name in red
 and its text under it; a slot with an alternate in play adds a
 `Shift: <name>` line and the alternate's one-line `detail`. A slot the
 character has not reached yet is one line at the foot of its column,
-`Eat Corpse: lvl 4`. Slots 1 and 2 are in the left column, 3 to 5 in the
+`Hook Blade: lvl 7`. Slots 1 and 2 are in the left column, 3 to 5 in the
 right. A character with no special in play reads `No special abilities.`
 The HIRE box's last line is generated the same way
 (`og::ui::specials_summary`): `Special:` and the slot names in play, in
