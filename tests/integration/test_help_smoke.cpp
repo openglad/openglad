@@ -915,6 +915,14 @@ struct ClassesStillArgs
     std::atomic<int> page_at_ghost{-1};
 };
 
+// Parks the pointer on the text, off every button, so the last click's
+// highlight (on the tab, on NEXT) does not show in a still.
+void park_pointer_on_text()
+{
+    const auto [x, y] = ui_canvas_to_window(160.0f, 90.0f);
+    inject_mouse_motion(static_cast<int>(x), static_cast<int>(y));
+}
+
 int classes_still_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -924,6 +932,7 @@ int classes_still_injector(void* data)
         wait_for_menu_frames(2);
         interact("help_tab_classes");
         a->tab.store(settle_help_tab(1, 2000), std::memory_order_release);
+        park_pointer_on_text();
         wait_for_menu_frames(2);
         a->page_at_first.store(help_testing_query_help_page(),
                                std::memory_order_release);
@@ -946,6 +955,7 @@ int classes_still_injector(void* data)
             if (help_testing_query_help_page() != page)
                 break;
         }
+        park_pointer_on_text();
         wait_for_menu_frames(2);
         a->page_at_ghost.store(help_testing_query_help_page(),
                                std::memory_order_release);
