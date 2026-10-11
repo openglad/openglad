@@ -1249,9 +1249,10 @@ TEST(CursesRenderer, freeze_countdown_shows_on_hud_row_one)
         << "row 1 shows the frozen-time countdown; got: " << term.text_row(1);
 }
 
-// The seat's own timed effect (New Specials) rides row 1 after TIME, from
-// the shared countdown model, in seconds: "POSSESS 49s" for a seat in a
-// possessed body with 580 ticks left. Nothing with the setting off.
+// The seat's own timed effect rides row 1 after TIME, from the shared
+// countdown model, in seconds: "POSSESS 49s" for a seat in a possessed body
+// with 580 ticks left. With the setting off the kit's are not shown and the
+// classic ones (a potion, the cloak) are.
 //
 // RED (run by hand): the seat_timer field removed from draw_hud -> row 1
 // has no "POSSESS 49s".
@@ -1277,7 +1278,19 @@ TEST(CursesRenderer, hud_shows_the_seats_own_countdown)
     world.new_specials = 0;
     renderer.draw(term, world, host->entity_id());
     EXPECT_EQ(term.text_row(1).find("POSSESS"), std::string::npos)
-        << "the classic HUD is untouched with the setting off; got: "
+        << "a kit's possession is not shown with the setting off; got: "
+        << term.text_row(1);
+
+    // The classic timers show with the setting off: an invisible seat with
+    // 120 ticks left reads 10s.
+    // RED (run by hand): the classic offers dropped from seat_timer (the old
+    // OFF return put back) -> row 1 has no "INVISIBLE 10s".
+    host->set_possess_link(0u);
+    host->set_possess_ticks(0);
+    host->set_invisibility_left(120);
+    renderer.draw(term, world, host->entity_id());
+    EXPECT_NE(term.text_row(1).find("INVISIBLE 10s"), std::string::npos)
+        << "a classic timer shows with the setting off; got: "
         << term.text_row(1);
 }
 
