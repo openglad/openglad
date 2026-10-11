@@ -317,7 +317,7 @@ TEST(NpcScenarioFlags, enabled_twin_mage_teleports_disabled_twin_never)
         mage->set_team_num(1);
         mage->set_real_team_num(1);
         mage->set_act_type(ACT_RANDOM);
-        mage->stats()->set_level(1); // (level+2)/3 == 1 -> always special 1 (teleport)
+        mage->stats()->set_level(1); // bot roll bound, by default (level+2)/3 == 1 -> always special 1 (teleport)
         mage->set_specials_disabled(specials_disabled);
 
         for (int t = 0; t < ticks && !result.teleported; ++t)

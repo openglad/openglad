@@ -615,6 +615,63 @@ TEST_F(LuaFamilyDeclTest, slots_run_forward_and_stop_at_five)
         "slot 6 does not exist (a family has slots 1..5)");
 }
 
+// `level = N` opens a slot before its default 3*slot - 2 (the orc
+// captain's EAT CORPSE opens at level 1 on slot 2). It can only open a slot
+// earlier, and the open slots must stay a run from slot 1, because the
+// cycle key wraps at the first slot that is not open yet.
+TEST_F(LuaFamilyDeclTest, a_special_level_opens_its_slot_early_and_no_later)
+{
+    ClasspackData data;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', specials = {"
+                        "{ id = 'a', name = 'A', mp_cost = 1 },"
+                        "{ id = 'b', name = 'B', mp_cost = 1, level = 1 },"
+                        "{ id = 'c', name = 'C', mp_cost = 1 } } })",
+                        data).ok);
+    const auto& entries = *data.living[0].specials;
+    ASSERT_EQ(3u, entries.size());
+    EXPECT_EQ(0, entries[0].level) << "no level given reads 0 (the default)";
+    EXPECT_EQ(2, entries[1].slot);
+    EXPECT_EQ(1, entries[1].level);
+    EXPECT_EQ(0, entries[2].level);
+
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = {"
+                            "{ id = 'a', name = 'A', mp_cost = 1 },"
+                            "{ id = 'b', name = 'B', mp_cost = 1, "
+                            "level = '1' } } })"),
+                    "og.family living 'v3:x'.specials[2] 'b'.level: expected "
+                    "a whole number, got string");
+    // RED (checked by hand): with the `level < 1` test moved from the entry
+    // reader into the list loop, this row loaded cleanly, because an
+    // explicit 0 and a missing key both store 0 there.
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = {"
+                            "{ id = 'a', name = 'A', mp_cost = 1, "
+                            "level = 0 } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.level 0: a slot "
+                    "opens at level 1 at the earliest");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = {"
+                            "{ id = 'a', name = 'A', mp_cost = 1 },"
+                            "{ id = 'b', name = 'B', mp_cost = 1, "
+                            "level = 7 } } })"),
+                    "og.family living 'v3:x'.specials[2]: level 7 on slot 2: "
+                    "slot 2 already opens at level 4; level can open a slot "
+                    "earlier, never later");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = {"
+                            "{ id = 'a', name = 'A', mp_cost = 1 },"
+                            "{ id = 'b', name = 'B', mp_cost = 1, level = 4 },"
+                            "{ id = 'c', name = 'C', mp_cost = 1, "
+                            "level = 1 } } })"),
+                    "og.family living 'v3:x'.specials[3]: slot 3 cannot open "
+                    "at level 1 while slot 2 opens at level 4: the cycle key "
+                    "stops at the first locked slot, so the open slots must "
+                    "be a run from slot 1");
+    // An alternate opens with its slot: it has no level of its own.
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = {"
+                            "{ id = 'a', name = 'A', mp_cost = 1, "
+                            "alternate = { name = 'ALT', level = 1 } } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.alternate: "
+                    "unknown key 'level'");
+}
+
 TEST_F(LuaFamilyDeclTest, alternate_takes_a_named_table)
 {
     expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "

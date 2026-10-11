@@ -238,6 +238,9 @@ void dump_living(std::string& out)
             if (fd->alternate_cost[s] != 0)
                 field(out, (prefix + "alternate_cost").c_str(),
                       number(fd->alternate_cost[s]));
+            if (fd->special_level[s] != 0)
+                field(out, (prefix + "level").c_str(),
+                      number(fd->special_level[s]));
             // The DETAILS page prose, likewise only when declared.
             if (fd->special_details[s] != nullptr)
                 field(out, (prefix + "detail").c_str(),

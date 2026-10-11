@@ -43,6 +43,23 @@ namespace og::sim {
 [[nodiscard]] unsigned short alternate_cost_in_play(const FamilyDescriptor* fd,
                                                     int slot,
                                                     short new_specials) noexcept;
+// The level a slot opens at: the row's own `level = N` when it declared one,
+// otherwise 3*slot - 2 (1, 4, 7, 10, 13), the rule every classic family has
+// always had. Every reader of "can this slot be selected yet" (the cycle
+// key, the bot's roll, the DETAILS page, the results screen) asks here.
+[[nodiscard]] int slot_open_level(const FamilyDescriptor* fd, int slot) noexcept;
+// level >= slot_open_level(fd, slot). A null descriptor or an out-of-range
+// slot reads as a classic family.
+[[nodiscard]] bool slot_open(const FamilyDescriptor* fd, int slot, int level) noexcept;
+// The bound of a bot's slot roll (living::act draws rng.next(bound) + 1):
+// the classic count (level + 2) / 3, uncapped as it always was (a level-16
+// soldier still draws from six and folds, a level-0 walker still draws
+// next(0), which does not advance the state: game_world.h:61-67), raised
+// to the highest named, in-play slot the level has opened, so a row opened
+// early by `level = N` is rolled too. With no override it is exactly
+// (level + 2) / 3, so the classic draw sequence is unchanged bit for bit.
+[[nodiscard]] int bot_slot_roll_bound(const FamilyDescriptor* fd, int level,
+                                      short new_specials) noexcept;
 // The session's setting as the sim reads it: the current world's flag, or 0
 // when there is no world.
 [[nodiscard]] short session_new_specials() noexcept;

@@ -611,6 +611,16 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                       ": a special cannot cost negative magic");
     if (has_field(L, tbl, "slot") && !h.take_int(named + ".slot", out.slot))
         return false;
+    // `level = N` opens the slot early. The lower bound is checked here,
+    // while the key is known to be present: the entry stores 0 for "no
+    // level given", so an explicit 0 would read as absent further on.
+    if (has_field(L, tbl, "level")) {
+        if (!h.take_int(named + ".level", out.level))
+            return false;
+        if (out.level < 1)
+            return h.fail(named + ".level " + std::to_string(out.level) +
+                          ": a slot opens at level 1 at the earliest");
+    }
     if (has_field(L, tbl, "alternate")) {
         if (lua_type(L, -1) != LUA_TTABLE) {
             const std::string got = type_name_of(L, -1);
@@ -680,8 +690,8 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                           got);
     }
     return check_keys(h, tbl, named,
-                      {"id", "name", "mp_cost", "slot", "cast", "ai",
-                       "alternate", "new_kit", "detail"});
+                      {"id", "name", "mp_cost", "slot", "level", "cast",
+                       "ai", "alternate", "new_kit", "detail"});
 }
 
 // `specials` — an ARRAY, position giving slots 1..5, with `slot = N` to
@@ -703,6 +713,9 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
     std::vector<og::data::ClasspackSpecialEntry> entries;
     const lua_Integer n = luaL_len(L, list);
     int previous_slot = 0;
+    // The level the previous entry's slot opens at (its own `level`, or
+    // 3*slot - 2): the open slots must be a run from slot 1.
+    int previous_opens_at = 0;
     bool ok = true;
     for (lua_Integer i = 1; ok && i <= n; i++) {
         const std::string ewhere =
@@ -742,7 +755,28 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
                         " (specials are listed in slot order)");
             break;
         }
+        const int default_opens_at = 3 * entry.slot - 2;
+        if (entry.level > default_opens_at) {
+            ok = h.fail(ewhere + ": level " + std::to_string(entry.level) +
+                        " on slot " + std::to_string(entry.slot) + ": slot " +
+                        std::to_string(entry.slot) + " already opens at level " +
+                        std::to_string(default_opens_at) +
+                        "; level can open a slot earlier, never later");
+            break;
+        }
+        const int opens_at = entry.level != 0 ? entry.level : default_opens_at;
+        if (opens_at < previous_opens_at) {
+            ok = h.fail(ewhere + ": slot " + std::to_string(entry.slot) +
+                        " cannot open at level " + std::to_string(opens_at) +
+                        " while slot " + std::to_string(previous_slot) +
+                        " opens at level " +
+                        std::to_string(previous_opens_at) +
+                        ": the cycle key stops at the first locked slot, so "
+                        "the open slots must be a run from slot 1");
+            break;
+        }
         previous_slot = entry.slot;
+        previous_opens_at = opens_at;
         entries.push_back(std::move(entry));
     }
     // `default_cast` is the any-slot handler; behavior, checked and dropped.

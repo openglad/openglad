@@ -155,6 +155,9 @@ struct FamilyDescriptor {
     bool special_new_kit[FD_NUM_SPECIALS] = {};
     bool alternate_new_kit[FD_NUM_SPECIALS] = {};
     unsigned short alternate_cost[FD_NUM_SPECIALS] = {};
+    // The level each slot opens at, when its row says `level = N`; 0 = the
+    // default 3*slot - 2. Read through og::sim::slot_open_level only.
+    unsigned char special_level[FD_NUM_SPECIALS] = {};
 
     // The DETAILS page prose of each slot and of its alternate (`detail =
     // "..."` on the specials row and inside its `alternate` table);

@@ -397,3 +397,25 @@ TEST(LuaPackInstall, special_details_reach_the_descriptor_by_slot)
         EXPECT_EQ(nullptr, golem->alternate_details[slot]) << "slot " << slot;
     }
 }
+
+// A row's `level = N` reaches the descriptor slot by slot; every slot that
+// declared none reads 0 (the default 3*slot - 2). The installed core pack is
+// the declaration: the orc captain's EAT CORPSE row says `level = 1`.
+// RED (checked by hand): with the installer's copy of `level` dropped,
+// special_level[2] reads 0 ("slot == 2 ? 1 : 0 Which is: 1").
+TEST(LuaPackInstall, a_special_level_reaches_the_descriptor_by_slot)
+{
+    init_all_registries();
+    const FamilyDescriptor* captain = get_family_descriptor(FAMILY_BIG_ORC);
+    ASSERT_NE(nullptr, captain);
+    ASSERT_STREQ("EAT CORPSE", captain->special_names[2]);
+    for (int slot = 0; slot < FD_NUM_SPECIALS; ++slot)
+        EXPECT_EQ(slot == 2 ? 1 : 0, captain->special_level[slot])
+            << "slot " << slot;
+
+    // A classic family declares no level anywhere.
+    const FamilyDescriptor* orc = get_family_descriptor(FAMILY_ORC);
+    ASSERT_NE(nullptr, orc);
+    for (int slot = 0; slot < FD_NUM_SPECIALS; ++slot)
+        EXPECT_EQ(0, orc->special_level[slot]) << "slot " << slot;
+}

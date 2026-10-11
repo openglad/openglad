@@ -1765,16 +1765,19 @@ TEST(KitCaptain, bot_captain_eats_through_check_special)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// A freshly promoted captain restarts at level 1, so the player's cycling
-// key walks HOWL alone until level 4, then HOWL and EAT CORPSE, the hook at
-// 7 and the banner at 10, wrapping to slot 1 each time.
+// A freshly promoted captain restarts at level 1 with HOWL and EAT CORPSE
+// both open (the EAT CORPSE row says `level = 1`); the hook opens at 7 and
+// the banner at 10 by default, and the cycling key wraps to slot 1 each time.
 //
 // Proof it can fail: the eat_corpse row deleted from the staged
 // living-15-orc_captain.lua (HOOK BLADE back on slot 2) printed
-//   Expected equality of these values: "12341" walk(10) Which is: "12312"
+//   Expected equality of these values: "121" walk(1, 2) Which is: "111"
+//   Expected equality of these values: "12341" walk(10, 4) Which is: "12312"
+//   Value of: og::sim::slot_open(fd, 2, 1) Expected: true
 //   Expected equality of these values: "EAT CORPSE" ... Which is: "HOOK BLADE"
 //   Expected equality of these values: "NONE" ... Which is: "KNIFE FAN"
-TEST(KitCaptain, fresh_captain_has_howl_only_until_level_4)
+// and only its `level = 1` dropped printed the first and third lines.
+TEST(KitCaptain, fresh_captain_has_howl_and_eat_corpse_from_level_1)
 {
     og::test::ScopedHookFailureGuard guard;
     TestGameWorld tw;
@@ -1782,25 +1785,82 @@ TEST(KitCaptain, fresh_captain_has_howl_only_until_level_4)
     tw.world().new_specials = 1;
     walker* captain = add_captain(tw, 200, 200, 1);
     ASSERT_NE(nullptr, captain);
-    const auto walk = [&](short level) {
+    // `open` presses from slot 1: one per open slot, the last wrapping home.
+    const auto walk = [&](short level, int open) {
         captain->stats()->set_level(level);
         captain->set_current_special(1);
         std::string seen = "1";
-        for (int press = 0; press < level / 3 + 1; ++press) {
+        for (int press = 0; press < open; ++press) {
             sim_advance_current_special(tw.world(), *captain);
             seen += std::to_string(static_cast<int>(captain->current_special()));
         }
         return seen;
     };
-    EXPECT_EQ("11", walk(1));
-    EXPECT_EQ("121", walk(4));
-    EXPECT_EQ("1231", walk(7));
-    EXPECT_EQ("12341", walk(10));
-    EXPECT_STREQ("HOWL", og::sim::special_name(get_family_descriptor(FAMILY_BIG_ORC), 1, 1));
-    EXPECT_STREQ("EAT CORPSE", og::sim::special_name(get_family_descriptor(FAMILY_BIG_ORC), 2, 1));
-    EXPECT_STREQ("NONE", og::sim::alternate_name(get_family_descriptor(FAMILY_BIG_ORC), 1, 1))
+    EXPECT_EQ("121", walk(1, 2));
+    EXPECT_EQ("121", walk(4, 2));
+    EXPECT_EQ("1231", walk(7, 3));
+    EXPECT_EQ("12341", walk(10, 4));
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_BIG_ORC);
+    EXPECT_TRUE(og::sim::slot_open(fd, 2, 1)) << "EAT CORPSE from level 1";
+    EXPECT_FALSE(og::sim::slot_open(fd, 3, 6));
+    EXPECT_TRUE(og::sim::slot_open(fd, 3, 7)) << "HOOK BLADE at 7";
+    EXPECT_FALSE(og::sim::slot_open(fd, 4, 9));
+    EXPECT_TRUE(og::sim::slot_open(fd, 4, 10)) << "WAR BANNER at 10";
+    EXPECT_STREQ("HOWL", og::sim::special_name(fd, 1, 1));
+    EXPECT_STREQ("EAT CORPSE", og::sim::special_name(fd, 2, 1));
+    EXPECT_STREQ("NONE", og::sim::alternate_name(fd, 1, 1))
         << "HOWL has no alternate";
-    EXPECT_STREQ("NONE", og::sim::alternate_name(get_family_descriptor(FAMILY_BIG_ORC), 2, 1));
+    EXPECT_STREQ("NONE", og::sim::alternate_name(fd, 2, 1));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+namespace {
+
+// The first world-RNG state whose next draws are exactly `want` under the
+// matching bounds (the bot's rolls, pinned without a spy).
+std::uint32_t state_where_draws_are(const std::vector<std::uint32_t>& bounds,
+                                    const std::vector<std::uint32_t>& want)
+{
+    for (std::uint32_t seed = 1;; ++seed) {
+        og::sim::SimRandom probe(seed);
+        bool match = true;
+        for (std::size_t i = 0; i < bounds.size() && match; ++i)
+            match = probe.next(bounds[i]) == want[i];
+        if (match)
+            return seed;
+    }
+}
+
+}  // namespace
+
+// A level-1 bot captain rolls EAT CORPSE as well as HOWL: its slot roll
+// draws next(2), because slot 2 opens at level 1. The state is pinned so the
+// special roll is next(5) == 0 and the slot roll next(2) == 1; at full health
+// with no corpse the meal's gate refuses, nothing is cast, and the slot it
+// rolled stays selected.
+//
+// RED (checked by hand): with the classic (level + 2) / 3 put back as the
+// bound in living::act the slot roll is next(1) == 0, and the slot reads 1:
+//   Expected equality of these values: 2 captain->current_special()
+//   Which is: '\x1' (1)
+TEST(KitCaptain, bot_captain_at_level_1_rolls_eat_corpse)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_living(tw, FAMILY_BIG_ORC, kUs, 200, 200, 1);
+    ASSERT_NE(nullptr, captain);
+    captain->stats()->set_max_magicpoints(25.0f);
+    captain->stats()->set_magicpoints(25.0f);
+    captain->set_act_type(ACT_RANDOM);
+    captain->set_current_special(1);
+    tw.world().rng_.state_ = state_where_draws_are({5, 2}, {0, 1});
+    dynamic_cast<living*>(captain)->act();
+    EXPECT_EQ(2, captain->current_special())
+        << "the level-1 roll landed on EAT CORPSE";
+    EXPECT_FLOAT_EQ(25.0f, captain->stats()->magicpoints())
+        << "the meal's gate refused at full health: nothing was cast";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

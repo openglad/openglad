@@ -14,6 +14,8 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <cstring>
+
 namespace og::sim {
 
 namespace {
@@ -68,6 +70,31 @@ unsigned short alternate_cost_in_play(const FamilyDescriptor* fd, int slot,
         !alternate_in_play(fd, slot, new_specials))
         return 0;
     return fd->alternate_cost[slot];
+}
+
+int slot_open_level(const FamilyDescriptor* fd, int slot) noexcept
+{
+    if (fd != nullptr && slot_in_range(slot) && fd->special_level[slot] != 0)
+        return fd->special_level[slot];
+    return 3 * slot - 2;
+}
+
+bool slot_open(const FamilyDescriptor* fd, int slot, int level) noexcept
+{
+    return level >= slot_open_level(fd, slot);
+}
+
+int bot_slot_roll_bound(const FamilyDescriptor* fd, int level,
+                        short new_specials) noexcept
+{
+    int bound = (level + 2) / 3;
+    for (int slot = 1; slot < FD_NUM_SPECIALS; ++slot) {
+        if (slot > bound && slot_open(fd, slot, level) &&
+            std::strcmp(special_name(fd, slot, new_specials),
+                        kSpecialNameNone) != 0)
+            bound = slot;
+    }
+    return bound;
 }
 
 short session_new_specials() noexcept
