@@ -893,3 +893,165 @@ TEST(HelpSmoke, help_read_scenario_flows_overlong_lines)
     ASSERT_EQ(160, read_scenario(og::runtime::current_session->myscreen_));
     ASSERT_EQ(0, thread.join());
 }
+
+// ---- Stills for the pull request: the CLASSES tab --------------------------
+//
+// Freezes the HELP screen on its CLASSES tab twice: page 1, with the note
+// that the starred specials need the New Specials setting, and the page that
+// holds the GHOST entry. With OG_FX_CAPTURE_DIR set the two frames are
+// written there (help_stills/help_classes_p1.ppm, help_classes_ghost.ppm);
+// without it they are only checked.
+#include "test_frame_capture.h"
+#include "../../src/interface/ui/picker_sdl_defs.h"
+
+namespace {
+
+struct ClassesStillArgs
+{
+    const char* dir = nullptr;
+    int ghost_page = -1;
+    std::atomic<int> tab{-1};
+    std::atomic<int> page_at_first{-1};
+    std::atomic<int> page_at_ghost{-1};
+};
+
+int classes_still_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* a = static_cast<ClassesStillArgs*>(data);
+    if (wait_for_interactable("help_tab_classes", 5000))
+    {
+        wait_for_menu_frames(2);
+        interact("help_tab_classes");
+        a->tab.store(settle_help_tab(1, 2000), std::memory_order_release);
+        wait_for_menu_frames(2);
+        a->page_at_first.store(help_testing_query_help_page(),
+                               std::memory_order_release);
+        capture_presented_frame("help_classes_p1", a->dir);
+
+        // One NEXT per page, each proven by the page the screen reports and
+        // pressed again (on a settled frame) only while the page has not
+        // moved.
+        for (int page = 1; page <= a->ghost_page; ++page)
+        {
+            for (int attempt = 0; attempt < 5; ++attempt)
+            {
+                wait_for_menu_frames(2);
+                if (help_testing_query_help_page() >= page)
+                    break;
+                interact("help_page_next");
+                if (settle_help_page(page, 1000) == page)
+                    break;
+            }
+            if (help_testing_query_help_page() != page)
+                break;
+        }
+        wait_for_menu_frames(2);
+        a->page_at_ghost.store(help_testing_query_help_page(),
+                               std::memory_order_release);
+        capture_presented_frame("help_classes_ghost", a->dir);
+    }
+    interact("help_back");
+    return 0;
+}
+
+// Text pixels in the box: everything that is not the box's own background
+// (its most common colour).
+std::size_t help_text_ink(const std::vector<Uint8>& rgb, int x1, int x2,
+                          int y1, int y2)
+{
+    std::vector<std::pair<std::uint32_t, std::size_t>> counts;
+    std::size_t total = 0;
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            const std::size_t i = (static_cast<std::size_t>(y) * 320u +
+                                   static_cast<std::size_t>(x)) * 3u;
+            const std::uint32_t c = (static_cast<std::uint32_t>(rgb[i]) << 16) |
+                                    (static_cast<std::uint32_t>(rgb[i + 1]) << 8) |
+                                    rgb[i + 2];
+            bool found = false;
+            for (auto& [colour, n] : counts)
+                if (colour == c)
+                {
+                    ++n;
+                    found = true;
+                }
+            if (!found)
+                counts.emplace_back(c, 1u);
+            ++total;
+        }
+    std::size_t most = 0;
+    for (const auto& [colour, n] : counts)
+        most = std::max(most, n);
+    return total - most;
+}
+
+} // namespace
+
+TEST(HelpSmoke, zz_capture_help_classes_stills)
+{
+    ViewportGuard guard;
+    HelpTestingInputGuard input_guard;
+    take_captured_frames(); // answer only for this test's stills
+
+    // The GHOST entry's page, from the lines the screen loads (they do not
+    // wrap: classes_help_lines_flow_within_frame_budget).
+    const std::string text = help_testing_classes_text();
+    int ghost_line = -1;
+    int index = 0;
+    std::size_t from = 0;
+    while (from <= text.size())
+    {
+        const std::size_t end = text.find('\n', from);
+        const std::string line =
+            text.substr(from, end == std::string::npos ? std::string::npos
+                                                        : end - from);
+        if (line == "GHOST")
+        {
+            ghost_line = index;
+            break;
+        }
+        if (end == std::string::npos)
+            break;
+        from = end + 1;
+        ++index;
+    }
+    ASSERT_GE(ghost_line, 0) << "the CLASSES page has a GHOST entry";
+    const int ghost_page = ghost_line / kHelpLinesPerPage;
+    ASSERT_GT(ghost_page, 0) << "the GHOST entry is past page 1";
+
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    const std::string dir =
+        base != nullptr && base[0] != '\0' ? std::string(base) + "/help_stills" : "";
+    ClassesStillArgs args;
+    args.dir = dir.empty() ? nullptr : dir.c_str();
+    args.ghost_page = ghost_page;
+    SdlThreadJoinGuard thread(
+        SDL_CreateThread(classes_still_injector, "help_classes_still", &args));
+    ASSERT_NE(nullptr, thread.get()) << "failed to create injector thread";
+    ASSERT_EQ(1, show_general_help());
+    ASSERT_EQ(0, thread.join());
+
+    EXPECT_EQ(1, args.tab.load()) << "the CLASSES tab opened";
+    EXPECT_EQ(0, args.page_at_first.load()) << "the first still is page 1";
+    EXPECT_EQ(ghost_page, args.page_at_ghost.load())
+        << "the second still is the page holding GHOST (line " << ghost_line
+        << ")";
+    const std::vector<CapturedFrame> frames = take_captured_frames();
+    ASSERT_EQ(2u, frames.size()) << "both stills reached their capture";
+    for (const CapturedFrame& f : frames)
+    {
+        ASSERT_TRUE(f.captured) << f.name << " froze a presented frame";
+        ASSERT_EQ(320u * 200u * 3u, f.rgb.size()) << f.name;
+        EXPECT_EQ(!dir.empty(), f.written)
+            << f.name << ": a file only when OG_FX_CAPTURE_DIR asks for one";
+        // The text inside the frame (its border is at x 5 and 314, y 20
+        // and 160).
+        const std::size_t ink = help_text_ink(f.rgb, kHelpTextX, kHelpFrameRight - 2,
+                                              kHelpTextTop, kHelpFrameBottom - 2);
+        printf("  %s: text ink %zu\n", f.name.c_str(), ink);
+        // An empty frame reads about 430 (its bevel); a page of text, thousands.
+        EXPECT_GT(ink, 1500u) << f.name << ": the page has text on it";
+    }
+}
