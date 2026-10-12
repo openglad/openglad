@@ -8068,7 +8068,7 @@ inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
 };
 
 // effect_explosion_ally_tier_scen99: the blast's ALLY tier. explosion_on_death
-// (packs/core/lib/effect_bomb.lua:82-87, master effect.cpp:690-700) halves the
+// (packs/core/lib/effect_bomb.lua:85-94, master effect.cpp:690-700) halves the
 // damage for a walker the owner is friendly to. Nothing in the corpus reaches that
 // arm -- every other blast row blasts foes only, so the whole `elseif` is
 // unexercised. effect_bomb_bystander_scen99 already pins the FULL tier and, in the
@@ -8128,7 +8128,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_ally_tier_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_explosion_ally_tier_scen99 = {
-    "packs/core/lib/effect_bomb.lua", 88,
+    "packs/core/lib/effect_bomb.lua", 92,
     "        self.damage = og.fdiv(full_damage, 2.0)",
     "        self.damage = og.fdiv(full_damage, 8.0)",
     "Widens the ally divisor from the half tier to an eighth. The blast still fires, still emits SOUND_EXPLODE, still shoves and still lands the quarter tier on its owner (the caster stays on 5200 cents), so only the allied victim moves: the team-0 TOWER1 finishes on 12000 cents instead of 8500 and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8500, 8500) has no walker left in its window."

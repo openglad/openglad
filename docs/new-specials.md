@@ -108,7 +108,7 @@ Three per-entity fields, all in every snapshot:
 
 | field | type | dirty bit | meaning |
 |---|---|---|---|
-| `kit_state` | `uint8` | 94 | `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one; GLIMMER's sprinkles) |
+| `kit_state` | `uint8` | 94 | `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one; GLIMMER's sprinkles), `KIT_NOVA` 32 (on a blast: a SUPERNOVA blast, which spares its own team half the damage by team colour) |
 | `possess_link` | `uint32` | 93 | the entity id of the possession partner, 0 when none |
 | `possess_ticks` | `int16` | 95 | on the host: ticks left; 0 = for good, which the core kit never asks for |
 
@@ -347,8 +347,9 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   plus 15 a level, and eight more blasts go off around it, 40 pixels out
   on each axis (the diagonal ones about 56 pixels out), each with half the
   main blast's damage and its reach: about 135 pixels from the elemental
-  at level 10. The elemental is gone when they go off, so each blast is
-  its own owner, and allies take every one of them in full.
+  at level 10. Allies take each blast at half and foes in full: the
+  elemental is gone when they go off, so each blast is its own owner and
+  remembers it is a nova, sparing its own team colour half the damage.
 - A standing burner keeps one ember under its feet: a new one drops (every
   4 ticks) only where no ember of its own still burns, so embers trail
   behind a moving elemental and do not pile up under a still one.

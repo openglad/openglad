@@ -846,7 +846,9 @@ TEST(KitElemental, rekindle_is_not_cast_with_new_specials_off)
 // points), each of half that, 82, carrying the main blast's level 10, the
 // elemental's owner and team, on fire. The elemental dies and on_death's
 // free starburst follows (eight meteors; its 50 MP refunded and spent).
-// Detonated, the main blast kills a 100-hp foe beside the body outright.
+// Detonated, the main blast kills a 100-hp foe beside the body outright
+// and takes half its 165 from an ally beside it; a ring blast takes half
+// its 82 from an ally and the full 82 from a foe.
 //
 // RED (staged kit tuning nova_per_level = 15 -> 5): the main blast is 115.
 // RED (staged: the ring loop's bound 1 -> 0, so no ring blast): 1 blast,
@@ -897,28 +899,98 @@ TEST(KitElemental, supernova_spends_all_health_blasts_a_ring_and_the_starburst_f
     EXPECT_EQ(0x1EF, spots) << "one blast on each of the eight points";
 
     // A foe beside the body (placed after the cast, so no meteor of the
-    // starburst lands on it) is killed by the main blast alone.
+    // starburst lands on it) is killed by the main blast alone. An ally on
+    // the other side of the body, 200 hp, takes half of it and lives: the
+    // elemental is dead when its blasts go off, so each blast carries the
+    // nova mark and spares its own team half by team colour.
     living* foe = add_living(w, FAMILY_SOLDIER, 1, 100, 120);
     ASSERT_NE(nullptr, foe);
+    living* beside = add_living(w, FAMILY_SOLDIER, 0, 100, 80);
+    ASSERT_NE(nullptr, beside);
+    beside->stats()->set_max_hitpoints(200.0f);
+    beside->stats()->set_hitpoints(200.0f);
     main_blast->set_dead(1);
     main_blast->death();
     EXPECT_TRUE(foe->dead()) << "165 against 100 hp";
+    EXPECT_FALSE(beside->dead()) << "half of 165 against 200 hp";
+    EXPECT_TRUE(lost_one_hit_of(82.5f, 200.0f, hp(beside)))
+        << "the main blast spares its own team half";
 
     // An ally 60 px east of the centre, 20 px past the east ring blast,
-    // takes that blast in full: the elemental is dead when its blasts go
-    // off, so each blast answers for itself and spares nobody (the main
-    // blast always did the same).
+    // takes half that blast: the caster is gone, so the nova spares its
+    // own team half by team colour.
     living* ally = add_living(w, FAMILY_SOLDIER, 0, cx + 60 - 4, cy - 4);
     ASSERT_NE(nullptr, ally);
     walker* east = nullptr;
-    for (walker* b : ring)
+    walker* west = nullptr;
+    for (walker* b : ring) {
         if (centre_x(b) - cx == 40 && centre_y(b) == cy)
             east = b;
+        if (centre_x(b) - cx == -40 && centre_y(b) == cy)
+            west = b;
+    }
     ASSERT_NE(nullptr, east);
+    ASSERT_NE(nullptr, west);
     const float ally_before = hp(ally);
     east->set_dead(1);
     east->death();
-    EXPECT_TRUE(lost_one_hit_of(82.0f, ally_before, hp(ally)));
+    EXPECT_TRUE(lost_one_hit_of(41.0f, ally_before, hp(ally)))
+        << "half of the ring blast's 82";
+
+    // A foe the same 60 px west of the centre, 20 px past the west ring
+    // blast, still takes that blast in full.
+    living* far_foe = add_living(w, FAMILY_SOLDIER, 1, cx - 60 - 4, cy - 4);
+    ASSERT_NE(nullptr, far_foe);
+    const float far_foe_before = hp(far_foe);
+    west->set_dead(1);
+    west->death();
+    EXPECT_TRUE(lost_one_hit_of(82.0f, far_foe_before, hp(far_foe)))
+        << "the full 82 on a foe";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The classic path is untouched: a blast that has lost its owner (a dead
+// thief's bomb going off) answers for itself and, carrying no nova mark,
+// hits a living of its own team colour in full. The same blast with the
+// nova mark takes half.
+//
+// RED (staged effect_bomb.lua: the nova test dropped from the half branch):
+// the marked blast takes the full 60 from its own colour.
+TEST(KitElemental, an_unmarked_ownerless_blast_hits_its_own_colour_in_full)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    const auto blast_at = [&](int x, int y, bool nova) {
+        walker* b = w.world().add_ob(Order::FX, FAMILY_EXPLOSION);
+        if (b == nullptr)
+            return b;
+        b->set_owner(b);
+        b->set_team_num(0);
+        b->stats()->set_level(4);
+        b->set_damage(60.0f);
+        place(b, x, y);
+        if (nova)
+            b->set_kit_state(static_cast<std::uint8_t>(b->kit_state() |
+                                                       KIT_NOVA));
+        return b;
+    };
+    living* plain_ally = add_living(w, FAMILY_SOLDIER, 0, 100, 100);
+    ASSERT_NE(nullptr, plain_ally);
+    walker* plain = blast_at(100, 110, false);
+    ASSERT_NE(nullptr, plain);
+    plain->set_dead(1);
+    plain->death();
+    EXPECT_TRUE(lost_one_hit_of(60.0f, 100.0f, hp(plain_ally)))
+        << "a dead owner's bomb hits its own colour in full";
+
+    living* nova_ally = add_living(w, FAMILY_SOLDIER, 0, 400, 100);
+    ASSERT_NE(nullptr, nova_ally);
+    walker* nova = blast_at(400, 110, true);
+    ASSERT_NE(nullptr, nova);
+    nova->set_dead(1);
+    nova->death();
+    EXPECT_TRUE(lost_one_hit_of(30.0f, 100.0f, hp(nova_ally)))
+        << "a nova blast spares its own colour half";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

@@ -593,6 +593,7 @@
 ---@field KIT_CHANNEL integer
 ---@field KIT_FEARLESS integer
 ---@field KIT_HIDDEN integer
+---@field KIT_NOVA integer
 ---@field KIT_QUARTER_FREEZE integer
 ---@field KIT_WARD integer
 ---@field MACE_LIFE_CAP integer

@@ -82,7 +82,11 @@ local function explosion_on_death(self)
         self.damage = og.fdiv(full_damage, 4.0)
         self:attack(w)
         self.damage = full_damage
-      elseif self:owner():dead() == 0 and self:owner():is_friendly(w) then
+      elseif (self:owner():dead() == 0 and self:owner():is_friendly(w))
+          or ((self:kit_state() & C.KIT_NOVA) ~= 0
+              and w:team_num() == self:team_num()) then
+        -- A SUPERNOVA blast's caster is gone when it goes off, so the blast
+        -- spares its own team half by team colour (New Specials).
         local full_damage = self:damage()
         -- shim kept: damage is a C++ float: the half cut rounds through float.
         self.damage = og.fdiv(full_damage, 2.0)

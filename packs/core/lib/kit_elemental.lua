@@ -276,6 +276,9 @@ local function nova_blast(self, at, dx, dy)
   if blast then
     blast:set_owner(self)
     blast.team = self.team
+    -- The caster is gone when the blast goes off: the nova mark makes the
+    -- blast spare its own team half by team colour (effect_bomb.lua).
+    blast:set_kit_state(blast:kit_state() | C.KIT_NOVA)
     blast:set_floor(self:floor())
     blast:center_on(at)
     blast:setxy(blast:xpos() + dx, blast:ypos() + dy)
