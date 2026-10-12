@@ -13265,10 +13265,10 @@ std::vector<Scene> scenes()
             film.marks["el.hp"] = el->stats()->hitpoints();
             walker* friend_ = film.actor("hero1");
             ASSERT_NE(nullptr, friend_);
-            // Allies take every nova blast in full, and inside the ring a
-            // level-10 soldier would die with the elemental (the level ends
-            // when the last hero falls): he stands at the ring's edge, where
-            // only the nearest ring blasts still reach him.
+            // An ally takes each nova blast at half (the blast's nova mark).
+            // He stands at the ring's edge, where only the nearest ring
+            // blasts still reach him, so he outlives the elemental (the
+            // level ends when the last hero falls).
             friend_->setxy(static_cast<short>(el->xpos() - 128), el->ypos());
             friend_->set_act_type(ACT_GUARD);
             friend_->set_guard_hold_post(true);
@@ -13313,16 +13313,23 @@ std::vector<Scene> scenes()
                         count_of(film.display->world(), Order::FX,
                                  fx_explosion) >= 9;
              }},
-            // Allies take every nova blast in full: the soldier at the
-            // ring's edge is badly hurt.
-            {"the soldier 128 px off, at the ring's edge, is badly hurt",
+            // An ally takes each nova blast at half: the soldier at the
+            // ring's edge (382 hp) loses 98, where a blast at full took 218,
+            // and lives. Between a fifth and two fifths of his health holds
+            // the half and refuses the full blast (218 is 57 %), at every
+            // frame of the drop.
+            {"the soldier 128 px off, at the ring's edge, takes the blast at "
+             "half and lives",
              [](Film& film) {
                  walker* a = film.actor_seen("hero1");
                  if (a != nullptr && film.frame >= 56 && film.frame <= 60)
                      printf("  supernova frame %d: soldier hp %.1f\n", film.frame,
                             hp_of(a));
-                 return film.frame >= 56 && a != nullptr && !a->dead() &&
-                        hp_of(a) <= 0.6f * film.mark("friend.hp");
+                 if (film.frame < 56 || a == nullptr || a->dead())
+                     return false;
+                 const float start = film.mark("friend.hp");
+                 const float lost = start - hp_of(a);
+                 return lost >= 0.2f * start && lost <= 0.4f * start;
              }},
         };
         sc.key_tell = 3;
