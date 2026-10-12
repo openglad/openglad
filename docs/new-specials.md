@@ -179,10 +179,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 |---|---|---|
 | none, or the host is higher | 120 | 10 |
 | 1 | 258 | 22 |
-| 2 | 340 | 29 |
+| 2 | 340 | 28 |
 | 5 | 478 | 40 |
 | 6 | 510 | 43 |
-| 9 (a level-10 ghost on a level-1 mage) | 580 | 49 |
+| 9 (a level-10 ghost on a level-1 mage) | 580 | 48 |
 | 19 and more | 720 | 60 |
 
 **How it ends.**
@@ -400,14 +400,14 @@ Every refusal is at most 24 characters, so it fits the compact HUD. The
 ## What the HUD shows
 
 The seat that owns a running timed effect sees how long it has left, in
-seconds, in the manner of the frozen-time cell: `POSSESS: 49s`, `PHASE: 4s`,
+seconds, in the manner of the frozen-time cell: `POSSESS: 48s`, `PHASE: 4s`,
 `HASTE: 8s`, `DIG IN: 25s`, `REASSEMBLE: 30s`, `IMMOLATE: 12s`,
 `LEGION: 25s`, and for the classic timers on the seat's own character
 `SUMMONED` (a summoned body the seat drives), `CHARMED`, `STUNNED`,
 `INVISIBLE` (the thief's CLOAK, the invisibility potion), `INVINCIBLE` (the
 invulnerability potion) and `FLYING` (the flight potion). The SDL HUD draws it in yellow at the foot of the seat's
 view (one row above a running time freeze, which keeps its own row), the
-curses status line adds `POSSESS 49s` after the time, and the text client's
+curses status line adds `POSSESS 48s` after the time, and the text client's
 `state` line gives every living `"timer"` and `"timer_ticks"`. All three
 read one answer, `og::sim::seat_timer`, from fields every snapshot already
 carries, so a mirror shows what the host would. When several run, the one
@@ -425,6 +425,16 @@ mines, warband grunts, the seat's own summons, the cleric's mace and
 meteor rain are things on the map, not countdowns, and are not shown;
 nor is the druid's reveal (the radar shows it) or fright (its own SCARED
 row).
+
+Every countdown is in whole seconds, rounded to the nearest (the game runs
+12 ticks a second, so half a second rounds up): 580 ticks read 48 s. The
+last 5 ticks of an effect read `0s`, and the cell stays up, at `0s`, until
+the effect ends. The frozen-time cell (the time freeze that stops every
+foe) reads the same way, on every client and with the setting on or off:
+`TIME LEFT: 25s` on the SDL HUD (`T: 25s` in a narrow pane) and `TIME 25s`
+on the curses status line, through the same `og::sim::timer_seconds`. Only
+the display changed: the freeze itself and the text client's raw
+`"timer_ticks"` stay in ticks.
 
 The number is the effect's real end. DIG IN, REASSEMBLE and IMMOLATE end
 when their clock or the mana runs out, whichever is first, so after every

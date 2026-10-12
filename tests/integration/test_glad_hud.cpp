@@ -2439,7 +2439,8 @@ TEST_F(GladHud, freeze_countdown_cell_draws_from_enemy_freeze)
     v->control = controlp;
     v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // the score count-up uses rng()
 
-    // "TIME LEFT: 30" at 6px per glyph, on the 6px-tall text row at bm-34.
+    // "TIME LEFT: 3s" (30 ticks, 2.5 s, to the nearest second) at 6px per
+    // glyph, 13 glyphs, on the 6px-tall text row at bm-34.
     const int cell_x0 = v->xloc + 2; // the classic HUD block's left column
     const int cell_x1 = cell_x0 + 13 * 6;
     const int cell_y0 = v->endy - 34;
@@ -2459,10 +2460,16 @@ TEST_F(GladHud, freeze_countdown_cell_draws_from_enemy_freeze)
         << "no countdown cell without an active freeze";
 
     world.enemy_freeze = 30;
+    trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, (int)new_score_panel(s, 1));
     EXPECT_TRUE(cell_has_pixels(capture_rendered_frame(*s)))
         << "an active freeze must draw the countdown cell";
+    const std::string freeze_drawn = "freeze_countdown left=30 secs=3 row=" +
+                                     std::to_string(cell_y0) +
+                                     " text=TIME LEFT: 3s";
+    EXPECT_TRUE(trace_contains("hud", freeze_drawn.c_str()))
+        << "the cell shows the freeze in seconds, not ticks";
 
     // A view with no HUD of its own (a spectator camera watching an AI body)
     // draws no cell either: it belongs to the classic HUD block.
@@ -2585,9 +2592,10 @@ TEST_F(GladHud, freeze_countdown_cell_never_lands_on_the_notification_feed)
     EXPECT_GT(freeze_pixels, 0)
         << "a narrow column still gets the short-form cell";
 
-    // The same column cannot hold a three-digit countdown even shortened
-    // ("T: 300" is 36px against 32px of room), and overlapping the radar is
-    // not an option: it draws nothing until the counter comes back down.
+    // The same column cannot hold a two-digit countdown even shortened
+    // (300 ticks is "T: 25s", 36px against 32px of room; 30 ticks above is
+    // "T: 3s", 30px), and overlapping the radar is not an option: it draws
+    // nothing until the counter comes back down.
     probe_freeze_pixels("3p panels, three digits", 300);
     EXPECT_EQ(0, freeze_pixels)
         << "a column with no room for the short form draws nothing";
@@ -2761,7 +2769,8 @@ TEST_F(GladHud, seat_timer_cell_steps_above_a_running_freeze)
         s->clearbuffer();
         ASSERT_EQ(1, (int)new_score_panel(s, 1));
         const std::string freeze_row =
-            "freeze_countdown left=30 row=" + std::to_string(v->endy - 34);
+            "freeze_countdown left=30 secs=3 row=" +
+            std::to_string(v->endy - 34);
         const std::string seat_row = "seat_timer label=POSSESS ticks=300 secs=25 row=" +
                                      std::to_string(v->endy - 40);
         EXPECT_TRUE(trace_contains("hud", freeze_row.c_str()))
@@ -2918,7 +2927,8 @@ TEST_F(GladHud, seat_timer_cell_never_lands_on_the_notification_feed)
         << "the label is dropped before the cell is";
 
     // A clock too long even for its seconds (a stack of speed potions read
-    // as 10000 s: 36px against 32px of room) draws nothing. The field sticks
+    // as 10000 s, 119999 ticks to the nearest second: 36px against 32px of
+    // room) draws nothing. The field sticks
     // at 1 once the bonus has run out, so 120000 is 119999 ticks of haste.
     controlp->set_possess_link(0u);
     controlp->set_possess_ticks(0);

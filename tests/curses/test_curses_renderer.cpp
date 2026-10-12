@@ -1225,7 +1225,8 @@ TEST(CursesRenderer, draw_preview_refuses_zero_area_bands)
 
 // #232: the frozen-time countdown is HUD state on both clients. The terminal
 // twin reads world.enemy_freeze straight off the mirror, so a frozen level
-// says how long the freeze has left without spending a feed line on it.
+// says how long the freeze has left without spending a feed line on it,
+// in seconds: 42 ticks round to the nearest second, "TIME 4s".
 TEST(CursesRenderer, freeze_countdown_shows_on_hud_row_one)
 {
     HandWorld hw(20, 20);
@@ -1245,17 +1246,18 @@ TEST(CursesRenderer, freeze_countdown_shows_on_hud_row_one)
 
     world.enemy_freeze = 42;
     renderer.draw(term, world, hero->entity_id());
-    EXPECT_NE(term.text_row(1).find("TIME 42"), std::string::npos)
-        << "row 1 shows the frozen-time countdown; got: " << term.text_row(1);
+    EXPECT_NE(term.text_row(1).find("TIME 4s"), std::string::npos)
+        << "row 1 shows the frozen-time countdown in seconds; got: "
+        << term.text_row(1);
 }
 
 // The seat's own timed effect rides row 1 after TIME, from the shared
-// countdown model, in seconds: "POSSESS 49s" for a seat in a possessed body
-// with 580 ticks left. With the setting off the kit's are not shown and the
+// countdown model, in seconds: "POSSESS 48s" for a seat in a possessed body
+// with 580 ticks left (48.3 s, to the nearest second). With the setting off the kit's are not shown and the
 // classic ones (a potion, the cloak) are.
 //
 // RED (run by hand): the seat_timer field removed from draw_hud -> row 1
-// has no "POSSESS 49s".
+// has no "POSSESS 48s".
 TEST(CursesRenderer, hud_shows_the_seats_own_countdown)
 {
     HandWorld hw(20, 20);
@@ -1272,7 +1274,7 @@ TEST(CursesRenderer, hud_shows_the_seats_own_countdown)
     CursesRenderer renderer;
     renderer.draw(term, world, host->entity_id());
     const std::string row = term.text_row(1);
-    EXPECT_NE(row.find("TIME 42  POSSESS 49s"), std::string::npos)
+    EXPECT_NE(row.find("TIME 4s  POSSESS 48s"), std::string::npos)
         << "row 1 shows the possession's seconds after TIME; got: " << row;
 
     world.new_specials = 0;

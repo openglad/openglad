@@ -52,9 +52,12 @@ struct SeatTimer {
 [[nodiscard]] SeatTimer seat_timer(const GameWorld& world,
                                    const walker& control) noexcept;
 
-// Ticks to whole seconds, rounded up, at the 12-tick-a-second sim rate:
-// the same rule the SCARED line uses, so a clock never reads 0s while
-// something is still running.
+// Ticks to whole seconds, rounded to the nearest, at the 12-tick-a-second
+// sim rate (half a second, 6 ticks, rounds up). Every countdown cell reads
+// it: a seat's timed effect and the frozen-time TIME LEFT cell, on the SDL
+// HUD and the curses status line. The last 5 ticks of an effect read 0s,
+// and a cell keeps drawing "LABEL: 0s" until the effect ends rather than
+// going away early.
 [[nodiscard]] int timer_seconds(int ticks) noexcept;
 
 }  // namespace og::sim

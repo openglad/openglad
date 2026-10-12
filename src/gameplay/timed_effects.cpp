@@ -139,7 +139,7 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
 
 int timer_seconds(int ticks) noexcept
 {
-    return (ticks + 11) / 12;
+    return (ticks + 6) / 12;
 }
 
 }  // namespace og::sim

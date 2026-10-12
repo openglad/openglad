@@ -11706,7 +11706,7 @@ walker* seat_seen(Film& film)
     return vs == nullptr ? nullptr : vs->control;
 }
 
-// The seat's countdown cell drew exactly `text` ("POSSESS: 49s") on a frame
+// The seat's countdown cell drew exactly `text` ("POSSESS: 48s") on a frame
 // of this scene: the HUD's own trace of what it put on the screen.
 bool hud_drew(const std::string& text)
 {
@@ -12062,11 +12062,12 @@ std::vector<Scene> scenes()
                  return film.frame > 102 && c != nullptr &&
                         c->entity_id() == film.hero_id && !c->hidden();
              }},
-            // A level-10 ghost on a level-1 mage rides 580 ticks.
-            {"the seat's HUD reads POSSESS: 49s at the cast",
-             [](Film&) { return hud_drew("POSSESS: 49s"); }},
-            {"and counts down (POSSESS: 45s four seconds on)",
-             [](Film&) { return hud_drew("POSSESS: 45s"); }},
+            // A level-10 ghost on a level-1 mage rides 580 ticks: 48 s to
+            // the nearest second.
+            {"the seat's HUD reads POSSESS: 48s at the cast",
+             [](Film&) { return hud_drew("POSSESS: 48s"); }},
+            {"and counts down (POSSESS: 44s four seconds on)",
+             [](Film&) { return hud_drew("POSSESS: 44s"); }},
         };
         // The key still: the possessed mage walking, its ring and the
         // countdown in frame.

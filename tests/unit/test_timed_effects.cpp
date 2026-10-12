@@ -581,16 +581,19 @@ TEST_F(TimedEffects, a_bots_effect_is_answered_too)
     EXPECT_EQ(77, t.ticks);
 }
 
-// Seconds round up at 12 ticks a second, the SCARED line's rule, so a clock
-// never reads 0s while something still runs.
-TEST(TimedEffectsSeconds, ticks_round_up_to_whole_seconds)
+// Seconds round to the nearest whole second at 12 ticks a second: half a
+// second (6 ticks) rounds up. The last 5 ticks of an effect read 0s.
+TEST(TimedEffectsSeconds, ticks_round_to_nearest_second)
 {
     EXPECT_EQ(0, og::sim::timer_seconds(0));
-    EXPECT_EQ(1, og::sim::timer_seconds(1));
+    EXPECT_EQ(0, og::sim::timer_seconds(1));
+    EXPECT_EQ(0, og::sim::timer_seconds(5));
+    EXPECT_EQ(1, og::sim::timer_seconds(6));
     EXPECT_EQ(1, og::sim::timer_seconds(12));
-    EXPECT_EQ(2, og::sim::timer_seconds(13));
+    EXPECT_EQ(1, og::sim::timer_seconds(17));
+    EXPECT_EQ(2, og::sim::timer_seconds(18));
     EXPECT_EQ(30, og::sim::timer_seconds(360));
-    EXPECT_EQ(49, og::sim::timer_seconds(580));
+    EXPECT_EQ(48, og::sim::timer_seconds(580));
     EXPECT_EQ(60, og::sim::timer_seconds(720));
 }
 

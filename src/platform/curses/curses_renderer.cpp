@@ -402,11 +402,12 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                 line1 += "  " + flr;
         }
         // Frozen-time countdown (#232): the terminal twin of the SDL HUD's
-        // TIME LEFT cell, read straight off the snapshot-mirrored counter.
+        // TIME LEFT cell, read straight off the snapshot-mirrored counter,
+        // in seconds like the seat countdown below.
         // Ahead of the mode group so an 80-column clip() eats Score/Sp first.
         if (world.enemy_freeze > 0)
-            line1 += "  TIME " + std::to_string(
-                static_cast<int>(world.enemy_freeze));
+            line1 += "  TIME " + std::to_string(og::sim::timer_seconds(
+                static_cast<int>(world.enemy_freeze))) + "s";
         // The seat's own timed effect (a possession, a phase, a haste...):
         // the terminal twin of the SDL HUD's countdown cell, from the same
         // shared model, in seconds. The followed walker is the host while

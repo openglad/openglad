@@ -241,6 +241,8 @@ static void draw_respawn_countdown(screen* s, walker* control,
 // client reads it straight off its mirror — no notification traffic. Drawn
 // every frame at a fixed left-anchored cell instead of pushed into the feed,
 // which the old per-tick "TIME LEFT" notification flooded out of existence.
+// Shown in seconds through og::sim::timer_seconds, like the seat's own
+// countdown below ("TIME LEFT: 12s"); the counter itself stays in ticks.
 //
 // Row. The classic HUD owns the top-left column (tm+2..tm+26, name + HP/MP)
 // and the bottom-left score/special box (bm-26..bm-2), which leaves bm-34 —
@@ -281,9 +283,10 @@ static bool draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
         return x + 6 * static_cast<Sint32>(text.size()) <= right_limit;
     };
 
-    std::string message = std::format("TIME LEFT: {}", s->world_.enemy_freeze);
+    const int secs = og::sim::timer_seconds(s->world_.enemy_freeze);
+    std::string message = std::format("TIME LEFT: {}s", secs);
     if (!fits(message))
-        message = std::format("T: {}", s->world_.enemy_freeze);
+        message = std::format("T: {}s", secs);
     if (!fits(message))
     {
         TRACE("hud", "freeze_countdown_suppressed x=%d limit=%d",
@@ -294,16 +297,16 @@ static bool draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
     s->text_normal.write_xy(x, row, message.c_str(),
                             static_cast<unsigned char>(YELLOW),
                             static_cast<short>(1));
-    TRACE("hud", "freeze_countdown left=%d row=%d text=%s",
-          static_cast<int>(s->world_.enemy_freeze), static_cast<int>(row),
-          message.c_str());
+    TRACE("hud", "freeze_countdown left=%d secs=%d row=%d text=%s",
+          static_cast<int>(s->world_.enemy_freeze), secs,
+          static_cast<int>(row), message.c_str());
     return true;
 }
 
 // The seat's own timed effect, a kit's or a classic one's (a possession,
 // a potion, a stun...), drawn in the frozen-time cell's manner: the same
 // left column and row rules, YELLOW, every frame off the mirror
-// (og::sim::seat_timer reads snapshot fields only). Seconds, like SCARED.
+// (og::sim::seat_timer reads snapshot fields only), in whole seconds.
 // When the frozen-time cell drew this frame it keeps its row (it is the
 // world's clock and the classic one) and this cell takes the row above it,
 // if that row is still clear of the notification banner; otherwise it
