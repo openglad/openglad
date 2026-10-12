@@ -53,11 +53,12 @@ struct SeatTimer {
                                    const walker& control) noexcept;
 
 // Ticks to whole seconds, rounded to the nearest, at the 12-tick-a-second
-// sim rate (half a second, 6 ticks, rounds up). Every countdown cell reads
-// it: a seat's timed effect and the frozen-time TIME LEFT cell, on the SDL
-// HUD and the curses status line. The last 5 ticks of an effect read 0s,
-// and a cell keeps drawing "LABEL: 0s" until the effect ends rather than
-// going away early.
+// sim rate (half a second, 6 ticks, rounds up). Every countdown shown to a
+// player rounds through it, on the SDL HUD and the curses status line: a
+// seat's timed effect, the frozen-time TIME LEFT cell, SCARED, the respawn
+// countdown (RESPAWN IN on the SDL HUD, RESPAWN on curses) and the next
+// WAVE. The last 5 ticks of an effect read 0s, and a cell keeps drawing
+// "LABEL: 0s" until the effect ends rather than going away early.
 [[nodiscard]] int timer_seconds(int ticks) noexcept;
 
 }  // namespace og::sim

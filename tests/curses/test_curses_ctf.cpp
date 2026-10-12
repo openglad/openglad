@@ -226,7 +226,8 @@ TEST(CursesCtf, hud_shows_mode_lines_with_respawn_marker)
     // The followed avatar dies into the respawn queue.
     og::sim::RespawnEntry entry;
     entry.kind = 0;
-    entry.ticks_left = 36; // 3 s at 12 ticks/s
+    // 3.42 s at 12 ticks/s: 3 to the nearest second (rounding up read 4).
+    entry.ticks_left = 41;
     entry.walker_entity_id = id;
     hw.world().respawn.respawn_queue.push_back(entry);
     renderer.draw(term, hw.world(), id);

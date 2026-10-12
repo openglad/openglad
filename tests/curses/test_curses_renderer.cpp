@@ -1089,7 +1089,8 @@ TEST(CursesRenderer, scripted_mode_hud_shows_name_lines_and_respawn)
 
     og::sim::RespawnEntry entry;
     entry.kind = 0;
-    entry.ticks_left = 60; // 5 s at the 12 Hz sim rate
+    // 5.42 s at 12 Hz: 5 to the nearest second (rounding up read 6).
+    entry.ticks_left = 65;
     entry.walker_entity_id = hero->entity_id();
     world.respawn.respawn_queue.push_back(entry);
 

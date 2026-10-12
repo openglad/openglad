@@ -1604,8 +1604,9 @@ TEST_F(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
     trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, (int)new_score_panel(s, 1));
-    EXPECT_TRUE(trace_contains("hud", "next_wave awake=1 pending=1 secs=5"))
-        << "one awake foe, one pending wave, 49 ticks -> 5 s at 12 Hz";
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake=1 pending=1 secs=4"))
+        << "one awake foe, one pending wave, 49 ticks -> 4 s at 12 Hz "
+           "(4.08 s, to the nearest second; rounding up read 5)";
 
     // Once the wave wakes there is nothing pending: classic FOES readout,
     // no WAVE line.
@@ -1650,7 +1651,7 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
     og::sim::RespawnEntry entry;
     entry.kind = 1;
     entry.team = 1;
-    entry.ticks_left = 55; // (55 + 11) / 12 -> 5 s at 12 Hz
+    entry.ticks_left = 55; // 4.58 s at 12 Hz -> 5 s, to the nearest second
     world.respawn.respawn_queue.push_back(entry);
 
     walker* const old_control = v->control;
@@ -1840,14 +1841,15 @@ TEST_F(GladHud, score_panel_shows_scared_countdown_while_fleeing)
         return n;
     };
 
-    // Scared: a ghost-scare-shaped forced walk with 25 sim ticks left reads
-    // as ceil(25 / 12) = 3 seconds at the 12 Hz sim rate.
+    // Scared: a ghost-scare-shaped forced walk with 25 sim ticks left is
+    // 2.08 s at the 12 Hz sim rate, which rounds to the nearest second, 2
+    // (rounding up read 3).
     controlp->stats()->force_command(COMMAND_WALK, 25, 1, 0);
     trace_clear();
     s->clearbuffer();
     ASSERT_EQ(1, (int)new_score_panel(s, 1));
-    EXPECT_TRUE(trace_contains("hud", "scared ticks=25 secs=3"))
-        << "25 forced-walk ticks -> 3 s at 12 Hz";
+    EXPECT_TRUE(trace_contains("hud", "scared ticks=25 secs=2"))
+        << "25 forced-walk ticks -> 2 s at 12 Hz, to the nearest second";
     EXPECT_GT(count_red_in_row(capture_rendered_frame(*s)), 0)
         << "the SCARED line must paint red pixels below the status rows";
 
@@ -3294,7 +3296,7 @@ TEST_F(GladHud, counter_box_drops_labels_in_the_108px_pane)
     {
         auto foe = make_living(FAMILY_ORC, 1);
         ASSERT_NE(nullptr, foe);
-        foe->set_spawn_delay(143); // wakes at 144 -> (144 + 11) / 12 = 12 s
+        foe->set_spawn_delay(143); // wakes at 144 -> 144 / 12 = 12 s
         foe->set_dormant(true);
         world.oblist.push_back(std::move(foe));
     }

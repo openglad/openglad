@@ -432,9 +432,12 @@ last 5 ticks of an effect read `0s`, and the cell stays up, at `0s`, until
 the effect ends. The frozen-time cell (the time freeze that stops every
 foe) reads the same way, on every client and with the setting on or off:
 `TIME LEFT: 25s` on the SDL HUD (`T: 25s` in a narrow pane) and `TIME 25s`
-on the curses status line, through the same `og::sim::timer_seconds`. Only
-the display changed: the freeze itself and the text client's raw
-`"timer_ticks"` stay in ticks.
+on the curses status line, through the same `og::sim::timer_seconds`. So do
+the other countdowns a player sees: `SCARED: 2s` while a fright drives the
+seat's walker, the respawn countdown (`RESPAWN IN 5` on the SDL HUD,
+`RESPAWN 5` on the curses status line) and the next `WAVE: 4s`; there is no
+other ticks-to-seconds rule. Only the display changed: the freeze itself,
+the respawn queue and the text client's raw `"timer_ticks"` stay in ticks.
 
 The number is the effect's real end. DIG IN, REASSEMBLE and IMMOLATE end
 when their clock or the mana runs out, whichever is first, so after every

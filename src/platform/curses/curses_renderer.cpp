@@ -444,7 +444,7 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                     if (entry.kind == 0 &&
                         entry.walker_entity_id == followed_id) {
                         line1 += "  RESPAWN " + std::to_string(
-                            og::sim::respawn_seconds_left(entry));
+                            og::sim::timer_seconds(entry.ticks_left));
                         break;
                     }
                 }

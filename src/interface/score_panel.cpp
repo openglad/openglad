@@ -228,7 +228,7 @@ static void draw_respawn_countdown(screen* s, walker* control,
     {
         if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
             continue;
-        const int seconds = og::sim::respawn_seconds_left(entry);
+        const int seconds = og::sim::timer_seconds(entry.ticks_left);
         const std::string message = std::format("RESPAWN IN {}", seconds);
         s->text_normal.write_xy(lm + 4, tm + 12, message.c_str(),
                                 static_cast<unsigned char>(YELLOW),
@@ -817,7 +817,8 @@ short new_score_panel(screen* s, short /*do_it*/)
             counter_wave_foes = static_cast<int>(pending_foes) +
                 static_cast<int>(pending_respawn_foes);
             counter_show_wave = counter_wave_foes > 0;
-            counter_wave_seconds = (next_wake_ticks + 11u) / 12u;
+            counter_wave_seconds = static_cast<std::uint32_t>(
+                og::sim::timer_seconds(static_cast<int>(next_wake_ticks)));
 
             // Floor row (feature B): drawn only when the shared label is
             // non-empty, so single-floor frames stay byte-identical. Call
@@ -972,12 +973,13 @@ short new_score_panel(screen* s, short /*do_it*/)
             // Scared/fleeing countdown: while a fright (the ghost's scare, a
             // shove) has force-queued a walk this walker must run off, the
             // player has no control — say so instead of feeling broken, with
-            // the seconds left at the 12 Hz sim rate. Drawn just below the
+            // the seconds left (og::sim::timer_seconds). Drawn just below the
             // HP/MP rows (tm+10/tm+18); disappears the tick the queue drains.
             const int scared_ticks = hud_scared_flee_ticks(control);
             if (scared_ticks > 0)
             {
-                const int scared_seconds = (scared_ticks + 11) / 12;
+                const int scared_seconds =
+                    og::sim::timer_seconds(scared_ticks);
                 message = std::format("SCARED: {}s", scared_seconds);
                 mytext.write_xy(lm+2, tm+28, message.c_str(),
                                 static_cast<unsigned char>(RED),

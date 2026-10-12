@@ -157,28 +157,28 @@ TEST(HudCounterBox, a_two_digit_floor_row_sets_the_width_by_itself)
 
 TEST(HudCounterBox, the_4p_quadrant_pane_still_holds_the_worst_real_rows)
 {
-    // 159-px quadrant: "FOES: 100+250" (13) and "WAVE: 5462s" (11, the
+    // 159-px quadrant: "FOES: 100+250" (13) and "WAVE: 5461s" (11, the
     // uint16 spawn delay's ceiling) both fit un-dropped.
     const Layout l =
-        fit(rows_of({nullptr, "FOES: 100+250", "WAVE: 5462s"}), 0, 159);
+        fit(rows_of({nullptr, "FOES: 100+250", "WAVE: 5461s"}), 0, 159);
     EXPECT_EQ(77, l.left) << "rm - 4 - 6*13, still right of the floor 66";
     EXPECT_EQ(79, l.text_x);
     EXPECT_EQ(13, l.capacity);
     EXPECT_EQ("FOES: 100+250", l.text[1]) << "no tier is reached at 159 px";
-    EXPECT_EQ("WAVE: 5462s", l.text[2]);
+    EXPECT_EQ("WAVE: 5461s", l.text[2]);
 }
 
 TEST(HudCounterBox, a_148px_pane_drops_the_label_of_the_row_that_overflows)
 {
     // floor = min(66, 91) = 66, capacity there = (148 - 4 - 66) / 6 = 13, so
     // a 14-glyph row is exactly one glyph too wide: "FOES: 100+2500" loses its
-    // label, and "WAVE: 5462s" (11) keeps its own and sets the width. The
+    // label, and "WAVE: 5461s" (11) keeps its own and sets the width. The
     // boundary is deliberate -- a caption floor one row-height further left
     // would hold 14 and leave the label on.
     const Layout l =
-        fit(rows_of({nullptr, "FOES: 100+2500", "WAVE: 5462s"}), 0, 148);
+        fit(rows_of({nullptr, "FOES: 100+2500", "WAVE: 5461s"}), 0, 148);
     EXPECT_EQ("100+2500", l.text[1]) << "tier 1, not a truncation";
-    EXPECT_EQ("WAVE: 5462s", l.text[2]) << "a fitting row keeps its label";
+    EXPECT_EQ("WAVE: 5461s", l.text[2]) << "a fitting row keeps its label";
     EXPECT_EQ(78, l.left) << "rm - 4 - 6*11, the widest FITTED row";
     EXPECT_EQ(80, l.text_x);
     EXPECT_EQ(11, l.capacity);
