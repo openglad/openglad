@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `6088662c`
+Old-game commit the goldens are captured from: `04a1a337`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -11,7 +11,7 @@ now `cmp` equal to a full capture from the old game at the pin above. That PR re
 (9 whose bytes changed only in notification `a`/`b`, 2 whose level-ending tick changed its event order, and the
 archmage marker row); the other 211 were already byte-identical to the capture. The sim-correctness batch (#320, #350;
 2026-10-06) ported two more fixes (`cd97028a`, `a4491684`), added two rows, reshaped one, and moved the pin to `04611243`; 225 of 225
-goldens `cmp` equal to a full capture at that pin. The charm timer port (#317; 2026-10-07) ported one fix (`95154fd3`), added two rows and moved the pin to `351c8cc6`; 227 of 227 goldens `cmp` equal to a full capture at that pin. The New Specials table mirror (2026-10-08) ported nothing and added no row; it re-pointed pins and moved the pin to `e4f49847`; 227 of 227 goldens `cmp` equal to a full capture at that pin. Its second mirror (2026-10-10) followed one pin's context line and moved the pin to `6088662c`; 227 of 227 goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
+goldens `cmp` equal to a full capture at that pin. The charm timer port (#317; 2026-10-07) ported one fix (`95154fd3`), added two rows and moved the pin to `351c8cc6`; 227 of 227 goldens `cmp` equal to a full capture at that pin. The New Specials table mirror (2026-10-08) ported nothing and added no row; it re-pointed pins and moved the pin to `e4f49847`; 227 of 227 goldens `cmp` equal to a full capture at that pin. Its second mirror (2026-10-10) followed one pin's context line and moved the pin to `6088662c`; 227 of 227 goldens `cmp` equal to a full capture at that pin. Its third mirror (2026-10-12) followed one pin's line number and moved the pin to `04a1a337`; 227 of 227 goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
 game" below rebuilds the old game at the pin and reproduces every golden. When the current game departs from
 classic behaviour on purpose, the same fix is ported into the old game's C++, one fix per commit (the message names the
 current-game commit), the affected goldens are captured from the old game again, and the pin moves to the new old-game
@@ -375,7 +375,15 @@ Second mirror (2026-10-10): the big slime's Split row (`living-08-slime.lua:176`
 `context_before`, so the table changed and was mirrored again. Every id was captured from the old game before and
 after the mirror (the dumper rebuilt from an emptied `obj/`; neither log has a `using embedded fixture` line):
 `diff -rq` of the two directories is empty, and each of the 227 captures `cmp`s equal to its committed golden.
-`6088662c` is the table mirror (recorder-only, `tools/` only) and the pin.
+`6088662c` is the table mirror (recorder-only, `tools/` only).
+
+Third mirror (2026-10-12): the explosion's half-damage branch in `packs/core/lib/effect_bomb.lua` gained the
+Supernova condition (`80c07fc4`, New Specials: a nova blast spares its own colour half by team, since its caster
+is gone), which pushed the line `kMut_effect_explosion_ally_tier_scen99` anchors on from 88 to 92; the pin was
+re-pointed by hand (text and context unchanged) and the table mirrored again. The canary flips the row under the
+moved pin (`predicate_flips=1`). Every id was captured from the old game at the mirror (the dumper rebuilt from an
+emptied `obj/`; the log has no `using embedded fixture` line): each of the 227 captures `cmp`s equal to its
+committed golden. `04a1a337` is the table mirror (recorder-only, `tools/` only) and the pin.
 
 ### Earlier ports (before the 2026-10-04 rule)
 
