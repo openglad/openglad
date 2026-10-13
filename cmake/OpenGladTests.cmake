@@ -960,6 +960,7 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_captain.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_skeleton.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_elemental.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_rests.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
 )
 

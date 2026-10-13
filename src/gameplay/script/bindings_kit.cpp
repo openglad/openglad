@@ -7,7 +7,8 @@
  */
 // The New Specials Lua bindings: the per-walker kit state accessors, the
 // og.C.KIT_* and og.C.MARKER_* constants and the kit verbs (og.possess and
-// friends), installed by one call from the entity-binding install site.
+// friends, og.timer_seconds for a rest's refusal), installed by one call from
+// the entity-binding install site.
 #include "script_internal.h"
 #include "script_raise.h"
 
@@ -22,6 +23,7 @@
 #include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/timed_effects.h>
 #include <openglad/gameplay/walker.h>
 
 #include <cstdint>
@@ -241,6 +243,17 @@ int og_rejoin_obmap(lua_State* L)
     return 0;
 }
 
+// og.timer_seconds(ticks) -> whole seconds, rounded to the nearest: the one
+// ticks-to-seconds rule every countdown a player reads goes through
+// (og::sim::timer_seconds), so a rest's refusal ("GLIMMER IN 12S") agrees
+// with the HUD.
+int og_timer_seconds(lua_State* L)
+{
+    lua_pushinteger(L, static_cast<lua_Integer>(og::sim::timer_seconds(
+                           static_cast<int>(luaL_checkinteger(L, 1)))));
+    return 1;
+}
+
 const luaL_Reg kKitWalkerMethods[] = {
     {"kit_state", m_kit_state},
     {"set_kit_state", m_set_kit_state},
@@ -265,6 +278,7 @@ const luaL_Reg kOgKitFuncs[] = {
     {"line_clear", og_line_clear},
     {"swap_places", og_swap_places},
     {"rejoin_obmap", og_rejoin_obmap},
+    {"timer_seconds", og_timer_seconds},
     {nullptr, nullptr},
 };
 
@@ -286,6 +300,7 @@ const KitConst kKitConstants[] = {
     {"MARKER_PHASE_VEIL", MARKER_PHASE_VEIL},
     {"MARKER_METEOR_RAIN", MARKER_METEOR_RAIN},
     {"MARKER_WARD", MARKER_WARD},
+    {"MARKER_REST", MARKER_REST},
 };
 
 }  // namespace

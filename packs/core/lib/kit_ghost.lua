@@ -52,13 +52,25 @@ local function wail(self)
 end
 
 -- The slot-1 cast: the classic SCARE unless the shifted alternate is in play.
+-- With New Specials on, SCARE and WAIL share one rest (scare_rest ticks on
+-- the ghost's tuning block), each refusing in its own name; with it off the
+-- classic SCARE runs untouched.
+local SCARE_SLOT = 1
+
 function M.scare_or_wail(classic)
+  local rested_scare = lc.with_rest(classic, SCARE_SLOT, "scare_rest", "SCARE")
+  local rested_wail = lc.with_rest(wail, SCARE_SLOT, "scare_rest", "WAIL")
   return function(self)
     if self:alternate_down() then
-      return wail(self)
+      return rested_wail(self)
     end
-    return classic(self)
+    return rested_scare(self)
   end
+end
+
+-- The slot-1 bot gate: `gate`, held while SCARE / WAIL rests.
+function M.scare_gate(gate)
+  return lc.gate_with_rest(gate, SCARE_SLOT)
 end
 
 -- ---------------------------------------------------------------------
@@ -321,5 +333,5 @@ end
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:ghost  specials: scare_or_wail, siphon, possess, phase and the
---               ai gates ai_siphon, ai_possess, ai_phase
+--               ai gates scare_gate, ai_siphon, ai_possess, ai_phase
 return M

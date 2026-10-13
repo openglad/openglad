@@ -15,6 +15,7 @@ M.IMMOLATION = C.MARKER_IMMOLATION
 M.PHASE_VEIL = C.MARKER_PHASE_VEIL
 M.METEOR_RAIN = C.MARKER_METEOR_RAIN
 M.WARD = C.MARKER_WARD
+M.REST = C.MARKER_REST
 
 -- role -> handler(marker). A dispatch table of functions, filled only while
 -- the kit libs load (each kit lib registers its own handlers), never written
@@ -63,9 +64,10 @@ function M.finish(marker)
   marker:death()
 end
 
--- The owner's live marker playing `role`, or nil. Markers are summoned, and
--- summon puts every non-weapon in the oblist, so that is the list to scan.
-function M.find(owner, role)
+-- The owner's live marker playing `role`, or nil; with `level`, only one
+-- whose level is that (a rest's slot). Markers are summoned, and summon puts
+-- every non-weapon in the oblist, so that is the list to scan.
+function M.find(owner, role, level)
   local obs = og.oblist()
   for i = 1, #obs do
     local ob = obs[i]
@@ -74,7 +76,12 @@ function M.find(owner, role)
         and ob:dead() == 0
         and ob:ani_type() == role
         and ob:owner() == owner then
-      return ob
+      if level == nil then
+        return ob
+      end
+      if ob.level == level then
+        return ob
+      end
     end
   end
   return nil
@@ -84,6 +91,43 @@ end
 function M.age(marker)
   return og.world_tick() - marker:lineofsight()
 end
+
+-- ------------------------------------------------------------------ rests
+
+-- Ticks left of the owner's rest on `slot`, 0 when it has none.
+function M.rest_left(owner, slot)
+  local marker = M.find(owner, M.REST, slot)
+  if marker then
+    return marker:lifetime()
+  end
+  return 0
+end
+
+-- Starts the owner's rest on `slot`, `ticks` long. A full world leaves the
+-- special unrested rather than refusing the cast that already happened.
+function M.start_rest(owner, slot, ticks)
+  local marker = M.spawn(owner, M.REST, ticks)
+  if marker then
+    marker.level = slot
+  end
+end
+
+-- A rest counts down while it acts, which is every tick, a frozen caster
+-- and stopped time included (only enemy livings and generators are held),
+-- and ends with its last tick or with its caster.
+local function rest_act(marker)
+  local owner = marker:owner()
+  if not owner or owner:dead() ~= 0 then
+    M.finish(marker)
+    return
+  end
+  marker.lifetime = marker:lifetime() - 1
+  if marker:lifetime() <= 0 then
+    M.finish(marker)
+  end
+end
+
+M.register(M.REST, rest_act)
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:kit_marker  on_act = kit_marker.on_act

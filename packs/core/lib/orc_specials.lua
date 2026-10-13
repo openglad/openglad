@@ -86,7 +86,19 @@ function M.eat_corpse(self)
   return true
 end
 
+-- HOWL as both families cast it: the yell, resting howl_rest ticks between
+-- casts with New Specials on (lib/living_common.lua), the classic yell with
+-- it off. HOWL is slot 1 for the orc and the captain alike.
+local HOWL_SLOT = 1
+M.howl = lc.with_rest(M.yell, HOWL_SLOT, "howl_rest", "HOWL")
+
+-- A bot gate that also holds HOWL while it rests.
+function M.howl_gate(gate)
+  return lc.gate_with_rest(gate, HOWL_SLOT)
+end
+
 -- The declarations that reference this module (packs/core/families/):
---   core:orc          HOWL cast = orc_specials.yell, default_cast = orc_specials.eat_corpse
---   core:orc_captain  through kit_captain.howl and kit_captain.eat_corpse
+--   core:orc          HOWL cast = orc_specials.howl, default_cast = orc_specials.eat_corpse,
+--                     check_special_ai = orc_specials.howl_gate(...)
+--   core:orc_captain  through kit_captain.howl, kit_captain.ai_howl and kit_captain.eat_corpse
 return M

@@ -11692,6 +11692,19 @@ bool cue(Film& film, const std::string& tag, int f, bool ready, int latest)
     return film.marks.count(tag) != 0 && tap(f, static_cast<int>(film.mark(tag)));
 }
 
+// True when the seat's view shows a message line starting with `prefix` (a
+// refused cast says why there).
+bool voiced(const Film& film, const std::string& prefix)
+{
+    viewscreen* const vs = film.display->viewob[0].get();
+    if (vs == nullptr)
+        return false;
+    for (int i = 0; i < MAX_MESSAGES; ++i)
+        if (vs->textlist[i].rfind(prefix, 0) == 0)
+            return true;
+    return false;
+}
+
 int cued(Film& film, const std::string& tag)
 {
     return film.marks.count(tag) == 0 ? 1 << 20
@@ -11827,9 +11840,12 @@ std::vector<Scene> scenes()
         all.push_back(sc);
     }
 
-    // GHOST: Shift + Scare is WAIL, a fright that hops from foe to foe. Three
-    // packs of orcs come at the ghost one after another, from the right, the
-    // left and above; each wail scatters a whole pack across the open grass.
+    // GHOST: Shift + Scare is WAIL, a fright that hops from foe to foe. Two
+    // packs of orcs come at the ghost one after the other, from the right
+    // and from the left; the first wail scatters the first pack across the
+    // open grass. SCARE and WAIL rest 8 seconds between casts, so when the
+    // second pack reaches the ghost its first press only says "WAIL IN 3S"
+    // or so; once the rest is over the second wail scatters that pack too.
     // The packs start further apart than a wail hops (120 px), so each wail
     // takes only the pack in front of the ghost.
     {
@@ -11837,24 +11853,24 @@ std::vector<Scene> scenes()
         sc.name = "ghost_wail";
         sc.family = FAMILY_GHOST;
         sc.slot = 1;
-        sc.frames = 100; // the third pack is gone by frame ~100
+        sc.frames = 134; // the second wail lands by frame ~113; GIF <= 12.5 s
         sc.stage = [](Film& film) {
             fill_mana(film.hero(), 320.0f);
-            const int at[9][2] = {{64, -6},    {80, 8},     {84, -22},
-                                  {-110, -4},  {-124, 10},  {-128, -20},
-                                  {-10, -130}, {-30, -136}, {6, -140}};
-            for (int i = 0; i < 9; ++i)
+            const int at[6][2] = {{64, -6},    {80, 8},     {84, -22},
+                                  {-110, -4},  {-124, 10},  {-128, -20}};
+            for (int i = 0; i < 6; ++i)
             {
                 walker* o = add_actor(film, "orc" + std::to_string(i + 1),
                                       FAMILY_ORC, 1, at[i][0], at[i][1]);
                 o->set_act_type(ACT_GUARD);
-                o->set_guard_hold_post(i >= 3); // the later packs wait
+                o->set_guard_hold_post(i >= 3); // the second pack waits
             }
         };
-        // The second pack sets off once the first is running, the third once
-        // the second is; and every orc a wail strikes is remembered.
+        // The second pack sets off while the wail rests, early enough that
+        // the refusal has left the screen before the second wail; every orc
+        // a wail strikes is remembered.
         sc.before_tick = [](Film& film, int f) {
-            for (int i = 0; i < 9; ++i)
+            for (int i = 0; i < 6; ++i)
             {
                 const std::string n = "orc" + std::to_string(i + 1);
                 walker* o = film.actor(n);
@@ -11865,8 +11881,7 @@ std::vector<Scene> scenes()
                 if (o->skip_exit() > 0 &&
                     f >= cued(film, "wail" + std::to_string(pack_of + 1)))
                     film.marks["wailed." + n] = 1.0f;
-                if ((pack_of == 1 && f >= cued(film, "wail1") + 6) ||
-                    (pack_of == 2 && f >= cued(film, "wail2") + 6))
+                if (pack_of == 1 && f >= cued(film, "wail1") + 20)
                     o->set_guard_hold_post(false);
             }
         };
@@ -11877,19 +11892,20 @@ std::vector<Scene> scenes()
                             f >= 8 && gap(me, nearest_seen(film, me, {"orc1", "orc2", "orc3"})) <= 40.0f,
                             24);
             const int w1 = cued(film, "wail1");
+            const float second_pack =
+                gap(me, nearest_seen(film, me, {"orc4", "orc5", "orc6"}));
+            // The second pack is close and the rest still runs: one tap,
+            // refused, and the refusal says how long is left.
+            const bool early = cue(film, "early", f,
+                                   f >= w1 + 20 && second_pack <= 48.0f, w1 + 50);
+            k.special = k.special || (early && f == cued(film, "early"));
+            // The 96-tick rest is over: the second wail.
             k.special = k.special ||
                         cue(film, "wail2", f,
-                            f >= w1 + 20 && gap(me, nearest_seen(film, me, {"orc4", "orc5", "orc6"})) <= 40.0f,
-                            w1 + 60);
-            const int w2 = cued(film, "wail2");
-            k.special = k.special ||
-                        cue(film, "wail3", f,
-                            f >= w2 + 20 && gap(me, nearest_seen(film, me, {"orc7", "orc8", "orc9"})) <= 40.0f,
-                            w2 + 40);
+                            f >= w1 + 97 && second_pack <= 40.0f, w1 + 110);
             k.shift = k.special;
-            // Between wails the ghost goes to meet the next pack.
+            // After the first wail the ghost goes to meet the next pack.
             k.left = during(f, w1 + 10, w1 + 22);
-            k.up = during(f, w2 + 10, w2 + 22);
             return k;
         };
         const auto pack_wailed = [](int pack) {
@@ -11907,8 +11923,14 @@ std::vector<Scene> scenes()
              }},
             {"it hops through the first pack (two or more orcs struck)",
              pack_wailed(0)},
-            {"the second wail scatters the second pack", pack_wailed(1)},
-            {"the third wail scatters the third", pack_wailed(2)},
+            {"a press during the rest says WAIL IN ...S",
+             [](Film& film) {
+                 return film.frame >= cued(film, "early") &&
+                        film.frame < cued(film, "wail2") &&
+                        voiced(film, "WAIL IN ");
+             }},
+            {"after the rest the second wail scatters the second pack",
+             pack_wailed(1)},
         };
         // The key still: the first wail's cloud among the first pack.
         sc.key_tell = 0;
@@ -12227,8 +12249,10 @@ std::vector<Scene> scenes()
 
     // FAERIE: GLIMMER, freezing powder in all eight directions. Four orcs
     // walk in along four of the eight lines and the powder stops them
-    // mid-stride. They thaw and come after her as she flits away, and a
-    // second glimmer stops them again; then she picks at the frozen orcs.
+    // mid-stride. They thaw and come after her as she flits away; she
+    // presses GLIMMER again, but it rests 15 seconds between casts, so the
+    // second press only says "GLIMMER IN 12S" or so, and she fights them
+    // with her plain sprinkle instead.
     {
         Scene sc;
         sc.name = "faerie_glimmer";
@@ -12246,8 +12270,7 @@ std::vector<Scene> scenes()
                     ->set_act_type(ACT_GUARD);
             }
         };
-        // Per orc: was it frozen, has it thawed and walked since, and was it
-        // frozen again by the second glimmer.
+        // Per orc: was it frozen, and has it thawed and walked since.
         sc.before_tick = [](Film& film, int) {
             for (int i = 0; i < 4; ++i)
             {
@@ -12262,11 +12285,6 @@ std::vector<Scene> scenes()
                     film.marks.count(n + ".x") != 0 &&
                     (o->xpos() != film.mark(n + ".x") || o->ypos() != film.mark(n + ".y")))
                     film.marks["thawed." + n] = 1.0f;
-                if (film.frame > cued(film, "glimmer2") &&
-                    film.frame <= cued(film, "glimmer2") + 8 &&
-                    frozen > film.mark(n + ".frozen"))
-                    film.marks["refrozen." + n] = 1.0f;
-                film.marks[n + ".frozen"] = frozen;
                 film.marks[n + ".x"] = o->xpos();
                 film.marks[n + ".y"] = o->ypos();
             }
@@ -12284,11 +12302,10 @@ std::vector<Scene> scenes()
             k.special = cue(film, "glimmer1", f, f >= 4 && gap(me, near_orc) <= 70.0f, 30);
             const int g1 = cued(film, "glimmer1");
             // While they thaw she flits away to the left, so they have to
-            // walk after her; the second glimmer meets them on the way.
+            // walk after her; she presses again as they reach her.
             k.left = during(f, g1 + 18, g1 + 32);
-            // A one-frame tap, pressed once her attack pause has run out: a
-            // press inside the pause is refused, and "SPECIAL BUSY" would
-            // sit over the orcs as they freeze.
+            // A one-frame tap, pressed once her attack pause has run out, so
+            // the refusal shown is the rest's, not SPECIAL BUSY.
             const walker* const caster = film.hero();
             const bool rested = caster != nullptr && caster->busy() <= 0.0f;
             const bool g2 = cue(film, "glimmer2", f,
@@ -12316,8 +12333,11 @@ std::vector<Scene> scenes()
              [count_marked](Film& film) { return count_marked(film, "was_frozen.") >= 2; }},
             {"they thaw and walk again",
              [count_marked](Film& film) { return count_marked(film, "thawed.") >= 2; }},
-            {"the second glimmer freezes them again",
-             [count_marked](Film& film) { return count_marked(film, "refrozen.") >= 2; }},
+            {"the second press waits for the rest: GLIMMER IN ...S",
+             [](Film& film) {
+                 return film.frame >= cued(film, "glimmer2") &&
+                        voiced(film, "GLIMMER IN ");
+             }},
         };
         sc.key_tell = 1;
         sc.key_offset = 1;

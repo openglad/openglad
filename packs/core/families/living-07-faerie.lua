@@ -19,7 +19,7 @@ og.family("living", {
                        intelligence = 8, armor = 50, level = 200 } },
   specials = {
     { id = "blink",   name = "BLINK",   mp_cost = 20,  new_kit = true, alternate = { name = "SWAP", mp_cost = 24, detail = "Swap spots with anyone." }, cast = kf.blink_or_swap, ai = kf.ai_blink, detail = "A short hop in a random direction." },
-    { id = "glimmer", name = "GLIMMER", mp_cost = 24,  new_kit = true, cast = kf.glimmer, ai = kf.ai_glimmer, detail = "A freezing sprinkle in all eight directions, a quarter as long as the normal freeze." },
+    { id = "glimmer", name = "GLIMMER", mp_cost = 40,  new_kit = true, cast = kf.glimmer, ai = kf.ai_glimmer, detail = "A freezing sprinkle in all eight directions, a quarter as long as the normal freeze." },
     { id = "hasten",  name = "HASTEN",  mp_cost = 30,  new_kit = true, alternate = { name = "HASTE SELF", detail = "Speed yourself up." }, cast = kf.hasten, ai = kf.ai_hasten, detail = "Touch an ally to speed it up for a while." },
     { id = "wish",    name = "WISH",    mp_cost = 100, new_kit = true, cast = kf.wish, ai = kf.ai_wish, detail = "The faerie dies and a fallen ally rises at full health; every ally nearby is healed." },
   },
@@ -68,6 +68,8 @@ og.family("living", {
     -- Wish: reach (px) to a fallen ally's stain; radius (px) of the full heal
     wish_range = 120,
     wish_heal_radius = 96,
+    -- Glimmer: the rest between two glimmers (ticks)
+    glimmer_rest = 180,
   },
 
   level_up = level_up,

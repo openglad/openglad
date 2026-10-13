@@ -856,10 +856,20 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 }
 
 // The same sweep with New Specials on: the same casters, neighbourhood and
-// stream, on open ground (below). Fifteen rows equal the classic table
-// above; the six families with
-// a new kit read as follows (each cast runs on the caster the previous one
-// left, slot by slot, so one cast's effect is the next one's world):
+// stream, on open ground (below). Thirteen rows equal the classic table
+// above; the six families with a new kit, and the mage and the orc, whose
+// classic FREEZE TIME and HOWL rest between casts with the setting on, read
+// as follows (each cast runs on the caster the previous one left, slot by
+// slot, so one cast's effect is the next one's world; the sweep resets busy
+// and mana between casts but not a rest, so the shifted press of a rested
+// slot comes right after its unshifted cast):
+//   mage      797  829 with bit 5 cleared: slot 3 shifted is FREEZE TIME
+//                  again, refused FREEZE TIME IN 30S.
+//   orc       1    3 with bit 1 cleared: the second HOWL is refused HOWL IN
+//                  10S.
+//   archmage  125  unchanged in the mask: MIND CONTROL's shifted press was
+//                  refused before (its foe already charmed, NO VALID
+//                  TARGET) and is now refused for its rest.
 //   thief     255  unchanged in the mask: Shift + slot 1 is now MINE, not
 //                  a second bomb, and it lays too.
 //   skeleton  240  slots 1-2 (TUNNEL, DIG IN) are refused SPECIAL BUSY: the
@@ -870,15 +880,19 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 //                  press right after it is IMMOLATE SETTLING (the ten-tick
 //                  latch), and with the fire still burning slots 3-5 refuse
 //                  QUENCH IMMOLATE FIRST.
-//   faerie    111  BLINK and SWAP; GLIMMER both; HASTEN finds no ally in
+//   faerie    103  BLINK and SWAP; GLIMMER, then the shifted press refused
+//                  GLIMMER IN 15S (bit 3; it was 111 before GLIMMER
+//                  rested); HASTEN finds no ally in
 //                  reach (the hop and the swap left her more than 40 px from
 //                  the soldier), HASTE SELF casts; WISH raises the soldier's
 //                  stain and pops her, so the shifted slot 4 and slot 5 find
 //                  her dead.
-//   ghost     127  SCARE and WAIL; SIPHON twice; POSSESS takes the orc and
+//   ghost     125  SCARE, then WAIL refused WAIL IN 8S (bit 1: the two share
+//                  one rest; it was 127 before); SIPHON twice; POSSESS takes the orc and
 //                  the shifted press lets it go; PHASE, then ALREADY PHASED.
-//   big orc   243  the captain: HOWL on both arms (it has no alternate, so
-//                  the shifted press is a howl too); EAT CORPSE is refused at
+//   big orc   241  the captain: HOWL, then the shifted press (it has no
+//                  alternate, so it is a howl too) refused HOWL IN 10S (bit
+//                  1; it was 243 before HOWL rested); EAT CORPSE is refused at
 //                  full health on both arms; HOOK BLADE and KNIFE FAN; WAR
 //                  BANNER on the stain, then WARBAND.
 TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
@@ -894,21 +908,21 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
         {FAMILY_SOLDIER, "soldier", 255u},
         {FAMILY_ARCHER, "archer", 63u},
         {FAMILY_CLERIC, "cleric", 2u},
-        {FAMILY_MAGE, "mage", 829u},
+        {FAMILY_MAGE, "mage", 797u},
         {FAMILY_ARCHMAGE, "archmage", 125u},
         {FAMILY_ELF, "elf", 0u},
         {FAMILY_THIEF, "thief", 255u},
         {FAMILY_SKELETON, "skeleton", 240u},
         {FAMILY_FIREELEMENTAL, "fire elemental", 7u},
-        {FAMILY_FAERIE, "faerie", 111u},
+        {FAMILY_FAERIE, "faerie", 103u},
         {FAMILY_DRUID, "druid", 240u},
-        {FAMILY_ORC, "orc", 3u},
+        {FAMILY_ORC, "orc", 1u},
         {FAMILY_BARBARIAN, "barbarian", 0u},
-        {FAMILY_GHOST, "ghost", 127u},
+        {FAMILY_GHOST, "ghost", 125u},
         {FAMILY_SMALL_SLIME, "small slime", 0u},
         {FAMILY_MEDIUM_SLIME, "medium slime", 0u},
         {FAMILY_SLIME, "slime", 3u},
-        {FAMILY_BIG_ORC, "big orc", 243u},
+        {FAMILY_BIG_ORC, "big orc", 241u},
         {FAMILY_GOLEM, "golem", 0u},
         {FAMILY_GIANT_SKELETON, "giant skeleton", 0u},
         {FAMILY_TOWER1, "tower", 0u},
@@ -1003,6 +1017,10 @@ TEST_F(WalkerSpecials, ghost_scare_animates_and_dissipates)
 
 TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
 {
+    // The classic SCARE, cast twice in a row: explicitly with the New
+    // Specials setting off, whatever an earlier test left it at (with it on,
+    // the second press waits out SCARE's rest; tests/unit/test_kit_rests.cpp).
+    og::runtime::current_session->myscreen_->world().new_specials = 0;
     walker* w = make_special_guy(FAMILY_GHOST);
     ASSERT_TRUE(w != nullptr) << "walker created";
     w->set_current_special(1); // scare

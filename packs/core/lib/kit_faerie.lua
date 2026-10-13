@@ -249,8 +249,9 @@ function M.blink_or_swap(self)
 end
 
 -- GLIMMER: the faerie's freezing sprinkle in all eight directions, each
--- shot freezing a quarter as long as her plain sprinkle.
-function M.glimmer(self)
+-- shot freezing a quarter as long as her plain sprinkle. It rests
+-- glimmer_rest ticks between casts (M.glimmer below).
+local function glimmer(self)
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
@@ -280,6 +281,9 @@ function M.glimmer(self)
   self:set_busy(og.fadd(self:busy(), self:fire_frequency()))
   return true
 end
+
+local GLIMMER_SLOT = 2
+M.glimmer = lc.with_rest(glimmer, GLIMMER_SLOT, "glimmer_rest", "GLIMMER")
 
 -- Slot 3: HASTEN the nearest ally, or HASTE SELF with the shift held. The
 -- speed potion's timer and units; a stronger bonus already running is kept.
@@ -376,14 +380,14 @@ function M.ai_blink(self)
   return false
 end
 
--- Slot 2: GLIMMER when a foe is within 60.
-function M.ai_glimmer(self)
+-- Slot 2: GLIMMER when a foe is within 60, unless GLIMMER is resting.
+M.ai_glimmer = lc.gate_with_rest(function(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
   local _, foes = og.find_foes_in_range("ob", 60, self)
   return foes > 0
-end
+end, GLIMMER_SLOT)
 
 -- Slot 3: HASTEN the ally HASTEN would take when it is fighting and not
 -- already quick; else HASTE SELF when the faerie's own foe is within 60.

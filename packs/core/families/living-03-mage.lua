@@ -287,7 +287,7 @@ og.family("living", {
   specials = {
     { id = "teleport",    name = "TELEPORT",    mp_cost = 15,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int." }, cast = teleport, detail = "Any mage can teleport randomly away easily." },
     { id = "warp_space",  name = "WARP SPACE",  mp_cost = 60,  cast = starburst, detail = "Twist the fabric of space around you to deal death to enemies." },
-    { id = "freeze_time", name = "FREEZE TIME", mp_cost = 500, cast = freeze_time, detail = "Freeze time for all but your team and kill enemies with ease." },
+    { id = "freeze_time", name = "FREEZE TIME", mp_cost = 500, cast = lc.with_rest(freeze_time, 3, "freeze_rest", "FREEZE TIME"), detail = "Freeze time for all but your team and kill enemies with ease." },
     { id = "energy_wave", name = "ENERGY WAVE", mp_cost = 70,  cast = energy_wave, detail = "Send a growing ripple of energy through walls and foes." },
     { id = "heartburst",  name = "HEARTBURST",  mp_cost = 100, detail = "Burst your enemies into flame. More magic means a bigger effect." },
     default_cast = heartburst,  -- case 5 and every unmapped slot
@@ -334,9 +334,11 @@ og.family("living", {
     -- Heartburst acquisition radius (px): base + per-level
     heartburst_range_base = 80,
     heartburst_range_per_level = 2,
+    -- New Specials: FREEZE TIME rests this many ticks between casts
+    freeze_rest = 360,
   },
 
-  check_special_ai = check_special_ai,
+  check_special_ai = lc.gate_with_rest(check_special_ai, 3),
   hit_response = hit_response,
   set_difficulty = set_difficulty,
   level_up = level_up,

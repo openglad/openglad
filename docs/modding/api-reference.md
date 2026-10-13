@@ -928,6 +928,7 @@ All are RNG-free.
 | `og.line_clear(a, b) → bool` | No wall between the two walkers' centres; `false` across floors. |
 | `og.swap_places(a, b) → bool` | The two walkers trade position and floor. Probes nothing (nothing underfoot is eaten); `false`, nothing moved, for a dead, dormant or hidden walker or the same walker twice. |
 | `og.rejoin_obmap(ent)` | Puts a walker a kit took out of the collision table back at its current spot (never a dead, dormant, hidden or ignored one). |
+| `og.timer_seconds(ticks)` | Whole seconds, rounded to the nearest: the HUD's countdown rule (`og::sim::timer_seconds`), for a refusal that names the seconds left. |
 
 ### `og.combat.*` — combat_math.h, bound directly
 

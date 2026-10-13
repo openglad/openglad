@@ -137,6 +137,7 @@ tick it was spawned. The role numbers are engine constants
 | `PHASE_VEIL` | 4 | ghost PHASE |
 | `METEOR_RAIN` | 5 | fire elemental METEOR RAIN |
 | `WARD` | 6 | skeleton REASSEMBLE's clock (the ward bit is still what the engine spends) |
+| `REST` | 7 | a special's rest between casts (the rested slot in the marker's level; see Rests) |
 
 New wire ids: effects 13 `core:mine`, 14 `core:wail`, 15 `core:hook_blade`,
 16 `core:ember`, 17 `core:kit_marker`; weapons 20 `core:bone_wall`, 21
@@ -277,7 +278,8 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   hastens it again once that haste has worn off. Before the speed counter
   was fixed to count down to 0 (`docs/GAMEPLAY_FIXES_FROM_CLASSIC.md`) an
   ally hastened once was never hastened again.
-- GLIMMER pauses the faerie like one attack. Each of its sprinkles is
+- GLIMMER costs 40 and rests 15 seconds between casts (see Rests below);
+  it also pauses the faerie like one attack. Each of its sprinkles is
   marked, and the freeze it lays is a quarter of the rolled one (about
   half a second at level 4); the roll itself is drawn as for any sprinkle.
 - WISH kills the faerie: her stain and, for a hero, her life gem stay.
@@ -364,14 +366,42 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A toggle (DIG IN, IMMOLATE) ignores its own second press for 10 ticks.
 - Holding Special repeats a mine, a hasten or a WARBAND call once per tick
   while magic lasts, as it repeats a bomb (a WARBAND call stops at six
-  grunts). BLINK and SWAP wait out their rest, and SIPHON, GLIMMER and
-  KNIFE FAN their attack pause, before the next.
+  grunts). BLINK and SWAP wait out their rest, and SIPHON and KNIFE FAN
+  their attack pause, before the next. GLIMMER, FREEZE TIME, HOWL, SCARE /
+  WAIL and MIND CONTROL wait out their rest (below).
 - With the setting off two things still look different: in SDL a foe now
   sees the thief's poison cloud fade in and out instead of popping in at
   full, and a curses player sees their own team's cloud glyph during those
   ticks; and when a hero dies, its view holds still until the next hero is
   picked instead of flashing the map's top-left corner for a frame. That is
   drawing only; the game plays the same.
+
+## Rests
+
+With the setting on, the specials that can upset a whole fight wait
+between casts. A rest does not hold up ordinary attacks or any other
+special; it only refuses a second cast of the same special until it is
+over, naming the seconds left (rounded as the HUD rounds them), for
+example `FREEZE TIME IN 24S`. A refused cast spends nothing.
+
+| special | rest | refusal |
+|---|---|---|
+| GLIMMER (faerie) | 15 s (180 ticks) | `GLIMMER IN 15S` |
+| FREEZE TIME (mage) | 30 s (360 ticks) | `FREEZE TIME IN 30S` |
+| HOWL (orc and orc captain) | 10 s (120 ticks) | `HOWL IN 10S` |
+| SCARE / WAIL (ghost; one rest for both) | 8 s (96 ticks) | `SCARE IN 8S` / `WAIL IN 8S` |
+| MIND CONTROL (archmage) | 20 s (240 ticks) | `MIND CONTROL IN 20S` |
+
+The lengths are tuning keys on each family (`glimmer_rest`, `freeze_rest`,
+`howl_rest`, `scare_rest`, `charm_rest`). A bot does not pick a resting
+special: its gate for that slot answers no until the rest is over. A rest
+is not shown in the HUD countdown (it is not an effect on the player). It
+keeps counting while its caster is frozen and while time is stopped, and it
+ends when its caster dies. Underneath it is a `REST` kit marker owned by
+the caster, with the rested slot in the marker's level, started by one
+wrapper (`packs/core/lib/living_common.lua`, `with_rest`). With the setting
+off none of this happens: FREEZE TIME, HOWL, SCARE and MIND CONTROL are the
+classic specials, cast for cast.
 
 ## Refusals at a glance
 
@@ -381,15 +411,16 @@ Every refusal is at most 24 characters, so it fits the compact HUD. The
 | special | refusals |
 |---|---|
 | MINE | `MINE LIMIT REACHED`, `COULD NOT CREATE MINE` |
-| WAIL | `NO FOE TO WAIL AT`, `COULD NOT CREATE WAIL` |
+| WAIL | `WAIL IN 8S` (the rest it shares with SCARE), `NO FOE TO WAIL AT`, `COULD NOT CREATE WAIL` |
 | SIPHON | `PHASED`, `SPECIAL BUSY` (an empty touch still spends) |
 | POSSESS | see the table above |
 | PHASE | `ALREADY PHASED`, `COULD NOT PHASE` |
 | BLINK / SWAP | `SPECIAL BUSY`, `NOWHERE TO BLINK` / `NO ONE IN SIGHT`, `SWAP BLOCKED` |
-| GLIMMER | `SPECIAL BUSY` |
+| GLIMMER | `GLIMMER IN 15S` (its rest), `SPECIAL BUSY` |
 | HASTEN / HASTE SELF | `NO ALLY IN REACH` |
 | WISH | `NO FALLEN ALLY NEARBY`, `COULD NOT RESURRECT` |
-| HOWL | the orc's own (`SPECIAL BUSY`) |
+| HOWL | `HOWL IN 10S` (its rest), the orc's own (`SPECIAL BUSY`) |
+| FREEZE TIME, SCARE, MIND CONTROL (classic) | with the setting on, their rest: `FREEZE TIME IN 30S`, `SCARE IN 8S`, `MIND CONTROL IN 20S` |
 | EAT CORPSE | the orc's own (`ALREADY AT FULL HEALTH`, `NO CORPSE NEARBY`, `NO CORPSE IN RANGE`) |
 | HOOK BLADE / KNIFE FAN | `BLADE ALREADY OUT`, `COULD NOT MAKE A BLADE` / `SPECIAL BUSY` |
 | WAR BANNER / WARBAND | `NO CORPSE TO PLANT ON`, `COULD NOT RAISE BANNER` / `WARBAND ALREADY HERE`, `NO ROOM AT THE EDGE` |

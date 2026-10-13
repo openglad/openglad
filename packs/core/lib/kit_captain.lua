@@ -157,8 +157,9 @@ end
 -- ------------------------------------------- slots 1 and 2: HOWL, EAT CORPSE
 
 -- The orc's own two specials, each on its own slot as the orc has them, so
--- an orc promoted at level 5 keeps both.
-M.howl = orc.yell
+-- an orc promoted at level 5 keeps both. HOWL rests between casts as the
+-- orc's does (howl_rest on the captain's tuning block).
+M.howl = orc.howl
 M.eat_corpse = orc.eat_corpse
 
 -- ------------------------------------------------ slot 3: HOOK BLADE / FAN
@@ -403,14 +404,14 @@ end
 -- answers true, exactly as no gate at all. Ranges are code constants (see
 -- lib/ai.lua on per-call tuning reads in gates).
 
--- Howl at a foe within 130 (the orc's own gate). HOWL has no alternate, so
--- the shift coin the engine drew is left alone.
-function M.ai_howl(self)
+-- Howl at a foe within 130 (the orc's own gate), unless HOWL is resting.
+-- HOWL has no alternate, so the shift coin the engine drew is left alone.
+M.ai_howl = orc.howl_gate(function(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
   return og.check_special_ai_distance(self, 130)
-end
+end)
 
 -- Eat when below 60 % health and standing on a corpse; otherwise hold. (The
 -- orc's own bot tries its meal whenever a foe is within 130 and lets the

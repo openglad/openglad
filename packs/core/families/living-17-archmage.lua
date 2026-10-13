@@ -537,7 +537,7 @@ og.family("living", {
     { id = "teleport",     name = "TELEPORT",     mp_cost = 10,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int." }, cast = teleport, detail = "Any mage can teleport randomly away easily." },
     { id = "heartburst",   name = "HEARTBURST",   mp_cost = 80,  alternate = { name = "CHAIN LIGHTNING", detail = "Hops from foe to foe." }, cast = burst_or_chain, detail = "Burst your enemies into flame around you." },
     { id = "summon_image", name = "SUMMON IMAGE", mp_cost = 500, alternate = { name = "SUMMON ELEMENTAL", detail = "A daemon fed with SP." }, cast = summon_image, detail = "Summon an illusionary ally to fight for you." },
-    { id = "mind_control", name = "MIND CONTROL", mp_cost = 150, cast = mind_control, detail = "Convert nearby foes to your team, for a time." },
+    { id = "mind_control", name = "MIND CONTROL", mp_cost = 150, cast = lc.with_rest(mind_control, 4, "charm_rest", "MIND CONTROL"), ai = lc.gate_with_rest(nil, 4), detail = "Convert nearby foes to your team, for a time." },
   },
   default_weapon = "core:fireball",
   flags = {},
@@ -580,6 +580,8 @@ og.family("living", {
     chain_radius_per_level = 5,
     burst_radius_base = 80,
     radius_bonus_per_level = 2,
+    -- New Specials: MIND CONTROL rests this many ticks between casts
+    charm_rest = 240,
   },
 
   hit_response = hit_response,

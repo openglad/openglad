@@ -30,7 +30,7 @@ og.family("living", {
              train = { strength = 16, dexterity = 16, constitution = 16,
                        intelligence = 16, armor = 45, level = 200 } },
   specials = {
-    { id = "scare",   name = "SCARE",   mp_cost = 30, alternate = { name = "WAIL", mp_cost = 50, new_kit = true, detail = "Fear leaps foe to foe." }, cast = kg.scare_or_wail(do_special), ai = ai.foe_within(130), detail = "Frighten nearby foes into fleeing." },
+    { id = "scare",   name = "SCARE",   mp_cost = 30, alternate = { name = "WAIL", mp_cost = 50, new_kit = true, detail = "Fear leaps foe to foe." }, cast = kg.scare_or_wail(do_special), ai = kg.scare_gate(ai.foe_within(130)), detail = "Frighten nearby foes into fleeing." },
     { id = "siphon",  name = "SIPHON",  mp_cost = 30, new_kit = true, cast = kg.siphon,  ai = kg.ai_siphon, detail = "A touch that heals you by half the harm it does." },
     { id = "possess", name = "POSSESS", mp_cost = 50, new_kit = true, cast = kg.possess, ai = kg.ai_possess, detail = "Enter a foe and drive it, with its weapon and specials, for a while." },
     { id = "phase",   name = "PHASE",   mp_cost = 60, new_kit = true, cast = kg.phase,   ai = kg.ai_phase, detail = "Go fully spectral for a few seconds: untouchable, unable to attack, twice as fast." },
@@ -84,5 +84,7 @@ og.family("living", {
     possess_cap = 720,
     -- PHASE: how many ticks the ghost stays spectral.
     phase_ticks = 48,
+    -- SCARE / WAIL: the rest between two casts of either, in ticks.
+    scare_rest = 96,
   },
 })

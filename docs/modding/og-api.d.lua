@@ -602,6 +602,7 @@
 ---@field MARKER_LEGION integer
 ---@field MARKER_METEOR_RAIN integer
 ---@field MARKER_PHASE_VEIL integer
+---@field MARKER_REST integer
 ---@field MARKER_WARD integer
 ---@field MAXOBS integer
 ---@field MP_POOL_DAMAGE_CAP integer
@@ -809,6 +810,7 @@
 ---@field swap_places fun(first: og.Walker, second: og.Walker): boolean # og.swap_places(a, b) -> boolean: the two walkers trade positions and floors (false, nothing moved, for a dead, dormant or hidden walker or the same walker tw...
 ---@field team_color_name fun(team: integer): string # og.team_color_name(t) — "RED"/"GREEN"/"BLUE"/"YELLOW" for score teams, the 16 band names for FFA bytes 16-31, matching the rendered palette ramps; errors out...
 ---@field team_score fun(team: integer): integer # og.team_score(t) — read GameWorld::m_score[t] (og.award_score's counter); errors outside [0, 3].
+---@field timer_seconds fun(ticks: integer): integer # og.timer_seconds(ticks) -> whole seconds, rounded to the nearest: the one ticks-to-seconds rule every countdown a player reads goes through (og::sim::timer_s...
 ---@field trunc fun(x: number): integer
 ---@field tuning fun(entity: og.Walker): table<string, any> # og.tuning(self) → the `tuning` map self's family declared, as a frozen read-only table — key access only; writes raise; no iteration is provided (and none is...
 ---@field u8 fun(v: integer): integer # Narrowing helpers reproducing C++ integer truncation (modular, C++20; cookbook R3, core pack only).

@@ -22,9 +22,13 @@
 //   MARKER_PHASE_VEIL  a phased ghost (PHASE)
 //   MARKER_METEOR_RAIN a running meteor rain (not shown as a countdown)
 //   MARKER_WARD        a skeleton's armed REASSEMBLE ward
+//   MARKER_REST        a special's rest between casts (GLIMMER, FREEZE TIME,
+//                      HOWL, SCARE / WAIL, MIND CONTROL); the slot it rests
+//                      is in the marker's level. Not shown as a countdown.
 inline constexpr std::uint8_t MARKER_BURROW = 1;
 inline constexpr std::uint8_t MARKER_LEGION = 2;
 inline constexpr std::uint8_t MARKER_IMMOLATION = 3;
 inline constexpr std::uint8_t MARKER_PHASE_VEIL = 4;
 inline constexpr std::uint8_t MARKER_METEOR_RAIN = 5;
 inline constexpr std::uint8_t MARKER_WARD = 6;
+inline constexpr std::uint8_t MARKER_REST = 7;

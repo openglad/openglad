@@ -187,7 +187,7 @@ TEST(KitFaerie, four_slots_open_at_levels_1_4_7_10_and_none_when_off)
     };
     const Row rows[] = {
         {1, "BLINK", "SWAP", 20, 24},
-        {2, "GLIMMER", "NONE", 24, 24},
+        {2, "GLIMMER", "NONE", 40, 40},
         {3, "HASTEN", "HASTE SELF", 30, 30},
         {4, "WISH", "NONE", 100, 100},
     };
@@ -563,13 +563,16 @@ TEST(KitFaerie, swap_is_no_special_when_off)
 }
 
 // GLIMMER: eight sprinkles, one per direction; the shots are pre-paid, so
-// the burst costs exactly its 24; the aim is put back; the burst pauses the
-// faerie like one attack, so the next press is refused.
+// the burst costs exactly its 40; the aim is put back; the burst pauses the
+// faerie like one attack, and the next press is refused for her rest (the
+// rests themselves: tests/unit/test_kit_rests.cpp). A faerie in the middle of
+// an attack pause, with no rest running, is refused SPECIAL BUSY.
 //
 // Proof it can fail: `for j = -1, 1 do` -> `for j = -1, 0 do` in the staged
 // kit_faerie.lua printed
 //   Expected equality of these values: 8 sprinkles(tw) Which is: 5
 //   Expected equality of these values: 76.0f f->stats()->magicpoints() Which is: 82
+// (when GLIMMER cost 24)
 // and `shot:set_kit_state(C.KIT_QUARTER_FREEZE)` -> `shot:set_kit_state(0)`
 // printed
 //   Expected equality of these values: 8 marked Which is: 0
@@ -589,7 +592,7 @@ TEST(KitFaerie, glimmer_fires_eight_sprinkles_and_prepays)
     const Cast burst = cast(f, 2, false);
     ASSERT_TRUE(burst.ok) << burst.reason;
     EXPECT_EQ(8, sprinkles(tw));
-    EXPECT_FLOAT_EQ(76.0f, f->stats()->magicpoints()) << "GLIMMER costs 24";
+    EXPECT_FLOAT_EQ(60.0f, f->stats()->magicpoints()) << "GLIMMER costs 40";
     EXPECT_FLOAT_EQ(1.0f, f->lastx());
     EXPECT_FLOAT_EQ(0.0f, f->lasty());
     EXPECT_FLOAT_EQ(f->fire_frequency(), f->busy());
@@ -602,9 +605,17 @@ TEST(KitFaerie, glimmer_fires_eight_sprinkles_and_prepays)
 
     const Cast held = cast(f, 2, false);
     EXPECT_FALSE(held.ok);
-    EXPECT_EQ("SPECIAL BUSY", held.reason);
+    EXPECT_EQ("GLIMMER IN 15S", held.reason);
     EXPECT_EQ(8, sprinkles(tw));
-    EXPECT_FLOAT_EQ(76.0f, f->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(60.0f, f->stats()->magicpoints());
+
+    living* mid_swing = add_faerie(tw, 4, 100.0f, 60, 60);
+    ASSERT_NE(nullptr, mid_swing);
+    mid_swing->set_busy(3.0f);
+    const Cast busy = cast(mid_swing, 2, false);
+    EXPECT_FALSE(busy.ok);
+    EXPECT_EQ("SPECIAL BUSY", busy.reason);
+    EXPECT_FLOAT_EQ(100.0f, mid_swing->stats()->magicpoints());
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1193,6 +1204,10 @@ Skirmish run_skirmish(short new_specials, int ticks)
     set_hp(hurt, 20.0f, 100.0f);
     set_hp(mate, 45.0f, 100.0f);
     set_hp(f, 30.0f, 75.0f);
+    // Tough orcs, so the fight is still on when she is cornered (with the
+    // orcs' HOWL resting between casts the soldiers win sooner).
+    for (living* o : {orc_a, orc_b, orc_c})
+        set_hp(o, 300.0f, 300.0f);
     hurt->set_foe(orc_a);
     mate->set_foe(orc_b);
     orc_c->set_foe(f);
@@ -1249,10 +1264,12 @@ Skirmish run_skirmish(short new_specials, int ticks)
 // (a blink, swap or wish flash, a haste, a glimmer burst or a raised ally
 // appears); with the setting off she is the classic faerie and none of
 // those ever happen. OG_FAERIE_SKIRMISH_LOG=1 prints both timelines. (Seen
-// when this was written: on, the orc's hits make her blink away at tick 56
-// and again at tick 224, and she outlasts the 400 ticks; off, she has no
-// special and falls at tick 69. A blink that the plain pause after each
-// sprinkle refused never came at all: on read exactly as off.)
+// when this was written: on, cornered by the orcs she blinks away at tick
+// 210, too late, and falls the same tick; off, she has no special and falls
+// at tick 69. A blink that the plain pause after each sprinkle refused never
+// came at all: on read exactly as off. Before HOWL rested between casts the
+// orcs' first hits made her blink at tick 56; with the orcs at their own
+// 140 hp, the soldiers now win before she is cornered, hence the 300.)
 //
 // Proof it can fail: `self.hp < og.fdiv(self.max_hp, 2.0)` -> `self.hp <
 // 0.0` in the staged kit_faerie.lua (she never feels cornered) printed

@@ -57,7 +57,8 @@ struct SeatTimer {
 // player rounds through it, on the SDL HUD and the curses status line: a
 // seat's timed effect, the frozen-time TIME LEFT cell, SCARED, the respawn
 // countdown (RESPAWN IN on the SDL HUD, RESPAWN on curses) and the next
-// WAVE. The last 5 ticks of an effect read 0s, and a cell keeps drawing
+// WAVE; and a special's rest named in its refusal (og.timer_seconds, e.g.
+// "GLIMMER IN 12S"). The last 5 ticks of an effect read 0s, and a cell keeps drawing
 // "LABEL: 0s" until the effect ends rather than going away early.
 [[nodiscard]] int timer_seconds(int ticks) noexcept;
 

@@ -29,7 +29,7 @@ og.family("living", {
              train = { strength = 6, dexterity = 15, constitution = 5,
                        intelligence = 40, armor = 50, level = 200 } },
   specials = {
-    { id = "howl",       name = "HOWL",       mp_cost = 25, cast = orc.yell, detail = "Howl in rage, stunning nearby enemies in their tracks." },
+    { id = "howl",       name = "HOWL",       mp_cost = 25, cast = orc.howl, detail = "Howl in rage, stunning nearby enemies in their tracks." },
     { id = "eat_corpse", name = "EAT CORPSE", mp_cost = 20, detail = "Regain health by devouring the corpses of your foes." },
     default_cast = orc.eat_corpse,
   },
@@ -70,9 +70,11 @@ og.family("living", {
     -- Corpse eating: reach gate (px) and heal per corpse level
     corpse_eat_range = 24,
     corpse_heal_per_level = 5,
+    -- New Specials: HOWL rests this many ticks between casts
+    howl_rest = 120,
   },
 
-  check_special_ai = ai.foe_within(130),  -- fixed per-tick AI range
+  check_special_ai = orc.howl_gate(ai.foe_within(130)),  -- fixed per-tick AI range
   set_difficulty = set_difficulty,
   level_up = level_up,
 })

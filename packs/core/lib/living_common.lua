@@ -1,7 +1,8 @@
--- core lib: living_common — shared living-special preludes: busy gate, teleport guard/hook, post-cost MP pools (cookbook: docs/lua-classpacks-design.md §3).
+-- core lib: living_common — shared living-special preludes: busy gate, teleport guard/hook, post-cost MP pools, rests (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
+local km = og.use("kit_marker")
 
 local M = {}
 
@@ -48,6 +49,48 @@ end
 -- pool can be negative: og.div is C trunc, not Lua floor.
 function M.mp_pool_damage(self, slot)
   return og.min(og.div(spare_mp(self, slot), 2), C.MP_POOL_DAMAGE_CAP)
+end
+
+-- Rests (New Specials). A rest is a wait between two casts of one
+-- special that leaves ordinary attacks alone: a MARKER_REST kit marker
+-- owned by the caster, with the rested slot in its level, counting down
+-- (lib/kit_marker.lua). `cast` is the special's own cast; `rest_key` names
+-- the rest's length in ticks on the family's tuning block; `name` starts the
+-- refusal, "<NAME> IN <N>S", the seconds read as the HUD reads them. With
+-- the setting off the classic cast runs, and nothing else happens first.
+function M.with_rest(cast, slot, rest_key, name)
+  return function(self)
+    if og.match_setting("new_specials") == 0 then
+      return cast(self)
+    end
+    local left = km.rest_left(self, slot)
+    if left > 0 then
+      return false, string.format("%s IN %dS", name, og.timer_seconds(left))
+    end
+    local ok, why = cast(self)
+    if ok then
+      km.start_rest(self, slot, og.tuning(self)[rest_key])
+    end
+    return ok, why
+  end
+end
+
+-- A bot gate for a rested special: while the rest runs a bot does not pick
+-- the slot; otherwise `gate` answers (no gate: yes). With the setting off
+-- the gate answers alone. For a family-wide gate the rest is read only when
+-- the bot is on the rested slot.
+function M.gate_with_rest(gate, slot)
+  return function(self)
+    if og.match_setting("new_specials") ~= 0
+        and self:current_special() == slot
+        and km.rest_left(self, slot) > 0 then
+      return false
+    end
+    if gate then
+      return gate(self)
+    end
+    return true
+  end
 end
 
 return M
