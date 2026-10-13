@@ -227,7 +227,7 @@ short living::act()
 		stepsize = normal_stepsize;
 
 	// Speed bonus
-	if (speed_bonus_left > 1)
+	if (speed_bonus_left > 0) // port of the current game's 9b9689d1: 2002 said `> 1`, N ticks gave N-1 and the field stuck at 1
 	{
 		speed_bonus_left--;
 		stepsize += speed_bonus;
