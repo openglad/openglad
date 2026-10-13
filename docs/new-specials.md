@@ -273,6 +273,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   blinks away instead, or holds.
 - HASTEN keeps a stronger speed bonus already running (a high-level speed
   potion is not cut down to the haste).
+- A bot faerie hastens a fighting ally that is not already quick, and
+  hastens it again once that haste has worn off. Before the speed counter
+  was fixed to count down to 0 (`docs/GAMEPLAY_FIXES_FROM_CLASSIC.md`) an
+  ally hastened once was never hastened again.
 - GLIMMER pauses the faerie like one attack. Each of its sprinkles is
   marked, and the freeze it lays is a quarter of the rolled one (about
   half a second at level 4); the roll itself is drawn as for any sprinkle.
@@ -416,9 +420,9 @@ PHASE, DIG IN, REASSEMBLE, IMMOLATE, LEGION), then SUMMONED, CHARMED,
 STUNNED, INVISIBLE, INVINCIBLE, FLYING, HASTE. With the setting off the
 kit's effects cannot exist and are never shown, but the classic timers
 are: this is a general HUD fix, drawing only, and the game itself does not
-change. FLYING and HASTE show only above 1 tick: a walker held over water
-keeps a flight of 1 every tick, and the speed field stays at 1 for good
-once any haste has run, so HASTE shows the field minus one. PHASE writes
+change. FLYING shows only above 1 tick: a walker held over water keeps a
+flight of 1 every tick. HASTE shows the speed field as it is: it counts
+down to 0, one tick of speed for each. PHASE writes
 its own invulnerability and speed beside its veil, so while the veil runs
 the cell says PHASE and never INVINCIBLE or HASTE. The banner, bone walls,
 mines, warband grunts, the seat's own summons, the cleric's mace and

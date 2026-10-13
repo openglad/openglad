@@ -254,7 +254,7 @@ bool living::act()
 		set_stepsize(normal_stepsize());
 
 	// Speed bonus
-	if (speed_bonus_left() > 1)
+	if (speed_bonus_left() > 0) // 2002 said `> 1`: N ticks gave N-1 and the field stuck at 1, so "not hastened" (== 0) was never true again
 	{
 		set_speed_bonus_left(speed_bonus_left() - 1);
 		set_stepsize(stepsize() + speed_bonus());

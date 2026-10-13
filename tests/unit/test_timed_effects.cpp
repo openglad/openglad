@@ -229,15 +229,15 @@ TEST_F(TimedEffects, each_running_effect_answers_its_label_and_clock)
         << "the hidden rider has no clock of its own: its seat is the host";
 
     // HASTE: the speed bonus (a potion or a faerie's HASTEN). The field
-    // counts down only while above 1 and sticks at 1, so 75 is 74 ticks of
+    // counts down to 0, one tick of speed for each, so 75 is 75 ticks of
     // haste.
-    // RED (run by hand): `speed_bonus_left() - 1` put back to the plain
-    // value -> reads 75.
+    // RED (run by hand): the old `speed_bonus_left() - 1` put back -> reads
+    // 74.
     walker* quick = add_living(FAMILY_SOLDIER, 0, 64, 192, 3);
     quick->set_speed_bonus_left(75);
     t = seat_timer(world(), *quick);
     EXPECT_EQ("HASTE", label_of(t));
-    EXPECT_EQ(74, t.ticks);
+    EXPECT_EQ(75, t.ticks);
 
     // The classic timers, each made the way a player makes it where the
     // game has a way.
@@ -313,9 +313,9 @@ TEST_F(TimedEffects, the_soonest_ending_effect_is_shown)
     EXPECT_EQ("LEGION", label_of(t));
     EXPECT_EQ(300, t.ticks);
 
-    // RED (run by hand): `speed_bonus_left() - 1` put back to the plain
-    // value -> reads 299.
-    skel->set_speed_bonus_left(299);
+    // RED (run by hand): the old `speed_bonus_left() - 1` put back -> reads
+    // 297.
+    skel->set_speed_bonus_left(298);
     t = seat_timer(world(), *skel);
     EXPECT_EQ("HASTE", label_of(t)) << "a haste two ticks sooner";
     EXPECT_EQ(298, t.ticks);
@@ -327,8 +327,8 @@ TEST_F(TimedEffects, the_soonest_ending_effect_is_shown)
 //
 // RED (run by hand): `candidate_rank < rank` flipped to `>` -> every row
 // below answers the last of its tied effects instead of the first. The
-// HASTE threshold put back to `> 0` with the plain value -> the speed of 51
-// reads 51 and the last round still says HASTE but with 51 ticks.
+// old HASTE reading put back (`> 1`, one less) -> the speed of 50 reads 49
+// and HASTE wins the first round.
 TEST_F(TimedEffects, a_tie_goes_to_the_table_order)
 {
     walker* rider = add_living(FAMILY_GHOST, 0, 64, 64, 10);
@@ -344,7 +344,7 @@ TEST_F(TimedEffects, a_tie_goes_to_the_table_order)
     host->set_invisibility_left(50);
     host->set_invulnerable_left(50);
     host->set_flight_left(50);
-    host->set_speed_bonus_left(51);  // 50 ticks of haste left
+    host->set_speed_bonus_left(50);  // 50 ticks of haste left
     // The walker's own markers, listed in the reverse of the table order so
     // the list order cannot decide the tie.
     walker* legion = add_marker(host, MARKER_LEGION, 50);
@@ -402,7 +402,7 @@ TEST_F(TimedEffects, classic_timers_show_with_the_setting_off_and_kit_timers_do_
     ASSERT_TRUE(og::sim::possess(world(), *rider, *host, 200).ok);
     ASSERT_NE(nullptr, add_marker(host, MARKER_LEGION, 300));
     walker* potion = add_living(FAMILY_SOLDIER, 0, 64, 128, 3);
-    potion->set_speed_bonus_left(60);
+    potion->set_speed_bonus_left(59);
     walker* unseen = add_living(FAMILY_SOLDIER, 0, 128, 128, 3);
     unseen->set_invisibility_left(240);
     ASSERT_EQ("POSSESS", label_of(seat_timer(world(), *host)));
@@ -434,7 +434,7 @@ TEST_F(TimedEffects, phase_owns_its_fields)
     walker* veil = add_marker(ghost, MARKER_PHASE_VEIL, 49);
     ASSERT_NE(nullptr, veil);
     ghost->set_invulnerable_left(48);
-    ghost->set_speed_bonus_left(49);  // 48 ticks of speed
+    ghost->set_speed_bonus_left(48);  // 48 ticks of speed
     SeatTimer t = seat_timer(world(), *ghost);
     EXPECT_EQ("PHASE", label_of(t))
         << "the phase's own shield does not stand in for it";
@@ -458,17 +458,16 @@ TEST_F(TimedEffects, phase_owns_its_fields)
     EXPECT_EQ(48, t.ticks);
 }
 
-// The speed bonus sticks at 1 once it has run out, for good: 1 is not a
-// haste, 2 is one tick of it.
+// The speed bonus counts down to 0: 0 is no haste, 1 is its last tick.
 //
-// RED (run by hand): `> 1` put back to `> 0` -> 1 reads HASTE.
-TEST_F(TimedEffects, haste_stuck_at_one_is_not_shown)
+// RED (run by hand): the old `> 1` put back -> 1 reads (none).
+TEST_F(TimedEffects, haste_last_tick_is_shown_and_zero_is_not)
 {
     walker* w = add_living(FAMILY_SOLDIER, 0, 64, 64, 3);
     ASSERT_NE(nullptr, w);
-    w->set_speed_bonus_left(1);
+    w->set_speed_bonus_left(0);
     EXPECT_EQ(nullptr, seat_timer(world(), *w).label);
-    w->set_speed_bonus_left(2);
+    w->set_speed_bonus_left(1);
     const SeatTimer t = seat_timer(world(), *w);
     EXPECT_EQ("HASTE", label_of(t));
     EXPECT_EQ(1, t.ticks);

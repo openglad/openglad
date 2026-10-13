@@ -287,10 +287,9 @@ function M.phase(self)
     return false, "COULD NOT PHASE"
   end
   self:set_invulnerable_left(t.phase_ticks)
-  -- Double speed: the speed potion's timer, one tick longer than the veil
-  -- because living::act spends a tick of it only while more than one is left.
+  -- Double speed: the speed potion's timer, as long as the veil.
   self:set_speed_bonus(self:stepsize())
-  self:set_speed_bonus_left(t.phase_ticks + 1)
+  self:set_speed_bonus_left(t.phase_ticks)
   self:s_set_bit_flags(C.BIT_PHANTOM, 1)
   self:s_set_bit_flags(C.BIT_NO_COLLIDE, 1)
   -- Too busy to swing from the cast on, as the veil keeps it: a Fire

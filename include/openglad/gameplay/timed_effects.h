@@ -40,8 +40,8 @@ struct SeatTimer {
 //   INVINCIBLE  invulnerable_left (the potion)
 //   FLYING      flight_left, above 1 (1 holds a walker over ground it
 //               cannot stand on)
-//   HASTE       speed_bonus_left, above 1, showing one less (the field
-//               sticks at 1 once a bonus has run out)
+//   HASTE       speed_bonus_left (it counts down to 0, one tick of speed
+//               for each)
 // While the walker's PHASE veil runs, INVINCIBLE and HASTE are not offered:
 // the phase writes those two fields itself.
 //

@@ -1095,6 +1095,46 @@ TEST(KitFaerie, ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Once an ally's haste has worn off, the bot hastens it again. The ally
+// is hastened by a real HASTEN and its haste runs out through its own acts.
+//
+// RED (the 2002 `> 1` in living::act, which left the field at 1 for good)
+// printed
+//   Expected equality of these values: 0 ally->speed_bonus_left() Which is: 1
+//   Value of: og::test::check_special_ai(*fd, f)  Actual: false  Expected: true
+//   Expected equality of these values: 0 f->shifter_down() Which is: 1
+TEST(KitFaerie, ai_hastens_an_ally_again_once_its_haste_has_worn_off)
+{
+    og::test::ScopedHookFailureGuard guard;
+    const FamilyDescriptor* fd = faerie_fd();
+    TestGameWorld tw;
+    tw.world().new_specials = 1;
+    living* f = add_faerie(tw, 7, 200.0f, 160, 160);
+    living* ally = add_living(tw, FAMILY_SOLDIER, 1, 184, 160);   // 24
+    living* foe = add_living(tw, FAMILY_SOLDIER, 0, 300, 160);    // 140
+    ASSERT_TRUE(f && ally && foe);
+    f->set_current_special(3);
+
+    ASSERT_TRUE(cast(f, 3, false).ok);
+    ASSERT_EQ(150, ally->speed_bonus_left());
+    ally->set_act_type(ACT_CONTROL);
+    int acts = 0;
+    while (ally->speed_bonus_left() > 1 && acts < 200) {
+        ally->act();
+        ++acts;
+    }
+    for (int i = 0; i < 5; ++i)
+        ally->act();  // the haste is over; a few more ticks change nothing
+    EXPECT_EQ(0, ally->speed_bonus_left()) << "the haste has worn off";
+
+    ally->setxy(184, 160);
+    ally->set_foe(foe);
+    f->set_shifter_down(1);
+    EXPECT_TRUE(og::test::check_special_ai(*fd, f)) << "hasten it again";
+    EXPECT_EQ(0, f->shifter_down()) << "HASTEN, not HASTE SELF";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // Slot 4: WISH only with someone to raise AND two allies nearby below half.
 //
 // Proof it can fail: `>= 2` -> `>= 3` in the staged kit_faerie.lua printed

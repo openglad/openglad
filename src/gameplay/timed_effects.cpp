@@ -130,10 +130,9 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
     // tick, so 1 is not a flight that is ending.
     if (control.flight_left() > 1)
         best.offer("FLYING", control.flight_left(), kRankFlying);
-    // The speed bonus counts down only while above 1 and then sticks at 1
-    // for good, so the ticks left are one less than the field.
-    if (!phased && control.speed_bonus_left() > 1)
-        best.offer("HASTE", control.speed_bonus_left() - 1, kRankHaste);
+    // The speed bonus counts down to 0, one tick of speed for each.
+    if (!phased && control.speed_bonus_left() > 0)
+        best.offer("HASTE", control.speed_bonus_left(), kRankHaste);
     return best.timer;
 }
 

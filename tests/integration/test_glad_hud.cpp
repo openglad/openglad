@@ -2930,11 +2930,10 @@ TEST_F(GladHud, seat_timer_cell_never_lands_on_the_notification_feed)
 
     // A clock too long even for its seconds (a stack of speed potions read
     // as 10000 s, 119999 ticks to the nearest second: 36px against 32px of
-    // room) draws nothing. The field sticks
-    // at 1 once the bonus has run out, so 120000 is 119999 ticks of haste.
+    // room) draws nothing.
     controlp->set_possess_link(0u);
     controlp->set_possess_ticks(0);
-    controlp->set_speed_bonus_left(120000);
+    controlp->set_speed_bonus_left(119999);
     EXPECT_EQ(119999, og::sim::seat_timer(world, *controlp).ticks);
     EXPECT_EQ(10000, og::sim::timer_seconds(119999));
     trace_clear();
