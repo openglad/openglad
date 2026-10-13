@@ -329,6 +329,16 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   ("<name>'s ward fades"). A seated hero's notice goes to that seat; a bot
   skeleton has no seat, so its notice goes to everyone. A skeleton that is
   buried and warded pays both drains.
+- A skeleton keeps only so many bone walls standing, more as it levels:
+  8 x level / (level + 3), rounded half up (the tuning keys
+  `wall_cap_ceiling` 8 and `wall_cap_knee` 3). That is 2 walls at level 1,
+  3 at level 2, 4 at level 3, 5 at level 5, 6 at level 9, 7 at level 13
+  and 8 from level 45 on, never more. The count is of segments, three to a
+  wall: when a new wall would put the skeleton over, its oldest segments
+  fall quietly (no bones, no storm, no notice) until the new wall fits, so
+  a wall a foe has chipped holds less room and only as many old segments
+  fall as are needed. The new wall itself is built as before (`NO ROOM FOR
+  A WALL` where it cannot stand, and then nothing falls).
 - BONE STORM shatters this skeleton's standing walls, each into eight
   bones, and throws nothing from the skeleton; with no wall standing it
   refuses (`NO WALL STANDING`) and spends nothing.

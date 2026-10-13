@@ -293,6 +293,59 @@ local function wall_segment(self, t, cx, cy)
   return seg
 end
 
+-- How many walls a skeleton keeps standing at once: 8 x level / (level + 3),
+-- rounded half up (wall_cap_ceiling 8, wall_cap_knee 3). Level 1 keeps 2,
+-- level 2 keeps 3, level 3 keeps 4, level 5 keeps 5, level 9 keeps 6,
+-- level 13 keeps 7, and from level 45 on it keeps 8, never more.
+function M.walls_cap(self)
+  local t = og.tuning(self)
+  local level = og.max(1, self.level)
+  return og.div(2 * t.wall_cap_ceiling * level + level + t.wall_cap_knee,
+                2 * (level + t.wall_cap_knee))
+end
+
+-- After a new wall goes up, the skeleton's oldest segments fall quietly
+-- (no bones, no storm, nothing told) until no more than three per kept
+-- wall stand. A wall is three segments that share one lifetime, and the
+-- oldest has the least left; the new segments are never taken. The count
+-- is of segments, so a wall a foe has chipped holds less room.
+local function fell_oldest_walls(self, new_segments)
+  local cap = 3 * M.walls_cap(self)
+  local function is_new(wall)
+    for k = 1, #new_segments do
+      if new_segments[k] == wall then
+        return true
+      end
+    end
+    return false
+  end
+  while true do
+    local standing = 0
+    local oldest = nil
+    local weapons = og.weaplist()
+    for i = 1, #weapons do
+      local wall = weapons[i]
+      if wall:family() == WEAP_BONE_WALL then
+        if wall:dead() == 0 then
+          if wall:owner() == self then
+            standing = standing + 1
+            if not is_new(wall) then
+              if oldest == nil or wall:lifetime() < oldest:lifetime() then
+                oldest = wall
+              end
+            end
+          end
+        end
+      end
+    end
+    if standing <= cap or oldest == nil then
+      return
+    end
+    oldest.dead = 1
+    oldest:death()
+  end
+end
+
 -- BONE WALL (30 MP): three segments across the facing, wall_gap ahead.
 local function bone_wall(self)
   local t = og.tuning(self)
@@ -301,15 +354,17 @@ local function bone_wall(self)
   local py = fx
   local cx = self:xpos() + og.div(self:sizex(), 2) + fx * t.wall_gap
   local cy = self:ypos() + og.div(self:sizey(), 2) + fy * t.wall_gap
-  local placed = 0
+  local placed = {}
   for k = -1, 1 do
-    if wall_segment(self, t, cx + px * 16 * k, cy + py * 16 * k) then
-      placed = placed + 1
+    local seg = wall_segment(self, t, cx + px * 16 * k, cy + py * 16 * k)
+    if seg then
+      placed[#placed + 1] = seg
     end
   end
-  if placed == 0 then
+  if #placed == 0 then
     return false, "NO ROOM FOR A WALL"
   end
+  fell_oldest_walls(self, placed)
   og.emit_positional_sound(self, C.SOUND_CLANG)
   return true
 end

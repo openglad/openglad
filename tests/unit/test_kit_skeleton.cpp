@@ -982,6 +982,167 @@ TEST_F(KitSkeleton, bone_wall_off_twin_is_not_cast)
 }
 
 // ---------------------------------------------------------------------------
+// BONE WALL: how many walls a skeleton keeps
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// One wall's segments, as its cast left them (the skeleton's segments that
+// were not standing before the cast).
+std::vector<walker*> new_segments(const std::vector<walker*>& before,
+                                  const std::vector<walker*>& after)
+{
+    std::vector<walker*> out;
+    for (walker* seg : after)
+        if (std::find(before.begin(), before.end(), seg) == before.end())
+            out.push_back(seg);
+    return out;
+}
+
+int standing_of(const std::vector<walker*>& wall)
+{
+    int n = 0;
+    for (walker* seg : wall)
+        n += seg->dead() ? 0 : 1;
+    return n;
+}
+
+}  // namespace
+
+// A wall cast from a fresh spot: the skeleton stands at x, faces right and
+// builds; one tick passes so the next wall is younger. Answers the new
+// wall's segments.
+static std::vector<walker*> wall_at(GameWorld& world, walker* skel, short x,
+                                    const std::function<void()>& tick_once)
+{
+    const int fam = bone_wall_family();
+    const auto before = alive(world, Order::Weapon, fam, skel);
+    skel->setxy(x, short{96});
+    const Cast c = cast(skel, kSlotWall, 0);
+    EXPECT_TRUE(c.ok) << c.reason;
+    auto wall = new_segments(before, alive(world, Order::Weapon, fam, skel));
+    EXPECT_EQ(3u, wall.size()) << "a whole wall at x " << x;
+    tick_once();
+    return wall;
+}
+
+// The curve: a skeleton keeps 8 x level / (level + 3) walls, rounded half
+// up, so 2 at level 1 and 8 from level 45 on. Built one wall past its
+// count, a skeleton has exactly that many standing (three segments each),
+// and the first wall is the one gone.
+//
+// RED (before the cap): every wall stands, cap + 1 of them.
+TEST_F(KitSkeleton, bone_walls_kept_follow_the_level_curve)
+{
+    struct Row {
+        int level;
+        int walls;
+    };
+    const Row rows[] = {{1, 2}, {2, 3}, {3, 4}, {5, 5}, {9, 6}, {13, 7}, {45, 8}};
+    for (const Row& row : rows) {
+        walker* skel = add_skeleton(0, 40, 96, 1000.0f, row.level);
+        ASSERT_NE(nullptr, skel);
+        std::vector<std::vector<walker*>> walls;
+        for (int i = 0; i <= row.walls; ++i)
+            walls.push_back(wall_at(world(), skel,
+                                    static_cast<short>(40 + 40 * i),
+                                    [this] { tick(); }));
+        EXPECT_EQ(static_cast<std::size_t>(3 * row.walls),
+                  alive(world(), Order::Weapon, bone_wall_family(), skel).size())
+            << "level " << row.level << " keeps " << row.walls << " walls";
+        EXPECT_EQ(0, standing_of(walls.front()))
+            << "level " << row.level << ": the first wall is gone";
+        for (std::size_t i = 1; i < walls.size(); ++i)
+            EXPECT_EQ(3, standing_of(walls[i]))
+                << "level " << row.level << ": wall " << i << " stands";
+        // Clear the world for the next level.
+        for (walker* seg : alive(world(), Order::Weapon, bone_wall_family()))
+            seg->set_dead(1);
+        skel->set_dead(1);
+        tick();
+    }
+}
+
+// A level-1 skeleton keeps two walls: the third wall takes the first one
+// down, all three of its segments, quietly (no bone thrown, nothing told),
+// and the third cast costs the usual 30.
+//
+// RED (before the cap): 9 segments stand and the first wall is whole.
+TEST_F(KitSkeleton, level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly)
+{
+    walker* skel = add_skeleton(0, 40, 96, 90.0f, 1);
+    ASSERT_NE(nullptr, skel);
+    const auto tick_once = [this] { tick(); };
+    const auto first = wall_at(world(), skel, 40, tick_once);
+    const auto second = wall_at(world(), skel, 80, tick_once);
+    ASSERT_EQ(6u, alive(world(), Order::Weapon, bone_wall_family(), skel).size());
+    ASSERT_FLOAT_EQ(30.0f, skel->stats()->magicpoints());
+
+    const std::size_t mark = tw_->events.events().size();
+    const auto third = wall_at(world(), skel, 120, tick_once);
+    EXPECT_FLOAT_EQ(0.0f, skel->stats()->magicpoints()) << "the third wall costs 30";
+    EXPECT_EQ(0, standing_of(first)) << "the first wall fell";
+    EXPECT_EQ(3, standing_of(second));
+    EXPECT_EQ(3, standing_of(third));
+    EXPECT_EQ(6u, alive(world(), Order::Weapon, bone_wall_family(), skel).size());
+    EXPECT_TRUE(alive(world(), Order::Weapon, FAMILY_BONE).empty())
+        << "a wall that falls throws no bones";
+    const auto& events = tw_->events.events();
+    for (std::size_t i = mark; i < events.size(); ++i)
+        EXPECT_NE(og::sim::EventKind::Notification, events[i].kind)
+            << "nothing is told: " << events[i].text;
+}
+
+// A level-13 skeleton keeps seven walls; the eighth takes the first down.
+TEST_F(KitSkeleton, level_thirteen_skeleton_keeps_seven_walls)
+{
+    walker* skel = add_skeleton(0, 40, 96, 1000.0f, 13);
+    ASSERT_NE(nullptr, skel);
+    const auto tick_once = [this] { tick(); };
+    std::vector<std::vector<walker*>> walls;
+    for (int i = 0; i < 7; ++i)
+        walls.push_back(wall_at(world(), skel, static_cast<short>(40 + 40 * i), tick_once));
+    EXPECT_EQ(21u, alive(world(), Order::Weapon, bone_wall_family(), skel).size())
+        << "seven walls stand";
+    for (const auto& wall : walls)
+        EXPECT_EQ(3, standing_of(wall));
+    walls.push_back(wall_at(world(), skel, 320, tick_once));
+    EXPECT_EQ(21u, alive(world(), Order::Weapon, bone_wall_family(), skel).size());
+    EXPECT_EQ(0, standing_of(walls.front())) << "the eighth takes the first";
+    for (std::size_t i = 1; i < walls.size(); ++i)
+        EXPECT_EQ(3, standing_of(walls[i])) << i;
+}
+
+// The count is of segments: with one segment of the second wall chopped,
+// a level-1 skeleton has 5 standing, and the third wall takes only two of
+// the first wall's segments; one of them still stands. Another
+// skeleton's wall is never taken.
+//
+// RED (before the cap): all 8 of the skeleton's segments stand.
+TEST_F(KitSkeleton, a_chopped_wall_leaves_room_and_only_the_oldest_needed_fall)
+{
+    walker* skel = add_skeleton(0, 40, 96, 90.0f, 1);
+    walker* other = add_skeleton(0, 40, 300, 30.0f, 1);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, other);
+    ASSERT_TRUE(cast(other, kSlotWall, 0).ok);
+    const auto tick_once = [this] { tick(); };
+    const auto first = wall_at(world(), skel, 40, tick_once);
+    const auto second = wall_at(world(), skel, 80, tick_once);
+    second[1]->set_dead(1);  // a foe chopped it down
+    tick();
+    ASSERT_EQ(5u, alive(world(), Order::Weapon, bone_wall_family(), skel).size());
+
+    const auto third = wall_at(world(), skel, 120, tick_once);
+    EXPECT_EQ(6u, alive(world(), Order::Weapon, bone_wall_family(), skel).size());
+    EXPECT_EQ(1, standing_of(first)) << "two of the oldest fell, no more";
+    EXPECT_EQ(2, standing_of(second)) << "the younger wall is not taken";
+    EXPECT_EQ(3, standing_of(third));
+    EXPECT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), other).size())
+        << "another skeleton's wall stands";
+}
+
+// ---------------------------------------------------------------------------
 // REASSEMBLE / LEGION
 // ---------------------------------------------------------------------------
 

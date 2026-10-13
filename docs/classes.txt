@@ -411,7 +411,9 @@ Orc Captain:  An orc of level 5 or more may be promoted to
              front of the skeleton, each with 40 hitpoints plus 4 per
              level, standing for 360 ticks.  Allies pass through;
              enemies must go around or hack them down.  Enemy missiles
-             often pass through the gaps.
+             often pass through the gaps.  A skeleton keeps 2 walls at
+             level 1, more as it levels (7 at level 13), never more
+             than 8; a new wall past that brings its oldest down.
              SHIFTER: Bone Storm (45): Every bone wall the skeleton
              has standing shatters into its own eight-way burst.
              Nothing flies from the skeleton itself, and with no wall

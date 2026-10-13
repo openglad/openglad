@@ -102,6 +102,10 @@ og.family("living", {
     wall_hp_base = 40,
     wall_ticks = 360,
     storm_range = 6,
+    -- A skeleton keeps wall_cap_ceiling x level / (level + wall_cap_knee)
+    -- walls at once, rounded half up: 2 at level 1, 8 from level 45.
+    wall_cap_ceiling = 8,
+    wall_cap_knee = 3,
     legion_ticks = 300,
     -- REASSEMBLE's ward lasts ward_ticks (30 seconds) and costs ward_drain
     -- mana every ward_drain_pulse ticks while it is armed.

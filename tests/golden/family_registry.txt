@@ -480,7 +480,7 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  tuning.count = 16
+  tuning.count = 18
   tuning[dig_drain] = int 1
   tuning[dig_drain_pulse] = int 4
   tuning[dig_max] = int 300
@@ -491,6 +491,8 @@
   tuning[kit_latch] = int 10
   tuning[legion_ticks] = int 300
   tuning[storm_range] = int 6
+  tuning[wall_cap_ceiling] = int 8
+  tuning[wall_cap_knee] = int 3
   tuning[wall_gap] = int 20
   tuning[wall_hp_base] = int 40
   tuning[wall_ticks] = int 360

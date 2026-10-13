@@ -147,6 +147,7 @@ Fast, can Tunnel.
    unseen and mending.
 3. Bone Wall*: Line of bones that
    blocks the way for a while.
+   Up to 2 walls, more by level.
    SHIFTER: Bone Storm*, shatter
    all your walls.
 4. Reassemble*: Ward your next
