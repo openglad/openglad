@@ -4942,6 +4942,18 @@ inline constexpr std::uint32_t kRealCourtBotGameSeed = 0x9E3779B9u;
 // 824 3525 -> 5733, 825 142 -> 1034, 826 992 -> 2174, 827 1981 -> 2849,
 // 828 1732 -> 2045, 829 2745 -> 10754. Court 824 still plays the full
 // clock (9-2 at 14400); 829 still needs one watchdog reset before scoring.
+//
+// Re-pinned 2026-10-14 for HOWL resting between casts whatever the New
+// Specials setting (these worlds run with it off). Court 829 fields an orc
+// on each side; at its tick 40 one howls, and at tick 45 the classic game
+// would have howled again (stunning the foes in reach once more), where the
+// rest now refuses it with 115 ticks left. The refusal costs that orc
+// exactly what the classic distance gate's refusal costs (the same orc is
+// refused by it, rest unset, at ticks 18-20): that tick's act and nothing
+// more. From that missing howl the game plays differently, and team 0 now
+// scores first, 2-0 at tick 2142 (was team 1, 0-2 at 10754), still after
+// one watchdog reset. The other five courts field no caster of a rested
+// special that is refused before their first score, and do not move.
 inline constexpr int kRealCourtBotGameTimeLimit = 14400;
 inline constexpr RealCourtBotGamePin kRealCourtBotGamePins[] = {
     {824, 14400, 5733, {3, 0, 0, 0}, true, 14400, {9, 2, 0, 0}, 0, true, 0},
@@ -4949,7 +4961,7 @@ inline constexpr RealCourtBotGamePin kRealCourtBotGamePins[] = {
     {826, 14400, 2174, {0, 0, 2, 0}, false, 2174, {0, 0, 2, 0}, -1, false, 0},
     {827, 14400, 2849, {0, 2, 0, 0}, false, 2849, {0, 2, 0, 0}, -1, false, 0},
     {828, 14400, 2045, {0, 2, 0, 0}, false, 2045, {0, 2, 0, 0}, -1, false, 0},
-    {829, 14400, 10754, {0, 2, 0, 0}, false, 10754, {0, 2, 0, 0}, -1, false, 1},
+    {829, 14400, 2142, {2, 0, 0, 0}, false, 2142, {2, 0, 0, 0}, -1, false, 1},
 };
 
 }  // namespace
