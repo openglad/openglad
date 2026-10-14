@@ -244,6 +244,8 @@
 ---@field set_save_all_protected fun(self: og.Walker, value: any)
 ---@field set_shifter_down fun(self: og.Walker, value: integer)
 ---@field set_skip_exit fun(self: og.Walker, value: integer)
+---@field set_special_rest_left fun(self: og.Walker, value: integer)
+---@field set_special_rest_slot fun(self: og.Walker, value: integer)
 ---@field set_speed_bonus fun(self: og.Walker, value: number)
 ---@field set_speed_bonus_left fun(self: og.Walker, value: integer)
 ---@field set_stepsize fun(self: og.Walker, value: number)
@@ -260,6 +262,8 @@
 ---@field skip_exit fun(self: og.Walker): integer
 ---@field spaces_clear fun(self: og.Walker): integer
 ---@field special fun(self: og.Walker): boolean, string?
+---@field special_rest_left fun(self: og.Walker): integer
+---@field special_rest_slot fun(self: og.Walker): integer
 ---@field speed_bonus fun(self: og.Walker): number
 ---@field speed_bonus_left fun(self: og.Walker): integer
 ---@field stepsize fun(self: og.Walker): number
@@ -602,7 +606,6 @@
 ---@field MARKER_LEGION integer
 ---@field MARKER_METEOR_RAIN integer
 ---@field MARKER_PHASE_VEIL integer
----@field MARKER_REST integer
 ---@field MARKER_WARD integer
 ---@field MAXOBS integer
 ---@field MP_POOL_DAMAGE_CAP integer

@@ -52,9 +52,9 @@ local function wail(self)
 end
 
 -- The slot-1 cast: the classic SCARE unless the shifted alternate is in play.
--- With New Specials on, SCARE and WAIL share one rest (scare_rest ticks on
--- the ghost's tuning block), each refusing in its own name; with it off the
--- classic SCARE runs untouched.
+-- SCARE and WAIL share one rest (scare_rest ticks on the ghost's tuning
+-- block), each refusing in its own name; SCARE rests with the New Specials
+-- setting off too (WAIL exists only with it on).
 local SCARE_SLOT = 1
 
 function M.scare_or_wail(classic)

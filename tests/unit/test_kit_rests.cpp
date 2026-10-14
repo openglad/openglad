@@ -6,11 +6,13 @@
  * (at your option) any later version.
  */
 
-// New Specials, rests: the specials that upset a whole fight -- GLIMMER,
-// FREEZE TIME, HOWL (orc and captain), SCARE / WAIL and MIND CONTROL --
-// wait between casts, without holding up ordinary attacks. A rest is a
-// MARKER_REST kit marker owned by the caster with the slot in its level
-// (packs/core/lib/kit_marker.lua), started by one wrapper
+// Rests: the specials that upset a whole fight -- GLIMMER, FREEZE TIME,
+// HOWL (orc and captain), SCARE / WAIL and MIND CONTROL -- wait between
+// casts, without holding up ordinary attacks. FREEZE TIME, HOWL, SCARE and
+// MIND CONTROL rest whatever the New Specials setting says; GLIMMER, WAIL
+// and the captain's HOWL exist only with it on. A rest is a clock on the
+// caster (special_rest_left ticks for the 1-based slot special_rest_slot),
+// counted down by living::act, started by one wrapper
 // (lib/living_common.lua with_rest) and read by the bots' gates
 // (gate_with_rest). The refusal names the seconds left through
 // og.timer_seconds, the HUD's own rounding.
@@ -19,11 +21,11 @@
 // charge included). Each special's test: the first cast lands, an immediate
 // second is refused with the exact text and spends nothing, one tick before
 // the rest is over it still refuses ("IN 0S"), and on the last tick it casts
-// again; with the setting off the second cast is the classic answer and no
-// rest is left behind.
+// again.
 //
-// RED (each test below was first run against the kits without rests; the
-// lines it printed are quoted beside it).
+// RED (each test below was first run against the kits without rests, or
+// against the rule it pins put back the old way; the lines it printed are
+// quoted beside it).
 
 #include <gtest/gtest.h>
 
@@ -37,7 +39,6 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/gameplay/kit_marker_role.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -137,18 +138,9 @@ protected:
         return dynamic_cast<living*>(w);
     }
 
-    // The caster's live rest markers.
-    std::vector<walker*> rests(const walker* owner)
-    {
-        std::vector<walker*> out;
-        for (const auto& up : world().oblist)
-            if (up && !up->dead() && up->query_order() == Order::FX &&
-                static_cast<int>(static_cast<unsigned char>(up->family())) ==
-                    kit_marker_family() &&
-                up->ani_type() == MARKER_REST && up->owner() == owner)
-                out.push_back(up.get());
-        return out;
-    }
+    // The caster's rest clock: ticks left, and the slot that rests.
+    static int rest_left(const walker* w) { return w->special_rest_left(); }
+    static int rest_slot(const walker* w) { return w->special_rest_slot(); }
 
     float mp(const walker* w) const { return w->stats()->magicpoints(); }
 
@@ -170,10 +162,8 @@ protected:
     {
         const Cast first = cast(w, slot, shift);
         ASSERT_TRUE(first.ok) << first.reason;
-        const std::vector<walker*> started = rests(w);
-        ASSERT_EQ(1u, started.size()) << "the cast starts one rest";
-        EXPECT_EQ(rest, started[0]->lifetime());
-        EXPECT_EQ(slot, started[0]->stats()->level()) << "the rested slot";
+        EXPECT_EQ(rest, rest_left(w)) << "the cast starts the rest";
+        EXPECT_EQ(slot, rest_slot(w)) << "the rested slot";
 
         const float before = mp(w);
         const Cast again = cast(w, slot, shift);
@@ -182,22 +172,23 @@ protected:
         EXPECT_EQ(refusal, again.reason);
         EXPECT_LE(again.reason.size(), 24u) << "fits the compact HUD";
         EXPECT_FLOAT_EQ(before, mp(w)) << "a refusal spends nothing";
-        EXPECT_EQ(1u, rests(w).size()) << "and starts no second rest";
+        EXPECT_EQ(rest, rest_left(w)) << "and does not restart the rest";
 
         tick(rest - 1);
+        EXPECT_EQ(1, rest_left(w)) << "one tick a tick";
         w->set_busy(0.0f);
         const Cast late = cast(w, slot, shift);
         EXPECT_FALSE(late.ok) << "one tick of rest left";
         EXPECT_EQ(name + " IN 0S", late.reason);
 
         tick();
-        EXPECT_TRUE(rests(w).empty()) << "the rest is over";
+        EXPECT_EQ(0, rest_left(w)) << "the rest is over";
         if (foe != nullptr)
             foe->setxy(static_cast<short>(w->xpos() + 30), w->ypos());
         w->set_busy(0.0f);
         const Cast rested = cast(w, slot, shift);
         EXPECT_TRUE(rested.ok) << rested.reason;
-        EXPECT_EQ(1u, rests(w).size()) << "and a new one starts";
+        EXPECT_EQ(rest, rest_left(w)) << "and a new one starts";
     }
 };
 
@@ -254,8 +245,10 @@ TEST_F(KitRests, glimmer_costs_forty_and_rests_fifteen_seconds)
 // HOWL, the orc's: 120 ticks (10 s). Refused before the attack pause it
 // would otherwise answer (SPECIAL BUSY).
 //
-// RED: Expected equality of these values: 1u started.size() Which is: 0
-// (no rest; the captain's test below printed the same)
+// RED (against the kits without rests, when the rest was a kit marker):
+// Expected equality of these values: 1u started.size() Which is: 0 (no
+// rest; the captain's test below printed the same). Against the clock with
+// its decrement taken out: "HOWL IN 0S" late.reason Which is: "HOWL IN 10S".
 TEST_F(KitRests, orc_howl_rests_ten_seconds)
 {
     living* orc = add(FAMILY_ORC, 0, 160, 160, 4, 400.0f);
@@ -275,8 +268,9 @@ TEST_F(KitRests, captain_howl_rests_ten_seconds)
 // SCARE and WAIL share one rest of 96 ticks (8 s); each refuses in its own
 // name, and a SCARE rests the WAIL too.
 //
-// RED: Expected equality of these values: 1u started.size() Which is: 0,
-// and Value of: wail.ok Actual: true Expected: false (a WAIL at once).
+// RED (against the kits without rests, when the rest was a kit marker):
+// Expected equality of these values: 1u started.size() Which is: 0, and
+// Value of: wail.ok Actual: true Expected: false (a WAIL at once).
 TEST_F(KitRests, scare_and_wail_share_an_eight_second_rest)
 {
     living* ghost = add(FAMILY_GHOST, 0, 160, 160, 4, 400.0f);
@@ -328,58 +322,77 @@ TEST_F(KitRests, mind_control_rests_twenty_seconds)
     EXPECT_NE(1, fresh->team_num()) << "the fresh foe is charmed";
 }
 
-// With the setting off every one of these is the classic special: no rest
-// is left behind, and the second press answers as it always did -- FREEZE
-// TIME and SCARE cast again, HOWL and MIND CONTROL wait out their attack
-// pause (SPECIAL BUSY). The faerie and the captain have no specials at all.
+// With the setting off FREEZE TIME, HOWL, SCARE and MIND CONTROL still
+// rest (the maintainer's rule: the classic specials' rests are not the
+// setting's), each refusing in its own name for free, and the clock counts
+// down the same; GLIMMER and the captain's HOWL are not specials at all with
+// it off, so they start no rest.
 //
-// RED (the wrapper's setting check dropped from with_rest in the staged
-// living_common.lua): Expected equality of these values: "SPECIAL BUSY"
-// orc_again.reason Which is: "HOWL IN 10S"
-TEST_F(KitRests, with_the_setting_off_the_classic_answer)
+// RED (the setting check put back at the head of with_rest in the staged
+// living_common.lua, the classic cast answering alone): Expected equality of
+// these values: 360 rest_left(w) Which is: 0; Value of: again.ok Actual:
+// true Expected: false; "FREEZE TIME IN 30S" again.reason Which is: "", and
+// the same for HOWL, SCARE and MIND CONTROL.
+TEST_F(KitRests, with_the_setting_off_the_classic_specials_rest_too)
 {
     world().new_specials = 0;
-    living* mage = add(FAMILY_MAGE, 0, 160, 160, 7, 2000.0f);
-    living* orc = add(FAMILY_ORC, 0, 60, 60, 4, 400.0f);
-    living* ghost = add(FAMILY_GHOST, 0, 260, 60, 4, 400.0f);
-    living* arch = add(FAMILY_ARCHMAGE, 0, 60, 260, 10, 1000.0f);
+    struct Row {
+        int family;
+        int slot;
+        int level;
+        int rest;
+        const char* refusal;
+        const char* name;
+    };
+    const Row rows[] = {
+        {FAMILY_MAGE, 3, 7, 360, "FREEZE TIME IN 30S", "mage FREEZE TIME"},
+        {FAMILY_ORC, 1, 4, 120, "HOWL IN 10S", "orc HOWL"},
+        {FAMILY_GHOST, 1, 4, 96, "SCARE IN 8S", "ghost SCARE"},
+        {FAMILY_ARCHMAGE, 4, 10, 240, "MIND CONTROL IN 20S",
+         "archmage MIND CONTROL"},
+    };
+    short x = 60;
+    for (const Row& row : rows) {
+        living* w = add(row.family, 0, x, 60, row.level, 2000.0f);
+        living* foe = add(FAMILY_SOLDIER, 1, static_cast<short>(x + 30), 60, 1);
+        ASSERT_TRUE(w && foe) << row.name;
+        w->set_busy(0.0f);
+        const Cast first = cast(w, row.slot);
+        ASSERT_TRUE(first.ok) << row.name << ": " << first.reason;
+        EXPECT_EQ(row.rest, rest_left(w)) << row.name;
+        EXPECT_EQ(row.slot, rest_slot(w)) << row.name;
+        world().enemy_freeze = 0;
+        w->set_busy(0.0f);
+        const float before = mp(w);
+        const Cast again = cast(w, row.slot);
+        EXPECT_FALSE(again.ok) << row.name;
+        EXPECT_EQ(row.refusal, again.reason) << row.name;
+        EXPECT_FLOAT_EQ(before, mp(w)) << row.name << ": a refusal is free";
+        tick(10);
+        EXPECT_EQ(row.rest - 10, rest_left(w)) << row.name << ": it counts down";
+        w->set_dead(1);
+        foe->set_dead(1);
+        x = static_cast<short>(x + 70);
+    }
+
     living* faerie = add(FAMILY_FAERIE, 0, 260, 260, 4, 400.0f);
-    living* captain = add(FAMILY_BIG_ORC, 0, 160, 60, 1, 400.0f);
-    living* foe = add(FAMILY_SOLDIER, 1, 100, 260, 1);
-    living* foe2 = add(FAMILY_SOLDIER, 1, 90, 280, 1);
-    ASSERT_TRUE(mage && orc && ghost && arch && faerie && captain && foe && foe2);
-
-    ASSERT_TRUE(cast(mage, 3).ok);
-    EXPECT_TRUE(cast(mage, 3).ok) << "FREEZE TIME again at once";
-    EXPECT_FLOAT_EQ(1000.0f, mp(mage));
-
-    ASSERT_TRUE(cast(orc, 1).ok);
-    const Cast orc_again = cast(orc, 1);
-    EXPECT_EQ("SPECIAL BUSY", orc_again.reason);
-
-    ASSERT_TRUE(cast(ghost, 1).ok);
-    EXPECT_TRUE(cast(ghost, 1).ok) << "SCARE again at once";
-
-    ASSERT_TRUE(cast(arch, 4).ok);
-    EXPECT_EQ("SPECIAL BUSY", cast(arch, 4).reason);
-
+    living* captain = add(FAMILY_BIG_ORC, 0, 160, 260, 1, 400.0f);
+    ASSERT_TRUE(faerie && captain);
     EXPECT_FALSE(cast(faerie, 2).ok) << "no GLIMMER with the setting off";
     EXPECT_FALSE(cast(captain, 1).ok) << "no captain's HOWL with it off";
-
-    for (walker* w : {static_cast<walker*>(mage), static_cast<walker*>(orc),
-                      static_cast<walker*>(ghost), static_cast<walker*>(arch),
-                      static_cast<walker*>(faerie),
-                      static_cast<walker*>(captain)})
-        EXPECT_TRUE(rests(w).empty()) << "no rest with the setting off";
+    EXPECT_EQ(0, rest_left(faerie));
+    EXPECT_EQ(0, rest_left(captain));
 }
 
 // The bots: while a special rests, its gate answers no, so a bot does not
 // roll a slot it would be refused; once the rest is over the gate answers
 // as before. A family-wide gate (the mage's, the orc's) holds only the
-// rested slot.
+// rested slot. The classic specials' gates hold with the setting off too.
 //
 // RED: Value of: gate(w, row.slot) Actual: true Expected: false
-// "mage FREEZE TIME: held while resting", and the same for every row.
+// "mage FREEZE TIME: held while resting", and the same for every row. RED
+// (the setting check put back in gate_with_rest): the same line for every
+// setting-off row ("mage FREEZE TIME, setting off: held while resting").
 TEST_F(KitRests, bot_gates_hold_a_resting_special)
 {
     struct Row {
@@ -388,18 +401,24 @@ TEST_F(KitRests, bot_gates_hold_a_resting_special)
         short shift;
         int level;
         int rest;
+        int new_specials;
         const char* name;
     };
     const Row rows[] = {
-        {FAMILY_MAGE, 3, 0, 7, 360, "mage FREEZE TIME"},
-        {FAMILY_FAERIE, 2, 0, 4, 180, "faerie GLIMMER"},
-        {FAMILY_ORC, 1, 0, 4, 120, "orc HOWL"},
-        {FAMILY_BIG_ORC, 1, 0, 1, 120, "captain HOWL"},
-        {FAMILY_GHOST, 1, 0, 4, 96, "ghost SCARE"},
-        {FAMILY_ARCHMAGE, 4, 0, 10, 240, "archmage MIND CONTROL"},
+        {FAMILY_MAGE, 3, 0, 7, 360, 1, "mage FREEZE TIME"},
+        {FAMILY_FAERIE, 2, 0, 4, 180, 1, "faerie GLIMMER"},
+        {FAMILY_ORC, 1, 0, 4, 120, 1, "orc HOWL"},
+        {FAMILY_BIG_ORC, 1, 0, 1, 120, 1, "captain HOWL"},
+        {FAMILY_GHOST, 1, 0, 4, 96, 1, "ghost SCARE"},
+        {FAMILY_ARCHMAGE, 4, 0, 10, 240, 1, "archmage MIND CONTROL"},
+        {FAMILY_MAGE, 3, 0, 7, 360, 0, "mage FREEZE TIME, setting off"},
+        {FAMILY_ORC, 1, 0, 4, 120, 0, "orc HOWL, setting off"},
+        {FAMILY_GHOST, 1, 0, 4, 96, 0, "ghost SCARE, setting off"},
+        {FAMILY_ARCHMAGE, 4, 0, 10, 240, 0, "archmage MIND CONTROL, setting off"},
     };
     short x = 40;
     for (const Row& row : rows) {
+        world().new_specials = static_cast<short>(row.new_specials);
         living* w = add(row.family, 0, x, 120, row.level, 2000.0f);
         // A foe in every gate's reach (the mage's own gate wants none or a
         // crowd: it stands off to one side for the mage).
@@ -417,46 +436,56 @@ TEST_F(KitRests, bot_gates_hold_a_resting_special)
                 << row.name << ": another slot is not held";
         }
         tick(row.rest);
-        EXPECT_TRUE(rests(w).empty()) << row.name;
+        EXPECT_EQ(0, rest_left(w)) << row.name;
         world().enemy_freeze = 0;
         if (row.family != FAMILY_MAGE)  // the scared and howled-at walk off
             foe->setxy(static_cast<short>(w->xpos() + 30), w->ypos());
         EXPECT_TRUE(gate(w, row.slot)) << row.name << ": free after the rest";
-        x = static_cast<short>(x + 80);
+        x = static_cast<short>(x + 30);
         w->set_dead(1);
         foe->set_dead(1);
     }
 }
 
-// A rest keeps counting while its caster is frozen and while time stands
-// still for its side (markers act through both), and it ends with its
-// caster.
+// The clock is the caster's own: no helper entity is summoned, it counts
+// down on every turn the caster takes -- a frozen caster's included, since
+// the freeze is checked later in the turn -- and it waits while time stands
+// still for the caster's side, when the caster takes no turn at all. One
+// clock per walker: a rest on one slot leaves the others free.
 //
-// RED: Expected equality of these values: 1u rests(orc).size() Which is: 0
-// (no rest to run). Run by hand: rest_act's owner check removed from the
-// staged kit_marker.lua -> Value of: rest->dead() Actual: false.
-TEST_F(KitRests, a_rest_runs_through_freezes_and_dies_with_its_caster)
+// RED (with the decrement taken out of living::act): Expected equality of
+// these values: 0 rest_left(frozen) Which is: 120 "a frozen orc's rest ran
+// out", and 0 rest_left(enemy) Which is: 120 "and runs once time moves
+// again"; every expect_rested test printed "FREEZE TIME IN 0S" again.reason
+// Which is: "FREEZE TIME IN 30S" the same way.
+TEST_F(KitRests, the_clock_is_on_the_walker)
 {
     living* frozen = add(FAMILY_ORC, 0, 60, 60, 4, 400.0f);
     living* enemy = add(FAMILY_ORC, 1, 200, 200, 4, 400.0f);
     ASSERT_TRUE(frozen && enemy);
+    const std::size_t obs_before = world().oblist.size();
     ASSERT_TRUE(cast(frozen, 1).ok);
     ASSERT_TRUE(cast(enemy, 1).ok);
+    EXPECT_EQ(obs_before, world().oblist.size()) << "no helper entity";
+    EXPECT_EQ(120, rest_left(frozen));
+    EXPECT_EQ(1, rest_slot(frozen));
     frozen->stats()->set_frozen_delay(500);
     world().enemy_freeze = 500;  // time stands still for team 1
     tick(120);
-    EXPECT_TRUE(rests(frozen).empty()) << "a frozen orc's rest ran out";
-    EXPECT_TRUE(rests(enemy).empty()) << "so did the time-stopped orc's";
-
+    EXPECT_EQ(0, rest_left(frozen)) << "a frozen orc's rest ran out";
+    EXPECT_EQ(120, rest_left(enemy))
+        << "the time-stopped orc took no turn, so its rest waits";
     world().enemy_freeze = 0;
+    tick(120);
+    EXPECT_EQ(0, rest_left(enemy)) << "and runs once time moves again";
+
+    // Another slot is not held: the orc eats with HOWL resting.
     living* orc = add(FAMILY_ORC, 0, 120, 60, 4, 400.0f);
     ASSERT_NE(nullptr, orc);
     ASSERT_TRUE(cast(orc, 1).ok);
-    ASSERT_EQ(1u, rests(orc).size());
-    walker* rest = rests(orc)[0];
-    orc->stats()->set_hitpoints(-5.0f);
-    orc->set_dead(1);
-    orc->death();
-    ASSERT_TRUE(rest->act());
-    EXPECT_TRUE(rest->dead()) << "the rest ends with its caster";
+    orc->set_busy(0.0f);
+    const Cast eat = cast(orc, 2);
+    EXPECT_EQ(std::string::npos, eat.reason.find(" IN "))
+        << "EAT CORPSE is not refused by HOWL's rest: " << eat.reason;
+    EXPECT_EQ(1, rest_slot(orc)) << "the clock still names HOWL";
 }

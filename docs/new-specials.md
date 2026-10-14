@@ -3,7 +3,9 @@
 Six classes gain new specials: the thief, the ghost, the faerie, the orc
 captain, the skeleton and the fire elemental. Each new special belongs to
 one setting, **New Specials**, which is on by default. With it off, every
-class plays exactly as it did before the kits existed. The players' list of
+class plays exactly as it did before the kits existed, with one exception:
+FREEZE TIME, HOWL, SCARE and MIND CONTROL rest between casts whatever the
+setting (see [Rests](#rests)). The players' list of
 moves, with their numbers, is in [classes.txt](classes.txt) (the entries
 marked `+`). This page covers the setting, how the engine hides the kits
 when it is off, the possession rules, and the notes a player or a modder
@@ -48,7 +50,8 @@ generator and fallen-hero settings, one hop at a time:
 parity recording, plays the classic kits unless something sets it. The
 parity runner sets it to 0 explicitly.
 
-Versions: protocol v19, snapshot v15, replay v21.
+Versions: protocol v20, snapshot v16, replay v22 (v19/v15/v21 brought the
+setting; v20/v16/v22 the rest clock, below).
 
 ## How the kits stay hidden when the setting is off
 
@@ -78,7 +81,9 @@ it:
   current slot whether to cast, and the faerie's and the captain's slot 1
   are new. Every new gate's first statement is
   `if og.match_setting("new_specials") == 0 then return true end`. A
-  `false` would skip a random draw the classic game makes.
+  `false` would skip a random draw the classic game makes. The one gate
+  that answers no with the setting off is a classic special's rest (see
+  Rests), and the old game at the parity commit carries the same rule.
 
 Two states make every slot free. While a walker is **HIDDEN** (a dug-in
 skeleton, a ghost riding a body) or **CHANNELLING** (a burning fire
@@ -137,7 +142,6 @@ tick it was spawned. The role numbers are engine constants
 | `PHASE_VEIL` | 4 | ghost PHASE |
 | `METEOR_RAIN` | 5 | fire elemental METEOR RAIN |
 | `WARD` | 6 | skeleton REASSEMBLE's clock (the ward bit is still what the engine spends) |
-| `REST` | 7 | a special's rest between casts (the rested slot in the marker's level; see Rests) |
 
 New wire ids: effects 13 `core:mine`, 14 `core:wail`, 15 `core:hook_blade`,
 16 `core:ember`, 17 `core:kit_marker`; weapons 20 `core:bone_wall`, 21
@@ -384,34 +388,46 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   full, and a curses player sees their own team's cloud glyph during those
   ticks; and when a hero dies, its view holds still until the next hero is
   picked instead of flashing the map's top-left corner for a frame. That is
-  drawing only; the game plays the same.
+  drawing only. In play, the rests of FREEZE TIME, HOWL, SCARE and MIND
+  CONTROL (below) hold with the setting off too.
 
 ## Rests
 
-With the setting on, the specials that can upset a whole fight wait
-between casts. A rest does not hold up ordinary attacks or any other
-special; it only refuses a second cast of the same special until it is
-over, naming the seconds left (rounded as the HUD rounds them), for
-example `FREEZE TIME IN 24S`. A refused cast spends nothing.
+The specials that can upset a whole fight wait between casts. A rest does
+not hold up ordinary attacks or any other special; it only refuses a second
+cast of the same special until it is over, naming the seconds left (rounded
+as the HUD rounds them), for example `FREEZE TIME IN 24S`. A refused cast
+spends nothing.
 
-| special | rest | refusal |
-|---|---|---|
-| GLIMMER (faerie) | 15 s (180 ticks) | `GLIMMER IN 15S` |
-| FREEZE TIME (mage) | 30 s (360 ticks) | `FREEZE TIME IN 30S` |
-| HOWL (orc and orc captain) | 10 s (120 ticks) | `HOWL IN 10S` |
-| SCARE / WAIL (ghost; one rest for both) | 8 s (96 ticks) | `SCARE IN 8S` / `WAIL IN 8S` |
-| MIND CONTROL (archmage) | 20 s (240 ticks) | `MIND CONTROL IN 20S` |
+| special | rest | refusal | with the setting off |
+|---|---|---|---|
+| FREEZE TIME (mage) | 30 s (360 ticks) | `FREEZE TIME IN 30S` | rests too |
+| HOWL (orc) | 10 s (120 ticks) | `HOWL IN 10S` | rests too |
+| SCARE (ghost) | 8 s (96 ticks) | `SCARE IN 8S` | rests too |
+| MIND CONTROL (archmage) | 20 s (240 ticks) | `MIND CONTROL IN 20S` | rests too |
+| GLIMMER (faerie) | 15 s (180 ticks) | `GLIMMER IN 15S` | no GLIMMER |
+| WAIL (ghost; one rest with SCARE) | 8 s (96 ticks) | `WAIL IN 8S` | no WAIL |
+| HOWL (orc captain) | 10 s (120 ticks) | `HOWL IN 10S` | no captain's specials |
+
+The four classic rests are not the setting's: they are a fix to the classic
+specials, made in this game and in the old game at the parity commit alike
+([GAMEPLAY_FIXES_FROM_CLASSIC.md](GAMEPLAY_FIXES_FROM_CLASSIC.md)).
 
 The lengths are tuning keys on each family (`glimmer_rest`, `freeze_rest`,
 `howl_rest`, `scare_rest`, `charm_rest`). A bot does not pick a resting
 special: its gate for that slot answers no until the rest is over. A rest
-is not shown in the HUD countdown (it is not an effect on the player). It
-keeps counting while its caster is frozen and while time is stopped, and it
-ends when its caster dies. Underneath it is a `REST` kit marker owned by
-the caster, with the rested slot in the marker's level, started by one
-wrapper (`packs/core/lib/living_common.lua`, `with_rest`). With the setting
-off none of this happens: FREEZE TIME, HOWL, SCARE and MIND CONTROL are the
-classic specials, cast for cast.
+is not shown in the HUD countdown (it is not an effect on the player).
+
+The rest is a clock on the caster: `special_rest_left` (ticks) and
+`special_rest_slot` (the 1-based slot that rests, 0 for none), two walker
+fields that ride every snapshot (protocol v20). `living::act` counts the
+clock down one tick per turn the caster takes, right after the speed bonus,
+so it keeps counting while its caster is frozen, runs faster in bonus rounds
+as haste does, and waits while time is stopped for the caster's side (the
+caster takes no turn). One wrapper starts and reads it
+(`packs/core/lib/living_common.lua`, `with_rest`), and the bots' gates read it
+(`gate_with_rest`). Each walker has one clock, which is enough: no class has
+two rested specials (SCARE and WAIL share the ghost's slot 1).
 
 ## Refusals at a glance
 
@@ -430,7 +446,7 @@ Every refusal is at most 24 characters, so it fits the compact HUD. The
 | HASTEN / HASTE SELF | `NO ALLY IN REACH` |
 | WISH | `NO FALLEN ALLY NEARBY`, `COULD NOT RESURRECT` |
 | HOWL | `HOWL IN 10S` (its rest), the orc's own (`SPECIAL BUSY`) |
-| FREEZE TIME, SCARE, MIND CONTROL (classic) | with the setting on, their rest: `FREEZE TIME IN 30S`, `SCARE IN 8S`, `MIND CONTROL IN 20S` |
+| FREEZE TIME, SCARE, MIND CONTROL (classic) | their rest, whatever the setting: `FREEZE TIME IN 30S`, `SCARE IN 8S`, `MIND CONTROL IN 20S` |
 | EAT CORPSE | the orc's own (`ALREADY AT FULL HEALTH`, `NO CORPSE NEARBY`, `NO CORPSE IN RANGE`) |
 | HOOK BLADE / KNIFE FAN | `BLADE ALREADY OUT`, `COULD NOT MAKE A BLADE` / `SPECIAL BUSY` |
 | WAR BANNER / WARBAND | `NO CORPSE TO PLANT ON`, `COULD NOT RAISE BANNER` / `WARBAND ALREADY HERE`, `NO ROOM AT THE EDGE` |

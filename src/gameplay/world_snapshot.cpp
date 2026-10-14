@@ -1944,12 +1944,12 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_spawn_x(safe_spawn_x);
     entity.set_spawn_y(safe_spawn_y);
     entity.set_spawn_floor(snapshot.spawn_floor);
-    // New Specials state. possess_link is applied as is: a stale id resolves
-    // to nothing through find_by_id. A flip of the HIDDEN bit goes through
-    // set_hidden so the mirror's collision table follows it, then the raw
-    // byte lands.
+    // possess_link applies as is (a stale id finds nothing); a HIDDEN flip
+    // goes through set_hidden so the mirror's collision table follows it.
     entity.set_possess_link(snapshot.possess_link);
     entity.set_possess_ticks(snapshot.possess_ticks);
+    entity.set_special_rest_left(snapshot.special_rest_left);
+    entity.set_special_rest_slot(snapshot.special_rest_slot);
     const bool snapshot_hidden = (snapshot.kit_state & KIT_HIDDEN) != 0;
     if (snapshot_hidden != entity.hidden())
         entity.set_hidden(snapshot_hidden);
@@ -2474,6 +2474,8 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.possess_link = entity.possess_link();
     snapshot.kit_state = entity.kit_state();
     snapshot.possess_ticks = entity.possess_ticks();
+    snapshot.special_rest_left = entity.special_rest_left();
+    snapshot.special_rest_slot = entity.special_rest_slot();
     snapshot.team_num = entity.team_num();
     snapshot.real_team_num = entity.real_team_num();
     snapshot.user = entity.user();

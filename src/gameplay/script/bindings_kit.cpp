@@ -300,7 +300,6 @@ const KitConst kKitConstants[] = {
     {"MARKER_PHASE_VEIL", MARKER_PHASE_VEIL},
     {"MARKER_METEOR_RAIN", MARKER_METEOR_RAIN},
     {"MARKER_WARD", MARKER_WARD},
-    {"MARKER_REST", MARKER_REST},
 };
 
 }  // namespace

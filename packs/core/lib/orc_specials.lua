@@ -87,8 +87,8 @@ function M.eat_corpse(self)
 end
 
 -- HOWL as both families cast it: the yell, resting howl_rest ticks between
--- casts with New Specials on (lib/living_common.lua), the classic yell with
--- it off. HOWL is slot 1 for the orc and the captain alike.
+-- casts whatever the New Specials setting (lib/living_common.lua). HOWL is
+-- slot 1 for the orc and the captain alike.
 local HOWL_SLOT = 1
 M.howl = lc.with_rest(M.yell, HOWL_SLOT, "howl_rest", "HOWL")
 

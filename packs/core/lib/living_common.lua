@@ -2,7 +2,6 @@
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
 local C = og.C
-local km = og.use("kit_marker")
 
 local M = {}
 
@@ -51,39 +50,38 @@ function M.mp_pool_damage(self, slot)
   return og.min(og.div(spare_mp(self, slot), 2), C.MP_POOL_DAMAGE_CAP)
 end
 
--- Rests (New Specials). A rest is a wait between two casts of one
--- special that leaves ordinary attacks alone: a MARKER_REST kit marker
--- owned by the caster, with the rested slot in its level, counting down
--- (lib/kit_marker.lua). `cast` is the special's own cast; `rest_key` names
--- the rest's length in ticks on the family's tuning block; `name` starts the
--- refusal, "<NAME> IN <N>S", the seconds read as the HUD reads them. With
--- the setting off the classic cast runs, and nothing else happens first.
+-- Rests. A rest is a wait between two casts of one special that leaves
+-- ordinary attacks and the other specials alone: a clock on the caster,
+-- special_rest_left ticks for the 1-based slot special_rest_slot, counted
+-- down by living::act. One clock per walker, so only the last rested slot
+-- waits. `cast` is the special's own cast; `rest_key` names the rest's length
+-- in ticks on the family's tuning block; `name` starts the refusal,
+-- "<NAME> IN <N>S", the seconds read as the HUD reads them. It holds whatever
+-- the New Specials setting says (FREEZE TIME, HOWL, SCARE and MIND CONTROL
+-- rest in the classic game too).
 function M.with_rest(cast, slot, rest_key, name)
   return function(self)
-    if og.match_setting("new_specials") == 0 then
-      return cast(self)
-    end
-    local left = km.rest_left(self, slot)
-    if left > 0 then
+    local left = self:special_rest_left()
+    if left > 0 and self:special_rest_slot() == slot then
       return false, string.format("%s IN %dS", name, og.timer_seconds(left))
     end
     local ok, why = cast(self)
     if ok then
-      km.start_rest(self, slot, og.tuning(self)[rest_key])
+      self:set_special_rest_left(og.tuning(self)[rest_key])
+      self:set_special_rest_slot(slot)
     end
     return ok, why
   end
 end
 
 -- A bot gate for a rested special: while the rest runs a bot does not pick
--- the slot; otherwise `gate` answers (no gate: yes). With the setting off
--- the gate answers alone. For a family-wide gate the rest is read only when
--- the bot is on the rested slot.
+-- the slot; otherwise `gate` answers (no gate: yes). For a family-wide gate
+-- the rest is read only when the bot is on the rested slot.
 function M.gate_with_rest(gate, slot)
   return function(self)
-    if og.match_setting("new_specials") ~= 0
-        and self:current_special() == slot
-        and km.rest_left(self, slot) > 0 then
+    if self:current_special() == slot
+        and self:special_rest_slot() == slot
+        and self:special_rest_left() > 0 then
       return false
     end
     if gate then

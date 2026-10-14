@@ -3083,6 +3083,13 @@ int m_last_self_teleport_tick(lua_State* L)
     return 1;
 }
 
+// A special's rest between casts (packs/core/lib/living_common.lua,
+// with_rest): the ticks left and the 1-based slot that rests (0 = none).
+W_GET_INT(special_rest_left)
+W_SET_INT(special_rest_left, std::int32_t)
+W_GET_INT(special_rest_slot)
+W_SET_INT(special_rest_slot, std::int32_t)
+
 // ---------------------------------------------------------------------------
 // Registration tables
 // ---------------------------------------------------------------------------
@@ -3137,6 +3144,10 @@ const luaL_Reg kWalkerMethods[] = {
     {"speed_bonus", m_speed_bonus}, {"set_speed_bonus", m_set_speed_bonus},
     {"speed_bonus_left", m_speed_bonus_left},
     {"set_speed_bonus_left", m_set_speed_bonus_left},
+    {"special_rest_left", m_special_rest_left},
+    {"set_special_rest_left", m_set_special_rest_left},
+    {"special_rest_slot", m_special_rest_slot},
+    {"set_special_rest_slot", m_set_special_rest_slot},
     {"charm_left", m_charm_left}, {"set_charm_left", m_set_charm_left},
     {"weapons_left", m_weapons_left},
     {"set_weapons_left", m_set_weapons_left},

@@ -168,8 +168,12 @@ void detonate(walker* fx_ob)
 
 // Cast the ghost scare and burst the spawned effect (the production delivery
 // path: family_ghost do_special -> FAMILY_GHOST_SCARE FX -> ghost_scare_on_death).
+// SCARE rests 8 s between casts (test_kit_rests.cpp); these pin the
+// fright's merge, which still bounds several ghosts, so each cast skips the
+// rest.
 void cast_scare(BatteryFixture& fx, living* ghost)
 {
+    ghost->set_special_rest_left(0);
     ASSERT_TRUE(ghost->special());
     walker* scare = newest_live_fx(fx, FAMILY_GHOST_SCARE);
     ASSERT_TRUE(scare != nullptr);
@@ -208,6 +212,10 @@ TEST(SillinessBattery, mage_freeze_bank_capped_under_chain_casting)
     for (int t = 0; t < 2000; ++t)
     {
         mage->stats()->set_magicpoints(10000.0f); // potion refill
+        // FREEZE TIME rests 30 s between casts (test_kit_rests.cpp); this
+        // pins the bank cap, which still bounds several mages, so each
+        // recast skips the rest.
+        mage->set_special_rest_left(0);
         ASSERT_TRUE(mage->special());
         ASSERT_LE(fx.level.world().enemy_freeze, og::combat::kEnemyFreezeBankCap)
             << "tick " << t;
@@ -641,6 +649,7 @@ TEST(SillinessBattery, orc_yell_stack_capped_and_immunity_discard)
     for (int yell = 0; yell < 10; ++yell)
     {
         orc->set_busy(0.0f); // scripted caster: strip the yell's 2-tick busy
+        orc->set_special_rest_left(0); // and HOWL's 10 s rest (test_kit_rests.cpp)
         fx.script_next_roll(50); // rng(200) = 50; rng(0) returns 0 drawless
         ASSERT_TRUE(orc->special());
         ASSERT_LE(static_cast<int>(victim->stats()->frozen_delay()),
@@ -653,6 +662,7 @@ TEST(SillinessBattery, orc_yell_stack_capped_and_immunity_discard)
     // is discarded entirely (stun_total returns cur unchanged).
     victim->stats()->set_frozen_delay(static_cast<short>(-5));
     orc->set_busy(0.0f);
+    orc->set_special_rest_left(0);
     fx.script_next_roll(50);
     ASSERT_TRUE(orc->special());
     ASSERT_EQ(-5, static_cast<int>(victim->stats()->frozen_delay_raw()));

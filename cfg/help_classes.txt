@@ -53,7 +53,7 @@ Can teleport at any level.
    foes with twisted space.
 3. Time Stop: Freeze time for
    all non-team members.
-   Rests 30s between casts*.
+   Rests 30s between casts.
 4. Energy Wave: Expanding flood
    of energy through walls.
 5. HeartBurst: Enemies burst into
@@ -70,7 +70,7 @@ Extreme firepower, very weak.
    (SHIFTER for elemental).
 4. Mind Control: Bend enemies
    to your will temporarily.
-   Rests 20s between casts*.
+   Rests 20s between casts.
 
 CLERIC
 ========================
@@ -114,7 +114,7 @@ Passes through walls.
 1. Scare: Make enemies flee.
    SHIFTER: Wail*, fear that
    leaps from foe to foe.
-   Both rest 8s between casts*.
+   Both rest 8s between casts.
 2. Siphon*: A touch that heals
    you by half the harm it does.
 3. Possess*: Enter a foe and
@@ -188,5 +188,5 @@ Promoted Orc (level 5+).
 OTHER CLASSES
 ========================
 Orc: Strong melee, Howl stuns
-   (rests 10s between casts*).
+   (rests 10s between casts).
 Slime: Grows and splits in two.

@@ -334,7 +334,7 @@ og.family("living", {
     -- Heartburst acquisition radius (px): base + per-level
     heartburst_range_base = 80,
     heartburst_range_per_level = 2,
-    -- New Specials: FREEZE TIME rests this many ticks between casts
+    -- FREEZE TIME rests this many ticks between casts, whatever the New Specials setting
     freeze_rest = 360,
   },
 

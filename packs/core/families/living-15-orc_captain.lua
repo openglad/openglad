@@ -86,7 +86,7 @@ og.family("living", {
     warband_lifetime = 400,
     warband_scan_tiles = 12,
     warband_cap = 6,
-    -- New Specials: HOWL rests this many ticks between casts
+    -- HOWL rests this many ticks between casts (as the orc's does)
     howl_rest = 120,
   },
 

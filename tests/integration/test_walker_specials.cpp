@@ -799,6 +799,14 @@ static void sweep_family_special_mask(GameWorld& world, char family,
 // (skeleton), or because its cast declines against this fixed neighbourhood
 // (elf, barbarian, the small slimes). Those rows still carry the cost-gate
 // assertion below, which is family-independent.
+//
+// FREEZE TIME, HOWL and SCARE rest between casts with the setting off too,
+// and the sweep resets busy and mana between casts but not a rest, so the
+// shifted press of each comes right after its unshifted cast and is refused
+// (FREEZE TIME IN 30S, HOWL IN 10S, SCARE IN 8S): the mage reads 797 (829
+// before the rests, bit 5 cleared), the orc and the ghost 1 (3 before, bit 1
+// cleared). MIND CONTROL rests too, but the archmage's shifted slot 4 was
+// already refused here (its foe already charmed), so 125 is unchanged.
 TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 {
     struct SweepCase
@@ -812,7 +820,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
         {FAMILY_SOLDIER, "soldier", 255u},        // slots 1-4, both shifters
         {FAMILY_ARCHER, "archer", 63u},           // slots 1-3, both shifters
         {FAMILY_CLERIC, "cleric", 2u},            // slot 1 shifted: mystic mace
-        {FAMILY_MAGE, "mage", 829u},              // 1 unshifted, 2/3/5 both
+        {FAMILY_MAGE, "mage", 797u},              // 1 unshifted, 2/5 both, 3 unshifted (rest)
         {FAMILY_ARCHMAGE, "archmage", 125u},      // 1 unshifted, 2/3 both, 4 unshifted
         {FAMILY_ELF, "elf", 0u},                  // rock volleys decline here (see below)
         {FAMILY_THIEF, "thief", 255u},            // slots 1-4, both shifters
@@ -820,9 +828,9 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
         {FAMILY_FIREELEMENTAL, "fire elemental", 3u}, // slot 1, both shifters
         {FAMILY_FAERIE, "faerie", 0u},            // no specials with the setting off
         {FAMILY_DRUID, "druid", 240u},            // slots 3-4, both shifters
-        {FAMILY_ORC, "orc", 3u},                  // slot 1, both shifters
+        {FAMILY_ORC, "orc", 1u},                  // slot 1 unshifted (the shifted HOWL rests)
         {FAMILY_BARBARIAN, "barbarian", 0u},      // boulder declines here (see below)
-        {FAMILY_GHOST, "ghost", 3u},              // slot 1, both shifters
+        {FAMILY_GHOST, "ghost", 1u},              // slot 1 unshifted (the shifted SCARE rests)
         {FAMILY_SMALL_SLIME, "small slime", 0u},  // no room to grow beside the ally
         {FAMILY_MEDIUM_SLIME, "medium slime", 0u},// no room to grow beside the ally
         {FAMILY_SLIME, "slime", 3u},              // slot 1, both shifters
@@ -856,20 +864,13 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
 }
 
 // The same sweep with New Specials on: the same casters, neighbourhood and
-// stream, on open ground (below). Thirteen rows equal the classic table
-// above; the six families with a new kit, and the mage and the orc, whose
-// classic FREEZE TIME and HOWL rest between casts with the setting on, read
+// stream, on open ground (below). Sixteen rows equal the classic table
+// above (the mage's and the orc's among them: FREEZE TIME and HOWL rest
+// whatever the setting, and the thief's); the families with a new kit read
 // as follows (each cast runs on the caster the previous one left, slot by
 // slot, so one cast's effect is the next one's world; the sweep resets busy
 // and mana between casts but not a rest, so the shifted press of a rested
 // slot comes right after its unshifted cast):
-//   mage      797  829 with bit 5 cleared: slot 3 shifted is FREEZE TIME
-//                  again, refused FREEZE TIME IN 30S.
-//   orc       1    3 with bit 1 cleared: the second HOWL is refused HOWL IN
-//                  10S.
-//   archmage  125  unchanged in the mask: MIND CONTROL's shifted press was
-//                  refused before (its foe already charmed, NO VALID
-//                  TARGET) and is now refused for its rest.
 //   thief     255  unchanged in the mask: Shift + slot 1 is now MINE, not
 //                  a second bomb, and it lays too.
 //   skeleton  240  slots 1-2 (TUNNEL, DIG IN) are refused SPECIAL BUSY: the
@@ -1017,9 +1018,10 @@ TEST_F(WalkerSpecials, ghost_scare_animates_and_dissipates)
 
 TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
 {
-    // The classic SCARE, cast twice in a row: explicitly with the New
-    // Specials setting off, whatever an earlier test left it at (with it on,
-    // the second press waits out SCARE's rest; tests/unit/test_kit_rests.cpp).
+    // The classic SCARE, cast twice: explicitly with the New Specials
+    // setting off, whatever an earlier test left it at. This is about the
+    // effect's life, so the second cast skips SCARE's rest (the rest itself
+    // is pinned in tests/unit/test_kit_rests.cpp).
     og::runtime::current_session->myscreen_->world().new_specials = 0;
     walker* w = make_special_guy(FAMILY_GHOST);
     ASSERT_TRUE(w != nullptr) << "walker created";
@@ -1060,6 +1062,8 @@ TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
         tick_world();
     ASSERT_EQ(first->dead(), 1) << "first effect should be dead after ticking";
 
+    ASSERT_GT(w->special_rest_left(), 0) << "the first scare started its rest";
+    w->set_special_rest_left(0);
     ASSERT_TRUE(w->special()) << "second scare should fire";
     walker* second = find_first_scare();
     ASSERT_TRUE(second != nullptr) << "second ghost-scare effect should exist";

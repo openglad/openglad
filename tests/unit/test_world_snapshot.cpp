@@ -5,6 +5,7 @@
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/possession.h>
+#include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/obmap.h>
@@ -378,6 +379,8 @@ void expect_entity_snapshot_matches(
     EXPECT_EQ(live.lifetime(), snapshot.lifetime);
     EXPECT_FLOAT_EQ(live.speed_bonus(), snapshot.speed_bonus);
     EXPECT_EQ(live.speed_bonus_left(), snapshot.speed_bonus_left);
+    EXPECT_EQ(live.special_rest_left(), snapshot.special_rest_left);
+    EXPECT_EQ(live.special_rest_slot(), snapshot.special_rest_slot);
     EXPECT_EQ(live.charm_left(), snapshot.charm_left);
     EXPECT_EQ(live.weapons_left(), snapshot.weapons_left);
     EXPECT_EQ(live.keys(), snapshot.keys);
@@ -519,6 +522,8 @@ void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
     EXPECT_EQ(expected.lifetime, actual.lifetime);
     EXPECT_FLOAT_EQ(expected.speed_bonus, actual.speed_bonus);
     EXPECT_EQ(expected.speed_bonus_left, actual.speed_bonus_left);
+    EXPECT_EQ(expected.special_rest_left, actual.special_rest_left);
+    EXPECT_EQ(expected.special_rest_slot, actual.special_rest_slot);
     EXPECT_EQ(expected.charm_left, actual.charm_left);
     EXPECT_EQ(expected.weapons_left, actual.weapons_left);
     EXPECT_EQ(expected.keys, actual.keys);
@@ -714,7 +719,7 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
 {
     static_assert(std::is_standard_layout_v<og::sim::EntitySnapshot>);
     static_assert(std::is_trivially_copyable_v<og::sim::EntitySnapshot>);
-    EXPECT_EQ(94u, og::sim::kEntitySnapshotTableFieldCount);
+    EXPECT_EQ(96u, og::sim::kEntitySnapshotTableFieldCount);
     EXPECT_EQ(2u, og::sim::kEntitySnapshotManualFieldCount);
     EXPECT_EQ(og::dirty::FIELD_COUNT, og::sim::kEntitySnapshotTrackedFieldCount);
 
@@ -923,6 +928,8 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     actor->set_lifetime(123);
     actor->set_speed_bonus(1.5f);
     actor->set_speed_bonus_left(22);
+    actor->set_special_rest_left(321);
+    actor->set_special_rest_slot(3);
     actor->set_charm_left(7);
     actor->set_weapons_left(8);
     actor->set_keys(0x1234);
@@ -3555,6 +3562,80 @@ TEST(WorldSnapshot, kit_fields_round_trip_and_mark_dirty_bits_93_to_95)
     EXPECT_EQ(KIT_FEARLESS | KIT_WARD, mirrored->kit_state());
     EXPECT_EQ(-123, mirrored->possess_ticks());
     EXPECT_FALSE(mirrored->hidden());
+}
+
+// A special's rest rides dirty bits 96-97: each setter marks its own bit,
+// and the clock (ticks left and the rested slot) survives the wire and a
+// delta to a mirror walker exactly, so a mirror refuses the same press.
+//
+// RED (the two set_special_rest_* lines dropped from
+// apply_entity_snapshot_fields): Expected equality of these values: 360
+// mirrored->special_rest_left() Which is: 0
+TEST(WorldSnapshot, special_rest_round_trips_and_marks_dirty_bits_96_97)
+{
+    EXPECT_EQ(96, og::dirty::BIT_SPECIAL_REST_LEFT);
+    EXPECT_EQ(97, og::dirty::BIT_SPECIAL_REST_SLOT);
+
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+    world.resize_grid(32, 32);
+    fill_world_grid(world, PIX_GRASS1);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_MAGE);
+    ASSERT_NE(nullptr, actor);
+    actor->setxy(80, 80);
+    EXPECT_EQ(0, actor->special_rest_left()) << "a new walker rests nothing";
+    EXPECT_EQ(0, actor->special_rest_slot());
+    actor->clear_dirty();
+    actor->set_special_rest_left(360);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_SPECIAL_REST_LEFT));
+    EXPECT_FALSE(actor->is_dirty(og::dirty::BIT_SPECIAL_REST_SLOT));
+    actor->set_special_rest_slot(3);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_SPECIAL_REST_SLOT));
+    const std::uint32_t actor_id = actor->entity_id();
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    const og::sim::EntitySnapshot* captured = nullptr;
+    for (const auto& entity : keyframe.oblist)
+        if (entity.entity_id == actor_id)
+            captured = &entity;
+    ASSERT_NE(nullptr, captured);
+    EXPECT_EQ(360, captured->special_rest_left);
+    EXPECT_EQ(3, captured->special_rest_slot);
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(keyframe));
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, decoded);
+    walker* mirrored = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_EQ(360, mirrored->special_rest_left());
+    EXPECT_EQ(3, mirrored->special_rest_slot());
+
+    // The whole int32 range survives (no clamp on either side), and a
+    // replay comparison names a clock that differs.
+    og::sim::WorldSnapshot wide = keyframe;
+    for (auto& entity : wide.oblist)
+        if (entity.entity_id == actor_id) {
+            entity.special_rest_left = 0x7fffffff;
+            entity.special_rest_slot = -2;
+        }
+    const og::sim::WorldSnapshot wide_decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(wide));
+    og::sim::apply_snapshot(mirror, wide_decoded);
+    mirrored = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_EQ(0x7fffffff, mirrored->special_rest_left());
+    EXPECT_EQ(-2, mirrored->special_rest_slot());
+    const auto difference =
+        og::sim::find_first_snapshot_difference(0, keyframe, wide, false);
+    ASSERT_TRUE(difference.has_value());
+    EXPECT_NE(std::string::npos, difference->field.find("special_rest_left"))
+        << difference->field;
 }
 
 // A flip of KIT_HIDDEN arriving in a snapshot goes through set_hidden, so the

@@ -129,9 +129,15 @@ inline constexpr std::uint8_t BIT_POSSESS_LINK = 93;
 inline constexpr std::uint8_t BIT_KIT_STATE = 94;
 inline constexpr std::uint8_t BIT_POSSESS_TICKS = 95;
 
-inline constexpr std::uint8_t FIELD_COUNT = 96;
+// A special's rest between casts (96-97): the ticks left and the 1-based
+// slot that rests (0 = none). FREEZE TIME, HOWL, SCARE / WAIL, MIND CONTROL
+// and GLIMMER read and start it (packs/core/lib/living_common.lua).
+inline constexpr std::uint8_t BIT_SPECIAL_REST_LEFT = 96;
+inline constexpr std::uint8_t BIT_SPECIAL_REST_SLOT = 97;
 
-static_assert(BIT_POSSESS_TICKS + 1 == FIELD_COUNT,
+inline constexpr std::uint8_t FIELD_COUNT = 98;
+
+static_assert(BIT_SPECIAL_REST_SLOT + 1 == FIELD_COUNT,
               "Dirty field bit count drift -- update dirty_field_bits.h");
 
 static_assert(FIELD_COUNT <= 128,

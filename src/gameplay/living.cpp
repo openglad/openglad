@@ -259,8 +259,8 @@ bool living::act()
 		set_speed_bonus_left(speed_bonus_left() - 1);
 		set_stepsize(stepsize() + speed_bonus());
 	}
-	
-	
+	// A special's rest between casts (lib/living_common.lua with_rest)
+	if (special_rest_left() > 0) set_special_rest_left(special_rest_left() - 1);
 	if(attack_lunge() > 0.0f)
     {
         float next_lunge = attack_lunge() - 0.4f;

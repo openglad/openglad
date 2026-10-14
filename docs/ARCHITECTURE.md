@@ -598,6 +598,12 @@ host would; the SDL HUD, the curses status line and the text client's state
 all read it. The classic timers show with the setting off too; only the
 kit's own effects need it on.
 
+Protocol v20 (snapshot v16, replay v22) adds two more per-entity fields, a
+special's rest between casts: `special_rest_left` (i32, dirty bit 96) and
+`special_rest_slot` (i32, 97). `living::act` counts the first down; the
+pack's `with_rest` wrapper starts it (FREEZE TIME, HOWL, SCARE / WAIL, MIND
+CONTROL, GLIMMER). It is not a timed effect, so `seat_timer` does not show it.
+
 ### Core components (`og_gameplay`, SDL-free)
 
 | Component | File | Role |

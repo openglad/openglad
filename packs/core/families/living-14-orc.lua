@@ -70,7 +70,7 @@ og.family("living", {
     -- Corpse eating: reach gate (px) and heal per corpse level
     corpse_eat_range = 24,
     corpse_heal_per_level = 5,
-    -- New Specials: HOWL rests this many ticks between casts
+    -- HOWL rests this many ticks between casts, whatever the New Specials setting
     howl_rest = 120,
   },
 

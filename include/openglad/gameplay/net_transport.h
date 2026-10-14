@@ -195,7 +195,11 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // kit_state (u8) and possess_ticks (i16) on dirty bits 93-95. Replay format
 // moves to v21. Core weapon ids now run to 21, so auto-assigned pack weapon
 // ids start at 22.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 19;
+// v20: a special's rest between casts. Every entity gains special_rest_left
+// (i32) and special_rest_slot (i32) on dirty bits 96-97 (field count 98);
+// snapshot format v16, replay format v22. No LobbySettings, InitialSetup or
+// world-state change.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 20;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,

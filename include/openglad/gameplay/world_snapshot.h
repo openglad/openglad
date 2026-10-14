@@ -32,7 +32,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 15;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 16;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -161,6 +161,11 @@ struct EntitySnapshot {
     std::uint32_t possess_link = 0;
     std::uint8_t kit_state = 0;
     std::int16_t possess_ticks = 0;
+
+    // A special's rest between casts (dirty bits 96-97, snapshot v16): ticks
+    // left and the 1-based rested slot (0 = none).
+    std::int32_t special_rest_left = 0;
+    std::int32_t special_rest_slot = 0;
 };
 
 struct GuySnapshot {
@@ -509,6 +514,10 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, kit_state))},
     {og::dirty::BIT_POSSESS_TICKS, sizeof(std::int16_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, possess_ticks))},
+    {og::dirty::BIT_SPECIAL_REST_LEFT, sizeof(std::int32_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, special_rest_left))},
+    {og::dirty::BIT_SPECIAL_REST_SLOT, sizeof(std::int32_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, special_rest_slot))},
 };
 
 inline constexpr std::size_t kEntitySnapshotTableFieldCount =

@@ -653,40 +653,6 @@ TEST_F(TimedEffects, a_mirror_built_from_a_snapshot_answers_the_same)
     EXPECT_EQ(300, t.ticks);
 }
 
-// A special's rest (MARKER_REST: GLIMMER, FREEZE TIME, HOWL, SCARE / WAIL,
-// MIND CONTROL) is not an effect on the player and is never shown: alone it
-// leaves the cell empty, and beside a running effect it neither hides a
-// longer one nor wins as the soonest. A real cast's rest reads the same.
-//
-// RED (run by hand): a {MARKER_REST, "REST", 5} row added to kMarkerLabels
-// -> Expected equality of these values: "HASTE" label_of(t) Which is: "REST"
-// (and the lone rest showed a label). Against the kits before rests:
-// Expected: (nullptr) != (howl_rest) "the howl leaves its rest".
-TEST_F(TimedEffects, a_rest_is_never_shown)
-{
-    walker* orc = add_living(FAMILY_ORC, 0, 64, 64, 4);
-    ASSERT_NE(nullptr, orc);
-    walker* rest = add_marker(orc, MARKER_REST, 100);
-    ASSERT_NE(nullptr, rest);
-    rest->stats()->set_level(1);
-    EXPECT_EQ(nullptr, seat_timer(world(), *orc).label) << "a rest alone";
-
-    orc->set_speed_bonus_left(300);
-    SeatTimer t = seat_timer(world(), *orc);
-    EXPECT_EQ("HASTE", label_of(t)) << "a longer haste beside a rest";
-    EXPECT_EQ(300, t.ticks);
-
-    // The rest a real HOWL leaves behind.
-    orc->set_speed_bonus_left(0);
-    rest->set_dead(1);
-    orc->set_current_special(1);
-    ASSERT_TRUE(orc->special()) << "the howl";
-    walker* howl_rest = marker_of(orc);
-    ASSERT_NE(nullptr, howl_rest) << "the howl leaves its rest";
-    EXPECT_EQ(MARKER_REST, howl_rest->ani_type());
-    EXPECT_EQ(nullptr, seat_timer(world(), *orc).label) << "a real rest";
-}
-
 // og.C.MARKER_* and og.C.KIT_QUARTER_FREEZE carry the engine's numbers, so
 // the Lua kits (packs/core/lib/kit_marker.lua reads its roles from them)
 // and the C++ countdown can never disagree on a role.
@@ -722,8 +688,7 @@ TEST_F(TimedEffectsLua, the_marker_roles_reach_lua_with_the_engines_numbers)
         "        or C.MARKER_IMMOLATION ~= " + n(MARKER_IMMOLATION) + "\n"
         "        or C.MARKER_PHASE_VEIL ~= " + n(MARKER_PHASE_VEIL) + "\n"
         "        or C.MARKER_METEOR_RAIN ~= " + n(MARKER_METEOR_RAIN) + "\n"
-        "        or C.MARKER_WARD ~= " + n(MARKER_WARD) + "\n"
-        "        or C.MARKER_REST ~= " + n(MARKER_REST) + " then\n"
+        "        or C.MARKER_WARD ~= " + n(MARKER_WARD) + " then\n"
         "      error('marker roles')\n"
         "    end\n"
         "    if C.KIT_QUARTER_FREEZE ~= " + n(KIT_QUARTER_FREEZE) + " then\n"
@@ -745,6 +710,5 @@ TEST_F(TimedEffectsLua, the_marker_roles_reach_lua_with_the_engines_numbers)
                            : errors.back().message);
     EXPECT_TRUE(*handled);
     EXPECT_EQ(6, MARKER_WARD) << "the ward's role byte";
-    EXPECT_EQ(7, MARKER_REST) << "the rest's role byte";
     EXPECT_EQ(16, KIT_QUARTER_FREEZE) << "a free kit_state bit";
 }

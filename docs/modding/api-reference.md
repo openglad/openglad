@@ -577,6 +577,13 @@ census; waking it is the engine's decision)
 `weapons_left()` `keys()` `view_all()` `skip_exit()` `shifter_down()` — each
 with a matching `set_*`.
 
+`special_rest_left()` `special_rest_slot()` (each with a matching `set_*`):
+a special's rest between casts, the ticks left and the 1-based slot that
+rests (0 = none). `living::act` counts `special_rest_left` down one per
+turn; `packs/core/lib/living_common.lua` `with_rest` starts it and refuses
+the rested slot's cast while it runs, and `gate_with_rest` holds a bot's
+gate. Both ride every snapshot.
+
 `alternate_down() → bool`: Shift is held AND the current slot's alternate
 is in play this session. A slot cast whose alternate is `new_kit` forks on
 this instead of `shifter_down()`, so the classic special still runs with

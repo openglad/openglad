@@ -317,6 +317,12 @@ class walker : public og::sim::SimEntity
 		OG_WALKER_DIRTY_FIELD(std::uint8_t, kit_state, og::dirty::BIT_KIT_STATE);
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, possess_link, og::dirty::BIT_POSSESS_LINK);
 		OG_WALKER_DIRTY_FIELD(std::int16_t, possess_ticks, og::dirty::BIT_POSSESS_TICKS);
+		// A special's rest between casts: the ticks left (living::act counts
+		// it down) and the 1-based slot that rests (0 = none). One clock per
+		// walker; only that slot's special waits, attacks and the other
+		// specials do not (packs/core/lib/living_common.lua, with_rest).
+		OG_WALKER_DIRTY_FIELD(std::int32_t, special_rest_left, og::dirty::BIT_SPECIAL_REST_LEFT);
+		OG_WALKER_DIRTY_FIELD(std::int32_t, special_rest_slot, og::dirty::BIT_SPECIAL_REST_SLOT);
 		[[nodiscard]] bool hidden() const noexcept
 		{
 			return (kit_state() & KIT_HIDDEN) != 0;
@@ -568,6 +574,8 @@ class walker : public og::sim::SimEntity
 		std::uint8_t kit_state_ = 0;
 		std::uint32_t possess_link_ = 0;
 		std::int16_t possess_ticks_ = 0;
+		std::int32_t special_rest_left_ = 0;
+		std::int32_t special_rest_slot_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
 		// Kill-attribution stamp (see the accessors above): server-only,
 		// never replicated.

@@ -297,6 +297,8 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(possess_link);
     OG_REPLAY_COMPARE(kit_state);
     OG_REPLAY_COMPARE(possess_ticks);
+    OG_REPLAY_COMPARE(special_rest_left);
+    OG_REPLAY_COMPARE(special_rest_slot);
 
 #undef OG_REPLAY_COMPARE
     return true;

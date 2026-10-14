@@ -1266,7 +1266,8 @@ Skirmish run_skirmish(short new_specials, int ticks)
 // those ever happen. OG_FAERIE_SKIRMISH_LOG=1 prints both timelines. (Seen
 // when this was written: on, cornered by the orcs she blinks away at tick
 // 210, too late, and falls the same tick; off, she has no special and falls
-// at tick 69. A blink that the plain pause after each sprinkle refused never
+// at tick 210 too (at tick 69 while the orcs' HOWL rested only with the
+// setting on; it rests either way now). A blink that the plain pause after each sprinkle refused never
 // came at all: on read exactly as off. Before HOWL rested between casts the
 // orcs' first hits made her blink at tick 56; with the orcs at their own
 // 140 hp, the soldiers now win before she is cornered, hence the 300.)

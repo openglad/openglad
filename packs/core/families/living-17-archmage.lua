@@ -580,7 +580,7 @@ og.family("living", {
     chain_radius_per_level = 5,
     burst_radius_base = 80,
     radius_bonus_per_level = 2,
-    -- New Specials: MIND CONTROL rests this many ticks between casts
+    -- MIND CONTROL rests this many ticks between casts, whatever the New Specials setting
     charm_rest = 240,
   },
 
