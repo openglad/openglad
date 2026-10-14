@@ -7357,8 +7357,8 @@ inline constexpr FactPredicate kFacts_weapon_boulder_explode_damage_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1,
         "consequence: the doubled blast is well under the ORC's 14000-cent pool, so it survives to be measured"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 2000, 2200,
-        "consequence: explode_on_death's doubled FAMILY_EXPLOSION is the ONLY damage source that can reach the laterally offset ORC -- the boulder body dies on the flight line two tiles away, the input-only-special barbarian never melees, and the orc's BIT_NO_RANGED means it cannot trade at range. Measured 2100 cents; the ceiling sits an order of magnitude under a boulder-only direct hit, let alone the untouched 14000 the mutation produces. A fresh companion recapture reads 2500 off the same blast (a two-tick cadence difference), which is why this row's golden is the blessed branch dump -- see tests/parity/golden/DRIFT_LEDGER.md"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 1800, 2000,
+        "consequence: explode_on_death's doubled FAMILY_EXPLOSION is the ONLY damage source that can reach the laterally offset ORC -- the boulder body dies on the flight line two tiles away, the input-only-special barbarian never melees, and the orc's BIT_NO_RANGED means it cannot trade at range. Measured 1900 cents since the rests port (2100 before it: the orc's hit-response howl at tick 9 is now refused because its tick-0 howl is resting, and the draws that follow leave it 200 cents lower); the ceiling sits an order of magnitude under a boulder-only direct hit, let alone the untouched 14000 the mutation produces. See tests/parity/golden/DRIFT_LEDGER.md"),
     pred::WeaponFamilyEmitted(FAMILY_BOULDER),
     pred::EventKindAtLeast(/*play_sound*/1, 2,
         "consequence: SOUND_FWIP on the throw plus SOUND_EXPLODE from explode_on_death"),
@@ -7533,8 +7533,8 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_freeze_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_FAERIE, 1, 1,
         "consequence: the frozen orc never reaches melee inside the budget, so the fragile 7500-cent faerie survives"),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_ORC, 140, 0,
-        "consequence: sprinkle_on_hit_target writes og.freeze_duration(owner.level, constitution) into the orc's frozen_delay and living::act returns early every tick it is non-zero, so the orc's westward charge stalls at the throw tick and only resumes when it thaws. WalkerPositionMoved is a LOWER bound and the orc closes in -x, so the floor holds only while the freeze does: measured 152 frozen against 131 unfrozen at the 150-tick dump, and the floor sits 12 px inside each. The 60-tick budget the design sketch used separates the two arms by only 6 px -- the freeze has not expired yet on EITHER arm at that point, so the entire measurable gap is the 42 ticks the frozen orc lost; 150 lets the thawed orc bank its recovery too"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 150, 0,
+        "consequence: sprinkle_on_hit_target writes og.freeze_duration(owner.level, constitution) into the orc's frozen_delay and living::act returns early every tick it is non-zero, so the orc's westward charge stalls at the throw tick and only resumes when it thaws. WalkerPositionMoved is a LOWER bound and the orc closes in -x, so the floor holds only while the freeze does: measured 152 frozen against 149 unfrozen at the 150-tick dump since the rests port (the unfrozen orc reached 131 before it, when the old 140 floor sat 12 px inside each arm), so the floor sits at 150, 2 px under the frozen arm and 1 px over the unfrozen one; no fact kind pins an exact position. The 60-tick budget the design sketch used separates the two arms by only 6 px -- the freeze has not expired yet on EITHER arm at that point, so the entire measurable gap is the 42 ticks the frozen orc lost; 150 lets the thawed orc bank its recovery too"),
     pred::WeaponFamilyEmitted(FAMILY_SPRINKLE),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -7955,17 +7955,17 @@ inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
     pred::TickReached(30),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 5600, 5600,
-        "consequence: heartburst detonates one BIT_MAGICAL explosion on each in-range foe for (magicpoints - cost)/2/foe_count damage, leaving the survivor on exactly 5600 cents; with the acquisition radius collapsed to 2*13 = 26px the far foes are never acquired and the survivor finishes untouched at 14000"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 6100, 6100,
+        "consequence: heartburst detonates one BIT_MAGICAL explosion on each in-range foe for (magicpoints - cost)/2/foe_count damage, leaving the survivor on exactly 6100 cents (5600 before the rests port: the two dying orcs' hit-response howls at tick 23 are refused while their tick-0 howls rest, which shifts the later draws); with the acquisition radius collapsed to 2*13 = 26px the far foes are never acquired and the survivor finishes untouched at 14000"),
     pred::EventKindAtLeast(/*play_sound*/1, 6,
-        "consequence: one on_screen-gated SOUND_EXPLODE per detonated foe plus the deaths they cause; the collapsed radius detonates a single explosion and the arena only reaches 4 sounds"),
+        "consequence: one on_screen-gated SOUND_EXPLODE per detonated foe plus the deaths they cause; the collapsed radius detonates a single explosion and the arena only reaches 5 sounds"),
 };
 
 inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
     "packs/core/families/living-03-mage.lua", 335,
     "heartburst_range_base = 80",
     "heartburst_range_base = 0",
-    "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 8 -> 4, and the surviving orc finishes on 14000 cents instead of 5600."
+    "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 6 -> 5, and the surviving orc finishes on 14000 cents instead of 6100."
 };
 
 // Face east for 9 ticks (sets lastx = stepsize so COMMAND_RUSH has a direction), then cast
@@ -8015,21 +8015,21 @@ inline constexpr FactPredicate kFacts_elf_rocks_pair_scen99[] = {
     pred::TickReached(30),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::EventKindAtLeast(/*play_sound*/1, 4,
-        "consequence: some_rocks releases exactly two rocks, fire() emits one play_sound per ranged release on both arms and both rocks connect; suppressing the second release drops the arena to 3 sounds"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3,
+        "consequence: some_rocks releases exactly two rocks, fire() emits one play_sound per ranged release on both arms and both rocks connect: the orc's tick-0 howl plus the two releases make 3 (4 before the rests port, when the orc's hit-response howl at tick 26 also roared; it is refused while the first howl rests); suppressing the second release drops the arena to 2 sounds"),
     pred::WeaponSpeed(FAMILY_ROCK, 890, 920,
         "trajectory: the un-boosted slot-1 pair steps at 906 centi-px/tick, measurably faster than the slot-4 volley's 600 because next_spread_multiplier scales each release independently"),
     pred::WeaponNetTravel(FAMILY_ROCK, kWeaponPathStraight, 1000,
         "trajectory: slot-1 rocks carry no do_bounce flag, so net == pathlen in open-field scen1.fss and the 1000-centi threshold is cleared within two ticks of flight"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13300, 13300,
-        "consequence: both rocks of the pair land on the downrange orc for a total of 700 cents; with only one released it keeps 13600"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13400, 13400,
+        "consequence: both rocks of the pair land on the downrange orc for a total of 600 cents (700 before the rests port, whose refused tick-26 howl shifts the damage draws); with only one released it keeps 13600"),
 };
 
 inline constexpr Mutation kMut_elf_rocks_pair_scen99 = {
     "packs/core/families/living-01-elf.lua", 25,
     "  rock = self:fire()",
     "  rock = nil",
-    "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 4 fails at 3, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13300."
+    "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 3 fails at 2, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13400."
 };
 
 // thief_ai_bomb_flee_scen99: the AI-only drop_bomb flee branch. check_special's thief
