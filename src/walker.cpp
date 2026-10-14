@@ -91,6 +91,8 @@ walker::walker(const PixieData& data)
 	speed_bonus_left = 0;
 	regen_delay = 0;
 	charm_left = 0;
+	special_rest_left = 0; // port of the current game's 54f5890f
+	special_rest_slot = 0; // port of the current game's 54f5890f
 	outline = 0;
 	drawcycle = 0;
 
@@ -3100,6 +3102,8 @@ short walker::special()
 					lasty = tempy;
 					break;
 				case 3:  // Freeze time
+					if (special_rest_left > 0 && special_rest_slot == 3) // port of the current game's 54f5890f: FREEZE TIME rests, a press during the rest is refused for free
+						return 0;
 					if (team_num == 0 || myguy) // the player's team
 					{
 						myscreen->enemy_freeze += 20 + 11*stats->level;
@@ -3126,6 +3130,8 @@ short walker::special()
 								w->bonus_rounds += generic;
 						}
 					}
+					special_rest_left = 360; // port of the current game's 54f5890f: FREEZE TIME rests 360 ticks
+					special_rest_slot = 3; // port of the current game's 54f5890f
 					break;
 				case 4:  // Energy wave
 					newob = fire();
@@ -3541,6 +3547,8 @@ short walker::special()
 					}  // end of summon illusion
 					break;  // end of summoning/illusion cases
 				case 4: // Mind-control enemies
+					if (special_rest_left > 0 && special_rest_slot == 4) // port of the current game's 54f5890f: MIND CONTROL rests, a press during the rest is refused for free
+						return 0;
 					if (busy > 0)
 						return 0;
 						
@@ -3603,6 +3611,8 @@ short walker::special()
 						}
 					}  // end of extra-cost sapping
 					busy += 10; // takes a while
+					special_rest_left = 240; // port of the current game's 54f5890f: MIND CONTROL rests 240 ticks
+					special_rest_slot = 4; // port of the current game's 54f5890f
 					break; // end of Mind control
 				default:
 					break;
@@ -3657,6 +3667,8 @@ short walker::special()
 			cycle = 0;
 			break;
 		case FAMILY_GHOST: // do nifty scare thing
+			if (special_rest_left > 0 && special_rest_slot == 1) // port of the current game's 54f5890f: SCARE rests, a press during the rest is refused for free
+				return 0;
 			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_GHOST_SCARE); //,1 == underneath
 			newob->ani_type = ANI_SCARE;
 			newob->setxy(xpos+sizex/2 - newob->sizex/2,
@@ -3665,6 +3677,8 @@ short walker::special()
 			newob->stats->level = stats->level;
 			newob->team_num = team_num; // so we scare OTHER teams
 			// Actual scare effect done in scare's "death" in effect
+			special_rest_left = 96; // port of the current game's 54f5890f: SCARE rests 96 ticks
+			special_rest_slot = 1; // port of the current game's 54f5890f
 			break;
 		case FAMILY_THIEF:
 			switch (current_special)
@@ -4012,6 +4026,8 @@ short walker::special()
 			switch (current_special)
 			{
 				case 1:  // yell and 'freeze' foes
+					if (special_rest_left > 0 && special_rest_slot == 1) // port of the current game's 54f5890f: HOWL rests, a press during the rest is refused for free
+						return 0;
 					if (busy > 0)
 						return 0;
 					busy += 2;
@@ -4039,6 +4055,8 @@ short walker::special()
                         if (on_screen())
                             myscreen->soundp->play_sound(SOUND_ROAR);
 					}
+					special_rest_left = 120; // port of the current game's 54f5890f: HOWL rests 120 ticks
+					special_rest_slot = 1; // port of the current game's 54f5890f
 					break;
 				case 2: // eat corpse for health
 				case 3:

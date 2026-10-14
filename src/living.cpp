@@ -232,8 +232,8 @@ short living::act()
 		speed_bonus_left--;
 		stepsize += speed_bonus;
 	}
-	
-	
+	// A special's rest between casts: port of the current game's 54f5890f
+	if (special_rest_left > 0) special_rest_left--;
 	if(attack_lunge > 0.0f)
     {
         attack_lunge -= 0.4f;
@@ -554,6 +554,11 @@ short living::check_special()
 	// Make sure we have enough ..
 	if (stats->magicpoints < stats->special_cost[(int)current_special])
 		current_special = 1; // make us do default ..
+
+	// port of the current game's 54f5890f (lc.gate_with_rest): a bot does not pick a resting special.
+	// Only FREEZE TIME (mage, 3), HOWL (orc, 1), SCARE (ghost, 1) and MIND CONTROL (archmage, 4) set the slot.
+	if (special_rest_slot == current_special && special_rest_left > 0)
+		return 0;
 
 	switch (family)
 	{

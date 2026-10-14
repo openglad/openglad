@@ -172,6 +172,8 @@ class walker : public pixieN
 		unsigned char outline;
 		short speed_bonus;             // These two are used for
 		short speed_bonus_left;        // speed potions, etc.
+		Sint32 special_rest_left;      // port of the current game's 54f5890f: a special's rest between casts, ticks left
+		Sint32 special_rest_slot;      // port of the current game's 54f5890f: the 1-based special that rests (0 = none)
 		short regen_delay;  // Delay after being hit
 		// Zardus: ADD: in_act should be set while in an action
 		bool in_act;
