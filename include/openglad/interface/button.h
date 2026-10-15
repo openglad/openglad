@@ -237,6 +237,7 @@ Sint32 change_respawn_delay();
 Sint32 change_permadeath();
 Sint32 change_generator_rate();
 Sint32 change_infinite_gold(); // DIFFICULTY infinite-gold toggle (session-only)
+Sint32 change_new_specials(); // GAMEPLAY FX New Specials row (session-only)
 // DIFFICULTY §2.7 cross-control toggle (session-only, host-actionable with
 // a joiner popup). The single implementation of the rule.
 Sint32 change_cross_control();
@@ -467,6 +468,9 @@ enum class ButtonAction : Sint32
     // tear the network client down, swap in a fresh local client and return
     // to Team Build. Values 122..125 remain reserved.
     NetworkingDisconnect = 121,
+    // GAMEPLAY FX "New Specials" row: flips the per-machine preference and,
+    // on the machine that decides the session, the session's setting.
+    ToggleNewSpecials = 126,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

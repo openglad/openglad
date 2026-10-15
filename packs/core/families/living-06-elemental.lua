@@ -1,7 +1,7 @@
 -- core:elemental — starburst, parting shot on death, owner drain (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- (Descriptor name "ELEMENTAL" is unique in the living registry.)
-
+local ke = og.use("kit_elemental")
 local ai = og.use("ai")
 
 local function do_special(self)
@@ -27,11 +27,21 @@ end
 
 local function on_death(self)
   -- Free parting starburst: un-kill, refund the special cost, fire, re-kill.
+  -- The parting shot is ALWAYS slot 1 unshifted: a dying elemental parked
+  -- on another slot must not cast that slot (the New Specials kits made
+  -- this reachable); both fields are restored so the body dies as it was.
+  local slot = self:current_special()
+  local shift = self:shifter_down()
+  self:set_current_special(1)
+  self:set_shifter_down(0)
+  ke.end_channel(self)  -- a burning IMMOLATE goes out with the body
   self.dead = 0
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, self:s_special_cost(1))
   self:special()
   self.dead = 1
+  self:set_current_special(slot)
+  self:set_shifter_down(shift)
   return true
 end
 
@@ -83,8 +93,11 @@ og.family("living", {
              train = { strength = 7, dexterity = 10, constitution = 14,
                        intelligence = 12, armor = 50, level = 200 } },
   specials = {
-    { id = "starburst", name = "STARBURST", mp_cost = 50 },
-    default_cast = do_special,
+    { id = "starburst", name = "STARBURST",   mp_cost = 50, ai = ai.foe_within(130), detail = "Expel flaming meteors in all directions." },
+    { id = "immolate",  name = "IMMOLATE",    mp_cost = 30, new_kit = true, cast = ke.immolate,    ai = ke.ai_immolate, detail = "Burn whatever touches you and leave burning footprints, while your magic lasts." },
+    { id = "meteors",   name = "METEOR RAIN", mp_cost = 70, new_kit = true, cast = ke.meteor_rain, ai = ke.ai_meteor, detail = "Call meteors down on a distant area for a few seconds." },
+    { id = "rekindle",  name = "REKINDLE",    mp_cost = 40, new_kit = true, alternate = { name = "SUPERNOVA", mp_cost = 10, detail = "Die in one huge blast." }, cast = ke.rekindle_or_supernova, ai = ke.ai_rekindle, detail = "Burn magic into health." },
+    default_cast = ke.starburst(do_special),
   },
   default_weapon = "core:meteor",
   flags = { "ANIMATE" },
@@ -101,7 +114,7 @@ og.family("living", {
   sprite = "firelem.png",
   animation = "standard",
   ai_line_of_sight = 10,
-  description = "Strong and quick, fire elementals can expel flaming meteors in all directions to decimate enemies.\n\nSpecial: Starburst",
+  description = "Strong and quick, fire elementals can expel flaming meteors in all directions to decimate enemies.",
   names = { "Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny",
             "Lava", "Heatwave", "Torch", "Scorch" },
   playable = true,
@@ -113,8 +126,36 @@ og.family("living", {
   glyph_transparent = false,
   radar_color = "none",
   radar_jitter = 0,
+  tuning = {
+    -- A toggle ignores its own second press for kit_latch ticks.
+    kit_latch = 10,
+    -- IMMOLATE: mana burnt per tick, longest burn (ticks), contact burn
+    -- (plus level, doubled on the melee attacker), an ember every
+    -- ember_step ticks lasting ember_ticks and burning ember_damage
+    -- (plus half the level).
+    immolate_drain = 2,
+    immolate_max = 200,
+    immolate_contact = 6,
+    ember_step = 4,
+    ember_ticks = 40,
+    ember_damage = 4,
+    -- METEOR RAIN: reach (px), length (ticks), a strike every
+    -- rain_cadence ticks within rain_spread px of the spot, damage base
+    -- (plus twice the level).
+    rain_range = 160,
+    rain_ticks = 60,
+    rain_cadence = 6,
+    rain_spread = 40,
+    rain_damage_base = 8,
+    -- REKINDLE heals rekindle_hp plus 4 per level; SUPERNOVA's blast is
+    -- one and a half times the health it burns plus nova_per_level per
+    -- level, and eight blasts of half that go off in a ring nova_ring_px
+    -- out from it.
+    rekindle_hp = 40,
+    nova_per_level = 15,
+    nova_ring_px = 40,
+  },
 
-  check_special_ai = ai.foe_within(130),  -- fixed per-tick AI gate
   level_up = level_up,
   on_death = on_death,
   on_act_living = on_act_living,

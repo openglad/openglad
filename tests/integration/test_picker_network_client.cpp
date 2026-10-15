@@ -30,6 +30,7 @@
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
 #include <openglad/resources/company.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/win_shares.h>
@@ -13964,4 +13965,138 @@ TEST(PickerNetworkClient, second_room_list_discovery_never_joins_an_in_flight_wo
     }));
     EXPECT_TRUE(first_result->error.empty()) << first_result->error;
     EXPECT_TRUE(second_result->error.empty()) << second_result->error;
+}
+
+// ---------------------------------------------------------------------------
+// New Specials (protocol v19) is a host-decided session setting: whatever the
+// joiner's own save held, the host's value lands in the joiner's save once
+// the lobby state arrives, and a later change by the host follows it there.
+// ---------------------------------------------------------------------------
+TEST(PickerNetworkClient, joiner_adopts_host_new_specials)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    host_save.new_specials = 0;  // the host plays the classic kits
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    EXPECT_TRUE(host_client->is_networked_session());
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+    // The joiner's own preference is on (what its cfg seed would give).
+    join_session.myscreen_->save_data.new_specials = 1;
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        EXPECT_TRUE(join_client->is_networked_session());
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            shutdown_owning_host_before_join(host_client);
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    host_client->sync_settings_from_save();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_session.myscreen_->save_data.new_specials == 0;
+    })) << "the joiner's save must adopt the host's New Specials (off)";
+
+    // The joiner's Gameplay FX click goes through the real row callback with
+    // the joiner's lobby installed: it flips the joiner's preference (what
+    // it will host next time) and leaves the host's value in its session.
+    {
+        const std::string saved_pref =
+            cfg.get_setting("gameplay", "new_specials");
+        struct RestorePref {
+            std::string value;
+            ~RestorePref()
+            {
+                cfg.apply_setting("gameplay", "new_specials", value);
+            }
+        } restore_pref{saved_pref};
+        cfg.apply_setting("gameplay", "new_specials", "on");
+
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard installed(join_client.get());
+        ASSERT_FALSE(picker_lobby_host_controls_visible())
+            << "the joiner does not decide the session";
+        // The lobby echo inside the click puts the host's value back into
+        // the save either way, so the trace of what the click itself wrote
+        // is the proof the row left the session alone.
+        trace_clear();
+        EXPECT_EQ(MENU_REDRAW, change_new_specials());
+        EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"))
+            << "the joiner's click records its own preference";
+        EXPECT_EQ(0, join_session.myscreen_->save_data.new_specials);
+        EXPECT_EQ(MENU_REDRAW, change_new_specials());
+        EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
+        EXPECT_EQ(0, join_session.myscreen_->save_data.new_specials)
+            << "a joiner's preference never overrides the host's value";
+        EXPECT_TRUE(trace_contains("teams", "new_specials 0"));
+        EXPECT_FALSE(trace_contains("teams", "new_specials 1"))
+            << "the joiner's click wrote the session value itself";
+    }
+
+    host_save.new_specials = 1;
+    host_client->sync_settings_from_save();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        auto join_scope = join_session.activate();
+        join_client->poll_and_apply();
+        return join_session.myscreen_->save_data.new_specials == 1;
+    })) << "a later change by the host reaches the joiner too";
 }

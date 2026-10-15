@@ -39,7 +39,7 @@ walker* cheat_cycle_next_team(GameWorld& world, short& team_in_out)
 			// Corpses and dormant (delayed-spawn) bodies are not takeover
 			// candidates: the same rule the normal switch-character scan
 			// applies (sim_input_handler.cpp).
-			if (w && !w->dead() && !w->dormant() &&
+			if (w && !w->dead() && !w->dormant() && !w->hidden() && w->possess_link() == 0 &&
 					(w->team_num() == team) &&
 					(w->query_order() == Order::Living))
 			{

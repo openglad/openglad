@@ -142,6 +142,9 @@ int survivors_at_600(int level_id, int crew_level, std::uint32_t seed)
     if (!fx.loaded)
         return -1;
     GameWorld& world = fx.world();
+    // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
+    // fixture world keeps the classic kits it is built with.
+    if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
     std::vector<walker*> crew = deploy_crew(
         fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                           FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
@@ -223,6 +226,9 @@ TEST_F(LongSeasonCalibration, ashfall_fair_holds_defense_band_at_curve)
         LoadedWestlandsLevel fx(9, seed);
         ASSERT_TRUE(fx.loaded);
         GameWorld& world = fx.world();
+        // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
+        // fixture world keeps the classic kits it is built with.
+        if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
         const auto crew = deploy_crew(
             fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                               FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,

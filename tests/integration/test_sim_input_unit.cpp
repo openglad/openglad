@@ -1513,4 +1513,30 @@ TEST(SimInputUnit, cheat_cycle_next_team_normalizes_a_negative_team)
         << "a negative start team must still visit every real team";
     ASSERT_EQ(MAX_TEAM - 1, team);
 }
+
+// New Specials: the cheat hop takes neither a hidden walker (a dug-in
+// skeleton, a ghost riding a body) nor a body a possession links, the same
+// rule the switch-character scan applies. Both live in the one filter line
+// of cheat_cycle_next_team (cheat_handler.cpp:42: `!w->hidden() &&
+// w->possess_link() == 0`); each half is staged alone on its own team so
+// either half missing lands the hop on it.
+TEST(SimInputUnit, cheat_cycle_next_team_skips_hidden_and_possessed_walkers)
+{
+    SimInputFixture fx;
+    walker* hidden = add_hero(fx, 1, -1);
+    hidden->set_hidden(true);
+    ASSERT_TRUE(hidden->hidden());
+    walker* ridden = add_hero(fx, 2, -1);
+    ridden->set_possess_link(hidden->entity_id() + 1000u);
+    ASSERT_NE(0u, ridden->possess_link());
+
+    short team = 0;
+    ASSERT_EQ(nullptr, cheat_cycle_next_team(fx.world(), team))
+        << "a hidden walker and a possessed body are not takeover candidates";
+    ASSERT_EQ(0, team) << "a failed lap must leave my_team where it was";
+
+    walker* live = add_hero(fx, 3, -1);
+    ASSERT_EQ(live, cheat_cycle_next_team(fx.world(), team));
+    ASSERT_EQ(3, team);
+}
 } // namespace detail_sim_input_cues

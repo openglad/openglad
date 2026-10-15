@@ -10,6 +10,7 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
+#include <openglad/gameplay/timed_effects.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/family_registries.h>
@@ -822,10 +823,10 @@ TEST_F(SpecialsByIdTest, a_slot_number_beside_its_id_is_still_a_load_error)
 
 TEST_F(SpecialsDispatchTest, an_id_key_on_a_family_that_declares_none_says_so)
 {
-    // core:faerie has no castable slot and so declares no id; the error has
+    // core:#19 has no castable slot and so declares no id; the error has
     // to say that rather than list an empty set.
     register_chunk(
-        "og.register_hooks('living', 'core:faerie', {\n"
+        "og.register_hooks('living', 'core:#19', {\n"
         "  specials = { flutter = function(self) return true end },\n"
         "})\n");
     ASSERT_FALSE(vm_errors().empty());
@@ -1071,6 +1072,23 @@ TEST_F(ScriptBindingTest, scare_radius_matches_combat_math)
               vm_log()[0]);
     // Pin the cap so the binding cannot drift from the C++ helper.
     EXPECT_EQ("r\t60\t100\t250", vm_log()[0]);
+}
+
+// og.timer_seconds is the engine's one ticks-to-seconds rule (the HUD's
+// countdowns), so a rest's refusal ("GLIMMER IN 12S") reads as the HUD would.
+TEST_F(ScriptBindingTest, timer_seconds_matches_the_hud_rule)
+{
+    run("og.log('s', og.timer_seconds(0), og.timer_seconds(5), "
+        "og.timer_seconds(6), og.timer_seconds(179), og.timer_seconds(360))\n");
+    ASSERT_EQ(1u, vm_log().size());
+    EXPECT_EQ("s\t" + std::to_string(og::sim::timer_seconds(0)) + "\t" +
+                  std::to_string(og::sim::timer_seconds(5)) + "\t" +
+                  std::to_string(og::sim::timer_seconds(6)) + "\t" +
+                  std::to_string(og::sim::timer_seconds(179)) + "\t" +
+                  std::to_string(og::sim::timer_seconds(360)),
+              vm_log()[0]);
+    // Rounded to the nearest: half a second (6 ticks) rounds up.
+    EXPECT_EQ("s\t0\t0\t1\t15\t30", vm_log()[0]);
 }
 
 TEST_F(ScriptBindingTest, award_score_credits_the_team_and_emits_score_change)

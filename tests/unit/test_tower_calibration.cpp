@@ -157,6 +157,9 @@ FloorBattle battle_at_600(std::uint32_t run_seed, int floor_number,
     if (!fx.loaded)
         return out;
     GameWorld& world = fx.world();
+    // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
+    // fixture world keeps the classic kits it is built with.
+    if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
     std::vector<walker*> crew = deploy_crew(
         fx.level, world,
         {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,

@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `351c8cc6`
+Old-game commit the goldens are captured from: `fbdb71c5`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -11,7 +11,7 @@ now `cmp` equal to a full capture from the old game at the pin above. That PR re
 (9 whose bytes changed only in notification `a`/`b`, 2 whose level-ending tick changed its event order, and the
 archmage marker row); the other 211 were already byte-identical to the capture. The sim-correctness batch (#320, #350;
 2026-10-06) ported two more fixes (`cd97028a`, `a4491684`), added two rows, reshaped one, and moved the pin to `04611243`; 225 of 225
-goldens `cmp` equal to a full capture at that pin. The charm timer port (#317; 2026-10-07) ported one fix (`95154fd3`), added two rows and moved the pin to `351c8cc6`; 227 of 227 goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
+goldens `cmp` equal to a full capture at that pin. The charm timer port (#317; 2026-10-07) ported one fix (`95154fd3`), added two rows and moved the pin to `351c8cc6`; 227 of 227 goldens `cmp` equal to a full capture at that pin. The New Specials table mirror (2026-10-08) ported nothing and added no row; it re-pointed pins and moved the pin to `e4f49847`; 227 of 227 goldens `cmp` equal to a full capture at that pin. Its second mirror (2026-10-10) followed one pin's context line and moved the pin to `6088662c`; 227 of 227 goldens `cmp` equal to a full capture at that pin. Its third mirror (2026-10-12) followed one pin's line number and moved the pin to `04a1a337`; 227 of 227 goldens `cmp` equal to a full capture at that pin. The speed-bonus port (2026-10-13) ported one fix (`8652b55d`), moved no golden and moved the pin there; 227 of 227 goldens `cmp` equal to a full capture at that pin. The rests port (2026-10-14) ported one rule (`0a72b48b`), recaptured 13 goldens and retuned five of their facts, mirrored the table twice (`676419eb`, then `fbdb71c5` for the fifth fact and two corrected texts) and moved the pin there; 227 of 227 goldens `cmp` equal to a full capture at that pin. "Recapturing every golden from the old
 game" below rebuilds the old game at the pin and reproduces every golden. When the current game departs from
 classic behaviour on purpose, the same fix is ported into the old game's C++, one fix per commit (the message names the
 current-game commit), the affected goldens are captured from the old game again, and the pin moves to the new old-game
@@ -82,6 +82,7 @@ touches `src/` must have a cell. Write an old-game sha you want checked only in 
 | `shield_projectile_absorb_scen99` | Hostile weapon finder and shield list (#294; "Hostile weapon finder and shield list (#294)") | `966cbb55` (`8a4ac0c4`) | `84b94f9f` | 2026-10-04, at `ab0a7d2a` | `cmp` exit 0 after the #294 port (before it the old-game capture differed from the golden in 15 leaves, first `walkers[1].hp` 114.0 vs 119.0); `diff -rq` of the all-ids captures before and after the #294 port named exactly the five #294 ids (C5-FINDERS, old-game worktree; before capture `diff -rq`-identical to W5-PARITY's). | New arena (added with the fix): a nearby hostile `ARROW`, a distant hostile `ARROW` and a nearby friendly `FIRE_ARROW` in `weaplist`. With the fix the nearby hostile arrow is gone, the distant hostile and friendly projectiles remain, and the guard loses 5 HP; see the wrong-list probe below. |
 | `boomerang_projectile_absorb_scen99` | Hostile weapon finder and shield list (#294; "Hostile weapon finder and shield list (#294)") | `966cbb55` (`8a4ac0c4`) | `84b94f9f` | 2026-10-04, at `ab0a7d2a` | `cmp` exit 0 after the #294 port (before it: 17 leaves, first `walkers[1].hp` 93.0 vs 98.0); `diff -rq` of the all-ids captures before and after the #294 port named exactly the five #294 ids (C5-FINDERS, old-game worktree; before capture `diff -rq`-identical to W5-PARITY's). | New arena (added with the fix): a nearby hostile `ARROW`, a distant hostile `ARROW` and a nearby friendly `FIRE_ARROW` in `weaplist`. With the fix the nearby hostile arrow is gone, the distant hostile and friendly projectiles remain, and the guard loses 5 HP; see the wrong-list probe below. |
 | — (zero goldens) | Ally finder, spell counts and hit-response ordering (#295; "Ally finder, spell counts and hit-response ordering (#295)") | `966cbb55` (`8a4ac0c4`) | `0d20806f` | — | `diff -rq` of the all-ids captures before and after the #295 port: EMPTY (C5-FINDERS). | Nothing in the corpus. The edge the fix changes is the low-HP hit from a new attacker (`hit_response` retargets and records the attacker before `yell_for_help` queues the flee walk); no parity arena reaches it. Its effect outside the corpus is recorded below. |
+| — (zero goldens) | Speed bonus stuck at 1 ("Speed bonus stuck at 1") | `9b9689d1` (feat/new-specials, PR #359) | `8652b55d` | 2026-10-13, at `8652b55d` (full capture; nothing replaced) | `diff -rq` of the all-ids captures at `04a1a337` and at `8652b55d`: EMPTY; each of the 227 captures `cmp`s equal to its committed golden. | Nothing in the corpus. The change is one tick: a grant of N speed-bonus ticks now gives N fast ticks and ends at 0 instead of N-1 ticks and a field stuck at 1. Both speed-potion rows (`treasure_speed_potion_pickup_scen99`, 150-tick potion eaten at tick 1 with the run key released at 46; `speed_potion_movement_scen99`, 250 ticks in a 60-tick budget) end inside their potion's window, so neither reaches the tick that differs. |
 | — (zero goldens) | Native rename of the nearest-foe scan (#293) | `966cbb55` (`8a4ac0c4`) | none | — | — | Rename only, no behaviour, nothing to port; the old game keeps `find_far_foe`. The rename moved no corpus row (the wrong-list probe below kept it and stayed byte-identical to the before capture). |
 | — (zero goldens) | Runaway-specials §4 selective clear on a control claim or switch (`docs/runaway-effects-design.md` §4) | `c409e7c8` | `ab0a7d2a` | — | `diff -rq` of the all-ids captures before and after the port: EMPTY, 223/223 byte-identical (C5-CLAIM, clean rebuild of the golden capture tool after the `src/stats.h` change); zero goldens move. In the current game `og_test_parity` stays 288/288 with no golden changed after the parity test driver's fold (`cda95d51`). | Ported into the old game's `src/stats.h` / `src/stats.cpp` (a `forced` flag that `force_command` sets, and `clear_command_for_control_switch`: the leading run of forced `COMMAND_WALK` entries is kept, `real_team_num` is not restored, the weapon reset and leader clear are kept), the four `src/view.cpp` claim/switch sites and the golden capture tool's `claim_control` (`tools/parity_dump_master.cpp`). The four `view.cpp` sites are compiled into the golden capture tool but never executed by it; only the `claim_control` site reaches a capture, so a clean build is the `view.cpp` sites' only evidence. The parity test driver now claims through `sim_claim_control` too (current game `cda95d51`). |
 | `effect_bomb_bystander_scen99` | Stationary shooter heading after a snap-face (#350; "Stationary shooter heading after a snap-face (#350)") | `12de7666` (`cb3dacc9`; #353) | `cd97028a` | 2026-10-06, at `04611243` | `cmp <cap-final>/effect_bomb_bystander_scen99.json tests/parity/golden/effect_bomb_bystander_scen99.json` exit 0, and the capture after `cd97028a` `cmp`s equal to the current game's dump at `9a38ee54`; `diff -rq` of the all-ids captures at `1bafb5da` and after `cd97028a` named exactly the three #350 ids | `rng_state` only (`0x7920175E` → `0x0DB04883`): at tick 94 the TOWER1 snap-faces `(-1,1)`; at tick 95 its probe reads DOWN_LEFT instead of FACE_UP, the arrow keeps stepsize 8 instead of 11.3125, and the one waver draw's bound is 5 instead of 6. Every walker, weapon, event and track is byte-identical. |
@@ -96,6 +97,19 @@ touches `src/` must have a cell. Write an old-game sha you want checked only in 
 | `thief_charm_third_party_hit_scen99` | Charm ends on its timer (#317; "Charm ends on its timer (#317)") | the #356 PR (`3111ecb0`) | `95154fd3` | 2026-10-07, at `351c8cc6` (row mirrored in `351c8cc6`) | `cmp` exit 0 against the current game's dump (new arena) | New arena (added with the fix): the charmed soldier stays on team 0 through three hits from the team-2 archer and its own clears; score 345 to team 0 (classic 0). Teeth: the exact reverse of the fix inside clear_command flips both team facts and the score. |
 | `thief_charm_expires_on_timer_scen99` | Charm ends on its timer (#317; "Charm ends on its timer (#317)") | the #356 PR (`3111ecb0`) | `95154fd3` | 2026-10-07, at `351c8cc6` (row mirrored in `351c8cc6`) | `cmp` exit 0 against the current game's dump (new arena) | New arena (added with the fix), the same spawns run to tick 160: the soldier is on team 1 again from tick 145 and the thief is alive. Teeth: disabling the decay restore flips both team facts. |
 | — (zero goldens) | Charm ends on its timer (#317) | the #356 PR (`3111ecb0`) | `95154fd3` | — | `diff -rq` of the all-ids captures before and after the port: EMPTY, 225/225 | Only three ids charm anyone and none clears a charmed walker before the run ends. |
+| `event_notification_emission_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | The bot orc's hit-response gate refuses while its tick-22 howl rests, so the 1-in-3 special draw after a hit is skipped and the random stream splits from tick 33 (a release moves 33 -> 34, a CHARGE appears at tick 40); the soldier ends on 53 hp (56) and every walker ends somewhere else. 398 leaves; facts unchanged. |
+| `event_set_palette_emission_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | Same arena and same bytes as `event_notification_emission_scen99`: the orc's resting howl skips a draw from tick 33 on. |
+| `event_request_redraw_emission_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | Same arena and same bytes as `event_notification_emission_scen99`: the orc's resting howl skips a draw from tick 33 on. |
+| `event_end_game_emission_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | Same arena and same bytes as `event_notification_emission_scen99`: the orc's resting howl skips a draw from tick 33 on. |
+| `event_set_end_emission_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | Same arena and same bytes as `event_notification_emission_scen99`: the orc's resting howl skips a draw from tick 33 on. |
+| `effect_chain_fork_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | The orc howls at tick 16 and the hit that follows no longer draws for a special, so the death sound at tick 19 flips DIE1 -> DIE2, the archer's later shots slip a tick and the archmage ends on 108 hp (113); score unchanged. |
+| `weapon_boulder_explode_damage_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | The orc's hit-response howl at tick 9 is refused (its tick-0 howl rests): no ROAR there, the orc ends on 19 hp (21), the soldier on 44 (45), the barbarian on 119 (120), and a CHARGE appears at tick 26. The orc hp fact is retuned to 1800..2000 (was 2000..2200). |
+| `weapon_sprinkle_freeze_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | `rng_state` only: the hit-response gate refuses the resting howl, so the 1-in-3 special draw after the sprinkle's hit is skipped; hp, events and score unchanged. Under the row's mutation the unfrozen orc now ends at xpos 149 (131 before), so the orc position floor is raised to 150 (was 140). |
+| `thief_taunt_matched_levels_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | The bot orc's second howl at tick 57 is refused (its tick-20 howl rests): one ROAR fewer and `rng_state` moves; hp and score unchanged. |
+| `elf_mega_rocks_volley_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | The orc that howled at tick 0 skips a draw on its resting gate, so the death sound at tick 26 flips DIE2 -> DIE1 and `rng_state` moves; nothing else. |
+| `fireelemental_starburst_ring_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | Both orcs' hit-response howls at tick 23 are refused while their tick-0 howls rest: two ROARs fewer, the east orc ends on 130 hp (128) and the score on 22 (24). |
+| `mage_heartburst_multitarget_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | The two dying orcs' hit-response howls at tick 23 are refused: two ROARs fewer, the survivor ends on 61 hp (56) and the score on 588 (609). The survivor hp fact is retuned to exactly 6100 (was 5600). |
+| `elf_rocks_pair_scen99` | Rests on Freeze Time, Howl, Scare and Mind Control (GAMEPLAY_FIXES row "Rests on Freeze Time, Howl, Scare and Mind Control") | `54f5890f` (feat/new-specials, PR #359) | `0a72b48b` | 2026-10-14, at `fbdb71c5` | `cmp` exit 0 against the current game's dump; `diff -rq` of the all-ids captures at `8652b55d` and after `0a72b48b` named exactly these 13 | The orc's hit-response howl at tick 26 is refused (its tick-0 howl rests): no ROAR there, the orc ends on 134 hp (133) and the score on 8 (9). The sound-count fact is retuned to at least 3 (was 4) and the orc hp fact to exactly 13400 (was 13300). |
 
 ### Evidence for the #294 and #295 rows (2026-09-26, kept from the "Classic finder fixes" entry)
 
@@ -354,6 +368,73 @@ the current game's dump with the fix in place, and the current game dumps each t
 in words with its pre-squash commit in parentheses, so no cell cites a sha master cannot reach; once the PR is
 squashed, the next PR that edits this ledger rewrites them to the per-golden header's form,
 `` `<squash>` (`3111ecb0`; #356) ``.
+
+### New Specials table mirror (2026-10-08)
+
+No fix was ported: New Specials is a setting, and every parity row runs with it off (`parity_runner.cpp` sets
+`world.new_specials = 0`), so the old game needs no behaviour change. The current game's code moved under several
+pins (the orc's howl into `packs/core/lib/orc_specials.lua`, new rows in the skeleton and elemental family files, the
+elemental's `on_death`, inserts in `walker.cpp` and `world_snapshot.cpp`, restored include separators in
+`living.cpp`, `stats.cpp`, `game_world.cpp` and `walker.cpp`), so the table was re-pointed and mirrored.
+
+Proof that the mirror moves nothing: every id was captured from the old game at `351c8cc6` before the mirror and
+again after it, with the dumper rebuilt from an emptied `obj/` (`capture_master_golden.sh --all --out-dir`,
+`OG_PARITY_SCEN99_FSS` exported; neither log has a `using embedded fixture` line). `diff -rq` of the two
+directories is empty, and each of the 227 captures `cmp`s equal to its committed golden.
+
+`e4f49847` is the table mirror (recorder-only, `tools/` only).
+
+Second mirror (2026-10-10): the big slime's Split row (`living-08-slime.lua:176`) gained its DETAILS blurb
+(`detail = "Divide into two smaller slimes."`), and `kMut_magic_damage_slime_scen99` quotes that line as its
+`context_before`, so the table changed and was mirrored again. Every id was captured from the old game before and
+after the mirror (the dumper rebuilt from an emptied `obj/`; neither log has a `using embedded fixture` line):
+`diff -rq` of the two directories is empty, and each of the 227 captures `cmp`s equal to its committed golden.
+`6088662c` is the table mirror (recorder-only, `tools/` only).
+
+Third mirror (2026-10-12): the explosion's half-damage branch in `packs/core/lib/effect_bomb.lua` gained the
+Supernova condition (`80c07fc4`, New Specials: a nova blast spares its own colour half by team, since its caster
+is gone), which pushed the line `kMut_effect_explosion_ally_tier_scen99` anchors on from 88 to 92; the pin was
+re-pointed by hand (text and context unchanged) and the table mirrored again. The canary flips the row under the
+moved pin (`predicate_flips=1`). Every id was captured from the old game at the mirror (the dumper rebuilt from an
+emptied `obj/`; the log has no `using embedded fixture` line): each of the 227 captures `cmp`s equal to its
+committed golden. `04a1a337` is the table mirror (recorder-only, `tools/` only).
+
+Speed-bonus port (2026-10-13): `src/living.cpp` `> 1` -> `> 0` in the speed-bonus block (current game `9b9689d1`), one
+fix, one commit. Every id captured before (at `04a1a337`) and after (the dumper rebuilt from an emptied `obj/`, no
+`using embedded fixture` line): `diff -rq` empty, 227 of 227 `cmp` equal to the committed goldens. `8652b55d` is the
+port and the pin.
+
+Rests port (2026-10-14): FREEZE TIME (mage, special 3), the orc's yell (special 1), the ghost's scare (special 1) and
+the archmage's mind control (special 4) rest 360 / 120 / 96 / 240 ticks between casts whatever the New Specials setting
+says (current game `54f5890f`). In the old game (`0a72b48b`) every walker carries `special_rest_left` and
+`special_rest_slot`; `living::act` counts the first down right after the speed-bonus block; a cast of the resting
+special is refused for free like a cast without the mana, a cast that goes through starts the rest, and
+`living::check_special` answers no for a bot on the resting special, after the mana fallback and before any foe search.
+Every id captured before (at `8652b55d`) and after (the dumper rebuilt from an emptied `obj/`, no `using embedded
+fixture` line): `diff -rq` named exactly 13 ids, `effect_chain_fork_scen99`, `elf_mega_rocks_volley_scen99`,
+`elf_rocks_pair_scen99`, the five `event_*_emission_scen99` rows, `fireelemental_starburst_ring_scen99`,
+`mage_heartburst_multitarget_scen99`, `thief_taunt_matched_levels_scen99`, `weapon_boulder_explode_damage_scen99` and
+`weapon_sprinkle_freeze_scen99`, and each `cmp`s equal to the current game's dump. Four of their facts read the old
+numbers and were retuned on their own lines: the boulder blast orc's hp 2000..2200 -> 1800..2000, the heartburst
+survivor's hp 5600 -> 6100, the rock pair's sound count at least 4 -> at least 3 and its orc's hp 13300 -> 13400;
+the fifth, the sprinkle row's orc position floor 140 -> 150, is below.
+Each retuned fact still flips under its row's own mutation (`run_mutation_canary.sh --scenario <id>`): the boulder
+row's orc hp (1 flip), the heartburst row's survivor hp (2 flips with the sound count), and the rock pair's sound
+count and orc hp (2 flips). The other moved rows flip as follows: `effect_chain_fork_scen99` 3,
+`elf_mega_rocks_volley_scen99` 2, `event_end_game_emission_scen99` 1, `event_notification_emission_scen99` 1,
+`event_request_redraw_emission_scen99` 1, `event_set_end_emission_scen99` 2, `event_set_palette_emission_scen99` 1,
+`fireelemental_starburst_ring_scen99` 2, `thief_taunt_matched_levels_scen99` 2. `weapon_sprinkle_freeze_scen99` first
+flipped none of its facts: with the freeze dropped, the orc now ends at xpos 149 where it used to reach 131, above the
+140 floor of its position fact, while the frozen arm ends at 152. No fact kind pins an exact position, so the floor
+was raised to 150 (2 px under the frozen arm, 1 px over the unfrozen one) and the row flips that fact again
+(`predicate_flips=1`, the position fact). The mutation texts of the heartburst and rock pair rows, and two fact texts, now quote the numbers
+after the port (heartburst sounds 6 -> 5 and survivor 14000 instead of 6100; rock pair sounds 3 -> 2 and orc 13600
+instead of 13400).
+The table was then mirrored (`676419eb`, recorder-only, `tools/` only): every id captured again at the mirror (the
+dumper rebuilt from an emptied `obj/`, no `using embedded fixture` line) is `diff -rq`-identical to the capture after
+the port. A second mirror (`fbdb71c5`, recorder-only) carries the sprinkle floor and the corrected texts; every id
+captured at it (the dumper rebuilt from an emptied `obj/`, no `using embedded fixture` line) is `diff -rq`-identical to
+the capture at `676419eb`. `fbdb71c5` is the pin.
 
 ### Earlier ports (before the 2026-10-04 rule)
 

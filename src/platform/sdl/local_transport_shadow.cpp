@@ -830,6 +830,10 @@ void apply_initial_setup_to_client_save(
     gameplay_screen.save_data.my_team = static_cast<short>(message.my_team);
     gameplay_screen.save_data.allied_mode =
         static_cast<short>(message.allied_mode);
+    // The host's New Specials setting reaches this display client's save,
+    // so its own sync twin re-stamps the world with it on every load.
+    gameplay_screen.save_data.new_specials =
+        static_cast<short>(message.new_specials != 0 ? 1 : 0);
 
     std::set<int>& completed =
         gameplay_screen.save_data
@@ -2446,6 +2450,9 @@ void reset_local_transport_shadow(GameSession& session,
             // copy_headless_server_save_data guards against on the headless path).
             server_screen->save_data.cross_control =
                 gameplay_screen.save_data.cross_control;
+            // New Specials is session-only too: carry it the same way.
+            server_screen->save_data.new_specials =
+                gameplay_screen.save_data.new_specials;
             prepare_server_session_for_gameplay(*runtime->server_session);
             og::sim::apply_snapshot(
                 server_screen->world(),
@@ -2804,6 +2811,8 @@ void reset_network_host_transport_shadow(
             // it (see reset_local_transport_shadow above).
             server_screen->save_data.cross_control =
                 gameplay_screen.save_data.cross_control;
+            server_screen->save_data.new_specials =
+                gameplay_screen.save_data.new_specials;
 
             prepare_server_session_for_gameplay(*runtime->server_session);
             og::sim::apply_snapshot(

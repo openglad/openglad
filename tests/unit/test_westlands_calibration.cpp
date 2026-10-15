@@ -168,13 +168,22 @@ struct BattleResult
 // Isolating #320 alone reproduces the move; the #350 tower-heading fix
 // in the same batch moves nothing here. Long Season, Imaginations and
 // Tower floors re-measured inside their pins.)
+// (Re-pinned 2026-10-15 for the rests on Freeze Time, Howl, Scare and Mind
+// Control, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md: a bot casts each of them
+// at most once per rest, so every brawl with orcs, ghosts, mages or
+// archmages plays on a different schedule. Deliberate re-measure across
+// seeds {42, 1337, 2025}: the one floor that moved is level 24 (seed 42
+// 5->1 while 1337 and 2025 read 4 and 7, up from 4 and 2; the crew there
+// fields no caster that rests, so this is seed 42's run going badly, not a
+// hotter level), re-pinned 2->1 at the maintainer's word; every other
+// floor held, 26 rows moved inside their pins.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 7, 8},  {2, 2, 8, 8},  {3, 2, 6, 8},  {4, 3, 7, 8},
     {5, 3, 6, 8},  {6, 4, 3, 8},  {7, 4, 0, 2},  {8, 5, 0, 2},
     {9, 6, 0, 3},  {10, 5, 0, 2}, {11, 6, 4, 8}, {12, 6, 0, 2},
     {13, 6, 0, 3}, {14, 7, 0, 2}, {15, 7, 0, 5}, {16, 8, 2, 8},
     {17, 8, 2, 8}, {19, 6, 4, 8}, {20, 7, 0, 5}, {21, 7, 7, 8},
-    {22, 8, 0, 3}, {23, 8, 5, 8}, {24, 8, 2, 8}, {25, 9, 5, 8},
+    {22, 8, 0, 3}, {23, 8, 5, 8}, {24, 8, 1, 8}, {25, 9, 5, 8},
     {26, 9, 8, 8},
 };
 
@@ -202,6 +211,9 @@ BattleResult battle_at_600(int level_id, int crew_level, std::uint32_t seed)
     if (!fx.loaded)
         return out;
     GameWorld& world = fx.world();
+    // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
+    // fixture world keeps the classic kits it is built with.
+    if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
     std::vector<walker*> crew = deploy_crew(
         fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                           FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,

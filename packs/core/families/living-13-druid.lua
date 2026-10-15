@@ -157,10 +157,10 @@ og.family("living", {
              train = { strength = 15, dexterity = 15, constitution = 7,
                        intelligence = 6, armor = 50, level = 200 } },
   specials = {
-    { id = "grow_tree",     name = "GROW TREE",     mp_cost = 15,  cast = plant_tree },
-    { id = "summon_faerie", name = "SUMMON FAERIE", mp_cost = 80,  cast = summon_faerie },
-    { id = "reveal",        name = "REVEAL",        mp_cost = 150, cast = reveal_items },
-    { id = "protection",    name = "PROTECTION",    mp_cost = 200 },
+    { id = "grow_tree",     name = "GROW TREE",     mp_cost = 15,  cast = plant_tree, detail = "These magical trees will resist the enemy, while allowing friends to pass." },
+    { id = "summon_faerie", name = "SUMMON FAERIE", mp_cost = 80,  cast = summon_faerie, detail = "This spell brings to you a small flying faerie to stun foes." },
+    { id = "reveal",        name = "REVEAL",        mp_cost = 150, cast = reveal_items, detail = "Gives you a magical view to see treasure, potions, outposts, and invisible enemies." },
+    { id = "protection",    name = "PROTECTION",    mp_cost = 200, detail = "Calls the winds to aid your nearby friends by circling them with a shield of moving air." },
     default_cast = protection_circle,  -- case 4 and every unmapped slot
   },
   default_weapon = "core:lightning",
@@ -178,7 +178,7 @@ og.family("living", {
   sprite = "druid.png",
   animation = "standard",
   ai_line_of_sight = 10,
-  description = "Druids are the magicians of nature, and have power over natural events. They throw lightning bolts at their foes; the fast bolts have long range.\n\nSpecial: Plant Tree",
+  description = "Druids are the magicians of nature, and have power over natural events. They throw lightning bolts at their foes; the fast bolts have long range.",
   names = { "Roland", "Merlin", "Hippy", "Green Thumb", "Treefall", "Rain" },
   playable = true,
   playable_order = 8,

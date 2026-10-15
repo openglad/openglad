@@ -438,6 +438,10 @@ struct LobbySettings {
     // sanitize_settings clamps through clamp_fill / clamp_map_units.
     std::array<std::int16_t, SCORE_TEAM_COUNT> fill = {};
     std::array<std::int16_t, SCORE_TEAM_COUNT> map_units = {};
+    // The New Specials setting (protocol v19): 0 = the classic kits, 1 = the
+    // new ones. Host-only, appended LAST in append/read_lobby_settings;
+    // sanitize_settings keeps it in {0, 1}.
+    std::int16_t new_specials = 0;
 
     bool operator==(const LobbySettings&) const = default;
 };

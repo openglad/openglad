@@ -89,6 +89,7 @@ struct TextClientArgs {
     std::vector<std::pair<std::string, std::int32_t>> campaign_state;
     bool protocol_mode = false;
     bool probe_unsupported_warnings = false;
+    int new_specials = -1;  // -1 = not given
 };
 
 static bool parse_args(int argc, char* argv[], TextClientArgs& args)
@@ -125,6 +126,13 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
                     static_cast<std::int32_t>(
                         std::atol(tok.c_str() + eq + 1)));
             }
+        } else if (arg == "--new-specials" && i + 1 < argc) {
+            const std::string value = argv[++i];
+            if (value != "0" && value != "1") {
+                std::fprintf(stderr, "--new-specials expects 0 or 1\n");
+                return false;
+            }
+            args.new_specials = value == "1" ? 1 : 0;
         } else if (arg == "--protocol") {
             args.protocol_mode = true;
         } else if (arg == "--probe-unsupported-warnings") {
@@ -138,6 +146,7 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
                 "  --seed <num>        RNG seed (default: 42)\n"
                 "  --team-level <n>    Upgrade each spawned team guy to level n (requires --protocol; default: 0 = family defaults)\n"
                 "  --campaign-state <k=v,...>  Pre-seed campaign decision state (requires --protocol)\n"
+                "  --new-specials <0|1>  The New Specials setting (default: 1, on)\n"
                 "  --protocol          Run JSON protocol mode directly (no picker)\n"
                 "  --probe-unsupported-warnings  Emit one-time headless unsupported warnings and exit\n"
                 "\nCommands (stdin):\n"
@@ -203,6 +212,7 @@ int main(int argc, char* argv[])
     picker_config.seed = args.seed;
     picker_config.team_level = args.team_level;
     picker_config.campaign_state = args.campaign_state;
+    picker_config.new_specials = args.new_specials;
 
     int rc = 0;
     if (args.protocol_mode) {

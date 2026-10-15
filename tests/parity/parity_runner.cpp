@@ -439,6 +439,10 @@ RunOutcome run_scenario(const ScenarioSpec& spec,
 
     GameWorld& world = level.world();
     world.my_team = spec.player_team;
+    // Every golden is an old-game capture: the classic kits, always. The
+    // GameWorld default is already 0; this line is the contract, not the
+    // mechanism (the Modern-dynamics branch pinned Classic here too).
+    world.new_specials = 0;
 
     if (spec.fresh_arena)
         clear_world_entities(world);

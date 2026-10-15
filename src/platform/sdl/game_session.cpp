@@ -221,6 +221,9 @@ GameSession::GameSession(const Config& session_cfg)
         myscreen_->set_render_interpolation_speed_factor(
             g_game_speed_factor_);
         game_.save = &myscreen_->save_data;
+        // New Specials: the per-machine preference seeds the session value
+        // once; a lobby then negotiates it (the host wins).
+        og::ui::seed_new_specials_from_cfg(myscreen_->save_data, cfg);
         myscreen_->level_runtime_data().set_sim_context(&myscreen_->save_data,
                                                         ctx_.sim_events.get(),
                                                         &cfg);

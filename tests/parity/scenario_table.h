@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:467 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:532 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -167,8 +167,8 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
-// Cycling gate: src/gameplay/sim_input_handler.cpp:196 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
-// Firing gate: src/gameplay/living.cpp:586 `stats_->magicpoints() < stats_->special_cost` denies the cast when the caster is short of MP.
+// Cycling gate: src/gameplay/sim_input_handler.cpp:204 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Firing gate: src/gameplay/living.cpp:588 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
 struct SpawnSpec
@@ -1172,7 +1172,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_tick_freeze = {
-    "src/gameplay/game_world.cpp", 1691,
+    "src/gameplay/game_world.cpp", 1692,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result.",
@@ -1198,7 +1198,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 // keyframe + delta merge, so the canary's per-row `Parity.<scenario_id>`
 // filter sees this break.
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/world_snapshot.cpp", 2446,
+    "src/gameplay/world_snapshot.cpp", 2459,
     "snapshot.dirty_mask[i] = entity.dirty_mask_word(i);",
     "snapshot.dirty_mask[i] = 0;",
     "Captures an all-zero dirty mask for every entity of a non-keyframe snapshot. A zero mask is apply_delta's REMOVAL sentinel, so merging the delta over the keyframe baseline drops every live entity and the merged snapshot no longer matches a full capture.",
@@ -1339,11 +1339,11 @@ inline constexpr Mutation kMut_family_cleric_init = {
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
-    "packs/core/families/living-06-elemental.lua", 80,
+    "packs/core/families/living-06-elemental.lua", 90,
     "hp = 100",
     "hp = 10000",
     "Cranks FIREELEMENTAL descriptor HP x100 "
-    "(packs/core/families/living-06-elemental.lua:80). "
+    "(packs/core/families/living-06-elemental.lua:90). "
     "family_fireelemental_scen99's "
     "WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 9900, 10100) leaves "
     "its window (golden 10000 cents -> mutated 1000000 cents); measured "
@@ -1426,11 +1426,11 @@ inline constexpr Mutation kMut_family_druid_init = {
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
-    "packs/core/families/living-14-orc.lua", 104,
+    "packs/core/families/living-14-orc.lua", 26,
     "hp = 140",
     "hp = 14000",
     "Cranks ORC descriptor HP x100 "
-    "(packs/core/families/living-14-orc.lua:104). family_orc_scen99's "
+    "(packs/core/families/living-14-orc.lua:26). family_orc_scen99's "
     "WalkerHpRangeAtFinalTick(FAMILY_ORC, 13900, 14100) leaves its window "
     "(golden 14000 cents -> mutated 1400000 cents); measured 2026-09-15 "
     "by staging the pin into build/ci-test/packs, it is the only fact of "
@@ -2076,7 +2076,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 512.0f) / 256.0f);",
     "Inflates the cardinal-facing projectile stepsize multiplier (walker.cpp:1190, applied in create_weapon() for FACE_UP/RIGHT/DOWN/LEFT). FAMILY_KNIFE fires FACE_RIGHT at the adjacent target; base stepsize 5 normally scales by 362/256 (~1.414) to ~7 giving a constant dx=7,dy=waver step of hypot(7,1)*100 = 707 centi-px/tick. Changing 362->512 scales to 10, raising the per-tick step to ~1005 centi-px/tick, which exceeds the WeaponSpeed(FAMILY_KNIFE,600,800) upper bound and flips that trajectory predicate. The only travelling weaplist family in this arena is the knife (FAMILY_BLOOD stays stationary), so the speed flip is unambiguous. WeaponNetTravel STRAIGHT stays satisfied because the path is still straight, but WeaponSpeed alone flipping satisfies the >=1-predicate canary requirement."
@@ -2099,7 +2099,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize scale. FAMILY_ROCK remains emitted and travels straight, but its per-tick step falls below the exact 800-centipixel speed pin, flipping WeaponSpeed."
@@ -2122,7 +2122,7 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "walker::create_weapon scales every fired projectile's stepsize by 362/256 (~1.414) for the cardinal/diagonal facing cases; FAMILY_ARROW is a data-only weapon family (descriptor installed from packs/core/families/weapon-02-arrow.lua, no script movement hook) so its per-tick speed is exactly this scaled stepsize. Dropping the scale (362->256) cuts the arrow's step from ~11.3px/tick to 8px/tick, so weapon_tracks seq=0 max_step_centi falls from 1105 to ~800, below WeaponSpeed(FAMILY_ARROW,1000,1250)'s lower bound, flipping that predicate. The path stays straight so WeaponNetTravel(STRAIGHT) is unaffected, demonstrating the speed teeth are independent of the path-class teeth."
@@ -2152,7 +2152,7 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "(weapon->stepsize() * 362.0f)",
     "(weapon->stepsize() * 256.0f)",
     "Removes the sqrt(2)=362/256 cardinal-fire velocity scale applied to the fired FIREBALL's stepsize in walker::create_weapon(); the projectile's per-tick step drops from ~922 to ~600-667 centi-px/tick, so WeaponSpeed(FAMILY_FIREBALL,850,1000) observes a max consecutive step below 850 and flips pass->fail. Path stays straight so WeaponNetTravel(STRAIGHT) is unaffected (>=1 trajectory predicate flips, as required)."
@@ -2231,7 +2231,7 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "362.0f",
     "181.0f",
     "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_METEOR is fired RIGHT (cardinal), so its per-tick stepsize halves: max_step_centi drops from ~1020 to ~510 centi-px/tick, falling below the 950 floor of WeaponSpeed(FAMILY_METEOR,950,1100), which flips pass->fail."
@@ -2255,7 +2255,7 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-fire stepsize boost. FAMILY_SPRINKLE fires right, so its speed drops below WeaponSpeed's 900 floor and its net displacement drops below WeaponNetTravel's 2500 threshold; both trajectory predicates flip."
@@ -2334,7 +2334,7 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "Neutralizes the cardinal-facing 1.414x stepsize boost (362/256) applied to weapons fired straight (FACE_UP/RIGHT/DOWN/LEFT) in create_weapon(). The FAMILY_BLOB the slime fires FACE_RIGHT now keeps its base stepsize (~2.12 px/tick instead of ~3 px/tick), so its max consecutive-tick step drops from 316 to ~224 centi-px/tick, below the WeaponSpeed(FAMILY_BLOB, 280, 360) floor of 280 -> WeaponSpeed flips pass->fail. BLOB is still emitted and still tracked with consecutive samples (no Indeterminate), and the path stays straight so WeaponNetTravel still holds. The from/to omit the line's leading TABs and match as the unique substring of walker.cpp:1190 (the canary's _apply_mutation does a substring str.replace, and the lint parser transports the from-text through a tab-delimited line, so embedded tabs would corrupt the canary's IFS parse — identical convention to the sibling kMut_weapon_knife_emission/_rock/_arrow which target the same line)."
@@ -2703,7 +2703,7 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
-    "src/gameplay/walker.cpp", 1198,
+    "src/gameplay/walker.cpp", 1199,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize multiplier. HAMMER fires right, so its per-tick step falls from about 922 to 460 centipixels, below WeaponSpeed's 850 floor; emission and straight-path predicates remain satisfied."
@@ -3436,7 +3436,7 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1803,
+    "src/gameplay/game_world.cpp", 1804,
     "level_done = 0;",
     "level_done = 2;",
     "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (`level_done = 0;` has textual twins in this function -- the dormant guard above and the frozen guard below, byte-identical including indentation -- so the pin says which one it means with context_before: only the awake branch runs its foe through set_in_act.)",
@@ -4122,10 +4122,11 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
-    "packs/core/families/living-14-orc.lua", 11,
+    "packs/core/lib/orc_specials.lua", 13,
     "if lc.is_busy(self) then",
     "if true then",
-    "Closes YELL's busy gate permanently, so orc slot 1 returns false before the per-foe stun rolls and before SOUND_ROAR. WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200) flips."
+    "Closes YELL's busy gate permanently, so orc slot 1 returns false before the per-foe stun rolls and before SOUND_ROAR. WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200) flips. (The howl lives in lib/orc_specials.lua, cast by the orc and the orc captain; the same busy guard opens many casts in other files, so the pin names the function it means with context_before.)",
+    "function M.yell(self)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_orc_2_scen99[] = {
@@ -4143,7 +4144,7 @@ inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_2_scen99 = {
-    "packs/core/families/living-14-orc.lua", 104,
+    "packs/core/families/living-14-orc.lua", 26,
     "hp = 140",
     "hp = 14000",
     "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4438,7 +4439,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_decrement_faerie_scen99[] 
 };
 
 inline constexpr Mutation kMut_summon_lifetime_decrement_faerie_scen99 = {
-    "src/gameplay/living.cpp", 115,
+    "src/gameplay/living.cpp", 116,
     "const auto remaining_lifetime = lifetime() - 1;",
     "const auto remaining_lifetime = lifetime();",
     "Removes the `- 1` so remaining_lifetime == lifetime() every tick; `if (remaining_lifetime < 1)` at line 106 is permanently false and the lifetime-expiry kill at 108-109 never fires. With the druid kept alive (off-map enemy), owner-death cascades at 87/98 also never fire, so the faerie is still alive at tick 650 and WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Exercises the decrement path rather than initialisation."
@@ -4483,7 +4484,7 @@ inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
-    "src/gameplay/walker.cpp", 1589,
+    "src/gameplay/walker.cpp", 1590,
     "if ( current_game->world->living_count < MAXOBS &&",
     "if ( false &&",
     "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
@@ -4847,7 +4848,7 @@ inline constexpr FactPredicate kFacts_input_hold_fire_search_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_hold_fire_search_scen99 = {
-    "src/gameplay/walker.cpp", 499,
+    "src/gameplay/walker.cpp", 500,
     "set_busy(busy() + fire_frequency());",
     "set_busy(busy() + fire_frequency() * 100.0f);",
     "Inflates walker::init_fire's post-throw busy pause by 100x. The first throw blocks later held-fire re-arms, collapsing the sustained knife stream and dropping play_sound below five."
@@ -5005,7 +5006,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2506,
+    "src/gameplay/walker.cpp", 2512,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -5271,7 +5272,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_undead_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr Mutation kMut_cleric_turn_undead_scen99 = {
-    "packs/core/families/living-04-skeleton.lua", 60,
+    "packs/core/families/living-04-skeleton.lua", 63,
     "is_undead = true",
     "is_undead = false",
     "Clears the descriptor flag walker::turn_undead (walker_specials.cpp:321) tests to pick victims, so neither skeleton is destroyed. Both stay alive at 60/60 and keep meleeing the caster down to 67/120: WalkerDiedByFinal, WalkerOfTeamAlive(1,0,0), LevelDoneEquals(2) and the cleric HP floor all fail."
@@ -5351,7 +5352,7 @@ inline constexpr FactPredicate kFacts_undead_no_corpse_raise_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_undead_no_corpse_raise_scen99 = {
-    "packs/core/families/living-04-skeleton.lua", 56,
+    "packs/core/families/living-04-skeleton.lua", 59,
     "leaves_bloodspot = false",
     "leaves_bloodspot = true",
     "Makes the undead victim drop a FAMILY_STAIN at its (135,120) death spot -- 15 px from the caster, inside both find_nearest_blood's squared-800 ceiling and raise_skeleton_range 60. The slot-2 cast now succeeds and a live team-0 FAMILY_SKELETON is summoned: WalkerDiedByFinal fails, WalkerOfTeamAlive(0,2,2) sees 3, and WalkerFamilyCount(FAMILY_SKELETON,1,1) sees 2."
@@ -6221,7 +6222,7 @@ inline constexpr FactPredicate kFacts_orc_yell_stun_hold_scen99[] = {
 };
 
 inline constexpr Mutation kMut_orc_yell_stun_hold_scen99 = {
-    "packs/core/families/living-14-orc.lua", 41,
+    "packs/core/lib/orc_specials.lua", 43,
     "      foe:add_frozen_stun(stun)",
     "      foe:add_frozen_stun(0)",
     "Banks a zero stun. stun_total(raw, 0) returns raw unchanged, so the archer is never frozen: it acts from tick 20 on, steps west off its spawn (failing the archer position floor) and its level-5 arrows drop the orc below the caster hp pin. The radius scan, the two RNG draws and SOUND_ROAR all still run, so the flip isolates the freeze write itself."
@@ -6296,7 +6297,7 @@ inline constexpr FactPredicate kFacts_orc_eat_corpse_scen99[] = {
 };
 
 inline constexpr Mutation kMut_orc_eat_corpse_scen99 = {
-    "packs/core/families/living-14-orc.lua", 150,
+    "packs/core/families/living-14-orc.lua", 72,
     "corpse_heal_per_level = 5",
     "corpse_heal_per_level = 0",
     "Zeroes the per-corpse-level heal. Every other step of eat_corpse still runs (find_nearest_blood, the range gate, do_heal_effects, the notice, corpse:death()) and no RNG draw changes, so the mutated dump is identical except the orc's final hp is exactly 5 lower — the exact orc hp pin flips."
@@ -6480,7 +6481,7 @@ inline constexpr Mutation kMut_barbarian_boulder_impact_scen99 = {
 // volley.
 //
 // The 64px stand-off is load-bearing, NOT decorative. walker::fire's
-// melee branch (src/gameplay/walker.cpp:577) calls attack() on the LIVING
+// melee branch (src/gameplay/walker.cpp:613) calls attack() on the LIVING
 // when the new weapon spawns onto an impassable tile, so `this` is the
 // elemental and `stats_->query_bit_flags(BIT_MAGICAL)` reads the
 // ELEMENTAL's flags — the meteor's MAGICAL bit never reaches the modifier
@@ -6524,7 +6525,7 @@ inline constexpr Mutation kMut_magic_damage_slime_scen99 = {
     "magic_damage_modifier = 2",
     "magic_damage_modifier = 1",
     "Removes the slime's magic susceptibility at its live source. walker_combat.cpp:291 then multiplies the MAGICAL meteor damage by 1.0 instead of 2.0, so the slime keeps roughly twice the hitpoints and falls outside WalkerHpRangeAtFinalTick(FAMILY_SLIME, ...) while the FAMILY_SOLDIER control band is unchanged.",
-    "    { id = \"split\", name = \"SPLIT\", mp_cost = 30 },"
+    "    { id = \"split\", name = \"SPLIT\", mp_cost = 30, detail = \"Divide into two smaller slimes.\" },"
 };
 
 // slime_death_split_scen99: the FAMILY_SLIME is the PLAYER-team walker so it
@@ -6603,7 +6604,7 @@ inline constexpr FactPredicate kFacts_elemental_death_starburst_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elemental_death_starburst_scen99 = {
-    "packs/core/families/living-06-elemental.lua", 33,
+    "packs/core/families/living-06-elemental.lua", 41,
     "  self:special()",
     "  local _ = self",
     "Removes the parting volley from core:elemental's on_death while leaving the dead=0 / magicpoint refund / dead=1 dance intact. No meteor is created on the death tick, so the frozen weaplist holds none and WeaponFamilyEmitted(FAMILY_METEOR) fails; the bystander soldiers also keep their HP and leave the soldier band empty."
@@ -7356,8 +7357,8 @@ inline constexpr FactPredicate kFacts_weapon_boulder_explode_damage_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1,
         "consequence: the doubled blast is well under the ORC's 14000-cent pool, so it survives to be measured"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 2000, 2200,
-        "consequence: explode_on_death's doubled FAMILY_EXPLOSION is the ONLY damage source that can reach the laterally offset ORC -- the boulder body dies on the flight line two tiles away, the input-only-special barbarian never melees, and the orc's BIT_NO_RANGED means it cannot trade at range. Measured 2100 cents; the ceiling sits an order of magnitude under a boulder-only direct hit, let alone the untouched 14000 the mutation produces. A fresh companion recapture reads 2500 off the same blast (a two-tick cadence difference), which is why this row's golden is the blessed branch dump -- see tests/parity/golden/DRIFT_LEDGER.md"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 1800, 2000,
+        "consequence: explode_on_death's doubled FAMILY_EXPLOSION is the ONLY damage source that can reach the laterally offset ORC -- the boulder body dies on the flight line two tiles away, the input-only-special barbarian never melees, and the orc's BIT_NO_RANGED means it cannot trade at range. Measured 1900 cents since the rests port (2100 before it: the orc's hit-response howl at tick 9 is now refused because its tick-0 howl is resting, and the draws that follow leave it 200 cents lower); the ceiling sits an order of magnitude under a boulder-only direct hit, let alone the untouched 14000 the mutation produces. See tests/parity/golden/DRIFT_LEDGER.md"),
     pred::WeaponFamilyEmitted(FAMILY_BOULDER),
     pred::EventKindAtLeast(/*play_sound*/1, 2,
         "consequence: SOUND_FWIP on the throw plus SOUND_EXPLODE from explode_on_death"),
@@ -7532,8 +7533,8 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_freeze_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_FAERIE, 1, 1,
         "consequence: the frozen orc never reaches melee inside the budget, so the fragile 7500-cent faerie survives"),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_ORC, 140, 0,
-        "consequence: sprinkle_on_hit_target writes og.freeze_duration(owner.level, constitution) into the orc's frozen_delay and living::act returns early every tick it is non-zero, so the orc's westward charge stalls at the throw tick and only resumes when it thaws. WalkerPositionMoved is a LOWER bound and the orc closes in -x, so the floor holds only while the freeze does: measured 152 frozen against 131 unfrozen at the 150-tick dump, and the floor sits 12 px inside each. The 60-tick budget the design sketch used separates the two arms by only 6 px -- the freeze has not expired yet on EITHER arm at that point, so the entire measurable gap is the 42 ticks the frozen orc lost; 150 lets the thawed orc bank its recovery too"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 150, 0,
+        "consequence: sprinkle_on_hit_target writes og.freeze_duration(owner.level, constitution) into the orc's frozen_delay and living::act returns early every tick it is non-zero, so the orc's westward charge stalls at the throw tick and only resumes when it thaws. WalkerPositionMoved is a LOWER bound and the orc closes in -x, so the floor holds only while the freeze does: measured 152 frozen against 149 unfrozen at the 150-tick dump since the rests port (the unfrozen orc reached 131 before it, when the old 140 floor sat 12 px inside each arm), so the floor sits at 150, 2 px under the frozen arm and 1 px over the unfrozen one; no fact kind pins an exact position. The 60-tick budget the design sketch used separates the two arms by only 6 px -- the freeze has not expired yet on EITHER arm at that point, so the entire measurable gap is the 42 ticks the frozen orc lost; 150 lets the thawed orc bank its recovery too"),
     pred::WeaponFamilyEmitted(FAMILY_SPRINKLE),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -7728,7 +7729,7 @@ inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
 // Spawns prepend, so oblist order is the reverse of this array: the player orc is the
 // head (ACT_CONTROL), then the FAMILY_TOWER generator, then the skeleton. Harness-spawned
 // generators have hitpoints == 0, so trunc(hp/30) == 0 and og.rand0(0 * mult) must answer
-// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2213 `if (n <= 0) {` == master screen.cpp:66). The
+// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2230 `if (n <= 0) {` == master screen.cpp:66). The
 // skeleton is iterated second with con == 2, so any spurious draw at the tower shifts its
 // stun roll and every downstream draw for the rest of the run.
 inline constexpr SpawnSpec kFamilySpawns_orc_yell_zero_constitution_scen99[] = {
@@ -7750,7 +7751,7 @@ inline constexpr FactPredicate kFacts_orc_yell_zero_constitution_scen99[] = {
 };
 
 inline constexpr Mutation kMut_orc_yell_zero_constitution_scen99 = {
-    "packs/core/families/living-14-orc.lua", 37,
+    "packs/core/lib/orc_specials.lua", 39,
     "      local con_roll = og.rand0(con * t.yell_con_roll_mult)",
     "      local con_roll = og.rand0(og.max(con, 1) * t.yell_con_roll_mult)",
     "Forces a real RNG draw at the tower generator's zero constitution bound, which master's random(x<1) early return never takes. The mutation is a no-op for every foe with con >= 1, so it isolates exactly the zero-bound semantics: every subsequent draw in the run shifts by one position and the orc finishes on 8700 cents instead of 8200."
@@ -7954,17 +7955,17 @@ inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
     pred::TickReached(30),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 5600, 5600,
-        "consequence: heartburst detonates one BIT_MAGICAL explosion on each in-range foe for (magicpoints - cost)/2/foe_count damage, leaving the survivor on exactly 5600 cents; with the acquisition radius collapsed to 2*13 = 26px the far foes are never acquired and the survivor finishes untouched at 14000"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 6100, 6100,
+        "consequence: heartburst detonates one BIT_MAGICAL explosion on each in-range foe for (magicpoints - cost)/2/foe_count damage, leaving the survivor on exactly 6100 cents (5600 before the rests port: the two dying orcs' hit-response howls at tick 23 are refused while their tick-0 howls rest, which shifts the later draws); with the acquisition radius collapsed to 2*13 = 26px the far foes are never acquired and the survivor finishes untouched at 14000"),
     pred::EventKindAtLeast(/*play_sound*/1, 6,
-        "consequence: one on_screen-gated SOUND_EXPLODE per detonated foe plus the deaths they cause; the collapsed radius detonates a single explosion and the arena only reaches 4 sounds"),
+        "consequence: one on_screen-gated SOUND_EXPLODE per detonated foe plus the deaths they cause; the collapsed radius detonates a single explosion and the arena only reaches 5 sounds"),
 };
 
 inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
     "packs/core/families/living-03-mage.lua", 335,
     "heartburst_range_base = 80",
     "heartburst_range_base = 0",
-    "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 8 -> 4, and the surviving orc finishes on 14000 cents instead of 5600."
+    "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 6 -> 5, and the surviving orc finishes on 14000 cents instead of 6100."
 };
 
 // Face east for 9 ticks (sets lastx = stepsize so COMMAND_RUSH has a direction), then cast
@@ -8014,21 +8015,21 @@ inline constexpr FactPredicate kFacts_elf_rocks_pair_scen99[] = {
     pred::TickReached(30),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::EventKindAtLeast(/*play_sound*/1, 4,
-        "consequence: some_rocks releases exactly two rocks, fire() emits one play_sound per ranged release on both arms and both rocks connect; suppressing the second release drops the arena to 3 sounds"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3,
+        "consequence: some_rocks releases exactly two rocks, fire() emits one play_sound per ranged release on both arms and both rocks connect: the orc's tick-0 howl plus the two releases make 3 (4 before the rests port, when the orc's hit-response howl at tick 26 also roared; it is refused while the first howl rests); suppressing the second release drops the arena to 2 sounds"),
     pred::WeaponSpeed(FAMILY_ROCK, 890, 920,
         "trajectory: the un-boosted slot-1 pair steps at 906 centi-px/tick, measurably faster than the slot-4 volley's 600 because next_spread_multiplier scales each release independently"),
     pred::WeaponNetTravel(FAMILY_ROCK, kWeaponPathStraight, 1000,
         "trajectory: slot-1 rocks carry no do_bounce flag, so net == pathlen in open-field scen1.fss and the 1000-centi threshold is cleared within two ticks of flight"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13300, 13300,
-        "consequence: both rocks of the pair land on the downrange orc for a total of 700 cents; with only one released it keeps 13600"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13400, 13400,
+        "consequence: both rocks of the pair land on the downrange orc for a total of 600 cents (700 before the rests port, whose refused tick-26 howl shifts the damage draws); with only one released it keeps 13600"),
 };
 
 inline constexpr Mutation kMut_elf_rocks_pair_scen99 = {
     "packs/core/families/living-01-elf.lua", 25,
     "  rock = self:fire()",
     "  rock = nil",
-    "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 4 fails at 3, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13300."
+    "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 3 fails at 2, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13400."
 };
 
 // thief_ai_bomb_flee_scen99: the AI-only drop_bomb flee branch. check_special's thief
@@ -8067,7 +8068,7 @@ inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
 };
 
 // effect_explosion_ally_tier_scen99: the blast's ALLY tier. explosion_on_death
-// (packs/core/lib/effect_bomb.lua:82-87, master effect.cpp:690-700) halves the
+// (packs/core/lib/effect_bomb.lua:85-94, master effect.cpp:690-700) halves the
 // damage for a walker the owner is friendly to. Nothing in the corpus reaches that
 // arm -- every other blast row blasts foes only, so the whole `elseif` is
 // unexercised. effect_bomb_bystander_scen99 already pins the FULL tier and, in the
@@ -8127,7 +8128,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_ally_tier_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_explosion_ally_tier_scen99 = {
-    "packs/core/lib/effect_bomb.lua", 88,
+    "packs/core/lib/effect_bomb.lua", 92,
     "        self.damage = og.fdiv(full_damage, 2.0)",
     "        self.damage = og.fdiv(full_damage, 8.0)",
     "Widens the ally divisor from the half tier to an eighth. The blast still fires, still emits SOUND_EXPLODE, still shoves and still lands the quarter tier on its owner (the caster stays on 5200 cents), so only the allied victim moves: the team-0 TOWER1 finishes on 12000 cents instead of 8500 and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8500, 8500) has no walker left in its window."
@@ -8272,7 +8273,7 @@ inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
 };
 
 inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
-    "src/gameplay/stats.cpp", 1308,
+    "src/gameplay/stats.cpp", 1309,
     "controller_->set_foe(near_foe);",
     "(void)near_foe;",
     "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
@@ -8318,7 +8319,7 @@ inline constexpr FactPredicate kFacts_thief_charm_third_party_hit_scen99[] = {
 // clear_command itself. The first routine clear (direct_walk's fire_check at
 // tick 22) then un-charms, as classic did.
 inline constexpr Mutation kMut_thief_charm_third_party_hit_scen99 = {
-    "src/gameplay/stats.cpp", 148,
+    "src/gameplay/stats.cpp", 149,
     "controller_->set_leader(nullptr);",
     "controller_->set_leader(nullptr); if (controller_->real_team_num() != 255) { controller_->set_team_num(controller_->real_team_num()); controller_->set_real_team_num(255); }",
     "Restores the pre-#317 un-charm inside clear_command, so the soldier's own fire_check clear at tick 22 puts it back on team 1 (the classic capture): team-0 alive 2 -> 1, team-1 alive 0 -> 1, ScoreDelta(0) 345 -> 0 because its later kills credit team 1, which the dump does not score.",
@@ -8342,7 +8343,7 @@ inline constexpr FactPredicate kFacts_thief_charm_expires_on_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_charm_expires_on_timer_scen99 = {
-    "src/gameplay/living.cpp", 211,
+    "src/gameplay/living.cpp", 212,
     "set_team_num(real_team_num());",
     "set_team_num(team_num());",
     "The decay still zeroes charm_left and clears real_team_num but never moves the soldier back: team-1 alive 1 -> 0 and team-0 alive 1 -> 2 at tick 160. This is the only pin on the one remaining un-charm."

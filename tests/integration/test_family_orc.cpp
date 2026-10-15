@@ -150,7 +150,7 @@ int count_notifications(const og::sim::SimEventLog& log, const char* needle)
 // applies is the tuning table's yell_stun_base.
 //
 // A level-0 orc against a constitution-0 foe takes BOTH og.rand0 calls in
-// living-14-orc.lua:36-38 down the n <= 0 shortcut (no draw at all), so
+// lib/orc_specials.lua:38-40 down the n <= 0 shortcut (no draw at all), so
 // stun = max(0, 10 + 0 - 0) = 10 exactly, with no dependence on the world
 // RNG's state. That is what makes an exact pin possible here.
 TEST(FamilyOrc, r15_howl_freezes_foes_in_radius_and_spares_the_horde)

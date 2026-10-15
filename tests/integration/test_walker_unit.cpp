@@ -868,7 +868,19 @@ TEST(WalkerUnit, walker_r11_act_and_animate_extra_cases)
 TEST(WalkerUnit, fire_with_an_unbuildable_weapon_spends_no_magic)
 {
     WalkerR11Fixture fx;
+    // New Specials filled the last empty in-range weapon slot (20, the bone
+    // wall), and a slot past NUM_FAMILIES falls back to the knife, so no core
+    // weapon is unbuildable any more. The world's factory is wrapped to
+    // answer for this one slot the way the loader answers for a slot with no
+    // sprite: no entity.
     constexpr int kUnbuildable = NUM_FAMILIES - 1;
+    const auto real_factory = fx.level.world().entity_factory;
+    fx.level.world().entity_factory =
+        [real_factory](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        if (order == Order::Weapon && family == kUnbuildable)
+            return nullptr;
+        return real_factory(order, family);
+    };
     ASSERT_EQ(nullptr, fx.level.world().add_ob(Order::Weapon, kUnbuildable))
         << "precondition: the loader has no weapon in this slot";
     walker* shooter = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 80, 80);

@@ -3144,18 +3144,23 @@ TEST_F(ModesSoccer, foursquare_keepers_hold_all_four_mouths)
     fx.tick(1);
     ASSERT_TRUE(fx.soccer_active());
 
-    // Ball at the kickoff spot (320, 480), inside nobody's box.
+    // Ball at the kickoff spot (320, 480), inside nobody's box. A GOTO
+    // steers the keeper's top-left corner, so the clamp's far end gives up
+    // the keeper's own height: the span 256..384 holds a soldier's corner
+    // at 256..(384 - 16) and its whole body inside the mouth.
     align_before_cadence(fx.world());
     fx.tick(1);
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
+    ASSERT_EQ(16, east->sizey());
+    ASSERT_EQ(16, west->sizey());
     EXPECT_TRUE(front_command_is(north, COMMAND_GOTO, 320, 64))
         << "north wall: line y = 16 + 32 + 16, ball x inside 256..384";
-    EXPECT_TRUE(front_command_is(east, COMMAND_GOTO, 576, 384))
-        << "east wall: line x = 592 - 16, ball y clamped down to 384";
+    EXPECT_TRUE(front_command_is(east, COMMAND_GOTO, 576, 368))
+        << "east wall: line x = 592 - 16, ball y clamped down to 384 - 16";
     EXPECT_TRUE(front_command_is(south, COMMAND_GOTO, 320, 896))
         << "south wall: line y = 912 - 16";
-    EXPECT_TRUE(front_command_is(west, COMMAND_GOTO, 64, 384))
-        << "west wall: line x = 16 + 32 + 16";
+    EXPECT_TRUE(front_command_is(west, COMMAND_GOTO, 64, 368))
+        << "west wall: line x = 16 + 32 + 16, ball y clamped down to 384 - 16";
 
     // Ball into the north box (300, 100): the north keeper charges it
     // directly (contact kicks fire along ball - kicker, so the goal-side
@@ -3195,12 +3200,15 @@ TEST_F(ModesSoccer, goalie_charges_a_box_ball_and_never_outruns_the_leash)
     EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 400))
         << "cross-axis clamped up to the mouth span, not chased";
 
-    // The same on the far post (ball y past the span, distance 128).
+    // The same on the far post (ball y past the span). The clamp's far
+    // end gives up the keeper's height (its GOTO steers its top-left
+    // corner), so the whole body stays inside the mouth span 400..528.
     fx.set_ball(64, 560, 0, 0);
     align_before_cadence(fx.world());
     fx.tick(1);
-    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 528))
-        << "far-post clamp holds the keeper at the mouth";
+    ASSERT_EQ(16, goalie->sizey());
+    EXPECT_TRUE(front_command_is(goalie, COMMAND_GOTO, 64, 512))
+        << "far-post clamp holds the keeper's whole body at the mouth";
     ASSERT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 

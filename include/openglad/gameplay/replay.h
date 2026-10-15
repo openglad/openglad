@@ -39,7 +39,11 @@ namespace og::sim {
 // v20 records protocol-v18 snapshots/input frames (snapshot v14: the sim
 // event batch gains the generic third scalar `c` that DamageNumber events use;
 // PR #292); v19 readers must reject the new protocol byte and vice versa.
-inline constexpr std::uint8_t kReplayFormatVersion = 20;
+// v22 records protocol-v20 snapshots/input frames (snapshot v16: every
+// entity gains special_rest_left and special_rest_slot, a special's rest
+// between casts); v21 readers must reject the new protocol byte and vice
+// versa.
+inline constexpr std::uint8_t kReplayFormatVersion = 22;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 // First replay format carrying the campaign-vars section (the reader's

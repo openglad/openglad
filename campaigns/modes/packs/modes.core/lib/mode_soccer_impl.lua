@@ -641,8 +641,13 @@ end
 -- px in front of the open face. Wide rects (w >= h) are N/S walls whose
 -- mouth opens vertically toward the kickoff spot; tall rects are E/W walls
 -- opening horizontally — which covers the shipped pitches' E/W mouths and
--- FOURSQUARE's four walls alike.
-local function goal_intercept(team, bx, by)
+-- FOURSQUARE's four walls alike. The point is the keeper's GOTO
+-- destination, which steers its TOP-LEFT corner, so the far end of the
+-- span gives up the keeper's own width: clamped to the rect's far edge the
+-- whole body stood past the post, and where the pitch wall meets the post
+-- (Mudbowl's east goal) the keeper parked one step short of a spot it could
+-- never reach, 12 px out, where GOTO only counts under 12 as arrived.
+local function goal_intercept(team, bx, by, keeper)
   local pos = fget(S.GOAL_POS, team)
   local size = fget(S.GOAL_SIZE, team)
   local gx = core.pos_x(pos)
@@ -655,13 +660,13 @@ local function goal_intercept(team, bx, by)
     if core.pos_y(kpos) >= gy + og.div(gh, 2) then
       line_y = gy + gh + T.goalie_standoff
     end
-    return og.clamp(bx, gx, gx + gw), line_y
+    return og.clamp(bx, gx, gx + gw - keeper:sizex()), line_y
   end
   local line_x = gx - T.goalie_standoff
   if core.pos_x(kpos) >= gx + og.div(gw, 2) then
     line_x = gx + gw + T.goalie_standoff
   end
-  return line_x, og.clamp(by, gy, gy + gh)
+  return line_x, og.clamp(by, gy, gy + gh - keeper:sizey())
 end
 
 -- Ball inside team T's defensive box: the defended rect grown by
@@ -805,7 +810,7 @@ local function run_team_director(livings, ball, team)
       local goalie = members[goalie_index]
       goalie:set_foe(nil)
       goalie:set_leader(ball)
-      local tx, ty = goal_intercept(team, bx, by)
+      local tx, ty = goal_intercept(team, bx, by, goalie)
       if ball_in_goal_box(team, bx, by) then
         if iabs(bx - gcx) + iabs(by - gcy) <= T.goalie_leash then
           tx = bx

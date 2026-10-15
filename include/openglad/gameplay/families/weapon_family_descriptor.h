@@ -43,6 +43,15 @@ struct WeaponFamilyDescriptor {
     // TREE take 50 damage and a DOOR 5000 before it breaks.
     float hp = 0.0f;
 
+    // New Specials scenery. rally_radius > 0 makes a live weapon of this
+    // family a rallying point: friendly walkers within that many pixels on
+    // its floor never flee (og::sim::fearless). blocks_placement makes it
+    // solid for the teleport / spawn / landing probes, the way doors, trees
+    // and boulders already are. Both default off, so every classic family
+    // behaves exactly as before.
+    int rally_radius = 0;
+    bool blocks_placement = false;
+
     const char* pix_filename = nullptr;
     const signed char* const* anim_table = nullptr;
     int anim_row_count = 0;

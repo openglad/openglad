@@ -300,6 +300,18 @@ class viewscreen
 		// greppable handle for TESTING asserts.
 		bool camera_view_ = false;
 
+		// Death-frame camera hold (render-only). The screen calls this when it
+		// lets go of a seat's dead walker: until the seat has a walker again,
+		// a redraw with no control keeps this view's last camera instead of
+		// taking the level's stored free camera (the map's corner). A new
+		// level restarts the world clock at 0, which ends the hold.
+		void hold_camera_for_lost_control(std::uint32_t world_tick);
+		bool          camera_hold_              = false;
+		std::uint32_t camera_hold_tick_         = 0;
+		bool          camera_followed_control_  = false;  // last frame had one
+		float         camera_last_topx_float_   = 0.0f;
+		float         camera_last_topy_float_   = 0.0f;
+
 		// ---- Floor-glide transition (render-only; per-viewport => mirror-safe and
 		// split-screen-independent, exactly like current_floor_). Inactive whenever
 		// glide_frames_left_ == 0; the inactive render path is the pre-glide integer

@@ -91,6 +91,7 @@ BINDINGS = "src/gameplay/script/bindings_entity.cpp"
 HOST = "src/gameplay/script/script_host.cpp"
 WORLD = "src/gameplay/script/world_scripts.cpp"
 FAMILY_DECL = "src/gameplay/script/family_decl.cpp"
+KIT = "src/gameplay/script/bindings_kit.cpp"
 OUTPUT = "docs/modding/og-api.d.lua"
 
 TODO_ANY = "any"  # inference failure marker; paired with a TODO comment
@@ -199,6 +200,16 @@ def parse_constants(src: str) -> List[str]:
     names = re.findall(r'\{\s*"(\w+)"\s*,', body)
     if not names:
         raise SystemExit("gen_api_stubs: kConstants parsed empty")
+    return names
+
+
+def parse_kit_constants(src: str) -> List[str]:
+    m = re.search(r"const KitConst kKitConstants\[\] = \{", src)
+    if m is None:
+        raise SystemExit("gen_api_stubs: kKitConstants not found in " + KIT)
+    names = re.findall(r'\{\s*"(\w+)"\s*,', balanced_body(src, m.end() - 1))
+    if not names:
+        raise SystemExit("gen_api_stubs: kKitConstants parsed empty")
     return names
 
 
@@ -1136,15 +1147,21 @@ def generate(repo_root: Path) -> str:
     functions.update(parse_cpp_functions(world_src))
     functions.update(parse_cpp_functions(family_decl_src))
     functions.update(parse_cpp_functions(bindings_src))
+    # The New Specials kit bindings (bindings_kit.cpp) join the walker
+    # method table, the og.* world verbs and og.C at install time.
+    kit_src = read_source(repo_root, KIT)
+    functions.update(parse_cpp_functions(kit_src))
     macro_sigs = parse_macro_accessors(bindings_src)
 
-    walker_methods = parse_luareg_table(bindings_src, "kWalkerMethods")
+    walker_methods = (parse_luareg_table(bindings_src, "kWalkerMethods")
+                      + parse_luareg_table(kit_src, "kKitWalkerMethods"))
     guy_methods = parse_luareg_table(bindings_src, "kGuyMethods")
-    og_world = parse_luareg_table(bindings_src, "kOgWorldFuncs")
+    og_world = (parse_luareg_table(bindings_src, "kOgWorldFuncs")
+                + parse_luareg_table(kit_src, "kOgKitFuncs"))
     og_combat = parse_luareg_table(bindings_src, "kOgCombatFuncs")
     og_campaign = parse_luareg_table(bindings_src, "kOgCampaignFuncs")
     og_host = parse_luareg_table(host_src, "kOgFuncs")
-    constants = parse_constants(bindings_src)
+    constants = parse_constants(bindings_src) + parse_kit_constants(kit_src)
     scaffolding = scaffolding_body(world_src)
     world_entry = parse_world_entry_points(scaffolding)
     world_values = parse_world_value_entry_points(scaffolding)

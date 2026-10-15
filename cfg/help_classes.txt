@@ -1,5 +1,8 @@
 *** CHARACTER CLASSES ***
 
+* needs Game Settings -> Gameplay FX
+  -> New Specials (on by default).
+
 SOLDIER
 ========================
 Basic fighter, good all-around.
@@ -50,6 +53,7 @@ Can teleport at any level.
    foes with twisted space.
 3. Time Stop: Freeze time for
    all non-team members.
+   Rests 30s between casts.
 4. Energy Wave: Expanding flood
    of energy through walls.
 5. HeartBurst: Enemies burst into
@@ -66,6 +70,7 @@ Extreme firepower, very weak.
    (SHIFTER for elemental).
 4. Mind Control: Bend enemies
    to your will temporarily.
+   Rests 20s between casts.
 
 CLERIC
 ========================
@@ -83,6 +88,8 @@ THIEF
 ========================
 Fast with unlimited daggers.
 1. Plant Bomb: Drop explosives.
+   SHIFTER: Mine*, unseen until
+   a foe steps on it.
 2. Cloak: Become invisible.
 3. Taunt: Lure enemies away.
    SHIFTER: Charm enemies.
@@ -101,12 +108,85 @@ Nature magician, throws lightning.
 4. Protection: Wind shield for
    nearby teammates.
 
-SPECIAL CLASSES
+GHOST
 ========================
-Orc: Strong melee, Howl stuns.
-Fire Elemental: Fast, Starburst.
-Skeleton: Fast, can Tunnel.
-Ghost: Passes through walls,
-  Scare makes enemies flee.
-Faerie: Flying, freezing powder.
+Passes through walls.
+1. Scare: Make enemies flee.
+   SHIFTER: Wail*, fear that
+   leaps from foe to foe.
+   Both rest 8s between casts.
+2. Siphon*: A touch that heals
+   you by half the harm it does.
+3. Possess*: Enter a foe and
+   drive it for a while.
+4. Phase*: Untouchable and fast
+   for a few seconds, no attacks.
+
+FAERIE
+========================
+Flying, freezing powder.
+1. Blink*: Short random hop.
+   SHIFTER: Swap*, trade places
+   with anyone in sight.
+2. Glimmer*: A brief freeze in
+   all eight directions; rests
+   15s between casts.
+3. Hasten*: Speed up an ally.
+   SHIFTER: Haste Self*, speed
+   yourself up.
+4. Wish*: The faerie dies; a
+   fallen ally rises and allies
+   nearby are healed.
+
+SKELETON
+========================
+Fast, can Tunnel.
+1. Tunnel: Burrow to a spot
+   nearby.
+2. Dig In*: Sink into the floor,
+   unseen and mending.
+3. Bone Wall*: Line of bones that
+   blocks the way for a while.
+   Up to 2 walls, more by level.
+   SHIFTER: Bone Storm*, shatter
+   all your walls.
+4. Reassemble*: Ward your next
+   death, rise at quarter health.
+   SHIFTER: Legion*, half your
+   kills rise as your skeletons.
+
+FIRE ELEMENTAL
+========================
+Fast; bursts into flame on death.
+1. Starburst: Fling flaming
+   meteors in all directions.
+2. Immolate*: Burn all who touch
+   you, leave burning footprints.
+3. Meteor Rain*: Meteors fall on
+   a distant area.
+4. Rekindle*: Burn magic into
+   health. SHIFTER: Supernova*,
+   die in one huge blast.
+
+ORC CAPTAIN
+========================
+Promoted Orc (level 5+).
+1. Howl*: Stun nearby enemies;
+   rests 10s between casts.
+2. Eat Corpse*: Heal by eating
+   the fallen.
+3. Hook Blade*: Spiraling knife
+   reels a foe to your feet.
+   SHIFTER: Knife Fan*, three
+   knives in a spread.
+4. War Banner*: Plant it on a
+   corpse; allies near it mend
+   and never flee.
+   SHIFTER: Warband*, grunts
+   charge in to help.
+
+OTHER CLASSES
+========================
+Orc: Strong melee, Howl stuns
+   (rests 10s between casts).
 Slime: Grows and splits in two.

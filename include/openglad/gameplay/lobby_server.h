@@ -31,6 +31,8 @@ struct LobbySaveDataEquivalent {
     std::int16_t cross_control = 0;
     // Host-only infinite-gold setting (protocol v11; see LobbySettings).
     std::int16_t infinite_gold = 0;
+    // Host-only New Specials setting (protocol v19; see LobbySettings).
+    std::int16_t new_specials = 0;
     // Match time limit in sim ticks (protocol v15; see LobbySettings).
     // 0 = the map's own value.
     std::int16_t time_limit = 0;

@@ -464,7 +464,7 @@ TEST(ModeUi, score_panel_composes_one_row_from_the_hud_slots)
 
 // Q2: the mode row's right edge is the counter box's LEFT edge, not a
 // constant.  The box's width is derived from its widest row (a pending wave
-// prints "WAVE: 5462s", 11 glyphs, and grows the box to rm-70), so a row
+// prints "WAVE: 5461s", 11 glyphs, and grows the box to rm-70), so a row
 // budgeted against the classic rm-60 would run its last glyphs under the box.
 // RED BY DESIGN on the phase-3 base tree, where draw_mode_panel hardcodes
 // `right = rm - 60` whatever the box does.
@@ -515,9 +515,10 @@ TEST(ModeUi, mode_row_stops_short_of_a_widened_counter_box)
     mode.set_hud(3, "", 255);
 
     // One dormant hostile at the maximum spawn delay: it wakes at tick 65536,
-    // i.e. (65536 + 11) / 12 = 5462 s, so the WAVE row is "WAVE: 5462s" -- 11
-    // glyphs, and the widest row whatever level 1's foe count is (the FOES row
-    // "FOES: {awake}+1" reaches 11 glyphs only at four-digit counts).
+    // i.e. 5461.3 s, 5461 to the nearest second, so the WAVE row is
+    // "WAVE: 5461s" -- 11 glyphs, and the widest row whatever level 1's foe
+    // count is (the FOES row "FOES: {awake}+1" reaches 11 glyphs only at
+    // four-digit counts).
     GameWorld& world = s->world();
     const std::uint32_t saved_ltc = world.level_tick_count();
     struct TickRestore {

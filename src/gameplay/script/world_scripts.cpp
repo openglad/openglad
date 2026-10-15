@@ -73,6 +73,7 @@ constexpr HookName kLivingHooks[] = {
     {"on_ani_complete", FamilyHook::OnAniComplete},
     {"on_melee_hit", FamilyHook::OnMeleeHit},
     {"on_act_override", FamilyHook::OnActOverride},
+    {"on_kill", FamilyHook::OnKill},
 };
 
 constexpr HookName kWeaponHooks[] = {
@@ -2118,6 +2119,7 @@ const char* hook_where(FamilyHook hook)
         case FamilyHook::GeneratorCustomizeSpawn:
             return "hook:generator.customize_spawn";
         case FamilyHook::OnActOverride: return "hook:on_act_override";
+        case FamilyHook::OnKill: return "hook:on_kill";
         default: return "hook:?";
     }
 }
@@ -2333,6 +2335,16 @@ bool on_melee_hit(const FamilyDescriptor* fd, walker* self, walker* target)
         return false;
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnMeleeHit,
                         false, self, target))
+        return true;
+    return false;
+}
+
+bool on_kill(const FamilyDescriptor* fd, walker* self, walker* victim)
+{
+    if (fd == nullptr)
+        return false;
+    if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnKill,
+                        false, self, victim))
         return true;
     return false;
 }

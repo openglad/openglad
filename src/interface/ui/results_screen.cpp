@@ -16,6 +16,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -314,14 +315,17 @@ std::vector<std::string> TroopResult::get_gained_specials() const
     const FamilyDescriptor* fd = get_family_descriptor(get_family());
     if (fd == nullptr) return result;
 
-    Sint32 test1 = get_level() - 1;
-    if ( !(test1%3) ) // we're on a special-gaining level
+    // New Specials: the slot as this session's setting shows it.
+    const short new_specials = og::sim::session_new_specials();
+    // A slot opens at og::sim::slot_open_level: 3*slot - 2 unless its row
+    // says `level = N`, so one level may open none, one or two slots.
+    for (Sint32 test1 = 1; test1 <= 4; ++test1) // raise this when we have more than 4 specials
     {
-        test1 = (test1 / 3) + 1; // this is the special #
-        if ( (test1 <= 4) // raise this when we have more than 4 specials
-                && (std::strcmp(fd->special_names[test1], kSpecialNameNone) != 0) )
+        if (og::sim::slot_open_level(fd, test1) == get_level()) // we're on a special-gaining level
         {
-            result.push_back(fd->special_names[test1]);
+            const char* name = og::sim::special_name(fd, test1, new_specials);
+            if (std::strcmp(name, kSpecialNameNone) != 0)
+                result.push_back(name); // this is the special #
         }
     }
     

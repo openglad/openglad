@@ -15,6 +15,7 @@
 #include <openglad/resources/campaign_state_providers.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/level_file_io.h>
@@ -106,6 +107,8 @@ int run_text_picker_protocol_session(const TextPickerConfig& config,
     protocol_args.seed = config.seed;
     protocol_args.team_level = config.team_level;
     protocol_args.campaign_state = config.campaign_state;
+    if (config.new_specials >= 0)
+        protocol_args.new_specials = config.new_specials;
     return run_text_protocol_session(protocol_args);
 }
 
@@ -121,6 +124,12 @@ public:
         // --level flag has to land there — every in-picker level write (Set
         // Level, the camp docket, a replay arm) already mirrors both.
         save_data_.scen_num = static_cast<short>(config_.level);
+        // New Specials: the cfg preference seeds the session once; an
+        // explicit --new-specials overrides it for this run.
+        og::ui::seed_new_specials_from_cfg(save_data_, cfg);
+        if (config_.new_specials >= 0)
+            save_data_.new_specials =
+                static_cast<short>(config_.new_specials != 0 ? 1 : 0);
         // Terminal slot authority ([SAVE-R2]): company-level writes must
         // target this client's chosen slot (default "text_quicksave"), never
         // save0. An unsafe name is rejected by the setter and simply leaves
@@ -372,6 +381,20 @@ public:
                 config_.seed = static_cast<std::uint32_t>(*value);
             }
         }
+
+        // The terminal twin of the Gameplay FX row: the preference, and the
+        // session's setting. The text picker holds no networked lobby, so it
+        // always decides its own session.
+        std::printf("New specials: %s. Change (on/off, blank keeps current): ",
+            save_data_.new_specials != 0 ? "on" : "off");
+        std::fflush(stdout);
+        if (!read_line(line))
+            return;
+        if (line == "on" || line == "off")
+            og::ui::set_new_specials(save_data_, cfg, line == "on",
+                                     /*decides_session=*/true);
+        else if (!line.empty())
+            std::printf("Invalid value; on or off.\n");
     }
 
     void show_help() override

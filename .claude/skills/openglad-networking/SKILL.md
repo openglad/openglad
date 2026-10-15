@@ -13,7 +13,9 @@ covers the architecture; this file is the traps.
 
 A wire or snapshot change bumps `kNetworkProtocolVersion`
 (include/openglad/gameplay/net_transport.h), `kSnapshotFormatVersion`, and
-the derived `kReplayFormatVersion` together, plus every literal pin:
+`kReplayFormatVersion` together, plus every literal pin.
+`kReplayFormatVersion` (include/openglad/gameplay/replay.h) is a literal,
+not derived from the other two: bump it by hand.
 
 - FIVE wire-byte test pins break on a protocol bump — in
   `tests/unit/test_net_transport.cpp` (protocol + min_protocol bytes) and

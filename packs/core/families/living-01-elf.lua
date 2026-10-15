@@ -73,13 +73,13 @@ og.family("living", {
                        intelligence = 8, armor = 50, level = 200 } },
   specials = {
     -- some rocks (normal)
-    { id = "rocks",          name = "ROCKS",          mp_cost = 10, cast = some_rocks },
+    { id = "rocks",          name = "ROCKS",          mp_cost = 10, cast = some_rocks, detail = "Rocks hurls a few rocks at the enemy. Forestwalk, dexterity-based, lets you move in trees." },
     -- more rocks, and bouncing
     -- we get 50% longer, too!
-    { id = "bouncing_rocks", name = "BOUNCING ROCKS", mp_cost = 20, cast = bounce_volley(3, 2, 3) },
+    { id = "bouncing_rocks", name = "BOUNCING ROCKS", mp_cost = 20, cast = bounce_volley(3, 2, 3), detail = "Like #1, but these rocks bounce off walls and other barricades." },
     -- get double distance
-    { id = "lots_of_rocks",  name = "LOTS OF ROCKS",  mp_cost = 30, cast = bounce_volley(4, 3, 4) },
-    { id = "mega_rocks",     name = "MEGA ROCKS",     mp_cost = 40 },
+    { id = "lots_of_rocks",  name = "LOTS OF ROCKS",  mp_cost = 30, cast = bounce_volley(4, 3, 4), detail = "Like #2, but more rocks, with a longer thrown range." },
+    { id = "mega_rocks",     name = "MEGA ROCKS",     mp_cost = 40, detail = "This giant handful of rocks bounces far away and packs a big punch." },
     -- we get 150% longer, too!
     default_cast = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot
   },
@@ -98,7 +98,7 @@ og.family("living", {
   sprite = "elf.png",
   animation = "standard",
   ai_line_of_sight = 8,
-  description = "Elves are small and weak, but are harder to hit than most classes. Alone of all the classes, elves possess the 'ForestWalk' ability.\n\nSpecial: Rocks",
+  description = "Elves are small and weak, but are harder to hit than most classes. Alone of all the classes, elves possess the 'ForestWalk' ability.",
   names = { "Legolas", "Took", "Elrond", "Tanis", "Acorn", "Lightfoot",
             "Treewee" },
   playable = true,

@@ -337,9 +337,13 @@ TEST(StatsFright, walker_special_clamps_enemy_freeze_bank)
     ASSERT_TRUE(mage->special());
     ASSERT_EQ(og::combat::kEnemyFreezeBankCap, fx.level.world().enemy_freeze);
 
-    // Chain-casting at the cap never exceeds it.
+    // Chain-casting at the cap never exceeds it. FREEZE TIME rests 30 s
+    // between casts (tests/unit/test_kit_rests.cpp); this pins the bank cap,
+    // which still bounds several mages, so each recast skips the rest.
     for (int i = 0; i < 5; ++i)
     {
+        ASSERT_GT(mage->special_rest_left(), 0) << "the last cast started its rest";
+        mage->set_special_rest_left(0);
         ASSERT_TRUE(mage->special());
         ASSERT_LE(fx.level.world().enemy_freeze, og::combat::kEnemyFreezeBankCap);
     }

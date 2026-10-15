@@ -36,6 +36,9 @@ og::sim::LobbySettings make_default_lobby_settings()
     settings.scenario_id = kDefaultScenarioId;
     settings.difficulty = kDefaultDifficulty;
     settings.allied_mode = kDefaultAlliedMode;
+    // The shipped default: New Specials on. The host's own preference
+    // replaces it as soon as the host publishes its settings.
+    settings.new_specials = 1;
     return settings;
 }
 
@@ -111,6 +114,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.cross_control = fallback.cross_control;
     if (sanitized.infinite_gold != 0 && sanitized.infinite_gold != 1)
         sanitized.infinite_gold = fallback.infinite_gold;
+    if (sanitized.new_specials != 0 && sanitized.new_specials != 1)
+        sanitized.new_specials = fallback.new_specials;
     if (sanitized.shared_teams != 0 && sanitized.shared_teams != 1)
         sanitized.shared_teams = fallback.shared_teams;
     // Match time limit in sim ticks; 0 keeps the map's own value. The upper
@@ -1321,6 +1326,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.keep_fallen_heroes = state_.settings.keep_fallen_heroes;
     equivalent.cross_control = state_.settings.cross_control;
     equivalent.infinite_gold = state_.settings.infinite_gold;
+    equivalent.new_specials = state_.settings.new_specials;
     equivalent.time_limit = state_.settings.time_limit;
     equivalent.fill = state_.settings.fill;
     equivalent.map_units = state_.settings.map_units;

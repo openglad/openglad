@@ -248,7 +248,7 @@ bool walker::attack(walker  *target)
         return 0;
 
     if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||
-            target->invulnerable_left() != 0 )
+            target->invulnerable_left() != 0 || target->hidden())
         return 0;
 
     if (order() != Order::Living && owner())
@@ -381,6 +381,25 @@ bool walker::attack(walker  *target)
     // (handled at the gate above) skips the hit entirely.
     if (target->stats()->hitpoints() <= 0)
     {
+        // New Specials: a REASSEMBLE ward stands the walker back up inside
+        // death(). That blow did not kill, so it is treated like a hit that
+        // does not: no death message, no "All foes defeated!", no kill on
+        // the killer's record, no blood and no death cry. A ward cannot take
+        // only when this walker's death() already ran once, and then death()
+        // did nothing here: the walker is put back as it was and the kill
+        // below runs exactly as for any other walker.
+        if (targetorder == Order::Living &&
+            (target->kit_state() & KIT_WARD) != 0)
+        {
+            target->set_dead(1);
+            target->death();
+            if (!target->dead())
+            {
+                set_collide_ob(nullptr);
+                return 1;
+            }
+            target->set_dead(0);
+        }
         if (targetorder == Order::Living)
         {
             if (playerteam > -1)
@@ -478,6 +497,15 @@ bool walker::attack(walker  *target)
 
         target->set_dead(1);
         target->death(); // any special effect upon death ..
+        // New Specials: the killer's family hears of the kill only now, when
+        // death() has left the corpse and the life gem behind. A walker that
+        // got back up inside death() (a warded skeleton) was not killed.
+        if (targetorder == Order::Living && target->dead() &&
+            headguy->query_order() == Order::Living)
+            og::script::hooks::on_kill(
+                get_family_descriptor(static_cast<int>(
+                    static_cast<unsigned char>(headguy->family()))),
+                headguy, target);
     }
     set_collide_ob(nullptr);
 

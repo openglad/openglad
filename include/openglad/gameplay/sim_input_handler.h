@@ -74,8 +74,8 @@ struct SimInputDebounce
 //
 // Switch Special: the special a press lands on is decided by the LIVE family
 // registry (get_family_descriptor) for every registered family, core or
-// pack; a slot named NONE, an out-of-range slot, or a level below
-// (special-1)*3+1 wraps to special 1 (issue #321).
+// pack; a slot named NONE, an out-of-range slot, or a slot not yet open at
+// the walker's level (og::sim::slot_open) wraps to special 1 (issue #321).
 //
 // Returns a SimInputResult describing what happened (for render layer to act on).
 SimInputResult sim_process_player_input(
@@ -93,11 +93,12 @@ SimInputResult sim_process_player_input(
 walker* sim_find_next_control(GameWorld& level, short my_team);
 
 // Advance a walker's current special by one and wrap to special 1 when the slot
-// is out of range, unnamed/NONE in the LIVE family registry, or above the level
-// gate (special-1)*3+1 (issue #321). Precondition: control.stats() != nullptr.
+// is out of range, unnamed/NONE in the LIVE family registry, or not yet open at
+// the walker's level (og::sim::slot_open, issue #321). Precondition: control.stats() != nullptr.
 // The ONE home of the cycling rule: sim_process_player_input (debounced) and the
-// parity harness (scenario_runtime.cpp) both call it.
-void sim_advance_current_special(walker& control);
+// parity harness (scenario_runtime.cpp) both call it. A slot the New Specials
+// setting hides (level.new_specials == 0) reads as NONE and is skipped.
+void sim_advance_current_special(const GameWorld& level, walker& control);
 
 // The ONE home of the SwitchChar rule: sim_process_player_input (debounced,
 // Cheat-gated) and the parity harness (scenario_runtime.cpp) both call it.

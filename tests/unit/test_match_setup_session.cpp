@@ -402,12 +402,14 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
         og::ui::kRulesRowScore,      og::ui::kRulesRowTime,
         og::ui::kRulesRowRespawns,   og::ui::kRulesRowSpawnDelay,
         og::ui::kRulesRowPermadeath, og::ui::kRulesRowGenerators,
-        og::ui::kRulesRowDifficulty, og::ui::kRulesRowInfiniteGold};
+        og::ui::kRulesRowDifficulty, og::ui::kRulesRowInfiniteGold,
+        og::ui::kRulesRowNewSpecials};
     const std::vector<std::string> expected_faces = {
         "SCORE: MAP",         "TIME LIMIT: MAP",
         "RESPAWNS: OFF",      "SPAWN DELAY: NORMAL",
         "PERMADEATH: ON",     "GENERATORS: NORMAL",
-        "DIFFICULTY: BATTLE", "INFINITE GOLD: OFF"};
+        "DIFFICULTY: BATTLE", "INFINITE GOLD: OFF",
+        "NEW SPECIALS: OFF"};
     ASSERT_EQ(expected_ids.size(), faces.size());
     for (std::size_t i = 0; i < faces.size(); ++i)
     {
@@ -419,16 +421,23 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
                                         "RESPAWNS: OFF  SPAWN DELAY: NORMAL",
                                         "PERMADEATH: ON  GENERATORS: NORMAL",
                                         "DIFFICULTY: BATTLE  "
-                                        "INFINITE GOLD: OFF"}),
-              og::ui::format_match_rules_lines(inputs));
+                                        "INFINITE GOLD: OFF",
+                                        "NEW SPECIALS: OFF"}),
+              og::ui::format_match_rules_lines(inputs))
+        << "an odd face count leaves the last one alone on its line";
 
-    // CROSS CONTROL is the networked-only row, and an odd face count
-    // leaves the last one alone on its line.
+    // The session's New Specials value is what the face states, so a
+    // joiner reads the host's choice in the recap.
+    save.new_specials = 1;
+    EXPECT_EQ("NEW SPECIALS: ON", og::ui::format_match_rules_lines(inputs).back());
+    save.new_specials = 0;
+
+    // CROSS CONTROL is the networked-only row; it pairs with NEW SPECIALS.
     inputs.networked = true;
     const std::vector<std::string> networked =
         og::ui::format_match_rules_lines(inputs);
     ASSERT_EQ(5u, networked.size());
-    EXPECT_EQ("CROSS CONTROL: OWN", networked.back());
+    EXPECT_EQ("NEW SPECIALS: OFF  CROSS CONTROL: OWN", networked.back());
     EXPECT_EQ(og::ui::kRulesRowCrossControl,
               og::ui::match_rules_faces(inputs).back().id);
     inputs.networked = false;
@@ -454,6 +463,7 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
     for (const short clock : {short(0), short(3600), short(7200), short(10800),
                               short(14400)})
     for (const short cross : {short(0), short(1)})
+    for (const short specials : {short(0), short(1)})
     {
         save.respawn_mode = respawn;
         save.ctf_respawn_ticks = ticks;
@@ -463,6 +473,7 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
         save.ctf_capture_limit = score;
         save.time_limit = clock;
         save.cross_control = cross;
+        save.new_specials = specials;
         inputs.difficulty = difficulty;
         for (const bool net : {false, true})
         {

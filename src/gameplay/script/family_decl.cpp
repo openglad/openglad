@@ -611,6 +611,16 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                       ": a special cannot cost negative magic");
     if (has_field(L, tbl, "slot") && !h.take_int(named + ".slot", out.slot))
         return false;
+    // `level = N` opens the slot early. The lower bound is checked here,
+    // while the key is known to be present: the entry stores 0 for "no
+    // level given", so an explicit 0 would read as absent further on.
+    if (has_field(L, tbl, "level")) {
+        if (!h.take_int(named + ".level", out.level))
+            return false;
+        if (out.level < 1)
+            return h.fail(named + ".level " + std::to_string(out.level) +
+                          ": a slot opens at level 1 at the earliest");
+    }
     if (has_field(L, tbl, "alternate")) {
         if (lua_type(L, -1) != LUA_TTABLE) {
             const std::string got = type_name_of(L, -1);
@@ -620,16 +630,46 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                           got);
         }
         const int alt = lua_gettop(L);
+        const std::string awhere = named + ".alternate";
         std::optional<std::string> alt_name;
-        const bool ok = opt_string(h, alt, named + ".alternate", "name",
-                                   alt_name);
+        std::optional<std::int32_t> alt_cost;
+        std::optional<bool> alt_new_kit;
+        std::optional<std::string> alt_detail;
+        // New Specials: an alternate may carry its own price and may exist
+        // only while the setting is on. Same refusals as the primary's cost.
+        bool ok = opt_string(h, alt, awhere, "name", alt_name) &&
+                  opt_int(h, alt, awhere, "mp_cost", alt_cost) &&
+                  opt_bool(h, alt, awhere, "new_kit", alt_new_kit) &&
+                  opt_string(h, alt, awhere, "detail", alt_detail) &&
+                  check_keys(h, alt, awhere,
+                             {"name", "mp_cost", "new_kit", "detail"});
         lua_pop(L, 1);
         if (!ok)
             return false;
         if (!alt_name.has_value())
-            return h.fail(named + ".alternate: needs a name");
+            return h.fail(awhere + ": needs a name");
+        if (alt_cost && *alt_cost >= static_cast<std::int32_t>(kSpecialCostDisabled))
+            return h.fail(awhere + ".mp_cost " + std::to_string(*alt_cost) +
+                          ": " + std::to_string(kSpecialCostDisabled) +
+                          " and up is the registry's own \"disabled\" "
+                          "marker — an alternate is either castable or "
+                          "left out");
+        if (alt_cost && *alt_cost < 0)
+            return h.fail(awhere + ".mp_cost " + std::to_string(*alt_cost) +
+                          ": a special cannot cost negative magic");
         out.alternate_name = std::move(alt_name);
+        out.alternate_cost = alt_cost.value_or(0);
+        out.alternate_new_kit = alt_new_kit.value_or(false);
+        out.alternate_detail = std::move(alt_detail);
     }
+    // New Specials: `new_kit = true` puts the slot behind the setting.
+    std::optional<bool> new_kit;
+    if (!opt_bool(h, tbl, named, "new_kit", new_kit))
+        return false;
+    out.new_kit = new_kit.value_or(false);
+    // The DETAILS page prose under the special's name (optional).
+    if (!opt_string(h, tbl, named, "detail", out.detail))
+        return false;
     for (const char* key : {"cast", "ai"}) {
         if (!has_field(L, tbl, key))
             continue;
@@ -650,8 +690,8 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                           got);
     }
     return check_keys(h, tbl, named,
-                      {"id", "name", "mp_cost", "slot", "cast", "ai",
-                       "alternate"});
+                      {"id", "name", "mp_cost", "slot", "level", "cast",
+                       "ai", "alternate", "new_kit", "detail"});
 }
 
 // `specials` — an ARRAY, position giving slots 1..5, with `slot = N` to
@@ -673,6 +713,9 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
     std::vector<og::data::ClasspackSpecialEntry> entries;
     const lua_Integer n = luaL_len(L, list);
     int previous_slot = 0;
+    // The level the previous entry's slot opens at (its own `level`, or
+    // 3*slot - 2): the open slots must be a run from slot 1.
+    int previous_opens_at = 0;
     bool ok = true;
     for (lua_Integer i = 1; ok && i <= n; i++) {
         const std::string ewhere =
@@ -712,7 +755,28 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
                         " (specials are listed in slot order)");
             break;
         }
+        const int default_opens_at = 3 * entry.slot - 2;
+        if (entry.level > default_opens_at) {
+            ok = h.fail(ewhere + ": level " + std::to_string(entry.level) +
+                        " on slot " + std::to_string(entry.slot) + ": slot " +
+                        std::to_string(entry.slot) + " already opens at level " +
+                        std::to_string(default_opens_at) +
+                        "; level can open a slot earlier, never later");
+            break;
+        }
+        const int opens_at = entry.level != 0 ? entry.level : default_opens_at;
+        if (opens_at < previous_opens_at) {
+            ok = h.fail(ewhere + ": slot " + std::to_string(entry.slot) +
+                        " cannot open at level " + std::to_string(opens_at) +
+                        " while slot " + std::to_string(previous_slot) +
+                        " opens at level " +
+                        std::to_string(previous_opens_at) +
+                        ": the cycle key stops at the first locked slot, so "
+                        "the open slots must be a run from slot 1");
+            break;
+        }
         previous_slot = entry.slot;
+        previous_opens_at = opens_at;
         entries.push_back(std::move(entry));
     }
     // `default_cast` is the any-slot handler; behavior, checked and dropped.
@@ -1019,18 +1083,24 @@ bool harvest_weapon(Harvest& h, int tbl, const std::string& where,
         !opt_int(h, tbl, where, "sizez", e.sizez) ||
         !opt_bool(h, tbl, where, "can_drop_floors", e.can_drop_floors) ||
         !opt_number(h, tbl, where, "hp", e.hp) ||
+        !opt_int(h, tbl, where, "rally_radius", e.rally_radius) ||
+        !opt_bool(h, tbl, where, "blocks_placement", e.blocks_placement) ||
         !opt_nullable(h, tbl, where, "sprite", e.sprite) ||
         !opt_string(h, tbl, where, "animation", e.animation) ||
         !harvest_presentation(h, tbl, where, e.presentation) ||
         !harvest_tuning(h, tbl, where, e.tuning) ||
         !check_hook_types(h, tbl, where, oi))
         return false;
+    if (e.rally_radius && *e.rally_radius < 0)
+        return h.fail(where + ".rally_radius " +
+                      std::to_string(*e.rally_radius) +
+                      ": a rally radius cannot be negative (0 = no rally)");
     std::vector<const char*> keys;
     append_common_keys(keys);
     for (const char* k :
          {"fire_sound", "skip_sit_notify", "is_auto_attackable", "flags",
           "init_lifetime", "init_ani_type", "vz", "gravity", "sizez",
-          "can_drop_floors", "hp"})
+          "can_drop_floors", "hp", "rally_radius", "blocks_placement"})
         keys.push_back(k);
     append_hook_keys(oi, keys);
     return check_keys(h, tbl, where, keys);

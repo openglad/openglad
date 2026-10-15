@@ -148,6 +148,33 @@ TEST(FamilyData, switch_special_cycles_the_registry_named_slots)
     ASSERT_NE(nullptr, og::runtime::current_session->myscreen_);
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     og::sim::SimEventLog log;
+    // Presses Switch Special `presses` times on a fresh seated walker of
+    // `fam` and returns the slots it visited, starting from slot 1.
+    const auto cycle = [&](int fam, int presses) {
+        auto w = std::make_unique<walker>();
+        w->set_order_family(Order::Living, static_cast<char>(fam));
+        w->set_user(0);
+        w->set_act_type(ACT_CONTROL);
+        w->stats()->set_level(30);  // (5-1)*3+1 = 13: every slot unlocked
+        w->set_current_special(1);
+        walker* control = w.get();
+
+        std::vector<int> visited{1};
+        for (int press = 0; press < presses; press++)
+        {
+            SimInputDebounce debounce{};
+            PlayerInput pi{};
+            pi.pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
+            sim_process_player_input(pi, control, world, 0, 0, debounce, &log);
+            EXPECT_EQ(w.get(), control);
+            visited.push_back(control->current_special());
+        }
+        return visited;
+    };
+
+    // The shipped default, explicit: with New Specials on every declared
+    // slot is in play, so the registry's named slots are what a press visits.
+    world.new_specials = 1;
     for (int fam = 0; fam < NUM_FAMILIES; fam++)
     {
         const FamilyDescriptor* d = get_family_descriptor(fam);
@@ -160,24 +187,7 @@ TEST(FamilyData, switch_special_cycles_the_registry_named_slots)
                 named++;
         }
 
-        auto w = std::make_unique<walker>();
-        w->set_order_family(Order::Living, static_cast<char>(fam));
-        w->set_user(0);
-        w->set_act_type(ACT_CONTROL);
-        w->stats()->set_level(30);  // (5-1)*3+1 = 13: every slot unlocked
-        w->set_current_special(1);
-        walker* control = w.get();
-
-        std::vector<int> visited{1};
-        for (int press = 0; press < std::max(named, 1); press++)
-        {
-            SimInputDebounce debounce{};
-            PlayerInput pi{};
-            pi.pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
-            sim_process_player_input(pi, control, world, 0, 0, debounce, &log);
-            ASSERT_EQ(w.get(), control);
-            visited.push_back(control->current_special());
-        }
+        const std::vector<int> visited = cycle(fam, std::max(named, 1));
         std::vector<int> expected;
         for (int s = 1; s <= std::max(named, 1); s++)
             expected.push_back(s);
@@ -192,10 +202,21 @@ TEST(FamilyData, switch_special_cycles_the_registry_named_slots)
         }
         if (fam == FAMILY_SKELETON)
         {
-            EXPECT_EQ((std::vector<int>{1, 1}), visited)
-                << "anchor: the skeleton's one special wraps at once";
+            EXPECT_EQ((std::vector<int>{1, 2, 3, 4, 1}), visited)
+                << "anchor: with New Specials on, Tunnel, Dig In, Bone Wall "
+                   "and Reassemble";
         }
     }
+
+    // With New Specials off the slots the setting hides are skipped: the
+    // classic skeleton's one special wraps at once, the soldier is unchanged.
+    world.new_specials = 0;
+    EXPECT_EQ((std::vector<int>{1, 1}), cycle(FAMILY_SKELETON, 1))
+        << "anchor: with New Specials off, the skeleton's one special wraps "
+           "at once";
+    EXPECT_EQ((std::vector<int>{1, 2, 3, 4, 1}), cycle(FAMILY_SOLDIER, 4))
+        << "anchor: the soldier's four specials, whatever the setting";
+    world.new_specials = 1;
 }
 
 

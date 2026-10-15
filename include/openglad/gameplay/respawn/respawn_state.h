@@ -81,14 +81,6 @@ inline bool respawn_pending_player(const RespawnState& respawn,
     return false;
 }
 
-// Whole-seconds estimate for a pending respawn (flat ticks -> seconds; the
-// CTF control-point acceleration retired with the CTF engine). Shared by
-// the SDL and curses HUDs; 12 is the sim cadence in ticks per second.
-inline int respawn_seconds_left(const RespawnEntry& entry)
-{
-    return (static_cast<int>(entry.ticks_left) + 11) / 12;
-}
-
 // --- Classic (difficulty-submenu) respawn engine ---------------------------
 // Player corpses revive at their recorded spawn point (in place when it is
 // blocked), mode 2 additionally respawns unowned AI livings at their

@@ -114,6 +114,7 @@ void apply_lobby_game_start_config(
     save.respawn_mode = static_cast<short>(config_save.respawn_mode);
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
+    save.new_specials = static_cast<short>(config_save.new_specials);
     save.cross_control = static_cast<short>(config_save.cross_control);
     save.infinite_gold = static_cast<short>(config_save.infinite_gold);
     save.time_limit = static_cast<short>(config_save.time_limit);

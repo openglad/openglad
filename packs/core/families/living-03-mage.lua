@@ -285,11 +285,11 @@ og.family("living", {
              train = { strength = 20, dexterity = 15, constitution = 16,
                        intelligence = 6, armor = 50, level = 200 } },
   specials = {
-    { id = "teleport",    name = "TELEPORT",    mp_cost = 15,  alternate = { name = "TELEPORT MARKER" }, cast = teleport },
-    { id = "warp_space",  name = "WARP SPACE",  mp_cost = 60,  cast = starburst },
-    { id = "freeze_time", name = "FREEZE TIME", mp_cost = 500, cast = freeze_time },
-    { id = "energy_wave", name = "ENERGY WAVE", mp_cost = 70,  cast = energy_wave },
-    { id = "heartburst",  name = "HEARTBURST",  mp_cost = 100 },
+    { id = "teleport",    name = "TELEPORT",    mp_cost = 15,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int." }, cast = teleport, detail = "Any mage can teleport randomly away easily." },
+    { id = "warp_space",  name = "WARP SPACE",  mp_cost = 60,  cast = starburst, detail = "Twist the fabric of space around you to deal death to enemies." },
+    { id = "freeze_time", name = "FREEZE TIME", mp_cost = 500, cast = lc.with_rest(freeze_time, 3, "freeze_rest", "FREEZE TIME"), detail = "Freeze time for all but your team and kill enemies with ease." },
+    { id = "energy_wave", name = "ENERGY WAVE", mp_cost = 70,  cast = energy_wave, detail = "Send a growing ripple of energy through walls and foes." },
+    { id = "heartburst",  name = "HEARTBURST",  mp_cost = 100, detail = "Burst your enemies into flame. More magic means a bigger effect." },
     default_cast = heartburst,  -- case 5 and every unmapped slot
   },
   default_weapon = "core:fireball",
@@ -307,7 +307,7 @@ og.family("living", {
   sprite = "mage.png",
   animation = "mage",
   ai_line_of_sight = 7,
-  description = "Mages are slow, can't stand much damage, and are horrible at hand-to-hand combat, but their magical fireballs pack a big punch.\n\nSpecial: Teleport",
+  description = "Mages are slow, can't stand much damage, and are horrible at hand-to-hand combat, but their magical fireballs pack a big punch.",
   names = { "Gandalf", "Saruman", "Radagast", "Alatar", "Pallando",
             "Raistlin", "Fizban", "Mordenkainen", "Merlin", "Harry",
             "Manannan", "Mordack", "Jace" },
@@ -334,9 +334,11 @@ og.family("living", {
     -- Heartburst acquisition radius (px): base + per-level
     heartburst_range_base = 80,
     heartburst_range_per_level = 2,
+    -- FREEZE TIME rests this many ticks between casts, whatever the New Specials setting
+    freeze_rest = 360,
   },
 
-  check_special_ai = check_special_ai,
+  check_special_ai = lc.gate_with_rest(check_special_ai, 3),
   hit_response = hit_response,
   set_difficulty = set_difficulty,
   level_up = level_up,

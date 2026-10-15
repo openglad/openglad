@@ -117,7 +117,7 @@ local function sprinkle_on_hit_target(self, target, owner)
   end
   -- The roll is ALWAYS drawn; only the assignment below is gated, so refresh
   -- policy cannot move the RNG stream. og.i16 matches the short result.
-  local roll = og.i16(og.freeze_duration(owner.level, con))
+  local roll = og.i16(og.div(og.freeze_duration(owner.level, con), 1 + 3 * og.div(self:kit_state() & C.KIT_QUARTER_FREEZE, C.KIT_QUARTER_FREEZE)))
   -- At owner level 21+, do not replace a freeze still above 10 ticks. This
   -- mirrors the charm refresh floor while leaving lower-level thaw cadence
   -- unchanged.

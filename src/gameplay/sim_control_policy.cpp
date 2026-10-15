@@ -200,7 +200,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         for (auto& uptr : level.oblist)
         {
             walker* w = uptr.get();
-            if (w && !w->dead() && !w->dormant() &&
+            if (w && !w->dead() && !w->dormant() && !w->hidden() &&
+                w->possess_link() == 0 &&
                 w->query_order() == Order::Living &&
                 w->user() == -1 &&
                 w->myguy &&
@@ -236,7 +237,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() &&
+        if (w && !w->dead() && !w->dormant() && !w->hidden() &&
+            w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
@@ -252,7 +254,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && !w->dormant() &&
+        if (w && !w->dead() && !w->dormant() && !w->hidden() &&
+            w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team && allowed(w))
@@ -318,7 +321,7 @@ bool sim_reacquire_apply(GameWorld& level, short my_team, short player_index,
 
 bool follow_target_visible(const walker* w) noexcept
 {
-    return w != nullptr && !w->dead() && !w->dormant() &&
+    return w != nullptr && !w->dead() && !w->dormant() && !w->hidden() &&
         w->query_order() == Order::Living;
 }
 

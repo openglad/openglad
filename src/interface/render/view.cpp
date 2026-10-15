@@ -711,6 +711,13 @@ bool viewscreen::redraw()
 	return redraw(&active_screen()->level_runtime_data(), true);
 }
 
+void viewscreen::hold_camera_for_lost_control(std::uint32_t world_tick)
+{
+	// Only a view that was following a walker has a camera to hold.
+	camera_hold_ = camera_followed_control_;
+	camera_hold_tick_ = world_tick;
+}
+
 bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 {
     if (!data) return false;
@@ -757,9 +764,24 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		    camera_y - static_cast<float>(yview - controlob->sizey()) / 2.0f;
 		topx = static_cast<Sint32>(camera_topx_float);
 		topy = static_cast<Sint32>(camera_topy_float);
+		camera_hold_ = false;
+		camera_followed_control_ = true;
+		camera_last_topx_float_ = camera_topx_float;
+		camera_last_topy_float_ = camera_topy_float;
+	}
+	else if (camera_hold_ && vworld.tick_count_ >= camera_hold_tick_)
+	{
+		// The seat's walker just died and no next one is chosen yet: hold
+		// the last camera rather than flash the level's free camera.
+		camera_topx_float = camera_last_topx_float_;
+		camera_topy_float = camera_last_topy_float_;
+		topx = static_cast<Sint32>(camera_topx_float);
+		topy = static_cast<Sint32>(camera_topy_float);
 	}
 	else // no control object now ..
 	{
+		camera_hold_ = false;
+		camera_followed_control_ = false;
 		topx = data->level_visuals().topx;
 		topy = data->level_visuals().topy;
         camera_topx_float = static_cast<float>(topx);

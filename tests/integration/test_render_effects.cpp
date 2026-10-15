@@ -19,6 +19,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
@@ -1019,6 +1020,480 @@ TEST_F(RenderEffects, dormant_walker_casts_no_shadow_until_it_wakes)
     ASSERT_TRUE(do_redraw(vs));
     EXPECT_TRUE(trace_contains("effects", "shadows floor=0 n=2"))
         << "once awake, the delayed spawn casts its shadow too";
+}
+
+// --- Hidden walkers and invisible things, per viewer ---------------------
+//
+// New Specials hides a walker (a dug-in skeleton, a ghost riding its host)
+// and lays invisible things (the thief's mine). Each is drawn only to its
+// own team. These tests draw one scene three times: from a viewer on the
+// thing's team, from a viewer on another team, and from a spectator camera
+// (no control), and compare the pixels where the thing stands.
+namespace
+{
+
+enum class Viewer
+{
+    OwnTeam,
+    OtherTeam,
+    Spectator,
+};
+
+struct ViewerScene
+{
+    viewscreen* vs = nullptr;
+    walker* own = nullptr;   // team 0 viewer
+    walker* other = nullptr; // team 1 viewer, standing on the same spot
+    Sint32 topx = 0;
+    Sint32 topy = 0;
+};
+
+// Two viewers on one spot (so every camera frames the same pixels) and the
+// effects that could paint near the target switched off.
+ViewerScene make_viewer_scene(viewscreen* vs)
+{
+    ViewerScene scene;
+    scene.vs = vs;
+    cfg.apply_setting("effects", "shadows", "off");
+    cfg.apply_setting("effects", "reflections", "off");
+    cfg.apply_setting("effects", "weather", "off");
+    cfg.apply_setting("effects", "screen_shake", "off");
+    cfg.apply_setting("effects", "fire_glow", "off");
+    cfg.apply_setting("effects", "trails", "off");
+    cfg.apply_setting("effects", "dust", "off");
+    scene.own = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    scene.other = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    if (scene.own == nullptr || scene.other == nullptr)
+        return scene;
+    scene.own->setxy(160, 120);
+    scene.own->set_team_num(0);
+    scene.other->setxy(160, 120);
+    scene.other->set_team_num(1);
+    vs->control = scene.own;
+    do_redraw(vs); // settle the camera on the shared spot
+    scene.topx = vs->topx;
+    scene.topy = vs->topy;
+    return scene;
+}
+
+// Redraw from one viewer and grab the pixels around `at`'s world spot (a
+// 4-pixel border so an outline or a stray pixel is caught too).
+std::vector<RGB> view_rect(ViewerScene& scene, Viewer viewer,
+                           const walker& at)
+{
+    viewscreen* const vs = scene.vs;
+    switch (viewer)
+    {
+    case Viewer::OwnTeam:
+        vs->control = scene.own;
+        break;
+    case Viewer::OtherTeam:
+        vs->control = scene.other;
+        break;
+    case Viewer::Spectator:
+        vs->control = nullptr;
+        scr()->level_runtime_data().level_visuals().topx = scene.topx;
+        scr()->level_runtime_data().level_visuals().topy = scene.topy;
+        break;
+    }
+    EXPECT_TRUE(do_redraw(vs));
+    EXPECT_EQ(scene.topx, vs->topx) << "every viewer frames the same spot";
+    EXPECT_EQ(scene.topy, vs->topy);
+    Sint32 sx = 0, sy = 0;
+    ground_anchor(at, vs, sx, sy);
+    return grab_rect(sx - 4, sy - 4, at.sizex() + 8, at.sizey() + 8);
+}
+
+} // namespace
+
+TEST_F(RenderEffects, hidden_walker_draws_only_for_its_team)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const digger = scr()->world().add_ob(Order::Living,
+                                                 FAMILY_SKELETON);
+    ASSERT_NE(nullptr, digger);
+    digger->setxy(200, 120);
+    digger->set_team_num(0);
+    ASSERT_NE(nullptr, digger->bmp_data());
+
+    // The walker in plain sight, and the spot with nothing on it (a dead
+    // walker is never painted).
+    const std::vector<RGB> plain = view_rect(scene, Viewer::OwnTeam, *digger);
+    digger->set_dead(1);
+    const std::vector<RGB> empty = view_rect(scene, Viewer::OwnTeam, *digger);
+    digger->set_dead(0);
+    ASSERT_FALSE(rects_equal(empty, plain)) << "the skeleton must paint";
+
+    digger->set_hidden(true);
+    const std::vector<RGB> own = view_rect(scene, Viewer::OwnTeam, *digger);
+    const std::vector<RGB> other =
+        view_rect(scene, Viewer::OtherTeam, *digger);
+    const std::vector<RGB> spectator =
+        view_rect(scene, Viewer::Spectator, *digger);
+
+    EXPECT_FALSE(rects_equal(own, empty))
+        << "its own team still sees where it is";
+    EXPECT_FALSE(rects_equal(own, plain))
+        << "its own team sees a dither, not the plain sprite";
+    EXPECT_TRUE(rects_equal(other, empty))
+        << "another team sees bare ground";
+    EXPECT_TRUE(rects_equal(spectator, empty))
+        << "a spectator camera sees bare ground";
+}
+
+// A ghost riding a possessed body (hidden, linked to its host) is drawn to
+// nobody, its own team included: the seat is in the host. A dug-in
+// skeleton (hidden, no link) keeps its own-team dither, pinned above.
+//
+// RED (run by hand): the `w.hidden() && w.possess_link() != 0` skip removed
+// from draw_walker -> its own team sees the hidden-walker dither.
+TEST_F(RenderEffects, possessing_rider_is_drawn_to_nobody)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const rider = scr()->world().add_ob(Order::Living, FAMILY_GHOST);
+    walker* const host = scr()->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(rider != nullptr && host != nullptr);
+    rider->setxy(200, 120);
+    rider->set_team_num(0);
+    host->setxy(100, 200);
+    host->set_team_num(0);
+    ASSERT_NE(nullptr, rider->bmp_data());
+
+    rider->set_dead(1);
+    const std::vector<RGB> empty = view_rect(scene, Viewer::OwnTeam, *rider);
+    rider->set_dead(0);
+
+    rider->set_hidden(true);
+    const std::vector<RGB> dug_in = view_rect(scene, Viewer::OwnTeam, *rider);
+    ASSERT_FALSE(rects_equal(dug_in, empty))
+        << "a hidden walker with no link is still drawn for its team";
+
+    rider->set_possess_link(host->entity_id());
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::OwnTeam, *rider), empty))
+        << "the rider's own team sees no ghost";
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::OtherTeam, *rider), empty));
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::Spectator, *rider), empty));
+    rider->set_possess_link(0u);
+}
+
+// A possessed body is drawn whole with a one-pixel ring that twinkles
+// between WHITE and its team colour every three game ticks
+// (screen::framecount), for its own team, the other team and a spectator,
+// and still in the trees, where an elf would otherwise fade from sight.
+//
+// RED (run by hand): `framecount / 3` replaced by `0 / 3` -> the frame 0 and
+// frame 3 views are the same picture. Second RED: the possessed branch
+// moved below the FORESTWALK branch -> the host in the trees reads the same
+// faded picture with and without the link, in both frames.
+TEST_F(RenderEffects, possessed_host_twinkles_for_everyone)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "off");
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const host = scr()->world().add_ob(Order::Living, FAMILY_ELF);
+    walker* const rider = scr()->world().add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_TRUE(host != nullptr && rider != nullptr);
+    host->setxy(200, 120);
+    host->set_team_num(0);
+    rider->setxy(200, 120);
+    rider->set_team_num(0);
+    rider->set_hidden(true);
+    rider->set_possess_link(host->entity_id());
+    ASSERT_NE(nullptr, host->bmp_data());
+
+    struct FramecountGuard
+    {
+        Uint32 saved = scr()->framecount;
+        ~FramecountGuard() { scr()->framecount = saved; }
+    } framecount_guard;
+
+    const auto at_frame = [&](Uint32 frame, Viewer viewer) {
+        scr()->framecount = frame;
+        return view_rect(scene, viewer, *host);
+    };
+
+    for (const Viewer viewer :
+         {Viewer::OwnTeam, Viewer::OtherTeam, Viewer::Spectator})
+    {
+        host->set_possess_link(0u);
+        const std::vector<RGB> plain = at_frame(0, viewer);
+        host->set_possess_link(rider->entity_id());
+        host->set_possess_ticks(300);
+        const std::vector<RGB> white = at_frame(0, viewer);
+        const std::vector<RGB> team = at_frame(3, viewer);
+        const std::vector<RGB> white_again = at_frame(6, viewer);
+        const int v = static_cast<int>(viewer);
+        EXPECT_FALSE(rects_equal(white, plain)) << "viewer " << v << ": a ring";
+        EXPECT_FALSE(rects_equal(team, plain)) << "viewer " << v;
+        EXPECT_FALSE(rects_equal(white, team))
+            << "viewer " << v << ": the ring changes colour on tick 3";
+        EXPECT_TRUE(rects_equal(white, white_again))
+            << "viewer " << v << ": and back on tick 6";
+    }
+
+    // The host in the trees: an elf there fades to a forest dither for
+    // every viewer, but a possessed one keeps its twinkling ring.
+    host->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+    GameWorld& world = scr()->world();
+    for (int cy = 120 / GRID_SIZE; cy <= (120 + host->sizey()) / GRID_SIZE; ++cy)
+        for (int cx = 200 / GRID_SIZE; cx <= (200 + host->sizex()) / GRID_SIZE; ++cx)
+            world.grid.data[static_cast<std::size_t>(cy * world.grid.w + cx)] =
+                PIX_TREE_M1;
+    ASSERT_EQ(TYPE_TREES, world.mysmoother.query_genre_x_y(200 / GRID_SIZE,
+                                                            120 / GRID_SIZE));
+    host->set_possess_link(0u);
+    const std::vector<RGB> faded = at_frame(0, Viewer::OtherTeam);
+    host->set_possess_link(rider->entity_id());
+    const std::vector<RGB> trees_white = at_frame(0, Viewer::OtherTeam);
+    const std::vector<RGB> trees_team = at_frame(3, Viewer::OtherTeam);
+    EXPECT_FALSE(rects_equal(trees_white, faded))
+        << "a possessed elf in the trees is drawn, not faded";
+    EXPECT_FALSE(rects_equal(trees_white, trees_team))
+        << "and its ring still twinkles";
+}
+
+TEST_F(RenderEffects, hidden_walker_casts_no_shadow_or_reflection)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "shadows", "on");
+    cfg.apply_setting("effects", "reflections", "on");
+    cfg.apply_setting("effects", "weather", "off");
+
+    // All-glass floor so every eligible walker would reflect.
+    GameWorld& world = scr()->world();
+    const std::size_t cells =
+        static_cast<std::size_t>(world.grid.w) * world.grid.h;
+    std::fill(world.grid.data.get(), world.grid.data.get() + cells,
+              static_cast<unsigned char>(PIX_GLASS));
+
+    walker* const control = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const digger = world.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, digger);
+    control->setxy(160, 120);
+    digger->setxy(200, 120);
+    digger->set_team_num(control->team_num()); // its own team looks on
+    vs->control = control;
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera
+
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_TRUE(trace_contains("effects", "shadows floor=0 n=2"))
+        << "both walkers cast a shadow while the skeleton is up";
+    EXPECT_TRUE(trace_contains("effects", "reflections floor=0 n=2"));
+
+    digger->set_hidden(true);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_TRUE(trace_contains("effects", "shadows floor=0 n=1"))
+        << "a hidden walker casts no shadow, even for its own team";
+    EXPECT_TRUE(trace_contains("effects", "reflections floor=0 n=1"))
+        << "and no reflection";
+    EXPECT_FALSE(draw_walker_shadow(*digger, vs));
+    EXPECT_FALSE(draw_walker_reflection(*digger, vs, world.grid));
+}
+
+TEST_F(RenderEffects,
+       invisible_fx_draws_only_for_its_team_and_the_cloak_is_unchanged)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    // The thief's mine (core:mine, effect wire id 13), laid by team 0 with
+    // the small fixed invisibility its cast gives it (mine_shimmer, 20).
+    const int mine_family =
+        og::families::resolve_family_string_id(Order::FX, "core:mine");
+    ASSERT_EQ(13, mine_family) << "core:mine is effect wire id 13";
+    walker* const mine = scr()->world().add_ob(Order::FX, mine_family);
+    ASSERT_NE(nullptr, mine);
+    ASSERT_EQ(Order::FX, mine->query_order());
+    ASSERT_EQ(mine_family, mine->family());
+    mine->setxy(200, 120);
+    mine->set_team_num(0);
+    ASSERT_NE(nullptr, mine->bmp_data());
+
+    const std::vector<RGB> plain = view_rect(scene, Viewer::OtherTeam, *mine);
+    mine->set_dead(1); // off the draw lists' paint path: the bare ground
+    const std::vector<RGB> empty = view_rect(scene, Viewer::OtherTeam, *mine);
+    mine->set_dead(0);
+    ASSERT_FALSE(rects_equal(empty, plain)) << "the mine must paint";
+
+    mine->set_invisibility_left(20);
+    const std::vector<RGB> own = view_rect(scene, Viewer::OwnTeam, *mine);
+    const std::vector<RGB> other = view_rect(scene, Viewer::OtherTeam, *mine);
+    const std::vector<RGB> spectator =
+        view_rect(scene, Viewer::Spectator, *mine);
+    EXPECT_FALSE(rects_equal(own, empty)) << "its own team sees a shimmer";
+    EXPECT_FALSE(rects_equal(own, plain)) << "a shimmer, not the full sprite";
+    EXPECT_TRUE(rects_equal(other, empty))
+        << "another team sees bare ground where the mine lies";
+    EXPECT_TRUE(rects_equal(spectator, empty))
+        << "so does a spectator camera";
+
+    // The thief's cloak is a living's invisibility and keeps its old look:
+    // the other team draws the full sprite, a spectator camera still draws
+    // it (outlined), its own team a dither. This thief is on team 1, so the
+    // team-0 viewer is its foe.
+    mine->set_dead(1);
+    walker* const thief = scr()->world().add_ob(Order::Living, FAMILY_THIEF);
+    ASSERT_NE(nullptr, thief);
+    thief->setxy(200, 120);
+    thief->set_team_num(1);
+    const std::vector<RGB> foe_plain =
+        view_rect(scene, Viewer::OwnTeam, *thief);
+    const std::vector<RGB> ally_plain =
+        view_rect(scene, Viewer::OtherTeam, *thief);
+    thief->set_dead(1);
+    const std::vector<RGB> thief_ground =
+        view_rect(scene, Viewer::Spectator, *thief);
+    thief->set_dead(0);
+    thief->set_invisibility_left(50);
+    EXPECT_TRUE(rects_equal(view_rect(scene, Viewer::OwnTeam, *thief),
+                            foe_plain))
+        << "a cloaked thief still draws in full for the other team";
+    EXPECT_FALSE(rects_equal(view_rect(scene, Viewer::Spectator, *thief),
+                             thief_ground))
+        << "a spectator camera still sees a cloaked thief";
+    EXPECT_FALSE(rects_equal(view_rect(scene, Viewer::OtherTeam, *thief),
+                             ally_plain))
+        << "its own team sees the cloak's dither";
+}
+
+namespace
+{
+
+// Pixels of `rect` whose colour the bare ground under it does not have at
+// all: what a sprite, an outline or a dither adds. A heat-haze copy of the
+// ground adds none.
+int foreign_pixels(const std::vector<RGB>& rect,
+                   const std::vector<RGB>& ground)
+{
+    int n = 0;
+    for (const RGB& c : rect)
+    {
+        const bool on_ground =
+            std::any_of(ground.begin(), ground.end(),
+                        [&](const RGB& g) { return same(c, g); });
+        if (!on_ground)
+            ++n;
+    }
+    return n;
+}
+
+} // namespace
+
+// PHASE: a phased ghost (BIT_PHANTOM on a living, set by the ghost's PHASE
+// special) is drawn as a light dither with its team's outline for every
+// viewer -- its own team, the other team and a spectator camera -- so a
+// player can see where the untouchable ghost went. The classic heat-haze
+// copy of the background stays for the classic things that carry the bit
+// (the wave weapons, the circle of protection, the magic shield): on the
+// ground it adds no colour of its own. Clearing the bit gives the plain
+// sprite back.
+//
+// Perturbation (the old draw: every BIT_PHANTOM walker in PHANTOM_MODE with
+// SHIFT_RANDOM): RED -- the phased ghost adds 0 pixels of its own colour in
+// all three viewports.
+TEST_F(RenderEffects, phased_ghost_shows_a_spectral_look_to_every_viewer)
+{
+    viewscreen* const vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    RenderSceneGuard scene_guard(vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "mini_hp_bar", "off");
+    ViewerScene scene = make_viewer_scene(vs);
+    ASSERT_NE(nullptr, scene.own);
+    ASSERT_NE(nullptr, scene.other);
+
+    walker* const ghost = scr()->world().add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost);
+    ghost->setxy(200, 120);
+    ghost->set_team_num(0);
+    ASSERT_NE(nullptr, ghost->bmp_data());
+    ASSERT_FALSE(ghost->stats()->query_bit_flags(BIT_PHANTOM));
+
+    constexpr Viewer kViewers[] = {Viewer::OwnTeam, Viewer::OtherTeam,
+                                   Viewer::Spectator};
+    const char* const kNames[] = {"own team", "other team", "spectator"};
+
+    ghost->set_dead(1);
+    const std::vector<RGB> ground = view_rect(scene, Viewer::OwnTeam, *ghost);
+    ghost->set_dead(0);
+    std::vector<std::vector<RGB>> plain;
+    for (Viewer v : kViewers)
+        plain.push_back(view_rect(scene, v, *ghost));
+    for (std::size_t i = 0; i < plain.size(); ++i)
+        ASSERT_GT(foreign_pixels(plain[i], ground), 0)
+            << kNames[i] << ": the ghost must paint";
+
+    ghost->stats()->set_bit_flags(BIT_PHANTOM, 1);
+    for (std::size_t i = 0; i < std::size(kViewers); ++i)
+    {
+        const std::vector<RGB> phased = view_rect(scene, kViewers[i], *ghost);
+        EXPECT_GT(foreign_pixels(phased, ground), 0)
+            << kNames[i] << ": the phased ghost is still seen";
+        EXPECT_FALSE(rects_equal(phased, plain[i]))
+            << kNames[i] << ": as a spectral dither, not the plain sprite";
+    }
+
+    ghost->stats()->set_bit_flags(BIT_PHANTOM, 0);
+    for (std::size_t i = 0; i < std::size(kViewers); ++i)
+        EXPECT_TRUE(rects_equal(view_rect(scene, kViewers[i], *ghost),
+                                plain[i]))
+            << kNames[i] << ": unphased, the ghost draws as it always did";
+
+    // The classic phantom: a wave carries the bit from its family and keeps
+    // the heat-haze copy of the ground.
+    ghost->set_dead(1);
+    walker* const wave = scr()->world().add_ob(Order::Weapon, FAMILY_WAVE);
+    ASSERT_NE(nullptr, wave);
+    wave->setxy(200, 120);
+    wave->set_team_num(0);
+    ASSERT_NE(nullptr, wave->bmp_data());
+    ASSERT_TRUE(wave->stats()->query_bit_flags(BIT_PHANTOM))
+        << "the wave is a classic phantom";
+    for (std::size_t i = 0; i < std::size(kViewers); ++i)
+        EXPECT_EQ(0, foreign_pixels(view_rect(scene, kViewers[i], *wave),
+                                    ground))
+            << kNames[i] << ": the wave is a haze over the ground";
+    wave->stats()->set_bit_flags(BIT_PHANTOM, 0);
+    EXPECT_GT(foreign_pixels(view_rect(scene, Viewer::OwnTeam, *wave), ground),
+              0)
+        << "without the bit the wave paints its sprite (the haze check bites)";
 }
 
 // effects "hit_anim" off hides the hit-spark FX in the tile draw: the call

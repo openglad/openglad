@@ -212,6 +212,9 @@ void cleanup_dead_view_controls(screen& self)
         {
             continue;
         }
+        // The view keeps its camera on this frame instead of flashing the
+        // map's corner before the seat moves to its next walker.
+        self.viewob[i]->hold_camera_for_lost_control(world.tick_count_);
         self.viewob[i]->control = nullptr;
     }
 }
@@ -1460,7 +1463,8 @@ void screen::sync_camera_views()
 	// accepted multi-floor behavior for a camera pane).
 	walker* target =
 	    world_.find_by_id(static_cast<std::uint32_t>(camera_entity_id_));
-	if (target != nullptr && (target->dead() || target->dormant()))
+	if (target != nullptr &&
+	    (target->dead() || target->dormant() || target->hidden()))
 		target = nullptr;
 	camera_view_->control = target;
 }
@@ -1734,6 +1738,8 @@ void screen::sync_world_from_save_data()
         og::mode::current_progression().clamp_respawn_mode(save_data.respawn_mode);
     world_.generator_rate = save_data.generator_rate;
     world_.keep_fallen_heroes = save_data.keep_fallen_heroes;
+    // New Specials, clamped sim-side (a crafted save reaches it unchecked).
+    world_.new_specials = save_data.new_specials != 0 ? 1 : 0;
     world_.current_scenario = save_data.scen_num;
     for (int i = 0; i < 4; ++i)
         world_.m_score[i] = save_data.m_score[i];

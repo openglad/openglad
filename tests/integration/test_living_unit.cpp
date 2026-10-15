@@ -502,4 +502,36 @@ TEST(LivingUnit, follow_ally_spends_its_act_on_the_follow_command_not_its_ai)
         << "control: ACT_RANDOM draws the sim RNG whenever it runs";
     EXPECT_EQ(nullptr, ally->leader()) << "control: nothing followed";
 }
+
+// A speed bonus of N ticks is N ticks of speed: the counter counts down to
+// zero and the bonus rides every one of them. The 2002 rule spent a tick
+// only while more than one was left, so 3 gave two fast ticks and the
+// field stayed at 1 for the rest of the level.
+//
+// RED (the 2002 `> 1` in living::act) printed
+//   Expected equality of these values: 3 fast_ticks Which is: 2
+//   Expected equality of these values: 0 self->speed_bonus_left() Which is: 1
+TEST(LivingUnit, speed_bonus_counts_down_to_zero_and_rides_every_tick)
+{
+    LivingR14Fixture fx;
+    living* self = add_living(fx, FAMILY_SOLDIER, 0, 0, 0);
+    ASSERT_NE(nullptr, self);
+    self->set_act_type(ACT_CONTROL);
+    self->set_ani_type(ANI_WALK);
+    self->set_speed_bonus(2.0f);
+    self->set_speed_bonus_left(3);
+
+    int fast_ticks = 0;
+    for (int tick = 0; tick < 6; ++tick)
+    {
+        self->set_dead(0);
+        (void)self->act();
+        if (self->stepsize() == 5.0f)
+            ++fast_ticks;
+        else
+            EXPECT_EQ(3.0f, self->stepsize()) << "tick " << tick;
+    }
+    EXPECT_EQ(3, fast_ticks);
+    EXPECT_EQ(0, self->speed_bonus_left());
+}
 } // namespace detail_living_r14

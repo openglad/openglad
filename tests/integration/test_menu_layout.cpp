@@ -4001,17 +4001,39 @@ void check_fx_options_screen(button* buttons, int count,
 } // namespace
 
 // GAMEPLAY FX subscreen: unique BACK id + the two gameplay-feel toggles
-// (stable ids — injector flows click these by id) in a centered column.
+// and the New Specials row (stable ids — injector flows click these by id)
+// in a centered column.
 TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
 {
     static const ExpectedFxButton kExpected[] = {
         {"gameplay_fx_back", "BACK", 10, 10},
         {"toggle_hit_recoil", "Hit recoil", 115, 35},
         {"toggle_attack_lunge", "Attack lunge", 115, 58},
+        {"toggle_new_specials", "New Specials", 115, 81},
     };
     button* buttons = picker_gameplay_fx_options_buttons();
     const int count = picker_gameplay_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 3, "gameplay_fx_options");
+    check_fx_options_screen(buttons, count, kExpected, 4, "gameplay_fx_options");
+    if (count != 4)
+        return;
+
+    // The toggles are one column at the effects-grid 23px pitch, so the new
+    // row sits on the grid rather than at a coordinate of its own.
+    for (int i = 2; i < count; ++i)
+    {
+        EXPECT_EQ(buttons[1].x, buttons[i].x) << buttons[i].id;
+        EXPECT_EQ(buttons[1].sizex, buttons[i].sizex) << buttons[i].id;
+        EXPECT_EQ(buttons[i - 1].y + 23, buttons[i].y) << buttons[i].id;
+    }
+    EXPECT_EQ(button_action_id(ButtonAction::ToggleNewSpecials), buttons[3].myfun);
+    EXPECT_EQ(126, button_action_id(ButtonAction::ToggleNewSpecials));
+
+    // The vertical cycle runs BACK -> each toggle -> BACK, both ways.
+    EXPECT_EQ(1, buttons[0].nav.down);
+    EXPECT_EQ(3, buttons[0].nav.up) << "BACK links up to New Specials";
+    EXPECT_EQ(3, buttons[2].nav.down) << "Attack lunge links down to New Specials";
+    EXPECT_EQ(2, buttons[3].nav.up);
+    EXPECT_EQ(0, buttons[3].nav.down) << "New Specials closes the cycle at BACK";
 }
 
 // UI FX subscreen: unique BACK id + the three overlay toggles in a centered

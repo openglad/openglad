@@ -23,6 +23,7 @@ set(OG_SCRIPT_SOURCES
     ${SRC_DIR}/gameplay/script/pack_scripts.cpp
     ${SRC_DIR}/gameplay/script/world_scripts.cpp
     ${SRC_DIR}/gameplay/script/bindings_entity.cpp
+    ${SRC_DIR}/gameplay/script/bindings_kit.cpp
     ${SRC_DIR}/gameplay/script/campaign_hooks.cpp
     ${SRC_DIR}/gameplay/script/family_decl.cpp
     ${SRC_DIR}/gameplay/script/script_raise.cpp
@@ -90,6 +91,11 @@ set(OG_GAMEPLAY_ENTITY_SOURCES
     ${SRC_DIR}/gameplay/walker_pathing.cpp
     ${SRC_DIR}/gameplay/walker_specials.cpp
     ${SRC_DIR}/gameplay/weap.cpp
+    ${SRC_DIR}/gameplay/specials_view.cpp
+    ${SRC_DIR}/gameplay/possession.cpp
+    ${SRC_DIR}/gameplay/fearless.cpp
+    ${SRC_DIR}/gameplay/timed_effects.cpp
+    ${SRC_DIR}/gameplay/placement.cpp
 )
 
 # gameplay: GameWorld and the per-tick services around it.

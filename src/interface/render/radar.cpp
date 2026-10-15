@@ -338,6 +338,13 @@ short radar::draw(LevelRuntimeData* data)
 		    // Delayed spawns: dormant walkers are not in the world yet.
 		    if (ob && ob->dormant())
 		        continue;
+		    // A hidden walker blips only for its own team, and a ghost
+		    // riding a possessed body for nobody: the host's blip is the
+		    // seat's, and a second one on top of it says nothing.
+		    if (ob && ob->hidden() &&
+		        (ob->possess_link() != 0 || control == nullptr ||
+		         ob->team_num() != obteam))
+		        continue;
 		    // Multi-floor: only blip entities on the floor the radar shows
 		    // (the terrain floor baked just above).
 		    if (ob && data->world().floor_count() > 1 &&
@@ -501,7 +508,9 @@ short radar::draw(LevelRuntimeData* data)
     for (auto& uptr : data->world().fxlist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead() && !ob->dormant())
+		if (ob && !ob->dead() && !ob->dormant() &&
+		    !(ob->hidden() &&
+		      (control == nullptr || ob->team_num() != obteam)))
 		{
 			if (data->world().floor_count() > 1 &&
 			    static_cast<int>(ob->floor()) != static_cast<int>(bmp_floor_))
@@ -648,6 +657,10 @@ short radar::draw(LevelRuntimeData* data)
 				const walker* target = beacon_world.find_by_id(
 					static_cast<std::uint32_t>(beacon.entity_id));
 				if (target == nullptr || target->dead() || target->dormant())
+					continue;
+				// A hidden beacon target gives nothing away to other teams.
+				if (target->hidden() &&
+				    (control == nullptr || target->team_num() != obteam))
 					continue;
 				if (beacon_world.floor_count() > 1 &&
 				    static_cast<int>(target->floor()) !=

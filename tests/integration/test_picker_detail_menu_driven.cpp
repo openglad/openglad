@@ -192,8 +192,9 @@ constexpr int kAbilityTextY2 = 163;
 // create_detail_menu returns MENU_REDRAW from FOUR places (the two early-outs
 // for an unseated/empty slot, the promote branch, and the BACK tail), so the
 // return code alone proves nothing. Pin the painted frame: the loop must have
-// run, drawn the abilities dialog, and rendered the family's OWN ability text
-// (a family with no ability table paints the panel and no text at all).
+// run, drawn the abilities dialog, and rendered the family's OWN ability text,
+// composed from the specials table as the session's New Specials setting
+// sees it (the skeleton's page grows with the setting on).
 TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abilities_then_exits_on_back)
 {
     PickerStateGuard guard;
@@ -205,17 +206,21 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abiliti
     {
         int family;
         const char* what;
-        bool has_ability_table;   // get_family_detail() knows this family
+        short new_specials;       // SaveData::new_specials for this pass
     };
     const Case cases[] = {
-        { FAMILY_SOLDIER,  "soldier",  true  },
-        { FAMILY_THIEF,    "thief",    true  },
-        { FAMILY_SKELETON, "skeleton", false },
+        { FAMILY_SOLDIER,  "soldier",                1 },
+        { FAMILY_THIEF,    "thief",                  1 },
+        { FAMILY_SKELETON, "skeleton (new specials)", 1 },
+        { FAMILY_SKELETON, "skeleton (classic)",      0 },
     };
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const short saved_new_specials = save.new_specials;
     std::size_t soldier_ability_ink = 0;
     std::size_t thief_ability_ink = 0;
+    std::size_t skeleton_on_ink = 0;
+    std::size_t skeleton_off_ink = 0;
 
     for (const Case& c : cases)
     {
@@ -224,6 +229,7 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abiliti
         save.team_list[0].reset(new guy(c.family));
         save.team_list[0]->name = "TEAM_GUY";
         save.team_list[0]->level = 10;
+        save.new_specials = c.new_specials;
         og::runtime::current_session->current_guy_ =
             std::make_unique<guy>(*save.team_list[0]);
 
@@ -262,24 +268,22 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_paints_the_seated_family_abiliti
         EXPECT_GT(header_red, 40u)
             << "the detail loop must paint its 'Character Special Abilities' "
                "header for " << c.what;
-        if (c.has_ability_table)
-        {
-            EXPECT_GT(ability_ink, 40u)
-                << "render_family_abilities must write the class line and "
-                   "ability text for " << c.what;
-        }
-        else
-        {
-            EXPECT_EQ(0u, ability_ink)
-                << "a family with no ability table paints the panel and no "
-                   "ability text (" << c.what << ")";
-        }
+        EXPECT_GT(ability_ink, 40u)
+            << "render_family_abilities must write the class line and "
+               "ability text for " << c.what;
 
         if (c.family == FAMILY_SOLDIER)
             soldier_ability_ink = ability_ink;
         if (c.family == FAMILY_THIEF)
             thief_ability_ink = ability_ink;
+        if (c.family == FAMILY_SKELETON)
+            (c.new_specials != 0 ? skeleton_on_ink : skeleton_off_ink) = ability_ink;
     }
+    save.new_specials = saved_new_specials;
+
+    EXPECT_NE(skeleton_on_ink, skeleton_off_ink)
+        << "the page reads the setting: with New Specials on the skeleton's "
+           "left column carries DIG IN under TUNNEL, with it off TUNNEL alone";
 
     EXPECT_NE(soldier_ability_ink, thief_ability_ink)
         << "the panel text is derived from the seated family, not a fixed "
@@ -990,4 +994,162 @@ TEST(PickerDetailMenuDriven, picker_family_name_copy_labels_each_short_name_bran
         << "a pack short_name wins over the display name";
     EXPECT_STREQ("BEAST", family_name_copy(static_cast<short>(99)))
         << "no descriptor at all -> BEAST";
+}
+
+// ---------------------------------------------------------------------------
+// The DETAILS stills for the pull request: TRAIN -> DETAILS for a level-10
+// skeleton, frozen from the real detail loop, once with New Specials on
+// (four blocks, two of them with a Shift line) and once with it off (Tunnel
+// alone). The oracles always run on the frozen bytes; the two P6 files are
+// written only when OG_FX_CAPTURE_DIR is set, into
+// $OG_FX_CAPTURE_DIR/details_stills/ (scripts turn them into PNGs).
+// ---------------------------------------------------------------------------
+#include "test_frame_capture.h"
+
+#include <string>
+
+namespace
+{
+struct StillArgs
+{
+    const char* name = "";
+    const char* dir = nullptr;
+    std::atomic<bool>* done = nullptr;
+};
+
+// Waits for the detail menu, freezes the next presented frame, then clicks
+// BACK exactly as injector_thread_exit_detail_menu does.
+int still_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    StillArgs* a = static_cast<StillArgs*>(data);
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (SDL_GetTicks() < deadline && !has_interactable("back"))
+        SDL_Delay(5);
+    capture_presented_frame(a->name, a->dir);
+
+    const auto [mapped_x, mapped_y] = ui_canvas_to_window(20.0f, 180.0f);
+    const int click_x = static_cast<int>(std::lround(mapped_x));
+    const int click_y = static_cast<int>(std::lround(mapped_y));
+    do
+    {
+        og::input_native::push_mouse_button_event(true, og::input_native::kMouseButtonLeft, click_x, click_y);
+        SDL_Delay(5);
+    } while (a->done && !a->done->load(std::memory_order_relaxed));
+    og::input_native::push_mouse_button_event(false, og::input_native::kMouseButtonLeft, click_x, click_y);
+    return 0;
+}
+
+// Pixels in the box that are not the box's most common colour (the panel's
+// own background): the text drawn on it.
+std::size_t frozen_ink(const std::vector<Uint8>& rgb, int x1, int x2, int y1,
+                       int y2)
+{
+    std::vector<std::pair<std::uint32_t, std::size_t>> counts;
+    auto colour_at = [&rgb](int x, int y) {
+        const std::size_t i = (static_cast<std::size_t>(y) * 320u +
+                               static_cast<std::size_t>(x)) * 3u;
+        return (static_cast<std::uint32_t>(rgb[i]) << 16) |
+               (static_cast<std::uint32_t>(rgb[i + 1]) << 8) | rgb[i + 2];
+    };
+    for (int y = y1; y <= y2; ++y)
+        for (int x = x1; x <= x2; ++x)
+        {
+            const std::uint32_t c = colour_at(x, y);
+            bool found = false;
+            for (auto& [colour, n] : counts)
+                if (colour == c)
+                {
+                    ++n;
+                    found = true;
+                }
+            if (!found)
+                counts.emplace_back(c, 1u);
+        }
+    std::size_t total = 0;
+    std::size_t most = 0;
+    for (const auto& [colour, n] : counts)
+    {
+        total += n;
+        most = std::max(most, n);
+    }
+    return total - most;
+}
+} // namespace
+
+TEST(PickerDetailMenuDriven, zz_capture_details_stills)
+{
+    PickerStateGuard guard;
+    TeamSlotGuard slot_guard(0);
+    PickerLobbyShutdownGuard lobby_guard;
+    CanvasRoutingGuard canvas_guard;
+    take_captured_frames(); // answer only for this test's stills
+
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    const std::string dir =
+        base != nullptr && base[0] != '\0' ? std::string(base) + "/details_stills" : "";
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const short saved_new_specials = save.new_specials;
+    struct Pass
+    {
+        const char* name;
+        short new_specials;
+    };
+    const Pass passes[] = {{"details_skeleton_on", 1}, {"details_skeleton_off", 0}};
+    for (const Pass& p : passes)
+    {
+        og::runtime::current_session->editguy_ = 0;
+        save.team_size = 1;
+        save.team_list[0].reset(new guy(FAMILY_SKELETON));
+        save.team_list[0]->name = "TEAM_GUY";
+        save.team_list[0]->level = 10;
+        save.new_specials = p.new_specials;
+        og::runtime::current_session->current_guy_ =
+            std::make_unique<guy>(*save.team_list[0]);
+        E_Screen->set_active_canvas(CanvasTarget::UI);
+        SDL_FillSurfaceRect(E_Screen->render, nullptr, 0);
+
+        KeyStateGuard ks;
+        std::atomic<bool> done{false};
+        prepare_detail_menu_mouse_click();
+        StillArgs args{p.name, dir.empty() ? nullptr : dir.c_str(), &done};
+        SDL_Thread* th = SDL_CreateThread(still_injector, "details_still", &args);
+        ASSERT_TRUE(th != nullptr) << p.name;
+        const Sint32 r = create_detail_menu(save.team_list[0].get());
+        done.store(true, std::memory_order_relaxed);
+        SDL_WaitThread(th, nullptr);
+        clear_events();
+        EXPECT_EQ(2, (int)r) << p.name << ": the detail menu closed on BACK";
+    }
+    save.new_specials = saved_new_specials;
+    save.team_list[0].reset();
+    save.team_size = 0;
+
+    const std::vector<CapturedFrame> frames = take_captured_frames();
+    ASSERT_EQ(2u, frames.size()) << "both stills reached their capture";
+    for (const CapturedFrame& f : frames)
+    {
+        ASSERT_TRUE(f.captured) << f.name << " froze a presented frame";
+        ASSERT_EQ(320u * 200u * 3u, f.rgb.size()) << f.name;
+        EXPECT_EQ(!dir.empty(), f.written)
+            << f.name << ": a file only when OG_FX_CAPTURE_DIR asks for one";
+        // The two text columns inside the panel's frame (its edges are at
+        // y 86-88 and 163 and at x 311; the divider at x 160-162).
+        const std::size_t left = frozen_ink(f.rgb, 11, 155, 89, 162);
+        const std::size_t right = frozen_ink(f.rgb, 164, 310, 89, 162);
+        printf("  %s: left column ink %zu, right column ink %zu\n",
+               f.name.c_str(), left, right);
+        if (f.name == "details_skeleton_on")
+        {
+            EXPECT_GT(left, 40u) << "Tunnel and Dig In on the left";
+            EXPECT_GT(right, 40u)
+                << "Bone Wall / Bone Storm and Reassemble / Legion on the right";
+        }
+        else
+        {
+            EXPECT_GT(left, 40u) << "Tunnel on the left";
+            EXPECT_EQ(0u, right) << "nothing on the right with the setting off";
+        }
+    }
 }
