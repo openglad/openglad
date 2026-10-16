@@ -108,3 +108,33 @@ TEST_F(GameplayFixesLua, match_setting_reads_the_world_flag_and_draws_nothing)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// gf.on() is the setting as a boolean: false on the classic game, true with
+// the fixes on, and like the read under it, it draws nothing.
+TEST_F(GameplayFixesLua, gf_on_follows_the_setting_and_draws_nothing)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, self->stats());
+
+    const std::string prelude = "local gf = og.use('core:gameplay_fixes')\n";
+    const std::string body =
+        "    if gf.on() then\n"
+        "      self.level = 21\n"
+        "    else\n"
+        "      self.level = 20\n"
+        "    end";
+    for (const short flag : {short{0}, short{1}}) {
+        tw.world().gameplay_fixes = flag;
+        tw.world().new_specials = static_cast<short>(1 - flag);
+        tw.world().rng_.state_ = 777u;
+        const auto handled = run(prelude, body, self);
+        ASSERT_TRUE(handled.has_value()) << last_error();
+        EXPECT_TRUE(*handled);
+        EXPECT_EQ(20 + flag, self->stats()->level())
+            << "gf.on() with the setting at " << flag;
+        EXPECT_EQ(777u, tw.world().rng_.state_) << "gf.on() draws nothing";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
