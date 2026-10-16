@@ -942,6 +942,9 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
     // This table is the classic kits: the New Specials setting is off,
     // explicitly, whatever the session default is.
     world.new_specials = 0;
+    // And the classic game: the Gameplay Fixes setting is off too (the fixed
+    // table is its own sweep).
+    world.gameplay_fixes = 0;
 
     for (const SweepCase& sweep : kSweep)
     {
@@ -1026,6 +1029,9 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
     world.new_specials = 1;
+    // The classic specials as they were: the Gameplay Fixes setting is off
+    // (the fixed table is its own sweep).
+    world.gameplay_fixes = 0;
     // The new kits move walkers (BLINK, SWAP) and stand things up
     // (BONE WALL, WAR BANNER), so their outcomes read the ground under the
     // whole neighbourhood, not just the caster's cell. The session's grid
@@ -1070,6 +1076,9 @@ TEST_F(WalkerSpecials, ghost_scare_animates_and_dissipates)
 {
     walker* w = make_special_guy(FAMILY_GHOST);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // The classic SCARE with nobody to scare: the Gameplay Fixes setting
+    // refuses that cast, so this pins the setting off.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     w->set_current_special(1); // scare
     ASSERT_TRUE(w->special()) << "scare should fire";
 
@@ -1119,6 +1128,9 @@ TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
     og::runtime::current_session->myscreen_->world().new_specials = 0;
     walker* w = make_special_guy(FAMILY_GHOST);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // A SCARE with nobody to scare: the Gameplay Fixes setting refuses it,
+    // so this pins the setting off.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     w->set_current_special(1); // scare
     ASSERT_TRUE(w->special()) << "first scare should fire";
 
@@ -2320,6 +2332,9 @@ TEST_F(WalkerSpecials, soldier_whirlwind_drives_simulation)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER, 1, 4);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // A WHIRLWIND with no foe in range: the Gameplay Fixes setting refuses
+    // it, so this pins the setting off.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     w->set_lastx(w->stepsize());
     w->set_lasty(0);
     w->set_busy(0);
@@ -2627,6 +2642,9 @@ TEST_F(WalkerSpecials, cleric_heal_drives_simulation)
     auto& world = og::runtime::current_session->myscreen_->world();
     walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // The classic HEAL's numbers, which the Gameplay Fixes setting caps at
+    // full health: this pins the setting off.
+    world.gameplay_fixes = 0;
     // The heal walks every wounded friend in range, so the neighbourhood has
     // to hold exactly the two this test puts in it.
     world.delete_objects();
