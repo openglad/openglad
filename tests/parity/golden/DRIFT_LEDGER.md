@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `fbdb71c5`
+Old-game commit the goldens are captured from: `050a3af7`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -435,6 +435,24 @@ dumper rebuilt from an emptied `obj/`, no `using embedded fixture` line) is `dif
 the port. A second mirror (`fbdb71c5`, recorder-only) carries the sprinkle floor and the corrected texts; every id
 captured at it (the dumper rebuilt from an emptied `obj/`, no `using embedded fixture` line) is `diff -rq`-identical to
 the capture at `676419eb`. `fbdb71c5` is the pin.
+
+### Gameplay Fixes port (2026-10-16)
+
+Gameplay Fixes is a setting, off for every row captured so far: the parity table carries it per row (a trailing
+`gameplay_fixes` field, 0 unless a row says otherwise), and the golden capture tool now sets it in the old game the
+same way it sets each row's seed and player team. Nothing in the old game reads it yet, so no golden can move. The
+fixes themselves are ported one per commit later in this PR, each with its own row below.
+
+| old-game commit | label: fix (issue; GAMEPLAY_FIXES row) | current-game commit | old-game site(s) | ids it moves (additive) | cmp result |
+|---|---|---|---|---|---|
+| `7bf3e95d` | **plumbing**: `screen::gameplay_fixes`, set per row by the capture tool | the Gameplay Fixes PR (`0721756c`) | `src/screen.h` a `short` beside `enemy_freeze`; `src/screen.cpp` `screen::screen` zeroes it; `tools/parity_dump_master.cpp` `run_scenario` sets it from the row right after the first `ensure_view_team`; `tools/parity_scenario_table.h` mirrors the table with the trailing field | None of 227: `diff -rq` of the all-ids captures at `fbdb71c5` and after `7bf3e95d` (the dumper rebuilt from an emptied `obj/`) is empty, and neither log has a `using embedded fixture` line. | — (nothing moved) |
+
+`050a3af7` is a table mirror (recorder-only, `tools/` only) and the pin: it carries the pins that followed their lines
+when the setting and the engine rules landed in the current game. With the dumper rebuilt from an emptied `obj/`,
+`--list` names every golden id, and `special_soldier_3_scen99`, `cleric_turn_undead_scen99` and
+`thief_ai_bomb_flee_scen99` captured at it each `cmp` equal to their committed goldens (no `using embedded fixture`
+line). The current-game cell names this PR in words with its pre-squash commit in parentheses, as the charm timer
+port above does.
 
 ### Earlier ports (before the 2026-10-04 rule)
 
