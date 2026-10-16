@@ -917,6 +917,7 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_sim_input_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_control_policy.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_seats.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_engine.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_network.cpp
 )
