@@ -3,6 +3,7 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
 local WEAP_TREE = assert(og.family_id("weapon", "core:tree"))
 local LIVING_FAERIE = assert(og.family_id("living", "core:faerie"))
 local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protection"))
@@ -15,6 +16,10 @@ local function plant_tree(self)
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
   local bolt = self:fire()
   if not bolt then
+    if gf.on() then
+      -- Gameplay Fixes: the refund paid for a bolt that never flew.
+      gf.take_back(self, 1)
+    end
     return false, "COULD NOT FIRE"
   end
   -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
@@ -37,6 +42,10 @@ local function summon_faerie(self)
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
   local bolt = self:fire()
   if not bolt then
+    if gf.on() then
+      -- Gameplay Fixes: the refund paid for a bolt that never flew.
+      gf.take_back(self, 1)
+    end
     return false, "COULD NOT FIRE"
   end
   local faerie = og.add_ob("living", LIVING_FAERIE)
