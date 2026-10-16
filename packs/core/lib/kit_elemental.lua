@@ -20,6 +20,7 @@ local IMMOLATE_GATE_RANGE = 40
 local IMMOLATE_GATE_MANA = 60
 local RAIN_GATE_RANGE = 160
 local RAIN_GATE_CLUSTER = 60
+local RAIN_ALLY_ZONE = 71
 local NOVA_GATE_RANGE = 48
 
 local M = {}
@@ -363,6 +364,18 @@ function M.ai_meteor(self)
   for i = 1, #foes do
     if foes[i]:distance_to_ob(target) <= RAIN_GATE_CLUSTER then
       clustered = clustered + 1
+    end
+  end
+  -- An ally standing in the rain (the strike lands within rain_spread of
+  -- the target on each axis and the blast reaches 31 px) holds the fire.
+  -- The scan must reach the whole box: the target is under 160 away and
+  -- a box corner is 71 + 71 Manhattan beyond it.
+  local friends = og.find_friends_in_range("ob", RAIN_GATE_RANGE + 2 * RAIN_ALLY_ZONE, self)
+  for i = 1, #friends do
+    local dx = math.abs(friends[i]:xpos() - target:xpos())
+    local dy = math.abs(friends[i]:ypos() - target:ypos())
+    if dx <= RAIN_ALLY_ZONE and dy <= RAIN_ALLY_ZONE then
+      return false
     end
   end
   return clustered >= 2

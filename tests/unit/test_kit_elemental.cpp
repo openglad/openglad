@@ -1135,6 +1135,75 @@ TEST(KitElemental, ai_meteor_fires_on_a_cluster_in_range)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// METEOR RAIN holds its fire over an ally: the strike lands within 71 px of
+// the target on each axis (rain_spread plus the 31 px blast) and the rain
+// hurts allies at half. An ally 30 px from the target holds it.
+// RED on the gate without the ally check: true.
+TEST(KitElemental, ai_meteor_holds_fire_over_an_ally)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* bot = add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    ASSERT_NE(nullptr, foe);
+    living* second = add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_NE(nullptr, second);
+    bot->set_foe(foe);
+    ASSERT_TRUE(gate(bot)) << "a cluster in range, nobody of ours under it";
+    living* ally = add_living(w, FAMILY_SOLDIER, 0, 220, 130);
+    ASSERT_NE(nullptr, ally);
+    EXPECT_FALSE(gate(bot)) << "an ally 30 px from the target holds the rain";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The ally scan reaches the whole box: the target 159 px east (the gate
+// wants it closer than 160), the ally at the box's far corner, 71 px east
+// and 71 px south of the target and 301 px (Manhattan) from the caster.
+// RED under a 231 px scan (RAIN_GATE_RANGE + RAIN_ALLY_ZONE): true.
+TEST(KitElemental, ai_meteor_holds_fire_over_a_far_corner_ally)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* bot = add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = add_living(w, FAMILY_SOLDIER, 1, 259, 100);
+    ASSERT_NE(nullptr, foe);
+    living* second = add_living(w, FAMILY_SOLDIER, 1, 259, 130);
+    ASSERT_NE(nullptr, second);
+    bot->set_foe(foe);
+    ASSERT_EQ(159, bot->distance_to_ob(foe));
+    ASSERT_TRUE(gate(bot)) << "a cluster in range, nobody of ours under it";
+    living* ally = add_living(w, FAMILY_SOLDIER, 0, 330, 171);
+    ASSERT_NE(nullptr, ally);
+    ASSERT_EQ(301, bot->distance_to_ob(ally));
+    EXPECT_FALSE(gate(bot)) << "an ally at the far corner of the strike box";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// An ally clear of the box (120 px from the target on one axis) does not
+// hold the rain; the box edge is 71 px: 71 holds it, 72 does not.
+TEST(KitElemental, ai_meteor_fires_with_the_ally_clear)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* bot = add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    ASSERT_NE(nullptr, foe);
+    living* second = add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_NE(nullptr, second);
+    bot->set_foe(foe);
+    living* ally = add_living(w, FAMILY_SOLDIER, 0, 220, 220);
+    ASSERT_NE(nullptr, ally);
+    EXPECT_TRUE(gate(bot)) << "an ally 120 px from the target is clear";
+    place(ally, 291, 100);
+    EXPECT_FALSE(gate(bot)) << "71 px east of the target is inside the box";
+    place(ally, 292, 100);
+    EXPECT_TRUE(gate(bot)) << "72 px east of the target is outside it";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // REKINDLE below half; SUPERNOVA (the gate sets the shift) only below a
 // fifth with two foes within 48.
 // Perturbation (staged kit: NOVA_GATE_RANGE = 0): the hurt bot never
