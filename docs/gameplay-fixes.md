@@ -6,8 +6,8 @@ could not reach a body next to the cleric, a heal that pushed an ally past
 full health, bots that cast at nobody, and more. With the setting off the
 game is the classic game exactly, bugs included: every parity golden
 captured with it off is unchanged, and the old game at the parity commit
-carries the same fixes behind the same setting, so both arms are captured
-from the old game.
+carries the same fixes behind the same setting, so the goldens for both
+values of the setting are captured from the old game.
 
 The bugs come from the specials survey; each fix below names what a player
 sees with the setting off and with it on. New Specials, the sibling setting
@@ -131,8 +131,8 @@ follow-up draw on that tick; that happens only with the setting on.
     `NO FOE IN RANGE` by the cast. The refusal costs nothing. It is a
     candidate for a later refinement, not a bug in play.
   - The chain's reach always covers the burst's, so the "chain chosen, no
-    target in chain reach" arm can only fall back to no cast; it can never
-    swap to a burst that has a target. The arm is kept because it is the
+    target in chain reach" case can only fall back to no cast; it can never
+    swap to a burst that has a target. The case is kept because it is the
     honest reading of the rule.
 - **Cleric.** Slots 2 and 3 cast TURN UNDEAD only with an undead foe inside
   the turn reach, else they raise (a raise with no corpse is refused for

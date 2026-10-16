@@ -2,8 +2,9 @@
 
 * needs Game Settings -> Gameplay FX
   -> New Specials (on by default).
-* Gameplay Fixes (Gameplay FX, on by default)
-  mends Disarm, Turn Undead, Heal and more.
+Gameplay Fixes (Gameplay FX, on by
+default) mends Disarm, Turn Undead,
+Heal and more.
 
 SOLDIER
 ========================
@@ -82,7 +83,7 @@ Slow healer, generates barriers.
    SHIFTER: Mystic Mace defense.
 2. Raise Undead: Bring back the
    fallen. SHIFTER: Turn Undead,
-   reach 60 or more, undead only.
+   reach 60 pixels or more, undead only.
 3. Raise Ghost: Summon spirits.
    SHIFTER: Lay spirits to rest.
 4. Resurrect: Full resurrection

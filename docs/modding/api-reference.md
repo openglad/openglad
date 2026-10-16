@@ -443,7 +443,7 @@ nothing and has no side effect, so a gate may ask it anywhere. A fix to a
 classic special keeps the classic statements as they are, in their order,
 and puts its change behind `if og.match_setting("gameplay_fixes") ~= 0 then`
 (or the core pack's `gf.on()`): either a draw-free check that refuses before
-anything is written, or a different write inside the arm. Never skip or
+anything is written, or a different write inside that branch. Never skip or
 reorder a random draw the classic game makes, so the setting-off game stays
 the classic game byte for byte.
 
@@ -601,7 +601,7 @@ census; waking it is the engine's decision)
 `is_friendly(other) → bool`
 `seat_driven() → bool` (read-only: a seat drives this body, by a user tag
 or the player-control act; `og::sim::seat_driven`, the one rule POSSESS
-and the Gameplay Fixes charm arms refuse a hero by).
+and the Gameplay Fixes charm casts refuse a hero by).
 
 ### Timers and charges
 

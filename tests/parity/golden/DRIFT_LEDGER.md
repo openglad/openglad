@@ -488,14 +488,14 @@ setting on, never a row with it off.
 | — | #354: a seat never claims a walker charmed onto its team (GAMEPLAY_FIXES row "A seat never claims a charmed walker (Gameplay Fixes M, #354)") | the Gameplay Fixes PR (`b3b03d9d`, `c5b57b4e`) | — | none | — (no row can reach it: neither the golden capture tool nor the parity test driver runs the seat scans) |
 | — | F, the higher-level victim: the old game draws `random(generic*20)` with a negative `generic` and stores it in a `short charm_left`; the current game clamps the edge and draws nothing | — | — | none | — (no row can reach it: the F arena uses an equal-level victim; a known divergence, not ported) |
 
-`050a3af7` is a table mirror (recorder-only, `tools/` only) and the pin: it carries the pins that followed their lines
+`050a3af7` is a table mirror (recorder-only, `tools/` only) and was the pin until `5cc77c35`: it carries the pins that followed their lines
 when the setting and the engine rules landed in the current game. With the dumper rebuilt from an emptied `obj/`,
 `--list` names every golden id, and `special_soldier_3_scen99`, `cleric_turn_undead_scen99` and
 `thief_ai_bomb_flee_scen99` captured at it each `cmp` equal to their committed goldens (no `using embedded fixture`
 line). The current-game cell names this PR in words with its pre-squash commit in parentheses, as the charm timer
 port above does.
 
-`5cc77c35` is the next table mirror (recorder-only, `tools/` only) and the pin: it carries the pins that followed
+`5cc77c35` is the next table mirror (recorder-only, `tools/` only) and was the pin until `d1059e2c`: it carries the pins that followed
 their lines when the soldier, elf, druid, ghost, orc, cleric, thief, mage and archmage fixes landed in the current
 game behind the setting, and the two notes that quote the soldier's and the elf's lines. No fix is ported to the old
 game yet. With the dumper rebuilt from an emptied `obj/`, `--list` names every golden id, and
@@ -503,7 +503,7 @@ game yet. With the dumper rebuilt from an emptied `obj/`, `--list` names every g
 `thief_charm_opponent_scen99`, `mage_freeze_time_offteam_scen99` and `archmage_summon_elemental_scen99` captured at it
 each `cmp` equal to their committed goldens (no `using embedded fixture` line).
 
-`d1059e2c` is the next table mirror (recorder-only, `tools/` only) and the pin: it adds the 43 rows of this PR (21
+`d1059e2c` is the next table mirror (recorder-only, `tools/` only) and was the pin until the ports landed: it adds the 43 rows of this PR (21
 arenas recorded with the setting off and on, and the setting-on twin of `special_cleric_heal_ally_scen99`) before any
 fix is ported, so each port's all-ids capture shows exactly the rows it moves. The new rows have no golden yet; they
 are captured from the old game once the ports land. With the dumper rebuilt from an emptied `obj/`, `--list` names
