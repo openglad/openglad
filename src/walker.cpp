@@ -2851,7 +2851,13 @@ short walker::special()
 							busy +=5;
 							return 0;
 						}
-						if ( (generic=turn_undead(4*stats->level, stats->level)) == -1 )
+						// port of the current game's 8b4640ca: with the Gameplay Fixes setting
+						// the reach is never under 60 px (the raise's own reach)
+						int reach = 4*stats->level;
+						if (myscreen->gameplay_fixes && reach < 60)
+							reach = 60;
+						// port of the current game's 7a2ff3cc: -2 (foes in reach, none undead) is refused too
+						if ( (generic=turn_undead(reach, stats->level)) < 0 )
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
@@ -2911,7 +2917,13 @@ short walker::special()
 							busy +=5;
 							return 0;
 						}
-						if ( (generic=turn_undead(4*stats->level, stats->level)) == -1 )
+						// port of the current game's 8b4640ca: with the Gameplay Fixes setting
+						// the reach is never under 60 px (the raise's own reach)
+						int reach = 4*stats->level;
+						if (myscreen->gameplay_fixes && reach < 60)
+							reach = 60;
+						// port of the current game's 7a2ff3cc: -2 (foes in reach, none undead) is refused too
+						if ( (generic=turn_undead(reach, stats->level)) < 0 )
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
@@ -4366,6 +4378,31 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 	if (!targets)
 		return -1;
 
+	if (myscreen->gameplay_fixes)
+	{
+		// port of the current game's 7a2ff3cc: a ring with foes but nothing to
+		// turn is refused before any roll, so the cast spends nothing (-2; -1
+		// stays "nobody")
+		bool any_undead = false;
+		for(auto e = deadlist.begin(); e != deadlist.end(); e++)
+		{
+			walker* w = *e;
+			if (w && (w->query_family() == FAMILY_SKELETON ||
+			          w->query_family() == FAMILY_GHOST))
+			{
+				any_undead = true;
+				break;
+			}
+		}
+		if (!any_undead)
+			return -2;
+	}
+	// port of the current game's 7a2ff3cc: the classic roll strength is 40 per
+	// px of the classic reach, 4 px per level: 160 per level. With the setting
+	// on the reach may be wider, so the roll keeps the classic strength by the
+	// level (power), and a wider ring never changes who resists.
+	Sint32 roll_bound = myscreen->gameplay_fixes ? power*160 : range*40;
+
     for(auto e = deadlist.begin(); e != deadlist.end(); e++)
 	{
 	    walker* w = *e;
@@ -4375,7 +4412,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 		           )
 		   ) // end of if-check
 		{
-			if (random(range*40) > random(w->stats->level*10) )
+			if (random(roll_bound) > random(w->stats->level*10) )
 			{
 				w->dead = 1;
 				w->stats->hitpoints = 0;
