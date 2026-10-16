@@ -8919,6 +8919,60 @@ inline constexpr Mutation kMut_thief_bot_charm_hero_fixes_scen99 = {
     "Makes a seated hero charmable again, so the bot's gate and its charm take the player's hero: WalkerOfTeamAlive(0, 1, 1) reads 0."
 };
 
+// --- ghost_scare_no_foe (fix K: SCARE with no living foe in reach) ---------
+// A ghost scares (slot 1 at tick 20) with its only foe, a TOWER1, 280 px away.
+// The classic cast summons its scare carrier anyway; with the setting on it is
+// refused for free and no carrier appears.
+inline constexpr SpawnSpec kFamilySpawns_ghost_scare_no_foe_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 120, 0, 0 },            // far outside the scare radius
+    { FAMILY_GHOST,  0, kOrderLiving, 120, 120, 0, 0, 1, 600 },    // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_ghost_scare_no_foe_scen99[] = {
+    pred::TickReached(22),
+    pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE, kOrderFX, 1, 1,
+        "consequence: the classic scare summons its carrier with no living foe in reach; it is still alive two ticks later"),
+};
+inline constexpr FactPredicate kFacts_ghost_scare_no_foe_fixes_scen99[] = {
+    pred::TickReached(22),
+    pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE, kOrderFX, 0, 0,
+        "consequence: with the setting on a scare with no living foe in reach is refused (NO FOE IN RANGE) for free: no carrier"),
+    // negative_assertion: the refused scare summons no carrier
+};
+inline constexpr Mutation kMut_ghost_scare_no_foe_fixes_scen99 = {
+    "packs/core/families/living-12-ghost.lua", 23,
+    "if gf.on() and no_living_foe_in_reach(self) then",
+    "if false then",
+    "Removes the refusal, so the scare carrier is summoned again: WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE, kOrderFX, 0, 0) counts 1."
+};
+
+// --- orc_howl_no_foe (fix K: HOWL with nobody in reach) --------------------
+// An orc howls (slot 1 at tick 20) with its only foe, a TOWER1, 280 px away.
+// The classic howl roars at nobody; with the setting on it is refused for free.
+inline constexpr SpawnSpec kFamilySpawns_orc_howl_no_foe_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 120, 0, 0 },            // far outside the howl radius
+    { FAMILY_ORC,    0, kOrderLiving, 120, 120, 0, 0, 1, 600 },    // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_orc_howl_no_foe_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic howl roars (SOUND_ROAR) with nobody in its reach"),
+};
+inline constexpr FactPredicate kFacts_orc_howl_no_foe_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on a howl with nobody in reach is refused (NO FOE IN RANGE) for free: no roar"),
+};
+inline constexpr Mutation kMut_orc_howl_no_foe_fixes_scen99 = {
+    "packs/core/lib/orc_specials.lua", 20,
+    "if gf.on() and #foes == 0 then",
+    "if false then",
+    "Removes the refusal, so the howl roars at nobody again: EventKindExactly(play_sound, 0) reads 1."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -11080,6 +11134,38 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_thief_bot_charm_hero_fixes_scen99, std::size(kFacts_thief_bot_charm_hero_fixes_scen99),
       kMut_thief_bot_charm_hero_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "ghost_scare_no_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 22,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_ghost_scare_no_foe_scen99, std::size(kFamilySpawns_ghost_scare_no_foe_scen99),
+      0, false, true, Exercises::Special_Ghost_1,
+      kFacts_ghost_scare_no_foe_scen99, std::size(kFacts_ghost_scare_no_foe_scen99),
+      kMut_special_ghost_1_scen99 },
+
+    { "ghost_scare_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 22,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_ghost_scare_no_foe_scen99, std::size(kFamilySpawns_ghost_scare_no_foe_scen99),
+      0, false, true, Exercises::Special_Ghost_1,
+      kFacts_ghost_scare_no_foe_fixes_scen99, std::size(kFacts_ghost_scare_no_foe_fixes_scen99),
+      kMut_ghost_scare_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "orc_howl_no_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_howl_no_foe_scen99, std::size(kFamilySpawns_orc_howl_no_foe_scen99),
+      0, false, true, Exercises::Special_Orc_1,
+      kFacts_orc_howl_no_foe_scen99, std::size(kFacts_orc_howl_no_foe_scen99),
+      kMut_special_orc_1_scen99 },
+
+    { "orc_howl_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_howl_no_foe_scen99, std::size(kFamilySpawns_orc_howl_no_foe_scen99),
+      0, false, true, Exercises::Special_Orc_1,
+      kFacts_orc_howl_no_foe_fixes_scen99, std::size(kFacts_orc_howl_no_foe_fixes_scen99),
+      kMut_orc_howl_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

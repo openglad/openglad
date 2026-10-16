@@ -507,6 +507,10 @@ OG_PARITY_TEST(thief_bot_charm_or_taunt_scen99)
 OG_PARITY_TEST(thief_bot_charm_or_taunt_fixes_scen99)
 OG_PARITY_TEST(thief_bot_charm_hero_scen99)
 OG_PARITY_TEST(thief_bot_charm_hero_fixes_scen99)
+OG_PARITY_TEST(ghost_scare_no_foe_scen99)
+OG_PARITY_TEST(ghost_scare_no_foe_fixes_scen99)
+OG_PARITY_TEST(orc_howl_no_foe_scen99)
+OG_PARITY_TEST(orc_howl_no_foe_fixes_scen99)
 
 #undef OG_PARITY_TEST
 
