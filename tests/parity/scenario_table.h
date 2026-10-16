@@ -1466,7 +1466,7 @@ inline constexpr Mutation kMut_family_barbarian_init = {
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "packs/core/families/living-17-archmage.lua", 538,
+    "packs/core/families/living-17-archmage.lua", 543,
     "hp = 150",
     "hp = 1",
     "Drops ARCHMAGE descriptor HP to 1 "
@@ -5984,7 +5984,7 @@ inline constexpr FactPredicate kFacts_archmage_mind_control_team_flip_scen99[] =
 };
 
 inline constexpr Mutation kMut_archmage_mind_control_team_flip_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 504,
+    "packs/core/families/living-17-archmage.lua", 509,
     "        foe.team = self.team",
     "        foe.team = foe.team",
     "Keeps the real_team_num latch, charm_left and the 'has controlled N men' notification but never moves the victim onto the caster's team: WalkerOfTeamAlive(0,2,2) falls to 1, WalkerOfTeamAlive(1,0,0) rises to 1, and the still-hostile soldier melees the archmage."

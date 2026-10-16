@@ -497,7 +497,12 @@ local function mind_control(self)
       if confused then
         -- Resisted proper control: berserk onto a random team.
         foe:set_real_team_num(foe.team)
-        foe.team = og.rand(8)
+        local colour = og.rand(8)
+        if gf.on() and colour == self.team then
+          -- Gameplay Fixes: berserk means someone else's side, never ours.
+          colour = og.mod(colour + 1, 8)
+        end
+        foe.team = colour
         foe:set_charm_left(og.charm_duration(level_edge))
       else
         foe:set_real_team_num(foe.team)

@@ -1645,6 +1645,107 @@ TEST(PackLuaArchmage, an_undominated_victim_goes_berserk_rather_than_joining)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+namespace {
+
+struct BerserkOutcome {
+    int team = -1;
+    int real_team = -1;
+    std::uint32_t rng_state = 0;
+};
+
+// A level-1 archmage on `caster_team` casts MIND CONTROL at a level-9 orc of
+// team 2 that out-levels it, so the victim goes berserk without a resist
+// roll: the cast's one draw is the berserk colour, from `seed`.
+BerserkOutcome berserk_once(short fixes, unsigned char caster_team,
+                            std::uint32_t seed)
+{
+    const FamilyDescriptor& desc = describe_family(FAMILY_ARCHMAGE);
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.gameplay_fixes = fixes;
+    walker* mage = spawn(w, Order::Living, FAMILY_ARCHMAGE, 10, 10, caster_team);
+    walker* victim = spawn(w, Order::Living, FAMILY_ORC, 10, 10, 2);
+    EXPECT_TRUE(mage && victim);
+    if (!(mage && victim))
+        return {};
+    mage->stats()->set_level(1);
+    mage->stats()->set_max_magicpoints(9000.0f);
+    mage->stats()->set_magicpoints(9000.0f);
+    mage->set_busy(0);
+    mage->set_current_special(4);
+    victim->setxy(static_cast<float>(mage->xpos() + 20),
+                  static_cast<float>(mage->ypos()));
+    victim->stats()->set_level(9);
+    victim->set_real_team_num(255);
+    victim->set_charm_left(0);
+    w.rng_ = og::sim::SimRandom(seed);
+    EXPECT_TRUE(og::test::do_special(desc, mage));
+    BerserkOutcome out;
+    out.team = static_cast<int>(victim->team_num());
+    out.real_team = static_cast<int>(victim->real_team_num());
+    out.rng_state = w.rng_.state_;
+    return out;
+}
+
+}  // namespace
+
+// The berserk colour is a random team, and in the classic game that could be
+// the caster's own: a failed domination then handed the foe over anyway.
+// With the Gameplay Fixes setting on, a colour equal to the caster's team
+// becomes the next one round.
+//
+// RED (the classic colour): Expected equality of these values: 2
+// on.team Which is: 1 "berserk never means the caster's side", and 0
+// wrapped.team Which is: 7.
+TEST(PackLuaArchmage, an_undominated_victim_never_joins_the_caster)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+
+    const std::uint32_t seed = seed_whose_first_draw_is(8, 1);
+    const BerserkOutcome off = berserk_once(0, 1, seed);
+    const BerserkOutcome on = berserk_once(1, 1, seed);
+    EXPECT_EQ(1, off.team) << "the classic game: the draw lands on the caster's team";
+    EXPECT_EQ(2, on.team) << "berserk never means the caster's side";
+    EXPECT_EQ(2, off.real_team);
+    EXPECT_EQ(2, on.real_team);
+
+    // Colour 7 against a caster of team 7 wraps round to 0.
+    const BerserkOutcome wrapped =
+        berserk_once(1, 7, seed_whose_first_draw_is(8, 7));
+    EXPECT_EQ(0, wrapped.team) << "the next colour round from 7 is 0";
+
+    // A draw that is not the caster's colour is kept as drawn.
+    const BerserkOutcome kept =
+        berserk_once(1, 1, seed_whose_first_draw_is(8, 5));
+    EXPECT_EQ(5, kept.team);
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The remap is arithmetic: the cast draws the colour once on both values of
+// the setting (and the duration draw of an out-levelled victim has a bound
+// of 0, which takes nothing from the stream).
+//
+// RED (a second og.rand(8) in place of the remap): Expected equality of
+// these values: expected.state_ Which is: 119106029 on.rng_state Which is:
+// 3731259426.
+TEST(PackLuaArchmage, the_berserk_draw_count_is_one_on_both_values)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+
+    const std::uint32_t seed = seed_whose_first_draw_is(8, 1);
+    og::sim::SimRandom expected(seed);
+    (void)expected.next(8);
+    (void)expected.next(0);
+    const BerserkOutcome off = berserk_once(0, 1, seed);
+    const BerserkOutcome on = berserk_once(1, 1, seed);
+    EXPECT_EQ(expected.state_, off.rng_state);
+    EXPECT_EQ(expected.state_, on.rng_state);
+    EXPECT_NE(off.team, on.team) << "the remap ran: the two values differ";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // An archmage may hold exactly one teleport marker. Placing a second retires
 // the first — the loop that finds and kills it runs on every re-cast, and
 // nothing asserted that it works. A regression there would let a player
