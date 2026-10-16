@@ -3541,7 +3541,7 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "packs/core/families/living-01-elf.lua", 18,
+    "packs/core/families/living-01-elf.lua", 20,
     "local rock = self:fire()",
     "local rock = nil",
     "Suppresses the first of SOME ROCKS' two rock releases, so some_rocks takes its 'if not rock' exit with the MP already refunded and nothing in flight. EventKindAtLeast(play_sound, 16) and WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) both fail.",
@@ -3562,7 +3562,7 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "packs/core/families/living-01-elf.lua", 79,
+    "packs/core/families/living-01-elf.lua", 98,
     "bounce_volley(3, 2, 3)",
     "bounce_volley(3, 1, 3)",
     "Halves slot 2's BOUNCING ROCKS volley by dropping the shared bounce_volley body's per-slot rock count from 2 to 1, so only one bouncing rock leaves the elf. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
@@ -3582,7 +3582,7 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "packs/core/families/living-01-elf.lua", 81,
+    "packs/core/families/living-01-elf.lua", 100,
     "bounce_volley(4, 3, 4)",
     "bounce_volley(4, 1, 4)",
     "Cuts slot 3's BOUNCING ROCKS volley from three rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) flips."
@@ -3602,7 +3602,7 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "packs/core/families/living-01-elf.lua", 84,
+    "packs/core/families/living-01-elf.lua", 103,
     "bounce_volley(5, 4, 5)",
     "bounce_volley(5, 1, 5)",
     "Cuts the default (slot 4) BOUNCING ROCKS volley from four rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
@@ -4564,7 +4564,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
-    "packs/core/families/living-01-elf.lua", 51,
+    "packs/core/families/living-01-elf.lua", 70,
     "      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))",
     "      rock:set_lastx(og.fmul(og.fmul(rock:lastx(), next_spread_multiplier()), 2.0))",
     "Doubles the BOUNCING ROCKS first projectile's x-step while preserving the spread RNG draw. MEASURED flip: WalkerPositionMoved(FAMILY_SOLDIER, 156, 120) fails because the advancing enemy ends at (152,120) instead of the golden's (156,120). (This rationale used to claim the rock's speed rises to ~1404 centi-px/tick, above WeaponSpeed's 900 ceiling: measured, the seq-0 max step goes 671 -> 781 and stays inside the band.)"
@@ -7909,7 +7909,7 @@ inline constexpr FactPredicate kFacts_elf_mega_rocks_volley_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elf_mega_rocks_volley_scen99 = {
-    "packs/core/families/living-01-elf.lua", 84,
+    "packs/core/families/living-01-elf.lua", 103,
     "    default_cast = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot",
     "    default_cast = bounce_volley(5, 1, 5),  -- case 4 and every unmapped slot",
     "Shrinks MEGA ROCKS from four rocks to one while keeping the MP refund and line-of-sight scaling. The play_sound floor of 4 collapses to 3, the weapon_tracks sample set drops from 62 to 5, and the lead orc survives, so WalkerFamilyCount(FAMILY_ORC, 1, 1) goes to 2."
@@ -8030,7 +8030,7 @@ inline constexpr FactPredicate kFacts_elf_rocks_pair_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elf_rocks_pair_scen99 = {
-    "packs/core/families/living-01-elf.lua", 25,
+    "packs/core/families/living-01-elf.lua", 31,
     "  rock = self:fire()",
     "  rock = nil",
     "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 3 fails at 2, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13400."
