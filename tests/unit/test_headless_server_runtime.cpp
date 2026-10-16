@@ -1145,7 +1145,8 @@ TEST(HeadlessServerSaveCopy, copy_and_equivalent_carry_gameplay_fixes)
 //
 // The seat with NO other body (it then binds nothing, a follow seat) also
 // needs the same rule in sim_find_next_control_owned's owner pass, which
-// bind_player falls back to; that case is pinned beside that scan.
+// bind_player falls back to; that scan is pinned beside it, and the next test
+// pins the two together through bind_player.
 TEST(HeadlessServerBindPlayer, a_seat_skips_its_hero_while_a_charm_holds_it)
 {
     for (const short fixes : {short{0}, short{1}})
@@ -1193,6 +1194,55 @@ TEST(HeadlessServerBindPlayer, a_seat_skips_its_hero_while_a_charm_holds_it)
         {
             EXPECT_EQ(free_hero, server.player_control(0))
                 << "with the setting on the seat skips the charmed hero";
+            EXPECT_EQ(-1, charmed->user())
+                << "and the charmed hero stays with the charm's side";
+        }
+    }
+}
+
+// Issue #354, the seat whose ONLY hero is charmed: bind_player's own owner
+// scan skips it, then falls back to sim_find_next_control_owned, whose owner
+// pass must skip it too. With the setting on the seat binds nothing (a follow
+// seat) and the charm runs its course; the classic game binds the charmed
+// hero. RED with the setting on if either scan loses its conjunct.
+TEST(HeadlessServerBindPlayer, a_seat_whose_only_hero_is_charmed_binds_nothing)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes != 0 ? "setting on" : "setting off");
+        TestGameWorld fixture;
+        GameWorld& world = fixture.world();
+        world.type |= GameWorld::TYPE_SCRIPTED;
+        world.gameplay_fixes = fixes;
+
+        walker* const charmed = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, charmed);
+        auto record = std::make_unique<guy>(FAMILY_SOLDIER);
+        record->name = "Charmed";
+        record->owner_player_index = 0;
+        charmed->set_owned_myguy(std::move(record));
+        charmed->setxy(64, 64);
+        // An enemy thief's charm: the hero stands on team 1 for 100 ticks.
+        charmed->set_team_num(1);
+        charmed->set_real_team_num(0);
+        charmed->set_charm_left(100);
+        ASSERT_TRUE(og::sim::charmed_onto_team(*charmed));
+
+        std::shared_ptr<og::sim::InProcessTransport> transport =
+            og::sim::InProcessTransport::create_server();
+        og::sim::GameServer server(world, fixture.events, *transport);
+        server.connect_client(91u);
+        server.bind_player(91u, 0u, /*team_num=*/0, nullptr);
+
+        if (fixes == 0)
+        {
+            EXPECT_EQ(charmed, server.player_control(0))
+                << "the classic game binds the charmed hero";
+        }
+        else
+        {
+            EXPECT_EQ(nullptr, server.player_control(0))
+                << "with the setting on the seat binds nothing";
             EXPECT_EQ(-1, charmed->user())
                 << "and the charmed hero stays with the charm's side";
         }
