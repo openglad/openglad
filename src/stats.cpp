@@ -620,6 +620,18 @@ void statistics::hit_response(walker  *who)
 				{
 					if (possible_specials[3]) // can we summon illusion?
 					{
+						// port of the current game's 116d35fb: with the Gameplay Fixes setting a
+						// bot summons by its pool (the elemental only when the spare pool is at
+						// least the slot's own price), never by a stale coin; a player keeps
+						// the Shift key
+						if (myscreen->gameplay_fixes && controller->user == -1 &&
+						        controller->query_act_type() != ACT_CONTROL)
+						{
+							if ((Sint32) (magicpoints - special_cost[3]) >= special_cost[3])
+								controller->shifter_down = 1;
+							else
+								controller->shifter_down = 0;
+						}
 						controller->current_special = 3;
 						if (controller->special())
 							return;

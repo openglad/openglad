@@ -347,8 +347,21 @@ short living::act()
 					// Should we do our special? Are we full of magic?
 					if (stats->magicpoints >= stats->special_cost[1])
 					{
-						current_special = (char) (random((stats->level+2)/3) + 1);
-						if ( (current_special > 4) ||
+						int bound = (stats->level+2)/3;
+						if (myscreen->gameplay_fixes)
+						{
+							// port of the current game's a6dc8b87: never roll past the last
+							// named slot, so a roll is never folded into slot 1 for being
+							// out of range (the roll still draws once)
+							int top = 0;
+							for (int s = 1; s < NUM_SPECIALS; ++s)
+								if (strcmp(myscreen->special_name[(int)family][s], "NONE"))
+									top = s;
+							if (bound > top)
+								bound = top;
+						}
+						current_special = (char) (random(bound) + 1);
+						if ( (current_special > 4 && !myscreen->gameplay_fixes) || // port of the current game's a6dc8b87: the fold applies only with the setting off
 						        (!strcmp(myscreen->special_name[(int)family][(int)current_special], "NONE"))
 						   )
 							current_special = 1;
@@ -625,6 +638,18 @@ short living::check_special()
 			} // end of bomb
 			else if (current_special == 3)
 			{
+				if (myscreen->gameplay_fixes)
+				{
+					// port of the current game's 45c6e7ab: CHARM only with a foe the
+					// thief can take inside charm reach, else TAUNT; the coin is drawn
+					// either way
+					std::list<walker*> foes = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+					                                        16 + 4*stats->level, &howmany, this);
+					if (nearest_charmable(foes, stats->level))
+						shifter_down = 1;
+					else
+						shifter_down = 0;
+				}
 				if (!shifter_down) // taunt
 					myrange = 80 + 4*stats->level;
 				else               // charm
@@ -644,6 +669,23 @@ short living::check_special()
 			myscreen->find_foes_in_range(myscreen->level_data.oblist,
 			                                        110, &howmany, this);
 
+			if (myscreen->gameplay_fixes)
+			{
+				// port of the current game's e97c8829: the classic rule below was
+				// written for TELEPORT and applied to every slot. Slot 1 keeps it;
+				// WARP SPACE, FREEZE TIME and ENERGY WAVE want a foe inside the same
+				// 110 px; HEARTBURST wants one inside its own reach.
+				if (current_special == 1)
+					return (howmany < 1 || howmany > 3);
+				if (current_special == 5)
+				{
+					short in_reach = 0;
+					myscreen->find_foes_in_range(myscreen->level_data.oblist,
+					                                        80 + 2*stats->level, &in_reach, this);
+					return (in_reach >= 1);
+				}
+				return (howmany >= 1);
+			}
 			if (howmany < 1) //  away from anybody ..
 				return 1;
 			if (howmany > 3) // too many enemies!
@@ -676,7 +718,22 @@ short living::check_special()
 					return 0;
 			}  // end of healing/mace
 			else
+			{
+				if (myscreen->gameplay_fixes && (current_special == 2 || current_special == 3))
+				{
+					// port of the current game's 08fad439: TURN UNDEAD only with
+					// something to turn in reach, else the raise (which refuses free
+					// when there is no corpse)
+					int reach = 4*stats->level;
+					if (reach < 60)
+						reach = 60;
+					if (undead_foes_in_range(reach) > 0)
+						shifter_down = 1;
+					else
+						shifter_down = 0;
+				}
 				return 1;
+			}
 			//break;
 		case FAMILY_SKELETON:  // Tunnel if no foes near ..
 			howmany = 0;
@@ -687,6 +744,58 @@ short living::check_special()
 				return 1;      //  so tunnel
 			return 0;
 			//break; // end of skeleton case
+		case FAMILY_ARCHMAGE:
+			// port of the current game's de915ccd: the Gameplay Fixes bot gates
+			// for slots 1-3 (slot 4 keeps its rest gate, above). Off, the
+			// archmage answers 1, as the default arm always did.
+			if (!myscreen->gameplay_fixes)
+				return 1;
+			if (current_special == 1) // TELEPORT: the mage's rule
+			{
+				myscreen->find_foes_in_range(myscreen->level_data.oblist,
+				                                        110, &howmany, this);
+				return (howmany < 1 || howmany > 3);
+			}
+			if (current_special == 2)
+			{
+				// CHAIN LIGHTNING wants a foe inside its radius, HEARTBURST inside
+				// its own: the coin's arm is kept when it has a target, swapped
+				// when only the other has one, refused when neither has
+				short in_burst = 0;
+				short in_chain = 0;
+				myscreen->find_foes_in_range(myscreen->level_data.oblist,
+				                                        80 + 2*stats->level, &in_burst, this);
+				myscreen->find_foes_in_range(myscreen->level_data.oblist,
+				                                        200 + 5*stats->level + 2*stats->level, &in_chain, this);
+				if (shifter_down)
+				{
+					if (in_chain >= 1)
+						return 1;
+					shifter_down = 0;
+					return (in_burst >= 1);
+				}
+				if (in_burst >= 1)
+					return 1;
+				if (in_chain >= 1)
+				{
+					shifter_down = 1;
+					return 1;
+				}
+				return 0;
+			}
+			if (current_special == 3)
+			{
+				// SUMMON ELEMENTAL only when the spare pool is at least the slot's
+				// own price; else the image. A foe within 200 is wanted.
+				if ((Sint32) (stats->magicpoints - stats->special_cost[3]) >= stats->special_cost[3])
+					shifter_down = 1;
+				else
+					shifter_down = 0;
+				myscreen->find_foes_in_range(myscreen->level_data.oblist,
+				                                        200, &howmany, this);
+				return (howmany >= 1);
+			}
+			return 1;
 		default :
 			return 1;
 	}

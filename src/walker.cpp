@@ -4444,6 +4444,25 @@ walker * walker::nearest_charmable(std::list<walker*>& foes, short max_level)
 	return best;
 }
 
+// Port of the current game's 7a2ff3cc (walker::undead_foes_in_range): the
+// foes within range TURN UNDEAD could turn (skeleton or ghost). Draws
+// nothing. The cleric bot's Gameplay Fixes gate asks it.
+short walker::undead_foes_in_range(Sint32 range)
+{
+	short targets;
+	short undead = 0;
+	std::list<walker*> foes = myscreen->find_foes_in_range(myscreen->level_data.oblist, range,
+	                                       &targets, this);
+	for(auto e = foes.begin(); e != foes.end(); e++)
+	{
+		walker* w = *e;
+		if (w && (w->query_family() == FAMILY_SKELETON ||
+		          w->query_family() == FAMILY_GHOST))
+			undead++;
+	}
+	return undead;
+}
+
 // Turns undead; ie, skeleton or ghost, within range
 // Returns the number of dead destroyed
 Sint32 walker::turn_undead(Sint32 range, Sint32 power)
