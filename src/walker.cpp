@@ -3997,7 +3997,11 @@ short walker::special()
 					stats->magicpoints += stats->weapon_cost;
 					newob = fire();
 					if (!newob)
+					{
+						if (myscreen->gameplay_fixes) // port of the current game's c9b3a332: no free swing
+							stats->magicpoints -= stats->weapon_cost;
 						return 0;
+					}
 					busy += (fire_frequency * 2);
 					alive = myscreen->level_data.add_ob(ORDER_WEAPON,FAMILY_TREE);
 					alive->setxy(newob->xpos,newob->ypos);
@@ -4012,7 +4016,11 @@ short walker::special()
 					stats->magicpoints += stats->weapon_cost;
 					newob = fire();
 					if (!newob)
+					{
+						if (myscreen->gameplay_fixes) // port of the current game's c9b3a332: no free swing
+							stats->magicpoints -= stats->weapon_cost;
 						return 0;
+					}
 					alive = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_FAERIE);
 					alive->setxy(newob->xpos, newob->ypos);
 					alive->team_num = team_num;
