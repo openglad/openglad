@@ -2631,6 +2631,12 @@ short walker::special()
 				case 3: // whirlwind attack
 					if (busy)
 						return 0; // can't do while attacking, etc.
+					{
+					// port of the current game's e6475850: the foes are found before anything is written (the search draws nothing)
+					std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+					                                      32+stats->level*2, &howmany, this);
+					if (myscreen->gameplay_fixes && howmany == 0)
+						return 0; // port of the current game's e6475850: a spin that would hit nobody is refused for free
 					busy += 8;
 					tempx = lastx;
 					tempy = lasty;
@@ -2648,9 +2654,6 @@ short walker::special()
 					stats->add_command(COMMAND_WALK, 1, -1, -1);
 					
 					{
-                        std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
-                                                              32+stats->level*2, &howmany, this);
-                        
                         for(auto e = newlist.begin(); e != newlist.end(); e++)
                         {
                             walker* w = *e;
@@ -2667,6 +2670,7 @@ short walker::special()
                                                                tempx, tempy);
                             }
                         }
+					}
 					}
 					break; // end of whirlwind attack
 				case 4:  // Disarm opponent
@@ -3669,6 +3673,25 @@ short walker::special()
 		case FAMILY_GHOST: // do nifty scare thing
 			if (special_rest_left > 0 && special_rest_slot == 1) // port of the current game's 54f5890f: SCARE rests, a press during the rest is refused for free
 				return 0;
+			if (myscreen->gameplay_fixes)
+			{
+				// port of the current game's 5a4ac8e2: the fright only ever moves living
+				// foes, so a scare with no living foe inside the scare radius is refused
+				// before it spends anything
+				std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+				                                      50+10*stats->level, &howmany, this);
+				bool living_foe = false;
+				for(auto e = newlist.begin(); e != newlist.end(); e++)
+				{
+					if (*e && (*e)->query_order() == ORDER_LIVING)
+					{
+						living_foe = true;
+						break;
+					}
+				}
+				if (!living_foe)
+					return 0;
+			}
 			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_GHOST_SCARE); //,1 == underneath
 			newob->ani_type = ANI_SCARE;
 			newob->setxy(xpos+sizex/2 - newob->sizex/2,
@@ -3721,6 +3744,8 @@ short walker::special()
                         {
                             std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
                                                                   80+4*stats->level, &howmany, this);
+                            if (myscreen->gameplay_fixes && howmany == 0)
+                                return 0; // port of the current game's f7d5dcf2: a taunt nobody hears is refused for free
                             
                             for(auto e = newlist.begin(); e != newlist.end(); e++)
                             {
@@ -4030,11 +4055,14 @@ short walker::special()
 						return 0;
 					if (busy > 0)
 						return 0;
-					busy += 2;
 					
 					{
+                        // port of the current game's 5a4ac8e2: the foes are found before busy is written (the search draws nothing)
                         std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      160+(20*stats->level), &howmany, this);
+                        if (myscreen->gameplay_fixes && howmany == 0)
+                            return 0; // port of the current game's 5a4ac8e2: a howl that would stun nobody is refused for free
+                        busy += 2;
                         
                         for(auto e = newlist.begin(); e != newlist.end(); e++)
                         {
