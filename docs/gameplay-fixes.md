@@ -160,7 +160,8 @@ follow-up draw on that tick; that happens only with the setting on.
   charmed it. A freshly spawned walker (charm timer 0) is still claimable.
   One visible consequence: a team whose only bodies are walkers it charmed
   now ends the game instead of handing a seat a borrowed walker, and a
-  player joining mid-level is given the stock soldier instead.
+  player joining mid-level in a local game is given the stock soldier
+  instead (in a networked game the seat follows the team).
 
 The old game has the same seat scans, but no parity capture can run them, so
 #354 is not ported there.
@@ -199,7 +200,7 @@ The rows with the setting on, by fix:
 | G | `thief_charm_nearest_fixes_scen99` |
 | H | `elf_volley_refund_fixes_scen99`, `elf_rocks_blocked_fixes_scen99` |
 | I | `druid_tree_blocked_fixes_scen99` |
-| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `soldier_bot_l16_roll_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` |
+| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` |
 | M | `thief_bot_charm_hero_fixes_scen99`, `archmage_bot_mind_control_hero_fixes_scen99` |
 
 Rows deliberately not added:
@@ -210,6 +211,10 @@ Rows deliberately not added:
   into the spin before the cast, so both values spin at it). WHIRLWIND at
   nobody has its own arena, `soldier_whirlwind_no_foe_scen99` and
   `soldier_whirlwind_no_foe_fixes_scen99`, with a foe that never moves.
+- A level-16 bot soldier (`soldier_bot_l16_roll`): its roll stops at slot 4
+  with the setting on instead of folding 5 and 6 into slot 1, but the two
+  recordings differ only in the random stream's state, which no fact can
+  read. The bound is pinned by `mage_bot_heartburst_fixes_scen99`.
 - `mage_freeze_time_offteam_scen99`: it differs with the setting on, but no
   fact can bound an orc's travel from above; the mage gate is pinned by
   `mage_bot_freeze_no_foe_fixes_scen99` instead.
