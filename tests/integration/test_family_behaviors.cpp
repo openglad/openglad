@@ -2014,6 +2014,8 @@ TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
 
 TEST(FamilyBehaviors, thief_batch3_special_taunt_charm_and_poison_paths)
 {
+    // Pinned to the classic game: the classic taunt at nobody; Gameplay Fixes refuses it for free.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     ASSERT_TRUE(thief != nullptr) << "thief created";
@@ -2801,6 +2803,8 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
 
 TEST(FamilyBehaviors, cleric_round6_thin_pool_lands_the_level_bonus_and_undead_raise_no_target_guards)
 {
+    // Pinned to the classic game: the classic heal lands above full health; Gameplay Fixes stops it at full.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
