@@ -291,6 +291,19 @@ local function check_special_ai(self)
     end
     return false
   end
+  if gf.on() then
+    local slot = self:current_special()
+    if slot == 2 or slot == 3 then
+      -- Gameplay Fixes: TURN UNDEAD only with something to turn in reach,
+      -- else the raise (which refuses free when there is no corpse).
+      local reach = gf.turn_range(self, og.tuning(self))
+      if self:undead_foes_in_range(reach) > 0 then
+        self:set_shifter_down(1)
+      else
+        self:set_shifter_down(0)
+      end
+    end
+  end
   return true
 end
 
