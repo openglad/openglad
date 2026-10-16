@@ -1014,6 +1014,10 @@ void GameServer::bind_player(PeerId peer_id,
                 }
                 if (w->user() != -1)
                     continue;
+                // With Gameplay Fixes on, a seat never claims a walker a
+                // charm has borrowed (#354).
+                if (!og::sim::seat_may_claim(world_, *w))
+                    continue;
                 if (w->myguy == nullptr ||
                     w->myguy->owner_player_index !=
                         static_cast<std::uint8_t>(player_index))
