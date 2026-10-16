@@ -590,7 +590,7 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  tuning.count = 9
+  tuning.count = 10
   tuning[heal_range] = int 60
   tuning[mace_int_req] = int 50
   tuning[mace_life_base] = int 100
@@ -599,6 +599,7 @@
   tuning[resurrect_ghost_lifetime] = int 200
   tuning[resurrect_range] = int 30
   tuning[turn_undead_int_req] = int 60
+  tuning[turn_undead_range_min] = int 60
   tuning[turn_undead_range_per_level] = int 4
 [living 6]
   declared_id = "core:elemental"

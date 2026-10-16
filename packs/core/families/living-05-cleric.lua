@@ -3,6 +3,7 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
 local FX_MAGIC_SHIELD = assert(og.family_id("fx", "core:magic_shield"))
 local LIVING_SKELETON = assert(og.family_id("living", "core:skeleton"))
 local LIVING_GHOST = assert(og.family_id("living", "core:ghost"))
@@ -23,13 +24,12 @@ local function do_turn_undead(self)
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false, string.format("%d INT REQUIRED", t.turn_undead_int_req)
   end
-  -- Returns -1 when there are no candidates, otherwise the number destroyed.
-  local turned = self:turn_undead(
-    t.turn_undead_range_per_level * self.level, self.level)
+  -- Returns -1 when there are no candidates, -2 (the Gameplay Fixes
+  -- setting on) when none of them is undead, otherwise the number destroyed.
+  local turned = self:turn_undead(gf.turn_range(self, t), self.level)
   if turned == -1 then
     return false, "NO FOE IN RANGE"
   end
-  -- -2 (the Gameplay Fixes setting on): foes in reach, none of them undead.
   if turned == -2 then
     return false, "NO UNDEAD IN RANGE"
   end
@@ -88,15 +88,23 @@ local function heal_or_mace(self)
           reason = "HEAL TOO WEAK"
           break
         end
+        local before = ally.hp
         -- hp and magicpoints are C++ floats: per-op rounding
         ally.hp = og.fadd(ally.hp, amount)
+        local landed = amount
+        if gf.on() and ally.hp > ally.max_hp then
+          -- Gameplay Fixes: never above full health; the number shown and
+          -- the reward are what really landed. The mana is still spent.
+          ally.hp = ally.max_hp
+          landed = og.trunc(og.fsub(ally.max_hp, before))
+        end
         self.magicpoints = og.fsub(self.magicpoints, cost)
         if self:has_guy() then
           self:g_set_exp(self:g_exp() +
-                         og.exp_from_action(self, ally, "heal", amount))
+                         og.exp_from_action(self, ally, "heal", landed))
         end
         healed = healed + 1
-        self:do_heal_effects(self, ally, amount)
+        self:do_heal_effects(self, ally, landed)
       end
     end
     -- everyone was healthy; don't charge us
@@ -283,6 +291,19 @@ local function check_special_ai(self)
     end
     return false
   end
+  if gf.on() then
+    local slot = self:current_special()
+    if slot == 2 or slot == 3 then
+      -- Gameplay Fixes: TURN UNDEAD only with something to turn in reach,
+      -- else the raise (which refuses free when there is no corpse).
+      local reach = gf.turn_range(self, og.tuning(self))
+      if self:undead_foes_in_range(reach) > 0 then
+        self:set_shifter_down(1)
+      else
+        self:set_shifter_down(0)
+      end
+    end
+  end
   return true
 end
 
@@ -361,6 +382,9 @@ og.family("living", {
     raise_ghost_range = 30,
     resurrect_range = 30,
     resurrect_ghost_lifetime = 200,
+    -- Turn undead with the Gameplay Fixes setting on: the reach never falls
+    -- under this (px), the raise's own reach
+    turn_undead_range_min = 60,
   },
 
   check_special_ai = check_special_ai,

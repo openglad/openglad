@@ -1222,7 +1222,7 @@ inline constexpr Mutation kMut_special_archmage_do_special = {
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/families/living-05-cleric.lua", 132,
+    "packs/core/families/living-05-cleric.lua", 140,
     "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
     "local mace = nil",
     "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. Team-0 alive collapses from 2 (cleric + shield) to 1 and WalkerOfTeamAlive(0, 2, 2) fails its floor."
@@ -1236,7 +1236,7 @@ inline constexpr Mutation kMut_special_mage_do_special = {
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "packs/core/families/living-11-thief.lua", 45,
+    "packs/core/families/living-11-thief.lua", 57,
     "local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "local bomb = nil",
     "Suppresses DROP BOMB's FX_BOMB creation, so drop_bomb takes its 'if not bomb' exit and the timed bomb never enters oblist. Team-0 alive collapses from 2 to the lone thief and WalkerOfTeamAlive(0, 2, 3) fails its floor."
@@ -1331,11 +1331,11 @@ inline constexpr Mutation kMut_family_skeleton_init = {
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "packs/core/families/living-05-cleric.lua", 310,
+    "packs/core/families/living-05-cleric.lua", 331,
     "hp = 120",
     "hp = 12000",
     "Cranks CLERIC descriptor HP x100 "
-    "(packs/core/families/living-05-cleric.lua:310). "
+    "(packs/core/families/living-05-cleric.lua:331). "
     "family_cleric_scen99's WalkerHpRangeAtFinalTick(FAMILY_CLERIC, "
     "11900, 12100) leaves its window (golden 12000 cents -> mutated "
     "1200000 cents); measured 2026-09-15 by staging the pin into "
@@ -1406,11 +1406,11 @@ inline constexpr Mutation kMut_family_medium_slime_init = {
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "packs/core/families/living-11-thief.lua", 201,
+    "packs/core/families/living-11-thief.lua", 227,
     "hp = 75",
     "hp = 7500",
     "Cranks THIEF descriptor HP x100 "
-    "(packs/core/families/living-11-thief.lua:201). family_thief_scen99's "
+    "(packs/core/families/living-11-thief.lua:227). family_thief_scen99's "
     "WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600) leaves its window "
     "(golden 7500 cents -> mutated 750000 cents); measured 2026-09-15 by "
     "staging the pin into build/ci-test/packs, it is the only fact of the "
@@ -3814,7 +3814,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 310,
+    "packs/core/families/living-05-cleric.lua", 331,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3833,7 +3833,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 310,
+    "packs/core/families/living-05-cleric.lua", 331,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3852,7 +3852,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 310,
+    "packs/core/families/living-05-cleric.lua", 331,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3955,7 +3955,7 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
-    "packs/core/families/living-11-thief.lua", 77,
+    "packs/core/families/living-11-thief.lua", 89,
     "self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
     "self:set_invisibility_left(0)",
     "Discards CLOAK's invisibility grant at the cast site (the cloak roll is still drawn, only the total is thrown away), so the level-4 thief never gains cover and the team-1 soldier keeps engaging it. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2800, 2800) flips: the uncovered thief ends at 700."
@@ -3977,7 +3977,7 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
-    "packs/core/families/living-11-thief.lua", 85,
+    "packs/core/families/living-11-thief.lua", 97,
     "if lc.is_busy(self) then",
     "if true then",
     "Closes the busy gate on the TAUNT branch of taunt_or_charm, so thief slot 3 returns false before rolling any foe and before the 'Nyah Nyah!' line. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3800, 3800) both fail.",
@@ -4000,7 +4000,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "packs/core/families/living-11-thief.lua", 175,
+    "packs/core/families/living-11-thief.lua", 201,
     "if lc.is_busy(self) then",
     "if true then",
     "Closes POISON CLOUD's busy gate permanently, so thief slot 4 returns false before FX_CLOUD is summoned and no cloud is ever placed. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600) flips.",
@@ -4338,7 +4338,7 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
-    "packs/core/families/living-11-thief.lua", 77,
+    "packs/core/families/living-11-thief.lua", 89,
     "  self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
     "  self:set_invisibility_left(0)",
     "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
@@ -4699,7 +4699,7 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "packs/core/families/living-11-thief.lua", 179,
+    "packs/core/families/living-11-thief.lua", 205,
     "  local cloud = og.summon(self, \"fx\", FX_CLOUD)",
     "  do return false, 'MUTATION REFUSAL' end",
     "Replaces the POISON CLOUD FX summon with `do return false, 'MUTATION REFUSAL' end`, so poison_cloud declines before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the cloud did. With the wrapper, drop bomb / cloak / taunt-charm keep working and only the cloud branch is neutered."
@@ -4774,10 +4774,10 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
-    "packs/core/families/living-11-thief.lua", 45,
+    "packs/core/families/living-11-thief.lua", 57,
     "  local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "  do return false, 'MUTATION REFUSAL' end",
-    "Replaces the DROP BOMB FX spawn with `do return false, 'MUTATION REFUSAL' end`, so drop_bomb declines before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the bomb did. With the wrapper, cloak / taunt-charm / poison cloud keep working and only the bomb branch is neutered. (Shares the thief.lua:45 anchor with kMut_special_thief_do_special, which neuters the same spawn a different way; both rows and effect_bomb_emission_scen99 observe the bomb, so all three move together — as does the FAMILY_BOMB effect-family coverage gate, since the corpus then spawns no bomb at all.)"
+    "Replaces the DROP BOMB FX spawn with `do return false, 'MUTATION REFUSAL' end`, so drop_bomb declines before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the bomb did. With the wrapper, cloak / taunt-charm / poison cloud keep working and only the bomb branch is neutered. (Shares the thief.lua:57 anchor with kMut_special_thief_do_special, which neuters the same spawn a different way; both rows and effect_bomb_emission_scen99 observe the bomb, so all three move together — as does the FAMILY_BOMB effect-family coverage gate, since the corpus then spawns no bomb at all.)"
 };
 
 
@@ -5159,7 +5159,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
         "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 352,
+    "packs/core/families/living-05-cleric.lua", 373,
     "heal_range = 60",
     "heal_range = 1",
     "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count==0 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
@@ -5199,7 +5199,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_skeleton_scen99[] = {
         "invariant: the caster is never engaged (the ally does the killing), so it finishes at 117/120 (11700 cents) -- proof the skeleton came from the raise and not from a melee-driven code path"),
 };
 inline constexpr Mutation kMut_cleric_raise_skeleton_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 360,
+    "packs/core/families/living-05-cleric.lua", 381,
     "raise_skeleton_range = 60",
     "raise_skeleton_range = 1",
     "Collapses the RAISE UNDEAD corpse reach so nearby_corpse's `distance < range` test fails on the Manhattan-23 bloodstain and raise_skeleton returns false. No LIVING_SKELETON is summoned: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5235,7 +5235,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_ghost_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_cleric_raise_ghost_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 361,
+    "packs/core/families/living-05-cleric.lua", 382,
     "raise_ghost_range = 30",
     "raise_ghost_range = 1",
     "Collapses the RAISE GHOST corpse reach below the Manhattan-23 bloodstain, so nearby_corpse returns nil and raise_ghost returns false before do_summon. No LIVING_GHOST enters oblist: WalkerFamilyCount(FAMILY_GHOST, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5318,7 +5318,7 @@ inline constexpr FactPredicate kFacts_cleric_resurrect_friendly_scen99[] = {
         "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 84/120 (8400 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (8400) and a companion recapture (8300)."),
 };
 inline constexpr Mutation kMut_cleric_resurrect_friendly_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 231,
+    "packs/core/families/living-05-cleric.lua", 239,
     "    alive.hp = og.fdiv(alive.max_hp, 2.0)",
     "    alive.hp = og.fdiv(alive.max_hp, 4.0)",
     "Quarters the friendly-RESURRECT revival health instead of halving it. The rebuilt soldier returns at 31 of 120 HP (3100 cents) rather than 61 (6100), dropping out of WalkerHpRangeAtFinalTick's [5000, 6500] window while every other predicate still holds -- an isolated hit on the branch-specific half-health rule."
@@ -5813,7 +5813,7 @@ inline constexpr FactPredicate kFacts_thief_charm_opponent_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_charm_opponent_scen99 = {
-    "packs/core/families/living-11-thief.lua", 141,
+    "packs/core/families/living-11-thief.lua", 167,
     "        target.team = self.team",
     "        target.team = target.team",
     "Keeps the charm bookkeeping (real_team_num latch, charm_left, the notification, busy += 10) but never moves the victim onto the caster's team, so both WalkerOfTeamAlive predicates flip (team-0 alive 2 -> 1, team-1 alive 0 -> 1)."
@@ -6940,7 +6940,7 @@ inline constexpr FactPredicate kFacts_bomb_l10_vs_cleric_l9_scen99[] = {
 };
 
 inline constexpr Mutation kMut_bomb_l10_vs_cleric_l9_scen99 = {
-    "packs/core/families/living-11-thief.lua", 54,
+    "packs/core/families/living-11-thief.lua", 66,
     "  bomb.damage = og.combat.bomb_damage(self.level)",
     "  bomb.damage = og.combat.bomb_damage(1)",
     "Severs the caster-level -> bomb-damage mapping: a level-10 thief arms a level-1 bomb (raw 30, rolled 27..31 landed). The blast still fires, still shoves and still emits SOUND_EXPLODE, but the level-9 cleric survives it at 91 of 120, so WalkerDiedByFinal(FAMILY_CLERIC) fails, the exact ScoreDelta fails with it (439 -> 38, the hit XP alone) and the sound track drops from four play_sounds to three (the cleric's DIE2 never fires). Measured: 3 predicate flips."
@@ -7867,7 +7867,7 @@ inline constexpr FactPredicate kFacts_thief_taunt_matched_levels_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_taunt_matched_levels_scen99 = {
-    "packs/core/families/living-11-thief.lua", 97,
+    "packs/core/families/living-11-thief.lua", 113,
     "      if my_roll >= foe_roll then",
     "      if foe_roll >= my_roll then",
     "Inverts the taunt adjudication. With matched levels both draws share the bound rand(7), so this is exactly the observable of the RIGHT-first draw order the parity port rejected: the same two draws are consumed but the opposite foe is taunted, which moves the FOLLOW-duration draw within the stream and shifts every later combat roll (medium slime 72 -> 61 hp, orc 140 -> 131 hp at (192,177), team-0 score 22 -> 70)."
@@ -8065,7 +8065,7 @@ inline constexpr FactPredicate kFacts_thief_ai_bomb_flee_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
-    "packs/core/families/living-11-thief.lua", 64,
+    "packs/core/families/living-11-thief.lua", 76,
     "    local flee_dy = og.rand(3) - 1",
     "    local flee_dy = flee_dx; flee_dx = og.rand(3) - 1",
     "Transposes the two flee draws so the FIRST value lands on dy and the SECOND on dx - exactly the RIGHT-first adjudication the parity port rejected. Stream consumption is unchanged (both bounds are 3), so the only effect is the flee vector: the bomber survives to the dump tick, the level never completes and no soldier reaches (146,166)."
