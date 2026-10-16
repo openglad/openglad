@@ -3396,7 +3396,9 @@ short walker::special()
 						// Take an extra 50% mana-cost
 						generic = stats->magicpoints - stats->special_cost[3];
 						generic /= 2;
-						stats->magicpoints -= generic;
+						short surcharge = generic; // port of the current game's 35f0ff49
+						if (!myscreen->gameplay_fixes) // port of the current game's 35f0ff49: with the setting on it is paid once the elemental stands
+							stats->magicpoints -= generic;
 						// First make the guy we'd summon, at least physically
 						newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_FIREELEMENTAL);
 						if (!newob)
@@ -3427,6 +3429,8 @@ short walker::special()
 							newob->dead = 1;
 							return 0;
 						}
+						if (myscreen->gameplay_fixes) // port of the current game's 35f0ff49: NO ROOM TO SUMMON costs nothing
+							stats->magicpoints -= surcharge;
 						busy += 15; // takes lots of time :)
 					}  // end of shifter_down true summoning
 					else // standard, illusion-only
