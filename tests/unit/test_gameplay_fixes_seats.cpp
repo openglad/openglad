@@ -22,9 +22,19 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/sim_control_policy.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/save_data.h>
 
+#include "test_gameplay_context_scope.h"
+
+#include <array>
+#include <cstdint>
 #include <memory>
 
 namespace {
@@ -94,4 +104,186 @@ TEST(GameplayFixesSeats, seat_may_claim_skips_a_charmed_walker_only_with_the_set
     EXPECT_TRUE(og::sim::seat_may_claim(world, *fresh_spawn))
         << "a fresh spawn is still claimable";
     EXPECT_TRUE(og::sim::seat_may_claim(world, *own_team));
+}
+
+// ---------------------------------------------------------------------------
+// The seat scans. Every scan a seat claims a body through asks
+// seat_may_claim: both passes of sim_find_next_control, the owner-tagged
+// pass and both owner-locked passes of sim_find_next_control_owned, and so
+// sim_reacquire_control's verdict, which re-runs the classic scan.
+
+namespace {
+
+using og::sim::SimReacquire;
+
+struct SeatWorld
+{
+    LevelRuntimeData level{1, true};
+    SaveData save;
+    og::sim::SimEventLog events;
+    ScopedGameplayContext gameplay;
+
+    SeatWorld()
+        : gameplay(level, save, events, cfg)
+    {
+        level.create_new_grid();
+        level.set_sim_context(&save, &events, &cfg);
+    }
+
+    GameWorld& world() { return level.world(); }
+
+    struct Spec
+    {
+        unsigned char team = 0;
+        signed char user = -1;
+        bool hero = false;  // attach a myguy
+        std::uint8_t owner = guy::kNoOwner;
+        unsigned char real_team = 255;
+        short charm_left = 0;
+    };
+
+    walker* add(const Spec& spec)
+    {
+        auto w = std::make_unique<walker>();
+        w->set_order_family(Order::Living, FAMILY_SOLDIER);
+        w->setxy(80, 80);
+        w->set_sizex(16);
+        w->set_sizey(16);
+        w->set_stepsize(1.0f);
+        w->set_team_num(spec.team);
+        w->set_real_team_num(spec.real_team);
+        w->set_charm_left(spec.charm_left);
+        w->set_user(spec.user);
+        if (spec.hero)
+        {
+            w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+            w->myguy->owner_player_index = spec.owner;
+        }
+        walker* out = w.get();
+        world().oblist.push_back(std::move(w));
+        return out;
+    }
+
+    // Owner-locked with every seat on one deployed machine: ownership
+    // permits everything, so the owner-locked passes decide alone.
+    void lock_permissively()
+    {
+        std::array<std::uint8_t, og::sim::kPlayerMachineSlots> machines{};
+        machines.fill(og::sim::encode_player_machine(0, true));
+        og::sim::set_control_policy(world(), og::sim::kControlPolicyOwnerLocked,
+                                    machines);
+    }
+};
+
+}  // namespace
+
+// A team-0 soldier of team 1 that our side charmed (100 ticks left), with
+// every other team-0 body already claimed. The classic game hands a seat the
+// charmed walker; with the setting on there is nobody to claim. The same for
+// a charmed hero (the scan's first pass) beside an unclaimed troop: the
+// setting on skips the hero and claims the troop.
+// RED on the scans without the conjunct: the charmed walker is returned.
+TEST(GameplayFixesSeats, a_seat_skips_a_walker_our_side_charmed)
+{
+    SeatWorld fx;
+    fx.add({.team = 0, .user = 0, .hero = true, .owner = 0});
+    walker* charmed = fx.add({.team = 0, .real_team = 1, .charm_left = 100});
+
+    fx.world().gameplay_fixes = 0;
+    EXPECT_EQ(charmed, sim_find_next_control(fx.world(), 0))
+        << "the classic game claims the charmed walker";
+    EXPECT_EQ(charmed, og::sim::sim_find_next_control_owned(fx.world(), 0, 0));
+    fx.world().gameplay_fixes = 1;
+    EXPECT_EQ(nullptr, sim_find_next_control(fx.world(), 0))
+        << "with the setting on a seat never claims a charmed walker";
+    EXPECT_EQ(nullptr, og::sim::sim_find_next_control_owned(fx.world(), 0, 0));
+
+    // The first pass: a charmed hero ahead of an unclaimed troop.
+    fx.world().oblist.clear();
+    walker* charmed_hero = fx.add({.team = 0, .hero = true, .owner = 0,
+                                   .real_team = 1, .charm_left = 100});
+    walker* troop = fx.add({.team = 0});
+    fx.world().gameplay_fixes = 0;
+    EXPECT_EQ(charmed_hero, sim_find_next_control(fx.world(), 0))
+        << "the classic first pass takes the hero";
+    fx.world().gameplay_fixes = 1;
+    EXPECT_EQ(troop, sim_find_next_control(fx.world(), 0))
+        << "with the setting on the first pass skips the charmed hero";
+}
+
+// The reacquire verdict follows the scans: with only a charmed walker left
+// on the team the classic game claims it, and with the setting on the game
+// ends instead (no seat takes a borrowed body). Owner-locked, the same:
+// the owner-locked passes and the classic scan both skip it, so the verdict
+// is EndGame, not Follow.
+// RED: Claimed with the setting on (no conjunct anywhere), or Follow
+// (the conjunct in the owner-locked passes but not in the classic scan).
+TEST(GameplayFixesSeats, reacquire_ends_the_game_rather_than_claim_a_charmed_walker)
+{
+    for (const bool locked : {false, true})
+    {
+        SeatWorld fx;
+        if (locked)
+            fx.lock_permissively();
+        fx.add({.team = 0, .user = 0, .hero = true, .owner = 0});
+        walker* charmed = fx.add({.team = 0, .real_team = 1, .charm_left = 100});
+
+        walker* control = nullptr;
+        fx.world().gameplay_fixes = 0;
+        EXPECT_EQ(SimReacquire::Claimed,
+                  og::sim::sim_reacquire_control(fx.world(), 0, 1, control))
+            << "locked " << locked;
+        EXPECT_EQ(charmed, control) << "locked " << locked;
+
+        control = nullptr;
+        fx.world().gameplay_fixes = 1;
+        EXPECT_EQ(SimReacquire::EndGame,
+                  og::sim::sim_reacquire_control(fx.world(), 0, 1, control))
+            << "locked " << locked;
+        EXPECT_EQ(nullptr, control) << "locked " << locked;
+    }
+}
+
+// A freshly spawned walker carries real_team_num == team and no charm timer
+// (the parity rows, the text client's crew, mapgen). It is claimable on
+// both values of the setting.
+// RED with the timer dropped from charmed_onto_team: nullptr with the
+// setting on.
+TEST(GameplayFixesSeats, a_fresh_spawn_with_real_team_set_is_still_claimable)
+{
+    SeatWorld fx;
+    walker* fresh = fx.add({.team = 0, .hero = true, .owner = 0, .real_team = 0});
+    for (const short fixes : {short{0}, short{1}})
+    {
+        fx.world().gameplay_fixes = fixes;
+        EXPECT_EQ(fresh, sim_find_next_control(fx.world(), 0)) << fixes;
+        walker* control = nullptr;
+        EXPECT_EQ(SimReacquire::Claimed,
+                  og::sim::sim_reacquire_control(fx.world(), 0, 0, control))
+            << fixes;
+        EXPECT_EQ(fresh, control) << fixes;
+    }
+}
+
+// In a scripted match the owner-tagged pass claims a seat's own hero
+// whatever its team. Our hero, charmed by an enemy, stands on the enemy
+// team (team 1, real 0, 50 ticks left): the classic game hands it back to
+// its seat while it is still the enemy's; with the setting on the seat
+// finds nobody (the classic scan has no team-0 body either).
+// RED on the owner-tagged pass without the conjunct: the charmed hero.
+TEST(GameplayFixesSeats, owner_tagged_pass_skips_a_charmed_hero)
+{
+    SeatWorld fx;
+    fx.world().type =
+        static_cast<char>(fx.world().type | GameWorld::TYPE_SCRIPTED);
+    walker* hero = fx.add({.team = 1, .hero = true, .owner = 0,
+                           .real_team = 0, .charm_left = 50});
+    fx.add({.team = 1});  // the enemy's own troop
+
+    fx.world().gameplay_fixes = 0;
+    EXPECT_EQ(hero, og::sim::sim_find_next_control_owned(fx.world(), 0, 0))
+        << "the classic owner-tagged pass takes the charmed hero";
+    fx.world().gameplay_fixes = 1;
+    EXPECT_EQ(nullptr, og::sim::sim_find_next_control_owned(fx.world(), 0, 0))
+        << "with the setting on the seat does not take it back early";
 }

@@ -103,7 +103,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
-            w->team_num() == my_team)
+            w->team_num() == my_team &&
+            og::sim::seat_may_claim(level, *w))
         {
             TRACE("sim_input", "found player character '%s'", w->stats()->name.c_str());
             return w;
@@ -118,7 +119,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
-            w->team_num() == my_team)
+            w->team_num() == my_team &&
+            og::sim::seat_may_claim(level, *w))
         {
             TRACE("sim_input", "found team member '%s'", w->stats()->name.c_str());
             return w;
