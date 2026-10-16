@@ -214,3 +214,129 @@ TEST_F(GameplayFixesBots, mage_heartburst_wants_a_foe_in_its_own_reach_with_the_
     EXPECT_FALSE(gate(mage, 5, 0)) << "60 px: the classic answer";
     EXPECT_TRUE(gate(mage, 5, 1)) << "60 px";
 }
+
+// ---------------------------------------------------------------------------
+// The archmage (fixes B and C)
+// ---------------------------------------------------------------------------
+
+// TELEPORT: the mage's rule with the setting on; the classic archmage had no
+// gate, so every answer is yes with it off.
+//
+// RED (no gate on the row): Value of: gate(arch, 1, 1) Actual: true
+// Expected: false "one foe at 60 px: stay and fight".
+TEST_F(GameplayFixesBots, archmage_teleport_takes_the_mage_rule_with_the_setting_on)
+{
+    living* arch = add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 2000.0f);
+    ASSERT_NE(nullptr, arch);
+    EXPECT_TRUE(gate(arch, 1, 0));
+    EXPECT_TRUE(gate(arch, 1, 1)) << "alone: flee";
+
+    living* foe = add(FAMILY_SOLDIER, 2, 260, 200, 1);
+    ASSERT_NE(nullptr, foe);
+    EXPECT_TRUE(gate(arch, 1, 0)) << "the classic archmage had no gate";
+    EXPECT_FALSE(gate(arch, 1, 1)) << "one foe at 60 px: stay and fight";
+
+    foe->setxy(311, 200);  // 111 px: out of the rule's reach
+    EXPECT_TRUE(gate(arch, 1, 1)) << "nobody within 110: flee";
+    foe->setxy(310, 200);  // 110 px: the edge is in
+    EXPECT_FALSE(gate(arch, 1, 1)) << "one foe at 110 px";
+
+    for (short dy : {short{20}, short{40}, short{60}})
+        ASSERT_NE(nullptr, add(FAMILY_SOLDIER, 2, 230, static_cast<short>(200 + dy), 1));
+    EXPECT_TRUE(gate(arch, 1, 0));
+    EXPECT_TRUE(gate(arch, 1, 1)) << "four foes: flee";
+}
+
+// HEARTBURST / CHAIN LIGHTNING at level 10: the burst reaches 80 + 2*10 =
+// 100 px, the chain 200 + 5*10 + 2*10 = 270 px. The coin's arm is kept when
+// it has a target, swapped when only the other one has, refused when
+// neither has. The chain always reaches at least as far as the burst, so a
+// chain with no target always ends in a refusal.
+//
+// RED (no gate on the row): Expected equality of these values: c.answer
+// Which is: false gate(arch, 2, 1) Which is: true "271 px, the chain's
+// coin: nobody in reach"; c.shift_after Which is: 1 arch->shifter_down()
+// Which is: 0 "101 px: only the chain has a target".
+TEST_F(GameplayFixesBots, archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on)
+{
+    living* arch = add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 2000.0f);
+    living* foe = add(FAMILY_SOLDIER, 2, 260, 200, 1);  // 60 px: both reach
+    ASSERT_TRUE(arch && foe);
+
+    struct Case {
+        short x;
+        short shift_before;
+        bool answer;
+        short shift_after;
+        const char* what;
+    };
+    const Case cases[] = {
+        {260, 0, true, 0, "60 px, the burst's coin: kept"},
+        {260, 1, true, 1, "60 px, the chain's coin: kept"},
+        {300, 0, true, 0, "100 px: the burst's edge is in"},
+        {301, 0, true, 1, "101 px: only the chain has a target"},
+        {400, 1, true, 1, "200 px, the chain's coin: kept"},
+        {470, 0, true, 1, "270 px: the chain's edge is in"},
+        {471, 1, false, 0, "271 px, the chain's coin: nobody in reach"},
+        {471, 0, false, 0, "271 px, the burst's coin: nobody in reach"},
+    };
+    for (const Case& c : cases) {
+        foe->setxy(c.x, static_cast<short>(200));
+        arch->set_shifter_down(c.shift_before);
+        EXPECT_EQ(c.answer, gate(arch, 2, 1)) << c.what;
+        EXPECT_EQ(c.shift_after, arch->shifter_down()) << c.what;
+    }
+
+    // With the setting off the row has no opinion and the coin stands.
+    foe->setxy(471, 200);
+    arch->set_shifter_down(1);
+    EXPECT_TRUE(gate(arch, 2, 0)) << "the classic archmage had no gate";
+    EXPECT_EQ(1, arch->shifter_down()) << "the coin is left as it fell";
+}
+
+// SUMMON IMAGE / SUMMON ELEMENTAL: a foe within 200 px, and the elemental
+// only when the spare pool (magic less the slot's 500) is at least 500, so
+// a drained archmage summons an image rather than spend the last of its
+// magic on an elemental.
+//
+// RED (no gate on the row): Value of: gate(arch, 3, 1) Actual: true
+// Expected: false "201 px: nobody to summon against"; Expected equality of
+// these values: c.shift_after Which is: 0 arch->shifter_down() Which is: 1
+// "spare 100: the image".
+TEST_F(GameplayFixesBots, archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on)
+{
+    living* arch = add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 600.0f);
+    living* foe = add(FAMILY_SOLDIER, 2, 350, 200, 1);  // 150 px
+    ASSERT_TRUE(arch && foe);
+    ASSERT_EQ(500, static_cast<int>(arch->stats()->special_cost(3))) << "the slot's price";
+
+    struct Case {
+        float mp;
+        short shift_before;
+        short shift_after;
+        const char* what;
+    };
+    const Case cases[] = {
+        {600.0f, 1, 0, "spare 100: the image"},
+        {999.0f, 1, 0, "spare 499: the image"},
+        {1000.0f, 0, 1, "spare 500: the elemental"},
+        {1100.0f, 0, 1, "spare 600: the elemental"},
+    };
+    for (const Case& c : cases) {
+        arch->stats()->set_magicpoints(c.mp);
+        arch->set_shifter_down(c.shift_before);
+        EXPECT_TRUE(gate(arch, 3, 1)) << c.what << ": a foe at 150 px";
+        EXPECT_EQ(c.shift_after, arch->shifter_down()) << c.what;
+    }
+
+    foe->setxy(400, 200);  // 200 px: the edge is in
+    EXPECT_TRUE(gate(arch, 3, 1)) << "200 px";
+    foe->setxy(401, 200);  // 201 px
+    EXPECT_FALSE(gate(arch, 3, 1)) << "201 px: nobody to summon against";
+
+    // With the setting off the row has no opinion and the coin stands.
+    arch->stats()->set_magicpoints(600.0f);
+    arch->set_shifter_down(1);
+    EXPECT_TRUE(gate(arch, 3, 0)) << "the classic archmage had no gate";
+    EXPECT_EQ(1, arch->shifter_down()) << "the coin is left as it fell";
+}

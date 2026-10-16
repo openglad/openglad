@@ -21,6 +21,12 @@ local LIVING_CLERIC = assert(og.family_id("living", "core:cleric"))
 local LIVING_ELEMENTAL = assert(og.family_id("living", "core:elemental"))
 local LIVING_ORC_CAPTAIN = assert(og.family_id("living", "core:orc_captain"))
 
+-- Gameplay Fixes bot gates: TELEPORT keeps the mage's rule (flee when nobody
+-- is within 110 px, or more than three foes are); the summons want a foe
+-- within the hit response's own 200 px.
+local TELEPORT_GATE_RANGE = 110
+local SUMMON_GATE_RANGE = 200
+
 local function on_fire_weapon(self, weapon)
   -- ArchMage gets 1/20th of 'extra' magic for more damage.
   -- The drain cap binds only above 1000 MP; /20 is one float division.
@@ -44,6 +50,18 @@ local function on_act_living(self)
   -- Keep C remainder semantics explicit for drawcycle.
   if og.mod(self:drawcycle(), period) == 0 then
     self:set_view_all(self:view_all() + 1)
+  end
+end
+
+-- SUMMON ELEMENTAL only when the spare pool is at least the slot's own
+-- price (the surcharge then halves a pool of 500 or more); else the image.
+-- With the Gameplay Fixes setting on, a bot's summon gate and its hit
+-- response ask this instead of keeping the coin.
+local function summon_shift(self)
+  if lc.spare_mp(self, 3) >= self:s_special_cost(3) then
+    self:set_shifter_down(1)
+  else
+    self:set_shifter_down(0)
   end
 end
 
@@ -123,6 +141,54 @@ local function hit_response(self, foe)
       end
     end
   end
+end
+
+-- Gameplay Fixes bot gates for slots 1-3 (slot 4 keeps its rest gate). Off,
+-- each answers true, which is what a row with no `ai` answered.
+local function ai_teleport(self)
+  if not gf.on() then
+    return true
+  end
+  local _, foe_count = og.find_foes_in_range("ob", TELEPORT_GATE_RANGE, self)
+  return foe_count < 1 or foe_count > 3
+end
+
+-- CHAIN LIGHTNING wants a foe inside its radius, HEARTBURST inside its own:
+-- the coin's arm is kept when it has a target, swapped when only the other
+-- has one, refused when neither has.
+local function ai_burst_or_chain(self)
+  if not gf.on() then
+    return true
+  end
+  local t = og.tuning(self)
+  local bonus = t.radius_bonus_per_level * self.level
+  local _, in_burst = og.find_foes_in_range("ob", t.burst_radius_base + bonus, self)
+  local _, in_chain = og.find_foes_in_range("ob",
+    t.chain_radius_base + t.chain_radius_per_level * self.level + bonus, self)
+  if self:shifter_down() ~= 0 then
+    if in_chain >= 1 then
+      return true
+    end
+    self:set_shifter_down(0)
+    return in_burst >= 1
+  end
+  if in_burst >= 1 then
+    return true
+  end
+  if in_chain >= 1 then
+    self:set_shifter_down(1)
+    return true
+  end
+  return false
+end
+
+local function ai_summon(self)
+  if not gf.on() then
+    return true
+  end
+  summon_shift(self)
+  local _, foe_count = og.find_foes_in_range("ob", SUMMON_GATE_RANGE, self)
+  return foe_count >= 1
 end
 
 local function level_up(guy, level_diff)
@@ -546,9 +612,9 @@ og.family("living", {
              train = { strength = 30, dexterity = 20, constitution = 25,
                        intelligence = 7, armor = 55, level = 200 } },
   specials = {
-    { id = "teleport",     name = "TELEPORT",     mp_cost = 10,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int." }, cast = teleport, detail = "Any mage can teleport randomly away easily." },
-    { id = "heartburst",   name = "HEARTBURST",   mp_cost = 80,  alternate = { name = "CHAIN LIGHTNING", detail = "Hops from foe to foe." }, cast = burst_or_chain, detail = "Burst your enemies into flame around you." },
-    { id = "summon_image", name = "SUMMON IMAGE", mp_cost = 500, alternate = { name = "SUMMON ELEMENTAL", detail = "A daemon fed with SP." }, cast = summon_image, detail = "Summon an illusionary ally to fight for you." },
+    { id = "teleport",     name = "TELEPORT",     mp_cost = 10,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int." }, cast = teleport, ai = ai_teleport, detail = "Any mage can teleport randomly away easily." },
+    { id = "heartburst",   name = "HEARTBURST",   mp_cost = 80,  alternate = { name = "CHAIN LIGHTNING", detail = "Hops from foe to foe." }, cast = burst_or_chain, ai = ai_burst_or_chain, detail = "Burst your enemies into flame around you." },
+    { id = "summon_image", name = "SUMMON IMAGE", mp_cost = 500, alternate = { name = "SUMMON ELEMENTAL", detail = "A daemon fed with SP." }, cast = summon_image, ai = ai_summon, detail = "Summon an illusionary ally to fight for you." },
     { id = "mind_control", name = "MIND CONTROL", mp_cost = 150, cast = lc.with_rest(mind_control, 4, "charm_rest", "MIND CONTROL"), ai = lc.gate_with_rest(nil, 4), detail = "Convert nearby foes to your team, for a time." },
   },
   default_weapon = "core:fireball",
