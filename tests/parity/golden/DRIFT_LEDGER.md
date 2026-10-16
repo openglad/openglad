@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `050a3af7`
+Old-game commit the goldens are captured from: `5cc77c35`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -453,6 +453,14 @@ when the setting and the engine rules landed in the current game. With the dumpe
 `thief_ai_bomb_flee_scen99` captured at it each `cmp` equal to their committed goldens (no `using embedded fixture`
 line). The current-game cell names this PR in words with its pre-squash commit in parentheses, as the charm timer
 port above does.
+
+`5cc77c35` is the next table mirror (recorder-only, `tools/` only) and the pin: it carries the pins that followed
+their lines when the soldier, elf, druid, ghost, orc, cleric, thief, mage and archmage fixes landed in the current
+game behind the setting, and the two notes that quote the soldier's and the elf's lines. No fix is ported to the old
+game yet. With the dumper rebuilt from an emptied `obj/`, `--list` names every golden id, and
+`special_soldier_3_scen99`, `special_elf_2_scen99`, `special_druid_1_scen99`, `cleric_turn_undead_scen99`,
+`thief_charm_opponent_scen99`, `mage_freeze_time_offteam_scen99` and `archmage_summon_elemental_scen99` captured at it
+each `cmp` equal to their committed goldens (no `using embedded fixture` line).
 
 ### Earlier ports (before the 2026-10-04 rule)
 
