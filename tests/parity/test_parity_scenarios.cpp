@@ -499,6 +499,14 @@ OG_PARITY_TEST(cleric_turn_no_undead_fixes_scen99)
 OG_PARITY_TEST(cleric_bot_raise_or_turn_scen99)
 OG_PARITY_TEST(cleric_bot_raise_or_turn_fixes_scen99)
 OG_PARITY_TEST(special_cleric_heal_ally_fixes_scen99)
+OG_PARITY_TEST(thief_charm_nearest_scen99)
+OG_PARITY_TEST(thief_charm_nearest_fixes_scen99)
+OG_PARITY_TEST(thief_taunt_no_foe_scen99)
+OG_PARITY_TEST(thief_taunt_no_foe_fixes_scen99)
+OG_PARITY_TEST(thief_bot_charm_or_taunt_scen99)
+OG_PARITY_TEST(thief_bot_charm_or_taunt_fixes_scen99)
+OG_PARITY_TEST(thief_bot_charm_hero_scen99)
+OG_PARITY_TEST(thief_bot_charm_hero_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

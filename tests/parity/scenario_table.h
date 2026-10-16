@@ -8789,6 +8789,136 @@ inline constexpr Mutation kMut_special_cleric_heal_ally_fixes_scen99 = {
     "Removes the cap (the hp is written back unchanged), so the heal lands its full amount again and the big orc ends far above its 180 max, outside WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 17800, 18000)."
 };
 
+// --- thief_charm_nearest (fix G: CHARM OPPONENT takes the nearest foe) -----
+// A level-7 thief charms (slot 3 shifted at tick 20) with two level-1 foes in
+// its 44 px reach: an orc 20 px away, spawned first, and a soldier 40 px away,
+// spawned second and so earlier in the list. The classic charm takes the first
+// in list order (the soldier); with the setting on it takes the nearest (the
+// orc). The charmed one turns on the other.
+inline constexpr SpawnSpec kFamilySpawns_thief_charm_nearest_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 140, 120, 0, 0 },            // nearest, spawned first
+    { FAMILY_SOLDIER, 1, kOrderLiving, 160, 120, 0, 0 },            // farther, earlier in the list
+    { FAMILY_THIEF,   0, kOrderLiving, 120, 120, 0, 0, 7, 600 },    // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_thief_charm_nearest_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: the charm succeeds on both values (\"Thief charmed an opponent!\")"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7500, 7500,
+        "consequence: the classic charm takes the first foe in list order, the soldier 40 px away; the charmed soldier and the orc fight and the orc ends at 75 hp"),
+};
+inline constexpr FactPredicate kFacts_thief_charm_nearest_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: the charm succeeds on both values (\"Thief charmed an opponent!\")"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 5800, 5800,
+        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the charmed orc trades blows with the soldier and ends at 58 hp"),
+};
+inline constexpr Mutation kMut_thief_charm_nearest_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 65,
+    "if best == nil or dist < best_dist then",
+    "if best == nil or dist > best_dist then",
+    "Turns the nearest search into a farthest search, so the charm takes the soldier 40 px away as the classic list order does: the orc ends at 75 hp and WalkerHpRangeAtFinalTick(FAMILY_ORC, 5800, 5800) fails."
+};
+
+// --- thief_taunt_no_foe (fix K: TAUNT with nobody in reach) ---------------
+// A level-7 thief taunts (slot 3 at tick 20) with its only foe, a TOWER1, 280 px
+// away (reach 108). The classic taunt shouts "Nyah Nyah!" at nobody; with the
+// setting on it is refused for free.
+inline constexpr SpawnSpec kFamilySpawns_thief_taunt_no_foe_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 400, 120, 0, 0 },            // far outside the taunt reach
+    { FAMILY_THIEF,  0, kOrderLiving, 120, 120, 0, 0, 7, 600 },    // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_thief_taunt_no_foe_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "consequence: the classic taunt shouts \"Nyah Nyah!\" with nobody in its 108 px reach"),
+};
+inline constexpr FactPredicate kFacts_thief_taunt_no_foe_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: with the setting on a taunt with nobody in reach is refused (NO FOE IN RANGE) for free: no shout"),
+};
+inline constexpr Mutation kMut_thief_taunt_no_foe_fixes_scen99 = {
+    "packs/core/families/living-11-thief.lua", 102,
+    "if gf.on() and #foes == 0 then",
+    "if false then",
+    "Removes the refusal, so the taunt shouts at nobody again and EventKindExactly(notification, 0) reads 1."
+};
+
+// --- thief_bot_charm_or_taunt (fix C: the thief bot's slot-3 choice) -------
+// A hostile level-7 thief bot with 100 MP and a level-9 soldier 40 px away:
+// inside the charm reach, and two levels above the thief, so a charm is always
+// resisted. The seed (29) makes the classic bot's coin pick the charm at
+// tick 1 ("Thief failed to charm!", and the soldier gets its free hit); with
+// the setting on the bot charms only a foe it can take, so it taunts ("Nyah
+// Nyah!"). The soldier kills the thief on both values; it ends at 17 hp
+// against 21.
+inline constexpr SpawnSpec kFamilySpawns_thief_bot_charm_or_taunt_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 160, 120, 0, 0, 9, 0 },     // higher-level foe, 40 px east
+    { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 7, 100 },   // hostile bot caster
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_scen99[] = {
+    pred::TickReached(120),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: one cast at tick 1 on both values"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 1700, 1700,
+        "consequence: the classic coin sends the thief bot at a charm the level-9 soldier always resists (\"Thief failed to charm!\", a free hit); the soldier ends at 17 hp"),
+};
+inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
+    "packs/core/families/living-11-thief.lua", 163,
+    "        target:attack(self)",
+    "        target:set_foe(self)",
+    "Drops the free hit a resisted charm gives the foe, so the classic fight changes and the level-9 soldier does not end at 17 hp: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 1700, 1700) fails."
+};
+inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_fixes_scen99[] = {
+    pred::TickReached(120),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: one cast at tick 1 on both values"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2100, 2100,
+        "consequence: with the setting on the thief bot charms only a foe it can take; the level-9 soldier is above it, so it taunts (\"Nyah Nyah!\") and the soldier ends at 21 hp"),
+};
+inline constexpr Mutation kMut_thief_bot_charm_or_taunt_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 61,
+    "eligible = foe.level <= max_level",
+    "eligible = foe.level >= max_level",
+    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so the gate sends the bot at the level-9 soldier's charm again: it is resisted and the soldier does not end at 21 hp."
+};
+
+// --- thief_bot_charm_hero (#355: a hero a player drives resists a charm) ----
+// A hostile level-7 thief bot with 100 MP and the player's level-1 soldier
+// 40 px away. The seed (9) makes the bot roll slot 3 with the charm coin up at
+// tick 0: the classic thief charms the player's hero away for longer than the
+// run; with the setting on a seated hero cannot be charmed, so the bot taunts
+// instead and the hero stays on team 0.
+inline constexpr SpawnSpec kFamilySpawns_thief_bot_charm_hero_scen99[] = {
+    { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 7, 100 },   // hostile bot caster
+    { FAMILY_SOLDIER, 0, kOrderLiving, 160, 120, 0, 0 },           // the player's hero LAST, 40 px east
+};
+inline constexpr FactPredicate kFacts_thief_bot_charm_hero_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 0, 0,
+        "consequence: the classic thief bot charms the player's hero at tick 0 and the 225-tick charm outlasts the run: team 0 is empty"),
+};
+inline constexpr FactPredicate kFacts_thief_bot_charm_hero_fixes_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1,
+        "consequence: with the setting on a hero a player drives cannot be charmed, so the bot taunts instead and the hero stays on team 0"),
+};
+inline constexpr Mutation kMut_thief_bot_charm_hero_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 47,
+    "return not foe:seat_driven()",
+    "return true",
+    "Makes a seated hero charmable again, so the bot's gate and its charm take the player's hero: WalkerOfTeamAlive(0, 1, 1) reads 0."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -10886,6 +11016,70 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Cleric_1,
       kFacts_special_cleric_heal_ally_fixes_scen99, std::size(kFacts_special_cleric_heal_ally_fixes_scen99),
       kMut_special_cleric_heal_ally_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "thief_charm_nearest_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3Shift, std::size(kInputsSpecialSlot3Shift), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_charm_nearest_scen99, std::size(kFamilySpawns_thief_charm_nearest_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_charm_nearest_scen99, std::size(kFacts_thief_charm_nearest_scen99),
+      kMut_thief_charm_opponent_scen99 },
+
+    { "thief_charm_nearest_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3Shift, std::size(kInputsSpecialSlot3Shift), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_charm_nearest_scen99, std::size(kFamilySpawns_thief_charm_nearest_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_charm_nearest_fixes_scen99, std::size(kFacts_thief_charm_nearest_fixes_scen99),
+      kMut_thief_charm_nearest_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "thief_taunt_no_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_taunt_no_foe_scen99, std::size(kFamilySpawns_thief_taunt_no_foe_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_taunt_no_foe_scen99, std::size(kFacts_thief_taunt_no_foe_scen99),
+      kMut_special_thief_3_scen99 },
+
+    { "thief_taunt_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_taunt_no_foe_scen99, std::size(kFamilySpawns_thief_taunt_no_foe_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_thief_taunt_no_foe_fixes_scen99, std::size(kFacts_thief_taunt_no_foe_fixes_scen99),
+      kMut_thief_taunt_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "thief_bot_charm_or_taunt_scen99", "scen/scen1.fss", 0x0000001Du,
+      kInputsEmpty, std::size(kInputsEmpty), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bot_charm_or_taunt_scen99, std::size(kFamilySpawns_thief_bot_charm_or_taunt_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bot_charm_or_taunt_scen99, std::size(kFacts_thief_bot_charm_or_taunt_scen99),
+      kMut_thief_bot_charm_or_taunt_scen99 },
+
+    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x0000001Du,
+      kInputsEmpty, std::size(kInputsEmpty), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bot_charm_or_taunt_scen99, std::size(kFamilySpawns_thief_bot_charm_or_taunt_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bot_charm_or_taunt_fixes_scen99, std::size(kFacts_thief_bot_charm_or_taunt_fixes_scen99),
+      kMut_thief_bot_charm_or_taunt_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "thief_bot_charm_hero_scen99", "scen/scen1.fss", 0x00000009u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bot_charm_hero_scen99, std::size(kFamilySpawns_thief_bot_charm_hero_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bot_charm_hero_scen99, std::size(kFacts_thief_bot_charm_hero_scen99),
+      kMut_thief_charm_opponent_scen99 },
+
+    { "thief_bot_charm_hero_fixes_scen99", "scen/scen1.fss", 0x00000009u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bot_charm_hero_scen99, std::size(kFamilySpawns_thief_bot_charm_hero_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bot_charm_hero_fixes_scen99, std::size(kFacts_thief_bot_charm_hero_fixes_scen99),
+      kMut_thief_bot_charm_hero_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
