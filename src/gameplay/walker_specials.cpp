@@ -125,6 +125,20 @@ bool teleport_landing_clear(GameWorld& world, walker* self,
 	return true;
 }
 
+// What TURN UNDEAD can turn: an undead family, not warded. A warded
+// (BIT_INVINCIBLE / invulnerable) undead is skipped before the resistance
+// rolls: turning is damage, and both classic arms of the kill loop kill
+// without ever entering walker::attack's gate. The kill loop, the Gameplay
+// Fixes refusal and the cleric's bot gate all ask this one question.
+bool turnable(const walker* w)
+{
+	const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;
+	const bool warded =
+	    w != nullptr && (w->stats()->query_bit_flags(BIT_INVINCIBLE) ||
+	                     w->invulnerable_left() != 0);
+	return w && target_fd && target_fd->is_undead && !warded;
+}
+
 } // namespace
 
 bool walker::special(SpecialFailure* why, std::string* reason)
@@ -349,7 +363,9 @@ bool walker::teleport_ranged(std::int32_t range)
 
 // Turns undead; ie, skeleton or ghost, within range
 // Returns the number of dead destroyed
-std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32_t power)
+// (-1: no foe in range at all; -2, with the Gameplay Fixes setting on: foes
+// in range, none of them undead)
+std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 {
 	std::int32_t killed = 0;
 	std::int32_t targets = 0;
@@ -359,18 +375,29 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 	if (!targets)
 		return -1;
 
+	const bool fixes = og::sim::session_gameplay_fixes() != 0;
+	if (fixes)
+	{
+		// Gameplay Fixes: a ring with foes but nothing to turn is refused
+		// before any roll, so the cast spends nothing (-2; -1 stays "nobody").
+		bool any_undead = false;
+		for (auto* w : deadlist)
+			if (turnable(w)) { any_undead = true; break; }
+		if (!any_undead)
+			return -2;
+	}
+	// The classic roll strength is 40 per px of the classic reach, 4 px per
+	// level: 160 per level. With the fixes on the reach may be wider than
+	// 4 px per level, so the roll keeps the classic strength by the level
+	// (power), and a wider ring never changes who resists.
+	const auto roll_bound = fixes ? static_cast<std::uint32_t>(power * 160)
+	                              : static_cast<std::uint32_t>(range * 40);
+
     for(auto* w : deadlist)
 	{
-		const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;
-		// A warded (BIT_INVINCIBLE / invulnerable) undead is skipped before
-		// the resistance rolls: turning is damage, and both classic arms
-		// below kill without ever entering walker::attack's gate.
-		const bool warded =
-		    w != nullptr && (w->stats()->query_bit_flags(BIT_INVINCIBLE) ||
-		                     w->invulnerable_left() != 0);
-		if (w && target_fd && target_fd->is_undead && !warded)
+		if (turnable(w))
 		{
-			if (current_game->world->rng_.next(static_cast<std::uint32_t>(range*40)) > current_game->world->rng_.next(static_cast<std::uint32_t>(w->stats()->level()*10)) )
+			if (current_game->world->rng_.next(roll_bound) > current_game->world->rng_.next(static_cast<std::uint32_t>(w->stats()->level()*10)) )
 			{
 				GameWorld* const world = current_game->world;
 				const bool scripted_mode =
@@ -425,6 +452,18 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 	}
 	
 	return killed;
+}
+
+std::int32_t walker::undead_foes_in_range(std::int32_t range)
+{
+	std::int32_t targets = 0;
+	const std::list<walker*> foes = current_game->world->find_foes_in_range(
+	    current_game->world->oblist, range, &targets, this);
+	std::int32_t undead = 0;
+	for (auto* w : foes)
+		if (turnable(w))
+			++undead;
+	return undead;
 }
 
 // *******************************************

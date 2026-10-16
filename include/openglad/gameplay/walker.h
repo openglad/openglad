@@ -192,6 +192,10 @@ class walker : public og::sim::SimEntity
 		bool teleport();
 		bool teleport_ranged(std::int32_t range);
 		std::int32_t  turn_undead(std::int32_t range, std::int32_t power);
+		// How many foes within `range` TURN UNDEAD could turn (undead, not
+		// warded). The same question turn_undead's kill loop asks; draws
+		// nothing.
+		std::int32_t  undead_foes_in_range(std::int32_t range);
 		virtual short shove(walker  *target, short x, short y);
 		virtual bool eat_me(walker  *eater);
 		// #160 exit-pad re-trigger latch (full contract on exit_latched_ in

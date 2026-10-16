@@ -29,6 +29,10 @@ local function do_turn_undead(self)
   if turned == -1 then
     return false, "NO FOE IN RANGE"
   end
+  -- -2 (the Gameplay Fixes setting on): foes in reach, none of them undead.
+  if turned == -2 then
+    return false, "NO UNDEAD IN RANGE"
+  end
   if self:has_guy() and turned ~= 0 then
     self:g_set_exp(self:g_exp() +
                    og.exp_from_action(self, nil, "turn_undead", turned))

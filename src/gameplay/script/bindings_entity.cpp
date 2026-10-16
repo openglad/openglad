@@ -479,6 +479,17 @@ int m_turn_undead(lua_State* L)
     return 1;
 }
 
+// walker:undead_foes_in_range(range) -> integer: the foes within range
+// TURN UNDEAD could turn (undead, not warded). Draws nothing.
+int m_undead_foes_in_range(lua_State* L)
+{
+    walker* w = self_arg(L);
+    const auto range = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    lua_pushinteger(L,
+                    static_cast<lua_Integer>(w->undead_foes_in_range(range)));
+    return 1;
+}
+
 // walker:seat_driven() -> boolean: a seat drives this body (a user tag, or
 // ACT_CONTROL). og::sim::seat_driven, the rule POSSESS refuses a hero by.
 int m_seat_driven(lua_State* L)
@@ -3187,6 +3198,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"teleport", m_teleport}, {"teleport_ranged", m_teleport_ranged},
     {"find_teleport_target", m_find_teleport_target},
     {"turn_undead", m_turn_undead},
+    {"undead_foes_in_range", m_undead_foes_in_range},
     {"do_summon", m_do_summon},
     {"do_heal_effects", m_do_heal_effects},
     {"heal_clamped", m_heal_clamped},

@@ -12,6 +12,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/sound_ids.h>
 #include <gtest/gtest.h>
 #include "test_sim_random_scope.h"
 #include <algorithm>
@@ -536,6 +537,10 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
 {
     auto& world = og::runtime::current_session->myscreen_->world();
     world.delete_objects();
+    // The classic roll (range * 40, the comments below): the Gameplay Fixes
+    // setting is off until its own arm at the end.
+    const short fixes_before = world.gameplay_fixes;
+    world.gameplay_fixes = 0;
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 3);
     ASSERT_NE(nullptr, cleric) << "cleric created";
@@ -584,7 +589,93 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
     EXPECT_EQ(0, static_cast<int>(orc->dead()))
         << "turning is for the undead: the orc is untouched";
 
+    // Now only the living orc stands in the ring. The classic cast finds a
+    // foe, rolls nothing and turns nobody (0, which the cleric pays for);
+    // with the Gameplay Fixes setting on it is refused before any roll
+    // (-2, "NO UNDEAD IN RANGE"). -1 stays "nobody in reach" on both.
+    {
+        CeilingRandom ceiling_rng;
+        ScopedSimRandom scoped(&ceiling_rng);
+        world.gameplay_fixes = 0;
+        EXPECT_EQ(0, static_cast<int>(cleric->turn_undead(24, 2)))
+            << "the classic game: a living foe in reach, nobody turned";
+        world.gameplay_fixes = 1;
+        EXPECT_EQ(-2, static_cast<int>(cleric->turn_undead(24, 2)))
+            << "with the setting on: foes in reach, none of them undead";
+        EXPECT_EQ(-1, static_cast<int>(cleric->turn_undead(1, 2)))
+            << "with the setting on, an empty ring is still -1";
+    }
+    EXPECT_EQ(0, static_cast<int>(orc->dead()));
+
+    world.gameplay_fixes = fixes_before;
     delete cleric;
+    world.delete_objects();
+}
+
+// TURN UNDEAD through the real special(): a level-10 cleric (reach 40) with
+// one living orc 28 px away and no undead. The classic cast plays its sound,
+// spends 20 MP and turns nobody; with the Gameplay Fixes setting on it is
+// refused, "NO UNDEAD IN RANGE", and spends nothing.
+TEST_F(WalkerSpecials, turn_undead_without_undead_is_refused_with_gameplay_fixes_on)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    const short fixes_before = world.gameplay_fixes;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        world.delete_objects();
+        walker* cleric = make_special_guy(FAMILY_CLERIC, 0, 10);
+        ASSERT_NE(nullptr, cleric) << "cleric created";
+        ASSERT_NE(nullptr, cleric->myguy);
+        cleric->myguy->intelligence = 100;  // turning needs 60
+        cleric->setxy(100, 100);
+        cleric->set_busy(0);
+        cleric->set_current_special(2);
+        cleric->set_shifter_down(1);  // RAISE UNDEAD's alternate
+        world.gameplay_fixes = fixes;
+
+        walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, orc) << "orc created";
+        orc->set_team_num(2);
+        orc->set_dead(0);
+        orc->setxy(128, 100);
+        ASSERT_EQ(28, static_cast<int>(cleric->distance_to_ob(orc)));
+
+        ASSERT_NE(nullptr, current_game->sim_events);
+        current_game->sim_events->clear();
+        const float mp_before = cleric->stats()->magicpoints();
+        walker::SpecialFailure why = walker::SpecialFailure::None;
+        std::string reason;
+        bool cast = false;
+        {
+            CeilingRandom ceiling_rng;
+            ScopedSimRandom scoped(&ceiling_rng);
+            cast = cleric->special(&why, &reason);
+        }
+        int heal_sounds = 0;
+        for (const og::sim::Event& e : current_game->sim_events->events())
+            if (e.kind == og::sim::EventKind::PlaySound && e.a == SOUND_HEAL)
+                ++heal_sounds;
+
+        if (fixes == 0)
+        {
+            EXPECT_TRUE(cast) << "the classic cast succeeds at a living foe";
+            EXPECT_EQ(1, heal_sounds) << "and plays its sound";
+            EXPECT_FLOAT_EQ(mp_before - 20.0f, cleric->stats()->magicpoints())
+                << "and spends 20 MP on nothing";
+        }
+        else
+        {
+            EXPECT_FALSE(cast) << "with the setting on it is refused";
+            EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+            EXPECT_EQ(std::string("NO UNDEAD IN RANGE"), reason);
+            EXPECT_EQ(0, heal_sounds) << "a refused cast is silent";
+            EXPECT_FLOAT_EQ(mp_before, cleric->stats()->magicpoints())
+                << "and spends nothing";
+        }
+        EXPECT_EQ(0, static_cast<int>(orc->dead())) << "the orc is untouched";
+        delete cleric;
+    }
+    world.gameplay_fixes = fixes_before;
     world.delete_objects();
 }
 

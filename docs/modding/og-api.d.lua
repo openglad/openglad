@@ -276,6 +276,7 @@
 ---@field transfer_stats fun(self: og.Walker, target: og.Walker)
 ---@field transform_to fun(self: og.Walker, order: og.OrderName, fam: integer)
 ---@field turn_undead fun(self: og.Walker, range: integer, power: integer): integer
+---@field undead_foes_in_range fun(self: og.Walker, range: integer): integer # walker:undead_foes_in_range(range) -> integer: the foes within range TURN UNDEAD could turn (undead, not warded).
 ---@field user fun(self: og.Walker): integer
 ---@field view_all fun(self: og.Walker): integer
 ---@field weapons_left integer|fun(self: og.Walker): integer # write-through property: `self.weapons_left = v` runs m_set_weapons_left; reads answer the method (method-first)
