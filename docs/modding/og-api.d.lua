@@ -208,6 +208,7 @@
 ---@field s_special_cost fun(self: og.Walker, idx: integer): integer
 ---@field s_weapon_cost fun(self: og.Walker): integer
 ---@field save_all_protected fun(self: og.Walker): boolean
+---@field seat_driven fun(self: og.Walker): boolean # walker:seat_driven() -> boolean: a seat drives this body (a user tag, or ACT_CONTROL).
 ---@field set_act_type fun(self: og.Walker, n: integer) # walker:set_act_type(n) — write the AI act type.
 ---@field set_ani_type fun(self: og.Walker, value: integer)
 ---@field set_bonus_rounds fun(self: og.Walker, value: integer)
@@ -275,6 +276,7 @@
 ---@field transfer_stats fun(self: og.Walker, target: og.Walker)
 ---@field transform_to fun(self: og.Walker, order: og.OrderName, fam: integer)
 ---@field turn_undead fun(self: og.Walker, range: integer, power: integer): integer
+---@field undead_foes_in_range fun(self: og.Walker, range: integer): integer # walker:undead_foes_in_range(range) -> integer: the foes within range TURN UNDEAD could turn (undead, not warded).
 ---@field user fun(self: og.Walker): integer
 ---@field view_all fun(self: og.Walker): integer
 ---@field weapons_left integer|fun(self: og.Walker): integer # write-through property: `self.weapons_left = v` runs m_set_weapons_left; reads answer the method (method-first)

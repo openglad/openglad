@@ -12,6 +12,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/sound_ids.h>
 #include <gtest/gtest.h>
 #include "test_sim_random_scope.h"
 #include <algorithm>
@@ -536,6 +537,10 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
 {
     auto& world = og::runtime::current_session->myscreen_->world();
     world.delete_objects();
+    // The classic roll (range * 40, the comments below): the Gameplay Fixes
+    // setting is off until its own arm at the end.
+    const short fixes_before = world.gameplay_fixes;
+    world.gameplay_fixes = 0;
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 3);
     ASSERT_NE(nullptr, cleric) << "cleric created";
@@ -584,16 +589,103 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
     EXPECT_EQ(0, static_cast<int>(orc->dead()))
         << "turning is for the undead: the orc is untouched";
 
+    // Now only the living orc stands in the ring. The classic cast finds a
+    // foe, rolls nothing and turns nobody (0, which the cleric pays for);
+    // with the Gameplay Fixes setting on it is refused before any roll
+    // (-2, "NO UNDEAD IN RANGE"). -1 stays "nobody in reach" on both.
+    {
+        CeilingRandom ceiling_rng;
+        ScopedSimRandom scoped(&ceiling_rng);
+        world.gameplay_fixes = 0;
+        EXPECT_EQ(0, static_cast<int>(cleric->turn_undead(24, 2)))
+            << "the classic game: a living foe in reach, nobody turned";
+        world.gameplay_fixes = 1;
+        EXPECT_EQ(-2, static_cast<int>(cleric->turn_undead(24, 2)))
+            << "with the setting on: foes in reach, none of them undead";
+        EXPECT_EQ(-1, static_cast<int>(cleric->turn_undead(1, 2)))
+            << "with the setting on, an empty ring is still -1";
+    }
+    EXPECT_EQ(0, static_cast<int>(orc->dead()));
+
+    world.gameplay_fixes = fixes_before;
     delete cleric;
+    world.delete_objects();
+}
+
+// TURN UNDEAD through the real special(): a level-10 cleric (reach 40) with
+// one living orc 28 px away and no undead. The classic cast plays its sound,
+// spends 20 MP and turns nobody; with the Gameplay Fixes setting on it is
+// refused, "NO UNDEAD IN RANGE", and spends nothing.
+TEST_F(WalkerSpecials, turn_undead_without_undead_is_refused_with_gameplay_fixes_on)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    const short fixes_before = world.gameplay_fixes;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        world.delete_objects();
+        walker* cleric = make_special_guy(FAMILY_CLERIC, 0, 10);
+        ASSERT_NE(nullptr, cleric) << "cleric created";
+        ASSERT_NE(nullptr, cleric->myguy);
+        cleric->myguy->intelligence = 100;  // turning needs 60
+        cleric->setxy(100, 100);
+        cleric->set_busy(0);
+        cleric->set_current_special(2);
+        cleric->set_shifter_down(1);  // RAISE UNDEAD's alternate
+        world.gameplay_fixes = fixes;
+
+        walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, orc) << "orc created";
+        orc->set_team_num(2);
+        orc->set_dead(0);
+        orc->setxy(128, 100);
+        ASSERT_EQ(28, static_cast<int>(cleric->distance_to_ob(orc)));
+
+        ASSERT_NE(nullptr, current_game->sim_events);
+        current_game->sim_events->clear();
+        const float mp_before = cleric->stats()->magicpoints();
+        walker::SpecialFailure why = walker::SpecialFailure::None;
+        std::string reason;
+        bool cast = false;
+        {
+            CeilingRandom ceiling_rng;
+            ScopedSimRandom scoped(&ceiling_rng);
+            cast = cleric->special(&why, &reason);
+        }
+        int heal_sounds = 0;
+        for (const og::sim::Event& e : current_game->sim_events->events())
+            if (e.kind == og::sim::EventKind::PlaySound && e.a == SOUND_HEAL)
+                ++heal_sounds;
+
+        if (fixes == 0)
+        {
+            EXPECT_TRUE(cast) << "the classic cast succeeds at a living foe";
+            EXPECT_EQ(1, heal_sounds) << "and plays its sound";
+            EXPECT_FLOAT_EQ(mp_before - 20.0f, cleric->stats()->magicpoints())
+                << "and spends 20 MP on nothing";
+        }
+        else
+        {
+            EXPECT_FALSE(cast) << "with the setting on it is refused";
+            EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why);
+            EXPECT_EQ(std::string("NO UNDEAD IN RANGE"), reason);
+            EXPECT_EQ(0, heal_sounds) << "a refused cast is silent";
+            EXPECT_FLOAT_EQ(mp_before, cleric->stats()->magicpoints())
+                << "and spends nothing";
+        }
+        EXPECT_EQ(0, static_cast<int>(orc->dead())) << "the orc is untouched";
+        delete cleric;
+    }
+    world.gameplay_fixes = fixes_before;
     world.delete_objects();
 }
 
 
 // The golem declares `specials = {}` (living-18-beast.lua). Every
-// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), so a golem
-// with an ordinary pool is refused at the cost gate (NoMP) before any
-// dispatch; hand it a pool it cannot possibly have in play and the dispatch
-// itself runs, finds no hook and declines. Either way nothing is spent.
+// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), and a slot
+// priced there is not in play: walker::special refuses it (Unavailable)
+// before the mana compare, whatever the pool, so an ordinary pool and one
+// no walker could have in play are refused the same way, before any
+// dispatch. Either way nothing is spent.
 // (This was the faerie's test until New Specials gave her four slots; her
 // classic case, the setting off, is the next test.)
 TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
@@ -608,9 +700,11 @@ TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
 
     const float mp_before = w->stats()->magicpoints();
     walker::SpecialFailure why = walker::SpecialFailure::None;
-    ASSERT_FALSE(w->special(&why)) << "a family with no specials cannot cast one";
-    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
-        << "the disabled sentinel cost puts the slot out of reach of any real pool";
+    std::string reason;
+    ASSERT_FALSE(w->special(&why, &reason)) << "a family with no specials cannot cast one";
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, why)
+        << "a slot priced at the disabled sentinel is not in play";
+    EXPECT_EQ(std::string("NO SPECIAL AVAILABLE"), reason);
     EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
         << "a refused special spends no magic";
 
@@ -618,19 +712,19 @@ TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
     w->stats()->set_magicpoints(kSpecialCostDisabled + 1000);
     const float rich_mp_before = w->stats()->magicpoints();
     why = walker::SpecialFailure::None;
-    ASSERT_FALSE(w->special(&why)) << "past the cost gate there is still no cast to run";
-    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why)
-        << "the dispatch ran and declined; not Dead/NoStats/NotLiving";
+    ASSERT_FALSE(w->special(&why)) << "a pool past the sentinel changes nothing";
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, why)
+        << "the slot is refused whatever the pool, before any dispatch";
     EXPECT_FLOAT_EQ(rich_mp_before, w->stats()->magicpoints())
-        << "a declined special spends no magic either";
+        << "a refused special spends no magic either";
 
     delete w;
 }
 
 // With New Specials off the faerie is the classic faerie: her BLINK slot is
 // declared and stamped at its price, but the engine prices it at the
-// disabled sentinel, so an ordinary pool is refused (NoMP) and nothing is
-// spent; with the setting on the same pool pays the declared price.
+// disabled sentinel, so the slot is not in play (Unavailable) and nothing
+// is spent; with the setting on the same pool pays the declared price.
 TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
 {
     // A level load re-stamps the world from the session save, so the flag
@@ -648,8 +742,8 @@ TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
     const float mp_before = w->stats()->magicpoints();
     walker::SpecialFailure why = walker::SpecialFailure::None;
     ASSERT_FALSE(w->special(&why)) << "the classic faerie cannot cast a special";
-    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
-        << "the disabled sentinel cost puts the slot out of reach of any real pool";
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, why)
+        << "a slot the setting hides is not in play";
     EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
         << "a refused special spends no magic";
 
@@ -848,6 +942,9 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_are_pinned)
     // This table is the classic kits: the New Specials setting is off,
     // explicitly, whatever the session default is.
     world.new_specials = 0;
+    // And the classic game: the Gameplay Fixes setting is off too (the fixed
+    // table is its own sweep).
+    world.gameplay_fixes = 0;
 
     for (const SweepCase& sweep : kSweep)
     {
@@ -932,6 +1029,9 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
     world.new_specials = 1;
+    // The classic specials as they were: the Gameplay Fixes setting is off
+    // (the fixed table is its own sweep).
+    world.gameplay_fixes = 0;
     // The new kits move walkers (BLINK, SWAP) and stand things up
     // (BONE WALL, WAR BANNER), so their outcomes read the ground under the
     // whole neighbourhood, not just the caster's cell. The session's grid
@@ -976,6 +1076,9 @@ TEST_F(WalkerSpecials, ghost_scare_animates_and_dissipates)
 {
     walker* w = make_special_guy(FAMILY_GHOST);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // The classic SCARE with nobody to scare: the Gameplay Fixes setting
+    // refuses that cast, so this pins the setting off.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     w->set_current_special(1); // scare
     ASSERT_TRUE(w->special()) << "scare should fire";
 
@@ -1025,6 +1128,9 @@ TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
     og::runtime::current_session->myscreen_->world().new_specials = 0;
     walker* w = make_special_guy(FAMILY_GHOST);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // A SCARE with nobody to scare: the Gameplay Fixes setting refuses it,
+    // so this pins the setting off.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     w->set_current_special(1); // scare
     ASSERT_TRUE(w->special()) << "first scare should fire";
 
@@ -2226,6 +2332,9 @@ TEST_F(WalkerSpecials, soldier_whirlwind_drives_simulation)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER, 1, 4);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // A WHIRLWIND with no foe in range: the Gameplay Fixes setting refuses
+    // it, so this pins the setting off.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     w->set_lastx(w->stepsize());
     w->set_lasty(0);
     w->set_busy(0);
@@ -2533,6 +2642,9 @@ TEST_F(WalkerSpecials, cleric_heal_drives_simulation)
     auto& world = og::runtime::current_session->myscreen_->world();
     walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
     ASSERT_TRUE(w != nullptr) << "walker created";
+    // The classic HEAL's numbers, which the Gameplay Fixes setting caps at
+    // full health: this pins the setting off.
+    world.gameplay_fixes = 0;
     // The heal walks every wounded friend in range, so the neighbourhood has
     // to hold exactly the two this test puts in it.
     world.delete_objects();

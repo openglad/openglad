@@ -96,10 +96,11 @@ TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
     weapon->set_dead(0);
     why = walker::SpecialFailure::None;
     ASSERT_FALSE(weapon->special(&why)) << "a weapon has no special";
-    // A freshly created arrow carries no magic points, so the MP gate is the
-    // one that refuses it here — the order gate behind it is pinned by
-    // special_reports_why_it_refused, which pays the arrow's cost first.
-    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
+    // Every slot of a weapon is priced kSpecialCostDisabled (only a Living
+    // order overrides the loader's prices), so the slot is not in play and
+    // that gate refuses it here — the order gate behind it is pinned by
+    // special_reports_why_it_refused, which prices the arrow's slot at 0.
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, why)
         << "the refusal names the gate that actually stopped the cast";
 
     // Marker teleport: the blink lands CENTERED on the marker (center_on's

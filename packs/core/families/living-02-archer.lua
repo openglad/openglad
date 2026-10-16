@@ -102,7 +102,7 @@ og.family("living", {
     { id = "fire_arrows",    name = "FIRE ARROWS",    mp_cost = 20, cast = fire_arrows, detail = "An archer can spin in a circle, firing off a ring of flaming bolts." },
     { id = "barrage",        name = "BARRAGE",        mp_cost = 60, cast = flurry, detail = "Rather than a single bolt, the archer sends 3 deadly bolts ahead." },
     { id = "exploding_bolt", name = "EXPLODING BOLT", mp_cost = 70, detail = "This fatal bolt will explode on contact, dealing death to all." },
-    default_cast = exploding_shot,  -- cases 3, 4, and every unmapped slot
+    default_cast = exploding_shot,  -- slot 3 and every unmapped slot (slot 4 is undeclared)
   },
   default_weapon = "core:arrow",
   flags = {},

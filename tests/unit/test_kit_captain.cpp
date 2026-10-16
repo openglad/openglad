@@ -325,8 +325,8 @@ std::pair<int, std::uint32_t> howl_stun(int family, short new_specials)
 // ---------------------------------------------------------------- the setting
 
 // With the setting off the captain has no specials: every slot and every
-// alternate answers 5000 through the view, the cast is refused for mana and
-// nothing is spent, made or heard.
+// alternate answers 5000 through the view, the cast is refused (the slot is
+// not in play) and nothing is spent, made or heard.
 TEST(KitCaptain, captain_has_no_specials_when_off)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -346,7 +346,7 @@ TEST(KitCaptain, captain_has_no_specials_when_off)
                 << "slot " << slot << " shifted " << shifted;
             const Cast c = cast(captain, slot, shifted);
             EXPECT_FALSE(c.ok) << "slot " << slot << " shifted " << shifted;
-            EXPECT_EQ(walker::SpecialFailure::NoMP, c.why);
+            EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why);
             EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
         }
     }
