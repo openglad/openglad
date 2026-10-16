@@ -2758,7 +2758,16 @@ short walker::special()
                                         break;
                                     
                                     // Do the heal
+									float before = newob->stats->hitpoints; // port of the current game's 1968eec1
 									newob->stats->hitpoints += generic;
+									if (myscreen->gameplay_fixes && newob->stats->hitpoints > newob->stats->max_hitpoints)
+									{
+										// port of the current game's 1968eec1: never above full health; the
+										// number shown and the reward are what really landed, the mana is
+										// still spent
+										newob->stats->hitpoints = newob->stats->max_hitpoints;
+										generic = (short)(newob->stats->max_hitpoints - before);
+									}
 									stats->magicpoints -= cost;
 									if (myguy)
 										myguy->exp += exp_from_action(EXP_HEAL, this, newob, generic);
