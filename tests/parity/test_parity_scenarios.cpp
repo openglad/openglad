@@ -488,6 +488,10 @@ OG_PARITY_TEST(elf_rocks_blocked_scen99)
 OG_PARITY_TEST(elf_rocks_blocked_fixes_scen99)
 OG_PARITY_TEST(druid_tree_blocked_scen99)
 OG_PARITY_TEST(druid_tree_blocked_fixes_scen99)
+OG_PARITY_TEST(mage_bot_freeze_no_foe_scen99)
+OG_PARITY_TEST(mage_bot_freeze_no_foe_fixes_scen99)
+OG_PARITY_TEST(mage_bot_heartburst_scen99)
+OG_PARITY_TEST(mage_bot_heartburst_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

@@ -8574,6 +8574,88 @@ inline constexpr Mutation kMut_druid_tree_blocked_fixes_scen99 = {
     "Makes the take-back a no-op, so the blocked cast keeps its refund as the classic one does: one more swing lands and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9400, 9400) fails."
 };
 
+// --- mage_bot_freeze_no_foe (fix B: the mage's bot gate) ------------------
+// An allied level-7 mage bot with 600 MP stands far from its only foe. The
+// classic gate ("fewer than one or more than three foes within 110 px") was
+// written for TELEPORT and answers yes for every slot here, so in its first
+// ticks the bot casts its specials at nobody (16 fireball sounds). With the
+// setting on WARP SPACE, FREEZE TIME and ENERGY WAVE want a foe within 110 px
+// and the mage casts nothing.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_no_foe_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
+    { FAMILY_MAGE,    0, kOrderLiving,  60,  60, 0, 0, 7, 600 },   // allied bot caster
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },           // idle player LAST
+};
+inline constexpr FactPredicate kFacts_mage_bot_freeze_no_foe_scen99[] = {
+    pred::TickReached(200),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 16,
+        "consequence: the classic gate answers yes with no foe within 110 px for every slot, so the allied mage bot casts at nobody in its first ticks (16 fireball sounds)"),
+};
+inline constexpr Mutation kMut_mage_bot_freeze_no_foe_scen99 = {
+    "packs/core/families/living-03-mage.lua", 42,
+    "return foe_count < 1 or foe_count > 3",
+    "return foe_count > 3",
+    "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage casts nothing: EventKindExactly(play_sound, 16) reads 0.",
+    "  -- TP if away from guys .. or too many enemies!"
+};
+inline constexpr FactPredicate kFacts_mage_bot_freeze_no_foe_fixes_scen99[] = {
+    pred::TickReached(200),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on WARP SPACE, FREEZE TIME and ENERGY WAVE want a foe within 110 px, so the alone mage casts nothing"),
+};
+inline constexpr Mutation kMut_mage_bot_freeze_no_foe_fixes_scen99 = {
+    "packs/core/families/living-03-mage.lua", 31,
+    "return foe_count >= 1",
+    "return true",
+    "Lets slots 2-4 cast with no foe in reach again, so the alone mage casts at nobody: EventKindExactly(play_sound, 0) fails."
+};
+
+// --- mage_bot_heartburst (fixes B and L: the mage's gate and slot roll) -----
+// A hostile level-13 mage bot with three stationary TOWER1 foes inside 110 px.
+// The classic gate answers no for every slot with three foes in reach, and a
+// roll of 5 is folded back to slot 1, so the classic mage fights with
+// fireballs only. With the setting on WARP SPACE, FREEZE TIME and ENERGY WAVE
+// want a foe in reach (they have three) and a 5 is HEARTBURST, whose
+// explosions open the run at tick 0.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_heartburst_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 160, 120, 0, 0 },           // three stationary foes inside 110 px
+    { FAMILY_TOWER1,  0, kOrderLiving, 120, 160, 0, 0 },
+    { FAMILY_TOWER1,  0, kOrderLiving,  80, 120, 0, 0 },
+    { FAMILY_MAGE,    1, kOrderLiving, 120, 120, 0, 0, 13, 600 },  // hostile bot caster
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_mage_bot_heartburst_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 17,
+        "consequence: with three foes inside 110 px the classic gate answers no for every slot and a roll of 5 is folded back to slot 1, so the mage fights with fireballs only"),
+};
+inline constexpr Mutation kMut_mage_bot_heartburst_scen99 = {
+    "packs/core/families/living-03-mage.lua", 42,
+    "return foe_count < 1 or foe_count > 3",
+    "return foe_count < 1 or foe_count > 2",
+    "Lets the classic gate answer yes with three foes in reach, so the mage casts its specials at the towers: EventKindExactly(play_sound, 17) fails.",
+    "  -- TP if away from guys .. or too many enemies!"
+};
+inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 22,
+        "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST (its explosions are the three sounds at tick 0)"),
+};
+inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
+    "src/gameplay/living.cpp", 368,
+    "(current_special() > 4 && og::sim::session_gameplay_fixes() == 0)",
+    "(current_special() > 4)",
+    "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): EventKindExactly(play_sound, 22) fails."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -10583,6 +10665,38 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Druid_1,
       kFacts_druid_tree_blocked_fixes_scen99, std::size(kFacts_druid_tree_blocked_fixes_scen99),
       kMut_druid_tree_blocked_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "mage_bot_freeze_no_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 200,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_freeze_no_foe_scen99, std::size(kFamilySpawns_mage_bot_freeze_no_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_freeze_no_foe_scen99, std::size(kFacts_mage_bot_freeze_no_foe_scen99),
+      kMut_mage_bot_freeze_no_foe_scen99 },
+
+    { "mage_bot_freeze_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 200,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_freeze_no_foe_scen99, std::size(kFamilySpawns_mage_bot_freeze_no_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_freeze_no_foe_fixes_scen99, std::size(kFacts_mage_bot_freeze_no_foe_fixes_scen99),
+      kMut_mage_bot_freeze_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "mage_bot_heartburst_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_heartburst_scen99, std::size(kFamilySpawns_mage_bot_heartburst_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_heartburst_scen99, std::size(kFacts_mage_bot_heartburst_scen99),
+      kMut_mage_bot_heartburst_scen99 },
+
+    { "mage_bot_heartburst_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_heartburst_scen99, std::size(kFamilySpawns_mage_bot_heartburst_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_heartburst_fixes_scen99, std::size(kFacts_mage_bot_heartburst_fixes_scen99),
+      kMut_mage_bot_heartburst_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
