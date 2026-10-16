@@ -208,6 +208,7 @@
 ---@field s_special_cost fun(self: og.Walker, idx: integer): integer
 ---@field s_weapon_cost fun(self: og.Walker): integer
 ---@field save_all_protected fun(self: og.Walker): boolean
+---@field seat_driven fun(self: og.Walker): boolean # walker:seat_driven() -> boolean: a seat drives this body (a user tag, or ACT_CONTROL).
 ---@field set_act_type fun(self: og.Walker, n: integer) # walker:set_act_type(n) — write the AI act type.
 ---@field set_ani_type fun(self: og.Walker, value: integer)
 ---@field set_bonus_rounds fun(self: og.Walker, value: integer)

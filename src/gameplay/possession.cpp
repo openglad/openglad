@@ -102,6 +102,11 @@ void scare_burst_at(GameWorld& world, walker& where)
 
 }  // namespace
 
+bool seat_driven(const walker& w) noexcept
+{
+    return w.user() != -1 || w.act_type() == ACT_CONTROL;
+}
+
 // The caller's world must be the current gameplay context: the rider's hide
 // and its move (walker::set_hidden, walker::setxy) act on the collision
 // table of the world that is current, as every dormant-walker verb does.
@@ -124,7 +129,7 @@ PossessResult possess(GameWorld& world, walker& rider, walker& host,
     if (is_undead(host))
         return {false, "UNDEAD RESIST"};
     // A body a seat drives is a hero; heroes are never taken.
-    if (host.user() != -1 || host.act_type() == ACT_CONTROL)
+    if (seat_driven(host))
         return {false, "HERO RESISTS"};
     // A charmed body's own team already waits on its real_team_num.
     if (host.real_team_num() != kNoTeam)

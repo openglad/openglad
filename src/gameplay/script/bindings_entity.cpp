@@ -35,6 +35,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
@@ -475,6 +476,14 @@ int m_turn_undead(lua_State* L)
     const auto power = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
     lua_pushinteger(L,
                     static_cast<lua_Integer>(w->turn_undead(range, power)));
+    return 1;
+}
+
+// walker:seat_driven() -> boolean: a seat drives this body (a user tag, or
+// ACT_CONTROL). og::sim::seat_driven, the rule POSSESS refuses a hero by.
+int m_seat_driven(lua_State* L)
+{
+    lua_pushboolean(L, og::sim::seat_driven(*self_arg(L)) ? 1 : 0);
     return 1;
 }
 
@@ -3107,6 +3116,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"real_team_num", m_real_team_num},
     {"set_real_team_num", m_set_real_team_num},
     {"user", m_user},
+    {"seat_driven", m_seat_driven},
     {"dead", m_dead}, {"set_dead", m_set_dead},
     {"death_called", m_death_called},
     {"set_death_called", m_set_death_called},
