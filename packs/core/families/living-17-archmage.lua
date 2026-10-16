@@ -108,6 +108,9 @@ local function hit_response(self, foe)
     if foe_count ~= 0 then
       -- can we summon illusion?
       if possible[3] then
+        if gf.on() and not self:seat_driven() then
+          summon_shift(self)
+        end
         self.current_special = 3
         if self:special() then
           return

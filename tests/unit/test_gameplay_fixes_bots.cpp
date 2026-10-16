@@ -340,3 +340,102 @@ TEST_F(GameplayFixesBots, archmage_summon_wants_a_foe_and_the_pool_for_an_elemen
     EXPECT_TRUE(gate(arch, 3, 0)) << "the classic archmage had no gate";
     EXPECT_EQ(1, arch->shifter_down()) << "the coin is left as it fell";
 }
+
+// ---------------------------------------------------------------------------
+// The archmage's hit response (fix C)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct SummonOutcome {
+    int elementals = 0;
+    int phantoms = 0;
+};
+
+SummonOutcome summons_of(GameWorld& w, const walker* owner)
+{
+    SummonOutcome out;
+    for (const auto& ob : w.oblist) {
+        if (ob == nullptr || ob->dead() != 0 || ob->owner() != owner)
+            continue;
+        if (ob->query_order() != Order::Living)
+            continue;
+        if (std::string(ob->stats()->name) == "Phantom")
+            out.phantoms++;
+        else if (ob->family() == FAMILY_FIREELEMENTAL)
+            out.elementals++;
+    }
+    return out;
+}
+
+class GameplayFixesArchmageHit : public GameplayFixesBots {
+protected:
+    // A healthy level-10 archmage on team 1 is struck by an orc 30 px away.
+    // Its shift is `shift` (what the last coin left, or a player's Shift
+    // key), its magic `mp`; `seated` makes it a hero a seat drives.
+    SummonOutcome struck(short fixes, short shift, float mp, bool seated)
+    {
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        living* arch = add(FAMILY_ARCHMAGE, 1, 200, 200, 10, mp);
+        living* orc = add(FAMILY_ORC, 2, 230, 200, 1);
+        EXPECT_TRUE(arch && orc);
+        if (!(arch && orc))
+            return {};
+        orc->stats()->set_max_hitpoints(900.0f);
+        orc->stats()->set_hitpoints(900.0f);
+        if (seated) {
+            arch->set_user(0);
+            arch->set_act_type(ACT_CONTROL);
+        }
+        EXPECT_EQ(seated, og::sim::seat_driven(*arch));
+        arch->set_shifter_down(shift);
+        og::test::hit_response(*get_family_descriptor(FAMILY_ARCHMAGE),
+                               arch->stats(), orc);
+        return summons_of(world(), arch);
+    }
+};
+
+}  // namespace
+
+// A struck bot archmage answers with a summon. In the classic game the
+// summon's shift was whatever the last coin left, so a drained archmage
+// could spend the last of its magic on an elemental. With the setting on a
+// bot decides by its pool, as its summon gate does.
+//
+// RED (the classic hit response): Expected equality of these values: 0
+// on.elementals Which is: 1 "spare 100 with the setting on: the image".
+TEST_F(GameplayFixesArchmageHit, a_struck_bot_summons_by_its_pool_not_the_stale_coin)
+{
+    const SummonOutcome off = struck(0, 1, 600.0f, false);
+    EXPECT_EQ(1, off.elementals) << "the classic game: the stale coin summons the elemental";
+    EXPECT_EQ(0, off.phantoms);
+
+    const SummonOutcome on = struck(1, 1, 600.0f, false);
+    EXPECT_EQ(0, on.elementals) << "spare 100 with the setting on: the image";
+    EXPECT_EQ(1, on.phantoms);
+
+    const SummonOutcome rich = struck(1, 0, 1100.0f, false);
+    EXPECT_EQ(1, rich.elementals) << "spare 600 with the setting on: the elemental";
+    EXPECT_EQ(0, rich.phantoms);
+}
+
+// The hit response runs for a player's archmage too, and a player's shift is
+// the Shift key: the setting leaves it alone, so a seated archmage summons
+// the same thing on both values.
+//
+// RED (the seat test taken out of the hit response): Expected equality of
+// these values: 1 up.phantoms Which is: 0 "Shift up, spare 600, setting 1";
+// and 1 held.elementals Which is: 0 "Shift held, spare 100, setting 1".
+TEST_F(GameplayFixesArchmageHit, a_seated_archmage_keeps_its_shift_key)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        const SummonOutcome up = struck(fixes, 0, 1100.0f, true);
+        EXPECT_EQ(1, up.phantoms) << "Shift up, spare 600, setting " << fixes;
+        EXPECT_EQ(0, up.elementals) << "Shift up, spare 600, setting " << fixes;
+
+        const SummonOutcome held = struck(fixes, 1, 600.0f, true);
+        EXPECT_EQ(1, held.elementals) << "Shift held, spare 100, setting " << fixes;
+        EXPECT_EQ(0, held.phantoms) << "Shift held, spare 100, setting " << fixes;
+    }
+}
