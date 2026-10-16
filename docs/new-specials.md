@@ -99,14 +99,16 @@ after the first (`DIG IN SETTLING`, `IMMOLATE SETTLING`). A refusal is
 silent while the key is held, so holding Special cannot flip a toggle
 straight back, and a second tap after 10 ticks does what it says.
 
-**An engine note.** With the setting off a hidden slot costs 5000, but
-`walker::special()` itself does not refuse the slot: a walker forced onto a
-hidden slot with 5000 or more magic would cast its new special. That cannot
-happen in play, because the player's cycling and the bot's slot pick both
-read `NONE` and never put a walker on a hidden slot; only a test that sets
-the slot by hand can reach it. A guard there would need a per-family rule
-(the classic fire elemental's empty slots used to fall through to its
-starburst), so the engine is left as it is.
+**An engine note.** With the setting off a hidden slot costs 5000, and
+`walker::special()` refuses a slot priced 5000 or more before it looks at
+the walker's magic: the cast answers `NO SPECIAL AVAILABLE`
+(`SpecialFailure::Unavailable`) whatever the pool, so a walker forced onto
+a hidden slot casts nothing. Nothing in play reaches that, since the
+player's cycling and the bot's slot pick both read `NONE` and never put a
+walker on a hidden slot; only a test that sets the slot by hand can. The
+classic fire elemental still casts its starburst from slot 1 (its
+`default_cast`). This refusal applies whatever the Gameplay Fixes setting
+says ([gameplay-fixes.md](gameplay-fixes.md), "Not gated").
 
 ## Engine state
 
