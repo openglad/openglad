@@ -764,7 +764,7 @@
 ---@field living_count fun(): integer
 ---@field log fun(...: any)
 ---@field map_size fun(): integer, integer, integer # og.map_size() -> pixmaxx, pixmaxy, floor_count (every floor shares the pixel footprint)
----@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"new_specials"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
+---@field match_setting fun(s: "difficulty"|"fill_1"|"fill_2"|"fill_3"|"fill_4"|"gameplay_fixes"|"map_units_1"|"map_units_2"|"map_units_3"|"map_units_4"|"new_specials"|"respawn_mode"|"respawn_ticks"|"score_limit"|"strip_troops"|"team_count"|"time_limit"): integer # og.match_setting(name) — the lobby/save match knobs, reinterpreted as generic match settings.
 ---@field max fun(a: number, b: number): number # og.max(a, b) / og.min(a, b) — std::max / std::min EXACTLY: og.max answers b only when a < b, og.min answers b only when b < a, so every tie answers a (observ...
 ---@field min fun(arg1: number, arg2: number): number
 ---@field mod fun(a: integer, b: integer): integer

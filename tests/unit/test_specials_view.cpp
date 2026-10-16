@@ -167,6 +167,7 @@ TEST(SpecialsView, off_equals_registry_before_the_feature)
             {
                 ScopedNoGameplayContext no_world;
                 EXPECT_EQ(0, og::sim::session_new_specials());
+                EXPECT_EQ(0, og::sim::session_gameplay_fixes());
                 EXPECT_EQ(slot_new ? kSpecialCostDisabled : stamped,
                           og::sim::cast_cost(*w, slot, false))
                     << "family " << family << " slot " << slot
@@ -199,6 +200,31 @@ TEST(SpecialsView, off_equals_registry_before_the_feature)
         << "a slot with no alternate costs its own price shifted";
     EXPECT_EQ(70, og::sim::cast_cost(*golem, 1, true));
     EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The Gameplay Fixes setting as the sim reads it: the current world's own
+// flag, whatever New Specials says, and 0 (the classic game) when there is
+// no world at all.
+TEST(SpecialsView, session_gameplay_fixes_reads_the_current_world)
+{
+    TestGameWorld tw;
+    EXPECT_EQ(0, og::sim::session_gameplay_fixes())
+        << "a world nobody stamped plays the classic game";
+    tw.world().gameplay_fixes = 1;
+    tw.world().new_specials = 0;
+    EXPECT_EQ(1, og::sim::session_gameplay_fixes())
+        << "a world stamped on reads on";
+    {
+        ScopedNoGameplayContext no_world;
+        EXPECT_EQ(0, og::sim::session_gameplay_fixes())
+            << "no world reads as the classic game";
+    }
+    EXPECT_EQ(1, og::sim::session_gameplay_fixes())
+        << "the world is read again once it is back";
+    tw.world().gameplay_fixes = 0;
+    tw.world().new_specials = 1;
+    EXPECT_EQ(0, og::sim::session_gameplay_fixes())
+        << "it reads its own flag, not New Specials'";
 }
 
 // The proof that does not lean on the registry golden: the six classic kits

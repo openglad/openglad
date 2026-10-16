@@ -63,6 +63,9 @@ namespace og::sim {
 // The session's setting as the sim reads it: the current world's flag, or 0
 // when there is no world.
 [[nodiscard]] short session_new_specials() noexcept;
+// The Gameplay Fixes setting as the sim reads it, the same way: the current
+// world's flag, or 0 (the classic game) when there is no world.
+[[nodiscard]] short session_gameplay_fixes() noexcept;
 // The price the engine gates a cast on and charges, in this order:
 //   1. the slot is hidden by the setting   -> kSpecialCostDisabled
 //                                             (the shift does not matter)
