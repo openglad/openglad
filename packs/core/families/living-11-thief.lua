@@ -26,6 +26,17 @@ local function check_special_ai(self)
     return true -- fallthrough for foe case when distance is acceptable
   elseif self:current_special() == 3 then
     local t = og.tuning(self)
+    if gf.on() then
+      -- Gameplay Fixes: CHARM only with a foe the thief can take inside
+      -- charm reach, else TAUNT; the coin is drawn either way.
+      local reach = t.charm_range_base + t.charm_range_per_level * self.level
+      local foes = og.find_foes_in_range("ob", reach, self)
+      if gf.nearest_charmable(self, foes, self.level) then
+        self:set_shifter_down(1)
+      else
+        self:set_shifter_down(0)
+      end
+    end
     local range
     if self:shifter_down() == 0 then
       range = t.taunt_range_base + t.taunt_range_per_level * self.level
