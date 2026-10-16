@@ -3826,10 +3826,17 @@ short walker::special()
                             if (howmany < 1)
                                 return 0; // noone to influence
                             
+                            // port of the current game's 102f1003: with the Gameplay Fixes setting
+                            // the thief takes the nearest foe it can take, not the first in list order
+                            walker* best = NULL;
+                            if (myscreen->gameplay_fixes)
+                                best = nearest_charmable(newlist, -1);
                             didheal = 0; // howmany actually done yet?
                             for(auto e = newlist.begin(); e != newlist.end() && !didheal; e++)
                             {
                                 walker* ob = *e;
+                                if (myscreen->gameplay_fixes && ob != best)
+                                    continue; // port of the current game's 102f1003
                                 if ( (ob->real_team_num == 255) && // never been charmed
                                         (ob->query_order() == ORDER_LIVING) && // alive
                                         1 // (ob->charm_left <= 10) // not too charmed
@@ -4372,6 +4379,35 @@ short walker::teleport_ranged(Sint32 range)
 		return 1;
 	}
 	return 0; // failed to find safe spot
+}
+
+// Port of the current game's 102f1003 (gf.nearest_charmable): the nearest
+// foe in `foes` a charm can take, by distance_to_ob (a tie goes to the first
+// in the list), or NULL. A foe a charm can take: never charmed, a living
+// body, and not a hero a player is driving (POSSESS's "HERO RESISTS" rule).
+// max_level < 0 = any level; otherwise only a foe at or below it. Draws
+// nothing. Only the Gameplay Fixes branches call it.
+walker * walker::nearest_charmable(std::list<walker*>& foes, short max_level)
+{
+	walker *best = NULL;
+	Sint32 best_dist = 0;
+	for(auto e = foes.begin(); e != foes.end(); e++)
+	{
+		walker *ob = *e;
+		if (!ob || ob->real_team_num != 255 || ob->query_order() != ORDER_LIVING)
+			continue;
+		if (ob->user != -1 || ob->query_act_type() == ACT_CONTROL)
+			continue;
+		if (max_level >= 0 && ob->stats->level > max_level)
+			continue;
+		Sint32 dist = distance_to_ob(ob);
+		if (!best || dist < best_dist)
+		{
+			best = ob;
+			best_dist = dist;
+		}
+	}
+	return best;
 }
 
 // Turns undead; ie, skeleton or ghost, within range

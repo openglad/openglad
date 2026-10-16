@@ -98,6 +98,7 @@ class walker : public pixieN
 		short teleport();
 		short teleport_ranged(Sint32 range);
 		Sint32  turn_undead(Sint32 range, Sint32 power);
+		walker *nearest_charmable(std::list<walker*>& foes, short max_level); // port of the current game's 102f1003
 		virtual short shove(walker  *target, short x, short y);
 		virtual short eat_me(walker  *eater);
 		virtual void set_direct_frame(short whichframe);
