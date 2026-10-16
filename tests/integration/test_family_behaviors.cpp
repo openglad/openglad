@@ -612,6 +612,8 @@ TEST(FamilyBehaviors, check_special_ranged_families)
 // Mage: 0 foes → true (teleport away), 2 foes → false (fight), 4+ foes → true (flee)
 TEST(FamilyBehaviors, check_special_mage_foe_count)
 {
+    // Pinned to the classic game: the classic mage gate; with Gameplay Fixes on only TELEPORT keeps it.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
     ASSERT_TRUE(mage != nullptr) << "mage created";
@@ -664,6 +666,8 @@ TEST(FamilyBehaviors, check_special_default_families)
     // The classic kits: these families' default answer, with the New
     // Specials setting off whatever the session default is.
     og::runtime::current_session->myscreen_->world().new_specials = 0;
+    // And Gameplay Fixes off: the classic game's default answer.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     int families[] = {FAMILY_DRUID, FAMILY_BARBARIAN, FAMILY_FAERIE,
                       FAMILY_BIG_ORC, FAMILY_GOLEM};
     for (int fam : families)
@@ -944,6 +948,8 @@ TEST(FamilyBehaviors, special_skeleton_tunnel)
 // Ghost: scare spawns a ghost_scare FX
 TEST(FamilyBehaviors, special_ghost_scare)
 {
+    // Pinned to the classic game: the classic scare; Gameplay Fixes refuses it with no living foe in reach.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* ghost = add_living_to_level(FAMILY_GHOST, 0, 100, 100);
     ASSERT_TRUE(ghost != nullptr) << "ghost created";
@@ -1089,6 +1095,8 @@ TEST(FamilyBehaviors, special_thief_cloak)
 // Orc howl: sets busy and deducts mana
 TEST(FamilyBehaviors, special_orc_howl)
 {
+    // Pinned to the classic game: the classic howl; Gameplay Fixes refuses it with no foe in range.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     ASSERT_TRUE(orc != nullptr) << "orc created";
@@ -1438,6 +1446,8 @@ TEST(FamilyBehaviors, archmage_special_case2_case3_case4_guard_branches)
 
 TEST(FamilyBehaviors, archmage_hit_response_threshold_and_retarget_branches)
 {
+    // Pinned to the classic game: the classic archmage hit response; Gameplay Fixes changes its summon choice.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 132, 100);
@@ -1476,6 +1486,8 @@ TEST(FamilyBehaviors, archmage_hit_response_threshold_and_retarget_branches)
 
 TEST(FamilyBehaviors, cleric_check_special_ai_branch_paths)
 {
+    // Pinned to the classic game: the classic cleric gate; Gameplay Fixes picks turn undead or raise on purpose.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
@@ -1557,6 +1569,8 @@ static walker* add_stain_to_fxlist(int team, short x, short y)
 
 TEST(FamilyBehaviors, cleric_check_special_ai_direct_branches)
 {
+    // Pinned to the classic game: the classic cleric gate; Gameplay Fixes picks turn undead or raise on purpose.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
@@ -1940,6 +1954,8 @@ TEST(FamilyBehaviors, cleric_resurrect_friendly_and_enemy_blood)
 
 TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
 {
+    // Pinned to the classic game: the classic thief gate; Gameplay Fixes charms only a charmable foe in range.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     ASSERT_TRUE(thief != nullptr) << "thief created";
@@ -2209,6 +2225,8 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
 
 TEST(FamilyBehaviors, soldier_batch3_special_ai_and_fire_callback_paths)
 {
+    // Pinned to the classic game: the classic disarm; Gameplay Fixes refuses one that staggers nobody.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     ASSERT_TRUE(soldier != nullptr) << "soldier created";
