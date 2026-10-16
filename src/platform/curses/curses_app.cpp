@@ -198,10 +198,12 @@ int run_curses_app(const AppOptions& options, int argc, char* argv[])
         save.scen_num = static_cast<short>(options.level);
         save.numplayers = 1;
         save.my_team = 0;
-        // This shortcut skips the picker, so nothing seeds New Specials from
-        // the preference: it plays the shipped default (on). A hosted lobby
-        // then negotiates it like any other setting.
+        // This shortcut skips the picker, so nothing seeds New Specials or
+        // Gameplay Fixes from the preference: it plays the shipped default
+        // (on) of each. A hosted lobby then negotiates them like any other
+        // setting.
         save.new_specials = 1;
+        save.gameplay_fixes = 1;
         og::ui::initialize_starting_team(save, {FAMILY_SOLDIER});
 
         std::string error;

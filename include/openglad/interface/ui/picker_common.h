@@ -534,6 +534,19 @@ void set_new_specials(SaveData& save, cfg_store& config, bool on,
 void apply_new_specials_toggle(SaveData& save, cfg_store& config,
                                bool decides_session);
 
+// Gameplay Fixes (cfg gameplay/gameplay_fixes, SaveData::gameplay_fixes),
+// the same contract as New Specials above: the per-machine preference seeds
+// the session value once, the lobby negotiates it (host wins), and it never
+// reaches the .gtl. "on" is on, anything else is off.
+void seed_gameplay_fixes_from_cfg(SaveData& save, cfg_store& config);
+// Write the preference; mirror it into the session save only when this
+// machine decides the session (no lobby, or the host).
+void set_gameplay_fixes(SaveData& save, cfg_store& config, bool on,
+                        bool decides_session);
+// The Gameplay FX row: flips the preference.
+void apply_gameplay_fixes_toggle(SaveData& save, cfg_store& config,
+                                 bool decides_session);
+
 // Toggle cross control: cross_control 0 (own seats) <-> 1 (all seats).
 // The pure save write behind change_cross_control()'s popup/sync tail, so
 // the SETUP wizard's RULES row and the DIFFICULTY panel's row step the same
@@ -1268,6 +1281,10 @@ std::string format_infinite_gold_label(const SaveData& save);
 // "NEW SPECIALS: ON" / "NEW SPECIALS: OFF" (the session value, any nonzero
 // reads as on). The lobby RULES face, so a joiner sees the host's choice.
 std::string format_new_specials_label(const SaveData& save);
+
+// "GAMEPLAY FIXES: ON" / "GAMEPLAY FIXES: OFF" (the session value, any
+// nonzero reads as on), so a joiner sees the host's choice.
+std::string format_gameplay_fixes_label(const SaveData& save);
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 // (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:
@@ -2013,6 +2030,7 @@ inline constexpr std::string_view kRulesRowGenerators = "generators";
 inline constexpr std::string_view kRulesRowDifficulty = "difficulty";
 inline constexpr std::string_view kRulesRowInfiniteGold = "infinite_gold";
 inline constexpr std::string_view kRulesRowNewSpecials = "new_specials";
+inline constexpr std::string_view kRulesRowGameplayFixes = "gameplay_fixes";
 inline constexpr std::string_view kRulesRowCrossControl = "cross_control";
 std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs);
 

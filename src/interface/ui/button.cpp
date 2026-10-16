@@ -859,6 +859,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::ToggleNewSpecials:
         return change_new_specials();
+    case ButtonAction::ToggleGameplayFixes:
+        return change_gameplay_fixes();
     case ButtonAction::ToggleHitAnim:
         toggle_effect("effects", "hit_anim");
         return REDRAW;

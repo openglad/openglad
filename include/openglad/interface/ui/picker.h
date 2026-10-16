@@ -59,6 +59,8 @@ struct TextPickerConfig
     // decides; --protocol, which has no picker, then plays the shipped
     // default, on).
     int new_specials = -1;
+    // --gameplay-fixes 0|1; -1 = not given, the same rule as new_specials.
+    int gameplay_fixes = -1;
     std::string save_name = "text_quicksave";
 };
 
