@@ -8973,6 +8973,210 @@ inline constexpr Mutation kMut_orc_howl_no_foe_fixes_scen99 = {
     "Removes the refusal, so the howl roars at nobody again: EventKindExactly(play_sound, 0) reads 1."
 };
 
+// --- archmage_summon_no_room (fix D: SUMMON ELEMENTAL's surcharge) ----------
+// A level-12 archmage with 900 MP is boxed in by eight allied TOWER1s on every
+// spot its elemental could stand. Its shifted SUMMON (slot 3 at tick 20) finds
+// no room. The classic cast took the half-MP surcharge before the placement
+// and keeps it; with the setting on the surcharge is paid only once the
+// elemental stands, so the refusal costs nothing. The HEARTBURST at tick 40
+// shows the difference: its pool is what is left, split over the four hostile
+// towers 100 px away.
+inline constexpr InputEvent kInputs_archmage_summon_no_room[] = {
+    {  5, 0, K_SPECIAL_SWITCH }, {  6, 0, K_NONE },
+    {  8, 0, K_SPECIAL_SWITCH }, {  9, 0, K_NONE },
+    { 20, 0, K_SPECIAL | K_SHIFT }, { 21, 0, K_NONE },
+    { 24, 0, K_SPECIAL_SWITCH }, { 25, 0, K_NONE },
+    { 27, 0, K_SPECIAL_SWITCH }, { 28, 0, K_NONE },
+    { 30, 0, K_SPECIAL_SWITCH }, { 31, 0, K_NONE },
+    { 40, 0, K_SPECIAL }, { 41, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_archmage_summon_no_room_scen99[] = {
+    { FAMILY_TOWER1,   1, kOrderLiving, 120,  20, 0, 0 },          // hostile, 100 px north
+    { FAMILY_TOWER1,   1, kOrderLiving, 120, 220, 0, 0 },          // hostile, 100 px south
+    { FAMILY_TOWER1,   1, kOrderLiving,  20, 120, 0, 0 },          // hostile, 100 px west
+    { FAMILY_TOWER1,   1, kOrderLiving, 220, 120, 0, 0 },          // hostile, 100 px east
+    { FAMILY_TOWER1,   0, kOrderLiving, 103, 103, 0, 0 },          // the eight allied blockers
+    { FAMILY_TOWER1,   0, kOrderLiving, 103, 120, 0, 0 },
+    { FAMILY_TOWER1,   0, kOrderLiving, 103, 137, 0, 0 },
+    { FAMILY_TOWER1,   0, kOrderLiving, 120, 103, 0, 0 },
+    { FAMILY_TOWER1,   0, kOrderLiving, 120, 137, 0, 0 },
+    { FAMILY_TOWER1,   0, kOrderLiving, 137, 103, 0, 0 },
+    { FAMILY_TOWER1,   0, kOrderLiving, 137, 120, 0, 0 },
+    { FAMILY_TOWER1,   0, kOrderLiving, 137, 137, 0, 0 },
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 12, 900 }, // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_archmage_summon_no_room_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
+    // negative_assertion: no room: the summon is refused, no elemental stands
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3900, 3900,
+        "consequence: the classic refused summon still took its half-MP surcharge, so the tick-40 HEARTBURST pool is smaller and the surviving hostile tower ends at 39 hp (the allied towers sit at 101 and above)"),
+};
+inline constexpr Mutation kMut_archmage_summon_no_room_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 362,
+    "if not gf.on() then",
+    "if false then",
+    "Skips the classic surcharge before the placement, so the refused summon costs nothing and the HEARTBURST at tick 40 spends the larger pool: the surviving hostile tower ends at 23 hp and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3900, 3900) fails.",
+    "    -- true summoning"
+};
+inline constexpr FactPredicate kFacts_archmage_summon_no_room_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
+    // negative_assertion: no room: the summon is refused, no elemental stands
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2300, 2300,
+        "consequence: with the setting on the surcharge is paid only once the elemental stands, so the refused summon costs nothing and the tick-40 HEARTBURST spends the larger pool: the surviving hostile tower ends at 23 hp"),
+};
+inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 362,
+    "if not gf.on() then",
+    "if true then",
+    "Takes the surcharge before the placement again, so the refused summon keeps it and the HEARTBURST pool shrinks: the surviving hostile tower ends at 39 hp and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2300, 2300) fails.",
+    "    -- true summoning"
+};
+
+// --- archmage_mind_control_berserk (fix F: MIND CONTROL's berserk colour) ----
+// A level-10 archmage mind-controls (slot 4 at tick 20) an equal-level orc
+// (melee only, so it cannot kill the caster first). The seed (198) makes the
+// control roll fail (rand(20) == 0) and the berserk colour roll land on 0, the
+// caster's own team: the classic game hands the orc to the caster and the
+// level ends. With the setting on that colour becomes 1, the orc's own, and it
+// stays a foe.
+inline constexpr SpawnSpec kFamilySpawns_archmage_mind_control_berserk_scen99[] = {
+    { FAMILY_ORC,      1, kOrderLiving, 180, 120, 0, 0, 10, 0 },   // equal-level melee-only foe, 60 px east
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the control roll fails (rand(20) == 0) and the berserk colour roll lands on 0, the caster's own team, so the classic game hands the orc to the archmage"),
+    pred::LevelDoneEquals(2),
+};
+inline constexpr Mutation kMut_archmage_mind_control_berserk_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 569,
+    "local colour = og.rand(8)",
+    "local colour = og.rand(8) + 1",
+    "Shifts the berserk colour roll up by one, so the failed control sends the orc to team 1, its own: it stays a foe and WalkerOfTeamAlive(0, 2, 2) and LevelDoneEquals(2) fail."
+};
+inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1,
+        "consequence: with the setting on a berserk colour equal to the caster's team becomes the next one (1), so the orc stays hostile"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::LevelDoneEquals(0),
+};
+inline constexpr Mutation kMut_archmage_mind_control_berserk_fixes_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 572,
+    "colour = og.mod(colour + 1, 8)",
+    "colour = colour",
+    "Keeps the rolled colour, so a berserk roll of 0 puts the orc on the caster's team again: WalkerOfTeamAlive(1, 1, 1) and LevelDoneEquals(0) fail."
+};
+
+// --- archmage_bot_summon_no_foe (fix B: the archmage's slot-3 gate) --------
+// A hostile level-7 archmage bot with 600 MP and no foe within 200 px; a bot
+// rolls its specials only in its first wandering ticks. The seed (45) makes
+// the classic bot summon an image (an elf phantom) with nobody near; with the
+// setting on slot 3 wants a foe within 200 px, the summon is refused and the
+// bot's tick-3 TELEPORT MARKER is what the run leaves behind.
+inline constexpr SpawnSpec kFamilySpawns_archmage_bot_summon_no_foe_scen99[] = {
+    { FAMILY_ARCHMAGE, 1, kOrderLiving,  60,  60, 0, 0, 7, 600 },  // hostile bot caster
+    { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },          // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1,
+        "consequence: the classic bot casts SUMMON IMAGE on a slot-3 roll with no foe within 200 px; its pool buys an elf phantom"),
+};
+inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_fixes_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ELF, 0, 0,
+        "consequence: with the setting on slot 3 wants a foe within 200 px, so the alone archmage summons nothing"),
+    // negative_assertion: the slot-3 gate refuses with no foe within 200 px, so no phantom
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 1, 1,
+        "consequence: the bot's refused slot-3 rolls leave its tick-3 TELEPORT MARKER standing (the only sound of the run)"),
+    pred::EventKindExactly(/*play_sound*/1, 1),
+};
+inline constexpr Mutation kMut_archmage_bot_summon_no_foe_fixes_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 194,
+    "return foe_count >= 1",
+    "return true",
+    "Opens the slot-3 gate with no foe within 200 px, so the bot's rolls take the classic course and the tick-3 teleport and its marker never happen: WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 1, 1) and EventKindExactly(play_sound, 1) fail."
+};
+
+// --- archmage_bot_mind_control_hero (#355: a seated hero resists MIND CONTROL)
+// A hostile level-10 archmage bot and the player's level-10 soldier 80 px away,
+// inside the 120 px mind-control reach. The seed (2) makes the bot's tick-0
+// special roll slot 4 and the control roll succeed: the classic archmage takes
+// the player's hero. With the setting on a seated hero resists (NO VALID
+// TARGET); the bot's next roll bursts the hero, who dies at tick 4.
+inline constexpr SpawnSpec kFamilySpawns_archmage_bot_mind_control_hero_scen99[] = {
+    { FAMILY_ARCHMAGE, 1, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // hostile bot caster
+    { FAMILY_SOLDIER,  0, kOrderLiving, 200, 120, 0, 0, 10, 0 },    // the player's hero LAST, 80 px east
+};
+inline constexpr FactPredicate kFacts_archmage_bot_mind_control_hero_scen99[] = {
+    pred::TickReached(10),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 0, 0,
+        "consequence: the classic archmage bot's first special roll is MIND CONTROL and it takes the player's hero at tick 0 (\"ArchMage has controlled 1 men\")"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 2),
+};
+inline constexpr FactPredicate kFacts_archmage_bot_mind_control_hero_fixes_scen99[] = {
+    pred::TickReached(10),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 0),
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER,
+        "consequence: with the setting on the hero a player drives resists MIND CONTROL (NO VALID TARGET); the bot's next roll bursts it and it dies at tick 4"),
+};
+inline constexpr Mutation kMut_archmage_bot_mind_control_hero_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 47,
+    "return not foe:seat_driven()",
+    "return true",
+    "Makes a seated hero charmable again, so the tick-0 MIND CONTROL takes the player's hero and the bot never bursts it: WalkerDiedByFinal(FAMILY_SOLDIER) fails."
+};
+
+// --- archmage_hit_stale_shift (fix C: the archmage's summon when hit) ------
+// A hostile level-10 archmage bot with 1100 MP touching the player's soldier,
+// whose held swing hits it at tick 10. The hit response summons on slot 3 with
+// whatever shift the last roll left: with the seed (12) that is 0 and the
+// classic bot summons an image (a skeleton phantom). With the setting on a bot
+// that can afford the elemental (spare MP at least 500) summons it.
+inline constexpr InputEvent kInputs_archmage_hit_stale_shift[] = {
+    {  5, 0, K_FIRE }, { 40, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_archmage_hit_stale_shift_scen99[] = {
+    { FAMILY_ARCHMAGE, 1, kOrderLiving, 120, 135, 0, 0, 10, 1100 }, // hostile bot, just below the player
+    { FAMILY_SOLDIER,  0, kOrderLiving, 120, 120, 0, 0 },            // player LAST, swings down
+};
+inline constexpr FactPredicate kFacts_archmage_hit_stale_shift_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
+    // negative_assertion: the stale shift summons an image, never the elemental
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "consequence: the hit response at tick 10 summons on slot 3 with the shift the last roll left (0): an image, a skeleton phantom"),
+};
+inline constexpr FactPredicate kFacts_archmage_hit_stale_shift_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1,
+        "consequence: with the setting on a bot that can afford the elemental (1100 MP) summons it when hit, whatever shift the last roll left"),
+};
+inline constexpr Mutation kMut_archmage_hit_stale_shift_fixes_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 62,
+    "self:set_shifter_down(1)",
+    "self:set_shifter_down(0)",
+    "Makes the summon choice always pick the image, so the hit response summons a phantom instead of the elemental: WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1) fails.",
+    "local function summon_shift(self)"
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -11166,6 +11370,86 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Orc_1,
       kFacts_orc_howl_no_foe_fixes_scen99, std::size(kFacts_orc_howl_no_foe_fixes_scen99),
       kMut_orc_howl_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "archmage_summon_no_room_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archmage_summon_no_room, std::size(kInputs_archmage_summon_no_room), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_summon_no_room_scen99, std::size(kFamilySpawns_archmage_summon_no_room_scen99),
+      0, false, true, Exercises::Special_Archmage_3 | Exercises::Special_Archmage_2,
+      kFacts_archmage_summon_no_room_scen99, std::size(kFacts_archmage_summon_no_room_scen99),
+      kMut_archmage_summon_no_room_scen99 },
+
+    { "archmage_summon_no_room_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archmage_summon_no_room, std::size(kInputs_archmage_summon_no_room), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_summon_no_room_scen99, std::size(kFamilySpawns_archmage_summon_no_room_scen99),
+      0, false, true, Exercises::Special_Archmage_3 | Exercises::Special_Archmage_2,
+      kFacts_archmage_summon_no_room_fixes_scen99, std::size(kFacts_archmage_summon_no_room_fixes_scen99),
+      kMut_archmage_summon_no_room_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "archmage_mind_control_berserk_scen99", "scen/scen1.fss", 0x000000C6u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_mind_control_berserk_scen99, std::size(kFamilySpawns_archmage_mind_control_berserk_scen99),
+      0, false, true, Exercises::Special_Archmage_4,
+      kFacts_archmage_mind_control_berserk_scen99, std::size(kFacts_archmage_mind_control_berserk_scen99),
+      kMut_archmage_mind_control_berserk_scen99 },
+
+    { "archmage_mind_control_berserk_fixes_scen99", "scen/scen1.fss", 0x000000C6u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_mind_control_berserk_scen99, std::size(kFamilySpawns_archmage_mind_control_berserk_scen99),
+      0, false, true, Exercises::Special_Archmage_4,
+      kFacts_archmage_mind_control_berserk_fixes_scen99, std::size(kFacts_archmage_mind_control_berserk_fixes_scen99),
+      kMut_archmage_mind_control_berserk_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "archmage_bot_summon_no_foe_scen99", "scen/scen1.fss", 0x0000002Du,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_bot_summon_no_foe_scen99, std::size(kFamilySpawns_archmage_bot_summon_no_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_bot_summon_no_foe_scen99, std::size(kFacts_archmage_bot_summon_no_foe_scen99),
+      kMut_special_archmage_3_scen99 },
+
+    { "archmage_bot_summon_no_foe_fixes_scen99", "scen/scen1.fss", 0x0000002Du,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_bot_summon_no_foe_scen99, std::size(kFamilySpawns_archmage_bot_summon_no_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_bot_summon_no_foe_fixes_scen99, std::size(kFacts_archmage_bot_summon_no_foe_fixes_scen99),
+      kMut_archmage_bot_summon_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "archmage_bot_mind_control_hero_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_bot_mind_control_hero_scen99, std::size(kFamilySpawns_archmage_bot_mind_control_hero_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_bot_mind_control_hero_scen99, std::size(kFacts_archmage_bot_mind_control_hero_scen99),
+      kMut_special_archmage_4_scen99 },
+
+    { "archmage_bot_mind_control_hero_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_bot_mind_control_hero_scen99, std::size(kFamilySpawns_archmage_bot_mind_control_hero_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_bot_mind_control_hero_fixes_scen99, std::size(kFacts_archmage_bot_mind_control_hero_fixes_scen99),
+      kMut_archmage_bot_mind_control_hero_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "archmage_hit_stale_shift_scen99", "scen/scen1.fss", 0x0000000Cu,
+      kInputs_archmage_hit_stale_shift, std::size(kInputs_archmage_hit_stale_shift), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_hit_stale_shift_scen99, std::size(kFamilySpawns_archmage_hit_stale_shift_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_hit_stale_shift_scen99, std::size(kFacts_archmage_hit_stale_shift_scen99),
+      kMut_special_archmage_3_scen99 },
+
+    { "archmage_hit_stale_shift_fixes_scen99", "scen/scen1.fss", 0x0000000Cu,
+      kInputs_archmage_hit_stale_shift, std::size(kInputs_archmage_hit_stale_shift), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_hit_stale_shift_scen99, std::size(kFamilySpawns_archmage_hit_stale_shift_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_hit_stale_shift_fixes_scen99, std::size(kFacts_archmage_hit_stale_shift_fixes_scen99),
+      kMut_archmage_hit_stale_shift_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
