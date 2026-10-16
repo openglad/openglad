@@ -181,10 +181,13 @@ The parity goldens are captures from the old game (branch
   row (`ScenarioSpec::gameplay_fixes`, a trailing field, 0 by default).
 - The fixes are ported into the old game one commit per fix, behind the
   same setting (`screen::gameplay_fixes`, set per row by the golden capture
-  tool): the plumbing `7bf3e95d`, then `<P1>` (K), `<P2>` (A), `<P3>` (J),
-  `<P4>` (E), `<P5>` (D), `<P6>` (F), `<P7>` (G), `<P8>` (H), `<P9>` (I),
-  `<P10>` (the bots: B, C and L), `<P11>` (M, the charm arms), and the final
-  table mirror `<T>`, the commit the goldens are captured from.
+  tool): the plumbing `7bf3e95d`, then `a11c0c9c` (K), `ef0c9446` (A),
+  `9c453c82` (J), `090ab5b9` (E), `124c0efa` (D), `ce726a7d` (F), `628c15ec`
+  (G, which also skips a driven hero in the thief's charm), `c4b229f7` (H),
+  `68a84937` (I), `84ce0969` (the bots: B, C and L), and `379c8516` (M, the
+  archmage's charm arm). `379c8516` is the commit the goldens are captured
+  from: the captures matched the facts the new rows already carried, so no
+  further table mirror was needed.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
