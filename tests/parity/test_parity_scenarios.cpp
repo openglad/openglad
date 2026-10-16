@@ -482,6 +482,12 @@ OG_PARITY_TEST(soldier_whirlwind_no_foe_scen99)
 OG_PARITY_TEST(soldier_whirlwind_no_foe_fixes_scen99)
 OG_PARITY_TEST(soldier_disarm_higher_foe_scen99)
 OG_PARITY_TEST(soldier_disarm_higher_foe_fixes_scen99)
+OG_PARITY_TEST(elf_volley_refund_scen99)
+OG_PARITY_TEST(elf_volley_refund_fixes_scen99)
+OG_PARITY_TEST(elf_rocks_blocked_scen99)
+OG_PARITY_TEST(elf_rocks_blocked_fixes_scen99)
+OG_PARITY_TEST(druid_tree_blocked_scen99)
+OG_PARITY_TEST(druid_tree_blocked_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

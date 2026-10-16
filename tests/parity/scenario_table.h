@@ -8445,6 +8445,135 @@ inline constexpr Mutation kMut_soldier_disarm_higher_foe_fixes_scen99 = {
     "Lets a stagger below zero through again (penalty -6 > -100), so the won roll counts as a disarm: the cast succeeds, shows \"Fighter Disarmed Enemy!\" and plays SOUND_CHARGE. EventKindExactly(notification, 0) and EventKindExactly(play_sound, 9) fail."
 };
 
+// --- elf_volley_refund (fix H: the volleys refund the rocks they throw) -----
+// A level-4 elf with 21 MP throws BOUNCING ROCKS (slot 2 at tick 20) toward a
+// TOWER1 80 px above (a spawned walker throws upward), then holds fire from
+// tick 30. The classic volley refunds three rocks for the two it throws (2 MP
+// left), the fixed one two (1 MP left); the held fire is paid rock by rock, so
+// the classic elf throws one more: one more sound and a rock still in flight
+// at the end.
+inline constexpr InputEvent kInputs_elf_volley_refund[] = {
+    {  5, 0, K_SPECIAL_SWITCH }, {  6, 0, K_NONE },
+    { 20, 0, K_SPECIAL },        { 21, 0, K_NONE },
+    { 30, 0, K_FIRE },           { 70, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_elf_volley_refund_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 120,  40, 0, 0 },           // target 80 px above (a spawned walker throws upward)
+    { FAMILY_ELF,    0, kOrderLiving, 120, 120, 0, 0, 4, 21 },    // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_elf_volley_refund_scen99[] = {
+    pred::TickReached(72),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 7,
+        "consequence: the classic volley refunds three rocks for the two it throws, so the elf keeps one more MP and the held fire lands one more swing"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 1, 1,
+        "consequence: the extra MP is one more rock still in flight at the final tick"),
+};
+inline constexpr Mutation kMut_elf_volley_refund_scen99 = {
+    "packs/core/families/living-01-elf.lua", 50,
+    "local refund = cost_mult",
+    "local refund = cost_mult - 1",
+    "Makes the classic refund one rock short (cost_mult - 1 = 2, the fixed amount), so the elf ends the volley one MP lower and throws one rock fewer: EventKindExactly(play_sound, 7) reads 6 and no rock is in flight at the end."
+};
+inline constexpr FactPredicate kFacts_elf_volley_refund_fixes_scen99[] = {
+    pred::TickReached(72),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 6,
+        "consequence: with the setting on the volley refunds exactly the two rocks it throws, so the elf has one MP less for the held fire"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 0, 0),
+    // negative_assertion: the fixed refund leaves no MP for the rock the classic elf still has in flight
+};
+inline constexpr Mutation kMut_elf_volley_refund_fixes_scen99 = {
+    "packs/core/families/living-01-elf.lua", 53,
+    "refund = count",
+    "refund = count + 1",
+    "Refunds one rock more than the volley throws, the classic overpay, so the held fire throws one more rock: EventKindExactly(play_sound, 6) reads 7 and WeaponFamilyCount(FAMILY_ROCK, 0, 0) sees a rock in flight.",
+    "      -- Gameplay Fixes: refund the rocks that will fly, not one more."
+};
+
+// --- elf_rocks_blocked (fix H: a volley that cannot fire) ------------------
+// A level-1 elf with 10 MP (ROCKS' price) casts ROCKS (slot 1 at tick 20) with
+// a TOWER1 touching it above, where a spawned walker throws: fire() swings
+// instead of throwing and the cast says COULD NOT FIRE. The classic cast keeps
+// the two-rock refund (11 MP after the swing), the fixed one takes it back
+// (9 MP). Fire held from tick 30 to 150 is paid for by the MP left and the
+// slow regeneration, so the classic elf lands enough extra swings to finish
+// the tower and the fixed one leaves it at 8 hp.
+inline constexpr InputEvent kInputs_elf_rocks_blocked[] = {
+    { 20, 0, K_SPECIAL }, { 21, 0, K_NONE },
+    { 30, 0, K_FIRE },    { 150, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_elf_rocks_blocked_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 120, 104, 0, 0 },           // touching above: blocks the elf's throw
+    { FAMILY_ELF,    0, kOrderLiving, 120, 120, 0, 0, 1, 10 },    // caster LAST -> player; 10 MP = ROCKS' price
+};
+inline constexpr FactPredicate kFacts_elf_rocks_blocked_scen99[] = {
+    pred::TickReached(160),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::WalkerDiedByFinal(FAMILY_TOWER1,
+        "consequence: the classic blocked ROCKS keeps its two-rock refund (one swing paid), so the held fire has two MP more and finishes the tower"),
+    pred::LevelDoneEquals(2),
+};
+inline constexpr Mutation kMut_elf_rocks_blocked_scen99 = {
+    "packs/core/families/living-01-elf.lua", 19,
+    "self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())",
+    "self.magicpoints = og.fadd(self.magicpoints, 0 * self:s_weapon_cost())",
+    "Refunds nothing before the classic ROCKS, so the blocked cast costs its one swing as the fixed one does: the held fire runs short and the tower survives. WalkerDiedByFinal(FAMILY_TOWER1) and LevelDoneEquals(2) fail."
+};
+inline constexpr FactPredicate kFacts_elf_rocks_blocked_fixes_scen99[] = {
+    pred::TickReached(160),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 800, 800,
+        "consequence: with the setting on the two rocks that never flew are taken back, so the blocked cast costs exactly its one swing and the held fire leaves the tower at 8 hp"),
+    pred::LevelDoneEquals(0),
+};
+inline constexpr Mutation kMut_elf_rocks_blocked_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 30,
+    "self.magicpoints = og.fsub(self.magicpoints, rocks * self:s_weapon_cost())",
+    "self.magicpoints = self.magicpoints",
+    "Makes the take-back a no-op, so the blocked cast keeps its refund as the classic one does: the held fire finishes the tower and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 800, 800) fails."
+};
+
+// --- druid_tree_blocked (fix I: GROW TREE with no room to throw) -----------
+// A level-1 druid with 15 MP (GROW TREE's price) casts GROW TREE (slot 1 at
+// tick 20) with a TOWER1 touching it above: fire() swings, the cast says COULD
+// NOT FIRE. The classic cast keeps its one-bolt refund (15 MP after the swing),
+// the fixed one does not (11). Fire held from tick 25 to 150 swings at 4 MP a
+// swing while the MP lasts: one swing more for the classic druid.
+inline constexpr InputEvent kInputs_druid_tree_blocked[] = {
+    { 20, 0, K_SPECIAL }, { 21, 0, K_NONE },
+    { 25, 0, K_FIRE },    { 150, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_druid_tree_blocked_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 120, 104, 0, 0 },           // touching above: blocks the druid's throw
+    { FAMILY_DRUID,  0, kOrderLiving, 120, 120, 0, 0, 1, 15 },    // caster LAST -> player; 15 MP = GROW TREE's price
+};
+inline constexpr FactPredicate kFacts_druid_tree_blocked_scen99[] = {
+    pred::TickReached(160),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8600, 8600,
+        "consequence: the classic blocked GROW TREE keeps its one-bolt refund, so the held fire pays for one more swing and the tower ends at 86 hp"),
+};
+inline constexpr Mutation kMut_druid_tree_blocked_scen99 = {
+    "packs/core/families/living-13-druid.lua", 16,
+    "self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())",
+    "self.magicpoints = og.fadd(self.magicpoints, 0)",
+    "Refunds nothing before the classic GROW TREE, so the blocked cast costs its swing as the fixed one does: one swing fewer and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8600, 8600) fails.",
+    "local function plant_tree(self)"
+};
+inline constexpr FactPredicate kFacts_druid_tree_blocked_fixes_scen99[] = {
+    pred::TickReached(160),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9400, 9400,
+        "consequence: with the setting on the bolt that never flew is taken back, so the blocked cast costs exactly its swing and the held fire lands one swing fewer: the tower ends at 94 hp"),
+};
+inline constexpr Mutation kMut_druid_tree_blocked_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 30,
+    "self.magicpoints = og.fsub(self.magicpoints, rocks * self:s_weapon_cost())",
+    "self.magicpoints = self.magicpoints",
+    "Makes the take-back a no-op, so the blocked cast keeps its refund as the classic one does: one more swing lands and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9400, 9400) fails."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -10406,6 +10535,54 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Soldier_4,
       kFacts_soldier_disarm_higher_foe_fixes_scen99, std::size(kFacts_soldier_disarm_higher_foe_fixes_scen99),
       kMut_soldier_disarm_higher_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "elf_volley_refund_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_volley_refund, std::size(kInputs_elf_volley_refund), 72,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_volley_refund_scen99, std::size(kFamilySpawns_elf_volley_refund_scen99),
+      0, false, true, Exercises::Special_Elf_2,
+      kFacts_elf_volley_refund_scen99, std::size(kFacts_elf_volley_refund_scen99),
+      kMut_elf_volley_refund_scen99 },
+
+    { "elf_volley_refund_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_volley_refund, std::size(kInputs_elf_volley_refund), 72,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_volley_refund_scen99, std::size(kFamilySpawns_elf_volley_refund_scen99),
+      0, false, true, Exercises::Special_Elf_2,
+      kFacts_elf_volley_refund_fixes_scen99, std::size(kFacts_elf_volley_refund_fixes_scen99),
+      kMut_elf_volley_refund_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "elf_rocks_blocked_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_rocks_blocked, std::size(kInputs_elf_rocks_blocked), 160,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_rocks_blocked_scen99, std::size(kFamilySpawns_elf_rocks_blocked_scen99),
+      0, false, true, Exercises::Special_Elf_1,
+      kFacts_elf_rocks_blocked_scen99, std::size(kFacts_elf_rocks_blocked_scen99),
+      kMut_elf_rocks_blocked_scen99 },
+
+    { "elf_rocks_blocked_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_rocks_blocked, std::size(kInputs_elf_rocks_blocked), 160,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_rocks_blocked_scen99, std::size(kFamilySpawns_elf_rocks_blocked_scen99),
+      0, false, true, Exercises::Special_Elf_1,
+      kFacts_elf_rocks_blocked_fixes_scen99, std::size(kFacts_elf_rocks_blocked_fixes_scen99),
+      kMut_elf_rocks_blocked_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "druid_tree_blocked_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_druid_tree_blocked, std::size(kInputs_druid_tree_blocked), 160,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_tree_blocked_scen99, std::size(kFamilySpawns_druid_tree_blocked_scen99),
+      0, false, true, Exercises::Special_Druid_1,
+      kFacts_druid_tree_blocked_scen99, std::size(kFacts_druid_tree_blocked_scen99),
+      kMut_druid_tree_blocked_scen99 },
+
+    { "druid_tree_blocked_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_druid_tree_blocked, std::size(kInputs_druid_tree_blocked), 160,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_tree_blocked_scen99, std::size(kFamilySpawns_druid_tree_blocked_scen99),
+      0, false, true, Exercises::Special_Druid_1,
+      kFacts_druid_tree_blocked_fixes_scen99, std::size(kFacts_druid_tree_blocked_fixes_scen99),
+      kMut_druid_tree_blocked_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
