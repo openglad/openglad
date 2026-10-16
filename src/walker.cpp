@@ -2684,6 +2684,7 @@ short walker::special()
 					                                      28, &howmany, this);
                     
                         generic = 0;
+                        short disarmed = 0; // port of the current game's e6475850: the foes really staggered
                         
                         for(auto e = newlist.begin(); e != newlist.end(); e++)
                         {
@@ -2691,12 +2692,24 @@ short walker::special()
                             if (w)
                             {
                                 if (random(stats->level) >= random(w->stats->level))
-                                    w->busy += 6*(stats->level -
+                                {
+                                    int penalty = 6*(stats->level -
                                                             w->stats->level + 1);
+                                    // port of the current game's e6475850: a foe above the fighter's
+                                    // level is not sped up by a stagger below zero, and only a real
+                                    // stagger counts
+                                    if (!myscreen->gameplay_fixes || penalty > 0)
+                                    {
+                                        w->busy += penalty;
+                                        disarmed++;
+                                    }
+                                }
                                 generic = 1; // disarmed at least one guy
                             }
                         }
                         
+                        if (myscreen->gameplay_fixes && generic && !disarmed)
+                            return 0; // port of the current game's e6475850: DISARM refuses when nobody was staggered
                         if (generic)
                         {
                             if (on_screen())
