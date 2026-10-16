@@ -19,6 +19,11 @@ for everyone.  With the setting off, every class has exactly
 the specials listed without a + mark.  Magic costs are given
 in brackets; a 'tick' is one step of the game clock.
 
+Gameplay Fixes (Game Settings -> Gameplay FX, on by default)
+corrects the classic specials; the lines below marked
+'Gameplay Fixes' describe it.  With it off they keep their
+old quirks (docs/gameplay-fixes.md).
+
 Soldier:  Your basic grunt, can absorb and deal damage and
         moves moderately fast.  A good all-around fighter.
         A fighter's normal weapon is a magical returning
@@ -38,6 +43,8 @@ Soldier:  Your basic grunt, can absorb and deal damage and
         4. ® Disarm: A skilled fighter can temporarily disarm a
              nearby opponent.  When disarmed, enemies are unable to fight
              effectively, and often cannot use special abilities.
+             Gameplay Fixes: a stronger foe resists, and nothing is
+             spent on a miss.
 
 Barbarian:  Barbarians are tough fighters, but possess more will
             than skill.  In general, they posess strong constitutions
@@ -168,12 +175,15 @@ ArchMage:  When a Mage has reached the sixth level or higher, she may
                 ArchMage, and while this may infuse the daemon with extra
                 sustaining health, it can also weaken the archmage to
                 a perilous condition!
+                Gameplay Fixes: with no room to summon, the elemental
+                costs nothing.
            4.   Mind Control:  For a short time, powerful ArchMages may
                 control the minds of those around them, bending their
                 enemies to their will.  The more magical enery the
                 ArchMage has availible, the stronger the control will
                 be, and the greater number of foes will be enslaved.
                 It rests 20 seconds between casts.
+                Gameplay Fixes: a failed control never joins your side.
 
 Cleric: Clerics, like mages, are slow, but have a stronger
         hand-to-hand attack.  Clerics posses abilities
@@ -187,6 +197,7 @@ Cleric: Clerics, like mages, are slow, but have a stronger
              cleric can heal several friends, if gathered closely around,
              for the mana cost of a single spell.  The higher level a
              cleric is, the stronger this healing power will become.
+             Gameplay Fixes: never above full health.
              NOTE: clerics controlled by the computer who are on your
              team will automatically attempt to heal any wounded team
              member who 'bumps' them.
@@ -209,6 +220,9 @@ Cleric: Clerics, like mages, are slow, but have a stronger
              SHIFTER: The reverse of raise undead, Turn Undead has
              the power to ultimately send the walking dead back to
              their realm.
+             Gameplay Fixes: Turn Undead reaches at least 60 pixels
+             and needs an undead foe in reach; otherwise it costs
+             nothing.
         3.   Raise Ghost: This stronger version of Raise Undead
              brings back not the bodies of those who have fallen, but the
              spirit.  Such a ghost has the advantage of being ethereal
@@ -261,6 +275,7 @@ Thief:  Thieves are fast and stronger of constitution than
              charming them instead.  Masters of inducing paranoia and
              charm, a clever thief can at times convince his worst enemy
              to help him out for a while.
+             Gameplay Fixes: the charm takes the nearest foe.
         4. ® Poison Cloud: The ability to create billowing clouds
              of poison is the thief's other offensive weapon.  By
              gathering up harmless elements and combining them, a thief
