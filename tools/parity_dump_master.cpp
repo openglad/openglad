@@ -482,6 +482,7 @@ int run_scenario(const og::parity::ScenarioSpec& spec,
         }
         game.ready_for_battle(1);
         ensure_view_team(game, spec);
+        game.gameplay_fixes = spec.gameplay_fixes; // the row's value, like rng_seed and player_team
 
         if (spec.fresh_arena)
             game.level_data.delete_objects();

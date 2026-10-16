@@ -98,6 +98,7 @@ class screen : public video
 		char special_name[NUM_FAMILIES][NUM_SPECIALS][20];
 		char alternate_name[NUM_FAMILIES][NUM_SPECIALS][20];
 		unsigned short enemy_freeze; // stops enemies from acting
+		short gameplay_fixes; // port of the current game's 0721756c: the Gameplay Fixes setting, 0 = classic; the golden capture tool sets it per row
 		soundob *soundp;
 		short redrawme;
 		viewscreen  * viewob[5];

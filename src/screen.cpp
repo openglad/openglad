@@ -128,6 +128,7 @@ screen::screen(short howmany)
 	cyclemode = 1; //color cycling on by default
 	
 	enemy_freeze = 0;
+	gameplay_fixes = 0; // port of the current game's 0721756c
 
 	level_done = 0;
 	

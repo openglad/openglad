@@ -279,6 +279,10 @@ struct ScenarioSpec
     std::int32_t         floor_count       = 1;
     const FloorPaint*    floor_paints      = nullptr;
     std::size_t          floor_paint_count = 0;
+    // Gameplay Fixes (the setting): 0 = the classic game, 1 = the fixed game.
+    // Trailing and defaulted so every row above stays byte-identical. An ON
+    // row spells its whole tail: `kMut_x, {}, 1, nullptr, 0, 1 }`.
+    std::uint8_t         gameplay_fixes    = 0;
 };
 
 // --- Per-scenario input scripts (constexpr, no file I/O at test time) ---
