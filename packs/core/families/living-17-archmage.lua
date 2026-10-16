@@ -7,6 +7,7 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
 local FX_MARKER = assert(og.family_id("fx", "core:marker"))
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 local FX_CHAIN = assert(og.family_id("fx", "core:chain"))
@@ -289,7 +290,9 @@ local function summon_image(self)
     if self:has_guy() and self:g_intelligence() < t.summon_int_req then
       return false, string.format("%d INT REQUIRED", t.summon_int_req)
     end
-    lc.halve_mp_surcharge(self, 3)
+    if not gf.on() then
+      lc.halve_mp_surcharge(self, 3)
+    end
     -- First make the guy we'd summon, at least physically
     local elemental = og.add_ob("living", LIVING_ELEMENTAL)
     if not elemental then
@@ -324,6 +327,10 @@ local function summon_image(self)
     if not placed then
       elemental.dead = 1
       return false, "NO ROOM TO SUMMON"
+    end
+    if gf.on() then
+      -- Gameplay Fixes: the surcharge is paid once the elemental stands.
+      lc.halve_mp_surcharge(self, 3)
     end
     -- Summoning takes lots of time :)
     -- busy is a C++ float: per-op rounding.

@@ -2411,6 +2411,92 @@ TEST(PackLuaArchmage, a_true_summon_with_nowhere_to_stand_is_cancelled)
         << "a summon with nowhere to stand must fail";
     EXPECT_EQ(0u, count_family(w, Order::Living, FAMILY_FIREELEMENTAL))
         << "no elemental may be left alive inside a wall";
+    // The classic game (the Gameplay Fixes setting off) takes the half-pool
+    // surcharge before it looks for room, so the refusal still costs it.
+    EXPECT_FLOAT_EQ(4500.0f, mage->stats()->magicpoints())
+        << "the classic refusal still takes half the spare pool";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+namespace {
+
+// The true-summon caster of the two tests below: level 30 (past the
+// 150-intelligence gate), 9000 MP, the slot priced at 0, the shift held.
+walker* true_summoner(GameWorld& w)
+{
+    walker* mage = spawn(w, Order::Living, FAMILY_ARCHMAGE, 10, 10, 1);
+    if (mage == nullptr)
+        return nullptr;
+    mage->stats()->set_level(30);
+    mage->stats()->set_max_magicpoints(9000.0f);
+    mage->stats()->set_magicpoints(9000.0f);
+    mage->stats()->set_special_cost(3, 0.0f);
+    mage->set_current_special(3);
+    mage->set_shifter_down(1);
+    mage->set_busy(0);
+    return mage;
+}
+
+}  // namespace
+
+// With the Gameplay Fixes setting on, the surcharge is paid only once the
+// elemental stands: NO ROOM TO SUMMON costs nothing.
+//
+// RED (the classic order): Expected equality of these values: 9000.0f
+// mage->stats()->magicpoints() Which is: 4500.
+TEST(PackLuaArchmage, a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_ARCHMAGE);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.gameplay_fixes = 1;
+    PixieData& grid = w.grid_for_floor(0);
+    ASSERT_NE(nullptr, grid.data);
+    ASSERT_GT(grid.w, 14);
+    ASSERT_GT(grid.h, 14);
+    for (int row = 8; row <= 12; row++) {
+        for (int col = 8; col <= 12; col++)
+            grid.data[static_cast<std::size_t>(row) * grid.w + static_cast<std::size_t>(col)] =
+                static_cast<unsigned char>(PIX_WALL4);
+    }
+    walker* mage = true_summoner(w);
+    ASSERT_NE(nullptr, mage);
+
+    EXPECT_FALSE(og::test::do_special(desc, mage))
+        << "a summon with nowhere to stand must fail";
+    EXPECT_EQ(0u, count_family(w, Order::Living, FAMILY_FIREELEMENTAL));
+    EXPECT_FLOAT_EQ(9000.0f, mage->stats()->magicpoints())
+        << "NO ROOM TO SUMMON costs nothing";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A summon that lands pays the same surcharge on both values of the
+// setting: half the spare pool.
+//
+// RED (the surcharge taken out of the setting's arm): Expected equality of
+// these values: 4500.0f mage->stats()->magicpoints() Which is: 9000
+// "the setting on".
+TEST(PackLuaArchmage, a_placed_true_summon_pays_half_the_spare_pool_on_both_values)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_ARCHMAGE);
+    og::test::ScopedHookFailureGuard guard;
+
+    for (short fixes : {short{0}, short{1}}) {
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        walker* mage = true_summoner(w);
+        ASSERT_NE(nullptr, mage);
+        ASSERT_TRUE(og::test::do_special(desc, mage)) << "setting " << fixes;
+        EXPECT_EQ(1u, count_family(w, Order::Living, FAMILY_FIREELEMENTAL))
+            << "setting " << fixes;
+        EXPECT_FLOAT_EQ(4500.0f, mage->stats()->magicpoints())
+            << (fixes != 0 ? "the setting on" : "the setting off");
+    }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
