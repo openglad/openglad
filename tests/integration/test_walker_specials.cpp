@@ -590,10 +590,11 @@ TEST_F(WalkerSpecials, turn_undead_destroys_undead_foes_and_spares_the_living)
 
 
 // The golem declares `specials = {}` (living-18-beast.lua). Every
-// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), so a golem
-// with an ordinary pool is refused at the cost gate (NoMP) before any
-// dispatch; hand it a pool it cannot possibly have in play and the dispatch
-// itself runs, finds no hook and declines. Either way nothing is spent.
+// undeclared slot is loaded at kSpecialCostDisabled (5000 MP), and a slot
+// priced there is not in play: walker::special refuses it (Unavailable)
+// before the mana compare, whatever the pool, so an ordinary pool and one
+// no walker could have in play are refused the same way, before any
+// dispatch. Either way nothing is spent.
 // (This was the faerie's test until New Specials gave her four slots; her
 // classic case, the setting off, is the next test.)
 TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
@@ -608,9 +609,11 @@ TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
 
     const float mp_before = w->stats()->magicpoints();
     walker::SpecialFailure why = walker::SpecialFailure::None;
-    ASSERT_FALSE(w->special(&why)) << "a family with no specials cannot cast one";
-    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
-        << "the disabled sentinel cost puts the slot out of reach of any real pool";
+    std::string reason;
+    ASSERT_FALSE(w->special(&why, &reason)) << "a family with no specials cannot cast one";
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, why)
+        << "a slot priced at the disabled sentinel is not in play";
+    EXPECT_EQ(std::string("NO SPECIAL AVAILABLE"), reason);
     EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
         << "a refused special spends no magic";
 
@@ -618,19 +621,19 @@ TEST_F(WalkerSpecials, family_with_no_special_spends_no_magic)
     w->stats()->set_magicpoints(kSpecialCostDisabled + 1000);
     const float rich_mp_before = w->stats()->magicpoints();
     why = walker::SpecialFailure::None;
-    ASSERT_FALSE(w->special(&why)) << "past the cost gate there is still no cast to run";
-    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why)
-        << "the dispatch ran and declined; not Dead/NoStats/NotLiving";
+    ASSERT_FALSE(w->special(&why)) << "a pool past the sentinel changes nothing";
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, why)
+        << "the slot is refused whatever the pool, before any dispatch";
     EXPECT_FLOAT_EQ(rich_mp_before, w->stats()->magicpoints())
-        << "a declined special spends no magic either";
+        << "a refused special spends no magic either";
 
     delete w;
 }
 
 // With New Specials off the faerie is the classic faerie: her BLINK slot is
 // declared and stamped at its price, but the engine prices it at the
-// disabled sentinel, so an ordinary pool is refused (NoMP) and nothing is
-// spent; with the setting on the same pool pays the declared price.
+// disabled sentinel, so the slot is not in play (Unavailable) and nothing
+// is spent; with the setting on the same pool pays the declared price.
 TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
 {
     // A level load re-stamps the world from the session save, so the flag
@@ -648,8 +651,8 @@ TEST_F(WalkerSpecials, faerie_has_no_special_with_new_specials_off)
     const float mp_before = w->stats()->magicpoints();
     walker::SpecialFailure why = walker::SpecialFailure::None;
     ASSERT_FALSE(w->special(&why)) << "the classic faerie cannot cast a special";
-    EXPECT_EQ(walker::SpecialFailure::NoMP, why)
-        << "the disabled sentinel cost puts the slot out of reach of any real pool";
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, why)
+        << "a slot the setting hides is not in play";
     EXPECT_FLOAT_EQ(mp_before, w->stats()->magicpoints())
         << "a refused special spends no magic";
 

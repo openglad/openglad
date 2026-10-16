@@ -176,6 +176,10 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 	// read once here, before the cast can change the walker's kit state.
 	const unsigned short cast_price =
 		og::sim::cast_cost(*this, special_index, shifter_down() != 0);
+	// A slot that is not in play (undeclared, or hidden by New Specials)
+	// says so whatever the pool.
+	if (cast_price >= kSpecialCostDisabled)
+		return fail(SpecialFailure::Unavailable, "NO SPECIAL AVAILABLE");
 	if (stats_->magicpoints() < cast_price)
 		return fail(SpecialFailure::NoMP, "NOT ENOUGH MP");
 

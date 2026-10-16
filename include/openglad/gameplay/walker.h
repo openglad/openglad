@@ -175,7 +175,7 @@ class walker : public og::sim::SimEntity
 		// path asks: a silent no-op there reads as a broken key, while the
 		// AI and Lua callers poll special() constantly and must stay
 		// cue-free. Dead/NoStats/NotLiving are engine-state failures nobody
-		// can act on; the other three are worth voicing. The optional reason
+		// can act on; the other four are worth voicing. The optional reason
 		// receives the cast's HUD text without emitting any event itself.
 		enum class SpecialFailure : std::uint8_t
 		{
@@ -186,6 +186,7 @@ class walker : public og::sim::SimEntity
 			NoMP,           // magicpoints below special_cost
 			NotLiving,      // weapons/FX/treasure have no specials
 			ScriptDeclined, // the family hook ran and returned false
+			Unavailable,    // the slot is not in play: cost kSpecialCostDisabled
 		};
 		bool special(SpecialFailure* why = nullptr, std::string* reason = nullptr);
 		bool teleport();

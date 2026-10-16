@@ -38,6 +38,7 @@ const char* special_failure_message(walker::SpecialFailure why,
     switch (why)
     {
         case walker::SpecialFailure::NoMP:
+        case walker::SpecialFailure::Unavailable:
         case walker::SpecialFailure::Disabled:
         case walker::SpecialFailure::ScriptDeclined:
             return reason.c_str();

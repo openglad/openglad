@@ -11,8 +11,8 @@
 // families/weapon-20-bone_wall.lua), their bot gates and the LEGION kill
 // hook. Every cast goes through the real walker::special() (the cost gate
 // and the charge included) on a world with the setting ON; each special's
-// setting-OFF twin asserts the classic answer (NOT ENOUGH MP, nothing made,
-// nothing spent). Bot gates are asked through the family's own
+// setting-OFF twin asserts the classic answer (the slot is not in play: NO
+// SPECIAL AVAILABLE, nothing made, nothing spent). Bot gates are asked through the family's own
 // check_special_ai dispatch.
 //
 // One staged perturbation per special was run by hand against the copy
@@ -710,8 +710,8 @@ TEST_F(KitSkeleton, other_specials_wait_for_the_dig)
     EXPECT_EQ(0, skel->kit_state() & KIT_WARD);
 }
 
-// Setting OFF: DIG IN is not a special at all (NOT ENOUGH MP from the 5000
-// sentinel), nothing sinks, nothing is spent.
+// Setting OFF: DIG IN is not a special at all (the 5000 sentinel: the slot
+// is not in play), nothing sinks, nothing is spent.
 TEST_F(KitSkeleton, dig_in_off_twin_is_not_cast)
 {
     world().new_specials = 0;
@@ -719,7 +719,7 @@ TEST_F(KitSkeleton, dig_in_off_twin_is_not_cast)
     ASSERT_NE(nullptr, skel);
     const Cast c = cast(skel, kSlotDigIn, 0);
     EXPECT_FALSE(c.ok);
-    EXPECT_EQ(walker::SpecialFailure::NoMP, c.why);
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why);
     EXPECT_FLOAT_EQ(500.0f, skel->stats()->magicpoints());
     EXPECT_EQ(ANI_WALK, skel->ani_type());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
@@ -964,8 +964,8 @@ TEST_F(KitSkeleton, bone_storm_refuses_with_no_wall)
     EXPECT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), other).size());
 }
 
-// Setting OFF: BONE WALL and BONE STORM are not specials (NOT ENOUGH MP),
-// nothing is built or thrown, nothing is spent.
+// Setting OFF: BONE WALL and BONE STORM are not specials (the slot is not
+// in play), nothing is built or thrown, nothing is spent.
 TEST_F(KitSkeleton, bone_wall_off_twin_is_not_cast)
 {
     world().new_specials = 0;
@@ -974,7 +974,7 @@ TEST_F(KitSkeleton, bone_wall_off_twin_is_not_cast)
     for (const short shift : {short{0}, short{1}}) {
         const Cast c = cast(skel, kSlotWall, shift);
         EXPECT_FALSE(c.ok) << shift;
-        EXPECT_EQ(walker::SpecialFailure::NoMP, c.why) << shift;
+        EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why) << shift;
     }
     EXPECT_FLOAT_EQ(500.0f, skel->stats()->magicpoints());
     EXPECT_TRUE(alive(world(), Order::Weapon, bone_wall_family()).empty());
@@ -1725,8 +1725,8 @@ TEST_F(KitSkeleton, tunnel_and_level_up_stay_classic)
     EXPECT_EQ(str + 8, bones.strength) << "apply_level_up(8, 12, 4, 4, 1)";
 }
 
-// Setting OFF: REASSEMBLE and LEGION are not specials (NOT ENOUGH MP), no
-// ward, no window, nothing spent.
+// Setting OFF: REASSEMBLE and LEGION are not specials (the slot is not in
+// play), no ward, no window, nothing spent.
 TEST_F(KitSkeleton, reassemble_off_twin_is_not_cast)
 {
     world().new_specials = 0;
@@ -1735,7 +1735,7 @@ TEST_F(KitSkeleton, reassemble_off_twin_is_not_cast)
     for (const short shift : {short{0}, short{1}}) {
         const Cast c = cast(skel, kSlotReassemble, shift);
         EXPECT_FALSE(c.ok) << shift;
-        EXPECT_EQ(walker::SpecialFailure::NoMP, c.why) << shift;
+        EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why) << shift;
     }
     EXPECT_FLOAT_EQ(500.0f, skel->stats()->magicpoints());
     EXPECT_EQ(0, skel->kit_state());

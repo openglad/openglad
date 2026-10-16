@@ -13,7 +13,7 @@
 // the charge included) against the shipped core pack, in a hand-built
 // world whose New Specials flag the test sets itself. Each ON case has an
 // OFF twin with the same staging: the new slot is not in play, special()
-// fails with NoMP, nothing is spawned and no mana moves.
+// fails with Unavailable, nothing is spawned and no mana moves.
 //
 // Teeth: each case names, in its comment, the staged-copy perturbation
 // (an edit under build/ci-test/packs/core, then the test binary rerun)
@@ -209,7 +209,7 @@ int centre_x(const walker* w) { return w->xpos() + w->sizex() / 2; }
 int centre_y(const walker* w) { return w->ypos() + w->sizey() / 2; }
 
 // The OFF twin every new slot shares: with the setting off the slot is not
-// in play, so the cost gate refuses (NoMP) before any script runs, and no
+// in play, so the cost gate refuses (Unavailable) before any script runs, and no
 // kit entity appears. Perturbation (staged living-06: `new_kit = true`
 // dropped from the slot's row): the slot casts with the setting off -> red,
 // for each of the four twins.
@@ -226,7 +226,7 @@ void expect_off_slot_refused(int slot, short shift)
     e->set_foe(foe);
     const Cast c = cast(e);
     EXPECT_FALSE(c.ok) << "slot " << slot;
-    EXPECT_EQ(Failure::NoMP, c.why) << "slot " << slot;
+    EXPECT_EQ(Failure::Unavailable, c.why) << "slot " << slot;
     EXPECT_FLOAT_EQ(1000.0f, mp(e)) << "slot " << slot;
     EXPECT_FLOAT_EQ(50.0f, hp(e)) << "slot " << slot;
     EXPECT_FALSE(e->dead()) << "slot " << slot;
