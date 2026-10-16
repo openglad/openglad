@@ -4023,7 +4023,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "packs/core/families/living-12-ghost.lua", 9,
+    "packs/core/families/living-12-ghost.lua", 27,
     "local scare = og.summon(self, \"fx\", FX_GHOST_SCARE)",
     "local scare = nil",
     "Suppresses the scare carrier FX the ghost's special summons (its on_death is what actually frightens), so do_special takes its 'if not scare' exit. WalkerFamilyCount(FAMILY_GHOST, 1, 1) and WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100) both flip."
@@ -4126,7 +4126,7 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
-    "packs/core/lib/orc_specials.lua", 13,
+    "packs/core/lib/orc_specials.lua", 14,
     "if lc.is_busy(self) then",
     "if true then",
     "Closes YELL's busy gate permanently, so orc slot 1 returns false before the per-foe stun rolls and before SOUND_ROAR. WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200) flips. (The howl lives in lib/orc_specials.lua, cast by the orc and the orc captain; the same busy guard opens many casts in other files, so the pin names the function it means with context_before.)",
@@ -6226,7 +6226,7 @@ inline constexpr FactPredicate kFacts_orc_yell_stun_hold_scen99[] = {
 };
 
 inline constexpr Mutation kMut_orc_yell_stun_hold_scen99 = {
-    "packs/core/lib/orc_specials.lua", 43,
+    "packs/core/lib/orc_specials.lua", 48,
     "      foe:add_frozen_stun(stun)",
     "      foe:add_frozen_stun(0)",
     "Banks a zero stun. stun_total(raw, 0) returns raw unchanged, so the archer is never frozen: it acts from tick 20 on, steps west off its spawn (failing the archer position floor) and its level-5 arrows drop the orc below the caster hp pin. The radius scan, the two RNG draws and SOUND_ROAR all still run, so the flip isolates the freeze write itself."
@@ -7755,7 +7755,7 @@ inline constexpr FactPredicate kFacts_orc_yell_zero_constitution_scen99[] = {
 };
 
 inline constexpr Mutation kMut_orc_yell_zero_constitution_scen99 = {
-    "packs/core/lib/orc_specials.lua", 39,
+    "packs/core/lib/orc_specials.lua", 44,
     "      local con_roll = og.rand0(con * t.yell_con_roll_mult)",
     "      local con_roll = og.rand0(og.max(con, 1) * t.yell_con_roll_mult)",
     "Forces a real RNG draw at the tower generator's zero constitution bound, which master's random(x<1) early return never takes. The mutation is a no-op for every foe with con >= 1, so it isolates exactly the zero-bound semantics: every subsequent draw in the run shifts by one position and the orc finishes on 8700 cents instead of 8200."
