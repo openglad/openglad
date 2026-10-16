@@ -80,6 +80,12 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_guy_extended.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_combat.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_walker_specials.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_soldier.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_elf.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_druid.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_ghost_orc.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_cleric.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_thief.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_commands.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_right_walk_direct_walk.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_hit_response_more.cpp
@@ -407,6 +413,12 @@ og_add_test_group(og_test_walker_move FILES
 
 og_add_test_group(og_test_walker_core FILES
     test_walker_specials.cpp
+    test_gameplay_fixes_soldier.cpp
+    test_gameplay_fixes_elf.cpp
+    test_gameplay_fixes_druid.cpp
+    test_gameplay_fixes_ghost_orc.cpp
+    test_gameplay_fixes_cleric.cpp
+    test_gameplay_fixes_thief.cpp
     test_walker_core_more.cpp
     test_walker_extended.cpp
     test_walker_more.cpp
@@ -947,6 +959,7 @@ og_add_unit_group(og_unit_families FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_save_client.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_lib.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_cleric_unit.cpp
 )
 
 # New Specials: the setting's view of the specials table, the engine seams
@@ -957,6 +970,7 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_seams_hidden.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_seams_small.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_bots.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_thief_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_thief.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_ghost.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_faerie.cpp
@@ -964,6 +978,7 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_skeleton.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_elemental.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_rests.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_bots.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
 )
 
