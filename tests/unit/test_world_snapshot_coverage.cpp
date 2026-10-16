@@ -25,17 +25,18 @@
 namespace
 {
 
-// Snapshot v15: one format byte followed by 538 bytes of fixed/default world
+// Snapshot v17: one format byte followed by 539 bytes of fixed/default world
 // state before the grid block (72 pre-block scalars + the empty respawn
-// block 9 + the fixed mode block 409 + 26 match-knob bytes + 22 trailing
-// scalar/player_machine/new_specials bytes). Keeping this wire pin explicit
-// makes malformed payload tests fail loudly when the format is deliberately
-// revised: v12 appended the eight per-team bot i16s to the match knobs,
-// which is the whole of the 10 -> 26 move, v13 appended the one 5-byte
-// camera-view slot to the mode block, which is the whole of the 404 -> 409,
-// and v15 appended the one new_specials byte after player_machine, the whole
-// of the 537 -> 538.
-constexpr std::size_t kSerializedWorldStateBytes = 538;
+// block 9 + the fixed mode block 409 + 26 match-knob bytes + 23 trailing
+// scalar/player_machine/new_specials/gameplay_fixes bytes). Keeping this
+// wire pin explicit makes malformed payload tests fail loudly when the
+// format is deliberately revised: v12 appended the eight per-team bot i16s
+// to the match knobs, which is the whole of the 10 -> 26 move, v13 appended
+// the one 5-byte camera-view slot to the mode block, which is the whole of
+// the 404 -> 409, v15 appended the one new_specials byte after
+// player_machine, the whole of the 537 -> 538, and v17 appended the one
+// gameplay_fixes byte after it, the whole of the 538 -> 539.
+constexpr std::size_t kSerializedWorldStateBytes = 539;
 constexpr std::size_t kGridOffset = 1 + kSerializedWorldStateBytes;
 constexpr std::size_t kGridDirtyOffset = kGridOffset + 2;
 constexpr std::size_t kGridFullResendOffset = kGridOffset + 3;

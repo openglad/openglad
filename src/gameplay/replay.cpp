@@ -505,6 +505,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(respawn_mode);
     OG_REPLAY_COMPARE(generator_rate);
     OG_REPLAY_COMPARE(new_specials);
+    OG_REPLAY_COMPARE(gameplay_fixes);
     OG_REPLAY_COMPARE(grid_width);
     OG_REPLAY_COMPARE(grid_height);
     OG_REPLAY_COMPARE(grid_dirty);

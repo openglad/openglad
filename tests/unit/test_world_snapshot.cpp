@@ -600,6 +600,7 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.control_policy, actual.control_policy);
     EXPECT_EQ(expected.player_machine, actual.player_machine);
     EXPECT_EQ(expected.new_specials, actual.new_specials);
+    EXPECT_EQ(expected.gameplay_fixes, actual.gameplay_fixes);
     EXPECT_EQ(expected.grid_width, actual.grid_width);
     EXPECT_EQ(expected.grid_height, actual.grid_height);
     EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
@@ -2469,15 +2470,15 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 538 bytes of world state (72 pre-block scalars, the v11 respawn block
+    // 539 bytes of world state (72 pre-block scalars, the v11 respawn block
     // at its empty size 9, the fixed 409-byte mode block — v13 appended the
     // one 5-byte camera-view slot — the 26 match-knob bytes, and the trailing
-    // respawn_mode/generator_rate/control_policy/player_machine/new_specials
-    // 22; v15 appended new_specials) + 4 grid bytes. Not to be confused with
-    // the world-state size itself (kSerializedWorldStateBytes in
-    // test_world_snapshot_coverage.cpp, 538 since v15), from which this is
-    // derived: 1 + 538 + 4.
-    constexpr std::size_t kEntityCountOffset = 543;
+    // respawn_mode/generator_rate/control_policy/player_machine/new_specials/
+    // gameplay_fixes 23; v15 appended new_specials, v17 gameplay_fixes) + 4
+    // grid bytes. Not to be confused with the world-state size itself
+    // (kSerializedWorldStateBytes in test_world_snapshot_coverage.cpp, 539
+    // since v17), from which this is derived: 1 + 539 + 4.
+    constexpr std::size_t kEntityCountOffset = 544;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;
@@ -3509,6 +3510,56 @@ TEST(WorldSnapshot, new_specials_round_trips_keyframe_and_delta)
     crafted.new_specials = 0;
     og::sim::apply_snapshot(mirror, crafted);
     EXPECT_EQ(0, mirror.new_specials);
+}
+
+// Gameplay Fixes (snapshot v17), the same way as New Specials: the setting
+// is world state on the
+// wire. It must survive capture -> serialize -> deserialize -> apply and the
+// delta merge, and apply clamps a crafted value to 0/1.
+TEST(WorldSnapshot, gameplay_fixes_round_trips_keyframe_and_delta)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    source.gameplay_fixes = 1;
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    EXPECT_EQ(1, keyframe.gameplay_fixes);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(keyframe));
+    EXPECT_EQ(1, decoded.gameplay_fixes);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_EQ(0, mirror.gameplay_fixes);
+    og::sim::apply_snapshot(mirror, decoded);
+    EXPECT_EQ(1, mirror.gameplay_fixes)
+        << "gameplay_fixes must reach the mirror world through apply";
+    EXPECT_EQ(0, mirror.new_specials) << "New Specials is another setting";
+
+    // The delta path: a delta carries the world scalars, and the merge puts
+    // them on a stale baseline.
+    og::sim::WorldSnapshot delta;
+    delta.gameplay_fixes = 1;
+    const og::sim::WorldSnapshot delta_decoded =
+        og::sim::deserialize_delta(og::sim::serialize_delta(delta));
+    EXPECT_EQ(1, delta_decoded.gameplay_fixes);
+    og::sim::WorldSnapshot baseline;
+    og::sim::apply_delta(baseline, delta_decoded);
+    EXPECT_EQ(1, baseline.gameplay_fixes);
+
+    // A crafted value clamps to 1 on apply; 0 turns the mirror back off.
+    og::sim::WorldSnapshot crafted = decoded;
+    crafted.gameplay_fixes = 7;
+    og::sim::apply_snapshot(mirror, crafted);
+    EXPECT_EQ(1, mirror.gameplay_fixes) << "apply clamps the setting to 0/1";
+    crafted.gameplay_fixes = 0;
+    og::sim::apply_snapshot(mirror, crafted);
+    EXPECT_EQ(0, mirror.gameplay_fixes);
 }
 
 // The three New Specials entity fields ride dirty bits 93-95: each setter
