@@ -1098,7 +1098,8 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
 //              swing (1 MP): 1499.
 //   druid 240  GROW TREE and SUMMON FAERIE decline COULD NOT FIRE the same
 //              way; the classic refund makes the swing free (1500 MP left),
-//              the setting charges the swing (4 MP): 1496.
+//              the setting charges the swing (4 MP): 1496. REVEAL and
+//              PROTECTION cast as before on both values: 1350, 1300.
 //   cleric  2  TURN UNDEAD (shifted slots 2 and 3) is refused on both values,
 //              for a different reason: the classic reach, 4 px per level,
 //              falls short of the orc at 12 px for this bare low-level caster

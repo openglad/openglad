@@ -383,7 +383,7 @@ og.family("living", {
     resurrect_range = 30,
     resurrect_ghost_lifetime = 200,
     -- Turn undead with the Gameplay Fixes setting on: the reach never falls
-    -- under this (px), the raise's own reach
+    -- under this (px), RAISE UNDEAD's own reach
     turn_undead_range_min = 60,
   },
 
