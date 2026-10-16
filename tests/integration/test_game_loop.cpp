@@ -9905,6 +9905,144 @@ void midgame_one_hero_teardown(screen* game_screen)
 
 } // namespace
 
+// #354, the seat half of the Gameplay Fixes setting: a seat never claims a
+// walker that a thief or an archmage charmed onto our team. A mid-game joiner
+// whose team's only free body is such a walker gets the stock soldier the
+// shadow spawns when the claim scan finds nobody; with the setting off it is
+// handed the charmed walker, as the classic game does. Both cases build the
+// same world: the one-hero level, every free lead-team walker parked on a
+// team no seat plays, and one enemy charmed onto the lead team (its real
+// team kept and a charm timer running, exactly what CHARM OPPONENT and MIND
+// CONTROL leave behind).
+namespace {
+struct CharmedJoinerWorld
+{
+    og::runtime::GameSession* session = nullptr;
+    screen* server_screen = nullptr;
+    walker* charmed = nullptr;
+    short lead_team = -1;
+    unsigned char charmed_real_team = 0;
+};
+
+void midgame_charmed_joiner_boot(screen* game_screen, CharmedJoinerWorld& out)
+{
+    midgame_one_hero_boot(game_screen);
+    if (::testing::Test::HasFatalFailure())
+        return;
+    out.session = og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(*out.session));
+    std::uint32_t tick = 0;
+    midgame_pump(*out.session, 8, tick);
+
+    out.server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(*out.session);
+    ASSERT_NE(nullptr, out.server_screen);
+    GameWorld& server_world = out.server_screen->world();
+    out.lead_team = game_screen->viewob[0]->my_team;
+
+    short parking_team = -1;
+    for (short t = 0; t < 4 && parking_team < 0; ++t)
+    {
+        if (t != out.lead_team &&
+            midgame_find_living_on_team(out.server_screen, t) == nullptr)
+        {
+            parking_team = t;
+        }
+    }
+    ASSERT_NE(-1, static_cast<int>(parking_team));
+    for (const auto& uptr : server_world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living && entity->user() == -1 &&
+            static_cast<short>(entity->team_num()) == out.lead_team)
+        {
+            entity->set_team_num(static_cast<unsigned char>(parking_team));
+        }
+    }
+
+    // The enemy the charm takes: a free living body the claim scan would
+    // accept on every other count.
+    for (const auto& uptr : server_world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() && !entity->dormant() &&
+            !entity->hidden() && entity->possess_link() == 0 &&
+            entity->query_order() == Order::Living && entity->user() == -1 &&
+            static_cast<short>(entity->team_num()) != out.lead_team &&
+            static_cast<short>(entity->team_num()) != parking_team)
+        {
+            out.charmed = entity;
+            break;
+        }
+    }
+    ASSERT_NE(nullptr, out.charmed)
+        << "gladiator scen 1 must have an enemy for the charm to take";
+    out.charmed_real_team = out.charmed->team_num();
+    out.charmed->set_real_team_num(out.charmed_real_team);
+    out.charmed->set_team_num(static_cast<unsigned char>(out.lead_team));
+    out.charmed->set_charm_left(100);
+}
+} // namespace
+
+TEST(GameLoop, a_joiner_whose_only_team_body_is_charmed_gets_a_stock_soldier)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    CharmedJoinerWorld setup;
+    midgame_charmed_joiner_boot(game_screen, setup);
+    if (::testing::Test::HasFatalFailure())
+        return;
+    GameWorld& server_world = setup.server_screen->world();
+    // The setting as it ships, on the world the seat scan reads.
+    server_world.gameplay_fixes = 1;
+    const std::size_t oblist_before = server_world.oblist.size();
+
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(*setup.session));
+    EXPECT_TRUE(trace_contains("seats", "source=spawned"))
+        << "with the setting on the charmed walker is not claimable, so the "
+           "joiner must get a freshly spawned stock soldier";
+    EXPECT_FALSE(trace_contains("seats", "source=claimed"));
+    walker* const seat1 = midgame_find_walker_by_user(setup.server_screen, 1);
+    ASSERT_NE(nullptr, seat1);
+    EXPECT_NE(setup.charmed, seat1) << "a seat never claims a charmed walker";
+    EXPECT_EQ(FAMILY_SOLDIER, static_cast<int>(seat1->family()));
+    EXPECT_EQ(255, static_cast<int>(seat1->real_team_num()));
+    EXPECT_EQ(setup.lead_team, static_cast<short>(seat1->team_num()));
+    EXPECT_EQ(oblist_before + 1u, server_world.oblist.size());
+    // The charmed walker is left as the charm made it: AI-driven, borrowed.
+    EXPECT_EQ(-1, static_cast<int>(setup.charmed->user()));
+    EXPECT_EQ(setup.lead_team, static_cast<short>(setup.charmed->team_num()));
+    EXPECT_EQ(static_cast<int>(setup.charmed_real_team),
+              static_cast<int>(setup.charmed->real_team_num()));
+
+    midgame_one_hero_teardown(game_screen);
+}
+
+// The classic game, for contrast: the same joiner is handed the charmed
+// walker (bug #354), which goes home to its real team when the charm ends.
+TEST(GameLoop, a_joiner_claims_a_charmed_body_with_gameplay_fixes_off)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    CharmedJoinerWorld setup;
+    midgame_charmed_joiner_boot(game_screen, setup);
+    if (::testing::Test::HasFatalFailure())
+        return;
+    GameWorld& server_world = setup.server_screen->world();
+    server_world.gameplay_fixes = 0;
+    const std::size_t oblist_before = server_world.oblist.size();
+
+    trace_clear();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_add_local_player(*setup.session));
+    EXPECT_TRUE(trace_contains("seats", "source=claimed"));
+    EXPECT_EQ(setup.charmed, midgame_find_walker_by_user(setup.server_screen, 1));
+    EXPECT_EQ(oblist_before, server_world.oblist.size());
+
+    midgame_one_hero_teardown(game_screen);
+}
+
 // The reporter's crash, minimized (fuzz-derived): seat churn against a
 // PAUSED world. While the pause pins the tick, the server keeps answering
 // the display's keyframe requests at that same frozen tick; a transient
