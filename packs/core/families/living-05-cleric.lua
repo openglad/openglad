@@ -88,15 +88,23 @@ local function heal_or_mace(self)
           reason = "HEAL TOO WEAK"
           break
         end
+        local before = ally.hp
         -- hp and magicpoints are C++ floats: per-op rounding
         ally.hp = og.fadd(ally.hp, amount)
+        local landed = amount
+        if gf.on() and ally.hp > ally.max_hp then
+          -- Gameplay Fixes: never above full health; the number shown and
+          -- the reward are what really landed. The mana is still spent.
+          ally.hp = ally.max_hp
+          landed = og.trunc(og.fsub(ally.max_hp, before))
+        end
         self.magicpoints = og.fsub(self.magicpoints, cost)
         if self:has_guy() then
           self:g_set_exp(self:g_exp() +
-                         og.exp_from_action(self, ally, "heal", amount))
+                         og.exp_from_action(self, ally, "heal", landed))
         end
         healed = healed + 1
-        self:do_heal_effects(self, ally, amount)
+        self:do_heal_effects(self, ally, landed)
       end
     end
     -- everyone was healthy; don't charge us

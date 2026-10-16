@@ -263,3 +263,148 @@ TEST_F(GameplayFixesCleric, turn_undead_roll_keeps_the_classic_strength)
         delete cleric;
     }
 }
+
+// The ON twin of WalkerSpecials.cleric_heal_drives_simulation (which pins
+// the classic numbers, 545 and 482): the same two allies at 20 of 100 HP,
+// the same 2000 MP pool and floor stream. With the setting on both stop at
+// 100, each floating number shows the 80 that landed, and the cleric pays
+// exactly what the classic heal costs (1530 MP left).
+// RED on the classic heal: 545 and 482.
+TEST_F(GameplayFixesCleric, heal_stops_at_full_health_when_on)
+{
+    GameWorld& world = the_world();
+    world.delete_objects();
+    world.gameplay_fixes = 1;
+    walker* w = make_cleric(1, 5);
+    ASSERT_NE(nullptr, w);
+    w->set_current_special(1);
+    w->set_shifter_down(0);
+    w->stats()->set_magicpoints(2000);
+
+    walker* ally1 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* ally2 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, ally1);
+    ASSERT_NE(nullptr, ally2);
+    ally1->set_team_num(1);
+    ally2->set_team_num(1);
+    ally1->setxy(108, 100);
+    ally2->setxy(112, 100);
+    for (walker* ally : {ally1, ally2}) {
+        ally->stats()->set_max_hitpoints(100);
+        ally->stats()->set_hitpoints(20);
+        ally->damage_numbers.clear();
+    }
+    {
+        FixedRandom floor_rng(0u);
+        ScopedSimRandom scoped(&floor_rng);
+        ASSERT_TRUE(w->special()) << "the heal fires with wounded allies";
+    }
+    EXPECT_FLOAT_EQ(100.0f, ally1->stats()->hitpoints())
+        << "never above full health (the classic heal leaves 545)";
+    EXPECT_FLOAT_EQ(100.0f, ally2->stats()->hitpoints())
+        << "never above full health (the classic heal leaves 482)";
+    for (walker* ally : {ally1, ally2}) {
+        ASSERT_FALSE(ally->damage_numbers.empty());
+        EXPECT_FLOAT_EQ(80.0f, ally->damage_numbers.back().value)
+            << "the number shown is what landed";
+    }
+    EXPECT_FLOAT_EQ(1530.0f, w->stats()->magicpoints())
+        << "the mana is spent as in the classic heal";
+    delete w;
+}
+
+// One ally at 90 of 100 HP, a level-5 cleric with 400 MP, every draw at its
+// ceiling: the heal amount is (100 + 99) + 25 = 224 at a cost of 99, and
+// the experience is next(20 * value) / level, so it shows which value the
+// reward was computed from. Classic: the ally ends at 314, the number reads
+// 224, the reward is (20 * 224 - 1) / 5 = 895. With the setting on: 100,
+// 10, and (20 * 10 - 1) / 5 = 39. The mana is the same on both values.
+// RED on the classic heal: 314, 224 and 895 with the setting on.
+TEST_F(GameplayFixesCleric, heal_reward_and_number_are_what_landed)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        GameWorld& world = the_world();
+        world.delete_objects();
+        world.gameplay_fixes = fixes;
+        walker* w = make_cleric(1, 5);
+        ASSERT_NE(nullptr, w);
+        ASSERT_NE(nullptr, w->myguy);
+        w->set_current_special(1);
+        w->set_shifter_down(0);
+        w->stats()->set_magicpoints(400);
+        walker* ally = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, ally);
+        ally->set_team_num(1);
+        ally->setxy(108, 100);
+        ally->stats()->set_max_hitpoints(100);
+        ally->stats()->set_hitpoints(90);
+        ally->damage_numbers.clear();
+
+        const auto exp_before = w->myguy->exp;
+        {
+            CeilingRandom ceiling;
+            ScopedSimRandom scoped(&ceiling);
+            GameContext gc;
+            gc.rng = &ceiling;  // the experience roll's stream
+            push_test_context(&gc);
+            const bool ok = w->special();
+            pop_test_context();
+            ASSERT_TRUE(ok) << "setting " << fixes;
+        }
+        EXPECT_FLOAT_EQ(fixes != 0 ? 100.0f : 314.0f,
+                        ally->stats()->hitpoints())
+            << "setting " << fixes;
+        ASSERT_FALSE(ally->damage_numbers.empty());
+        EXPECT_FLOAT_EQ(fixes != 0 ? 10.0f : 224.0f,
+                        ally->damage_numbers.back().value)
+            << "the floating number; setting " << fixes;
+        EXPECT_EQ(fixes != 0 ? 39 : 895,
+                  static_cast<int>(w->myguy->exp - exp_before))
+            << "the experience; setting " << fixes;
+        EXPECT_FLOAT_EQ(400.0f - 99.0f - 2.0f, w->stats()->magicpoints())
+            << "the cost and the slot's own 2 MP; setting " << fixes;
+        delete w;
+    }
+}
+
+// A heal that stays under the maximum is the classic heal on both values:
+// the two allies of the ON twin above, with 600 max HP, end at 545 and 482.
+// RED under the mutation "the cap is applied without the over-maximum
+// test": both end at 600.
+TEST_F(GameplayFixesCleric, heal_below_full_health_is_unchanged)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        GameWorld& world = the_world();
+        world.delete_objects();
+        world.gameplay_fixes = fixes;
+        walker* w = make_cleric(1, 5);
+        ASSERT_NE(nullptr, w);
+        w->set_current_special(1);
+        w->set_shifter_down(0);
+        w->stats()->set_magicpoints(2000);
+        walker* ally1 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* ally2 = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, ally1);
+        ASSERT_NE(nullptr, ally2);
+        ally1->set_team_num(1);
+        ally2->set_team_num(1);
+        ally1->setxy(108, 100);
+        ally2->setxy(112, 100);
+        for (walker* ally : {ally1, ally2}) {
+            ally->stats()->set_max_hitpoints(600);
+            ally->stats()->set_hitpoints(20);
+        }
+        {
+            FixedRandom floor_rng(0u);
+            ScopedSimRandom scoped(&floor_rng);
+            ASSERT_TRUE(w->special()) << "setting " << fixes;
+        }
+        EXPECT_FLOAT_EQ(545.0f, ally1->stats()->hitpoints())
+            << "setting " << fixes;
+        EXPECT_FLOAT_EQ(482.0f, ally2->stats()->hitpoints())
+            << "setting " << fixes;
+        EXPECT_FLOAT_EQ(1530.0f, w->stats()->magicpoints())
+            << "setting " << fixes;
+        delete w;
+    }
+}
