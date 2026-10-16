@@ -543,15 +543,15 @@ local function mind_control(self)
   end
   local controlled = 0
   local budget = mp_after_base_cost + 10
+  -- Gameplay Fixes: a hero a seat drives resists, as Possess's does.
+  local fixes = gf.on()
   for i = 1, #foes do
     if budget < 10 then
       break
     end
     local foe = foes[i]
     -- never been charmed
-    if foe:real_team_num() == 255
-        and foe:order() == C.ORDER_LIVING
-        and foe:charm_left() <= 10 then
+    if gf.charmable(foe, fixes) and foe:charm_left() <= 10 then
       budget = budget - 10
       local level_edge = self.level - foe.level
       -- C++ `generic < 0 || !rng.next(20)` (generic = the level edge) —

@@ -439,3 +439,105 @@ TEST_F(GameplayFixesArchmageHit, a_seated_archmage_keeps_its_shift_key)
         EXPECT_EQ(0, held.phantoms) << "Shift held, spare 100, setting " << fixes;
     }
 }
+
+// ---------------------------------------------------------------------------
+// MIND CONTROL and a seated hero (#355)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The first world-RNG state from which the next draw of next(bound) is
+// `want`: pins the domination roll without a spy.
+std::uint32_t state_where_next_is(std::uint32_t bound, std::uint32_t want)
+{
+    for (std::uint32_t seed = 1;; ++seed) {
+        og::sim::SimRandom probe(seed);
+        if (probe.next(bound) == want)
+            return seed;
+    }
+}
+
+struct MindControlCast {
+    bool ok = false;
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+};
+
+}  // namespace
+
+// An enemy archmage's MIND CONTROL takes a hero a player is driving in the
+// classic game. With the setting on the hero resists, as it does Possess
+// ("HERO RESISTS"): it is skipped before the roll, costs the cast nothing,
+// and an NPC beside it is still taken.
+//
+// RED (the classic eligibility): Value of: c.ok Actual: true Expected: false
+// "the hero alone"; Expected equality of these values: 0
+// static_cast<int>(hero->team_num()) Which is: 2; mp_before Which is: 1000
+// arch->stats()->magicpoints() Which is: 850 "a refusal spends nothing".
+TEST_F(GameplayFixesBots, mind_control_skips_a_seated_hero_with_the_setting_on)
+{
+    // The domination roll (rand(20) != 0) succeeds on every cast below.
+    const std::uint32_t roll = state_where_next_is(20, 1);
+    auto scene = [&](short fixes, bool with_npc, walker** hero_out,
+                     walker** npc_out, walker** arch_out) {
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        living* arch = add(FAMILY_ARCHMAGE, 2, 200, 200, 10, 1000.0f);
+        living* hero = add(FAMILY_SOLDIER, 0, 230, 200, 1);
+        ASSERT_TRUE(arch && hero);
+        hero->set_user(0);
+        hero->set_act_type(ACT_CONTROL);
+        ASSERT_TRUE(og::sim::seat_driven(*hero));
+        living* npc = nullptr;
+        if (with_npc) {
+            npc = add(FAMILY_SOLDIER, 0, 200, 240, 1);
+            ASSERT_NE(nullptr, npc);
+            ASSERT_FALSE(og::sim::seat_driven(*npc));
+        }
+        world().rng_.state_ = roll;
+        *hero_out = hero;
+        *npc_out = npc;
+        *arch_out = arch;
+    };
+    auto cast = [](walker* arch) {
+        arch->set_current_special(4);
+        arch->set_shifter_down(0);
+        MindControlCast c;
+        c.ok = arch->special(&c.why, &c.reason);
+        return c;
+    };
+
+    walker* hero = nullptr;
+    walker* npc = nullptr;
+    walker* arch = nullptr;
+
+    scene(0, false, &hero, &npc, &arch);
+    ASSERT_FALSE(HasFatalFailure());
+    MindControlCast c = cast(arch);
+    EXPECT_TRUE(c.ok) << "the classic game takes the hero: " << c.reason;
+    EXPECT_EQ(2, static_cast<int>(hero->team_num()));
+    EXPECT_EQ(0, static_cast<int>(hero->real_team_num()));
+
+    scene(1, false, &hero, &npc, &arch);
+    ASSERT_FALSE(HasFatalFailure());
+    const float mp_before = arch->stats()->magicpoints();
+    c = cast(arch);
+    EXPECT_FALSE(c.ok) << "the hero alone";
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, c.why);
+    EXPECT_EQ("NO VALID TARGET", c.reason);
+    EXPECT_EQ(0, static_cast<int>(hero->team_num()));
+    EXPECT_EQ(255, static_cast<int>(hero->real_team_num()));
+    EXPECT_EQ(0, hero->charm_left());
+    EXPECT_FLOAT_EQ(mp_before, arch->stats()->magicpoints()) << "a refusal spends nothing";
+    EXPECT_EQ(0, arch->special_rest_left()) << "and starts no rest";
+    EXPECT_EQ(roll, world().rng_.state_) << "the hero is skipped before the roll";
+
+    scene(1, true, &hero, &npc, &arch);
+    ASSERT_FALSE(HasFatalFailure());
+    c = cast(arch);
+    EXPECT_TRUE(c.ok) << c.reason;
+    EXPECT_EQ(0, static_cast<int>(hero->team_num())) << "the hero resists";
+    EXPECT_EQ(255, static_cast<int>(hero->real_team_num()));
+    EXPECT_EQ(2, static_cast<int>(npc->team_num())) << "the NPC beside it is taken";
+    EXPECT_EQ(0, static_cast<int>(npc->real_team_num()));
+}
