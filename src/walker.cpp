@@ -3909,22 +3909,36 @@ short walker::special()
 					stats->magicpoints += (2*stats->weapon_cost);
 					fireob = (weap*) fire();
                     if (!fireob) // failsafe
+                    {
+                        if (myscreen->gameplay_fixes) // port of the current game's 8d8d5e94: the two rocks that never flew are not refunded
+                            stats->magicpoints -= (2*stats->weapon_cost);
                         return 0;
+                    }
 					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					fireob = (weap*) fire();
                     if (!fireob) // failsafe
+                    {
+                        if (myscreen->gameplay_fixes) // port of the current game's 8d8d5e94: the second rock never flew
+                            stats->magicpoints -= stats->weapon_cost;
                         return 0;
+                    }
 					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					break;
 				case 2:  // more rocks, and bouncing
-					stats->magicpoints += (3*stats->weapon_cost);
+					// port of the current game's 8d8d5e94: with the Gameplay Fixes setting the
+					// volley refunds the rocks that will fly, not one more
+					stats->magicpoints += ((myscreen->gameplay_fixes ? 2 : 3)*stats->weapon_cost);
 					for (i=0; i < 2; i++)
 					{
 						fireob = (weap*) fire();
 						if (!fireob) // failsafe
+						{
+							if (myscreen->gameplay_fixes) // port of the current game's 8d8d5e94: the rocks that never flew are not refunded
+								stats->magicpoints -= ((2 - i)*stats->weapon_cost);
 							return 0;
+						}
 						fireob->lineofsight *= 3;  // we get 50% longer, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
@@ -3933,12 +3947,18 @@ short walker::special()
 					}
 					break;
 				case 3:
-					stats->magicpoints += (4*stats->weapon_cost);
+					// port of the current game's 8d8d5e94: with the Gameplay Fixes setting the
+					// volley refunds the rocks that will fly, not one more
+					stats->magicpoints += ((myscreen->gameplay_fixes ? 3 : 4)*stats->weapon_cost);
 					for (i=0; i < 3; i++)
 					{
 						fireob = (weap*) fire();
 						if (!fireob) // failsafe
+						{
+							if (myscreen->gameplay_fixes) // port of the current game's 8d8d5e94: the rocks that never flew are not refunded
+								stats->magicpoints -= ((3 - i)*stats->weapon_cost);
 							return 0;
+						}
 						fireob->lineofsight *= 2;  // get double distance
 						fireob->do_bounce = 1;
                         fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
@@ -3947,12 +3967,18 @@ short walker::special()
 					break;
 				case 4:
 				default:
-					stats->magicpoints += (5*stats->weapon_cost);
+					// port of the current game's 8d8d5e94: with the Gameplay Fixes setting the
+					// volley refunds the rocks that will fly, not one more
+					stats->magicpoints += ((myscreen->gameplay_fixes ? 4 : 5)*stats->weapon_cost);
 					for (i=0; i < 4; i++)
 					{
 						fireob = (weap*) fire();
 						if (!fireob) // failsafe
+						{
+							if (myscreen->gameplay_fixes) // port of the current game's 8d8d5e94: the rocks that never flew are not refunded
+								stats->magicpoints -= ((4 - i)*stats->weapon_cost);
 							return 0;
+						}
 						fireob->lineofsight *= 5;  // we get 150% longer, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
