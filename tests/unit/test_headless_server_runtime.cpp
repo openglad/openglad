@@ -1104,6 +1104,37 @@ TEST(HeadlessServerSaveCopy, copy_and_equivalent_carry_new_specials)
         << "the host's off reaches a save that was on";
 }
 
+// Gameplay Fixes is the same dropped-field class as New Specials: each hop
+// is driven with the non-default value 1, so a hop that forgot the field
+// reads 0 and fails here.
+TEST(HeadlessServerSaveCopy, copy_and_equivalent_carry_gameplay_fixes)
+{
+    SaveData source;
+    source.gameplay_fixes = 1;
+    SaveData destination;
+    ASSERT_EQ(0, (int)destination.gameplay_fixes);
+    og::server::copy_headless_server_save_data(destination, source);
+    EXPECT_EQ(1, (int)destination.gameplay_fixes)
+        << "gameplay_fixes must survive the server/checkpoint copy";
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        og::server::build_local_save_equivalent(source);
+    EXPECT_EQ(1, equivalent.gameplay_fixes)
+        << "the local game-start equivalent carries the setting";
+
+    SaveData started;
+    ASSERT_EQ(0, (int)started.gameplay_fixes);
+    og::server::apply_headless_lobby_game_start_config(started, equivalent);
+    EXPECT_EQ(1, (int)started.gameplay_fixes)
+        << "the lobby game-start config lands in the session save";
+
+    og::sim::LobbySaveDataEquivalent off = equivalent;
+    off.gameplay_fixes = 0;
+    og::server::apply_headless_lobby_game_start_config(started, off);
+    EXPECT_EQ(0, (int)started.gameplay_fixes)
+        << "the host's off reaches a save that was on";
+}
+
 // ---------------------------------------------------------------------------
 // #207 replay excursion: the completed-level purge and its replay-arm skip.
 // Loading a level the save marks completed kills everything except team-0

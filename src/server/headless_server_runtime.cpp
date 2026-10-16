@@ -131,6 +131,8 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
     world.keep_fallen_heroes = save.keep_fallen_heroes;
     // New Specials, clamped sim-side (a crafted save reaches it unchecked).
     world.new_specials = save.new_specials != 0 ? 1 : 0;
+    // Gameplay Fixes, clamped the same way.
+    world.gameplay_fixes = save.gameplay_fixes != 0 ? 1 : 0;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
         world.m_score[index] = save.m_score[index];
@@ -394,6 +396,7 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.generator_rate = source.generator_rate;
     destination.keep_fallen_heroes = source.keep_fallen_heroes;
     destination.new_specials = source.new_specials;
+    destination.gameplay_fixes = source.gameplay_fixes;
     // Tower run state (GTL v13) must ride the server/checkpoint copies:
     // advance_cursor regenerates floors from tower_run_seed and merges
     // tower_best_floor, and on_run_ended re-writes both to save0 — a copy
@@ -445,6 +448,7 @@ og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
     equivalent.generator_rate = save.generator_rate;
     equivalent.keep_fallen_heroes = save.keep_fallen_heroes;
     equivalent.new_specials = save.new_specials;
+    equivalent.gameplay_fixes = save.gameplay_fixes;
     equivalent.cross_control = save.cross_control;
     equivalent.infinite_gold = save.infinite_gold;
     equivalent.time_limit = save.time_limit;
@@ -554,6 +558,7 @@ void apply_headless_lobby_game_start_config(
     save.generator_rate = static_cast<short>(config_save.generator_rate);
     save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     save.new_specials = static_cast<short>(config_save.new_specials);
+    save.gameplay_fixes = static_cast<short>(config_save.gameplay_fixes);
     save.cross_control = static_cast<short>(config_save.cross_control);
     save.infinite_gold = static_cast<short>(config_save.infinite_gold);
     save.time_limit = static_cast<short>(config_save.time_limit);
