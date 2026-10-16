@@ -1287,7 +1287,7 @@ inline constexpr Mutation kMut_family_soldier_init = {
     "hp = 120",
     "hp = 12000",
     "Cranks SOLDIER descriptor HP x100 "
-    "(packs/core/families/living-00-soldier.lua:145). "
+    "(packs/core/families/living-00-soldier.lua:160). "
     "family_soldier_scen99's WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, "
     "11900, 12100) leaves its window (golden 12000 cents -> mutated "
     "1200000 cents); measured 2026-09-15 by staging the pin into "
@@ -2099,7 +2099,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
     pred::WeaponFamilyEmitted(FAMILY_ROCK),
     pred::WeaponSpeed(FAMILY_ROCK, 800, 800),
     pred::WeaponNetTravel(FAMILY_ROCK, /*kWeaponPathStraight*/0, 2000,
-        "rock path is STRAIGHT: seq-0 net displacement 2828 centi-px == pathlen 2828 (net>=2000 threshold AND net>=0.7*pathlen). The normal ELF default-weapon fire never sets do_bounce (set only in the elf specials' shared bounce_volley helper, packs/core/families/living-01-elf.lua:49), so rocks fly straight and never reverse; identical on both arms"),
+        "rock path is STRAIGHT: seq-0 net displacement 2828 centi-px == pathlen 2828 (net>=2000 threshold AND net>=0.7*pathlen). The normal ELF default-weapon fire never sets do_bounce (set only in the elf specials' shared bounce_volley helper, packs/core/families/living-01-elf.lua:68), so rocks fly straight and never reverse; identical on both arms"),
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {

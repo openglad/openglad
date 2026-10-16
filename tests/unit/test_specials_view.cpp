@@ -563,7 +563,8 @@ TEST(SpecialsView, the_bot_slot_roll_bound_is_the_classic_count_unless_a_row_ope
 // below that cap (a level-7 soldier still rolls three), a level-0 walker
 // still draws nothing, and a row opened early still raises the bound.
 // RED on the uncapped function: 6, 7, 3, 0, 5, 6, 4, 3 for the eight family
-// rows below (the soldier at 16 and 20, the archer and the orc fail).
+// rows below (the soldier at 16 and 20, the mage at 16, the archer and the
+// orc fail).
 TEST(SpecialsView, the_bot_slot_roll_bound_with_gameplay_fixes_on_stops_at_the_last_named_slot)
 {
     og::test::ScopedHookFailureGuard guard;
