@@ -1645,6 +1645,107 @@ TEST(PackLuaArchmage, an_undominated_victim_goes_berserk_rather_than_joining)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+namespace {
+
+struct BerserkOutcome {
+    int team = -1;
+    int real_team = -1;
+    std::uint32_t rng_state = 0;
+};
+
+// A level-1 archmage on `caster_team` casts MIND CONTROL at a level-9 orc of
+// team 2 that out-levels it, so the victim goes berserk without a resist
+// roll: the cast's one draw is the berserk colour, from `seed`.
+BerserkOutcome berserk_once(short fixes, unsigned char caster_team,
+                            std::uint32_t seed)
+{
+    const FamilyDescriptor& desc = describe_family(FAMILY_ARCHMAGE);
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.gameplay_fixes = fixes;
+    walker* mage = spawn(w, Order::Living, FAMILY_ARCHMAGE, 10, 10, caster_team);
+    walker* victim = spawn(w, Order::Living, FAMILY_ORC, 10, 10, 2);
+    EXPECT_TRUE(mage && victim);
+    if (!(mage && victim))
+        return {};
+    mage->stats()->set_level(1);
+    mage->stats()->set_max_magicpoints(9000.0f);
+    mage->stats()->set_magicpoints(9000.0f);
+    mage->set_busy(0);
+    mage->set_current_special(4);
+    victim->setxy(static_cast<float>(mage->xpos() + 20),
+                  static_cast<float>(mage->ypos()));
+    victim->stats()->set_level(9);
+    victim->set_real_team_num(255);
+    victim->set_charm_left(0);
+    w.rng_ = og::sim::SimRandom(seed);
+    EXPECT_TRUE(og::test::do_special(desc, mage));
+    BerserkOutcome out;
+    out.team = static_cast<int>(victim->team_num());
+    out.real_team = static_cast<int>(victim->real_team_num());
+    out.rng_state = w.rng_.state_;
+    return out;
+}
+
+}  // namespace
+
+// The berserk colour is a random team, and in the classic game that could be
+// the caster's own: a failed domination then handed the foe over anyway.
+// With the Gameplay Fixes setting on, a colour equal to the caster's team
+// becomes the next one round.
+//
+// RED (the classic colour): Expected equality of these values: 2
+// on.team Which is: 1 "berserk never means the caster's side", and 0
+// wrapped.team Which is: 7.
+TEST(PackLuaArchmage, an_undominated_victim_never_joins_the_caster)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+
+    const std::uint32_t seed = seed_whose_first_draw_is(8, 1);
+    const BerserkOutcome off = berserk_once(0, 1, seed);
+    const BerserkOutcome on = berserk_once(1, 1, seed);
+    EXPECT_EQ(1, off.team) << "the classic game: the draw lands on the caster's team";
+    EXPECT_EQ(2, on.team) << "berserk never means the caster's side";
+    EXPECT_EQ(2, off.real_team);
+    EXPECT_EQ(2, on.real_team);
+
+    // Colour 7 against a caster of team 7 wraps round to 0.
+    const BerserkOutcome wrapped =
+        berserk_once(1, 7, seed_whose_first_draw_is(8, 7));
+    EXPECT_EQ(0, wrapped.team) << "the next colour round from 7 is 0";
+
+    // A draw that is not the caster's colour is kept as drawn.
+    const BerserkOutcome kept =
+        berserk_once(1, 1, seed_whose_first_draw_is(8, 5));
+    EXPECT_EQ(5, kept.team);
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The remap is arithmetic: the cast draws the colour once on both values of
+// the setting (and the duration draw of an out-levelled victim has a bound
+// of 0, which takes nothing from the stream).
+//
+// RED (a second og.rand(8) in place of the remap): Expected equality of
+// these values: expected.state_ Which is: 119106029 on.rng_state Which is:
+// 3731259426.
+TEST(PackLuaArchmage, the_berserk_draw_count_is_one_on_both_values)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+
+    const std::uint32_t seed = seed_whose_first_draw_is(8, 1);
+    og::sim::SimRandom expected(seed);
+    (void)expected.next(8);
+    (void)expected.next(0);
+    const BerserkOutcome off = berserk_once(0, 1, seed);
+    const BerserkOutcome on = berserk_once(1, 1, seed);
+    EXPECT_EQ(expected.state_, off.rng_state);
+    EXPECT_EQ(expected.state_, on.rng_state);
+    EXPECT_NE(off.team, on.team) << "the remap ran: the two values differ";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // An archmage may hold exactly one teleport marker. Placing a second retires
 // the first — the loop that finds and kills it runs on every re-cast, and
 // nothing asserted that it works. A regression there would let a player
@@ -2411,6 +2512,92 @@ TEST(PackLuaArchmage, a_true_summon_with_nowhere_to_stand_is_cancelled)
         << "a summon with nowhere to stand must fail";
     EXPECT_EQ(0u, count_family(w, Order::Living, FAMILY_FIREELEMENTAL))
         << "no elemental may be left alive inside a wall";
+    // The classic game (the Gameplay Fixes setting off) takes the half-pool
+    // surcharge before it looks for room, so the refusal still costs it.
+    EXPECT_FLOAT_EQ(4500.0f, mage->stats()->magicpoints())
+        << "the classic refusal still takes half the spare pool";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+namespace {
+
+// The true-summon caster of the two tests below: level 30 (past the
+// 150-intelligence gate), 9000 MP, the slot priced at 0, the shift held.
+walker* true_summoner(GameWorld& w)
+{
+    walker* mage = spawn(w, Order::Living, FAMILY_ARCHMAGE, 10, 10, 1);
+    if (mage == nullptr)
+        return nullptr;
+    mage->stats()->set_level(30);
+    mage->stats()->set_max_magicpoints(9000.0f);
+    mage->stats()->set_magicpoints(9000.0f);
+    mage->stats()->set_special_cost(3, 0.0f);
+    mage->set_current_special(3);
+    mage->set_shifter_down(1);
+    mage->set_busy(0);
+    return mage;
+}
+
+}  // namespace
+
+// With the Gameplay Fixes setting on, the surcharge is paid only once the
+// elemental stands: NO ROOM TO SUMMON costs nothing.
+//
+// RED (the classic order): Expected equality of these values: 9000.0f
+// mage->stats()->magicpoints() Which is: 4500.
+TEST(PackLuaArchmage, a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_ARCHMAGE);
+    og::test::ScopedHookFailureGuard guard;
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.gameplay_fixes = 1;
+    PixieData& grid = w.grid_for_floor(0);
+    ASSERT_NE(nullptr, grid.data);
+    ASSERT_GT(grid.w, 14);
+    ASSERT_GT(grid.h, 14);
+    for (int row = 8; row <= 12; row++) {
+        for (int col = 8; col <= 12; col++)
+            grid.data[static_cast<std::size_t>(row) * grid.w + static_cast<std::size_t>(col)] =
+                static_cast<unsigned char>(PIX_WALL4);
+    }
+    walker* mage = true_summoner(w);
+    ASSERT_NE(nullptr, mage);
+
+    EXPECT_FALSE(og::test::do_special(desc, mage))
+        << "a summon with nowhere to stand must fail";
+    EXPECT_EQ(0u, count_family(w, Order::Living, FAMILY_FIREELEMENTAL));
+    EXPECT_FLOAT_EQ(9000.0f, mage->stats()->magicpoints())
+        << "NO ROOM TO SUMMON costs nothing";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A summon that lands pays the same surcharge on both values of the
+// setting: half the spare pool.
+//
+// RED (the surcharge taken out of the setting's arm): Expected equality of
+// these values: 4500.0f mage->stats()->magicpoints() Which is: 9000
+// "the setting on".
+TEST(PackLuaArchmage, a_placed_true_summon_pays_half_the_spare_pool_on_both_values)
+{
+    og::test::mount_core_pack();
+    const FamilyDescriptor& desc = describe_family(FAMILY_ARCHMAGE);
+    og::test::ScopedHookFailureGuard guard;
+
+    for (short fixes : {short{0}, short{1}}) {
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        walker* mage = true_summoner(w);
+        ASSERT_NE(nullptr, mage);
+        ASSERT_TRUE(og::test::do_special(desc, mage)) << "setting " << fixes;
+        EXPECT_EQ(1u, count_family(w, Order::Living, FAMILY_FIREELEMENTAL))
+            << "setting " << fixes;
+        EXPECT_FLOAT_EQ(4500.0f, mage->stats()->magicpoints())
+            << (fixes != 0 ? "the setting on" : "the setting off");
+    }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

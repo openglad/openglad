@@ -7,6 +7,7 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
 local FX_MARKER = assert(og.family_id("fx", "core:marker"))
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 local FX_CHAIN = assert(og.family_id("fx", "core:chain"))
@@ -19,6 +20,12 @@ local LIVING_DRUID = assert(og.family_id("living", "core:druid"))
 local LIVING_CLERIC = assert(og.family_id("living", "core:cleric"))
 local LIVING_ELEMENTAL = assert(og.family_id("living", "core:elemental"))
 local LIVING_ORC_CAPTAIN = assert(og.family_id("living", "core:orc_captain"))
+
+-- Gameplay Fixes bot gates: TELEPORT keeps the mage's rule (flee when nobody
+-- is within 110 px, or more than three foes are); the summons want a foe
+-- within the hit response's own 200 px.
+local TELEPORT_GATE_RANGE = 110
+local SUMMON_GATE_RANGE = 200
 
 local function on_fire_weapon(self, weapon)
   -- ArchMage gets 1/20th of 'extra' magic for more damage.
@@ -43,6 +50,18 @@ local function on_act_living(self)
   -- Keep C remainder semantics explicit for drawcycle.
   if og.mod(self:drawcycle(), period) == 0 then
     self:set_view_all(self:view_all() + 1)
+  end
+end
+
+-- SUMMON ELEMENTAL only when the spare pool is at least the slot's own
+-- price (the surcharge then halves a pool of 500 or more); else the image.
+-- With the Gameplay Fixes setting on, a bot's summon gate and its hit
+-- response ask this instead of keeping the coin.
+local function summon_shift(self)
+  if lc.spare_mp(self, 3) >= self:s_special_cost(3) then
+    self:set_shifter_down(1)
+  else
+    self:set_shifter_down(0)
   end
 end
 
@@ -89,6 +108,9 @@ local function hit_response(self, foe)
     if foe_count ~= 0 then
       -- can we summon illusion?
       if possible[3] then
+        if gf.on() and not self:seat_driven() then
+          summon_shift(self)
+        end
         self.current_special = 3
         if self:special() then
           return
@@ -122,6 +144,54 @@ local function hit_response(self, foe)
       end
     end
   end
+end
+
+-- Gameplay Fixes bot gates for slots 1-3 (slot 4 keeps its rest gate). Off,
+-- each answers true, which is what a row with no `ai` answered.
+local function ai_teleport(self)
+  if not gf.on() then
+    return true
+  end
+  local _, foe_count = og.find_foes_in_range("ob", TELEPORT_GATE_RANGE, self)
+  return foe_count < 1 or foe_count > 3
+end
+
+-- CHAIN LIGHTNING wants a foe inside its radius, HEARTBURST inside its own:
+-- the coin's arm is kept when it has a target, swapped when only the other
+-- has one, refused when neither has.
+local function ai_burst_or_chain(self)
+  if not gf.on() then
+    return true
+  end
+  local t = og.tuning(self)
+  local bonus = t.radius_bonus_per_level * self.level
+  local _, in_burst = og.find_foes_in_range("ob", t.burst_radius_base + bonus, self)
+  local _, in_chain = og.find_foes_in_range("ob",
+    t.chain_radius_base + t.chain_radius_per_level * self.level + bonus, self)
+  if self:shifter_down() ~= 0 then
+    if in_chain >= 1 then
+      return true
+    end
+    self:set_shifter_down(0)
+    return in_burst >= 1
+  end
+  if in_burst >= 1 then
+    return true
+  end
+  if in_chain >= 1 then
+    self:set_shifter_down(1)
+    return true
+  end
+  return false
+end
+
+local function ai_summon(self)
+  if not gf.on() then
+    return true
+  end
+  summon_shift(self)
+  local _, foe_count = og.find_foes_in_range("ob", SUMMON_GATE_RANGE, self)
+  return foe_count >= 1
 end
 
 local function level_up(guy, level_diff)
@@ -289,7 +359,9 @@ local function summon_image(self)
     if self:has_guy() and self:g_intelligence() < t.summon_int_req then
       return false, string.format("%d INT REQUIRED", t.summon_int_req)
     end
-    lc.halve_mp_surcharge(self, 3)
+    if not gf.on() then
+      lc.halve_mp_surcharge(self, 3)
+    end
     -- First make the guy we'd summon, at least physically
     local elemental = og.add_ob("living", LIVING_ELEMENTAL)
     if not elemental then
@@ -324,6 +396,10 @@ local function summon_image(self)
     if not placed then
       elemental.dead = 1
       return false, "NO ROOM TO SUMMON"
+    end
+    if gf.on() then
+      -- Gameplay Fixes: the surcharge is paid once the elemental stands.
+      lc.halve_mp_surcharge(self, 3)
     end
     -- Summoning takes lots of time :)
     -- busy is a C++ float: per-op rounding.
@@ -467,15 +543,15 @@ local function mind_control(self)
   end
   local controlled = 0
   local budget = mp_after_base_cost + 10
+  -- Gameplay Fixes: a hero a seat drives resists, as Possess's does.
+  local fixes = gf.on()
   for i = 1, #foes do
     if budget < 10 then
       break
     end
     local foe = foes[i]
     -- never been charmed
-    if foe:real_team_num() == 255
-        and foe:order() == C.ORDER_LIVING
-        and foe:charm_left() <= 10 then
+    if gf.charmable(foe, fixes) and foe:charm_left() <= 10 then
       budget = budget - 10
       local level_edge = self.level - foe.level
       -- C++ `generic < 0 || !rng.next(20)` (generic = the level edge) —
@@ -490,7 +566,12 @@ local function mind_control(self)
       if confused then
         -- Resisted proper control: berserk onto a random team.
         foe:set_real_team_num(foe.team)
-        foe.team = og.rand(8)
+        local colour = og.rand(8)
+        if gf.on() and colour == self.team then
+          -- Gameplay Fixes: berserk means someone else's side, never ours.
+          colour = og.mod(colour + 1, 8)
+        end
+        foe.team = colour
         foe:set_charm_left(og.charm_duration(level_edge))
       else
         foe:set_real_team_num(foe.team)
@@ -534,9 +615,9 @@ og.family("living", {
              train = { strength = 30, dexterity = 20, constitution = 25,
                        intelligence = 7, armor = 55, level = 200 } },
   specials = {
-    { id = "teleport",     name = "TELEPORT",     mp_cost = 10,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int." }, cast = teleport, detail = "Any mage can teleport randomly away easily." },
-    { id = "heartburst",   name = "HEARTBURST",   mp_cost = 80,  alternate = { name = "CHAIN LIGHTNING", detail = "Hops from foe to foe." }, cast = burst_or_chain, detail = "Burst your enemies into flame around you." },
-    { id = "summon_image", name = "SUMMON IMAGE", mp_cost = 500, alternate = { name = "SUMMON ELEMENTAL", detail = "A daemon fed with SP." }, cast = summon_image, detail = "Summon an illusionary ally to fight for you." },
+    { id = "teleport",     name = "TELEPORT",     mp_cost = 10,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int." }, cast = teleport, ai = ai_teleport, detail = "Any mage can teleport randomly away easily." },
+    { id = "heartburst",   name = "HEARTBURST",   mp_cost = 80,  alternate = { name = "CHAIN LIGHTNING", detail = "Hops from foe to foe." }, cast = burst_or_chain, ai = ai_burst_or_chain, detail = "Burst your enemies into flame around you." },
+    { id = "summon_image", name = "SUMMON IMAGE", mp_cost = 500, alternate = { name = "SUMMON ELEMENTAL", detail = "A daemon fed with SP." }, cast = summon_image, ai = ai_summon, detail = "Summon an illusionary ally to fight for you." },
     { id = "mind_control", name = "MIND CONTROL", mp_cost = 150, cast = lc.with_rest(mind_control, 4, "charm_rest", "MIND CONTROL"), ai = lc.gate_with_rest(nil, 4), detail = "Convert nearby foes to your team, for a time." },
   },
   default_weapon = "core:fireball",
