@@ -8656,6 +8656,139 @@ inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
     "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): EventKindExactly(play_sound, 22) fails."
 };
 
+// --- cleric_turn_undead_reach (fix E: TURN UNDEAD's reach) -----------------
+// A level-5 cleric turns undead (slot 2 shifted) at tick 3, before the two
+// skeletons 50 px away have closed in. The classic reach is 4*5 = 20 px: no foe
+// in range, refused. With the setting on the reach is never under 60 px, so
+// both skeletons are in reach and rolled against.
+inline constexpr InputEvent kInputs_cleric_turn_undead_early[] = {
+    {  1, 0, K_SPECIAL_SWITCH },     {  2, 0, K_NONE },
+    {  3, 0, K_SPECIAL | K_SHIFT },  {  4, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_cleric_turn_undead_reach_scen99[] = {
+    { FAMILY_SKELETON, 1, kOrderLiving, 170, 120, 0, 0 },          // 50 px east
+    { FAMILY_SKELETON, 1, kOrderLiving, 120, 170, 0, 0 },          // 50 px south
+    { FAMILY_CLERIC,   0, kOrderLiving, 120, 120, 0, 0, 5, 600 },  // caster LAST -> player (level 5: classic reach 20)
+};
+inline constexpr FactPredicate kFacts_cleric_turn_undead_reach_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::LevelDoneEquals(0),
+    pred::WalkerAliveAtFinal(FAMILY_SKELETON, 2,
+        "consequence: the classic reach is 4*5 = 20 px and both skeletons are 50 px away at tick 3, so the cast finds no foe (NO FOE IN RANGE) and both skeletons live"),
+};
+inline constexpr Mutation kMut_cleric_turn_undead_reach_scen99 = {
+    "packs/core/families/living-05-cleric.lua", 375,
+    "turn_undead_range_per_level = 4",
+    "turn_undead_range_per_level = 20",
+    "Widens the classic reach to 20 px per level (100 px at level 5), so the tick-3 cast reaches both skeletons and destroys them: WalkerAliveAtFinal(FAMILY_SKELETON, 2) fails."
+};
+inline constexpr FactPredicate kFacts_cleric_turn_undead_reach_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerDiedByFinal(FAMILY_SKELETON,
+        "consequence: with the setting on the reach is never under 60 px, so the tick-3 cast reaches both skeletons 50 px away and turns them"),
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0),
+    pred::LevelDoneEquals(2),
+};
+inline constexpr Mutation kMut_cleric_turn_undead_reach_fixes_scen99 = {
+    "packs/core/families/living-05-cleric.lua", 387,
+    "turn_undead_range_min = 60",
+    "turn_undead_range_min = 0",
+    "Drops the 60 px floor, so the reach is the classic 4*5 = 20 px: the cast finds no foe and both skeletons live. WalkerDiedByFinal(FAMILY_SKELETON) and WalkerOfTeamAlive(1, 0, 0) fail."
+};
+
+// --- cleric_turn_no_undead (fix K: TURN UNDEAD with nothing to turn) --------
+// A level-10 cleric turns undead (slot 2 shifted at tick 20) with only a living
+// soldier 28 px away. The classic cast spends its mana and plays SOUND_HEAL at
+// nobody; with the setting on it is refused (NO UNDEAD IN RANGE) for free.
+inline constexpr SpawnSpec kFamilySpawns_cleric_turn_no_undead_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 148, 120, 0, 0 },           // living foe in reach, not undead
+    { FAMILY_CLERIC,  0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // caster LAST -> player
+};
+inline constexpr FactPredicate kFacts_cleric_turn_no_undead_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 6,
+        "consequence: the classic cast with only a living soldier in reach turns nothing yet plays SOUND_HEAL at tick 20 on top of the five combat sounds"),
+};
+inline constexpr Mutation kMut_cleric_turn_no_undead_scen99 = {
+    "packs/core/families/living-05-cleric.lua", 375,
+    "turn_undead_range_per_level = 4",
+    "turn_undead_range_per_level = 1",
+    "Shrinks the classic reach to 1 px per level (10 px), so the soldier 28 px away is out of reach: the cast is refused NO FOE IN RANGE and plays nothing. EventKindExactly(play_sound, 6) reads 5."
+};
+inline constexpr FactPredicate kFacts_cleric_turn_no_undead_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 5,
+        "consequence: with the setting on a ring with foes but nothing undead is refused (NO UNDEAD IN RANGE) before any roll: no SOUND_HEAL, only the five combat sounds"),
+};
+inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
+    "src/gameplay/walker_specials.cpp", 386,
+    "if (!any_undead)",
+    "if (!any_undead && false)",
+    "Disables the refusal (the ring's undead check never refuses), so the cast goes on with only a living soldier in reach, turns nothing and plays SOUND_HEAL: EventKindExactly(play_sound, 5) reads 6."
+};
+
+// --- cleric_bot_raise_or_turn (fix C: the cleric bot's slot-2 choice) ------
+// A hostile level-4 cleric bot beside a fresh corpse (its ally the big orc kills
+// a faerie next to it) and a hostile stationary TOWER1 16 px west. The classic
+// bot flips a coin between TURN UNDEAD and the raise on its slot-2 rolls; with
+// the setting on it turns only with an undead foe in reach, so every slot-2
+// roll goes to the raise (whose corpse probe draws from the random stream).
+// The two fights part there: the classic one ends with the cleric's mystic
+// mace out and the tower dead, the fixed one with the tower alive at 29 hp
+// and the big orc healed to full.
+inline constexpr SpawnSpec kFamilySpawns_cleric_bot_raise_or_turn_scen99[] = {
+    { FAMILY_BIG_ORC, 1, kOrderLiving, 152, 120, 0, 0 },           // the cleric's ally: kills the faerie
+    { FAMILY_FAERIE,  0, kOrderLiving, 136, 120, 0, 0 },           // dies beside the cleric: the corpse
+    { FAMILY_TOWER1,  0, kOrderLiving, 104, 120, 0, 0 },           // living foe inside the classic reach
+    { FAMILY_CLERIC,  1, kOrderLiving, 120, 120, 0, 0, 4, 600 },   // hostile bot caster
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_scen99[] = {
+    pred::TickReached(130),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 0, 0,
+        "consequence: the classic cleric bot's slot-2 rolls follow the coin; the fight that follows ends with the hostile tower dead"),
+    // negative_assertion: the classic fight kills the hostile tower
+};
+inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = {
+    pred::TickReached(130),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2900, 2900,
+        "consequence: with the setting on the cleric bot's slot-2 rolls raise (no undead in reach) instead of following the coin; the fight that follows leaves the hostile tower alive at 29 hp"),
+};
+inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
+    "packs/core/families/living-05-cleric.lua", 303,
+    "self:set_shifter_down(0)",
+    "self:set_shifter_down(1)",
+    "Makes the gate pick TURN UNDEAD on every slot-2 roll with no undead in reach (refused free, -2) instead of the raise, so the cleric's slot-2 rolls no longer probe for a corpse and the fight changes: the tower does not end at 29 hp.",
+    "      -- Gameplay Fixes: TURN UNDEAD only with something to turn in reach,"
+};
+
+// --- special_cleric_heal_ally_fixes_scen99 (fix J: HEAL) ------------------
+// special_cleric_heal_ally_scen99 with the setting on: the same heal lands,
+// but the big orc stops at its 180 max instead of 413.
+inline constexpr FactPredicate kFacts_special_cleric_heal_ally_fixes_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 17800, 18000,
+        "consequence: the setting caps the heal at the big orc's 180 max, so it ends at 178 (one faerie hit after the heal); the classic heal leaves it at 413 and removing the cap puts it back above the ceiling"),
+    pred::EventKindAtLeast(/*play_sound*/1, 14,
+        "anchor: the heal still lands and still plays SOUND_HEAL on top of the 13 combat sounds"),
+};
+inline constexpr Mutation kMut_special_cleric_heal_ally_fixes_scen99 = {
+    "packs/core/families/living-05-cleric.lua", 98,
+    "ally.hp = ally.max_hp",
+    "ally.hp = og.fadd(ally.hp, 0)",
+    "Removes the cap (the hp is written back unchanged), so the heal lands its full amount again and the big orc ends far above its 180 max, outside WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 17800, 18000)."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -10697,6 +10830,62 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_mage_bot_heartburst_fixes_scen99, std::size(kFacts_mage_bot_heartburst_fixes_scen99),
       kMut_mage_bot_heartburst_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "cleric_turn_undead_reach_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_turn_undead_early, std::size(kInputs_cleric_turn_undead_early), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_turn_undead_reach_scen99, std::size(kFamilySpawns_cleric_turn_undead_reach_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_turn_undead_reach_scen99, std::size(kFacts_cleric_turn_undead_reach_scen99),
+      kMut_cleric_turn_undead_reach_scen99 },
+
+    { "cleric_turn_undead_reach_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_turn_undead_early, std::size(kInputs_cleric_turn_undead_early), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_turn_undead_reach_scen99, std::size(kFamilySpawns_cleric_turn_undead_reach_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_turn_undead_reach_fixes_scen99, std::size(kFacts_cleric_turn_undead_reach_fixes_scen99),
+      kMut_cleric_turn_undead_reach_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "cleric_turn_no_undead_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_turn_undead, std::size(kInputs_cleric_turn_undead), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_turn_no_undead_scen99, std::size(kFamilySpawns_cleric_turn_no_undead_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_turn_no_undead_scen99, std::size(kFacts_cleric_turn_no_undead_scen99),
+      kMut_cleric_turn_no_undead_scen99 },
+
+    { "cleric_turn_no_undead_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_turn_undead, std::size(kInputs_cleric_turn_undead), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_turn_no_undead_scen99, std::size(kFamilySpawns_cleric_turn_no_undead_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_turn_no_undead_fixes_scen99, std::size(kFacts_cleric_turn_no_undead_fixes_scen99),
+      kMut_cleric_turn_no_undead_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "cleric_bot_raise_or_turn_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_bot_raise_or_turn_scen99, std::size(kFamilySpawns_cleric_bot_raise_or_turn_scen99),
+      0, false, true, Exercises::None,
+      kFacts_cleric_bot_raise_or_turn_scen99, std::size(kFacts_cleric_bot_raise_or_turn_scen99),
+      kMut_special_cleric_do_special },
+
+    { "cleric_bot_raise_or_turn_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_bot_raise_or_turn_scen99, std::size(kFamilySpawns_cleric_bot_raise_or_turn_scen99),
+      0, false, true, Exercises::None,
+      kFacts_cleric_bot_raise_or_turn_fixes_scen99, std::size(kFacts_cleric_bot_raise_or_turn_fixes_scen99),
+      kMut_cleric_bot_raise_or_turn_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "special_cleric_heal_ally_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_special_cleric_heal_ally, std::size(kInputs_special_cleric_heal_ally), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_cleric_heal_ally_scen99, std::size(kFamilySpawns_special_cleric_heal_ally_scen99),
+      0, false, true, Exercises::Special_Cleric_1,
+      kFacts_special_cleric_heal_ally_fixes_scen99, std::size(kFacts_special_cleric_heal_ally_fixes_scen99),
+      kMut_special_cleric_heal_ally_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

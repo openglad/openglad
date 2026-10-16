@@ -492,6 +492,13 @@ OG_PARITY_TEST(mage_bot_freeze_no_foe_scen99)
 OG_PARITY_TEST(mage_bot_freeze_no_foe_fixes_scen99)
 OG_PARITY_TEST(mage_bot_heartburst_scen99)
 OG_PARITY_TEST(mage_bot_heartburst_fixes_scen99)
+OG_PARITY_TEST(cleric_turn_undead_reach_scen99)
+OG_PARITY_TEST(cleric_turn_undead_reach_fixes_scen99)
+OG_PARITY_TEST(cleric_turn_no_undead_scen99)
+OG_PARITY_TEST(cleric_turn_no_undead_fixes_scen99)
+OG_PARITY_TEST(cleric_bot_raise_or_turn_scen99)
+OG_PARITY_TEST(cleric_bot_raise_or_turn_fixes_scen99)
+OG_PARITY_TEST(special_cleric_heal_ally_fixes_scen99)
 
 #undef OG_PARITY_TEST
 
