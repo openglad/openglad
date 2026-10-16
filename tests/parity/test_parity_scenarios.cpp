@@ -477,6 +477,12 @@ OG_PARITY_TEST(walk_to_foe_adopts_near_foe_scen99)
 OG_PARITY_TEST(thief_charm_third_party_hit_scen99)
 OG_PARITY_TEST(thief_charm_expires_on_timer_scen99)
 
+// Gameplay Fixes (the setting off, then on, per arena)
+OG_PARITY_TEST(soldier_whirlwind_no_foe_scen99)
+OG_PARITY_TEST(soldier_whirlwind_no_foe_fixes_scen99)
+OG_PARITY_TEST(soldier_disarm_higher_foe_scen99)
+OG_PARITY_TEST(soldier_disarm_higher_foe_fixes_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker

@@ -8353,6 +8353,98 @@ inline constexpr Mutation kMut_thief_charm_expires_on_timer_scen99 = {
     "The decay still zeroes charm_left and clears real_team_num but never moves the soldier back: team-1 alive 1 -> 0 and team-0 alive 1 -> 2 at tick 160. This is the only pin on the one remaining un-charm."
 };
 
+
+// ===========================================================================
+// Gameplay Fixes (the setting; docs/gameplay-fixes.md). Every arena below is
+// a pair: `<arena>_scen99` plays the classic game (the setting off) and
+// `<arena>_fixes_scen99` the same arena with the setting on (the trailing 1 of
+// its row). The two captures differ only where the fix acts, and each row's
+// pin bites the code of its own side: an off row's pin mutates the classic
+// code, an on row's pin removes the fix. Spawns prepend, so the player is the
+// LAST team-0 living spawned and list order is the reverse of spawn order.
+// ===========================================================================
+
+// --- soldier_whirlwind_no_foe (fix K: WHIRLWIND) ---------------------------
+// A level-7 soldier with 130 MP (one spin's worth) spins (slot 3 at tick 20)
+// while its foe is still 160 px away, outside the 46 px ring, then holds the
+// special again from tick 45, when the foe has walked into the ring. The
+// classic spin at nobody spends the 120 MP, so the second one cannot be paid;
+// with the setting on the first is refused (NO FOE IN RANGE) for free and the
+// second spin lands on the foe. special_soldier_3_scen99 cannot carry this
+// contrast: its foe walks into the ring before tick 20, so both values spin
+// at it. A spin with nobody in reach leaves nothing else in the dump: the
+// player's walk commands do not move it.
+inline constexpr InputEvent kInputs_soldier_whirlwind_twice[] = {
+    {  5, 0, K_SPECIAL_SWITCH }, {  6, 0, K_NONE },
+    {  8, 0, K_SPECIAL_SWITCH }, {  9, 0, K_NONE },
+    { 20, 0, K_SPECIAL },        { 21, 0, K_NONE },
+    { 45, 0, K_SPECIAL },        { 60, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_soldier_whirlwind_no_foe_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 280, 120, 0, 0 },          // foe 160 px east: outside the ring at tick 20, in it by 45
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 7, 130 },  // caster LAST -> player; 130 MP = one spin
+};
+inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_scen99[] = {
+    pred::TickReached(70),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300,
+        "consequence: the classic spin at nobody spends 120 of the 130 MP, so the held special from tick 45 cannot pay for a second spin; the foe ends at 103 hp from the plain melee"),
+};
+inline constexpr Mutation kMut_soldier_whirlwind_no_foe_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 168,
+    "name = \"WHIRLWIND\", mp_cost = 120",
+    "name = \"WHIRLWIND\", mp_cost = 1",
+    "Makes WHIRLWIND cost 1 MP, so the classic spin at nobody leaves enough for the held second one: it lands on the foe and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300) fails."
+};
+inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_fixes_scen99[] = {
+    pred::TickReached(70),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8500, 8500,
+        "consequence: with the setting on the spin at nobody is refused for free, so the second spin is paid and lands on the foe, which ends at 85 hp"),
+};
+inline constexpr Mutation kMut_soldier_whirlwind_no_foe_fixes_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 48,
+    "if gf.on() and #foes == 0 then",
+    "if false then",
+    "Removes the refusal, so the spin at nobody spends the 120 MP and the second one cannot be paid: the foe never takes the spin and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8500, 8500) fails."
+};
+
+// --- soldier_disarm_higher_foe (fix A: DISARM) -----------------------------
+// A level-10 soldier disarms (slot 4 at tick 20) a level-12 TOWER1 standing
+// 15 px below it (the facing-blocked spot of soldier_disarm_matched). The seed
+// makes the soldier win its roll, so the classic stagger is 6*(10-12+1) = -6:
+// the tower is sped up and the notice still says "Fighter Disarmed Enemy!".
+// With the setting on that stagger is not applied, nothing counts, and the
+// cast is refused (DISARM RESISTED) for free.
+inline constexpr SpawnSpec kFamilySpawns_soldier_disarm_higher_foe_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0, 12, 0 },   // higher-level foe in the facing-blocked spot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST -> player (level 10 opens slot 4)
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_higher_foe_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "consequence: the classic disarm counts a foe in range as disarmed even when the stagger it applies is -6 (the tower is two levels up), so the notice is shown"),
+    pred::EventKindExactly(/*play_sound*/1, 11,
+        "consequence: the cast plays SOUND_CHARGE on top of the ten combat sounds"),
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_higher_foe_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: with the setting on a stagger below zero is not applied and does not count, so the won roll disarms nobody and the cast is refused (DISARM RESISTED): no notice"),
+    pred::EventKindExactly(/*play_sound*/1, 9,
+        "consequence: the refused cast plays no SOUND_CHARGE; the fight that follows differs by one more swing"),
+};
+inline constexpr Mutation kMut_soldier_disarm_higher_foe_fixes_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 98,
+    "if not gf.on() or penalty > 0 then",
+    "if not gf.on() or penalty > -100 then",
+    "Lets a stagger below zero through again (penalty -6 > -100), so the won roll counts as a disarm: the cast succeeds, shows \"Fighter Disarmed Enemy!\" and plays SOUND_CHARGE. EventKindExactly(notification, 0) and EventKindExactly(play_sound, 9) fail."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -10279,6 +10371,41 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Thief_3,
       kFacts_thief_charm_expires_on_timer_scen99, std::size(kFacts_thief_charm_expires_on_timer_scen99),
       kMut_thief_charm_expires_on_timer_scen99 },
+
+    // Gameplay Fixes: the arenas each fix reaches, captured with the setting
+    // off (`<arena>_scen99`) and on (`<arena>_fixes_scen99`, the trailing 1).
+
+    { "soldier_whirlwind_no_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_soldier_whirlwind_twice, std::size(kInputs_soldier_whirlwind_twice), 70,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_whirlwind_no_foe_scen99, std::size(kFamilySpawns_soldier_whirlwind_no_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_3,
+      kFacts_soldier_whirlwind_no_foe_scen99, std::size(kFacts_soldier_whirlwind_no_foe_scen99),
+      kMut_soldier_whirlwind_no_foe_scen99 },
+
+    { "soldier_whirlwind_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_soldier_whirlwind_twice, std::size(kInputs_soldier_whirlwind_twice), 70,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_whirlwind_no_foe_scen99, std::size(kFamilySpawns_soldier_whirlwind_no_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_3,
+      kFacts_soldier_whirlwind_no_foe_fixes_scen99, std::size(kFacts_soldier_whirlwind_no_foe_fixes_scen99),
+      kMut_soldier_whirlwind_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_disarm_higher_foe_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_higher_foe_scen99, std::size(kFamilySpawns_soldier_disarm_higher_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_soldier_disarm_higher_foe_scen99, std::size(kFacts_soldier_disarm_higher_foe_scen99),
+      kMut_soldier_disarm_matched_scen99 },
+
+    { "soldier_disarm_higher_foe_fixes_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_higher_foe_scen99, std::size(kFamilySpawns_soldier_disarm_higher_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_soldier_disarm_higher_foe_fixes_scen99, std::size(kFacts_soldier_disarm_higher_foe_fixes_scen99),
+      kMut_soldier_disarm_higher_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
