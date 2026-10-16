@@ -39,7 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:532 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:535 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -167,7 +167,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
-// Cycling gate: src/gameplay/sim_input_handler.cpp:204 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Cycling gate: src/gameplay/sim_input_handler.cpp:207 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
 // Firing gate: src/gameplay/living.cpp:588 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
@@ -1202,7 +1202,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 // keyframe + delta merge, so the canary's per-row `Parity.<scenario_id>`
 // filter sees this break.
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/world_snapshot.cpp", 2459,
+    "src/gameplay/world_snapshot.cpp", 2462,
     "snapshot.dirty_mask[i] = entity.dirty_mask_word(i);",
     "snapshot.dirty_mask[i] = 0;",
     "Captures an all-zero dirty mask for every entity of a non-keyframe snapshot. A zero mask is apply_delta's REMOVAL sentinel, so merging the delta over the keyframe baseline drops every live entity and the merged snapshot no longer matches a full capture.",
@@ -1222,7 +1222,7 @@ inline constexpr Mutation kMut_special_archmage_do_special = {
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/families/living-05-cleric.lua", 128,
+    "packs/core/families/living-05-cleric.lua", 132,
     "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
     "local mace = nil",
     "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. Team-0 alive collapses from 2 (cleric + shield) to 1 and WalkerOfTeamAlive(0, 2, 2) fails its floor."
@@ -1331,11 +1331,11 @@ inline constexpr Mutation kMut_family_skeleton_init = {
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "packs/core/families/living-05-cleric.lua", 306,
+    "packs/core/families/living-05-cleric.lua", 310,
     "hp = 120",
     "hp = 12000",
     "Cranks CLERIC descriptor HP x100 "
-    "(packs/core/families/living-05-cleric.lua:306). "
+    "(packs/core/families/living-05-cleric.lua:310). "
     "family_cleric_scen99's WalkerHpRangeAtFinalTick(FAMILY_CLERIC, "
     "11900, 12100) leaves its window (golden 12000 cents -> mutated "
     "1200000 cents); measured 2026-09-15 by staging the pin into "
@@ -3814,7 +3814,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 306,
+    "packs/core/families/living-05-cleric.lua", 310,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3833,7 +3833,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 306,
+    "packs/core/families/living-05-cleric.lua", 310,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3852,7 +3852,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 306,
+    "packs/core/families/living-05-cleric.lua", 310,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -5159,7 +5159,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
         "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 348,
+    "packs/core/families/living-05-cleric.lua", 352,
     "heal_range = 60",
     "heal_range = 1",
     "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count==0 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
@@ -5199,7 +5199,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_skeleton_scen99[] = {
         "invariant: the caster is never engaged (the ally does the killing), so it finishes at 117/120 (11700 cents) -- proof the skeleton came from the raise and not from a melee-driven code path"),
 };
 inline constexpr Mutation kMut_cleric_raise_skeleton_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 356,
+    "packs/core/families/living-05-cleric.lua", 360,
     "raise_skeleton_range = 60",
     "raise_skeleton_range = 1",
     "Collapses the RAISE UNDEAD corpse reach so nearby_corpse's `distance < range` test fails on the Manhattan-23 bloodstain and raise_skeleton returns false. No LIVING_SKELETON is summoned: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5235,7 +5235,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_ghost_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_cleric_raise_ghost_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 357,
+    "packs/core/families/living-05-cleric.lua", 361,
     "raise_ghost_range = 30",
     "raise_ghost_range = 1",
     "Collapses the RAISE GHOST corpse reach below the Manhattan-23 bloodstain, so nearby_corpse returns nil and raise_ghost returns false before do_summon. No LIVING_GHOST enters oblist: WalkerFamilyCount(FAMILY_GHOST, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5318,7 +5318,7 @@ inline constexpr FactPredicate kFacts_cleric_resurrect_friendly_scen99[] = {
         "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 84/120 (8400 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (8400) and a companion recapture (8300)."),
 };
 inline constexpr Mutation kMut_cleric_resurrect_friendly_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 227,
+    "packs/core/families/living-05-cleric.lua", 231,
     "    alive.hp = og.fdiv(alive.max_hp, 2.0)",
     "    alive.hp = og.fdiv(alive.max_hp, 4.0)",
     "Quarters the friendly-RESURRECT revival health instead of halving it. The rebuilt soldier returns at 31 of 120 HP (3100 cents) rather than 61 (6100), dropping out of WalkerHpRangeAtFinalTick's [5000, 6500] window while every other predicate still holds -- an isolated hit on the branch-specific half-health rule."
@@ -7733,7 +7733,7 @@ inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
 // Spawns prepend, so oblist order is the reverse of this array: the player orc is the
 // head (ACT_CONTROL), then the FAMILY_TOWER generator, then the skeleton. Harness-spawned
 // generators have hitpoints == 0, so trunc(hp/30) == 0 and og.rand0(0 * mult) must answer
-// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2230 `if (n <= 0) {` == master screen.cpp:66). The
+// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2250 `if (n <= 0) {` == master screen.cpp:66). The
 // skeleton is iterated second with con == 2, so any spurious draw at the tower shifts its
 // stun roll and every downstream draw for the rest of the run.
 inline constexpr SpawnSpec kFamilySpawns_orc_yell_zero_constitution_scen99[] = {
