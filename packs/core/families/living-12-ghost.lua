@@ -2,9 +2,27 @@
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 local kg = og.use("kit_ghost")
 local ai = og.use("ai")
+local gf = og.use("gameplay_fixes")
+local C = og.C
 local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 
+-- Gameplay Fixes: the fright only ever moves living foes (effect_ghost_scare
+-- on_death), so a scare with no living foe inside the scare radius is
+-- refused before it spends anything.
+local function no_living_foe_in_reach(self)
+  local foes = og.find_foes_in_range("ob", og.scare_radius(self.level), self)
+  for i = 1, #foes do
+    if foes[i]:order() == C.ORDER_LIVING then
+      return false
+    end
+  end
+  return true
+end
+
 local function do_special(self)
+  if gf.on() and no_living_foe_in_reach(self) then
+    return false, "NO FOE IN RANGE"
+  end
   -- The old "nifty scare thing" is a carrier; its on_death does the scare.
   local scare = og.summon(self, "fx", FX_GHOST_SCARE)
   if not scare then

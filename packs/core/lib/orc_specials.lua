@@ -5,6 +5,7 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
 
 local M = {}
 
@@ -14,11 +15,15 @@ function M.yell(self)
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
+  local foes = og.find_foes_in_range(
+    "ob", og.combat.yell_radius(self.level), self)
+  if gf.on() and #foes == 0 then
+    -- Gameplay Fixes: a howl that would stun nobody costs nothing.
+    return false, "NO FOE IN RANGE"
+  end
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 2.0)
 
-  local foes = og.find_foes_in_range(
-    "ob", og.combat.yell_radius(self.level), self)
   for i = 1, #foes do
     local foe = foes[i]
     if foe then
