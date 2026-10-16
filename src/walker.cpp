@@ -3608,6 +3608,9 @@ short walker::special()
                             walker* ob = *e;
                             if ( (ob->real_team_num == 255) && // never been charmed
                                     (ob->query_order() == ORDER_LIVING) && // alive
+                                    // port of the current game's 18b5898b: with the Gameplay Fixes
+                                    // setting a hero a player drives resists, as POSSESS's does
+                                    !(myscreen->gameplay_fixes && (ob->user != -1 || ob->query_act_type() == ACT_CONTROL)) &&
                                     (ob->charm_left <= 10) // not too charmed
                                )
                             {
@@ -3839,6 +3842,9 @@ short walker::special()
                                     continue; // port of the current game's 102f1003
                                 if ( (ob->real_team_num == 255) && // never been charmed
                                         (ob->query_order() == ORDER_LIVING) && // alive
+                                        // port of the current game's 102f1003: with the Gameplay Fixes
+                                        // setting a hero a player drives resists, as POSSESS's does
+                                        !(myscreen->gameplay_fixes && (ob->user != -1 || ob->query_act_type() == ACT_CONTROL)) &&
                                         1 // (ob->charm_left <= 10) // not too charmed
                                    )
                                 {
