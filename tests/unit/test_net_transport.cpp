@@ -1478,6 +1478,10 @@ TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
     {
         og::sim::InitialSetupMessage counted;
         counted.completed_levels = {5, 6, 7};
+        // A nonzero field right before the guy count: with the list empty,
+        // a guy-count offset that is two bytes early would otherwise still
+        // read zero and pass.
+        counted.gameplay_fixes = 1;
         const auto counted_bytes =
             og::sim::serialize_initial_setup_message(counted);
         ASSERT_GE(counted_bytes.size(), kLevelCountOffset + 4u);

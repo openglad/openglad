@@ -2465,6 +2465,9 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
 
     og::sim::WorldSnapshot delta;
     delta.tick_count = 12;
+    // The world state's last byte, read back before the corruption below:
+    // the corruption alone rejects at a neighbouring offset too.
+    delta.gameplay_fixes = 1;
     const std::vector<std::uint8_t> delta_bytes = og::sim::serialize_delta(delta);
     std::vector<std::uint8_t> raw_payload =
         decode_delta_payload_for_test(delta_bytes);
@@ -2480,6 +2483,8 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
     // since v17), from which this is derived: 1 + 539 + 4.
     constexpr std::size_t kEntityCountOffset = 544;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
+    ASSERT_EQ(1u, raw_payload[kEntityCountOffset - 5])
+        << "the world state ends with gameplay_fixes, four grid bytes before";
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;
     raw_payload[kEntityCountOffset + 2] = 0xffu;
