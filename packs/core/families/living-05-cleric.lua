@@ -3,6 +3,7 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
 local FX_MAGIC_SHIELD = assert(og.family_id("fx", "core:magic_shield"))
 local LIVING_SKELETON = assert(og.family_id("living", "core:skeleton"))
 local LIVING_GHOST = assert(og.family_id("living", "core:ghost"))
@@ -23,13 +24,12 @@ local function do_turn_undead(self)
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false, string.format("%d INT REQUIRED", t.turn_undead_int_req)
   end
-  -- Returns -1 when there are no candidates, otherwise the number destroyed.
-  local turned = self:turn_undead(
-    t.turn_undead_range_per_level * self.level, self.level)
+  -- Returns -1 when there are no candidates, -2 (the Gameplay Fixes
+  -- setting on) when none of them is undead, otherwise the number destroyed.
+  local turned = self:turn_undead(gf.turn_range(self, t), self.level)
   if turned == -1 then
     return false, "NO FOE IN RANGE"
   end
-  -- -2 (the Gameplay Fixes setting on): foes in reach, none of them undead.
   if turned == -2 then
     return false, "NO UNDEAD IN RANGE"
   end
@@ -361,6 +361,9 @@ og.family("living", {
     raise_ghost_range = 30,
     resurrect_range = 30,
     resurrect_ghost_lifetime = 200,
+    -- Turn undead with the Gameplay Fixes setting on: the reach never falls
+    -- under this (px), the raise's own reach
+    turn_undead_range_min = 60,
   },
 
   check_special_ai = check_special_ai,
