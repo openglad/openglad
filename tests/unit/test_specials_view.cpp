@@ -535,24 +535,72 @@ TEST(SpecialsView, the_bot_slot_roll_bound_is_the_classic_count_unless_a_row_ope
     ASSERT_NE(nullptr, soldier);
     for (int level = 0; level <= 20; ++level) {
         EXPECT_EQ((level + 2) / 3,
-                  og::sim::bot_slot_roll_bound(soldier, level, 0))
+                  og::sim::bot_slot_roll_bound(soldier, level, 0, 0))
             << "level " << level;
         EXPECT_EQ((level + 2) / 3,
-                  og::sim::bot_slot_roll_bound(soldier, level, 1))
+                  og::sim::bot_slot_roll_bound(soldier, level, 1, 0))
             << "level " << level << ", setting on";
     }
-    EXPECT_EQ(0, og::sim::bot_slot_roll_bound(soldier, 0, 0));
-    EXPECT_EQ(6, og::sim::bot_slot_roll_bound(soldier, 16, 0));
+    EXPECT_EQ(0, og::sim::bot_slot_roll_bound(soldier, 0, 0, 0));
+    EXPECT_EQ(6, og::sim::bot_slot_roll_bound(soldier, 16, 0, 0));
 
     ProbeFamily probe(kEarlySlotProbeDecl);
     ASSERT_EQ(1, probe.installed());
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_GOLEM);
     ASSERT_NE(nullptr, fd);
-    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(fd, 1, 1))
+    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(fd, 1, 1, 0))
         << "the slot opened at level 1 is rolled at level 1";
-    EXPECT_EQ(1, og::sim::bot_slot_roll_bound(fd, 1, 0))
+    EXPECT_EQ(1, og::sim::bot_slot_roll_bound(fd, 1, 0, 0))
         << "with the setting off the new-kit slot is hidden and not counted";
-    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(fd, 4, 1));
+    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(fd, 4, 1, 0));
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// With the Gameplay Fixes setting on the bound stops at the last named slot
+// the level has opened, so no roll lands past the family's real slots and
+// is folded into slot 1 (living::act): a level-16 soldier rolls four slots,
+// not six; a level-13 mage reaches HEARTBURST. The classic count is kept
+// below that cap (a level-7 soldier still rolls three), a level-0 walker
+// still draws nothing, and a row opened early still raises the bound.
+// RED on the uncapped function: 6, 7, 3, 0, 5, 6, 4, 3 for the eight family
+// rows below (the soldier at 16 and 20, the archer and the orc fail).
+TEST(SpecialsView, the_bot_slot_roll_bound_with_gameplay_fixes_on_stops_at_the_last_named_slot)
+{
+    og::test::ScopedHookFailureGuard guard;
+    const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
+    const FamilyDescriptor* mage = get_family_descriptor(FAMILY_MAGE);
+    const FamilyDescriptor* archer = get_family_descriptor(FAMILY_ARCHER);
+    const FamilyDescriptor* orc = get_family_descriptor(FAMILY_ORC);
+    ASSERT_NE(nullptr, soldier);
+    ASSERT_NE(nullptr, mage);
+    ASSERT_NE(nullptr, archer);
+    ASSERT_NE(nullptr, orc);
+
+    EXPECT_EQ(4, og::sim::bot_slot_roll_bound(soldier, 16, 0, 1))
+        << "four named slots: the classic six is capped";
+    EXPECT_EQ(4, og::sim::bot_slot_roll_bound(soldier, 20, 0, 1));
+    EXPECT_EQ(3, og::sim::bot_slot_roll_bound(soldier, 7, 0, 1))
+        << "under the cap the classic count stands";
+    EXPECT_EQ(0, og::sim::bot_slot_roll_bound(soldier, 0, 0, 1))
+        << "a level-0 walker still draws nothing";
+    EXPECT_EQ(5, og::sim::bot_slot_roll_bound(mage, 13, 0, 1))
+        << "HEARTBURST, the fifth slot, is in the roll";
+    EXPECT_EQ(5, og::sim::bot_slot_roll_bound(mage, 16, 0, 1));
+    EXPECT_EQ(3, og::sim::bot_slot_roll_bound(archer, 10, 0, 1))
+        << "the archer declares three slots";
+    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(orc, 7, 0, 1))
+        << "the orc declares two";
+    // The classic values of the same rows, for the contrast.
+    EXPECT_EQ(6, og::sim::bot_slot_roll_bound(soldier, 16, 0, 0));
+    EXPECT_EQ(4, og::sim::bot_slot_roll_bound(archer, 10, 0, 0));
+    EXPECT_EQ(3, og::sim::bot_slot_roll_bound(orc, 7, 0, 0));
+
+    ProbeFamily probe(kEarlySlotProbeDecl);
+    ASSERT_EQ(1, probe.installed());
+    const FamilyDescriptor* fd = get_family_descriptor(FAMILY_GOLEM);
+    ASSERT_NE(nullptr, fd);
+    EXPECT_EQ(2, og::sim::bot_slot_roll_bound(fd, 1, 1, 1))
+        << "the slot opened at level 1 is still rolled at level 1";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

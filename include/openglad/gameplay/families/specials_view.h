@@ -57,9 +57,12 @@ namespace og::sim {
 // next(0), which does not advance the state: game_world.h:61-67), raised
 // to the highest named, in-play slot the level has opened, so a row opened
 // early by `level = N` is rolled too. With no override it is exactly
-// (level + 2) / 3, so the classic draw sequence is unchanged bit for bit.
+// (level + 2) / 3, so the classic draw sequence is unchanged bit for bit,
+// unless the Gameplay Fixes setting caps it at the last named slot (a roll
+// past it would fold into slot 1).
 [[nodiscard]] int bot_slot_roll_bound(const FamilyDescriptor* fd, int level,
-                                      short new_specials) noexcept;
+                                      short new_specials,
+                                      short gameplay_fixes) noexcept;
 // The session's setting as the sim reads it: the current world's flag, or 0
 // when there is no world.
 [[nodiscard]] short session_new_specials() noexcept;

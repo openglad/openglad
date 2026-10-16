@@ -364,8 +364,8 @@ bool living::act()
 					if (stats_->magicpoints() >= og::sim::cast_cost(*this, 1, false))
 					{
 						const FamilyDescriptor* special_fd = get_family_descriptor(family());
-						set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>(og::sim::bot_slot_roll_bound(special_fd, stats_->level(), current_game->world->new_specials))) + 1));
-						if ( (current_special() > 4) ||
+						set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>(og::sim::bot_slot_roll_bound(special_fd, stats_->level(), current_game->world->new_specials, og::sim::session_gameplay_fixes()))) + 1));
+						if ( (current_special() > 4 && og::sim::session_gameplay_fixes() == 0) ||
 						        (current_special() < 1) ||
 						        (current_special() >= FD_NUM_SPECIALS) ||
 						        (special_fd == nullptr) ||

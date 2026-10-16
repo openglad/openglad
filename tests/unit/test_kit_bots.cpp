@@ -44,6 +44,22 @@ std::uint32_t state_where_next_is(std::uint32_t bound, std::uint32_t want)
     }
 }
 
+// The first world-RNG state from which the next two draws are
+// next(bound1) == want1 and then next(bound2) == want2.
+std::uint32_t state_where_next_two_are(std::uint32_t bound1,
+                                       std::uint32_t want1,
+                                       std::uint32_t bound2,
+                                       std::uint32_t want2)
+{
+    for (std::uint32_t seed = 1;; ++seed) {
+        og::sim::SimRandom probe(seed);
+        if (probe.next(bound1) != want1)
+            continue;
+        if (probe.next(bound2) == want2)
+            return seed;
+    }
+}
+
 living* add_bot(TestGameWorld& tw, int family, short level, float mp)
 {
     walker* w = tw.world().add_ob(Order::Living, family);
@@ -185,5 +201,94 @@ TEST(KitBots, unaffordable_priced_alternate_drops_the_shift_only_when_priced)
     EXPECT_EQ(0, fallback.shift)
         << "the fall-back slot's priced alternate is checked too";
     EXPECT_EQ(35, fallback.price);
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The slot roll with the Gameplay Fixes setting off is the classic one, draw
+// for draw. A level-16 bot of a family with four named slots rolls
+// next((16 + 2) / 3) = next(6); from a state whose roll is the sixth slot
+// the classic fold sends the bot to slot 1. The state after the act is the
+// hand replay of the classic stream: the 1-in-5 roll, the slot roll and
+// check_special's shift coin (the probe's slots run no script). With the
+// setting on, the same state rolls next(4) instead: the same number of
+// draws, a slot the family has, and no fold.
+// RED (checked by mutation): the cap applied whatever the setting gives
+// slot 4 for the setting-off bot ("Which is: 4", 1 wanted).
+TEST(KitBots, bot_roll_is_identical_with_gameplay_fixes_off)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ProbeFamily probe;
+    ASSERT_EQ(1, probe.installed());
+    const std::uint32_t start = state_where_next_two_are(5, 0, 6, 5);
+
+    const auto act_with = [&](short gameplay_fixes) {
+        TestGameWorld tw;
+        tw.world().new_specials = 1;  // all four probe slots named
+        tw.world().gameplay_fixes = gameplay_fixes;
+        living* bot = add_bot(tw, FAMILY_GOLEM, 16, 500.0f);
+        EXPECT_NE(nullptr, bot);
+        ActOutcome out;
+        if (bot == nullptr)
+            return out;
+        tw.world().rng_.state_ = start;
+        bot->act();
+        out.rng_state = tw.world().rng_.state_;
+        out.current_special = static_cast<int>(bot->current_special());
+        out.mp = bot->stats()->magicpoints();
+        return out;
+    };
+
+    og::sim::SimRandom classic(start);
+    EXPECT_EQ(0u, classic.next(5));
+    EXPECT_EQ(5u, classic.next(6)) << "the classic roll is the sixth slot";
+    (void)classic.next(2);  // check_special's shift coin
+    og::sim::SimRandom fixed(start);
+    (void)fixed.next(5);
+    const int fixed_slot = static_cast<int>(fixed.next(4)) + 1;
+
+    const ActOutcome off = act_with(0);
+    EXPECT_EQ(1, off.current_special)
+        << "the classic fold: a roll past slot 4 casts slot 1";
+    EXPECT_EQ(classic.state_, off.rng_state)
+        << "the setting-off bot draws exactly the classic stream";
+
+    const ActOutcome on = act_with(1);
+    EXPECT_EQ(fixed_slot, on.current_special)
+        << "with the setting on the roll is next(4), unfolded";
+    EXPECT_EQ(off.rng_state, on.rng_state)
+        << "the same number of draws on both values";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A level-16 mage with the Gameplay Fixes setting on rolls from its five
+// named slots, so a slot roll of 4 is HEARTBURST (slot 5). With the setting
+// off the same state rolls next(6) and a fifth or sixth slot folds into
+// slot 1: the classic mage never reaches HEARTBURST from the roll.
+// RED on the classic roll: the setting-on bot rolls next(6) and casts
+// another slot ("Which is: 3").
+TEST(KitBots, a_level_sixteen_mage_rolls_heartburst_when_on)
+{
+    og::test::ScopedHookFailureGuard guard;
+    const std::uint32_t start = state_where_next_two_are(5, 0, 5, 4);
+    const auto act_with = [&](short gameplay_fixes) {
+        TestGameWorld tw;
+        tw.world().gameplay_fixes = gameplay_fixes;
+        living* bot = add_bot(tw, FAMILY_MAGE, 16, 500.0f);
+        EXPECT_NE(nullptr, bot);
+        if (bot == nullptr)
+            return 0;
+        tw.world().rng_.state_ = start;
+        bot->act();
+        return static_cast<int>(bot->current_special());
+    };
+
+    og::sim::SimRandom classic(start);
+    (void)classic.next(5);
+    int classic_slot = static_cast<int>(classic.next(6)) + 1;
+    if (classic_slot > 4)
+        classic_slot = 1;
+
+    EXPECT_EQ(5, act_with(1)) << "HEARTBURST is in the setting-on roll";
+    EXPECT_EQ(classic_slot, act_with(0)) << "the classic roll and fold";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
