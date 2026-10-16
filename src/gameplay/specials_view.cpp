@@ -104,6 +104,13 @@ short session_new_specials() noexcept
     return current_game->world->new_specials;
 }
 
+short session_gameplay_fixes() noexcept
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 0;
+    return current_game->world->gameplay_fixes;
+}
+
 unsigned short cast_cost(const walker& w, int slot, bool shifted) noexcept
 {
     const FamilyDescriptor* fd = get_family_descriptor(

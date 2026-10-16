@@ -2868,7 +2868,9 @@ int og_team_color_name(lua_State* L)
 // "difficulty" (the session difficulty percent, 100 = normal — the CTF
 // bot-squad level formula reads it),
 // "new_specials" (the New Specials setting, 0 = the classic kits; every
-// New Specials bot gate asks it first).
+// New Specials bot gate asks it first),
+// "gameplay_fixes" (the Gameplay Fixes setting, 0 = the classic game, bugs
+// included; every fixed branch of a classic special asks it first).
 int og_match_setting(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -2876,6 +2878,8 @@ int og_match_setting(lua_State* L)
     lua_Integer value = 0;
     if (std::strcmp(s, "new_specials") == 0)
         value = world->new_specials;
+    else if (std::strcmp(s, "gameplay_fixes") == 0)
+        value = world->gameplay_fixes;
     else if (std::strcmp(s, "team_count") == 0)
         value = world->ctf_requested_team_count;
     else if (std::strcmp(s, "score_limit") == 0)

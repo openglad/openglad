@@ -916,6 +916,7 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_sim_world.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_sim_input_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_control_policy.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_seats.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_network.cpp
 )
@@ -944,6 +945,7 @@ og_add_unit_group(og_unit_families FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_lineup_common.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_save_client.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_lib.cpp
 )
 
 # New Specials: the setting's view of the specials table, the engine seams

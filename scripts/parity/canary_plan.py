@@ -642,6 +642,24 @@ inline constexpr Mutation kMut_cpp_d = {
     check("orphan.unresolved", [sid for sid, _ in p.unresolved], ["row_three"])
     check("orphan.groups", len(p.groups), 1)
 
+    # A row that plays the Gameplay Fixes setting spells its whole tail
+    # after the pin (`kMut_x, {}, 1, nullptr, 0, 1`). It resolves to its pin
+    # and groups with the other row on that pin, never "unresolved".
+    fixes_row = _SELF_TEST_TABLE.replace(
+        "    { \"row_internal\"",
+        "    { \"row_fixes\", \"scen/scen1.fss\", 0x1u,\n"
+        "      nullptr, 0, 20,\n"
+        "      CompareMode::SemanticParity, false,\n"
+        "      nullptr, 0, 0, false, true,\n"
+        "      Exercises::None,\n"
+        "      kFacts_row_three, std::size(kFacts_row_three),\n"
+        "      kMut_cpp_b, {}, 1, nullptr, 0, 1 },\n\n    { \"row_internal\"")
+    p = plan(fixes_row, mode="all")
+    check("fixes_tail.unresolved", list(p.unresolved), [])
+    check("fixes_tail.groups", [(g.mode, g.rows) for g in p.groups],
+          [(STAGED_LUA, ("row_one", "row_two")),
+           (REBUILD_CPP, ("row_three", "row_fixes"))])
+
     # The generated-JSON cross-check fires on drift.
     try:
         plan(_SELF_TEST_TABLE, facts_json={"scenarios": [{"id": "row_one"}]},
