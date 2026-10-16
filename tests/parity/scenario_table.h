@@ -1406,11 +1406,11 @@ inline constexpr Mutation kMut_family_medium_slime_init = {
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "packs/core/families/living-11-thief.lua", 212,
+    "packs/core/families/living-11-thief.lua", 216,
     "hp = 75",
     "hp = 7500",
     "Cranks THIEF descriptor HP x100 "
-    "(packs/core/families/living-11-thief.lua:212). family_thief_scen99's "
+    "(packs/core/families/living-11-thief.lua:216). family_thief_scen99's "
     "WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600) leaves its window "
     "(golden 7500 cents -> mutated 750000 cents); measured 2026-09-15 by "
     "staging the pin into build/ci-test/packs, it is the only fact of the "
@@ -4000,7 +4000,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "packs/core/families/living-11-thief.lua", 186,
+    "packs/core/families/living-11-thief.lua", 190,
     "if lc.is_busy(self) then",
     "if true then",
     "Closes POISON CLOUD's busy gate permanently, so thief slot 4 returns false before FX_CLOUD is summoned and no cloud is ever placed. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600) flips.",
@@ -4699,7 +4699,7 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "packs/core/families/living-11-thief.lua", 190,
+    "packs/core/families/living-11-thief.lua", 194,
     "  local cloud = og.summon(self, \"fx\", FX_CLOUD)",
     "  do return false, 'MUTATION REFUSAL' end",
     "Replaces the POISON CLOUD FX summon with `do return false, 'MUTATION REFUSAL' end`, so poison_cloud declines before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the cloud did. With the wrapper, drop bomb / cloak / taunt-charm keep working and only the cloud branch is neutered."
@@ -5813,7 +5813,7 @@ inline constexpr FactPredicate kFacts_thief_charm_opponent_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_charm_opponent_scen99 = {
-    "packs/core/families/living-11-thief.lua", 152,
+    "packs/core/families/living-11-thief.lua", 156,
     "        target.team = self.team",
     "        target.team = target.team",
     "Keeps the charm bookkeeping (real_team_num latch, charm_left, the notification, busy += 10) but never moves the victim onto the caster's team, so both WalkerOfTeamAlive predicates flip (team-0 alive 2 -> 1, team-1 alive 0 -> 1)."
@@ -7867,7 +7867,7 @@ inline constexpr FactPredicate kFacts_thief_taunt_matched_levels_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_taunt_matched_levels_scen99 = {
-    "packs/core/families/living-11-thief.lua", 98,
+    "packs/core/families/living-11-thief.lua", 102,
     "      if my_roll >= foe_roll then",
     "      if foe_roll >= my_roll then",
     "Inverts the taunt adjudication. With matched levels both draws share the bound rand(7), so this is exactly the observable of the RIGHT-first draw order the parity port rejected: the same two draws are consumed but the opposite foe is taunted, which moves the FOLLOW-duration draw within the stream and shifts every later combat roll (medium slime 72 -> 61 hp, orc 140 -> 131 hp at (192,177), team-0 score 22 -> 70)."

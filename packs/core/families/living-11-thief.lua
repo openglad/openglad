@@ -88,6 +88,10 @@ local function taunt_or_charm(self)
     end
     local foes = og.foes_in_range(
       self, t.taunt_range_base + t.taunt_range_per_level * self.level)
+    if gf.on() and #foes == 0 then
+      -- Gameplay Fixes: a taunt nobody hears costs nothing.
+      return false, "NO FOE IN RANGE"
+    end
     for i = 1, #foes do
       local foe = foes[i]
       -- Two RNG draws in one C++ expression; drawn left (self) first.

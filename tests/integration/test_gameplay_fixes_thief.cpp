@@ -96,6 +96,15 @@ Cast cast_slot3(walker* thief, short shift)
     return c;
 }
 
+int notifications()
+{
+    int n = 0;
+    for (const og::sim::Event& e : current_game->sim_events->events())
+        if (e.kind == og::sim::EventKind::Notification)
+            ++n;
+    return n;
+}
+
 class GameplayFixesThief : public ::testing::Test {
 protected:
     short fixes_before_ = 0;
@@ -258,4 +267,36 @@ TEST_F(GameplayFixesThief, charm_takes_the_npc_beside_a_seated_hero_when_on)
     EXPECT_EQ(255, static_cast<int>(hero->real_team_num()));
     EXPECT_EQ(2, static_cast<int>(orc->team_num())) << "the orc is taken";
     delete thief;
+}
+
+// TAUNT with nobody inside its 108 px: the classic taunt shouts, adds 2
+// busy and costs its 100 MP; with the setting on it is refused, "NO FOE IN
+// RANGE", silent, with nothing spent.
+// RED on the classic taunt: with the setting on the cast succeeds.
+TEST_F(GameplayFixesThief, taunt_refuses_with_no_foe_when_on)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        the_world().delete_objects();
+        the_world().gameplay_fixes = fixes;
+        walker* thief = make_thief();
+        ASSERT_NE(nullptr, thief);
+        ASSERT_NE(nullptr, add_living(FAMILY_ORC, 0, 300, 100, 1));  // 200 px
+
+        const float mp_before = thief->stats()->magicpoints();
+        const Cast c = cast_slot3(thief, 0);
+        if (fixes == 0) {
+            EXPECT_TRUE(c.ok) << "the classic taunt at nobody";
+            EXPECT_EQ(1, notifications()) << "Nyah Nyah!";
+            EXPECT_FLOAT_EQ(2.0f, thief->busy());
+            EXPECT_FLOAT_EQ(mp_before - 100.0f, thief->stats()->magicpoints());
+        } else {
+            EXPECT_FALSE(c.ok);
+            EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, c.why);
+            EXPECT_EQ(std::string("NO FOE IN RANGE"), c.reason);
+            EXPECT_EQ(0, notifications()) << "a refused taunt is silent";
+            EXPECT_FLOAT_EQ(0.0f, thief->busy());
+            EXPECT_FLOAT_EQ(mp_before, thief->stats()->magicpoints());
+        }
+        delete thief;
+    }
 }
