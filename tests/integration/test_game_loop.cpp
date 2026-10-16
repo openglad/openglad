@@ -10562,6 +10562,38 @@ TEST(GameLoop, local_shadow_seeds_server_world_with_session_new_specials)
     }
 }
 
+// Gameplay Fixes, the same way as New Specials: session-only, so the local
+// transport shadow's server screen, which reloads the slot from disk, would
+// lose it in that round-trip unless it is carried across. Both values are
+// driven: the server's save and world, and the display world, all read the
+// session's value after the install.
+TEST(GameLoop, local_shadow_seeds_server_world_with_session_gameplay_fixes)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, s);
+    for (const short value : {short{1}, short{0}})
+    {
+        gameplay_rec::build_save(s, "gladiator", 1, 1, {FAMILY_SOLDIER}, 1);
+        s->save_data.gameplay_fixes = value;
+        glad_init();
+        ASSERT_NE(nullptr, og::runtime::current_game_session);
+        screen* const server =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session);
+        ASSERT_NE(nullptr, server);
+        EXPECT_NE(s, server);
+        EXPECT_EQ(value, server->save_data.gameplay_fixes)
+            << "the server screen's save carries the session value";
+        EXPECT_EQ(value, server->world().gameplay_fixes)
+            << "the authoritative world plays the session value";
+        EXPECT_EQ(value, s->world().gameplay_fixes)
+            << "the display world plays the session value";
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+        s->world().delete_objects();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // New Specials through the real local transport shadow: what the server
 // world does, the display mirror must show (and hide) the same way.

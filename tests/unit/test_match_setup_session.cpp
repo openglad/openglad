@@ -403,13 +403,13 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
         og::ui::kRulesRowRespawns,   og::ui::kRulesRowSpawnDelay,
         og::ui::kRulesRowPermadeath, og::ui::kRulesRowGenerators,
         og::ui::kRulesRowDifficulty, og::ui::kRulesRowInfiniteGold,
-        og::ui::kRulesRowNewSpecials};
+        og::ui::kRulesRowNewSpecials, og::ui::kRulesRowGameplayFixes};
     const std::vector<std::string> expected_faces = {
         "SCORE: MAP",         "TIME LIMIT: MAP",
         "RESPAWNS: OFF",      "SPAWN DELAY: NORMAL",
         "PERMADEATH: ON",     "GENERATORS: NORMAL",
         "DIFFICULTY: BATTLE", "INFINITE GOLD: OFF",
-        "NEW SPECIALS: OFF"};
+        "NEW SPECIALS: OFF",  "GAMEPLAY FIXES: OFF"};
     ASSERT_EQ(expected_ids.size(), faces.size());
     for (std::size_t i = 0; i < faces.size(); ++i)
     {
@@ -422,22 +422,30 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
                                         "PERMADEATH: ON  GENERATORS: NORMAL",
                                         "DIFFICULTY: BATTLE  "
                                         "INFINITE GOLD: OFF",
-                                        "NEW SPECIALS: OFF"}),
+                                        "NEW SPECIALS: OFF  "
+                                        "GAMEPLAY FIXES: OFF"}),
               og::ui::format_match_rules_lines(inputs))
-        << "an odd face count leaves the last one alone on its line";
+        << "GAMEPLAY FIXES pairs with NEW SPECIALS on the last line";
 
-    // The session's New Specials value is what the face states, so a
-    // joiner reads the host's choice in the recap.
+    // The session's New Specials and Gameplay Fixes values are what the
+    // faces state, so a joiner reads the host's choices in the recap.
     save.new_specials = 1;
-    EXPECT_EQ("NEW SPECIALS: ON", og::ui::format_match_rules_lines(inputs).back());
+    EXPECT_EQ("NEW SPECIALS: ON  GAMEPLAY FIXES: OFF",
+              og::ui::format_match_rules_lines(inputs).back());
     save.new_specials = 0;
+    save.gameplay_fixes = 1;
+    EXPECT_EQ("NEW SPECIALS: OFF  GAMEPLAY FIXES: ON",
+              og::ui::format_match_rules_lines(inputs).back());
+    save.gameplay_fixes = 0;
 
-    // CROSS CONTROL is the networked-only row; it pairs with NEW SPECIALS.
+    // CROSS CONTROL is the networked-only row: the eleventh face, alone on
+    // its line, so an odd face count leaves the last one alone.
     inputs.networked = true;
     const std::vector<std::string> networked =
         og::ui::format_match_rules_lines(inputs);
-    ASSERT_EQ(5u, networked.size());
-    EXPECT_EQ("NEW SPECIALS: OFF  CROSS CONTROL: OWN", networked.back());
+    ASSERT_EQ(6u, networked.size());
+    EXPECT_EQ("NEW SPECIALS: OFF  GAMEPLAY FIXES: OFF", networked[4]);
+    EXPECT_EQ("CROSS CONTROL: OWN", networked.back());
     EXPECT_EQ(og::ui::kRulesRowCrossControl,
               og::ui::match_rules_faces(inputs).back().id);
     inputs.networked = false;
@@ -464,6 +472,7 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
                               short(14400)})
     for (const short cross : {short(0), short(1)})
     for (const short specials : {short(0), short(1)})
+    for (const short fixes : {short(0), short(1)})
     {
         save.respawn_mode = respawn;
         save.ctf_respawn_ticks = ticks;
@@ -474,6 +483,7 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
         save.time_limit = clock;
         save.cross_control = cross;
         save.new_specials = specials;
+        save.gameplay_fixes = fixes;
         inputs.difficulty = difficulty;
         for (const bool net : {false, true})
         {
@@ -1514,7 +1524,8 @@ TEST_F(MatchSetupSessionTest, match_step_title_teams_rules_fit_ten_lines_and_dro
     const std::vector<std::string> recap = og::ui::format_match_rules_lines(rules);
     ASSERT_EQ(1u + recap.size(), session.page().lines.size());
 
-    // A networked four-team staged report is 1 + 4 + 5 == 10 exactly.
+    // A networked four-team staged report is 1 + 4 + 6 == 11 lines, one
+    // over the cap, so its last recap line (CROSS CONTROL) is dropped.
     networked_ = true;
     og::ui::ScenarioRosterReport report;
     report.is_versus = true;

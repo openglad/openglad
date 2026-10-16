@@ -735,6 +735,24 @@ int text_picker_testing_exercise_internal_paths()
         client.show_options();
         check(config.save_name == "helper-slot" && config.seed == 123u);
     }
+    {
+        // Blank slot, seed and New Specials answers, then the input ends at
+        // the fourth prompt, Gameplay Fixes: the page returns there and
+        // changes nothing.
+        const short fixes_before = client.testing_save_data().gameplay_fixes;
+        ScopedTextPickerStdoutCapture output;
+        check(output.ready());
+        ScopedCinRedirect input("\n\n\n");
+        client.show_options();
+        const bool input_reached_fourth_eof =
+            input.exhausted() && input.eof_observed();
+        const std::string text = output.finish();
+        check(config.save_name == "helper-slot" && config.seed == 123u &&
+              input_reached_fourth_eof && output.finish_ok() &&
+              text.find("New specials:") != std::string::npos &&
+              text.find("Gameplay fixes:") != std::string::npos &&
+              client.testing_save_data().gameplay_fixes == fixes_before);
+    }
     config.save_name = "../unsafe-helper-slot";
     check(!client.save_game() &&
           error.code == TextPickerErrorCode::SaveIoError &&

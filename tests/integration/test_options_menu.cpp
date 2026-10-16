@@ -107,6 +107,7 @@ static const FxToggleSpec kGameplayFxToggles[] = {
     {"toggle_hit_recoil", "effects", "hit_recoil"},
     {"toggle_attack_lunge", "effects", "attack_lunge"},
     {"toggle_new_specials", "gameplay", "new_specials"},
+    {"toggle_gameplay_fixes", "gameplay", "gameplay_fixes"},
 };
 
 static const FxToggleSpec kUiFxToggles[] = {
@@ -138,7 +139,7 @@ inline constexpr int kFxScreenCount = 3;
 inline constexpr int kFxMaxToggles = 14;
 
 static const FxScreenSpec kFxScreens[kFxScreenCount] = {
-    {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 3},
+    {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 4},
     {"ui_fx", "ui_fx_back", kUiFxToggles, 3},
     {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 14},
 };
@@ -161,6 +162,10 @@ struct OptionsState {
     bool new_specials_session_followed_cfg;
     int new_specials_before;
     int new_specials_after;
+    // Gameplay Fixes: the same contract, read the same way.
+    bool gameplay_fixes_session_followed_cfg;
+    int gameplay_fixes_before;
+    int gameplay_fixes_after;
     bool cycled_zoom;
     bool cycled_smoothing;
     bool entered_display;
@@ -856,6 +861,19 @@ static int options_injector(void* data)
                 }
                 const bool is_new_specials =
                     std::strcmp(toggle.button_id, "toggle_new_specials") == 0;
+                const bool is_gameplay_fixes =
+                    std::strcmp(toggle.button_id, "toggle_gameplay_fixes") == 0;
+                if (is_gameplay_fixes) {
+                    // The same start as New Specials below: the shipped
+                    // default, both halves agreeing.
+                    state->main_thread_tasks_all_ran &=
+                        run_on_main_thread([state] {
+                            cfg.apply_setting("gameplay", "gameplay_fixes", "on");
+                            og::runtime::current_session->myscreen_
+                                ->save_data.gameplay_fixes = 1;
+                            state->gameplay_fixes_before = 1;
+                        });
+                }
                 if (is_new_specials) {
                     // Start from the shipped default, both halves agreeing:
                     // a process that never loaded its settings holds an
@@ -889,6 +907,22 @@ static int options_injector(void* data)
                     state->new_specials_session_followed_cfg =
                         state->new_specials_after == (pref_on ? 1 : 0) &&
                         state->new_specials_after != state->new_specials_before;
+                }
+                if (is_gameplay_fixes && state->toggled_fx[s][t]) {
+                    // As for New Specials: the flip check proved the click
+                    // landed, so one read on the menu thread is the truth.
+                    bool pref_on = false;
+                    state->main_thread_tasks_all_ran &=
+                        run_on_main_thread([state, &pref_on] {
+                            state->gameplay_fixes_after = static_cast<int>(
+                                og::runtime::current_session->myscreen_
+                                    ->save_data.gameplay_fixes);
+                            pref_on = cfg.is_on("gameplay", "gameplay_fixes");
+                        });
+                    state->gameplay_fixes_session_followed_cfg =
+                        state->gameplay_fixes_after == (pref_on ? 1 : 0) &&
+                        state->gameplay_fixes_after !=
+                            state->gameplay_fixes_before;
                 }
                 if (is_gore && state->toggled_fx[s][t]) {
                     // The click must repaint the live sprite, not just cfg.
@@ -1329,6 +1363,11 @@ TEST(OptionsMenu, options_menu) {
            "setting with the preference (before "
         << state.new_specials_before << ", after " << state.new_specials_after
         << ", cfg gameplay/new_specials)";
+    EXPECT_TRUE(state.gameplay_fixes_session_followed_cfg)
+        << "clicking Gameplay Fixes in a local session must move the "
+           "session's setting with the preference (before "
+        << state.gameplay_fixes_before << ", after "
+        << state.gameplay_fixes_after << ", cfg gameplay/gameplay_fixes)";
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
     EXPECT_EQ("Zoom: 1.0x", state.zoom_label_when_unset)
         << "empty cfg (graphics, zoom) must fall back to 'Zoom: 1.0x' on the button face";

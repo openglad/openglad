@@ -1014,6 +1014,10 @@ void GameServer::bind_player(PeerId peer_id,
                 }
                 if (w->user() != -1)
                     continue;
+                // With Gameplay Fixes on, a seat never claims a walker a
+                // charm has borrowed (#354).
+                if (!og::sim::seat_may_claim(world_, *w))
+                    continue;
                 if (w->myguy == nullptr ||
                     w->myguy->owner_player_index !=
                         static_cast<std::uint8_t>(player_index))
@@ -1129,6 +1133,7 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.generator_rate = world_.generator_rate;
     message.setup_generation = setup_generation_;
     message.new_specials = world_.new_specials;
+    message.gameplay_fixes = world_.gameplay_fixes;
     message.guys = collect_initial_setup_guys(world_);
     message.completed_levels.assign(world_.completed_levels.begin(),
                                     world_.completed_levels.end());

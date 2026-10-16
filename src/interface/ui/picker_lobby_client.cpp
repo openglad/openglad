@@ -722,6 +722,7 @@ private:
         settings.generator_rate = save.generator_rate;
         settings.keep_fallen_heroes = save.keep_fallen_heroes;
         settings.new_specials = save.new_specials;
+        settings.gameplay_fixes = save.gameplay_fixes;
         settings.cross_control = save.cross_control;
         settings.infinite_gold = save.infinite_gold;
         settings.time_limit = save.time_limit;
@@ -957,6 +958,7 @@ private:
         save.generator_rate = state_->settings.generator_rate;
         save.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
         save.new_specials = state_->settings.new_specials;
+        save.gameplay_fixes = state_->settings.gameplay_fixes;
         save.cross_control = state_->settings.cross_control;
         save.infinite_gold = state_->settings.infinite_gold;
         save.time_limit = state_->settings.time_limit;

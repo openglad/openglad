@@ -43,7 +43,10 @@ namespace og::sim {
 // entity gains special_rest_left and special_rest_slot, a special's rest
 // between casts); v21 readers must reject the new protocol byte and vice
 // versa.
-inline constexpr std::uint8_t kReplayFormatVersion = 22;
+// v23 records protocol-v21 snapshots/input frames (snapshot v17: the world
+// state gains the u8 Gameplay Fixes setting after new_specials); v22 readers
+// must reject the new protocol byte and vice versa.
+inline constexpr std::uint8_t kReplayFormatVersion = 23;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 // First replay format carrying the campaign-vars section (the reader's

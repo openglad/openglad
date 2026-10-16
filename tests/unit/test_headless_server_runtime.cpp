@@ -6,6 +6,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/walker.h>
@@ -32,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "test_game_world_fixture.h"
 #include "test_gameplay_context_scope.h"
 
 namespace {
@@ -1102,6 +1104,99 @@ TEST(HeadlessServerSaveCopy, copy_and_equivalent_carry_new_specials)
     og::server::apply_headless_lobby_game_start_config(started, off);
     EXPECT_EQ(0, (int)started.new_specials)
         << "the host's off reaches a save that was on";
+}
+
+// Gameplay Fixes is the same dropped-field class as New Specials: each hop
+// is driven with the non-default value 1, so a hop that forgot the field
+// reads 0 and fails here.
+TEST(HeadlessServerSaveCopy, copy_and_equivalent_carry_gameplay_fixes)
+{
+    SaveData source;
+    source.gameplay_fixes = 1;
+    SaveData destination;
+    ASSERT_EQ(0, (int)destination.gameplay_fixes);
+    og::server::copy_headless_server_save_data(destination, source);
+    EXPECT_EQ(1, (int)destination.gameplay_fixes)
+        << "gameplay_fixes must survive the server/checkpoint copy";
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        og::server::build_local_save_equivalent(source);
+    EXPECT_EQ(1, equivalent.gameplay_fixes)
+        << "the local game-start equivalent carries the setting";
+
+    SaveData started;
+    ASSERT_EQ(0, (int)started.gameplay_fixes);
+    og::server::apply_headless_lobby_game_start_config(started, equivalent);
+    EXPECT_EQ(1, (int)started.gameplay_fixes)
+        << "the lobby game-start config lands in the session save";
+
+    og::sim::LobbySaveDataEquivalent off = equivalent;
+    off.gameplay_fixes = 0;
+    og::server::apply_headless_lobby_game_start_config(started, off);
+    EXPECT_EQ(0, (int)started.gameplay_fixes)
+        << "the host's off reaches a save that was on";
+}
+
+// Issue #354, the server's own claim: in a scripted match a seat binds the
+// first hero its player owns. When an enemy charm has borrowed that hero (it
+// now stands on the enemy team, its real team is ours, the charm timer
+// runs), the classic game still hands it to the seat. With Gameplay Fixes on
+// the seat skips it and binds the player's next hero.
+//
+// The seat with NO other body (it then binds nothing, a follow seat) also
+// needs the same rule in sim_find_next_control_owned's owner pass, which
+// bind_player falls back to; that case is pinned beside that scan.
+TEST(HeadlessServerBindPlayer, a_seat_skips_its_hero_while_a_charm_holds_it)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes != 0 ? "setting on" : "setting off");
+        TestGameWorld fixture;
+        GameWorld& world = fixture.world();
+        world.type |= GameWorld::TYPE_SCRIPTED;
+        world.gameplay_fixes = fixes;
+
+        const auto owned_hero = [&world](const char* name, int x) {
+            walker* const hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            auto record = std::make_unique<guy>(FAMILY_SOLDIER);
+            record->name = name;
+            record->owner_player_index = 0;
+            hero->set_owned_myguy(std::move(record));
+            hero->setxy(x, 64);
+            return hero;
+        };
+        walker* const charmed = owned_hero("Charmed", 64);
+        walker* const free_hero = owned_hero("Free", 128);
+        ASSERT_NE(nullptr, charmed);
+        ASSERT_NE(nullptr, free_hero);
+        // An enemy thief's charm: the first hero stands on team 1 for 100
+        // ticks and goes back to team 0 when the timer runs out.
+        charmed->set_team_num(1);
+        charmed->set_real_team_num(0);
+        charmed->set_charm_left(100);
+        ASSERT_TRUE(og::sim::charmed_onto_team(*charmed));
+        ASSERT_FALSE(og::sim::charmed_onto_team(*free_hero));
+
+        std::shared_ptr<og::sim::InProcessTransport> transport =
+            og::sim::InProcessTransport::create_server();
+        og::sim::GameServer server(world, fixture.events, *transport);
+        server.connect_client(91u);
+        server.bind_player(91u, 0u, /*team_num=*/0, nullptr);
+
+        if (fixes == 0)
+        {
+            EXPECT_EQ(charmed, server.player_control(0))
+                << "the classic game binds the charmed hero, first in line";
+            EXPECT_EQ(-1, free_hero->user());
+        }
+        else
+        {
+            EXPECT_EQ(free_hero, server.player_control(0))
+                << "with the setting on the seat skips the charmed hero";
+            EXPECT_EQ(-1, charmed->user())
+                << "and the charmed hero stays with the charm's side";
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

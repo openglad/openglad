@@ -570,8 +570,8 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v19**, world
-snapshot format **v15**, and replay format **v21** (New Specials, below).
+The current network compatibility line is lobby/gameplay protocol **v21**, world
+snapshot format **v17**, and replay format **v23** (Gameplay Fixes, below).
 Protocol v13 added the
 staged-lobby channel: `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
 complete InitialSetup / keyframe snapshot of the host's staged world so every
@@ -604,6 +604,16 @@ special's rest between casts: `special_rest_left` (i32, dirty bit 96) and
 pack's `with_rest` wrapper starts it (FREEZE TIME, HOWL, SCARE / WAIL, MIND
 CONTROL, GLIMMER). It is not a timed effect, so `seat_timer` does not show it.
 
+Protocol v21 (snapshot v17, replay v23) carries the Gameplay Fixes setting
+(see [gameplay-fixes.md](gameplay-fixes.md)) the way v19 carries New
+Specials: `LobbySettings.gameplay_fixes` is an i16 appended last,
+`InitialSetupMessage.gameplay_fixes` an i16 right after `new_specials` (before
+the guy list, so the controlled-ids block stays the message tail), and the
+world state gains a `gameplay_fixes` byte after `new_specials`. No entity
+field changes. `GameWorld::gameplay_fixes` defaults to 0 (the classic game);
+the shipped default, on, comes from the cfg preference, the lobby default and
+the session entry points.
+
 ### Core components (`og_gameplay`, SDL-free)
 
 | Component | File | Role |
@@ -612,7 +622,7 @@ CONTROL, GLIMMER). It is not a timed effect, so `seat_timer` does not show it.
 | `GameClient` | `src/gameplay/game_client.cpp` | Mirror. Sends this peer's input, applies snapshots to its local mirror world, raises callbacks (initial setup, control mapping, sim/game-flow event batches, exit/pause prompts). |
 | `WorldSnapshot` | `src/gameplay/world_snapshot.cpp` | Serializes world state. Full **keyframes** and **deltas** against a baseline; per-entity `GuySnapshot`s; deterministic hashing for desync detection. |
 | `ITransport` | `src/gameplay/net_transport.cpp` | Typed message channel (snapshots, input, event batches, lobby messages, hello/heartbeat, exit/pause). Implementations below. |
-| `LobbyServer` | `src/gameplay/lobby_server.cpp` | Pre-game lobby: roster, seat lifecycle and team assignment, settings (campaign/scenario/difficulty), host election, start handshake. |
+| `LobbyServer` | `src/gameplay/lobby_server.cpp` | Pre-game lobby: roster, seat lifecycle and team assignment, settings (campaign/scenario/difficulty, and the session rules such as `new_specials` and `gameplay_fixes`), host election, start handshake. |
 
 **Transports** (`ITransport` implementations):
 
@@ -797,7 +807,9 @@ extra wire messages — a mid-join keyframe restore carries a running match. Mat
 (`ctf_team_count`/`ctf_capture_limit`/`ctf_respawn_ticks`/`ctf_strip_scenario_troops`, and the
 match clock `time_limit` in sim ticks — the storage names keep their historical prefix; Lua
 reads them as `og.match_setting`) follow the versioned SaveData (GTL v10, `time_limit` v17) →
-LobbySettings → game start → `GameWorld::ctf_requested_*` path.
+LobbySettings → game start → `GameWorld::ctf_requested_*` path. The session rules
+`new_specials` and `gameplay_fixes` take the same LobbySettings → InitialSetup → world path but
+are never written to the GTL (a per-machine cfg preference seeds them).
 `LobbySettings.shared_teams` (v12) carries the versus/shared-teams rule on the wire (the host
 derives it from the campaign's `matchup: versus` yaml key), and the lobby also carries the
 loaded map's authored-team mask (start markers) so every peer agrees on sparse team domains.

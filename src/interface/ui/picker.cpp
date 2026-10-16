@@ -3720,6 +3720,20 @@ Sint32 change_new_specials()
    return MENU_REDRAW;
 }
 
+// GAMEPLAY FX row 4, the same contract as New Specials above: the
+// preference always flips, the session value follows only on the machine
+// that decides the session, and a joiner's lobby echo puts the host's value
+// back.
+Sint32 change_gameplay_fixes()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::apply_gameplay_fixes_toggle(save, cfg,
+                                       picker_lobby_host_controls_visible());
+   TRACE("teams", "gameplay_fixes %d", static_cast<int>(save.gameplay_fixes));
+   picker_lobby_sync_settings_from_save();
+   return MENU_REDRAW;
+}
+
 // §2.7 cross-control (DIFFICULTY row 7 — re-homed from MATCHUP, #218).
 // Visible to every networked peer; host-only actionable. A host toggle is a
 // SETTINGS change: the sync propagates it over the wire and the server

@@ -109,6 +109,8 @@ int run_text_picker_protocol_session(const TextPickerConfig& config,
     protocol_args.campaign_state = config.campaign_state;
     if (config.new_specials >= 0)
         protocol_args.new_specials = config.new_specials;
+    if (config.gameplay_fixes >= 0)
+        protocol_args.gameplay_fixes = config.gameplay_fixes;
     return run_text_protocol_session(protocol_args);
 }
 
@@ -130,6 +132,11 @@ public:
         if (config_.new_specials >= 0)
             save_data_.new_specials =
                 static_cast<short>(config_.new_specials != 0 ? 1 : 0);
+        // Gameplay Fixes: the same rule, with --gameplay-fixes.
+        og::ui::seed_gameplay_fixes_from_cfg(save_data_, cfg);
+        if (config_.gameplay_fixes >= 0)
+            save_data_.gameplay_fixes =
+                static_cast<short>(config_.gameplay_fixes != 0 ? 1 : 0);
         // Terminal slot authority ([SAVE-R2]): company-level writes must
         // target this client's chosen slot (default "text_quicksave"), never
         // save0. An unsafe name is rejected by the setter and simply leaves
@@ -393,6 +400,18 @@ public:
         if (line == "on" || line == "off")
             og::ui::set_new_specials(save_data_, cfg, line == "on",
                                      /*decides_session=*/true);
+        else if (!line.empty())
+            std::printf("Invalid value; on or off.\n");
+
+        // The Gameplay Fixes row, the same way.
+        std::printf("Gameplay fixes: %s. Change (on/off, blank keeps current): ",
+            save_data_.gameplay_fixes != 0 ? "on" : "off");
+        std::fflush(stdout);
+        if (!read_line(line))
+            return;
+        if (line == "on" || line == "off")
+            og::ui::set_gameplay_fixes(save_data_, cfg, line == "on",
+                                       /*decides_session=*/true);
         else if (!line.empty())
             std::printf("Invalid value; on or off.\n");
     }

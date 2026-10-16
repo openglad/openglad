@@ -50,8 +50,9 @@ generator and fallen-hero settings, one hop at a time:
 parity recording, plays the classic kits unless something sets it. The
 parity runner sets it to 0 explicitly.
 
-Versions: protocol v20, snapshot v16, replay v22 (v19/v15/v21 brought the
-setting; v20/v16/v22 the rest clock, below).
+Versions: protocol v21, snapshot v17, replay v23 (v19/v15/v21 brought the
+setting; v20/v16/v22 the rest clock, below; v21/v17/v23 the Gameplay Fixes
+setting, docs/gameplay-fixes.md).
 
 ## How the kits stay hidden when the setting is off
 

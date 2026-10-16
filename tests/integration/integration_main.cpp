@@ -145,6 +145,9 @@ void reset_integration_ui_state()
         // world is reset too for the tests that never load one.
         og::runtime::current_session->myscreen_->save_data.new_specials = 1;
         og::runtime::current_session->myscreen_->world().new_specials = 1;
+        // Gameplay Fixes: the same, the shipped default (on).
+        og::runtime::current_session->myscreen_->save_data.gameplay_fixes = 1;
+        og::runtime::current_session->myscreen_->world().gameplay_fixes = 1;
     }
     // [LOBBY-R1] The same treatment for the standalone picker lobby client.
     // It is created lazily by almost any picker seam and destroyed only here
@@ -687,6 +690,7 @@ int main(int argc, char** argv)
     // session seed and any later re-seed from cfg agree with the per-test
     // reset in reset_integration_ui_state().
     cfg.apply_setting("gameplay", "new_specials", "on");
+    cfg.apply_setting("gameplay", "gameplay_fixes", "on");
 
     create_global_screen(1);
     init_input();
