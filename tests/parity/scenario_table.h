@@ -1229,7 +1229,7 @@ inline constexpr Mutation kMut_special_cleric_do_special = {
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "packs/core/families/living-03-mage.lua", 72,
+    "packs/core/families/living-03-mage.lua", 94,
     "if lc.mid_teleport(self) then",
     "if true then",
     "Makes the mage's slot-1 TELEPORT believe it is already mid-teleport, so the body returns false without the SOUND_TELEPORT cue and without the ANI_TELE_OUT hand-off. The caster never leaves its start tile: WalkerPositionMoved(FAMILY_MAGE, 240, 640) fails."
@@ -1307,7 +1307,7 @@ inline constexpr Mutation kMut_family_archer_init = {
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "packs/core/families/living-03-mage.lua", 282,
+    "packs/core/families/living-03-mage.lua", 304,
     "hp = 90",
     "hp = 9000",
     "Cranks MAGE descriptor HP x100 "
@@ -2499,7 +2499,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "packs/core/families/living-03-mage.lua", 225,
+    "packs/core/families/living-03-mage.lua", 247,
     "  wave:set_lastx(bolt:lastx())",
     "  wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
     "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
@@ -3691,7 +3691,7 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
-    "packs/core/families/living-03-mage.lua", 155,
+    "packs/core/families/living-03-mage.lua", 177,
     "if i ~= 0 or j ~= 0 then",
     "if false then",
     "Empties STARBURST's 3x3 direction sweep so not one of the eight fireballs is fired, while the MP refund and the aim save/restore still run. EventKindAtLeast(play_sound, 22) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3100, 3100) both fail."
@@ -3721,7 +3721,7 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
-    "packs/core/families/living-03-mage.lua", 188,
+    "packs/core/families/living-03-mage.lua", 210,
     "if self.team == og.u8(og.my_team()) then",
     "if false and self.team == og.u8(og.my_team()) then",
     "Reroutes FREEZE TIME's player-team branch into the foreign-team branch: no world enemy_freeze bank and no palette tint, but a 'TIME IS FROZEN' notification instead. EventKindExactly(notification, 0) flips to one notification and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800) fails."
@@ -3741,7 +3741,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "packs/core/families/living-03-mage.lua", 213,
+    "packs/core/families/living-03-mage.lua", 235,
     "local bolt = self:fire()",
     "local bolt = nil",
     "Suppresses the seed bolt ENERGY WAVE rides on, so energy_wave takes its 'if not bolt' exit and no FAMILY_WAVE weapon is ever placed. WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400) flips.",
@@ -3762,7 +3762,7 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "packs/core/families/living-03-mage.lua", 237,
+    "packs/core/families/living-03-mage.lua", 259,
     "if foe_count == 0 then",
     "if true then",
     "Makes HEARTBURST report 'no foes in range' unconditionally, so mage slot 5 returns false before draining the MP pool or summoning one explosion per foe. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8600, 8700) both fail."
@@ -4315,7 +4315,7 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "packs/core/families/living-03-mage.lua", 329,
+    "packs/core/families/living-03-mage.lua", 351,
     "freeze_per_level = 11",
     "freeze_per_level = 0",
     "Cuts the freeze grant from 20+11*level to a flat 20 ticks in the mage's tuning block, which the mage declaration reads through og.tuning(self).freeze_per_level each cast. At mage level 5 the banked enemy_freeze drops 75 -> 20, enemies act normally for most of the 150-tick window, the level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor."
@@ -4949,7 +4949,7 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "packs/core/families/living-03-mage.lua", 188,
+    "packs/core/families/living-03-mage.lua", 210,
     "  if self.team == og.u8(og.my_team()) then",
     "  if false and self.team == og.u8(og.my_team()) then",
     "Reroutes the player-team FREEZE TIME cast into the foreign-team branch. The cast still fires, but emits notifications and RequestRedraw instead of tinting the palette, so EventKindAtLeast(set_palette,1) flips."
@@ -5895,7 +5895,7 @@ inline constexpr FactPredicate kFacts_mage_teleport_marker_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_teleport_marker_scen99 = {
-    "packs/core/families/living-03-mage.lua", 121,
+    "packs/core/families/living-03-mage.lua", 143,
     "    marker.lifetime = self.level // 4 + 1",
     "    marker.lifetime = 1",
     "Gives the placed marker a single use instead of level//4+1 = 3. walker::teleport decrements the use counter on a successful jump and calls death() when it reaches 0, so the marker is reaped and WalkerOfTeamAlive(0,2,2) falls to 1 -- proving both that the marker persisted and that the return teleport actually consumed it."
@@ -6065,7 +6065,7 @@ inline constexpr FactPredicate kFacts_mage_starburst_ring_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_starburst_ring_scen99 = {
-    "packs/core/families/living-03-mage.lua", 155,
+    "packs/core/families/living-03-mage.lua", 177,
     "      if i ~= 0 or j ~= 0 then",
     "      if false then",
     "Suppresses every bolt of the WARP SPACE fan while leaving the aim save/restore, the damage-bonus MP spend and the 8*weapon_cost refund intact. No FIREBALL is emitted and all three foes end at their full spawn HP, failing WeaponFamilyEmitted and all three per-heading HP windows."
@@ -7790,7 +7790,7 @@ inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_freeze_time_offteam_scen99 = {
-    "packs/core/families/living-03-mage.lua", 332,
+    "packs/core/families/living-03-mage.lua", 354,
     "bonus_rounds_per_level = 2",
     "bonus_rounds_per_level = 0",
     "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the trailing orc stops at (471,439) instead of (387,523))."
@@ -7966,7 +7966,7 @@ inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
-    "packs/core/families/living-03-mage.lua", 335,
+    "packs/core/families/living-03-mage.lua", 357,
     "heartburst_range_base = 80",
     "heartburst_range_base = 0",
     "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 6 -> 5, and the surviving orc finishes on 14000 cents instead of 6100."

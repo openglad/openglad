@@ -4,6 +4,7 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
 local FX_MARKER = assert(og.family_id("fx", "core:marker"))
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 local WEAPON_WAVE = assert(og.family_id("weapon", "core:wave"))
@@ -12,10 +13,31 @@ local WEAPON_WAVE = assert(og.family_id("weapon", "core:wave"))
 -- pure constant with no og.C binding: per-fireball damage add cap.
 local STARBURST_ADD_CAP = 40
 
+-- Gameplay Fixes: the classic rule below was written for TELEPORT (flee
+-- when alone or swamped) and applied to every slot. Slot 1 keeps it; WARP
+-- SPACE, FREEZE TIME and ENERGY WAVE want a foe inside the same 110 px;
+-- HEARTBURST wants one inside its own reach.
+local function fixed_gate(self, foe_count)
+  local slot = self:current_special()
+  if slot == 1 then
+    return foe_count < 1 or foe_count > 3
+  end
+  if slot == 5 then
+    local t = og.tuning(self)
+    local _, in_reach = og.find_foes_in_range("ob",
+      t.heartburst_range_base + t.heartburst_range_per_level * self.level, self)
+    return in_reach >= 1
+  end
+  return foe_count >= 1
+end
+
 local function check_special_ai(self)
   -- count_foes_in_range(self, 110) == the howmany out-param of the same
   -- world->find_foes_in_range(oblist, ...) call the binding performs.
   local _, foe_count = og.find_foes_in_range("ob", 110, self)
+  if gf.on() then
+    return fixed_gate(self, foe_count)
+  end
   -- TP if away from guys .. or too many enemies!
   return foe_count < 1 or foe_count > 3
 end
