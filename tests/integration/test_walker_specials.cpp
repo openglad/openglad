@@ -815,11 +815,15 @@ TEST_F(WalkerSpecials, faerie_blinks_with_new_specials_on)
 // One family's row of the sweep: the caster, an ally, a foe and a corpse in
 // a fixed neighbourhood, every slot 1..5 cast with and without the shifter
 // from the same re-seeded stream. The bitmask of casts that returned true
-// is written to `mask` (bit (slot-1)*2 + shifter). The two sweeps below
-// share it: the classic table with the New Specials setting off, and its
-// twin with the setting on.
+// is written to `mask` (bit (slot-1)*2 + shifter). The three sweeps below
+// share it: the classic table with the New Specials setting off, its twin
+// with that setting on, and the classic table with the Gameplay Fixes
+// setting on. When asked, it also records each cast's mana left over and its
+// refusal text, indexed by the same bit number.
 static void sweep_family_special_mask(GameWorld& world, char family,
-                                      const char* name, unsigned& mask)
+                                      const char* name, unsigned& mask,
+                                      float* mp_after = nullptr,
+                                      std::string* reasons = nullptr)
 {
     mask = 0;
     world.delete_objects();
@@ -867,10 +871,16 @@ static void sweep_family_special_mask(GameWorld& world, char family,
             // one-line break of the gate ALSO stops `why` from being NoMP,
             // so the assertion simply stopped running. It is pinned
             // falsifiably in WalkerSpecials.no_magic instead.)
-            if (caster->special())
+            const int cast = (slot - 1) * 2 + shift;
+            std::string reason;
+            if (caster->special(nullptr, &reason))
             {
-                mask |= 1u << ((slot - 1) * 2 + shift);
+                mask |= 1u << cast;
             }
+            if (mp_after != nullptr)
+                mp_after[cast] = caster->stats()->magicpoints();
+            if (reasons != nullptr)
+                reasons[cast] = reason;
         }
     }
 }
@@ -1066,6 +1076,127 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
         EXPECT_EQ(sweep.expected_mask, mask)
             << "special() outcomes with New Specials on changed for family "
             << sweep.name << " (bit (slot-1)*2+shifter)";
+    }
+
+    world.delete_objects();
+}
+
+// The classic sweep with the Gameplay Fixes setting on: the same casters,
+// neighbourhood, stream and classic kits (New Specials off), so the setting
+// is the only difference from family_special_sweep_outcomes_are_pinned.
+// Every row's mask equals the classic table: the fixes turn a cast that
+// did nothing into a free refusal, and in this neighbourhood a foe stands
+// 12 px from every caster, so the no-foe refusals (WHIRLWIND, TAUNT, SCARE,
+// HOWL) never fire. What the setting changes here is the price of a cast
+// that is refused and the reason it gives, so this sweep pins those too:
+//   elf     0  every rock volley still declines COULD NOT FIRE (the foe is
+//              too close to throw at, so fire() swings instead). The classic
+//              game keeps the refund it paid up front for the rocks, so a
+//              refused cast of slots 1-4 leaves 1501, 1502, 1503, 1504 MP of
+//              the 1500. With the setting on the rocks that never flew are
+//              taken back, and each refused volley costs exactly the one
+//              swing (1 MP): 1499.
+//   druid 240  GROW TREE and SUMMON FAERIE decline COULD NOT FIRE the same
+//              way; the classic refund makes the swing free (1500 MP left),
+//              the setting charges the swing (4 MP): 1496.
+//   cleric  2  TURN UNDEAD (shifted slots 2 and 3) is refused on both values,
+//              for a different reason: the classic reach, 4 px per level,
+//              falls short of the orc at 12 px for this bare low-level caster
+//              (NO FOE IN RANGE); with the setting on the reach is at least
+//              60 px, the orc is in it and is not undead (NO UNDEAD IN RANGE,
+//              free).
+TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_gameplay_fixes_on)
+{
+    struct SweepCase
+    {
+        char family;
+        const char* name;
+        unsigned expected_mask;
+    };
+
+    static const SweepCase kSweep[] = {
+        {FAMILY_SOLDIER, "soldier", 255u},
+        {FAMILY_ARCHER, "archer", 63u},
+        {FAMILY_CLERIC, "cleric", 2u},
+        {FAMILY_MAGE, "mage", 797u},
+        {FAMILY_ARCHMAGE, "archmage", 125u},
+        {FAMILY_ELF, "elf", 0u},
+        {FAMILY_THIEF, "thief", 255u},
+        {FAMILY_SKELETON, "skeleton", 0u},
+        {FAMILY_FIREELEMENTAL, "fire elemental", 3u},
+        {FAMILY_FAERIE, "faerie", 0u},
+        {FAMILY_DRUID, "druid", 240u},
+        {FAMILY_ORC, "orc", 1u},
+        {FAMILY_BARBARIAN, "barbarian", 0u},
+        {FAMILY_GHOST, "ghost", 1u},
+        {FAMILY_SMALL_SLIME, "small slime", 0u},
+        {FAMILY_MEDIUM_SLIME, "medium slime", 0u},
+        {FAMILY_SLIME, "slime", 3u},
+        {FAMILY_BIG_ORC, "big orc", 0u},
+        {FAMILY_GOLEM, "golem", 0u},
+        {FAMILY_GIANT_SKELETON, "giant skeleton", 0u},
+        {FAMILY_TOWER1, "tower", 0u},
+    };
+
+    // Mana left after each cast (the sweep tops it up to 1500 before every
+    // cast), by bit number; slot 5 is not in play for either family and
+    // spends nothing.
+    static const float kElfMpAfter[10] = {
+        1499.0f, 1499.0f, 1499.0f, 1499.0f, 1499.0f,
+        1499.0f, 1499.0f, 1499.0f, 1500.0f, 1500.0f,
+    };
+    static const float kDruidMpAfter[10] = {
+        1496.0f, 1496.0f, 1496.0f, 1496.0f, 1350.0f,
+        1350.0f, 1300.0f, 1300.0f, 1500.0f, 1500.0f,
+    };
+    // TURN UNDEAD is the shifted press of slots 2 and 3: bits 3 and 5.
+    static constexpr int kTurnUndeadBits[] = {3, 5};
+
+    ensure_level_loaded();
+    auto& world = og::runtime::current_session->myscreen_->world();
+    // The classic kits, as in the classic table...
+    world.new_specials = 0;
+    // ...with the Gameplay Fixes setting on, explicitly, whatever the
+    // session default is.
+    world.gameplay_fixes = 1;
+
+    for (const SweepCase& sweep : kSweep)
+    {
+        unsigned mask = 0;
+        float mp_after[10] = {};
+        std::string reasons[10];
+        sweep_family_special_mask(world, sweep.family, sweep.name, mask,
+                                  mp_after, reasons);
+        if (::testing::Test::HasFatalFailure())
+            return;
+        EXPECT_EQ(sweep.expected_mask, mask)
+            << "special() outcomes with Gameplay Fixes on changed for family "
+            << sweep.name << " (bit (slot-1)*2+shifter)";
+
+        const float* expected_mp = nullptr;
+        if (sweep.family == FAMILY_ELF)
+            expected_mp = kElfMpAfter;
+        else if (sweep.family == FAMILY_DRUID)
+            expected_mp = kDruidMpAfter;
+        if (expected_mp != nullptr)
+        {
+            for (int bit = 0; bit < 10; ++bit)
+            {
+                EXPECT_EQ(expected_mp[bit], mp_after[bit])
+                    << sweep.name << " mana after the cast at bit " << bit
+                    << " (" << reasons[bit] << ")";
+            }
+        }
+        if (sweep.family == FAMILY_CLERIC)
+        {
+            for (int bit : kTurnUndeadBits)
+            {
+                EXPECT_EQ("NO UNDEAD IN RANGE", reasons[bit])
+                    << "cleric TURN UNDEAD at bit " << bit;
+                EXPECT_EQ(1500.0f, mp_after[bit])
+                    << "a refused TURN UNDEAD spends nothing (bit " << bit << ")";
+            }
+        }
     }
 
     world.delete_objects();
