@@ -3616,7 +3616,11 @@ short walker::special()
                                 if (generic < 0 || (!random(20)) ) // trying to control a higher-level
                                 {
                                     ob->real_team_num = ob->team_num;
-                                    ob->team_num = random(8);
+                                    Uint32 colour = random(8);
+                                    // port of the current game's 977f6ded: berserk means someone else's side, never ours
+                                    if (myscreen->gameplay_fixes && colour == (Uint32) team_num)
+                                        colour = (colour + 1) % 8;
+                                    ob->team_num = colour;
                                     ob->charm_left = 25 + random(generic*20);
                                 }
                                 else
