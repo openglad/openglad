@@ -1311,7 +1311,7 @@ inline constexpr Mutation kMut_family_mage_init = {
     "hp = 90",
     "hp = 9000",
     "Cranks MAGE descriptor HP x100 "
-    "(packs/core/families/living-03-mage.lua:285). family_mage_scen99's "
+    "(packs/core/families/living-03-mage.lua:304). family_mage_scen99's "
     "WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8900, 9100) leaves its window "
     "(golden 9000 cents -> mutated 900000 cents); measured 2026-09-15 by "
     "staging the pin into build/ci-test/packs, it is the only fact of the "
@@ -1422,7 +1422,7 @@ inline constexpr Mutation kMut_family_druid_init = {
     "hp = 110",
     "hp = 11000",
     "Cranks DRUID descriptor HP x100 "
-    "(packs/core/families/living-13-druid.lua:159). family_druid_scen99's "
+    "(packs/core/families/living-13-druid.lua:163). family_druid_scen99's "
     "WalkerHpRangeAtFinalTick(FAMILY_DRUID, 10900, 11100) leaves its "
     "window (golden 11000 cents -> mutated 1100000 cents); measured "
     "2026-09-15 by staging the pin into build/ci-test/packs, it is the "
@@ -1470,7 +1470,7 @@ inline constexpr Mutation kMut_family_archmage_init = {
     "hp = 150",
     "hp = 1",
     "Drops ARCHMAGE descriptor HP to 1 "
-    "(packs/core/families/living-17-archmage.lua:536). "
+    "(packs/core/families/living-17-archmage.lua:612). "
     "family_archmage_scen99's WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, "
     "14900, 15100) leaves its window (golden 15000 cents -> mutated 100 "
     "cents); measured 2026-09-15 by staging the pin into "
