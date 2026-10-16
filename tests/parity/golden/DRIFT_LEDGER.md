@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `5cc77c35`
+Old-game commit the goldens are captured from: `d1059e2c`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -461,6 +461,14 @@ game yet. With the dumper rebuilt from an emptied `obj/`, `--list` names every g
 `special_soldier_3_scen99`, `special_elf_2_scen99`, `special_druid_1_scen99`, `cleric_turn_undead_scen99`,
 `thief_charm_opponent_scen99`, `mage_freeze_time_offteam_scen99` and `archmage_summon_elemental_scen99` captured at it
 each `cmp` equal to their committed goldens (no `using embedded fixture` line).
+
+`d1059e2c` is the next table mirror (recorder-only, `tools/` only) and the pin: it adds the 43 rows of this PR (21
+arenas recorded with the setting off and on, and the setting-on twin of `special_cleric_heal_ally_scen99`) before any
+fix is ported, so each port's all-ids capture shows exactly the rows it moves. The new rows have no golden yet; they
+are captured from the old game once the ports land. With the dumper rebuilt from an emptied `obj/`, `--list` names
+271 ids (the 227 golden ids, the 43 new ones and `smoke_empty_scen99`), and the seven rows above plus
+`special_cleric_heal_ally_scen99` captured at it each `cmp` equal to their committed goldens (no `using embedded
+fixture` line).
 
 ### Earlier ports (before the 2026-10-04 rule)
 
