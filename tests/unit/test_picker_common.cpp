@@ -4117,6 +4117,102 @@ TEST(PickerCommon, format_new_specials_label)
     EXPECT_LE(og::ui::format_new_specials_label(save).size(), 42u);
 }
 
+// --- Gameplay Fixes (the Gameplay FX row and its terminal twins) ---
+//
+// The same contract as New Specials above; each helper writes its own key
+// and field and leaves New Specials alone.
+
+// The per-machine preference seeds the session value, and reads exactly as
+// the row's face does: "on" is on, anything else is off (a process that
+// never loaded its settings has the empty string).
+TEST(PickerCommon, seed_gameplay_fixes_reads_cfg)
+{
+    cfg_store config;
+    SaveData save;
+    save.gameplay_fixes = 1;
+    save.new_specials = 1;
+
+    config.apply_setting("gameplay", "new_specials", "off");
+    config.apply_setting("gameplay", "gameplay_fixes", "off");
+    og::ui::seed_gameplay_fixes_from_cfg(save, config);
+    EXPECT_EQ(0, save.gameplay_fixes) << "cfg off seeds the session off";
+    EXPECT_EQ(1, save.new_specials) << "and leaves New Specials alone";
+
+    config.apply_setting("gameplay", "gameplay_fixes", "on");
+    og::ui::seed_gameplay_fixes_from_cfg(save, config);
+    EXPECT_EQ(1, save.gameplay_fixes) << "cfg on seeds the session on";
+
+    cfg_store unloaded;
+    og::ui::seed_gameplay_fixes_from_cfg(save, unloaded);
+    EXPECT_EQ(0, save.gameplay_fixes)
+        << "an unset preference reads off, the same as the row's face";
+
+    cfg_store loaded;
+    loaded.apply_setting("gameplay", "gameplay_fixes", "on");  // the default
+    og::ui::seed_gameplay_fixes_from_cfg(save, loaded);
+    EXPECT_EQ(1, save.gameplay_fixes);
+}
+
+// The preference always flips; the session value follows only on the
+// machine that decides the session. A joiner's click records what it will
+// host next time and leaves the host's value in its save.
+TEST(PickerCommon, apply_gameplay_fixes_toggle_follows_decides_session)
+{
+    cfg_store config;
+    config.apply_setting("gameplay", "gameplay_fixes", "on");
+    SaveData save;
+    save.gameplay_fixes = 1;
+
+    og::ui::apply_gameplay_fixes_toggle(save, config, /*decides_session=*/true);
+    EXPECT_EQ("off", config.get_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ(0, save.gameplay_fixes) << "the deciding machine's session follows";
+    EXPECT_EQ("", config.get_setting("gameplay", "new_specials"))
+        << "the New Specials preference is not touched";
+    EXPECT_EQ(0, save.new_specials);
+
+    og::ui::apply_gameplay_fixes_toggle(save, config, /*decides_session=*/true);
+    EXPECT_EQ("on", config.get_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ(1, save.gameplay_fixes);
+
+    // A joiner holding the host's OFF: the click flips its preference only.
+    save.gameplay_fixes = 0;
+    og::ui::apply_gameplay_fixes_toggle(save, config, /*decides_session=*/false);
+    EXPECT_EQ("off", config.get_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ(0, save.gameplay_fixes);
+    og::ui::apply_gameplay_fixes_toggle(save, config, /*decides_session=*/false);
+    EXPECT_EQ("on", config.get_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ(0, save.gameplay_fixes) << "the host's value stays in the session";
+
+    // An unset preference reads off, so the first click turns it on.
+    cfg_store unloaded;
+    og::ui::apply_gameplay_fixes_toggle(save, unloaded, true);
+    EXPECT_EQ("on", unloaded.get_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ(1, save.gameplay_fixes);
+
+    // The prompts' setter writes the value asked for, not a flip.
+    og::ui::set_gameplay_fixes(save, config, /*on=*/true, true);
+    EXPECT_EQ("on", config.get_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ(1, save.gameplay_fixes);
+    og::ui::set_gameplay_fixes(save, config, /*on=*/false, false);
+    EXPECT_EQ("off", config.get_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ(1, save.gameplay_fixes);
+}
+
+TEST(PickerCommon, format_gameplay_fixes_label)
+{
+    SaveData save;
+    save.new_specials = 1;
+    EXPECT_EQ("GAMEPLAY FIXES: OFF", og::ui::format_gameplay_fixes_label(save))
+        << "a hand-built save is classic; New Specials is another setting";
+    save.gameplay_fixes = 1;
+    EXPECT_EQ("GAMEPLAY FIXES: ON", og::ui::format_gameplay_fixes_label(save));
+    save.gameplay_fixes = 7;
+    EXPECT_EQ("GAMEPLAY FIXES: ON", og::ui::format_gameplay_fixes_label(save))
+        << "any nonzero session value plays the fixes";
+    // A RULES face fits the 42-glyph row.
+    EXPECT_LE(og::ui::format_gameplay_fixes_label(save).size(), 42u);
+}
+
 TEST(PickerCommon, can_afford_and_format_wallet_amount)
 {
     SaveData save;
@@ -7329,6 +7425,7 @@ TEST(PickerCommon, match_settings_fingerprint_moves_on_every_synced_knob_and_not
     moves("infinite_gold", save.infinite_gold, save.infinite_gold + 1);
     moves("time_limit", save.time_limit, save.time_limit + 3600);
     moves("new_specials", save.new_specials, save.new_specials + 1);
+    moves("gameplay_fixes", save.gameplay_fixes, save.gameplay_fixes + 1);
     for (std::size_t team = 0; team < 4; ++team)
     {
         moves("fill[team]", save.fill[team],

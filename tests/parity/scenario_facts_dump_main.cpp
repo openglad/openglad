@@ -652,6 +652,11 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(nums);
     out.append(", \"fresh_arena\": ");
     out.append(s.fresh_arena ? "true" : "false");
+    // The Gameplay Fixes setting the row plays: 0 = the classic game.
+    out.append(", \"gameplay_fixes\": ");
+    std::snprintf(nums, sizeof(nums), "%u",
+                  static_cast<unsigned>(s.gameplay_fixes));
+    out.append(nums);
     out.append(", \"exercises\": ");
     std::snprintf(nums, sizeof(nums), "%llu",
                   static_cast<unsigned long long>(s.exercises));

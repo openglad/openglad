@@ -50,8 +50,9 @@ generator and fallen-hero settings, one hop at a time:
 parity recording, plays the classic kits unless something sets it. The
 parity runner sets it to 0 explicitly.
 
-Versions: protocol v20, snapshot v16, replay v22 (v19/v15/v21 brought the
-setting; v20/v16/v22 the rest clock, below).
+Versions: protocol v21, snapshot v17, replay v23 (v19/v15/v21 brought the
+setting; v20/v16/v22 the rest clock, below; v21/v17/v23 the Gameplay Fixes
+setting, docs/gameplay-fixes.md).
 
 ## How the kits stay hidden when the setting is off
 
@@ -98,14 +99,16 @@ after the first (`DIG IN SETTLING`, `IMMOLATE SETTLING`). A refusal is
 silent while the key is held, so holding Special cannot flip a toggle
 straight back, and a second tap after 10 ticks does what it says.
 
-**An engine note.** With the setting off a hidden slot costs 5000, but
-`walker::special()` itself does not refuse the slot: a walker forced onto a
-hidden slot with 5000 or more magic would cast its new special. That cannot
-happen in play, because the player's cycling and the bot's slot pick both
-read `NONE` and never put a walker on a hidden slot; only a test that sets
-the slot by hand can reach it. A guard there would need a per-family rule
-(the classic fire elemental's empty slots used to fall through to its
-starburst), so the engine is left as it is.
+**An engine note.** With the setting off a hidden slot costs 5000, and
+`walker::special()` refuses a slot priced 5000 or more before it looks at
+the walker's magic: the cast answers `NO SPECIAL AVAILABLE`
+(`SpecialFailure::Unavailable`) whatever the pool, so a walker forced onto
+a hidden slot casts nothing. Nothing in play reaches that, since the
+player's cycling and the bot's slot pick both read `NONE` and never put a
+walker on a hidden slot; only a test that sets the slot by hand can. The
+classic fire elemental still casts its starburst from slot 1 (its
+`default_cast`). This refusal applies whatever the Gameplay Fixes setting
+says ([gameplay-fixes.md](gameplay-fixes.md), "Not gated").
 
 ## Engine state
 
@@ -521,3 +524,26 @@ right. A character with no special in play reads `No special abilities.`
 The HIRE box's last line is generated the same way
 (`og::ui::specials_summary`): `Special:` and the slot names in play, in
 slot order.
+
+## The scene tests
+
+Every new special has a scene that plays it in the real game, in the
+`NewSpecials` suite of `tests/integration/test_special_scenes.cpp` (binary
+`og_test_special_scenes`): the seat's own hero at level 10 casts it with the
+keys a player would press, every other actor is staged on the authoritative
+server world, and the test asserts on the display what the special visibly
+does, its tells: the mine on the ground and the orc that trips it, the wail
+hopping through a pack, the HUD cell counting a rest down. Twenty-two
+scenes: one per special or chained pair of specials, three of a bot using one, and one of a classic
+special's countdown with the setting off. They run on every lane like any
+other test, one gtest each.
+
+The pictures in the pull request are made from those tests, not the other
+way round. `scripts/media/capture_new_specials.sh` runs the suite with
+`OG_FX_CAPTURE_DIR` set, under which the shared play-through also writes
+every frame and the index of the frame to keep as a still, and encodes a
+GIF, a review strip and the still per scene. The scenes play in their
+declared order in one process; seven of them show slightly different fire
+glow and dust when played alone, because the render-effects clock is global
+and runs on from one scene to the next, so published pictures come from the
+full run.

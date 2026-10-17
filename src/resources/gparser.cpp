@@ -219,6 +219,10 @@ bool cfg_store::load_settings()
     // the session's setting once per client session; in a networked game
     // the host's value wins. On by default, and RESTORE SETTINGS keeps that.
     apply_setting("gameplay", "new_specials", "on");
+    // The Gameplay Fixes preference (Game Settings -> Gameplay FX). It seeds
+    // the session's setting once per client session; in a networked game
+    // the host's value wins. On by default, and RESTORE SETTINGS keeps that.
+    apply_setting("gameplay", "gameplay_fixes", "on");
 
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");

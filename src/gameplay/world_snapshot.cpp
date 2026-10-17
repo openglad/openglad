@@ -1002,6 +1002,8 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
         append_u8(buffer, machine);
     // Snapshot v15: the New Specials setting.
     append_u8(buffer, snapshot.new_specials);
+    // Snapshot v17: the Gameplay Fixes setting.
+    append_u8(buffer, snapshot.gameplay_fixes);
 }
 
 void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -1042,6 +1044,7 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     for (std::uint8_t& machine : snapshot.player_machine)
         machine = reader.read_u8("world.player_machine");
     snapshot.new_specials = reader.read_u8("world.new_specials");
+    snapshot.gameplay_fixes = reader.read_u8("world.gameplay_fixes");
 }
 
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
@@ -2745,6 +2748,7 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.control_policy = world.control_policy;
     snapshot.player_machine = world.player_machine;
     snapshot.new_specials = world.new_specials != 0 ? 1 : 0;
+    snapshot.gameplay_fixes = world.gameplay_fixes != 0 ? 1 : 0;
 
     std::unordered_set<int> seen_guy_ids;
     capture_entity_list(world.oblist, snapshot.oblist, snapshot.guy_snapshots,
@@ -3212,6 +3216,7 @@ bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     world.player_machine = snapshot.player_machine;
     // Sim-side clamp: a crafted snapshot reaches this unchecked.
     world.new_specials = snapshot.new_specials != 0 ? 1 : 0;
+    world.gameplay_fixes = snapshot.gameplay_fixes != 0 ? 1 : 0;
 
     GuyStorage guy_storage;
     GuyLookup guy_lookup;
@@ -3320,6 +3325,7 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.control_policy = delta.control_policy;
     baseline.player_machine = delta.player_machine;
     baseline.new_specials = delta.new_specials;
+    baseline.gameplay_fixes = delta.gameplay_fixes;
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;

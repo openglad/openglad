@@ -44,7 +44,7 @@
   special[4].name = "DISARM"
   special[4].alternate = "NONE"
   special[4].cost = 150
-  special[4].detail = "Cause a melee foe to temporarily lose the strength of attacks."
+  special[4].detail = "Stagger the foe you face so it waits before its next swing. A stronger foe resists."
   special[5].id = ~
   special[5].name = "NONE"
   special[5].alternate = "NONE"
@@ -590,7 +590,7 @@
   glyph.transparent = false
   radar.color = -1
   radar.jitter = 0
-  tuning.count = 9
+  tuning.count = 10
   tuning[heal_range] = int 60
   tuning[mace_int_req] = int 50
   tuning[mace_life_base] = int 100
@@ -599,6 +599,7 @@
   tuning[resurrect_ghost_lifetime] = int 200
   tuning[resurrect_range] = int 30
   tuning[turn_undead_int_req] = int 60
+  tuning[turn_undead_range_min] = int 60
   tuning[turn_undead_range_per_level] = int 4
 [living 6]
   declared_id = "core:elemental"

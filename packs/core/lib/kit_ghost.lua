@@ -140,7 +140,7 @@ local function host_refusal(foe)
   if og.family_flag("living", foe:family(), "is_undead") then
     return "UNDEAD RESIST"
   end
-  if foe:user() ~= -1 or foe:act_type() == C.ACT_CONTROL then
+  if foe:seat_driven() then
     return "HERO RESISTS"
   end
   if foe:possess_link() ~= 0 then

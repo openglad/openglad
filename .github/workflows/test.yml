@@ -17,8 +17,12 @@ jobs:
     # curses, parity, and relay checks instead of cancelling a passing suite.
     # PR #262 added the LINEUP flows (og_test_lineup, RUN_SERIAL) and the
     # RUN_SERIAL tail alone is now ~13 minutes after the parallel bulk, so a
-    # fully passing 66/66 run was cancelled at 30:15. 40 keeps the same margin.
-    timeout-minutes: 40
+    # fully passing 66/66 run was cancelled at 30:15. 40 kept the same margin.
+    # By October 2026 the lane runs about 37 minutes on a green tree (37:05 on
+    # PR #364, 37:46 on master at 25228f55; 24:32 a week earlier), leaving under
+    # three minutes of headroom. 50 restores a margin without touching the
+    # per-test 420 s limit or the until-pass retries below.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7
         with:

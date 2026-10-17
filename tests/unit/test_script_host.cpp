@@ -2237,10 +2237,13 @@ TEST_F(CoverageReportGate, each_half_must_meet_the_bar_not_only_the_union)
     // lines, so size generously — 4000/TU over ~187 TUs is ~748k lines,
     // 1.7x the ~437k the 13.6k-line inventory needs at 97 (2000/TU cleared
     // 96 with 2x headroom and failed the day the bar moved to 97; 4000
-    // still clears a 98 bar).
+    // still cleared a 98 bar). 2026-10-16: the Gameplay Fixes class fixes
+    // grew the inventory to ~16.0k lines, which needs ~775k at 98, and
+    // 4000/TU over 193 TUs (772k) fell just short; 8000/TU (~1.54M) gives
+    // 2x headroom again.
     ASSERT_FALSE(tracked_src_cpp().empty());
     const std::string cpp_args =
-        forge_cpp_tracefile({}, {}, /*lines_per_file=*/4000);
+        forge_cpp_tracefile({}, {}, /*lines_per_file=*/8000);
 
     const ReportRun run =
         run_report(manifest_args({"og_unit_script"}) + fixtures_args() +

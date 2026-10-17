@@ -475,9 +475,15 @@ def parse_scenarios(text: str, *,
         # discriminating mutation: kMut_* identifier (or '{}' default) at
         # the tail. Newer rows may carry one trailing coverage_audit string
         # after the mutation for static checkers that do not resolve
-        # kFacts_* arrays.
+        # kFacts_* arrays, and a row that plays the Gameplay Fixes setting
+        # spells the rest of its tail positionally after that
+        # (`kMut_x, {}, 1, nullptr, 0, 1`): scalar tokens only, so the
+        # leftmost match is the mutation, never the audit's `{}`. A
+        # multi-floor tail (an identifier, std::size(...)) still matches
+        # nothing and reads as default-constructed, as before.
         mut_match = re.search(
-            r"(kMut_\w+|\{\s*\})(?:\s*,\s*\"(?:\\.|[^\"])*\")?\s*$",
+            r"(kMut_\w+|\{\s*\})"
+            r"(?:\s*,\s*(?:\"(?:\\.|[^\"])*\"|\{\s*\}|nullptr|\d+))*\s*$",
             r.strip(),
             re.S,
         )
@@ -816,6 +822,22 @@ _BRANCH_INTERNAL_ROW = '''    { "row_int", "scen/scen1.fss", 0x1u,
 };
 '''
 
+# A multi-floor row's tail, branch-internal as the real ones are: floor count,
+# paint array, paint count after the mutation and audit. Its mutation slot
+# names kMut_orphan, so the orphan rule reads this row's own token: the tail
+# carries an identifier and a call, which the parser does not read, so the row
+# names no pin and kMut_orphan stays an orphan. A parser that swallowed any
+# tail would read kMut_orphan here and turn the case green.
+_Z_SHAPED_ROW = '''    { "row_z", "scen/scen1.fss", 0x1u,
+      nullptr, 0, 10,
+      CompareMode::Invariant, true,
+      nullptr, 0, 0, false, true,
+      Exercises::None,
+      nullptr, 0, kMut_orphan, {},
+      2, kZPaints, std::size(kZPaints) },
+};
+'''
+
 _SPECIAL_ROW = '''    { "special_mage_2_scen1", "scen/scen1.fss", 0x1u,
       nullptr, 0, 10,
       CompareMode::SemanticParity, false,
@@ -991,6 +1013,45 @@ _SELF_TEST_CASES: list[
     ("c_line_zero",
      _mutate(_SELF_TEST_CLEAN, '"src/fake.cpp", 10,', '"src/fake.cpp", 0,'),
      {}, 1, "", _fail("row_one: discriminating_mutation.kMut_a.line <= 0")),
+
+    # The row tail after the mutation. A coverage_audit string, a row that
+    # plays the Gameplay Fixes setting (its whole tail spelled positionally,
+    # `{}` audit included), and both at once all name their pin; the unknown
+    # case proves the token read from that tail is the mutation, not the
+    # audit's `{}`. A setting tail with a stray token is not read at all, so
+    # the row fails as naming no pin rather than passing on a guess. A
+    # multi-floor tail still names no pin, even with a kMut_* in its slot, so
+    # the orphan rule fires for the pin that row holds.
+    ("tail_audit_ok",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },", '      kMut_a, "audit" },'),
+     {}, 0, _OK, ""),
+    ("tail_gameplay_fixes_ok",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             "      kMut_a, {}, 1, nullptr, 0, 1 },"),
+     {}, 0, _OK, ""),
+    ("tail_audit_and_gameplay_fixes_ok",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             '      kMut_a, "audit", 1, nullptr, 0, 1 },'),
+     {}, 0, _OK, ""),
+    ("tail_gameplay_fixes_unknown",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             "      kMut_zz, {}, 1, nullptr, 0, 1 },"),
+     {}, 1, "",
+     _fail("row_one: discriminating_mutation references unknown kMut_zz",
+           _ORPHAN_A)),
+    ("tail_gameplay_fixes_malformed",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             "      kMut_a, {}, 1, nullptr, 0, x },"),
+     {}, 1, "",
+     _fail("row_one: discriminating_mutation is default-constructed "
+           "(require non-empty kMut_*)", _ORPHAN_A)),
+    ("tail_z_shape_names_no_pin",
+     _mutate(_ORPHAN_PIN + _SELF_TEST_CLEAN, "      kMut_a },\n};\n",
+             "      kMut_a },\n" + _Z_SHAPED_ROW),
+     {}, 1, "",
+     _fail("kMut_orphan: orphan mutation constant (referenced by no "
+           "ScenarioSpec row) — attach it to a row whose facts flip under it, "
+           "or delete it with a DRIFT_LEDGER 'Removed pins' note")),
 
     # The mandatory-context rule has four legs and two owners. The weak-context
     # leg ("the context_before is true above N of them") and the strong-context
@@ -1225,7 +1286,7 @@ _SELF_TEST_CASES: list[
     ("rc_missing_table", None, {}, 2, "", "lint: cannot read {table}\n"),
 ]
 
-_SELF_TEST_CASE_COUNT = 51
+_SELF_TEST_CASE_COUNT = 57
 
 
 def _self_test() -> int:

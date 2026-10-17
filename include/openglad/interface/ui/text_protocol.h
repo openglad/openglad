@@ -30,6 +30,9 @@ struct TextProtocolArgs {
     // The New Specials setting for this session (--new-specials 0|1). The
     // shipped default is on.
     int new_specials = 1;
+    // The Gameplay Fixes setting for this session (--gameplay-fixes 0|1).
+    // The shipped default is on.
+    int gameplay_fixes = 1;
 };
 
 // Run a single headless protocol session (until game ends or user quits).

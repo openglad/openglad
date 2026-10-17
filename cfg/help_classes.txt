@@ -2,6 +2,9 @@
 
 * needs Game Settings -> Gameplay FX
   -> New Specials (on by default).
+Gameplay Fixes (Gameplay FX, on by
+default) mends Disarm, Turn Undead,
+Heal and more.
 
 SOLDIER
 ========================
@@ -13,8 +16,11 @@ Weapon: Magical returning blade.
    that hits multiple targets.
 3. Whirl: Lash out at all nearby
    foes, may stun them.
-4. Disarm: Temporarily disarm a
-   nearby opponent.
+4. Disarm: Stagger the foe you face so
+   it waits before its next swing. A
+   stronger foe resists. With Gameplay
+   Fixes on, a resisted try costs half
+   and nobody in reach costs nothing.
 
 BARBARIAN
 ========================
@@ -78,7 +84,8 @@ Slow healer, generates barriers.
 1. Heal: Heal nearby friends.
    SHIFTER: Mystic Mace defense.
 2. Raise Undead: Bring back the
-   fallen. SHIFTER: Turn Undead.
+   fallen. SHIFTER: Turn Undead,
+   reach 60 pixels or more, undead only.
 3. Raise Ghost: Summon spirits.
    SHIFTER: Lay spirits to rest.
 4. Resurrect: Full resurrection

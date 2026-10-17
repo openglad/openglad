@@ -371,8 +371,10 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
         append_i16(payload, squad);
     for (const std::int16_t level : settings.map_units)
         append_i16(payload, level);
-    // Protocol v19: the New Specials setting, appended LAST.
+    // Protocol v19: the New Specials setting, after the band knobs.
     append_i16(payload, settings.new_specials);
+    // Protocol v21: the Gameplay Fixes setting, appended LAST.
+    append_i16(payload, settings.gameplay_fixes);
 }
 
 og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
@@ -399,6 +401,7 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     for (std::int16_t& level : settings.map_units)
         level = reader.read_i16();
     settings.new_specials = reader.read_i16();
+    settings.gameplay_fixes = reader.read_i16();
     return settings;
 }
 
@@ -520,6 +523,9 @@ std::vector<std::uint8_t> serialize_initial_setup_message(
     append_u32(payload, message.setup_generation);
     // v19: the session's New Specials setting.
     append_i16(payload, message.new_specials);
+    // v21: the session's Gameplay Fixes setting, before the guy list so the
+    // controlled-ids block stays the message tail.
+    append_i16(payload, message.gameplay_fixes);
     append_u32(payload, static_cast<std::uint32_t>(message.guys.size()));
     for (const auto& guy : message.guys)
         append_initial_setup_guy(payload, guy);
@@ -555,6 +561,7 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.generator_rate = reader.read_i16();
             message.setup_generation = reader.read_u32();
             message.new_specials = reader.read_i16();
+            message.gameplay_fixes = reader.read_i16();
             const std::uint32_t guy_count = reader.read_u32();
             if (!reader.ok() ||
                 guy_count >

@@ -1,6 +1,8 @@
 -- core:elf — rock-spread specials (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
+local gf = og.use("gameplay_fixes")
+
 -- Jonathan Dearborn added this spread in 2013 so stacked rocks separate
 -- visibly in flight.
 -- The original jitter came from libc rand, separate from gameplay RNG.
@@ -17,6 +19,10 @@ local function some_rocks(self)
   self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())
   local rock = self:fire()
   if not rock then
+    if gf.on() then
+      -- Gameplay Fixes: the two rocks that never flew are not refunded.
+      gf.take_back(self, 2)
+    end
     return false, "COULD NOT FIRE"
   end
   -- lastx/lasty are C++ floats: per-op rounding.
@@ -24,6 +30,10 @@ local function some_rocks(self)
   rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
   rock = self:fire()
   if not rock then
+    if gf.on() then
+      -- Gameplay Fixes: the second rock never flew.
+      gf.take_back(self, 1)
+    end
     return false, "COULD NOT FIRE"
   end
   -- lastx/lasty are C++ floats: per-op rounding.
@@ -37,12 +47,21 @@ end
 -- therefore `* 4 // 2`.
 local function bounce_volley(cost_mult, count, los_num)
   return function(self)
+    local refund = cost_mult
+    if gf.on() then
+      -- Gameplay Fixes: refund the rocks that will fly, not one more.
+      refund = count
+    end
     -- magicpoints is a C++ float: per-op rounding.
     self.magicpoints = og.fadd(self.magicpoints,
-                               cost_mult * self:s_weapon_cost())
+                               refund * self:s_weapon_cost())
     for i = 1, count do
       local rock = self:fire()
       if not rock then
+        if gf.on() then
+          -- Gameplay Fixes: the rocks that never flew are not refunded.
+          gf.take_back(self, count - i + 1)
+        end
         return false, "COULD NOT FIRE"
       end
       rock:set_lineofsight(rock:lineofsight() * los_num // 2)

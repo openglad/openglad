@@ -435,6 +435,36 @@ toggle should refuse its own second arm for a few ticks after the first
 reason). A refusal is silent under a held key, so a held key cannot flip a
 toggle straight back.
 
+**Gameplay Fixes.** `og.match_setting("gameplay_fixes")` answers the
+Gameplay Fixes setting as this session plays it: `1` on (the shipped
+default), `0` the classic specials, bugs included
+([gameplay-fixes.md](../gameplay-fixes.md)). It is a pure read: it draws
+nothing and has no side effect, so a gate may ask it anywhere. A fix to a
+classic special keeps the classic statements as they are, in their order,
+and puts its change behind `if og.match_setting("gameplay_fixes") ~= 0 then`
+(or the core pack's `gf.on()`): either a draw-free check that refuses before
+anything is written, or a different write inside that branch. Never skip or
+reorder a random draw the classic game makes, so the setting-off game stays
+the classic game byte for byte.
+
+A bot gate that decides the Shift on purpose writes it with
+`self:set_shifter_down(0 or 1)` after the engine's Shift coin (the gate runs
+after the coin and after the engine drops a Shift the bot cannot pay), so
+the write is final for the cast that follows. The classic cleric gate does
+this, and so do the Gameplay Fixes gates of the cleric, the thief and the
+archmage; the coin itself is still drawn.
+
+The core pack's helpers for these fixes live in one lib module,
+`packs/core/lib/gameplay_fixes.lua` (`local gf = og.use("gameplay_fixes")`):
+
+| function | result |
+|---|---|
+| `gf.on()` | `true` when the setting is on. |
+| `gf.turn_range(self, t)` | TURN UNDEAD's reach for `self` with tuning `t`: `t.turn_undead_range_per_level * self.level`, and with the setting on never under `t.turn_undead_range_min`. |
+| `gf.take_back(self, rocks)` | Takes back `rocks` weapon costs from `self`'s magic: a cast that pre-refunded weapon costs and then could not fire. |
+| `gf.charmable(foe, fixes)` | `true` when a charm can take `foe`: never charmed (`real_team_num() == 255`) and living; when `fixes` is true, also not a hero a player drives (`foe:seat_driven()`). `fixes` is the caller's one read of the setting. |
+| `gf.nearest_charmable(self, foes, max_level)` | The nearest charmable foe in the list `foes` by `distance_to_ob` (a tie goes to the first in the list), or `nil`; `max_level` `nil` means any level, otherwise only a foe at or below it. Draws nothing. |
+
 ### Duplicate registration: last one wins
 
 Registering a hook slot a previous chunk already filled is legal and the later
@@ -568,7 +598,10 @@ A weapon that stands as scenery sets `ACT_SIT` (pair it with
 `dormant() → bool` (read-only: a delayed-spawn walker that has not woken
 yet — outside the obmap, outside snapshot capture, and skipped by every
 census; waking it is the engine's decision)
-`is_friendly(other) → bool`.
+`is_friendly(other) → bool`
+`seat_driven() → bool` (read-only: a seat drives this body, by a user tag
+or the player-control act; `og::sim::seat_driven`, the one rule POSSESS
+and the Gameplay Fixes charm casts refuse a hero by).
 
 ### Timers and charges
 
@@ -651,7 +684,8 @@ range.
 | `teleport()` | `bool`. |
 | `teleport_ranged(range)` | `bool`. |
 | `find_teleport_target()` | Handle or `nil`. **Treasures only** (errors otherwise). |
-| `turn_undead(range, power)` | `int`. |
+| `turn_undead(range, power)` | `int`: the number of undead destroyed; `-1` when no foe at all is within `range`; `-2`, only with the Gameplay Fixes setting on, when foes are in range but none of them can be turned (nothing is rolled and nothing should be spent). The roll's strength is `range * 40` with the setting off and `power * 160` with it on. |
+| `undead_foes_in_range(range)` | `int`: the foes within `range` that TURN UNDEAD could turn (undead and not warded). Draws nothing, whatever the setting. |
 | `do_summon(family, lifetime)` | Handle or `nil`. |
 | `do_heal_effects(healer_or_nil, target, amount)` | — |
 | `transform_to(order, family)` | — |
@@ -881,7 +915,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 | `og.level_id()` | The world's level id. |
 | `og.level_tick()` | Tick counter for this level. |
 | `og.world_tick()` | The absolute world tick counter (snapshotted, so it survives a mid-level restore). |
-| `og.match_setting(name)` | A session setting by name, read from the live world. `"new_specials"` is the New Specials setting (1 on, 0 the classic kits); the match knobs (`"team_count"`, `"respawn_mode"`, `"time_limit"`, `"difficulty"` and the rest) are read the same way. |
+| `og.match_setting(name)` | A session setting by name, read from the live world. `"new_specials"` is the New Specials setting (1 on, 0 the classic kits); `"gameplay_fixes"` is the Gameplay Fixes setting (1 on, 0 the classic specials, bugs included); the match knobs (`"team_count"`, `"respawn_mode"`, `"time_limit"`, `"difficulty"` and the rest) are read the same way. |
 | `og.level_done()` | `int`. |
 | `og.game_ended()` | `bool`. |
 | `og.my_team()` | The local team number. |

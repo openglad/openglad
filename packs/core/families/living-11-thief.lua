@@ -8,6 +8,7 @@ local lc = og.use("living_common")
 local FX_BOMB = assert(og.family_id("fx", "core:bomb"))
 local FX_CLOUD = assert(og.family_id("fx", "core:cloud"))
 local kt = og.use("kit_thief")
+local gf = og.use("gameplay_fixes")
 local function check_special_ai(self)
   if self:current_special() == 1 then
     -- Drop-bomb AI uses this fixed per-tick range.
@@ -25,6 +26,17 @@ local function check_special_ai(self)
     return true -- fallthrough for foe case when distance is acceptable
   elseif self:current_special() == 3 then
     local t = og.tuning(self)
+    if gf.on() then
+      -- Gameplay Fixes: CHARM only with a foe the thief can take inside
+      -- charm reach, else TAUNT; the coin is drawn either way.
+      local reach = t.charm_range_base + t.charm_range_per_level * self.level
+      local foes = og.find_foes_in_range("ob", reach, self)
+      if gf.nearest_charmable(self, foes, self.level) then
+        self:set_shifter_down(1)
+      else
+        self:set_shifter_down(0)
+      end
+    end
     local range
     if self:shifter_down() == 0 then
       range = t.taunt_range_base + t.taunt_range_per_level * self.level
@@ -87,6 +99,10 @@ local function taunt_or_charm(self)
     end
     local foes = og.foes_in_range(
       self, t.taunt_range_base + t.taunt_range_per_level * self.level)
+    if gf.on() and #foes == 0 then
+      -- Gameplay Fixes: a taunt nobody hears costs nothing.
+      return false, "NO FOE IN RANGE"
+    end
     for i = 1, #foes do
       local foe = foes[i]
       -- Two RNG draws in one C++ expression; drawn left (self) first.
@@ -119,17 +135,27 @@ local function taunt_or_charm(self)
   if foe_count < 1 then
     return false, "NO FOE IN RANGE"
   end
+  local fixes = gf.on()
+  local candidates = foes
+  if fixes then
+    -- Gameplay Fixes: the nearest foe the thief can take, not the first
+    -- in list order.
+    candidates = {}
+    local nearest = gf.nearest_charmable(self, foes, nil)
+    if nearest then
+      candidates[1] = nearest
+    end
+  end
   local handled = 0
   local resisted = 0
-  for i = 1, #foes do
+  for i = 1, #candidates do
     if handled ~= 0 then
       break
     end
-    local target = foes[i]
+    local target = candidates[i]
     -- The old charm_left <= 10 gate was disabled; real_team_num is the
     -- remaining charm-history gate.
-    if target:real_team_num() == 255
-        and target:order() == C.ORDER_LIVING then
+    if gf.charmable(target, fixes) then
       local level_diff = self.level - target.level
       if level_diff < 0 or og.rand(20) == 0 then
         -- A resisted charm gives the enemy a free attack.

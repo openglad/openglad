@@ -4001,8 +4001,8 @@ void check_fx_options_screen(button* buttons, int count,
 } // namespace
 
 // GAMEPLAY FX subscreen: unique BACK id + the two gameplay-feel toggles
-// and the New Specials row (stable ids — injector flows click these by id)
-// in a centered column.
+// and the New Specials and Gameplay Fixes rows (stable ids — injector flows
+// click these by id) in a centered column.
 TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
 {
     static const ExpectedFxButton kExpected[] = {
@@ -4010,14 +4010,15 @@ TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
         {"toggle_hit_recoil", "Hit recoil", 115, 35},
         {"toggle_attack_lunge", "Attack lunge", 115, 58},
         {"toggle_new_specials", "New Specials", 115, 81},
+        {"toggle_gameplay_fixes", "Gameplay Fixes", 115, 104},
     };
     button* buttons = picker_gameplay_fx_options_buttons();
     const int count = picker_gameplay_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 4, "gameplay_fx_options");
-    if (count != 4)
+    check_fx_options_screen(buttons, count, kExpected, 5, "gameplay_fx_options");
+    if (count != 5)
         return;
 
-    // The toggles are one column at the effects-grid 23px pitch, so the new
+    // The toggles are one column at the effects-grid 23px pitch, so each new
     // row sits on the grid rather than at a coordinate of its own.
     for (int i = 2; i < count; ++i)
     {
@@ -4027,13 +4028,20 @@ TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
     }
     EXPECT_EQ(button_action_id(ButtonAction::ToggleNewSpecials), buttons[3].myfun);
     EXPECT_EQ(126, button_action_id(ButtonAction::ToggleNewSpecials));
+    EXPECT_EQ(button_action_id(ButtonAction::ToggleGameplayFixes), buttons[4].myfun);
+    EXPECT_EQ(127, button_action_id(ButtonAction::ToggleGameplayFixes));
+    // The label is drawn centred with no clipping: 6 px a glyph must fit the
+    // face (14 glyphs, 84 px, on a 90 px face).
+    EXPECT_LE(6 * static_cast<int>(buttons[4].label.size()), buttons[4].sizex);
 
     // The vertical cycle runs BACK -> each toggle -> BACK, both ways.
     EXPECT_EQ(1, buttons[0].nav.down);
-    EXPECT_EQ(3, buttons[0].nav.up) << "BACK links up to New Specials";
+    EXPECT_EQ(4, buttons[0].nav.up) << "BACK links up to Gameplay Fixes";
     EXPECT_EQ(3, buttons[2].nav.down) << "Attack lunge links down to New Specials";
     EXPECT_EQ(2, buttons[3].nav.up);
-    EXPECT_EQ(0, buttons[3].nav.down) << "New Specials closes the cycle at BACK";
+    EXPECT_EQ(4, buttons[3].nav.down) << "New Specials links down to Gameplay Fixes";
+    EXPECT_EQ(3, buttons[4].nav.up);
+    EXPECT_EQ(0, buttons[4].nav.down) << "Gameplay Fixes closes the cycle at BACK";
 }
 
 // UI FX subscreen: unique BACK id + the three overlay toggles in a centered

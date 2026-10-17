@@ -20,7 +20,7 @@ BUILD=build/ci-test
 mkdir -p "$ANIM"
 
 cmake --preset ci-test
-cmake --build --preset ci-test --target og_test_rendering og_test_game_core og_test_menu_ui
+cmake --build --preset ci-test --target og_test_rendering og_test_game_core og_test_menu_ui og_test_special_scenes
 
 # The capture flows overwrite save/save0.gtl (they build their own rosters);
 # preserve the real save around the run.
@@ -50,6 +50,12 @@ OG_FX_CAPTURE_DIR="$PWD/$ANIM" timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_render
 echo "=== live gameplay + split-screen + epic battles ==="
 OG_FX_CAPTURE_DIR="$PWD/$ANIM" ${OG_FX_CAPTURE_ONLY:+OG_FX_CAPTURE_ONLY="$OG_FX_CAPTURE_ONLY"} \
     timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_game_core" --gtest_filter='GameLoop.zz_capture_*'
+
+echo "=== New Specials and Gameplay Fixes scenes ==="
+# Ordinary tests of og_test_special_scenes; OG_FX_CAPTURE_DIR is what makes
+# them also write their frames.
+OG_FX_CAPTURE_DIR="$PWD/$ANIM" timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_special_scenes" \
+    --gtest_filter='NewSpecials.*:GameplayFixes.*'
 
 echo "=== menu tours ==="
 # The three menu scenes also run (dwell-free, oracles only) in every ctest

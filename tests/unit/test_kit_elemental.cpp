@@ -13,7 +13,7 @@
 // the charge included) against the shipped core pack, in a hand-built
 // world whose New Specials flag the test sets itself. Each ON case has an
 // OFF twin with the same staging: the new slot is not in play, special()
-// fails with NoMP, nothing is spawned and no mana moves.
+// fails with Unavailable, nothing is spawned and no mana moves.
 //
 // Teeth: each case names, in its comment, the staged-copy perturbation
 // (an edit under build/ci-test/packs/core, then the test binary rerun)
@@ -209,7 +209,7 @@ int centre_x(const walker* w) { return w->xpos() + w->sizex() / 2; }
 int centre_y(const walker* w) { return w->ypos() + w->sizey() / 2; }
 
 // The OFF twin every new slot shares: with the setting off the slot is not
-// in play, so the cost gate refuses (NoMP) before any script runs, and no
+// in play, so the cost gate refuses (Unavailable) before any script runs, and no
 // kit entity appears. Perturbation (staged living-06: `new_kit = true`
 // dropped from the slot's row): the slot casts with the setting off -> red,
 // for each of the four twins.
@@ -226,7 +226,7 @@ void expect_off_slot_refused(int slot, short shift)
     e->set_foe(foe);
     const Cast c = cast(e);
     EXPECT_FALSE(c.ok) << "slot " << slot;
-    EXPECT_EQ(Failure::NoMP, c.why) << "slot " << slot;
+    EXPECT_EQ(Failure::Unavailable, c.why) << "slot " << slot;
     EXPECT_FLOAT_EQ(1000.0f, mp(e)) << "slot " << slot;
     EXPECT_FLOAT_EQ(50.0f, hp(e)) << "slot " << slot;
     EXPECT_FALSE(e->dead()) << "slot " << slot;
@@ -1132,6 +1132,75 @@ TEST(KitElemental, ai_meteor_fires_on_a_cluster_in_range)
     place(foe, 300, 100);
     place(second, 320, 100);
     EXPECT_FALSE(gate(bot)) << "out of reach";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// METEOR RAIN holds its fire over an ally: the strike lands within 71 px of
+// the target on each axis (rain_spread plus the 31 px blast) and the rain
+// hurts allies at half. An ally 30 px from the target holds it.
+// RED on the gate without the ally check: true.
+TEST(KitElemental, ai_meteor_holds_fire_over_an_ally)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* bot = add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    ASSERT_NE(nullptr, foe);
+    living* second = add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_NE(nullptr, second);
+    bot->set_foe(foe);
+    ASSERT_TRUE(gate(bot)) << "a cluster in range, nobody of ours under it";
+    living* ally = add_living(w, FAMILY_SOLDIER, 0, 220, 130);
+    ASSERT_NE(nullptr, ally);
+    EXPECT_FALSE(gate(bot)) << "an ally 30 px from the target holds the rain";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The ally scan reaches the whole box: the target 159 px east (the gate
+// wants it closer than 160), the ally at the box's far corner, 71 px east
+// and 71 px south of the target and 301 px (Manhattan) from the caster.
+// RED under a 231 px scan (RAIN_GATE_RANGE + RAIN_ALLY_ZONE): true.
+TEST(KitElemental, ai_meteor_holds_fire_over_a_far_corner_ally)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* bot = add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = add_living(w, FAMILY_SOLDIER, 1, 259, 100);
+    ASSERT_NE(nullptr, foe);
+    living* second = add_living(w, FAMILY_SOLDIER, 1, 259, 130);
+    ASSERT_NE(nullptr, second);
+    bot->set_foe(foe);
+    ASSERT_EQ(159, bot->distance_to_ob(foe));
+    ASSERT_TRUE(gate(bot)) << "a cluster in range, nobody of ours under it";
+    living* ally = add_living(w, FAMILY_SOLDIER, 0, 330, 171);
+    ASSERT_NE(nullptr, ally);
+    ASSERT_EQ(301, bot->distance_to_ob(ally));
+    EXPECT_FALSE(gate(bot)) << "an ally at the far corner of the strike box";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// An ally clear of the box (120 px from the target on one axis) does not
+// hold the rain; the box edge is 71 px: 71 holds it, 72 does not.
+TEST(KitElemental, ai_meteor_fires_with_the_ally_clear)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* bot = add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    ASSERT_NE(nullptr, foe);
+    living* second = add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_NE(nullptr, second);
+    bot->set_foe(foe);
+    living* ally = add_living(w, FAMILY_SOLDIER, 0, 220, 220);
+    ASSERT_NE(nullptr, ally);
+    EXPECT_TRUE(gate(bot)) << "an ally 120 px from the target is clear";
+    place(ally, 291, 100);
+    EXPECT_FALSE(gate(bot)) << "71 px east of the target is inside the box";
+    place(ally, 292, 100);
+    EXPECT_TRUE(gate(bot)) << "72 px east of the target is outside it";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

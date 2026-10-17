@@ -199,7 +199,14 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // (i32) and special_rest_slot (i32) on dirty bits 96-97 (field count 98);
 // snapshot format v16, replay format v22. No LobbySettings, InitialSetup or
 // world-state change.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 20;
+// v21: the Gameplay Fixes setting. LobbySettings gains an i16 gameplay_fixes
+// appended LAST (after new_specials) in append/read_lobby_settings;
+// sanitize_settings keeps it in {0, 1}. InitialSetup gains an i16
+// gameplay_fixes right after new_specials, before the guy list, so the
+// controlled-ids block stays the message tail. Snapshot format moves to v17:
+// the world state gains a u8 gameplay_fixes after new_specials, still the
+// tail of the world state. Replay format moves to v23.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 21;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
@@ -338,6 +345,9 @@ struct InitialSetupMessage {
     std::uint32_t setup_generation = 0;
     // v19: the session's New Specials setting (0 = the classic kits).
     std::int16_t new_specials = 0;
+    // v21: the session's Gameplay Fixes setting (0 = the classic game, bugs
+    // included).
+    std::int16_t gameplay_fixes = 0;
     std::vector<InitialSetupGuyData> guys;
     std::vector<std::int32_t> completed_levels;
     // Keyed by GLOBAL player index (u8-count-prefixed on the wire).
