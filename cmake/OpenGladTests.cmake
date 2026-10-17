@@ -1508,7 +1508,14 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # The gameplay suite now drives the full local transport path.
     # Validation mode round-trips every message and sanitizers magnify
     # the cost enough that the default 180s CTest budget is too tight.
-    set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+    # Since 2026-10-17 the binary also plays the 21 Gameplay Fixes films
+    # (GameLoop.zz_capture_gameplay_fixes, each scene twice, setting off
+    # and on): 14 s locally and 230 s for the whole binary on the standard
+    # lane, but 218 s for the films alone under ASan+UBSan, where the
+    # binary measured 418 s against the 420 s budget and timed out. 600 is
+    # the budget og_unit_sim already has below; a genuine hang still trips
+    # well before the 60-minute job cap.
+    set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 600)
     # The simulation unit binary now includes the WebSocket, relay,
     # and multiplex transport suites. Serialization validation
     # round-trips every message there too, which can push CI's
