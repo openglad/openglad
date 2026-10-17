@@ -22,9 +22,7 @@ needs.
 The row flips a per-machine preference (`cfg` key `gameplay/new_specials`,
 default `on`). That preference seeds the session's value once per session.
 In a networked game the host decides: a joiner's click only changes what it
-will use when it hosts, and the lobby's RULES column shows every peer the
-host's value as `NEW SPECIALS: ON` or `NEW SPECIALS: OFF`. The value is never
-written into a company save.
+will use when it hosts. The value is never written into a company save.
 
 It is a simulation setting, so it travels the same way as the respawn,
 generator and fallen-hero settings, one hop at a time:
