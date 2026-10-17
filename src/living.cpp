@@ -724,10 +724,11 @@ short living::check_special()
 					// port of the current game's 08fad439: TURN UNDEAD only with
 					// something to turn in reach, else the raise (which refuses free
 					// when there is no corpse)
+					// and only with the INT to cast it (port of the current game's 83b7a37d)
 					int reach = 4*stats->level;
 					if (reach < 60)
 						reach = 60;
-					if (undead_foes_in_range(reach) > 0)
+					if (!(myguy && myguy->intelligence < 60) && undead_foes_in_range(reach) > 0)
 						shifter_down = 1;
 					else
 						shifter_down = 0;
