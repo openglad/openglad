@@ -1663,6 +1663,39 @@ inline constexpr InputEvent kInputsSpecialSlot5[] = {
     { 21, 0, K_NONE},
 };
 
+// DISARM (slot 4) at tick 20, then, once its 5 busy has run out, the cycle
+// 4 -> 1 -> 2 and BOOMERANG at tick 34 (soldier_disarm_resisted_price).
+inline constexpr InputEvent kInputs_soldier_disarm_resisted_price[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 11, 0, K_SPECIAL_SWITCH},
+    { 12, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_NONE},
+    { 27, 0, K_SPECIAL_SWITCH},
+    { 28, 0, K_NONE},
+    { 30, 0, K_SPECIAL_SWITCH},
+    { 31, 0, K_NONE},
+    { 34, 0, K_SPECIAL},
+    { 35, 0, K_NONE},
+};
+
+// DISARM (slot 4) at tick 20, then the fire key held from tick 21
+// (soldier_disarm_resisted_busy; the K_NONE at 60 lies past its budget).
+inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 11, 0, K_SPECIAL_SWITCH},
+    { 12, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_FIRE},
+    { 60, 0, K_NONE},
+};
+
 // Phase 04a — treasure-pickup behavioural scenarios.
 //
 // Every row uses the same arena shape: a lone FAMILY_SOLDIER on team 0
@@ -8415,7 +8448,8 @@ inline constexpr Mutation kMut_soldier_whirlwind_no_foe_fixes_scen99 = {
 // makes the soldier win its roll, so the classic stagger is 6*(10-12+1) = -6:
 // the tower is sped up and the notice still says "Fighter Disarmed Enemy!".
 // With the setting on that stagger is not applied, nothing counts, and the
-// cast is refused (DISARM RESISTED) for free.
+// cast is refused (DISARM RESISTED): it costs half the price (75 MP) and the
+// usual 5 busy, neither of which the recording shows.
 inline constexpr SpawnSpec kFamilySpawns_soldier_disarm_higher_foe_scen99[] = {
     { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0, 12, 0 },   // higher-level foe in the facing-blocked spot
     { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST -> player (level 10 opens slot 4)
@@ -8434,7 +8468,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_higher_foe_fixes_scen99[] =
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
     pred::EventKindExactly(/*notification*/2, 0,
-        "consequence: with the setting on a stagger below zero is not applied and does not count, so the won roll disarms nobody and the cast is refused (DISARM RESISTED): no notice"),
+        "consequence: with the setting on a stagger below zero is not applied and does not count, so the won roll disarms nobody and the cast is refused (DISARM RESISTED): no notice (half price and 5 busy since the R-Q2 ruling: not in the recording)"),
     pred::EventKindExactly(/*play_sound*/1, 9,
         "consequence: the refused cast plays no SOUND_CHARGE; the fight that follows differs by one more swing"),
 };
@@ -8443,6 +8477,85 @@ inline constexpr Mutation kMut_soldier_disarm_higher_foe_fixes_scen99 = {
     "if not gf.on() or penalty > 0 then",
     "if not gf.on() or penalty > -100 then",
     "Lets a stagger below zero through again (penalty -6 > -100), so the won roll counts as a disarm: the cast succeeds, shows \"Fighter Disarmed Enemy!\" and plays SOUND_CHARGE. EventKindExactly(notification, 0) and EventKindExactly(play_sound, 9) fail."
+};
+
+// --- soldier_disarm_resisted_price (fix A: a resisted DISARM pays half) -----
+// A level-10 soldier with 200 MP disarms (slot 4 at tick 20) a level-12 TOWER1
+// standing 15 px below it, then cycles to BOOMERANG (100 MP) and throws it at
+// tick 34. The classic disarm succeeds on any foe in reach and costs the full
+// 150, so 50 MP are left and the boomerang is refused (NOT ENOUGH MP). With
+// the setting on the stronger tower resists: the try costs half (75), 125 MP
+// are left and the boomerang flies.
+inline constexpr SpawnSpec kFamilySpawns_soldier_disarm_resisted_price_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0, 12, 0 },   // higher-level foe in the facing-blocked spot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 200 }, // caster LAST -> player (level 10 opens slot 4; 200 MP)
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_price_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 0, 0,
+        "consequence: the classic disarm costs the full 150 of the 200 MP, so the BOOMERANG at tick 34 is refused and none flies"),
+    // negative_assertion: the classic price leaves too little for the boomerang; its absence is the fact.
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "consequence: the classic disarm shows its notice on a foe in reach"),
+    pred::EventKindExactly(/*play_sound*/1, 11,
+        "consequence: SOUND_CHARGE at the disarm and ten tower swings; the refused BOOMERANG plays nothing"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: no boomerang flies, so the tower ends untouched at 130 hp"),
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_price_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "consequence: with the setting on the stronger tower resists and the try costs half (75 MP), so 125 MP are left and the BOOMERANG at tick 34 flies"),
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: the resisted disarm shows no notice"),
+    pred::WalkerDiedByFinal(FAMILY_TOWER1,
+        "consequence: the boomerang kills the tower (its death sound at tick 41)"),
+    pred::EventKindExactly(/*play_sound*/1, 6,
+        "consequence: five tower swings before it dies, and its death; no SOUND_CHARGE from the resisted disarm"),
+};
+inline constexpr Mutation kMut_soldier_disarm_resisted_price_fixes_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 120,
+    "self.magicpoints = og.fsub(self.magicpoints, og.div(self:s_special_cost(self:current_special()), 2))",
+    "self.magicpoints = og.fsub(self.magicpoints, self:s_special_cost(self:current_special()))",
+    "Charges the resisted try the full 150 instead of half, so 50 MP are left and the BOOMERANG at tick 34 is refused: WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1), WalkerDiedByFinal(FAMILY_TOWER1) and EventKindExactly(play_sound, 6) fail."
+};
+
+// --- soldier_disarm_resisted_busy (fix A: a resisted DISARM keeps its busy) -
+// The spawns and seed of soldier_disarm_higher_foe: DISARM at tick 20 on the
+// level-12 tower, then the fire key held from tick 21. Both values set the
+// usual 5 busy (the classic success, the resisted try with the setting on),
+// so the first throw waits on both; the classic success also staggers the
+// tower by -6 and plays SOUND_CHARGE. The busy shows as one tick: the held
+// fire throws at 26 and 58, and without the busy at 25 and 57, so the budget
+// of 58 ticks (events through tick 57) catches the second throw only then.
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_scen99[] = {
+    pred::TickReached(58),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "consequence: the classic disarm shows its notice on a foe in reach"),
+    pred::EventKindExactly(/*play_sound*/1, 12,
+        "consequence: SOUND_CHARGE, the tower's swings (one more than with the setting on: the -6 stagger) and the soldier's first throw at tick 26"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower ends at 130 hp"),
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_fixes_scen99[] = {
+    pred::TickReached(58),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: the resisted disarm shows no notice"),
+    pred::EventKindExactly(/*play_sound*/1, 10,
+        "consequence: the resisted try's 5 busy holds the first throw to tick 26, so the second falls at tick 58, just past the budget: nine tower swings and one throw"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower ends at 130 hp"),
+};
+inline constexpr Mutation kMut_soldier_disarm_resisted_busy_fixes_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 122,
+    "self:set_busy(og.fadd(self:busy(), 5.0))",
+    "self:set_busy(self:busy())",
+    "Drops the resisted try's 5 busy, so the held fire throws a tick sooner (25 and 57 instead of 26 and 58) and the second throw lands inside the 58-tick budget: EventKindExactly(play_sound, 10) fails.",
+    "      return false, \"NO ONE TO DISARM\""
 };
 
 // --- elf_volley_refund (fix H: the volleys refund the rocks they throw) -----
@@ -11138,6 +11251,38 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Soldier_4,
       kFacts_soldier_disarm_higher_foe_fixes_scen99, std::size(kFacts_soldier_disarm_higher_foe_fixes_scen99),
       kMut_soldier_disarm_higher_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_disarm_resisted_price_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_price, std::size(kInputs_soldier_disarm_resisted_price), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_resisted_price_scen99, std::size(kFamilySpawns_soldier_disarm_resisted_price_scen99),
+      0, false, true, Exercises::Special_Soldier_4 | Exercises::Special_Soldier_2,
+      kFacts_soldier_disarm_resisted_price_scen99, std::size(kFacts_soldier_disarm_resisted_price_scen99),
+      kMut_soldier_disarm_matched_scen99 },
+
+    { "soldier_disarm_resisted_price_fixes_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_price, std::size(kInputs_soldier_disarm_resisted_price), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_resisted_price_scen99, std::size(kFamilySpawns_soldier_disarm_resisted_price_scen99),
+      0, false, true, Exercises::Special_Soldier_4 | Exercises::Special_Soldier_2,
+      kFacts_soldier_disarm_resisted_price_fixes_scen99, std::size(kFacts_soldier_disarm_resisted_price_fixes_scen99),
+      kMut_soldier_disarm_resisted_price_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_disarm_resisted_busy_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_busy, std::size(kInputs_soldier_disarm_resisted_busy), 58,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_higher_foe_scen99, std::size(kFamilySpawns_soldier_disarm_higher_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_soldier_disarm_resisted_busy_scen99, std::size(kFacts_soldier_disarm_resisted_busy_scen99),
+      kMut_soldier_disarm_matched_scen99 },
+
+    { "soldier_disarm_resisted_busy_fixes_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_busy, std::size(kInputs_soldier_disarm_resisted_busy), 58,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_higher_foe_scen99, std::size(kFamilySpawns_soldier_disarm_higher_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_soldier_disarm_resisted_busy_fixes_scen99, std::size(kFacts_soldier_disarm_resisted_busy_fixes_scen99),
+      kMut_soldier_disarm_resisted_busy_fixes_scen99, {}, 1, nullptr, 0, 1 },
 
     { "elf_volley_refund_scen99", "scen/scen1.fss", 0x00000042u,
       kInputs_elf_volley_refund, std::size(kInputs_elf_volley_refund), 72,
