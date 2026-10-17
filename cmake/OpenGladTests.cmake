@@ -490,7 +490,8 @@ og_add_test_group(og_test_game_core FILES
 # Fixes scene twice. Its own binary because og_test_game_core under
 # ASan+UBSan measured 312 s and 418 s on two runs of the same tree with the
 # Gameplay Fixes scenes alone (fde713b8), and the New Specials scenes add
-# about two thirds of that again.
+# to that (locally 0.58 of the Gameplay Fixes time on a plain build, 0.22
+# under ASan+UBSan). The budgets are in the lane blocks below.
 og_add_test_group(og_test_special_scenes FILES
     test_special_scenes.cpp
 )
@@ -1497,6 +1498,14 @@ if(ENABLE_COVERAGE)
     # coverage lane. Running it beside even one other process on GitHub's
     # 4-core runners can trigger flaky asset/campaign test failures.
     set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+    # og_test_special_scenes is pure compute (no sleeps, no threads) like
+    # og_test_game_core, so it takes the whole 4-core runner the same way.
+    # Measured 2026-10-17 on this lane: the 21 Gameplay Fixes scenes cost
+    # og_test_game_core +72 s (77.5 s -> 149.0 s). Locally the 22 New
+    # Specials scenes take 0.58 of the Gameplay Fixes time (5.2 s against
+    # 8.9 s), so the binary is expected at about 115 s here (derived): 64 %
+    # of the 180 s default, 27 % of 420.
+    set_tests_properties(og_test_special_scenes PROPERTIES PROCESSORS 4)
     # The coverage-instrumented unit-sim binary now includes live
     # WebSocket and relay transport tests. On GitHub's 4-core runners
     # it can exceed the coverage workflow timeout budget when CTest
@@ -1507,6 +1516,7 @@ if(ENABLE_COVERAGE)
     # 4-core runners than it does locally, so match the dedicated
     # coverage workflow budget instead of leaving CTest at 300s here.
     set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+    set_tests_properties(og_test_special_scenes PROPERTIES TIMEOUT 420)
     set_tests_properties(og_test_level PROPERTIES TIMEOUT 420)
     set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
     set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 420)
@@ -1519,14 +1529,26 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # The gameplay suite now drives the full local transport path.
     # Validation mode round-trips every message and sanitizers magnify
     # the cost enough that the default 180s CTest budget is too tight.
-    # Since 2026-10-17 the binary also plays the 21 Gameplay Fixes films
-    # (GameLoop.zz_capture_gameplay_fixes, each scene twice, setting off
-    # and on): 14 s locally and 230 s for the whole binary on the standard
-    # lane, but 218 s for the films alone under ASan+UBSan, where the
-    # binary measured 418 s against the 420 s budget and timed out. 600 is
-    # the budget og_unit_sim already has below; a genuine hang still trips
-    # well before the 60-minute job cap.
-    set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 600)
+    # Measured without the scene tests (2db210a0, 2026-10-17): 100 s on
+    # the standard lane (24 % of 420), 203 s under ASan+UBSan (48 %), one
+    # run each. The same tree varies by about 100 s between ASan+UBSan
+    # runs (312 s and 418 s with the scenes in), so up to about 300 s
+    # (72 %) is normal here and not a regression.
+    set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+    # og_test_special_scenes: the New Specials and Gameplay Fixes scenes,
+    # 43 plays of the real game loop, each Gameplay Fixes scene twice.
+    # Measured 2026-10-17 locally: 14 s for the whole binary (New Specials
+    # 5.2 s, Gameplay Fixes 8.9 s), 36 s under ASan+UBSan (6.5 s and
+    # 28.9 s; a lower bound for CI: the nix shell compiles with -O2). On
+    # CI the Gameplay Fixes scenes cost og_test_game_core +130 s on the
+    # standard lane and +109 s and +217 s on two ASan+UBSan runs of the
+    # same tree. Scaling the New Specials share by the local ratios
+    # (0.58 plain, 0.22 under ASan+UBSan), the binary is expected at about
+    # 205 s on the standard lane and 133-266 s under ASan+UBSan (derived):
+    # 600 keeps the slow run under half the budget and gives the scenes
+    # room to grow. 600 is the budget og_unit_sim already has below; a
+    # genuine hang still trips well before the 60-minute job cap.
+    set_tests_properties(og_test_special_scenes PROPERTIES TIMEOUT 600)
     # The simulation unit binary now includes the WebSocket, relay,
     # and multiplex transport suites. Serialization validation
     # round-trips every message there too, which can push CI's
@@ -1561,6 +1583,10 @@ if(ENABLE_SANITIZERS)
     # Under ASan/UBSan it can time out only when CTest schedules it
     # beside other heavyweight integration binaries.
     set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+    # og_test_special_scenes is pure compute (no sleeps, no threads): give
+    # it the runner the way og_test_game_core gets it, or the two slow each
+    # other down (its budget is in the block above).
+    set_tests_properties(og_test_special_scenes PROPERTIES PROCESSORS 4)
     # The menu UI binary now spends enough time in redraw-heavy flows
     # that ASan/UBSan can push it past the generic 180s CTest budget
     # when GitHub's 4-core runners overlap it with the rest of the
