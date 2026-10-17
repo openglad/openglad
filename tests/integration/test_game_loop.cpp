@@ -14340,7 +14340,7 @@ std::vector<Clip> clips()
         c.name = "a1_disarm_resisted";
         c.scene.family = FAMILY_SOLDIER;
         c.scene.slot = 4;
-        c.scene.frames = 110;
+        c.scene.frames = 96;   // the last frame still carries NOT ENOUGH MP on the left
         c.scene.stage = [](Film& film) {
             walker* hero = film.hero();
             hero->stats()->set_magicpoints(200.0f);   // of 250: the bar starts at 48 px
@@ -14357,8 +14357,13 @@ std::vector<Clip> clips()
             if (f == 40)
                 film.hero()->set_current_special(2);     // BOOMERANG (the cycle key is not in Keys)
         };
+        // After the disarm the fighter walks left onto the open grass, so the
+        // boomerang circles him in plain sight (beside the tower it would hit
+        // the tower at once and vanish inside its sprite).
         c.scene.keys = [](Film&, int f) {
-            return f == 44 ? press_at(f, 44) : press_at(f, 20);
+            Keys k = f == 44 ? press_at(f, 44) : press_at(f, 20);
+            k.left = f >= 26 && f < 38;
+            return k;
         };
         c.off_shows = {
             pool_guard(19, 200.0f),
@@ -14384,7 +14389,7 @@ std::vector<Clip> clips()
             says("NOT ENOUGH MP"),
         };
         c.fork = 20;
-        c.key_frame = 48;
+        c.key_frame = 62;   // the boomerang circles the fighter on open grass
         all.push_back(c);
     }
 
@@ -14496,19 +14501,29 @@ std::vector<Clip> clips()
         all.push_back(c);
     }
 
-    // B. An allied mage bot with no foe anywhere near: the classic gate lets
+    // B. An allied mage bot with no foe within 110 px: the classic gate lets
     // every slot through on "no foe within 110 px", so it freezes time at
-    // nobody and the whole screen turns blue; the fix keeps that rule for
-    // TELEPORT only.
+    // nobody; the fix keeps that rule for TELEPORT only. A soldier walks in
+    // from the right, still outside the mage's 110 px at the cue on both
+    // sides: the classic time stop freezes him mid-stride for the rest of the
+    // clip (the port draws no blue screen, so he is the visible sign), while
+    // with the fix nothing is cast and he walks up and strikes the fighter.
     {
         Clip c;
         c.name = "b_mage_bot_freeze";
         c.scene.family = FAMILY_SOLDIER;
-        c.scene.frames = 110;
+        c.scene.frames = 120;
         c.scene.stage = [](Film& film) {
+            // The mage first, so its draws stay the cue tick's first.
             add_bot(film, "mage", FAMILY_MAGE, 0, -70, -30, 7);
+            walker* foe = add_posted(film, "foe", FAMILY_SOLDIER, 1, 140, 0, 1);
+            blunt(foe);
         };
         c.scene.before_tick = [](Film& film, int f) {
+            if (f < 16)
+                hold_fire(film.actor("foe"));
+            if (f == 16)
+                release(film.actor("foe"));
             walker* mage = steer_bot(film, "mage");
             if (mage == nullptr)
                 return;
@@ -14516,31 +14531,45 @@ std::vector<Clip> clips()
             {
                 ready_bot(mage);
                 fill_mana(mage, 600.0f);
+                film.marks["hp"] = hp_of(film.hero_seen());
+                printf("  b_mage_bot_freeze: at the cue the foe is %.0f px from the fighter\n",
+                       gap(film.hero(), film.actor("foe")));
                 pin_draws(film, {5, 3}, {0, 2});         // special; slot 3 = FREEZE TIME
             }
             else
                 mage->stats()->set_magicpoints(0.0f);
         };
         c.scene.keys = [](Film&, int) { return Keys{}; };
+        const auto struck = [](Film& f) {
+            return has_mark(f, "hp") && hp_of(f.hero_seen()) < f.mark("hp");
+        };
         c.off_shows = {
-            {"the screen turns blue (time is frozen)",
+            {"the time stop is on (the palette switches to the blue one)",
              [](Film& f) { return f.display->world().current_palette_id == 1; }},
             {"the server banks a time stop",
              [](Film& f) { return f.server->world().enemy_freeze > 0; }},
+            {"the foe stands frozen far off at frame 60",
+             [](Film& f) { return f.frame == 60 && gap(f.hero_seen(), f.actor_seen("foe")) > 90.0f; }},
+        };
+        c.off_never = {
+            {"the foe strikes the fighter", struck},
         };
         c.on_shows = {
-            {"the screen is still its own colour well after the cue",
+            {"the palette is still its own well after the cue",
              [](Film& f) { return f.frame == 60 && f.display->world().current_palette_id == 0; }},
+            {"the foe walks up to the fighter", [](Film& f) {
+                 return f.frame <= 90 && gap(f.hero_seen(), f.actor_seen("foe")) <= kInReach; }},
+            {"the foe strikes the fighter", [struck](Film& f) { return f.frame <= 100 && struck(f); }},
         };
         c.on_never = {
-            {"the screen turns blue", [](Film& f) { return f.display->world().current_palette_id == 1; }},
+            {"the blue palette", [](Film& f) { return f.display->world().current_palette_id == 1; }},
             {"a time stop", [](Film& f) { return f.server->world().enemy_freeze > 0; }},
             {"the mage throws a fireball", [weap_fireball](Film& f) {
                  return count_of(f.display->world(), Order::Weapon, weap_fireball,
                                  f.ids.at("mage")) > 0; }},
         };
         c.fork = kCue;
-        c.key_frame = 40;
+        c.key_frame = 70;
         all.push_back(c);
     }
 
@@ -14552,7 +14581,7 @@ std::vector<Clip> clips()
         Clip c;
         c.name = "c_thief_bot_shift";
         c.scene.family = FAMILY_SOLDIER;
-        c.scene.frames = 110;
+        c.scene.frames = 94;   // the messages fade at 96: the hold keeps them
         c.scene.stage = [](Film& film) {
             add_bot(film, "thief", FAMILY_THIEF, 1, 80, 0, 7);
             add_posted(film, "soldier", FAMILY_SOLDIER, 0, 120, 0, 9);
@@ -14601,7 +14630,7 @@ std::vector<Clip> clips()
             {"charmed an opponent", [](Film& f) { return said(f, "charmed an opponent"); }},
         };
         c.fork = kCue;
-        c.key_frame = 30;
+        c.key_frame = 24;   // the message and the struck thief's flash
         all.push_back(c);
     }
 
@@ -15297,7 +15326,7 @@ std::vector<Clip> clips()
         };
         c.on_never = {says("HOWL IN")};
         c.fork = 12;
-        c.key_frame = 100;
+        c.key_frame = 110;   // the left foe walks in, the right one stands stunned
         all.push_back(c);
     }
 
