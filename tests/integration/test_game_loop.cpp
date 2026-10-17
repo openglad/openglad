@@ -11483,6 +11483,12 @@ struct Scene
     // the scene is played with (on server and display alike).
     int level = 10;
     short new_specials = 1;
+    // The Gameplay Fixes setting the scene is played with, server and
+    // display alike. 1 is the shipped default every other test plays.
+    short gameplay_fixes = 1;
+    // Hash the seat's viewport after every frame into Result::frame_hashes
+    // (the off-beside-on films prove the halves identical until the fix).
+    bool hash_frames = false;
     // Further roster families (heroes on the seat's team, AI-driven); the
     // seat drives the first, the caster.
     std::vector<int> roster_extra;
@@ -11620,7 +11626,28 @@ struct Result
     int blank_frame = -1;
     std::vector<int> tell_frames;
     std::vector<std::string> missing_on_mirror;
+    std::vector<std::uint64_t> frame_hashes;
 };
+
+// A 64-bit FNV-1a over the viewport's RGB bytes, the rect dump_viewport
+// writes, so two runs that hash alike would also film alike.
+std::uint64_t viewport_hash(screen* s)
+{
+    viewscreen* const vs = s->viewob[0].get();
+    std::uint64_t h = 1469598103934665603ull;
+    for (int j = 0; j < vs->yview; ++j)
+        for (int i = 0; i < vs->xview; ++i)
+        {
+            Uint8 rgb[3];
+            s->get_pixel(vs->xloc + i, vs->yloc + j, &rgb[0], &rgb[1], &rgb[2]);
+            for (Uint8 c : rgb)
+            {
+                h ^= c;
+                h *= 1099511628211ull;
+            }
+        }
+    return h;
+}
 
 void record(const Scene& sc, Result& out)
 {
@@ -11632,6 +11659,7 @@ void record(const Scene& sc, Result& out)
     roster.insert(roster.end(), sc.roster_extra.begin(), sc.roster_extra.end());
     gameplay_rec::build_save(s, "gladiator", 1, 1, roster, sc.level);
     s->save_data.new_specials = sc.new_specials;
+    s->save_data.gameplay_fixes = sc.gameplay_fixes;
     s->world().rng_.state_ = kDisplayRngPin;
     std::srand(kLibcRandPin);
     glad_init();
@@ -11649,6 +11677,10 @@ void record(const Scene& sc, Result& out)
         << "the server plays the scene with its own New Specials setting";
     ASSERT_EQ(sc.new_specials, s->world().new_specials)
         << "the display mirrors the scene's New Specials setting";
+    ASSERT_EQ(sc.gameplay_fixes, film.server->world().gameplay_fixes)
+        << "the server plays the scene with its own Gameplay Fixes setting";
+    ASSERT_EQ(sc.gameplay_fixes, s->world().gameplay_fixes)
+        << "the display mirrors the scene's Gameplay Fixes setting";
     film.server->world().rng_.state_ = kAuthorityRngPin;
 
     walker* const hero = gameplay_rec::find_seat_control(film.server->world());
@@ -11701,6 +11733,9 @@ void record(const Scene& sc, Result& out)
     reset_viewscreen_input_debounce();
 
     out.tell_frames.assign(sc.tells.size(), -1);
+    // The PPM dump and key.txt are the film's; the scene itself always plays
+    // (the Gameplay Fixes recorder is a CI tooth).
+    const bool filming = std::getenv("OG_FX_CAPTURE_DIR") != nullptr;
     std::vector<std::string> messages;
     GameLoopFrameState st;
     GameLoopDeps deps;
@@ -11761,7 +11796,10 @@ void record(const Scene& sc, Result& out)
         score_panel(s);
         s->refresh();
         s->swap();
-        gameplay_rec::dump_viewport(s, sc.name, f);
+        if (filming)
+            gameplay_rec::dump_viewport(s, sc.name, f);
+        if (sc.hash_frames)
+            out.frame_hashes.push_back(viewport_hash(s));
         if (out.blank_frame < 0 && gameplay_rec::viewport_is_blank(s))
             out.blank_frame = f;
 
@@ -11779,12 +11817,15 @@ void record(const Scene& sc, Result& out)
                                      : static_cast<std::size_t>(sc.key_tell);
     if (key_tell < out.tell_frames.size() && out.tell_frames[key_tell] >= 0)
         key = std::min(out.frames_run - 1, out.tell_frames[key_tell] + sc.key_offset);
-    char dir[512];
-    gameplay_rec::dump_dir_for(sc.name, dir, sizeof(dir));
-    if (FILE* fp = fopen((std::string(dir) + "/key.txt").c_str(), "w"))
+    if (filming)
     {
-        fprintf(fp, "%d\n", key);
-        fclose(fp);
+        char dir[512];
+        gameplay_rec::dump_dir_for(sc.name, dir, sizeof(dir));
+        if (FILE* fp = fopen((std::string(dir) + "/key.txt").c_str(), "w"))
+        {
+            fprintf(fp, "%d\n", key);
+            fclose(fp);
+        }
     }
     printf("new specials film %s: frames=%d key=%d", sc.name, out.frames_run,
            key);
@@ -13914,4 +13955,1561 @@ TEST(GameLoop, zz_capture_new_specials)
         }
     }
     EXPECT_GT(recorded, 0) << "OG_FX_CAPTURE_ONLY names no scene";
+}
+
+// ---- Gameplay Fixes, off beside on ------------------------------------------
+//
+// Every fix of docs/gameplay-fixes.md, filmed twice from the same seed and the
+// same keys: the setting off (the classic game), then on. The scenes reuse the
+// New Specials recorder above; only the setting differs between the two runs,
+// and the frame hashes prove the two halves identical until the fix parts
+// them. scripts/media/capture_gameplay_fixes.sh encodes each pair side by side.
+
+namespace gameplay_fixes_rec {
+
+using namespace new_specials_rec;
+
+// A bot clip's bot gets its mana and its dice on this frame, and on no other.
+inline constexpr int kCue = 24;
+// The two halves must have parted by fork + kGrace (a refusal line, a bar
+// and a message all paint on the cast's own frame through the shadow).
+inline constexpr int kGrace = 2;
+inline constexpr std::uint32_t kNeverDraws = 1u << 20;
+// hold_fire: walker::init_fire refuses while busy > 0, before it even starts
+// the attack animation, and living::act only counts busy down by one a tick.
+inline constexpr float kHeldBusy = 1000.0f;
+// blunt: a blow of 6 lands about 5 HP against any armour (a 1 would land 0:
+// base 0.5 minus the armour expectation rounds down).
+inline constexpr float kBluntDamage = 6.0f;
+// h2 and i: the tower a blocked throw swings at must outlast the clip (one
+// classic swing a press takes 8 to 12 from it).
+inline constexpr float kBlockerHp = 500.0f;
+// k1 to k4: a soldier foe throws its knives from about 45 px and never
+// closes to melee, so "arrived" is that distance (centre to centre), inside
+// every one of the four specials' reach.
+inline constexpr float kInReach = 50.0f;
+
+// The off side must latch tell `tell` at least `by` frames before the on
+// side does (a3: the staggered foe swings sooner with the setting off).
+struct Lead
+{
+    int tell = 0;
+    int by = 3;
+};
+
+// One scene, two recordings: `scene` is played with the setting off as
+// "<name>-off" and with it on as "<name>-on"; the same staging, the same
+// keys, the same dice. Each side has what it must show and what it must
+// never show. `fork` is the first frame the halves may differ (the cast, the
+// cue, or in m2 the frame the film strikes the thief down); `key_frame` is
+// the still, the same index on both sides.
+struct Clip
+{
+    const char* name = "";
+    Scene scene;
+    std::vector<Tell> off_shows;
+    std::vector<Tell> on_shows;
+    std::vector<Tell> off_never;
+    std::vector<Tell> on_never;
+    int fork = -1;
+    int key_frame = 0;
+    std::vector<Lead> leads;
+};
+
+// ---- small helpers (the NS ones are reused unchanged) ---------------------
+
+// A message line containing `needle` anywhere (a thief's "'Nyah Nyah!'" is
+// prefixed by whatever the thief is called).
+bool said(const Film& film, const std::string& needle)
+{
+    viewscreen* const vs = film.display->viewob[0].get();
+    if (vs == nullptr)
+        return false;
+    for (int i = 0; i < MAX_MESSAGES; ++i)
+        if (vs->textlist[i].find(needle) != std::string::npos)
+            return true;
+    return false;
+}
+
+float mp(const walker* w)
+{
+    return w == nullptr ? -1.0f : w->stats()->magicpoints();
+}
+
+bool has_mark(const Film& film, const std::string& name)
+{
+    return film.marks.count(name) != 0;
+}
+
+// A guard that stays on its mark until the film releases it.
+void hold_post(walker* a)
+{
+    a->set_act_type(ACT_GUARD);
+    a->set_guard_hold_post(true);
+}
+
+// Held from throwing: a posted guard still acquires a foe and queues
+// COMMAND_FIRE every tick (walker::act_guard), and since 2026-08-11 it fires
+// in every direction. Call on EVERY held frame in before_tick (busy counts
+// down by one a tick); towers are held for the whole clip.
+void hold_fire(walker* a)
+{
+    if (a != nullptr)
+        a->set_busy(kHeldBusy);
+}
+
+// Off its post and walking: a posted guard never converts by itself unless
+// it sights its foe within lineofsight*16 px (soldier: 112), so the walk-in
+// is ordered here. No foe is set: act_random re-acquires the nearest foe when
+// its own is null, and f's off-side orc must find none while it wears the
+// archmage's colour.
+void release(walker* a)
+{
+    if (a == nullptr || a->dead())
+        return;
+    a->set_guard_hold_post(false);
+    a->set_act_type(ACT_RANDOM);
+    a->set_busy(0.0f);
+}
+
+// A foe that fights a seat hero for more than a few seconds is blunted so
+// the recording never loses its last team-0 body. After set_level.
+void blunt(walker* a)
+{
+    a->set_damage(kBluntDamage);
+}
+
+// A pinned ACT_RANDOM bot is mid-turn on about a third of its ticks, and
+// living::act returns before the act-type switch while curdir != enddir or
+// a command runs: on the cue frame the bot is made ready to decide, after
+// its position pin.
+void ready_bot(walker* a)
+{
+    a->set_enddir(static_cast<char>(a->curdir()));
+    a->set_ani_type(ANI_WALK);
+    a->set_busy(0.0f);
+    a->stats()->clear_command();
+}
+
+// The caster's magic stops regenerating, so the MP bar shows only what the
+// casts do (the MP twin of gameplay_rec::stop_hp_regen). The film's, not the
+// game's.
+void stop_mp_regen(walker* a)
+{
+    a->stats()->set_magic_per_round(0.0f);
+    a->stats()->set_max_magic_delay(static_cast<std::int32_t>(kNeverDraws));
+    a->stats()->set_current_magic_delay(0);
+}
+
+// Sets the authoritative stream so the next draws are `want` under
+// `bounds`: the Legion film's device, used in before_tick of the cast or
+// cue frame, where the cast is the tick's first draw (the seat's input is
+// processed before the act loop; a bot clip adds its bot first).
+void pin_draws(Film& film, const std::vector<std::uint32_t>& bounds,
+               const std::vector<std::uint32_t>& want)
+{
+    film.server->world().rng_.state_ =
+        new_specials_mirror::state_where_draws_are(bounds, want);
+}
+
+// The walker's front command is a forced walk (a whirlwind's shove, a
+// scare's flee: statistics::force_command).
+bool forced_walk(const walker* w)
+{
+    if (w == nullptr || w->dead() || w->stats() == nullptr ||
+        w->stats()->commands.empty())
+        return false;
+    const command& front = w->stats()->commands.front();
+    return front.forced && front.commandtype == COMMAND_WALK;
+}
+
+// ONE-frame presses, the only way a Special key goes down in these films: a
+// two-frame tap runs the held arm on its second frame, which casts a second
+// time where the script sets no busy and voices NOT ENOUGH MP when the pool
+// has dropped under the price. `special_at` is that two-frame tap and is not
+// used here.
+Keys press_at(int f, int at, bool shift = false)
+{
+    Keys k;
+    k.special = f == at;
+    k.shift = k.special && shift;
+    return k;
+}
+
+Keys presses_every(int f, int from, int step)
+{
+    Keys k;
+    k.special = f >= from && (f - from) % step == 0;
+    return k;
+}
+
+// The both-sides pool guard: nothing spent the hero's magic before the cast
+// (a facing step into a blocker would be a melee swing that charges the
+// weapon's cost; facing is face_delta in stage instead).
+Tell pool_guard(int frame, float start)
+{
+    return {"the pool is untouched the frame before the cast",
+            [frame, start](Film& f) { return f.frame == frame && mp(f.hero()) == start; }};
+}
+
+// A message tell, the side's own words.
+Tell says(const std::string& what)
+{
+    return {"\"" + what + "\" is on screen",
+            [what](Film& f) { return voiced(f, what); }};
+}
+
+// The exact pool on one frame (server pool: exact float arithmetic, regen
+// stopped; the mirror carries the same value that tick).
+Tell pool_at(int frame, float value)
+{
+    return {"the pool reads " + std::to_string(static_cast<int>(value)) +
+                " on frame " + std::to_string(frame),
+            [frame, value](Film& f) { return f.frame == frame && mp(f.hero()) == value; }};
+}
+
+// A walked-in foe has come inside the special's reach (both sides; centre
+// to centre, so a little inside the game's own top-left distance).
+Tell arrived(float within)
+{
+    return {"the foe has walked into reach",
+            [within](Film& f) { return gap(f.hero_seen(), f.actor_seen("foe")) <= within; }};
+}
+
+// A bot kept on its mark, foe-less and with nothing queued, so every tick is
+// one where it weighs its special; its mana is zero except on the cue frame.
+walker* steer_bot(Film& film, const std::string& name)
+{
+    walker* const bot = film.actor(name);
+    if (bot == nullptr || bot->dead())
+        return nullptr;
+    bot->setxy(static_cast<short>(film.mark(name + ".x")),
+               static_cast<short>(film.mark(name + ".y")));
+    bot->stats()->clear_command();
+    bot->set_foe(nullptr);
+    return bot;
+}
+
+walker* add_bot(Film& film, const std::string& name, int family,
+                unsigned char team, int dx, int dy, int level)
+{
+    walker* const bot = add_actor(film, name, family, team, dx, dy);
+    if (bot == nullptr)
+        return nullptr;
+    set_level(bot, level);
+    bot->set_act_type(ACT_RANDOM);
+    bot->stats()->set_magicpoints(0.0f);
+    film.marks[name + ".x"] = bot->xpos();
+    film.marks[name + ".y"] = bot->ypos();
+    return bot;
+}
+
+// A foe posted where it stands (it may not walk, and is held from fighting
+// while the film holds its fire).
+walker* add_posted(Film& film, const std::string& name, int family,
+                   unsigned char team, int dx, int dy, int level)
+{
+    walker* const a = add_actor(film, name, family, team, dx, dy);
+    if (a == nullptr)
+        return nullptr;
+    if (level > 0)
+        set_level(a, level);
+    hold_post(a);
+    hold_fire(a);
+    return a;
+}
+
+// ---- the pair runner -------------------------------------------------------
+
+struct PairResult
+{
+    Result off;
+    Result on;
+    int first_diff = -1;
+};
+
+void play(const Clip& clip, int side, Result& out)
+{
+    Scene sc = clip.scene;
+    const std::string name = std::string(clip.name) + (side ? "-on" : "-off");
+    sc.name = name.c_str();   // record() reads it only during the call
+    sc.gameplay_fixes = static_cast<short>(side);
+    sc.new_specials = 0;      // every Shift is the classic one (DESIGN3 decision 2)
+    sc.hash_frames = true;
+    sc.tells = side ? clip.on_shows : clip.off_shows;
+    const std::vector<Tell>& never = side ? clip.on_never : clip.off_never;
+    sc.tells.insert(sc.tells.end(), never.begin(), never.end());
+    const int key_frame = clip.key_frame;
+    sc.tells.push_back({"the key still",
+                        [key_frame](Film& f) { return f.frame == key_frame; }});
+    sc.key_tell = static_cast<int>(sc.tells.size()) - 1;
+    sc.key_offset = 0;
+    effects_reset_for_testing();   // the render clock is global; each run starts it fresh
+    // A level load reloads the palette but leaves the display world's
+    // palette id alone, so a time stop still running when the setting-off
+    // run ended (b) would read as blue at the start of the next run.
+    og::runtime::current_session->myscreen_->world().current_palette_id = 0;
+    record(sc, out);
+}
+
+void check_side(const Clip& clip, int side, const Result& r)
+{
+    const char* const word = side ? "on" : "off";
+    const std::vector<Tell>& shows = side ? clip.on_shows : clip.off_shows;
+    const std::vector<Tell>& never = side ? clip.on_never : clip.off_never;
+    EXPECT_EQ(clip.scene.frames, r.frames_run)
+        << "the level must stay open for the whole recording (setting " << word << ")";
+    EXPECT_EQ(-1, r.blank_frame)
+        << "frame " << r.blank_frame << " composed nothing (setting " << word << ")";
+    EXPECT_TRUE(r.missing_on_mirror.empty())
+        << "staged on the server but not on the mirror at frame 0 (setting "
+        << word << "): " << (r.missing_on_mirror.empty() ? "" : r.missing_on_mirror[0]);
+    ASSERT_EQ(shows.size() + never.size() + 1, r.tell_frames.size());
+    for (std::size_t i = 0; i < shows.size(); ++i)
+    {
+        EXPECT_GE(r.tell_frames[i], 0)
+            << "never seen with the setting " << word << ": " << shows[i].what;
+        EXPECT_LE(r.tell_frames[i], clip.scene.frames - 20)
+            << "seen too late to show for 20 frames (setting " << word
+            << "): " << shows[i].what;
+    }
+    for (std::size_t i = 0; i < never.size(); ++i)
+        EXPECT_EQ(-1, r.tell_frames[shows.size() + i])
+            << "seen with the setting " << word << " at frame "
+            << r.tell_frames[shows.size() + i] << ", must never: " << never[i].what;
+}
+
+void run_pair(const Clip& clip, PairResult& out)
+{
+    play(clip, 0, out.off);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    play(clip, 1, out.on);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    check_side(clip, 0, out.off);
+    check_side(clip, 1, out.on);
+
+    ASSERT_GE(clip.fork, 0) << "the clip names no fork";
+    ASSERT_EQ(out.off.frame_hashes.size(), out.on.frame_hashes.size());
+    for (std::size_t f = 0; f < out.off.frame_hashes.size(); ++f)
+        if (out.off.frame_hashes[f] != out.on.frame_hashes[f])
+        {
+            out.first_diff = static_cast<int>(f);
+            break;
+        }
+    EXPECT_NE(-1, out.first_diff) << "the setting changed nothing on screen";
+    EXPECT_GE(out.first_diff, clip.fork)
+        << "the halves differ at frame " << out.first_diff
+        << ", before the fix could part them (fork " << clip.fork << ")";
+    EXPECT_LE(out.first_diff, clip.fork + kGrace)
+        << "the fix had not parted the halves by frame " << clip.fork + kGrace;
+
+    for (const Lead& lead : clip.leads)
+    {
+        const int off_at = out.off.tell_frames[static_cast<std::size_t>(lead.tell)];
+        const int on_at = out.on.tell_frames[static_cast<std::size_t>(lead.tell)];
+        printf("gameplay fixes film %s: lead of \"%s\": off @%d, on @%d\n",
+               clip.name, clip.off_shows[static_cast<std::size_t>(lead.tell)].what.c_str(),
+               off_at, on_at);
+        EXPECT_LE(off_at + lead.by, on_at)
+            << "with the setting off this must come " << lead.by
+            << " frames sooner: " << clip.off_shows[static_cast<std::size_t>(lead.tell)].what;
+    }
+
+    printf("gameplay fixes film %s: fork=%d first_diff=%d\n", clip.name,
+           clip.fork, out.first_diff);
+    fflush(stdout);
+}
+
+// ---- the clips --------------------------------------------------------------
+
+std::vector<Clip> clips()
+{
+    std::vector<Clip> all;
+    const int fx_boomerang = family_of(Order::FX, "core:boomerang");
+    const int fx_explosion = family_of(Order::FX, "core:explosion");
+    const int fx_scare = family_of(Order::FX, "core:ghost_scare");
+    const int weap_rock = family_of(Order::Weapon, "core:rock");
+    const int weap_fireball = family_of(Order::Weapon, "core:fireball");
+
+    // A1. DISARM against a tower two levels up, a LOST roll (the dice are
+    // set): the classic game prints "Fighter Disarmed Enemy!" and takes the
+    // full 150 for a disarm that did nothing; the fix says DISARM RESISTED
+    // and takes 75. Then BOOMERANG (100): the classic fighter cannot pay.
+    {
+        Clip c;
+        c.name = "a1_disarm_resisted";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.slot = 4;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            walker* hero = film.hero();
+            hero->stats()->set_magicpoints(200.0f);   // of 250: the bar starts at 48 px
+            stop_mp_regen(hero);
+            hero->face_delta(0, 1);                   // faces the blocker below; no step, no draw
+            walker* tower = add_actor(film, "tower", FAMILY_TOWER1, 1, 0, 15);
+            set_level(tower, 12);
+            hold_fire(tower);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            hold_fire(film.actor("tower"));              // a passive blocker: it never shoots
+            if (f == 20)
+                pin_draws(film, {10, 12}, {0, 11});      // the fighter rolls 0, the tower 11
+            if (f == 40)
+                film.hero()->set_current_special(2);     // BOOMERANG (the cycle key is not in Keys)
+        };
+        c.scene.keys = [](Film&, int f) {
+            return f == 44 ? press_at(f, 44) : press_at(f, 20);
+        };
+        c.off_shows = {
+            pool_guard(19, 200.0f),
+            says("Fighter Disarmed Enemy!"),
+            pool_at(20, 50.0f),
+            {"so BOOMERANG is NOT ENOUGH MP",
+             [](Film& f) { return f.frame >= 44 && voiced(f, "NOT ENOUGH MP"); }},
+        };
+        c.off_never = {
+            says("DISARM RESISTED"),
+            {"a boomerang flies", [fx_boomerang](Film& f) {
+                 return count_of(f.display->world(), Order::FX, fx_boomerang) > 0; }},
+        };
+        c.on_shows = {
+            pool_guard(19, 200.0f),
+            says("DISARM RESISTED"),
+            pool_at(20, 125.0f),
+            {"the boomerang flies", [fx_boomerang](Film& f) {
+                 return count_of(f.display->world(), Order::FX, fx_boomerang, f.hero_id) >= 1; }},
+        };
+        c.on_never = {
+            says("Fighter Disarmed"),
+            says("NOT ENOUGH MP"),
+        };
+        c.fork = 20;
+        c.key_frame = 48;
+        all.push_back(c);
+    }
+
+    // A2. DISARM with only a friend in front: the classic NO FOE IN RANGE,
+    // the fix's NO ONE TO DISARM; free on both sides.
+    {
+        Clip c;
+        c.name = "a2_disarm_nobody";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.slot = 4;
+        c.scene.frames = 96;
+        c.scene.stage = [](Film& film) {
+            walker* hero = film.hero();
+            stop_mp_regen(hero);
+            hero->face_delta(0, 1);
+            walker* ally = add_actor(film, "ally", FAMILY_SOLDIER, 0, 0, 15);
+            hold_post(ally);
+        };
+        c.scene.keys = [](Film&, int f) { return press_at(f, 20); };
+        c.off_shows = {
+            pool_guard(19, 250.0f),
+            says("NO FOE IN RANGE"),
+            pool_at(21, 250.0f),
+        };
+        c.off_never = {
+            says("NO ONE TO DISARM"),
+            {"the pool drops", [](Film& f) { return mp(f.hero()) < 250.0f; }},
+            says("FACE FOE AT CLOSE RANGE"),
+        };
+        c.on_shows = {
+            pool_guard(19, 250.0f),
+            says("NO ONE TO DISARM"),
+            pool_at(21, 250.0f),
+        };
+        c.on_never = {
+            says("NO FOE IN RANGE"),
+            {"the pool drops", [](Film& f) { return mp(f.hero()) < 250.0f; }},
+            says("Fighter Disarmed"),
+            says("FACE FOE AT CLOSE RANGE"),
+        };
+        c.fork = 20;
+        c.key_frame = 24;
+        all.push_back(c);
+    }
+
+    // A3. A WON disarm against a soldier two levels up: the classic stagger
+    // is negative (-6), which speeds the foe up for the rest of the fight;
+    // the fix calls it resisted at half price and the foe keeps its pace.
+    {
+        Clip c;
+        c.name = "a3_disarm_stagger";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.slot = 4;
+        c.scene.frames = 120;
+        c.scene.stage = [](Film& film) {
+            walker* hero = film.hero();
+            stop_mp_regen(hero);
+            hero->face_delta(0, 1);
+            walker* foe = add_posted(film, "foe", FAMILY_SOLDIER, 1, 0, 15, 12);
+            blunt(foe);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            walker* foe = film.actor("foe");
+            if (f < 20)
+                hold_fire(foe);
+            if (f == 20)
+            {
+                if (foe != nullptr)
+                    foe->set_busy(0.0f);                 // its first swing comes with the cast
+                film.marks["hp"] = hp_of(film.hero_seen());
+                pin_draws(film, {10, 12}, {9, 0});       // a WON roll: penalty 6 * (10 - 12 + 1)
+            }
+        };
+        c.scene.keys = [](Film&, int f) { return press_at(f, 20); };
+        // The foe's swings since the cast, counted on the mirror: each frame
+        // its attack animation starts (a swing is two frames of ANI_ATTACK,
+        // and the foe stands at least one frame between swings).
+        const auto third_swing = [](Film& f) {
+            walker* foe = f.actor_seen("foe");
+            const bool swinging = foe != nullptr && foe->ani_type() == ANI_ATTACK;
+            const bool was = f.mark("swing.prev") != 0.0f;
+            f.marks["swing.prev"] = swinging ? 1.0f : 0.0f;
+            if (f.frame > 20 && swinging && !was)
+                f.marks["swings"] = f.mark("swings") + 1.0f;
+            return f.mark("swings") >= 3.0f;
+        };
+        const auto blows_land = [](Film& f) {
+            return has_mark(f, "hp") && hp_of(f.hero_seen()) < f.mark("hp");
+        };
+        c.off_shows = {
+            says("Fighter Disarmed Enemy!"),
+            pool_at(20, 100.0f),
+            {"the foe's third swing since the cast", third_swing},
+            {"the foe's blows land", blows_land},
+            pool_guard(19, 250.0f),
+        };
+        c.off_never = {says("DISARM RESISTED")};
+        c.on_shows = {
+            says("DISARM RESISTED"),
+            pool_at(20, 175.0f),
+            {"the foe's third swing since the cast", third_swing},
+            {"the foe's blows land", blows_land},
+            pool_guard(19, 250.0f),
+        };
+        c.on_never = {says("Fighter Disarmed")};
+        c.leads = {{2, 3}};
+        c.fork = 20;
+        c.key_frame = 40;
+        all.push_back(c);
+    }
+
+    // B. An allied mage bot with no foe anywhere near: the classic gate lets
+    // every slot through on "no foe within 110 px", so it freezes time at
+    // nobody and the whole screen turns blue; the fix keeps that rule for
+    // TELEPORT only.
+    {
+        Clip c;
+        c.name = "b_mage_bot_freeze";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            add_bot(film, "mage", FAMILY_MAGE, 0, -70, -30, 7);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            walker* mage = steer_bot(film, "mage");
+            if (mage == nullptr)
+                return;
+            if (f == kCue)
+            {
+                ready_bot(mage);
+                fill_mana(mage, 600.0f);
+                pin_draws(film, {5, 3}, {0, 2});         // special; slot 3 = FREEZE TIME
+            }
+            else
+                mage->stats()->set_magicpoints(0.0f);
+        };
+        c.scene.keys = [](Film&, int) { return Keys{}; };
+        c.off_shows = {
+            {"the screen turns blue (time is frozen)",
+             [](Film& f) { return f.display->world().current_palette_id == 1; }},
+            {"the server banks a time stop",
+             [](Film& f) { return f.server->world().enemy_freeze > 0; }},
+        };
+        c.on_shows = {
+            {"the screen is still its own colour well after the cue",
+             [](Film& f) { return f.frame == 60 && f.display->world().current_palette_id == 0; }},
+        };
+        c.on_never = {
+            {"the screen turns blue", [](Film& f) { return f.display->world().current_palette_id == 1; }},
+            {"a time stop", [](Film& f) { return f.server->world().enemy_freeze > 0; }},
+            {"the mage throws a fireball", [weap_fireball](Film& f) {
+                 return count_of(f.display->world(), Order::Weapon, weap_fireball,
+                                 f.ids.at("mage")) > 0; }},
+        };
+        c.fork = kCue;
+        c.key_frame = 40;
+        all.push_back(c);
+    }
+
+    // C. An enemy thief bot whose coin says Shift: the classic gate only asks
+    // for a foe in charm reach and tries to charm a soldier two levels up
+    // (resisted, a free swing at the thief); the fix chooses Shift only for
+    // a foe it can take and taunts instead.
+    {
+        Clip c;
+        c.name = "c_thief_bot_shift";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            add_bot(film, "thief", FAMILY_THIEF, 1, 80, 0, 7);
+            add_posted(film, "soldier", FAMILY_SOLDIER, 0, 120, 0, 9);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            hold_fire(film.actor("soldier"));
+            walker* thief = steer_bot(film, "thief");
+            if (thief == nullptr)
+                return;
+            if (f == kCue)
+            {
+                ready_bot(thief);
+                fill_mana(thief, 100.0f);
+                film.marks["thp"] = hp_of(thief);
+                // The bot's act: special, slot 3, coin = Shift. Then, on the
+                // classic side only, the free swing's damage roll, the
+                // thief's hit-response coin and its 1-in-3 (not 0: no nested
+                // cast).
+                walker* soldier = film.actor("soldier");
+                const auto bound = static_cast<std::uint32_t>(
+                    std::floor(std::sqrt(soldier->damage())));
+                printf("  c_thief_bot_shift: the free swing's damage roll bound %u\n", bound);
+                pin_draws(film, {5, 3, 2, bound, 2, 3}, {0, 2, 1, 0, 0, 1});
+            }
+            else
+                thief->stats()->set_magicpoints(0.0f);
+        };
+        c.scene.keys = [](Film&, int) { return Keys{}; };
+        c.off_shows = {
+            {"Thief failed to charm!", [](Film& f) { return said(f, "failed to charm"); }},
+            {"the soldier's free swing lands on the thief", [](Film& f) {
+                 return has_mark(f, "thp") && hp_of(f.actor_seen("thief")) < f.mark("thp"); }},
+        };
+        c.off_never = {
+            {"'Nyah Nyah!'", [](Film& f) { return said(f, "Nyah Nyah"); }},
+            {"a second message from a nested cast", [](Film& f) { return said(f, "charmed an opponent"); }},
+        };
+        c.on_shows = {
+            {"the thief taunts", [](Film& f) { return said(f, "Nyah Nyah"); }},
+            {"the thief is not struck", [](Film& f) {
+                 return f.frame == 28 && has_mark(f, "thp") &&
+                        hp_of(f.actor_seen("thief")) == f.mark("thp"); }},
+        };
+        c.on_never = {
+            {"failed to charm", [](Film& f) { return said(f, "failed to charm"); }},
+            {"charmed an opponent", [](Film& f) { return said(f, "charmed an opponent"); }},
+        };
+        c.fork = kCue;
+        c.key_frame = 30;
+        all.push_back(c);
+    }
+
+    // D. SUMMON ELEMENTAL with no room: the classic game takes its surcharge
+    // (half the pool above the price) before it looks for room; the fix only
+    // after the elemental stands. The HEARTBURST that follows draws on what
+    // is left.
+    {
+        Clip c;
+        c.name = "d_summon_no_room";
+        c.scene.family = FAMILY_ARCHMAGE;
+        c.scene.slot = 3;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            walker* hero = film.hero();
+            fill_mana(hero, 1000.0f);
+            stop_mp_regen(hero);
+            const int ring[8][2] = {{-17, -17}, {0, -17}, {17, -17}, {-17, 0},
+                                    {17, 0},    {-17, 17}, {0, 17},  {17, 17}};
+            for (int i = 0; i < 8; ++i)
+                hold_fire(add_actor(film, "ring" + std::to_string(i), FAMILY_TOWER1, 0,
+                                    ring[i][0], ring[i][1]));
+            hold_fire(add_actor(film, "west", FAMILY_TOWER1, 1, -60, 0));
+            hold_fire(add_actor(film, "east", FAMILY_TOWER1, 1, 60, 0));
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            for (int i = 0; i < 8; ++i)
+                hold_fire(film.actor("ring" + std::to_string(i)));
+            hold_fire(film.actor("west"));
+            hold_fire(film.actor("east"));
+            if (f == 46)
+                film.hero()->set_current_special(2);     // HEARTBURST
+            if (f == 51)
+                printf("  d_summon_no_room: pool after the burst %.0f\n", mp(film.hero()));
+        };
+        c.scene.keys = [](Film&, int f) {
+            return f == 50 ? press_at(f, 50) : press_at(f, 20, true);
+        };
+        const auto bursts = [fx_explosion](Film& f) {
+            return count_of(f.display->world(), Order::FX, fx_explosion) > 0;
+        };
+        c.off_shows = {
+            pool_guard(19, 1000.0f),
+            says("NO ROOM TO SUMMON"),
+            pool_at(21, 750.0f),
+            {"the heartburst bursts", bursts},
+            pool_at(51, 336.0f),
+        };
+        c.off_never = {
+            {"the pool is still full after the refusal",
+             [](Film& f) { return f.frame == 21 && mp(f.hero()) == 1000.0f; }},
+        };
+        c.on_shows = {
+            pool_guard(19, 1000.0f),
+            says("NO ROOM TO SUMMON"),
+            pool_at(21, 1000.0f),
+            {"the heartburst bursts", bursts},
+            pool_at(51, 460.0f),
+        };
+        c.on_never = {
+            {"the pool drops before the heartburst",
+             [](Film& f) { return f.frame < 50 && mp(f.hero()) < 1000.0f; }},
+        };
+        c.fork = 20;
+        c.key_frame = 26;
+        all.push_back(c);
+    }
+
+    // E1. TURN UNDEAD with a skeleton 50 px either side of a level-7 cleric:
+    // the classic reach (4 per level, 28 px) holds nobody; the fixed 60 px
+    // turns both.
+    {
+        Clip c;
+        c.name = "e1_turn_reach";
+        c.scene.family = FAMILY_CLERIC;
+        c.scene.slot = 2;
+        c.scene.level = 7;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            add_posted(film, "west", FAMILY_SKELETON, 1, -50, 0, 1);
+            add_posted(film, "east", FAMILY_SKELETON, 1, 50, 0, 1);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            if (f < 24)
+            {
+                hold_fire(film.actor("west"));
+                hold_fire(film.actor("east"));
+            }
+            if (f == 20)
+                film.marks["hp"] = hp_of(film.hero_seen());
+            if (f == 24)
+            {
+                release(film.actor("west"));
+                release(film.actor("east"));
+            }
+        };
+        c.scene.keys = [](Film&, int f) { return press_at(f, 20, true); };
+        c.off_shows = {
+            says("NO FOE IN RANGE"),
+            {"both skeletons still stand the frame after", [](Film& f) {
+                 return f.frame == 21 && count_living(f.display->world(), FAMILY_SKELETON, 1) == 2; }},
+            {"the skeletons reach the cleric", [](Film& f) {
+                 return has_mark(f, "hp") && hp_of(f.hero_seen()) < f.mark("hp"); }},
+        };
+        c.off_never = {
+            {"turned", [](Film& f) { return said(f, "turned"); }},
+        };
+        c.on_shows = {
+            {"both skeletons fall", [](Film& f) {
+                 return count_living(f.display->world(), FAMILY_SKELETON, 1) == 0; }},
+            {"turned 2 undead.", [](Film& f) { return said(f, "turned 2 undead"); }},
+        };
+        c.on_never = {
+            says("NO FOE IN RANGE"),
+            {"the cleric is hurt", [](Film& f) {
+                 return has_mark(f, "hp") && hp_of(f.hero_seen()) < f.mark("hp"); }},
+        };
+        c.fork = 20;
+        c.key_frame = 30;
+        all.push_back(c);
+    }
+
+    // E2. TURN UNDEAD with only a living soldier in reach: the classic game
+    // takes the 20 for nothing; the fix says NO UNDEAD IN RANGE.
+    {
+        Clip c;
+        c.name = "e2_turn_no_undead";
+        c.scene.family = FAMILY_CLERIC;
+        c.scene.slot = 2;
+        c.scene.frames = 96;
+        c.scene.stage = [](Film& film) {
+            walker* hero = film.hero();
+            hero->stats()->set_max_magicpoints(20.0f);   // exactly one TURN UNDEAD's worth
+            hero->stats()->set_magicpoints(20.0f);
+            stop_mp_regen(hero);
+            add_posted(film, "foe", FAMILY_SOLDIER, 1, 28, 0, 1);
+        };
+        c.scene.before_tick = [](Film& film, int) { hold_fire(film.actor("foe")); };
+        c.scene.keys = [](Film&, int f) { return press_at(f, 20, true); };
+        c.off_shows = {
+            pool_guard(19, 20.0f),
+            {"the pool is spent", [](Film& f) { return mp(f.hero()) < 1.0f; }},
+            {"and stays spent", [](Film& f) { return f.frame == 60 && mp(f.hero()) < 1.0f; }},
+        };
+        c.off_never = {
+            says("NO UNDEAD IN RANGE"),
+            says("NOT ENOUGH MP"),
+        };
+        c.on_shows = {
+            pool_guard(19, 20.0f),
+            says("NO UNDEAD IN RANGE"),
+            pool_at(21, 20.0f),
+        };
+        c.on_never = {
+            {"the pool drops", [](Film& f) { return mp(f.hero()) < 20.0f; }},
+        };
+        c.fork = 20;
+        c.key_frame = 26;
+        all.push_back(c);
+    }
+
+    // F. MIND CONTROL resisted, the berserk colour rolls the archmage's own
+    // team: the classic orc joins the caster for the berserk; the fix moves
+    // the colour on, so it stays an enemy and keeps fighting.
+    {
+        Clip c;
+        c.name = "f_berserk_colour";
+        c.scene.family = FAMILY_ARCHMAGE;
+        c.scene.slot = 4;
+        c.scene.level = 12;
+        c.scene.frames = 120;
+        c.scene.stage = [](Film& film) {
+            walker* orc = add_posted(film, "orc", FAMILY_ORC, 1, 60, 0, 10);
+            blunt(orc);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            if (f < 24)
+                hold_fire(film.actor("orc"));
+            if (f == 20)
+            {
+                film.marks["hp"] = hp_of(film.hero_seen());
+                // resisted (rand(20) == 0), colour 0, 25 + 39 ticks
+                pin_draws(film, {20, 8, 40}, {0, 0, 39});
+            }
+            if (f == 24)
+                release(film.actor("orc"));
+        };
+        c.scene.keys = [](Film&, int f) { return press_at(f, 20); };
+        c.off_shows = {
+            {"the orc wears the archmage's colour", [](Film& f) {
+                 walker* o = f.actor_seen("orc"); return o != nullptr && o->team_num() == 0; }},
+            {"has controlled 1 men", [](Film& f) { return said(f, "has controlled 1 men"); }},
+            {"the orc walks away from the archmage", [](Film& f) {
+                 return f.frame > 24 && gap(f.hero_seen(), f.actor_seen("orc")) > 100.0f; }},
+            {"the archmage is untouched while it lasts", [](Film& f) {
+                 return f.frame == 70 && has_mark(f, "hp") && hp_of(f.hero_seen()) == f.mark("hp"); }},
+        };
+        c.off_never = {
+            {"the archmage is hurt while the orc is controlled", [](Film& f) {
+                 return f.frame < 84 && has_mark(f, "hp") && hp_of(f.hero_seen()) < f.mark("hp"); }},
+        };
+        c.on_shows = {
+            {"has controlled 1 men", [](Film& f) { return said(f, "has controlled 1 men"); }},
+            {"the orc walks up to the archmage", [](Film& f) {
+                 return f.frame > 24 && gap(f.hero_seen(), f.actor_seen("orc")) <= 30.0f; }},
+            {"the orc swings at the archmage once the control runs out", [](Film& f) {
+                 walker* o = f.actor_seen("orc");
+                 return f.frame > 24 && o != nullptr && o->ani_type() == ANI_ATTACK &&
+                        gap(f.hero_seen(), o) <= 30.0f; }},
+        };
+        c.on_never = {
+            {"the orc wears the archmage's colour", [](Film& f) {
+                 walker* o = f.actor_seen("orc"); return o != nullptr && o->team_num() == 0; }},
+        };
+        c.fork = 20;
+        c.key_frame = 36;
+        all.push_back(c);
+    }
+
+    // G. CHARM with two foes in reach: the classic thief takes the first in
+    // the world's list (the far soldier); the fix takes the nearest (the orc).
+    {
+        Clip c;
+        c.name = "g_charm_nearest";
+        c.scene.family = FAMILY_THIEF;
+        c.scene.slot = 3;
+        c.scene.level = 7;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            add_posted(film, "far", FAMILY_SOLDIER, 1, 40, 0, 1);   // earlier in the list
+            add_posted(film, "near", FAMILY_ORC, 1, 24, 0, 1);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            if (f <= 20)
+            {
+                hold_fire(film.actor("far"));
+                hold_fire(film.actor("near"));
+            }
+            if (f == 20)
+                pin_draws(film, {20}, {1});              // the resist roll passes
+            if (f == 21)
+            {
+                for (const char* n : {"far", "near"})
+                    if (walker* a = film.actor(n))
+                        a->set_busy(0.0f);               // still posted, they now fight
+            }
+        };
+        c.scene.keys = [](Film&, int f) { return press_at(f, 20, true); };
+        const auto joins = [](const char* who) {
+            return [who](Film& f) { walker* a = f.actor_seen(who); return a != nullptr && a->team_num() == 0; };
+        };
+        c.off_shows = {
+            {"the far soldier takes the thief's colour", joins("far")},
+            {"charmed an opponent", [](Film& f) { return said(f, "charmed an opponent"); }},
+        };
+        c.off_never = {
+            {"the near orc takes the thief's colour", joins("near")},
+            says("NOT ENOUGH MP"),
+        };
+        c.on_shows = {
+            {"the near orc takes the thief's colour", joins("near")},
+            {"charmed an opponent", [](Film& f) { return said(f, "charmed an opponent"); }},
+        };
+        c.on_never = {
+            {"the far soldier takes the thief's colour", joins("far")},
+            says("NOT ENOUGH MP"),
+        };
+        c.fork = 20;
+        c.key_frame = 36;
+        all.push_back(c);
+    }
+
+    // H1. BOUNCING ROCKS: the classic volley refunds 3 for two rocks, the
+    // fix refunds the two it throws. Five volleys later the classic elf can
+    // still pay for a sixth.
+    {
+        Clip c;
+        c.name = "h1_volley_refund";
+        c.scene.family = FAMILY_ELF;
+        c.scene.slot = 2;
+        c.scene.level = 4;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            walker* hero = film.hero();
+            stop_mp_regen(hero);
+            hero->face_delta(0, -1);
+            hold_fire(add_actor(film, "tower", FAMILY_TOWER1, 1, 0, -80));
+        };
+        c.scene.before_tick = [](Film& film, int) { hold_fire(film.actor("tower")); };
+        c.scene.keys = [](Film&, int f) {
+            Keys k;
+            k.special = f == 20 || f == 24 || f == 28 || f == 32 || f == 36 || f == 44;
+            return k;
+        };
+        c.off_shows = {
+            pool_guard(19, 118.0f),
+            pool_at(37, 23.0f),
+            {"the sixth volley flies", [weap_rock](Film& f) {
+                 return f.frame >= 44 &&
+                        count_of(f.display->world(), Order::Weapon, weap_rock, f.hero_id) >= 2; }},
+            pool_at(45, 4.0f),
+        };
+        c.off_never = {
+            says("NOT ENOUGH MP"),
+            says("COULD NOT FIRE"),
+        };
+        c.on_shows = {
+            pool_guard(19, 118.0f),
+            pool_at(37, 18.0f),
+            says("NOT ENOUGH MP"),
+            pool_at(45, 18.0f),
+        };
+        c.on_never = {
+            {"a sixth volley is paid for", [](Film& f) { return f.frame >= 44 && mp(f.hero()) != 18.0f; }},
+            says("COULD NOT FIRE"),
+        };
+        c.fork = 20;
+        c.key_frame = 48;
+        all.push_back(c);
+    }
+
+    // H2 and I share their shape: a caster touching a tower presses its
+    // first Special every third frame; the blocked throw becomes a swing.
+    const auto blocked_stage = [](float pool) {
+        return [pool](Film& film) {
+            walker* hero = film.hero();
+            hero->stats()->set_magicpoints(pool);
+            stop_mp_regen(hero);
+            hero->face_delta(0, -1);
+            walker* tower = add_actor(film, "tower", FAMILY_TOWER1, 1, 0, -16);
+            hold_fire(tower);
+            // Deep enough to take a swing every third frame for the whole
+            // clip: a fallen tower would let the throws fly free.
+            tower->stats()->set_max_hitpoints(kBlockerHp);
+            tower->stats()->set_hitpoints(kBlockerHp);
+            mark_hp(film, "tower");
+        };
+    };
+    const auto blocked_tick = [](Film& film, int f) {
+        hold_fire(film.actor("tower"));
+        if (f == 22)
+            film.marks["t22"] = hp_of(film.actor_seen("tower"));
+    };
+    const auto tower_beaten = [](Film& f) {
+        return hp_of(f.actor_seen("tower")) < f.mark("tower.hp") - 20.0f;
+    };
+    const auto hit_again = [](Film& f) {
+        return has_mark(f, "t22") && hp_of(f.actor_seen("tower")) < f.mark("t22");
+    };
+
+    // H2. ROCKS against a tower touching the elf: the classic refund of two
+    // for a swing that costs one nets a magic point a press; the fix takes
+    // the two back.
+    {
+        Clip c;
+        c.name = "h2_rocks_blocked";
+        c.scene.family = FAMILY_ELF;
+        c.scene.slot = 1;
+        c.scene.level = 1;
+        c.scene.frames = 124;
+        c.scene.stage = blocked_stage(10.0f);
+        c.scene.before_tick = blocked_tick;
+        c.scene.keys = [](Film&, int f) { return presses_every(f, 20, 3); };
+        c.off_shows = {
+            pool_guard(19, 10.0f),
+            {"the pool climbs press after press", [](Film& f) { return mp(f.hero()) >= 25.0f; }},
+            {"the tower is beaten down", tower_beaten},
+        };
+        c.off_never = {
+            {"the pool drops under the start", [](Film& f) { return f.frame > 22 && mp(f.hero()) < 10.0f; }},
+            says("NOT ENOUGH MP"),
+        };
+        c.on_shows = {
+            pool_guard(19, 10.0f),
+            pool_at(21, 9.0f),
+            says("NOT ENOUGH MP"),
+        };
+        c.on_never = {
+            {"the pool grows", [](Film& f) { return mp(f.hero()) > 10.0f; }},
+            {"the tower is hit a second time", hit_again},
+        };
+        c.fork = 20;
+        c.key_frame = 72;
+        all.push_back(c);
+    }
+
+    // I. GROW TREE against a tower touching the druid: the classic refund
+    // pays for the swing (net nothing); the fix takes it back.
+    {
+        Clip c;
+        c.name = "i_tree_blocked";
+        c.scene.family = FAMILY_DRUID;
+        c.scene.slot = 1;
+        c.scene.level = 1;
+        c.scene.frames = 124;
+        c.scene.stage = blocked_stage(15.0f);
+        c.scene.before_tick = blocked_tick;
+        c.scene.keys = [](Film&, int f) { return presses_every(f, 20, 3); };
+        c.off_shows = {
+            pool_guard(19, 15.0f),
+            pool_at(60, 15.0f),
+            {"the tower is beaten down", tower_beaten},
+        };
+        c.off_never = {
+            {"the pool moves", [](Film& f) { return f.frame > 21 && mp(f.hero()) != 15.0f; }},
+            says("NOT ENOUGH MP"),
+        };
+        c.on_shows = {
+            pool_guard(19, 15.0f),
+            pool_at(21, 11.0f),
+            says("NOT ENOUGH MP"),
+        };
+        c.on_never = {
+            {"the pool grows back", [](Film& f) { return f.frame > 20 && mp(f.hero()) > 11.0f; }},
+            {"the tower is hit a second time", hit_again},
+        };
+        c.fork = 20;
+        c.key_frame = 72;
+        all.push_back(c);
+    }
+
+    // J. HEAL on a soldier 40 HP down: the classic heal lands its whole
+    // amount, far over his maximum; the fix stops at full. The seat then
+    // switches to the soldier, whose own bar shows it.
+    {
+        Clip c;
+        c.name = "j_heal_cap";
+        c.scene.family = FAMILY_CLERIC;
+        c.scene.slot = 1;
+        c.scene.frames = 110;
+        c.scene.roster_extra = {FAMILY_SOLDIER};
+        c.scene.stage = [](Film& film) {
+            walker* hero = film.hero();
+            walker* ally = film.actor("hero1");
+            ally->setxy(static_cast<short>(hero->xpos() + 30), hero->ypos());
+            hold_post(ally);
+            ally->stats()->set_hitpoints(ally->stats()->max_hitpoints() - 40.0f);
+            gameplay_rec::stop_hp_regen(ally);
+            film.marks["max"] = ally->stats()->max_hitpoints();
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            if (f == 21)
+                printf("  j_heal_cap: max %.0f, the soldier now %.0f\n", film.mark("max"),
+                       hp_of(film.actor("hero1")));
+        };
+        c.scene.keys = [](Film&, int f) {
+            Keys k = press_at(f, 20);
+            k.switch_char = tap(f, 32);
+            return k;
+        };
+        const auto seat_on_soldier = [](Film& f) {
+            walker* s = seat_seen(f);
+            return s != nullptr && s == f.actor_seen("hero1");
+        };
+        c.off_shows = {
+            {"the soldier is healed past his maximum", [](Film& f) {
+                 return hp_of(f.actor_seen("hero1")) > f.mark("max"); }},
+            says("Cleric healed 1 man!"),
+            {"the seat is on the soldier", seat_on_soldier},
+        };
+        c.off_never = {
+            {"the soldier is at or under his maximum after the heal", [](Film& f) {
+                 return f.frame >= 21 && hp_of(f.actor_seen("hero1")) <= f.mark("max"); }},
+        };
+        c.on_shows = {
+            {"the soldier is exactly at his maximum", [](Film& f) {
+                 return f.frame == 21 && hp_of(f.actor_seen("hero1")) == f.mark("max"); }},
+            says("Cleric healed 1 man!"),
+            {"the seat is on the soldier", seat_on_soldier},
+        };
+        c.on_never = {
+            {"the soldier is over his maximum", [](Film& f) {
+                 return hp_of(f.actor_seen("hero1")) > f.mark("max"); }},
+        };
+        c.fork = 20;
+        c.key_frame = 40;
+        all.push_back(c);
+    }
+
+    // K1 to K4: the four specials that classic players could cast at nobody.
+    // A foe posted far off is let go early and walks up to the hero; the
+    // hero casts once at nobody and once when the foe is beside him.
+    const auto walk_in_stage = [](int dx) {
+        return [dx](Film& film) {
+            walker* foe = add_posted(film, "foe", FAMILY_SOLDIER, 1, dx, 0, 1);
+            blunt(foe);
+        };
+    };
+
+    // K1. WHIRLWIND at nobody.
+    {
+        Clip c;
+        c.name = "k1_whirlwind_nobody";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.slot = 3;
+        c.scene.level = 7;
+        c.scene.frames = 130;
+        const auto foe_stage = walk_in_stage(140);
+        c.scene.stage = [foe_stage](Film& film) {
+            stop_mp_regen(film.hero());
+            foe_stage(film);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            if (f < 24)
+                hold_fire(film.actor("foe"));
+            if (f == 24)
+                release(film.actor("foe"));
+        };
+        c.scene.keys = [](Film&, int f) { return f == 104 ? press_at(f, 104) : press_at(f, 20); };
+        c.off_shows = {
+            pool_guard(19, 178.0f),
+            arrived(kInReach),
+            pool_at(21, 58.0f),
+            {"the second spin is NOT ENOUGH MP",
+             [](Film& f) { return f.frame >= 104 && voiced(f, "NOT ENOUGH MP"); }},
+        };
+        c.off_never = {
+            says("NO FOE IN RANGE"),
+            {"the foe is shoved away", [](Film& f) { return f.frame > 104 && forced_walk(f.actor("foe")); }},
+        };
+        c.on_shows = {
+            pool_guard(19, 178.0f),
+            arrived(kInReach),
+            says("NO FOE IN RANGE"),
+            pool_at(21, 178.0f),
+            {"the second spin shoves the foe away",
+             [](Film& f) { return f.frame >= 104 && forced_walk(f.actor("foe")); }},
+        };
+        c.on_never = {says("NOT ENOUGH MP")};
+        c.fork = 20;
+        c.key_frame = 108;
+        all.push_back(c);
+    }
+
+    // K2. TAUNT at nobody.
+    {
+        Clip c;
+        c.name = "k2_taunt_nobody";
+        c.scene.family = FAMILY_THIEF;
+        c.scene.slot = 3;
+        c.scene.level = 7;
+        c.scene.frames = 130;
+        const auto foe_stage = walk_in_stage(140);
+        c.scene.stage = [foe_stage](Film& film) {
+            stop_mp_regen(film.hero());
+            foe_stage(film);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            if (f < 24)
+                hold_fire(film.actor("foe"));
+            if (f == 24)
+                release(film.actor("foe"));
+        };
+        c.scene.keys = [](Film&, int f) { return f == 104 ? press_at(f, 104) : press_at(f, 20); };
+        c.off_shows = {
+            pool_guard(19, 184.0f),
+            arrived(kInReach),
+            {"'Nyah Nyah!' at nobody", [](Film& f) { return said(f, "Nyah Nyah"); }},
+            pool_at(21, 84.0f),
+            {"the second taunt is NOT ENOUGH MP",
+             [](Film& f) { return f.frame >= 104 && voiced(f, "NOT ENOUGH MP"); }},
+        };
+        c.off_never = {says("NO FOE IN RANGE")};
+        c.on_shows = {
+            pool_guard(19, 184.0f),
+            arrived(kInReach),
+            says("NO FOE IN RANGE"),
+            pool_at(21, 184.0f),
+            {"the taunt lands on the foe", [](Film& f) { return f.frame >= 104 && said(f, "Nyah Nyah"); }},
+        };
+        c.on_never = {
+            {"a taunt before the foe is there", [](Film& f) { return f.frame < 104 && said(f, "Nyah Nyah"); }},
+            says("NOT ENOUGH MP"),
+        };
+        c.fork = 20;
+        c.key_frame = 108;
+        all.push_back(c);
+    }
+
+    // K3. SCARE at nobody: the classic scare starts its 8-second rest.
+    {
+        Clip c;
+        c.name = "k3_scare_nobody";
+        c.scene.family = FAMILY_GHOST;
+        c.scene.slot = 1;
+        c.scene.level = 1;
+        c.scene.frames = 130;
+        const auto foe_stage = walk_in_stage(140);
+        c.scene.stage = [foe_stage](Film& film) {
+            fill_mana(film.hero(), 120.0f);              // four scares' worth
+            stop_mp_regen(film.hero());
+            foe_stage(film);
+        };
+        c.scene.before_tick = [fx_scare](Film& film, int f) {
+            if (f < 16)
+                hold_fire(film.actor("foe"));
+            if (f == 16)
+                release(film.actor("foe"));
+            // The carrier's life, printed once per side.
+            const int n = count_of(film.server->world(), Order::FX, fx_scare);
+            if (n > 0 && !has_mark(film, "scare.born"))
+                film.marks["scare.born"] = static_cast<float>(f);
+            if (n == 0 && has_mark(film, "scare.born") && !has_mark(film, "scare.gone"))
+            {
+                film.marks["scare.gone"] = static_cast<float>(f);
+                printf("  k3_scare_nobody: the scare carrier lived from %.0f to %d\n",
+                       film.mark("scare.born"), f);
+            }
+        };
+        c.scene.keys = [](Film&, int f) { return f == 94 ? press_at(f, 94) : press_at(f, 12); };
+        const auto carrier = [fx_scare](Film& f) {
+            return count_of(f.display->world(), Order::FX, fx_scare) >= 1;
+        };
+        c.off_shows = {
+            arrived(kInReach),
+            {"the scare goes off around the ghost at nobody", carrier},
+            pool_at(13, 90.0f),
+            says("SCARE IN"),
+        };
+        c.off_never = {
+            says("NO FOE IN RANGE"),
+            {"a second scare", [carrier](Film& f) { return f.frame > 94 && carrier(f); }},
+        };
+        c.on_shows = {
+            arrived(kInReach),
+            says("NO FOE IN RANGE"),
+            pool_at(13, 120.0f),
+            {"the scare goes off at the foe", [carrier](Film& f) { return f.frame >= 94 && carrier(f); }},
+            {"the foe flees", [](Film& f) { return forced_walk(f.actor("foe")); }},
+        };
+        c.on_never = {says("SCARE IN")};
+        c.fork = 12;
+        c.key_frame = 100;
+        all.push_back(c);
+    }
+
+    // K4. HOWL at nobody: the classic howl starts its 10-second rest.
+    {
+        Clip c;
+        c.name = "k4_howl_nobody";
+        c.scene.family = FAMILY_ORC;
+        c.scene.slot = 1;
+        c.scene.level = 1;
+        c.scene.frames = 130;
+        const auto foe_stage = walk_in_stage(-190);
+        c.scene.stage = [foe_stage](Film& film) {
+            fill_mana(film.hero(), 120.0f);
+            stop_mp_regen(film.hero());
+            foe_stage(film);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            if (f < 16)
+                hold_fire(film.actor("foe"));
+            if (f == 16)
+                release(film.actor("foe"));
+            if (f == 96)
+            {
+                // The stun is 10 + rand0(level*10) - rand0(con*10), con from
+                // the NPC foe's live hp: pin a long one on both sides.
+                walker* foe = film.actor("foe");
+                const int con = foe == nullptr ? 0 :
+                    std::max(0, static_cast<int>(std::trunc(foe->stats()->hitpoints() / 30.0f)));
+                const auto bound = static_cast<std::uint32_t>(
+                    con * living_tuning(FAMILY_ORC, "yell_con_roll_mult"));
+                const auto level_bound = static_cast<std::uint32_t>(
+                    living_tuning(FAMILY_ORC, "yell_level_roll_mult"));
+                printf("  k4_howl_nobody: stun bounds %u and %u\n", level_bound, bound);
+                if (bound > 0)
+                    pin_draws(film, {level_bound, bound}, {level_bound - 1, 0});
+                else
+                    pin_draws(film, {level_bound}, {level_bound - 1});
+            }
+        };
+        c.scene.keys = [](Film&, int f) { return f == 96 ? press_at(f, 96) : press_at(f, 12); };
+        c.off_shows = {
+            pool_guard(11, 120.0f),
+            arrived(kInReach),
+            pool_at(13, 95.0f),
+            says("HOWL IN"),
+        };
+        c.off_never = {
+            says("NO FOE IN RANGE"),
+            {"the foe is stunned", [](Film& f) {
+                 walker* foe = f.actor("foe"); return foe != nullptr && foe->stats()->frozen_delay() > 0; }},
+        };
+        c.on_shows = {
+            pool_guard(11, 120.0f),
+            arrived(kInReach),
+            says("NO FOE IN RANGE"),
+            pool_at(13, 120.0f),
+            {"the howl stuns the foe", [](Film& f) {
+                 walker* foe = f.actor_seen("foe"); return foe != nullptr && foe->stats()->frozen_delay() > 0; }},
+        };
+        c.on_never = {says("HOWL IN")};
+        c.fork = 12;
+        c.key_frame = 100;
+        all.push_back(c);
+    }
+
+    // L. A level-13 enemy mage bot rolls slot 5 with three towers close by:
+    // the classic roll folds 5 into TELEPORT, whose gate says no (and the
+    // 110 px rule shuts every slot anyway); the fix casts HEARTBURST.
+    {
+        Clip c;
+        c.name = "l_slot_roll";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            add_bot(film, "mage", FAMILY_MAGE, 1, -110, -20, 13);
+            const int at[3][2] = {{-70, -20}, {-110, -56}, {-150, -20}};
+            for (int i = 0; i < 3; ++i)
+            {
+                const std::string n = "tower" + std::to_string(i);
+                hold_fire(add_actor(film, n, FAMILY_TOWER1, 0, at[i][0], at[i][1]));
+                mark_hp(film, n);
+            }
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            for (int i = 0; i < 3; ++i)
+                hold_fire(film.actor("tower" + std::to_string(i)));
+            walker* mage = steer_bot(film, "mage");
+            if (mage == nullptr)
+                return;
+            if (f == kCue)
+            {
+                ready_bot(mage);
+                fill_mana(mage, 600.0f);
+                pin_draws(film, {5, 5}, {0, 4});         // special; slot roll 4 -> slot 5
+            }
+            else
+                mage->stats()->set_magicpoints(0.0f);
+        };
+        c.scene.keys = [](Film&, int) { return Keys{}; };
+        const auto bursts = [fx_explosion](Film& f) {
+            return count_of(f.display->world(), Order::FX, fx_explosion) > 0;
+        };
+        const auto tower_hit = [](Film& f) {
+            for (int i = 0; i < 3; ++i)
+            {
+                const std::string n = "tower" + std::to_string(i);
+                walker* t = f.actor_seen(n);
+                if (t == nullptr || t->dead() || hp_of(t) < f.mark(n + ".hp"))
+                    return true;
+            }
+            return false;
+        };
+        c.off_shows = {
+            {"nothing has burst well after the cue",
+             [bursts](Film& f) { return f.frame == 60 && !bursts(f); }},
+        };
+        c.off_never = {
+            {"an explosion", bursts},
+            {"a tower is hit", tower_hit},
+        };
+        c.on_shows = {
+            {"HEARTBURST explodes around the mage", bursts},
+            {"a tower is hit", tower_hit},
+        };
+        c.fork = kCue;
+        c.key_frame = 28;
+        all.push_back(c);
+    }
+
+    // M1. An enemy thief bot tries to charm the hero the seat drives: the
+    // classic game charms him; the fix skips a driven hero and the thief
+    // taunts instead.
+    {
+        Clip c;
+        c.name = "m1_hero_resists_charm";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.level = 5;
+        c.scene.frames = 120;
+        c.scene.stage = [](Film& film) {
+            add_bot(film, "thief", FAMILY_THIEF, 1, 40, 0, 7);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            walker* thief = steer_bot(film, "thief");
+            if (thief == nullptr)
+                return;
+            if (f == kCue)
+            {
+                ready_bot(thief);
+                fill_mana(thief, 100.0f);
+                // special (1 in 5), slot 3, coin = Shift, the resist roll passes
+                pin_draws(film, {5, 3, 2, 20}, {0, 2, 1, 1});
+            }
+            else
+                thief->stats()->set_magicpoints(0.0f);
+        };
+        c.scene.keys = [](Film&, int) { return Keys{}; };
+        c.off_shows = {
+            {"the hero is charmed onto the thief's side",
+             [](Film& f) { walker* h = f.hero_seen(); return h != nullptr && h->team_num() == 1; }},
+            {"the cell reads CHARMED: 10s",
+             [](Film& f) { return seat_timer_text(f).rfind("CHARMED", 0) == 0 && hud_drew("CHARMED: 10s"); }},
+            {"Thief charmed an opponent!", [](Film& f) { return said(f, "charmed an opponent"); }},
+        };
+        c.off_never = {
+            {"'Nyah Nyah!'", [](Film& f) { return said(f, "Nyah Nyah"); }},
+        };
+        c.on_shows = {
+            {"the thief taunts instead", [](Film& f) { return said(f, "Nyah Nyah"); }},
+            {"the hero keeps his colour well after the cue",
+             [](Film& f) { walker* h = f.hero_seen(); return f.frame == 60 && h != nullptr && h->team_num() == 0; }},
+        };
+        c.on_never = {
+            {"the hero changes side", [](Film& f) { walker* h = f.hero_seen(); return h != nullptr && h->team_num() != 0; }},
+            {"a CHARMED cell", [](Film& f) { return seat_timer_text(f).rfind("CHARMED", 0) == 0; }},
+            {"charmed an opponent", [](Film& f) { return said(f, "charmed an opponent"); }},
+        };
+        c.fork = kCue;
+        c.key_frame = 32;
+        all.push_back(c);
+    }
+
+    // M2. The thief charms an orc and the film strikes the thief down: the
+    // classic seat takes the charmed orc; the fix skips it for the soldier.
+    {
+        Clip c;
+        c.name = "m2_seat_skips_charmed";
+        c.scene.family = FAMILY_THIEF;
+        c.scene.slot = 3;
+        c.scene.frames = 110;
+        c.scene.stage = [](Film& film) {
+            add_posted(film, "orc", FAMILY_ORC, 1, 24, 0, 1);       // earlier in the list
+            add_posted(film, "ally", FAMILY_SOLDIER, 0, -110, 0, 0);
+        };
+        c.scene.before_tick = [](Film& film, int f) {
+            hold_fire(film.actor("orc"));
+            hold_fire(film.actor("ally"));
+            if (f == 20)
+                pin_draws(film, {20}, {1});              // the charm passes
+            if (f == 40)
+            {
+                walker* hero = film.hero();
+                if (hero != nullptr && !hero->dead())
+                {
+                    hero->stats()->set_hitpoints(0.0f);  // the film strikes the thief down
+                    hero->set_dead(1);
+                    hero->death();
+                }
+            }
+        };
+        c.scene.keys = [](Film&, int f) { return press_at(f, 20, true); };
+        const Tell orc_joins = {"the orc takes the thief's colour", [](Film& f) {
+            walker* o = f.actor_seen("orc"); return o != nullptr && o->team_num() == 0; }};
+        const Tell thief_down = {"the thief is dead", [](Film& f) {
+            walker* h = f.hero_seen(); return f.frame > 0 && (h == nullptr || h->dead()); }};
+        const Tell new_seat = {"the seat drives a new walker", [](Film& f) {
+            walker* s = seat_seen(f); return s != nullptr && s != f.hero_seen(); }};
+        const auto seat_is = [](const char* who) {
+            return [who](Film& f) { walker* s = seat_seen(f); return s != nullptr && s == f.actor_seen(who); };
+        };
+        const auto charmed_cell = [](Film& f) { return seat_timer_text(f).rfind("CHARMED", 0) == 0; };
+        c.off_shows = {
+            orc_joins, thief_down, new_seat,
+            {"the seat takes the charmed orc", seat_is("orc")},
+            {"its cell reads CHARMED", charmed_cell},
+        };
+        c.off_never = {{"the seat takes the soldier", seat_is("ally")}};
+        c.on_shows = {
+            orc_joins, thief_down, new_seat,
+            {"the seat takes the soldier", seat_is("ally")},
+        };
+        c.on_never = {
+            {"the seat takes the charmed orc", seat_is("orc")},
+            {"a CHARMED cell", charmed_cell},
+        };
+        c.fork = 40;
+        c.key_frame = 48;
+        all.push_back(c);
+    }
+
+    return all;
+}
+
+} // namespace gameplay_fixes_rec
+
+// Every fix of docs/gameplay-fixes.md, filmed twice from the same seed and
+// the same keys: the setting off, then on. Unlike zz_capture_new_specials
+// this SIMULATES unconditionally (only the PPM dump and key.txt are gated on
+// OG_FX_CAPTURE_DIR): the tells are the regression teeth for what each fix
+// shows on screen, and the frame hashes prove the two halves identical until
+// the fix parts them. OG_FX_CAPTURE_ONLY=<clip> plays one clip (both sides).
+TEST(GameLoop, zz_capture_gameplay_fixes)
+{
+    const auto started = std::chrono::steady_clock::now();
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const std::filesystem::path save0_path =
+        std::filesystem::path(get_user_path()) / "save" / "save0.gtl";
+    og::test::ScopedPhysicalFileState save0_restore(save0_path);
+    ASSERT_TRUE(save0_restore.ready())
+        << "failed to snapshot save0: " << save0_restore.error().message();
+
+    int recorded = 0;
+    for (const gameplay_fixes_rec::Clip& clip : gameplay_fixes_rec::clips())
+    {
+        if (only != nullptr && std::strcmp(only, clip.name) != 0)
+            continue;
+        SCOPED_TRACE(clip.name);
+        gameplay_fixes_rec::PairResult r;
+        gameplay_fixes_rec::run_pair(clip, r);
+        ASSERT_FALSE(::testing::Test::HasFatalFailure());
+        ++recorded;
+    }
+    EXPECT_GT(recorded, 0) << "OG_FX_CAPTURE_ONLY names no clip";
+    printf("gameplay fixes films: %d played in %lld ms\n", recorded,
+           static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::steady_clock::now() - started)
+                                      .count()));
 }
