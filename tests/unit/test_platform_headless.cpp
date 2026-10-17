@@ -4058,9 +4058,24 @@ TEST(PlatformHeadless, text_picker_setup_wizard_walks_every_step)
     expect_in_order("--- SETUP: MATCH ---");
     expect_in_order("SOCCER: THE MUDBOWL");
     expect_in_order("ACTIVE - MATCHED BOTS (2) STRONG");
-    // The recap still states the WHOLE match, DIFFICULTY included, even
-    // though its knob lives on the Base Camp DIFFICULTY screen now.
-    expect_in_order("DIFFICULTY: ");
+    // The MATCH page states the match and nothing else: under the team
+    // lines, the one rules line with the RULES step's own two knobs, the
+    // clock as the forward turn left it. The Base Camp DIFFICULTY door's
+    // knobs, the Game Settings and CROSS CONTROL have no line here.
+    expect_in_order("SCORE: MAP  TIME LIMIT: 5 MIN");
+    {
+        const std::size_t match_at = printed.find("--- SETUP: MATCH ---");
+        ASSERT_NE(std::string::npos, match_at);
+        const std::size_t after = printed.find("--- SETUP: RULES ---", match_at);
+        ASSERT_NE(std::string::npos, after);
+        const std::string match_page = printed.substr(match_at, after - match_at);
+        for (const char* gone : {"DIFFICULTY:", "RESPAWNS", "PERMADEATH",
+                                 "GENERATORS", "INFINITE GOLD", "NEW SPECIALS",
+                                 "GAMEPLAY FIXES", "CROSS CONTROL"}) {
+            EXPECT_EQ(std::string::npos, match_page.find(gone))
+                << gone << " on the MATCH page:\n" << match_page;
+        }
+    }
     expect_in_order(std::string(og::ui::kSetupTerminalGoNotice));
     expect_in_order(std::string(og::ui::kSetupTerminalViewLevelNotice));
     expect_in_order(std::string(og::ui::kSetupInvalidRowNotice));
