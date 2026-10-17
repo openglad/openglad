@@ -524,3 +524,26 @@ right. A character with no special in play reads `No special abilities.`
 The HIRE box's last line is generated the same way
 (`og::ui::specials_summary`): `Special:` and the slot names in play, in
 slot order.
+
+## The scene tests
+
+Every new special has a scene that plays it in the real game, in the
+`NewSpecials` suite of `tests/integration/test_special_scenes.cpp` (binary
+`og_test_special_scenes`): the seat's own hero at level 10 casts it with the
+keys a player would press, every other actor is staged on the authoritative
+server world, and the test asserts on the display what the special visibly
+does, its tells: the mine on the ground and the orc that trips it, the wail
+hopping through a pack, the HUD cell counting a rest down. Twenty-two
+scenes: one per special, three of a bot using one, and one of a classic
+special's countdown with the setting off. They run on every lane like any
+other test, one gtest each.
+
+The pictures in the pull request are made from those tests, not the other
+way round. `scripts/media/capture_new_specials.sh` runs the suite with
+`OG_FX_CAPTURE_DIR` set, under which the shared play-through also writes
+every frame and the index of the frame to keep as a still, and encodes a
+GIF, a review strip and the still per scene. The scenes play in their
+declared order in one process; seven of them show slightly different fire
+glow and dust when played alone, because the render-effects clock is global
+and runs on from one scene to the next, so published pictures come from the
+full run.

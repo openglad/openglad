@@ -1,21 +1,32 @@
 #!/usr/bin/env bash
-# New Specials proof media: one GIF per new special, three of a bot using
-# one, and one of a classic special's countdown with the setting off.
+# Pictures of the New Specials scene tests: one GIF per new special, three
+# of a bot using one, and one of a classic special's countdown with the
+# setting off.
 #
-# Runs GameLoop.zz_capture_new_specials (tests/integration/test_game_loop.cpp)
-# from the repository root with SDL's dummy drivers and a throwaway config
-# directory, so a run can never rewrite cfg/openglad.yaml. The test plays each
-# scene in the real game with the New Specials setting the scene names (on,
-# except where a scene turns it off), presses the keys a player would, and
-# fails if the special does not visibly happen. It writes
-# one P6 frame per game tick plus key.txt (the frame that shows the special).
+# This is a tool, not a test. The scenes are ordinary tests, NewSpecials.* in
+# tests/integration/test_special_scenes.cpp (binary og_test_special_scenes):
+# they run on every lane, play each scene in the real game with the New
+# Specials setting the scene names (on, except where a scene turns it off),
+# press the keys a player would, and fail if the special does not visibly
+# happen. All this script adds is OG_FX_CAPTURE_DIR, under which the shared
+# play-through also writes one P6 frame per game tick and still.txt (the
+# index of the frame to keep as a picture). It runs the binary from the
+# repository root with SDL's dummy drivers and a throwaway config directory,
+# so a run can never rewrite cfg/openglad.yaml.
 #
 # For every scene this script writes, into the output directory:
 #   <scene>.gif        2x nearest-neighbour, 12.25 frames a second (game
 #                      speed), no dithering, a 1.5 s hold on the last frame
 #   <scene>-strip.png  every fourth frame at 1x, ten to a row (for review)
-#   <scene>-key.png    the frame that shows the special, at 2x
+#   <scene>-key.png    the still, at 2x (named -key for the links already
+#                      published)
 # A GIF above 3 MB, or shorter than 8 s or longer than 12.5 s, fails the run.
+#
+# The scenes run in their declared order in one process, exactly as the test
+# binary runs them. Seven of them show slightly different fire glow and dust
+# when played alone (the render-effects clock is global and runs on between
+# scenes), so published pictures are made from the full run; ONLY is for
+# iterating on one scene.
 #
 # Output lands in build/media/new-specials/ (gitignored); finished media go
 # to the openglad/openglad-screenshots repo, never to this one (AGENTS.md,
@@ -23,16 +34,17 @@
 #
 # Usage: scripts/media/capture_new_specials.sh [output-dir]
 #   OPENGLAD_BUILD=<dir>  build tree (default build/ci-test)
-#   ONLY=<scene>          record and encode one scene
+#   ONLY=<test>           one scene, by its test name or a gtest glob: the
+#                         filter is NewSpecials.<ONLY> (e.g. ONLY='*mine*')
 #
-# Build first:  cmake --build --preset ci-test --target og_test_game_core
+# Build first:  cmake --build --preset ci-test --target og_test_special_scenes
 # ffmpeg, ffprobe and magick come from the dev shell (`nix develop`).
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="${OPENGLAD_BUILD:-$REPO_ROOT/build/ci-test}"
-TEST_BIN="$BUILD/og_test_game_core"
+TEST_BIN="$BUILD/og_test_special_scenes"
 OUT_DIR="${1:-$REPO_ROOT/build/media/new-specials}"
 RAW_DIR="$OUT_DIR/raw"
 
@@ -66,7 +78,7 @@ find_font() {
 
 [ -x "$TEST_BIN" ] \
     || die "$TEST_BIN not found; build it first:
-  cmake --build --preset ci-test --target og_test_game_core"
+  cmake --build --preset ci-test --target og_test_special_scenes"
 for tool in ffmpeg ffprobe magick; do
     command -v "$tool" > /dev/null \
         || die "$tool not found; enter the dev shell first: nix develop"
@@ -88,9 +100,8 @@ mkdir -p "$RAW_DIR"
         SDL_RENDER_DRIVER=software \
         OPENGLAD_CONFIG_DIR="$WORK_DIR/config" \
         OG_FX_CAPTURE_DIR="$RAW_DIR" \
-        ${ONLY:+OG_FX_CAPTURE_ONLY="$ONLY"} \
-        "$TEST_BIN" --gtest_filter='GameLoop.zz_capture_new_specials'
-) || die "the recording failed (a special did not show); nothing encoded"
+        "$TEST_BIN" --gtest_filter="NewSpecials.${ONLY:-*}"
+) || die "a scene test failed (a special did not show); nothing encoded"
 
 VF='scale=iw*2:ih*2:flags=neighbor'
 encoded=0
@@ -130,14 +141,14 @@ for scene_dir in "$RAW_DIR"/*/; do
         -pointsize 11 -label '%t' $strip_frames -tile 10x -geometry +2+2 \
         "$OUT_DIR/$scene-strip.png"
 
-    key="$(tr -d ' \n' < "$scene_dir/key.txt")"
-    [ "$key" -ge 0 ] 2> /dev/null || die "$scene has no key frame"
-    key_ppm="$(printf '%s/%03d.ppm' "$scene_dir" "$key")"
-    magick "$key_ppm" -filter point -resize 200% "$OUT_DIR/$scene-key.png"
+    still="$(tr -d ' \n' < "$scene_dir/still.txt")"
+    [ "$still" -ge 0 ] 2> /dev/null || die "$scene has no still"
+    still_ppm="$(printf '%s/%03d.ppm' "$scene_dir" "$still")"
+    magick "$still_ppm" -filter point -resize 200% "$OUT_DIR/$scene-key.png"
 
-    printf '%s  %s bytes  %ss  key frame %s\n' "$gif" "$bytes" "$seconds" "$key"
+    printf '%s  %s bytes  %ss  still %s\n' "$gif" "$bytes" "$seconds" "$still"
     encoded=$((encoded + 1))
 done
 
-[ "$encoded" -gt 0 ] || die "no scene was recorded"
+[ "$encoded" -gt 0 ] || die "no scene was played"
 printf 'encoded %d scene(s) into %s\n' "$encoded" "$OUT_DIR"

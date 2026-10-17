@@ -422,6 +422,26 @@ Season levels. Level 8's floor is 0, so no test moves; other than the
 eased levels, it is the one change outside the setting that a calibration
 suite can see.
 
+## The scene tests
+
+Every fix above has a scene that plays it in the real game, in the
+`GameplayFixes` suite of `tests/integration/test_special_scenes.cpp` (binary
+`og_test_special_scenes`). Each scene is played twice from the same seed and
+the same keys, the setting off and then on, with New Specials off in both so
+every Shift is the classic one. The test asserts what the player sees on
+each side and what must never show (the classic bug with the setting off,
+the fix with it on), and hashes the seat's viewport after every frame to
+prove the two runs identical until the frame the fix parts them.
+Twenty-one scenes: A has three (resisted, nobody to disarm, the stagger), E
+two, H two, K four, M two, and the rest one each. They run on every lane
+like any other test, one gtest each.
+
+`scripts/media/capture_gameplay_fixes.sh` records them: it runs the suite
+with `OG_FX_CAPTURE_DIR` set, under which the shared play-through also
+writes every frame of both runs and the index of the still, and encodes
+each pair side by side (SETTING OFF on the left, SETTING ON on the right)
+with a frame counter.
+
 ## Rulings (2026-10-16)
 
 The maintainer answered the nine questions this work asked; each answer is

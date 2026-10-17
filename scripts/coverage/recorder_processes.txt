@@ -43,6 +43,7 @@ og_test_sdl_video_lifecycle
 og_test_smooth
 og_test_snapshot_benchmark
 og_test_snapshot_safety
+og_test_special_scenes
 og_test_stats
 og_test_tower_run
 og_test_view
