@@ -2709,7 +2709,13 @@ short walker::special()
                         }
                         
                         if (myscreen->gameplay_fixes && generic && !disarmed)
+                        {
+                            // port of the current game's 7b1dbf03: everyone in reach resisted, so the try
+                            // costs half the slot's price and the usual busy
+                            stats->magicpoints -= stats->special_cost[(int)current_special] / 2;
+                            busy += 5;
                             return 0; // port of the current game's e6475850: DISARM refuses when nobody was staggered
+                        }
                         if (generic)
                         {
                             if (on_screen())
