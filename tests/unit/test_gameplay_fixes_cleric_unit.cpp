@@ -26,11 +26,15 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <cstdint>
+#include <memory>
+#include <string>
 
 namespace {
 
@@ -210,6 +214,64 @@ TEST(GameplayFixesClericBot, the_coin_is_drawn_and_then_overridden)
             << "one coin and nothing else, setting " << fixes;
         EXPECT_EQ(fixes != 0 ? 1 : 0, static_cast<int>(cleric->shifter_down()))
             << "the coin said raise; setting " << fixes;
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A cleric whose hero has less than the 60 INT a TURN UNDEAD needs: the cast
+// refuses it ("60 INT REQUIRED", 5 busy), so with the setting on the gate
+// asks the same question and raises instead, even with a skeleton in reach
+// and the coin on turn. With 60 INT it turns. The classic gate keeps the coin
+// on both INT values.
+// RED on the gate without the INT question: with the setting on and 40 INT
+// the shift stays 1.
+TEST(GameplayFixesClericBot, raises_when_its_hero_lacks_the_int_to_turn)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}}) {
+        for (const short intelligence : {short{40}, short{60}}) {
+            TestGameWorld tw;
+            tw.world().gameplay_fixes = fixes;
+            living* cleric = add_cleric(tw);
+            ASSERT_NE(nullptr, cleric);
+            cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
+            ASSERT_NE(nullptr, cleric->myguy);
+            cleric->myguy->intelligence = intelligence;
+            ASSERT_NE(nullptr, add_living(tw, FAMILY_SKELETON, 2, 150, 100, 1));
+
+            const int want = (fixes != 0 && intelligence < 60) ? 0 : 1;
+            for (const int slot : {2, 3}) {
+                const GateOutcome g = gate(cleric, slot, 1);
+                EXPECT_TRUE(g.answer)
+                    << "slot " << slot << ", INT " << intelligence
+                    << ", setting " << fixes;
+                EXPECT_EQ(want, g.shift)
+                    << "slot " << slot << ": the coin said turn; INT "
+                    << intelligence << ", setting " << fixes;
+            }
+        }
+    }
+
+    // The cast asks the same question and still refuses.
+    {
+        TestGameWorld tw;
+        tw.world().gameplay_fixes = 1;
+        living* cleric = add_cleric(tw);
+        ASSERT_NE(nullptr, cleric);
+        cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
+        ASSERT_NE(nullptr, cleric->myguy);
+        cleric->myguy->intelligence = 40;
+        ASSERT_NE(nullptr, add_living(tw, FAMILY_SKELETON, 2, 150, 100, 1));
+
+        const FamilyDescriptor& desc = *get_family_descriptor(FAMILY_CLERIC);
+        cleric->set_current_special(2);
+        cleric->set_shifter_down(1);
+        cleric->set_busy(0);
+        const auto turn = og::script::hooks::do_special(&desc, cleric);
+        ASSERT_TRUE(turn.has_value());
+        EXPECT_FALSE(turn->succeeded());
+        EXPECT_EQ(std::string("60 INT REQUIRED"), turn->reason());
+        EXPECT_FLOAT_EQ(5.0f, cleric->busy());
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

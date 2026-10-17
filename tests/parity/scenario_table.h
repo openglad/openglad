@@ -1222,7 +1222,7 @@ inline constexpr Mutation kMut_special_archmage_do_special = {
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/families/living-05-cleric.lua", 140,
+    "packs/core/families/living-05-cleric.lua", 150,
     "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
     "local mace = nil",
     "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. Team-0 alive collapses from 2 (cleric + shield) to 1 and WalkerOfTeamAlive(0, 2, 2) fails its floor."
@@ -1331,11 +1331,11 @@ inline constexpr Mutation kMut_family_skeleton_init = {
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks CLERIC descriptor HP x100 "
-    "(packs/core/families/living-05-cleric.lua:331). "
+    "(packs/core/families/living-05-cleric.lua:344). "
     "family_cleric_scen99's WalkerHpRangeAtFinalTick(FAMILY_CLERIC, "
     "11900, 12100) leaves its window (golden 12000 cents -> mutated "
     "1200000 cents); measured 2026-09-15 by staging the pin into "
@@ -3814,7 +3814,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3833,7 +3833,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3852,7 +3852,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -5159,7 +5159,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
         "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 373,
+    "packs/core/families/living-05-cleric.lua", 386,
     "heal_range = 60",
     "heal_range = 1",
     "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count==0 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
@@ -5199,7 +5199,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_skeleton_scen99[] = {
         "invariant: the caster is never engaged (the ally does the killing), so it finishes at 117/120 (11700 cents) -- proof the skeleton came from the raise and not from a melee-driven code path"),
 };
 inline constexpr Mutation kMut_cleric_raise_skeleton_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 381,
+    "packs/core/families/living-05-cleric.lua", 394,
     "raise_skeleton_range = 60",
     "raise_skeleton_range = 1",
     "Collapses the RAISE UNDEAD corpse reach so nearby_corpse's `distance < range` test fails on the Manhattan-23 bloodstain and raise_skeleton returns false. No LIVING_SKELETON is summoned: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5235,7 +5235,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_ghost_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_cleric_raise_ghost_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 382,
+    "packs/core/families/living-05-cleric.lua", 395,
     "raise_ghost_range = 30",
     "raise_ghost_range = 1",
     "Collapses the RAISE GHOST corpse reach below the Manhattan-23 bloodstain, so nearby_corpse returns nil and raise_ghost returns false before do_summon. No LIVING_GHOST enters oblist: WalkerFamilyCount(FAMILY_GHOST, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5318,7 +5318,7 @@ inline constexpr FactPredicate kFacts_cleric_resurrect_friendly_scen99[] = {
         "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 84/120 (8400 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (8400) and a companion recapture (8300)."),
 };
 inline constexpr Mutation kMut_cleric_resurrect_friendly_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 239,
+    "packs/core/families/living-05-cleric.lua", 249,
     "    alive.hp = og.fdiv(alive.max_hp, 2.0)",
     "    alive.hp = og.fdiv(alive.max_hp, 4.0)",
     "Quarters the friendly-RESURRECT revival health instead of halving it. The rebuilt soldier returns at 31 of 120 HP (3100 cents) rather than 61 (6100), dropping out of WalkerHpRangeAtFinalTick's [5000, 6500] window while every other predicate still holds -- an isolated hit on the branch-specific half-health rule."
@@ -8678,7 +8678,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_undead_reach_scen99[] = {
         "consequence: the classic reach is 4*5 = 20 px and both skeletons are 50 px away at tick 3, so the cast finds no foe (NO FOE IN RANGE) and both skeletons live"),
 };
 inline constexpr Mutation kMut_cleric_turn_undead_reach_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 375,
+    "packs/core/families/living-05-cleric.lua", 388,
     "turn_undead_range_per_level = 4",
     "turn_undead_range_per_level = 20",
     "Widens the classic reach to 20 px per level (100 px at level 5), so the tick-3 cast reaches both skeletons and destroys them: WalkerAliveAtFinal(FAMILY_SKELETON, 2) fails."
@@ -8692,7 +8692,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_undead_reach_fixes_scen99[] = 
     pred::LevelDoneEquals(2),
 };
 inline constexpr Mutation kMut_cleric_turn_undead_reach_fixes_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 387,
+    "packs/core/families/living-05-cleric.lua", 400,
     "turn_undead_range_min = 60",
     "turn_undead_range_min = 0",
     "Drops the 60 px floor, so the reach is the classic 4*5 = 20 px: the cast finds no foe and both skeletons live. WalkerDiedByFinal(FAMILY_SKELETON) and WalkerOfTeamAlive(1, 0, 0) fail."
@@ -8714,7 +8714,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_no_undead_scen99[] = {
         "consequence: the classic cast with only a living soldier in reach turns nothing yet plays SOUND_HEAL at tick 20 on top of the five combat sounds"),
 };
 inline constexpr Mutation kMut_cleric_turn_no_undead_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 375,
+    "packs/core/families/living-05-cleric.lua", 388,
     "turn_undead_range_per_level = 4",
     "turn_undead_range_per_level = 1",
     "Shrinks the classic reach to 1 px per level (10 px), so the soldier 28 px away is out of reach: the cast is refused NO FOE IN RANGE and plays nothing. EventKindExactly(play_sound, 6) reads 5."
@@ -8763,7 +8763,7 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = 
         "consequence: with the setting on the cleric bot's slot-2 rolls raise (no undead in reach) instead of following the coin; the fight that follows leaves the hostile tower alive at 29 hp"),
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 303,
+    "packs/core/families/living-05-cleric.lua", 316,
     "self:set_shifter_down(0)",
     "self:set_shifter_down(1)",
     "Makes the gate pick TURN UNDEAD on every slot-2 roll with no undead in reach (refused free, -2) instead of the raise, so the cleric's slot-2 rolls no longer probe for a corpse and the fight changes: the tower does not end at 29 hp.",
@@ -8783,7 +8783,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_fixes_scen99[] = 
         "anchor: the heal still lands and still plays SOUND_HEAL on top of the 13 combat sounds"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_fixes_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 98,
+    "packs/core/families/living-05-cleric.lua", 108,
     "ally.hp = ally.max_hp",
     "ally.hp = og.fadd(ally.hp, 0)",
     "Removes the cap (the hp is written back unchanged), so the heal lands its full amount again and the big orc ends far above its 180 max, outside WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 17800, 18000)."

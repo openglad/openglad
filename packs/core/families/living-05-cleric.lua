@@ -11,6 +11,16 @@ local LIVING_GHOST = assert(og.family_id("living", "core:ghost"))
 -- og::combat::kMaceLifeCap (mystic mace lifetime bound; binds above 738 MP).
 local MACE_LIFE_CAP = 468
 
+-- The INT a TURN UNDEAD needs. A hero below it is refused "60 INT REQUIRED"
+-- (and pays 5 busy); with the fixes on the bot gate asks the same question,
+-- so it never picks a cast its hero cannot make.
+local function lacks_turn_int(self, t)
+  if not self:has_guy() then
+    return false
+  end
+  return self:g_intelligence() < t.turn_undead_int_req
+end
+
 -- Shared turn-undead block: the case-2 and case-3 shifter_down bodies
 -- were token-identical. Returns false where the legacy code returned
 -- false out of do_special; true = the ladder's `return true`.
@@ -19,7 +29,7 @@ local function do_turn_undead(self)
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
-  if self:has_guy() and self:g_intelligence() < t.turn_undead_int_req then
+  if lacks_turn_int(self, t) then
     -- busy is a C++ float: per-op rounding
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false, string.format("%d INT REQUIRED", t.turn_undead_int_req)
@@ -295,9 +305,12 @@ local function check_special_ai(self)
     local slot = self:current_special()
     if slot == 2 or slot == 3 then
       -- Gameplay Fixes: TURN UNDEAD only with something to turn in reach,
-      -- else the raise (which refuses free when there is no corpse).
-      local reach = gf.turn_range(self, og.tuning(self))
-      if self:undead_foes_in_range(reach) > 0 then
+      -- and only with the INT to cast it; else the raise (which refuses
+      -- free when there is no corpse).
+      local t = og.tuning(self)
+      local reach = gf.turn_range(self, t)
+      local can_turn = not lacks_turn_int(self, t)
+      if can_turn and self:undead_foes_in_range(reach) > 0 then
         self:set_shifter_down(1)
       else
         self:set_shifter_down(0)
