@@ -127,6 +127,14 @@ struct CurvePin
 // 3000, above band 4 on every seed. Crew survivors at 600 are [7,8,8],
 // so 7 is the measured minimum. See the dated README calibration update;
 // the dedicated defense test below also pins the actual F4 contract.
+// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
+// Specials on), which the asserting run now plays: HEAL capped at full
+// health took levels 2, 5 and 8 under their floors on seed 42 (5, 2, 2
+// against 6, 5, 3) because their orders of battle had been tuned against
+// a quietly overhealed crew; the levels were eased in the builders (2: one
+// brigand fewer, 5: one picket fewer, 8: the terrace-2 bruisers at lvl 1),
+// and they now read 7 6 6, 7 8 7 and 5 8 5 across seeds {42, 1337, 2025}.
+// Every floor holds, no floor moved; see the README's 2026-10-17 update.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 1},  {5, 3, 5},
     {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 7},  {10, 5, 1},
@@ -142,12 +150,10 @@ int survivors_at_600(int level_id, int crew_level, std::uint32_t seed)
     if (!fx.loaded)
         return -1;
     GameWorld& world = fx.world();
-    // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
-    // fixture world keeps the classic kits it is built with.
-    if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
-    // OG_CALIBRATION_GAMEPLAY_FIXES=1 measures with Gameplay Fixes on; unset,
-    // the fixture world keeps the classic game it is built with.
-    if (const char* gfx = std::getenv("OG_CALIBRATION_GAMEPLAY_FIXES"); gfx != nullptr && gfx[0] == '1') world.gameplay_fixes = 1;
+    // The suite plays the shipped default (both on); OG_CALIBRATION_<NAME>=0
+    // measures the classic value (westlands_sim_fixture.h).
+    world.new_specials = westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
+    world.gameplay_fixes = westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
     std::vector<walker*> crew = deploy_crew(
         fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                           FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
@@ -229,12 +235,10 @@ TEST_F(LongSeasonCalibration, ashfall_fair_holds_defense_band_at_curve)
         LoadedWestlandsLevel fx(9, seed);
         ASSERT_TRUE(fx.loaded);
         GameWorld& world = fx.world();
-        // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
-        // fixture world keeps the classic kits it is built with.
-        if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
-        // OG_CALIBRATION_GAMEPLAY_FIXES=1 measures with Gameplay Fixes on; unset,
-        // the fixture world keeps the classic game it is built with.
-        if (const char* gfx = std::getenv("OG_CALIBRATION_GAMEPLAY_FIXES"); gfx != nullptr && gfx[0] == '1') world.gameplay_fixes = 1;
+        // The suite plays the shipped default (both on); OG_CALIBRATION_<NAME>=0
+        // measures the classic value (westlands_sim_fixture.h).
+        world.new_specials = westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
+        world.gameplay_fixes = westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
         const auto crew = deploy_crew(
             fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                               FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,

@@ -216,11 +216,14 @@ void build_ferry_right(const LevelDataHooks& hooks)
 
     // The river bandits (team 2). Knifemen on the span and brigands on the
     // west approach open the fight.
+    // (Gameplay Fixes recalibration 2026-10-17: with HEAL capped at full
+    // health the crew-1 hold lost the overheal that carried seed 42
+    // through the opening; one brigand fewer, the doc's (26,20) dropped.)
     static constexpr int knifemen[4][2] = {{31, 19}, {31, 21}, {33, 20},
                                            {35, 20}};
     for (const auto& c : knifemen)
         place_living(w, FAMILY_THIEF, 2, 0, c[0], c[1], 1);
-    static constexpr int brigands[3][2] = {{24, 19}, {24, 21}, {26, 20}};
+    static constexpr int brigands[2][2] = {{24, 19}, {24, 21}};
     for (const auto& c : brigands)
         place_living(w, FAMILY_SOLDIER, 2, 0, c[0], c[1], 1);
     // The camp: bowmen and wardens on guard posts.
@@ -671,7 +674,7 @@ std::vector<ExpectedLevel> spring_expectations()
         // id, floors, title, starts, t0 liv/gen, t1 liv/gen, t2 liv/gen,
         // delayed, no-specials, stairs, exits
         {1, 1, "Mud Pay", 9, 0, 0, 0, 0, 17, 0, 2, 0, true, {2}},
-        {2, 1, "The Ferry Right", 10, 5, 0, 0, 0, 26, 0, 14, 0, true,
+        {2, 1, "The Ferry Right", 10, 5, 0, 0, 0, 25, 0, 14, 0, true,
          {4, 3, 1}},
         {3, 2, "Saltmere Bell", 8, 0, 0, 0, 0, 23, 1, 2, 0, true, {4, 2}},
         {4, 1, "The Assessor", 10, 5, 0, 0, 0, 32, 1, 13, 1, true, {5, 3}},

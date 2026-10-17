@@ -41,6 +41,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <memory>
 #include <string>
@@ -245,6 +246,14 @@ inline int alive_livings_on_team(GameWorld& world, int team)
             ++n;
     }
     return n;
+}
+
+// The calibration suites play the shipped default (Gameplay Fixes on, New
+// Specials on). OG_CALIBRATION_<NAME>=0 measures the classic value.
+inline short calibration_setting(const char* name)
+{
+    const char* v = std::getenv(name);
+    return (v != nullptr && v[0] == '0') ? 0 : 1;
 }
 
 } // namespace westlands_fixture
