@@ -1545,8 +1545,11 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # standard lane and +109 s and +215 s on two ASan+UBSan runs of the
     # same tree. Scaling the New Specials share by the local ratios
     # (0.58 plain, 0.22 under ASan+UBSan), the binary is expected at about
-    # 205 s on the standard lane and 133-266 s under ASan+UBSan (derived):
-    # 600 keeps the slow run under half the budget and gives the scenes
+    # 205 s on the standard lane and 133-266 s under ASan+UBSan (derived).
+    # Measured on the first CI run of the split (2026-10-17, PR #364):
+    # 137 s on the standard lane, 311 s under ASan+UBSan and 72 s under
+    # coverage, with og_test_game_core back at 98 s, 201 s and 79 s. 600
+    # keeps the sanitizer run at about half the budget and gives the scenes
     # room to grow. 600 is the budget og_unit_sim already has below; a
     # genuine hang still trips well before the 60-minute job cap.
     set_tests_properties(og_test_special_scenes PROPERTIES TIMEOUT 600)
