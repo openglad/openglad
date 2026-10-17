@@ -1,26 +1,30 @@
 #!/usr/bin/env bash
-# Gameplay Fixes proof media: one GIF per fix (fixes A to M of
-# docs/gameplay-fixes.md), each the same scene played twice from the same
+# Pictures of the Gameplay Fixes scene tests: one GIF per fix (fixes A to M
+# of docs/gameplay-fixes.md), each the same scene played twice from the same
 # seed and the same keys, the setting OFF on the left and ON on the right.
 #
-# Runs GameLoop.zz_capture_gameplay_fixes (tests/integration/test_game_loop.cpp)
+# This is a tool, not a test. The scenes are ordinary tests, GameplayFixes.*
+# in tests/integration/test_special_scenes.cpp (binary og_test_special_scenes):
+# they run on every lane, play each scene in the real game twice, with the
+# Gameplay Fixes setting off and on (New Specials off in both, so every Shift
+# is the classic one), press the keys a player would, and fail if the classic
+# bug does not show on the off side, if the fix does not show on the on side,
+# or if the two runs differ on screen before the fix parts them. All this
+# script adds is OG_FX_CAPTURE_DIR, under which the shared play-through also
+# writes one P6 frame per game tick into <scene>-off/ and <scene>-on/ plus
+# still.txt (the index of the frame to keep as a picture). It runs the binary
 # from the repository root with SDL's dummy drivers and a throwaway config
-# directory, so a run can never rewrite cfg/openglad.yaml. The test plays each
-# scene in the real game twice, with the Gameplay Fixes setting off and on
-# (New Specials off in both, so every Shift is the classic one), presses the
-# keys a player would, and fails if the classic bug does not show on the left,
-# if the fix does not show on the right, or if the two runs differ on screen
-# before the fix parts them. It writes one P6 frame per game tick into
-# <clip>-off/ and <clip>-on/ plus key.txt (the frame of the still).
+# directory, so a run can never rewrite cfg/openglad.yaml.
 #
-# For every clip this script writes, into the output directory:
-#   <clip>.gif            both runs at 2x nearest-neighbour side by side with
-#                         a 4 px gutter and a label band (SETTING OFF /
-#                         SETTING ON, a frame counter), 12.25 frames a second
-#                         (game speed), no dithering, a 1.5 s hold at the end
-#   <clip>-off-strip.png  every fourth frame of that run at 1x, ten to a row
-#   <clip>-on-strip.png   (for review)
-#   <clip>-key.png        the still, both runs side by side at 2x
+# For every scene this script writes, into the output directory:
+#   <scene>.gif            both runs at 2x nearest-neighbour side by side with
+#                          a 4 px gutter and a label band (SETTING OFF /
+#                          SETTING ON, a frame counter), 12.25 frames a second
+#                          (game speed), no dithering, a 1.5 s hold at the end
+#   <scene>-off-strip.png  every fourth frame of that run at 1x, ten to a row
+#   <scene>-on-strip.png   (for review)
+#   <scene>-key.png        the still, both runs side by side at 2x (named
+#                          -key for the links already published)
 # A GIF above 3 MB, or shorter than 8 s or longer than 12.5 s, fails the run,
 # as does a pair of runs with different frame counts.
 #
@@ -30,18 +34,19 @@
 #
 # Usage: scripts/media/capture_gameplay_fixes.sh [output-dir]
 #   OPENGLAD_BUILD=<dir>  build tree (default build/ci-test)
-#   ONLY=<clip>           record and encode one clip (both runs)
+#   ONLY=<test>           one scene (both runs), by its test name or a gtest
+#                         glob: the filter is GameplayFixes.<ONLY>
 #   OG_OVERLAY_FONT=<ttf> the label font (default: DejaVuSansMono.ttf found
 #                         under XDG_DATA_DIRS)
 #
-# Build first:  cmake --build --preset ci-test --target og_test_game_core
+# Build first:  cmake --build --preset ci-test --target og_test_special_scenes
 # ffmpeg, ffprobe and magick come from the dev shell (`nix develop`).
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="${OPENGLAD_BUILD:-$REPO_ROOT/build/ci-test}"
-TEST_BIN="$BUILD/og_test_game_core"
+TEST_BIN="$BUILD/og_test_special_scenes"
 OUT_DIR="${1:-$REPO_ROOT/build/media/gameplay-fixes}"
 RAW_DIR="$OUT_DIR/raw"
 
@@ -80,7 +85,7 @@ find_font() {
 
 [ -x "$TEST_BIN" ] \
     || die "$TEST_BIN not found; build it first:
-  cmake --build --preset ci-test --target og_test_game_core"
+  cmake --build --preset ci-test --target og_test_special_scenes"
 for tool in ffmpeg ffprobe magick; do
     command -v "$tool" > /dev/null \
         || die "$tool not found; enter the dev shell first: nix develop"
@@ -102,9 +107,8 @@ mkdir -p "$RAW_DIR"
         SDL_RENDER_DRIVER=software \
         OPENGLAD_CONFIG_DIR="$WORK_DIR/config" \
         OG_FX_CAPTURE_DIR="$RAW_DIR" \
-        ${ONLY:+OG_FX_CAPTURE_ONLY="$ONLY"} \
-        "$TEST_BIN" --gtest_filter='GameLoop.zz_capture_gameplay_fixes'
-) || die "the recording failed (a fix did not show, or the halves parted early); nothing encoded"
+        "$TEST_BIN" --gtest_filter="GameplayFixes.${ONLY:-*}"
+) || die "a scene test failed (a fix did not show, or the runs parted early); nothing encoded"
 
 count_frames() {
     find "$1" -maxdepth 1 -name '[0-9][0-9][0-9].ppm' | wc -l | tr -d ' '
@@ -149,18 +153,18 @@ half_filter() {
 encoded=0
 for off_dir in "$RAW_DIR"/*-off/; do
     off_dir="${off_dir%/}"
-    clip="$(basename "$off_dir")"
-    clip="${clip%-off}"
-    on_dir="$RAW_DIR/$clip-on"
-    [ -d "$on_dir" ] || die "$clip has an off run but no on run"
+    scene="$(basename "$off_dir")"
+    scene="${scene%-off}"
+    on_dir="$RAW_DIR/$scene-on"
+    [ -d "$on_dir" ] || die "$scene has an off run but no on run"
 
     n_off="$(count_frames "$off_dir")"
     n_on="$(count_frames "$on_dir")"
     [ "$n_off" -eq "$n_on" ] \
-        || die "$clip: $n_off frames with the setting off, $n_on with it on"
+        || die "$scene: $n_off frames with the setting off, $n_on with it on"
     diff_at="$(first_diff "$off_dir" "$on_dir" "$n_off")"
 
-    gif="$OUT_DIR/$clip.gif"
+    gif="$OUT_DIR/$scene.gif"
     counter="drawtext=fontfile=$FONT:text='frame %{eif\\:n\\:d\\:3}':x=w-tw-6:y=4:fontsize=18:fontcolor=0x8a93a2"
     left="$(half_filter 'SETTING OFF' 0 '')"
     right="$(half_filter 'SETTING ON' "$GUTTER" ",$counter")"
@@ -178,12 +182,12 @@ for off_dir in "$RAW_DIR"/*-off/; do
         'BEGIN { exit !(d >= lo && d <= hi) }' \
         || die "$gif runs ${seconds}s, outside ${MIN_SECONDS}-${MAX_SECONDS}s"
 
-    strip "$off_dir" "$OUT_DIR/$clip-off-strip.png"
-    strip "$on_dir" "$OUT_DIR/$clip-on-strip.png"
+    strip "$off_dir" "$OUT_DIR/$scene-off-strip.png"
+    strip "$on_dir" "$OUT_DIR/$scene-on-strip.png"
 
-    key="$(tr -d ' \n' < "$on_dir/key.txt")"
-    [ "$key" -ge 0 ] 2> /dev/null || die "$clip has no key frame"
-    key_name="$(printf '%03d.ppm' "$key")"
+    still="$(tr -d ' \n' < "$on_dir/still.txt")"
+    [ "$still" -ge 0 ] 2> /dev/null || die "$scene has no still"
+    key_name="$(printf '%03d.ppm' "$still")"
     magick \
         \( "$off_dir/$key_name" -filter point -resize "$((SCALE * 100))%" \
            -background "$BG" -gravity north -splice "0x$BAND" \
@@ -194,13 +198,13 @@ for off_dir in "$RAW_DIR"/*-off/; do
            -gravity west -splice "${GUTTER}x0" \
            -gravity northwest -fill '#d8dee9' -font "$FONT" -pointsize 18 \
            -annotate "+$((GUTTER + 6))+4" 'SETTING ON' \
-           -gravity northeast -fill '#8a93a2' -annotate +6+4 "frame $key" \) \
-        -background "$BG" +append "$OUT_DIR/$clip-key.png"
+           -gravity northeast -fill '#8a93a2' -annotate +6+4 "frame $still" \) \
+        -background "$BG" +append "$OUT_DIR/$scene-key.png"
 
-    printf '%s  %s bytes  %ss  key frame %s  first differing frame %s\n' \
-        "$gif" "$bytes" "$seconds" "$key" "$diff_at"
+    printf '%s  %s bytes  %ss  still %s  first differing frame %s\n' \
+        "$gif" "$bytes" "$seconds" "$still" "$diff_at"
     encoded=$((encoded + 1))
 done
 
-[ "$encoded" -gt 0 ] || die "no clip was recorded"
-printf 'encoded %d clip(s) into %s\n' "$encoded" "$OUT_DIR"
+[ "$encoded" -gt 0 ] || die "no scene was played"
+printf 'encoded %d scene(s) into %s\n' "$encoded" "$OUT_DIR"
