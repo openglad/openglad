@@ -211,12 +211,10 @@ BattleResult battle_at_600(int level_id, int crew_level, std::uint32_t seed)
     if (!fx.loaded)
         return out;
     GameWorld& world = fx.world();
-    // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
-    // fixture world keeps the classic kits it is built with.
-    if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
-    // OG_CALIBRATION_GAMEPLAY_FIXES=1 measures with Gameplay Fixes on; unset,
-    // the fixture world keeps the classic game it is built with.
-    if (const char* gfx = std::getenv("OG_CALIBRATION_GAMEPLAY_FIXES"); gfx != nullptr && gfx[0] == '1') world.gameplay_fixes = 1;
+    // The suite plays the shipped default (both on); OG_CALIBRATION_<NAME>=0
+    // measures the classic value (westlands_sim_fixture.h).
+    world.new_specials = westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
+    world.gameplay_fixes = westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
     std::vector<walker*> crew = deploy_crew(
         fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                           FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
