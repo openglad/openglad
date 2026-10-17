@@ -3630,7 +3630,12 @@ short walker::special()
                                     if (myscreen->gameplay_fixes && colour == (Uint32) team_num)
                                         colour = (colour + 1) % 8;
                                     ob->team_num = colour;
-                                    ob->charm_left = 25 + random(generic*20);
+                                    // port of the current game's dc1a2a89: a higher-level foe's edge counts
+                                    // as 0, so its berserk lasts 25 ticks and nothing is drawn
+                                    if (generic < 0)
+                                        ob->charm_left = 25;
+                                    else
+                                        ob->charm_left = 25 + random(generic*20);
                                 }
                                 else
                                 {
