@@ -1222,7 +1222,7 @@ inline constexpr Mutation kMut_special_archmage_do_special = {
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "packs/core/families/living-05-cleric.lua", 140,
+    "packs/core/families/living-05-cleric.lua", 150,
     "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
     "local mace = nil",
     "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. Team-0 alive collapses from 2 (cleric + shield) to 1 and WalkerOfTeamAlive(0, 2, 2) fails its floor."
@@ -1283,11 +1283,11 @@ inline constexpr Mutation kMut_family_spawn_identity_elf = {
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "packs/core/families/living-00-soldier.lua", 160,
+    "packs/core/families/living-00-soldier.lua", 171,
     "hp = 120",
     "hp = 12000",
     "Cranks SOLDIER descriptor HP x100 "
-    "(packs/core/families/living-00-soldier.lua:160). "
+    "(packs/core/families/living-00-soldier.lua:171). "
     "family_soldier_scen99's WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, "
     "11900, 12100) leaves its window (golden 12000 cents -> mutated "
     "1200000 cents); measured 2026-09-15 by staging the pin into "
@@ -1331,11 +1331,11 @@ inline constexpr Mutation kMut_family_skeleton_init = {
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks CLERIC descriptor HP x100 "
-    "(packs/core/families/living-05-cleric.lua:331). "
+    "(packs/core/families/living-05-cleric.lua:344). "
     "family_cleric_scen99's WalkerHpRangeAtFinalTick(FAMILY_CLERIC, "
     "11900, 12100) leaves its window (golden 12000 cents -> mutated "
     "1200000 cents); measured 2026-09-15 by staging the pin into "
@@ -1661,6 +1661,39 @@ inline constexpr InputEvent kInputsSpecialSlot5[] = {
     { 15, 0, K_NONE},
     { 20, 0, K_SPECIAL},
     { 21, 0, K_NONE},
+};
+
+// DISARM (slot 4) at tick 20, then, once its 5 busy has run out, the cycle
+// 4 -> 1 -> 2 and BOOMERANG at tick 34 (soldier_disarm_resisted_price).
+inline constexpr InputEvent kInputs_soldier_disarm_resisted_price[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 11, 0, K_SPECIAL_SWITCH},
+    { 12, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_NONE},
+    { 27, 0, K_SPECIAL_SWITCH},
+    { 28, 0, K_NONE},
+    { 30, 0, K_SPECIAL_SWITCH},
+    { 31, 0, K_NONE},
+    { 34, 0, K_SPECIAL},
+    { 35, 0, K_NONE},
+};
+
+// DISARM (slot 4) at tick 20, then the fire key held from tick 21
+// (soldier_disarm_resisted_busy; the K_NONE at 60 lies past its budget).
+inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 11, 0, K_SPECIAL_SWITCH},
+    { 12, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_FIRE},
+    { 60, 0, K_NONE},
 };
 
 // Phase 04a — treasure-pickup behavioural scenarios.
@@ -3522,7 +3555,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 160,
+    "packs/core/families/living-00-soldier.lua", 171,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3814,7 +3847,7 @@ inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_2_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3833,7 +3866,7 @@ inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_3_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3852,7 +3885,7 @@ inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_cleric_4_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 331,
+    "packs/core/families/living-05-cleric.lua", 344,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -5159,7 +5192,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_scen99[] = {
         "consequence: the successful heal adds one SOUND_HEAL on top of the 13 combat sounds; a refused heal emits nothing and the floor collapses to 13"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 373,
+    "packs/core/families/living-05-cleric.lua", 386,
     "heal_range = 60",
     "heal_range = 1",
     "Collapses the cleric HEAL friend-acquisition radius so find_friends_in_range yields friend_count==0 and heal_or_mace returns false before charging or healing. The team-0 big orc keeps its wounded 172 HP (17200 cents), below WalkerHpRangeAtFinalTick's 25000 floor, and the SOUND_HEAL that lifted play_sound to 14 disappears."
@@ -5199,7 +5232,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_skeleton_scen99[] = {
         "invariant: the caster is never engaged (the ally does the killing), so it finishes at 117/120 (11700 cents) -- proof the skeleton came from the raise and not from a melee-driven code path"),
 };
 inline constexpr Mutation kMut_cleric_raise_skeleton_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 381,
+    "packs/core/families/living-05-cleric.lua", 394,
     "raise_skeleton_range = 60",
     "raise_skeleton_range = 1",
     "Collapses the RAISE UNDEAD corpse reach so nearby_corpse's `distance < range` test fails on the Manhattan-23 bloodstain and raise_skeleton returns false. No LIVING_SKELETON is summoned: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5235,7 +5268,7 @@ inline constexpr FactPredicate kFacts_cleric_raise_ghost_scen99[] = {
         "invariant: the caster never fights, so it finishes at 117/120 (11700 cents) at the dump"),
 };
 inline constexpr Mutation kMut_cleric_raise_ghost_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 382,
+    "packs/core/families/living-05-cleric.lua", 395,
     "raise_ghost_range = 30",
     "raise_ghost_range = 1",
     "Collapses the RAISE GHOST corpse reach below the Manhattan-23 bloodstain, so nearby_corpse returns nil and raise_ghost returns false before do_summon. No LIVING_GHOST enters oblist: WalkerFamilyCount(FAMILY_GHOST, 1, 1) sees 0, WalkerAliveAtFinal fails, and team-0 alive drops from 3 to 2."
@@ -5318,7 +5351,7 @@ inline constexpr FactPredicate kFacts_cleric_resurrect_friendly_scen99[] = {
         "invariant: the executioner stalls 12 px clear of the caster, so the cleric finishes at 84/120 (8400 cents) -- proof the cast landed while the caster was un-shoved. The 200-cent window is the one-regen-tick spread between the branch dump (8400) and a companion recapture (8300)."),
 };
 inline constexpr Mutation kMut_cleric_resurrect_friendly_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 239,
+    "packs/core/families/living-05-cleric.lua", 249,
     "    alive.hp = og.fdiv(alive.max_hp, 2.0)",
     "    alive.hp = og.fdiv(alive.max_hp, 4.0)",
     "Quarters the friendly-RESURRECT revival health instead of halving it. The rebuilt soldier returns at 31 of 120 HP (3100 cents) rather than 61 (6100), dropping out of WalkerHpRangeAtFinalTick's [5000, 6500] window while every other predicate still holds -- an isolated hit on the branch-specific half-health rule."
@@ -6187,7 +6220,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_matched_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_disarm_matched_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 210,
+    "packs/core/families/living-00-soldier.lua", 221,
     "disarm_range = 28",
     "disarm_range = 0",
     "Collapses the disarm reach to 0. og.foes_in_range(self, 0) returns nothing (the tower sits at Manhattan 15), so found stays 0 and disarm returns false before SOUND_CHARGE, before the notification and before either busy write. EventKindAtLeast(notification,1) drops to 0 and EventKindExactly(play_sound,3) drops to 2 — two independent flips, and neither depends on which side won the two-draw roll."
@@ -8391,7 +8424,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_scen99[] = {
         "consequence: the classic spin at nobody spends 120 of the 130 MP, so the held special from tick 45 cannot pay for a second spin; the foe ends at 103 hp from the plain melee"),
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 168,
+    "packs/core/families/living-00-soldier.lua", 179,
     "name = \"WHIRLWIND\", mp_cost = 120",
     "name = \"WHIRLWIND\", mp_cost = 1",
     "Makes WHIRLWIND cost 1 MP, so the classic spin at nobody leaves enough for the held second one: it lands on the foe and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300) fails."
@@ -8415,7 +8448,8 @@ inline constexpr Mutation kMut_soldier_whirlwind_no_foe_fixes_scen99 = {
 // makes the soldier win its roll, so the classic stagger is 6*(10-12+1) = -6:
 // the tower is sped up and the notice still says "Fighter Disarmed Enemy!".
 // With the setting on that stagger is not applied, nothing counts, and the
-// cast is refused (DISARM RESISTED) for free.
+// cast is refused (DISARM RESISTED): it costs half the price (75 MP) and the
+// usual 5 busy, neither of which the recording shows.
 inline constexpr SpawnSpec kFamilySpawns_soldier_disarm_higher_foe_scen99[] = {
     { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0, 12, 0 },   // higher-level foe in the facing-blocked spot
     { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST -> player (level 10 opens slot 4)
@@ -8434,7 +8468,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_higher_foe_fixes_scen99[] =
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
     pred::EventKindExactly(/*notification*/2, 0,
-        "consequence: with the setting on a stagger below zero is not applied and does not count, so the won roll disarms nobody and the cast is refused (DISARM RESISTED): no notice"),
+        "consequence: with the setting on a stagger below zero is not applied and does not count, so the won roll disarms nobody and the cast is refused (DISARM RESISTED): no notice (half price and 5 busy since the R-Q2 ruling: not in the recording)"),
     pred::EventKindExactly(/*play_sound*/1, 9,
         "consequence: the refused cast plays no SOUND_CHARGE; the fight that follows differs by one more swing"),
 };
@@ -8443,6 +8477,85 @@ inline constexpr Mutation kMut_soldier_disarm_higher_foe_fixes_scen99 = {
     "if not gf.on() or penalty > 0 then",
     "if not gf.on() or penalty > -100 then",
     "Lets a stagger below zero through again (penalty -6 > -100), so the won roll counts as a disarm: the cast succeeds, shows \"Fighter Disarmed Enemy!\" and plays SOUND_CHARGE. EventKindExactly(notification, 0) and EventKindExactly(play_sound, 9) fail."
+};
+
+// --- soldier_disarm_resisted_price (fix A: a resisted DISARM pays half) -----
+// A level-10 soldier with 200 MP disarms (slot 4 at tick 20) a level-12 TOWER1
+// standing 15 px below it, then cycles to BOOMERANG (100 MP) and throws it at
+// tick 34. The classic disarm succeeds on any foe in reach and costs the full
+// 150, so 50 MP are left and the boomerang is refused (NOT ENOUGH MP). With
+// the setting on the stronger tower resists: the try costs half (75), 125 MP
+// are left and the boomerang flies.
+inline constexpr SpawnSpec kFamilySpawns_soldier_disarm_resisted_price_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0, 12, 0 },   // higher-level foe in the facing-blocked spot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 200 }, // caster LAST -> player (level 10 opens slot 4; 200 MP)
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_price_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 0, 0,
+        "consequence: the classic disarm costs the full 150 of the 200 MP, so the BOOMERANG at tick 34 is refused and none flies"),
+    // negative_assertion: the classic price leaves too little for the boomerang; its absence is the fact.
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "consequence: the classic disarm shows its notice on a foe in reach"),
+    pred::EventKindExactly(/*play_sound*/1, 11,
+        "consequence: SOUND_CHARGE at the disarm and ten tower swings; the refused BOOMERANG plays nothing"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: no boomerang flies, so the tower ends untouched at 130 hp"),
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_price_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "consequence: with the setting on the stronger tower resists and the try costs half (75 MP), so 125 MP are left and the BOOMERANG at tick 34 flies"),
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: the resisted disarm shows no notice"),
+    pred::WalkerDiedByFinal(FAMILY_TOWER1,
+        "consequence: the boomerang kills the tower (its death sound at tick 41)"),
+    pred::EventKindExactly(/*play_sound*/1, 6,
+        "consequence: five tower swings before it dies, and its death; no SOUND_CHARGE from the resisted disarm"),
+};
+inline constexpr Mutation kMut_soldier_disarm_resisted_price_fixes_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 120,
+    "self.magicpoints = og.fsub(self.magicpoints, og.div(self:s_special_cost(self:current_special()), 2))",
+    "self.magicpoints = og.fsub(self.magicpoints, self:s_special_cost(self:current_special()))",
+    "Charges the resisted try the full 150 instead of half, so 50 MP are left and the BOOMERANG at tick 34 is refused: WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1), WalkerDiedByFinal(FAMILY_TOWER1) and EventKindExactly(play_sound, 6) fail."
+};
+
+// --- soldier_disarm_resisted_busy (fix A: a resisted DISARM keeps its busy) -
+// The spawns and seed of soldier_disarm_higher_foe: DISARM at tick 20 on the
+// level-12 tower, then the fire key held from tick 21. Both values set the
+// usual 5 busy (the classic success, the resisted try with the setting on),
+// so the first throw waits on both; the classic success also staggers the
+// tower by -6 and plays SOUND_CHARGE. The busy shows as one tick: the held
+// fire throws at 26 and 58, and without the busy at 25 and 57, so the budget
+// of 58 ticks (events through tick 57) catches the second throw only then.
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_scen99[] = {
+    pred::TickReached(58),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindAtLeast(/*notification*/2, 1,
+        "consequence: the classic disarm shows its notice on a foe in reach"),
+    pred::EventKindExactly(/*play_sound*/1, 12,
+        "consequence: SOUND_CHARGE, the tower's swings (one more than with the setting on: the -6 stagger) and the soldier's first throw at tick 26"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower ends at 130 hp"),
+};
+inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_fixes_scen99[] = {
+    pred::TickReached(58),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindExactly(/*notification*/2, 0,
+        "consequence: the resisted disarm shows no notice"),
+    pred::EventKindExactly(/*play_sound*/1, 10,
+        "consequence: the resisted try's 5 busy holds the first throw to tick 26, so the second falls at tick 58, just past the budget: nine tower swings and one throw"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower ends at 130 hp"),
+};
+inline constexpr Mutation kMut_soldier_disarm_resisted_busy_fixes_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 122,
+    "self:set_busy(og.fadd(self:busy(), 5.0))",
+    "self:set_busy(self:busy())",
+    "Drops the resisted try's 5 busy, so the held fire throws a tick sooner (25 and 57 instead of 26 and 58) and the second throw lands inside the 58-tick budget: EventKindExactly(play_sound, 10) fails.",
+    "      return false, \"NO ONE TO DISARM\""
 };
 
 // --- elf_volley_refund (fix H: the volleys refund the rocks they throw) -----
@@ -8678,7 +8791,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_undead_reach_scen99[] = {
         "consequence: the classic reach is 4*5 = 20 px and both skeletons are 50 px away at tick 3, so the cast finds no foe (NO FOE IN RANGE) and both skeletons live"),
 };
 inline constexpr Mutation kMut_cleric_turn_undead_reach_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 375,
+    "packs/core/families/living-05-cleric.lua", 388,
     "turn_undead_range_per_level = 4",
     "turn_undead_range_per_level = 20",
     "Widens the classic reach to 20 px per level (100 px at level 5), so the tick-3 cast reaches both skeletons and destroys them: WalkerAliveAtFinal(FAMILY_SKELETON, 2) fails."
@@ -8692,7 +8805,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_undead_reach_fixes_scen99[] = 
     pred::LevelDoneEquals(2),
 };
 inline constexpr Mutation kMut_cleric_turn_undead_reach_fixes_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 387,
+    "packs/core/families/living-05-cleric.lua", 400,
     "turn_undead_range_min = 60",
     "turn_undead_range_min = 0",
     "Drops the 60 px floor, so the reach is the classic 4*5 = 20 px: the cast finds no foe and both skeletons live. WalkerDiedByFinal(FAMILY_SKELETON) and WalkerOfTeamAlive(1, 0, 0) fail."
@@ -8714,7 +8827,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_no_undead_scen99[] = {
         "consequence: the classic cast with only a living soldier in reach turns nothing yet plays SOUND_HEAL at tick 20 on top of the five combat sounds"),
 };
 inline constexpr Mutation kMut_cleric_turn_no_undead_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 375,
+    "packs/core/families/living-05-cleric.lua", 388,
     "turn_undead_range_per_level = 4",
     "turn_undead_range_per_level = 1",
     "Shrinks the classic reach to 1 px per level (10 px), so the soldier 28 px away is out of reach: the cast is refused NO FOE IN RANGE and plays nothing. EventKindExactly(play_sound, 6) reads 5."
@@ -8763,7 +8876,7 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = 
         "consequence: with the setting on the cleric bot's slot-2 rolls raise (no undead in reach) instead of following the coin; the fight that follows leaves the hostile tower alive at 29 hp"),
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 303,
+    "packs/core/families/living-05-cleric.lua", 316,
     "self:set_shifter_down(0)",
     "self:set_shifter_down(1)",
     "Makes the gate pick TURN UNDEAD on every slot-2 roll with no undead in reach (refused free, -2) instead of the raise, so the cleric's slot-2 rolls no longer probe for a corpse and the fight changes: the tower does not end at 29 hp.",
@@ -8783,7 +8896,7 @@ inline constexpr FactPredicate kFacts_special_cleric_heal_ally_fixes_scen99[] = 
         "anchor: the heal still lands and still plays SOUND_HEAL on top of the 13 combat sounds"),
 };
 inline constexpr Mutation kMut_special_cleric_heal_ally_fixes_scen99 = {
-    "packs/core/families/living-05-cleric.lua", 98,
+    "packs/core/families/living-05-cleric.lua", 108,
     "ally.hp = ally.max_hp",
     "ally.hp = og.fadd(ally.hp, 0)",
     "Removes the cap (the hp is written back unchanged), so the heal lands its full amount again and the big orc ends far above its 180 max, outside WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 17800, 18000)."
@@ -11138,6 +11251,38 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Soldier_4,
       kFacts_soldier_disarm_higher_foe_fixes_scen99, std::size(kFacts_soldier_disarm_higher_foe_fixes_scen99),
       kMut_soldier_disarm_higher_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_disarm_resisted_price_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_price, std::size(kInputs_soldier_disarm_resisted_price), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_resisted_price_scen99, std::size(kFamilySpawns_soldier_disarm_resisted_price_scen99),
+      0, false, true, Exercises::Special_Soldier_4 | Exercises::Special_Soldier_2,
+      kFacts_soldier_disarm_resisted_price_scen99, std::size(kFacts_soldier_disarm_resisted_price_scen99),
+      kMut_soldier_disarm_matched_scen99 },
+
+    { "soldier_disarm_resisted_price_fixes_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_price, std::size(kInputs_soldier_disarm_resisted_price), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_resisted_price_scen99, std::size(kFamilySpawns_soldier_disarm_resisted_price_scen99),
+      0, false, true, Exercises::Special_Soldier_4 | Exercises::Special_Soldier_2,
+      kFacts_soldier_disarm_resisted_price_fixes_scen99, std::size(kFacts_soldier_disarm_resisted_price_fixes_scen99),
+      kMut_soldier_disarm_resisted_price_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_disarm_resisted_busy_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_busy, std::size(kInputs_soldier_disarm_resisted_busy), 58,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_higher_foe_scen99, std::size(kFamilySpawns_soldier_disarm_higher_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_soldier_disarm_resisted_busy_scen99, std::size(kFacts_soldier_disarm_resisted_busy_scen99),
+      kMut_soldier_disarm_matched_scen99 },
+
+    { "soldier_disarm_resisted_busy_fixes_scen99", "scen/scen1.fss", 0x00000001u,
+      kInputs_soldier_disarm_resisted_busy, std::size(kInputs_soldier_disarm_resisted_busy), 58,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_disarm_higher_foe_scen99, std::size(kFamilySpawns_soldier_disarm_higher_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_soldier_disarm_resisted_busy_fixes_scen99, std::size(kFacts_soldier_disarm_resisted_busy_fixes_scen99),
+      kMut_soldier_disarm_resisted_busy_fixes_scen99, {}, 1, nullptr, 0, 1 },
 
     { "elf_volley_refund_scen99", "scen/scen1.fss", 0x00000042u,
       kInputs_elf_volley_refund, std::size(kInputs_elf_volley_refund), 72,
