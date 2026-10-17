@@ -113,12 +113,6 @@ inline constexpr std::string_view kSetupJoinerReadyRow =
 inline constexpr std::string_view kSetupNoteScore = "map, 1, 3, 5, 10";
 inline constexpr std::string_view kSetupNoteTime = "map, 5 to 20 min";
 
-// The ONE statement of which faces are RULES rows (R2-3): the two the
-// campaign's match_knobs can hide, and the only two with no other home.
-// The MATCH step's recap takes EVERY face — it states the whole match.
-inline constexpr std::array<std::string_view, 2> kSetupRulesRows = {
-    kRulesRowScore, kRulesRowTime};
-
 // The terminal driver's answer to an unparsable prompt line.
 inline constexpr std::string_view kSetupInvalidRowNotice = "Invalid setup row.";
 // TRACE("setup", ...) when match_knobs.arena_page names no root page row.
@@ -198,7 +192,6 @@ public:
         bool is_host = true;
         bool networked = false;
         int my_team = 0;
-        int session_difficulty = 0;
         // The loaded arena's authored_team_mask (the deal's own reader).
         std::uint8_t authored_mask = 0;
         std::span<const og::sim::LobbyPlayer> players;
@@ -338,10 +331,6 @@ struct TerminalMatchSetupIo {
     std::function<const LevelDataHooks&()> level_hooks;
     // autosave_company_after_mutation.
     std::function<void()> autosave;
-    // The session difficulty the MATCH recap reads. There is no writer
-    // here any more: DIFFICULTY is a Base Camp door again (R2-3), so the
-    // wizard only ever states the value.
-    std::function<int()> difficulty;
     // Names a LOCAL seat's controller for the TEAMS step's seat cell, the
     // way LINEUP's band header names it ("P1 WASD"). Both terminal clients
     // pass og::ui::terminal_seat_short_name; a client that passes nothing

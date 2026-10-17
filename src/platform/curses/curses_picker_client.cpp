@@ -1260,7 +1260,6 @@ void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         return headless_level_data_hooks();
     };
     io.autosave = [&save] { autosave_company_after_mutation(save); };
-    io.difficulty = [&options] { return options.difficulty; };
     // The TEAMS seat cell names the seat's CONTROLLER, the way LINEUP's
     // band header does. Every seat this client synthesizes is local, so the
     // seat index IS the local slot.

@@ -4103,20 +4103,6 @@ TEST(PickerCommon, apply_toggle_follows_decides_session)
     EXPECT_EQ(1, save.new_specials);
 }
 
-TEST(PickerCommon, format_new_specials_label)
-{
-    SaveData save;
-    EXPECT_EQ("NEW SPECIALS: OFF", og::ui::format_new_specials_label(save))
-        << "a hand-built save is classic";
-    save.new_specials = 1;
-    EXPECT_EQ("NEW SPECIALS: ON", og::ui::format_new_specials_label(save));
-    save.new_specials = 7;
-    EXPECT_EQ("NEW SPECIALS: ON", og::ui::format_new_specials_label(save))
-        << "any nonzero session value plays the new kits";
-    // A RULES face fits the 42-glyph row.
-    EXPECT_LE(og::ui::format_new_specials_label(save).size(), 42u);
-}
-
 // --- Gameplay Fixes (the Gameplay FX row and its terminal twins) ---
 //
 // The same contract as New Specials above; each helper writes its own key
@@ -4196,21 +4182,6 @@ TEST(PickerCommon, apply_gameplay_fixes_toggle_follows_decides_session)
     og::ui::set_gameplay_fixes(save, config, /*on=*/false, false);
     EXPECT_EQ("off", config.get_setting("gameplay", "gameplay_fixes"));
     EXPECT_EQ(1, save.gameplay_fixes);
-}
-
-TEST(PickerCommon, format_gameplay_fixes_label)
-{
-    SaveData save;
-    save.new_specials = 1;
-    EXPECT_EQ("GAMEPLAY FIXES: OFF", og::ui::format_gameplay_fixes_label(save))
-        << "a hand-built save is classic; New Specials is another setting";
-    save.gameplay_fixes = 1;
-    EXPECT_EQ("GAMEPLAY FIXES: ON", og::ui::format_gameplay_fixes_label(save));
-    save.gameplay_fixes = 7;
-    EXPECT_EQ("GAMEPLAY FIXES: ON", og::ui::format_gameplay_fixes_label(save))
-        << "any nonzero session value plays the fixes";
-    // A RULES face fits the 42-glyph row.
-    EXPECT_LE(og::ui::format_gameplay_fixes_label(save).size(), 42u);
 }
 
 TEST(PickerCommon, can_afford_and_format_wallet_amount)

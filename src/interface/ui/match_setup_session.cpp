@@ -584,22 +584,13 @@ void MatchSetupSession::compose_teams(const Inputs& inputs)
 void MatchSetupSession::compose_rules(const Inputs& inputs)
 {
     const SaveData& save = read(inputs);
-    const MatchRulesInputs rules{&save, knobs_.score, knobs_.time,
-                                 inputs.session_difficulty, inputs.networked};
-    // R2-3: RULES is the two scenario knobs and nothing else. The other
-    // seven faces the shared composer answers belong to the Base Camp
-    // DIFFICULTY door, which is back on the strip for every campaign; the
-    // MATCH step's recap still states all of them, because it states the
-    // whole match.
-    std::vector<MatchRuleFace> faces;
-    for (const MatchRuleFace& face : match_rules_faces(rules))
-    {
-        if (std::find(kSetupRulesRows.begin(), kSetupRulesRows.end(),
-                      face.id) != kSetupRulesRows.end())
-        {
-            faces.push_back(face);
-        }
-    }
+    // R2-3: RULES is the two scenario knobs and nothing else, and the
+    // shared composer answers exactly those. Everything else a match is
+    // played under belongs to the Base Camp DIFFICULTY door (back on the
+    // strip for every campaign) or the Game Settings, and neither this
+    // step nor the MATCH step states it.
+    const std::vector<MatchRuleFace> faces = match_rules_faces(
+        MatchRulesInputs{&save, knobs_.score, knobs_.time});
 
     if (!inputs.is_host)
     {
@@ -669,16 +660,16 @@ void MatchSetupSession::compose_match(const Inputs& inputs)
         page_.team_lines_at = page_.lines.size();
     }
 
-    // The rules recap, two faces per line, dropped LAST-first when the ten
-    // lines run out (CROSS CONTROL's line goes first).
+    // The RULES step's own rows, SCORE and TIME LIMIT, two faces per line,
+    // and nothing else: the page states the match. Dropped when the ten
+    // lines run out (a networked four-team arena spends 1 + 4 + 1 = 6).
     const std::size_t spent = page_.lines.size() + page_.team_lines.size();
     const std::size_t room =
         spent >= static_cast<std::size_t>(kSetupLinesMax)
             ? 0u
             : static_cast<std::size_t>(kSetupLinesMax) - spent;
     std::vector<std::string> rules = format_match_rules_lines(
-        MatchRulesInputs{&save, knobs_.score, knobs_.time,
-                         inputs.session_difficulty, inputs.networked});
+        MatchRulesInputs{&save, knobs_.score, knobs_.time});
     if (rules.size() > room)
         rules.resize(room);
     for (std::string& line : rules)
@@ -912,7 +903,6 @@ void run_terminal_match_setup(SaveData& save, const TerminalMatchSetupIo& io)
         inputs.is_host = io.base.is_host();
         inputs.networked = false;  // terminal pickers are local-only today
         inputs.my_team = first_local_seat_team(save);
-        inputs.session_difficulty = io.difficulty();
         inputs.authored_mask =
             ctf_authored_team_mask_for_save(save, io.level_hooks());
         inputs.players = players;
