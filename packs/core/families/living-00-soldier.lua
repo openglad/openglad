@@ -106,9 +106,20 @@ local function disarm(self)
   end
 
   if found == 0 then
+    if gf.on() then
+      -- Gameplay Fixes: nobody in reach to disarm, so nothing is spent and
+      -- the message says so.
+      return false, "NO ONE TO DISARM"
+    end
     return false, "NO FOE IN RANGE"
   end
   if gf.on() and disarmed == 0 then
+    -- Gameplay Fixes: everyone in reach resisted. The try still costs
+    -- half the slot's price and the fighter's usual recovery.
+    -- magicpoints is a C++ float: per-op rounding
+    self.magicpoints = og.fsub(self.magicpoints, og.div(self:s_special_cost(self:current_special()), 2))
+    -- busy is a C++ float: per-op rounding
+    self:set_busy(og.fadd(self:busy(), 5.0))
     return false, "DISARM RESISTED"
   end
   og.emit_sound(C.SOUND_CHARGE)

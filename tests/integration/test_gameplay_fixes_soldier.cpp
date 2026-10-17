@@ -125,7 +125,11 @@ struct DisarmOutcome
 
 // A level-4 soldier facing right with a foe of `foe_level` overlapping the
 // box one pixel ahead (forward_blocked), the sim stream scripted by `draws`.
-DisarmOutcome cast_disarm(short fixes, std::int32_t foe_level, std::vector<std::uint32_t> draws)
+// `blocker_team` 1 puts the walker ahead on the soldier's own team: it still
+// blocks the way forward, but nobody inside the reach is a foe. A non-zero
+// `disarm_cost` sets the DISARM slot's price before the cast.
+DisarmOutcome cast_disarm(short fixes, std::int32_t foe_level, std::vector<std::uint32_t> draws,
+                          unsigned char blocker_team = 2, unsigned short disarm_cost = 0)
 {
     world().delete_objects();
     DisarmOutcome out;
@@ -138,6 +142,8 @@ DisarmOutcome cast_disarm(short fixes, std::int32_t foe_level, std::vector<std::
     w->set_lasty(0);
     w->set_busy(0);
     w->set_current_special(4);
+    if (disarm_cost != 0)
+        w->stats()->set_special_cost(4, disarm_cost);
 
     walker* foe = world().add_ob(Order::Living, FAMILY_TOWER1);
     EXPECT_NE(nullptr, foe);
@@ -146,7 +152,7 @@ DisarmOutcome cast_disarm(short fixes, std::int32_t foe_level, std::vector<std::
         delete w;
         return out;
     }
-    foe->set_team_num(2);
+    foe->set_team_num(blocker_team);
     foe->stats()->set_level(foe_level);
     foe->setxy(static_cast<Sint32>(w->xpos() + w->sizex() - 4), static_cast<Sint32>(w->ypos()));
     foe->set_busy(0);
@@ -176,7 +182,7 @@ DisarmOutcome cast_disarm(short fixes, std::int32_t foe_level, std::vector<std::
 // 6 * (4 - 7 + 1) = -12 is added to the foe's busy, so the "disarmed" foe
 // swings sooner, and the cast still reports a disarm. With the setting on a
 // stagger below zero is not applied and does not count, so nobody was
-// disarmed and the cast is refused for free.
+// disarmed and the cast is refused at half price with the usual busy.
 TEST_F(GameplayFixesSoldier, disarm_never_speeds_up_a_higher_foe)
 {
     // Every draw 0: og.rand(4) = 0 >= og.rand(7) = 0, the caster wins.
@@ -191,10 +197,10 @@ TEST_F(GameplayFixesSoldier, disarm_never_speeds_up_a_higher_foe)
     EXPECT_FALSE(on.cast) << "with the setting on nobody was staggered";
     EXPECT_EQ(std::string("DISARM RESISTED"), on.reason);
     EXPECT_FLOAT_EQ(0.0f, on.foe_busy) << "the foe is not sped up";
-    EXPECT_FLOAT_EQ(0.0f, on.mp_spent) << "and the refusal is free";
+    EXPECT_FLOAT_EQ(75.0f, on.mp_spent) << "and the try costs half the slot's 150 MP";
     EXPECT_EQ(0, on.notices) << "no notice";
     EXPECT_EQ(0, on.sounds) << "no sound";
-    EXPECT_FLOAT_EQ(0.0f, on.caster_busy) << "no busy";
+    EXPECT_FLOAT_EQ(5.0f, on.caster_busy) << "and the usual 5 busy";
 
     // The same won roll against a lower foe staggers it on both values.
     for (const short fixes : {short{0}, short{1}})
@@ -208,7 +214,8 @@ TEST_F(GameplayFixesSoldier, disarm_never_speeds_up_a_higher_foe)
 
 // An equal-level foe that wins the roll: the classic cast prints "Fighter
 // Disarmed Enemy!" and spends 150 MP on a foe it did not touch. With the
-// setting on the notice needs a win: the cast is refused for free.
+// setting on the notice needs a win: the cast is refused, at half price and
+// the usual busy.
 TEST_F(GameplayFixesSoldier, disarm_notice_needs_a_win)
 {
     // Left-first: og.rand(4) draws 0, og.rand(4) for the foe draws 3.
@@ -223,8 +230,47 @@ TEST_F(GameplayFixesSoldier, disarm_notice_needs_a_win)
     EXPECT_EQ(std::string("DISARM RESISTED"), on.reason);
     EXPECT_EQ(0, on.notices);
     EXPECT_EQ(0, on.sounds);
-    EXPECT_FLOAT_EQ(0.0f, on.mp_spent);
-    EXPECT_FLOAT_EQ(0.0f, on.caster_busy);
+    EXPECT_FLOAT_EQ(75.0f, on.mp_spent);
+    EXPECT_FLOAT_EQ(5.0f, on.caster_busy);
+}
+
+// Something blocks the way forward but nobody inside the reach is a foe (the
+// walker ahead is on the soldier's own team). Both values refuse for free;
+// with the setting on the message says there is nobody to disarm.
+TEST_F(GameplayFixesSoldier, disarm_with_nobody_in_reach_is_free)
+{
+    const DisarmOutcome off = cast_disarm(0, 7, {0}, /*blocker_team=*/1);
+    EXPECT_FALSE(off.cast) << "the classic cast finds no foe";
+    EXPECT_EQ(std::string("NO FOE IN RANGE"), off.reason);
+    EXPECT_FLOAT_EQ(0.0f, off.mp_spent);
+    EXPECT_FLOAT_EQ(0.0f, off.caster_busy);
+    EXPECT_EQ(0, off.notices);
+    EXPECT_EQ(0, off.sounds);
+
+    const DisarmOutcome on = cast_disarm(1, 7, {0}, /*blocker_team=*/1);
+    EXPECT_FALSE(on.cast);
+    EXPECT_EQ(std::string("NO ONE TO DISARM"), on.reason);
+    EXPECT_FLOAT_EQ(0.0f, on.mp_spent) << "nothing is spent";
+    EXPECT_FLOAT_EQ(0.0f, on.caster_busy) << "and there is no busy";
+    EXPECT_EQ(0, on.notices);
+    EXPECT_EQ(0, on.sounds);
+}
+
+// A resisted disarm pays half of the slot's own price, whatever that price
+// is: 75 of the classic 150, and 150 when the slot costs 300.
+TEST_F(GameplayFixesSoldier, a_resisted_disarm_pays_half_the_slots_own_price)
+{
+    // Every draw 0: the caster wins against a foe three levels up, but the
+    // stagger is not positive, so the try is resisted.
+    const DisarmOutcome classic_price = cast_disarm(1, 7, {0});
+    EXPECT_EQ(std::string("DISARM RESISTED"), classic_price.reason);
+    EXPECT_FLOAT_EQ(75.0f, classic_price.mp_spent) << "half of the soldier's 150";
+
+    const DisarmOutcome dearer = cast_disarm(1, 7, {0}, 2, /*disarm_cost=*/300);
+    EXPECT_FALSE(dearer.cast);
+    EXPECT_EQ(std::string("DISARM RESISTED"), dearer.reason);
+    EXPECT_FLOAT_EQ(150.0f, dearer.mp_spent) << "half of the slot's own 300";
+    EXPECT_FLOAT_EQ(5.0f, dearer.caster_busy);
 }
 
 // WHIRLWIND with nobody inside its ring. The classic cast spins at nothing:
