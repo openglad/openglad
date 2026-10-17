@@ -47,6 +47,8 @@
 #include <utility>
 #include <vector>
 
+#include "test_live_game.h"
+
 extern cfg_store cfg;
 
 // The GRAPHICS FX click handler (button.cpp), driven directly for the live
@@ -272,34 +274,6 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
                                         static_cast<unsigned char>(gh), buf);
     world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
 }
-
-// Swap the session's SDL keystate pointer for a writable fake so redraw sees
-// chosen keys "physically held" (KEY_LOOKUP is read through
-// isPlayerHoldingKey at render time). Same shape as test_game_loop's guard.
-struct SessionKeyStateGuard
-{
-    const bool* old_keystates = nullptr;
-    std::array<bool, SDL_SCANCODE_COUNT> fake_keystates{};
-
-    SessionKeyStateGuard()
-        : old_keystates(og::runtime::current_session->keystates_)
-    {
-        fake_keystates.fill(false);
-        og::runtime::current_session->keystates_ = fake_keystates.data();
-    }
-
-    ~SessionKeyStateGuard()
-    {
-        og::runtime::current_session->keystates_ = old_keystates;
-    }
-
-    void set(SDL_Keycode key, bool pressed)
-    {
-        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key, nullptr);
-        if (scancode >= 0 && scancode < SDL_SCANCODE_COUNT)
-            fake_keystates[static_cast<std::size_t>(scancode)] = pressed;
-    }
-};
 
 struct KeyBindingGuard
 {

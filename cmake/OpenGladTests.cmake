@@ -17,6 +17,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_util.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_game_loop.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_special_scenes.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_timed_effects_mirror.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_pause_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input.cpp
@@ -482,6 +483,16 @@ og_add_test_group(og_test_game_core FILES
     test_overpowered_team.cpp
     test_frame_pacing_jitter.cpp
     test_pause_menu.cpp
+)
+
+# The New Specials and Gameplay Fixes scenes (tests/integration/
+# test_special_scenes.cpp): 43 plays of the real game loop, each Gameplay
+# Fixes scene twice. Its own binary because og_test_game_core under
+# ASan+UBSan measured 312 s and 418 s on two runs of the same tree with the
+# Gameplay Fixes scenes alone (fde713b8), and the New Specials scenes add
+# about two thirds of that again.
+og_add_test_group(og_test_special_scenes FILES
+    test_special_scenes.cpp
 )
 
 og_add_test_group(og_test_snapshot_safety FILES
