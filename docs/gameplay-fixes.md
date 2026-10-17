@@ -410,8 +410,8 @@ seed.
 
 **The other change outside the setting that moves a calibration line.**
 Besides the three eased Long Season levels above, one more line moves with
-the setting off. With
-New Specials on and this setting off, Westlands level 8 reads `1 1 2`
+the setting off. With New Specials on and this setting off, Westlands
+level 8 reads `1 1 2`
 (seed 42: 1 survivor, the crew dealt 1537 damage) where it read `2 1 2`
 (2293 dealt) before this work. The cause is fix O, METEOR RAIN holding its
 fire over an ally: the same run with only that check taken out of the pack
