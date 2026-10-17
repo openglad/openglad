@@ -43,8 +43,10 @@ Soldier:  Your basic grunt, can absorb and deal damage and
         4. ® Disarm: A skilled fighter can temporarily disarm a
              nearby opponent.  When disarmed, enemies are unable to fight
              effectively, and often cannot use special abilities.
-             Gameplay Fixes: a stronger foe resists, and nothing is
-             spent on a miss.
+             Gameplay Fixes: the disarm is a stagger (the foe waits before
+             its next swing).  A higher-level foe always resists; a resisted
+             disarm costs half (75 MP) and the usual pause, and with nobody
+             in reach it costs nothing.
 
 Barbarian:  Barbarians are tough fighters, but possess more will
             than skill.  In general, they posess strong constitutions

@@ -106,9 +106,20 @@ local function disarm(self)
   end
 
   if found == 0 then
+    if gf.on() then
+      -- Gameplay Fixes: nobody in reach to disarm, so nothing is spent and
+      -- the message says so.
+      return false, "NO ONE TO DISARM"
+    end
     return false, "NO FOE IN RANGE"
   end
   if gf.on() and disarmed == 0 then
+    -- Gameplay Fixes: everyone in reach resisted. The try still costs
+    -- half the slot's price and the fighter's usual recovery.
+    -- magicpoints is a C++ float: per-op rounding
+    self.magicpoints = og.fsub(self.magicpoints, og.div(self:s_special_cost(self:current_special()), 2))
+    -- busy is a C++ float: per-op rounding
+    self:set_busy(og.fadd(self:busy(), 5.0))
     return false, "DISARM RESISTED"
   end
   og.emit_sound(C.SOUND_CHARGE)
@@ -166,7 +177,7 @@ og.family("living", {
     { id = "charge",    name = "CHARGE",    mp_cost = 25,  cast = charge, detail = "Charge causes you to run forward, damaging anything in your way." },
     { id = "boomerang", name = "BOOMERANG", mp_cost = 100, cast = throw_boomerang, detail = "The boomerang flies out in a spiral, hurting nearby foes." },
     { id = "whirlwind", name = "WHIRLWIND", mp_cost = 120, cast = whirlwind, detail = "The fighter whirls in a spiral, hurting or stunning melee foes." },
-    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Cause a melee foe to temporarily lose the strength of attacks." },
+    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Stagger the foe you face so it waits before its next swing. A stronger foe resists." },
   },
   default_weapon = "core:knife",
   flags = {},
