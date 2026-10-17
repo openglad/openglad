@@ -660,19 +660,12 @@ void MatchSetupSession::compose_match(const Inputs& inputs)
         page_.team_lines_at = page_.lines.size();
     }
 
-    // The RULES step's own rows, SCORE and TIME LIMIT, two faces per line,
-    // and nothing else: the page states the match. Dropped when the ten
-    // lines run out (a networked four-team arena spends 1 + 4 + 1 = 6).
-    const std::size_t spent = page_.lines.size() + page_.team_lines.size();
-    const std::size_t room =
-        spent >= static_cast<std::size_t>(kSetupLinesMax)
-            ? 0u
-            : static_cast<std::size_t>(kSetupLinesMax) - spent;
-    std::vector<std::string> rules = format_match_rules_lines(
-        MatchRulesInputs{&save, knobs_.score, knobs_.time});
-    if (rules.size() > room)
-        rules.resize(room);
-    for (std::string& line : rules)
+    // The RULES step's own rows, SCORE and TIME LIMIT, on one line, and
+    // nothing else: the page states the match. A networked four-team arena
+    // whose report leads with a refusal spends 1 + 1 + 4 + 1 = 7 of the
+    // ten lines, so no line is ever dropped.
+    for (std::string& line : format_match_rules_lines(
+             MatchRulesInputs{&save, knobs_.score, knobs_.time}))
         page_.lines.push_back(std::move(line));
 
     Row view = plain_row(kSetupRowViewLevel,
