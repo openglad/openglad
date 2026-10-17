@@ -1650,6 +1650,7 @@ namespace {
 struct BerserkOutcome {
     int team = -1;
     int real_team = -1;
+    int charm_left = -1;
     std::uint32_t rng_state = 0;
 };
 
@@ -1683,6 +1684,7 @@ BerserkOutcome berserk_once(short fixes, unsigned char caster_team,
     BerserkOutcome out;
     out.team = static_cast<int>(victim->team_num());
     out.real_team = static_cast<int>(victim->real_team_num());
+    out.charm_left = static_cast<int>(victim->charm_left());
     out.rng_state = w.rng_.state_;
     return out;
 }
@@ -1743,6 +1745,28 @@ TEST(PackLuaArchmage, the_berserk_draw_count_is_one_on_both_values)
     EXPECT_EQ(expected.state_, off.rng_state);
     EXPECT_EQ(expected.state_, on.rng_state);
     EXPECT_NE(off.team, on.team) << "the remap ran: the two values differ";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// A foe above the archmage's level counts its edge as 0, so its berserk
+// lasts exactly 25 ticks on both values of the setting, and the duration
+// draws nothing (its bound is 0; the draw count is pinned just above).
+//
+// RED (the berserk arm's duration read with the edge negated, so a level-9
+// victim of a level-1 caster gets 25 + rand(160)): charm_left is not 25.
+TEST(PackLuaArchmage, a_higher_level_berserk_lasts_25_ticks)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+
+    for (const short fixes : {short{0}, short{1}}) {
+        for (const std::uint32_t colour : {1u, 5u}) {
+            const BerserkOutcome out =
+                berserk_once(fixes, 1, seed_whose_first_draw_is(8, colour));
+            EXPECT_EQ(25, out.charm_left)
+                << "setting " << fixes << ", colour " << colour;
+        }
+    }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
