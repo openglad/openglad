@@ -177,7 +177,7 @@ og.family("living", {
     { id = "charge",    name = "CHARGE",    mp_cost = 25,  cast = charge, detail = "Charge causes you to run forward, damaging anything in your way." },
     { id = "boomerang", name = "BOOMERANG", mp_cost = 100, cast = throw_boomerang, detail = "The boomerang flies out in a spiral, hurting nearby foes." },
     { id = "whirlwind", name = "WHIRLWIND", mp_cost = 120, cast = whirlwind, detail = "The fighter whirls in a spiral, hurting or stunning melee foes." },
-    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Cause a melee foe to temporarily lose the strength of attacks." },
+    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Stagger the foe you face so it waits before its next swing. A stronger foe resists." },
   },
   default_weapon = "core:knife",
   flags = {},

@@ -44,7 +44,7 @@
   special[4].name = "DISARM"
   special[4].alternate = "NONE"
   special[4].cost = 150
-  special[4].detail = "Cause a melee foe to temporarily lose the strength of attacks."
+  special[4].detail = "Stagger the foe you face so it waits before its next swing. A stronger foe resists."
   special[5].id = ~
   special[5].name = "NONE"
   special[5].alternate = "NONE"
