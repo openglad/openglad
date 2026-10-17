@@ -59,13 +59,15 @@ Versions: protocol v21, snapshot v17, replay v23.
 
 Each row reads: what happens with the setting off (the classic game), and
 what happens with it on. A refusal spends nothing: no magic, no rest, no
-sound, no busy time.
+sound, no busy time, with one exception the maintainer chose: a DISARM
+that every foe in reach resisted costs half its price and the fighter's
+usual pause.
 
 | | special | off (classic) | on |
 |---|---|---|---|
-| A | Soldier DISARM | A won roll against a foe two or more levels above the soldier staggers it by a negative amount, so it attacks sooner. "Fighter Disarmed Enemy!" prints whenever a foe was in reach, even when every roll was lost. | A stagger that is not positive is not applied. If nobody was staggered the cast is refused as `DISARM RESISTED`, so the 150 MP and the message come only with a real stagger. |
+| A | Soldier DISARM | A won roll against a foe two or more levels above the soldier staggers it by a negative amount, so it attacks sooner. "Fighter Disarmed Enemy!" prints whenever a foe was in reach, even when every roll was lost. | A stagger that is not positive is not applied. With nobody inside the 28 px reach the cast is refused as `NO ONE TO DISARM` and costs nothing. With foes in reach but nobody staggered (every roll lost, or every foe too strong) it is refused as `DISARM RESISTED` and costs half the price (75 of 150 MP) and the usual 5 ticks of busy; the message and the full price come only with a real stagger. |
 | B | Mage and archmage bots | A bot mage casts any special only when no foe or more than three foes are within 110 px (the TELEPORT rule, applied to every slot), so WARP SPACE, FREEZE TIME and ENERGY WAVE go off at nobody. Archmage slots 1 to 3 have no gate at all. | Each slot asks about its own reach (see [Bots](#bots)). |
-| C | Bot Shift choice | A bot's Shift is a coin: a cleric throws TURN UNDEAD at living foes, a thief tries to charm a foe that will resist, an archmage chains or summons the elemental at random. | The coin is still drawn, then the gate sets Shift on purpose (see [Bots](#bots)). |
+| C | Bot Shift choice | A bot's Shift is a coin: a cleric throws TURN UNDEAD at living foes, a thief tries to charm a foe that will resist, an archmage chains or summons the elemental at random. | The coin is still drawn, then the gate sets Shift on purpose (see [Bots](#bots)); a cleric whose hero lacks the 60 INT for TURN UNDEAD never picks it. |
 | D | Archmage SUMMON ELEMENTAL | The surcharge (half the magic above the slot's price) is taken before the placement check, so `NO ROOM TO SUMMON` still costs half the spare pool. | The surcharge is taken once the elemental stands; no room costs nothing. |
 | E | Cleric TURN UNDEAD | The reach is 4 px per level, so below level 4 it cannot reach a body standing next to the cleric. With living foes in reach and no undead, it spends the slot's magic, plays its sound and turns nothing. | The reach is at least 60 px (the reach RAISE UNDEAD already has). With no undead foe in reach it is refused as `NO UNDEAD IN RANGE`. The roll keeps its classic strength (160 per cleric level), so the wider ring never changes who resists. |
 | F | Archmage MIND CONTROL | A foe that resists goes berserk onto a random team colour, which can be the archmage's own: the "failed" control then joins the caster. | A berserk foe that rolls the caster's colour takes the next colour instead. It still goes berserk; it never joins the caster. |
@@ -83,12 +85,14 @@ CHARGE already refuses `PATH BLOCKED` and otherwise moves the fighter).
 
 ## Refusals at a glance
 
-Every refusal is at most 24 characters, so it fits the compact HUD, and
-spends nothing.
+Every refusal is at most 24 characters, so it fits the compact HUD. All
+but one spend nothing; `DISARM RESISTED` costs half the price and the
+usual busy.
 
 | special | refusal with the setting on | when |
 |---|---|---|
-| DISARM | `DISARM RESISTED` | foes in reach, none staggered |
+| DISARM | `NO ONE TO DISARM` | nothing inside the 28 px reach (free) |
+| DISARM | `DISARM RESISTED` | foes in reach, none staggered (half price, 75 MP, and 5 busy) |
 | TURN UNDEAD | `NO UNDEAD IN RANGE` | foes in reach, none of them undead |
 | WHIRLWIND | `NO FOE IN RANGE` | nothing inside the spin (32 + 2 px per level) |
 | TAUNT | `NO FOE IN RANGE` | nothing inside the taunt reach (80 + 4 px per level) |
@@ -136,8 +140,10 @@ follow-up draw on that tick; that happens only with the setting on.
     honest reading of the rule.
 - **Cleric.** Slots 2 and 3 cast TURN UNDEAD only with an undead foe inside
   the turn reach, else they raise (a raise with no corpse is refused for
-  free). Slot 1 is unchanged: HEAL with any friend within 60 px, else the
-  MYSTIC MACE at half mana.
+  free). A cleric whose hero has under 60 INT cannot cast TURN UNDEAD
+  (`60 INT REQUIRED`, 5 busy), so the gate never picks it for such a hero.
+  Slot 1 is unchanged: HEAL with any friend within 60 px, else the MYSTIC
+  MACE at half mana.
 - **Thief.** Slot 3 tries CHARM OPPONENT only when a foe it can take (never
   charmed, alive, at or below the thief's level, not a hero a player
   drives) is inside charm reach, else it taunts. CLOAK and POISON CLOUD are
@@ -185,9 +191,11 @@ The parity goldens are captures from the old game (branch
   `9c453c82` (J), `090ab5b9` (E), `124c0efa` (D), `ce726a7d` (F), `628c15ec`
   (G, which also skips a driven hero in the thief's charm), `c4b229f7` (H),
   `68a84937` (I), `84ce0969` (the bots: B, C and L), and `379c8516` (M, the
-  archmage's charm arm). `379c8516` is the commit the goldens are captured
-  from: the captures matched the facts the new rows already carried, so no
-  further table mirror was needed.
+  archmage's charm arm). After the maintainer's rulings: `2dc64408` (A: a
+  resisted DISARM pays half its magic and its busy), `8928bb32` (C: the INT
+  rule) and, not behind the setting, `cf5b1fe2` (MIND CONTROL against a
+  higher-level foe lasts 25 ticks). `cf5b1fe2` is the commit the goldens
+  are captured from.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -195,7 +203,7 @@ The rows with the setting on, by fix:
 | fix | rows (setting on) |
 |---|---|
 | K | `soldier_whirlwind_no_foe_fixes_scen99`, `thief_taunt_no_foe_fixes_scen99`, `ghost_scare_no_foe_fixes_scen99`, `orc_howl_no_foe_fixes_scen99` |
-| A | `soldier_disarm_higher_foe_fixes_scen99` |
+| A | `soldier_disarm_higher_foe_fixes_scen99`, `soldier_disarm_resisted_price_fixes_scen99`, `soldier_disarm_resisted_busy_fixes_scen99` |
 | J | `special_cleric_heal_ally_fixes_scen99` |
 | E | `cleric_turn_undead_reach_fixes_scen99`, `cleric_turn_no_undead_fixes_scen99` |
 | D | `archmage_summon_no_room_fixes_scen99` |
@@ -236,12 +244,18 @@ Rows deliberately not added:
   `cleric_resurrect_friendly_scen99`, `soldier_disarm_matched_levels_scen99`
   and `special_soldier_4_scen99` among them,
   record the same bytes on both values, so they need no twin.
+- `NO ONE TO DISARM` has no row: a refusal string is not recorded and the
+  cast spends nothing on either value, so an arena's two captures would be
+  byte-identical; a current-game test pins it.
 - Fixes N, O and M's seat half (#354): no parity row can reach them (see
   [Not gated](#not-gated) and [Charm and seats](#charm-and-seats)).
-- MIND CONTROL against a higher-level foe: the old game draws a garbage
+- MIND CONTROL against a higher-level foe: the old game drew a garbage
   charm duration there (a negative bound cast to unsigned, stored in a
-  short); the current game draws nothing and gives 25 ticks. No row reaches
-  it, and it is recorded in the ledger, not ported.
+  short); the current game draws nothing and gives 25 ticks. The old game
+  now does the same, whatever the setting (`cf5b1fe2`); no row reaches it,
+  and a full capture moved no golden. The soft cap above an edge of 12
+  (the current game's runaway knee) remains the one unported, unreached
+  difference.
 
 ## Not gated
 
@@ -268,9 +282,16 @@ All four calibration suites were measured on both values of the setting,
 and on both values of New Specials, with their own seeds (42, 1337 and
 2025). Each cell is the crew's survivors at tick 600 for the three seeds.
 The suites' asserting runs (seed 42 against each level's floor) play the
-setting off and New Specials off, and pass unchanged; nothing was re-pinned.
-With the setting off, every measured line equals the line measured before
-the fixes, for all four suites, with New Specials off.
+shipped default, Gameplay Fixes on and New Specials on. No floor was
+lowered. Four levels fell under their floors on the shipped default, all
+because the crew did worse, and each was treated as a balance bug:
+Westlands 11 by a rule added to fix C (a cleric bot never picks a TURN
+UNDEAD its hero lacks the INT for), Long Season 2, 5 and 8 by easing the
+levels themselves, whose orders of battle had been tuned against a crew the
+classic HEAL kept above full health. With the setting off and New Specials
+off, every measured line equals the line measured before the fixes, except
+the three eased Long Season levels, whose classic numbers are the new ones
+below.
 
 What moves with the setting on, and why:
 
@@ -280,9 +301,15 @@ What moves with the setting on, and why:
 - A crew barbarian at crew level 7 to 9 rolls EXPLODING BOULDER half the
   time instead of a third (the slot roll stops at its second slot).
 - Enemy mages and archmages keep the magic they used to waste at nobody,
-  and enemy clerics raise instead of fizzling. This is what moves the
-  early Long Season levels (2 to 5, crew level 1 to 3), where the crew's
-  own cleric cannot turn undead yet: the enemy bots got better.
+  and enemy clerics raise instead of fizzling.
+- The crew cleric's HEAL stops at full health. The classic heal took a
+  lightly scratched crew well over its maximum (a soldier at 367 of 286 on
+  Westlands 11, the elf at 197 of 154 on Long Season 8), and that extra
+  health was spent in the fight. This is what took the early Long Season
+  levels (2, 5 and 8) under their floors on seed 42, and why those levels
+  were eased; levels 3 and 4 move a little, both ways, for the same reason.
+- A soldier bot of level 10 and up that is resisted on DISARM now pays
+  75 MP and waits 5 ticks (it paid nothing before the ruling).
 
 **Westlands** (survivors at tick 600, seeds 42 1337 2025)
 
@@ -298,14 +325,14 @@ What moves with the setting on, and why:
 | 8 | 5 | 0 1 4 | 0 1 4 | 1 1 2 | 2 0 2 |
 | 9 | 6 | 2 0 0 | 2 0 0 | 1 1 2 | 1 1 2 |
 | 10 | 5 | 0 0 0 | 0 0 1 | 0 0 0 | 0 0 0 |
-| 11 | 6 | 7 6 6 | 4 2 4 | 4 3 5 | 3 5 6 |
+| 11 | 6 | 7 6 6 | 3 4 4 | 4 3 5 | 6 5 6 |
 | 12 | 6 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 13 | 6 | 2 0 0 | 0 0 0 | 0 0 1 | 0 0 1 |
 | 14 | 7 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 15 | 7 | 3 3 3 | 3 3 3 | 4 0 2 | 5 0 4 |
 | 16 | 8 | 2 5 3 | 3 5 3 | 3 3 2 | 3 4 3 |
 | 17 | 8 | 5 6 4 | 5 4 6 | 6 6 6 | 5 7 5 |
-| 19 | 6 | 6 7 5 | 6 7 6 | 7 5 7 | 7 5 6 |
+| 19 | 6 | 6 7 5 | 6 6 7 | 7 5 7 | 7 5 6 |
 | 20 | 7 | 0 0 0 | 0 1 0 | 0 0 0 | 0 0 0 |
 | 21 | 7 | 8 7 8 | 8 8 5 | 8 8 8 | 8 8 8 |
 | 22 | 8 | 0 2 0 | 0 2 0 | 0 0 0 | 1 0 0 |
@@ -319,16 +346,16 @@ What moves with the setting on, and why:
 | level | crew | New Specials off: setting off | setting on | New Specials on: setting off | setting on |
 |---|---|---|---|---|---|
 | 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 2 | 1 | 6 8 8 | 5 8 8 | 6 8 8 | 5 8 8 |
+| 2 | 1 | 7 7 7 | 7 6 6 | 7 7 7 | 7 6 6 |
 | 3 | 2 | 8 7 8 | 7 7 8 | 8 7 8 | 7 7 8 |
 | 4 | 2 | 4 2 3 | 3 1 5 | 3 2 3 | 3 1 5 |
-| 5 | 3 | 6 6 7 | 2 5 6 | 6 6 7 | 2 5 6 |
+| 5 | 3 | 8 8 8 | 7 8 7 | 8 8 8 | 7 8 7 |
 | 6 | 3 | 7 6 4 | 7 6 4 | 7 6 4 | 7 6 4 |
 | 7 | 4 | 8 8 6 | 8 8 6 | 8 8 6 | 8 8 6 |
-| 8 | 4 | 3 8 5 | 0 4 7 | 6 8 5 | 2 5 5 |
+| 8 | 4 | 3 7 8 | 5 6 6 | 7 6 7 | 5 8 5 |
 | 9 | 5 | 7 8 7 | 8 8 8 | 8 8 8 | 8 8 8 |
 | 10 | 5 | 6 7 7 | 4 5 6 | 7 7 6 | 5 5 4 |
-| 11 | 5 | 7 7 8 | 7 5 5 | 7 7 4 | 8 5 4 |
+| 11 | 5 | 7 7 8 | 8 5 7 | 7 7 4 | 7 5 7 |
 | 12 | 6 | 3 8 8 | 3 8 5 | 3 8 8 | 6 8 6 |
 | 13 | 6 | 5 6 4 | 6 6 6 | 4 6 4 | 6 7 4 |
 | 14 | 7 | 7 7 8 | 7 8 8 | 7 7 8 | 8 8 8 |
@@ -350,62 +377,80 @@ What moves with the setting on, and why:
 | 15 | 4 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 20 | 6 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 
-**Levels whose seed-42 survivors fall below the level's floor with the
-setting on.** The asserting runs play the setting off, so none of these
-fails a test; they are listed for a decision, not pinned:
+**Levels that fell below their floor on the shipped default, and what was
+done.** Westlands 11 (3 against 4): fix C's INT rule; it now reads `6 5 6`.
+Long Season 2 (5 against 6), 5 (2 against 5) and 8 (2 against 3): the
+levels were eased (The Ferry Right has one brigand fewer on the west
+approach, Two Banners one picket fewer, and The Paymaster Vanishes fields
+its five terrace-2 bruisers at level 1 instead of 2); they now read
+`7 6 6`, `7 8 7` and `5 8 5`. No floor moved. Long Season 2's seeds 1337
+and 2025 now sit exactly on its floor of 6. The easing moved the same
+levels' lines with the setting off too, on both values of New Specials:
+Long Season 2 went from `6 8 8` to `7 7 7`, Long Season 5 from `6 6 7` to
+`8 8 8`, and Long Season 8 from `3 8 5` to `3 7 8` (New Specials off) and
+from `6 8 5` to `7 6 7` (New Specials on). None of them is under its floor.
 
-- New Specials off: Westlands 23 (4, floor 5); Long Season 2 (5, floor 6),
-  5 (2, floor 5), 8 (0, floor 3).
-- New Specials on (the shipped pair): Westlands 11 (3, floor 4); Long
-  Season 2 (5, floor 6), 5 (2, floor 5), 8 (2, floor 3).
-- Tower: every seed stays inside its floors.
+On seed 42, the seed the suites assert, every level of every suite is at
+or above its floor and inside its ceiling with the shipped default. The
+other two seeds are measured, not asserted, and some read outside the
+seed-42 bands, with the shipped default as with the classic game:
+Westlands 5 reads `8 5 5` against its floor 6 and Westlands 25 `8 3 7`
+against its floor 5 (the classic game reads `8 8 4` on Westlands 5 and
+`0 1 4` on Westlands 8, whose ceiling is 2).
 
-**The one change outside the setting that moves a calibration line.** With
+With New Specials off and the setting on, a pair that is measured but not
+asserted, two levels read under their floor on seed 42: Westlands 11
+`3 4 4` against 4 (the INT rule moves that pair's seed 42 from 4 to 3 and
+its seed 1337 from 2 to 4) and Westlands 23 `4 7 6` against 5. Long
+Season 8 read `0 4 7` against 3 on that pair before the level was eased;
+it now reads `5 6 6`. The Westlands 11 move on that pair is recorded, not
+fixed: the same rule takes the shipped default from 3 to 6 there, and a
+second rule for one seed of a pair nobody asserts would be tuning to a
+seed.
+
+**The other change outside the setting that moves a calibration line.**
+Besides the three eased Long Season levels above, one more line moves with
+the setting off. With
 New Specials on and this setting off, Westlands level 8 reads `1 1 2`
 (seed 42: 1 survivor, the crew dealt 1537 damage) where it read `2 1 2`
 (2293 dealt) before this work. The cause is fix O, METEOR RAIN holding its
 fire over an ally: the same run with only that check taken out of the pack
 reads `2 1 2` again, and every Westlands line then equals the measurement
 from before this work. Every other line of every suite is unchanged with
-the setting off, with New Specials on or off. Level 8's floor is 0, so no
-test moves; it is the one change outside the setting that a calibration
+the setting off, with New Specials on or off, except the three eased Long
+Season levels. Level 8's floor is 0, so no test moves; other than the
+eased levels, it is the one change outside the setting that a calibration
 suite can see.
 
-## Questions (the defaults in play)
+## Rulings (2026-10-16)
 
-Each question has a default this work takes; the maintainer decides.
+The maintainer answered the nine questions this work asked; each answer is
+in effect.
 
-1. **Turn Undead reach.** With the setting on the reach is the larger of
-   4 px per level and 60 px; the roll keeps its classic strength (160 per
-   level), so a wider ring never changes who resists. Alternative: let the
-   roll follow the reach, which would also change who resists among undead
-   already in reach.
-2. **A disarm that staggers nobody** is refused for free as
-   `DISARM RESISTED`, so the fighter can try again at once. Alternative:
-   the 150 MP and the busy time are still paid, as for a resisted charm.
-3. **The DISARM detail text** ("lose the strength of attacks") stays,
-   although the effect is a stagger; the help text says "a stronger foe
-   resists".
-4. **MIND CONTROL's duration for a higher-level foe** in the old game draws
-   a garbage number. No row reaches it; it is recorded in the ledger and
-   not ported. Alternative: an ungated port in the old game as its own
-   commit.
-5. **#354 is fixed in the current game only**: no capture can run the old
-   game's seat scans, so a port would be code nothing observes.
-   Alternative: port the old game's four scans anyway.
-6. **The calibration suites assert with the setting off**; both values are
-   measured and tabulated above. If they should play the shipped default,
-   the moved floors get dated re-pins in a follow-up commit, only where the
-   move is neutral or in the player's favour.
-7. **Integration tests play the setting on** (the shipped default, as for
-   New Specials); the tests that pin a classic bug set it off explicitly and
-   have twins with it on. Alternative: integration plays off and only the
-   new tests turn it on.
+1. **Turn Undead reach.** The reach is the larger of 4 px per level and
+   60 px; the roll keeps its classic strength. Ruling: as built.
+2. **A disarm with foes in reach that staggers nobody** costs half the
+   price (75 of 150 MP) and the usual 5 busy and is refused as
+   `DISARM RESISTED`; with nobody in reach it is refused free as
+   `NO ONE TO DISARM`. Ruling: so, in both games (`2dc64408`).
+3. **The DISARM detail text** now says what the special does: it staggers
+   the foe you face so it waits before its next swing, and a stronger foe
+   resists. Ruling: rewritten.
+4. **MIND CONTROL's duration for a higher-level foe** in the old game drew
+   a garbage number. Ruling: ported, not behind the setting, as its own
+   commit (`cf5b1fe2`); no row reaches it and a full capture moved no
+   golden.
+5. **#354 is fixed in the current game only.** Ruling: leave it.
+6. **The calibration suites assert on the shipped default** (both settings
+   on). Ruling: so; a dip where the crew does worse is a balance bug, never
+   a lowered floor (see [Balance](#balance)).
+7. **Integration tests play the setting on.** Ruling: as built.
 8. **HEAL and PROTECTION excluding the caster**, and **MIND CONTROL's
-   25-tick duration against an equal-level foe**, stay as they are; changing
-   either is a balance ruling.
-9. **CI timeout.** If the Run Tests lane goes past 39 minutes with the new
-   rows, its timeout goes from 40 to 50 minutes in this work.
+   25-tick duration against an equal-level foe**, stay as they are.
+   Ruling: leave both.
+9. **CI timeout.** The Run Tests lane's cap in `.github/workflows/test.yml`
+   goes from 40 to 50 minutes (the lane ran 37 minutes on this PR and on
+   master). Ruling: raised, in its own commit.
 
 ## Out of scope
 
