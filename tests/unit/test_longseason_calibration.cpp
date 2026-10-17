@@ -127,6 +127,14 @@ struct CurvePin
 // 3000, above band 4 on every seed. Crew survivors at 600 are [7,8,8],
 // so 7 is the measured minimum. See the dated README calibration update;
 // the dedicated defense test below also pins the actual F4 contract.
+// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
+// Specials on), which the asserting run now plays: HEAL capped at full
+// health took levels 2, 5 and 8 under their floors on seed 42 (5, 2, 2
+// against 6, 5, 3) because their orders of battle had been tuned against
+// a quietly overhealed crew; the levels were eased in the builders (2: one
+// brigand fewer, 5: one picket fewer, 8: the terrace-2 bruisers at lvl 1),
+// and they now read 7 6 6, 7 8 7 and 5 8 5 across seeds {42, 1337, 2025}.
+// Every floor holds, no floor moved; see the README's 2026-10-17 update.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 1},  {5, 3, 5},
     {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 7},  {10, 5, 1},

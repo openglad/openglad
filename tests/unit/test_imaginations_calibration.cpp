@@ -59,6 +59,8 @@ struct CurvePin
 // (was 8/7/8 when only the wake was fixed). Accessibility for new teams
 // stays the design contract: the full kill-all sweep cleared 3/3 seeds
 // (level_done at ticks 868/989/910) with 5-8 survivors.
+// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
+// Specials on), which the asserting run now plays: 6 6 6; every pin held.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 5},
 };

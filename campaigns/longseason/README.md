@@ -278,6 +278,39 @@ separate `ashfall_fair_holds_defense_band_at_curve` test now checks the
 3000-tick defense contract on all three seeds. The table below preserves
 the original shipped measurements.
 
+### Update (2026-10-17, Gameplay Fixes)
+
+With the Gameplay Fixes setting on (the shipped default), the cleric's
+HEAL stops at full health. The classic heal had no cap, and the
+calibration crew carried the extra health into its fights (the elf at
+197/154 on The Paymaster Vanishes). Three levels had been tuned against
+that quietly overhealed crew, and their seed-42 survivors at tick 600
+fell under their floors on the shipped default (Gameplay Fixes and New
+Specials both on): The Ferry Right 5 (floor 6), Two Banners 2 (floor 5),
+The Paymaster Vanishes 2 (floor 3). The heal cap alone reproduces each
+seed-42 drop. The levels were eased in the builders, the smallest edit first,
+each measured on all three seeds; no floor moved:
+
+- The Ferry Right: one brigand fewer on the west approach (the doc's
+  (26,20) dropped; team 2 26 -> 25).
+- Two Banners: one picket fewer in strip A (the doc's (25,6) dropped;
+  team 2 27 -> 26).
+- The Paymaster Vanishes: the five terrace-2 bruisers at lvl 1 instead of
+  lvl 2 (no count moves).
+
+Crew survivors at tick 600, seeds 42 / 1337 / 2025:
+
+| level (floor) | shipped default, before | shipped default, now | classic, before | classic, now |
+|---------------|-------------------------|----------------------|-----------------|--------------|
+| 2 The Ferry Right (6) | 5 / 8 / 8 | 7 / 6 / 6 | 6 / 8 / 8 | 7 / 7 / 7 |
+| 5 Two Banners (5) | 2 / 5 / 6 | 7 / 8 / 7 | 6 / 6 / 7 | 8 / 8 / 8 |
+| 8 The Paymaster Vanishes (3) | 2 / 5 / 5 | 5 / 8 / 5 | 3 / 8 / 5 | 3 / 7 / 8 |
+
+"Classic" is both settings off. Every other level and the Ashfall Fair
+defense band measured unchanged. The 6000-tick bracket sweeps
+(`scripts/longseason_playtest.sh`) were not re-run for this update; the
+F4 rows below keep their 2026-07-09 evidence.
+
 ### F4 CALIBRATION TABLE (measured 2026-07-09 — the contract as shipped)
 
 Method: scripts/longseason_playtest.sh (openglad_text --protocol; since
@@ -299,13 +332,13 @@ measured minima across the three pinned seeds — no dead slack).
 | lvl | title | gate | crew | verdict | evidence (8-mixed @curve unless noted) |
 |-----|-------|------|------|---------|----------------------------------------|
 | 1 | Mud Pay | kill | 1 | PASS | clears 3/3 @1 (837/784/740), 3/3 @2; 4-sold 3/3 @1 — the fresh-team anchor holds |
-| 2 | The Ferry Right | defense | 1 | PASS | t0@3000 [6,7,6] vs band 5; kill-viability @2 3/3 (~1450) |
+| 2 | The Ferry Right | defense | 1 | PASS | t0@3000 [6,7,6] vs band 5; kill-viability @2 3/3 (~1450). **Update (2026-10-17):** one brigand fewer; crew survivors at 600 now [7,6,6] on the shipped default (bracket not re-run; see the Gameplay Fixes update above). |
 | 3 | Saltmere Bell (opt) | kill | 2 | TRADE | viability @2 3/3 (full crew alive at 6000); clears @3 1-2/3 pinned, 5/10 wide — the losing runs end with 8/8 crew parked beside 1-5 full-HP stragglers (the parked-remnant stall, below) |
 | 4 | The Assessor | kill+SAVE_ALL | 2 | PASS | clears 2/3 @2, 3/3 @3; NO Assessor-dies-while-crew-lives run, either roster (the counting-nook + lvl-8 body-block ward) |
-| 5 | Two Banners | kill | 3 | PASS | clears 3/3 @3 (1108-1295), 3/3 @4 |
+| 5 | Two Banners | kill | 3 | PASS | clears 3/3 @3 (1108-1295), 3/3 @4. **Update (2026-10-17):** one picket fewer; crew survivors at 600 now [7,8,7] on the shipped default (bracket not re-run; see the Gameplay Fixes update above). |
 | 6 | The Hay War | kill | 3 | PASS | clears 3/3 @3 (2582-3563, all 3 tents torn out), 3/3 @4 |
 | 7 | Grey Tolls (opt) | defense+kill | 4 | PASS | t0@3000 [7,6,6] vs band 5 (4-sold [6,6,4]); kill 2/3 @4, 3/3 @5 |
-| 8 | The Paymaster Vanishes | kill | 4 | TRADE | 0/10 wide @4 AND @5; crews reach the hollow and kill 17-19 of 23 (foes 23->4-6), then park — the last remnant set always contains the INVISIBLE lvl-7 Long Tom. The westlands L8 precedent, accepted |
+| 8 | The Paymaster Vanishes | kill | 4 | TRADE | 0/10 wide @4 AND @5; crews reach the hollow and kill 17-19 of 23 (foes 23->4-6), then park — the last remnant set always contains the INVISIBLE lvl-7 Long Tom. The westlands L8 precedent, accepted. **Update (2026-10-17):** the terrace-2 bruisers at lvl 1; crew survivors at 600 now [5,8,5] on the shipped default (bracket not re-run; see the Gameplay Fixes update above). |
 | 9 | Ashfall Fair | defense | 5 | PASS | t0@3000 [8,10,10] vs band 4; kill 3/3 @5 (~1220), 3/3 @6. **Update (2026-09-26, PR #315):** t0@3000 [8,8,10], band 4 and clear 3/3 retained; see the recalibration above. |
 | 10 | The Ledger Debt | kill | 5 | PARTIAL | clears 5/10 wide @5, 6/10 @6 (2/3 pinned @6); crew survives 10/10 both brackets — the coin-flip is the parked-remnant lottery, not the fight |
 | 11 | Cold Seams | kill | 5 | PASS* | 2/3 pinned @5 (gate met); 9/10 wide @5 AND @6 — the pinned @6 triplet (2/3 vs the 3/3 letter) is one unlucky draw |
@@ -717,7 +750,7 @@ beat is authored, calibratable at crew 1)
 | # | team | family | count | level | guard | placement (floor 0) | spawn_delay | specials_off |
 |---|------|--------|-------|-------|-------|---------------------|-------------|--------------|
 | 1 | 2 | FAMILY_THIEF (knifemen on the span) | 4 | 1 | no | causeway west half: (31,19),(31,21),(33,20),(35,20) | 0 | no |
-| 2 | 2 | FAMILY_SOLDIER (brigands) | 3 | 1 | no | west approach: (24,19),(24,21),(26,20) | 0 | no |
+| 2 | 2 | FAMILY_SOLDIER (brigands) | 2 | 1 | no | west approach: (24,19),(24,21) | 0 | no |
 | 3 | 2 | FAMILY_ARCHER (camp bowmen) | 3 | 1 | YES | camp: (6,26),(10,26),(6,30) | 0 | no |
 | 4 | 2 | FAMILY_SOLDIER (camp wardens) | 2 | 2 | YES | camp: (9,28),(12,30) | 0 | no |
 | 5 | 2 | FAMILY_THIEF (the boats — beach upstream, hit the east flank) | 4 | 1 | no | north shallows marsh: (48,7),(51,7),(48,9),(51,9) | 400 | no |
@@ -726,11 +759,11 @@ beat is authored, calibratable at crew 1)
 | 8 | 2 | FAMILY_BARBARIAN (the river-master's bruisers) | 2 | 2 | no | camp mouth: (15,25),(15,29) | 1200 | no |
 | 9 | 2 | FAMILY_THIEF (last push) | 2 | 2 | no | (13,27),(16,27) | 1200 | no |
 
-Totals: 26 team-2 + 5 team-0 allies = 31 livings, 0 generators.
+Totals: 25 team-2 + 5 team-0 allies = 30 livings, 0 generators.
 Delayed spawns: 14 (4 boats + 6 second push + 4 last push).
 Guards: 5 team-0 + 5 team-2 camp posts.
-MAXOBS ledger: 31 livings + 0 gens + 10 markers + 6 treasures + 3 exits
-= 50 objects; ample headroom under 150.
+MAXOBS ledger: 30 livings + 0 gens + 10 markers + 6 treasures + 3 exits
+= 49 objects; ample headroom under 150.
 
 Footing: causeway anchors on dirt/path; boat wave on marsh; camp on dark
 grass. No entity in water, woods, or the toll-house wall. Reachability
@@ -1268,7 +1301,7 @@ smooth_world(w), then post-smooth decor (autotiler-inert):
 
 | # | team | family | count | level | guard | placement (floor 0, tile) | spawn_delay | specials_off |
 |---|------|--------|-------|-------|-------|---------------------------|-------------|--------------|
-| 1 | 2 | SOLDIER (pickets) | 6 | 1+(i%2) | no | strip A (x16-29): (18,8),(22,12),(25,6),(18,28),(22,32),(25,26) | 0 | no |
+| 1 | 2 | SOLDIER (pickets) | 5 | 1+(i%2) | no | strip A (x16-29): (18,8),(22,12),(18,28),(22,32),(25,26) | 0 | no |
 | 2 | 2 | BARBARIAN (ford mercs) | 3 | 3 | no | east bank: (33,18),(34,21),(36,20) | 0 | no |
 | 3 | 2 | ARCHER | 4 | 2 | YES | behind east hedge: (46,10),(46,14),(46,26),(46,30) | 0 | no |
 | 4 | 2 | SOLDIER | 6 | 2 | no | strip B (x36-49): (38,8),(42,12),(47,6),(38,30),(42,26),(47,33) | 0 | no |
@@ -1277,8 +1310,8 @@ smooth_world(w), then post-smooth decor (autotiler-inert):
 | 7 | 2 | SOLDIER (reserve) | 5 | 2 | no | dormant NE headland: (52,2),(54,3),(56,4),(55,6),(57,7) | 500 | no |
 
 Generators: none (first war level; generators debut at 6).
-Totals: 27 team-2 livings, 0 generators. MAXOBS ledger: 27 livings +
-10 markers + 5 treasures + 2 exits = 44 objects; huge headroom.
+Totals: 26 team-2 livings, 0 generators. MAXOBS ledger: 26 livings +
+10 markers + 5 treasures + 2 exits = 43 objects; huge headroom.
 
 Treasure: FAMILY_DRUMSTICK at (3,18) and (4,22) (blue camp stores);
 FAMILY_GOLD_BAR at (53,14) (the RUSSET purse — the second warm payment,
@@ -1764,7 +1797,7 @@ smooth_world(w), then post-smooth decor:
 | 1 | 2 | THIEF (scrub ambush) | 6 | 3 | no | lower apron: (18,52),(30,52),(24,48),(44,50),(48,54),(40,56) | 0 | no |
 | 2 | 2 | SOLDIER (deserters) | 4 | 3 | no | terrace 1: (10,36),(22,40),(34,36),(44,40) | 0 | no |
 | 3 | 2 | ARCHER | 3 | 3 | YES | terrace 1 overwatch on band B lip: (14,34),(28,34),(42,34) | 0 | no |
-| 4 | 2 | BARBARIAN | 5 | 4 | no | terrace 2: (8,22),(20,26),(30,21),(40,26),(48,22) | 0 | no |
+| 4 | 2 | BARBARIAN | 5 | 4 | no | terrace 2: (8,22),(20,26),(30,21),(40,26),(48,22) (builder: lvl 1 since 2026-10-17) | 0 | no |
 | 5 | 2 | THIEF | 2 | 4 | no | terrace 2 skulkers: (14,26),(36,22) | 0 | no |
 | 6 | 2 | ARCHER | 2 | 4 | YES | head-zone approach: (30,10),(38,12) | 0 | no |
 | 7 | 2 | THIEF "Long Tom" (8 chars) | 1 | 7 | YES | the hollow, by the chest: (13,6) | 0 | no |

@@ -119,6 +119,9 @@ struct FloorBattle
 // f15 0 3 0 (was 0 0 0), f20 0 0 0. Isolating #320 alone reproduces every
 // move; the #350 tower-heading fix in the same batch moves nothing here.
 // WP-7 bracket sweeps still pending as before.)
+// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
+// Specials on), which the asserting run now plays: f1 8 8 7, f5 1 6 7,
+// f10 0 0 0, f15 0 0 0, f20 0 0 0; every pin held.)
 constexpr FloorPin kPins[] = {
     {1, 1, 6, 8}, {5, 2, 0, 8}, {10, 3, 0, 7}, {15, 4, 0, 7}, {20, 6, 0, 7},
 };
