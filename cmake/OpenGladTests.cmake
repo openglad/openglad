@@ -486,8 +486,8 @@ og_add_test_group(og_test_game_core FILES
 )
 
 # The New Specials and Gameplay Fixes scenes (tests/integration/
-# test_special_scenes.cpp): 43 plays of the real game loop, each Gameplay
-# Fixes scene twice. Its own binary because og_test_game_core under
+# test_special_scenes.cpp): 43 scenes, 64 plays of the real game loop
+# since each Gameplay Fixes scene plays twice. Its own binary because og_test_game_core under
 # ASan+UBSan measured 312 s and 418 s on two runs of the same tree with the
 # Gameplay Fixes scenes alone (fde713b8), and the New Specials scenes add
 # to that (locally 0.58 of the Gameplay Fixes time on a plain build, 0.22
@@ -1536,12 +1536,13 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # (72 %) is normal here and not a regression.
     set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
     # og_test_special_scenes: the New Specials and Gameplay Fixes scenes,
-    # 43 plays of the real game loop, each Gameplay Fixes scene twice.
+    # 43 scenes, 64 plays of the real game loop since each Gameplay Fixes
+    # scene plays twice.
     # Measured 2026-10-17 locally: 14 s for the whole binary (New Specials
     # 5.2 s, Gameplay Fixes 8.9 s), 36 s under ASan+UBSan (6.5 s and
     # 28.9 s; a lower bound for CI: the nix shell compiles with -O2). On
     # CI the Gameplay Fixes scenes cost og_test_game_core +130 s on the
-    # standard lane and +109 s and +217 s on two ASan+UBSan runs of the
+    # standard lane and +109 s and +215 s on two ASan+UBSan runs of the
     # same tree. Scaling the New Specials share by the local ratios
     # (0.58 plain, 0.22 under ASan+UBSan), the binary is expected at about
     # 205 s on the standard lane and 133-266 s under ASan+UBSan (derived):

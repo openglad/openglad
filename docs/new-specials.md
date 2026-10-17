@@ -534,7 +534,7 @@ keys a player would press, every other actor is staged on the authoritative
 server world, and the test asserts on the display what the special visibly
 does, its tells: the mine on the ground and the orc that trips it, the wail
 hopping through a pack, the HUD cell counting a rest down. Twenty-two
-scenes: one per special, three of a bot using one, and one of a classic
+scenes: one per special or chained pair of specials, three of a bot using one, and one of a classic
 special's countdown with the setting off. They run on every lane like any
 other test, one gtest each.
 

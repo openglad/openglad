@@ -18,7 +18,6 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -3066,7 +3065,7 @@ void play_side(const Pair& pair, int side, Result& out)
     const std::string name = std::string(pair.name) + (side ? "-on" : "-off");
     sc.name = name.c_str();   // play() reads it only during the call
     sc.gameplay_fixes = static_cast<short>(side);
-    sc.new_specials = 0;      // every Shift is the classic one (DESIGN3 decision 2)
+    sc.new_specials = 0;      // every Shift is the classic one
     sc.hash_frames = true;
     sc.tells = side ? pair.on_shows : pair.off_shows;
     const std::vector<Tell>& never = side ? pair.on_never : pair.off_never;
