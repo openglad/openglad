@@ -7814,8 +7814,6 @@ og::ui::MatchSetupSession::Inputs match_setup_inputs(
     inputs.is_host = picker_lobby_host_controls_visible();
     inputs.networked = picker_lobby_is_networked();
     inputs.my_team = og::ui::picker_lobby_my_team(game->save_data);
-    inputs.session_difficulty =
-        og::runtime::current_session->current_difficulty_;
     inputs.authored_mask = og::ui::ctf_authored_team_mask_for_loaded_level(
         game->save_data, game->world(), get_mounted_campaign());
     inputs.players = seats.players;

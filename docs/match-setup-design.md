@@ -513,6 +513,7 @@ from the map.` above the pointer line and has no rows. The joiner face is the
 caption plus the ONE packed line; the CROSS CONTROL row is gone from this step
 (its read-only home is the strip's DIFFICULTY door). The MATCH step still
 recaps every rule line (§10).
+**Update (2026-10-17, PR #364):** the MATCH step recaps only the RULES step's own rows, SCORE and TIME LIMIT; the DIFFICULTY door's knobs, the Game Settings and CROSS CONTROL are not on it.
 
 ### 2.6 SETUP: MATCH (reads the staged world)
 
@@ -534,6 +535,7 @@ recaps every rule line (§10).
 A networked four-team arena spends 1 + 4 + 5 = 10 lines exactly; when the
 report leads with `STAGING FAILED` the rules lines are dropped last-first.
 Hidden knobs are not recapped. The composer never pages.
+**Update (2026-10-17, PR #364):** the MATCH step recaps only the RULES step's own rows, SCORE and TIME LIMIT; the DIFFICULTY door's knobs, the Game Settings and CROSS CONTROL are not on it.
 
 **GO** (`setup_row_1`, host only) is live exactly when the strip GO would
 launch, and says why when it would not — the face IS the refusal:
@@ -763,7 +765,7 @@ case (§10).
 | SCORE cycle `{0,1,3,5,10}` + toasts | `cycle_ctf_capture_limit(SaveData&, int dir)` in `picker_common` | the Lua twin is deleted; the SCENARIO row is PARKED, `change_ctf_caps` deleted, `ButtonAction::CycleCtfCaptureLimit = 61` retired-do-not-reuse |
 | TIME LIMIT cycle + face `MAP` / `n MIN` + toasts | new `cycle_time_limit` / `format_time_limit_label` | from Lua; its `nM` face retired with it |
 | off-wheel value rejoins at the head | one C++ `next_value` inside the cyclers | from Lua |
-| the rules, spelled once | the RULES faces = the shared formatters upper-cased; `format_match_rules_lines` packs the SAME faces two per line and is BOTH the joiner-RULES lines and the MATCH step's | no abbreviated recap spellings exist |
+| the rules, spelled once | the RULES faces = the shared formatters upper-cased; `format_match_rules_lines` packs the SAME faces two per line and is BOTH the joiner-RULES lines and the MATCH step's | no abbreviated recap spellings exist **Update (2026-10-17, PR #364):** the MATCH step recaps only the RULES step's own rows, SCORE and TIME LIMIT; the DIFFICULTY door's knobs, the Game Settings and CROSS CONTROL are not on it. |
 | cross control's word | `format_cross_control_label` says `CROSS CONTROL: OWN/ALL` | `CTRL:` is gone from every surface |
 | the authored side mask | `og::sim::authored_team_mask` through the deal's two readers → `Inputs.authored_mask` | nothing new |
 | reverse step on a cycler row | ONE session entry, `choose(row, -1)`, reached three ways: the `<` cell, the terminal `N-`, and the mouse right-click (`do_call_right` stashes the row with `menu_spec_row_reverse = true` and returns the callback's real value; the runner resets the stash after dispatch, and a stash that survives a frame fails under TESTING) | one entry, three doors **Update (2026-09-21, PR #307):** there is no reverse step: all three doors and the whole `menu_spec_row_reverse` stash are DELETED, and a right-click on a spec row dispatches nothing (§11) |
@@ -1059,7 +1061,7 @@ button, and the PR body states it (§10, R2-R3).
 | D23 | **The engine's "book" strings stay** | the scripted-page tree's engine noun, used by three other campaigns |
 | D24 | **No wire/save/snapshot/replay bump**; `book_signed` orphaned | no new knob; `campaign_state` keys are free-form |
 | D25 | **The rows are the docket's 42-glyph face beside a declared 30 px cell column (280..310) holding the pagers and the `<` cells; tabs, cells and pagers share ONE right edge (310)** | the footer NEXT is the step advance, so the pagers stay beside the rows they page; three unrelated right edges were a defect **Update (2026-09-21, PR #307):** the column holds the pagers alone now (§11); the rows keep their 264-wide face and everything still closes on 310. |
-| D26 | **`kSetupLinesMax = 10` for C++ steps**; hosted Lua pages keep the contract's 6; content starts at y=47 | the MATCH step needs title + 4 teams + 5 rules lines; the Lua contract is untouched; vertical rhythm is part of the design |
+| D26 | **`kSetupLinesMax = 10` for C++ steps**; hosted Lua pages keep the contract's 6; content starts at y=47 | the MATCH step needs title + 4 teams + 5 rules lines; the Lua contract is untouched; vertical rhythm is part of the design **Update (2026-10-17, PR #364):** the MATCH step recaps only the RULES step's own rows, SCORE and TIME LIMIT; the DIFFICULTY door's knobs, the Game Settings and CROSS CONTROL are not on it. |
 | D27 | **The ARENA tab lands on the page that lists the cursor's arena**, opened on the window holding `[CURRENT]`; from depth ≥ 2 it is a no-op | a tab that searched seven pages or landed on the last page browsed would be a dead tab or a surprise |
 | D28 | **On a versus campaign the docket's page rows are shortcuts into the wizard**; the zone submenu serves classic campaigns only | two chassis for one page tree, with a NEXT that meant two things, was the clutter #304 names **Update (2026-09-20, PR #307):** there is ONE docket row and it is a page row into the wizard's GAME step; the shortcut pair is gone (§10). |
 | D29 | **Footer = BACK · PREV · NEXT**, own ids on the zone submenu's rects (PREV at 224) | BACK/Escape keeps meaning "close"; the shared rects keep the footer geometry the chassis already has, and the new ids keep the zone submenu's own oracle honest |
@@ -1067,7 +1069,7 @@ button, and the PR body states it (§10, R2-R3).
 | D31 | **Team identity on the wizard is the colour swatch**; TEAMS labels `TEAM n`, MATCH keeps VIEW LEVEL's `<COLOR> TEAM` line; terminals spell `TEAM n COLOR` | one identity every screen already uses; spelling the colour in the TEAMS label would overflow a 2-seat team's line |
 | D32 | **Line B is untouched inside the wizard**; the tab strip is the step indicator | the census is what a host watches while configuring a 2v2 with a remote joiner |
 | D33 | **The MATCH step's GO is gated by the strip GO's own predicate and the stage health, and its FACE says why**; no "dirty" clause | a GO that ejects the player onto Base Camp to read a modal breaks the step's one promise |
-| D34 | **The rules are spelled once**: the RULES faces are the shared formatters upper-cased, and one packer serves both the joiner's RULES lines and the MATCH step | abbreviated recap spellings were a second face for one knob |
+| D34 | **The rules are spelled once**: the RULES faces are the shared formatters upper-cased, and one packer serves both the joiner's RULES lines and the MATCH step | abbreviated recap spellings were a second face for one knob **Update (2026-10-17, PR #364):** the MATCH step recaps only the RULES step's own rows, SCORE and TIME LIMIT; the DIFFICULTY door's knobs, the Game Settings and CROSS CONTROL are not on it. |
 | D35 | **The TEAMS rows are SIDES / FILL / LINEUP; the pointer line appears with any diagnostic** | the step cannot reseat anyone, so `NEEDS 2 FIGHTERS` sent the player hunting on the wrong step |
 | D36 | **The current tab wears `[WORD]` and the Disabled (pressed-in) face** | it is inert, and the dimmed face with darker bevels is the chassis's pressed-in look |
 | D37 | **`teams=false` steps show the staged report's own lines + FILL + LINEUP; onslaught keeps a TEAMS step** | four `TEAM n` lines about teams a band mode does not have were a lie; MAP UNITS is onslaught's live knob |
@@ -1155,7 +1157,7 @@ Sections 0-9 keep their text verbatim, as a dated snapshot should.
 |---|---|---|
 | 1. "drop the whole toast. What's its point?" | R2-1 | The four wizard said-lines (SIDES, FILL, SCORE, TIME LIMIT) and their five formatters are DELETED, together with `kMatchCountWords`, `match_squads_phrase`, `match_fill_said`, `format_time_limit_said` and `format_ctf_score_said`. `turn_match_sides` and `turn_match_fill` return `void`. `Outcome::message` is the one message channel (`message_`/`take_message()` deleted), and it carries refusals, the engine's `Level set to <title>.` tail and the campaign's own Lua voice — which now reaches the terminals too. |
 | 2. "the FILL: selector only changes teams 1 and 2, even for 4-player maps" | R2-2 | Fix B: when NO band is on, a FILL turn lights **every authored opponent** plus the own band, not just the lowest. A deliberate SIDES value is still respected while bands are on. NONE also leaves the wizard's FILL wheel (WEAK → FAIR → STRONG → BRUTAL, note `weak to brutal`): in the wizard NONE only ever emptied a versus arena. LINEUP keeps per-team NONE. Pinned end to end on SDL and on the text client, on a four-side arena, and from the collapsed state. |
-| 3. "why does Rules include all the difficulty settings?" | R2-3 | RULES = **SCORE and TIME LIMIT** — the two `match_knobs` — plus one pointer line, `Respawns and the rest: the Base Camp DIFFICULTY.` RESPAWNS, SPAWN DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and CROSS CONTROL return to the DIFFICULTY screen, which is on the strip of every campaign again: `BACK · DIFFICULTY · SCENARIO · NETWORK · GO`. Five steps stay; the MATCH step's recap still states every rule line. |
+| 3. "why does Rules include all the difficulty settings?" | R2-3 | RULES = **SCORE and TIME LIMIT** — the two `match_knobs` — plus one pointer line, `Respawns and the rest: the Base Camp DIFFICULTY.` RESPAWNS, SPAWN DELAY, PERMADEATH, GENERATORS, DIFFICULTY, INFINITE GOLD and CROSS CONTROL return to the DIFFICULTY screen, which is on the strip of every campaign again: `BACK · DIFFICULTY · SCENARIO · NETWORK · GO`. Five steps stay; the MATCH step's recap still states every rule line. **Update (2026-10-17, PR #364):** the MATCH step recaps only the RULES step's own rows, SCORE and TIME LIMIT; the DIFFICULTY door's knobs, the Game Settings and CROSS CONTROL are not on it. |
 | 4. "get rid of the CLEARED: bullshit" | R2-4 | No progress vocabulary anywhere in Multiplayer Arenas, through ONE predicate, `og::ui::progress_marks_shown(save)` = `!is_versus_campaign(save)`. It is read by the wizard's `[CLEARED]` seam, the camp, SCENARIO → SET LEVEL, PROGRESS (header, status column and row affordance), the SET CAMPAIGN card and the terminals' `Replay Level`. `[CURRENT]` stays. Classic campaigns are byte-identical. |
 | 5. "replace all three multiplayer arena buttons with just one button… add a RANDOM button for game type and map" | R2-5 | The docket collapses to ONE row, `SETUP - <GAME>: <ARENA>  >`, which states the current match and opens the wizard on GAME; the joiner sees the same row, browsable. The strip twin is deleted. The wizard gains two roll rows, appended LAST so no arena ordinal moves: `RANDOM - any game, any arena` on the GAME step and `RANDOM ARENA - any arena of this game` on each game's ARENA page, both from ONE Lua `roll(rows)` helper and both host-gated in Lua. An `Acted` answer that carries a level now routes through each surface's existing gated level tail. |
 
@@ -1280,6 +1282,7 @@ vertical/rhythm names in `match_setup_session.h`, every x/w/tab/cell/footer
 name in `picker_sdl_defs.h`. Five steps, the tab strip, the `<` reverse
 cell, the entry-highlight table, GO's gating and the MATCH recap are all
 unchanged.
+**Update (2026-10-17, PR #364):** the MATCH step recaps only the RULES step's own rows, SCORE and TIME LIMIT; the DIFFICULTY door's knobs, the Game Settings and CROSS CONTROL are not on it.
 **Update (2026-09-21, PR #307):** the `<` reverse cell is the one item on
 that list round 3 removed (§11). Everything else in the sentence still
 holds.

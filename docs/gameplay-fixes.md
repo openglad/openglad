@@ -25,9 +25,7 @@ two are independent.
 The row flips a per-machine preference (`cfg` key `gameplay/gameplay_fixes`,
 default `on`). That preference seeds the session's value once per session.
 In a networked game the host decides: a joiner's click only changes what it
-will use when it hosts, and the SETUP wizard's MATCH recap shows the host's
-value as `GAMEPLAY FIXES: ON` or `GAMEPLAY FIXES: OFF`. The value is never
-written into a company save.
+will use when it hosts. The value is never written into a company save.
 
 It is a simulation setting and travels exactly as New Specials does, one
 hop at a time:

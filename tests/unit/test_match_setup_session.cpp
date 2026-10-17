@@ -381,12 +381,11 @@ TEST(MatchSetupRules, sides_wheel_is_clamped_to_the_authored_sides)
 
 // --- The RULES faces and their packed lines (§2.5, §2.6) ---------------
 
-TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
+TEST(MatchSetupRules, rules_faces_are_score_and_time_and_nothing_else)
 {
     SaveData save;
     og::ui::MatchRulesInputs inputs;
     inputs.save = &save;
-    inputs.difficulty = 1;
 
     EXPECT_TRUE(og::ui::match_rules_faces({}).empty())
         << "no save, no rules: the composer never invents a face";
@@ -396,139 +395,90 @@ TEST(MatchSetupRules, rules_faces_and_lines_pack_two_per_line)
                     std::vector<og::ui::MatchRuleFace>{})
                     .empty());
 
-    const std::vector<og::ui::MatchRuleFace> faces =
-        og::ui::match_rules_faces(inputs);
-    const std::vector<std::string_view> expected_ids = {
-        og::ui::kRulesRowScore,      og::ui::kRulesRowTime,
-        og::ui::kRulesRowRespawns,   og::ui::kRulesRowSpawnDelay,
-        og::ui::kRulesRowPermadeath, og::ui::kRulesRowGenerators,
-        og::ui::kRulesRowDifficulty, og::ui::kRulesRowInfiniteGold,
-        og::ui::kRulesRowNewSpecials, og::ui::kRulesRowGameplayFixes};
-    const std::vector<std::string> expected_faces = {
-        "SCORE: MAP",         "TIME LIMIT: MAP",
-        "RESPAWNS: OFF",      "SPAWN DELAY: NORMAL",
-        "PERMADEATH: ON",     "GENERATORS: NORMAL",
-        "DIFFICULTY: BATTLE", "INFINITE GOLD: OFF",
-        "NEW SPECIALS: OFF",  "GAMEPLAY FIXES: OFF"};
-    ASSERT_EQ(expected_ids.size(), faces.size());
-    for (std::size_t i = 0; i < faces.size(); ++i)
-    {
-        EXPECT_EQ(expected_ids[i], faces[i].id) << "row " << i;
-        EXPECT_EQ(expected_faces[i], faces[i].face) << "row " << i;
-    }
+    // Both knobs shown: SCORE then TIME LIMIT, upper-cased once, and
+    // packed onto ONE line.
+    std::vector<og::ui::MatchRuleFace> faces = og::ui::match_rules_faces(inputs);
+    ASSERT_EQ(2u, faces.size());
+    EXPECT_EQ(og::ui::kRulesRowScore, faces[0].id);
+    EXPECT_EQ("SCORE: MAP", faces[0].face);
+    EXPECT_EQ(og::ui::kRulesRowTime, faces[1].id);
+    EXPECT_EQ("TIME LIMIT: MAP", faces[1].face);
+    EXPECT_EQ((std::vector<std::string>{"SCORE: MAP  TIME LIMIT: MAP"}),
+              og::ui::format_match_rules_lines(inputs));
 
-    EXPECT_EQ((std::vector<std::string>{"SCORE: MAP  TIME LIMIT: MAP",
-                                        "RESPAWNS: OFF  SPAWN DELAY: NORMAL",
-                                        "PERMADEATH: ON  GENERATORS: NORMAL",
-                                        "DIFFICULTY: BATTLE  "
-                                        "INFINITE GOLD: OFF",
-                                        "NEW SPECIALS: OFF  "
-                                        "GAMEPLAY FIXES: OFF"}),
-              og::ui::format_match_rules_lines(inputs))
-        << "GAMEPLAY FIXES pairs with NEW SPECIALS on the last line";
-
-    // The session's New Specials and Gameplay Fixes values are what the
-    // faces state, so a joiner reads the host's choices in the recap.
+    // Every other setting a match is played under, turned off its default,
+    // leaves the answer exactly as it was: the DIFFICULTY door's knobs,
+    // the two Game Settings and CROSS CONTROL are not rules faces.
+    save.respawn_mode = 1;
+    save.ctf_respawn_ticks = 360;
+    save.keep_fallen_heroes = 1;
+    save.generator_rate = 200;
+    save.infinite_gold = 1;
+    save.cross_control = 1;
     save.new_specials = 1;
-    EXPECT_EQ("NEW SPECIALS: ON  GAMEPLAY FIXES: OFF",
-              og::ui::format_match_rules_lines(inputs).back());
-    save.new_specials = 0;
     save.gameplay_fixes = 1;
-    EXPECT_EQ("NEW SPECIALS: OFF  GAMEPLAY FIXES: ON",
-              og::ui::format_match_rules_lines(inputs).back());
-    save.gameplay_fixes = 0;
+    EXPECT_EQ((std::vector<std::string>{"SCORE: MAP  TIME LIMIT: MAP"}),
+              og::ui::format_match_rules_lines(inputs));
 
-    // CROSS CONTROL is the networked-only row: the eleventh face, alone on
-    // its line, so an odd face count leaves the last one alone.
-    inputs.networked = true;
-    const std::vector<std::string> networked =
-        og::ui::format_match_rules_lines(inputs);
-    ASSERT_EQ(6u, networked.size());
-    EXPECT_EQ("NEW SPECIALS: OFF  GAMEPLAY FIXES: OFF", networked[4]);
-    EXPECT_EQ("CROSS CONTROL: OWN", networked.back());
-    EXPECT_EQ(og::ui::kRulesRowCrossControl,
-              og::ui::match_rules_faces(inputs).back().id);
-    inputs.networked = false;
-
-    // A knob the campaign hides drops its face and the rest REPACK: there
-    // is no blank half-line where a row used to be.
+    // A knob the campaign hides drops its face: TIME LIMIT alone...
     inputs.show_score = false;
-    EXPECT_EQ("TIME LIMIT: MAP  RESPAWNS: OFF",
-              og::ui::format_match_rules_lines(inputs).front());
-    EXPECT_EQ(og::ui::kRulesRowTime, og::ui::match_rules_faces(inputs).front().id);
-    inputs.show_score = true;
+    faces = og::ui::match_rules_faces(inputs);
+    ASSERT_EQ(1u, faces.size());
+    EXPECT_EQ(og::ui::kRulesRowTime, faces[0].id);
+    EXPECT_EQ("TIME LIMIT: MAP", faces[0].face);
+    EXPECT_EQ((std::vector<std::string>{"TIME LIMIT: MAP"}),
+              og::ui::format_match_rules_lines(inputs));
 
-    // Every value of every knob, against the two budgets §2.8 sets: a
+    // ...SCORE alone...
+    inputs.show_score = true;
+    inputs.show_time = false;
+    faces = og::ui::match_rules_faces(inputs);
+    ASSERT_EQ(1u, faces.size());
+    EXPECT_EQ(og::ui::kRulesRowScore, faces[0].id);
+    EXPECT_EQ("SCORE: MAP", faces[0].face);
+
+    // ...and nothing at all, so the MATCH step prints no rules line.
+    inputs.show_score = false;
+    EXPECT_TRUE(og::ui::match_rules_faces(inputs).empty());
+    EXPECT_TRUE(og::ui::format_match_rules_lines(inputs).empty());
+    inputs.show_score = true;
+    inputs.show_time = true;
+
+    // Every value of both knobs, against the two budgets §2.8 sets: a
     // packed line fits 48 and a single face fits the 42-glyph row.
     std::string worst_pair;
-    for (const short respawn : {short(0), short(1), short(2), short(3)})
-    for (const short ticks : {short(0), short(60), short(360)})
-    for (const short keep : {short(0), short(1)})
-    for (const short rate : {short(0), short(50), short(200)})
-    for (const short gold : {short(0), short(1)})
-    for (const int difficulty : {0, 1, 2})
     for (const short score : {short(0), short(1), short(3), short(5), short(10)})
     for (const short clock : {short(0), short(3600), short(7200), short(10800),
                               short(14400)})
-    for (const short cross : {short(0), short(1)})
-    for (const short specials : {short(0), short(1)})
-    for (const short fixes : {short(0), short(1)})
     {
-        save.respawn_mode = respawn;
-        save.ctf_respawn_ticks = ticks;
-        save.keep_fallen_heroes = keep;
-        save.generator_rate = rate;
-        save.infinite_gold = gold;
         save.ctf_capture_limit = score;
         save.time_limit = clock;
-        save.cross_control = cross;
-        save.new_specials = specials;
-        save.gameplay_fixes = fixes;
-        inputs.difficulty = difficulty;
-        for (const bool net : {false, true})
+        for (const og::ui::MatchRuleFace& face :
+             og::ui::match_rules_faces(inputs))
         {
-            inputs.networked = net;
-            for (const og::ui::MatchRuleFace& face :
-                 og::ui::match_rules_faces(inputs))
-            {
-                EXPECT_LE(face.face.size(), 42u) << face.face;
-            }
-            for (const std::string& line :
-                 og::ui::format_match_rules_lines(inputs))
-            {
-                EXPECT_LE(line.size(), 48u) << line;
-                if (line.size() > worst_pair.size())
-                    worst_pair = line;
-            }
+            EXPECT_LE(face.face.size(), 42u) << face.face;
         }
+        const std::vector<std::string> lines =
+            og::ui::format_match_rules_lines(inputs);
+        ASSERT_EQ(1u, lines.size()) << "both faces always share one line";
+        EXPECT_LE(lines[0].size(), 48u) << lines[0];
+        if (lines[0].size() > worst_pair.size())
+            worst_pair = lines[0];
     }
-    EXPECT_EQ("RESPAWNS: TEAM 1 HEROES  SPAWN DELAY: NORMAL", worst_pair)
-        << "the widest pair the RULES recap can print (44)";
+    EXPECT_EQ("SCORE: MAP  TIME LIMIT: 10 MIN", worst_pair)
+        << "the widest pair the rules line can print (30)";
 
     // One packing loop, two entry points: the MatchRulesInputs overload IS
-    // the faces overload asked for match_rules_faces(inputs), and a
-    // caller that has already filtered the faces (the wizard's joiner
-    // RULES) gets the same packer.
+    // the faces overload asked for match_rules_faces(inputs), and a pair
+    // that outruns the budget splits across two lines.
     SaveData plain;
     og::ui::MatchRulesInputs fresh;
     fresh.save = &plain;
-    fresh.difficulty = 1;
     EXPECT_EQ(og::ui::format_match_rules_lines(fresh),
               og::ui::format_match_rules_lines(
                   og::ui::match_rules_faces(fresh)));
-
-    std::vector<og::ui::MatchRuleFace> two;
-    for (const og::ui::MatchRuleFace& face : og::ui::match_rules_faces(fresh))
-    {
-        if (face.id == og::ui::kRulesRowScore ||
-            face.id == og::ui::kRulesRowTime)
-        {
-            two.push_back(face);
-        }
-    }
-    ASSERT_EQ(2u, two.size());
-    EXPECT_EQ((std::vector<std::string>{"SCORE: MAP  TIME LIMIT: MAP"}),
-              og::ui::format_match_rules_lines(two));
+    EXPECT_EQ((std::vector<std::string>{"SCORE: MAP", "TIME LIMIT: MAP"}),
+              og::ui::format_match_rules_lines(fresh, 20));
 }
 
 // --- The TEAMS step's team-line cells (§2.4) ---------------------------
@@ -865,7 +815,6 @@ protected:
         in.is_host = host;
         in.networked = networked_;
         in.my_team = save_.my_team;
-        in.session_difficulty = difficulty_;
         in.authored_mask = mask;
         in.players = players_;
         in.local_indices = local_indices_;
@@ -907,7 +856,6 @@ protected:
     std::array<int, 4> counts_{};
     const og::ui::ScenarioRosterReport* staged_ = nullptr;
     Health health_ = Health::None;
-    int difficulty_ = 0;
     bool networked_ = false;
     std::function<std::string(std::uint8_t)> seat_short_name_;
     std::string previous_mount_;
@@ -1406,18 +1354,11 @@ TEST_F(MatchSetupSessionTest, rules_rows_are_the_shared_formatters_upper_cased_w
         EXPECT_NE(Knob::None, session.page().rows[i].knob);
     }
 
-    // The label is byte-for-byte the shared composer's face, filtered to
-    // the ids kSetupRulesRows names — the session never re-cases or
-    // re-spells one, and never invents a row id of its own.
-    const og::ui::MatchRulesInputs rules{&save_, true, true, difficulty_, true};
-    std::vector<og::ui::MatchRuleFace> faces;
-    for (const og::ui::MatchRuleFace& face : og::ui::match_rules_faces(rules)) {
-        if (std::find(og::ui::kSetupRulesRows.begin(),
-                      og::ui::kSetupRulesRows.end(),
-                      face.id) != og::ui::kSetupRulesRows.end()) {
-            faces.push_back(face);
-        }
-    }
+    // The label is byte-for-byte the shared composer's face — the session
+    // never re-cases or re-spells one, and never invents a row id of its
+    // own.
+    const std::vector<og::ui::MatchRuleFace> faces =
+        og::ui::match_rules_faces(og::ui::MatchRulesInputs{&save_, true, true});
     ASSERT_EQ(faces.size(), session.page().rows.size());
     for (std::size_t i = 0; i < faces.size(); ++i) {
         EXPECT_EQ(faces[i].id, session.page().rows[i].base.id);
@@ -1485,15 +1426,16 @@ TEST_F(MatchSetupSessionTest, joiner_steps_cut_rows_and_print_lines)
 
     networked_ = true;
     ASSERT_EQ(Kind::Advanced, joiner.goto_step(Step::Match, inputs(false)).kind);
-    // The MATCH step carries NO rules rows, so it keeps all five lines —
-    // the rule is "not twice on one step", not "never printed".
-    EXPECT_TRUE(std::any_of(joiner.page().lines.begin(),
-                            joiner.page().lines.end(),
-                            [](const std::string& line) {
-                                return line.find("CROSS CONTROL") !=
-                                       std::string::npos;
-                            }))
-        << "MATCH has no rows to duplicate, so the recap is whole there";
+    // The MATCH step carries NO rules rows; its one rules line is the
+    // RULES step's two knobs, and CROSS CONTROL is not on it networked
+    // either.
+    EXPECT_EQ((std::vector<std::string>{"SOCCER: THE PITCH",
+                                        "SCORE: MAP  TIME LIMIT: MAP"}),
+              joiner.page().lines);
+    for (const std::string& line : joiner.page().lines)
+    {
+        EXPECT_EQ(std::string::npos, line.find("CROSS CONTROL")) << line;
+    }
     EXPECT_EQ((std::vector<std::string>{"view_level", "ready_pointer"}),
               row_ids(joiner));
     EXPECT_EQ(std::string(og::ui::kSetupJoinerReadyRow),
@@ -1502,9 +1444,9 @@ TEST_F(MatchSetupSessionTest, joiner_steps_cut_rows_and_print_lines)
     EXPECT_EQ(Kind::OpenViewLevel, joiner.choose(0, inputs(false)).kind);
 }
 
-// 16. The MATCH step states the whole match in ten lines, and drops the rules
-// recap LAST-first when the report needs the room.
-TEST_F(MatchSetupSessionTest, match_step_title_teams_rules_fit_ten_lines_and_drop_rules_last_first)
+// 16. The MATCH step states the match and nothing else: its title, its team
+// lines and the RULES step's own two knobs on one line.
+TEST_F(MatchSetupSessionTest, match_step_states_title_teams_and_the_rules_steps_knobs_only)
 {
     register_book(kSoccerKnobs);
     save_.scen_num = 820;
@@ -1519,14 +1461,24 @@ TEST_F(MatchSetupSessionTest, match_step_title_teams_rules_fit_ten_lines_and_dro
     EXPECT_EQ(1u, session.page().team_lines_at);
     EXPECT_TRUE(session.page().team_lines.empty()) << "no report, no team lines";
 
-    // With no report the lines are the title plus the rules recap.
-    const og::ui::MatchRulesInputs rules{&save_, true, true, difficulty_, false};
-    const std::vector<std::string> recap = og::ui::format_match_rules_lines(rules);
-    ASSERT_EQ(1u + recap.size(), session.page().lines.size());
+    // With no report the lines are the title plus the one rules line.
+    EXPECT_EQ((std::vector<std::string>{"SOCCER: THE PITCH",
+                                        "SCORE: MAP  TIME LIMIT: MAP"}),
+              session.page().lines);
 
-    // A networked four-team staged report is 1 + 4 + 6 == 11 lines, one
-    // over the cap, so its last recap line (CROSS CONTROL) is dropped.
+    // A networked four-team staged report, with every other setting a
+    // match is played under turned off its default, is 1 + 4 + 1 == 6
+    // lines: the title, the four team lines and the rules line.
     networked_ = true;
+    save_.respawn_mode = 1;
+    save_.ctf_respawn_ticks = 360;
+    save_.keep_fallen_heroes = 1;
+    save_.generator_rate = 200;
+    save_.infinite_gold = 1;
+    save_.cross_control = 1;
+    save_.new_specials = 1;
+    save_.gameplay_fixes = 1;
+    save_.time_limit = 3600;
     og::ui::ScenarioRosterReport report;
     report.is_versus = true;
     report.staged = true;
@@ -1541,29 +1493,39 @@ TEST_F(MatchSetupSessionTest, match_step_title_teams_rules_fit_ten_lines_and_dro
     staged_ = &report;
     health_ = Health::Staged;
     session.refetch(inputs(true, 0b1111));
-    EXPECT_EQ(4u, session.page().team_lines.size());
-    EXPECT_EQ(static_cast<std::size_t>(og::ui::kSetupLinesMax),
-              session.page().lines.size() + session.page().team_lines.size());
+    ASSERT_EQ(4u, session.page().team_lines.size());
     for (int t = 0; t < 4; ++t) {
         EXPECT_EQ(og::ui::format_scenario_report_team_line(report, t),
                   session.page().team_lines[static_cast<std::size_t>(t)].label);
     }
+    EXPECT_EQ((std::vector<std::string>{"SOCCER: THE PITCH",
+                                        "SCORE: MAP  TIME LIMIT: 5 MIN"}),
+              session.page().lines);
+    EXPECT_EQ(6u,
+              session.page().lines.size() + session.page().team_lines.size());
 
-    // The refusal leads and the recap drops last-first: CROSS CONTROL first.
+    // Beside that exact page: no line on it, team line or rules line,
+    // names a setting the page no longer states.
+    std::string all;
+    for (const std::string& line : session.page().lines)
+        all += line + "\n";
+    for (const MatchSetupSession::TeamLine& line : session.page().team_lines)
+        all += line.label + "\n";
+    EXPECT_NE(std::string::npos, all.find("TIME LIMIT: 5 MIN")) << all;
+    for (const char* gone : {"RESPAWNS", "SPAWN DELAY", "PERMADEATH",
+                             "GENERATORS", "INFINITE GOLD", "DIFFICULTY:",
+                             "NEW SPECIALS", "GAMEPLAY FIXES",
+                             "CROSS CONTROL"}) {
+        EXPECT_EQ(std::string::npos, all.find(gone)) << gone << " in:\n" << all;
+    }
+
+    // The refusal leads and the rules line still fits: 1 + 1 + 4 + 1.
     report.stage_failed = true;
     session.refetch(inputs(true, 0b1111));
-    EXPECT_EQ("STAGING FAILED", session.page().lines[1]);
+    EXPECT_EQ((std::vector<std::string>{"SOCCER: THE PITCH", "STAGING FAILED",
+                                        "SCORE: MAP  TIME LIMIT: 5 MIN"}),
+              session.page().lines);
     EXPECT_EQ(2u, session.page().team_lines_at);
-    const std::string all = [&] {
-        std::string joined;
-        for (const std::string& line : session.page().lines)
-            joined += line + "\n";
-        return joined;
-    }();
-    EXPECT_EQ(std::string::npos, all.find("CROSS CONTROL"))
-        << "the last recap line is the first to go:\n" << all;
-    EXPECT_LE(session.page().lines.size() + session.page().team_lines.size(),
-              static_cast<std::size_t>(og::ui::kSetupLinesMax));
     staged_ = nullptr;
 }
 
@@ -1772,7 +1734,6 @@ struct ScriptedSetupIo {
             return headless_level_data_hooks();
         };
         out.autosave = [this] { ++autosaves; };
-        out.difficulty = [this] { return difficulty; };
         out.census = [this](std::array<int, 4>& counts,
                             og::ui::ScenarioRosterReport& report) {
             return og::ui::census_staged_match_report(*stage, *save, difficulty,

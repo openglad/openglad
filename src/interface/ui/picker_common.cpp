@@ -2405,17 +2405,6 @@ std::string format_infinite_gold_label(const SaveData& save)
     return gold_is_infinite(save) ? "Infinite Gold: On" : "Infinite Gold: Off";
 }
 
-std::string format_new_specials_label(const SaveData& save)
-{
-    return save.new_specials != 0 ? "NEW SPECIALS: ON" : "NEW SPECIALS: OFF";
-}
-
-std::string format_gameplay_fixes_label(const SaveData& save)
-{
-    return save.gameplay_fixes != 0 ? "GAMEPLAY FIXES: ON"
-                                    : "GAMEPLAY FIXES: OFF";
-}
-
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 
 namespace {
@@ -5166,32 +5155,13 @@ std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs)
     if (inputs.save == nullptr)
         return faces;
     const SaveData& save = *inputs.save;
-    // The DIFFICULTY formatters emit Title Case and every camp row is upper
-    // case, so the case conversion happens HERE, at the one composer: all
-    // three renderers receive the same string and nothing mirrors anything.
+    // The formatters emit Title Case and every camp row is upper case, so
+    // the case conversion happens HERE, at the one composer: all three
+    // renderers receive the same string and nothing mirrors anything.
     if (inputs.show_score)
         faces.push_back({kRulesRowScore, match_upper(format_ctf_score_label(save))});
     if (inputs.show_time)
         faces.push_back({kRulesRowTime, match_upper(format_time_limit_label(save))});
-    faces.push_back({kRulesRowRespawns, match_upper(format_respawn_mode_label(save))});
-    faces.push_back(
-        {kRulesRowSpawnDelay, match_upper(format_respawn_delay_label(save))});
-    faces.push_back({kRulesRowPermadeath, match_upper(format_permadeath_label(save))});
-    faces.push_back(
-        {kRulesRowGenerators, match_upper(format_generator_rate_label(save))});
-    faces.push_back({kRulesRowDifficulty,
-                     match_upper(format_difficulty_label(inputs.difficulty))});
-    faces.push_back(
-        {kRulesRowInfiniteGold, match_upper(format_infinite_gold_label(save))});
-    faces.push_back({kRulesRowNewSpecials, format_new_specials_label(save)});
-    faces.push_back(
-        {kRulesRowGameplayFixes, format_gameplay_fixes_label(save)});
-    if (inputs.networked)
-    {
-        faces.push_back({kRulesRowCrossControl,
-                         match_upper(format_cross_control_label(
-                             save.cross_control != 0))});
-    }
     return faces;
 }
 

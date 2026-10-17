@@ -1730,9 +1730,6 @@ private:
             return headless_level_data_hooks();
         };
         io.autosave = [this] { autosave_company_after_mutation(); };
-        io.difficulty = [] {
-            return og::runtime::current_session->current_difficulty_;
-        };
         // The TEAMS seat cell names the seat's CONTROLLER, the way LINEUP's
         // band header does. Every seat the text client synthesizes is
         // local, so the seat index IS the local slot — and the shared
