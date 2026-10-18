@@ -204,8 +204,10 @@ The parity goldens are captures from the old game (branch
   archmage's charm arm). After the maintainer's rulings: `2dc64408` (A: a
   resisted DISARM pays half its magic and its busy), `8928bb32` (C: the INT
   rule) and, not behind the setting, `cf5b1fe2` (MIND CONTROL against a
-  higher-level foe lasts 25 ticks). `cf5b1fe2` is the commit the goldens
-  are captured from.
+  higher-level foe lasts 25 ticks). After the FREEZE TIME ruling:
+  `9b8d4503` (B: the mage bot's FREEZE TIME waits for the allies' fight),
+  with the table mirrors `4d0d441e`, `f9000fb9` and `92015aa8` around it.
+  `92015aa8` is the commit the goldens are captured from.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -221,7 +223,7 @@ The rows with the setting on, by fix:
 | G | `thief_charm_nearest_fixes_scen99` |
 | H | `elf_volley_refund_fixes_scen99`, `elf_rocks_blocked_fixes_scen99` |
 | I | `druid_tree_blocked_fixes_scen99` |
-| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` |
+| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_freeze_alone_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` |
 | M | `thief_bot_charm_hero_fixes_scen99`, `archmage_bot_mind_control_hero_fixes_scen99` |
 
 Rows deliberately not added:
@@ -238,7 +240,8 @@ Rows deliberately not added:
   read. The bound is pinned by `mage_bot_heartburst_fixes_scen99`.
 - `mage_freeze_time_offteam_scen99`: it differs with the setting on, but no
   fact can bound an orc's travel from above; the mage gate is pinned by
-  `mage_bot_freeze_no_foe_fixes_scen99` instead.
+  its own rows instead (`mage_bot_freeze_no_foe`, `mage_bot_freeze_alone`
+  and `mage_bot_freeze_engaged`, each with and without the setting).
 - The existing elf volley and druid rows: identical with the setting on
   (magic is not in the recording; the new rows show it through what the
   magic buys next).
