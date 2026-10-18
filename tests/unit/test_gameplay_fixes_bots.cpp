@@ -14,8 +14,9 @@
 // nobody and held them back in a fight. The archmage had no rule at all for
 // its first three slots, and its shift (heartburst or chain lightning, image
 // or elemental) was a coin. With the setting on, each slot asks a question
-// about its own reach, and the archmage picks the shift that has a target or
-// that it can pay for. With the setting off every gate answers what it
+// about its own reach (FREEZE TIME about the allies' fight, not the mage's
+// own), and the archmage picks the shift that has a target or that it can
+// pay for. With the setting off every gate answers what it
 // answered before, and the shift is left as the coin set it.
 //
 // The gates are asked directly (og::test::check_special_ai), the way
@@ -122,6 +123,20 @@ protected:
         return og::test::check_special_ai(*get_family_descriptor(w->family()),
                                           dynamic_cast<living*>(w));
     }
+
+    // The body a blow is measured against. The fixture does not promise a
+    // sprite, so the tests set the sizes the sprites really have: the common
+    // fighter is 16 by 16 (pix/footman.json, pix/orc.json, pix/mage.json),
+    // the tower 25 by 29 (pix/towersm1.json).
+    template <class W>
+    static W* body(W* w, short sx, short sy)
+    {
+        if (w != nullptr) {
+            w->set_sizex(sx);
+            w->set_sizey(sy);
+        }
+        return w;
+    }
 };
 
 }  // namespace
@@ -153,41 +168,154 @@ TEST_F(GameplayFixesBots, mage_teleport_keeps_the_classic_rule_on_both_values)
         EXPECT_TRUE(gate(mage, 1, fixes)) << "four foes, setting " << fixes;
 }
 
-// WARP SPACE, FREEZE TIME and ENERGY WAVE: the classic gate cast them at
-// nobody and held them in a fight. With the setting on they want a foe
-// inside the same 110 px, and a crowd does not stop them.
+// WARP SPACE and ENERGY WAVE: the classic gate cast them at nobody and held
+// them in a fight. With the setting on they want a foe inside the same 110
+// px, and a crowd does not stop them. (FREEZE TIME, slot 3, has its own
+// cue: the three tests below.)
 //
 // RED (the classic gate): Value of: gate(mage, slot, 1) Actual: true
 // Expected: false "slot 2: nobody within 110"; and Actual: false Expected:
-// true "slot 2: one foe at 60 px", the same for slots 3 and 4.
-TEST_F(GameplayFixesBots, mage_slots_two_to_four_want_a_foe_within_110_with_the_setting_on)
+// true "slot 2: one foe at 60 px", the same for slot 4.
+TEST_F(GameplayFixesBots, mage_warp_space_and_energy_wave_want_a_foe_within_110_with_the_setting_on)
 {
     living* mage = add(FAMILY_MAGE, 1, 200, 200, 13, 2000.0f);
     living* far_foe = add(FAMILY_SOLDIER, 2, 311, 200, 1);  // 111 px
     ASSERT_TRUE(mage && far_foe);
-    for (int slot = 2; slot <= 4; ++slot) {
+    for (int slot : {2, 4}) {
         EXPECT_TRUE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
         EXPECT_FALSE(gate(mage, slot, 1)) << "slot " << slot << ": nobody within 110";
     }
 
     far_foe->setxy(310, 200);  // 110 px: the edge is in
-    for (int slot = 2; slot <= 4; ++slot) {
+    for (int slot : {2, 4}) {
         EXPECT_FALSE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
         EXPECT_TRUE(gate(mage, slot, 1)) << "slot " << slot << ": one foe at 110 px";
     }
 
     far_foe->setxy(260, 200);  // 60 px
-    for (int slot = 2; slot <= 4; ++slot) {
+    for (int slot : {2, 4}) {
         EXPECT_FALSE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
         EXPECT_TRUE(gate(mage, slot, 1)) << "slot " << slot << ": one foe at 60 px";
     }
 
     for (short dy : {short{20}, short{40}, short{60}})
         ASSERT_NE(nullptr, add(FAMILY_SOLDIER, 2, 230, static_cast<short>(200 + dy), 1));
-    for (int slot = 2; slot <= 4; ++slot) {
+    for (int slot : {2, 4}) {
         EXPECT_TRUE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
         EXPECT_TRUE(gate(mage, slot, 1)) << "slot " << slot << ": four foes";
     }
+}
+
+// FREEZE TIME: with the setting on it waits for the allies' fight: at least
+// three foes within a blow (a gap of at most 5 px on each axis) of allies
+// other than the mage. Where the foes stand relative to the mage is not
+// asked, and the classic 110 px count plays no part.
+//
+// RED (the setting's slot-3 answer on the 110 px rule): Value of:
+// gate(mage, 3, 1) Actual: false Expected: true "three foes at blows, far
+// from the mage"; and Actual: false Expected: true "back at blows".
+TEST_F(GameplayFixesBots, mage_freeze_time_waits_for_three_foes_at_blows_with_allies_with_the_setting_on)
+{
+    living* mage = body(add(FAMILY_MAGE, 1, 200, 200, 7, 2000.0f), 16, 16);
+    ASSERT_NE(nullptr, mage);
+    // Three allies 200 px east of the mage, each with a foe whose body
+    // starts a 5 px gap past the ally's right edge (ally 400..415, foe from
+    // 421): the last pixel a blow lands.
+    living* foes[3] = {};
+    for (int k = 0; k < 3; ++k) {
+        const short y = static_cast<short>(200 + 60 * k);
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 1, 400, y, 1), 16, 16));
+        foes[k] = body(add(FAMILY_SOLDIER, 2, 421, y, 1), 16, 16);
+        ASSERT_NE(nullptr, foes[k]);
+    }
+    EXPECT_TRUE(gate(mage, 3, 0)) << "the classic answer: nobody within 110 of the mage";
+    EXPECT_TRUE(gate(mage, 3, 1)) << "three foes at blows, far from the mage";
+
+    foes[2]->setxy(422, 320);  // a 6 px gap: one pixel out of a blow's reach
+    EXPECT_TRUE(gate(mage, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(mage, 3, 1)) << "two foes at blows, the third a pixel out of reach";
+    foes[2]->setxy(421, 320);
+    EXPECT_TRUE(gate(mage, 3, 1)) << "back at blows";
+
+    // The classic count is not consulted: a foe 60 px from the mage, which
+    // turns the classic answer to no, changes nothing here.
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 260, 200, 1), 16, 16));
+    EXPECT_FALSE(gate(mage, 3, 0)) << "the classic answer: one foe within 110";
+    EXPECT_TRUE(gate(mage, 3, 1)) << "three at blows: the foe near the mage changes nothing";
+}
+
+// A crowd at the mage's own feet is TELEPORT's business (15 magic, the
+// classic flee rule), not a 500-magic freeze: with the setting on FREEZE
+// TIME refuses four foes touching the mage when no ally is at blows.
+//
+// RED (the setting's slot-3 answer on the 110 px rule): Value of:
+// gate(mage, 3, 1) Actual: true Expected: false "four foes at the mage's
+// feet: FREEZE TIME refuses"; and the same for "an idle ally far away:
+// still nobody at blows".
+TEST_F(GameplayFixesBots, mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on)
+{
+    living* mage = body(add(FAMILY_MAGE, 1, 200, 200, 7, 2000.0f), 16, 16);
+    ASSERT_NE(nullptr, mage);
+    const short at[4][2] = {{220, 200}, {180, 200}, {200, 220}, {200, 180}};
+    for (const auto& p : at)
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, p[0], p[1], 1), 16, 16));
+    EXPECT_TRUE(gate(mage, 3, 0)) << "the classic answer: more than three within 110";
+    EXPECT_FALSE(gate(mage, 3, 1)) << "four foes at the mage's feet: FREEZE TIME refuses";
+    EXPECT_TRUE(gate(mage, 1, 1)) << "and TELEPORT is the answer (the classic flee rule)";
+
+    // An ally far from any foe does not change it.
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 1, 600, 600, 1), 16, 16));
+    EXPECT_FALSE(gate(mage, 3, 1)) << "an idle ally far away: still nobody at blows";
+}
+
+// The count is of foes, not of blows: a foe at blows with two allies is one
+// foe. An ally at blows that is under a quarter of its health is a cue by
+// itself; a quarter exactly is not under it, a hurt ally with nobody at
+// blows is no cue, and the mage's own health never is. The bodies' sizes
+// are read: a tower (25 by 29) touching an ally from the left is at blows
+// although its top-left corner is 26 px away.
+//
+// RED (the setting's slot-3 answer on the 110 px rule): Value of:
+// gate(mage, 3, 1) Actual: false Expected: true "a third foe: the cue";
+// Actual: false Expected: true "an ally at blows under a quarter"; and
+// Actual: true Expected: false "the mage's own danger is TELEPORT's" (the
+// 110 px rule sees the foe at the mage and says yes).
+TEST_F(GameplayFixesBots, mage_freeze_time_counts_foes_once_and_takes_a_dying_ally_as_the_cue_with_the_setting_on)
+{
+    living* mage = body(add(FAMILY_MAGE, 1, 200, 200, 7, 2000.0f), 16, 16);
+    ASSERT_NE(nullptr, mage);
+    // Two allies stacked and one foe touching both: three bodies at blows,
+    // one foe. A second pair stands apart.
+    living* a1 = body(add(FAMILY_SOLDIER, 1, 400, 200, 1), 16, 16);
+    living* a2 = body(add(FAMILY_SOLDIER, 1, 400, 216, 1), 16, 16);
+    living* shared = body(add(FAMILY_SOLDIER, 2, 420, 208, 1), 16, 16);
+    living* a3 = body(add(FAMILY_SOLDIER, 1, 400, 300, 1), 16, 16);
+    living* f3 = body(add(FAMILY_SOLDIER, 2, 420, 300, 1), 16, 16);
+    ASSERT_TRUE(a1 && a2 && shared && a3 && f3);
+    EXPECT_FALSE(gate(mage, 3, 1)) << "three allies at blows but two foes";
+
+    // The third foe is a tower touching an ally from the left: its corner
+    // is 26 px from the ally's, its body 1 px.
+    living* a4 = body(add(FAMILY_SOLDIER, 1, 400, 400, 1), 16, 16);
+    living* tower = body(add(FAMILY_TOWER1, 2, 374, 400, 1), 25, 29);
+    ASSERT_TRUE(a4 && tower);
+    EXPECT_TRUE(gate(mage, 3, 1)) << "a third foe: the cue";
+    tower->setxy(369, 400);  // a 6 px gap: out of a blow's reach
+    EXPECT_FALSE(gate(mage, 3, 1)) << "the tower a gap too far";
+    EXPECT_TRUE(gate(mage, 3, 0)) << "the classic answer throughout: nobody within 110 of the mage";
+
+    // The quarter-health arm, on the pair that stands apart (400 max HP).
+    a3->stats()->set_hitpoints(100.0f);  // exactly a quarter
+    EXPECT_FALSE(gate(mage, 3, 1)) << "a quarter exactly is not under it";
+    a3->stats()->set_hitpoints(99.0f);
+    EXPECT_TRUE(gate(mage, 3, 1)) << "an ally at blows under a quarter";
+    f3->setxy(425, 300);  // its foe steps a blow out of reach
+    EXPECT_FALSE(gate(mage, 3, 1)) << "a hurt ally with nobody at blows";
+    f3->setxy(420, 300);
+    a3->stats()->set_hitpoints(400.0f);
+    mage->stats()->set_hitpoints(99.0f);
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 220, 200, 1), 16, 16));  // a foe at the mage
+    EXPECT_FALSE(gate(mage, 3, 1)) << "the mage's own danger is TELEPORT's";
 }
 
 // HEARTBURST wants a foe inside its own reach, 80 + 2 px per level: 106 px

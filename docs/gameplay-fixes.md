@@ -64,7 +64,7 @@ usual pause.
 | | special | off (classic) | on |
 |---|---|---|---|
 | A | Soldier DISARM | A won roll against a foe two or more levels above the soldier staggers it by a negative amount, so it attacks sooner. "Fighter Disarmed Enemy!" prints whenever a foe was in reach, even when every roll was lost. | A stagger that is not positive is not applied. With nobody inside the 28 px reach the cast is refused as `NO ONE TO DISARM` and costs nothing. With foes in reach but nobody staggered (every roll lost, or every foe too strong) it is refused as `DISARM RESISTED` and costs half the price (75 of 150 MP) and the usual 5 ticks of busy; the message and the full price come only with a real stagger. |
-| B | Mage and archmage bots | A bot mage casts any special only when no foe or more than three foes are within 110 px (the TELEPORT rule, applied to every slot), so WARP SPACE, FREEZE TIME and ENERGY WAVE go off at nobody. Archmage slots 1 to 3 have no gate at all. | Each slot asks about its own reach (see [Bots](#bots)). |
+| B | Mage and archmage bots | A bot mage casts any special only when no foe or more than three foes are within 110 px (the TELEPORT rule, applied to every slot), so WARP SPACE, FREEZE TIME and ENERGY WAVE go off at nobody, and a mage with 500 magic spends it on a crowd at its own feet. Archmage slots 1 to 3 have no gate at all. | Each slot asks about its own reach (see [Bots](#bots)); FREEZE TIME asks about the allies' fight instead: three foes at blows with allies, or an ally at blows near death. |
 | C | Bot Shift choice | A bot's Shift is a coin: a cleric throws TURN UNDEAD at living foes, a thief tries to charm a foe that will resist, an archmage chains or summons the elemental at random. | The coin is still drawn, then the gate sets Shift on purpose (see [Bots](#bots)); a cleric whose hero lacks the 60 INT for TURN UNDEAD never picks it. |
 | D | Archmage SUMMON ELEMENTAL | The surcharge (half the magic above the slot's price) is taken before the placement check, so `NO ROOM TO SUMMON` still costs half the spare pool. | The surcharge is taken once the elemental stands; no room costs nothing. |
 | E | Cleric TURN UNDEAD | The reach is 4 px per level, so below level 4 it cannot reach a body standing next to the cleric. With living foes in reach and no undead, it spends the slot's magic, plays its sound and turns nothing. | The reach is at least 60 px (the reach RAISE UNDEAD already has). With no undead foe in reach it is refused as `NO UNDEAD IN RANGE`. The roll keeps its classic strength (160 per cleric level), so the wider ring never changes who resists. |
@@ -113,8 +113,20 @@ already did. A gate that newly says no removes the hit response's one
 follow-up draw on that tick; that happens only with the setting on.
 
 - **Mage.** Slot 1 (TELEPORT) keeps the classic rule: flee when no foe or
-  more than three foes are within 110 px. WARP SPACE, FREEZE TIME and
-  ENERGY WAVE want a foe within the same 110 px. HEARTBURST wants a foe
+  more than three foes are within 110 px. WARP SPACE and ENERGY WAVE want a
+  foe within the same 110 px. FREEZE TIME is worth its 500 magic for the
+  free blows the time stop hands the allies, so it waits for their fight:
+  at least three foes within a blow of allies (the mage itself not
+  counted), or an ally at blows that is under a quarter of its health. How
+  close the foes stand to the mage is not asked: three foes closing on the
+  mage are a reason for a 15-magic TELEPORT, not a 500-magic freeze. "Within
+  a blow" is the engine's melee reach, a gap of at most 5 px between the two
+  bodies (the 6 px weapon box sits 1 px outside the attacker and reaches
+  gaps 1 to 6, and the collision check moves the other body's near edge in
+  by 1 px), the same at every level; a knife thrown from 45 px is not a
+  blow. A mage on another team takes the same cue for its own freeze, which
+  grants its side bonus rounds; a placed mage holds 50 plus 14 times its
+  level squared magic, so from level 6 up it can pay. HEARTBURST wants a foe
   inside its own reach (80 + 2 px per level). The TELEPORT MARKER coin is
   kept: a marker halves an enemy mage's spare magic and sends it back to a
   known spot, a weakness the player profits from.
