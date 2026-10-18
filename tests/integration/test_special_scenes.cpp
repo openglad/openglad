@@ -3336,11 +3336,13 @@ std::vector<Pair> pairs()
 
     // B. An allied mage bot with no foe within 110 px: the classic gate lets
     // every slot through on "no foe within 110 px", so it freezes time at
-    // nobody; the fix keeps that rule for TELEPORT only. A soldier walks in
-    // from the right, still outside the mage's 110 px at the cue on both
-    // sides: the classic time stop freezes him mid-stride for the rest of the
-    // scene (the port draws no blue screen, so he is the visible sign), while
-    // with the fix nothing is cast and he walks up and strikes the fighter.
+    // nobody; the fix keeps that rule for TELEPORT only, and FREEZE TIME
+    // waits for the allies' fight (three foes at blows with allies, or an
+    // ally at blows near death). A soldier walks in from the right, 120 px
+    // from the fighter at the cue on both sides and at blows with nobody:
+    // the classic time stop freezes him mid-stride for the rest of the scene
+    // (the port draws no blue screen, so he is the visible sign), while with
+    // the fix nothing is cast and he walks up and strikes the fighter.
     {
         Pair c;
         c.name = "b_mage_bot_freeze";
