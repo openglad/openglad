@@ -8719,13 +8719,13 @@ inline constexpr FactPredicate kFacts_mage_bot_freeze_no_foe_fixes_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
     pred::EventKindExactly(/*play_sound*/1, 0,
-        "consequence: with the setting on WARP SPACE, FREEZE TIME and ENERGY WAVE want a foe within 110 px, so the alone mage casts nothing"),
+        "consequence: with the setting on WARP SPACE and ENERGY WAVE want a foe within 110 px and FREEZE TIME waits for allies at blows, so the alone mage casts nothing"),
 };
 inline constexpr Mutation kMut_mage_bot_freeze_no_foe_fixes_scen99 = {
     "packs/core/families/living-03-mage.lua", 94,
     "return foe_count >= 1",
     "return true",
-    "Lets slots 2-4 cast with no foe in reach again, so the alone mage casts at nobody: EventKindExactly(play_sound, 0) fails."
+    "Lets slots 2 and 4 cast with no foe in reach again, so the alone mage casts at nobody: EventKindExactly(play_sound, 0) fails."
 };
 
 // --- mage_bot_freeze_alone (fix B: FREEZE TIME waits for the allies' fight) --
