@@ -8692,8 +8692,9 @@ inline constexpr Mutation kMut_druid_tree_blocked_fixes_scen99 = {
 // classic gate ("fewer than one or more than three foes within 110 px") was
 // written for TELEPORT and answers yes for every slot here, so in its first
 // ticks the bot casts its specials at nobody (16 fireball sounds). With the
-// setting on WARP SPACE, FREEZE TIME and ENERGY WAVE want a foe within 110 px
-// and the mage casts nothing.
+// setting on WARP SPACE and ENERGY WAVE want a foe within 110 px, FREEZE TIME
+// waits for the allies' fight (nobody here is at blows), and the mage casts
+// nothing.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_no_foe_scen99[] = {
     { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
     { FAMILY_MAGE,    0, kOrderLiving,  60,  60, 0, 0, 7, 600 },   // allied bot caster
@@ -8727,12 +8728,109 @@ inline constexpr Mutation kMut_mage_bot_freeze_no_foe_fixes_scen99 = {
     "Lets slots 2-4 cast with no foe in reach again, so the alone mage casts at nobody: EventKindExactly(play_sound, 0) fails."
 };
 
+// --- mage_bot_freeze_alone (fix B: FREEZE TIME waits for the allies' fight) --
+// The no-foe arena again (an allied level-7 mage bot with 600 MP far from
+// its only foe), on a seed that makes the mage's first roll FREEZE TIME, on
+// tick 0. The classic gate ("fewer than one or more than three foes within
+// 110 px") was written for TELEPORT and answers yes for every slot here, so
+// the classic mage stops time at nobody: the palette switches on tick 0 and
+// back when the 97-tick stop ends. With the setting on FREEZE TIME waits
+// for the allies' fight (three foes at blows with allies, or an ally at
+// blows near death); the idle player is at blows with nobody, so the mage
+// refuses the slot and never stops time.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_alone_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
+    { FAMILY_MAGE,    0, kOrderLiving,  60,  60, 0, 0, 7, 600 },   // allied bot caster
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },           // idle player LAST
+};
+inline constexpr FactPredicate kFacts_mage_bot_freeze_alone_scen99[] = {
+    pred::TickReached(200),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::EventKindExactly(/*set_palette*/3, 2,
+        "consequence: the classic gate answers yes with no foe within 110 px for every slot, so on tick 0 the allied mage bot stops time at nobody: the palette switches, and switches back when the 20 + 11*7 = 97 tick stop ends"),
+};
+inline constexpr Mutation kMut_mage_bot_freeze_alone_scen99 = {
+    "packs/core/families/living-03-mage.lua", 105,
+    "return foe_count < 1 or foe_count > 3",
+    "return foe_count > 3",
+    "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage refuses the FREEZE TIME it rolls on tick 0 and never stops time: EventKindExactly(set_palette, 2) reads 0.",
+    "  -- TP if away from guys .. or too many enemies!"
+};
+inline constexpr FactPredicate kFacts_mage_bot_freeze_alone_fixes_scen99[] = {
+    pred::TickReached(200),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    // negative_assertion: no time stop is cast in this arena with the setting on; the mutation flips it by letting FREEZE TIME through with nobody at blows (0 -> at least 1).
+    pred::EventKindExactly(/*set_palette*/3, 0,
+        "consequence: with the setting on FREEZE TIME waits for the allies' fight; the idle player is at blows with nobody, so the mage refuses the slot it rolls on tick 0 and never stops time"),
+};
+inline constexpr Mutation kMut_mage_bot_freeze_alone_fixes_scen99 = {
+    "packs/core/families/living-03-mage.lua", 72,
+    "return engaged >= 3 or hurt",
+    "return true",
+    "Lets FREEZE TIME through with nobody at blows, so the alone mage stops time at nobody on tick 0 as the classic one does: EventKindExactly(set_palette, 0) fails."
+};
+
+// --- mage_bot_freeze_engaged (fix B: FREEZE TIME waits for the allies' fight) --
+// An allied level-7 mage bot with 1200 MP; three allied orcs each stand a
+// 1 px gap from an enemy tower (the west tower stands LEFT of its orc: its
+// 25 px body is at blows though its corner is 26 px off), the three towers
+// inside the mage's 110 px, and a fourth tower far away holds the level
+// open. The seed makes the mage's first roll FREEZE TIME, on tick 0, before
+// anyone has moved. The classic gate ("fewer than one or more than three
+// foes within 110 px") sees three and refuses every slot, so the classic
+// mage casts nothing. With the setting on FREEZE TIME asks for three foes at
+// blows with allies other than the mage, finds them, and stops time on tick
+// 0. The budget is 40 ticks: the stop's end (tick 97) and the 360-tick rest
+// lie beyond it, and the classic gate could say yes only if all three near
+// towers fell, which three orcs at one tower each cannot bring about in 40
+// ticks, so the classic mage's count stays between one and three throughout.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_engaged_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // far away; holds the level open
+    { FAMILY_TOWER1,  1, kOrderLiving, 237, 160, 0, 0 },           // east foe: a 1 px gap right of the east orc; 77 px from the mage
+    { FAMILY_TOWER1,  1, kOrderLiving, 160, 237, 0, 0 },           // south foe: a 1 px gap below the south orc; 77 px from the mage
+    { FAMILY_TOWER1,  1, kOrderLiving,  80, 160, 0, 0 },           // west foe: its 25 px body ends a 1 px gap LEFT of the west orc; 80 px from the mage
+    { FAMILY_ORC,     0, kOrderLiving, 220, 160, 0, 0 },           // east ally
+    { FAMILY_ORC,     0, kOrderLiving, 160, 220, 0, 0 },           // south ally
+    { FAMILY_ORC,     0, kOrderLiving, 106, 160, 0, 0 },           // west ally
+    { FAMILY_MAGE,    0, kOrderLiving, 160, 160, 0, 0, 7, 1200 },  // allied bot caster (1200: the fold to slot 1 below 500 can never bite)
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, at blows with nobody
+};
+inline constexpr FactPredicate kFacts_mage_bot_freeze_engaged_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    // negative_assertion: no time stop is cast in this arena with the setting off; the mutation flips it by letting the classic gate answer yes with three foes in reach (0 -> at least 1).
+    pred::EventKindExactly(/*set_palette*/3, 0,
+        "consequence: with three foes within 110 px the classic gate answers no for every slot, FREEZE TIME included, so the classic mage never stops time"),
+};
+inline constexpr Mutation kMut_mage_bot_freeze_engaged_scen99 = {
+    "packs/core/families/living-03-mage.lua", 105,
+    "return foe_count < 1 or foe_count > 3",
+    "return foe_count < 1 or foe_count > 2",
+    "Lets the classic gate answer yes with three foes in reach, so the classic mage stops time on the tick 0 it rolls FREEZE TIME: EventKindExactly(set_palette, 0) fails.",
+    "  -- TP if away from guys .. or too many enemies!"
+};
+inline constexpr FactPredicate kFacts_mage_bot_freeze_engaged_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::EventKindExactly(/*set_palette*/3, 1,
+        "consequence: with the setting on FREEZE TIME finds three foes at blows with the allied orcs and stops time on tick 0: the one palette change in the budget (the stop ends at tick 97 and the slot rests 360 ticks)"),
+};
+inline constexpr Mutation kMut_mage_bot_freeze_engaged_fixes_scen99 = {
+    "packs/core/families/living-03-mage.lua", 72,
+    "return engaged >= 3 or hurt",
+    "return engaged >= 4 or hurt",
+    "Asks for a fourth foe at blows where three stand, so the freeze is refused and EventKindExactly(set_palette, 1) reads 0."
+};
+
 // --- mage_bot_heartburst (fixes B and L: the mage's gate and slot roll) -----
 // A hostile level-13 mage bot with three stationary TOWER1 foes inside 110 px.
 // The classic gate answers no for every slot with three foes in reach, and a
 // roll of 5 is folded back to slot 1, so the classic mage fights with
-// fireballs only. With the setting on WARP SPACE, FREEZE TIME and ENERGY WAVE
-// want a foe in reach (they have three) and a 5 is HEARTBURST, whose
+// fireballs only. With the setting on WARP SPACE and ENERGY WAVE want a foe in
+// reach (they have three; FREEZE TIME waits for allies at blows, and this
+// mage has none) and a 5 is HEARTBURST, whose
 // explosions open the run at tick 0.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_heartburst_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 160, 120, 0, 0 },           // three stationary foes inside 110 px
@@ -11347,6 +11445,38 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_mage_bot_freeze_no_foe_fixes_scen99, std::size(kFacts_mage_bot_freeze_no_foe_fixes_scen99),
       kMut_mage_bot_freeze_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "mage_bot_freeze_alone_scen99", "scen/scen1.fss", 0x00000050u,
+      kInputsEmpty, std::size(kInputsEmpty), 200,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_freeze_alone_scen99, std::size(kFamilySpawns_mage_bot_freeze_alone_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_freeze_alone_scen99, std::size(kFacts_mage_bot_freeze_alone_scen99),
+      kMut_mage_bot_freeze_alone_scen99 },
+
+    { "mage_bot_freeze_alone_fixes_scen99", "scen/scen1.fss", 0x00000050u,
+      kInputsEmpty, std::size(kInputsEmpty), 200,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_freeze_alone_scen99, std::size(kFamilySpawns_mage_bot_freeze_alone_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_freeze_alone_fixes_scen99, std::size(kFacts_mage_bot_freeze_alone_fixes_scen99),
+      kMut_mage_bot_freeze_alone_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "mage_bot_freeze_engaged_scen99", "scen/scen1.fss", 0x0000004Du,
+      kInputsEmpty, std::size(kInputsEmpty), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_freeze_engaged_scen99, std::size(kFamilySpawns_mage_bot_freeze_engaged_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_freeze_engaged_scen99, std::size(kFacts_mage_bot_freeze_engaged_scen99),
+      kMut_mage_bot_freeze_engaged_scen99 },
+
+    { "mage_bot_freeze_engaged_fixes_scen99", "scen/scen1.fss", 0x0000004Du,
+      kInputsEmpty, std::size(kInputsEmpty), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_freeze_engaged_scen99, std::size(kFamilySpawns_mage_bot_freeze_engaged_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_freeze_engaged_fixes_scen99, std::size(kFacts_mage_bot_freeze_engaged_fixes_scen99),
+      kMut_mage_bot_freeze_engaged_fixes_scen99, {}, 1, nullptr, 0, 1 },
 
     { "mage_bot_heartburst_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsEmpty, std::size(kInputsEmpty), 150,
