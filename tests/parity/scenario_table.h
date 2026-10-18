@@ -8786,15 +8786,19 @@ inline constexpr Mutation kMut_mage_bot_freeze_alone_fixes_scen99 = {
 // lie beyond it, and the classic gate could say yes only if all three near
 // towers fell, which three orcs at one tower each cannot bring about in 40
 // ticks, so the classic mage's count stays between one and three throughout.
+// The whole fight stands inside the classic 320 x 200 view at the map's
+// corner: the old game plays an orc's HOWL roar only when the orc is inside
+// that view, and the current game plays it wherever the orc stands, so an
+// orc below y 200 would make the two games' sound logs differ.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_engaged_scen99[] = {
     { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // far away; holds the level open
-    { FAMILY_TOWER1,  1, kOrderLiving, 237, 160, 0, 0 },           // east foe: a 1 px gap right of the east orc; 77 px from the mage
-    { FAMILY_TOWER1,  1, kOrderLiving, 160, 237, 0, 0 },           // south foe: a 1 px gap below the south orc; 77 px from the mage
-    { FAMILY_TOWER1,  1, kOrderLiving,  80, 160, 0, 0 },           // west foe: its 25 px body ends a 1 px gap LEFT of the west orc; 80 px from the mage
-    { FAMILY_ORC,     0, kOrderLiving, 220, 160, 0, 0 },           // east ally
-    { FAMILY_ORC,     0, kOrderLiving, 160, 220, 0, 0 },           // south ally
-    { FAMILY_ORC,     0, kOrderLiving, 106, 160, 0, 0 },           // west ally
-    { FAMILY_MAGE,    0, kOrderLiving, 160, 160, 0, 0, 7, 1200 },  // allied bot caster (1200: the fold to slot 1 below 500 can never bite)
+    { FAMILY_TOWER1,  1, kOrderLiving, 237, 120, 0, 0 },           // east foe: a 1 px gap right of the east orc; 77 px from the mage
+    { FAMILY_TOWER1,  1, kOrderLiving, 160, 197, 0, 0 },           // south foe: a 1 px gap below the south orc; 77 px from the mage
+    { FAMILY_TOWER1,  1, kOrderLiving,  80, 120, 0, 0 },           // west foe: its 25 px body ends a 1 px gap LEFT of the west orc; 80 px from the mage
+    { FAMILY_ORC,     0, kOrderLiving, 220, 120, 0, 0 },           // east ally
+    { FAMILY_ORC,     0, kOrderLiving, 160, 180, 0, 0 },           // south ally
+    { FAMILY_ORC,     0, kOrderLiving, 106, 120, 0, 0 },           // west ally
+    { FAMILY_MAGE,    0, kOrderLiving, 160, 120, 0, 0, 7, 1200 },  // allied bot caster (1200: the fold to slot 1 below 500 can never bite)
     { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, at blows with nobody
 };
 inline constexpr FactPredicate kFacts_mage_bot_freeze_engaged_scen99[] = {
