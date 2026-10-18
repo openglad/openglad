@@ -555,6 +555,53 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 	return newob;
 }
 
+// port of the current game's 95ae7e12: with the Gameplay Fixes setting on,
+// FREEZE TIME's cue is the fight the allies are in, not the mage's own
+// danger (TELEPORT's business): three or more foes within a blow of allies
+// other than the caster, or an ally at blows under a quarter of its health.
+// A blow lands across a gap of at most 5 px on each axis: the 6 px weapon
+// box set 1 px outside the attacker reaches gaps 1 to 6, and collide()
+// moves the foe's near edge in by 1 px, so 6 - 1 = 5.
+// Draw-free: finders and positions only, so a setting-off run is untouched.
+static bool at_blows(walker *a, walker *b)
+{
+	int gap_x = b->xpos - (a->xpos + a->sizex);
+	if (a->xpos - (b->xpos + b->sizex) > gap_x)
+		gap_x = a->xpos - (b->xpos + b->sizex);
+	int gap_y = b->ypos - (a->ypos + a->sizey);
+	if (a->ypos - (b->ypos + b->sizey) > gap_y)
+		gap_y = a->ypos - (b->ypos + b->sizey);
+	return (gap_x <= 5 && gap_y <= 5);
+}
+
+static bool freeze_time_wanted(walker *self)
+{
+	short nallies = 0, nfoes = 0;
+	std::list<walker*> allies = myscreen->find_friends_in_range(myscreen->level_data.oblist, 30000, &nallies, self);
+	std::list<walker*> foes = myscreen->find_foes_in_range(myscreen->level_data.oblist, 30000, &nfoes, self);
+	int engaged = 0;
+	bool hurt = false;
+	for (auto f = foes.begin(); f != foes.end(); ++f)
+	{
+		walker *foe = *f;
+		if (foe->query_order() != ORDER_LIVING)
+			continue;
+		bool near = false;
+		for (auto a = allies.begin(); a != allies.end(); ++a)
+		{
+			walker *ally = *a;
+			if (!at_blows(ally, foe))
+				continue;
+			near = true;
+			if (ally->stats->hitpoints * 4 < ally->stats->max_hitpoints)
+				hurt = true;
+		}
+		if (near)
+			engaged++;
+	}
+	return (engaged >= 3 || hurt);
+}
+
 // Returns true or false on whether it's good to do
 // the special or not ..
 short living::check_special()
@@ -673,8 +720,10 @@ short living::check_special()
 			{
 				// port of the current game's e97c8829: the classic rule below was
 				// written for TELEPORT and applied to every slot. Slot 1 keeps it;
-				// WARP SPACE, FREEZE TIME and ENERGY WAVE want a foe inside the same
-				// 110 px; HEARTBURST wants one inside its own reach.
+				// WARP SPACE and ENERGY WAVE want a foe inside the same 110 px;
+				// FREEZE TIME waits for the allies' fight (freeze_time_wanted
+				// above, the current game's 95ae7e12); HEARTBURST wants one
+				// inside its own reach.
 				if (current_special == 1)
 					return (howmany < 1 || howmany > 3);
 				if (current_special == 5)
@@ -684,6 +733,8 @@ short living::check_special()
 					                                        80 + 2*stats->level, &in_reach, this);
 					return (in_reach >= 1);
 				}
+				if (current_special == 3)
+					return freeze_time_wanted(this); // port of the current game's 95ae7e12
 				return (howmany >= 1);
 			}
 			if (howmany < 1) //  away from anybody ..
