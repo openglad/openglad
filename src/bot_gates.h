@@ -391,4 +391,34 @@ static inline bool bg_marker_pays(walker *self, int next_slot, int int_req)
 	Sint32 spare = (Sint32) (self->stats->magicpoints - self->stats->special_cost[self->current_special]);
 	return (spare / 2) >= self->stats->special_cost[next_slot];
 }
+
+// The archmage's slot-2 gate (port of the current game's ai_burst_or_chain),
+// asked by its check_special arm and by its hit response. CHAIN LIGHTNING
+// wants a foe inside its radius, HEARTBURST inside its own: the coin's arm
+// is kept when it has a target, swapped when only the other has one,
+// refused when neither has
+static inline bool bg_archmage_burst_or_chain(walker *self)
+{
+	short in_burst = 0;
+	short in_chain = 0;
+	myscreen->find_foes_in_range(myscreen->level_data.oblist,
+	                                        80 + 2*self->stats->level, &in_burst, self);
+	myscreen->find_foes_in_range(myscreen->level_data.oblist,
+	                                        200 + 5*self->stats->level + 2*self->stats->level, &in_chain, self);
+	if (self->shifter_down)
+	{
+		if (in_chain >= 1)
+			return true;
+		self->shifter_down = 0;
+		return (in_burst >= 1);
+	}
+	if (in_burst >= 1)
+		return true;
+	if (in_chain >= 1)
+	{
+		self->shifter_down = 1;
+		return true;
+	}
+	return false;
+}
 #endif

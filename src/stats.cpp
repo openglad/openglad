@@ -20,6 +20,7 @@
 
 #include "graph.h"
 #include "stats.h"      // for bit flags, etc.
+#include "bot_gates.h"
 #include <math.h>
 
 #define CHECK_STEP_SIZE 1 // (controller->stepsize) // was 1
@@ -613,6 +614,24 @@ void statistics::hit_response(walker  *who)
 					foe->foe = controller;
 					last_distance = current_distance = 15000;
 				}
+				if (myscreen->gameplay_fixes && controller->user == -1 &&
+				        controller->query_act_type() != ACT_CONTROL)
+				{
+					// port of the current game's a5ee6f18: a struck bot answers with
+					// HEARTBURST or CHAIN LIGHTNING by the slot-2 gate, once; SUMMON
+					// IMAGE only by its own gate on an act tick; never a second cast
+					// on a stale slot. The coin is the classic slot-2 coin, drawn
+					// here as the classic order drew it. A player keeps the order
+					// below.
+					if (possible_specials[2])
+					{
+						controller->shifter_down = random(2);
+						controller->current_special = 2;
+						if (bg_archmage_burst_or_chain(controller))
+							controller->special();
+					}
+					break;
+				}
 				myscreen->find_foes_in_range(myscreen->level_data.oblist,
 				                                       200, &howmany, controller);
                 
@@ -620,18 +639,6 @@ void statistics::hit_response(walker  *who)
 				{
 					if (possible_specials[3]) // can we summon illusion?
 					{
-						// port of the current game's 116d35fb: with the Gameplay Fixes setting a
-						// bot summons by its pool (the elemental only when the spare pool is at
-						// least the slot's own price), never by a stale coin; a player keeps
-						// the Shift key
-						if (myscreen->gameplay_fixes && controller->user == -1 &&
-						        controller->query_act_type() != ACT_CONTROL)
-						{
-							if ((Sint32) (magicpoints - special_cost[3]) >= special_cost[3])
-								controller->shifter_down = 1;
-							else
-								controller->shifter_down = 0;
-						}
 						controller->current_special = 3;
 						if (controller->special())
 							return;

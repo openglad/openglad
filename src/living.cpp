@@ -964,32 +964,7 @@ short living::check_special()
 				return (howmany < 1 || howmany > 3);
 			}
 			if (current_special == 2)
-			{
-				// CHAIN LIGHTNING wants a foe inside its radius, HEARTBURST inside
-				// its own: the coin's arm is kept when it has a target, swapped
-				// when only the other has one, refused when neither has
-				short in_burst = 0;
-				short in_chain = 0;
-				myscreen->find_foes_in_range(myscreen->level_data.oblist,
-				                                        80 + 2*stats->level, &in_burst, this);
-				myscreen->find_foes_in_range(myscreen->level_data.oblist,
-				                                        200 + 5*stats->level + 2*stats->level, &in_chain, this);
-				if (shifter_down)
-				{
-					if (in_chain >= 1)
-						return 1;
-					shifter_down = 0;
-					return (in_burst >= 1);
-				}
-				if (in_burst >= 1)
-					return 1;
-				if (in_chain >= 1)
-				{
-					shifter_down = 1;
-					return 1;
-				}
-				return 0;
-			}
+				return bg_archmage_burst_or_chain(this);
 			if (current_special == 3)
 			{
 				// SUMMON ELEMENTAL only when the spare pool is at least the slot's
