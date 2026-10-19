@@ -501,10 +501,10 @@ og_add_test_group(og_test_special_scenes FILES
 # ticks on three seeds with a level-14 crew (tests/integration/
 # test_level_play.cpp): they fire many different specials, only at somebody,
 # and the gates and the casts agree. Pure compute, five plays of the level.
-# Budget: 2.07 s under ctest locally (ci-test, Debug). It keeps the default
-# 180 s: og_unit_data's many-tick headless level sims on the same fixture ran
-# ~30x slower under ASan+UBSan with serialization validation (~60 s here) and
-# ~5x under coverage (~10 s here).
+# Budget: 2.07 s under ctest locally (ci-test, Debug). Measured on the first
+# CI run (2026-10-19, PR #364, 0f6b6ed7): 27 s on the standard lane, 28.5 s
+# under coverage, both at the default 180 s; 167 s under ASan+UBSan, which
+# the sanitizer block below lifts to 600 s.
 og_add_test_group(og_test_level_play FILES
     test_level_play.cpp
 )
@@ -1570,6 +1570,12 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # room to grow. 600 is the budget og_unit_sim already has below; a
     # genuine hang still trips well before the 60-minute job cap.
     set_tests_properties(og_test_special_scenes PROPERTIES TIMEOUT 600)
+    # og_test_level_play: five headless plays of a 104-bot level, 2400
+    # ticks each, every tick validated. Measured on its first CI run
+    # (2026-10-19, PR #364, 0f6b6ed7): 167 s under ASan+UBSan, 93 % of the
+    # default 180 s, against 27 s on the standard lane and 2 s locally. The
+    # same budget as the scenes keeps that run under a third of it.
+    set_tests_properties(og_test_level_play PROPERTIES TIMEOUT 600)
     # The simulation unit binary now includes the WebSocket, relay,
     # and multiplex transport suites. Serialization validation
     # round-trips every message there too, which can push CI's
