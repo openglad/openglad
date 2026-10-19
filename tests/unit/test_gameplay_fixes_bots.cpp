@@ -74,44 +74,136 @@ TEST_F(GameplayFixesBots, mage_teleport_keeps_the_classic_rule_on_both_values)
         ASSERT_NE(nullptr, add(FAMILY_SOLDIER, 2, 230, static_cast<short>(200 + dy), 1));
     for (short fixes : {short{0}, short{1}})
         EXPECT_TRUE(gate(mage, 1, fixes)) << "four foes, setting " << fixes;
+
+    // More than three foes is the escape, never the marker: with the setting
+    // on the gate writes the plain TELEPORT over a coin that fell on Shift.
+    mage->set_shifter_down(1);
+    EXPECT_TRUE(gate(mage, 1, 1));
+    EXPECT_EQ(0, mage->shifter_down()) << "four foes: the escape is a plain TELEPORT";
 }
 
-// WARP SPACE and ENERGY WAVE: the classic gate cast them at nobody and held
-// them in a fight. With the setting on they want a foe inside the same 110
-// px, and a crowd does not stop them. (FREEZE TIME, slot 3, has its own
-// cue: the three tests below.)
+// TELEPORT MARKER is no longer a coin: with nobody within 110 px the mage
+// marks where it stands when no marker of its own stands yet and half the
+// magic left after TELEPORT's 15 still covers WARP SPACE's 60, so the wander
+// teleports that follow go home to it. A level-7 mage with 600 magic alone
+// marks; with its marker standing, with 130 magic ((130 - 15) / 2 = 57 is
+// short of 60) or with four foes at its feet (the escape) it teleports
+// plainly. With the setting off the coin is left as it fell.
 //
-// RED (the classic gate): Value of: gate(mage, slot, 1) Actual: true
-// Expected: false "slot 2: nobody within 110"; and Actual: false Expected:
-// true "slot 2: one foe at 60 px", the same for slot 4.
-TEST_F(GameplayFixesBots, mage_warp_space_and_energy_wave_want_a_foe_within_110_with_the_setting_on)
+// RED (the coin kept with the setting on): Expected equality of these
+// values: 1 mage->shifter_down() Which is: 0 "alone, funded, no marker".
+TEST_F(GameplayFixesBots, mage_marker_is_placed_once_where_the_mage_will_return)
 {
-    living* mage = add(FAMILY_MAGE, 1, 200, 200, 13, 2000.0f);
-    living* far_foe = add(FAMILY_SOLDIER, 2, 311, 200, 1);  // 111 px
-    ASSERT_TRUE(mage && far_foe);
-    for (int slot : {2, 4}) {
-        EXPECT_TRUE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
-        EXPECT_FALSE(gate(mage, slot, 1)) << "slot " << slot << ": nobody within 110";
+    living* mage = body(add(FAMILY_MAGE, 1, 200, 200, 7, 600.0f), 16, 16);
+    ASSERT_NE(nullptr, mage);
+
+    for (short coin : {short{0}, short{1}}) {
+        mage->set_shifter_down(coin);
+        EXPECT_TRUE(gate(mage, 1, 0)) << "the classic answer: nobody within 110";
+        EXPECT_EQ(coin, mage->shifter_down()) << "setting off: the coin is left as it fell";
     }
 
-    far_foe->setxy(310, 200);  // 110 px: the edge is in
-    for (int slot : {2, 4}) {
-        EXPECT_FALSE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
-        EXPECT_TRUE(gate(mage, slot, 1)) << "slot " << slot << ": one foe at 110 px";
-    }
+    mage->set_shifter_down(0);
+    EXPECT_TRUE(gate(mage, 1, 1));
+    EXPECT_EQ(1, mage->shifter_down()) << "alone, funded, no marker";
 
-    far_foe->setxy(260, 200);  // 60 px
-    for (int slot : {2, 4}) {
-        EXPECT_FALSE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
-        EXPECT_TRUE(gate(mage, slot, 1)) << "slot " << slot << ": one foe at 60 px";
-    }
+    walker* marker = world().add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker);
+    marker->setxy(600, 600);
+    marker->set_owner(mage);
+    mage->set_shifter_down(1);
+    EXPECT_TRUE(gate(mage, 1, 1));
+    EXPECT_EQ(0, mage->shifter_down()) << "its marker stands: a plain TELEPORT goes home";
+    marker->set_dead(1);
 
-    for (short dy : {short{20}, short{40}, short{60}})
-        ASSERT_NE(nullptr, add(FAMILY_SOLDIER, 2, 230, static_cast<short>(200 + dy), 1));
-    for (int slot : {2, 4}) {
-        EXPECT_TRUE(gate(mage, slot, 0)) << "slot " << slot << ": the classic answer";
-        EXPECT_TRUE(gate(mage, slot, 1)) << "slot " << slot << ": four foes";
-    }
+    mage->stats()->set_magicpoints(130.0f);
+    mage->set_shifter_down(1);
+    EXPECT_TRUE(gate(mage, 1, 1));
+    EXPECT_EQ(0, mage->shifter_down()) << "130 magic: half the spare (57) is short of WARP SPACE's 60";
+    mage->stats()->set_magicpoints(600.0f);
+
+    const short at[4][2] = {{220, 200}, {180, 200}, {200, 220}, {200, 180}};
+    for (const auto& p : at)
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, p[0], p[1], 1), 16, 16));
+    mage->set_shifter_down(1);
+    EXPECT_TRUE(gate(mage, 1, 1)) << "four foes: the escape";
+    EXPECT_EQ(0, mage->shifter_down()) << "four foes at its feet: no marker";
+}
+
+// WARP SPACE fires a fireball along each of the eight headings, and every
+// bolt of the ring crawls one pixel a tick: at level 7 with 600 magic each
+// gains 12 steps from the spare pool, so the ring reaches a 21 px gap
+// straight and 20 on a diagonal. With the setting on it wants what one
+// fireball cannot do: two living foes inside that ring, or one the mage does
+// not face (its fire heading is UP at spawn, lastx = lasty = 0). The classic
+// gate cast it with nobody near and refused it with one to three foes
+// within 110 px.
+//
+// RED (the setting's slot-2 answer on "a foe within 110"): Value of:
+// gate(mage, 2, 1) Actual: true Expected: false "one tower above, faced";
+// and the same for "a tower below at a 22 px gap: outside the ring".
+TEST_F(GameplayFixesBots, mage_warp_space_wants_a_crowd_or_a_foe_behind_in_its_point_blank_ring)
+{
+    living* mage = body(add(FAMILY_MAGE, 1, 200, 200, 7, 600.0f), 16, 16);
+    ASSERT_NE(nullptr, mage);
+    mage->set_lastx(0.0f);
+    mage->set_lasty(0.0f);  // the spawn heading: a fired bolt leaves UP
+    EXPECT_TRUE(gate(mage, 2, 0)) << "the classic answer: nobody within 110";
+    EXPECT_FALSE(gate(mage, 2, 1)) << "alone: the ring hits nobody";
+
+    // A tower (25 by 29) above the mage, its bottom edge a 15 px gap off.
+    living* above = body(add(FAMILY_TOWER1, 2, 196, 156, 1), 25, 29);
+    ASSERT_NE(nullptr, above);
+    EXPECT_FALSE(gate(mage, 2, 0)) << "the classic answer: one foe within 110";
+    EXPECT_FALSE(gate(mage, 2, 1)) << "one tower above, faced: a fireball is the answer";
+
+    // The same tower below the mage: the mage does not face it.
+    above->setxy(196, 231);
+    EXPECT_FALSE(gate(mage, 2, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(mage, 2, 1)) << "one tower below at a 15 px gap, unfaced";
+    above->setxy(196, 237);  // a 21 px gap: the ring's last pixel
+    EXPECT_TRUE(gate(mage, 2, 1)) << "a 21 px gap: the edge is in";
+    above->setxy(196, 238);
+    EXPECT_FALSE(gate(mage, 2, 1)) << "a tower below at a 22 px gap: outside the ring";
+
+    // Two towers in the ring, one of them faced: a crowd.
+    above->setxy(196, 156);
+    living* below = body(add(FAMILY_TOWER1, 2, 196, 231, 1), 25, 29);
+    ASSERT_NE(nullptr, below);
+    EXPECT_FALSE(gate(mage, 2, 0)) << "the classic answer: two foes within 110";
+    EXPECT_TRUE(gate(mage, 2, 1)) << "two towers at 15 px gaps";
+    below->setxy(196, 241);  // a 25 px gap: out of the ring
+    EXPECT_FALSE(gate(mage, 2, 1)) << "a tower at a 25 px gap does not count";
+}
+
+// ENERGY WAVE runs along the mage's fire heading, through walls, about as
+// far as the old 110 px: with the setting on it wants a living foe within
+// 110 px that the mage faces. A tower 60 px above a mage heading UP is in
+// its path; below it, or 111 px off, it is not. The heading is read from
+// lastx / lasty, so turning the mage DOWN turns the answer.
+//
+// RED (the setting's slot-4 answer on "a foe within 110"): Value of:
+// gate(mage, 4, 1) Actual: true Expected: false "a tower 60 px below, unfaced".
+TEST_F(GameplayFixesBots, mage_energy_wave_wants_a_faced_foe_within_110)
+{
+    living* mage = body(add(FAMILY_MAGE, 1, 200, 200, 7, 600.0f), 16, 16);
+    living* tower = body(add(FAMILY_TOWER1, 2, 200, 140, 1), 25, 29);  // 60 px above
+    ASSERT_TRUE(mage && tower);
+    mage->set_lastx(0.0f);
+    mage->set_lasty(0.0f);  // the spawn heading: UP
+    EXPECT_FALSE(gate(mage, 4, 0)) << "the classic answer: one foe within 110";
+    EXPECT_TRUE(gate(mage, 4, 1)) << "a tower 60 px above, faced";
+
+    tower->setxy(200, 260);  // 60 px below
+    EXPECT_FALSE(gate(mage, 4, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(mage, 4, 1)) << "a tower 60 px below, unfaced";
+    mage->set_lasty(1.0f);  // the mage turned DOWN
+    EXPECT_TRUE(gate(mage, 4, 1)) << "turned to face it";
+
+    mage->set_lasty(0.0f);
+    tower->setxy(200, 89);  // 111 px above
+    EXPECT_TRUE(gate(mage, 4, 0)) << "the classic answer: nobody within 110";
+    EXPECT_FALSE(gate(mage, 4, 1)) << "a faced tower 111 px off";
 }
 
 // FREEZE TIME: with the setting on it waits for the allies' fight: at least
