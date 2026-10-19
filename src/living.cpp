@@ -912,6 +912,47 @@ short living::check_special()
 						in_flight++;
 				return (in_flight >= volleys[v][0]);
 			}
+		case FAMILY_BARBARIAN:
+			{
+				// port of the current game's b05c15d2: the classic barbarian had no
+				// gate and threw at nothing. With the Gameplay Fixes setting on HURL
+				// BOULDER wants its nearest living foe faced and inside the
+				// boulder's flight (the boulder is made with add_ob, not fired: its
+				// step is the thrower's, a bot's 2 a level, a hero's 1 + strength / 7,
+				// held to 1..15, over the table's range of 9, and its first walk
+				// turns it); EXPLODING BOULDER wants that foe with a second living
+				// foe inside the blast around it, and neither the barbarian nor an
+				// ally of its own in the blast. Off, the barbarian answers 1, as the
+				// default arm always did.
+				if (!myscreen->gameplay_fixes)
+					return 1;
+				int step;
+				if (myguy)
+					step = 1 + myguy->strength / 7;
+				else
+					step = 2 * stats->level;
+				if (step < 1)
+					step = 1;
+				if (step > 15)
+					step = 15;
+				int reach = (9 - 1) * step;
+				walker *target = bg_nearest_living_foe(this, 2*reach + 64);
+				if (!target || !bg_faces(this, target))
+					return 0;
+				int gap_x, gap_y;
+				bg_gap(this, target, &gap_x, &gap_y);
+				if ((gap_x > gap_y ? gap_x : gap_y) > reach)
+					return 0;
+				if (current_special != 2)
+					return 1;
+				Sint32 blast = bg_blast_reach(stats->level);
+				std::list<walker*> foes = bg_living_foes(this, RING_SCAN);
+				int near = 0;
+				for (auto f = foes.begin(); f != foes.end(); ++f)
+					if (*f == target || target->distance_to_ob(*f) <= blast)
+						near++;
+				return (near >= 2 && bg_blast_clear(this, target, blast, true));
+			}
 		default :
 			return 1;
 	}
