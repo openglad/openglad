@@ -165,21 +165,24 @@ end
 -- Gameplay Fixes: the classic window below (a foe one to three squares
 -- off) was written for CHARGE and asked of every slot. It is still asked
 -- first on every slot (it acquires the foe, and that draws); with the
--- setting on each slot then asks for its own payoff. CHARGE rushes along
--- the soldier's heading, so it also wants that heading pointed at the
--- foe. BOOMERANG wants a living foe inside the blade's widest orbit (17 +
+-- setting on each slot then asks for its own payoff. CHARGE pays when the
+-- rush lands: a living foe in the path it runs along the soldier's heading,
+-- three acts of three steps, is struck and shoved (the window's foe or any
+-- other; with no heading the rush walks nowhere). BOOMERANG wants a living foe inside the blade's widest orbit (17 +
 -- 6 px a level) and no blade of the soldier's already out. WHIRLWIND
 -- wants two bodies inside its ring (a tent counts: the spin strikes it);
 -- one is what the free swing hits. DISARM wants a living foe blocking the
 -- soldier's front, inside the stagger reach, not above the soldier's level.
+-- COMMAND_RUSH: three acts (charge's command count) of three walksteps.
+local RUSH_STEPS = 9
+
 local function fixed(self, classic_answer)
   local slot = self:current_special()
   if slot == 1 then
-    local f = self:foe()
     if not classic_answer then
       return false
     end
-    return f ~= nil and G.aimed_at(self, f)
+    return G.rush_strikes(self, RUSH_STEPS) ~= nil
   end
   if slot == 2 then
     local out = G.owned(self, C.ORDER_FX, FX_BOOMERANG)

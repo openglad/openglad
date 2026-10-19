@@ -32,30 +32,49 @@ using og::test::bot_gates::GameplayFixesBots;
 // The soldier
 // ---------------------------------------------------------------------------
 
-// CHARGE rushes along the soldier's heading (lastx / lasty), so with the
-// setting on it wants the classic window (a foe one to three squares off)
-// AND a heading that points at that foe: with no heading (the spawn state)
-// the rush walks nowhere, and along another heading it runs past the foe.
-TEST_F(GameplayFixesBots, soldier_charge_wants_the_window_and_an_aim_at_the_foe)
+// CHARGE rushes along the soldier's heading: three acts of three steps of
+// stepsize px along trunc(lastx / stepsize), trunc(lasty / stepsize), and
+// a body it runs into is struck and shoved. With the setting on it wants
+// the classic window (a foe one to three squares off, which acquires the
+// foe and draws) AND a living foe in that path: the rush lands. The
+// soldier's 16 px box at x 200 with stepsize 4 heading east meets a 16 px
+// foe within the rush for foe x <= 250 (nine steps of 4 px).
+//
+// RED (the rush read as "aimed at the window's foe"): the foe at 270, aimed
+// at but past the rush, casts; and lastx 1, a heading the rush truncates to
+// nothing, casts.
+TEST_F(GameplayFixesBots, soldier_charge_wants_a_foe_in_the_rush)
 {
     living* soldier = body(add(FAMILY_SOLDIER, 1, 200, 200, 1, 200.0f), 16, 16);
     living* foe = body(add(FAMILY_SOLDIER, 2, 240, 200, 1), 16, 16);  // 40 px east
     ASSERT_TRUE(soldier && foe);
+    soldier->set_stepsize(4.0f);
 
     EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer: a foe inside the window";
     EXPECT_FALSE(gate(soldier, 1, 1)) << "no heading yet: the rush would go nowhere";
 
+    soldier->set_lastx(4.0f);
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(soldier, 1, 1)) << "east: the rush runs into the foe";
+
     soldier->set_lastx(1.0f);
     EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
-    EXPECT_TRUE(gate(soldier, 1, 1)) << "aimed east at the foe";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "lastx under a step: the rush moves nowhere";
 
     soldier->set_lastx(0.0f);
-    soldier->set_lasty(1.0f);
+    soldier->set_lasty(4.0f);
     EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
-    EXPECT_FALSE(gate(soldier, 1, 1)) << "aimed down: the rush runs past the foe";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "down: the rush runs past the foe";
 
-    soldier->set_lastx(1.0f);
+    soldier->set_lastx(4.0f);
     soldier->set_lasty(0.0f);
+    foe->setxy(250, 200);  // the last x the ninth step meets
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(soldier, 1, 1)) << "met on the rush's ninth step";
+    foe->setxy(270, 200);  // aimed at, inside the window, past the rush
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer at 70 px";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "the rush stops 20 px short of the foe";
+
     foe->setxy(219, 200);  // 19 px: inside the near edge of the window
     EXPECT_FALSE(gate(soldier, 1, 0)) << "the classic answer at 19 px";
     EXPECT_FALSE(gate(soldier, 1, 1)) << "19 px: the window still decides";

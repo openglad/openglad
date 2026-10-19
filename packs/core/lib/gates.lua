@@ -432,6 +432,24 @@ end
 local STEP_X = { [0] = 0, 1, 1, 1, 0, -1, -1, -1 }
 local STEP_Y = { [0] = -1, -1, 0, 1, 1, 1, 0, -1 }
 
+-- The first of foes whose box, shrunk 1 px on every side as collide()
+-- shrinks it, meets the box at (ax, ay) of size aw x ah (already shrunk);
+-- collide() compares inclusively.
+local function foe_meeting(foes, ax, ay, aw, ah)
+  for i = 1, #foes do
+    local f = foes[i]
+    local fx, fy = f:xpos() + 1, f:ypos() + 1
+    local fw, fh = f:sizex() - 2, f:sizey() - 2
+    if ax <= fx + fw
+        and ax + aw >= fx
+        and ay <= fy + fh
+        and ay + ah >= fy then
+      return f
+    end
+  end
+  return nil
+end
+
 -- A living foe within reach whose box meets the caster's box moved one
 -- pixel along curdir (DISARM's forward_blocked steps CHECK_STEP_SIZE = 1
 -- along curdir and asks query_passable, whose collide() shrinks both boxes
@@ -444,15 +462,33 @@ function M.ahead_blocked_by_foe(self, reach)
   local ax = self:xpos() + STEP_X[d] + 1
   local ay = self:ypos() + STEP_Y[d] + 1
   local aw, ah = self:sizex() - 2, self:sizey() - 2
-  local foes = M.living_foes(self, reach, true)
-  for i = 1, #foes do
-    local f = foes[i]
-    local fx, fy = f:xpos() + 1, f:ypos() + 1
-    local fw, fh = f:sizex() - 2, f:sizey() - 2
-    if ax <= fx + fw
-        and ax + aw >= fx
-        and ay <= fy + fh
-        and ay + ah >= fy then
+  return foe_meeting(M.living_foes(self, reach, true), ax, ay, aw, ah)
+end
+
+-- The living foe a rush along the caster's heading runs into. CHARGE
+-- queues COMMAND_RUSH for three acts, and each act walks three steps of
+-- stepsize px along trunc(lastx / stepsize), trunc(lasty / stepsize) (the
+-- step soldier.lua's charge passes) and strikes and shoves the body it ran
+-- into (stats.cpp). The first living foe whose box meets the caster's box
+-- moved k such steps, k = 1 .. steps (collide()'s shrink), or nil; nil with
+-- no heading, where the rush walks nowhere. From positions alone: a wall
+-- or an ally in the way is not modelled.
+function M.rush_strikes(self, steps)
+  local step = self:stepsize()
+  local ux = og.trunc(og.fdiv(self:lastx(), step))
+  local uy = og.trunc(og.fdiv(self:lasty(), step))
+  if ux == 0 and uy == 0 then
+    return nil
+  end
+  local span = og.max(og.max(ux, -ux), og.max(uy, -uy))
+  local run = og.trunc(og.fmul(steps * span, step))
+  local foes = M.living_foes(self, 2 * run + M.BLOW_SCAN, true)
+  local aw, ah = self:sizex() - 2, self:sizey() - 2
+  for k = 1, steps do
+    local ax = self:xpos() + og.trunc(og.fmul(ux * k, step)) + 1
+    local ay = self:ypos() + og.trunc(og.fmul(uy * k, step)) + 1
+    local f = foe_meeting(foes, ax, ay, aw, ah)
+    if f then
       return f
     end
   end

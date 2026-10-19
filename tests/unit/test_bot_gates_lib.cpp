@@ -804,6 +804,63 @@ TEST_F(BotGatesLib, ahead_blocked_by_foe_mirrors_collide)
     EXPECT_EQ("nil", probe(self, lua).at("ahead")) << "a foe upstairs";
 }
 
+// rush_strikes: CHARGE's rush is three acts of three walksteps along
+// trunc(lastx / stepsize), trunc(lasty / stepsize), stepsize px each. The
+// caster's box at (200, 200), stepsize 4, heading east, moved k steps is
+// [201 + 4k, 215 + 4k] x [201, 215] once shrunk; a 16 x 16 foe at (x, y)
+// shrinks to [x + 1, x + 15] x [y + 1, y + 15]. Within nine steps they meet
+// for x <= 250 and 186 <= y <= 214. Down-right, the box moves (4k, 4k):
+// a foe at (250, 250) is met on the ninth step, one at (251, 251) never.
+//
+// RED (the rush read as eight steps, or as one act): the foe at (250, 200)
+// is not found. RED (the step read from lastx untruncated): lastx 1 finds
+// the foe the rush never moves toward.
+TEST_F(BotGatesLib, rush_strikes_walks_the_charge_path)
+{
+    struct Case {
+        unsigned char team;
+        short x, y;
+        float lastx, lasty;
+        const char* expect;
+        const char* why;
+    };
+    const Case cases[] = {
+        {0, 250, 200, 4.0f, 0.0f, "250,200", "met on the ninth step"},
+        {0, 251, 200, 4.0f, 0.0f, "nil", "one pixel past the rush"},
+        {0, 230, 214, 4.0f, 0.0f, "230,214", "the last pixel aside that meets"},
+        {0, 230, 215, 4.0f, 0.0f, "nil", "one pixel farther aside"},
+        {0, 230, 186, 4.0f, 0.0f, "230,186", "the last pixel on the other side"},
+        {0, 250, 250, 4.0f, 4.0f, "250,250", "down-right, met on the ninth step"},
+        {0, 251, 251, 4.0f, 4.0f, "nil", "down-right, past the rush"},
+        {0, 230, 200, 0.0f, 4.0f, "nil", "the rush runs down, the foe is east"},
+        {0, 230, 200, 0.0f, 0.0f, "nil", "no heading: the rush walks nowhere"},
+        {0, 230, 200, 1.0f, 0.0f, "nil", "lastx under a step truncates to no rush"},
+        {1, 230, 200, 4.0f, 0.0f, "nil", "a friend in the path"},
+    };
+    const std::string lua = "    og.log('rush', where(G.rush_strikes(self, 9)))\n";
+    for (const Case& c : cases) {
+        fresh_world();
+        living* self = caster();
+        self->set_stepsize(4.0f);
+        self->set_lastx(c.lastx);
+        self->set_lasty(c.lasty);
+        ASSERT_NE(nullptr, fighter(c.team, c.x, c.y));
+        EXPECT_EQ(c.expect, probe(self, lua).at("rush")) << c.why;
+    }
+
+    // Two foes in the path: the nearer one, the body the rush runs into.
+    fresh_world();
+    living* self = caster();
+    self->set_stepsize(4.0f);
+    self->set_lastx(4.0f);
+    ASSERT_NE(nullptr, fighter(0, 245, 200));
+    living* near = fighter(0, 225, 200);
+    ASSERT_NE(nullptr, near);
+    EXPECT_EQ("225,200", probe(self, lua).at("rush"));
+    near->set_floor(1);
+    EXPECT_EQ("245,200", probe(self, lua).at("rush")) << "the nearer one is upstairs";
+}
+
 // can_pay: the alternate's own price when shifted, the slot's price when
 // the alternate has none (alternate_cost answers 0) or is not in play.
 // The fire elemental's REKINDLE (slot 4) costs 40 and its SUPERNOVA 10 with
