@@ -653,6 +653,18 @@ short living::check_special()
 		case FAMILY_FIREELEMENTAL:     // Check for foe in range x
 		case FAMILY_GHOST:
 		case FAMILY_ORC:
+			if (family == FAMILY_GHOST && myscreen->gameplay_fixes)
+			{
+				// port of the current game's a3916aba: a bot's SCARE pays with a
+				// living foe inside the scare radius (the classic gate asked for a
+				// foe within 130, which the fright reaches only from level 8). The
+				// classic foe search runs first either way, and SCARE is cast
+				// unshifted.
+				if (!foe)
+					foe = myscreen->find_near_foe(this);
+				shifter_down = 0;
+				return bg_foes_within(this, 1, 50+10*stats->level);
+			}
 			if (foe) // already have a foe ..
 			{
 				distance = (Uint32) distance_to_ob(foe); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
