@@ -726,18 +726,33 @@ short living::check_special()
 			{
 				// port of the current game's e97c8829: the classic rule below was
 				// written for TELEPORT and applied to every slot. Slot 1 keeps it;
-				// WARP SPACE and ENERGY WAVE want a foe inside the same 110 px;
 				// FREEZE TIME waits for the allies' fight (bg_allies_fight in
 				// bot_gates.h, the current game's 95ae7e12); HEARTBURST wants one
 				// inside its own reach.
+				// port of the current game's 12f25f88: a bot's TELEPORT MARKER is its
+				// own special, written over the coin: placed only where the mage will
+				// come back (nobody within 110, no marker of its own standing, a hero
+				// with 75 INT, and half the pool left after the price still paying
+				// for WARP SPACE). WARP SPACE's ring is point-blank (each bolt moves
+				// one pixel a tick), so it pays for two foes inside it or one the
+				// mage does not face; ENERGY WAVE wants a foe within 110 that the
+				// mage faces.
 				if (current_special == 1)
-					return (howmany < 1 || howmany > 3);
-				if (current_special == 5)
 				{
-					short in_reach = 0;
-					myscreen->find_foes_in_range(myscreen->level_data.oblist,
-					                                        80 + 2*stats->level, &in_reach, this);
-					return (in_reach >= 1);
+					if (howmany < 1 && bg_marker_pays(this, 2, 75))
+						shifter_down = 1;
+					else
+						shifter_down = 0;
+					return (howmany < 1 || howmany > 3);
+				}
+				if (current_special == 2)
+				{
+					// each bolt's range add, as the ring computes it from the spare pool
+					Sint32 spare = (Sint32) (stats->magicpoints - stats->special_cost[2]);
+					Sint32 add = spare / 15;
+					if (add > 40)
+						add = 40;
+					return bg_ring_pays(this, BG_UNIT_STEP, 7, add / 3);
 				}
 				if (current_special == 3)
 				{
@@ -746,7 +761,16 @@ short living::check_special()
 					bg_allies_fight(this, &engaged, &hurt); // port of the current game's 95ae7e12
 					return (engaged >= 3 || hurt);
 				}
-				return (howmany >= 1);
+				if (current_special == 4)
+				{
+					walker *target = bg_nearest_living_foe(this, 110);
+					return (target && bg_faces(this, target));
+				}
+				// HEARTBURST: slot 5 and every other slot
+				short in_reach = 0;
+				myscreen->find_foes_in_range(myscreen->level_data.oblist,
+				                                        80 + 2*stats->level, &in_reach, this);
+				return (in_reach >= 1);
 			}
 			if (howmany < 1) //  away from anybody ..
 				return 1;
