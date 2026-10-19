@@ -955,6 +955,12 @@ short living::check_special()
 			{
 				myscreen->find_foes_in_range(myscreen->level_data.oblist,
 				                                        110, &howmany, this);
+				// port of the current game's a5ee6f18: the TELEPORT MARKER (the
+				// Shift arm) is no longer the coin's: with nobody near, mark
+				// where the archmage stands when no marker of its own stands, a
+				// hero has the cast's 75 INT, and half the pool left after the
+				// price still covers HEARTBURST. Written after the coin.
+				shifter_down = (howmany < 1 && bg_marker_pays(this, 2, 75)) ? 1 : 0;
 				return (howmany < 1 || howmany > 3);
 			}
 			if (current_special == 2)
@@ -987,16 +993,39 @@ short living::check_special()
 			if (current_special == 3)
 			{
 				// SUMMON ELEMENTAL only when the spare pool is at least the slot's
-				// own price; else the image. A foe within 200 is wanted.
-				if ((Sint32) (stats->magicpoints - stats->special_cost[3]) >= stats->special_cost[3])
+				// own price, and then a living foe within 200 is wanted; else the
+				// image. Port of the current game's a5ee6f18: SUMMON IMAGE, a
+				// phantom with one hit point, is a decoy: it pays before the blows
+				// land, when at least two living foes within 200 are hunting the
+				// archmage and none is within a blow of it yet (at blows HEARTBURST
+				// is the cheaper answer), its health is above the flee threshold
+				// (below it TELEPORT is the answer), no phantom of its own stands,
+				// and the pool after the 500 still covers a HEARTBURST.
+				Sint32 spare = (Sint32) (stats->magicpoints - stats->special_cost[3]);
+				if (spare >= stats->special_cost[3])
+				{
 					shifter_down = 1;
-				else
-					shifter_down = 0;
-				myscreen->find_foes_in_range(myscreen->level_data.oblist,
-				                                        200, &howmany, this);
-				return (howmany >= 1);
+					return bg_foes_within(this, 1, 200);
+				}
+				shifter_down = 0;
+				if (bg_hp_below(this, 3, myguy ? 5 : 8))
+					return 0;
+				if (bg_owned_phantom(this))
+					return 0;
+				if (!bg_foes_at_blows(this).empty())
+					return 0;
+				if (spare < stats->special_cost[2])
+					return 0;
+				return (bg_hunters(this, 200).size() >= 2);
 			}
-			return 1;
+			// port of the current game's a5ee6f18: MIND CONTROL wants a foe the
+			// control can take (never charmed, not a hero a player drives, not
+			// above the archmage's level) inside its reach; the rest above holds
+			// the slot on both values
+			{
+				std::list<walker*> foes = bg_living_foes(this, 80 + 4*stats->level);
+				return (nearest_charmable(foes, stats->level) != NULL);
+			}
 		case FAMILY_ELF:
 			{
 				// port of the current game's 849df031: the classic elf had no gate
