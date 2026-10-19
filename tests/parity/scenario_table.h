@@ -9067,46 +9067,51 @@ inline constexpr Mutation kMut_thief_taunt_no_foe_fixes_scen99 = {
 };
 
 // --- thief_bot_charm_or_taunt (fix C: the thief bot's slot-3 choice) -------
-// A hostile level-7 thief bot with 100 MP and a level-9 soldier 40 px away:
-// inside the charm reach, and two levels above the thief, so a charm is always
-// resisted. The seed (29) makes the classic bot's coin pick the charm at
-// tick 1 ("Thief failed to charm!", and the soldier gets its free hit), and
-// the soldier kills the thief; it ends at 17 hp. With the setting on the
-// thief drops a bomb instead: the soldier stands inside the level-7 thief's
-// 43 px blast, which the classic gate refused (it bombs only inside 35 px or
-// from 130 px out). It never charms or taunts (the taunt wants an ally in
-// reach), and the soldier kills it before the bomb goes off.
+// A hostile level-7 thief bot with 100 MP, a level-9 soldier 40 px away and
+// the thief's own orc 20 px on its other side. The soldier stands inside the
+// charm reach (44 px) and two levels above the thief, so a charm is always
+// resisted; the orc stands inside the thief's 43 px blast, so with the
+// setting on the bomb is refused, and inside the taunt reach (108 px), so a
+// taunt has an ally to back it. The seed (27) makes the bot roll slot 3 at
+// tick 1 on both values. The classic coin picks the charm ("Thief failed to
+// charm!", and the soldier gets its free hit), and the soldier kills the
+// thief and the orc by tick 12. With the setting on the thief charms only a
+// foe it can take, so it taunts ("Nyah Nyah!") instead, and at tick 20 both
+// are alive and the soldier is down to 108 hp.
 inline constexpr SpawnSpec kFamilySpawns_thief_bot_charm_or_taunt_scen99[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 160, 120, 0, 0, 9, 0 },     // higher-level foe, 40 px east
     { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 7, 100 },   // hostile bot caster
+    { FAMILY_ORC,     1, kOrderLiving, 100, 120, 0, 0 },           // its ally, 20 px west: inside its blast
     { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
 };
 inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_scen99[] = {
-    pred::TickReached(120),
+    pred::TickReached(20),
     pred::EventKindExactly(/*notification*/2, 1,
         "anchor: one cast at tick 1 on both values"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 1700, 1700,
-        "consequence: the classic coin sends the thief bot at a charm the level-9 soldier always resists (\"Thief failed to charm!\", a free hit); the soldier ends at 17 hp"),
+    pred::WalkerOfTeamAlive(1, 0, 0,
+        "consequence: the classic coin sends the thief bot at a charm the level-9 soldier always resists (\"Thief failed to charm!\", a free hit); the soldier kills the thief and its orc by tick 12"),
+    // negative_assertion: nobody of the thief's team is alive at tick 20; the mutation flips it by dropping the free hit, so the orc lives (0 -> 1).
 };
 inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
     "packs/core/families/living-11-thief.lua", 215,
     "        target:attack(self)",
     "        target:set_foe(self)",
-    "Drops the free hit a resisted charm gives the foe, so the classic fight changes and the level-9 soldier does not end at 17 hp: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 1700, 1700) fails."
+    "Drops the free hit a resisted charm gives the foe, so the classic fight changes and the thief's orc is still alive at tick 20: WalkerOfTeamAlive(1, 0, 0) fails."
 };
 inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_fixes_scen99[] = {
-    pred::TickReached(120),
-    // negative_assertion: no charm and no taunt with the setting on; the mutation flips it by taking the bomb away (0 -> 1, the taunt).
-    pred::EventKindExactly(/*notification*/2, 0,
-        "consequence: with the setting on the thief bombs the soldier inside its blast and never charms or taunts (a taunt wants an ally in reach)"),
-    pred::WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 1, 1,
-        "consequence: with the setting on the level-9 soldier 40 px off stands inside the level-7 thief's 43 px blast, so the thief drops its bomb"),
+    pred::TickReached(20),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: one cast at tick 1 on both values"),
+    pred::WalkerOfTeamAlive(1, 2, 2,
+        "consequence: with the setting on the thief bot charms only a foe it can take; the level-9 soldier is above it, so it taunts (\"Nyah Nyah!\") with its orc in reach, and both are alive at tick 20"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10800, 10800,
+        "consequence: with no free hit the taunted soldier fights the thief and its orc and is down to 108 hp at tick 20"),
 };
 inline constexpr Mutation kMut_thief_bot_charm_or_taunt_fixes_scen99 = {
-    "packs/core/families/living-11-thief.lua", 17,
-    "local reach = G.blast_reach(self.level)",
-    "local reach = 0",
-    "Shrinks the bomb's reach to nothing, so no foe stands inside it and the thief drops no bomb: WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 1, 1) fails."
+    "packs/core/lib/gameplay_fixes.lua", 61,
+    "eligible = foe.level <= max_level",
+    "eligible = foe.level >= max_level",
+    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so the gate sends the bot at the level-9 soldier's charm again: it is resisted, the soldier gets its free hit and kills the thief and the orc by tick 12, so WalkerOfTeamAlive(1, 2, 2) and the soldier's 108 hp fail."
 };
 
 // --- thief_bot_charm_hero (#355: a hero a player drives resists a charm) ----
@@ -9134,7 +9139,7 @@ inline constexpr FactPredicate kFacts_thief_bot_charm_hero_fixes_scen99[] = {
         "consequence: with the setting on a hero a player drives cannot be charmed, and the thief has no ally for a taunt to pay, so it casts nothing"),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 0, 0,
         "consequence: the thief fights the hero instead, and the hero dies inside the run"),
-    // negative_assertion: the hero is dead with the setting on; the old pin (a seated hero charmable) flips it by charming the hero away alive (0 -> 1).
+    // negative_assertion: the hero is dead with the setting on; the mutation flips it too: with the taunt let through the hero is still alive at tick 90 (0 -> 1).
 };
 inline constexpr Mutation kMut_thief_bot_charm_hero_fixes_scen99 = {
     "packs/core/families/living-11-thief.lua", 74,
@@ -9410,8 +9415,10 @@ inline constexpr Mutation kMut_archmage_hit_stale_shift_fixes_scen99 = {
 // archmage has cast anything, with the archmage well above its flee
 // threshold. With the setting on a struck bot answers with HEARTBURST or
 // CHAIN LIGHTNING by the slot-2 gate, once, and never summons from the hit:
-// the burst kills the orc and nothing is summoned, though 1100 MP covers the
-// elemental. The arena is recorded with the setting on only: the classic hit
+// the burst's explosion stands on the orc at tick 9 (the budget), the orc
+// dies on that tick, and nothing is summoned, though 1100 MP covers the
+// elemental. The explosion is an FX-order walker, so the fact counts it among
+// the walkers; it is gone by tick 10. The arena is recorded with the setting on only: the classic hit
 // response plays differently in the two games (the old game's special()
 // always answers 0, so its "if (controller->special()) return;" never returns
 // and the second cast after a burst never happens; the current game's
@@ -9424,23 +9431,20 @@ inline constexpr SpawnSpec kFamilySpawns_archmage_bot_struck_scen99[] = {
     { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },            // idle player LAST, far away
 };
 inline constexpr FactPredicate kFacts_archmage_bot_struck_fixes_scen99[] = {
-    pred::TickReached(12),
+    pred::TickReached(9),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 0),
     // negative_assertion: with the setting on the hit response never summons an image; with this seed the classic one summons a skeleton phantom.
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
     // negative_assertion: nor the elemental, though 1100 MP covers it; a summon comes only from the slot-3 rule on an act tick.
-    pred::WeaponFamilyEmitted(FAMILY_EXPLOSION,
-        "consequence: with the setting on the struck bot answers with HEARTBURST by the slot-2 gate, once"),
-    pred::WalkerFamilyCount(FAMILY_ORC, 0, 0,
-        "consequence: the burst at blows kills the orc by tick 9"),
-    // negative_assertion: the orc is dead by tick 9; the mutation flips it by refusing the struck bot's burst (0 -> 1).
+    pred::WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 1, 1,
+        "consequence: with the setting on the struck bot answers with HEARTBURST by the slot-2 gate, once: one explosion stands on the orc at tick 9"),
 };
 inline constexpr Mutation kMut_archmage_bot_struck_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 120,
     "if ai_burst_or_chain(self) then",
     "if false then",
-    "Refuses the struck bot's slot-2 answer, so nothing is cast on the hit and the orc lives: WeaponFamilyEmitted(FAMILY_EXPLOSION) and WalkerFamilyCount(FAMILY_ORC, 0, 0) fail."
+    "Refuses the struck bot's slot-2 answer, so nothing is cast on the hit and no explosion stands at tick 9: WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 1, 1) fails."
 };
 
 // --- soldier_bot_charge_unaimed (bot gates: CHARGE wants an aim at its foe) ---
@@ -12404,16 +12408,16 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_thief_taunt_no_foe_fixes_scen99, std::size(kFacts_thief_taunt_no_foe_fixes_scen99),
       kMut_thief_taunt_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
 
-    { "thief_bot_charm_or_taunt_scen99", "scen/scen1.fss", 0x0000001Du,
-      kInputsEmpty, std::size(kInputsEmpty), 120,
+    { "thief_bot_charm_or_taunt_scen99", "scen/scen1.fss", 0x0000001Bu,
+      kInputsEmpty, std::size(kInputsEmpty), 20,
       CompareMode::SemanticParity, false,
       kFamilySpawns_thief_bot_charm_or_taunt_scen99, std::size(kFamilySpawns_thief_bot_charm_or_taunt_scen99),
       0, false, true, Exercises::None,
       kFacts_thief_bot_charm_or_taunt_scen99, std::size(kFacts_thief_bot_charm_or_taunt_scen99),
       kMut_thief_bot_charm_or_taunt_scen99 },
 
-    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x0000001Du,
-      kInputsEmpty, std::size(kInputsEmpty), 120,
+    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x0000001Bu,
+      kInputsEmpty, std::size(kInputsEmpty), 20,
       CompareMode::SemanticParity, false,
       kFamilySpawns_thief_bot_charm_or_taunt_scen99, std::size(kFamilySpawns_thief_bot_charm_or_taunt_scen99),
       0, false, true, Exercises::None,
@@ -12549,7 +12553,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_archmage_hit_stale_shift_fixes_scen99, {}, 1, nullptr, 0, 1 },
 
     { "archmage_bot_struck_fixes_scen99", "scen/scen1.fss", 0x0000001Cu,
-      kInputsEmpty, std::size(kInputsEmpty), 12,
+      kInputsEmpty, std::size(kInputsEmpty), 9,
       CompareMode::SemanticParity, false,
       kFamilySpawns_archmage_bot_struck_scen99, std::size(kFamilySpawns_archmage_bot_struck_scen99),
       0, false, true, Exercises::None,
