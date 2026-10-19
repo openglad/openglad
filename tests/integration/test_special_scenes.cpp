@@ -3420,7 +3420,9 @@ std::vector<Pair> pairs()
     // C. An enemy thief bot whose coin says Shift: the classic gate only asks
     // for a foe in charm reach and tries to charm a soldier two levels up
     // (resisted, a free swing at the thief); the fix chooses Shift only for
-    // a foe it can take and taunts instead.
+    // a foe it can take and taunts instead. The thief's posted ally 60 px
+    // south is the backing a bot's taunt is cast for with the setting on
+    // (staged after the thief, so the pinned draws stay the thief's).
     {
         Pair c;
         c.name = "c_thief_bot_shift";
@@ -3428,10 +3430,12 @@ std::vector<Pair> pairs()
         c.scene.frames = 94;   // the messages fade at 96: the hold keeps them
         c.scene.stage = [](Run& run) {
             add_bot(run, "thief", FAMILY_THIEF, 1, 80, 0, 7);
+            add_posted(run, "backer", FAMILY_SOLDIER, 1, 80, 60, 1);
             add_posted(run, "soldier", FAMILY_SOLDIER, 0, 120, 0, 9);
         };
         c.scene.before_tick = [](Run& run, int f) {
             hold_fire(run.actor("soldier"));
+            hold_fire(run.actor("backer"));
             walker* thief = steer_bot(run, "thief");
             if (thief == nullptr)
                 return;
@@ -4240,7 +4244,9 @@ std::vector<Pair> pairs()
 
     // M1. An enemy thief bot tries to charm the hero the seat drives: the
     // classic game charms him; the fix skips a driven hero and the thief
-    // taunts instead.
+    // taunts instead. The thief's posted ally 60 px south is the backing a
+    // bot's taunt is cast for with the setting on (staged after the thief,
+    // so the pinned draws stay the thief's).
     {
         Pair c;
         c.name = "m1_hero_resists_charm";
@@ -4249,8 +4255,10 @@ std::vector<Pair> pairs()
         c.scene.frames = 120;
         c.scene.stage = [](Run& run) {
             add_bot(run, "thief", FAMILY_THIEF, 1, 40, 0, 7);
+            add_posted(run, "backer", FAMILY_SOLDIER, 1, 40, 60, 1);
         };
         c.scene.before_tick = [](Run& run, int f) {
+            hold_fire(run.actor("backer"));
             walker* thief = steer_bot(run, "thief");
             if (thief == nullptr)
                 return;
