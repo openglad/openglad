@@ -622,8 +622,33 @@ short living::check_special()
 				return 0;
 			}
 			//break; // end of fighter case
-		case FAMILY_FIREELEMENTAL:     // Check for foe in range x
 		case FAMILY_ARCHER:
+			if (myscreen->gameplay_fixes)
+			{
+				// port of the current game's 58b81a6c: the classic gate below (a
+				// foe within 130) was asked of every slot. It is still asked first
+				// (it acquires the foe, and that draws); then each slot asks for its
+				// own payoff, measured by the fire arrow's flight (step 8, range 12
+				// in the weapon table) along the archer's heading. FIRE ARROWS' ring
+				// pays for two foes in its flight, or one the archer does not face;
+				// BARRAGE's three arrows fly along one line, so they want the
+				// archer's foe alive, faced and in flight; EXPLODING BOLT wants the
+				// same, and neither the archer nor an ally of its own in the blast.
+				if (!foe)
+					foe = myscreen->find_near_foe(this);
+				if (current_special == 1)
+					return bg_ring_pays(this, 8, 12, 0);
+				if (!foe || foe->dead || foe->query_order() != ORDER_LIVING
+				        || !bg_faces(this, foe))
+					return 0;
+				if (!bg_in_flight(this, foe, 8, 12, 0, 1, 0))
+					return 0;
+				if (current_special == 2)
+					return 1;
+				return bg_blast_clear(this, foe, bg_blast_reach(stats->level), true);
+			}
+			// fall through: with the setting off the archer shares the classic gate
+		case FAMILY_FIREELEMENTAL:     // Check for foe in range x
 		case FAMILY_GHOST:
 		case FAMILY_ORC:
 			if (foe) // already have a foe ..
