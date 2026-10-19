@@ -34,6 +34,11 @@ using og::test::bot_gates::GameplayFixesBots;
 
 namespace {
 
+int mine_family()
+{
+    return og::families::resolve_family_string_id(Order::FX, "core:mine");
+}
+
 // A bloodstain (the corpse every raise and RESURRECT reads) of `team` with
 // its top-left at (x, y).
 walker* stain(GameWorld& w, unsigned char team, short x, short y)
@@ -255,4 +260,209 @@ TEST_F(GameplayFixesBots, cleric_resurrect_wants_a_friendly_corpse_within_30)
     blood->setxy(231, 200);  // 31 px
     EXPECT_FALSE(gate(cleric, 4, 1)) << "the friendly stain 31 px off";
     EXPECT_TRUE(gate(cleric, 4, 0)) << "the classic answer";
+}
+
+// ---------------------------------------------------------------------------
+// The thief
+// ---------------------------------------------------------------------------
+
+// Row 31. DROP BOMB wants a living foe inside the bomb's blast around the
+// thief (31 px at level 1) and no ally in it. The classic gate bombs a foe
+// within 35 px or 130 px and more away.
+//
+// RED (the classic gate): gate(thief, 1, 1) is true with the foe 32 px and
+// 140 px away, and with the ally in the blast.
+TEST_F(GameplayFixesBots, thief_bomb_wants_a_foe_inside_its_blast_and_no_ally)
+{
+    living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 0, 230, 200, 1), 16, 16);  // 30 px
+    ASSERT_TRUE(thief && foe);
+    thief->set_foe(foe);
+
+    EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
+    thief->set_shifter_down(1);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "a foe 30 px off: inside the 31 px blast";
+    EXPECT_EQ(0, thief->shifter_down()) << "the bomb is Shift 0";
+
+    foe->setxy(231, 200);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "31 px: the edge is in";
+    foe->setxy(232, 200);
+    EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
+    EXPECT_FALSE(gate(thief, 1, 1)) << "32 px: outside the blast";
+
+    foe->setxy(340, 200);  // 140 px
+    EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: 130 px or more";
+    EXPECT_FALSE(gate(thief, 1, 1)) << "140 px: the bomb reaches nobody";
+
+    foe->setxy(230, 200);
+    living* ally = body(add(FAMILY_ORC, 1, 180, 200, 1), 16, 16);  // 20 px the other side
+    ASSERT_NE(nullptr, ally);
+    EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(thief, 1, 1)) << "an ally inside the blast";
+}
+
+// Row 32. MINE (New Specials): a level-2 thief with 94 MP lays a mine where
+// a foe will walk: a foe past the 31 px blast, within 130 px, hunting the
+// thief; fewer than three mines down, no ally in the blast and the 70 in
+// hand. Never the coin.
+//
+// RED (the coin): with New Specials on the gate leaves the coin's Shift 0
+// for the hunter at 80 px, and answers false (the classic window).
+TEST_F(GameplayFixesBots, thief_mine_waits_for_a_hunter_past_the_blast)
+{
+    living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 2, 94.0f), 16, 16);
+    living* hunter = body(add(FAMILY_SOLDIER, 0, 280, 200, 1), 16, 16);  // 80 px
+    ASSERT_TRUE(thief && hunter);
+    thief->set_foe(hunter);
+    hunter->set_foe(thief);
+
+    world().gameplay_fixes = 0;
+    EXPECT_FALSE(kit_gate(thief, 1, 0)) << "the classic answer: a foe at 80 px is refused";
+
+    world().gameplay_fixes = 1;
+    for (const short coin : {short{0}, short{1}}) {
+        thief->set_shifter_down(coin);
+        EXPECT_TRUE(kit_gate(thief, 1)) << "a hunter at 80 px, coin " << coin;
+        EXPECT_EQ(1, thief->shifter_down()) << "MINE, whatever the coin said";
+    }
+    world().gameplay_fixes = 0;
+    thief->set_shifter_down(0);
+    EXPECT_TRUE(kit_gate(thief, 1)) << "the MINE rule is New Specials', the setting off";
+    EXPECT_EQ(1, thief->shifter_down());
+    world().gameplay_fixes = 1;
+
+    hunter->set_foe(nullptr);
+    thief->set_shifter_down(1);
+    EXPECT_FALSE(kit_gate(thief, 1)) << "nobody hunting the thief, and the bomb reaches nobody";
+    EXPECT_EQ(0, thief->shifter_down());
+    hunter->set_foe(thief);
+
+    hunter->setxy(220, 200);  // 20 px: inside the blast
+    EXPECT_TRUE(kit_gate(thief, 1)) << "the hunter inside the blast: the bomb";
+    EXPECT_EQ(0, thief->shifter_down());
+    hunter->setxy(280, 200);
+
+    for (int i = 0; i < 3; ++i)
+        ASSERT_NE(nullptr, owned_fx(world(), mine_family(), thief,
+                                    static_cast<short>(400 + 20 * i), 400));
+    EXPECT_FALSE(kit_gate(thief, 1)) << "three mines down";
+    EXPECT_EQ(0, thief->shifter_down());
+    for (auto& ob : world().oblist)
+        if (ob && ob->query_order() == Order::FX && ob->family() == mine_family())
+            ob->set_dead(1);
+    EXPECT_TRUE(kit_gate(thief, 1)) << "the mines are spent";
+    EXPECT_EQ(1, thief->shifter_down());
+
+    thief->stats()->set_magicpoints(60.0f);
+    EXPECT_FALSE(kit_gate(thief, 1)) << "60 MP: the mine's 70 not in hand";
+    EXPECT_EQ(0, thief->shifter_down());
+    thief->stats()->set_magicpoints(94.0f);
+
+    ASSERT_NE(nullptr, body(add(FAMILY_ORC, 1, 210, 200, 1), 16, 16));
+    EXPECT_FALSE(kit_gate(thief, 1)) << "an ally beside the thief";
+    EXPECT_EQ(0, thief->shifter_down());
+}
+
+// Row 33. CLOAK wants a living foe within 130 px hunting the thief and no
+// invisibility left. The classic slot-2 gate is yes.
+//
+// RED (the classic answer): gate(thief, 2, 1) is true while cloaked.
+TEST_F(GameplayFixesBots, thief_cloak_wants_a_hunter_and_no_cloak_left)
+{
+    living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 7, 200.0f), 16, 16);
+    living* hunter = body(add(FAMILY_SOLDIER, 0, 300, 200, 1), 16, 16);  // 100 px
+    ASSERT_TRUE(thief && hunter);
+    hunter->set_foe(thief);
+
+    EXPECT_TRUE(gate(thief, 2, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(thief, 2, 1)) << "a hunter at 100 px";
+
+    thief->set_invisibility_left(5);
+    EXPECT_FALSE(gate(thief, 2, 1)) << "still cloaked";
+    EXPECT_TRUE(gate(thief, 2, 0)) << "the classic answer";
+    thief->set_invisibility_left(0);
+
+    living* other = body(add(FAMILY_ORC, 1, 400, 400, 1), 16, 16);
+    ASSERT_NE(nullptr, other);
+    hunter->set_foe(other);
+    EXPECT_FALSE(gate(thief, 2, 1)) << "the soldier hunts someone else";
+    hunter->set_foe(thief);
+    hunter->setxy(331, 200);  // 131 px
+    EXPECT_FALSE(gate(thief, 2, 1)) << "the hunter 131 px off";
+    hunter->setxy(330, 200);
+    EXPECT_TRUE(gate(thief, 2, 1)) << "130 px: the edge is in";
+
+    hunter->set_dead(1);
+    EXPECT_FALSE(gate(thief, 2, 1)) << "alone";
+    EXPECT_TRUE(gate(thief, 2, 0)) << "the classic answer alone";
+}
+
+// Row 34. TAUNT wants a living foe and an ally other than the thief inside
+// the taunt's reach (108 px at level 7). The classic gate asks for a foe in
+// reach.
+//
+// RED (the classic gate): gate(thief, 3, 1) is true with no ally.
+TEST_F(GameplayFixesBots, thief_taunt_wants_a_foe_and_an_ally_in_reach)
+{
+    living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 7, 200.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 0, 260, 200, 1), 16, 16);  // 60 px
+    living* ally = body(add(FAMILY_ORC, 1, 110, 200, 1), 16, 16);     // 90 px
+    ASSERT_TRUE(thief && foe && ally);
+
+    thief->set_shifter_down(1);
+    EXPECT_TRUE(gate(thief, 3, 1)) << "a foe at 60 px, an ally at 90";
+    EXPECT_EQ(0, thief->shifter_down()) << "TAUNT: nobody to charm in 44 px";
+
+    ally->setxy(92, 200);  // 108 px: the edge is in
+    EXPECT_TRUE(gate(thief, 3, 1)) << "the ally at 108 px";
+    ally->setxy(91, 200);  // 109 px
+    EXPECT_FALSE(gate(thief, 3, 1)) << "the ally at 109 px: nobody backs the thief";
+
+    ally->set_dead(1);
+    thief->set_shifter_down(0);
+    EXPECT_TRUE(gate(thief, 3, 0)) << "the classic answer: the foe alone";
+    EXPECT_FALSE(gate(thief, 3, 1)) << "no ally";
+
+    // A generator is no foe a taunt can pull.
+    living* ally2 = body(add(FAMILY_ORC, 1, 150, 200, 1), 16, 16);
+    ASSERT_NE(nullptr, ally2);
+    foe->set_dead(1);
+    walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(0);
+    tent->setxy(260, 200);
+    EXPECT_FALSE(gate(thief, 3, 1)) << "a tent and an ally: the taunt pulls nobody";
+}
+
+// Row 36. POISON CLOUD wants two living foes at blows with the thief and no
+// cloud of the thief's alive. The classic slot-4 gate is yes.
+//
+// RED (the classic answer): gate(thief, 4, 1) is true with one foe at blows.
+TEST_F(GameplayFixesBots, thief_poison_cloud_wants_two_foes_at_blows_and_no_cloud)
+{
+    living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 10, 600.0f), 16, 16);
+    ASSERT_NE(nullptr, thief);
+    EXPECT_TRUE(gate(thief, 4, 0)) << "the classic answer alone";
+    EXPECT_FALSE(gate(thief, 4, 1)) << "alone";
+
+    living* east = body(add(FAMILY_SOLDIER, 0, 217, 200, 1), 16, 16);  // a 1 px gap
+    ASSERT_NE(nullptr, east);
+    EXPECT_FALSE(gate(thief, 4, 1)) << "one foe at blows";
+    living* west = body(add(FAMILY_SOLDIER, 0, 183, 200, 1), 16, 16);  // a 1 px gap
+    ASSERT_NE(nullptr, west);
+    EXPECT_TRUE(gate(thief, 4, 1)) << "two foes at blows";
+    west->setxy(178, 200);  // a 6 px gap
+    EXPECT_FALSE(gate(thief, 4, 1)) << "the second a pixel out of a blow";
+    west->setxy(183, 200);
+
+    walker* cloud = owned_fx(world(), FAMILY_CLOUD, thief, 200, 200);
+    ASSERT_NE(nullptr, cloud);
+    EXPECT_FALSE(gate(thief, 4, 1)) << "a cloud of the thief's alive";
+    cloud->set_dead(1);
+    // A living slime (living family 8, the cloud's number) the thief owns is
+    // not a cloud.
+    living* slime = body(add(FAMILY_SLIME, 1, 400, 400, 1), 16, 16);
+    ASSERT_NE(nullptr, slime);
+    slime->set_owner(thief);
+    EXPECT_TRUE(gate(thief, 4, 1)) << "a slime of its own is no cloud";
 }

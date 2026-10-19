@@ -8,9 +8,38 @@ local lc = og.use("living_common")
 local FX_BOMB = assert(og.family_id("fx", "core:bomb"))
 local FX_CLOUD = assert(og.family_id("fx", "core:cloud"))
 local kt = og.use("kit_thief")
+local FX_MINE = assert(og.family_id("fx", "core:mine"))
 local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local function check_special_ai(self)
   if self:current_special() == 1 then
+    if gf.on() or og.match_setting("new_specials") ~= 0 then
+      local reach = G.blast_reach(self.level)
+      local clear = G.blast_clear(self, self, reach, false)
+      if og.match_setting("new_specials") ~= 0 then
+        -- New Specials: a MINE pays where a foe will walk: a foe past the
+        -- blast and within 130 px that is hunting the thief, fewer than
+        -- three mines down, no ally in the blast, and the 70 in hand.
+        -- Never the coin.
+        local hunter = G.hunted_by(self, 130)
+        local mines = G.owned(self, C.ORDER_FX, FX_MINE)
+        if clear and hunter
+            and self:distance_to_ob(hunter) > reach
+            and mines < 3
+            and G.can_pay(self, 1, true) then
+          self:set_shifter_down(1)
+          return true
+        end
+        self:set_shifter_down(0)
+      end
+      if gf.on() then
+        -- Gameplay Fixes: a bomb pays with a foe inside its blast and no
+        -- ally in it; the Shift is 0 whenever the setting is on (a MINE
+        -- not in play is cast as the bomb anyway).
+        self:set_shifter_down(0)
+        return G.foes_within(self, 1, reach, true) and clear
+      end
+    end
     -- Drop-bomb AI uses this fixed per-tick range.
     local foe = self:foe()
     if foe then
@@ -35,6 +64,14 @@ local function check_special_ai(self)
         self:set_shifter_down(1)
       else
         self:set_shifter_down(0)
+        -- Gameplay Fixes: TAUNT wants a living foe in its reach and an ally
+        -- there too: foes pulled onto a thief nobody backs is the thief's
+        -- own danger, bought for 100. A tent cannot follow the thief.
+        reach = t.taunt_range_base + t.taunt_range_per_level * self.level
+        if not G.foes_within(self, 1, reach, false) then
+          return false
+        end
+        return G.allies_within(self, 1, reach)
       end
     end
     local range
@@ -45,6 +82,21 @@ local function check_special_ai(self)
     end
     local _, foe_count = og.find_foes_in_range("ob", range, self)
     return foe_count >= 1
+  elseif gf.on() then
+    if self:current_special() == 2 then
+      -- Gameplay Fixes: CLOAK wants a foe hunting the thief and no cloak
+      -- left.
+      if self:invisibility_left() ~= 0 then
+        return false
+      end
+      return G.hunted_by(self, 130) ~= nil
+    end
+    -- Gameplay Fixes: POISON CLOUD wants two living foes at blows and no
+    -- cloud of the thief's alive.
+    if G.owned(self, C.ORDER_FX, FX_CLOUD) > 0 then
+      return false
+    end
+    return #G.foes_at_blows(self) >= 2
   end
   return true -- default: go for it
 end
