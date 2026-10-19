@@ -834,6 +834,35 @@ short living::check_special()
 				return (howmany >= 1);
 			}
 			return 1;
+		case FAMILY_ELF:
+			{
+				// port of the current game's 849df031: the classic elf had no gate
+				// and threw at nothing. With the Gameplay Fixes setting on a volley
+				// wants the elf's nearest living foe faced (the rocks leave along
+				// its heading) and inside the rocks' flight (the rock is step 5,
+				// range 8 in the weapon table; the bouncing volleys multiply the
+				// range by 3/2, 4/2 and 5/2), and the two bigger volleys want a
+				// second living foe in flight anywhere around. Off, the elf answers
+				// 1, as the default arm always did.
+				if (!myscreen->gameplay_fixes)
+					return 1;
+				// per slot: the foes needed, the range multiplier in halves; slot 4
+				// is also every other slot
+				static const int volleys[5][2] = { { 2, 5 }, { 1, 2 }, { 1, 3 }, { 2, 4 }, { 2, 5 } };
+				int v = (current_special >= 1 && current_special <= 4) ? current_special : 4;
+				walker *target = bg_nearest_living_foe(this, 320);
+				if (!target || !bg_faces(this, target)
+				        || !bg_in_flight(this, target, 5, 8, volleys[v][1], 2, 0))
+					return 0;
+				if (volleys[v][0] < 2)
+					return 1;
+				std::list<walker*> foes = bg_living_foes(this, 320);
+				int in_flight = 0;
+				for (auto f = foes.begin(); f != foes.end(); ++f)
+					if (bg_in_flight(this, *f, 5, 8, volleys[v][1], 2, 0))
+						in_flight++;
+				return (in_flight >= volleys[v][0]);
+			}
 		default :
 			return 1;
 	}
