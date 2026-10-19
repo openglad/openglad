@@ -1454,7 +1454,7 @@ inline constexpr Mutation kMut_family_big_orc_init = {
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "packs/core/families/living-16-barbarian.lua", 79,
+    "packs/core/families/living-16-barbarian.lua", 142,
     "hp = 150",
     "hp = 1",
     "Drops BARBARIAN descriptor HP to 1 "
@@ -4202,7 +4202,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 7,
+    "packs/core/families/living-16-barbarian.lua", 16,
     "if self:busy() > 0 then",
     "if true then",
     "Closes HURL BOULDER's busy gate permanently, so do_special returns false before the shot is fired and before WEAP_BOULDER is created; no boulder ever rolls. EventKindAtLeast(play_sound, 15) fails."
@@ -4233,7 +4233,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 56,
+    "packs/core/families/living-16-barbarian.lua", 65,
     "if self:current_special() == 2 then",
     "if false then",
     "Drops the slot-2 sentinel that marks the thrown boulder as EXPLODING (skip_exit 5000 -> 0), so slot 2 throws a plain boulder. The boulder's flight and impact diverge from the master golden and the exact weapon_tracks comparison fails; this row's HP band (5000, 12000) is too wide to see the difference, so the trajectory check carries the teeth."
@@ -4649,7 +4649,7 @@ inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 35,
+    "packs/core/families/living-16-barbarian.lua", 44,
     "    boulder:set_stepsize(self.level * 2)",
     "    boulder:set_stepsize(self.level * 0.5)",
     "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900."
@@ -6499,7 +6499,7 @@ inline constexpr FactPredicate kFacts_barbarian_boulder_impact_scen99[] = {
 };
 
 inline constexpr Mutation kMut_barbarian_boulder_impact_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 59,
+    "packs/core/families/living-16-barbarian.lua", 68,
     "    boulder:set_skip_exit(0)",
     "    boulder:set_skip_exit(5000)",
     "Gives the slot-1 boulder the legacy 5000 explode-on-death sentinel, i.e. makes HURL BOULDER behave as EXPLODING BOULDER. weap::death then spawns a FAMILY_EXPLOSION with damage*2 = 60 at the boulder's death point, killing the already-plowed elf standing there: the elf alive-count drops below 3 and the blast's damage pushes score_per_team[0] past the ScoreDelta ceiling."

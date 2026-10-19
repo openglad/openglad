@@ -357,3 +357,72 @@ TEST_F(GameplayFixesBots, archer_exploding_bolt_wants_a_foe_past_its_own_blast_w
     foe->setxy(200, 1);
     EXPECT_FALSE(gate(archer, 3, 1)) << "a 170 px gap is past it";
 }
+
+// ---------------------------------------------------------------------------
+// The barbarian
+// ---------------------------------------------------------------------------
+
+// HURL BOULDER: the classic barbarian had no gate. The boulder is made, not
+// fired: it rolls 9 steps of its own speed (2 px a level for a bot, 1 +
+// strength / 7 for a hero, at most 15), and the first only turns it, so it
+// stops 8 steps out. With the setting on the barbarian's nearest living foe
+// must be faced and inside that.
+TEST_F(GameplayFixesBots, barbarian_boulder_wants_a_faced_foe_inside_its_short_flight)
+{
+    living* barbarian = body(add(FAMILY_BARBARIAN, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_TOWER1, 2, 195, 155, 1), 25, 29);  // a 16 px gap above
+    ASSERT_TRUE(barbarian && foe);
+
+    EXPECT_TRUE(gate(barbarian, 1, 0)) << "the classic answer: always";
+    EXPECT_TRUE(gate(barbarian, 1, 1)) << "a 16 px gap: the level-1 boulder reaches it";
+    foe->setxy(195, 154);
+    EXPECT_TRUE(gate(barbarian, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(barbarian, 1, 1)) << "a 17 px gap: short";
+
+    barbarian->stats()->set_level(5);  // 10 px a step: 80 px
+    foe->setxy(195, 101);  // a 70 px gap above
+    EXPECT_TRUE(gate(barbarian, 1, 1)) << "level 5: a 70 px gap";
+    foe->setxy(195, 286);  // the same gap below
+    EXPECT_TRUE(gate(barbarian, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(barbarian, 1, 1)) << "the foe is behind the barbarian";
+
+    barbarian->stats()->set_level(1);
+    foe->setxy(195, 151);  // a 20 px gap above
+    EXPECT_FALSE(gate(barbarian, 1, 1)) << "a bot of level 1: 16 px";
+    barbarian->set_owned_myguy(std::make_unique<guy>(FAMILY_BARBARIAN));
+    barbarian->myguy->strength = 14;  // 1 + 14 / 7 = 3 px a step: 24 px
+    EXPECT_TRUE(gate(barbarian, 1, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(barbarian, 1, 1)) << "a hero's boulder rolls by its strength";
+}
+
+// EXPLODING BOULDER bursts on that foe (15 + 4 px a level, 31 at level 4).
+// With the setting on it wants a second living foe in the blast, and
+// neither the barbarian nor an ally of the barbarian in it.
+TEST_F(GameplayFixesBots, barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it)
+{
+    living* barbarian = body(add(FAMILY_BARBARIAN, 1, 200, 200, 4, 200.0f), 16, 16);
+    living* foe = body(add(FAMILY_TOWER1, 2, 195, 131, 1), 25, 29);  // a 40 px gap above
+    living* beside = body(add(FAMILY_TOWER1, 2, 215, 131, 1), 25, 29);  // 20 px from it
+    ASSERT_TRUE(barbarian && foe && beside);
+
+    EXPECT_TRUE(gate(barbarian, 2, 0)) << "the classic answer: always";
+    EXPECT_TRUE(gate(barbarian, 2, 1)) << "two foes in the blast";
+
+    beside->set_dead(1);
+    EXPECT_TRUE(gate(barbarian, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(barbarian, 2, 1)) << "a lone foe: HURL BOULDER does it";
+    EXPECT_TRUE(gate(barbarian, 1, 1)) << "and HURL BOULDER would throw";
+
+    living* second = body(add(FAMILY_TOWER1, 2, 215, 131, 1), 25, 29);
+    living* ally = body(add(FAMILY_SOLDIER, 1, 175, 131, 1), 16, 16);  // 20 px from the foe
+    ASSERT_TRUE(second && ally);
+    EXPECT_TRUE(gate(barbarian, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(barbarian, 2, 1)) << "an ally of the barbarian stands in the blast";
+
+    ally->set_dead(1);
+    EXPECT_TRUE(gate(barbarian, 2, 1)) << "the ally gone";
+    foe->setxy(200, 175);  // 25 px from the barbarian
+    second->setxy(220, 175);
+    EXPECT_TRUE(gate(barbarian, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(barbarian, 2, 1)) << "the barbarian would stand in its own blast";
+}

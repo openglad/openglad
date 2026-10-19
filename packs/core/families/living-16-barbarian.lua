@@ -1,7 +1,16 @@
 -- core:barbarian — boulder-toss special (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
+local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local WEAP_BOULDER = assert(og.family_id("weapon", "core:boulder"))
+
+-- The boulder is made, not fired, so its flight is not G.flight_px's: it
+-- rolls the weapon table's 9 steps (gloader.cpp) of the speed do_special
+-- sets below (a bot's 2 px a level, a hero's 1 + strength / 7, held to 1 ..
+-- 15), with no level or straight-line growth, and its first walk only
+-- turns it.
+local BOULDER_LOS = 9
 
 local function do_special(self)
   if self:busy() > 0 then
@@ -65,6 +74,60 @@ local function do_special(self)
   return true
 end
 
+local function boulder_reach(self)
+  local step
+  if self:has_guy() then
+    step = 1 + self:g_strength() // 7
+  else
+    step = 2 * self.level
+  end
+  return (BOULDER_LOS - 1) * og.clamp(step, 1, 15)
+end
+
+-- The barbarian's nearest living foe on its floor, when the barbarian faces
+-- it (the boulder leaves along its heading) and it is inside the
+-- boulder's flight; else nil.
+local function boulder_target(self)
+  local reach = boulder_reach(self)
+  local f = G.nearest_living_foe(self, 2 * reach + 64, true)
+  if not f or not G.faces(self, f) then
+    return nil
+  end
+  local gap_x, gap_y = G.gap(self, f)
+  if og.max(gap_x, gap_y) > reach then
+    return nil
+  end
+  return f
+end
+
+-- Gameplay Fixes: the classic barbarian had no gate and threw at nothing.
+-- With the setting on HURL BOULDER wants a faced foe inside the boulder's
+-- flight; EXPLODING BOULDER wants that foe with a second living foe inside
+-- the blast around it, and neither the barbarian nor an ally of its own in
+-- the blast. Draw-free: finders and positions only.
+local function check_special_ai(self)
+  if not gf.on() then
+    return true
+  end
+  local slot = self:current_special()
+  if slot == 2 then
+    local f = boulder_target(self)
+    if not f then
+      return false
+    end
+    local reach = G.blast_reach(self.level)
+    local foes = G.living_foes(self, G.RING_SCAN, true)
+    local near = 0
+    for i = 1, #foes do
+      if foes[i] == f or f:distance_to_ob(foes[i]) <= reach then
+        near = near + 1
+      end
+    end
+    return near >= 2 and G.blast_clear(self, f, reach, true)
+  end
+  return boulder_target(self) ~= nil
+end
+
 local function level_up(guy, level_diff)
   og.apply_level_up(guy, level_diff, 12, 3, 12, 4, 1)
 end
@@ -114,5 +177,6 @@ og.family("living", {
   radar_color = "none",
   radar_jitter = 0,
 
+  check_special_ai = check_special_ai,
   level_up = level_up,
 })
