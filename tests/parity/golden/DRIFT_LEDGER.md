@@ -623,7 +623,9 @@ embedded fixture` line.
 `31ea23f4` (2026-10-19) is the pin: a table mirror (recorder-only, `tools/` only) of the current game's `ac82bc3d`, which adds three
 test-only trace lines to `walker::special` for the level-play test, so the one pin below them in
 `src/gameplay/walker_specials.cpp` (`cleric_turn_no_undead_fixes_scen99`, `if (!any_undead)`) moves from line 386 to 398.
-No spawn, seed, budget, predicate or label changes, so no dump does.
+No spawn, seed, budget, predicate or label changes, so no dump does. No capture was taken at `31ea23f4`: the row
+argues instead of citing a `cmp`-identical capture, because in the old game only `tools/parity_scenario_table.h` and
+`tools/fact_predicate.h` read a Mutation's line and no recorder source does.
 
 The struck arena has no setting-off twin: the two games' classic hit responses differ. The old game's
 `walker::special` always answers 0 (it falls off the end of the family switch), so `if (controller->special())

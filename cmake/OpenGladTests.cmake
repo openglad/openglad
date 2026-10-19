@@ -501,6 +501,10 @@ og_add_test_group(og_test_special_scenes FILES
 # ticks on three seeds with a level-14 crew (tests/integration/
 # test_level_play.cpp): they fire many different specials, only at somebody,
 # and the gates and the casts agree. Pure compute, five plays of the level.
+# Budget: 2.07 s under ctest locally (ci-test, Debug). It keeps the default
+# 180 s: og_unit_data's many-tick headless level sims on the same fixture ran
+# ~30x slower under ASan+UBSan with serialization validation (~60 s here) and
+# ~5x under coverage (~10 s here).
 og_add_test_group(og_test_level_play FILES
     test_level_play.cpp
 )

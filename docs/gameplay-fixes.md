@@ -280,8 +280,10 @@ because the spin strikes it and the yell stuns it (fix K).
 the rules in a real level: it plays The Tryxian Chronicles' first level, its
 104 bots on four warring teams plus a crew of 12 heroes at level 14, for 2400
 ticks on three seeds, and counts every cast. On the shipped default the bots
-cast about 1600 times and 46 different specials, every Shift arm and the
-crew's slot-5 HEARTBURST and FREEZE TIME among them, none at nobody (each
+cast about 1600 times and 46 different specials, among them the eight Shift
+arms the level reaches (MYSTIC MACE, CHAIN LIGHTNING, TELEPORT MARKER, MINE,
+CHARM OPPONENT, TURN UNDEAD, WAIL, HASTE SELF) and the crew's slot-5
+HEARTBURST and FREEZE TIME, none at nobody (each
 special whose rule names a foe has one within its reach), REVEAL never, and no
 gate says yes to a cast that then refuses for the fact the gate reads. With the
 setting off the same level shows 291 casts at nobody, REVEAL 29 times and 176

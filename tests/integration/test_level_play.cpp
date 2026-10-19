@@ -16,7 +16,9 @@
 // compiled only into test builds). The test drains those lines every tick, so
 // a cast is counted exactly once, under the name the HUD gives it.
 //
-// What it asserts (the floors are at most a quarter of the pooled measurement):
+// What it asserts (the pooled floors in B are at most a quarter of the pooled
+// measurement, or 1 where that is 2 to 5 casts; the per-seed floors in A sit
+// at a half to three quarters of the lowest seed's measurement):
 //   A  per seed: >= 250 casts, >= 28 different specials, >= 50 different
 //      casters, >= 30 casters with two or more specials, a crew member alive
 //      at the end;
@@ -33,8 +35,8 @@
 //   A replay of seed 42 gives the same casts in the same order.
 //
 // Measured (5b288bd7 plus the trace), casts per seed 42 / 1337 / 2025 [pooled]:
-//   total casts 553 / 480 / 596 [1629]; distinct (family, special) 39 / 37 / 41
-//   [47]; distinct casters 92 / 90 / 104; casters with >= 2 specials 62 / 64 / 71
+//   total casts 553 / 480 / 596 [1629]; distinct (family, special) 39 / 37 / 42
+//   [46]; distinct casters 92 / 90 / 104; casters with >= 2 specials 62 / 64 / 71
 //   ARCHER FIRE ARROWS 126/91/71 [288] BARRAGE 33/25/15 [73] EXPLODING BOLT 2/0/0
 //   ARCHMAGE CHAIN LIGHTNING 1/8/3 [12] HEARTBURST 2/2/4 [8] TELEPORT 5/11/4 [20]
 //            TELEPORT MARKER 0/1/0
@@ -49,7 +51,7 @@
 //        HEARTBURST 10/0/1 [11] FREEZE TIME 1/0/1 [2]
 //   ORC CAPTAIN HOOK BLADE 5/2/2 [9] HOWL 5/3/3 [11]
 //   SKELETON TUNNEL 45/120/160 [325] DIG IN 8/0/12 [20]
-//   SLIME GROW 1/4/5 [10] SPLIT 0/1/0
+//   SLIME GROW 1/3/3 [7] SPLIT 0/2/2 [4]
 //   SOLDIER BOOMERANG 42/38/34 [114] CHARGE 20/9/34 [63] WHIRLWIND 1/1/1 [3]
 //   THIEF CLOAK 13/20/13 [46] TAUNT ENEMY 19/15/20 [54] CHARM OPPONENT 3/7/8 [18]
 //         MINE 2/4/3 [9] DROP BOMB 2/1/6 [9]
@@ -65,11 +67,12 @@
 // and
 //   C  REVEAL cast 29 times;
 //   D  291 casts at nobody (the first: tick 1, a druid summons a faerie at a
-//      foe 192 px away; elves throwing rocks, thieves bombing, clerics macing
-//      with nobody near);
+//      foe 192 px away, R 162; elves throwing rocks, thieves bombing, clerics
+//      macing with nobody near);
 //   E  176 fact refusals (the first: tick 16, the cleric's TURN UNDEAD coin
-//      with NO FOE IN RANGE), 1069 SPECIAL BUSY refusals (cap 200), 109 NOT
-//      ENOUGH MP (cap 100);
+//      with NO FOE IN RANGE), 1069 SPECIAL BUSY refusals (cap 200), 643 NOT
+//      ENOUGH MP (cap 100; 534 of them the classic cleric macing at an
+//      empty pool with Shift left down after a shove);
 //   B  MAGE HEARTBURST 0 (the classic roll turns a slot above 4 into slot 1,
 //      so the crew's level-14 mages never cast their slot 5).
 // With OG_CALIBRATION_NEW_SPECIALS=0 the kit specials go missing instead: B
@@ -139,8 +142,8 @@ const std::map<SpecialKey, int>& reach_table()
 {
     static const std::map<SpecialKey, int> table = {
         {{"SOLDIER", "CHARGE"}, 130},
-        {{"SOLDIER", "BOOMERANG"}, 140},       // 17 + 6 * 14 + 32
-        {{"SOLDIER", "WHIRLWIND"}, 100},       // 32 + 2 * 14 + 32
+        {{"SOLDIER", "BOOMERANG"}, 140},       // 17 + 6 * 14 + 32 = 133, rounded up
+        {{"SOLDIER", "WHIRLWIND"}, 100},       // 32 + 2 * 14 + 32 = 92, rounded up
         {{"SOLDIER", "DISARM"}, 64},
         {{"ELF", "ROCKS"}, 130},
         {{"ELF", "BOUNCING ROCKS"}, 170},
@@ -152,8 +155,8 @@ const std::map<SpecialKey, int>& reach_table()
         {{"MAGE", "WARP SPACE"}, 64},
         {{"MAGE", "ENERGY WAVE"}, 150},
         {{"MAGE", "HEARTBURST"}, 140},         // 80 + 2 * 14 + 32
-        {{"ARCHMAGE", "HEARTBURST"}, 130},     // 80 + 2 * 8 + 32
-        {{"ARCHMAGE", "CHAIN LIGHTNING"}, 290}, // 200 + 7 * 8 + 32
+        {{"ARCHMAGE", "HEARTBURST"}, 130},     // 80 + 2 * 8 + 32 = 128, rounded up
+        {{"ARCHMAGE", "CHAIN LIGHTNING"}, 290}, // 200 + 7 * 8 + 32 = 288, rounded up
         {{"ARCHMAGE", "SUMMON IMAGE"}, 232},
         {{"ARCHMAGE", "SUMMON ELEMENTAL"}, 232},
         {{"ARCHMAGE", "MIND CONTROL"}, 150},
@@ -161,10 +164,10 @@ const std::map<SpecialKey, int>& reach_table()
         {{"CLERIC", "RAISE UNDEAD"}, 162},
         {{"CLERIC", "RAISE GHOST"}, 162},
         {{"CLERIC", "TURN UNDEAD"}, 130},
-        {{"THIEF", "DROP BOMB"}, 110},         // blast 15 + 4 * 14 + 32
+        {{"THIEF", "DROP BOMB"}, 110},         // blast 15 + 4 * 14 + 32 = 103, rounded up
         {{"THIEF", "MINE"}, 162},
         {{"THIEF", "CLOAK"}, 162},
-        {{"THIEF", "TAUNT ENEMY"}, 170},       // 80 + 4 * 14 + 32
+        {{"THIEF", "TAUNT ENEMY"}, 170},       // 80 + 4 * 14 + 32 = 168, rounded up
         {{"THIEF", "CHARM OPPONENT"}, 104},    // 16 + 4 * 14 + 32
         {{"THIEF", "POISON CLOUD"}, 64},
         {{"GHOST", "SCARE"}, 162},             // 50 + 10 * 8 + 32
@@ -415,7 +418,10 @@ bool is_fact_refusal(const Refusal& r)
 bool is_counted_nomp(const Refusal& r)
 {
     // The same ungated hit-response heal, at an empty pool.
-    return r.reason == "NOT ENOUGH MP" && !(r.family == FAMILY_CLERIC && r.slot == 1);
+    // A shoved cleric's Shift is cleared first on the shipped default, so
+    // slot 1 with Shift down is a rolled MYSTIC MACE at an empty pool and counts.
+    return r.reason == "NOT ENOUGH MP" &&
+           !(r.family == FAMILY_CLERIC && r.slot == 1 && r.shift == 0);
 }
 
 std::string property_key(const std::string& s)
@@ -618,7 +624,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
             if (k.size() >= 2)
                 ++versatile;
         EXPECT_GE(p.casts.size(), 250u) << "the bots should cast (measured 480-596)";
-        EXPECT_GE(distinct.size(), 28u) << "the bots should cast many specials (measured 37-41)";
+        EXPECT_GE(distinct.size(), 28u) << "the bots should cast many specials (measured 37-42)";
         EXPECT_GE(kinds.size(), 50u) << "many bots should cast (measured 90-104)";
         EXPECT_GE(versatile, 30) << "many bots should cast two specials or more (measured 62-71)";
         EXPECT_GE(p.crew_alive_2400, 1) << "the crew should still be in the level (measured 6-9)";
@@ -650,7 +656,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         {"SOLDIER", "BOOMERANG", 25},     {"SOLDIER", "CHARGE", 12},
         {"SOLDIER", "WHIRLWIND", 1},      {"THIEF", "CLOAK", 10},
         {"THIEF", "TAUNT ENEMY", 10},     {"THIEF", "DROP BOMB", 2},
-        {"DRUID", "SUMMON FAERIE", 2},    {"SLIME", "GROW", 2},
+        {"DRUID", "SUMMON FAERIE", 2},    {"SLIME", "GROW", 1},
         {"BARBARIAN", "HURL BOULDER", 1},
     };
     for (const auto& [family, special, at_least] : kMustCast)
