@@ -714,9 +714,23 @@ TEST(StatsCommands, stats_hit_response_all_families)
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
 
+    // The same blow twice. First the classic game, Gameplay Fixes and New
+    // Specials both off: the coin check_special() draws stays in
+    // shifter_down for every family on the default arm. (New Specials is
+    // held off too: its kits give the thief's and the ghost's slot 1 a
+    // Shift arm, MINE and WAIL, that a bot chooses by its own rule, never
+    // by the coin.) Then the shipped default, both on: a payoff gate that
+    // chooses its slot's arm writes the Shift itself after the coin; the
+    // thief's slot-1 gate and the ghost's SCARE write 0 here
+    // (living-11-thief.lua check_special_ai; living-12-ghost.lua
+    // fixed_scare and kit_ghost.lua wail_gate).
+    for (short fixes : {short{0}, short{1}})
     for (int i = 0; i < 14; i++)
     {
-        SCOPED_TRACE(testing::Message() << "family " << static_cast<int>(families[i]));
+        world().gameplay_fixes = fixes;
+        world().new_specials = fixes;
+        SCOPED_TRACE(testing::Message() << "family " << static_cast<int>(families[i])
+                                        << ", gameplay fixes and new specials " << fixes);
         auto target = make_walker(families[i]);
         auto attacker = make_walker(FAMILY_SOLDIER);
         ASSERT_NE(nullptr, target) << "target created";
@@ -778,9 +792,26 @@ TEST(StatsCommands, stats_hit_response_all_families)
                 << "the default hit_response resets last_distance to 32000";
             EXPECT_EQ(32000, target->stats()->current_distance())
                 << "the default hit_response resets current_distance to 32000";
-            EXPECT_EQ(1, target->shifter_down())
-                << "check_special() draws next(2) from the sim stream into "
-                   "shifter_down before the special gate; FixedRandom(1) answers 1";
+            const bool gate_writes_shift =
+                fixes != 0 && (families[i] == FAMILY_THIEF || families[i] == FAMILY_GHOST);
+            if (gate_writes_shift)
+            {
+                // The coin is still drawn (FixedRandom(1) answers 1); the
+                // gate then chooses the arm: DROP BOMB (Shift 0 whenever the
+                // setting is on; MINE, New Specials' Shift arm, wants a foe
+                // hunting the thief past the blast) and SCARE (WAIL wants
+                // one foe in the scare radius and a second within a hop).
+                // The attacker is not on the board, so no gate sees a foe.
+                EXPECT_EQ(0, target->shifter_down())
+                    << "with Gameplay Fixes on the gate writes the Shift after "
+                       "check_special()'s coin: no foe for the Shift arm, Shift 0";
+            }
+            else
+            {
+                EXPECT_EQ(1, target->shifter_down())
+                    << "check_special() draws next(2) from the sim stream into "
+                       "shifter_down before the special gate; FixedRandom(1) answers 1";
+            }
             EXPECT_FALSE(trace_contains("walker", "special: family="))
                 << "rng(3) == 1 keeps the `!rng(3)` gate shut: walker::special() "
                    "is never entered";
@@ -789,16 +820,22 @@ TEST(StatsCommands, stats_hit_response_all_families)
 }
 
 
-// The gate the test above holds SHUT, opened. FAMILY_ELF registers no
-// check_special_ai hook (packs/core/families/living-01-elf.lua), so
-// living::check_special() falls through to its "Default: always allow" and the
-// `!rng(3)` roll in statistics::hit_response is actually reached -- the hooked
-// families (soldier foe_in_window, orc/archer/elemental/ghost foe_within)
-// answer false with no foe, because walkers owned by a test are outside the
-// oblist that find_near_foe scans.
+// The gate the test above holds SHUT, opened. In the classic game the elf
+// has no special gate (packs/core/families/living-01-elf.lua answers true
+// with Gameplay Fixes off), so living::check_special() lets every elf roll
+// through and the `!rng(3)` roll in statistics::hit_response is actually
+// reached -- the hooked families (soldier foe_in_window,
+// orc/archer/elemental/ghost foe_within) answer false with no foe, because
+// walkers owned by a test are outside the oblist that find_near_foe scans.
+// Legs A and B hold the setting off for that classic claim. With Gameplay
+// Fixes on (legs C and D) the elf's ROCKS gate answers before the roll: the
+// elf's nearest living foe faced and inside the rocks' flight. An unpaid
+// cast is refused before special() is entered, whatever rng(3) says; a paid
+// one enters it.
 TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_is_zero)
 {
     ScopedArena arena;
+    world().gameplay_fixes = 0;
 
     struct Pair
     {
@@ -860,6 +897,42 @@ TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_
         EXPECT_EQ(open.attacker.get(), open.target->foe())
             << "the retarget block still runs after the special";
     }
+
+    // Gameplay Fixes on. The attacker is a soldier ON the board (the gate's
+    // foe search sees only the world's lists), at a 4 px gap from the elf,
+    // which is aimed up (set_lasty(-1): the fire heading the rocks leave
+    // along). rng(3) == 0 every time: the roll that opens the gate.
+    world().gameplay_fixes = 1;
+    auto strike = [](short dx, short dy, bool expect_special, const char* why) {
+        std::unique_ptr<walker> elf = make_walker(FAMILY_ELF);
+        ASSERT_NE(nullptr, elf) << "elf target created";
+        elf->set_team_num(0);
+        ASSERT_TRUE(elf->setxy(static_cast<std::int32_t>(GRID_SIZE * 10),
+                               static_cast<std::int32_t>(GRID_SIZE * 10)));
+        elf->set_lastx(0.0f);
+        elf->set_lasty(-1.0f);
+        elf->set_current_special(1);
+        elf->stats()->commands.clear();
+        walker* attacker = world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, attacker) << "attacker on the board";
+        attacker->set_team_num(1);
+        ASSERT_TRUE(attacker->setxy(static_cast<std::int32_t>(elf->xpos() + dx),
+                                    static_cast<std::int32_t>(elf->ypos() + dy)));
+        FixedRandom zero(0);
+        ScopedSimRandom sim(&zero);
+        trace_clear();
+        elf->stats()->hit_response(attacker);
+        EXPECT_EQ(expect_special, trace_contains("walker", "special: family=")) << why;
+        EXPECT_EQ(attacker, elf->foe()) << "the retarget block runs either way";
+        attacker->set_dead(1);
+    };
+    // Leg C: the attacker 4 px east of the elf, which faces up: the rocks
+    // would leave away from it. The gate refuses: special() is not entered.
+    strike(static_cast<short>(16 + 4), 0, false,
+           "fixes on: a foe the elf does not face, the ROCKS gate refuses before special()");
+    // Leg D: the attacker 4 px above the elf: faced and inside the flight.
+    strike(0, static_cast<short>(-(16 + 4)), true,
+           "fixes on: a faced foe inside the rocks' flight, rng(3) == 0 enters special()");
     // ScopedArena's delete_objects() sweeps whatever the elf's ROCKS special
     // spawned into the world lists.
 }

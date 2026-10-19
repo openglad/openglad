@@ -4,6 +4,7 @@
 local C = og.C
 local ai = og.use("ai")
 local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local FX_BOOMERANG = assert(og.family_id("fx", "core:boomerang"))
 
 local function charge(self)
@@ -161,6 +162,39 @@ local function set_difficulty(self, level)
   self:set_weapons_left(og.div(level + 1, 2))
 end
 
+-- Gameplay Fixes: the classic window below (a foe one to three squares
+-- off) was written for CHARGE and asked of every slot. It is still asked
+-- first on every slot (it acquires the foe, and that draws); with the
+-- setting on each slot then asks for its own payoff. CHARGE pays when the
+-- rush lands: a living foe in the path it runs along the soldier's heading,
+-- three acts of three steps, is struck and shoved (the window's foe or any
+-- other; with no heading the rush walks nowhere). BOOMERANG wants a living foe inside the blade's widest orbit (17 +
+-- 6 px a level) and no blade of the soldier's already out. WHIRLWIND
+-- wants two bodies inside its ring (a tent counts: the spin strikes it);
+-- one is what the free swing hits. DISARM wants a living foe blocking the
+-- soldier's front, inside the stagger reach, not above the soldier's level.
+-- COMMAND_RUSH: three acts (charge's command count) of three walksteps.
+local RUSH_STEPS = 9
+
+local function fixed(self, classic_answer)
+  local slot = self:current_special()
+  if slot == 1 then
+    if not classic_answer then
+      return false
+    end
+    return G.rush_strikes(self, RUSH_STEPS) ~= nil
+  end
+  if slot == 2 then
+    local out = G.owned(self, C.ORDER_FX, FX_BOOMERANG)
+    return out == 0 and G.foes_within(self, 1, 17 + 6 * self.level, false)
+  end
+  if slot == 3 then
+    return G.targets_within(self, 2, 32 + 2 * self.level)
+  end
+  local f = G.ahead_blocked_by_foe(self, 28)
+  return f ~= nil and f.level <= self.level
+end
+
 og.family("living", {
   id = "core:soldier",
   wire_id = 0,
@@ -222,7 +256,7 @@ og.family("living", {
   },
 
   -- Historical charge window: about one to three grid squares.
-  check_special_ai = ai.foe_in_window(20, 75),  -- fixed per-tick AI gate
+  check_special_ai = G.with_classic(ai.foe_in_window(20, 75), fixed),  -- fixed per-tick AI gate
   on_fire_weapon = on_fire_weapon,
   on_create = on_create,
   set_difficulty = set_difficulty,

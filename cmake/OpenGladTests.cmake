@@ -972,6 +972,9 @@ og_add_unit_group(og_unit_families FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_save_client.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_lib.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_cleric_unit.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_lib.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_fighters.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_casters.cpp
 )
 
 # New Specials: the setting's view of the specials table, the engine seams
@@ -991,6 +994,7 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_elemental.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_rests.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_bots.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_kits.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
 )
 

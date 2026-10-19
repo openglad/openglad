@@ -9588,8 +9588,19 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // so the add SPAWNED a stock soldier (a brand-new server entity created
     // between ticks — the shape that must survive the delta stream). Park
     // every unclaimed lead-team walker on an unused team to force that path.
+    // Each parked walker gets ten times its hit points: the census below
+    // checks that every walker this case re-teamed between ticks is still
+    // on the board after 420 ticks of the delta stream, and that check is
+    // only about the stream if the brawl cannot kill them. On the pinned
+    // stream they are the level's soldier and archer, standing where the
+    // elves arrive; with their own hit points both fall (2026-10-19, after
+    // the bot payoff gates: the soldier near tick 235, the archer near tick
+    // 385), so the check would read the fight, not the stream. They still
+    // fight; with ten times the hit points the soldier ends the 420 ticks
+    // near three quarters of its pool and the archer near seven eighths.
     const short lead_team = game_screen->viewob[0]->my_team;
     short empty_team = -1;
+    int reteamed = 0;
     {
         screen* const server_screen =
             og::runtime::local_transport_shadow_testing_server_screen(session);
@@ -9612,8 +9623,13 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
                 static_cast<short>(entity->team_num()) == lead_team)
             {
                 entity->set_team_num(static_cast<unsigned char>(empty_team));
+                const float tough = entity->stats()->max_hitpoints() * 10.0f;
+                entity->stats()->set_max_hitpoints(tough);
+                entity->stats()->set_hitpoints(tough);
+                ++reteamed;
             }
         }
+        ASSERT_GE(reteamed, 1) << "the stock-spawn path needs a parked lead-team walker";
     }
 
     // ADD PLAYER from the open menu.
@@ -9661,6 +9677,15 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // pre-#320 stats.cpp returns 17, and the #350 tower-heading fix in the
     // same batch moves nothing here. Both heroes and the re-teamed walker
     // still stand, so the seat and team checks are unchanged.
+    // Re-staged and re-pinned 2026-10-19 for the bot payoff gates (every
+    // special a bot rolls now waits for its payoff with Gameplay Fixes on,
+    // the shipped default; the level's elves throw rocks only at a faced
+    // foe in flight): both re-teamed walkers fell in the brawl and the
+    // census read 17. The parked walkers now carry ten times their hit
+    // points (above), so the team check reads every walker this case
+    // re-teamed instead of the one that happened to live, and the census
+    // is eighteen: three isolated runs of this build agree on 18. Both RNG
+    // seeds, the seat check and the lead-team check are unchanged.
     {
         screen* const authority =
             og::runtime::local_transport_shadow_testing_server_screen(session);
@@ -9683,9 +9708,9 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
             << "both seats must still hold a living hero after the fight";
         EXPECT_EQ(2, living[lead_team])
             << "the lead team is the two heroes and nothing else";
-        EXPECT_EQ(1, living[empty_team])
-            << "the walker this case re-teamed must still be on the board";
-        EXPECT_EQ(13, total_living)
+        EXPECT_EQ(reteamed, living[empty_team])
+            << "every walker this case re-teamed must still be on the board";
+        EXPECT_EQ(18, total_living)
             << "the pinned stream no longer produces the fight this case was "
                "written around";
     }

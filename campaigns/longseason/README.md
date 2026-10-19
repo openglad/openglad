@@ -342,7 +342,7 @@ measured minima across the three pinned seeds — no dead slack).
 | 9 | Ashfall Fair | defense | 5 | PASS | t0@3000 [8,10,10] vs band 4; kill 3/3 @5 (~1220), 3/3 @6. **Update (2026-09-26, PR #315):** t0@3000 [8,8,10], band 4 and clear 3/3 retained; see the recalibration above. |
 | 10 | The Ledger Debt | kill | 5 | PARTIAL | clears 5/10 wide @5, 6/10 @6 (2/3 pinned @6); crew survives 10/10 both brackets — the coin-flip is the parked-remnant lottery, not the fight |
 | 11 | Cold Seams | kill | 5 | PASS* | 2/3 pinned @5 (gate met); 9/10 wide @5 AND @6 — the pinned @6 triplet (2/3 vs the 3/3 letter) is one unlucky draw |
-| 12 | The Old Count's Vault (opt) | kill | 6 | TRADE | crew-alive@900 @6 3/3 (its own documented survival gate; 8/8 alive in most runs); clears 0/10 — the ACT_GUARD giant wall + the lvl-9 Count park the AI floor by design ("the giants HOLD their posts" is the doc's pin) |
+| 12 | The Old Count's Vault (opt) | kill | 6 | TRADE | crew-alive@900 @6 3/3 (its own documented survival gate; 8/8 alive in most runs); clears 0/10 — the ACT_GUARD giant wall + the lvl-9 Count park the AI floor by design ("the giants HOLD their posts" is the doc's pin). **Update (2026-10-19):** the second breach-watch skeleton at lvl 2; crew survivors at 600 now [6,6,7] on the shipped default (bracket not re-run). |
 | 13 | The Smelter's Road | exit | 6 | PASS | crew@900 [6,6,4] >= 4 3/3; Ore Wagon violations: none, either roster |
 | 14 | The Long Toll | defense | 7 | PASS | t0@3000 [9,7,5] vs band 5 (4-sold [8,5,7]) |
 | 15 | Wolf Winter | kill+SAVE_ALL | 7 | PASS | clears 3/3 @7 (2426-2572), 3/3 @8; NO Reeve violation, either roster |
@@ -2517,7 +2517,7 @@ finite set-piece, the Westlands delve lesson holds)
 
 | group | family | count | level | guard | placement | spawn_delay |
 |-------|--------|-------|-------|-------|-----------|-------------|
-| breach watch (roam) | SKELETON | 2 | 4 | no | (4,20),(7,25) | 0 |
+| breach watch (roam) | SKELETON | 2 | 3, 2 (builder: (7,25) lvl 2 since 2026-10-19) | no | (4,20),(7,25) | 0 |
 | gallery patrol (roam) | SKELETON | 8 | 5 | no | (14,8),(26,8),(38,8),(44,15),(44,28),(38,35),(24,35),(12,28) | 0 |
 | gallery lights (posted) | GHOST | 2 | 5 | YES | (12,7) NW corner, (44,36) SE corner | 0 |
 | GATE WARDS — the guard puzzle. Each ring gate gets a staggered giant + skeleton pair: bait the skeleton and it comes alone; charge the gate and both answer. |||||||

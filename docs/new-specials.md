@@ -83,6 +83,11 @@ it:
   `false` would skip a random draw the classic game makes. The one gate
   that answers no with the setting off is a classic special's rest (see
   Rests), and the old game at the parity commit carries the same rule.
+  Every kit gate that chooses a Shift arm chooses only an arm the bot can
+  pay. With the setting on, each kit gate asks when its special pays off,
+  as the classic specials' gates do under Gameplay Fixes
+  ([gameplay-fixes.md](gameplay-fixes.md), Bots); the kit rules are in
+  the player notes below.
 
 Two states make every slot free. While a walker is **HIDDEN** (a dug-in
 skeleton, a ghost riding a body) or **CHANNELLING** (a burning fire
@@ -220,6 +225,9 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   restored world, resumes the ride exactly.
 - A bot ghost possesses too: a foe within 24 pixels that it may take and
   whose level is not above its own.
+- A bot ghost wails instead of scaring only when exactly one living foe
+  is inside the scare radius and a second stands within 120 pixels of it,
+  the chain's shape, and it has the 50 to pay; a crowd gets SCARE.
 - If Special is still held after the possessing press, the press that
   possessed does not carry over on the next tick, but a key held for three
   ticks or more casts the host's own special from the second tick on.
@@ -238,6 +246,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - While its thief is charmed, a mine treats as foes whoever the thief's
   current side does; the chain between mines still follows the team the
   mine was laid for.
+- A bot thief lays a MINE instead of its bomb only where a foe will walk:
+  a foe past the bomb's blast and within 130 pixels that is walking at the
+  thief, fewer than three mines down, no ally in the blast, and the 70 in
+  hand; it never lays one on the coin.
 
 **Ghost.**
 - WAIL is a small puff of the scare's own sparkles (`expand8.png`), not a
@@ -259,7 +271,8 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A ghost riding a body regains no magic.
 - PHASE lasts 48 ticks at double speed, and the ghost cannot attack while
   it lasts, not even on the tick it casts. A bot ghost never phases again
-  while its veil is up.
+  while its veil is up, and phases only when SCARE cannot answer: SCARE
+  resting, or no living foe inside the scare radius.
 - A phased ghost shows to everyone as a faint shimmer with its team's
   outline, so friend and foe can see where it went.
 
@@ -276,7 +289,8 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - SWAP never drops a walker onto a spot it could not stand on, such as
   water (`SWAP BLOCKED`).
 - A bot faerie only picks SWAP when it can pay for it; short of the price it
-  blinks away instead, or holds.
+  blinks away instead, or holds. Its foe counts are of living foes: a tent
+  does not make a faerie blink.
 - HASTEN keeps a stronger speed bonus already running (a high-level speed
   potion is not cut down to the haste).
 - A bot faerie hastens a fighting ally that is not already quick, and
@@ -319,9 +333,13 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - The hook blade cuts down any enemy missile that comes close while it
   spins, but passes an enemy war banner or bone wall by: those have to be
   chopped down.
-- A bot captain howls when a foe is within 130 pixels. EAT CORPSE has its
-  own bot gate: it eats only below 60 percent of its health (at exactly 60
-  percent it does not) and standing on a corpse.
+- A bot captain howls when a living foe or a generator is inside the yell
+  (160 pixels plus 20 per level, at most 420). EAT CORPSE has its own bot
+  gate: it eats only below 60 percent of its health (at exactly 60 percent
+  it does not) and standing on a corpse. HOOK BLADE wants a living foe
+  within the blade's 60 pixels, no blade out and the 40 in hand; KNIFE FAN
+  wants at least two living foes inside the knives' flight on the three
+  lines it throws; WAR BANNER also wants a living foe within 120 pixels.
 
 **Skeleton.**
 - DIG IN costs one magic every 4 ticks while the skeleton is buried, and
@@ -359,6 +377,12 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A skeleton that REASSEMBLEs was not killed: the blow that felled it shows
   no death message and no "All foes defeated!", and counts no kill for
   whoever struck it.
+- A bot skeleton raises its BONE WALL across the line to the nearest
+  living foe within 60 pixels; BONE STORM counts the foes at the wall (two
+  within 60 pixels of a standing segment), not at the skeleton; REASSEMBLE
+  wants a living foe within 60 pixels; LEGION counts only living foes that
+  are not undead, the ones that can rise. DIG IN counts living foes: a tent
+  does not press a skeleton underground.
 
 **Fire elemental.**
 - Quenching IMMOLATE is free; until then the elemental casts nothing else.
@@ -376,6 +400,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   behind a moving elemental and do not pile up under a still one.
 - The parting starburst on death always fires the starburst, whatever slot
   the elemental had selected, and it fires on top of SUPERNOVA.
+- A bot lights IMMOLATE with a living foe within a blow and more than 60
+  magic, and quenches it when no living foe is within 40 pixels, so the
+  burn stops draining the pool for nothing. REKINDLE is never forced on a
+  pool that cannot pay it.
 
 **Everyone.**
 - A toggle (DIG IN, IMMOLATE) ignores its own second press for 10 ticks.

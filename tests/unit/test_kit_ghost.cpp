@@ -1184,7 +1184,8 @@ TEST(KitGhost, ai_possess_fires_when_a_weaker_bot_foe_is_touching)
 }
 
 // PHASE: a badly hurt ghost (under 30 %) with a foe within 48 px, and not
-// while a veil already holds it.
+// while a veil already holds it. A foe that close is inside the scare
+// radius, so PHASE is the answer only while SCARE rests: the rest runs.
 // Perturbation: the gate's veil check removed. RED: "already phased: no
 // roll for a cast that would be refused".
 TEST(KitGhost, ai_phase_fires_when_low_and_a_foe_is_close)
@@ -1195,6 +1196,9 @@ TEST(KitGhost, ai_phase_fires_when_low_and_a_foe_is_close)
     walker* ghost = add_ghost(tw, 10, 100.0f);
     walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 100, 64, 1, 140.0f);
     ghost->stats()->set_hitpoints(20.0f);
+    EXPECT_FALSE(gate(ghost, 4)) << "SCARE is ready: the cheaper answer";
+    ghost->set_special_rest_slot(1);
+    ghost->set_special_rest_left(500);
     EXPECT_TRUE(gate(ghost, 4)) << "low and a foe close";
     ghost->stats()->set_hitpoints(50.0f);
     EXPECT_FALSE(gate(ghost, 4)) << "not low enough";

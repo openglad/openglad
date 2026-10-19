@@ -5,6 +5,7 @@
 -- code constants: a gate runs on every bot roll (lib/ai.lua says why).
 
 local C = og.C
+local G = og.use("gates")
 local lc = og.use("living_common")
 local km = og.use("kit_marker")
 
@@ -39,23 +40,16 @@ local DIG_IN_SLOT = 2
 -- Bot gate ranges (code constants, see the header).
 local DIG_FOES_RANGE = 80
 local WALL_FOE_RANGE = 60
-local STORM_FOES_RANGE = 80
+-- BONE STORM: foes within STORM_WALL_REACH px of a standing segment count;
+-- the scan around the skeleton reaches any wall it can hold.
+local STORM_WALL_REACH = 60
+local STORM_FOE_SCAN = 400
+local REASSEMBLE_FOE_RANGE = 60
 local LEGION_FOES_RANGE = 100
 
 -- FACE_UP .. FACE_UP_LEFT (0 .. 7) as unit steps.
 local FACING_X = { 0, 1, 1, 1, 0, -1, -1, -1 }
 local FACING_Y = { -1, -1, 0, 1, 1, 1, 0, -1 }
-
--- hp below num/den of max_hp. hp and max_hp are C++ floats: one float
--- multiply each side keeps the comparison free of decimal fractions.
-local function hp_below(self, num, den)
-  return og.fmul(self.hp, den) < og.fmul(self.max_hp, num)
-end
-
-local function foe_count_within(self, range)
-  local _, count = og.find_foes_in_range("ob", range, self)
-  return count
-end
 
 -- The skeleton's facing as a unit step: the 8-way table, else the signs of
 -- the last heading (a sentinel curdir), else up.
@@ -605,7 +599,52 @@ end
 -- so a false would skip a draw the setting-off game makes.
 -- ---------------------------------------------------------------------------
 
--- Dig in when hurt and outnumbered.
+-- The foe is within STORM_WALL_REACH px of one of this skeleton's
+-- standing wall segments (`weapons` is the weapon list).
+local function at_own_wall(self, foe, weapons)
+  for i = 1, #weapons do
+    local wall = weapons[i]
+    if wall:family() == WEAP_BONE_WALL then
+      if wall:dead() == 0 then
+        if wall:owner() == self then
+          if wall:distance_to_ob(foe) <= STORM_WALL_REACH then
+            return true
+          end
+        end
+      end
+    end
+  end
+  return false
+end
+
+-- How many living foes stand at this skeleton's walls (each counted once):
+-- the bones burst from the walls, not from the skeleton.
+local function foes_at_walls(self)
+  local foes = G.living_foes(self, STORM_FOE_SCAN, true)
+  local weapons = og.weaplist()
+  local n = 0
+  for i = 1, #foes do
+    if at_own_wall(self, foes[i], weapons) then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+-- How many living foes within `range` could rise under LEGION: the undead
+-- never do (M.on_kill).
+local function foes_that_can_rise(self, range)
+  local foes = G.living_foes(self, range, false)
+  local n = 0
+  for i = 1, #foes do
+    if not og.family_flag("living", foes[i]:family(), "is_undead") then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+-- Dig in when hurt and outnumbered (living foes: a tent cannot press).
 function M.ai_dig_in(self)
   if og.match_setting("new_specials") == 0 then
     return true
@@ -613,18 +652,18 @@ function M.ai_dig_in(self)
   if self:possess_link() ~= 0 then
     return false
   end
-  if not hp_below(self, 6, 10) then
+  if not G.hp_below(self, 6, 10) then
     return false
   end
   -- A bot that cannot stay down does not dig.
   if lc.spare_mp(self, DIG_IN_SLOT) < og.tuning(self).dig_min_pool then
     return false
   end
-  return foe_count_within(self, DIG_FOES_RANGE) >= 2
+  return G.foes_within(self, 2, DIG_FOES_RANGE, false)
 end
 
--- A wall when hurt with a foe close; the storm once a wall stands and the
--- foes gather.
+-- A wall when hurt with the nearest foe close and in front, where the wall
+-- rises; the storm once a wall stands and the foes gather at the walls.
 function M.ai_wall(self)
   if og.match_setting("new_specials") == 0 then
     return true
@@ -633,29 +672,40 @@ function M.ai_wall(self)
     if self.magicpoints < M.STORM_COST then
       return false
     end
-    if foe_count_within(self, STORM_FOES_RANGE) < 2 then
+    if foes_at_walls(self) < 2 then
       return false
     end
     self:set_shifter_down(1)
     return true
   end
-  if not hp_below(self, 7, 10) then
+  if not G.hp_below(self, 7, 10) then
     return false
   end
-  if foe_count_within(self, WALL_FOE_RANGE) < 1 then
+  local foe = G.nearest_living_foe(self, WALL_FOE_RANGE, true)
+  if not foe then
+    return false
+  end
+  -- The wall rises across facing_of (curdir first, as bone_wall places
+  -- it), not along the fire heading G.fan_faces reads.
+  local fx, fy = facing_of(self)
+  if not G.fan_covers(self, self:facing(fx, fy), foe) then
     return false
   end
   self:set_shifter_down(0)
   return true
 end
 
--- The ward when hurt and unwarded; the legion when healthy and crowded.
+-- The ward when hurt, unwarded and fighting (a living foe within 60); the
+-- legion when healthy and crowded by foes that can rise.
 function M.ai_reassemble(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  if hp_below(self, 1, 2) then
+  if G.hp_below(self, 1, 2) then
     if warded(self) then
+      return false
+    end
+    if not G.foes_within(self, 1, REASSEMBLE_FOE_RANGE, true) then
       return false
     end
     self:set_shifter_down(0)
@@ -664,7 +714,7 @@ function M.ai_reassemble(self)
   if km.find(self, km.LEGION) then
     return false
   end
-  if foe_count_within(self, LEGION_FOES_RANGE) < 3 then
+  if foes_that_can_rise(self, LEGION_FOES_RANGE) < 3 then
     return false
   end
   self:set_shifter_down(1)

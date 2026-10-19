@@ -142,9 +142,11 @@ inline constexpr std::uint32_t kDisplayRngPin = 0x5eed5bc1u;
 inline constexpr std::uint32_t kAuthorityRngPin = 0x5eed5bc2u;
 inline constexpr unsigned int kLibcRandPin = 0x5bc3u;
 // LEGION raises half its kills on a coin. The Legion scene shows both sides:
-// its first kill rises on the scene's own pin, and when the second soldier
-// is let go the authoritative world's generator is set to this state, under
-// which (measured) the skeleton's second kill stays down.
+// when the skeleton stands back up the authoritative world's generator is
+// set to the first state, under which (measured) its first kill rises, and
+// when the second soldier is let go to the second, under which (measured)
+// the skeleton's second kill stays down.
+inline constexpr std::uint32_t kLegionFirstCoinPin = 1u;
 inline constexpr std::uint32_t kLegionSecondCoinPin = 1u;
 
 // The seat's keys, rebound to keycodes no shipped layout uses.
@@ -2042,9 +2044,11 @@ std::vector<Scene> scenes()
     // The HUD counts the ward down from 30 s; LEGION's price leaves the ward
     // only what the rest of the mana buys, and the clock says so. A soldier
     // cuts the skeleton down and it stands back up at a quarter health; it
-    // fells him, then a second soldier. LEGION raises half its kills on a
+    // fells him, then a second soldier, who guards a post on the skeleton's
+    // other side until the first is down. LEGION raises half its kills on a
     // coin: the first rises as a skeleton on its side, the second stays
-    // where it fell (the second coin is pinned, kLegionSecondCoinPin).
+    // where it fell (both coins are pinned, kLegionFirstCoinPin and
+    // kLegionSecondCoinPin).
     {
         Scene sc;
         sc.name = "skeleton_reassemble_legion";
@@ -2058,7 +2062,13 @@ std::vector<Scene> scenes()
             skel->stats()->set_hitpoints(3.0f);
             live_game::stop_hp_regen(skel);
             add_actor(run, "foe", FAMILY_SOLDIER, 1, 70, 0);
-            walker* second = add_actor(run, "foe2", FAMILY_SOLDIER, 1, 120, 24);
+            // The second soldier keeps its post on the far side of the
+            // hero from the first. The first one's skeleton rises where he
+            // fell, so the hero walks to the second with the risen skeleton
+            // behind it, not in between: the hero lands the kill, and a
+            // soldier bot's CHARGE, which lands on whatever living foe
+            // stands in the path the rush runs, finds the hero first.
+            walker* second = add_actor(run, "foe2", FAMILY_SOLDIER, 1, -120, 24);
             second->set_act_type(ACT_GUARD);
             second->set_guard_hold_post(true);
             run.marks["skeletons"] = static_cast<float>(
@@ -2113,7 +2123,19 @@ std::vector<Scene> scenes()
             else if (run.marks.count("warded") != 0 &&
                      run.marks.count("rose") == 0 && !h->dead() &&
                      hp_of(h) >= 0.25f * h->stats()->max_hitpoints() - 1.0f)
+            {
                 run.marks["rose"] = static_cast<float>(f);
+                // The first coin is pinned here, as the second is when its
+                // soldier is let go: what the soldiers' own bot gates draw
+                // before this moment is theirs, not LEGION's. This pin came
+                // with the soldier's payoff gates (before them the first kill
+                // rode the scene's authority pin): the gates draw differently,
+                // and without it the first kill stayed down. With the second
+                // soldier posted west it is still needed: the first kill
+                // rises without it, but the second soldier then falls on a
+                // later frame and its coin raises him too.
+                run.server->world().rng_.state_ = kLegionFirstCoinPin;
+            }
             GameWorld& w = run.server->world();
             const float kills =
                 h->myguy != nullptr ? static_cast<float>(h->myguy->scen_kills) : 0.0f;
@@ -3411,7 +3433,9 @@ std::vector<Pair> pairs()
     // C. An enemy thief bot whose coin says Shift: the classic gate only asks
     // for a foe in charm reach and tries to charm a soldier two levels up
     // (resisted, a free swing at the thief); the fix chooses Shift only for
-    // a foe it can take and taunts instead.
+    // a foe it can take and taunts instead. The thief's posted ally 60 px
+    // south is the backing a bot's taunt is cast for with the setting on
+    // (staged after the thief, so the pinned draws stay the thief's).
     {
         Pair c;
         c.name = "c_thief_bot_shift";
@@ -3419,10 +3443,12 @@ std::vector<Pair> pairs()
         c.scene.frames = 94;   // the messages fade at 96: the hold keeps them
         c.scene.stage = [](Run& run) {
             add_bot(run, "thief", FAMILY_THIEF, 1, 80, 0, 7);
+            add_posted(run, "backer", FAMILY_SOLDIER, 1, 80, 60, 1);
             add_posted(run, "soldier", FAMILY_SOLDIER, 0, 120, 0, 9);
         };
         c.scene.before_tick = [](Run& run, int f) {
             hold_fire(run.actor("soldier"));
+            hold_fire(run.actor("backer"));
             walker* thief = steer_bot(run, "thief");
             if (thief == nullptr)
                 return;
@@ -4231,7 +4257,9 @@ std::vector<Pair> pairs()
 
     // M1. An enemy thief bot tries to charm the hero the seat drives: the
     // classic game charms him; the fix skips a driven hero and the thief
-    // taunts instead.
+    // taunts instead. The thief's posted ally 60 px south is the backing a
+    // bot's taunt is cast for with the setting on (staged after the thief,
+    // so the pinned draws stay the thief's).
     {
         Pair c;
         c.name = "m1_hero_resists_charm";
@@ -4240,8 +4268,10 @@ std::vector<Pair> pairs()
         c.scene.frames = 120;
         c.scene.stage = [](Run& run) {
             add_bot(run, "thief", FAMILY_THIEF, 1, 40, 0, 7);
+            add_posted(run, "backer", FAMILY_SOLDIER, 1, 40, 60, 1);
         };
         c.scene.before_tick = [](Run& run, int f) {
+            hold_fire(run.actor("backer"));
             walker* thief = steer_bot(run, "thief");
             if (thief == nullptr)
                 return;

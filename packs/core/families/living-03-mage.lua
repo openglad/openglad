@@ -5,6 +5,7 @@
 local C = og.C
 local lc = og.use("living_common")
 local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local FX_MARKER = assert(og.family_id("fx", "core:marker"))
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 local WEAPON_WAVE = assert(og.family_id("weapon", "core:wave"))
@@ -20,78 +21,58 @@ local STARBURST_ADD_CAP = 40
 -- of its health. Distance to the mage is not consulted, and the same cue
 -- serves a mage on any team (off the player's team the freeze grants its
 -- own side bonus rounds instead).
---
--- "Within a blow": walker::fire sets the 6 px weapon box 1 px outside the
--- attacker's body, so it reaches gaps 1 to 6; obmap collide() moves the
--- foe's near edge in by 1 px and keeps its far edge, so a body at a gap of
--- 5 still meets the box: a melee blow lands across a gap of at most
--- 6 - 1 = 5 px on each axis, the same at every level
--- (src/gameplay/walker.cpp, src/gameplay/obmap.cpp). A knife thrown from
--- 45 px is not a blow.
-local FREEZE_MELEE_GAP = 5
-
--- The edge-to-edge gap between the bodies of a and b is at most
--- FREEZE_MELEE_GAP on each axis (negative where the boxes overlap).
--- Positions and sizes are METHOD calls: `a.xpos` resolves to the method
--- itself (a function value), never to a number.
-local function at_blows(a, b)
-  local gap_x = og.max(b:xpos() - (a:xpos() + a:sizex()),
-                       a:xpos() - (b:xpos() + b:sizex()))
-  local gap_y = og.max(b:ypos() - (a:ypos() + a:sizey()),
-                       a:ypos() - (b:ypos() + b:sizey()))
-  return gap_x <= FREEZE_MELEE_GAP and gap_y <= FREEZE_MELEE_GAP
-end
-
--- Draw-free: finders and positions only. Foe-major, so a foe at blows with
--- two allies counts once. The allies are every living friend but the mage
--- itself (find_friends_in_range skips the centre); the foes are living
--- bodies only (a tent is nobody's fight).
+-- The fight is the library's (G.allies_fight: foe-major, so a foe at
+-- blows with two allies counts once; living foes only, a tent is nobody's
+-- fight); draw-free, finders and positions only.
 local function freeze_wanted(self)
-  local allies = og.find_friends_in_range("ob", 30000, self)
-  local foes = og.find_foes_in_range("ob", 30000, self)
-  local engaged = 0
-  local hurt = false
-  for i = 1, #foes do
-    local foe = foes[i]
-    if foe and foe:order() == C.ORDER_LIVING then
-      local near = false
-      for j = 1, #allies do
-        local ally = allies[j]
-        if ally and at_blows(ally, foe) then
-          near = true
-          if ally.hp * 4 < ally.max_hp then
-            hurt = true
-          end
-        end
-      end
-      if near then
-        engaged = engaged + 1
-      end
-    end
-  end
+  local engaged, hurt = G.allies_fight(self)
   return engaged >= 3 or hurt
 end
 
 -- Gameplay Fixes: the classic rule below was written for TELEPORT (flee
--- when alone or swamped) and applied to every slot. Slot 1 keeps it; WARP
--- SPACE and ENERGY WAVE want a foe inside the same 110 px; FREEZE TIME
--- waits for the allies' fight (freeze_wanted above); HEARTBURST wants a
--- foe inside its own reach.
+-- when alone or swamped) and applied to every slot. With the setting on
+-- each slot asks when it pays off:
+--   1 TELEPORT keeps the classic rule; the TELEPORT MARKER (the Shift arm)
+--     is no longer the coin's: with nobody within 110 px the mage marks
+--     where it stands when no marker of its own stands, a hero has the INT
+--     the cast asks, and half the pool left after the price still covers
+--     WARP SPACE, so its wander teleports go home to it. The Shift is
+--     written after the engine's coin, which is still drawn.
+--   2 WARP SPACE is a point-blank ring (its fireballs crawl one pixel a
+--     tick): two living foes inside it, or one the mage does not face.
+--   3 FREEZE TIME waits for the allies' fight (freeze_wanted above).
+--   4 ENERGY WAVE runs along the fire heading through walls: a living foe
+--     within 110 px that the mage faces.
+--   5 HEARTBURST wants a foe inside its own reach.
 local function fixed_gate(self, foe_count)
   local slot = self:current_special()
   if slot == 1 then
-    return foe_count < 1 or foe_count > 3
+    local t = og.tuning(self)
+    local yes = foe_count < 1 or foe_count > 3
+    if foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, t.marker_int_req) then
+      self:set_shifter_down(1)
+    else
+      self:set_shifter_down(0)
+    end
+    return yes
+  end
+  if slot == 2 then
+    -- each bolt's range add, as starburst computes it from the spare pool
+    local add = og.min(og.div(lc.spare_mp(self, 2), 15), STARBURST_ADD_CAP) // 3
+    return G.ring_pays(self, G.UNIT_STEP, 7, add)
   end
   if slot == 3 then
     return freeze_wanted(self)
   end
-  if slot == 5 then
-    local t = og.tuning(self)
-    local _, in_reach = og.find_foes_in_range("ob",
-      t.heartburst_range_base + t.heartburst_range_per_level * self.level, self)
-    return in_reach >= 1
+  if slot == 4 then
+    local foe = G.nearest_living_foe(self, 110, false)
+    return foe ~= nil and G.faces(self, foe)
   end
-  return foe_count >= 1
+  -- HEARTBURST: slot 5 and every unmapped slot (the family's default cast)
+  local t = og.tuning(self)
+  local _, in_reach = og.find_foes_in_range("ob",
+    t.heartburst_range_base + t.heartburst_range_per_level * self.level, self)
+  return in_reach >= 1
 end
 
 local function check_special_ai(self)

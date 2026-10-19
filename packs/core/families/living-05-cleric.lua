@@ -4,6 +4,7 @@
 local C = og.C
 local lc = og.use("living_common")
 local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local FX_MAGIC_SHIELD = assert(og.family_id("fx", "core:magic_shield"))
 local LIVING_SKELETON = assert(og.family_id("living", "core:skeleton"))
 local LIVING_GHOST = assert(og.family_id("living", "core:ghost"))
@@ -286,8 +287,35 @@ local function resurrect(self)
   return true
 end
 
+-- Gameplay Fixes: the bot's slot 1. HEAL when an ally in reach is below
+-- its full health; else the MYSTIC MACE when it pays: a living foe within
+-- 48 px (the mace orbits on a 24 px circle and strikes what it touches), no
+-- mace of this cleric out, the pool at least half full (the classic
+-- condition) and a hero's INT. The Shift is written after the coin.
+local function heal_or_mace_wanted(self, t)
+  if G.hurt_ally(self, t.heal_range) then
+    self:set_shifter_down(0)
+    return true
+  end
+  if self.magicpoints < og.fdiv(self.max_magicpoints, 2) then
+    return false
+  end
+  if self:has_guy() and self:g_intelligence() < t.mace_int_req then
+    return false
+  end
+  if G.owned(self, C.ORDER_FX, FX_MAGIC_SHIELD) == 0
+      and G.foes_within(self, 1, 48, true) then
+    self:set_shifter_down(1)
+    return true
+  end
+  return false
+end
+
 local function check_special_ai(self)
   if self:current_special() == 1 then -- healing
+    if gf.on() then
+      return heal_or_mace_wanted(self, og.tuning(self))
+    end
     local _, friend_count = og.find_friends_in_range(
       "ob", og.tuning(self).heal_range, self)
     -- other than ourselves?
@@ -315,6 +343,23 @@ local function check_special_ai(self)
       else
         self:set_shifter_down(0)
       end
+      if self:shifter_down() == 0 then
+        -- Gameplay Fixes: the raise wants the corpse it would raise and a
+        -- living foe within 130 px for the risen to fight.
+        local range = t.raise_skeleton_range
+        if slot == 3 then
+          range = t.raise_ghost_range
+        end
+        if G.corpse_near(self, range) == nil then
+          return false
+        end
+        return G.foes_within(self, 1, 130, false)
+      end
+    elseif slot == 4 then
+      -- Gameplay Fixes: RESURRECT wants a friendly corpse in reach (a foe's
+      -- stain is RAISE GHOST's job, at a third of the price).
+      local b = G.corpse_near(self, og.tuning(self).resurrect_range)
+      return b ~= nil and self:is_friendly(b)
     end
   end
   return true
@@ -326,6 +371,11 @@ end
 
 local function on_shoved(self)
   self:set_current_special(1) -- healing
+  if gf.on() then
+    -- Gameplay Fixes: a shove is an ally at the cleric's side: HEAL, never
+    -- the mace the last coin may have left down.
+    self:set_shifter_down(0)
+  end
   self:special()
 end
 

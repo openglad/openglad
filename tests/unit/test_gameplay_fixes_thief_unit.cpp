@@ -21,6 +21,11 @@
 //
 // A level-7 thief: charm reach 16 + 4 * 7 = 44 px, taunt reach
 // 80 + 4 * 7 = 108 px.
+//
+// With the setting on a bot taunts only with an ally inside the taunt's
+// reach too (foes pulled onto a thief nobody backs are the thief's own
+// danger): the taunting cases stand a level-1 orc of the thief's team
+// 60 px west of it (add_backer), the payoff a taunt is cast for.
 
 #include <gtest/gtest.h>
 
@@ -47,6 +52,13 @@ living* add_living(TestGameWorld& tw, int family, unsigned char team, int x,
     w->setxy(static_cast<short>(x), static_cast<short>(y));
     w->stats()->set_level(level);
     return dynamic_cast<living*>(w);
+}
+
+// The thief's ally, 60 px west: inside the taunt's 108 px, outside the
+// charm's 44 (a charm counts foes only).
+living* add_backer(TestGameWorld& tw)
+{
+    return add_living(tw, FAMILY_ORC, 1, 40, 100, 1);
 }
 
 living* add_thief(TestGameWorld& tw)
@@ -88,6 +100,7 @@ TEST(GameplayFixesThiefBot, taunts_a_foe_it_cannot_charm)
         tw.world().gameplay_fixes = fixes;
         living* thief = add_thief(tw);
         ASSERT_NE(nullptr, thief);
+        ASSERT_NE(nullptr, add_backer(tw));
         ASSERT_NE(nullptr, add_living(tw, FAMILY_ORC, 2, 130, 100, 9));
 
         const GateOutcome g = gate(thief, 1);
@@ -131,6 +144,7 @@ TEST(GameplayFixesThiefBot, taunts_a_seated_hero_and_a_charmed_foe)
         tw.world().gameplay_fixes = fixes;
         living* thief = add_thief(tw);
         ASSERT_NE(nullptr, thief);
+        ASSERT_NE(nullptr, add_backer(tw));
         living* hero = add_living(tw, FAMILY_SOLDIER, 2, 130, 100, 1);
         ASSERT_NE(nullptr, hero);
         hero->set_user(0);
@@ -160,6 +174,7 @@ TEST(GameplayFixesThiefBot, taunts_a_foe_beyond_charm_reach)
         tw.world().gameplay_fixes = fixes;
         living* thief = add_thief(tw);
         ASSERT_NE(nullptr, thief);
+        ASSERT_NE(nullptr, add_backer(tw));
         living* foe = add_living(tw, FAMILY_ORC, 2, 180, 100, 1);
         ASSERT_NE(nullptr, foe);
         ASSERT_EQ(80, static_cast<int>(thief->distance_to_ob(foe)));
