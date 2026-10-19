@@ -9367,11 +9367,14 @@ inline constexpr Mutation kMut_archmage_bot_mind_control_hero_fixes_scen99 = {
 };
 
 // --- archmage_hit_stale_shift (fix C: the archmage's summon when hit) ------
-// A hostile level-10 archmage bot with 1100 MP touching the player's soldier,
-// whose held swing hits it at tick 10. The hit response summons on slot 3 with
-// whatever shift the last roll left: with the seed (12) that is 0 and the
-// classic bot summons an image (a skeleton phantom). With the setting on a bot
-// that can afford the elemental (spare MP at least 500) summons it.
+// A hostile level-10 archmage bot with 1100 MP just below the player's
+// soldier, whose held swing never reaches it (the swing stops short of the
+// archmage's body at y = 135), so no hit response runs in this arena: the
+// summon at tick 10 is the archmage's own slot-3 roll. The classic roll
+// summons with the Shift its coin left: with the seed (12) that is 0, an image
+// (a skeleton phantom). With the setting on the slot-3 rule picks the
+// elemental when the spare MP covers it, and 1100 MP does. The struck hit
+// response has its own arena, archmage_bot_struck.
 inline constexpr InputEvent kInputs_archmage_hit_stale_shift[] = {
     {  5, 0, K_FIRE }, { 40, 0, K_NONE },
 };
@@ -9383,22 +9386,61 @@ inline constexpr FactPredicate kFacts_archmage_hit_stale_shift_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
-    // negative_assertion: the stale shift summons an image, never the elemental
+    // negative_assertion: the coin's Shift summons an image, never the elemental
     pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
-        "consequence: the hit response at tick 10 summons on slot 3 with the shift the last roll left (0): an image, a skeleton phantom"),
+        "consequence: the slot-3 roll at tick 10 summons with the Shift the coin left (0): an image, a skeleton phantom"),
 };
 inline constexpr FactPredicate kFacts_archmage_hit_stale_shift_fixes_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1,
-        "consequence: with the setting on a bot that can afford the elemental (1100 MP) summons it when hit, whatever shift the last roll left"),
+        "consequence: with the setting on the slot-3 roll at tick 10 picks the elemental, which the spare MP covers (1100 MP), whatever the coin left"),
 };
 inline constexpr Mutation kMut_archmage_hit_stale_shift_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 63,
     "self:set_shifter_down(1)",
     "self:set_shifter_down(0)",
-    "Makes the summon choice always pick the image, so the hit response summons a phantom instead of the elemental: WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1) fails.",
+    "Makes the summon choice always pick the image, so the slot-3 roll summons a phantom instead of the elemental: WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1) fails.",
     "local function summon_shift(self)"
+};
+
+// --- archmage_bot_struck (bot gates: what a struck archmage bot answers) ---
+// A hostile level-10 archmage bot with 1100 MP and a team-2 orc a pixel below
+// it, at blows. The seed (28) lands the orc's first blow on tick 7, before the
+// archmage has cast anything, with the archmage well above its flee
+// threshold. With the setting on a struck bot answers with HEARTBURST or
+// CHAIN LIGHTNING by the slot-2 gate, once, and never summons from the hit:
+// the burst kills the orc and nothing is summoned, though 1100 MP covers the
+// elemental. The arena is recorded with the setting on only: the classic hit
+// response plays differently in the two games (the old game's special()
+// always answers 0, so its "if (controller->special()) return;" never returns
+// and the second cast after a burst never happens; the current game's
+// classic body returns after a summon and casts twice after a burst), so a
+// setting-off twin could not be byte-equal to an old-game capture. The
+// ledger records it.
+inline constexpr SpawnSpec kFamilySpawns_archmage_bot_struck_scen99[] = {
+    { FAMILY_ARCHMAGE, 1, kOrderLiving, 120, 120, 0, 0, 10, 1100 }, // hostile bot
+    { FAMILY_ORC,      2, kOrderLiving, 120, 137, 0, 0 },            // its foe, a pixel below: at blows
+    { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },            // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_archmage_bot_struck_fixes_scen99[] = {
+    pred::TickReached(12),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 0),
+    // negative_assertion: with the setting on the hit response never summons an image; with this seed the classic one summons a skeleton phantom.
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
+    // negative_assertion: nor the elemental, though 1100 MP covers it; a summon comes only from the slot-3 rule on an act tick.
+    pred::WeaponFamilyEmitted(FAMILY_EXPLOSION,
+        "consequence: with the setting on the struck bot answers with HEARTBURST by the slot-2 gate, once"),
+    pred::WalkerFamilyCount(FAMILY_ORC, 0, 0,
+        "consequence: the burst at blows kills the orc by tick 9"),
+    // negative_assertion: the orc is dead by tick 9; the mutation flips it by refusing the struck bot's burst (0 -> 1).
+};
+inline constexpr Mutation kMut_archmage_bot_struck_fixes_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 120,
+    "if ai_burst_or_chain(self) then",
+    "if false then",
+    "Refuses the struck bot's slot-2 answer, so nothing is cast on the hit and the orc lives: WeaponFamilyEmitted(FAMILY_EXPLOSION) and WalkerFamilyCount(FAMILY_ORC, 0, 0) fail."
 };
 
 // --- soldier_bot_charge_unaimed (bot gates: CHARGE wants an aim at its foe) ---
@@ -12505,6 +12547,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_archmage_hit_stale_shift_fixes_scen99, std::size(kFacts_archmage_hit_stale_shift_fixes_scen99),
       kMut_archmage_hit_stale_shift_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "archmage_bot_struck_fixes_scen99", "scen/scen1.fss", 0x0000001Cu,
+      kInputsEmpty, std::size(kInputsEmpty), 12,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_bot_struck_scen99, std::size(kFamilySpawns_archmage_bot_struck_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_bot_struck_fixes_scen99, std::size(kFacts_archmage_bot_struck_fixes_scen99),
+      kMut_archmage_bot_struck_fixes_scen99, {}, 1, nullptr, 0, 1 },
 
     { "soldier_bot_charge_unaimed_scen99", "scen/scen1.fss", 0x0000000Au,
       kInputsEmpty, std::size(kInputsEmpty), 5,
