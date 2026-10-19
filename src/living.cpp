@@ -665,6 +665,17 @@ short living::check_special()
 				shifter_down = 0;
 				return bg_foes_within(this, 1, 50+10*stats->level);
 			}
+			if (family == FAMILY_FIREELEMENTAL && myscreen->gameplay_fixes)
+			{
+				// port of the current game's ab011fe8: STARBURST, a meteor along
+				// each of the eight headings, pays where one meteor would not:
+				// two living foes inside the ring's flight, or one the elemental
+				// does not face. The classic foe search runs first either way.
+				// The meteor is step 7, range 9 in the weapon table.
+				if (!foe)
+					foe = myscreen->find_near_foe(this);
+				return bg_ring_pays(this, 7, 9, 0);
+			}
 			if (family == FAMILY_ORC && myscreen->gameplay_fixes)
 			{
 				// port of the current game's 4b39093d: the classic gate below (a
