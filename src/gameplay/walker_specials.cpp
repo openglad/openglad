@@ -195,6 +195,9 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 	if (cast_price >= kSpecialCostDisabled)
 		return fail(SpecialFailure::Unavailable, "NO SPECIAL AVAILABLE");
 	if (stats_->magicpoints() < cast_price)
+		TRACE("special", "refused id=%u family=%d slot=%d shift=%d team=%d reason=NOT ENOUGH MP",
+		      static_cast<unsigned>(entity_id()), family(), special_index, shifter_down(), team_num());
+	if (stats_->magicpoints() < cast_price)
 		return fail(SpecialFailure::NoMP, "NOT ENOUGH MP");
 
 	if (query_order() != Order::Living)
@@ -223,8 +226,17 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 		current_game->world->enemy_freeze = og::combat::kEnemyFreezeBankCap;
 	}
 	if (!did_special)
+		TRACE("special", "refused id=%u family=%d slot=%d shift=%d team=%d reason=%s",
+		      static_cast<unsigned>(entity_id()), family(), special_index, shifter_down(), team_num(),
+		      decline_reason.empty() ? "NO SPECIAL AVAILABLE" : decline_reason.c_str());
+	if (!did_special)
 		return fail(SpecialFailure::ScriptDeclined,
 		            decline_reason.empty() ? "NO SPECIAL AVAILABLE" : decline_reason);
+	// A charged cast: the census the level-play test reads.
+	TRACE("special", "cast id=%u family=%d slot=%d shift=%d team=%d x=%d y=%d floor=%d price=%u",
+	      static_cast<unsigned>(entity_id()), family(), special_index, shifter_down(), team_num(),
+	      static_cast<int>(xpos()), static_cast<int>(ypos()), static_cast<int>(floor()),
+	      static_cast<unsigned>(cast_price));
 	return did_special;
 }
 

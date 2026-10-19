@@ -8942,7 +8942,7 @@ inline constexpr FactPredicate kFacts_cleric_turn_no_undead_fixes_scen99[] = {
         "consequence: with the setting on a ring with foes but nothing undead is refused (NO UNDEAD IN RANGE) before any roll: no SOUND_HEAL, only four combat sounds (the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere)"),
 };
 inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
-    "src/gameplay/walker_specials.cpp", 386,
+    "src/gameplay/walker_specials.cpp", 398,
     "if (!any_undead)",
     "if (!any_undead && false)",
     "Disables the refusal (the ring's undead check never refuses), so the cast goes on with only a living soldier in reach, turns nothing and plays SOUND_HEAL: EventKindExactly(play_sound, 4) reads 5."
