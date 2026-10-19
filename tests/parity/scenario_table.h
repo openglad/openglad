@@ -1283,7 +1283,7 @@ inline constexpr Mutation kMut_family_spawn_identity_elf = {
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "packs/core/families/living-00-soldier.lua", 171,
+    "packs/core/families/living-00-soldier.lua", 202,
     "hp = 120",
     "hp = 12000",
     "Cranks SOLDIER descriptor HP x100 "
@@ -3494,7 +3494,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 10,
+    "packs/core/families/living-00-soldier.lua", 11,
     "if self:s_forward_blocked() then",
     "if true then",
     "Closes CHARGE's forward-blocked gate permanently, so soldier slot 1 returns false before it issues COMMAND_RUSH or emits SOUND_CHARGE. The level-1 caster never dashes into the team-1 soldier and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) no longer finds a caster at exactly 63 HP."
@@ -3517,7 +3517,7 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 25,
+    "packs/core/families/living-00-soldier.lua", 26,
     "local boomerang = og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
     "local boomerang = nil and og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
     "Short-circuits BOOMERANG's returning-blade summon; the 'nil and' keeps the multi-line argument table part of an unevaluated call so the chunk still parses. throw_boomerang takes its 'if not boomerang' exit and no FX_BOOMERANG ever flies or intercepts hostile projectiles, flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5900, 5900)."
@@ -3536,7 +3536,7 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 47,
+    "packs/core/families/living-00-soldier.lua", 48,
     "self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)",
     "self, 200)",
     "Widens WHIRLWIND's strike ring from 32+2*level px (46 at this level-7 caster, short of the 60 px to the team-1 soldier) to a flat 200 px, so the spin now lands attack() rolls instead of finding nobody. The added combat draws move the caster off exactly 63 HP and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) fails."
@@ -3555,7 +3555,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 171,
+    "packs/core/families/living-00-soldier.lua", 202,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -6168,7 +6168,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_ring_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_whirlwind_ring_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 47,
+    "packs/core/families/living-00-soldier.lua", 48,
     "    self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)",
     "    self, 0)",
     "Collapses whirlwind's og.foes_in_range radius to 0. The three faeries sit at Manhattan >= 16 (bodies can never interpenetrate), so the foe list is empty: no self:attack(foe) and no outward s_force_command. The faerie hp predicate fails (all three stay at 7500) and the faerie position predicate fails (nothing is shoved east)."
@@ -6220,7 +6220,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_matched_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_disarm_matched_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 221,
+    "packs/core/families/living-00-soldier.lua", 252,
     "disarm_range = 28",
     "disarm_range = 0",
     "Collapses the disarm reach to 0. og.foes_in_range(self, 0) returns nothing (the tower sits at Manhattan 15), so found stays 0 and disarm returns false before SOUND_CHARGE, before the notification and before either busy write. EventKindAtLeast(notification,1) drops to 0 and EventKindExactly(play_sound,3) drops to 2 — two independent flips, and neither depends on which side won the two-draw roll."
@@ -8033,7 +8033,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_displacement_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_charge_displacement_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 14,
+    "packs/core/families/living-00-soldier.lua", 15,
     "  self:s_add_command(C.COMMAND_RUSH, 3,",
     "  self:s_add_command(C.COMMAND_RUSH, 1,",
     "Cuts the charge from three COMMAND_RUSH iterations to one, dropping the rush contribution from 24px to 0 measurable travel by the dump tick (xpos 184 -> 160). SOUND_CHARGE still fires, so only the position bound flips - the displacement is isolated."
@@ -8424,7 +8424,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_scen99[] = {
         "consequence: the classic spin at nobody spends 120 of the 130 MP, so the held special from tick 45 cannot pay for a second spin; the foe ends at 103 hp from the plain melee"),
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 179,
+    "packs/core/families/living-00-soldier.lua", 210,
     "name = \"WHIRLWIND\", mp_cost = 120",
     "name = \"WHIRLWIND\", mp_cost = 1",
     "Makes WHIRLWIND cost 1 MP, so the classic spin at nobody leaves enough for the held second one: it lands on the foe and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300) fails."
@@ -8436,7 +8436,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_fixes_scen99[] = 
         "consequence: with the setting on the spin at nobody is refused for free, so the second spin is paid and lands on the foe, which ends at 85 hp"),
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 48,
+    "packs/core/families/living-00-soldier.lua", 49,
     "if gf.on() and #foes == 0 then",
     "if false then",
     "Removes the refusal, so the spin at nobody spends the 120 MP and the second one cannot be paid: the foe never takes the spin and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8500, 8500) fails."
@@ -8473,7 +8473,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_higher_foe_fixes_scen99[] =
         "consequence: the refused cast plays no SOUND_CHARGE; the fight that follows differs by one more swing"),
 };
 inline constexpr Mutation kMut_soldier_disarm_higher_foe_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 98,
+    "packs/core/families/living-00-soldier.lua", 99,
     "if not gf.on() or penalty > 0 then",
     "if not gf.on() or penalty > -100 then",
     "Lets a stagger below zero through again (penalty -6 > -100), so the won roll counts as a disarm: the cast succeeds, shows \"Fighter Disarmed Enemy!\" and plays SOUND_CHARGE. EventKindExactly(notification, 0) and EventKindExactly(play_sound, 9) fail."
@@ -8516,7 +8516,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_resisted_price_fixes_scen99
         "consequence: five tower swings before it dies, and its death; no SOUND_CHARGE from the resisted disarm"),
 };
 inline constexpr Mutation kMut_soldier_disarm_resisted_price_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 120,
+    "packs/core/families/living-00-soldier.lua", 121,
     "self.magicpoints = og.fsub(self.magicpoints, og.div(self:s_special_cost(self:current_special()), 2))",
     "self.magicpoints = og.fsub(self.magicpoints, self:s_special_cost(self:current_special()))",
     "Charges the resisted try the full 150 instead of half, so 50 MP are left and the BOOMERANG at tick 34 is refused: WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1), WalkerDiedByFinal(FAMILY_TOWER1) and EventKindExactly(play_sound, 6) fail."
@@ -8551,7 +8551,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_fixes_scen99[
         "consequence: the tower ends at 130 hp"),
 };
 inline constexpr Mutation kMut_soldier_disarm_resisted_busy_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 122,
+    "packs/core/families/living-00-soldier.lua", 123,
     "self:set_busy(og.fadd(self:busy(), 5.0))",
     "self:set_busy(self:busy())",
     "Drops the resisted try's 5 busy, so the held fire throws a tick sooner (25 and 57 instead of 26 and 58) and the second throw lands inside the 58-tick budget: EventKindExactly(play_sound, 10) fails.",
