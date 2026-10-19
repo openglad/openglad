@@ -604,21 +604,21 @@ Westlands 23 read 4 against its floor of 5, Long Season 7 read 5 against
 its floor of 6, and Tower floor 1 read 5 against its floor of 6. They were
 treated as balance bugs, as the earlier ones were.
 
-- One rule was wrong: the soldier's CHARGE. The gates first asked that
-  the soldier's heading point at the foe in the classic window. The
-  classic rush pays whichever foe is in its path: it runs three acts of
-  three steps along the heading and, after each act, strikes the body it
-  ran into and shoves it four steps. Counted over the crew soldiers'
-  CHARGE rolls on the three seeds, the aimed rule refused about 2,200
-  rushes that would have struck a foe (the window's foe at a slant the
-  eight-way heading missed, or another foe in the way) and allowed about
-  400 that stop short of anyone (a foe 60 to 75 px off is inside the
-  window but past the nine steps). The rule now asks for what the crew was
-  getting: the classic window, and a living foe in the path the rush runs
-  (see [Bots](#bots)). With it all five lines are back in band on seed
-  42: Westlands 8 reads 0, Westlands 9 reads 0, Westlands 23 reads 7, Long
-  Season 7 reads 8 and Tower floor 1 reads 8 (`8 7 7` on the tower's run
-  seeds, each over the floor).
+- One rule was wrong: the soldier's CHARGE. The gates first asked that the
+  soldier's heading point at the foe in the classic window. The classic
+  rush pays whichever foe is in its path: it runs three acts of three
+  steps along the heading and, after each act, strikes the body it ran
+  into and shoves it four steps. Counted over the crew soldiers' CHARGE
+  rolls on the three seeds across the three campaigns, the aimed rule
+  refused about 2,200 rushes that would have struck a foe (the window's
+  foe at a slant the eight-way heading missed, or another foe in the way)
+  and allowed about 400 that stop short of anyone (a foe past about 50 px
+  is inside the window's 75 but past the nine steps). The rule now asks
+  for what the crew was getting: the classic window, and a living foe in
+  the path the rush runs (see [Bots](#bots)). With it all five lines are
+  back in band on seed 42: Westlands 8 reads 0, Westlands 9 reads 0,
+  Westlands 23 reads 7, Long Season 7 reads 8 and Tower floor 1 reads 8
+  (`8 7 7` on the tower's run seeds, each over the floor).
 - One level was eased. The new rule took Long Season 12, The Old Count's
   Vault (crew 6), to 1 on seed 42 against its floor of 2 (it read 8 and 7
   on the other two seeds, and its twenty-seed mean rose, 5.65 to 5.90).
@@ -658,28 +658,35 @@ difference of two twenty-seed means carries a standard error of about
 0.25 to 0.7: a half-survivor move is about one standard error. The
 enemy thief's rules account for most of Long Season 8's fall.
 
-**Recorded, not eased.** Three lines read under their floor on a seed
-the suites do not assert: Long Season 5 (floor 5) reads `8 6 4` (its
-twenty-seed mean went from 6.50 to 6.60), Westlands 5 (floor 6) `8 6 4`
-(it read `7 6 5`, already under on seed 2025; 6.20 to 6.35) and
-Westlands 25 (floor 5) `8 4 5` (it read `8 6 4`, already under; 6.55 to
-6.25). Eight lines fell a point or more on two of the three seeds while
-staying at or over their floor: Westlands 3, 11, 15 and 19 and Long
-Season 2, 4, 10 and 14. Long Season 2 reads exactly its floor of 6 on
-seed 42 and Long Season 14 exactly its floor of 7. Over twenty seeds none
-of the eight moved by more than about one standard error: Westlands 15
-moved most, 2.90 to 2.35, back to the 2.40 it read before the bot gates,
-and Long Season 2 moved 6.65 to 6.20, where answering CHARGE the classic way
-reads lower still (5.95). Easing a level whose twenty-seed mean did not
-fall would tune it to the three measured seeds, so none of these was
-eased.
+**Recorded, not eased.** These lines are read against the game before the
+bot gates (the shipped default with every bot rule at its earlier text),
+on the three seeds and on twenty seeds, measured as the "classic" column
+above. Three lines read under their floor on a seed the suites do not
+assert: Long Season 5 (floor 5) reads `8 6 4` (it read `7 8 7`; its
+twenty-seed mean went from 6.30 to 6.60), Westlands 5 (floor 6) `8 6 4`
+(it read `8 5 5`, already under on two seeds; 6.55 to 6.35) and Westlands
+25 (floor 5) `8 4 5` (it read `8 3 7`, already under on seed 1337; 6.05 to
+6.25). Six lines fell a point or more on two of the three seeds while
+staying at or over their floor: Westlands 11, 15, 16 and 19 and Long
+Season 4 and 14 (Westlands 9 fell too, a war row whose floor is 0). Over
+twenty seeds none of the six fell by more than about one standard error,
+and three rose: Westlands 11 went from 4.30 to 5.45, Westlands 15 from
+2.40 to 2.35, Westlands 16 from 2.45 to 2.95, Westlands 19 from 5.70 to
+5.60, Long Season 4 from 2.55 to 3.20 and Long Season 14 from 7.75 to
+7.55. Long Season 2 reads exactly its floor of 6 on seed 42 (`6 6 7`,
+where it read `7 6 6`; 6.45 to 6.20) and Long Season 14 exactly its floor
+of 7. Easing a level whose twenty-seed mean did not fall would tune it to
+the three measured seeds, so none of these was eased.
 
 With New Specials on and the setting off, a pair that is measured but not
 asserted, Westlands 23 reads `4 5 4` against its floor of 5 (it read
 `6 7 8` before the kits' bot rules) and Westlands 25 `4 6 5` (it read
 `1 8 7` before them, already under). With New Specials off and the
-setting on, the other unasserted pair, Westlands 23 reads `5 4 4` (`7 5 4`
-before the CHARGE rule changed).
+setting on, the other unasserted pair, three lines read under their floor
+on a seed: Westlands 3 `7 8 5` (floor 6; it read `8 8 7` before the bot
+gates), Westlands 23 `5 4 4` (`4 7 6`, already under on seed 42) and Long
+Season 5 `8 6 4` (floor 5; `7 8 7`). Westlands 5 reads under on seed 2025
+in all four columns, both settings off included, so it predates this work.
 
 **The other change outside the setting that moves a calibration line.**
 Besides the four eased Long Season levels, and the kits' bot rules
