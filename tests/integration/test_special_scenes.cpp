@@ -2127,7 +2127,13 @@ std::vector<Scene> scenes()
                 run.marks["rose"] = static_cast<float>(f);
                 // The first coin is pinned here, as the second is when its
                 // soldier is let go: what the soldiers' own bot gates draw
-                // before this moment is theirs, not LEGION's.
+                // before this moment is theirs, not LEGION's. This pin came
+                // with the soldier's payoff gates (before them the first kill
+                // rode the scene's authority pin): the gates draw differently,
+                // and without it the first kill stayed down. With the second
+                // soldier posted west it is still needed: the first kill
+                // rises without it, but the second soldier then falls on a
+                // later frame and its coin raises him too.
                 run.server->world().rng_.state_ = kLegionFirstCoinPin;
             }
             GameWorld& w = run.server->world();
