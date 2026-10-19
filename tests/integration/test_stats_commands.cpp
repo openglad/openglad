@@ -880,7 +880,12 @@ TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_
     }
 
     // Leg B: rng(3) == 0 -> the gate opens and hit_response enters special().
+    // Each leg starts on a cleared board. A leg whose elf casts leaves the
+    // rocks it threw in the world's lists, owned by an elf this test frees
+    // with the leg's Pair; the next leg's fire() probe walks the rocks' cell
+    // and is_friendly follows that owner (ASan: heap-use-after-free).
     {
+        world().delete_objects();
         Pair open;
         make_pair(open);
         ASSERT_FALSE(testing::Test::HasFatalFailure()) << "leg B fixture built";
@@ -904,6 +909,7 @@ TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_
     // along). rng(3) == 0 every time: the roll that opens the gate.
     world().gameplay_fixes = 1;
     auto strike = [](short dx, short dy, bool expect_special, const char* why) {
+        world().delete_objects(); // the earlier leg's rocks and fallen attacker
         std::unique_ptr<walker> elf = make_walker(FAMILY_ELF);
         ASSERT_NE(nullptr, elf) << "elf target created";
         elf->set_team_num(0);
