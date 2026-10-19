@@ -15,8 +15,13 @@
 // drawn, and the cleric's gate then picks on purpose: TURN UNDEAD only with
 // an undead foe it could turn inside its reach (walker:undead_foes_in_range,
 // the same question the cast asks), else the raise. The gate's answer stays
-// "yes" for those slots on both values. Slot 1 (heal or mace) is the classic
-// rule on both values.
+// "yes" for those slots on both values.
+//
+// The bot gates (test_bot_gates_casters.cpp) then ask each slot for its
+// payoff with the setting on: a raise wants a corpse the raise can find and
+// a living foe within 130 px, RESURRECT a friendly corpse, the mace a foe
+// within its orbit. The cases here that expect a raise or RESURRECT stage
+// that corpse (add_corpse) beside the cleric.
 
 #include <gtest/gtest.h>
 
@@ -62,6 +67,19 @@ living* add_cleric(TestGameWorld& tw)
         cleric->stats()->set_magicpoints(500.0f);
     }
     return cleric;
+}
+
+// A bloodstain of `team` 6 px below the cleric's corner: the corpse
+// find_nearest_blood answers (it never answers beyond about 28 px of
+// centre), inside every raise's reach and RESURRECT's.
+walker* add_corpse(TestGameWorld& tw, unsigned char team)
+{
+    walker* s = tw.world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    if (s == nullptr)
+        return nullptr;
+    s->set_team_num(team);
+    s->setxy(100, 106);
+    return s;
 }
 
 // The shift the cleric's gate leaves for `slot`, starting from `preset`
@@ -136,6 +154,7 @@ TEST(GameplayFixesClericBot, raises_with_nothing_to_turn_in_reach)
         living* cleric = add_cleric(tw);
         ASSERT_NE(nullptr, cleric);
         ASSERT_NE(nullptr, add_living(tw, FAMILY_ORC, 2, 150, 100, 1));
+        ASSERT_NE(nullptr, add_corpse(tw, 2));  // the raise's corpse
         walker* tower = tw.world().add_ob(Order::Generator, FAMILY_TOWER);
         ASSERT_NE(nullptr, tower);
         tower->set_team_num(2);
@@ -161,12 +180,14 @@ TEST(GameplayFixesClericBot, raises_with_nothing_to_turn_in_reach)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Slot 4 (RESURRECT) has no alternate, and slot 1 keeps its classic rule
-// (heal with a friend in reach, else the mace at half mana): the setting
-// leaves both alone, so the two values agree.
+// Slot 4 (RESURRECT) has no alternate: the turn arm never touches its
+// shift. Slot 1 with no friend in reach and the pool full maces on both
+// values: the classic rule at half mana, and with the setting on because the
+// skeleton stands 30 px off, inside the mace's 48 px orbit. A friendly
+// corpse beside the cleric is RESURRECT's payoff with the setting on.
 // RED under the mutation "the fixed arm runs for every slot": slot 4's
 // shift flips to 1 with the skeleton in reach.
-TEST(GameplayFixesClericBot, leaves_the_heal_slot_and_resurrect_alone)
+TEST(GameplayFixesClericBot, leaves_the_resurrect_shift_and_maces_a_foe_in_orbit)
 {
     og::test::ScopedHookFailureGuard guard;
     for (const short fixes : {short{0}, short{1}}) {
@@ -175,6 +196,7 @@ TEST(GameplayFixesClericBot, leaves_the_heal_slot_and_resurrect_alone)
         living* cleric = add_cleric(tw);
         ASSERT_NE(nullptr, cleric);
         ASSERT_NE(nullptr, add_living(tw, FAMILY_SKELETON, 2, 130, 100, 1));
+        ASSERT_NE(nullptr, add_corpse(tw, 1));  // a fallen friend
 
         const GateOutcome resurrect = gate(cleric, 4, 0);
         EXPECT_TRUE(resurrect.answer);
@@ -238,6 +260,7 @@ TEST(GameplayFixesClericBot, raises_when_its_hero_lacks_the_int_to_turn)
             ASSERT_NE(nullptr, cleric->myguy);
             cleric->myguy->intelligence = intelligence;
             ASSERT_NE(nullptr, add_living(tw, FAMILY_SKELETON, 2, 150, 100, 1));
+            ASSERT_NE(nullptr, add_corpse(tw, 2));  // the raise's corpse
 
             const int want = (fixes != 0 && intelligence < 60) ? 0 : 1;
             for (const int slot : {2, 3}) {
