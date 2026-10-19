@@ -24,6 +24,12 @@ Asserts:
       ``src/<path>:<N> `<verbatim fragment>``` — still resolves: line N of
       <path> contains <fragment>. Bare citations (a line number with no
       backticked fragment) are outside the rule by construction.
+  (g) every weapon predicate (WeaponFamilyEmitted, WeaponFamilyCount,
+      WeaponSpeed, WeaponNetTravel) that names its family by a FAMILY_*
+      constant names one of the weapon families in
+      include/openglad/core/constants.h: the evaluator resolves the id in
+      the weapon order, so an FX constant such as FAMILY_EXPLOSION (3)
+      silently reads the weapon of the same number (FAMILY_FIREBALL)
 
 The lint is regex-based, not a full C++ parser. It expects the
 scenario_table.h emitted by Phase 01 and breaks loudly on schema drift.
@@ -66,6 +72,30 @@ def _load_table(path: Path) -> str:
         sys.stderr.write(f"lint: cannot read {path}\n")
         sys.exit(2)
     return path.read_text(encoding="utf-8")
+
+
+# Rule (g): the predicates whose family id the evaluator resolves in the
+# weapon order (tests/parity/fact_predicate.cpp, family_symbol_by_order with
+# kWeaponOrder), and where the weapon families are declared.
+WEAPON_ORDER_PREDICATES = ("WeaponFamilyEmitted", "WeaponFamilyCount",
+                           "WeaponSpeed", "WeaponNetTravel")
+CONSTANTS_H = (Path(__file__).resolve().parents[2]
+               / "include" / "openglad" / "core" / "constants.h")
+
+
+def weapon_family_symbols(path: Path = CONSTANTS_H) -> set[str]:
+    """The FAMILY_* names constants.h declares under "//Weapon families"."""
+    if not path.is_file():
+        sys.stderr.write(f"lint: cannot read {path}\n")
+        sys.exit(2)
+    block = _slice(path.read_text(encoding="utf-8"),
+                   "//Weapon families", "// Treasure families")
+    names = set(re.findall(r"inline\s+constexpr\s+int\s+(FAMILY_\w+)\s*=",
+                           block))
+    if not names:
+        sys.stderr.write(f"lint: no weapon families found in {path}\n")
+        sys.exit(2)
+    return names
 
 
 def _slice(text: str, start_marker: str, end_marker: str) -> str:
@@ -1209,6 +1239,19 @@ _SELF_TEST_CASES: list[
      _with_spawns(_add_pred("pred::WeaponFamilyEmitted(7),"), _WIELDER_SPAWNS),
      {}, 0, _ok(1, 3), ""),
 
+    # (g) family_order_mismatch: an FX constant in a weapon predicate is
+    # refused; a weapon constant passes.
+    ("g_fx_family_in_weapon_predicate",
+     _add_pred("pred::WeaponFamilyCount(FAMILY_EXPLOSION, 1, 1),"), {}, 1, "",
+     _fail("kFacts_one[#2]: family_order_mismatch — "
+           "WeaponFamilyCount(FAMILY_EXPLOSION) resolves its family in the "
+           "weapon order, and FAMILY_EXPLOSION is not a weapon family in "
+           "include/openglad/core/constants.h; count an FX or treasure "
+           "family with WalkerOfOrderFamilyCount")),
+    ("g_weapon_family_ok",
+     _add_pred("pred::WeaponFamilyCount(FAMILY_FIREBALL, 1, 1),"), {}, 0,
+     _ok(1, 3), ""),
+
     # (e) orphan_mutation_constant, both halves. The second row is
     # branch-internal, which the ordinary row view drops and this rule keeps:
     # the OK line still says 1 row, and the pin is no longer an orphan.
@@ -1286,7 +1329,7 @@ _SELF_TEST_CASES: list[
     ("rc_missing_table", None, {}, 2, "", "lint: cannot read {table}\n"),
 ]
 
-_SELF_TEST_CASE_COUNT = 57
+_SELF_TEST_CASE_COUNT = 59
 
 
 def _self_test() -> int:
@@ -1365,6 +1408,26 @@ def run_lint(table: Path) -> int:
                     f"{arr_name}[#{i}]: widened predicate {sig} missing "
                     f"`// intended_diff:` or `// rng_drift:` justification "
                     f"(grammar: kind ':' reason '; commit ' <hex 7..40>)")
+
+    # Rule (g) — family_order_mismatch. A weapon predicate resolves its
+    # family id in the weapon order, so a FAMILY_* constant of another
+    # order (FX, treasure, generator) compiles, lints and silently reads
+    # the weapon that shares its number. Refuse a non-weapon name.
+    weapon_symbols = weapon_family_symbols()
+    family_order_errors: list[str] = []
+    for arr_name, preds in pred_calls.items():
+        for i, pred in enumerate(preds):
+            if pred["kind"] not in WEAPON_ORDER_PREDICATES or not pred["args"]:
+                continue
+            sym = re.sub(r"/\*.*?\*/", "", pred["args"][0],
+                         flags=re.DOTALL).strip()
+            if re.fullmatch(r"FAMILY_\w+", sym) and sym not in weapon_symbols:
+                family_order_errors.append(
+                    f"{arr_name}[#{i}]: family_order_mismatch — "
+                    f"{pred['kind']}({sym}) resolves its family in the weapon "
+                    f"order, and {sym} is not a weapon family in "
+                    f"include/openglad/core/constants.h; count an FX or "
+                    f"treasure family with WalkerOfOrderFamilyCount")
 
     # Spec-mandated rule: every EffectFamilyCount predicate must be
     # qualified by EITHER a source-walker family (`arg3 >= 0`) OR a
@@ -1717,6 +1780,7 @@ def run_lint(table: Path) -> int:
         + vacuous_event_floor_errors
         + zero_zero_count_errors
         + family_alias_errors
+        + family_order_errors
         + caster_zero_min_errors
         + orphan_mutation_errors
         + anchored_citation_errors
