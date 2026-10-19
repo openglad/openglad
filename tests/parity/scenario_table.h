@@ -1215,7 +1215,7 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "packs/core/families/living-17-archmage.lua", 202,
+    "packs/core/families/living-17-archmage.lua", 267,
     "if lc.mid_teleport(self) then",
     "if true then",
     "Makes the archmage's slot-1 TELEPORT believe it is already mid-teleport, so the body returns false without the SOUND_TELEPORT cue and without the ANI_TELE_OUT that hands off to handle_teleport. The caster never leaves its start tile: WalkerPositionMoved(FAMILY_ARCHMAGE, 240, 880) fails."
@@ -1466,7 +1466,7 @@ inline constexpr Mutation kMut_family_barbarian_init = {
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "packs/core/families/living-17-archmage.lua", 612,
+    "packs/core/families/living-17-archmage.lua", 677,
     "hp = 150",
     "hp = 1",
     "Drops ARCHMAGE descriptor HP to 1 "
@@ -4254,7 +4254,7 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 282,
+    "packs/core/families/living-17-archmage.lua", 347,
     "if foe_count == 0 then",
     "if true then",
     "Makes burst_or_chain report 'no foes in range' unconditionally, so HEARTBURST returns false before the MP pool is drained and before a single FX_EXPLOSION is summoned. The caster keeps the HP and MP the burst would have spent and leaves the (10000, 15000) cent band of WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE)."
@@ -4273,7 +4273,7 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 486,
+    "packs/core/families/living-17-archmage.lua", 551,
     "local phantom = og.add_ob(\"living\", person)",
     "local phantom = nil",
     "Suppresses the illusion body SUMMON IMAGE conjures after its tier roll, so archmage slot 3 takes its 'if not phantom' exit and no Phantom joins the caster's team. WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 9200, 9200) flips."
@@ -4300,7 +4300,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 541,
+    "packs/core/families/living-17-archmage.lua", 606,
     "if foe_count < 1 then",
     "if true then",
     "Makes MIND CONTROL report 'no foes in range' unconditionally, so archmage slot 4 returns false before any foe is charmed and before the 'has controlled N men' notice. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000) both fail."
@@ -4710,7 +4710,7 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 298,
+    "packs/core/families/living-17-archmage.lua", 363,
     "      local burst = og.summon(self, \"fx\", FX_EXPLOSION)",
     "      do return false, 'MUTATION REFUSAL' end",
     "Replaces the HEARTBURST per-foe explosion summon with `do return false, 'MUTATION REFUSAL' end`, so burst_or_chain declines on its first loop iteration before any FAMILY_EXPLOSION is created: no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted, so the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole archmage.lua load and takes every archmage special down with it; the row would then flip on collateral damage rather than on the heartburst. With the wrapper, chain lightning (slot 1 teleport, slot 3 summon image, slot 4 mind control) still load and run: only the burst branch is neutered."
@@ -5882,7 +5882,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_elemental_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archmage_summon_elemental_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 366,
+    "packs/core/families/living-17-archmage.lua", 431,
     "    local elemental = og.add_ob(\"living\", LIVING_ELEMENTAL)",
     "    local elemental = nil",
     "Makes the TRUE SUMMON branch's add_ob yield nothing, so the `if not elemental then return false end` failsafe aborts the cast: no FAMILY_FIREELEMENTAL ever enters oblist, WalkerFamilyCount(FAMILY_FIREELEMENTAL,1,1) collapses to 0, WalkerAliveAtFinal fails, and team-0 alive drops below 2."
@@ -5982,7 +5982,7 @@ inline constexpr FactPredicate kFacts_archmage_teleport_marker_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archmage_teleport_marker_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 239,
+    "packs/core/families/living-17-archmage.lua", 304,
     "  local marker = og.add_ob(\"fx\", FX_MARKER)",
     "  local marker = nil",
     "Makes the marker arm's add_ob yield nothing, so the body takes its own `if not marker then return false end` exit before set_owner / center_on / the use count and before either notification. Both casts go silent: EventKindAtLeast(notification, 4) collapses to 0. mage.lua carries the identical text at line 114, but that is a different file, so the pin stays unambiguous."
@@ -6017,7 +6017,7 @@ inline constexpr FactPredicate kFacts_archmage_mind_control_team_flip_scen99[] =
 };
 
 inline constexpr Mutation kMut_archmage_mind_control_team_flip_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 578,
+    "packs/core/families/living-17-archmage.lua", 643,
     "        foe.team = self.team",
     "        foe.team = foe.team",
     "Keeps the real_team_num latch, charm_left and the 'has controlled N men' notification but never moves the victim onto the caster's team: WalkerOfTeamAlive(0,2,2) falls to 1, WalkerOfTeamAlive(1,0,0) rises to 1, and the still-hostile soldier melees the archmage."
@@ -6050,7 +6050,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_image_phantom_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archmage_summon_image_phantom_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 507,
+    "packs/core/families/living-17-archmage.lua", 572,
     "          phantom.team = self.team",
     "          phantom.team = 3",
     "Conjures the illusion onto an unrelated team instead of the caster's, so the phantom stops counting as an allied oblist entry and WalkerOfTeamAlive(0,2,2) falls to 1 while the family and HP-signature predicates still hold -- isolating the team binding."
@@ -9229,7 +9229,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_no_room_scen99[] = {
         "consequence: the classic refused summon still took its half-MP surcharge, so the tick-40 HEARTBURST pool is smaller and the surviving hostile tower ends at 39 hp (the allied towers sit at 101 and above)"),
 };
 inline constexpr Mutation kMut_archmage_summon_no_room_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 362,
+    "packs/core/families/living-17-archmage.lua", 427,
     "if not gf.on() then",
     "if false then",
     "Skips the classic surcharge before the placement, so the refused summon costs nothing and the HEARTBURST at tick 40 spends the larger pool: the surviving hostile tower ends at 23 hp and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3900, 3900) fails.",
@@ -9244,7 +9244,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_no_room_fixes_scen99[] = {
         "consequence: with the setting on the surcharge is paid only once the elemental stands, so the refused summon costs nothing and the tick-40 HEARTBURST spends the larger pool: the surviving hostile tower ends at 23 hp"),
 };
 inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 362,
+    "packs/core/families/living-17-archmage.lua", 427,
     "if not gf.on() then",
     "if true then",
     "Takes the surcharge before the placement again, so the refused summon keeps it and the HEARTBURST pool shrinks: the surviving hostile tower ends at 39 hp and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2300, 2300) fails.",
@@ -9271,7 +9271,7 @@ inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_scen99[] = {
     pred::LevelDoneEquals(2),
 };
 inline constexpr Mutation kMut_archmage_mind_control_berserk_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 569,
+    "packs/core/families/living-17-archmage.lua", 634,
     "local colour = og.rand(8)",
     "local colour = og.rand(8) + 1",
     "Shifts the berserk colour roll up by one, so the failed control sends the orc to team 1, its own: it stays a foe and WalkerOfTeamAlive(0, 2, 2) and LevelDoneEquals(2) fail."
@@ -9286,7 +9286,7 @@ inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_fixes_scen99
     pred::LevelDoneEquals(0),
 };
 inline constexpr Mutation kMut_archmage_mind_control_berserk_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 572,
+    "packs/core/families/living-17-archmage.lua", 637,
     "colour = og.mod(colour + 1, 8)",
     "colour = colour",
     "Keeps the rolled colour, so a berserk roll of 0 puts the orc on the caster's team again: WalkerOfTeamAlive(1, 1, 1) and LevelDoneEquals(0) fail."
@@ -9320,10 +9320,10 @@ inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_fixes_scen99[] 
     pred::EventKindExactly(/*play_sound*/1, 1),
 };
 inline constexpr Mutation kMut_archmage_bot_summon_no_foe_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 194,
-    "return foe_count >= 1",
-    "return true",
-    "Opens the slot-3 gate with no foe within 200 px, so the bot's rolls take the classic course and the tick-3 teleport and its marker never happen: WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 1, 1) and EventKindExactly(play_sound, 1) fail."
+    "packs/core/families/living-17-archmage.lua", 246,
+    "#G.hunters(self, SUMMON_GATE_RANGE) >= 2",
+    "#G.hunters(self, SUMMON_GATE_RANGE) >= 0",
+    "Lets SUMMON IMAGE's decoy rule pass with nobody hunting the archmage, so the alone bot summons a phantom on its slot-3 roll: WalkerFamilyCount(FAMILY_ELF, 0, 0) fails."
 };
 
 // --- archmage_bot_mind_control_hero (#355: a seated hero resists MIND CONTROL)
@@ -9385,7 +9385,7 @@ inline constexpr FactPredicate kFacts_archmage_hit_stale_shift_fixes_scen99[] = 
         "consequence: with the setting on a bot that can afford the elemental (1100 MP) summons it when hit, whatever shift the last roll left"),
 };
 inline constexpr Mutation kMut_archmage_hit_stale_shift_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 62,
+    "packs/core/families/living-17-archmage.lua", 63,
     "self:set_shifter_down(1)",
     "self:set_shifter_down(0)",
     "Makes the summon choice always pick the image, so the hit response summons a phantom instead of the elemental: WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1) fails.",

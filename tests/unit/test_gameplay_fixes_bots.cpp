@@ -44,8 +44,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <string>
+#include <utility>
 
 using og::test::bot_gates::GameplayFixesBots;
 
@@ -375,6 +377,47 @@ TEST_F(GameplayFixesBots, archmage_teleport_takes_the_mage_rule_with_the_setting
     EXPECT_TRUE(gate(arch, 1, 1)) << "four foes: flee";
 }
 
+// The archmage's TELEPORT MARKER takes the mage's rule, with HEARTBURST (80)
+// as the special the halved pool must still cover: a level-10 archmage with
+// 170 magic keeps (170 - 10) / 2 = 80 and marks, with 168 it keeps 79 and
+// does not. With the setting off the coin is left as it fell.
+//
+// RED (the coin kept with the setting on): Expected equality of these
+// values: 1 arch->shifter_down() Which is: 0 "alone, funded, no marker".
+TEST_F(GameplayFixesBots, archmage_marker_is_placed_once_where_the_archmage_will_return)
+{
+    living* arch = body(add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 600.0f), 16, 16);
+    ASSERT_NE(nullptr, arch);
+
+    for (short coin : {short{0}, short{1}}) {
+        arch->set_shifter_down(coin);
+        EXPECT_TRUE(gate(arch, 1, 0)) << "the classic archmage had no gate";
+        EXPECT_EQ(coin, arch->shifter_down()) << "setting off: the coin is left as it fell";
+    }
+
+    arch->set_shifter_down(0);
+    EXPECT_TRUE(gate(arch, 1, 1));
+    EXPECT_EQ(1, arch->shifter_down()) << "alone, funded, no marker";
+
+    walker* marker = world().add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker);
+    marker->setxy(600, 600);
+    marker->set_owner(arch);
+    arch->set_shifter_down(1);
+    EXPECT_TRUE(gate(arch, 1, 1));
+    EXPECT_EQ(0, arch->shifter_down()) << "its marker stands";
+    marker->set_dead(1);
+
+    arch->stats()->set_magicpoints(170.0f);
+    arch->set_shifter_down(0);
+    EXPECT_TRUE(gate(arch, 1, 1));
+    EXPECT_EQ(1, arch->shifter_down()) << "170 magic: half the spare (80) just covers HEARTBURST";
+    arch->stats()->set_magicpoints(168.0f);
+    arch->set_shifter_down(1);
+    EXPECT_TRUE(gate(arch, 1, 1));
+    EXPECT_EQ(0, arch->shifter_down()) << "168 magic: half the spare (79) is short";
+}
+
 // HEARTBURST / CHAIN LIGHTNING at level 10: the burst reaches 80 + 2*10 =
 // 100 px, the chain 200 + 5*10 + 2*10 = 270 px. The coin's arm is kept when
 // it has a target, swapped when only the other one has, refused when
@@ -422,38 +465,43 @@ TEST_F(GameplayFixesBots, archmage_burst_or_chain_takes_the_arm_with_a_target_wi
     EXPECT_EQ(1, arch->shifter_down()) << "the coin is left as it fell";
 }
 
-// SUMMON IMAGE / SUMMON ELEMENTAL: a foe within 200 px, and the elemental
-// only when the spare pool (magic less the slot's 500) is at least 500, so
-// a drained archmage summons an image rather than spend the last of its
-// magic on an elemental.
+// SUMMON ELEMENTAL: the kept rule, a living foe within 200 px and a spare
+// pool (magic less the slot's 500) of at least 500; a tent is no foe to set
+// a daemon on. Below that pool the slot is SUMMON IMAGE, whose own rule (the
+// test after this one) wants two foes hunting the archmage: one stranger at
+// 150 px is not that.
 //
-// RED (no gate on the row): Value of: gate(arch, 3, 1) Actual: true
-// Expected: false "201 px: nobody to summon against"; Expected equality of
-// these values: c.shift_after Which is: 0 arch->shifter_down() Which is: 1
-// "spare 100: the image".
+// RED (the elemental counting generators): Value of: gate(arch, 3, 1)
+// Actual: true Expected: false "a tent at 150 px: nobody living".
 TEST_F(GameplayFixesBots, archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on)
 {
-    living* arch = add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 600.0f);
-    living* foe = add(FAMILY_SOLDIER, 2, 350, 200, 1);  // 150 px
+    living* arch = body(add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 600.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 2, 350, 200, 1), 16, 16);  // 150 px
     ASSERT_TRUE(arch && foe);
     ASSERT_EQ(500, static_cast<int>(arch->stats()->special_cost(3))) << "the slot's price";
+
+    // With the setting off the row has no opinion and the coin stands.
+    arch->set_shifter_down(1);
+    EXPECT_TRUE(gate(arch, 3, 0)) << "the classic archmage had no gate";
+    EXPECT_EQ(1, arch->shifter_down()) << "the coin is left as it fell";
 
     struct Case {
         float mp;
         short shift_before;
+        bool answer;
         short shift_after;
         const char* what;
     };
     const Case cases[] = {
-        {600.0f, 1, 0, "spare 100: the image"},
-        {999.0f, 1, 0, "spare 499: the image"},
-        {1000.0f, 0, 1, "spare 500: the elemental"},
-        {1100.0f, 0, 1, "spare 600: the elemental"},
+        {600.0f, 1, false, 0, "spare 100: the image, and one stranger is no decoy's crowd"},
+        {999.0f, 1, false, 0, "spare 499: the image"},
+        {1000.0f, 0, true, 1, "spare 500: the elemental"},
+        {1100.0f, 0, true, 1, "spare 600: the elemental"},
     };
     for (const Case& c : cases) {
         arch->stats()->set_magicpoints(c.mp);
         arch->set_shifter_down(c.shift_before);
-        EXPECT_TRUE(gate(arch, 3, 1)) << c.what << ": a foe at 150 px";
+        EXPECT_EQ(c.answer, gate(arch, 3, 1)) << c.what << ": a foe at 150 px";
         EXPECT_EQ(c.shift_after, arch->shifter_down()) << c.what;
     }
 
@@ -462,11 +510,118 @@ TEST_F(GameplayFixesBots, archmage_summon_wants_a_foe_and_the_pool_for_an_elemen
     foe->setxy(401, 200);  // 201 px
     EXPECT_FALSE(gate(arch, 3, 1)) << "201 px: nobody to summon against";
 
-    // With the setting off the row has no opinion and the coin stands.
-    arch->stats()->set_magicpoints(600.0f);
+    foe->setxy(600, 600);
+    walker* tent = body(world().add_ob(Order::Generator, FAMILY_TENT), 16, 16);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(2);
+    tent->setxy(350, 200);
+    EXPECT_FALSE(gate(arch, 3, 1)) << "a tent at 150 px: nobody living";
+    EXPECT_EQ(1, arch->shifter_down()) << "still the elemental's pool";
+}
+
+// SUMMON IMAGE is a phantom with one hit point: a decoy, worth its 500 when
+// it will draw blows that have not landed yet. With the setting on it wants
+// at least two living foes within 200 px hunting the archmage (their foe is
+// it) and none within a blow of it (there HEARTBURST is the cheaper answer),
+// health above the flee threshold (3/8 of 400 for a bot: below it TELEPORT
+// is the answer), no phantom of its own standing, and HEARTBURST's 80 left
+// after the 500.
+//
+// RED (the setting's slot-3 answer on "a foe within 200"): Value of:
+// gate(arch, 3, 1) Actual: true Expected: false "one hunter".
+TEST_F(GameplayFixesBots, archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left)
+{
+    living* arch = body(add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 600.0f), 16, 16);
+    living* east = body(add(FAMILY_SOLDIER, 2, 300, 200, 1), 16, 16);   // 100 px
+    living* south = body(add(FAMILY_SOLDIER, 2, 200, 300, 1), 16, 16);  // 100 px
+    living* bait = body(add(FAMILY_SOLDIER, 1, 700, 700, 1), 16, 16);   // someone else
+    ASSERT_TRUE(arch && east && south && bait);
+    east->set_foe(arch);
+    south->set_foe(arch);
+
     arch->set_shifter_down(1);
     EXPECT_TRUE(gate(arch, 3, 0)) << "the classic archmage had no gate";
     EXPECT_EQ(1, arch->shifter_down()) << "the coin is left as it fell";
+
+    EXPECT_TRUE(gate(arch, 3, 1)) << "two hunters at 100 px";
+    EXPECT_EQ(0, arch->shifter_down()) << "spare 100: the image";
+
+    south->set_foe(nullptr);
+    EXPECT_FALSE(gate(arch, 3, 1)) << "one hunter";
+    east->set_foe(bait);
+    south->set_foe(bait);
+    EXPECT_FALSE(gate(arch, 3, 1)) << "two foes hunting someone else";
+    east->set_foe(arch);
+    south->set_foe(arch);
+    ASSERT_TRUE(gate(arch, 3, 1));
+
+    east->setxy(217, 200);  // a 1 px gap: at blows
+    EXPECT_FALSE(gate(arch, 3, 1)) << "one of the two at blows: HEARTBURST's business";
+    east->setxy(300, 200);
+
+    arch->stats()->set_hitpoints(149.0f);  // under 3/8 of 400
+    EXPECT_FALSE(gate(arch, 3, 1)) << "under the flee threshold: TELEPORT's business";
+    arch->stats()->set_hitpoints(150.0f);
+    EXPECT_TRUE(gate(arch, 3, 1)) << "at the threshold";
+    arch->stats()->set_hitpoints(400.0f);
+
+    living* phantom = body(add(FAMILY_ELF, 1, 260, 260, 1), 16, 16);
+    ASSERT_NE(nullptr, phantom);
+    phantom->stats()->set_max_hitpoints(1.0f);
+    phantom->stats()->set_hitpoints(1.0f);
+    phantom->set_owner(arch);
+    EXPECT_FALSE(gate(arch, 3, 1)) << "its phantom stands";
+    phantom->set_dead(1);
+    ASSERT_TRUE(gate(arch, 3, 1));
+
+    arch->stats()->set_magicpoints(570.0f);  // spare 70: short of HEARTBURST's 80
+    EXPECT_FALSE(gate(arch, 3, 1)) << "nothing left for a HEARTBURST";
+    arch->stats()->set_magicpoints(580.0f);
+    EXPECT_TRUE(gate(arch, 3, 1)) << "spare 80: just enough";
+}
+
+// MIND CONTROL reaches 80 + 4 px per level (120 px at level 10) and takes
+// only a foe it can: never charmed, not a hero a player drives, not above the
+// archmage's level. With the setting on a bot casts it only at such a foe in
+// reach; the classic gate held only the rest.
+//
+// RED (the rest-only gate): Value of: gate(arch, 4, 1) Actual: true
+// Expected: false "121 px: out of reach".
+TEST_F(GameplayFixesBots, archmage_mind_control_wants_a_charmable_foe_in_reach)
+{
+    living* arch = body(add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 600.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 2, 280, 200, 10), 16, 16);  // 80 px
+    ASSERT_TRUE(arch && foe);
+    EXPECT_TRUE(gate(arch, 4, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(arch, 4, 1)) << "a level-10 soldier at 80 px";
+
+    foe->setxy(321, 200);  // 121 px
+    EXPECT_TRUE(gate(arch, 4, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(arch, 4, 1)) << "121 px: out of reach";
+    foe->setxy(320, 200);
+    EXPECT_TRUE(gate(arch, 4, 1)) << "120 px: the edge is in";
+
+    foe->stats()->set_level(11);
+    EXPECT_FALSE(gate(arch, 4, 1)) << "a level-11 foe resists";
+    foe->stats()->set_level(10);
+
+    foe->set_real_team_num(2);
+    EXPECT_FALSE(gate(arch, 4, 1)) << "already charmed";
+    foe->set_real_team_num(255);
+
+    foe->set_user(0);
+    foe->set_act_type(ACT_CONTROL);
+    ASSERT_TRUE(og::sim::seat_driven(*foe));
+    EXPECT_FALSE(gate(arch, 4, 1)) << "a hero a seat drives resists";
+    EXPECT_TRUE(gate(arch, 4, 0)) << "the classic answer";
+
+    // The rest still holds the slot on both values.
+    foe->set_user(-1);
+    foe->set_act_type(ACT_RANDOM);
+    arch->set_special_rest_slot(4);
+    arch->set_special_rest_left(10);
+    EXPECT_FALSE(gate(arch, 4, 0)) << "resting";
+    EXPECT_FALSE(gate(arch, 4, 1)) << "resting";
 }
 
 // ---------------------------------------------------------------------------
@@ -475,16 +630,63 @@ TEST_F(GameplayFixesBots, archmage_summon_wants_a_foe_and_the_pool_for_an_elemen
 
 namespace {
 
-struct SummonOutcome {
+// The first world-RNG state from which the next draws of next(bound) are
+// `want`, in order: pins the hit response's rolls without a spy.
+std::uint32_t state_where_draws_are(std::initializer_list<std::pair<std::uint32_t, std::uint32_t>> draws)
+{
+    for (std::uint32_t seed = 1;; ++seed) {
+        og::sim::SimRandom probe(seed);
+        bool all = true;
+        for (const auto& d : draws)
+            all = all && probe.next(d.first) == d.second;
+        if (all)
+            return seed;
+    }
+}
+
+std::uint32_t state_where_next_is(std::uint32_t bound, std::uint32_t want)
+{
+    return state_where_draws_are({{bound, want}});
+}
+
+// The world-RNG state after `draws` more draws of next(bound) from `state`.
+std::uint32_t state_after(std::uint32_t state, std::initializer_list<std::uint32_t> bounds)
+{
+    og::sim::SimRandom probe(state);
+    for (std::uint32_t b : bounds)
+        (void)probe.next(b);
+    return probe.state_;
+}
+
+struct StruckOutcome {
     int elementals = 0;
     int phantoms = 0;
+    int explosions = 0;
+    int chains = 0;
+    float mp = 0.0f;
+    int current_special = 0;
+    int ani_type = 0;
+    std::uint32_t rng_state = 0;
 };
 
-SummonOutcome summons_of(GameWorld& w, const walker* owner)
+int live_fx_of(GameWorld& w, int family)
 {
-    SummonOutcome out;
+    int n = 0;
+    for (const auto* list : {&w.oblist, &w.fxlist}) {
+        for (const auto& ob : *list) {
+            if (ob != nullptr && ob->dead() == 0 && ob->query_order() == Order::FX
+                && ob->family() == family)
+                n++;
+        }
+    }
+    return n;
+}
+
+StruckOutcome outcome_of(GameWorld& w, walker* arch)
+{
+    StruckOutcome out;
     for (const auto& ob : w.oblist) {
-        if (ob == nullptr || ob->dead() != 0 || ob->owner() != owner)
+        if (ob == nullptr || ob->dead() != 0 || ob->owner() != arch)
             continue;
         if (ob->query_order() != Order::Living)
             continue;
@@ -493,23 +695,33 @@ SummonOutcome summons_of(GameWorld& w, const walker* owner)
         else if (ob->family() == FAMILY_FIREELEMENTAL)
             out.elementals++;
     }
+    out.explosions = live_fx_of(w, FAMILY_EXPLOSION);
+    out.chains = live_fx_of(w, FAMILY_CHAIN);
+    out.mp = arch->stats()->magicpoints();
+    out.current_special = arch->current_special();
+    out.ani_type = arch->ani_type();
+    out.rng_state = w.rng_.state_;
     return out;
 }
 
 class GameplayFixesArchmageHit : public GameplayFixesBots {
 protected:
-    // A healthy level-10 archmage on team 1 is struck by an orc 30 px away.
-    // Its shift is `shift` (what the last coin left, or a player's Shift
-    // key), its magic `mp`; `seated` makes it a hero a seat drives.
-    SummonOutcome struck(short fixes, short shift, float mp, bool seated)
+    // A level-10 archmage on team 1 (400 hit points, `hp` of them left) is
+    // struck by an orc `orc_x - 200` px away. Its shift is `shift` (what the
+    // last coin left, or a player's Shift key), its magic `mp`; `seated`
+    // makes it a hero a seat drives; `rng` (when not 0) is the world-RNG
+    // state the hit response draws from.
+    StruckOutcome struck(short fixes, short shift, float mp, bool seated,
+                         short orc_x = 230, float hp = 400.0f, std::uint32_t rng = 0)
     {
         fresh_world();
         world().gameplay_fixes = fixes;
-        living* arch = add(FAMILY_ARCHMAGE, 1, 200, 200, 10, mp);
-        living* orc = add(FAMILY_ORC, 2, 230, 200, 1);
+        living* arch = body(add(FAMILY_ARCHMAGE, 1, 200, 200, 10, mp), 16, 16);
+        living* orc = body(add(FAMILY_ORC, 2, orc_x, 200, 1), 16, 16);
         EXPECT_TRUE(arch && orc);
         if (!(arch && orc))
             return {};
+        arch->stats()->set_hitpoints(hp);
         orc->stats()->set_max_hitpoints(900.0f);
         orc->stats()->set_hitpoints(900.0f);
         if (seated) {
@@ -518,34 +730,98 @@ protected:
         }
         EXPECT_EQ(seated, og::sim::seat_driven(*arch));
         arch->set_shifter_down(shift);
+        if (rng != 0)
+            world().rng_.state_ = rng;
         og::test::hit_response(*get_family_descriptor(FAMILY_ARCHMAGE),
                                arch->stats(), orc);
-        return summons_of(world(), arch);
+        return outcome_of(world(), arch);
     }
 };
 
 }  // namespace
 
-// A struck bot archmage answers with a summon. In the classic game the
-// summon's shift was whatever the last coin left, so a drained archmage
-// could spend the last of its magic on an elemental. With the setting on a
-// bot decides by its pool, as its summon gate does.
+// A struck bot archmage answers with ONE HEARTBURST or CHAIN LIGHTNING,
+// chosen by the slot-2 rule, and never with a summon. The classic order
+// summoned first (whatever arm the last coin left: an elemental here) and
+// then cast slot 2 twice ("then leave! :)" never switched to TELEPORT).
+// Level 10, 1100 magic, the orc 30 px off: the coin (rand(2), pinned to 0)
+// keeps HEARTBURST, which takes its 80 and half the spare (510) once.
 //
-// RED (the classic hit response): Expected equality of these values: 0
-// on.elementals Which is: 1 "spare 100 with the setting on: the image".
-TEST_F(GameplayFixesArchmageHit, a_struck_bot_summons_by_its_pool_not_the_stale_coin)
+// RED (the classic order with the pool's summon): Expected equality of
+// these values: 0 on.elementals Which is: 1 "no summon".
+TEST_F(GameplayFixesArchmageHit, a_struck_bot_bursts_once_and_never_summons)
 {
-    const SummonOutcome off = struck(0, 1, 600.0f, false);
+    const StruckOutcome off = struck(0, 1, 1100.0f, false);
     EXPECT_EQ(1, off.elementals) << "the classic game: the stale coin summons the elemental";
     EXPECT_EQ(0, off.phantoms);
 
-    const SummonOutcome on = struck(1, 1, 600.0f, false);
-    EXPECT_EQ(0, on.elementals) << "spare 100 with the setting on: the image";
-    EXPECT_EQ(1, on.phantoms);
+    const std::uint32_t coin0 = state_where_next_is(2, 0);
+    const StruckOutcome on = struck(1, 1, 1100.0f, false, 230, 400.0f, coin0);
+    EXPECT_EQ(0, on.elementals) << "no summon";
+    EXPECT_EQ(0, on.phantoms) << "no summon";
+    EXPECT_EQ(1, on.explosions) << "one HEARTBURST on the one foe";
+    EXPECT_EQ(0, on.chains);
+    EXPECT_FLOAT_EQ(510.0f, on.mp) << "80 and half the spare, once";
+    EXPECT_EQ(2, on.current_special);
+    EXPECT_EQ(state_after(coin0, {2}), on.rng_state) << "the slot-2 coin is the one draw";
 
-    const SummonOutcome rich = struck(1, 0, 1100.0f, false);
-    EXPECT_EQ(1, rich.elementals) << "spare 600 with the setting on: the elemental";
-    EXPECT_EQ(0, rich.phantoms);
+    // The coin on CHAIN LIGHTNING keeps the chain: it has a target too.
+    const std::uint32_t coin1 = state_where_next_is(2, 1);
+    const StruckOutcome chain = struck(1, 0, 1100.0f, false, 230, 400.0f, coin1);
+    EXPECT_EQ(0, chain.elementals);
+    EXPECT_EQ(0, chain.explosions);
+    EXPECT_EQ(1, chain.chains) << "one CHAIN LIGHTNING";
+}
+
+// With no foe inside the chain's 270 px the slot-2 rule refuses both arms:
+// nothing is cast and nothing spent, on both values (the classic order
+// looked for a foe within 200 px and found none). The coin is still drawn
+// with the setting on, where the classic and the old game draw it.
+//
+// RED (the classic order with the setting on): Expected equality of these
+// values: state_after(coin0, {2}) ... far.rng_state "the coin is drawn".
+TEST_F(GameplayFixesArchmageHit, a_struck_bot_with_no_target_in_reach_casts_nothing)
+{
+    const std::uint32_t coin0 = state_where_next_is(2, 0);
+    const StruckOutcome off = struck(0, 1, 1100.0f, false, 500, 400.0f, coin0);
+    EXPECT_EQ(0, off.elementals);
+    EXPECT_EQ(0, off.phantoms);
+    EXPECT_EQ(0, off.explosions);
+    EXPECT_FLOAT_EQ(1100.0f, off.mp) << "the classic order found nobody within 200";
+
+    const StruckOutcome far = struck(1, 1, 1100.0f, false, 500, 400.0f, coin0);
+    EXPECT_EQ(0, far.elementals);
+    EXPECT_EQ(0, far.phantoms);
+    EXPECT_EQ(0, far.explosions);
+    EXPECT_EQ(0, far.chains);
+    EXPECT_FLOAT_EQ(1100.0f, far.mp) << "300 px: nothing spent";
+    EXPECT_EQ(state_after(coin0, {2}), far.rng_state) << "the coin is drawn";
+}
+
+// Below the flee threshold (3/8 of 400 for a bot) a struck archmage still
+// teleports on rand(3) != 0, on both values. On rand(3) == 0 it falls
+// through to the answer: the classic order summons, the fixed one bursts.
+//
+// RED (the classic order with the setting on): Expected equality of these
+// values: 0 stay.elementals Which is: 1 "rand(3) == 0: no summon".
+TEST_F(GameplayFixesArchmageHit, a_struck_bot_below_the_threshold_still_teleports)
+{
+    const std::uint32_t flee = state_where_next_is(3, 1);
+    for (short fixes : {short{0}, short{1}}) {
+        const StruckOutcome o = struck(fixes, 1, 1100.0f, false, 230, 100.0f, flee);
+        EXPECT_EQ(1, o.current_special) << "setting " << fixes;
+        EXPECT_EQ(ANI_TELE_OUT, o.ani_type) << "setting " << fixes << ": TELEPORT";
+        EXPECT_FLOAT_EQ(1090.0f, o.mp) << "setting " << fixes << ": TELEPORT's 10";
+        EXPECT_EQ(0, o.elementals + o.phantoms + o.explosions + o.chains);
+    }
+
+    const std::uint32_t stay = state_where_draws_are({{3, 0}, {2, 0}});
+    const StruckOutcome classic = struck(0, 1, 1100.0f, false, 230, 100.0f, stay);
+    EXPECT_EQ(1, classic.elementals) << "the classic order summons";
+    const StruckOutcome fixed = struck(1, 1, 1100.0f, false, 230, 100.0f, stay);
+    EXPECT_EQ(0, fixed.elementals) << "rand(3) == 0: no summon";
+    EXPECT_EQ(0, fixed.phantoms);
+    EXPECT_EQ(1, fixed.explosions) << "one HEARTBURST";
 }
 
 // The hit response runs for a player's archmage too, and a player's shift is
@@ -558,11 +834,11 @@ TEST_F(GameplayFixesArchmageHit, a_struck_bot_summons_by_its_pool_not_the_stale_
 TEST_F(GameplayFixesArchmageHit, a_seated_archmage_keeps_its_shift_key)
 {
     for (short fixes : {short{0}, short{1}}) {
-        const SummonOutcome up = struck(fixes, 0, 1100.0f, true);
+        const StruckOutcome up = struck(fixes, 0, 1100.0f, true);
         EXPECT_EQ(1, up.phantoms) << "Shift up, spare 600, setting " << fixes;
         EXPECT_EQ(0, up.elementals) << "Shift up, spare 600, setting " << fixes;
 
-        const SummonOutcome held = struck(fixes, 1, 600.0f, true);
+        const StruckOutcome held = struck(fixes, 1, 600.0f, true);
         EXPECT_EQ(1, held.elementals) << "Shift held, spare 100, setting " << fixes;
         EXPECT_EQ(0, held.phantoms) << "Shift held, spare 100, setting " << fixes;
     }
@@ -573,17 +849,6 @@ TEST_F(GameplayFixesArchmageHit, a_seated_archmage_keeps_its_shift_key)
 // ---------------------------------------------------------------------------
 
 namespace {
-
-// The first world-RNG state from which the next draw of next(bound) is
-// `want`: pins the domination roll without a spy.
-std::uint32_t state_where_next_is(std::uint32_t bound, std::uint32_t want)
-{
-    for (std::uint32_t seed = 1;; ++seed) {
-        og::sim::SimRandom probe(seed);
-        if (probe.next(bound) == want)
-            return seed;
-    }
-}
 
 struct MindControlCast {
     bool ok = false;
