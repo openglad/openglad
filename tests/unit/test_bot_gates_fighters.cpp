@@ -259,3 +259,101 @@ TEST_F(GameplayFixesBots, elf_mega_rocks_wants_two_foes_in_flight)
     behind->setxy(26, 200);
     EXPECT_FALSE(gate(elf, 4, 1)) << "the second a pixel out of flight";
 }
+
+// ---------------------------------------------------------------------------
+// The archer
+// ---------------------------------------------------------------------------
+
+// FIRE ARROWS throws a ring of eight arrows (step 8, range 12: 147 px
+// straight, 88 on a diagonal at level 1). One foe the archer faces is what
+// one ordinary arrow hits; the ring pays for two foes in its flight, or one
+// the archer does not face.
+TEST_F(GameplayFixesBots, archer_fire_arrows_want_a_crowd_or_a_foe_behind)
+{
+    living* archer = body(add(FAMILY_ARCHER, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* ahead = body(add(FAMILY_TOWER1, 2, 195, 111, 1), 25, 29);  // a 60 px gap above
+    ASSERT_TRUE(archer && ahead);
+    // The spawn heading: lastx = lasty = 0 fires UP.
+
+    EXPECT_TRUE(gate(archer, 1, 0)) << "the classic answer: a foe within 130";
+    EXPECT_FALSE(gate(archer, 1, 1)) << "one foe, faced: an ordinary arrow does it";
+
+    ahead->setxy(195, 276);  // the same gap below: behind the archer
+    EXPECT_TRUE(gate(archer, 1, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(archer, 1, 1)) << "one foe behind the archer";
+
+    ahead->setxy(195, 111);
+    living* second = body(add(FAMILY_TOWER1, 2, 75, 71, 1), 25, 29);  // a 100 px gap up-left
+    ASSERT_NE(nullptr, second);
+    EXPECT_TRUE(gate(archer, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 1, 1)) << "the second foe is past the diagonal flight of 88";
+
+    second->setxy(115, 200);  // a 60 px gap west
+    EXPECT_TRUE(gate(archer, 1, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(archer, 1, 1)) << "two foes in the ring's flight";
+}
+
+// BARRAGE sends three arrows along one line: with the setting on the
+// archer's foe must be a living body it faces, inside the arrow's flight
+// (158 px straight at level 4).
+TEST_F(GameplayFixesBots, archer_barrage_wants_its_foe_faced_in_flight)
+{
+    living* archer = body(add(FAMILY_ARCHER, 1, 200, 200, 4, 200.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 2, 200, 84, 1), 16, 16);  // a 100 px gap above
+    ASSERT_TRUE(archer && foe);
+    archer->set_lasty(-1.0f);
+
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer: a foe within 130";
+    EXPECT_TRUE(gate(archer, 2, 1)) << "faced, in flight";
+
+    archer->set_lasty(1.0f);
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "aimed away from the foe";
+
+    archer->set_lasty(-1.0f);
+    foe->set_dead(1);
+    walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(2);
+    tent->setxy(200, 84);
+    body(tent, 16, 16);
+    archer->set_foe(tent);
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer: the tent is within 130";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "a generator foe: the barrage is for a fighter";
+}
+
+// EXPLODING BOLT goes off on its foe (a blast of 15 + 4 px a level, 43 at
+// level 7; allies take half, the archer a quarter). With the setting on the
+// foe must be faced and in flight (169 px straight at level 7), and neither
+// the archer nor an ally of the archer may stand in the blast.
+TEST_F(GameplayFixesBots, archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it)
+{
+    living* archer = body(add(FAMILY_ARCHER, 1, 200, 200, 7, 300.0f), 16, 16);
+    living* foe = body(add(FAMILY_TOWER1, 2, 200, 91, 1), 25, 29);  // an 80 px gap above
+    ASSERT_TRUE(archer && foe);
+
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer: a foe within 130";
+    EXPECT_TRUE(gate(archer, 3, 1)) << "faced, in flight, nobody of ours in the blast";
+
+    foe->setxy(200, 170);  // 30 px from the archer: it stands in its own blast
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 3, 1)) << "the archer would take its own blast";
+
+    foe->setxy(200, 91);
+    living* ally = body(add(FAMILY_SOLDIER, 1, 220, 91, 1), 16, 16);  // 20 px from the foe
+    ASSERT_NE(nullptr, ally);
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 3, 1)) << "an ally of the archer stands in the blast";
+
+    ally->set_dead(1);
+    living* foes_friend = body(add(FAMILY_SOLDIER, 2, 220, 91, 1), 16, 16);
+    ASSERT_NE(nullptr, foes_friend);
+    EXPECT_TRUE(gate(archer, 3, 1)) << "the foe's own friend in the blast is no reason to hold";
+    foes_friend->set_dead(1);
+
+    foe->setxy(200, 11);  // a 160 px gap above (189 px corner to corner)
+    EXPECT_FALSE(gate(archer, 3, 0)) << "the classic answer: past 130";
+    EXPECT_TRUE(gate(archer, 3, 1)) << "a 160 px gap is inside the straight flight of 169";
+    foe->setxy(200, 1);
+    EXPECT_FALSE(gate(archer, 3, 1)) << "a 170 px gap is past it";
+}

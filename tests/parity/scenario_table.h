@@ -1295,7 +1295,7 @@ inline constexpr Mutation kMut_family_soldier_init = {
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "packs/core/families/living-02-archer.lua", 96,
+    "packs/core/families/living-02-archer.lua", 127,
     "hp = 90",
     "hp = 9000",
     "Cranks ARCHER descriptor HP x100 "
@@ -3656,7 +3656,7 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
-    "packs/core/families/living-02-archer.lua", 17,
+    "packs/core/families/living-02-archer.lua", 18,
     "self:s_add_command(C.COMMAND_QUICK_FIRE, 1, 1, 0)",
     "self:s_add_command(C.COMMAND_QUICK_FIRE, 1, -1, 0)",
     "Turns the one eastward shot of FIRE ARROWS' eight-direction volley around (dx +1 -> -1), so the only ray aimed at the team-1 soldier 60 px east now flies away from it. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 4000, 7000) both fail."
@@ -3676,7 +3676,7 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
-    "packs/core/families/living-02-archer.lua", 28,
+    "packs/core/families/living-02-archer.lua", 29,
     "if self:busy() ~= 0 then",
     "if true then",
     "Closes FLURRY's busy gate permanently, so archer slot 2 returns false before its three fire() releases and before the fire_frequency*2 busy charge. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500) flips.",
@@ -3699,7 +3699,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "packs/core/families/living-02-archer.lua", 48,
+    "packs/core/families/living-02-archer.lua", 49,
     "local arrow = self:fire()",
     "local arrow = nil",
     "Suppresses EXPLODING SHOT's arrow release, so the body restores the old weapon and takes its 'if not arrow' exit; no skip_exit-5000 buffed arrow is ever created. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400) flips."
@@ -4934,7 +4934,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "packs/core/families/living-02-archer.lua", 107,
+    "packs/core/families/living-02-archer.lua", 138,
     "default_weapon = \"core:arrow\"",
     "default_weapon = \"core:knife\"",
     "Swaps the archer's default weapon so post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW. No arrow is emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
@@ -6370,7 +6370,7 @@ inline constexpr FactPredicate kFacts_archer_fire_arrows_ring_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archer_fire_arrows_ring_scen99 = {
-    "packs/core/families/living-02-archer.lua", 6,
+    "packs/core/families/living-02-archer.lua", 7,
     "local WEAPON_FIRE_ARROW = assert(og.family_id(\"weapon\", \"core:fire_arrow\"))",
     "local WEAPON_FIRE_ARROW = assert(og.family_id(\"weapon\", \"core:arrow\"))",
     "Points the fire-arrow constant at core:arrow. The slot-1 COMMAND_SET_WEAPON then selects the archer's ordinary arrow, so no FAMILY_FIRE_ARROW ever enters weaplist or weapon_tracks and WeaponFamilyEmitted(FAMILY_FIRE_ARROW) fails. (The same constant feeds exploding_shot, so the flip is not slot-1-exclusive — acceptable for a staged-copy canary.)"
@@ -7756,7 +7756,7 @@ inline constexpr FactPredicate kFacts_archer_hit_response_backpedal_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
-    "packs/core/families/living-02-archer.lua", 73,
+    "packs/core/families/living-02-archer.lua", 74,
     "  if distance < og.tuning(self).melee_backpedal_range then",
     "  if false then",
     "Disables the archer's melee backpedal entirely. The archer never receives the away-facing COMMAND_WALK, so it stays in the soldier's swing arc: its final xpos drops 220 -> 202 (below the WalkerPositionMoved bound) and its HP lands on 3100 instead of 3000."
