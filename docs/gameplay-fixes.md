@@ -276,6 +276,20 @@ because the spin strikes it and the yell stuns it (fix K).
   slot 1 and the hit response still asks the slot the bot holds; with a
   payoff rule on every slot neither habit casts at nothing any more.
 
+`tests/integration/test_level_play.cpp` (binary `og_test_level_play`) checks
+the rules in a real level: it plays The Tryxian Chronicles' first level, its
+104 bots on four warring teams plus a crew of 12 heroes at level 14, for 2400
+ticks on three seeds, and counts every cast. On the shipped default the bots
+cast about 1600 times and 46 different specials, among them the eight Shift
+arms the level reaches (MYSTIC MACE, CHAIN LIGHTNING, TELEPORT MARKER, MINE,
+CHARM OPPONENT, TURN UNDEAD, WAIL, HASTE SELF) and the crew's slot-5
+HEARTBURST and FREEZE TIME, none at nobody (each special whose rule names a
+foe has one within its reach, worked from the gate's own arithmetic), REVEAL
+never, and no gate says yes to a cast that then refuses for the fact the gate
+reads. With the setting off the same level shows 217 casts at nobody, REVEAL
+29 times and 176 such refusals, so the test tells the rules from their
+absence.
+
 ## Charm and seats
 
 - **A driven hero resists a charm** (issue #355, both games). An enemy
