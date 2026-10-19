@@ -469,10 +469,12 @@ TEST_F(KitRests, bot_gates_hold_a_resting_special)
         EXPECT_FALSE(gate(w, row.slot)) << row.name << ": held while resting";
         if (row.family == FAMILY_MAGE || row.family == FAMILY_ORC) {
             // With the Gameplay Fixes setting on, the mage's TELEPORT keeps
-            // the classic rule (one foe near: stay), so WARP SPACE is asked.
+            // the classic rule (one foe near: stay) and WARP SPACE wants a
+            // crowd inside its point-blank ring, so HEARTBURST is asked: the
+            // foe 60 px off is inside its 94 px reach.
             int other = row.slot == 1 ? 2 : 1;
             if (row.gameplay_fixes != 0)
-                other = 2;
+                other = 5;
             EXPECT_TRUE(gate(w, other))
                 << row.name << ": another slot is not held";
         }
