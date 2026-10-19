@@ -142,9 +142,11 @@ inline constexpr std::uint32_t kDisplayRngPin = 0x5eed5bc1u;
 inline constexpr std::uint32_t kAuthorityRngPin = 0x5eed5bc2u;
 inline constexpr unsigned int kLibcRandPin = 0x5bc3u;
 // LEGION raises half its kills on a coin. The Legion scene shows both sides:
-// its first kill rises on the scene's own pin, and when the second soldier
-// is let go the authoritative world's generator is set to this state, under
-// which (measured) the skeleton's second kill stays down.
+// when the skeleton stands back up the authoritative world's generator is
+// set to the first state, under which (measured) its first kill rises, and
+// when the second soldier is let go to the second, under which (measured)
+// the skeleton's second kill stays down.
+inline constexpr std::uint32_t kLegionFirstCoinPin = 1u;
 inline constexpr std::uint32_t kLegionSecondCoinPin = 1u;
 
 // The seat's keys, rebound to keycodes no shipped layout uses.
@@ -2044,7 +2046,8 @@ std::vector<Scene> scenes()
     // cuts the skeleton down and it stands back up at a quarter health; it
     // fells him, then a second soldier. LEGION raises half its kills on a
     // coin: the first rises as a skeleton on its side, the second stays
-    // where it fell (the second coin is pinned, kLegionSecondCoinPin).
+    // where it fell (both coins are pinned, kLegionFirstCoinPin and
+    // kLegionSecondCoinPin).
     {
         Scene sc;
         sc.name = "skeleton_reassemble_legion";
@@ -2113,7 +2116,13 @@ std::vector<Scene> scenes()
             else if (run.marks.count("warded") != 0 &&
                      run.marks.count("rose") == 0 && !h->dead() &&
                      hp_of(h) >= 0.25f * h->stats()->max_hitpoints() - 1.0f)
+            {
                 run.marks["rose"] = static_cast<float>(f);
+                // The first coin is pinned here, as the second is when its
+                // soldier is let go: what the soldiers' own bot gates draw
+                // before this moment is theirs, not LEGION's.
+                run.server->world().rng_.state_ = kLegionFirstCoinPin;
+            }
             GameWorld& w = run.server->world();
             const float kills =
                 h->myguy != nullptr ? static_cast<float>(h->myguy->scen_kills) : 0.0f;

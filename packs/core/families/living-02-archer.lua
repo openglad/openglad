@@ -3,6 +3,7 @@
 
 local C = og.C
 local ai = og.use("ai")
+local G = og.use("gates")
 local WEAPON_FIRE_ARROW = assert(og.family_id("weapon", "core:fire_arrow"))
 
 local function fire_arrows(self)
@@ -86,6 +87,36 @@ local function level_up(guy, level_diff)
   og.apply_level_up(guy, level_diff, 4, 9, 8, 8, 1)
 end
 
+-- Gameplay Fixes: the classic gate (a foe within 130, about 6 squares) was
+-- asked of every slot. It is still asked first (it acquires the foe, and
+-- that draws); with the setting on each slot then asks for its own payoff,
+-- measured by the fire arrow's flight (step 8, range 12 in the weapon
+-- table) along the archer's heading. FIRE ARROWS' ring pays for two foes
+-- in its flight, or one the archer does not face (one faced foe is what an
+-- ordinary arrow hits). BARRAGE's three arrows fly along one line, so they
+-- want the archer's foe alive, faced and in flight. EXPLODING BOLT wants the
+-- same, and neither the archer nor an ally of its own in the blast.
+local function fixed(self)
+  local slot = self:current_special()
+  if slot == 1 then
+    return G.ring_pays(self, 8, 12)
+  end
+  local f = self:foe()
+  if not f or f:dead() ~= 0 then
+    return false
+  end
+  if not G.living(f) or not G.faces(self, f) then
+    return false
+  end
+  if not G.in_flight(self, f, 8, 12) then
+    return false
+  end
+  if slot == 2 then
+    return true
+  end
+  return G.blast_clear(self, f, G.blast_reach(self.level), true)
+end
+
 og.family("living", {
   id = "core:archer",
   wire_id = 2,
@@ -141,7 +172,7 @@ og.family("living", {
   },
 
   -- about 6 squares
-  check_special_ai = ai.foe_within(130),  -- fixed per-tick AI gate
+  check_special_ai = G.with_classic(ai.foe_within(130), fixed),  -- fixed per-tick AI gate
   hit_response = hit_response,
   set_difficulty = set_difficulty,
   level_up = level_up,

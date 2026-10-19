@@ -1283,7 +1283,7 @@ inline constexpr Mutation kMut_family_spawn_identity_elf = {
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "packs/core/families/living-00-soldier.lua", 171,
+    "packs/core/families/living-00-soldier.lua", 202,
     "hp = 120",
     "hp = 12000",
     "Cranks SOLDIER descriptor HP x100 "
@@ -1295,7 +1295,7 @@ inline constexpr Mutation kMut_family_soldier_init = {
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "packs/core/families/living-02-archer.lua", 96,
+    "packs/core/families/living-02-archer.lua", 127,
     "hp = 90",
     "hp = 9000",
     "Cranks ARCHER descriptor HP x100 "
@@ -1454,7 +1454,7 @@ inline constexpr Mutation kMut_family_big_orc_init = {
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "packs/core/families/living-16-barbarian.lua", 79,
+    "packs/core/families/living-16-barbarian.lua", 142,
     "hp = 150",
     "hp = 1",
     "Drops BARBARIAN descriptor HP to 1 "
@@ -3494,7 +3494,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 10,
+    "packs/core/families/living-00-soldier.lua", 11,
     "if self:s_forward_blocked() then",
     "if true then",
     "Closes CHARGE's forward-blocked gate permanently, so soldier slot 1 returns false before it issues COMMAND_RUSH or emits SOUND_CHARGE. The level-1 caster never dashes into the team-1 soldier and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) no longer finds a caster at exactly 63 HP."
@@ -3517,7 +3517,7 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 25,
+    "packs/core/families/living-00-soldier.lua", 26,
     "local boomerang = og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
     "local boomerang = nil and og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
     "Short-circuits BOOMERANG's returning-blade summon; the 'nil and' keeps the multi-line argument table part of an unevaluated call so the chunk still parses. throw_boomerang takes its 'if not boomerang' exit and no FX_BOOMERANG ever flies or intercepts hostile projectiles, flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5900, 5900)."
@@ -3536,7 +3536,7 @@ inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 47,
+    "packs/core/families/living-00-soldier.lua", 48,
     "self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)",
     "self, 200)",
     "Widens WHIRLWIND's strike ring from 32+2*level px (46 at this level-7 caster, short of the 60 px to the team-1 soldier) to a flat 200 px, so the spin now lands attack() rolls instead of finding nobody. The added combat draws move the caster off exactly 63 HP and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) fails."
@@ -3555,7 +3555,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 171,
+    "packs/core/families/living-00-soldier.lua", 202,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3574,7 +3574,7 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "packs/core/families/living-01-elf.lua", 20,
+    "packs/core/families/living-01-elf.lua", 21,
     "local rock = self:fire()",
     "local rock = nil",
     "Suppresses the first of SOME ROCKS' two rock releases, so some_rocks takes its 'if not rock' exit with the MP already refunded and nothing in flight. EventKindAtLeast(play_sound, 16) and WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) both fail.",
@@ -3595,7 +3595,7 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "packs/core/families/living-01-elf.lua", 98,
+    "packs/core/families/living-01-elf.lua", 137,
     "bounce_volley(3, 2, 3)",
     "bounce_volley(3, 1, 3)",
     "Halves slot 2's BOUNCING ROCKS volley by dropping the shared bounce_volley body's per-slot rock count from 2 to 1, so only one bouncing rock leaves the elf. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
@@ -3615,7 +3615,7 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "packs/core/families/living-01-elf.lua", 100,
+    "packs/core/families/living-01-elf.lua", 139,
     "bounce_volley(4, 3, 4)",
     "bounce_volley(4, 1, 4)",
     "Cuts slot 3's BOUNCING ROCKS volley from three rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) flips."
@@ -3635,7 +3635,7 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "packs/core/families/living-01-elf.lua", 103,
+    "packs/core/families/living-01-elf.lua", 142,
     "bounce_volley(5, 4, 5)",
     "bounce_volley(5, 1, 5)",
     "Cuts the default (slot 4) BOUNCING ROCKS volley from four rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
@@ -3656,7 +3656,7 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
-    "packs/core/families/living-02-archer.lua", 17,
+    "packs/core/families/living-02-archer.lua", 18,
     "self:s_add_command(C.COMMAND_QUICK_FIRE, 1, 1, 0)",
     "self:s_add_command(C.COMMAND_QUICK_FIRE, 1, -1, 0)",
     "Turns the one eastward shot of FIRE ARROWS' eight-direction volley around (dx +1 -> -1), so the only ray aimed at the team-1 soldier 60 px east now flies away from it. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 4000, 7000) both fail."
@@ -3676,7 +3676,7 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
-    "packs/core/families/living-02-archer.lua", 28,
+    "packs/core/families/living-02-archer.lua", 29,
     "if self:busy() ~= 0 then",
     "if true then",
     "Closes FLURRY's busy gate permanently, so archer slot 2 returns false before its three fire() releases and before the fire_frequency*2 busy charge. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500) flips.",
@@ -3699,7 +3699,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "packs/core/families/living-02-archer.lua", 48,
+    "packs/core/families/living-02-archer.lua", 49,
     "local arrow = self:fire()",
     "local arrow = nil",
     "Suppresses EXPLODING SHOT's arrow release, so the body restores the old weapon and takes its 'if not arrow' exit; no skip_exit-5000 buffed arrow is ever created. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400) flips."
@@ -4202,7 +4202,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 7,
+    "packs/core/families/living-16-barbarian.lua", 16,
     "if self:busy() > 0 then",
     "if true then",
     "Closes HURL BOULDER's busy gate permanently, so do_special returns false before the shot is fired and before WEAP_BOULDER is created; no boulder ever rolls. EventKindAtLeast(play_sound, 15) fails."
@@ -4233,7 +4233,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 56,
+    "packs/core/families/living-16-barbarian.lua", 65,
     "if self:current_special() == 2 then",
     "if false then",
     "Drops the slot-2 sentinel that marks the thrown boulder as EXPLODING (skip_exit 5000 -> 0), so slot 2 throws a plain boulder. The boulder's flight and impact diverge from the master golden and the exact weapon_tracks comparison fails; this row's HP band (5000, 12000) is too wide to see the difference, so the trajectory check carries the teeth."
@@ -4597,7 +4597,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
-    "packs/core/families/living-01-elf.lua", 70,
+    "packs/core/families/living-01-elf.lua", 71,
     "      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))",
     "      rock:set_lastx(og.fmul(og.fmul(rock:lastx(), next_spread_multiplier()), 2.0))",
     "Doubles the BOUNCING ROCKS first projectile's x-step while preserving the spread RNG draw. MEASURED flip: WalkerPositionMoved(FAMILY_SOLDIER, 156, 120) fails because the advancing enemy ends at (152,120) instead of the golden's (156,120). (This rationale used to claim the rock's speed rises to ~1404 centi-px/tick, above WeaponSpeed's 900 ceiling: measured, the seq-0 max step goes 671 -> 781 and stays inside the band.)"
@@ -4649,7 +4649,7 @@ inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 35,
+    "packs/core/families/living-16-barbarian.lua", 44,
     "    boulder:set_stepsize(self.level * 2)",
     "    boulder:set_stepsize(self.level * 0.5)",
     "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900."
@@ -4934,7 +4934,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "packs/core/families/living-02-archer.lua", 107,
+    "packs/core/families/living-02-archer.lua", 138,
     "default_weapon = \"core:arrow\"",
     "default_weapon = \"core:knife\"",
     "Swaps the archer's default weapon so post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW. No arrow is emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
@@ -6168,7 +6168,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_ring_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_whirlwind_ring_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 47,
+    "packs/core/families/living-00-soldier.lua", 48,
     "    self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)",
     "    self, 0)",
     "Collapses whirlwind's og.foes_in_range radius to 0. The three faeries sit at Manhattan >= 16 (bodies can never interpenetrate), so the foe list is empty: no self:attack(foe) and no outward s_force_command. The faerie hp predicate fails (all three stay at 7500) and the faerie position predicate fails (nothing is shoved east)."
@@ -6220,7 +6220,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_matched_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_disarm_matched_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 221,
+    "packs/core/families/living-00-soldier.lua", 252,
     "disarm_range = 28",
     "disarm_range = 0",
     "Collapses the disarm reach to 0. og.foes_in_range(self, 0) returns nothing (the tower sits at Manhattan 15), so found stays 0 and disarm returns false before SOUND_CHARGE, before the notification and before either busy write. EventKindAtLeast(notification,1) drops to 0 and EventKindExactly(play_sound,3) drops to 2 — two independent flips, and neither depends on which side won the two-draw roll."
@@ -6370,7 +6370,7 @@ inline constexpr FactPredicate kFacts_archer_fire_arrows_ring_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archer_fire_arrows_ring_scen99 = {
-    "packs/core/families/living-02-archer.lua", 6,
+    "packs/core/families/living-02-archer.lua", 7,
     "local WEAPON_FIRE_ARROW = assert(og.family_id(\"weapon\", \"core:fire_arrow\"))",
     "local WEAPON_FIRE_ARROW = assert(og.family_id(\"weapon\", \"core:arrow\"))",
     "Points the fire-arrow constant at core:arrow. The slot-1 COMMAND_SET_WEAPON then selects the archer's ordinary arrow, so no FAMILY_FIRE_ARROW ever enters weaplist or weapon_tracks and WeaponFamilyEmitted(FAMILY_FIRE_ARROW) fails. (The same constant feeds exploding_shot, so the flip is not slot-1-exclusive — acceptable for a staged-copy canary.)"
@@ -6499,7 +6499,7 @@ inline constexpr FactPredicate kFacts_barbarian_boulder_impact_scen99[] = {
 };
 
 inline constexpr Mutation kMut_barbarian_boulder_impact_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 59,
+    "packs/core/families/living-16-barbarian.lua", 68,
     "    boulder:set_skip_exit(0)",
     "    boulder:set_skip_exit(5000)",
     "Gives the slot-1 boulder the legacy 5000 explode-on-death sentinel, i.e. makes HURL BOULDER behave as EXPLODING BOULDER. weap::death then spawns a FAMILY_EXPLOSION with damage*2 = 60 at the boulder's death point, killing the already-plowed elf standing there: the elf alive-count drops below 3 and the blast's damage pushes score_per_team[0] past the ScoreDelta ceiling."
@@ -7756,7 +7756,7 @@ inline constexpr FactPredicate kFacts_archer_hit_response_backpedal_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
-    "packs/core/families/living-02-archer.lua", 73,
+    "packs/core/families/living-02-archer.lua", 74,
     "  if distance < og.tuning(self).melee_backpedal_range then",
     "  if false then",
     "Disables the archer's melee backpedal entirely. The archer never receives the away-facing COMMAND_WALK, so it stays in the soldier's swing arc: its final xpos drops 220 -> 202 (below the WalkerPositionMoved bound) and its HP lands on 3100 instead of 3000."
@@ -7942,7 +7942,7 @@ inline constexpr FactPredicate kFacts_elf_mega_rocks_volley_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elf_mega_rocks_volley_scen99 = {
-    "packs/core/families/living-01-elf.lua", 103,
+    "packs/core/families/living-01-elf.lua", 142,
     "    default_cast = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot",
     "    default_cast = bounce_volley(5, 1, 5),  -- case 4 and every unmapped slot",
     "Shrinks MEGA ROCKS from four rocks to one while keeping the MP refund and line-of-sight scaling. The play_sound floor of 4 collapses to 3, the weapon_tracks sample set drops from 62 to 5, and the lead orc survives, so WalkerFamilyCount(FAMILY_ORC, 1, 1) goes to 2."
@@ -8033,7 +8033,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_displacement_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_charge_displacement_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 14,
+    "packs/core/families/living-00-soldier.lua", 15,
     "  self:s_add_command(C.COMMAND_RUSH, 3,",
     "  self:s_add_command(C.COMMAND_RUSH, 1,",
     "Cuts the charge from three COMMAND_RUSH iterations to one, dropping the rush contribution from 24px to 0 measurable travel by the dump tick (xpos 184 -> 160). SOUND_CHARGE still fires, so only the position bound flips - the displacement is isolated."
@@ -8063,7 +8063,7 @@ inline constexpr FactPredicate kFacts_elf_rocks_pair_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elf_rocks_pair_scen99 = {
-    "packs/core/families/living-01-elf.lua", 31,
+    "packs/core/families/living-01-elf.lua", 32,
     "  rock = self:fire()",
     "  rock = nil",
     "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 3 fails at 2, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13400."
@@ -8424,7 +8424,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_scen99[] = {
         "consequence: the classic spin at nobody spends 120 of the 130 MP, so the held special from tick 45 cannot pay for a second spin; the foe ends at 103 hp from the plain melee"),
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 179,
+    "packs/core/families/living-00-soldier.lua", 210,
     "name = \"WHIRLWIND\", mp_cost = 120",
     "name = \"WHIRLWIND\", mp_cost = 1",
     "Makes WHIRLWIND cost 1 MP, so the classic spin at nobody leaves enough for the held second one: it lands on the foe and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300) fails."
@@ -8436,7 +8436,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_fixes_scen99[] = 
         "consequence: with the setting on the spin at nobody is refused for free, so the second spin is paid and lands on the foe, which ends at 85 hp"),
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 48,
+    "packs/core/families/living-00-soldier.lua", 49,
     "if gf.on() and #foes == 0 then",
     "if false then",
     "Removes the refusal, so the spin at nobody spends the 120 MP and the second one cannot be paid: the foe never takes the spin and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8500, 8500) fails."
@@ -8473,7 +8473,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_higher_foe_fixes_scen99[] =
         "consequence: the refused cast plays no SOUND_CHARGE; the fight that follows differs by one more swing"),
 };
 inline constexpr Mutation kMut_soldier_disarm_higher_foe_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 98,
+    "packs/core/families/living-00-soldier.lua", 99,
     "if not gf.on() or penalty > 0 then",
     "if not gf.on() or penalty > -100 then",
     "Lets a stagger below zero through again (penalty -6 > -100), so the won roll counts as a disarm: the cast succeeds, shows \"Fighter Disarmed Enemy!\" and plays SOUND_CHARGE. EventKindExactly(notification, 0) and EventKindExactly(play_sound, 9) fail."
@@ -8516,7 +8516,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_resisted_price_fixes_scen99
         "consequence: five tower swings before it dies, and its death; no SOUND_CHARGE from the resisted disarm"),
 };
 inline constexpr Mutation kMut_soldier_disarm_resisted_price_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 120,
+    "packs/core/families/living-00-soldier.lua", 121,
     "self.magicpoints = og.fsub(self.magicpoints, og.div(self:s_special_cost(self:current_special()), 2))",
     "self.magicpoints = og.fsub(self.magicpoints, self:s_special_cost(self:current_special()))",
     "Charges the resisted try the full 150 instead of half, so 50 MP are left and the BOOMERANG at tick 34 is refused: WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1), WalkerDiedByFinal(FAMILY_TOWER1) and EventKindExactly(play_sound, 6) fail."
@@ -8551,7 +8551,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_fixes_scen99[
         "consequence: the tower ends at 130 hp"),
 };
 inline constexpr Mutation kMut_soldier_disarm_resisted_busy_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 122,
+    "packs/core/families/living-00-soldier.lua", 123,
     "self:set_busy(og.fadd(self:busy(), 5.0))",
     "self:set_busy(self:busy())",
     "Drops the resisted try's 5 busy, so the held fire throws a tick sooner (25 and 57 instead of 26 and 58) and the second throw lands inside the 58-tick budget: EventKindExactly(play_sound, 10) fails.",
@@ -8583,7 +8583,7 @@ inline constexpr FactPredicate kFacts_elf_volley_refund_scen99[] = {
         "consequence: the extra MP is one more rock still in flight at the final tick"),
 };
 inline constexpr Mutation kMut_elf_volley_refund_scen99 = {
-    "packs/core/families/living-01-elf.lua", 50,
+    "packs/core/families/living-01-elf.lua", 51,
     "local refund = cost_mult",
     "local refund = cost_mult - 1",
     "Makes the classic refund one rock short (cost_mult - 1 = 2, the fixed amount), so the elf ends the volley one MP lower and throws one rock fewer: EventKindExactly(play_sound, 7) reads 6 and no rock is in flight at the end."
@@ -8597,7 +8597,7 @@ inline constexpr FactPredicate kFacts_elf_volley_refund_fixes_scen99[] = {
     // negative_assertion: the fixed refund leaves no MP for the rock the classic elf still has in flight
 };
 inline constexpr Mutation kMut_elf_volley_refund_fixes_scen99 = {
-    "packs/core/families/living-01-elf.lua", 53,
+    "packs/core/families/living-01-elf.lua", 54,
     "refund = count",
     "refund = count + 1",
     "Refunds one rock more than the volley throws, the classic overpay, so the held fire throws one more rock: EventKindExactly(play_sound, 6) reads 7 and WeaponFamilyCount(FAMILY_ROCK, 0, 0) sees a rock in flight.",
@@ -8628,7 +8628,7 @@ inline constexpr FactPredicate kFacts_elf_rocks_blocked_scen99[] = {
     pred::LevelDoneEquals(2),
 };
 inline constexpr Mutation kMut_elf_rocks_blocked_scen99 = {
-    "packs/core/families/living-01-elf.lua", 19,
+    "packs/core/families/living-01-elf.lua", 20,
     "self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())",
     "self.magicpoints = og.fadd(self.magicpoints, 0 * self:s_weapon_cost())",
     "Refunds nothing before the classic ROCKS, so the blocked cast costs its one swing as the fixed one does: the held fire runs short and the tower survives. WalkerDiedByFinal(FAMILY_TOWER1) and LevelDoneEquals(2) fail."
