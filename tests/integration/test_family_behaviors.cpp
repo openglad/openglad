@@ -558,7 +558,12 @@ private:
 // Soldier: foe within 20-75 → true; outside → false
 TEST(FamilyBehaviors, check_special_soldier_range)
 {
-    og::runtime::current_session->myscreen_->world().create_new_grid();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    // Pinned to the classic game: the classic CHARGE window alone. With
+    // Gameplay Fixes on the window must also hold a foe in the rush's path
+    // (the second half below).
+    world.gameplay_fixes = 0;
+    world.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     ASSERT_TRUE(soldier != nullptr) << "soldier created";
     // Enemy at distance 50 (within 20-75)
@@ -579,13 +584,47 @@ TEST(FamilyBehaviors, check_special_soldier_range)
     enemy->setxy(110, 100);
     result = soldier->check_special();
     ASSERT_TRUE(result == false) << "soldier check_special: foe at dist 10 should be false";
+
+    // Gameplay Fixes on (living-00-soldier.lua `fixed`, slot 1): CHARGE
+    // wants the classic window AND a living foe in the path the rush runs,
+    // nine steps of stepsize px along trunc(lastx / stepsize),
+    // trunc(lasty / stepsize) (G.rush_strikes). The soldier was spawned with
+    // no heading (lastx = lasty = 0): its rush walks nowhere.
+    world.gameplay_fixes = 1;
+    const float step = soldier->stepsize();
+    ASSERT_GE(step, 1.0f) << "the soldier walks";
+    enemy->setxy(140, 100);  // 40 px east: inside the window and the rush
+    soldier->set_lastx(0.0f);
+    soldier->set_lasty(0.0f);
+    EXPECT_FALSE(soldier->check_special())
+        << "fixes on: the foe at 40 is in the window, but with no heading the rush goes nowhere";
+    soldier->set_lastx(step);  // heading east, at the foe
+    EXPECT_TRUE(soldier->check_special())
+        << "fixes on: heading east, the rush runs into the foe 40 px away";
+    soldier->set_lastx(0.0f);
+    soldier->set_lasty(step);  // heading down, past the foe
+    EXPECT_FALSE(soldier->check_special())
+        << "fixes on: heading down, the rush runs past the foe";
+    soldier->set_lastx(step);
+    soldier->set_lasty(0.0f);
+    enemy->setxy(200, 100);
+    EXPECT_FALSE(soldier->check_special())
+        << "fixes on: the foe at 100 is outside the window whatever the heading";
+    enemy->setxy(110, 100);
+    EXPECT_FALSE(soldier->check_special())
+        << "fixes on: the foe at 10 is inside the window's near edge";
 }
 
 
 // Archer/FireElemental/Ghost/Orc: foe within 130 → true
 TEST(FamilyBehaviors, check_special_ranged_families)
 {
-    og::runtime::current_session->myscreen_->world().create_new_grid();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    // Pinned to the classic game: the shared "foe within 130" gate the four
+    // families had. With Gameplay Fixes on each slot 1 answers by what it
+    // does (the second half below).
+    world.gameplay_fixes = 0;
+    world.create_new_grid();
     int families[] = {FAMILY_ARCHER, FAMILY_FIREELEMENTAL, FAMILY_GHOST, FAMILY_ORC};
     for (int fam : families)
     {
@@ -606,6 +645,103 @@ TEST(FamilyBehaviors, check_special_ranged_families)
         result = w->check_special();
         ASSERT_TRUE(result == false) << "ranged family: foe at dist 150 should be false";
     }
+
+    // Gameplay Fixes on: each family alone with one living foe east of it,
+    // on a fresh board. Every walker is level 1 with the spawn heading
+    // (lastx = lasty = 0, which fires UP), so a foe east is one it does not
+    // face; set_lastx(1) turns it east, at the foe. The classic foe search
+    // still runs first on every family (G.with_classic).
+    world.gameplay_fixes = 1;
+    struct Staged
+    {
+        walker* self;
+        walker* foe;
+    };
+    auto stage = [&world](int family) {
+        world.delete_objects();
+        world.create_new_grid();
+        Staged st{add_living_to_level(family, 0, 100, 100),
+                  add_living_to_level(FAMILY_SOLDIER, 1, 200, 100)};
+        if (st.self && st.foe)
+        {
+            st.self->set_foe(st.foe);
+            st.self->stats()->set_magicpoints(1000);
+            st.self->set_current_special(1);
+        }
+        return st;
+    };
+
+    // Archer FIRE ARROWS (living-02-archer.lua `fixed`, slot 1:
+    // G.ring_pays(self, 8, 12)): the ring pays where one arrow would not,
+    // two living foes inside the arrows' flight (147 px of gap straight at
+    // level 1) or one the archer does not face.
+    {
+        Staged st = stage(FAMILY_ARCHER);
+        ASSERT_TRUE(st.self && st.foe) << "archer staged";
+        EXPECT_TRUE(st.self->check_special())
+            << "archer, fixes on: one foe 84 px east, in flight and unfaced: the ring pays";
+        st.self->set_lastx(1.0f);
+        EXPECT_FALSE(st.self->check_special())
+            << "archer, fixes on: the same foe faced: one arrow does it, no ring";
+        walker* second = add_living_to_level(FAMILY_SOLDIER, 1, 100, 200);
+        ASSERT_TRUE(second != nullptr);
+        EXPECT_TRUE(st.self->check_special())
+            << "archer, fixes on: a second foe 84 px below, in flight: the ring pays";
+        second->setxy(600, 600);
+        st.foe->setxy(280, 100);  // a 164 px gap: past the straight flight
+        st.self->set_lastx(0.0f);
+        EXPECT_FALSE(st.self->check_special())
+            << "archer, fixes on: an unfaced foe past the arrows' flight is not in the ring";
+    }
+
+    // Fire elemental STARBURST (living-06-elemental.lua fixed_starburst:
+    // G.ring_pays(self, 7, 9)): the meteor ring, 89 px of gap straight at
+    // level 1.
+    {
+        Staged st = stage(FAMILY_FIREELEMENTAL);
+        ASSERT_TRUE(st.self && st.foe) << "fire elemental staged";
+        EXPECT_TRUE(st.self->check_special())
+            << "fire elemental, fixes on: one foe 84 px east, in flight and unfaced: the ring pays";
+        st.self->set_lastx(1.0f);
+        EXPECT_FALSE(st.self->check_special())
+            << "fire elemental, fixes on: the same foe faced: one meteor does it, no ring";
+        st.self->set_lastx(0.0f);
+        st.foe->setxy(250, 100);  // a 134 px gap: past the meteors' flight
+        EXPECT_FALSE(st.self->check_special())
+            << "fire elemental, fixes on: an unfaced foe past the meteors' flight is not in the ring";
+    }
+
+    // Ghost SCARE (living-12-ghost.lua fixed_scare): a living foe inside the
+    // scare radius, min(50 + 10 * level, 250) = 60 px at level 1, and SCARE
+    // not resting; the Shift is 0 (WAIL, with New Specials on, wants a
+    // second foe within a hop of the first, and there is none).
+    {
+        Staged st = stage(FAMILY_GHOST);
+        ASSERT_TRUE(st.self && st.foe) << "ghost staged";
+        EXPECT_FALSE(st.self->check_special())
+            << "ghost, fixes on: a foe at 100, inside the classic 130, is outside the 60 px scare radius";
+        st.foe->setxy(140, 100);
+        EXPECT_TRUE(st.self->check_special())
+            << "ghost, fixes on: a foe at 40 is inside the scare radius";
+        EXPECT_EQ(0, st.self->shifter_down()) << "ghost, fixes on: SCARE, not WAIL";
+    }
+
+    // Orc HOWL (living-14-orc.lua fixed_gate, slot 1): a body the yell can
+    // stun inside the yell radius, min(160 + 20 * level, 420) = 180 px at
+    // level 1, not 130.
+    {
+        Staged st = stage(FAMILY_ORC);
+        ASSERT_TRUE(st.self && st.foe) << "orc staged";
+        EXPECT_TRUE(st.self->check_special())
+            << "orc, fixes on: a foe at 100 is inside the yell";
+        st.foe->setxy(250, 100);
+        EXPECT_TRUE(st.self->check_special())
+            << "orc, fixes on: a foe at 150, past the classic 130, is inside the 180 px yell";
+        st.foe->setxy(290, 100);
+        EXPECT_FALSE(st.self->check_special())
+            << "orc, fixes on: a foe at 190 is outside the yell";
+    }
+    world.delete_objects();
 }
 
 
@@ -682,9 +818,14 @@ TEST(FamilyBehaviors, check_special_default_families)
 }
 
 // The same families with New Specials on. The druid, the barbarian and the
-// golem have no new kit and keep the classic answer: always true. The
-// faerie and the orc captain (FAMILY_BIG_ORC) now have bot gates on slot 1
-// that answer from the scene, not by default:
+// golem have no new kit. With Gameplay Fixes off they keep the classic
+// answer, always true; with it on (the shipped default) the golem has no
+// special to gate and still answers true, while the druid's GROW TREE and
+// the barbarian's HURL BOULDER have payoff gates (living-13-druid.lua,
+// living-16-barbarian.lua): a faced living foe, inside 60 px and not at
+// blows for the tree, inside the boulder's short flight (16 px of gap at
+// level 1) for the boulder. The faerie and the orc captain (FAMILY_BIG_ORC)
+// now have bot gates on slot 1 that answer from the scene, not by default:
 //   faerie BLINK / SWAP (kit_faerie.lua ai_blink): with no ally to save and
 //     no foe within 30 px, false; hurt below half with a foe within 30 px,
 //     true, and the shift is dropped (BLINK away, not SWAP).
@@ -698,6 +839,8 @@ TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
     world.create_new_grid();
     world.new_specials = 1;
 
+    // Gameplay Fixes off: the classic answer.
+    world.gameplay_fixes = 0;
     for (int fam : {FAMILY_DRUID, FAMILY_BARBARIAN, FAMILY_GOLEM})
     {
         walker* w = add_living_to_level(fam, 0, 100, 100);
@@ -707,6 +850,60 @@ TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
         EXPECT_TRUE(w->check_special())
             << "family " << fam << " has no new kit: the classic answer";
     }
+
+    // Gameplay Fixes on. Each body alone on a fresh board, level 1, with
+    // the spawn heading (lastx = lasty = 0 fires UP).
+    world.gameplay_fixes = 1;
+    {
+        world.delete_objects();
+        world.create_new_grid();
+        walker* golem = add_living_to_level(FAMILY_GOLEM, 0, 100, 100);
+        ASSERT_TRUE(golem != nullptr);
+        golem->stats()->set_magicpoints(1000);
+        golem->set_current_special(1);
+        EXPECT_TRUE(golem->check_special())
+            << "golem, fixes on: no special and no gate, the default answer";
+    }
+    {
+        world.delete_objects();
+        world.create_new_grid();
+        walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
+        ASSERT_TRUE(druid != nullptr);
+        druid->stats()->set_magicpoints(1000);
+        druid->set_current_special(1);
+        EXPECT_FALSE(druid->check_special())
+            << "druid, fixes on: alone, GROW TREE plants a tree at nobody";
+        // A 16 px foe whose bottom edge is 40 px above the druid: faced,
+        // 56 px off (inside 60), not within a blow.
+        walker* foe = add_living_to_level(FAMILY_SOLDIER, 1, 100, 44);
+        ASSERT_TRUE(foe != nullptr);
+        EXPECT_TRUE(druid->check_special())
+            << "druid, fixes on: a faced foe closing, 40 px of gap: the tree goes between";
+        foe->setxy(100, 156);  // the same gap below: behind the heading
+        EXPECT_FALSE(druid->check_special())
+            << "druid, fixes on: a foe behind the druid is not where the tree grows";
+    }
+    {
+        world.delete_objects();
+        world.create_new_grid();
+        walker* barbarian = add_living_to_level(FAMILY_BARBARIAN, 0, 100, 100);
+        ASSERT_TRUE(barbarian != nullptr);
+        barbarian->stats()->set_magicpoints(1000);
+        barbarian->set_current_special(1);
+        EXPECT_FALSE(barbarian->check_special())
+            << "barbarian, fixes on: alone, HURL BOULDER throws at nobody";
+        // A 16 px foe whose bottom edge is 16 px above the barbarian: faced,
+        // at the end of the level-1 boulder's flight.
+        walker* foe = add_living_to_level(FAMILY_SOLDIER, 1, 100, 68);
+        ASSERT_TRUE(foe != nullptr);
+        EXPECT_TRUE(barbarian->check_special())
+            << "barbarian, fixes on: a faced foe 16 px off is inside the boulder's flight";
+        foe->setxy(100, 67);
+        EXPECT_FALSE(barbarian->check_special())
+            << "barbarian, fixes on: a faced foe 17 px off is past the boulder's flight";
+    }
+    world.delete_objects();
+    world.create_new_grid();
 
     walker* faerie = add_living_to_level(FAMILY_FAERIE, 0, 300, 300);
     walker* captain = add_living_to_level(FAMILY_BIG_ORC, 0, 600, 100);
@@ -2204,7 +2401,11 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     ASSERT_TRUE(og::test::do_special(*fd, orc)) << "eat corpse should succeed when blood is close";
     ASSERT_TRUE(near_blood->dead()) << "eaten blood object should be marked dead";
 
-    // check_special_ai with preset foe in/out of range.
+    // check_special_ai with preset foe in/out of range. Pinned to the
+    // classic game: the classic "foe within 130" gate both slots shared.
+    // With Gameplay Fixes on each slot answers by what it does (below).
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.gameplay_fixes = 0;
     walker* foe = add_living_to_level(FAMILY_SOLDIER, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "foe for AI checks created";
     orc->set_foe(foe);
@@ -2222,6 +2423,43 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     foe = add_living_to_level(FAMILY_SOLDIER, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "near foe created";
     ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(orc))) << "orc AI should pass after finding nearby foe";
+
+    // Gameplay Fixes on (living-14-orc.lua fixed_gate; the classic search
+    // still runs first). EAT CORPSE (slot 2) wants the orc below 60 percent
+    // of its health with a stain under it, whatever the foes are doing;
+    // HOWL (slot 1) wants a body the yell can stun inside the yell radius,
+    // min(160 + 20 * level, 420) = 180 px at level 1, not 130.
+    world.gameplay_fixes = 1;
+    world.delete_objects();
+    world.create_new_grid();
+    orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
+    ASSERT_TRUE(orc != nullptr) << "orc recreated for the fixed gate";
+    foe = add_living_to_level(FAMILY_SOLDIER, 1, 150, 100);
+    ASSERT_TRUE(foe != nullptr);
+    orc->set_foe(foe);
+    orc->set_current_special(2);
+    orc->stats()->set_hitpoints(orc->stats()->max_hitpoints() - 20.0f);
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(orc)))
+        << "orc EAT CORPSE, fixes on: a foe in range is not asked; barely hurt, no stain: no meal";
+    walker* meal = add_stain_to_fxlist(1, 101, 100);
+    ASSERT_TRUE(meal != nullptr) << "stain under the orc created";
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(orc)))
+        << "orc EAT CORPSE, fixes on: a stain underfoot, but above 60 percent health";
+    orc->stats()->set_hitpoints(orc->stats()->max_hitpoints() * 0.5f);
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(orc)))
+        << "orc EAT CORPSE, fixes on: at half health with a stain underfoot";
+    foe->setxy(400, 400);
+    orc->set_foe(nullptr);
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(orc)))
+        << "orc EAT CORPSE, fixes on: the same, with no foe within 130";
+    orc->set_current_special(1);
+    foe->setxy(260, 100);  // 160 px: past the classic 130, inside the yell
+    ASSERT_TRUE(og::test::check_special_ai(*fd, static_cast<living*>(orc)))
+        << "orc HOWL, fixes on: a foe at 160 is inside the 180 px yell";
+    foe->setxy(290, 100);
+    ASSERT_TRUE(!og::test::check_special_ai(*fd, static_cast<living*>(orc)))
+        << "orc HOWL, fixes on: a foe at 190 is outside the yell";
+    world.delete_objects();
 }
 
 
@@ -2761,7 +2999,12 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     mage->set_user(0);
     ASSERT_TRUE(!og::test::do_special(*mage_fd, mage)) << "mage marker path should fail for low-intelligence player characters";
 
-    // Thief AI and do_special guards.
+    // Thief AI and do_special guards. The AI claims are the classic
+    // game's (the drop-bomb window, the three-foe count, the default arm):
+    // Gameplay Fixes is held off for them, and the setting-on answers
+    // follow on a board of their own.
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.gameplay_fixes = 0;
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     ASSERT_TRUE(thief != nullptr) << "thief created";
     thief->set_current_special(1);
@@ -2775,6 +3018,49 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     ASSERT_TRUE(!og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief bomb AI should reject when too few foes are nearby";
     thief->set_current_special(5);
     ASSERT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief AI default branch should allow special";
+    world.gameplay_fixes = 1;
+
+    // Gameplay Fixes on (living-11-thief.lua check_special_ai), a level-1
+    // thief at (500, 300), far from every body above. DROP BOMB wants a
+    // living foe inside the blast around the thief, 15 + clamp(4 * level,
+    // 16, 96) = 31 px, and no ally of the thief in it; the Shift is 0
+    // whenever the setting is on. POISON CLOUD (slot 4, the arm the default
+    // branch's slots reach with the setting on) wants two living foes
+    // within a blow and no cloud of the thief's.
+    {
+        walker* bomber = add_living_to_level(FAMILY_THIEF, 0, 500, 300);
+        walker* far_foe = add_living_to_level(FAMILY_SOLDIER, 1, 600, 300);
+        ASSERT_TRUE(bomber && far_foe) << "fixed-gate thief staged";
+        bomber->set_foe(far_foe);
+        bomber->set_current_special(1);
+        bomber->set_shifter_down(1);
+        EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief DROP BOMB, fixes on: a foe at 100 is past the blast";
+        EXPECT_EQ(0, bomber->shifter_down()) << "thief, fixes on: the gate writes Shift 0";
+        walker* near_foe = add_living_to_level(FAMILY_SOLDIER, 1, 525, 300);
+        ASSERT_TRUE(near_foe != nullptr);
+        EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief DROP BOMB, fixes on: a foe at 25 is inside the 31 px blast";
+        walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 480, 300);
+        ASSERT_TRUE(ally != nullptr);
+        EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief DROP BOMB, fixes on: an ally 20 px off is inside the blast too";
+        ally->setxy(480, 400);  // 120 px off: out of the blast and the cloud
+
+        bomber->set_current_special(4);
+        near_foe->setxy(517, 300);  // a 1 px gap east: at blows
+        EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief POISON CLOUD, fixes on: one foe at blows";
+        far_foe->setxy(483, 300);  // a 1 px gap west: a second at blows
+        EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief POISON CLOUD, fixes on: two foes at blows";
+        bomber->set_current_special(5);
+        EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief slot 5, fixes on: past the four named slots the gate reads POISON CLOUD's rule";
+        near_foe->setxy(525, 400);  // 125 px off: no longer at blows
+        EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief slot 5, fixes on: one foe at blows, POISON CLOUD's rule refuses";
+    }
 
     thief->set_current_special(3);
     thief->set_shifter_down(0);
@@ -3100,6 +3386,11 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     ASSERT_TRUE(thief_fd && og::test::has_do_special(*thief_fd) && og::test::has_check_special_ai(*thief_fd)) << "thief callbacks exist";
 
     // Cleric AI special-1 low-friend/low-magic false and non-special-1 true.
+    // Pinned to the classic game: the classic cleric gate (any friend near
+    // heals, half the pool maces, every other slot goes); Gameplay Fixes is
+    // held off for these two claims and its answers follow.
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.gameplay_fixes = 0;
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     ASSERT_TRUE(cleric != nullptr) << "cleric created";
     cleric->set_current_special(1);
@@ -3107,6 +3398,33 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     ASSERT_TRUE(!og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric))) << "cleric check_special_ai should fail for heal with no targets and low mp";
     cleric->set_current_special(3);
     ASSERT_TRUE(og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric))) << "cleric check_special_ai should default true for non-heal specials";
+
+    // Gameplay Fixes on (living-05-cleric.lua check_special_ai). Slot 1:
+    // HEAL wants a hurt ally within 60 px, else MYSTIC MACE wants half the
+    // pool and a living foe within 48 px; alone with no magic, neither.
+    // Slot 3 with no undead foe in reach is RAISE GHOST (Shift 0): the
+    // nearest stain within 30 px and a living foe within 130.
+    world.gameplay_fixes = 1;
+    cleric->set_current_special(1);
+    ASSERT_TRUE(!og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric)))
+        << "cleric slot 1, fixes on: nobody hurt, no foe, no magic: no heal and no mace";
+    cleric->set_current_special(3);
+    cleric->set_shifter_down(1);
+    ASSERT_TRUE(!og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric)))
+        << "cleric RAISE GHOST, fixes on: no corpse and no foe";
+    EXPECT_EQ(0, cleric->shifter_down()) << "cleric, fixes on: no undead to turn, the raise (Shift 0)";
+    walker* stain = add_stain_to_fxlist(1, 104, 104);
+    ASSERT_TRUE(stain != nullptr) << "stain beside the cleric created";
+    ASSERT_TRUE(!og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric)))
+        << "cleric RAISE GHOST, fixes on: a corpse at its feet, but no living foe for the ghost to fight";
+    walker* raise_foe = add_living_to_level(FAMILY_ORC, 1, 200, 100);
+    ASSERT_TRUE(raise_foe != nullptr);
+    ASSERT_TRUE(og::test::check_special_ai(*cleric_fd, static_cast<living*>(cleric)))
+        << "cleric RAISE GHOST, fixes on: a corpse at its feet and a foe at 100";
+    // The rest of this case stages its own bodies: the raise's stain and
+    // foe leave the board.
+    stain->set_dead(1);
+    raise_foe->set_dead(1);
 
     // Cleric turn-undead guard branch: busy rejects immediately.
     cleric->set_current_special(2);
@@ -3148,7 +3466,17 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     ASSERT_TRUE(!og::test::do_special(*soldier_fd, soldier)) << "soldier disarm should fail when busy";
     soldier->set_busy(0);
     soldier->set_foe(add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos() + 10), soldier->ypos()));
+    // The classic window (20 < d < 75) refuses a foe at 10 on every slot;
+    // held off for that claim. With Gameplay Fixes on the soldier is on
+    // slot 4 here, DISARM, whose rule does not ask the window: a living foe
+    // blocking its front (the orc 1 px ahead of a soldier facing right)
+    // within 28 px and not above its level.
+    world.gameplay_fixes = 0;
     ASSERT_TRUE(!og::test::check_special_ai(*soldier_fd, static_cast<living*>(soldier))) << "soldier special ai should fail for too-close foe distance";
+    world.gameplay_fixes = 1;
+    ASSERT_EQ(4, static_cast<int>(soldier->current_special()));
+    EXPECT_TRUE(og::test::check_special_ai(*soldier_fd, static_cast<living*>(soldier)))
+        << "soldier DISARM, fixes on: a level-1 foe blocks the front of a level-1 soldier";
 
     // Thief AI/special guards.
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 180, 100);
@@ -3156,7 +3484,15 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     ASSERT_TRUE(thief && thief_foe) << "thief fixtures created";
     thief->set_current_special(1);
     thief->set_foe(thief_foe);
+    // The classic drop-bomb window (35 < d < 130 refuses); held off for it.
+    world.gameplay_fixes = 0;
     ASSERT_TRUE(!og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief bomb ai should reject medium-range foe distances";
+    world.gameplay_fixes = 1;
+    // Fixes on: the bomb wants a living foe inside its 31 px blast and no
+    // ally in it. The orc 30 px west (the soldier's foe above) is inside;
+    // the soldier, the thief's ally, stands 40 px west, outside.
+    EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(thief)))
+        << "thief DROP BOMB, fixes on: a foe 30 px off inside the blast and no ally in it";
     thief->set_current_special(3);
     thief->set_shifter_down(0);
     thief->set_busy(1);
