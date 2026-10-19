@@ -634,9 +634,9 @@ treated as balance bugs, as the earlier ones were.
 Twenty seeds (42, 1337, 2025 and 1 to 17, measured for this check only)
 show how far those lines and the lines that moved most went on average.
 "Classic" is the shipped default with every bot rule back at its text
-before the bot gates (measured before The Old Count's Vault was eased),
-"first gates" the bot gates with the aimed CHARGE rule, "now" the shipped
-default as merged.
+before the bot gates and "first gates" the bot gates with the aimed CHARGE
+rule, both measured before The Old Count's Vault was eased (only its row
+is affected); "now" is the shipped default as merged.
 
 | line | its pin | classic | first gates | now |
 |---|---|---|---|---|
@@ -687,6 +687,13 @@ on a seed: Westlands 3 `7 8 5` (floor 6; it read `8 8 7` before the bot
 gates), Westlands 23 `5 4 4` (`4 7 6`, already under on seed 42) and Long
 Season 5 `8 6 4` (floor 5; `7 8 7`). Westlands 5 reads under on seed 2025
 in all four columns, both settings off included, so it predates this work.
+Over a ceiling on a seed the suites do not assert: Westlands 8 reads
+`0 3 6` on the shipped default against its ceiling of 2 (it read `2 0 2`
+before the bot gates; its twenty-seed mean fell, 2.95 to 2.35, so the
+crew does no better on average), and with New Specials off and the
+setting on Westlands 8 reads `0 0 6` and Westlands 20 `0 0 6` against
+ceilings of 2 and 5. The ceilings are asserted on seed 42 alone, where
+both read 0.
 
 **The other change outside the setting that moves a calibration line.**
 Besides the four eased Long Season levels, and the kits' bot rules
