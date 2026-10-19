@@ -466,3 +466,108 @@ TEST_F(GameplayFixesBots, thief_poison_cloud_wants_two_foes_at_blows_and_no_clou
     slime->set_owner(thief);
     EXPECT_TRUE(gate(thief, 4, 1)) << "a slime of its own is no cloud";
 }
+
+// ---------------------------------------------------------------------------
+// The druid (the classic druid has no gate: every answer is yes)
+// ---------------------------------------------------------------------------
+
+// Row 42. GROW TREE wants the druid's nearest living foe faced (the fire
+// heading: UP at spawn), within 60 px and not yet at blows.
+//
+// RED (no gate): the hook answers nothing, so gate(druid, 1, 0) is false.
+TEST_F(GameplayFixesBots, druid_tree_wants_a_faced_foe_closing_but_not_touching)
+{
+    living* druid = body(add(FAMILY_DRUID, 1, 200, 200, 1, 100.0f), 16, 16);
+    ASSERT_NE(nullptr, druid);
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer alone";
+    EXPECT_FALSE(gate(druid, 1, 1)) << "alone";
+
+    living* foe = body(add(FAMILY_SOLDIER, 0, 200, 160, 1), 16, 16);  // 40 px above
+    ASSERT_NE(nullptr, foe);
+    EXPECT_TRUE(gate(druid, 1, 1)) << "a foe 40 px ahead (the spawn heading UP)";
+    foe->setxy(200, 183);  // a 1 px gap
+    EXPECT_FALSE(gate(druid, 1, 1)) << "the foe at blows: it blocks the tree";
+    foe->setxy(200, 240);  // 40 px below
+    EXPECT_FALSE(gate(druid, 1, 1)) << "the foe behind the druid";
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer";
+    druid->set_lasty(1.0f);  // the druid now faces DOWN
+    EXPECT_TRUE(gate(druid, 1, 1)) << "faced once the heading turns";
+    druid->set_lasty(0.0f);
+    foe->setxy(200, 139);  // 61 px above
+    EXPECT_FALSE(gate(druid, 1, 1)) << "61 px: not closing yet";
+    foe->setxy(200, 140);
+    EXPECT_TRUE(gate(druid, 1, 1)) << "60 px: the edge is in";
+}
+
+// Row 43. SUMMON FAERIE wants a living foe within 130 px and no faerie of
+// the druid's alive.
+//
+// RED (no gate): gate(druid, 2, 0) is false.
+TEST_F(GameplayFixesBots, druid_faerie_wants_a_foe_near_and_no_faerie_out)
+{
+    living* druid = body(add(FAMILY_DRUID, 1, 200, 200, 4, 300.0f), 16, 16);
+    ASSERT_NE(nullptr, druid);
+    EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer alone";
+    EXPECT_FALSE(gate(druid, 2, 1)) << "alone";
+
+    living* foe = body(add(FAMILY_SOLDIER, 0, 300, 200, 1), 16, 16);  // 100 px
+    ASSERT_NE(nullptr, foe);
+    EXPECT_TRUE(gate(druid, 2, 1)) << "a foe at 100 px";
+    foe->setxy(331, 200);
+    EXPECT_FALSE(gate(druid, 2, 1)) << "131 px";
+    foe->setxy(330, 200);
+    EXPECT_TRUE(gate(druid, 2, 1)) << "130 px: the edge is in";
+
+    walker* blade = owned_fx(world(), FAMILY_BOOMERANG, druid, 220, 220);
+    ASSERT_NE(nullptr, blade);
+    EXPECT_TRUE(gate(druid, 2, 1)) << "an FX boomerang (family 7) is no faerie";
+    living* faerie = body(add(FAMILY_FAERIE, 1, 220, 180, 1), 16, 16);
+    ASSERT_NE(nullptr, faerie);
+    faerie->set_owner(druid);
+    EXPECT_FALSE(gate(druid, 2, 1)) << "a faerie of the druid's is out";
+    EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer";
+}
+
+// Row 44. REVEAL is never cast by a bot.
+//
+// RED (no gate): gate(druid, 3, 0) is false.
+TEST_F(GameplayFixesBots, druid_reveal_is_never_cast_by_a_bot)
+{
+    living* druid = body(add(FAMILY_DRUID, 1, 200, 200, 7, 1000.0f), 16, 16);
+    ASSERT_TRUE(druid && body(add(FAMILY_SOLDIER, 0, 217, 200, 1), 16, 16));
+    EXPECT_TRUE(gate(druid, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(druid, 3, 1)) << "a foe beside it and 1000 MP: still no";
+}
+
+// Row 45. PROTECTION wants an ally within 60 px with a living foe at blows
+// with it, and no circle on that ally or one under 50 hp.
+//
+// RED (no gate): gate(druid, 4, 0) is false.
+TEST_F(GameplayFixesBots, druid_protection_wants_an_ally_under_blows_without_a_fresh_circle)
+{
+    living* druid = body(add(FAMILY_DRUID, 1, 200, 200, 10, 1250.0f), 16, 16);
+    living* ally = body(add(FAMILY_ORC, 1, 240, 200, 1), 16, 16);  // 40 px
+    ASSERT_TRUE(druid && ally);
+    EXPECT_TRUE(gate(druid, 4, 0)) << "the classic answer: an idle ally";
+    EXPECT_FALSE(gate(druid, 4, 1)) << "an idle ally";
+
+    living* foe = body(add(FAMILY_SOLDIER, 0, 257, 200, 1), 16, 16);  // a 1 px gap
+    ASSERT_NE(nullptr, foe);
+    EXPECT_TRUE(gate(druid, 4, 1)) << "the ally at blows";
+    foe->setxy(262, 200);  // a 6 px gap
+    EXPECT_FALSE(gate(druid, 4, 1)) << "the foe a pixel out of a blow";
+    foe->setxy(257, 200);
+
+    walker* circle = world().add_weap_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    ASSERT_NE(nullptr, circle);
+    circle->setxy(240, 200);
+    circle->set_owner(ally);
+    circle->stats()->set_hitpoints(50.0f);
+    EXPECT_FALSE(gate(druid, 4, 1)) << "a fresh circle on the ally";
+    circle->stats()->set_hitpoints(30.0f);
+    EXPECT_TRUE(gate(druid, 4, 1)) << "a worn circle (30 hp)";
+
+    ally->setxy(261, 160);  // 61 + 40 = 101 px from the druid
+    foe->setxy(278, 160);
+    EXPECT_FALSE(gate(druid, 4, 1)) << "the ally out of the druid's 60 px";
+}

@@ -170,10 +170,10 @@ TEST(FamilyRegistry, registry_behavior_lives_in_pack_lua)
     // check_special_ai: families with custom AI gating.
     for (int family : {FAMILY_SOLDIER, FAMILY_ARCHER, FAMILY_FIREELEMENTAL,
                        FAMILY_GHOST, FAMILY_ORC, FAMILY_THIEF, FAMILY_MAGE,
-                       FAMILY_SLIME, FAMILY_CLERIC, FAMILY_SKELETON})
+                       FAMILY_SLIME, FAMILY_CLERIC, FAMILY_SKELETON,
+                       FAMILY_DRUID})
         EXPECT_TRUE(has(family, FamilyHook::CheckSpecialAi))
             << get_family_descriptor(family)->name;
-    EXPECT_FALSE(has(FAMILY_DRUID, FamilyHook::CheckSpecialAi));
     EXPECT_FALSE(has(FAMILY_BARBARIAN, FamilyHook::CheckSpecialAi));
 
     // hit_response / on_death / set_difficulty / level_up.

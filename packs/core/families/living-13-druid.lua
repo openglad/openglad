@@ -4,6 +4,7 @@
 local C = og.C
 local lc = og.use("living_common")
 local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local WEAP_TREE = assert(og.family_id("weapon", "core:tree"))
 local LIVING_FAERIE = assert(og.family_id("living", "core:faerie"))
 local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protection"))
@@ -145,6 +146,42 @@ local function protection_circle(self)
   return true
 end
 
+-- The bot gate. The classic druid had none: every special it rolled was
+-- cast. With the Gameplay Fixes setting on, each asks for its payoff.
+local function check_special_ai(self)
+  if not gf.on() then
+    return true -- the classic druid casts every roll
+  end
+  local slot = self:current_special()
+  if slot == 1 then
+    -- GROW TREE: a tree between the druid and a foe closing on it: the
+    -- nearest living foe faced, within 60 px, not yet at blows (a foe
+    -- touching the druid blocks the bolt the tree grows from).
+    local f = G.nearest_living_foe(self, 60, true)
+    if f == nil then
+      return false
+    end
+    return G.faces(self, f) and not G.at_blows(self, f)
+  elseif slot == 2 then
+    -- SUMMON FAERIE: a living foe within 130 px and no faerie out.
+    if G.owned(self, C.ORDER_LIVING, LIVING_FAERIE) > 0 then
+      return false
+    end
+    return G.foes_within(self, 1, 130, false)
+  elseif slot == 3 then
+    -- REVEAL changes only a viewscreen's radar: a bot never casts it.
+    return false
+  end
+  -- PROTECTION: an ally within 60 px with a living foe at blows with it,
+  -- and no circle on it or one under 50 hp.
+  local ally = G.ally_at_blows(self, 60)
+  if not ally then
+    return false
+  end
+  local _, circle = G.owned(ally, C.ORDER_WEAPON, WEAP_CIRCLE_PROTECTION)
+  return circle == nil or circle.hp < 50
+end
+
 local function set_difficulty(self, level)
   og.apply_difficulty_scaling(self, level, 9.0, 12.0, 4.0, 0.5)
 end
@@ -199,6 +236,7 @@ og.family("living", {
   radar_color = "none",
   radar_jitter = 0,
 
+  check_special_ai = check_special_ai,
   set_difficulty = set_difficulty,
   level_up = level_up,
 })

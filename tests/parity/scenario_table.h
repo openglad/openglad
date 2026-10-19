@@ -1243,7 +1243,7 @@ inline constexpr Mutation kMut_special_thief_do_special = {
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
-    "packs/core/families/living-13-druid.lua", 12,
+    "packs/core/families/living-13-druid.lua", 13,
     "  if lc.is_busy(self) then  -- do not start the fire-and-replace sequence",
     "  if false then  -- do not start the fire-and-replace sequence",
     "Force-opens druid_do_special's busy gate. Each attempt then runs the plant-tree branch, refunds MP, and fires a bolt, so the trajectory, sound stream, and exact WalkerHpRangeAtFinalTick(SOLDIER,7700,7700) predicate diverge."
@@ -1418,7 +1418,7 @@ inline constexpr Mutation kMut_family_thief_init = {
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "packs/core/families/living-13-druid.lua", 163,
+    "packs/core/families/living-13-druid.lua", 200,
     "hp = 110",
     "hp = 11000",
     "Cranks DRUID descriptor HP x100 "
@@ -4077,7 +4077,7 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
-    "packs/core/families/living-13-druid.lua", 17,
+    "packs/core/families/living-13-druid.lua", 18,
     "local bolt = self:fire()",
     "local bolt = nil",
     "Suppresses the seed bolt PLANT TREE grows its tree from, so plant_tree takes its 'if not bolt' exit before the busy charge and before WEAP_TREE is summoned. EventKindAtLeast(play_sound, 15) fails.",
@@ -4099,7 +4099,7 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
-    "packs/core/families/living-13-druid.lua", 51,
+    "packs/core/families/living-13-druid.lua", 52,
     "local faerie = og.add_ob(\"living\", LIVING_FAERIE)",
     "local faerie = nil",
     "Suppresses SUMMON FAERIE's pet creation, so the body takes its 'if not faerie' exit with the bolt fired but never converted into a faerie. EventKindAtLeast(play_sound, 16) fails."
@@ -4118,7 +4118,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "packs/core/families/living-13-druid.lua", 163,
+    "packs/core/families/living-13-druid.lua", 200,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4137,7 +4137,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "packs/core/families/living-13-druid.lua", 163,
+    "packs/core/families/living-13-druid.lua", 200,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4453,7 +4453,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
 };
 
 inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
-    "packs/core/families/living-13-druid.lua", 59,
+    "packs/core/families/living-13-druid.lua", 60,
     "  faerie.lifetime = og.combat.druid_faerie_lifetime(self.level)",
     "  faerie.lifetime = 99999",
     "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
@@ -4766,7 +4766,7 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
-    "packs/core/families/living-13-druid.lua", 111,
+    "packs/core/families/living-13-druid.lua", 112,
     "      local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
     "        do return false, 'MUTATION REFUSAL' end",
     "Replaces the PROTECTION circle summon with `do return false, 'MUTATION REFUSAL' end`, so protection_circle declines on the first uncircled friend before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole druid.lua load and takes plant-tree, the bolt, and summon faerie down with it; the row would then flip on collateral damage rather than on the circle. With the wrapper this is the only row in the corpus that moves."
@@ -6441,7 +6441,7 @@ inline constexpr FactPredicate kFacts_druid_grow_tree_scen99[] = {
 };
 
 inline constexpr Mutation kMut_druid_grow_tree_scen99 = {
-    "packs/core/families/living-13-druid.lua", 7,
+    "packs/core/families/living-13-druid.lua", 8,
     "local WEAP_TREE = assert(og.family_id(\"weapon\", \"core:tree\"))",
     "local WEAP_TREE = assert(og.family_id(\"weapon\", \"core:blob\"))",
     "Points the tree constant at core:blob. GROW TREE then plants a blob at the bolt's landing point: no FAMILY_TREE ever enters weaplist or weapon_tracks, so WeaponFamilyEmitted(FAMILY_TREE) fails, and the blob is a moving ACT_FIRE weapon so the STATIONARY class would not hold either."
@@ -8246,7 +8246,7 @@ inline constexpr FactPredicate kFacts_druid_protection_refresh_scen99[] = {
 };
 
 inline constexpr Mutation kMut_druid_protection_refresh_scen99 = {
-    "packs/core/families/living-13-druid.lua", 101,
+    "packs/core/families/living-13-druid.lua", 102,
     "    local circles = og.find_in_range(\"weap\", 100, friend)",
     "    local circles = og.find_in_range(\"ob\", 100, friend)",
     "Points the existing-circle scan back at oblist, resurrecting the bug this row exists to pin. oblist holds livings, generators and FX; a summoned circle lives in weaplist, so the scan finds nothing, `existing` stays nil and the recast takes the mint arm instead of the top-up arm. The friendly ends the run wearing TWO rings and WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1) reads 2. Everything else holds: both casts still succeed, both still charge 200 magicpoints and emit SOUND_HEAL, so the play_sound floor and WeaponFamilyEmitted stay green and the flip is isolated to the stacking."
@@ -8668,7 +8668,7 @@ inline constexpr FactPredicate kFacts_druid_tree_blocked_scen99[] = {
         "consequence: the classic blocked GROW TREE keeps its one-bolt refund, so the held fire pays for one more swing and the tower ends at 86 hp"),
 };
 inline constexpr Mutation kMut_druid_tree_blocked_scen99 = {
-    "packs/core/families/living-13-druid.lua", 16,
+    "packs/core/families/living-13-druid.lua", 17,
     "self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())",
     "self.magicpoints = og.fadd(self.magicpoints, 0)",
     "Refunds nothing before the classic GROW TREE, so the blocked cast costs its swing as the fixed one does: one swing fewer and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8600, 8600) fails.",
