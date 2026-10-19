@@ -991,6 +991,36 @@ short living::check_special()
 						in_flight++;
 				return (in_flight >= volleys[v][0]);
 			}
+		case FAMILY_DRUID:
+			{
+				// port of the current game's b05949b3: the classic druid had no gate
+				// and cast every roll. With the Gameplay Fixes setting on GROW TREE
+				// wants its nearest living foe within 60 faced and not yet at blows
+				// (a tree between the druid and a foe closing on it); SUMMON FAERIE a
+				// living foe within 130 and no faerie of its own out; REVEAL changes
+				// only a viewscreen's radar, so a bot never casts it; PROTECTION an
+				// ally within 60 with a living foe at blows with it and no circle on
+				// it or one under 50 hp. Off, the druid answers 1, as the default arm
+				// always did.
+				if (!myscreen->gameplay_fixes)
+					return 1;
+				if (current_special == 1)
+				{
+					walker *f = bg_nearest_living_foe(this, 60);
+					return (f && bg_faces(this, f) && !bg_at_blows(this, f));
+				}
+				if (current_special == 2)
+					return (bg_owned(this, ORDER_LIVING, FAMILY_FAERIE, NULL) == 0
+					        && bg_foes_within(this, 1, 130));
+				if (current_special == 3)
+					return 0;
+				walker *ally = bg_ally_at_blows(this, 60, NULL);
+				if (!ally)
+					return 0;
+				walker *circle;
+				bg_owned(ally, ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION, &circle);
+				return (!circle || circle->stats->hitpoints < 50);
+			}
 		case FAMILY_BARBARIAN:
 			{
 				// port of the current game's b05c15d2: the classic barbarian had no
