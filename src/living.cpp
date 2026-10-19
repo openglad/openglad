@@ -674,6 +674,15 @@ short living::check_special()
 		case FAMILY_THIEF:
 			if (current_special == 1) // drop bomb
 			{
+				if (myscreen->gameplay_fixes)
+				{
+					// port of the current game's 324f7f74: a bomb pays with a living foe
+					// inside its blast and no ally in it; the Shift is 0 whenever the
+					// setting is on
+					Sint32 reach = bg_blast_reach(stats->level);
+					shifter_down = 0;
+					return (bg_foes_within(this, 1, reach) && bg_blast_clear(this, this, reach, false));
+				}
 				if (foe) // already have a foe ..
 				{
 					distance = (Uint32) distance_to_ob(foe); // (deltax*deltax) + Sint32 (deltay*deltay);
@@ -704,6 +713,12 @@ short living::check_special()
 						shifter_down = 1;
 					else
 						shifter_down = 0;
+					// port of the current game's 324f7f74: TAUNT wants a living foe in
+					// its reach and an ally there too (foes pulled onto a thief nobody
+					// backs is the thief's own danger); a tent cannot follow the thief
+					if (!shifter_down)
+						return (bg_foes_within(this, 1, 80 + 4*stats->level)
+						        && bg_allies_within(this, 1, 80 + 4*stats->level));
 				}
 				if (!shifter_down) // taunt
 					myrange = 80 + 4*stats->level;
@@ -716,6 +731,19 @@ short living::check_special()
 					return 0;
 				else
 					return 1;
+			}
+			else if (myscreen->gameplay_fixes && current_special == 2)
+			{
+				// port of the current game's 324f7f74: CLOAK wants a foe hunting the
+				// thief and no cloak left
+				return (invisibility_left == 0 && bg_hunted_by(this, 130) != NULL);
+			}
+			else if (myscreen->gameplay_fixes)
+			{
+				// port of the current game's 324f7f74: POISON CLOUD wants two living
+				// foes at blows and no cloud of the thief's alive
+				return (bg_owned(this, ORDER_FX, FAMILY_CLOUD, NULL) == 0
+				        && bg_foes_at_blows(this).size() >= 2);
 			}
 			else
 				return 1;  // default is go for it
