@@ -18,6 +18,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_game_loop.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_special_scenes.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_level_play.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_timed_effects_mirror.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_pause_menu.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_input.cpp
@@ -494,6 +495,14 @@ og_add_test_group(og_test_game_core FILES
 # under ASan+UBSan). The budgets are in the lane blocks below.
 og_add_test_group(og_test_special_scenes FILES
     test_special_scenes.cpp
+)
+
+# The bots of The Tryxian Chronicles' first level, played headlessly for 2400
+# ticks on three seeds with a level-14 crew (tests/integration/
+# test_level_play.cpp): they fire many different specials, only at somebody,
+# and the gates and the casts agree. Pure compute, five plays of the level.
+og_add_test_group(og_test_level_play FILES
+    test_level_play.cpp
 )
 
 og_add_test_group(og_test_snapshot_safety FILES

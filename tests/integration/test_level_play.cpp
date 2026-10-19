@@ -1,0 +1,717 @@
+// The bots in a real level fire many different specials, and only at somebody.
+//
+// What it plays: The Tryxian Chronicles' first level (scen103, the Labyrinth
+// of Tryx), loaded from the shipped campaign exactly as the calibration
+// suites load theirs (tests/unit/westlands_sim_fixture.h): 104 placed bots of
+// 14 families on four teams that are hostile to each other, plus a crew of 12
+// heroes at level 14 (power 504, the campaign's suggested power 500) on the
+// level's start markers. The crew's own bots play too: level 14 is what lets
+// them roll slots 4 and 5 (mage HEARTBURST, FREEZE TIME's 500 pool, druid
+// PROTECTION, faerie HASTE SELF). Each seed of {42, 1337, 2025} is played for
+// 2400 ticks with both settings on (the shipped default); the census of
+// casts is pooled over the three.
+//
+// What it counts: walker::special traces every charged cast and every refusal
+// that reached the MP check or the script ("special" trace category; TRACE is
+// compiled only into test builds). The test drains those lines every tick, so
+// a cast is counted exactly once, under the name the HUD gives it.
+//
+// What it asserts (the floors are at most a quarter of the pooled measurement):
+//   A  per seed: >= 250 casts, >= 28 different specials, >= 50 different
+//      casters, >= 30 casters with two or more specials, a crew member alive
+//      at the end;
+//   B  pooled: the families with two or more rollable specials show them,
+//      each special the level should see is cast, each Shift arm is cast on
+//      its own, and the crew's own bots cast (HEARTBURST, FREEZE TIME);
+//   C  REVEAL is never cast by a bot;
+//   D  no cast at nobody: every special whose rule names a foe has a foe
+//      within its documented reach (+32 px of movement) before the tick it
+//      was cast in;
+//   E  the gates and the casts agree: no gate says yes to a cast that then
+//      refuses for the fact the gate reads (NO FOE, NO CORPSE, NO UNDEAD, NO
+//      TARGET, NO ALLY), and SPECIAL BUSY and NOT ENOUGH MP refusals stay rare.
+//   A replay of seed 42 gives the same casts in the same order.
+//
+// Measured (5b288bd7 plus the trace), casts per seed 42 / 1337 / 2025 [pooled]:
+//   total casts 553 / 480 / 596 [1629]; distinct (family, special) 39 / 37 / 41
+//   [47]; distinct casters 92 / 90 / 104; casters with >= 2 specials 62 / 64 / 71
+//   ARCHER FIRE ARROWS 126/91/71 [288] BARRAGE 33/25/15 [73] EXPLODING BOLT 2/0/0
+//   ARCHMAGE CHAIN LIGHTNING 1/8/3 [12] HEARTBURST 2/2/4 [8] TELEPORT 5/11/4 [20]
+//            TELEPORT MARKER 0/1/0
+//   CLERIC HEAL 112/39/88 [239] MYSTIC MACE 5/6/3 [14] TURN UNDEAD 2/5/2 [9]
+//          RAISE UNDEAD 1/1/1
+//   DRUID SUMMON FAERIE 4/1/8 [13] GROW TREE 0/1/0 PROTECTION 1/0/0 REVEAL 0/0/0
+//   ELEMENTAL STARBURST 27/16/29 [72] IMMOLATE 2/3/2 [7]
+//   ELF ROCKS 11/11/17 [39] BOUNCING ROCKS 0/1/3 MEGA ROCKS 0/0/1
+//   FAERIE BLINK 2/1/1 GLIMMER 0/1/6 HASTE SELF 1/0/3 HASTEN 0/2/4
+//   GHOST SCARE 17/15/16 [48] WAIL 1/1/1 [3]
+//   MAGE TELEPORT 14/9/3 [26] TELEPORT MARKER 2/0/1 WARP SPACE 2/2/3 [7]
+//        HEARTBURST 10/0/1 [11] FREEZE TIME 1/0/1 [2]
+//   ORC CAPTAIN HOOK BLADE 5/2/2 [9] HOWL 5/3/3 [11]
+//   SKELETON TUNNEL 45/120/160 [325] DIG IN 8/0/12 [20]
+//   SLIME GROW 1/4/5 [10] SPLIT 0/1/0
+//   SOLDIER BOOMERANG 42/38/34 [114] CHARGE 20/9/34 [63] WHIRLWIND 1/1/1 [3]
+//   THIEF CLOAK 13/20/13 [46] TAUNT ENEMY 19/15/20 [54] CHARM OPPONENT 3/7/8 [18]
+//         MINE 2/4/3 [9] DROP BOMB 2/1/6 [9]
+//   BARBARIAN HURL BOULDER 2/2/3 [7] EXPLODING BOULDER 1/0/1
+//
+// The classic bots (OG_CALIBRATION_GAMEPLAY_FIXES=0) cast MORE and show MORE
+// different specials, because they cast at nobody: A and B alone cannot tell
+// the gates from their absence. C, D and E can; with the setting off they go
+// red (recorded below, RED WITH THE CLASSIC BOTS).
+//
+// RED WITH THE CLASSIC BOTS (OG_CALIBRATION_GAMEPLAY_FIXES=0, measured on
+// the same three seeds): 800 / 813 / 864 casts, 52 different specials pooled,
+// and
+//   C  REVEAL cast 29 times;
+//   D  291 casts at nobody (the first: tick 1, a druid summons a faerie at a
+//      foe 192 px away; elves throwing rocks, thieves bombing, clerics macing
+//      with nobody near);
+//   E  176 fact refusals (the first: tick 16, the cleric's TURN UNDEAD coin
+//      with NO FOE IN RANGE), 1069 SPECIAL BUSY refusals (cap 200), 109 NOT
+//      ENOUGH MP (cap 100);
+//   B  MAGE HEARTBURST 0 (the classic roll turns a slot above 4 into slot 1,
+//      so the crew's level-14 mages never cast their slot 5).
+// With OG_CALIBRATION_NEW_SPECIALS=0 the kit specials go missing instead: B
+// reds on ORC CAPTAIN, FAERIE, ELEMENTAL and SKELETON variety, on IMMOLATE,
+// HOOK BLADE, HOWL, DIG IN, MINE, WAIL, HASTE SELF and FREEZE TIME, and one
+// seed shows 27 specials (floor 28). That setting is not run in CI.
+//
+// What this test must not do: change the level, a gate or the pack Lua to go
+// green; swap a seed; drop a special from a list; raise a reach; widen a cap.
+// A red here is the game misbehaving or a rule changing; the remedy for a
+// legitimate sim change is more room for the test (more seeds pooled, more
+// ticks), never a narrower one.
+//
+// OG_CALIBRATION_GAMEPLAY_FIXES=0 / OG_CALIBRATION_NEW_SPECIALS=0 measure the
+// classic value, as in the calibration suites; CI runs the shipped default.
+
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <map>
+#include <mutex>
+#include <set>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+
+#include <openglad/core/constants.h>
+#include <openglad/core/test_trace.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
+
+#include "unit/westlands_sim_fixture.h"
+
+namespace {
+
+using westlands_fixture::LoadedWestlandsLevel;
+using westlands_fixture::MountedCampaignTest;
+
+constexpr int kLevel = 103;
+constexpr int kTicks = 2400;
+constexpr int kCrewLevel = 14;
+constexpr std::uint32_t kSeeds[] = {42, 1337, 2025};
+// The thief sits after the first four: deploy_crew seats users 0..3, and the
+// thief's bomb-flee and the charm rules read a seated user as a player hero.
+const std::vector<int> kCrew = {
+    FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,    FAMILY_ARCHER,
+    FAMILY_MAGE,    FAMILY_MAGE,    FAMILY_CLERIC, FAMILY_CLERIC,
+    FAMILY_DRUID,   FAMILY_THIEF,   FAMILY_BARBARIAN, FAMILY_FAERIE,
+};
+// The family name and the special name a cast is counted under.
+using SpecialKey = std::pair<std::string, std::string>;
+
+// The reach (px, Manhattan between top-left corners, as distance_to_ob and
+// the gates' finders measure) within which a foe must stand for the special
+// to be cast: its documented reach at the highest level that casts it here
+// (crew 14, bots <= 8) plus 32 px, one tick of movement on both sides of
+// the gate's reading. docs/gameplay-fixes.md "Bots" and
+// docs/new-specials.md name each rule.
+const std::map<SpecialKey, int>& reach_table()
+{
+    static const std::map<SpecialKey, int> table = {
+        {{"SOLDIER", "CHARGE"}, 130},
+        {{"SOLDIER", "BOOMERANG"}, 140},       // 17 + 6 * 14 + 32
+        {{"SOLDIER", "WHIRLWIND"}, 100},       // 32 + 2 * 14 + 32
+        {{"SOLDIER", "DISARM"}, 64},
+        {{"ELF", "ROCKS"}, 130},
+        {{"ELF", "BOUNCING ROCKS"}, 170},
+        {{"ELF", "LOTS OF ROCKS"}, 200},
+        {{"ELF", "MEGA ROCKS"}, 200},
+        {{"ARCHER", "FIRE ARROWS"}, 250},
+        {{"ARCHER", "BARRAGE"}, 250},
+        {{"ARCHER", "EXPLODING BOLT"}, 250},
+        {{"MAGE", "WARP SPACE"}, 64},
+        {{"MAGE", "ENERGY WAVE"}, 150},
+        {{"MAGE", "HEARTBURST"}, 140},         // 80 + 2 * 14 + 32
+        {{"ARCHMAGE", "HEARTBURST"}, 130},     // 80 + 2 * 8 + 32
+        {{"ARCHMAGE", "CHAIN LIGHTNING"}, 290}, // 200 + 7 * 8 + 32
+        {{"ARCHMAGE", "SUMMON IMAGE"}, 232},
+        {{"ARCHMAGE", "SUMMON ELEMENTAL"}, 232},
+        {{"ARCHMAGE", "MIND CONTROL"}, 150},
+        {{"CLERIC", "MYSTIC MACE"}, 80},       // 48 + 32
+        {{"CLERIC", "RAISE UNDEAD"}, 162},
+        {{"CLERIC", "RAISE GHOST"}, 162},
+        {{"CLERIC", "TURN UNDEAD"}, 130},
+        {{"THIEF", "DROP BOMB"}, 110},         // blast 15 + 4 * 14 + 32
+        {{"THIEF", "MINE"}, 162},
+        {{"THIEF", "CLOAK"}, 162},
+        {{"THIEF", "TAUNT ENEMY"}, 170},       // 80 + 4 * 14 + 32
+        {{"THIEF", "CHARM OPPONENT"}, 104},    // 16 + 4 * 14 + 32
+        {{"THIEF", "POISON CLOUD"}, 64},
+        {{"GHOST", "SCARE"}, 162},             // 50 + 10 * 8 + 32
+        {{"GHOST", "WAIL"}, 162},
+        {{"GHOST", "SIPHON"}, 64},
+        {{"GHOST", "POSSESS"}, 64},
+        {{"DRUID", "GROW TREE"}, 92},
+        {{"DRUID", "SUMMON FAERIE"}, 162},
+        {{"DRUID", "PROTECTION"}, 130},
+        {{"ORC CAPTAIN", "HOWL"}, 352},        // 160 + 20 * 8 + 32
+        {{"ORC CAPTAIN", "HOOK BLADE"}, 92},
+        {{"ORC CAPTAIN", "KNIFE FAN"}, 200},
+        {{"ORC CAPTAIN", "WAR BANNER"}, 152},
+        {{"BARBARIAN", "HURL BOULDER"}, 250},
+        {{"BARBARIAN", "EXPLODING BOULDER"}, 250},
+        {{"ELEMENTAL", "STARBURST"}, 150},
+        {{"ELEMENTAL", "IMMOLATE"}, 64},
+        {{"ELEMENTAL", "METEOR RAIN"}, 150},
+        {{"SKELETON", "DIG IN"}, 112},         // 80 + 32
+        {{"SKELETON", "BONE WALL"}, 92},
+        {{"SKELETON", "REASSEMBLE"}, 92},
+    };
+    return table;
+}
+
+// Specials whose rule names no foe, or asks that nobody be near: no reach.
+// REVEAL is here because C asks that it is never cast at all.
+const std::set<std::string>& exempt_specials()
+{
+    static const std::set<std::string> names = {
+        "TELEPORT", "TELEPORT MARKER", "FREEZE TIME", "HEAL", "RESURRECT",
+        "TUNNEL", "BONE STORM", "LEGION", "EAT CORPSE", "GROW", "SPLIT",
+        "BLINK", "SWAP", "GLIMMER", "HASTEN", "HASTE SELF", "WISH", "PHASE",
+        "REKINDLE", "SUPERNOVA", "WARBAND", "REVEAL",
+    };
+    return names;
+}
+
+struct Living
+{
+    std::uint32_t id;
+    int team;
+    int x;
+    int y;
+    int floor;
+};
+
+struct Cast
+{
+    int tick = 0;
+    unsigned id = 0;
+    int family = 0;
+    int slot = 0;
+    int shift = 0;
+    int team = 0;
+    int x = 0;
+    int y = 0;
+    int floor = 0;
+    unsigned price = 0;
+    SpecialKey key;
+    bool crew = false;
+    int nearest_foe = -1; // -1: no foe on the floor at all
+};
+
+struct Refusal
+{
+    int tick = 0;
+    unsigned id = 0;
+    int family = 0;
+    int slot = 0;
+    int shift = 0;
+    int team = 0;
+    std::string reason;
+};
+
+struct Play
+{
+    std::uint32_t seed = 0;
+    bool loaded = false;
+    std::size_t crew_deployed = 0;
+    std::vector<Cast> casts;
+    std::vector<Refusal> refusals;
+    std::vector<std::string> lines; // every "special" trace line, in order
+    int crew_alive_1200 = 0;
+    int crew_alive_2400 = 0;
+    double ms = 0.0;
+};
+
+std::string family_name(int family)
+{
+    const char* n = get_family_display_name(family);
+    return n != nullptr ? n : "?";
+}
+
+// The HUD name of a cast. A Shift on a slot with no alternate IS the base
+// special, so it folds into it.
+std::string special_label(int family, int slot, int shift, short new_specials)
+{
+    const FamilyDescriptor* fd = get_family_descriptor(family);
+    if (fd == nullptr)
+        return "?";
+    if (shift != 0)
+    {
+        const char* alt = og::sim::alternate_name(fd, slot, new_specials);
+        if (alt != nullptr && std::strcmp(alt, kSpecialNameNone) != 0)
+            return alt;
+    }
+    const char* base = og::sim::special_name(fd, slot, new_specials);
+    return base != nullptr ? base : "?";
+}
+
+int crew_alive(GameWorld& world, const std::set<std::uint32_t>& crew_ids)
+{
+    int n = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            crew_ids.count(w->entity_id()) != 0)
+            ++n;
+    }
+    return n;
+}
+
+std::vector<Living> snapshot_livings(GameWorld& world)
+{
+    std::vector<Living> out;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->dormant() ||
+            w->query_order() != Order::Living)
+            continue;
+        out.push_back({w->entity_id(), static_cast<int>(w->team_num()),
+                       static_cast<int>(w->xpos()), static_cast<int>(w->ypos()),
+                       static_cast<int>(w->floor())});
+    }
+    return out;
+}
+
+int nearest_foe(const Cast& c, const std::vector<Living>& before)
+{
+    int best = -1;
+    for (const Living& l : before)
+    {
+        if (l.id == c.id || l.team == c.team || l.floor != c.floor)
+            continue;
+        const int d = std::abs(l.x - c.x) + std::abs(l.y - c.y);
+        if (best < 0 || d < best)
+            best = d;
+    }
+    return best;
+}
+
+Play play_level(std::uint32_t seed)
+{
+    Play p;
+    p.seed = seed;
+    LoadedWestlandsLevel fx(kLevel, seed);
+    p.loaded = fx.loaded;
+    if (!fx.loaded)
+        return p;
+    GameWorld& world = fx.world();
+    world.new_specials =
+        westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
+    world.gameplay_fixes =
+        westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
+    const std::vector<walker*> crew =
+        westlands_fixture::deploy_crew(fx.level, world, kCrew, kCrewLevel);
+    p.crew_deployed = crew.size();
+    std::set<std::uint32_t> crew_ids;
+    for (walker* w : crew)
+        crew_ids.insert(w->entity_id());
+
+    trace_clear();
+    const auto t0 = std::chrono::steady_clock::now();
+    std::vector<std::string> fresh;
+    for (int tick = 1; tick <= kTicks; ++tick)
+    {
+        // The foes as the gates saw them when they said yes: by the end of
+        // the tick a charmed foe is on the caster's team and a charged one
+        // may be dead.
+        const std::vector<Living> before = snapshot_livings(world);
+        world.tick();
+        fresh.clear();
+        {
+            std::lock_guard<std::mutex> lock(g_trace_mutex);
+            for (const TraceEntry& e : g_trace_buffer)
+                if (e.category == "special")
+                    fresh.push_back(e.message);
+            g_trace_buffer.clear();
+        }
+        for (const std::string& line : fresh)
+        {
+            p.lines.push_back(line);
+            Cast c;
+            int consumed = 0;
+            if (std::sscanf(line.c_str(),
+                            "cast id=%u family=%d slot=%d shift=%d team=%d x=%d y=%d "
+                            "floor=%d price=%u",
+                            &c.id, &c.family, &c.slot, &c.shift, &c.team, &c.x, &c.y,
+                            &c.floor, &c.price) == 9)
+            {
+                c.tick = tick;
+                c.key = {family_name(c.family),
+                         special_label(c.family, c.slot, c.shift, world.new_specials)};
+                c.crew = crew_ids.count(c.id) != 0;
+                c.nearest_foe = nearest_foe(c, before);
+                p.casts.push_back(c);
+                continue;
+            }
+            Refusal r;
+            if (std::sscanf(line.c_str(),
+                            "refused id=%u family=%d slot=%d shift=%d team=%d reason=%n",
+                            &r.id, &r.family, &r.slot, &r.shift, &r.team, &consumed) == 5 &&
+                consumed > 0)
+            {
+                r.tick = tick;
+                r.reason = line.substr(static_cast<std::size_t>(consumed));
+                p.refusals.push_back(r);
+                continue;
+            }
+            ADD_FAILURE() << "seed " << seed << " tick " << tick
+                          << ": unreadable special trace line: " << line;
+        }
+        if (tick == 1200)
+            p.crew_alive_1200 = crew_alive(world, crew_ids);
+    }
+    p.crew_alive_2400 = crew_alive(world, crew_ids);
+    p.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+               .count();
+    return p;
+}
+
+bool is_fact_refusal(const Refusal& r)
+{
+    // The cleric's hit response heals with no gate by design
+    // (living-05-cleric.lua on_shoved): its "nobody to heal" is not a gate
+    // that said yes.
+    if (r.family == FAMILY_CLERIC && r.slot == 1 && r.reason == "NO ALLY NEEDS HEALING")
+        return false;
+    for (const char* fact : {"NO FOE", "NO CORPSE", "NO UNDEAD", "NO TARGET", "NO ALLY"})
+        if (r.reason.find(fact) != std::string::npos)
+            return true;
+    return false;
+}
+
+bool is_counted_nomp(const Refusal& r)
+{
+    // The same ungated hit-response heal, at an empty pool.
+    return r.reason == "NOT ENOUGH MP" && !(r.family == FAMILY_CLERIC && r.slot == 1);
+}
+
+std::string property_key(const std::string& s)
+{
+    std::string out = s;
+    std::replace(out.begin(), out.end(), ' ', '_');
+    return out;
+}
+
+class TryxianLevelPlay : public MountedCampaignTest
+{
+protected:
+    TryxianLevelPlay()
+        : MountedCampaignTest("tryxian")
+    {
+    }
+};
+
+TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
+{
+    std::vector<Play> plays;
+    for (std::uint32_t seed : kSeeds)
+    {
+        plays.push_back(play_level(seed));
+        ASSERT_TRUE(plays.back().loaded) << "Tryxian level " << kLevel << " should load";
+        ASSERT_EQ(kCrew.size(), plays.back().crew_deployed)
+            << "the whole crew should deploy on seed " << seed;
+    }
+
+    // ---- the census ------------------------------------------------------
+    struct Row
+    {
+        std::map<std::uint32_t, int> per_seed;
+        int pooled = 0;
+        int crew = 0;
+        std::set<std::pair<std::uint32_t, unsigned>> casters;
+        int max_nearest = -1;
+        int min_family = 1000;
+    };
+    std::map<SpecialKey, Row> rows;
+    std::map<std::pair<std::string, std::string>, std::map<std::uint32_t, int>> refusal_rows;
+    std::vector<std::string> violations;
+    std::vector<std::string> unclassified;
+    std::vector<std::string> fact_refusals;
+    int busy = 0;
+    int nomp = 0;
+    int crew_casts = 0;
+    std::set<SpecialKey> crew_specials;
+    std::map<std::string, std::set<std::string>> crew_family_specials;
+
+    for (const Play& p : plays)
+    {
+        for (const Cast& c : p.casts)
+        {
+            Row& row = rows[c.key];
+            row.per_seed[p.seed]++;
+            row.pooled++;
+            row.casters.insert({p.seed, c.id});
+            row.min_family = std::min(row.min_family, c.family);
+            row.max_nearest = std::max(row.max_nearest, c.nearest_foe);
+            if (c.crew)
+            {
+                row.crew++;
+                crew_casts++;
+                crew_specials.insert(c.key);
+                crew_family_specials[c.key.first].insert(c.key.second);
+            }
+            if (exempt_specials().count(c.key.second) != 0)
+                continue;
+            const auto reach = reach_table().find(c.key);
+            const std::string where = "seed " + std::to_string(p.seed) + " tick " +
+                                      std::to_string(c.tick) + " " + c.key.first + " " +
+                                      c.key.second + " caster " + std::to_string(c.id) +
+                                      " team " + std::to_string(c.team) + " at " +
+                                      std::to_string(c.x) + "," + std::to_string(c.y);
+            if (reach == reach_table().end())
+            {
+                unclassified.push_back(where);
+                continue;
+            }
+            if (c.nearest_foe < 0 || c.nearest_foe > reach->second)
+                violations.push_back(where + ": nearest foe " +
+                                     (c.nearest_foe < 0 ? std::string("none")
+                                                        : std::to_string(c.nearest_foe)) +
+                                     " px, reach " + std::to_string(reach->second));
+        }
+        for (const Refusal& r : p.refusals)
+        {
+            const std::string fam = family_name(r.family);
+            const std::string label = fam + " slot " + std::to_string(r.slot) +
+                                      (r.shift != 0 ? " shift" : "");
+            refusal_rows[{r.reason, label}][p.seed]++;
+            if (is_fact_refusal(r))
+                fact_refusals.push_back("seed " + std::to_string(p.seed) + " tick " +
+                                        std::to_string(r.tick) + " " + label + " caster " +
+                                        std::to_string(r.id) + ": " + r.reason);
+            if (r.reason == "SPECIAL BUSY")
+                busy++;
+            if (is_counted_nomp(r))
+                nomp++;
+        }
+    }
+    auto pooled = [&rows](const std::string& family, const std::string& special) {
+        const auto it = rows.find({family, special});
+        return it == rows.end() ? 0 : it->second.pooled;
+    };
+    auto crew_count = [&rows](const std::string& family, const std::string& special) {
+        const auto it = rows.find({family, special});
+        return it == rows.end() ? 0 : it->second.crew;
+    };
+
+    // ---- the report ------------------------------------------------------
+    std::vector<std::pair<SpecialKey, const Row*>> ordered;
+    for (const auto& [key, row] : rows)
+        ordered.push_back({key, &row});
+    std::sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) {
+        return std::tie(a.second->min_family, a.first) < std::tie(b.second->min_family, b.first);
+    });
+    std::printf("\nCasts on Tryxian level %d, %d ticks per seed, crew of %zu at level %d "
+                "(new specials %d, gameplay fixes %d)\n",
+                kLevel, kTicks, kCrew.size(), kCrewLevel,
+                westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS"),
+                westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES"));
+    std::printf("%-12s %-18s", "family", "special");
+    for (std::uint32_t seed : kSeeds)
+        std::printf(" %6u", seed);
+    std::printf(" %7s %7s %5s %8s\n", "pooled", "casters", "crew", "max foe");
+    for (const auto& [key, row] : ordered)
+    {
+        std::printf("%-12s %-18s", key.first.c_str(), key.second.c_str());
+        for (std::uint32_t seed : kSeeds)
+        {
+            const auto it = row->per_seed.find(seed);
+            std::printf(" %6d", it == row->per_seed.end() ? 0 : it->second);
+        }
+        std::printf(" %7d %7zu %5d %8d\n", row->pooled, row->casters.size(), row->crew,
+                    row->max_nearest);
+        ::testing::Test::RecordProperty(
+            "casts." + property_key(key.first) + "." + property_key(key.second), row->pooled);
+    }
+    std::printf("\nRefusals (reason / caster slot):\n");
+    for (const auto& [key, per_seed] : refusal_rows)
+    {
+        int total = 0;
+        std::printf("  %-28s %-26s", key.first.c_str(), key.second.c_str());
+        for (std::uint32_t seed : kSeeds)
+        {
+            const auto it = per_seed.find(seed);
+            const int n = it == per_seed.end() ? 0 : it->second;
+            total += n;
+            std::printf(" %5d", n);
+        }
+        std::printf(" %6d\n", total);
+    }
+    std::printf("\n");
+    for (const Play& p : plays)
+    {
+        std::set<SpecialKey> distinct;
+        std::set<unsigned> casters;
+        for (const Cast& c : p.casts)
+        {
+            distinct.insert(c.key);
+            casters.insert(c.id);
+        }
+        std::printf("seed %u: %zu casts, %zu specials, %zu casters, crew alive %d at 1200 "
+                    "and %d at %d, %.0f ms\n",
+                    p.seed, p.casts.size(), distinct.size(), casters.size(),
+                    p.crew_alive_1200, p.crew_alive_2400, kTicks, p.ms);
+        ::testing::Test::RecordProperty("casts_seed_" + std::to_string(p.seed),
+                                        static_cast<int>(p.casts.size()));
+    }
+    std::printf("pooled: %zu specials, crew casts %d (%zu specials), casts at nobody %zu, "
+                "fact refusals %zu, SPECIAL BUSY %d, NOT ENOUGH MP %d\n",
+                rows.size(), crew_casts, crew_specials.size(), violations.size(),
+                fact_refusals.size(), busy, nomp);
+    for (const std::string& v : violations)
+        std::printf("  CAST AT NOBODY: %s\n", v.c_str());
+    for (const std::string& f : fact_refusals)
+        std::printf("  FACT REFUSAL: %s\n", f.c_str());
+    std::fflush(stdout);
+    ::testing::Test::RecordProperty("distinct_pooled", static_cast<int>(rows.size()));
+    ::testing::Test::RecordProperty("violations", static_cast<int>(violations.size()));
+    ::testing::Test::RecordProperty("fact_refusals", static_cast<int>(fact_refusals.size()));
+    ::testing::Test::RecordProperty("busy_refusals", busy);
+    ::testing::Test::RecordProperty("nomp_refusals", nomp);
+
+    // ---- A: the bots fire, per seed ---------------------------------------
+    for (const Play& p : plays)
+    {
+        SCOPED_TRACE("seed " + std::to_string(p.seed));
+        std::set<SpecialKey> distinct;
+        std::map<unsigned, std::set<SpecialKey>> kinds;
+        for (const Cast& c : p.casts)
+        {
+            distinct.insert(c.key);
+            kinds[c.id].insert(c.key);
+        }
+        int versatile = 0;
+        for (const auto& [id, k] : kinds)
+            if (k.size() >= 2)
+                ++versatile;
+        EXPECT_GE(p.casts.size(), 250u) << "the bots should cast (measured 480-596)";
+        EXPECT_GE(distinct.size(), 28u) << "the bots should cast many specials (measured 37-41)";
+        EXPECT_GE(kinds.size(), 50u) << "many bots should cast (measured 90-104)";
+        EXPECT_GE(versatile, 30) << "many bots should cast two specials or more (measured 62-71)";
+        EXPECT_GE(p.crew_alive_2400, 1) << "the crew should still be in the level (measured 6-9)";
+    }
+
+    // ---- B1: the families show their specials -----------------------------
+    std::map<std::string, std::set<std::string>> family_specials;
+    for (const auto& [key, row] : rows)
+        family_specials[key.first].insert(key.second);
+    const std::pair<const char*, std::size_t> kFamilyVariety[] = {
+        {"SOLDIER", 3}, {"ARCHER", 2},      {"ARCHMAGE", 3}, {"CLERIC", 3},
+        {"ELEMENTAL", 2}, {"MAGE", 3},      {"THIEF", 4},    {"ORC CAPTAIN", 2},
+        {"FAERIE", 2},  {"ELF", 2},         {"SKELETON", 2},
+    };
+    for (const auto& [family, at_least] : kFamilyVariety)
+        EXPECT_GE(family_specials[family].size(), at_least)
+            << family << " should cast " << at_least << " different specials or more";
+
+    // ---- B2: each special the level should see is cast --------------------
+    const std::tuple<const char*, const char*, int> kMustCast[] = {
+        {"ARCHER", "FIRE ARROWS", 60},    {"ARCHER", "BARRAGE", 15},
+        {"ARCHMAGE", "HEARTBURST", 2},    {"ARCHMAGE", "TELEPORT", 3},
+        {"CLERIC", "HEAL", 40},           {"ELEMENTAL", "STARBURST", 15},
+        {"ELEMENTAL", "IMMOLATE", 1},     {"ELF", "ROCKS", 8},
+        {"GHOST", "SCARE", 10},           {"MAGE", "TELEPORT", 5},
+        {"MAGE", "WARP SPACE", 1},        {"MAGE", "HEARTBURST", 2},
+        {"ORC CAPTAIN", "HOOK BLADE", 2}, {"ORC CAPTAIN", "HOWL", 2},
+        {"SKELETON", "TUNNEL", 60},       {"SKELETON", "DIG IN", 3},
+        {"SOLDIER", "BOOMERANG", 25},     {"SOLDIER", "CHARGE", 12},
+        {"SOLDIER", "WHIRLWIND", 1},      {"THIEF", "CLOAK", 10},
+        {"THIEF", "TAUNT ENEMY", 10},     {"THIEF", "DROP BOMB", 2},
+        {"DRUID", "SUMMON FAERIE", 2},    {"SLIME", "GROW", 2},
+        {"BARBARIAN", "HURL BOULDER", 1},
+    };
+    for (const auto& [family, special, at_least] : kMustCast)
+        EXPECT_GE(pooled(family, special), at_least)
+            << family << " " << special << " should be cast " << at_least << " times or more";
+
+    // ---- B3: the Shift arms, apart from their base ------------------------
+    const std::tuple<const char*, const char*, int> kArms[] = {
+        {"CLERIC", "MYSTIC MACE", 3},    {"ARCHMAGE", "CHAIN LIGHTNING", 2},
+        {"THIEF", "MINE", 2},            {"THIEF", "CHARM OPPONENT", 4},
+        {"CLERIC", "TURN UNDEAD", 1},    {"GHOST", "WAIL", 1},
+        {"FAERIE", "HASTE SELF", 1},
+    };
+    for (const auto& [family, special, at_least] : kArms)
+        EXPECT_GE(pooled(family, special), at_least)
+            << family << " " << special << " (a Shift arm) should be cast " << at_least
+            << " times or more";
+    EXPECT_GE(pooled("MAGE", "TELEPORT MARKER") + pooled("ARCHMAGE", "TELEPORT MARKER"), 1)
+        << "a TELEPORT MARKER (a Shift arm) should be cast";
+
+    // ---- B4: the crew's own bots ------------------------------------------
+    EXPECT_GE(crew_casts, 40) << "the crew's own bots should cast (measured ~160)";
+    EXPECT_GE(crew_specials.size(), 10u)
+        << "the crew's own bots should cast many specials (measured ~20)";
+    EXPECT_GE(crew_count("MAGE", "HEARTBURST"), 2)
+        << "the crew mages should roll slot 5 HEARTBURST (measured 11)";
+    EXPECT_GE(crew_count("MAGE", "FREEZE TIME"), 1)
+        << "a crew mage should save up for FREEZE TIME and cast it (measured 2)";
+    EXPECT_GE(crew_family_specials["FAERIE"].size(), 2u)
+        << "the crew faerie should cast two specials or more";
+
+    // ---- C: never cast -----------------------------------------------------
+    EXPECT_EQ(0, pooled("DRUID", "REVEAL")) << "REVEAL is never cast by a bot";
+
+    // ---- D: no cast at nobody ---------------------------------------------
+    EXPECT_TRUE(unclassified.empty())
+        << unclassified.size() << " casts of a special the reach table does not name, first: "
+        << (unclassified.empty() ? std::string() : unclassified.front());
+    EXPECT_EQ(0u, violations.size())
+        << "casts with no foe within reach, first: "
+        << (violations.empty() ? std::string() : violations.front());
+
+    // ---- E: the gates and the casts agree ---------------------------------
+    EXPECT_EQ(0u, fact_refusals.size())
+        << "a gate said yes and the cast refused for the fact the gate reads, first: "
+        << (fact_refusals.empty() ? std::string() : fact_refusals.front());
+    EXPECT_LE(busy, 200) << "SPECIAL BUSY refusals (measured ~100 pooled)";
+    EXPECT_LE(nomp, 100) << "NOT ENOUGH MP refusals after the roll (measured ~50 pooled)";
+}
+
+TEST_F(TryxianLevelPlay, same_seed_same_casts)
+{
+    const Play first = play_level(kSeeds[0]);
+    ASSERT_TRUE(first.loaded);
+    const Play second = play_level(kSeeds[0]);
+    ASSERT_TRUE(second.loaded);
+    ASSERT_FALSE(first.lines.empty());
+    EXPECT_EQ(first.lines.size(), second.lines.size());
+    const std::size_t n = std::min(first.lines.size(), second.lines.size());
+    for (std::size_t i = 0; i < n; ++i)
+        ASSERT_EQ(first.lines[i], second.lines[i]) << "the replay drifted at trace line " << i;
+}
+
+} // namespace
