@@ -2044,7 +2044,8 @@ std::vector<Scene> scenes()
     // The HUD counts the ward down from 30 s; LEGION's price leaves the ward
     // only what the rest of the mana buys, and the clock says so. A soldier
     // cuts the skeleton down and it stands back up at a quarter health; it
-    // fells him, then a second soldier. LEGION raises half its kills on a
+    // fells him, then a second soldier, who guards a post on the skeleton's
+    // other side until the first is down. LEGION raises half its kills on a
     // coin: the first rises as a skeleton on its side, the second stays
     // where it fell (both coins are pinned, kLegionFirstCoinPin and
     // kLegionSecondCoinPin).
@@ -2061,7 +2062,13 @@ std::vector<Scene> scenes()
             skel->stats()->set_hitpoints(3.0f);
             live_game::stop_hp_regen(skel);
             add_actor(run, "foe", FAMILY_SOLDIER, 1, 70, 0);
-            walker* second = add_actor(run, "foe2", FAMILY_SOLDIER, 1, 120, 24);
+            // The second soldier keeps its post on the far side of the
+            // hero from the first. The first one's skeleton rises where he
+            // fell, so the hero walks to the second with the risen skeleton
+            // behind it, not in between: the hero lands the kill, and a
+            // soldier bot's CHARGE, which lands on whatever living foe
+            // stands in the path the rush runs, finds the hero first.
+            walker* second = add_actor(run, "foe2", FAMILY_SOLDIER, 1, -120, 24);
             second->set_act_type(ACT_GUARD);
             second->set_guard_hold_post(true);
             run.marks["skeletons"] = static_cast<float>(
