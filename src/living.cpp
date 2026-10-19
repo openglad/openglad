@@ -665,6 +665,30 @@ short living::check_special()
 				shifter_down = 0;
 				return bg_foes_within(this, 1, 50+10*stats->level);
 			}
+			if (family == FAMILY_ORC && myscreen->gameplay_fixes)
+			{
+				// port of the current game's 4b39093d: the classic gate below (a
+				// foe within 130) was the same for both specials. Its foe search
+				// still runs first. HOWL wants a body the yell can stun (a living
+				// foe or a generator: a frozen tent makes nothing) inside the
+				// yell's own radius; EAT CORPSE wants the orc below 60 percent of
+				// its health with a stain under it, whatever the foes are doing.
+				short classic = 0;
+				if (!foe)
+					foe = myscreen->find_near_foe(this);
+				if (foe)
+					classic = (distance_to_ob(foe) < 130);
+				if (current_special == 1)
+				{
+					Sint32 yell = 160 + 20*stats->level;
+					if (yell > 420)
+						yell = 420;
+					return bg_targets_within(this, 1, yell);
+				}
+				if (current_special == 2)
+					return (bg_hp_below(this, 3, 5) && bg_corpse_underfoot(this, 24) != NULL);
+				return classic;
+			}
 			if (foe) // already have a foe ..
 			{
 				distance = (Uint32) distance_to_ob(foe); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
