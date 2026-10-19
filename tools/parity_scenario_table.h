@@ -1283,7 +1283,7 @@ inline constexpr Mutation kMut_family_spawn_identity_elf = {
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "packs/core/families/living-00-soldier.lua", 202,
+    "packs/core/families/living-00-soldier.lua", 205,
     "hp = 120",
     "hp = 12000",
     "Cranks SOLDIER descriptor HP x100 "
@@ -3555,7 +3555,7 @@ inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 202,
+    "packs/core/families/living-00-soldier.lua", 205,
     "hp = 120",
     "hp = 12000",
     "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -6220,7 +6220,7 @@ inline constexpr FactPredicate kFacts_soldier_disarm_matched_scen99[] = {
 };
 
 inline constexpr Mutation kMut_soldier_disarm_matched_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 252,
+    "packs/core/families/living-00-soldier.lua", 255,
     "disarm_range = 28",
     "disarm_range = 0",
     "Collapses the disarm reach to 0. og.foes_in_range(self, 0) returns nothing (the tower sits at Manhattan 15), so found stays 0 and disarm returns false before SOUND_CHARGE, before the notification and before either busy write. EventKindAtLeast(notification,1) drops to 0 and EventKindExactly(play_sound,3) drops to 2 — two independent flips, and neither depends on which side won the two-draw roll."
@@ -8424,7 +8424,7 @@ inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_scen99[] = {
         "consequence: the classic spin at nobody spends 120 of the 130 MP, so the held special from tick 45 cannot pay for a second spin; the foe ends at 103 hp from the plain melee"),
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 210,
+    "packs/core/families/living-00-soldier.lua", 213,
     "name = \"WHIRLWIND\", mp_cost = 120",
     "name = \"WHIRLWIND\", mp_cost = 1",
     "Makes WHIRLWIND cost 1 MP, so the classic spin at nobody leaves enough for the held second one: it lands on the foe and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300) fails."
@@ -9447,13 +9447,13 @@ inline constexpr Mutation kMut_archmage_bot_struck_fixes_scen99 = {
     "Refuses the struck bot's slot-2 answer, so nothing is cast on the hit and no explosion stands at tick 9: WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 1, 1) fails."
 };
 
-// --- soldier_bot_charge_unaimed (bot gates: CHARGE wants an aim at its foe) ---
+// --- soldier_bot_charge_unaimed (bot gates: CHARGE wants a foe in its rush path) ---
 // A hostile level-1 soldier bot and a stationary TOWER1 40 px east, inside the
 // classic window (a foe 20 to 75 px off). The seed (10) makes the bot roll
 // CHARGE on tick 0, before it has ever walked: its heading is (0, 0), so the
 // rush runs nowhere. The classic bot charges anyway (25 MP and the charge
-// sound); with the setting on CHARGE also wants the soldier aimed at its foe,
-// and a soldier with no heading is not, so it holds the 25 MP.
+// sound); with the setting on CHARGE wants a living foe in the path its rush
+// runs, and with no heading the rush walks nowhere, so the bot holds the 25 MP.
 inline constexpr SpawnSpec kFamilySpawns_soldier_bot_charge_unaimed_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 160, 120, 0, 0 },          // the foe, 40 px east: inside the 20-75 window
     { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },  // hostile bot, no heading at spawn
@@ -9465,7 +9465,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_charge_unaimed_scen99[] = {
         "consequence: the classic window answers yes for the tower 40 px off, so the bot charges on tick 0 with no heading: the charge sound, and a rush that goes nowhere"),
 };
 inline constexpr Mutation kMut_soldier_bot_charge_unaimed_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 256,
+    "packs/core/families/living-00-soldier.lua", 259,
     "G.with_classic(ai.foe_in_window(20, 75), fixed)",
     "G.with_classic(ai.foe_in_window(20, 25), fixed)",
     "Narrows the classic window to 20-25 px, so the tower 40 px off is refused and the bot never charges: EventKindExactly(play_sound, 1) reads 0."
@@ -9473,14 +9473,14 @@ inline constexpr Mutation kMut_soldier_bot_charge_unaimed_scen99 = {
 inline constexpr FactPredicate kFacts_soldier_bot_charge_unaimed_fixes_scen99[] = {
     pred::TickReached(5),
     pred::EventKindExactly(/*play_sound*/1, 0,
-        "consequence: with the setting on CHARGE wants the soldier aimed at its foe; with no heading on tick 0 it is refused and nothing sounds in the budget"),
+        "consequence: with the setting on CHARGE wants a living foe in the path its rush runs; with no heading on tick 0 the rush walks nowhere, so it is refused and nothing sounds in the budget"),
     // negative_assertion: no CHARGE in the budget with the setting on; the mutation flips it by letting the unaimed rush through (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_charge_unaimed_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 182,
-    "G.aimed_at(self, f)",
+    "packs/core/families/living-00-soldier.lua", 185,
+    "G.rush_strikes(self, RUSH_STEPS) ~= nil",
     "true",
-    "Drops the aim test, so the bot charges on tick 0 with no heading as the classic one does: EventKindExactly(play_sound, 0) reads 1."
+    "Drops the rush-path test, so the bot charges on tick 0 with no heading as the classic one does: EventKindExactly(play_sound, 0) reads 1."
 };
 
 // --- soldier_bot_boomerang_far (bot gates: BOOMERANG wants a foe inside the orbit) ---
@@ -9501,7 +9501,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_boomerang_far_scen99[] = {
         "consequence: the classic window casts BOOMERANG at a foe the blade never reaches"),
 };
 inline constexpr Mutation kMut_soldier_bot_boomerang_far_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 256,
+    "packs/core/families/living-00-soldier.lua", 259,
     "G.with_classic(ai.foe_in_window(20, 75), fixed)",
     "G.with_classic(ai.foe_in_window(20, 40), fixed)",
     "Narrows the classic window to 20-40 px, so the tower 74 px off is refused and no blade is thrown: WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1) fails."
@@ -9513,7 +9513,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_boomerang_far_fixes_scen99[] =
     // negative_assertion: no blade is thrown with the setting on; the mutation flips it by widening the orbit the gate measures (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_boomerang_far_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 186,
+    "packs/core/families/living-00-soldier.lua", 189,
     "17 + 6 * self.level",
     "17 + 60 * self.level",
     "Widens the orbit the gate measures to 257 px, so the tower 74 px off counts and the blade is thrown: WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 0, 0) fails."
@@ -9537,7 +9537,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_whirlwind_one_foe_scen99[] = {
         "consequence: the classic window casts WHIRLWIND at the one foe in reach; the spin is still going at the end of the budget and the tower is left at 3 hp"),
 };
 inline constexpr Mutation kMut_soldier_bot_whirlwind_one_foe_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 256,
+    "packs/core/families/living-00-soldier.lua", 259,
     "G.with_classic(ai.foe_in_window(20, 75), fixed)",
     "G.with_classic(ai.foe_in_window(20, 25), fixed)",
     "Narrows the classic window to 20-25 px, so the tower 30 px off is refused and the bot never spins: the fight changes and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 300, 300) fails."
@@ -9549,7 +9549,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_whirlwind_one_foe_fixes_scen99
     // negative_assertion: the tower is dead with the setting on; the mutation flips it by letting the spin go at one foe, and the tower outlives the budget (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_whirlwind_one_foe_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 189,
+    "packs/core/families/living-00-soldier.lua", 192,
     "G.targets_within(self, 2,",
     "G.targets_within(self, 1,",
     "Lets WHIRLWIND cast with one body in its ring, so the bot spins at the tower as the classic one does and the tower outlives the budget: WalkerFamilyCount(FAMILY_TOWER1, 0, 0) fails."
@@ -9578,7 +9578,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_disarm_front_scen99[] = {
     // negative_assertion: nothing sounds with the setting off; the mutation flips it by letting the window take a foe 13 px off (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_disarm_front_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 256,
+    "packs/core/families/living-00-soldier.lua", 259,
     "G.with_classic(ai.foe_in_window(20, 75), fixed)",
     "G.with_classic(ai.foe_in_window(0, 75), fixed)",
     "Opens the classic window down to 0 px, so the foe 13 px off is taken and the classic bot disarms it on tick 0: EventKindExactly(play_sound, 0) reads 1."
@@ -9589,7 +9589,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_disarm_front_fixes_scen99[] = 
         "consequence: with the setting on DISARM finds the level-1 foe blocking the bot's front and disarms it on tick 0 (the charge sound)"),
 };
 inline constexpr Mutation kMut_soldier_bot_disarm_front_fixes_scen99 = {
-    "packs/core/families/living-00-soldier.lua", 191,
+    "packs/core/families/living-00-soldier.lua", 194,
     "G.ahead_blocked_by_foe(self, 28)",
     "G.ahead_blocked_by_foe(self, 0)",
     "Shrinks the reach the gate scans to 0 px, so no foe is found blocking the front and DISARM is refused: EventKindExactly(play_sound, 1) reads 0."
