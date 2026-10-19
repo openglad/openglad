@@ -9447,13 +9447,13 @@ inline constexpr Mutation kMut_archmage_bot_struck_fixes_scen99 = {
     "Refuses the struck bot's slot-2 answer, so nothing is cast on the hit and no explosion stands at tick 9: WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 1, 1) fails."
 };
 
-// --- soldier_bot_charge_unaimed (bot gates: CHARGE wants an aim at its foe) ---
+// --- soldier_bot_charge_unaimed (bot gates: CHARGE wants a foe in its rush path) ---
 // A hostile level-1 soldier bot and a stationary TOWER1 40 px east, inside the
 // classic window (a foe 20 to 75 px off). The seed (10) makes the bot roll
 // CHARGE on tick 0, before it has ever walked: its heading is (0, 0), so the
 // rush runs nowhere. The classic bot charges anyway (25 MP and the charge
-// sound); with the setting on CHARGE also wants the soldier aimed at its foe,
-// and a soldier with no heading is not, so it holds the 25 MP.
+// sound); with the setting on CHARGE wants a living foe in the path its rush
+// runs, and with no heading the rush walks nowhere, so the bot holds the 25 MP.
 inline constexpr SpawnSpec kFamilySpawns_soldier_bot_charge_unaimed_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 160, 120, 0, 0 },          // the foe, 40 px east: inside the 20-75 window
     { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },  // hostile bot, no heading at spawn
@@ -9473,7 +9473,7 @@ inline constexpr Mutation kMut_soldier_bot_charge_unaimed_scen99 = {
 inline constexpr FactPredicate kFacts_soldier_bot_charge_unaimed_fixes_scen99[] = {
     pred::TickReached(5),
     pred::EventKindExactly(/*play_sound*/1, 0,
-        "consequence: with the setting on CHARGE wants the soldier aimed at its foe; with no heading on tick 0 it is refused and nothing sounds in the budget"),
+        "consequence: with the setting on CHARGE wants a living foe in the path its rush runs; with no heading on tick 0 the rush walks nowhere, so it is refused and nothing sounds in the budget"),
     // negative_assertion: no CHARGE in the budget with the setting on; the mutation flips it by letting the unaimed rush through (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_charge_unaimed_fixes_scen99 = {
