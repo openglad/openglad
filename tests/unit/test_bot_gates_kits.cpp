@@ -303,3 +303,88 @@ TEST_F(GameplayFixesBots, captain_banner_wants_a_foe_near_the_flag)
     foe->setxy(321, 200);  // 121 px
     EXPECT_FALSE(kit_gate(cap, 4)) << "121 px: no fight at the flag";
 }
+
+// ---------------------------------------------------------------------------
+// The fire elemental (rows 56, 57, 59)
+// ---------------------------------------------------------------------------
+
+// STARBURST, the ring of eight meteors, pays where one meteor would not: two
+// living foes inside the ring's flight (a level-1 meteor goes 89 px of gap
+// straight, 56 on a diagonal), or one the elemental does not face. At spawn
+// the fire heading is up.
+//
+// RED (the classic gate with the setting on): Value of: gate(e, 1, 1)
+// Actual: true Expected: false "one foe ahead: the free meteor's job".
+TEST_F(GameplayFixesBots, elemental_starburst_wants_a_crowd_or_a_foe_behind)
+{
+    world().new_specials = 0;
+    living* e = body(add(FAMILY_FIREELEMENTAL, kBots, 200, 200, 1, 150.0f), 16, 16);
+    living* ahead = body(add(FAMILY_TOWER1, kFoes, 196, 111, 1), 25, 29);  // a 60 px gap above
+    ASSERT_TRUE(e && ahead);
+    EXPECT_TRUE(gate(e, 1, 0)) << "the classic answer: a foe within 130";
+    e->set_foe(nullptr);
+    EXPECT_FALSE(gate(e, 1, 1)) << "one foe ahead: the free meteor's job";
+
+    ahead->setxy(196, 276);  // a 60 px gap below: behind
+    e->set_foe(nullptr);
+    EXPECT_TRUE(gate(e, 1, 1)) << "one foe behind: the ring reaches it";
+
+    ahead->setxy(196, 111);
+    living* behind = body(add(FAMILY_TOWER1, kFoes, 196, 276, 1), 25, 29);
+    ASSERT_NE(nullptr, behind);
+    e->set_foe(nullptr);
+    EXPECT_TRUE(gate(e, 1, 1)) << "two in the ring";
+
+    behind->setxy(196, 306);  // a 90 px gap: past the meteor's 89
+    e->set_foe(nullptr);
+    EXPECT_FALSE(gate(e, 1, 1)) << "the second past the ring's flight";
+}
+
+// IMMOLATE burns what touches the elemental: it is lit with a living foe at
+// blows (a gap of at most 5 px) and more than 60 magic, and while it burns
+// the bot quenches it (a second cast) once no living foe is within 40 px,
+// so the drain stops paying for nothing.
+//
+// RED (the 40 px gate): Value of: kit_gate(e, 2) Actual: true Expected:
+// false "a 10 px gap: not at blows"; and Actual: false Expected: true
+// "burning alone: quench".
+TEST_F(GameplayFixesBots, elemental_immolate_lights_at_blows_and_quenches_alone)
+{
+    living* e = body(add(FAMILY_FIREELEMENTAL, kBots, 200, 200, 4, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, kFoes, 217, 200, 1), 16, 16);  // a 1 px gap
+    ASSERT_TRUE(e && foe);
+    EXPECT_TRUE(kit_gate(e, 2, 0)) << "New Specials off: the guard's yes";
+    EXPECT_TRUE(kit_gate(e, 2)) << "a foe at blows: light it";
+    foe->setxy(226, 200);  // a 10 px gap
+    e->set_foe(nullptr);
+    EXPECT_FALSE(kit_gate(e, 2)) << "a 10 px gap: not at blows";
+    e->stats()->set_magicpoints(60.0f);
+    foe->setxy(217, 200);
+    EXPECT_FALSE(kit_gate(e, 2)) << "60 MP: not enough to burn";
+
+    e->set_kit_state(KIT_CHANNEL);
+    foe->setxy(600, 600);
+    EXPECT_TRUE(kit_gate(e, 2)) << "burning alone: quench";
+    foe->setxy(220, 200);  // 20 px
+    EXPECT_FALSE(kit_gate(e, 2)) << "burning with a foe at 20: keep burning";
+}
+
+// REKINDLE (40) is chosen only when the elemental can pay it: the engine
+// kept the slot for SUPERNOVA's 10 on a pool of 10 to 39 and does not check
+// again, so a gate that chose REKINDLE there would cast into a refusal.
+//
+// RED (the kit gate without the price): Value of: kit_gate(e, 4) Actual:
+// true Expected: false "25 MP cannot pay REKINDLE".
+TEST_F(GameplayFixesBots, elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it)
+{
+    living* e = body(add(FAMILY_FIREELEMENTAL, kBots, 200, 200, 10, 25.0f), 16, 16);
+    ASSERT_NE(nullptr, e);
+    e->stats()->set_hitpoints(150.0f);  // under half of 400
+    e->set_shifter_down(1);
+    EXPECT_TRUE(kit_gate(e, 4, 0)) << "New Specials off: the guard's yes";
+    EXPECT_FALSE(kit_gate(e, 4)) << "25 MP cannot pay REKINDLE";
+    e->stats()->set_magicpoints(45.0f);
+    e->set_shifter_down(1);
+    EXPECT_TRUE(kit_gate(e, 4)) << "45 MP: REKINDLE";
+    EXPECT_EQ(0, e->shifter_down()) << "REKINDLE, not SUPERNOVA";
+}
