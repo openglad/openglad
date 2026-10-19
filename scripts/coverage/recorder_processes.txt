@@ -25,6 +25,7 @@ og_test_guy
 og_test_input
 og_test_io
 og_test_level
+og_test_level_play
 og_test_lineup
 og_test_living
 og_test_mass_coverage
@@ -43,6 +44,7 @@ og_test_sdl_video_lifecycle
 og_test_smooth
 og_test_snapshot_benchmark
 og_test_snapshot_safety
+og_test_special_scenes
 og_test_stats
 og_test_tower_run
 og_test_view

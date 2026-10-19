@@ -574,16 +574,20 @@ TEST(KitThief, mine_costs_double_and_is_a_bomb_when_off)
 namespace {
 
 // A bot thief beside a foe (inside the bomb gate's 35 px), in ACT_RANDOM.
+// The hunter scene puts the foe 33 px off and has it hunting the thief:
+// past the level-1 bomb's 31 px blast (where a mine pays) and still inside
+// the classic gate's 35 px (where the classic bot bombs).
 struct BotScene {
     TestGameWorld tw;
     walker* thief = nullptr;
     walker* foe = nullptr;
 
-    BotScene(short ns, float mp)
+    BotScene(short ns, float mp, bool hunter = false)
     {
         tw.world().new_specials = ns;
         thief = add_living(tw, FAMILY_THIEF, kThiefTeam, 160, 160);
-        foe = add_living(tw, FAMILY_SOLDIER, kFoeTeam, 180, 160);
+        foe = add_living(tw, FAMILY_SOLDIER, kFoeTeam,
+                         static_cast<short>(hunter ? 193 : 180), 160);
         if (thief == nullptr || foe == nullptr)
             return;
         thief->set_act_type(ACT_RANDOM);
@@ -591,6 +595,8 @@ struct BotScene {
         thief->stats()->set_max_magicpoints(mp);
         thief->stats()->set_magicpoints(mp);
         thief->set_foe(foe);
+        if (hunter)
+            foe->set_foe(thief);
     }
 
     int mines() const { return count_of(tw, Order::FX, mine_family()); }
@@ -608,26 +614,32 @@ std::uint32_t state_where_next_is(std::uint32_t bound, std::uint32_t want)
 
 }  // namespace
 
-// The bot gate is the thief's classic slot-1 gate (unchanged) plus the shift
-// coin living::check_special draws: heads with the mine affordable and the
-// setting on -> a MINE; the same coin with the setting off -> the bomb; heads
-// with the mine unaffordable (50 MP) -> the engine drops the shift -> the
-// bomb. The bot steps off its mine as it runs from its bomb.
-TEST(KitThief, ai_mine_fires_when_the_coin_lands_shifted_and_mana_allows)
+// The bot gate lays a MINE by its own rule, not by the shift coin
+// living::check_special draws: a foe 33 px off hunting the thief (past the
+// 31 px blast, so a mine pays) with the mine affordable and the setting on
+// -> a MINE on either side of the coin; the same foe with the setting off
+// -> the classic gate's bomb (inside its 35 px); the mine unaffordable
+// (50 MP) -> the gate writes no shift -> the bomb; the foe not hunting the
+// thief -> the bomb. The bot steps off its mine as it runs from its bomb.
+TEST(KitThief, ai_mine_fires_for_a_hunter_past_the_blast_when_mana_allows)
 {
     og::test::ScopedHookFailureGuard guard;
     const std::uint32_t heads = state_where_next_is(2, 1);
+    const std::uint32_t tails = state_where_next_is(2, 0);
     struct Outcome {
         int mines;
         int bombs;
         float mp;
         bool walking_off;
     };
-    const auto run = [&](short ns, float mp) {
-        BotScene b(ns, mp);
+    const auto run = [&](short ns, float mp, std::uint32_t coin,
+                         bool hunter) {
+        BotScene b(ns, mp, true);
         EXPECT_NE(nullptr, b.thief);
+        if (!hunter)
+            b.foe->set_foe(nullptr);
         b.thief->set_current_special(1);
-        b.tw.world().rng_.state_ = heads;
+        b.tw.world().rng_.state_ = coin;
         living* bot = dynamic_cast<living*>(b.thief);
         EXPECT_NE(nullptr, bot);
         EXPECT_TRUE(bot->check_special()) << "the foe is inside 35 px";
@@ -638,24 +650,30 @@ TEST(KitThief, ai_mine_fires_when_the_coin_lands_shifted_and_mana_allows)
                            b.thief->stats()->commands.front().commandtype ==
                                COMMAND_WALK};
     };
-    const Outcome on = run(1, 100.0f);
-    EXPECT_EQ(1, on.mines) << "heads, affordable, setting on: a mine";
-    EXPECT_EQ(0, on.bombs);
-    EXPECT_FLOAT_EQ(30.0f, on.mp);
-    EXPECT_TRUE(on.walking_off) << "the bot steps off its mine";
-    const Outcome off = run(0, 100.0f);
-    EXPECT_EQ(0, off.mines) << "the same coin with the setting off";
+    for (const std::uint32_t coin : {heads, tails}) {
+        const Outcome on = run(1, 100.0f, coin, true);
+        EXPECT_EQ(1, on.mines) << "a hunter past the blast, affordable, setting on: a mine";
+        EXPECT_EQ(0, on.bombs);
+        EXPECT_FLOAT_EQ(30.0f, on.mp);
+        EXPECT_TRUE(on.walking_off) << "the bot steps off its mine";
+    }
+    const Outcome off = run(0, 100.0f, heads, true);
+    EXPECT_EQ(0, off.mines) << "the same scene with the setting off";
     EXPECT_EQ(1, off.bombs);
     EXPECT_FLOAT_EQ(65.0f, off.mp);
-    const Outcome poor = run(1, 50.0f);
-    EXPECT_EQ(0, poor.mines) << "an unaffordable mine drops the shift";
+    const Outcome poor = run(1, 50.0f, heads, true);
+    EXPECT_EQ(0, poor.mines) << "an unaffordable mine: no shift";
     EXPECT_EQ(1, poor.bombs);
     EXPECT_FLOAT_EQ(15.0f, poor.mp);
+    const Outcome idle = run(1, 100.0f, heads, false);
+    EXPECT_EQ(0, idle.mines) << "a foe that is not walking at the thief";
+    EXPECT_EQ(1, idle.bombs);
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
 // The whole bot path, through living::act: from the first world-RNG state
-// whose act() makes a bot thief beside a foe lay a mine with the setting on,
+// whose act() makes a bot thief lay a mine for a foe hunting it from 33 px
+// (past the blast, inside the classic gate's 35 px) with the setting on,
 // the same state with the setting off drops the classic bomb instead, and
 // draws exactly as many numbers (the mine's flee step is the bomb's).
 TEST(KitThief, bot_thief_lays_a_mine_through_act)
@@ -665,7 +683,7 @@ TEST(KitThief, bot_thief_lays_a_mine_through_act)
     std::uint32_t on_state = 0;
     for (std::uint32_t candidate = 1; candidate < 400 && seed == 0;
          ++candidate) {
-        BotScene b(1, 100.0f);
+        BotScene b(1, 100.0f, true);
         ASSERT_NE(nullptr, b.thief);
         b.tw.world().rng_.state_ = candidate;
         b.thief->act();
@@ -676,7 +694,7 @@ TEST(KitThief, bot_thief_lays_a_mine_through_act)
     }
     ASSERT_NE(0u, seed) << "some state makes the bot lay a mine";
 
-    BotScene off(0, 100.0f);
+    BotScene off(0, 100.0f, true);
     ASSERT_NE(nullptr, off.thief);
     off.tw.world().rng_.state_ = seed;
     off.thief->act();
@@ -721,9 +739,11 @@ TEST(KitThief, ai_off_answers_the_classic_gate)
 }
 
 // A bot steps off its mine on the bomb's own flee roll: one step direction
-// drawn per axis, and when both come up 0 it steps right. From a state whose
-// coin lands shifted and whose two flee draws are both 0 (next(3) == 1 each,
-// as the roll is rand(3) - 1), the bot is told to walk right for 20 steps.
+// drawn per axis, and when both come up 0 it steps right. With a foe
+// hunting the thief from past the blast (the mine's payoff), from a state
+// whose coin lands shifted and whose two flee draws are both 0 (next(3) == 1
+// each, as the roll is rand(3) - 1), the bot is told to walk right for 20
+// steps.
 TEST(KitThief, bot_steps_right_off_a_mine_when_the_flee_roll_is_still)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -733,7 +753,7 @@ TEST(KitThief, bot_steps_right_off_a_mine_when_the_flee_roll_is_still)
         if (probe.next(2) == 1 && probe.next(3) == 1 && probe.next(3) == 1)
             state = seed;
     }
-    BotScene b(1, 100.0f);
+    BotScene b(1, 100.0f, true);
     ASSERT_NE(nullptr, b.thief);
     living* bot = dynamic_cast<living*>(b.thief);
     ASSERT_NE(nullptr, bot);

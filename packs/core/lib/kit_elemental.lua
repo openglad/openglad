@@ -1,6 +1,7 @@
 -- core lib: kit_elemental — the fire elemental's New Specials: IMMOLATE, METEOR RAIN, REKINDLE / SUPERNOVA (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
+local G = og.use("gates")
 local km = og.use("kit_marker")
 local foes_touching = og.use("effect_ember").foes_touching
 local FX_EMBER = assert(og.family_id("fx", "core:ember"))
@@ -20,6 +21,7 @@ local IMMOLATE_GATE_RANGE = 40
 local IMMOLATE_GATE_MANA = 60
 local RAIN_GATE_RANGE = 160
 local RAIN_GATE_CLUSTER = 60
+local RAIN_ALLY_ZONE = 71
 local NOVA_GATE_RANGE = 48
 
 local M = {}
@@ -336,17 +338,23 @@ end
 -- Bot gates. The setting guard is first and answers true, so with the
 -- setting off a gate draws and changes nothing (check_special() && !rng(3)
 -- would skip a draw on false).
+-- IMMOLATE burns what touches the elemental: light it with a living foe
+-- at blows and the mana to burn; while it burns, cast again (the quench)
+-- once no living foe is within IMMOLATE_GATE_RANGE, so the drain stops
+-- paying for nothing. The foe search within the same range is kept on the
+-- lighting arm for its draw and its foe.
 function M.ai_immolate(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
   if burning(self) then
-    return false
+    return not G.foes_within(self, 1, IMMOLATE_GATE_RANGE, true)
   end
   if self.magicpoints <= IMMOLATE_GATE_MANA then
     return false
   end
-  return og.check_special_ai_distance(self, IMMOLATE_GATE_RANGE)
+  og.check_special_ai_distance(self, IMMOLATE_GATE_RANGE)
+  return #G.foes_at_blows(self) >= 1
 end
 
 -- Our foe within 160 with at least one more of our foes within 60 of it.
@@ -365,11 +373,24 @@ function M.ai_meteor(self)
       clustered = clustered + 1
     end
   end
+  -- An ally standing in the rain (the strike lands within rain_spread of
+  -- the target on each axis and the blast reaches 31 px) holds the fire.
+  -- The scan must reach the whole box: the target is under 160 away and
+  -- a box corner is 71 + 71 Manhattan beyond it.
+  local friends = og.find_friends_in_range("ob", RAIN_GATE_RANGE + 2 * RAIN_ALLY_ZONE, self)
+  for i = 1, #friends do
+    local dx = math.abs(friends[i]:xpos() - target:xpos())
+    local dy = math.abs(friends[i]:ypos() - target:ypos())
+    if dx <= RAIN_ALLY_ZONE and dy <= RAIN_ALLY_ZONE then
+      return false
+    end
+  end
   return clustered >= 2
 end
 
 -- SUPERNOVA below a fifth of our health with two foes close; otherwise
--- REKINDLE below half.
+-- REKINDLE below half, when the elemental can pay it (the engine keeps the
+-- slot for SUPERNOVA's 10 on a smaller pool and does not check again).
 function M.ai_rekindle(self)
   if og.match_setting("new_specials") == 0 then
     return true
@@ -384,7 +405,10 @@ function M.ai_rekindle(self)
   end
   self:set_shifter_down(0)
   -- max_hp is a C++ float: per-op rounding.
-  return self.hp < og.fdiv(self.max_hp, 2.0)
+  if self.hp >= og.fdiv(self.max_hp, 2.0) then
+    return false
+  end
+  return G.can_pay(self, 4, false)
 end
 
 -- The declarations that reference this module (packs/core/families/):

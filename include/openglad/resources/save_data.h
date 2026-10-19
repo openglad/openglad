@@ -146,6 +146,13 @@ public:
     // otherwise. SESSION-ONLY — never serialized to the GTL file (like
     // cross_control); reset() and load() never touch it.
     short new_specials = 0;
+    // Gameplay Fixes (protocol v21): 0 = the classic game, bugs included,
+    // 1 = the classic specials' bugs fixed. The per-machine preference (cfg
+    // gameplay/gameplay_fixes) seeds it once per client session; a lobby then
+    // negotiates it (the host wins). Default 0 so every hand-built save is
+    // classic unless it says otherwise. SESSION-ONLY — never serialized to
+    // the GTL file (like new_specials); reset() and load() never touch it.
+    short gameplay_fixes = 0;
     // Tower Climb persistence (GTL v13; docs/tower-triple-design.md D2/D6).
     // Floors climbed is DERIVED (scen_num - kTowerGateLevel), never stored as
     // a run counter; only the lifetime best and the current run's generation

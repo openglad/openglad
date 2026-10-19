@@ -325,8 +325,8 @@ std::pair<int, std::uint32_t> howl_stun(int family, short new_specials)
 // ---------------------------------------------------------------- the setting
 
 // With the setting off the captain has no specials: every slot and every
-// alternate answers 5000 through the view, the cast is refused for mana and
-// nothing is spent, made or heard.
+// alternate answers 5000 through the view, the cast is refused (the slot is
+// not in play) and nothing is spent, made or heard.
 TEST(KitCaptain, captain_has_no_specials_when_off)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -346,7 +346,7 @@ TEST(KitCaptain, captain_has_no_specials_when_off)
                 << "slot " << slot << " shifted " << shifted;
             const Cast c = cast(captain, slot, shifted);
             EXPECT_FALSE(c.ok) << "slot " << slot << " shifted " << shifted;
-            EXPECT_EQ(walker::SpecialFailure::NoMP, c.why);
+            EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why);
             EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
         }
     }
@@ -1609,8 +1609,8 @@ struct BotScene {
 
 }  // namespace
 
-// Slot 1: howl at a foe within 130 (the orc's own gate). HOWL has no
-// alternate, so the gate leaves the engine's shift coin alone: every
+// Slot 1: howl when a body the yell can stun is inside the yell (160 px
+// plus 20 a level: 360 at level 10). HOWL has no alternate, so the gate leaves the engine's shift coin alone: every
 // answer reads "untouched" (-1). A corpse underfoot and a wound change
 // nothing here; the meal is slot 2's.
 //
@@ -1675,33 +1675,37 @@ TEST(KitCaptain, ai_eat_fires_when_hurt_on_a_corpse)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Slot 3: hook a foe within 90 while no blade is out; fan (shift) into two
-// or more; otherwise hold.
+// Slot 3: hook a foe within the blade's 60 px while no blade is out; fan
+// (shift) when two foes stand on the fan's three lines (the facing and the
+// two beside it) inside the knives' flight; otherwise hold. The captain
+// faces right, so the fan covers up-right, right and down-right.
 TEST(KitCaptain, ai_hook_fires_when_a_foe_is_near_and_fans_into_a_crowd)
 {
     og::test::ScopedHookFailureGuard guard;
     BotScene s;
     ASSERT_NE(nullptr, s.bot);
+    s.captain->set_curdir(FACE_RIGHT);
     EXPECT_FALSE(s.ask(3).first) << "nobody near";
     walker* foe = add_living(s.tw, FAMILY_SOLDIER, kThem, 260, 200);
     ASSERT_NE(nullptr, foe);
     EXPECT_EQ((std::pair<bool, int>{true, 0}), s.ask(3)) << "hook";
     ASSERT_TRUE(cast(s.captain, 3, false).ok);
     EXPECT_FALSE(s.ask(3).first) << "blade out, one foe: hold";
-    add_living(s.tw, FAMILY_SOLDIER, kThem, 200, 260);
+    add_living(s.tw, FAMILY_SOLDIER, kThem, 250, 250);  // down-right
     EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(3)) << "fan";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Slot 4: plant a banner on a corpse with two allies around and none
-// standing; call the warband (shift) when two foes press within 120 and no
-// grunt is left; otherwise hold.
+// Slot 4: plant a banner on a corpse with two allies around, a foe within
+// 120 to fight and none standing; call the warband (shift) when two foes
+// press within 120 and no grunt is left; otherwise hold.
 TEST(KitCaptain, ai_banner_plants_among_friends_and_calls_the_warband_when_pressed)
 {
     og::test::ScopedHookFailureGuard guard;
     BotScene s;
     ASSERT_NE(nullptr, s.bot);
     EXPECT_FALSE(s.ask(4).first) << "nothing to do";
+    add_living(s.tw, FAMILY_SOLDIER, kThem, 300, 200);  // 100 px: a fight
     add_stain(s.tw, s.captain);
     add_living(s.tw, FAMILY_SOLDIER, kUs, 240, 200);
     EXPECT_FALSE(s.ask(4).first) << "one ally is not a crowd";

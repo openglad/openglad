@@ -534,6 +534,19 @@ void set_new_specials(SaveData& save, cfg_store& config, bool on,
 void apply_new_specials_toggle(SaveData& save, cfg_store& config,
                                bool decides_session);
 
+// Gameplay Fixes (cfg gameplay/gameplay_fixes, SaveData::gameplay_fixes),
+// the same contract as New Specials above: the per-machine preference seeds
+// the session value once, the lobby negotiates it (host wins), and it never
+// reaches the .gtl. "on" is on, anything else is off.
+void seed_gameplay_fixes_from_cfg(SaveData& save, cfg_store& config);
+// Write the preference; mirror it into the session save only when this
+// machine decides the session (no lobby, or the host).
+void set_gameplay_fixes(SaveData& save, cfg_store& config, bool on,
+                        bool decides_session);
+// The Gameplay FX row: flips the preference.
+void apply_gameplay_fixes_toggle(SaveData& save, cfg_store& config,
+                                 bool decides_session);
+
 // Toggle cross control: cross_control 0 (own seats) <-> 1 (all seats).
 // The pure save write behind change_cross_control()'s popup/sync tail, so
 // the SETUP wizard's RULES row and the DIFFICULTY panel's row step the same
@@ -1265,10 +1278,6 @@ std::string format_generator_rate_label(const SaveData& save);
 // "Infinite Gold: Off" / "Infinite Gold: On".
 std::string format_infinite_gold_label(const SaveData& save);
 
-// "NEW SPECIALS: ON" / "NEW SPECIALS: OFF" (the session value, any nonzero
-// reads as on). The lobby RULES face, so a joiner sees the host's choice.
-std::string format_new_specials_label(const SaveData& save);
-
 // --- Company screens: label formatters (design §2.2/§2.3) ---
 // (The §2.2 "file: <slug>.gtl" preview formatter was DELETED — §9.3/F2:
 // the filename teaches nothing; companies are fully managed in-game on
@@ -1988,15 +1997,17 @@ SetupTeamLineCells compose_setup_team_line(const LineupTeamBand& band,
 std::string format_scenario_report_team_line(const ScenarioRosterReport& report,
                                              int team);
 
-// The RULES rows, in row order. Every renderer gets the SAME string: the
+// The RULES rows, in row order: SCORE and TIME LIMIT, each when the
+// campaign's match_knobs show it, and nothing else. They are the wizard's
+// RULES step AND the MATCH step's rules lines; the Base Camp DIFFICULTY
+// door's knobs, the Game Settings and CROSS CONTROL have their own homes
+// and are not on either page. Every renderer gets the SAME string: the
 // shared formatters are upper-cased HERE, at the one composer, instead of
 // three surfaces each upper-casing (or forgetting to).
 struct MatchRulesInputs {
     const SaveData* save = nullptr;
     bool show_score = true;   // the campaign's match_knobs
     bool show_time = true;
-    int difficulty = 0;       // the session's value, not a save field
-    bool networked = false;   // CROSS CONTROL is a networked-only row
 };
 struct MatchRuleFace {
     std::string_view id;   // the wizard's ROW ID (kRulesRow* below)
@@ -2006,14 +2017,6 @@ struct MatchRuleFace {
 // a face belongs to.
 inline constexpr std::string_view kRulesRowScore = "score";
 inline constexpr std::string_view kRulesRowTime = "time";
-inline constexpr std::string_view kRulesRowRespawns = "respawns";
-inline constexpr std::string_view kRulesRowSpawnDelay = "spawn_delay";
-inline constexpr std::string_view kRulesRowPermadeath = "permadeath";
-inline constexpr std::string_view kRulesRowGenerators = "generators";
-inline constexpr std::string_view kRulesRowDifficulty = "difficulty";
-inline constexpr std::string_view kRulesRowInfiniteGold = "infinite_gold";
-inline constexpr std::string_view kRulesRowNewSpecials = "new_specials";
-inline constexpr std::string_view kRulesRowCrossControl = "cross_control";
 std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs);
 
 // The same faces packed two per line, greedy in order, joined by two
@@ -2022,9 +2025,9 @@ std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs);
 // would exceed `budget` splits across two lines.
 std::vector<std::string> format_match_rules_lines(
     const MatchRulesInputs& inputs, std::size_t budget = 48);
-// The same packer over a face list the caller has already filtered — the
-// wizard's joiner RULES prints only the rows that step owns, and the MATCH
-// recap prints them all, out of ONE packing loop.
+// The same packer over a face list the caller already holds — the
+// wizard's joiner RULES prints the faces it composed for its own rows, out
+// of the ONE packing loop the MATCH step's rules lines use.
 std::vector<std::string> format_match_rules_lines(
     const std::vector<MatchRuleFace>& faces, std::size_t budget = 48);
 

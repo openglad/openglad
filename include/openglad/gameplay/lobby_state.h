@@ -439,9 +439,13 @@ struct LobbySettings {
     std::array<std::int16_t, SCORE_TEAM_COUNT> fill = {};
     std::array<std::int16_t, SCORE_TEAM_COUNT> map_units = {};
     // The New Specials setting (protocol v19): 0 = the classic kits, 1 = the
-    // new ones. Host-only, appended LAST in append/read_lobby_settings;
-    // sanitize_settings keeps it in {0, 1}.
+    // new ones. Host-only, appended after the band knobs in
+    // append/read_lobby_settings; sanitize_settings keeps it in {0, 1}.
     std::int16_t new_specials = 0;
+    // The Gameplay Fixes setting (protocol v21): 0 = the classic game, bugs
+    // included, 1 = the fixed game. Host-only, appended LAST in
+    // append/read_lobby_settings; sanitize_settings keeps it in {0, 1}.
+    std::int16_t gameplay_fixes = 0;
 
     bool operator==(const LobbySettings&) const = default;
 };

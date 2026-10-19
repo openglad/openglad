@@ -443,6 +443,11 @@ RunOutcome run_scenario(const ScenarioSpec& spec,
     // GameWorld default is already 0; this line is the contract, not the
     // mechanism (the Modern-dynamics branch pinned Classic here too).
     world.new_specials = 0;
+    // Per row: the rows marked on play the Gameplay Fixes setting; every other
+    // row is the classic game. new_specials stays 0 for every row (the one
+    // fix that is New Specials only, METEOR RAIN's ally check, is out of
+    // every row's reach).
+    world.gameplay_fixes = spec.gameplay_fixes;
 
     if (spec.fresh_arena)
         clear_world_entities(world);

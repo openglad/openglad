@@ -388,11 +388,18 @@ TEST_F(KitRests, with_the_setting_off_the_classic_specials_rest_too)
 // roll a slot it would be refused; once the rest is over the gate answers
 // as before. A family-wide gate (the mage's, the orc's) holds only the
 // rested slot. The classic specials' gates hold with the setting off too.
+// With the Gameplay Fixes setting on, the mage's FREEZE TIME waits for
+// the allies' fight, so that row stands three allies each a blow from a
+// foe (and keeps the foe at 60 px for WARP SPACE): the rest is still what
+// is tested.
 //
 // RED: Value of: gate(w, row.slot) Actual: true Expected: false
 // "mage FREEZE TIME: held while resting", and the same for every row. RED
 // (the setting check put back in gate_with_rest): the same line for every
 // setting-off row ("mage FREEZE TIME, setting off: held while resting").
+// RED (the Gameplay Fixes row on the classic mage gate): Value of: gate(w,
+// row.slot) Actual: false Expected: true "mage FREEZE TIME, Gameplay Fixes
+// on: the classic gate says yes".
 TEST_F(KitRests, bot_gates_hold_a_resting_special)
 {
     struct Row {
@@ -403,6 +410,7 @@ TEST_F(KitRests, bot_gates_hold_a_resting_special)
         int rest;
         int new_specials;
         const char* name;
+        short gameplay_fixes = 0;
     };
     const Row rows[] = {
         {FAMILY_MAGE, 3, 0, 7, 360, 1, "mage FREEZE TIME"},
@@ -415,24 +423,59 @@ TEST_F(KitRests, bot_gates_hold_a_resting_special)
         {FAMILY_ORC, 1, 0, 4, 120, 0, "orc HOWL, setting off"},
         {FAMILY_GHOST, 1, 0, 4, 96, 0, "ghost SCARE, setting off"},
         {FAMILY_ARCHMAGE, 4, 0, 10, 240, 0, "archmage MIND CONTROL, setting off"},
+        {FAMILY_MAGE, 3, 0, 7, 360, 1, "mage FREEZE TIME, Gameplay Fixes on", 1},
     };
     short x = 40;
     for (const Row& row : rows) {
         world().new_specials = static_cast<short>(row.new_specials);
+        world().gameplay_fixes = row.gameplay_fixes;
         living* w = add(row.family, 0, x, 120, row.level, 2000.0f);
-        // A foe in every gate's reach (the mage's own gate wants none or a
-        // crowd: it stands off to one side for the mage).
-        living* foe = add(FAMILY_SOLDIER, 1,
-                          static_cast<short>(row.family == FAMILY_MAGE ? x : x + 30),
-                          row.family == FAMILY_MAGE ? 400 : 120, 1);
+        // A foe in every gate's reach (the mage's classic gate wants none or
+        // a crowd: it stands off to one side for the mage; with the Gameplay
+        // Fixes setting on, WARP SPACE wants one within 110 px).
+        const bool mage_off_to_one_side =
+            row.family == FAMILY_MAGE && row.gameplay_fixes == 0;
+        short foe_x = static_cast<short>(x + 30);
+        if (mage_off_to_one_side)
+            foe_x = x;
+        else if (row.family == FAMILY_MAGE)
+            foe_x = static_cast<short>(x + 60);
+        living* foe = add(FAMILY_SOLDIER, 1, foe_x,
+                          mage_off_to_one_side ? 400 : 120, 1);
         ASSERT_TRUE(w && foe) << row.name;
+        // With the Gameplay Fixes setting on, FREEZE TIME waits for the
+        // allies' fight: three allies far from the mage (220 px and more,
+        // inside the 512 px field), each a 4 px gap from a foe (inside the
+        // 5 px reach). They take no decisions and stand still through the
+        // rest; their bodies are the fighter's 16 by 16.
+        std::vector<walker*> fight;
+        if (row.family == FAMILY_MAGE && row.gameplay_fixes != 0) {
+            for (int k = 0; k < 3; ++k) {
+                const short fy = static_cast<short>(300 + 40 * k);
+                walker* ally = add(FAMILY_SOLDIER, 0, static_cast<short>(x + 40), fy, 1);
+                walker* enemy = add(FAMILY_SOLDIER, 1, static_cast<short>(x + 60), fy, 1);
+                ASSERT_TRUE(ally && enemy) << row.name;
+                for (walker* b : {ally, enemy}) {
+                    b->set_sizex(16);
+                    b->set_sizey(16);
+                    fight.push_back(b);
+                }
+            }
+        }
         w->set_busy(0.0f);
         ASSERT_TRUE(gate(w, row.slot)) << row.name << ": the classic gate says yes";
         ASSERT_TRUE(cast(w, row.slot, row.shift).ok) << row.name;
         world().enemy_freeze = 0;
         EXPECT_FALSE(gate(w, row.slot)) << row.name << ": held while resting";
         if (row.family == FAMILY_MAGE || row.family == FAMILY_ORC) {
-            EXPECT_TRUE(gate(w, row.slot == 1 ? 2 : 1))
+            // With the Gameplay Fixes setting on, the mage's TELEPORT keeps
+            // the classic rule (one foe near: stay) and WARP SPACE wants a
+            // crowd inside its point-blank ring, so HEARTBURST is asked: the
+            // foe 60 px off is inside its 94 px reach.
+            int other = row.slot == 1 ? 2 : 1;
+            if (row.gameplay_fixes != 0)
+                other = 5;
+            EXPECT_TRUE(gate(w, other))
                 << row.name << ": another slot is not held";
         }
         tick(row.rest);
@@ -441,6 +484,8 @@ TEST_F(KitRests, bot_gates_hold_a_resting_special)
         if (row.family != FAMILY_MAGE)  // the scared and howled-at walk off
             foe->setxy(static_cast<short>(w->xpos() + 30), w->ypos());
         EXPECT_TRUE(gate(w, row.slot)) << row.name << ": free after the rest";
+        for (walker* b : fight)
+            b->set_dead(1);
         x = static_cast<short>(x + 30);
         w->set_dead(1);
         foe->set_dead(1);

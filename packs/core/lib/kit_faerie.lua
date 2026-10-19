@@ -1,6 +1,7 @@
 -- core lib: kit_faerie — the faerie's New Specials: blink and swap, glimmer, hasten, wish (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
+local G = og.use("gates")
 local lc = og.use("living_common")
 local FX_FLASH = assert(og.family_id("fx", "core:flash"))
 local FX_HIT = assert(og.family_id("fx", "core:hit"))
@@ -369,8 +370,8 @@ function M.ai_blink(self)
       end
     end
   end
-  local _, close_foes = og.find_foes_in_range("ob", 30, self)
-  if close_foes > 0 then
+  -- Living foes: a tent beside her is no reason to hop.
+  if G.foes_within(self, 1, 30, false) then
     -- max_hp is a C++ float: fdiv is a genuine float half
     if self.hp < og.fdiv(self.max_hp, 2.0) then
       self:set_shifter_down(0)
@@ -380,13 +381,13 @@ function M.ai_blink(self)
   return false
 end
 
--- Slot 2: GLIMMER when a foe is within 60, unless GLIMMER is resting.
+-- Slot 2: GLIMMER when a living foe is within 60 (the sprinkles freeze
+-- the living), unless GLIMMER is resting.
 M.ai_glimmer = lc.gate_with_rest(function(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  local _, foes = og.find_foes_in_range("ob", 60, self)
-  return foes > 0
+  return G.foes_within(self, 1, 60, false)
 end, GLIMMER_SLOT)
 
 -- Slot 3: HASTEN the ally HASTEN would take when it is fighting and not

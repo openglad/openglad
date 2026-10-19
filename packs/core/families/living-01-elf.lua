@@ -1,6 +1,9 @@
 -- core:elf — rock-spread specials (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
+local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
+
 -- Jonathan Dearborn added this spread in 2013 so stacked rocks separate
 -- visibly in flight.
 -- The original jitter came from libc rand, separate from gameplay RNG.
@@ -17,6 +20,10 @@ local function some_rocks(self)
   self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())
   local rock = self:fire()
   if not rock then
+    if gf.on() then
+      -- Gameplay Fixes: the two rocks that never flew are not refunded.
+      gf.take_back(self, 2)
+    end
     return false, "COULD NOT FIRE"
   end
   -- lastx/lasty are C++ floats: per-op rounding.
@@ -24,6 +31,10 @@ local function some_rocks(self)
   rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
   rock = self:fire()
   if not rock then
+    if gf.on() then
+      -- Gameplay Fixes: the second rock never flew.
+      gf.take_back(self, 1)
+    end
     return false, "COULD NOT FIRE"
   end
   -- lastx/lasty are C++ floats: per-op rounding.
@@ -37,12 +48,21 @@ end
 -- therefore `* 4 // 2`.
 local function bounce_volley(cost_mult, count, los_num)
   return function(self)
+    local refund = cost_mult
+    if gf.on() then
+      -- Gameplay Fixes: refund the rocks that will fly, not one more.
+      refund = count
+    end
     -- magicpoints is a C++ float: per-op rounding.
     self.magicpoints = og.fadd(self.magicpoints,
-                               cost_mult * self:s_weapon_cost())
+                               refund * self:s_weapon_cost())
     for i = 1, count do
       local rock = self:fire()
       if not rock then
+        if gf.on() then
+          -- Gameplay Fixes: the rocks that never flew are not refunded.
+          gf.take_back(self, count - i + 1)
+        end
         return false, "COULD NOT FIRE"
       end
       rock:set_lineofsight(rock:lineofsight() * los_num // 2)
@@ -57,6 +77,44 @@ end
 
 local function level_up(guy, level_diff)
   og.apply_level_up(guy, level_diff, 6, 9, 6, 8, 1)
+end
+
+-- Gameplay Fixes: the classic elf had no gate and threw at nothing. With
+-- the setting on a volley wants the elf's nearest living foe faced (the
+-- rocks leave along the elf's heading) and inside the rocks' flight (the
+-- rock is step 5, range 8 in the weapon table; the bouncing volleys
+-- multiply the range by los_num / 2, as bounce_volley does), and the two
+-- bigger volleys want a second living foe in flight anywhere around.
+-- Draw-free: finders and positions only.
+local function volley(self, count_needed, los_num)
+  local foe = G.nearest_living_foe(self, 320, false)
+  if not foe or not G.faces(self, foe)
+      or not G.in_flight(self, foe, 5, 8, los_num, 2) then
+    return false
+  end
+  if count_needed < 2 then
+    return true
+  end
+  local foes = G.living_foes(self, 320, false)
+  local n = 0
+  for i = 1, #foes do
+    if G.in_flight(self, foes[i], 5, 8, los_num, 2) then
+      n = n + 1
+    end
+  end
+  return n >= count_needed
+end
+
+-- slot: { foes needed, los_num }; slot 4 is also every unmapped slot, as
+-- default_cast is.
+local VOLLEYS = { { 1, 2 }, { 1, 3 }, { 2, 4 }, { 2, 5 } }
+
+local function check_special_ai(self)
+  if not gf.on() then
+    return true
+  end
+  local v = VOLLEYS[self:current_special()] or VOLLEYS[4]
+  return volley(self, v[1], v[2])
 end
 
 og.family("living", {
@@ -111,5 +169,6 @@ og.family("living", {
   radar_color = "none",
   radar_jitter = 0,
 
+  check_special_ai = check_special_ai,
   level_up = level_up,
 })

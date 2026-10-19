@@ -6,8 +6,17 @@
 //
 // Usage:
 //   parity_runner_smoke --scenario <id> [--out <path>]
+//                       [--gameplay-fixes <0|1>] [--rng-seed <n>]
 //   parity_runner_smoke --list      # Phase 07 will populate this; today it
 //                                   # prints the master-comparable subset.
+//
+// The two overrides run the row with its spec changed in one field and
+// nothing else: --gameplay-fixes plays the row with the Gameplay Fixes
+// setting off (0) or on (1), --rng-seed with another seed. They are how a
+// row's behaviour under the setting is probed and how a seed is searched
+// for, with no scratch test and no edit to the table. A dump written with an
+// override describes a different run from the row's golden; it is never a
+// golden itself.
 //
 // Exit codes:
 //   0  dump written
@@ -25,6 +34,7 @@
 #include "scenario_table.h"
 #include "state_dump.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -50,6 +60,7 @@ void print_usage(std::FILE* out)
     std::fprintf(out,
         "usage: parity_runner_smoke --scenario <id> [--out <path>]\n"
         "       parity_runner_smoke --scenario <id> --evaluate-facts [--out <path>]\n"
+        "       (either form also takes --gameplay-fixes <0|1> and --rng-seed <n>)\n"
         "       parity_runner_smoke --list\n");
 }
 
@@ -186,6 +197,26 @@ std::string ensure_private_config_dir(std::string& failure)
     return g_owned_config_dir;
 }
 
+// A whole decimal number in [0, 2^32): the --rng-seed operand. Anything
+// else (a sign, a suffix, an empty string, an overflow) is refused rather
+// than read as a different seed.
+bool parse_seed(std::string_view text, std::uint32_t& out)
+{
+    if (text.empty() || text.size() > 10)
+        return false;
+    std::uint64_t value = 0;
+    for (const char c : text)
+    {
+        if (c < '0' || c > '9')
+            return false;
+        value = value * 10u + static_cast<std::uint64_t>(c - '0');
+    }
+    if (value > 0xffffffffull)
+        return false;
+    out = static_cast<std::uint32_t>(value);
+    return true;
+}
+
 int list_scenarios()
 {
     for (const auto& s : og::parity::kScenarios)
@@ -203,6 +234,10 @@ int main(int argc, char** argv)
     std::string scenario_id;
     std::string out_path = "-";
     bool evaluate_facts = false;
+    // -1 = the row's own value.
+    int gameplay_fixes_override = -1;
+    bool rng_seed_overridden = false;
+    std::uint32_t rng_seed_override = 0;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -232,6 +267,34 @@ int main(int argc, char** argv)
             evaluate_facts = true;
             continue;
         }
+        if (arg == "--gameplay-fixes" && i + 1 < argc)
+        {
+            const std::string_view value = argv[++i];
+            if (value != "0" && value != "1")
+            {
+                std::fprintf(stderr,
+                    "parity_runner_smoke: --gameplay-fixes expects 0 or 1, "
+                    "got: %.*s\n",
+                    static_cast<int>(value.size()), value.data());
+                return 1;
+            }
+            gameplay_fixes_override = value == "1" ? 1 : 0;
+            continue;
+        }
+        if (arg == "--rng-seed" && i + 1 < argc)
+        {
+            const std::string_view value = argv[++i];
+            if (!parse_seed(value, rng_seed_override))
+            {
+                std::fprintf(stderr,
+                    "parity_runner_smoke: --rng-seed expects a whole number "
+                    "from 0 to 4294967295, got: %.*s\n",
+                    static_cast<int>(value.size()), value.data());
+                return 1;
+            }
+            rng_seed_overridden = true;
+            continue;
+        }
         std::fprintf(stderr, "parity_runner_smoke: unrecognised argument: %.*s\n",
                      static_cast<int>(arg.size()), arg.data());
         print_usage(stderr);
@@ -244,13 +307,22 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    const auto* spec = find_scenario(scenario_id);
-    if (spec == nullptr)
+    const auto* row = find_scenario(scenario_id);
+    if (row == nullptr)
     {
         std::fprintf(stderr, "parity_runner_smoke: unknown scenario id: %s\n",
                      scenario_id.c_str());
         return 1;
     }
+    // The row as the table spells it, then the overrides on a copy: the
+    // runner reads the seed and the setting from the spec it is handed.
+    og::parity::ScenarioSpec run_spec = *row;
+    if (gameplay_fixes_override >= 0)
+        run_spec.gameplay_fixes =
+            static_cast<std::uint8_t>(gameplay_fixes_override);
+    if (rng_seed_overridden)
+        run_spec.rng_seed = rng_seed_override;
+    const og::parity::ScenarioSpec* spec = &run_spec;
 
     std::string config_failure;
     const std::string config_dir = ensure_private_config_dir(config_failure);

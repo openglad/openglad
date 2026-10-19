@@ -35,9 +35,12 @@
 #include <span>
 #include <vector>
 
-class GameWorld;
+// The two Gameplay Fixes seat predicates below are inline, so the world and
+// the walker are complete here.
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/walker.h>
+
 class guy;
-class walker;
 struct SimInputResult;
 
 namespace og::sim {
@@ -140,6 +143,23 @@ void install_control_policy(GameWorld& world,
 [[nodiscard]] walker* sim_find_next_control_owned(GameWorld& level,
                                                   short my_team,
                                                   short player_index);
+
+// A walker a thief or an archmage charmed onto a borrowed team. The timer is
+// the discriminator: a freshly spawned walker (parity rows, the text client's
+// playtest crew, mapgen) starts with real_team_num == team and charm_left 0
+// until its first act heals the record, and seats bind before that act. Both
+// specials set charm_left to at least 25 in the same block that borrows the
+// team, and the decay restores the team on the act where the count reaches 0.
+[[nodiscard]] inline bool charmed_onto_team(const walker& w) noexcept
+{
+    return w.charm_left() > 0 && w.real_team_num() != 255;
+}
+// With the Gameplay Fixes setting on, a seat never claims a charmed walker.
+[[nodiscard]] inline bool seat_may_claim(const GameWorld& level,
+                                         const walker& w) noexcept
+{
+    return level.gameplay_fixes == 0 || !charmed_onto_team(w);
+}
 
 // Death auto-switch / entry claim verdict (§4.4 enforcement site 2).
 enum class SimReacquire : std::uint8_t {

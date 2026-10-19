@@ -230,6 +230,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.generator_rate = save.generator_rate;
     settings.keep_fallen_heroes = save.keep_fallen_heroes;
     settings.new_specials = save.new_specials;
+    settings.gameplay_fixes = save.gameplay_fixes;
     settings.cross_control = save.cross_control;
     settings.infinite_gold = save.infinite_gold;
     settings.time_limit = save.time_limit;
@@ -322,6 +323,7 @@ og::sim::LobbySaveDataEquivalent build_join_save_equivalent_from_state(
     equivalent.generator_rate = state.settings.generator_rate;
     equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
     equivalent.new_specials = state.settings.new_specials;
+    equivalent.gameplay_fixes = state.settings.gameplay_fixes;
     equivalent.cross_control = state.settings.cross_control;
     equivalent.infinite_gold = state.settings.infinite_gold;
     equivalent.time_limit = state.settings.time_limit;

@@ -11,8 +11,8 @@
 // families/weapon-20-bone_wall.lua), their bot gates and the LEGION kill
 // hook. Every cast goes through the real walker::special() (the cost gate
 // and the charge included) on a world with the setting ON; each special's
-// setting-OFF twin asserts the classic answer (NOT ENOUGH MP, nothing made,
-// nothing spent). Bot gates are asked through the family's own
+// setting-OFF twin asserts the classic answer (the slot is not in play: NO
+// SPECIAL AVAILABLE, nothing made, nothing spent). Bot gates are asked through the family's own
 // check_special_ai dispatch.
 //
 // One staged perturbation per special was run by hand against the copy
@@ -710,8 +710,8 @@ TEST_F(KitSkeleton, other_specials_wait_for_the_dig)
     EXPECT_EQ(0, skel->kit_state() & KIT_WARD);
 }
 
-// Setting OFF: DIG IN is not a special at all (NOT ENOUGH MP from the 5000
-// sentinel), nothing sinks, nothing is spent.
+// Setting OFF: DIG IN is not a special at all (the 5000 sentinel: the slot
+// is not in play), nothing sinks, nothing is spent.
 TEST_F(KitSkeleton, dig_in_off_twin_is_not_cast)
 {
     world().new_specials = 0;
@@ -719,7 +719,7 @@ TEST_F(KitSkeleton, dig_in_off_twin_is_not_cast)
     ASSERT_NE(nullptr, skel);
     const Cast c = cast(skel, kSlotDigIn, 0);
     EXPECT_FALSE(c.ok);
-    EXPECT_EQ(walker::SpecialFailure::NoMP, c.why);
+    EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why);
     EXPECT_FLOAT_EQ(500.0f, skel->stats()->magicpoints());
     EXPECT_EQ(ANI_WALK, skel->ani_type());
     EXPECT_TRUE(markers(world(), skel, 1).empty());
@@ -964,8 +964,8 @@ TEST_F(KitSkeleton, bone_storm_refuses_with_no_wall)
     EXPECT_EQ(3u, alive(world(), Order::Weapon, bone_wall_family(), other).size());
 }
 
-// Setting OFF: BONE WALL and BONE STORM are not specials (NOT ENOUGH MP),
-// nothing is built or thrown, nothing is spent.
+// Setting OFF: BONE WALL and BONE STORM are not specials (the slot is not
+// in play), nothing is built or thrown, nothing is spent.
 TEST_F(KitSkeleton, bone_wall_off_twin_is_not_cast)
 {
     world().new_specials = 0;
@@ -974,7 +974,7 @@ TEST_F(KitSkeleton, bone_wall_off_twin_is_not_cast)
     for (const short shift : {short{0}, short{1}}) {
         const Cast c = cast(skel, kSlotWall, shift);
         EXPECT_FALSE(c.ok) << shift;
-        EXPECT_EQ(walker::SpecialFailure::NoMP, c.why) << shift;
+        EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why) << shift;
     }
     EXPECT_FLOAT_EQ(500.0f, skel->stats()->magicpoints());
     EXPECT_TRUE(alive(world(), Order::Weapon, bone_wall_family()).empty());
@@ -1725,8 +1725,8 @@ TEST_F(KitSkeleton, tunnel_and_level_up_stay_classic)
     EXPECT_EQ(str + 8, bones.strength) << "apply_level_up(8, 12, 4, 4, 1)";
 }
 
-// Setting OFF: REASSEMBLE and LEGION are not specials (NOT ENOUGH MP), no
-// ward, no window, nothing spent.
+// Setting OFF: REASSEMBLE and LEGION are not specials (the slot is not in
+// play), no ward, no window, nothing spent.
 TEST_F(KitSkeleton, reassemble_off_twin_is_not_cast)
 {
     world().new_specials = 0;
@@ -1735,7 +1735,7 @@ TEST_F(KitSkeleton, reassemble_off_twin_is_not_cast)
     for (const short shift : {short{0}, short{1}}) {
         const Cast c = cast(skel, kSlotReassemble, shift);
         EXPECT_FALSE(c.ok) << shift;
-        EXPECT_EQ(walker::SpecialFailure::NoMP, c.why) << shift;
+        EXPECT_EQ(walker::SpecialFailure::Unavailable, c.why) << shift;
     }
     EXPECT_FLOAT_EQ(500.0f, skel->stats()->magicpoints());
     EXPECT_EQ(0, skel->kit_state());
@@ -1790,9 +1790,10 @@ TEST_F(KitSkeleton, ai_dig_in_fires_when_hurt_and_outnumbered)
     EXPECT_TRUE(ask_gate(skel, kSlotDigIn)) << "8 left: enough";
 }
 
-// BONE WALL's gate: hurt below 70 % with a foe within 60 → the wall
-// (shift 0); once a wall of its own stands and two foes are within 80 and
-// it can pay 45 → the storm (shift 1).
+// BONE WALL's gate: hurt below 70 % with the nearest foe within 60 on the
+// wall's line (the skeleton faces right) → the wall (shift 0); once a wall
+// of its own stands and two foes are within 60 of it and it can pay 45 →
+// the storm (shift 1).
 TEST_F(KitSkeleton, ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd)
 {
     walker* skel = add_skeleton(1, 96, 96, 100.0f);
@@ -1809,31 +1810,41 @@ TEST_F(KitSkeleton, ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd)
     skel->set_curdir(FACE_LEFT);
     ASSERT_TRUE(cast(skel, kSlotWall, 0).ok);
     EXPECT_FALSE(ask_gate(skel, kSlotWall)) << "a wall stands, one foe";
-    walker* b = add_orc(0, 96, 160);
+    const auto walls = alive(world(), Order::Weapon, bone_wall_family(), skel);
+    ASSERT_FALSE(walls.empty());
+    const short wx = walls[0]->xpos();
+    const short wy = walls[0]->ypos();
+    a->setxy(static_cast<short>(wx - 30), wy);
+    EXPECT_FALSE(ask_gate(skel, kSlotWall)) << "one foe at the wall";
+    walker* b = add_orc(0, static_cast<short>(wx - 30), static_cast<short>(wy + 24));
     ASSERT_NE(nullptr, b);
-    EXPECT_TRUE(ask_gate(skel, kSlotWall, 0)) << "a wall and two foes";
+    EXPECT_TRUE(ask_gate(skel, kSlotWall, 0)) << "a wall and two foes at it";
     EXPECT_EQ(1, skel->shifter_down()) << "the storm";
     skel->stats()->set_magicpoints(44.0f);
     EXPECT_FALSE(ask_gate(skel, kSlotWall)) << "cannot pay for the storm";
 }
 
-// REASSEMBLE's gate: below half and unwarded → the ward (shift 0); above
-// half with three foes within 100 and no window yet → LEGION (shift 1).
+// REASSEMBLE's gate: below half, unwarded and a foe within 60 → the ward
+// (shift 0); above half with three foes within 100 that can rise and no
+// window yet → LEGION (shift 1).
 TEST_F(KitSkeleton, ai_reassemble_fires_when_hurt_and_legion_when_crowded)
 {
     walker* skel = add_skeleton(1, 96, 96, 120.0f);
     ASSERT_NE(nullptr, skel);
+    walker* a = add_orc(0, 150, 96);  // 54 px: a fight
+    ASSERT_NE(nullptr, a);
     skel->stats()->set_hitpoints(29.0f);
     EXPECT_TRUE(ask_gate(skel, kSlotReassemble, 1)) << "hurt, unwarded";
     EXPECT_EQ(0, skel->shifter_down());
+    a->setxy(170, 96);  // 74 px
+    EXPECT_FALSE(ask_gate(skel, kSlotReassemble)) << "hurt, nobody within 60";
+    a->setxy(150, 96);
     skel->set_kit_state(KIT_WARD);
     EXPECT_FALSE(ask_gate(skel, kSlotReassemble)) << "already warded";
     skel->set_kit_state(0);
 
     skel->stats()->set_hitpoints(50.0f);
-    walker* a = add_orc(0, 150, 96);
     walker* b = add_orc(0, 96, 150);
-    ASSERT_NE(nullptr, a);
     ASSERT_NE(nullptr, b);
     EXPECT_FALSE(ask_gate(skel, kSlotReassemble)) << "two foes";
     walker* c = add_orc(0, 40, 96);

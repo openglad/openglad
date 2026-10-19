@@ -10,8 +10,8 @@
 // (packs/core/lib/kit_ghost.lua, lib/effect_wail.lua). Every cast goes
 // through the real walker::special(), so the price gate and the charge are
 // part of what is pinned. Each special has an OFF twin: with the setting off
-// a new slot is refused for mana before any Lua runs (the specials view
-// prices it at 5000), and Shift + SCARE is the classic SCARE.
+// a new slot is refused as not in play before any Lua runs (the specials
+// view prices it at 5000), and Shift + SCARE is the classic SCARE.
 //
 // Each special's test names the change to the staged pack copy
 // (build/ci-test/packs/core/...) that was made once to watch it fail, with
@@ -621,8 +621,8 @@ TEST(KitGhost, siphon_heals_half_of_damage_dealt_never_above_max)
 
 // A touch that finds nobody, or a foe that cannot be hurt, still costs the
 // 30 mana: SIPHON is not a free probe. A touch that finds nobody costs no
-// attack's pause. With the setting off the slot does not exist (refused for
-// mana, nothing spent).
+// attack's pause. With the setting off the slot does not exist (refused as
+// not in play, nothing spent).
 //
 // Perturbation: the empty-touch arm returns `false, "NOTHING"` in the
 // staged kit_ghost.lua. RED: "an empty touch still spends" (r.ok false)
@@ -667,7 +667,7 @@ TEST(KitGhost, empty_siphon_still_spends)
         walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 80, 64, 1, 140.0f);
         const CastResult r = cast(ghost, 2, false);
         EXPECT_FALSE(r.ok);
-        EXPECT_EQ(Failure::NoMP, r.why) << "off: SIPHON is not in play";
+        EXPECT_EQ(Failure::Unavailable, r.why) << "off: SIPHON is not in play";
         EXPECT_FLOAT_EQ(40.0f, ghost->stats()->magicpoints());
         EXPECT_FLOAT_EQ(140.0f, orc->stats()->hitpoints());
         EXPECT_FLOAT_EQ(50.0f, ghost->stats()->hitpoints());
@@ -832,7 +832,7 @@ TEST(KitGhost, duration_follows_the_log_curve_and_caps_at_a_minute)
 }
 
 // The refusals come before the roll: none of them spends mana or draws.
-// With the setting off the slot is refused for mana.
+// With the setting off the slot is refused: it is not in play.
 //
 // Perturbation: the host_refusal undead arm deleted in the staged
 // kit_ghost.lua. RED: "nothing drawn" on the skeleton row (the RNG state
@@ -905,7 +905,7 @@ TEST(KitGhost, possess_refusals_spend_nothing_and_draw_nothing)
         tw.world().rng_.state_ = 12345u;
         const CastResult r = cast(ghost, 3, false);
         EXPECT_FALSE(r.ok);
-        EXPECT_EQ(Failure::NoMP, r.why) << "off: POSSESS is not in play";
+        EXPECT_EQ(Failure::Unavailable, r.why) << "off: POSSESS is not in play";
         EXPECT_EQ(12345u, tw.world().rng_.state_);
         EXPECT_EQ(0u, orc->possess_link());
     }
@@ -1097,7 +1097,7 @@ TEST(KitGhost, phase_is_not_in_play_when_off_and_an_orphan_veil_dies)
         walker* ghost = add_ghost(tw, 10, 100.0f);
         const CastResult r = cast(ghost, 4, false);
         EXPECT_FALSE(r.ok);
-        EXPECT_EQ(Failure::NoMP, r.why) << "off: PHASE is not in play";
+        EXPECT_EQ(Failure::Unavailable, r.why) << "off: PHASE is not in play";
         EXPECT_FALSE(ghost->stats()->query_bit_flags(BIT_PHANTOM));
         EXPECT_TRUE(live_of(tw, Order::FX, marker_family()).empty());
     }
@@ -1184,7 +1184,8 @@ TEST(KitGhost, ai_possess_fires_when_a_weaker_bot_foe_is_touching)
 }
 
 // PHASE: a badly hurt ghost (under 30 %) with a foe within 48 px, and not
-// while a veil already holds it.
+// while a veil already holds it. A foe that close is inside the scare
+// radius, so PHASE is the answer only while SCARE rests: the rest runs.
 // Perturbation: the gate's veil check removed. RED: "already phased: no
 // roll for a cast that would be refused".
 TEST(KitGhost, ai_phase_fires_when_low_and_a_foe_is_close)
@@ -1195,6 +1196,9 @@ TEST(KitGhost, ai_phase_fires_when_low_and_a_foe_is_close)
     walker* ghost = add_ghost(tw, 10, 100.0f);
     walker* orc = add_living(tw, FAMILY_ORC, kFoeTeam, 100, 64, 1, 140.0f);
     ghost->stats()->set_hitpoints(20.0f);
+    EXPECT_FALSE(gate(ghost, 4)) << "SCARE is ready: the cheaper answer";
+    ghost->set_special_rest_slot(1);
+    ghost->set_special_rest_left(500);
     EXPECT_TRUE(gate(ghost, 4)) << "low and a foe close";
     ghost->stats()->set_hitpoints(50.0f);
     EXPECT_FALSE(gate(ghost, 4)) << "not low enough";

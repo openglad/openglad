@@ -1199,6 +1199,12 @@ TEST(Replay, find_first_snapshot_difference_names_new_specials_and_kit_fields)
         actual.new_specials = 1;
         expect_named_diff(expected, actual, "new_specials", "0", "1");
     }
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        actual.gameplay_fixes = 1;
+        expect_named_diff(expected, actual, "gameplay_fixes", "0", "1");
+    }
 
     const auto entity_case = [&](auto edit, std::string_view field,
                                  std::string_view expected_value,

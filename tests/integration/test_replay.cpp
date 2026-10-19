@@ -507,15 +507,15 @@ TEST(Replay, phase11_roundtrip_matches_final_state_for_four_players)
     run_replay_roundtrip(4);
 }
 
-TEST(Replay, format_version_22_rejects_v21)
+TEST(Replay, format_version_23_rejects_v22)
 {
-    static_assert(og::sim::kReplayFormatVersion == 22);
+    static_assert(og::sim::kReplayFormatVersion == 23);
     std::array<std::uint8_t, og::sim::kReplayHeaderSize> old_header{};
     old_header[0] = static_cast<std::uint8_t>('O');
     old_header[1] = static_cast<std::uint8_t>('G');
     old_header[2] = static_cast<std::uint8_t>('R');
     old_header[3] = static_cast<std::uint8_t>('P');
-    old_header[4] = 21;
+    old_header[4] = 22;
 
     og::sim::ReplayIoError error = og::sim::ReplayIoError::None;
     EXPECT_FALSE(og::sim::deserialize_replay(old_header, &error).has_value());

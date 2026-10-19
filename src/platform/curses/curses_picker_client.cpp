@@ -1260,7 +1260,6 @@ void setup_flow(Menu& menu, SaveData& save, TextPickerConfig& config,
         return headless_level_data_hooks();
     };
     io.autosave = [&save] { autosave_company_after_mutation(save); };
-    io.difficulty = [&options] { return options.difficulty; };
     // The TEAMS seat cell names the seat's CONTROLLER, the way LINEUP's
     // band header does. Every seat this client synthesizes is local, so the
     // seat index IS the local slot.
@@ -1305,6 +1304,11 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
     if (config_.new_specials >= 0)
         save_data_.new_specials =
             static_cast<short>(config_.new_specials != 0 ? 1 : 0);
+    // Gameplay Fixes: the same rule.
+    og::ui::seed_gameplay_fixes_from_cfg(save_data_, cfg);
+    if (config_.gameplay_fixes >= 0)
+        save_data_.gameplay_fixes =
+            static_cast<short>(config_.gameplay_fixes != 0 ? 1 : 0);
     // Terminal slot authority ([SAVE-R2]): company-level writes must target
     // this client's chosen slot, never save0. An unsafe name is rejected by
     // the setter and leaves the previous active slot in place.
@@ -1800,6 +1804,20 @@ void CursesPickerClient::show_options()
         if (specials == "on" || specials == "off")
             og::ui::set_new_specials(save_data_, cfg, specials == "on",
                                      /*decides_session=*/true);
+        else
+            menu.show_text("Game Settings", {"Invalid value; on or off."});
+    }
+
+    // The Gameplay Fixes row, the same way.
+    accepted = false;
+    const std::string fixes_current =
+        save_data_.gameplay_fixes != 0 ? "on" : "off";
+    const std::string fixes = menu.prompt("Game Settings",
+        "Gameplay fixes (on/off): ", fixes_current, accepted);
+    if (accepted && fixes != fixes_current) {
+        if (fixes == "on" || fixes == "off")
+            og::ui::set_gameplay_fixes(save_data_, cfg, fixes == "on",
+                                       /*decides_session=*/true);
         else
             menu.show_text("Game Settings", {"Invalid value; on or off."});
     }

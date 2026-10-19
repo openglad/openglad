@@ -1026,6 +1026,28 @@ void apply_new_specials_toggle(SaveData& save, cfg_store& config,
                      decides_session);
 }
 
+void seed_gameplay_fixes_from_cfg(SaveData& save, cfg_store& config)
+{
+    save.gameplay_fixes =
+        static_cast<short>(config.is_on("gameplay", "gameplay_fixes") ? 1 : 0);
+}
+
+void set_gameplay_fixes(SaveData& save, cfg_store& config, bool on,
+                        bool decides_session)
+{
+    config.apply_setting("gameplay", "gameplay_fixes", on ? "on" : "off");
+    if (decides_session)
+        save.gameplay_fixes = static_cast<short>(on ? 1 : 0);
+}
+
+void apply_gameplay_fixes_toggle(SaveData& save, cfg_store& config,
+                                 bool decides_session)
+{
+    set_gameplay_fixes(save, config,
+                       !config.is_on("gameplay", "gameplay_fixes"),
+                       decides_session);
+}
+
 void toggle_cross_control(SaveData& save)
 {
     // Sanitized on toggle ({0,1}; any junk counts as ON and lands on 0) —
@@ -2381,11 +2403,6 @@ std::string format_generator_rate_label(const SaveData& save)
 std::string format_infinite_gold_label(const SaveData& save)
 {
     return gold_is_infinite(save) ? "Infinite Gold: On" : "Infinite Gold: Off";
-}
-
-std::string format_new_specials_label(const SaveData& save)
-{
-    return save.new_specials != 0 ? "NEW SPECIALS: ON" : "NEW SPECIALS: OFF";
 }
 
 // --- Company screens: label formatters (design §2.2/§2.3) ---
@@ -5007,12 +5024,13 @@ std::uint64_t match_settings_fingerprint(const SaveData& save)
     // through the frame-tick reload guard, and double-triggering would hide
     // a broken guard from the tests.
     std::string composed = std::format(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         save.current_campaign, save.allied_mode, save.ctf_team_count,
         save.ctf_capture_limit, save.ctf_respawn_ticks,
         save.ctf_strip_scenario_troops, save.respawn_mode,
         save.generator_rate, save.keep_fallen_heroes, save.cross_control,
-        save.infinite_gold, save.time_limit, save.new_specials);
+        save.infinite_gold, save.time_limit, save.new_specials,
+        save.gameplay_fixes);
     // The eight per-team bot knobs (LINEUP §3.1) are lobby-synced like the
     // rest: a host cycling a squad preset must refresh the missions surface.
     for (std::size_t team = 0; team < save.fill.size(); ++team)
@@ -5137,30 +5155,13 @@ std::vector<MatchRuleFace> match_rules_faces(const MatchRulesInputs& inputs)
     if (inputs.save == nullptr)
         return faces;
     const SaveData& save = *inputs.save;
-    // The DIFFICULTY formatters emit Title Case and every camp row is upper
-    // case, so the case conversion happens HERE, at the one composer: all
-    // three renderers receive the same string and nothing mirrors anything.
+    // The formatters emit Title Case and every camp row is upper case, so
+    // the case conversion happens HERE, at the one composer: all three
+    // renderers receive the same string and nothing mirrors anything.
     if (inputs.show_score)
         faces.push_back({kRulesRowScore, match_upper(format_ctf_score_label(save))});
     if (inputs.show_time)
         faces.push_back({kRulesRowTime, match_upper(format_time_limit_label(save))});
-    faces.push_back({kRulesRowRespawns, match_upper(format_respawn_mode_label(save))});
-    faces.push_back(
-        {kRulesRowSpawnDelay, match_upper(format_respawn_delay_label(save))});
-    faces.push_back({kRulesRowPermadeath, match_upper(format_permadeath_label(save))});
-    faces.push_back(
-        {kRulesRowGenerators, match_upper(format_generator_rate_label(save))});
-    faces.push_back({kRulesRowDifficulty,
-                     match_upper(format_difficulty_label(inputs.difficulty))});
-    faces.push_back(
-        {kRulesRowInfiniteGold, match_upper(format_infinite_gold_label(save))});
-    faces.push_back({kRulesRowNewSpecials, format_new_specials_label(save)});
-    if (inputs.networked)
-    {
-        faces.push_back({kRulesRowCrossControl,
-                         match_upper(format_cross_control_label(
-                             save.cross_control != 0))});
-    }
     return faces;
 }
 

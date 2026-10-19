@@ -207,7 +207,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
                 w->myguy &&
                 w->myguy->owner_player_index ==
                     static_cast<std::uint8_t>(player_index) &&
-                control_claim_allowed(level, w, player_index))
+                control_claim_allowed(level, w, player_index) &&
+                seat_may_claim(level, *w))
             {
                 TRACE("sim_control", "found owner-tagged character '%s'",
                       w->stats()->name.c_str());
@@ -242,7 +243,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
-            w->team_num() == my_team && allowed(w))
+            w->team_num() == my_team && allowed(w) &&
+            seat_may_claim(level, *w))
         {
             TRACE("sim_control", "found player character '%s'",
                   w->stats()->name.c_str());
@@ -258,7 +260,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
-            w->team_num() == my_team && allowed(w))
+            w->team_num() == my_team && allowed(w) &&
+            seat_may_claim(level, *w))
         {
             TRACE("sim_control", "found team member '%s'",
                   w->stats()->name.c_str());

@@ -567,8 +567,10 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng,
     s->save_data.numplayers = 0; // spectator mode
     s->save_data.scen_num = static_cast<short>(scen_id);
     s->save_data.current_campaign = campaign;
-    // Spectator films play the shipped default: New Specials on.
+    // Spectator films play the shipped default: New Specials and Gameplay
+    // Fixes on.
     s->save_data.new_specials = 1;
+    s->save_data.gameplay_fixes = 1;
 
     // OPENGLAD_DEMO_CAMPAIGN_STATE=key=value[,key=value...] pre-seeds the
     // campaign decision store so captures can film og.campaign_var

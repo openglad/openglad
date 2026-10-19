@@ -272,10 +272,11 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.ctf_requested_map_units = loaded_world.ctf_requested_map_units;
     dst.respawn_mode = loaded_world.respawn_mode;
     dst.generator_rate = loaded_world.generator_rate;
-    // new_specials is deliberately NOT copied: the level file's scratch
-    // world is never authoritative for a session rule (it would hand every
-    // loaded level the classic kits). The post-load re-sync from the session
-    // save puts the session's value back.
+    // new_specials and gameplay_fixes are deliberately NOT copied: the level
+    // file's scratch world is never authoritative for a session rule (it
+    // would hand every loaded level the classic kits, or the classic bugs).
+    // The post-load re-sync from the session save puts the session's values
+    // back.
     dst.respawn = std::move(loaded_world.respawn);
     dst.mode = loaded_world.mode;
     dst.current_scenario = loaded_world.current_scenario;
@@ -608,6 +609,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->respawn_mode = old_world->respawn_mode;
         next_world->generator_rate = old_world->generator_rate;
         next_world->new_specials = old_world->new_specials;
+        next_world->gameplay_fixes = old_world->gameplay_fixes;
         next_world->respawn = std::move(old_world->respawn);
         next_world->mode = old_world->mode;
         next_world->current_scenario = old_world->current_scenario;

@@ -196,14 +196,14 @@ const std::vector<ShippedLevel>& shipped_levels()
     static const std::vector<ShippedLevel> levels = {
         // SPRING: the mud-season openers and the first SAVE_ALL contract.
         {1, "Mud Pay", 1, 60, 40, 0, 9, 0, 0, 0, 0, 17, 0, 2, 0, {2}},
-        {2, "The Ferry Right", 1, 80, 40, 0, 10, 5, 0, 0, 0, 26, 0, 14, 0,
+        {2, "The Ferry Right", 1, 80, 40, 0, 10, 5, 0, 0, 0, 25, 0, 14, 0,
          {4, 3, 1}},
         {3, "Saltmere Bell", 2, 50, 50, 0, 8, 0, 0, 0, 0, 23, 1, 2, 0,
          {4, 2}},
         {4, "The Assessor", 1, 80, 45, 4, 10, 5, 0, 0, 0, 32, 1, 13, 1,
          {5, 3}},
         // SUMMER: the war contracts, the hub at the hay cross, Long Tom.
-        {5, "Two Banners", 1, 60, 40, 0, 10, 0, 0, 0, 0, 27, 0, 5, 0,
+        {5, "Two Banners", 1, 60, 40, 0, 10, 0, 0, 0, 0, 26, 0, 5, 0,
          {6, 4}},
         {6, "The Hay War", 1, 60, 60, 0, 10, 0, 0, 0, 0, 29, 3, 6, 0,
          {8, 7, 5}},

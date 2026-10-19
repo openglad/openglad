@@ -365,7 +365,7 @@ Estimated ~700–780 LOC: view.h ~35; view.cpp ~190; effects.h ~15; effects.cpp 
 | tests/integration/test_render_effects.cpp `all_effects_off` (:2177) | add `"floor_glide"` to the key list |
 | tests/integration/test_render_effects.cpp `EffectsCfgGuard::kKeys` (~:72-77) | add `{"floor_glide", "on"}` (save/restore with correct default) |
 | tests/integration/test_stair_overlay.cpp `QuietEffectsGuard::kKeys` (:167-190) | add `"floor_glide"` — these tests hop floors and would otherwise render glide frames |
-| tests/integration/test_game_loop.cpp `all_capture_effects_on` (:2629; grep for the second `gameplay_rec::` variant near :2746) | add `"floor_glide"`, `"on"` |
+| tests/integration/test_game_loop.cpp `all_capture_effects_on` (:2629; grep for the second `gameplay_rec::` variant near :2746) **Update (2026-10-17, PR #364):** the helper is now `live_game::all_effects_on` in tests/test_live_game.h, shared by the game-loop and scene tests. | add `"floor_glide"`, `"on"` |
 | tests/integration/test_menu_layout.cpp `graphics_fx_options_grid_geometry_and_nav` (:818-837) | kExpected gains `{"toggle_floor_glide", "Floor glide", 15, 127}`; count 13 → 14; nav pins per §7 |
 | Audit sweep | `grep -rn "set_floor\|editor_floor_override_" tests/` — any test that changes the control walker's floor and then compares pixels must either sit under an updated guard or settle ≥16 redraws. Tests driving `editor_floor_override_` are suppressed by S3 already (cloud/depth-fx capture scenes are safe). |
 | tests/integration/test_view_redraw.cpp :404-407 | no change needed (glide never writes topx/topy outside the per-floor restore) — but run it explicitly |

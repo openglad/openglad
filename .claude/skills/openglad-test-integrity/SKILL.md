@@ -223,6 +223,14 @@ test after the failure never ran.
    through the one presented-frame handshake in
    `tests/test_frame_capture.h` (`capture_presented_frame` /
    `verify_captured_frames`); do not add another copy of either.
+   The `NewSpecials.*` and `GameplayFixes.*` scene tests
+   (`tests/integration/test_special_scenes.cpp`, binary
+   `og_test_special_scenes`) are the same shape: one gtest per scene, each
+   asserting its tells on every lane and writing frames only under
+   `OG_FX_CAPTURE_DIR`, which is what the two tools under `scripts/media/`
+   set; one scene is selected with `--gtest_filter`, never with an env var
+   of its own. The shared play-through helpers live once, in
+   `tests/test_live_game.h`.
 2. Never feed malformed YAML to gparser as a coverage target; it does
    not return.
 3. Run ctest with stdin PIPED, never under a pty — headless clients

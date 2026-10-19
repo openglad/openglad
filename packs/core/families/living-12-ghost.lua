@@ -2,9 +2,38 @@
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 local kg = og.use("kit_ghost")
 local ai = og.use("ai")
+local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
+local C = og.C
 local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 
+-- Gameplay Fixes: the fright only ever moves living foes (effect_ghost_scare
+-- on_death), so a scare with no living foe inside the scare radius is
+-- refused before it spends anything.
+local function no_living_foe_in_reach(self)
+  local foes = og.find_foes_in_range("ob", og.scare_radius(self.level), self)
+  for i = 1, #foes do
+    if foes[i]:order() == C.ORDER_LIVING then
+      return false
+    end
+  end
+  return true
+end
+
+-- Gameplay Fixes: a bot's SCARE pays with a living foe inside the scare
+-- radius (the classic gate asked for a foe within 130, which the fright
+-- reaches only from level 8). The classic foe search runs first either way
+-- (G.with_classic), and SCARE is cast unshifted; WAIL's own rule is the
+-- kit's (kit_ghost.wail_gate).
+local function fixed_scare(self)
+  self:set_shifter_down(0)
+  return G.foes_within(self, 1, og.scare_radius(self.level), true)
+end
+
 local function do_special(self)
+  if gf.on() and no_living_foe_in_reach(self) then
+    return false, "NO FOE IN RANGE"
+  end
   -- The old "nifty scare thing" is a carrier; its on_death does the scare.
   local scare = og.summon(self, "fx", FX_GHOST_SCARE)
   if not scare then
@@ -30,7 +59,7 @@ og.family("living", {
              train = { strength = 16, dexterity = 16, constitution = 16,
                        intelligence = 16, armor = 45, level = 200 } },
   specials = {
-    { id = "scare",   name = "SCARE",   mp_cost = 30, alternate = { name = "WAIL", mp_cost = 50, new_kit = true, detail = "Fear leaps foe to foe." }, cast = kg.scare_or_wail(do_special), ai = kg.scare_gate(ai.foe_within(130)), detail = "Frighten nearby foes into fleeing." },
+    { id = "scare",   name = "SCARE",   mp_cost = 30, alternate = { name = "WAIL", mp_cost = 50, new_kit = true, detail = "Fear leaps foe to foe." }, cast = kg.scare_or_wail(do_special), ai = kg.scare_gate(kg.wail_gate(G.with_classic(ai.foe_within(130), fixed_scare))), detail = "Frighten nearby foes into fleeing." },
     { id = "siphon",  name = "SIPHON",  mp_cost = 30, new_kit = true, cast = kg.siphon,  ai = kg.ai_siphon, detail = "A touch that heals you by half the harm it does." },
     { id = "possess", name = "POSSESS", mp_cost = 50, new_kit = true, cast = kg.possess, ai = kg.ai_possess, detail = "Enter a foe and drive it, with its weapon and specials, for a while." },
     { id = "phase",   name = "PHASE",   mp_cost = 60, new_kit = true, cast = kg.phase,   ai = kg.ai_phase, detail = "Go fully spectral for a few seconds: untouchable, unable to attack, twice as fast." },

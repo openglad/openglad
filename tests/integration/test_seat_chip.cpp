@@ -104,6 +104,26 @@ bool click_seat_card_chip(const std::string& id)
     return found;
 }
 
+// The lobby restages the match preview kStageDebounceMs after a roster
+// change (a seat's team is one), on the main thread's lobby poll; the
+// "restaged" trace is its end. True once more "stage" traces exist than
+// before the change; false on the deadline (the restage is a consequence
+// the flow waits out, so a missing one is a stalled wait).
+static bool wait_for_restage(int stages_before, int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    const int poll_interval = 25;
+    while (elapsed < timeout_ms) {
+        if (trace_count("stage") > stages_before)
+            return true;
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr, "  [interact] TIMEOUT waiting for the lobby's restage (%d ms)\n",
+            timeout_ms);
+    return false;
+}
+
 struct SeatChipFlowState {
     bool started = false;
     bool finished = false;
@@ -229,25 +249,41 @@ int seat_chip_injector(void* data)
     // Chip click 1: the fresh solo seat starts on team 1; classic campaigns
     // expose all four teams, so the first cycle lands on team 2.
     fprintf(stderr, "  [test] chip click 1 on seat_card_0\n");
+    int stages_before = trace_count("stage");
     if (!click_seat_card_chip("seat_card_0"))
         return abort_flow(state, kStageChipClickOne);
     // The consumed-click handshake: the trace the product writes while
-    // DISPATCHING the chip click, then one completed frame so the screen the
-    // next click lands on has been rewired. Recorded, not aborted — an
-    // unconsumed chip click is the defect this test exists to catch, and the
-    // remaining clicks say whether the editor swallowed it instead.
+    // DISPATCHING the chip click, then the rest of what the cycle sets in
+    // motion, then one completed frame so the screen the next click lands
+    // on has been rewired. Recorded, not aborted — an unconsumed chip click
+    // is the defect this test exists to catch, and the remaining clicks say
+    // whether the editor swallowed it instead.
+    //
+    // The rest: a team change is a roster change, and the lobby restages
+    // the match preview kStageDebounceMs after it, on this thread's lobby
+    // poll (MatchStage::maintain). On an instrumented lane that restage
+    // takes seconds, and a click whose press and release both land inside
+    // it is lost (CI's Coverage lane, 2026-10-19, nine of nine: the second
+    // cycle never traced, no denial popup, the dump below). A click sent
+    // after the restage is consumed, so the handshake waits for the
+    // "restaged" trace the change schedules before the next click.
     state->saw_first_cycle =
         wait_for_trace("basecamp", "seat_team player=1 team=2", 5000);
+    if (!wait_for_restage(stages_before))
+        return abort_flow(state, kStageChipOneSettle);
     if (!wait_for_menu_frames(1))
         return abort_flow(state, kStageChipOneSettle);
     state->editor_opened_on_chip = has_interactable("seat_settings_back");
 
     // Chip click 2 cycles onward (2 -> 3): in-place cycling is repeatable.
     fprintf(stderr, "  [test] chip click 2 on seat_card_0\n");
+    stages_before = trace_count("stage");
     if (!click_seat_card_chip("seat_card_0"))
         return abort_flow(state, kStageChipClickTwo);
     state->saw_second_cycle =
         wait_for_trace("basecamp", "seat_team player=1 team=3", 5000);
+    if (!wait_for_restage(stages_before))
+        return abort_flow(state, kStageChipTwoSettle);
     if (!wait_for_menu_frames(1))
         return abort_flow(state, kStageChipTwoSettle);
     state->editor_opened_on_chip = state->editor_opened_on_chip ||
@@ -308,6 +344,12 @@ TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
     ASSERT_TRUE(state.saw_base_camp) << "flow must reach Base Camp";
     EXPECT_TRUE(state.saw_first_cycle)
         << "chip click must cycle the seat team in place (team=2 trace)";
+    // A cycle that never traced says nothing by itself: the dump shows
+    // whether the lobby denied the change (a "popup" entry), the camp read
+    // the seat's old team again (a second team=2), or the press never
+    // reached the chip.
+    if (!state.saw_first_cycle || !state.saw_second_cycle)
+        trace_dump();
     EXPECT_TRUE(state.saw_second_cycle)
         << "a second chip click must cycle onward (team=3 trace)";
     EXPECT_FALSE(state.editor_opened_on_chip)

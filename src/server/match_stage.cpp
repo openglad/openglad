@@ -430,6 +430,7 @@ bool MatchStage::build_staged_wire_bytes(GameWorld& staged_world)
     setup.respawn_mode = staged_world.respawn_mode;
     setup.generator_rate = staged_world.generator_rate;
     setup.new_specials = staged_world.new_specials;
+    setup.gameplay_fixes = staged_world.gameplay_fixes;
     setup.guys = og::sim::collect_initial_setup_guys(staged_world);
     setup.completed_levels.assign(staged_world.completed_levels.begin(),
                                   staged_world.completed_levels.end());
@@ -495,6 +496,7 @@ bool adopt_staged_world(LevelRuntimeData& dst_level,
     dst.guy_id_counter = staged.guy_id_counter;
     dst.keep_fallen_heroes = staged.keep_fallen_heroes;
     dst.new_specials = staged.new_specials;
+    dst.gameplay_fixes = staged.gameplay_fixes;
     dst.campaign_vars = staged.campaign_vars;
     // Tick 1 continues the exact RNG stream the staged preview froze at.
     dst.rng_.state_ = staged.rng_.state_;

@@ -419,8 +419,8 @@ const std::set<std::string> kDisplayScreenIds = {
 
 // A film toggle and the cfg flag it writes -- the value the click ladder
 // reads to prove the press was CONSUMED (the row's colour is not readable
-// from an injector). Most rows write "effects"; New Specials writes
-// "gameplay".
+// from an injector). Most rows write "effects"; New Specials and Gameplay
+// Fixes write "gameplay".
 struct FxFilmToggle {
     const char* id;
     const char* category;
@@ -443,12 +443,14 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
     static const std::vector<FxScreenPlan> plans = {
         {"gameplay_fx",
          "gameplay_fx_back",
-         {"toggle_hit_recoil", "toggle_attack_lunge", "toggle_new_specials"},
+         {"toggle_hit_recoil", "toggle_attack_lunge", "toggle_new_specials",
+          "toggle_gameplay_fixes"},
          {{"toggle_hit_recoil", "effects", "hit_recoil"},
           {"toggle_attack_lunge", "effects", "attack_lunge"},
-          {"toggle_new_specials", "gameplay", "new_specials"}},
+          {"toggle_new_specials", "gameplay", "new_specials"},
+          {"toggle_gameplay_fixes", "gameplay", "gameplay_fixes"}},
          {"gameplay_fx_back", "toggle_hit_recoil", "toggle_attack_lunge",
-          "toggle_new_specials"}},
+          "toggle_new_specials", "toggle_gameplay_fixes"}},
         {"ui_fx",
          "ui_fx_back",
          {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers"},
@@ -476,10 +478,11 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
 
 // The cfg keys menu_effects flips on film; the flip-twice discipline must
 // leave every one of them exactly as it found it.
-constexpr std::array<std::pair<const char*, const char*>, 10> kEffectsCfgKeys = {{
+constexpr std::array<std::pair<const char*, const char*>, 11> kEffectsCfgKeys = {{
     {"effects", "hit_recoil"},
     {"effects", "attack_lunge"},
     {"gameplay", "new_specials"},
+    {"gameplay", "gameplay_fixes"},
     {"effects", "mini_hp_bar"},
     {"effects", "damage_numbers"},
     {"effects", "heal_numbers"},
@@ -887,8 +890,8 @@ TEST(MenuCapture, zz_capture_menu_effects)
                                              menu_effects_injector, state,
                                              injector_result));
 
-    // 3 + 3 + 5 nav steps down the three screens' left columns.
-    expect_scene_completed(state, injector_result, 11, 3);
+    // 4 + 3 + 5 nav steps down the three screens' left columns.
+    expect_scene_completed(state, injector_result, 12, 3);
     verify_captured_frames("menu_effects", 3);
     const std::vector<FxScreenPlan>& plans = fx_screen_plans();
     for (std::size_t i = 0; i < plans.size(); ++i)

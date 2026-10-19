@@ -20,6 +20,11 @@ class walker;
 // rider's real_team_num (charm_left is never used).
 namespace og::sim {
 
+// A body a seat drives is a hero: a user tag, or ACT_CONTROL. Heroes are
+// never taken: POSSESS refuses one ("HERO RESISTS"), and so, with the
+// Gameplay Fixes setting on, do the charms (walker:seat_driven in Lua).
+[[nodiscard]] bool seat_driven(const walker& w) noexcept;
+
 struct PossessResult {
     bool ok;
     const char* reason;  // <= 24 bytes, a HUD refusal when !ok

@@ -85,15 +85,24 @@ bool slot_open(const FamilyDescriptor* fd, int slot, int level) noexcept
 }
 
 int bot_slot_roll_bound(const FamilyDescriptor* fd, int level,
-                        short new_specials) noexcept
+                        short new_specials, short gameplay_fixes) noexcept
 {
     int bound = (level + 2) / 3;
+    int highest = 0;  // the highest named, in-play slot the level has opened
     for (int slot = 1; slot < FD_NUM_SPECIALS; ++slot) {
-        if (slot > bound && slot_open(fd, slot, level) &&
+        const bool named_open = slot_open(fd, slot, level) &&
             std::strcmp(special_name(fd, slot, new_specials),
-                        kSpecialNameNone) != 0)
-            bound = slot;
+                        kSpecialNameNone) != 0;
+        if (slot > bound && named_open)
+            bound = slot;      // the classic raise (a row opened early)
+        if (named_open)
+            highest = slot;
     }
+    // Gameplay Fixes: never roll past the last named slot, so a roll is
+    // never folded into slot 1 for being out of range. A level-0 bound
+    // stays 0 (no draw), as before.
+    if (gameplay_fixes != 0 && bound > highest)
+        bound = highest;
     return bound;
 }
 
@@ -102,6 +111,13 @@ short session_new_specials() noexcept
     if (current_game == nullptr || current_game->world == nullptr)
         return 0;
     return current_game->world->new_specials;
+}
+
+short session_gameplay_fixes() noexcept
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 0;
+    return current_game->world->gameplay_fixes;
 }
 
 unsigned short cast_cost(const walker& w, int slot, bool shifted) noexcept

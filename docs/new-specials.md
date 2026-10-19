@@ -22,9 +22,7 @@ needs.
 The row flips a per-machine preference (`cfg` key `gameplay/new_specials`,
 default `on`). That preference seeds the session's value once per session.
 In a networked game the host decides: a joiner's click only changes what it
-will use when it hosts, and the lobby's RULES column shows every peer the
-host's value as `NEW SPECIALS: ON` or `NEW SPECIALS: OFF`. The value is never
-written into a company save.
+will use when it hosts. The value is never written into a company save.
 
 It is a simulation setting, so it travels the same way as the respawn,
 generator and fallen-hero settings, one hop at a time:
@@ -50,8 +48,9 @@ generator and fallen-hero settings, one hop at a time:
 parity recording, plays the classic kits unless something sets it. The
 parity runner sets it to 0 explicitly.
 
-Versions: protocol v20, snapshot v16, replay v22 (v19/v15/v21 brought the
-setting; v20/v16/v22 the rest clock, below).
+Versions: protocol v21, snapshot v17, replay v23 (v19/v15/v21 brought the
+setting; v20/v16/v22 the rest clock, below; v21/v17/v23 the Gameplay Fixes
+setting, docs/gameplay-fixes.md).
 
 ## How the kits stay hidden when the setting is off
 
@@ -84,6 +83,11 @@ it:
   `false` would skip a random draw the classic game makes. The one gate
   that answers no with the setting off is a classic special's rest (see
   Rests), and the old game at the parity commit carries the same rule.
+  Every kit gate that chooses a Shift arm chooses only an arm the bot can
+  pay. With the setting on, each kit gate asks when its special pays off,
+  as the classic specials' gates do under Gameplay Fixes
+  ([gameplay-fixes.md](gameplay-fixes.md), Bots); the kit rules are in
+  the player notes below.
 
 Two states make every slot free. While a walker is **HIDDEN** (a dug-in
 skeleton, a ghost riding a body) or **CHANNELLING** (a burning fire
@@ -98,14 +102,16 @@ after the first (`DIG IN SETTLING`, `IMMOLATE SETTLING`). A refusal is
 silent while the key is held, so holding Special cannot flip a toggle
 straight back, and a second tap after 10 ticks does what it says.
 
-**An engine note.** With the setting off a hidden slot costs 5000, but
-`walker::special()` itself does not refuse the slot: a walker forced onto a
-hidden slot with 5000 or more magic would cast its new special. That cannot
-happen in play, because the player's cycling and the bot's slot pick both
-read `NONE` and never put a walker on a hidden slot; only a test that sets
-the slot by hand can reach it. A guard there would need a per-family rule
-(the classic fire elemental's empty slots used to fall through to its
-starburst), so the engine is left as it is.
+**An engine note.** With the setting off a hidden slot costs 5000, and
+`walker::special()` refuses a slot priced 5000 or more before it looks at
+the walker's magic: the cast answers `NO SPECIAL AVAILABLE`
+(`SpecialFailure::Unavailable`) whatever the pool, so a walker forced onto
+a hidden slot casts nothing. Nothing in play reaches that, since the
+player's cycling and the bot's slot pick both read `NONE` and never put a
+walker on a hidden slot; only a test that sets the slot by hand can. The
+classic fire elemental still casts its starburst from slot 1 (its
+`default_cast`). This refusal applies whatever the Gameplay Fixes setting
+says ([gameplay-fixes.md](gameplay-fixes.md), "Not gated").
 
 ## Engine state
 
@@ -219,6 +225,9 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   restored world, resumes the ride exactly.
 - A bot ghost possesses too: a foe within 24 pixels that it may take and
   whose level is not above its own.
+- A bot ghost wails instead of scaring only when exactly one living foe
+  is inside the scare radius and a second stands within 120 pixels of it,
+  the chain's shape, and it has the 50 to pay; a crowd gets SCARE.
 - If Special is still held after the possessing press, the press that
   possessed does not carry over on the next tick, but a key held for three
   ticks or more casts the host's own special from the second tick on.
@@ -237,6 +246,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - While its thief is charmed, a mine treats as foes whoever the thief's
   current side does; the chain between mines still follows the team the
   mine was laid for.
+- A bot thief lays a MINE instead of its bomb only where a foe will walk:
+  a foe past the bomb's blast and within 130 pixels that is walking at the
+  thief, fewer than three mines down, no ally in the blast, and the 70 in
+  hand; it never lays one on the coin.
 
 **Ghost.**
 - WAIL is a small puff of the scare's own sparkles (`expand8.png`), not a
@@ -258,7 +271,8 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A ghost riding a body regains no magic.
 - PHASE lasts 48 ticks at double speed, and the ghost cannot attack while
   it lasts, not even on the tick it casts. A bot ghost never phases again
-  while its veil is up.
+  while its veil is up, and phases only when SCARE cannot answer: SCARE
+  resting, or no living foe inside the scare radius.
 - A phased ghost shows to everyone as a faint shimmer with its team's
   outline, so friend and foe can see where it went.
 
@@ -275,7 +289,8 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - SWAP never drops a walker onto a spot it could not stand on, such as
   water (`SWAP BLOCKED`).
 - A bot faerie only picks SWAP when it can pay for it; short of the price it
-  blinks away instead, or holds.
+  blinks away instead, or holds. Its foe counts are of living foes: a tent
+  does not make a faerie blink.
 - HASTEN keeps a stronger speed bonus already running (a high-level speed
   potion is not cut down to the haste).
 - A bot faerie hastens a fighting ally that is not already quick, and
@@ -318,9 +333,13 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - The hook blade cuts down any enemy missile that comes close while it
   spins, but passes an enemy war banner or bone wall by: those have to be
   chopped down.
-- A bot captain howls when a foe is within 130 pixels. EAT CORPSE has its
-  own bot gate: it eats only below 60 percent of its health (at exactly 60
-  percent it does not) and standing on a corpse.
+- A bot captain howls when a living foe or a generator is inside the yell
+  (160 pixels plus 20 per level, at most 420). EAT CORPSE has its own bot
+  gate: it eats only below 60 percent of its health (at exactly 60 percent
+  it does not) and standing on a corpse. HOOK BLADE wants a living foe
+  within the blade's 60 pixels, no blade out and the 40 in hand; KNIFE FAN
+  wants at least two living foes inside the knives' flight on the three
+  lines it throws; WAR BANNER also wants a living foe within 120 pixels.
 
 **Skeleton.**
 - DIG IN costs one magic every 4 ticks while the skeleton is buried, and
@@ -358,6 +377,12 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A skeleton that REASSEMBLEs was not killed: the blow that felled it shows
   no death message and no "All foes defeated!", and counts no kill for
   whoever struck it.
+- A bot skeleton raises its BONE WALL across the line to the nearest
+  living foe within 60 pixels; BONE STORM counts the foes at the wall (two
+  within 60 pixels of a standing segment), not at the skeleton; REASSEMBLE
+  wants a living foe within 60 pixels; LEGION counts only living foes that
+  are not undead, the ones that can rise. DIG IN counts living foes: a tent
+  does not press a skeleton underground.
 
 **Fire elemental.**
 - Quenching IMMOLATE is free; until then the elemental casts nothing else.
@@ -375,6 +400,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   behind a moving elemental and do not pile up under a still one.
 - The parting starburst on death always fires the starburst, whatever slot
   the elemental had selected, and it fires on top of SUPERNOVA.
+- A bot lights IMMOLATE with a living foe within a blow and more than 60
+  magic, and quenches it when no living foe is within 40 pixels, so the
+  burn stops draining the pool for nothing. REKINDLE is never forced on a
+  pool that cannot pay it.
 
 **Everyone.**
 - A toggle (DIG IN, IMMOLATE) ignores its own second press for 10 ticks.
@@ -521,3 +550,26 @@ right. A character with no special in play reads `No special abilities.`
 The HIRE box's last line is generated the same way
 (`og::ui::specials_summary`): `Special:` and the slot names in play, in
 slot order.
+
+## The scene tests
+
+Every new special has a scene that plays it in the real game, in the
+`NewSpecials` suite of `tests/integration/test_special_scenes.cpp` (binary
+`og_test_special_scenes`): the seat's own hero at level 10 casts it with the
+keys a player would press, every other actor is staged on the authoritative
+server world, and the test asserts on the display what the special visibly
+does, its tells: the mine on the ground and the orc that trips it, the wail
+hopping through a pack, the HUD cell counting a rest down. Twenty-two
+scenes: one per special or chained pair of specials, three of a bot using one, and one of a classic
+special's countdown with the setting off. They run on every lane like any
+other test, one gtest each.
+
+The pictures in the pull request are made from those tests, not the other
+way round. `scripts/media/capture_new_specials.sh` runs the suite with
+`OG_FX_CAPTURE_DIR` set, under which the shared play-through also writes
+every frame and the index of the frame to keep as a still, and encodes a
+GIF, a review strip and the still per scene. The scenes play in their
+declared order in one process; seven of them show slightly different fire
+glow and dust when played alone, because the render-effects clock is global
+and runs on from one scene to the next, so published pictures come from the
+full run.

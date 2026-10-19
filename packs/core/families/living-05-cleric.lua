@@ -3,12 +3,24 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local FX_MAGIC_SHIELD = assert(og.family_id("fx", "core:magic_shield"))
 local LIVING_SKELETON = assert(og.family_id("living", "core:skeleton"))
 local LIVING_GHOST = assert(og.family_id("living", "core:ghost"))
 
 -- og::combat::kMaceLifeCap (mystic mace lifetime bound; binds above 738 MP).
 local MACE_LIFE_CAP = 468
+
+-- The INT a TURN UNDEAD needs. A hero below it is refused "60 INT REQUIRED"
+-- (and pays 5 busy); with the fixes on the bot gate asks the same question,
+-- so it never picks a cast its hero cannot make.
+local function lacks_turn_int(self, t)
+  if not self:has_guy() then
+    return false
+  end
+  return self:g_intelligence() < t.turn_undead_int_req
+end
 
 -- Shared turn-undead block: the case-2 and case-3 shifter_down bodies
 -- were token-identical. Returns false where the legacy code returned
@@ -18,16 +30,19 @@ local function do_turn_undead(self)
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
-  if self:has_guy() and self:g_intelligence() < t.turn_undead_int_req then
+  if lacks_turn_int(self, t) then
     -- busy is a C++ float: per-op rounding
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false, string.format("%d INT REQUIRED", t.turn_undead_int_req)
   end
-  -- Returns -1 when there are no candidates, otherwise the number destroyed.
-  local turned = self:turn_undead(
-    t.turn_undead_range_per_level * self.level, self.level)
+  -- Returns -1 when there are no candidates, -2 (the Gameplay Fixes
+  -- setting on) when none of them is undead, otherwise the number destroyed.
+  local turned = self:turn_undead(gf.turn_range(self, t), self.level)
   if turned == -1 then
     return false, "NO FOE IN RANGE"
+  end
+  if turned == -2 then
+    return false, "NO UNDEAD IN RANGE"
   end
   if self:has_guy() and turned ~= 0 then
     self:g_set_exp(self:g_exp() +
@@ -84,15 +99,23 @@ local function heal_or_mace(self)
           reason = "HEAL TOO WEAK"
           break
         end
+        local before = ally.hp
         -- hp and magicpoints are C++ floats: per-op rounding
         ally.hp = og.fadd(ally.hp, amount)
+        local landed = amount
+        if gf.on() and ally.hp > ally.max_hp then
+          -- Gameplay Fixes: never above full health; the number shown and
+          -- the reward are what really landed. The mana is still spent.
+          ally.hp = ally.max_hp
+          landed = og.trunc(og.fsub(ally.max_hp, before))
+        end
         self.magicpoints = og.fsub(self.magicpoints, cost)
         if self:has_guy() then
           self:g_set_exp(self:g_exp() +
-                         og.exp_from_action(self, ally, "heal", amount))
+                         og.exp_from_action(self, ally, "heal", landed))
         end
         healed = healed + 1
-        self:do_heal_effects(self, ally, amount)
+        self:do_heal_effects(self, ally, landed)
       end
     end
     -- everyone was healthy; don't charge us
@@ -264,8 +287,35 @@ local function resurrect(self)
   return true
 end
 
+-- Gameplay Fixes: the bot's slot 1. HEAL when an ally in reach is below
+-- its full health; else the MYSTIC MACE when it pays: a living foe within
+-- 48 px (the mace orbits on a 24 px circle and strikes what it touches), no
+-- mace of this cleric out, the pool at least half full (the classic
+-- condition) and a hero's INT. The Shift is written after the coin.
+local function heal_or_mace_wanted(self, t)
+  if G.hurt_ally(self, t.heal_range) then
+    self:set_shifter_down(0)
+    return true
+  end
+  if self.magicpoints < og.fdiv(self.max_magicpoints, 2) then
+    return false
+  end
+  if self:has_guy() and self:g_intelligence() < t.mace_int_req then
+    return false
+  end
+  if G.owned(self, C.ORDER_FX, FX_MAGIC_SHIELD) == 0
+      and G.foes_within(self, 1, 48, true) then
+    self:set_shifter_down(1)
+    return true
+  end
+  return false
+end
+
 local function check_special_ai(self)
   if self:current_special() == 1 then -- healing
+    if gf.on() then
+      return heal_or_mace_wanted(self, og.tuning(self))
+    end
     local _, friend_count = og.find_friends_in_range(
       "ob", og.tuning(self).heal_range, self)
     -- other than ourselves?
@@ -279,6 +329,39 @@ local function check_special_ai(self)
     end
     return false
   end
+  if gf.on() then
+    local slot = self:current_special()
+    if slot == 2 or slot == 3 then
+      -- Gameplay Fixes: TURN UNDEAD only with something to turn in reach,
+      -- and only with the INT to cast it; else the raise (which refuses
+      -- free when there is no corpse).
+      local t = og.tuning(self)
+      local reach = gf.turn_range(self, t)
+      local can_turn = not lacks_turn_int(self, t)
+      if can_turn and self:undead_foes_in_range(reach) > 0 then
+        self:set_shifter_down(1)
+      else
+        self:set_shifter_down(0)
+      end
+      if self:shifter_down() == 0 then
+        -- Gameplay Fixes: the raise wants the corpse it would raise and a
+        -- living foe within 130 px for the risen to fight.
+        local range = t.raise_skeleton_range
+        if slot == 3 then
+          range = t.raise_ghost_range
+        end
+        if G.corpse_near(self, range) == nil then
+          return false
+        end
+        return G.foes_within(self, 1, 130, false)
+      end
+    elseif slot == 4 then
+      -- Gameplay Fixes: RESURRECT wants a friendly corpse in reach (a foe's
+      -- stain is RAISE GHOST's job, at a third of the price).
+      local b = G.corpse_near(self, og.tuning(self).resurrect_range)
+      return b ~= nil and self:is_friendly(b)
+    end
+  end
   return true
 end
 
@@ -288,6 +371,11 @@ end
 
 local function on_shoved(self)
   self:set_current_special(1) -- healing
+  if gf.on() then
+    -- Gameplay Fixes: a shove is an ally at the cleric's side: HEAL, never
+    -- the mace the last coin may have left down.
+    self:set_shifter_down(0)
+  end
   self:special()
 end
 
@@ -357,6 +445,9 @@ og.family("living", {
     raise_ghost_range = 30,
     resurrect_range = 30,
     resurrect_ghost_lifetime = 200,
+    -- Turn undead with the Gameplay Fixes setting on: the reach never falls
+    -- under this (px), RAISE UNDEAD's own reach
+    turn_undead_range_min = 60,
   },
 
   check_special_ai = check_special_ai,

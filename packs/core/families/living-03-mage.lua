@@ -4,6 +4,8 @@
 
 local C = og.C
 local lc = og.use("living_common")
+local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local FX_MARKER = assert(og.family_id("fx", "core:marker"))
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 local WEAPON_WAVE = assert(og.family_id("weapon", "core:wave"))
@@ -12,10 +14,74 @@ local WEAPON_WAVE = assert(og.family_id("weapon", "core:wave"))
 -- pure constant with no og.C binding: per-fireball damage add cap.
 local STARBURST_ADD_CAP = 40
 
+-- Gameplay Fixes: FREEZE TIME's cue is the fight the allies are in, not the
+-- mage's own danger (that is TELEPORT's business at 15 magic). The 500 are
+-- worth spending when the time stop hands allies free blows: three or more
+-- foes within a blow of allies, or an ally at blows that is under a quarter
+-- of its health. Distance to the mage is not consulted, and the same cue
+-- serves a mage on any team (off the player's team the freeze grants its
+-- own side bonus rounds instead).
+-- The fight is the library's (G.allies_fight: foe-major, so a foe at
+-- blows with two allies counts once; living foes only, a tent is nobody's
+-- fight); draw-free, finders and positions only.
+local function freeze_wanted(self)
+  local engaged, hurt = G.allies_fight(self)
+  return engaged >= 3 or hurt
+end
+
+-- Gameplay Fixes: the classic rule below was written for TELEPORT (flee
+-- when alone or swamped) and applied to every slot. With the setting on
+-- each slot asks when it pays off:
+--   1 TELEPORT keeps the classic rule; the TELEPORT MARKER (the Shift arm)
+--     is no longer the coin's: with nobody within 110 px the mage marks
+--     where it stands when no marker of its own stands, a hero has the INT
+--     the cast asks, and half the pool left after the price still covers
+--     WARP SPACE, so its wander teleports go home to it. The Shift is
+--     written after the engine's coin, which is still drawn.
+--   2 WARP SPACE is a point-blank ring (its fireballs crawl one pixel a
+--     tick): two living foes inside it, or one the mage does not face.
+--   3 FREEZE TIME waits for the allies' fight (freeze_wanted above).
+--   4 ENERGY WAVE runs along the fire heading through walls: a living foe
+--     within 110 px that the mage faces.
+--   5 HEARTBURST wants a foe inside its own reach.
+local function fixed_gate(self, foe_count)
+  local slot = self:current_special()
+  if slot == 1 then
+    local t = og.tuning(self)
+    local yes = foe_count < 1 or foe_count > 3
+    if foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, t.marker_int_req) then
+      self:set_shifter_down(1)
+    else
+      self:set_shifter_down(0)
+    end
+    return yes
+  end
+  if slot == 2 then
+    -- each bolt's range add, as starburst computes it from the spare pool
+    local add = og.min(og.div(lc.spare_mp(self, 2), 15), STARBURST_ADD_CAP) // 3
+    return G.ring_pays(self, G.UNIT_STEP, 7, add)
+  end
+  if slot == 3 then
+    return freeze_wanted(self)
+  end
+  if slot == 4 then
+    local foe = G.nearest_living_foe(self, 110, false)
+    return foe ~= nil and G.faces(self, foe)
+  end
+  -- HEARTBURST: slot 5 and every unmapped slot (the family's default cast)
+  local t = og.tuning(self)
+  local _, in_reach = og.find_foes_in_range("ob",
+    t.heartburst_range_base + t.heartburst_range_per_level * self.level, self)
+  return in_reach >= 1
+end
+
 local function check_special_ai(self)
   -- count_foes_in_range(self, 110) == the howmany out-param of the same
   -- world->find_foes_in_range(oblist, ...) call the binding performs.
   local _, foe_count = og.find_foes_in_range("ob", 110, self)
+  if gf.on() then
+    return fixed_gate(self, foe_count)
+  end
   -- TP if away from guys .. or too many enemies!
   return foe_count < 1 or foe_count > 3
 end

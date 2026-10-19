@@ -341,15 +341,16 @@ void fx_options_draw_content(const char* title,
 }
 
 // GAMEPLAY FX: toggles that change how the game feels to play. Single
-// centered column; nav is a vertical cycle through BACK. New Specials is
-// the one row here that changes the rules rather than the look: it writes
-// the per-machine preference (cfg gameplay/new_specials, the face colour)
-// and, on the machine that decides the session, the session's setting.
+// centered column; nav is a vertical cycle through BACK. New Specials and
+// Gameplay Fixes are the two rows here that change the rules rather than
+// the look: each writes its per-machine preference (cfg gameplay/<key>, the
+// face colour) and, on the machine that decides the session, the session's
+// setting.
 constexpr MenuButtonSpec kGameplayFxRows[] = {
     {.id = "gameplay_fx_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 3, .down = 1}},
+     .nav = {.up = 4, .down = 1}},
     {.id = "toggle_hit_recoil", .label = "Hit recoil",
      .x = 115, .y = fx_row_y(0), .w = 90, .h = 15,
      .action = ButtonAction::ToggleHitRecoil, .arg = -1,
@@ -361,13 +362,18 @@ constexpr MenuButtonSpec kGameplayFxRows[] = {
     {.id = "toggle_new_specials", .label = "New Specials",
      .x = 115, .y = fx_row_y(2), .w = 90, .h = 15,
      .action = ButtonAction::ToggleNewSpecials, .arg = -1,
-     .nav = {.up = 2, .down = 0}},
+     .nav = {.up = 2, .down = 4}},
+    {.id = "toggle_gameplay_fixes", .label = "Gameplay Fixes",
+     .x = 115, .y = fx_row_y(3), .w = 90, .h = 15,
+     .action = ButtonAction::ToggleGameplayFixes, .arg = -1,
+     .nav = {.up = 3, .down = 0}},
 };
 
 constexpr FxToggleDraw kGameplayFxToggleDraws[] = {
     {1, "effects", "hit_recoil"},
     {2, "effects", "attack_lunge"},
     {3, "gameplay", "new_specials"},
+    {4, "gameplay", "gameplay_fixes"},
 };
 
 void gameplay_fx_draw_content(void* /*screen_state*/)
@@ -7808,8 +7814,6 @@ og::ui::MatchSetupSession::Inputs match_setup_inputs(
     inputs.is_host = picker_lobby_host_controls_visible();
     inputs.networked = picker_lobby_is_networked();
     inputs.my_team = og::ui::picker_lobby_my_team(game->save_data);
-    inputs.session_difficulty =
-        og::runtime::current_session->current_difficulty_;
     inputs.authored_mask = og::ui::ctf_authored_team_mask_for_loaded_level(
         game->save_data, game->world(), get_mounted_campaign());
     inputs.players = seats.players;

@@ -94,6 +94,8 @@ struct ControlPolicyFixture
         std::uint8_t owner = guy::kNoOwner;
         bool dead = false;
         bool dormant = false;
+        unsigned char real_team = 255; // != 255 with charm_left: charmed
+        short charm_left = 0;
     };
 
     walker* add(const WalkerSpec& spec)
@@ -105,7 +107,8 @@ struct ControlPolicyFixture
         w->set_sizey(16);
         w->set_stepsize(1.0f);
         w->set_team_num(spec.team);
-        w->set_real_team_num(255);
+        w->set_real_team_num(spec.real_team);
+        w->set_charm_left(spec.charm_left);
         w->set_dead(spec.dead ? 1 : 0);
         w->set_user(spec.user);
         if (spec.hero)
@@ -165,7 +168,9 @@ void expect_decisions_match_legacy(ControlPolicyFixture& fx,
 }
 
 // Populate a deterministic pseudo-random world: a mix of heroes (owned and
-// orphaned), troops, claimed walkers, corpses, and dormant spawns.
+// orphaned), troops, claimed walkers, corpses, dormant spawns, and walkers
+// charmed onto a borrowed team (the Gameplay Fixes seat rule skips those, so
+// both scans must ask it alike).
 void populate_random_world(ControlPolicyFixture& fx, std::mt19937& gen)
 {
     std::uniform_int_distribution<int> count_dist(0, 6);
@@ -190,6 +195,11 @@ void populate_random_world(ControlPolicyFixture& fx, std::mt19937& gen)
         }
         spec.dead = rare(gen);
         spec.dormant = rare(gen);
+        if (rare(gen))
+        {
+            spec.real_team = static_cast<unsigned char>((spec.team + 1) % 3);
+            spec.charm_left = 40;
+        }
         fx.add(spec);
     }
 }
@@ -273,15 +283,19 @@ TEST(SimControlPolicy, owner_locked_permissive_map_matches_legacy_over_random_wo
     {
         fx.clear_walkers();
         populate_random_world(fx, gen);
-        for (short team = 0; team <= 2; ++team)
+        for (const short fixes : {short{0}, short{1}})
         {
-            walker* const legacy = sim_find_next_control(fx.world(), team);
-            for (short player = 0; player <= 3; ++player)
+            fx.world().gameplay_fixes = fixes;
+            for (short team = 0; team <= 2; ++team)
             {
-                EXPECT_EQ(legacy,
-                          sim_find_next_control_owned(fx.world(), team, player))
-                    << "permissive owner-locked scan diverged, team " << team
-                    << " player " << player;
+                walker* const legacy = sim_find_next_control(fx.world(), team);
+                for (short player = 0; player <= 3; ++player)
+                {
+                    EXPECT_EQ(legacy, sim_find_next_control_owned(fx.world(),
+                                                                  team, player))
+                        << "permissive owner-locked scan diverged, team "
+                        << team << " player " << player << " fixes " << fixes;
+                }
             }
         }
     }

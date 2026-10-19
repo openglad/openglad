@@ -59,6 +59,8 @@ struct CurvePin
 // (was 8/7/8 when only the wake was fixed). Accessibility for new teams
 // stays the design contract: the full kill-all sweep cleared 3/3 seeds
 // (level_done at ticks 868/989/910) with 5-8 survivors.
+// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
+// Specials on), which the asserting run now plays: 6 6 6; every pin held.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 5},
 };
@@ -71,9 +73,10 @@ int survivors_at_600(int level_id, int crew_level, std::uint32_t seed)
     if (!fx.loaded)
         return -1;
     GameWorld& world = fx.world();
-    // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
-    // fixture world keeps the classic kits it is built with.
-    if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
+    // The suite plays the shipped default (both on); OG_CALIBRATION_<NAME>=0
+    // measures the classic value (westlands_sim_fixture.h).
+    world.new_specials = westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
+    world.gameplay_fixes = westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
     std::vector<walker*> crew = deploy_crew(
         fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                           FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,

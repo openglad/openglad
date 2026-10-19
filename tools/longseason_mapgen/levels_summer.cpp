@@ -75,11 +75,13 @@ void build_two_banners(const LevelDataHooks& hooks)
     // (F4 batch 2: the line ranks flatten to lvl 1 and the gate pieces
     // shed another level — 26 foes against a lone 8-man crew is the
     // pressure; the levels are the tax.)
-    static constexpr int pickets[6][2] = {{18, 8},  {22, 12}, {25, 6},
-                                          {18, 28}, {22, 28}, {25, 26}};
-    for (int i = 0; i < 6; ++i)
-        place_living(w, FAMILY_SOLDIER, 2, 0, pickets[i][0], pickets[i][1],
-                     1);
+    // (Gameplay Fixes recalibration 2026-10-17: with HEAL capped at full
+    // health the curve-3 crew lost the overheal it carried into the line
+    // fights; one picket fewer, the doc's (25,6) dropped.)
+    static constexpr int pickets[5][2] = {{18, 8},  {22, 12}, {18, 28},
+                                          {22, 28}, {25, 26}};
+    for (const auto& c : pickets)
+        place_living(w, FAMILY_SOLDIER, 2, 0, c[0], c[1], 1);
     // Ford mercs on the east bank. (Design-doc deviation, F4 calibration:
     // the whole russet order of battle sheds levels — the doc's army
     // wiped the curve-3 crew by tick 600 on all seeds.)
@@ -537,6 +539,9 @@ void build_paymaster_vanishes(const LevelDataHooks& hooks)
     // one level — the doc's hillmen wiped the curve-4 crew on the apron —
     // and the hollow ring trims per the doc's own clause, "trim the hollow
     // ring rather than Long Tom".)
+    // (Gameplay Fixes recalibration 2026-10-17: with HEAL capped at full
+    // health the curve-4 crew lost the overheal it carried up the climb;
+    // the terrace-2 bruisers shed one more level, to lvl 1.)
     static constexpr int ambush[6][2] = {{18, 52}, {30, 52}, {24, 48},
                                          {44, 50}, {48, 54}, {40, 56}};
     for (const auto& c : ambush)
@@ -556,7 +561,7 @@ void build_paymaster_vanishes(const LevelDataHooks& hooks)
     static constexpr int bruisers[5][2] = {{8, 22}, {20, 26}, {30, 21},
                                            {40, 26}, {48, 22}};
     for (const auto& c : bruisers)
-        place_living(w, FAMILY_BARBARIAN, 2, 0, c[0], c[1], 2);
+        place_living(w, FAMILY_BARBARIAN, 2, 0, c[0], c[1], 1);
     place_living(w, FAMILY_THIEF, 2, 0, 14, 26, 2);
     place_living(w, FAMILY_THIEF, 2, 0, 36, 22, 2);
     // The head-zone approach watch (skirmishers — the F4 parked-guard
@@ -799,7 +804,7 @@ std::vector<ExpectedLevel> summer_expectations()
     return {
         // id, floors, title, starts, t0 liv/gen, t1 liv/gen, t2 liv/gen,
         // delayed, no-specials, stairs, exits
-        {5, 1, "Two Banners", 10, 0, 0, 0, 0, 27, 0, 5, 0, true, {6, 4}},
+        {5, 1, "Two Banners", 10, 0, 0, 0, 0, 26, 0, 5, 0, true, {6, 4}},
         {6, 1, "The Hay War", 10, 0, 0, 0, 0, 29, 3, 6, 0, true, {8, 7, 5}},
         {7, 1, "Grey Tolls", 10, 6, 0, 0, 0, 29, 2, 21, 0, true, {8, 6}},
         {8, 1, "The Paymaster Vanishes", 10, 0, 0, 0, 0, 33, 0, 5, 0, true,

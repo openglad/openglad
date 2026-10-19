@@ -24,6 +24,12 @@ Asserts:
       ``src/<path>:<N> `<verbatim fragment>``` — still resolves: line N of
       <path> contains <fragment>. Bare citations (a line number with no
       backticked fragment) are outside the rule by construction.
+  (g) every weapon predicate (WeaponFamilyEmitted, WeaponFamilyCount,
+      WeaponSpeed, WeaponNetTravel) that names its family by a FAMILY_*
+      constant names one of the weapon families in
+      include/openglad/core/constants.h: the evaluator resolves the id in
+      the weapon order, so an FX constant such as FAMILY_EXPLOSION (3)
+      silently reads the weapon of the same number (FAMILY_FIREBALL)
 
 The lint is regex-based, not a full C++ parser. It expects the
 scenario_table.h emitted by Phase 01 and breaks loudly on schema drift.
@@ -66,6 +72,30 @@ def _load_table(path: Path) -> str:
         sys.stderr.write(f"lint: cannot read {path}\n")
         sys.exit(2)
     return path.read_text(encoding="utf-8")
+
+
+# Rule (g): the predicates whose family id the evaluator resolves in the
+# weapon order (tests/parity/fact_predicate.cpp, family_symbol_by_order with
+# kWeaponOrder), and where the weapon families are declared.
+WEAPON_ORDER_PREDICATES = ("WeaponFamilyEmitted", "WeaponFamilyCount",
+                           "WeaponSpeed", "WeaponNetTravel")
+CONSTANTS_H = (Path(__file__).resolve().parents[2]
+               / "include" / "openglad" / "core" / "constants.h")
+
+
+def weapon_family_symbols(path: Path = CONSTANTS_H) -> set[str]:
+    """The FAMILY_* names constants.h declares under "//Weapon families"."""
+    if not path.is_file():
+        sys.stderr.write(f"lint: cannot read {path}\n")
+        sys.exit(2)
+    block = _slice(path.read_text(encoding="utf-8"),
+                   "//Weapon families", "// Treasure families")
+    names = set(re.findall(r"inline\s+constexpr\s+int\s+(FAMILY_\w+)\s*=",
+                           block))
+    if not names:
+        sys.stderr.write(f"lint: no weapon families found in {path}\n")
+        sys.exit(2)
+    return names
 
 
 def _slice(text: str, start_marker: str, end_marker: str) -> str:
@@ -475,9 +505,15 @@ def parse_scenarios(text: str, *,
         # discriminating mutation: kMut_* identifier (or '{}' default) at
         # the tail. Newer rows may carry one trailing coverage_audit string
         # after the mutation for static checkers that do not resolve
-        # kFacts_* arrays.
+        # kFacts_* arrays, and a row that plays the Gameplay Fixes setting
+        # spells the rest of its tail positionally after that
+        # (`kMut_x, {}, 1, nullptr, 0, 1`): scalar tokens only, so the
+        # leftmost match is the mutation, never the audit's `{}`. A
+        # multi-floor tail (an identifier, std::size(...)) still matches
+        # nothing and reads as default-constructed, as before.
         mut_match = re.search(
-            r"(kMut_\w+|\{\s*\})(?:\s*,\s*\"(?:\\.|[^\"])*\")?\s*$",
+            r"(kMut_\w+|\{\s*\})"
+            r"(?:\s*,\s*(?:\"(?:\\.|[^\"])*\"|\{\s*\}|nullptr|\d+))*\s*$",
             r.strip(),
             re.S,
         )
@@ -816,6 +852,22 @@ _BRANCH_INTERNAL_ROW = '''    { "row_int", "scen/scen1.fss", 0x1u,
 };
 '''
 
+# A multi-floor row's tail, branch-internal as the real ones are: floor count,
+# paint array, paint count after the mutation and audit. Its mutation slot
+# names kMut_orphan, so the orphan rule reads this row's own token: the tail
+# carries an identifier and a call, which the parser does not read, so the row
+# names no pin and kMut_orphan stays an orphan. A parser that swallowed any
+# tail would read kMut_orphan here and turn the case green.
+_Z_SHAPED_ROW = '''    { "row_z", "scen/scen1.fss", 0x1u,
+      nullptr, 0, 10,
+      CompareMode::Invariant, true,
+      nullptr, 0, 0, false, true,
+      Exercises::None,
+      nullptr, 0, kMut_orphan, {},
+      2, kZPaints, std::size(kZPaints) },
+};
+'''
+
 _SPECIAL_ROW = '''    { "special_mage_2_scen1", "scen/scen1.fss", 0x1u,
       nullptr, 0, 10,
       CompareMode::SemanticParity, false,
@@ -992,6 +1044,45 @@ _SELF_TEST_CASES: list[
      _mutate(_SELF_TEST_CLEAN, '"src/fake.cpp", 10,', '"src/fake.cpp", 0,'),
      {}, 1, "", _fail("row_one: discriminating_mutation.kMut_a.line <= 0")),
 
+    # The row tail after the mutation. A coverage_audit string, a row that
+    # plays the Gameplay Fixes setting (its whole tail spelled positionally,
+    # `{}` audit included), and both at once all name their pin; the unknown
+    # case proves the token read from that tail is the mutation, not the
+    # audit's `{}`. A setting tail with a stray token is not read at all, so
+    # the row fails as naming no pin rather than passing on a guess. A
+    # multi-floor tail still names no pin, even with a kMut_* in its slot, so
+    # the orphan rule fires for the pin that row holds.
+    ("tail_audit_ok",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },", '      kMut_a, "audit" },'),
+     {}, 0, _OK, ""),
+    ("tail_gameplay_fixes_ok",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             "      kMut_a, {}, 1, nullptr, 0, 1 },"),
+     {}, 0, _OK, ""),
+    ("tail_audit_and_gameplay_fixes_ok",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             '      kMut_a, "audit", 1, nullptr, 0, 1 },'),
+     {}, 0, _OK, ""),
+    ("tail_gameplay_fixes_unknown",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             "      kMut_zz, {}, 1, nullptr, 0, 1 },"),
+     {}, 1, "",
+     _fail("row_one: discriminating_mutation references unknown kMut_zz",
+           _ORPHAN_A)),
+    ("tail_gameplay_fixes_malformed",
+     _mutate(_SELF_TEST_CLEAN, "      kMut_a },",
+             "      kMut_a, {}, 1, nullptr, 0, x },"),
+     {}, 1, "",
+     _fail("row_one: discriminating_mutation is default-constructed "
+           "(require non-empty kMut_*)", _ORPHAN_A)),
+    ("tail_z_shape_names_no_pin",
+     _mutate(_ORPHAN_PIN + _SELF_TEST_CLEAN, "      kMut_a },\n};\n",
+             "      kMut_a },\n" + _Z_SHAPED_ROW),
+     {}, 1, "",
+     _fail("kMut_orphan: orphan mutation constant (referenced by no "
+           "ScenarioSpec row) — attach it to a row whose facts flip under it, "
+           "or delete it with a DRIFT_LEDGER 'Removed pins' note")),
+
     # The mandatory-context rule has four legs and two owners. The weak-context
     # leg ("the context_before is true above N of them") and the strong-context
     # green leg belong to check_mutation_pins.py's _self_test_context_uniqueness,
@@ -1148,6 +1239,19 @@ _SELF_TEST_CASES: list[
      _with_spawns(_add_pred("pred::WeaponFamilyEmitted(7),"), _WIELDER_SPAWNS),
      {}, 0, _ok(1, 3), ""),
 
+    # (g) family_order_mismatch: an FX constant in a weapon predicate is
+    # refused; a weapon constant passes.
+    ("g_fx_family_in_weapon_predicate",
+     _add_pred("pred::WeaponFamilyCount(FAMILY_EXPLOSION, 1, 1),"), {}, 1, "",
+     _fail("kFacts_one[#2]: family_order_mismatch — "
+           "WeaponFamilyCount(FAMILY_EXPLOSION) resolves its family in the "
+           "weapon order, and FAMILY_EXPLOSION is not a weapon family in "
+           "include/openglad/core/constants.h; count an FX or treasure "
+           "family with WalkerOfOrderFamilyCount")),
+    ("g_weapon_family_ok",
+     _add_pred("pred::WeaponFamilyCount(FAMILY_FIREBALL, 1, 1),"), {}, 0,
+     _ok(1, 3), ""),
+
     # (e) orphan_mutation_constant, both halves. The second row is
     # branch-internal, which the ordinary row view drops and this rule keeps:
     # the OK line still says 1 row, and the pin is no longer an orphan.
@@ -1225,7 +1329,7 @@ _SELF_TEST_CASES: list[
     ("rc_missing_table", None, {}, 2, "", "lint: cannot read {table}\n"),
 ]
 
-_SELF_TEST_CASE_COUNT = 51
+_SELF_TEST_CASE_COUNT = 59
 
 
 def _self_test() -> int:
@@ -1304,6 +1408,26 @@ def run_lint(table: Path) -> int:
                     f"{arr_name}[#{i}]: widened predicate {sig} missing "
                     f"`// intended_diff:` or `// rng_drift:` justification "
                     f"(grammar: kind ':' reason '; commit ' <hex 7..40>)")
+
+    # Rule (g) — family_order_mismatch. A weapon predicate resolves its
+    # family id in the weapon order, so a FAMILY_* constant of another
+    # order (FX, treasure, generator) compiles, lints and silently reads
+    # the weapon that shares its number. Refuse a non-weapon name.
+    weapon_symbols = weapon_family_symbols()
+    family_order_errors: list[str] = []
+    for arr_name, preds in pred_calls.items():
+        for i, pred in enumerate(preds):
+            if pred["kind"] not in WEAPON_ORDER_PREDICATES or not pred["args"]:
+                continue
+            sym = re.sub(r"/\*.*?\*/", "", pred["args"][0],
+                         flags=re.DOTALL).strip()
+            if re.fullmatch(r"FAMILY_\w+", sym) and sym not in weapon_symbols:
+                family_order_errors.append(
+                    f"{arr_name}[#{i}]: family_order_mismatch — "
+                    f"{pred['kind']}({sym}) resolves its family in the weapon "
+                    f"order, and {sym} is not a weapon family in "
+                    f"include/openglad/core/constants.h; count an FX or "
+                    f"treasure family with WalkerOfOrderFamilyCount")
 
     # Spec-mandated rule: every EffectFamilyCount predicate must be
     # qualified by EITHER a source-walker family (`arg3 >= 0`) OR a
@@ -1656,6 +1780,7 @@ def run_lint(table: Path) -> int:
         + vacuous_event_floor_errors
         + zero_zero_count_errors
         + family_alias_errors
+        + family_order_errors
         + caster_zero_min_errors
         + orphan_mutation_errors
         + anchored_citation_errors

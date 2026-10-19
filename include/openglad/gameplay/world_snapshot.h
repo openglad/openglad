@@ -32,7 +32,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 16;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 17;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -287,6 +287,9 @@ struct WorldSnapshot {
     // Snapshot v15: the session's New Specials setting (GameWorld scalar),
     // serialized right after the player_machine map.
     std::uint8_t new_specials = 0;
+    // Snapshot v17: the session's Gameplay Fixes setting (GameWorld scalar),
+    // serialized right after new_specials.
+    std::uint8_t gameplay_fixes = 0;
 
     std::uint8_t grid_width = 0;
     std::uint8_t grid_height = 0;

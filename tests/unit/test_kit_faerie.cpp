@@ -414,7 +414,7 @@ TEST(KitFaerie, blink_is_no_special_when_off)
     const std::uint32_t rng_before = tw.world().rng_.state_;
     const Cast off = cast(f, 1, false);
     EXPECT_FALSE(off.ok);
-    EXPECT_EQ(Failure::NoMP, off.why);
+    EXPECT_EQ(Failure::Unavailable, off.why);
     EXPECT_EQ(160, f->xpos());
     EXPECT_EQ(160, f->ypos());
     EXPECT_FLOAT_EQ(52.0f, f->stats()->magicpoints());
@@ -554,7 +554,7 @@ TEST(KitFaerie, swap_is_no_special_when_off)
     ASSERT_TRUE(f && ally);
     const Cast off = cast(f, 1, true);
     EXPECT_FALSE(off.ok);
-    EXPECT_EQ(Failure::NoMP, off.why) << "SWAP hangs off a hidden slot";
+    EXPECT_EQ(Failure::Unavailable, off.why) << "SWAP hangs off a hidden slot";
     EXPECT_EQ(160, f->ypos());
     EXPECT_EQ(208, ally->ypos());
     EXPECT_FLOAT_EQ(52.0f, f->stats()->magicpoints());
@@ -689,7 +689,7 @@ TEST(KitFaerie, glimmer_is_no_special_when_off)
     ASSERT_NE(nullptr, f);
     const Cast off = cast(f, 2, false);
     EXPECT_FALSE(off.ok);
-    EXPECT_EQ(Failure::NoMP, off.why);
+    EXPECT_EQ(Failure::Unavailable, off.why);
     EXPECT_EQ(0, sprinkles(tw));
     EXPECT_FLOAT_EQ(100.0f, f->stats()->magicpoints());
     EXPECT_EQ(0u, guard.count()) << guard.message();
@@ -762,7 +762,7 @@ TEST(KitFaerie, hasten_is_no_special_when_off)
     for (const bool shift : {false, true}) {
         const Cast off = cast(f, 3, shift);
         EXPECT_FALSE(off.ok);
-        EXPECT_EQ(Failure::NoMP, off.why);
+        EXPECT_EQ(Failure::Unavailable, off.why);
     }
     EXPECT_EQ(0, near->speed_bonus_left());
     EXPECT_EQ(0, f->speed_bonus_left());
@@ -887,7 +887,7 @@ TEST(KitFaerie, wish_is_no_special_when_off)
     ASSERT_TRUE(s.ready());
     const Cast off = cast(s.faerie, 4, false);
     EXPECT_FALSE(off.ok);
-    EXPECT_EQ(Failure::NoMP, off.why);
+    EXPECT_EQ(Failure::Unavailable, off.why);
     EXPECT_FALSE(s.faerie->dead());
     EXPECT_EQ(nullptr, s.raised());
     EXPECT_FALSE(s.near_stain->dead());

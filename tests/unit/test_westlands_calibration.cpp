@@ -177,6 +177,14 @@ struct BattleResult
 // fields no caster that rests, so this is seed 42's run going badly, not a
 // hotter level), re-pinned 2->1 at the maintainer's word; every other
 // floor held, 26 rows moved inside their pins.)
+// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
+// Specials on), which the asserting run now plays. Level 11 (The Great
+// River) read 3 on seed 42 against its floor of 4: the Gameplay Fixes
+// cleric bot picked TURN UNDEAD whenever an undead foe was in reach, and
+// the level-6 crew cleric, below the 60 INT the cast needs, was refused
+// and lost the turn. With the bot gate asking the same INT question as the
+// cast, level 11 reads 6 5 6 across seeds {42, 1337, 2025}. Every floor
+// held; no ceiling moved (8 and 15 sit at their ceilings, 2 and 5).)
 constexpr CurvePin kCurve[] = {
     {1, 1, 7, 8},  {2, 2, 8, 8},  {3, 2, 6, 8},  {4, 3, 7, 8},
     {5, 3, 6, 8},  {6, 4, 3, 8},  {7, 4, 0, 2},  {8, 5, 0, 2},
@@ -211,9 +219,10 @@ BattleResult battle_at_600(int level_id, int crew_level, std::uint32_t seed)
     if (!fx.loaded)
         return out;
     GameWorld& world = fx.world();
-    // OG_CALIBRATION_NEW_SPECIALS=1 measures with New Specials on; unset, the
-    // fixture world keeps the classic kits it is built with.
-    if (const char* ns = std::getenv("OG_CALIBRATION_NEW_SPECIALS"); ns != nullptr && ns[0] == '1') world.new_specials = 1;
+    // The suite plays the shipped default (both on); OG_CALIBRATION_<NAME>=0
+    // measures the classic value (westlands_sim_fixture.h).
+    world.new_specials = westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
+    world.gameplay_fixes = westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
     std::vector<walker*> crew = deploy_crew(
         fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
                           FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,

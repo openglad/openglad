@@ -3,8 +3,30 @@
 -- The shareware-era source labelled the Orc its "registered monster."
 
 local ai = og.use("ai")
+local G = og.use("gates")
 -- HOWL and EAT CORPSE live in lib/orc_specials.lua: the orc captain casts them too.
 local orc = og.use("orc_specials")
+
+-- The meal's reach: tuning.corpse_eat_range below, the squared centre
+-- distance orc_specials.eat_corpse compares (a gate reads no tuning).
+local CORPSE_EAT_REACH_SQ = 24
+
+-- Gameplay Fixes: the classic gate (a foe within 130 px, acquired first on
+-- both values, so its draws stand) was the same for both specials. With
+-- the setting on HOWL wants a body the yell can stun (a living foe or a
+-- generator: a frozen tent makes nothing) inside the yell's own radius, and
+-- EAT CORPSE wants the orc below 60 percent of its health with a stain under
+-- it, whatever the foes are doing (the classic gate let the meal refuse).
+local function fixed_gate(self, classic_answer)
+  local slot = self:current_special()
+  if slot == 1 then
+    return G.targets_within(self, 1, og.combat.yell_radius(self.level))
+  end
+  if slot == 2 then
+    return G.hp_below(self, 3, 5) and G.corpse_underfoot(self, CORPSE_EAT_REACH_SQ) ~= nil
+  end
+  return classic_answer
+end
 
 local function set_difficulty(self, level)
   og.apply_difficulty_scaling(self, level, 14.0, 7.0, 6.0, 3.0)
@@ -74,7 +96,7 @@ og.family("living", {
     howl_rest = 120,
   },
 
-  check_special_ai = orc.howl_gate(ai.foe_within(130)),  -- fixed per-tick AI range
+  check_special_ai = orc.howl_gate(G.with_classic(ai.foe_within(130), fixed_gate)),  -- fixed per-tick AI range
   set_difficulty = set_difficulty,
   level_up = level_up,
 })

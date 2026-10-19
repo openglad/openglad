@@ -3,6 +3,8 @@
 
 local C = og.C
 local ai = og.use("ai")
+local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local FX_BOOMERANG = assert(og.family_id("fx", "core:boomerang"))
 
 local function charge(self)
@@ -41,6 +43,13 @@ local function whirlwind(self)
   if self:busy() ~= 0 then
     return false, "SPECIAL BUSY"
   end
+  local t = og.tuning(self)
+  local foes = og.foes_in_range(
+    self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)
+  if gf.on() and #foes == 0 then
+    -- Gameplay Fixes: a spin that would hit nobody costs nothing.
+    return false, "NO FOE IN RANGE"
+  end
   -- busy is a C++ float: per-op rounding
   self:set_busy(og.fadd(self:busy(), 8.0))
   self:set_curdir(-1)
@@ -55,9 +64,6 @@ local function whirlwind(self)
   self:s_add_command(C.COMMAND_WALK, 1, -1, 0)
   self:s_add_command(C.COMMAND_WALK, 1, -1, -1)
 
-  local t = og.tuning(self)
-  local foes = og.foes_in_range(
-    self, t.whirlwind_range_base + self.level * t.whirlwind_range_per_level)
   for i = 1, #foes do
     local foe = foes[i]
     local dx = og.sign(foe:xpos() - self:xpos())
@@ -79,6 +85,7 @@ local function disarm(self)
   end
 
   local found = 0
+  local disarmed = 0
   local foes = og.foes_in_range(self, og.tuning(self).disarm_range)
   for i = 1, #foes do
     local foe = foes[i]
@@ -86,15 +93,35 @@ local function disarm(self)
     -- (as at the thief and orc sites). og.rand, not rand0: living levels
     -- are >= 1, so n <= 0 would be a real bug worth the loud error.
     if og.rand(self.level) >= og.rand(foe.level) then
-      -- busy is a C++ float: per-op rounding
-      foe:set_busy(og.fadd(foe:busy(), 6 * (self.level - foe.level + 1)))
+      local penalty = 6 * (self.level - foe.level + 1)
+      -- Gameplay Fixes: a foe above the fighter's level is not sped up by
+      -- a stagger below zero, and only a real stagger counts.
+      if not gf.on() or penalty > 0 then
+        -- busy is a C++ float: per-op rounding
+        foe:set_busy(og.fadd(foe:busy(), penalty))
+        disarmed = disarmed + 1
+      end
     end
     -- disarmed at least one guy
     found = 1
   end
 
   if found == 0 then
+    if gf.on() then
+      -- Gameplay Fixes: nobody in reach to disarm, so nothing is spent and
+      -- the message says so.
+      return false, "NO ONE TO DISARM"
+    end
     return false, "NO FOE IN RANGE"
+  end
+  if gf.on() and disarmed == 0 then
+    -- Gameplay Fixes: everyone in reach resisted. The try still costs
+    -- half the slot's price and the fighter's usual recovery.
+    -- magicpoints is a C++ float: per-op rounding
+    self.magicpoints = og.fsub(self.magicpoints, og.div(self:s_special_cost(self:current_special()), 2))
+    -- busy is a C++ float: per-op rounding
+    self:set_busy(og.fadd(self:busy(), 5.0))
+    return false, "DISARM RESISTED"
   end
   og.emit_sound(C.SOUND_CHARGE)
   if self.team == 0 or self:has_guy() then
@@ -135,6 +162,39 @@ local function set_difficulty(self, level)
   self:set_weapons_left(og.div(level + 1, 2))
 end
 
+-- Gameplay Fixes: the classic window below (a foe one to three squares
+-- off) was written for CHARGE and asked of every slot. It is still asked
+-- first on every slot (it acquires the foe, and that draws); with the
+-- setting on each slot then asks for its own payoff. CHARGE pays when the
+-- rush lands: a living foe in the path it runs along the soldier's heading,
+-- three acts of three steps, is struck and shoved (the window's foe or any
+-- other; with no heading the rush walks nowhere). BOOMERANG wants a living foe inside the blade's widest orbit (17 +
+-- 6 px a level) and no blade of the soldier's already out. WHIRLWIND
+-- wants two bodies inside its ring (a tent counts: the spin strikes it);
+-- one is what the free swing hits. DISARM wants a living foe blocking the
+-- soldier's front, inside the stagger reach, not above the soldier's level.
+-- COMMAND_RUSH: three acts (charge's command count) of three walksteps.
+local RUSH_STEPS = 9
+
+local function fixed(self, classic_answer)
+  local slot = self:current_special()
+  if slot == 1 then
+    if not classic_answer then
+      return false
+    end
+    return G.rush_strikes(self, RUSH_STEPS) ~= nil
+  end
+  if slot == 2 then
+    local out = G.owned(self, C.ORDER_FX, FX_BOOMERANG)
+    return out == 0 and G.foes_within(self, 1, 17 + 6 * self.level, false)
+  end
+  if slot == 3 then
+    return G.targets_within(self, 2, 32 + 2 * self.level)
+  end
+  local f = G.ahead_blocked_by_foe(self, 28)
+  return f ~= nil and f.level <= self.level
+end
+
 og.family("living", {
   id = "core:soldier",
   wire_id = 0,
@@ -151,7 +211,7 @@ og.family("living", {
     { id = "charge",    name = "CHARGE",    mp_cost = 25,  cast = charge, detail = "Charge causes you to run forward, damaging anything in your way." },
     { id = "boomerang", name = "BOOMERANG", mp_cost = 100, cast = throw_boomerang, detail = "The boomerang flies out in a spiral, hurting nearby foes." },
     { id = "whirlwind", name = "WHIRLWIND", mp_cost = 120, cast = whirlwind, detail = "The fighter whirls in a spiral, hurting or stunning melee foes." },
-    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Cause a melee foe to temporarily lose the strength of attacks." },
+    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Stagger the foe you face so it waits before its next swing. A stronger foe resists." },
   },
   default_weapon = "core:knife",
   flags = {},
@@ -196,7 +256,7 @@ og.family("living", {
   },
 
   -- Historical charge window: about one to three grid squares.
-  check_special_ai = ai.foe_in_window(20, 75),  -- fixed per-tick AI gate
+  check_special_ai = G.with_classic(ai.foe_in_window(20, 75), fixed),  -- fixed per-tick AI gate
   on_fire_weapon = on_fire_weapon,
   on_create = on_create,
   set_difficulty = set_difficulty,

@@ -604,6 +604,14 @@ public:
     // the session has it on. Deliberately NOT reset in clear(): every
     // install path re-stamps it, like respawn_mode and generator_rate.
     short new_specials = 0;
+    // The Gameplay Fixes setting as this session plays it (SaveData::
+    // gameplay_fixes, synced the same way as new_specials above). 0 = the
+    // classic game, bugs included; 1 = the fixed branches of the classic
+    // specials are in play. Parity rows, hand-built and load-time scratch
+    // worlds stay classic with no code running, which is what keeps every
+    // classic golden byte-identical. Deliberately NOT reset in clear(): every
+    // install path re-stamps it, like new_specials.
+    short gameplay_fixes = 0;
     // Networked control policy (protocol v8 / snapshot v9, company-basecamp
     // design §4.1/§4.4): 0 = legacy (any seat may claim any walker — every
     // local/solo session and cross-control-ON lobbies), 1 = owner-locked
