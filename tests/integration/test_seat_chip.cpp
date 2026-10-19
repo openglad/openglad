@@ -308,6 +308,12 @@ TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
     ASSERT_TRUE(state.saw_base_camp) << "flow must reach Base Camp";
     EXPECT_TRUE(state.saw_first_cycle)
         << "chip click must cycle the seat team in place (team=2 trace)";
+    // A cycle that never traced says nothing by itself: the dump shows
+    // whether the lobby denied the change (a "popup" entry), the camp read
+    // the seat's old team again (a second team=2), or the press never
+    // reached the chip.
+    if (!state.saw_first_cycle || !state.saw_second_cycle)
+        trace_dump();
     EXPECT_TRUE(state.saw_second_cycle)
         << "a second chip click must cycle onward (team=3 trace)";
     EXPECT_FALSE(state.editor_opened_on_chip)
