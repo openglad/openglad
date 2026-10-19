@@ -4056,7 +4056,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "packs/core/families/living-12-ghost.lua", 27,
+    "packs/core/families/living-12-ghost.lua", 38,
     "local scare = og.summon(self, \"fx\", FX_GHOST_SCARE)",
     "local scare = nil",
     "Suppresses the scare carrier FX the ghost's special summons (its on_death is what actually frightens), so do_special takes its 'if not scare' exit. WalkerFamilyCount(FAMILY_GHOST, 1, 1) and WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100) both flip."
@@ -9156,7 +9156,7 @@ inline constexpr FactPredicate kFacts_ghost_scare_no_foe_fixes_scen99[] = {
     // negative_assertion: the refused scare summons no carrier
 };
 inline constexpr Mutation kMut_ghost_scare_no_foe_fixes_scen99 = {
-    "packs/core/families/living-12-ghost.lua", 23,
+    "packs/core/families/living-12-ghost.lua", 34,
     "if gf.on() and no_living_foe_in_reach(self) then",
     "if false then",
     "Removes the refusal, so the scare carrier is summoned again: WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE, kOrderFX, 0, 0) counts 1."
