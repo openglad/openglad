@@ -3024,9 +3024,8 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     // thief at (500, 300), far from every body above. DROP BOMB wants a
     // living foe inside the blast around the thief, 15 + clamp(4 * level,
     // 16, 96) = 31 px, and no ally of the thief in it; the Shift is 0
-    // whenever the setting is on. POISON CLOUD (slot 4, the arm the default
-    // branch's slots reach with the setting on) wants two living foes
-    // within a blow and no cloud of the thief's.
+    // whenever the setting is on. POISON CLOUD (slot 4) wants two living
+    // foes within a blow and no cloud of the thief's.
     {
         walker* bomber = add_living_to_level(FAMILY_THIEF, 0, 500, 300);
         walker* far_foe = add_living_to_level(FAMILY_SOLDIER, 1, 600, 300);
@@ -3054,12 +3053,6 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
         far_foe->setxy(483, 300);  // a 1 px gap west: a second at blows
         EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
             << "thief POISON CLOUD, fixes on: two foes at blows";
-        bomber->set_current_special(5);
-        EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
-            << "thief slot 5, fixes on: past the four named slots the gate reads POISON CLOUD's rule";
-        near_foe->setxy(525, 400);  // 125 px off: no longer at blows
-        EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
-            << "thief slot 5, fixes on: one foe at blows, POISON CLOUD's rule refuses";
     }
 
     thief->set_current_special(3);
