@@ -438,6 +438,8 @@ short living::shove(walker  *target, short x, short y)
 			if (target->query_family()==FAMILY_CLERIC)
 			{
 				target->current_special = 1; // healing
+				if (myscreen->gameplay_fixes) // port of the current game's e50189dd: a shove is an ally at the cleric's side, so HEAL, never the mace the last coin left down
+					target->shifter_down = 0;
 				target->special();
 			}
 			target->stats->set_command(COMMAND_WALK,4,x ,y );
@@ -786,6 +788,30 @@ short living::check_special()
 		case FAMILY_CLERIC: // any friends?
 			if (current_special == 1) // healing
 			{
+				if (myscreen->gameplay_fixes)
+				{
+					// port of the current game's e50189dd: HEAL when an ally within 60
+					// is below its full health; else the MYSTIC MACE when it pays: a
+					// living foe within 48 (the mace orbits on a 24 px circle), no mace
+					// of this cleric out, the pool at least half full (the classic
+					// condition) and a hero's 50 INT. The Shift is written after the coin.
+					if (bg_hurt_ally(this, 60))
+					{
+						shifter_down = 0; // we're HEALING
+						return 1;
+					}
+					if (stats->magicpoints < (stats->max_magicpoints/2) )
+						return 0;
+					if (myguy && myguy->intelligence < 50)
+						return 0;
+					if (bg_owned(this, ORDER_FX, FAMILY_MAGIC_SHIELD, NULL) == 0
+					        && bg_foes_within(this, 1, 48))
+					{
+						shifter_down = 1; // do mace
+						return 1;
+					}
+					return 0;
+				}
 				myscreen->find_friends_in_range(myscreen->level_data.oblist,
 				            60, &howmany, this);
 
@@ -818,6 +844,19 @@ short living::check_special()
 						shifter_down = 1;
 					else
 						shifter_down = 0;
+					// port of the current game's e50189dd: the raise wants the corpse it
+					// would raise (60 for a skeleton, 30 for a ghost) and a living foe
+					// within 130 for the risen to fight
+					if (!shifter_down)
+						return (bg_corpse_near(this, current_special == 3 ? 30 : 60) != NULL
+						        && bg_foes_within(this, 1, 130));
+				}
+				else if (myscreen->gameplay_fixes && current_special == 4)
+				{
+					// port of the current game's e50189dd: RESURRECT wants a friendly
+					// corpse within 30 (a foe's stain is RAISE GHOST's job)
+					walker *b = bg_corpse_near(this, 30);
+					return (b && is_friendly(b));
 				}
 				return 1;
 			}
