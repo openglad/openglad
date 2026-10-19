@@ -3,6 +3,7 @@
 -- (Descriptor name "ELEMENTAL" is unique in the living registry.)
 local ke = og.use("kit_elemental")
 local ai = og.use("ai")
+local G = og.use("gates")
 
 local function do_special(self)
   -- "Lots o' fireballs": fire the default weapon in all eight directions.
@@ -23,6 +24,14 @@ local function do_special(self)
   self:set_lastx(saved_aim_x)
   self:set_lasty(saved_aim_y)
   return true
+end
+
+-- Gameplay Fixes: STARBURST, a meteor along each of the eight headings,
+-- pays where one meteor would not: two living foes inside the ring's
+-- flight, or one the elemental does not face. The classic foe search runs
+-- first either way (G.with_classic). The meteor is step 7, range 9.
+local function fixed_starburst(self)
+  return G.ring_pays(self, 7, 9)
 end
 
 local function on_death(self)
@@ -93,7 +102,7 @@ og.family("living", {
              train = { strength = 7, dexterity = 10, constitution = 14,
                        intelligence = 12, armor = 50, level = 200 } },
   specials = {
-    { id = "starburst", name = "STARBURST",   mp_cost = 50, ai = ai.foe_within(130), detail = "Expel flaming meteors in all directions." },
+    { id = "starburst", name = "STARBURST",   mp_cost = 50, ai = G.with_classic(ai.foe_within(130), fixed_starburst), detail = "Expel flaming meteors in all directions." },
     { id = "immolate",  name = "IMMOLATE",    mp_cost = 30, new_kit = true, cast = ke.immolate,    ai = ke.ai_immolate, detail = "Burn whatever touches you and leave burning footprints, while your magic lasts." },
     { id = "meteors",   name = "METEOR RAIN", mp_cost = 70, new_kit = true, cast = ke.meteor_rain, ai = ke.ai_meteor, detail = "Call meteors down on a distant area for a few seconds." },
     { id = "rekindle",  name = "REKINDLE",    mp_cost = 40, new_kit = true, alternate = { name = "SUPERNOVA", mp_cost = 10, detail = "Die in one huge blast." }, cast = ke.rekindle_or_supernova, ai = ke.ai_rekindle, detail = "Burn magic into health." },

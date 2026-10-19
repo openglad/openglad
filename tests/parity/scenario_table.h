@@ -1343,7 +1343,7 @@ inline constexpr Mutation kMut_family_cleric_init = {
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
-    "packs/core/families/living-06-elemental.lua", 90,
+    "packs/core/families/living-06-elemental.lua", 99,
     "hp = 100",
     "hp = 10000",
     "Cranks FIREELEMENTAL descriptor HP x100 "
@@ -3905,7 +3905,7 @@ inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
-    "packs/core/families/living-06-elemental.lua", 16,
+    "packs/core/families/living-06-elemental.lua", 17,
     "if i ~= 0 or j ~= 0 then",
     "if false then",
     "Empties the elemental's lots-o-fireballs 3x3 sweep so none of the eight fireballs is released, while the MP refund and the aim save/restore still run. EventKindAtLeast(play_sound, 22), EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 4100, 4100) all fail."
@@ -4056,7 +4056,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
-    "packs/core/families/living-12-ghost.lua", 27,
+    "packs/core/families/living-12-ghost.lua", 38,
     "local scare = og.summon(self, \"fx\", FX_GHOST_SCARE)",
     "local scare = nil",
     "Suppresses the scare carrier FX the ghost's special summons (its on_death is what actually frightens), so do_special takes its 'if not scare' exit. WalkerFamilyCount(FAMILY_GHOST, 1, 1) and WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100) both flip."
@@ -6641,7 +6641,7 @@ inline constexpr FactPredicate kFacts_elemental_death_starburst_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elemental_death_starburst_scen99 = {
-    "packs/core/families/living-06-elemental.lua", 41,
+    "packs/core/families/living-06-elemental.lua", 50,
     "  self:special()",
     "  local _ = self",
     "Removes the parting volley from core:elemental's on_death while leaving the dead=0 / magicpoint refund / dead=1 dance intact. No meteor is created on the death tick, so the frozen weaplist holds none and WeaponFamilyEmitted(FAMILY_METEOR) fails; the bystander soldiers also keep their HP and leave the soldier band empty."
@@ -7970,7 +7970,7 @@ inline constexpr FactPredicate kFacts_fireelemental_starburst_ring_scen99[] = {
 };
 
 inline constexpr Mutation kMut_fireelemental_starburst_ring_scen99 = {
-    "packs/core/families/living-06-elemental.lua", 16,
+    "packs/core/families/living-06-elemental.lua", 17,
     "      if i ~= 0 or j ~= 0 then",
     "      if false then",
     "Suppresses every heading of the starburst fan. No meteor is released, so the play_sound floor of 8 collapses to 1, weapon_tracks empties, and both flanking orcs finish at full 14000-cent HP outside the window."
@@ -9156,7 +9156,7 @@ inline constexpr FactPredicate kFacts_ghost_scare_no_foe_fixes_scen99[] = {
     // negative_assertion: the refused scare summons no carrier
 };
 inline constexpr Mutation kMut_ghost_scare_no_foe_fixes_scen99 = {
-    "packs/core/families/living-12-ghost.lua", 23,
+    "packs/core/families/living-12-ghost.lua", 34,
     "if gf.on() and no_living_foe_in_reach(self) then",
     "if false then",
     "Removes the refusal, so the scare carrier is summoned again: WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE, kOrderFX, 0, 0) counts 1."

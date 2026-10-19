@@ -1090,7 +1090,8 @@ bool gate(living* bot)
 
 }  // namespace
 
-// IMMOLATE: a foe within 40, more than 60 MP, not already burning.
+// IMMOLATE: a foe at blows (a gap of at most 5 px), more than 60 MP, not
+// already burning with a foe near.
 // Perturbation (staged kit: IMMOLATE_GATE_RANGE = 400): the far foe
 // lights it -> red.
 TEST(KitElemental, ai_immolate_fires_when_a_foe_is_close_and_mana_is_high)
@@ -1101,13 +1102,14 @@ TEST(KitElemental, ai_immolate_fires_when_a_foe_is_close_and_mana_is_high)
     ASSERT_NE(nullptr, bot);
     living* foe = add_living(w, FAMILY_SOLDIER, 1, 130, 100);
     ASSERT_NE(nullptr, foe);
+    place(foe, 100 + bot->sizex() + 1, 100);  // a 1 px gap: at blows
     EXPECT_TRUE(gate(bot));
     EXPECT_EQ(foe, bot->foe()) << "the gate acquires the foe";
     bot->stats()->set_magicpoints(60.0f);
     EXPECT_FALSE(gate(bot)) << "60 MP is not enough";
     bot->stats()->set_magicpoints(100.0f);
     bot->set_kit_state(KIT_CHANNEL);
-    EXPECT_FALSE(gate(bot)) << "already burning";
+    EXPECT_FALSE(gate(bot)) << "already burning, a foe at blows";
     bot->set_kit_state(0);
     place(foe, 200, 100);
     EXPECT_FALSE(gate(bot)) << "the foe is 100 px away";

@@ -1,6 +1,7 @@
 -- core lib: kit_ghost — the ghost's New Specials: WAIL, SIPHON, POSSESS and PHASE, with their bot gates (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
+local G = og.use("gates")
 local km = og.use("kit_marker")
 local lc = og.use("living_common")
 local wail_bolt = og.use("effect_wail")
@@ -8,24 +9,11 @@ local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 
 local M = {}
 
--- The nearest living foe on the ghost's floor within `reach` px, or nil.
--- The finder already skips the dead, the dormant and the hidden; a tie goes
--- to the foe met first in the object list.
+-- The nearest living foe on the ghost's floor within `reach` px, or nil
+-- (the bot gates' library: the finder already skips the dead, the dormant
+-- and the hidden; a tie goes to the foe met first in the object list).
 local function nearest_foe(self, reach)
-  local foes = og.find_foes_in_range("ob", reach, self)
-  local best = nil
-  local best_dist = 0
-  for i = 1, #foes do
-    local foe = foes[i]
-    if foe:order() == C.ORDER_LIVING and foe:floor() == self:floor() then
-      local dist = self:distance_to_ob(foe)
-      if best == nil or dist < best_dist then
-        best = foe
-        best_dist = dist
-      end
-    end
-  end
-  return best
+  return G.nearest_living_foe(self, reach, true)
 end
 
 -- A phased ghost cannot touch anyone: SIPHON and POSSESS refuse.
@@ -71,6 +59,53 @@ end
 -- The slot-1 bot gate: `gate`, held while SCARE / WAIL rests.
 function M.scare_gate(gate)
   return lc.gate_with_rest(gate, SCARE_SLOT)
+end
+
+-- WAIL's hop: a struck foe hands the wail on to a foe within this many px
+-- (lib/effect_wail.lua).
+local WAIL_HOP_REACH = 120
+
+-- WAIL pays where the chain does: exactly one living foe inside the scare
+-- radius (a crowd there is one SCARE's), a second living foe within a hop
+-- of that one, and the 50 WAIL costs in hand.
+local function wail_pays(self)
+  local radius = og.scare_radius(self.level)
+  local near = G.living_foes(self, radius, true)
+  if #near ~= 1 then
+    return false
+  end
+  if not G.can_pay(self, SCARE_SLOT, true) then
+    return false
+  end
+  local struck = near[1]
+  local far = G.living_foes(self, radius + WAIL_HOP_REACH, true)
+  for i = 1, #far do
+    if far[i] ~= struck then
+      if far[i]:distance_to_ob(struck) <= WAIL_HOP_REACH then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+-- With New Specials on, slot 1 is two specials for a bot: WAIL where it
+-- pays, else SCARE (Shift 0), whatever the engine's coin said; `scare`
+-- (the ghost's SCARE gate, asked first: its foe search draws) answers for
+-- SCARE. With the setting off `scare` answers and the coin stands.
+function M.wail_gate(scare)
+  return function(self)
+    local answer = scare(self)
+    if og.match_setting("new_specials") == 0 then
+      return answer
+    end
+    if wail_pays(self) then
+      self:set_shifter_down(1)
+      return true
+    end
+    self:set_shifter_down(0)
+    return answer
+  end
 end
 
 -- ---------------------------------------------------------------------
@@ -328,10 +363,18 @@ function M.ai_phase(self)
   if km.find(self, km.PHASE_VEIL) then
     return false
   end
-  return nearest_foe(self, 48) ~= nil
+  if nearest_foe(self, 48) == nil then
+    return false
+  end
+  -- SCARE (30) is the cheaper answer to a foe at hand: PHASE only while
+  -- SCARE rests or no living foe is inside the scare radius.
+  if G.resting(self, SCARE_SLOT) then
+    return true
+  end
+  return not G.foes_within(self, 1, og.scare_radius(self.level), true)
 end
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:ghost  specials: scare_or_wail, siphon, possess, phase and the
---               ai gates scare_gate, ai_siphon, ai_possess, ai_phase
+--               ai gates scare_gate, wail_gate, ai_siphon, ai_possess, ai_phase
 return M

@@ -1,6 +1,7 @@
 -- core lib: kit_captain — the orc captain's New Specials: howl, eat corpse, hook blade/knife fan, war banner/warband, and their bot gates (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
+local G = og.use("gates")
 local lc = og.use("living_common")
 local orc = og.use("orc_specials")
 
@@ -32,26 +33,6 @@ local function facing_index(self)
     end
   end
   return C.FACE_DOWN
-end
-
--- A living foe on the walker's own floor (the finders are floor-blind and
--- also answer generators).
-local function living_on_floor(w, floor)
-  if w:order() ~= C.ORDER_LIVING then
-    return false
-  end
-  return w:floor() == floor
-end
-
-local function count_living_foes(self, range)
-  local foes = og.find_foes_in_range("ob", range, self)
-  local n = 0
-  for i = 1, #foes do
-    if living_on_floor(foes[i], self:floor()) then
-      n = n + 1
-    end
-  end
-  return n
 end
 
 -- One coordinate of a ring spot: the mover's top-left so that it stands just
@@ -88,19 +69,10 @@ function M.ring_spot(mover, anchor, near_x, near_y)
   return best_x, best_y
 end
 
--- The captain's live hook blade, or nil. Summoned effects live on the oblist.
+-- The captain has a live hook blade out. Summoned effects live on the
+-- oblist (the bot gates' library scans it, order and family both).
 local function live_blade(self)
-  local obs = og.oblist()
-  for i = 1, #obs do
-    local ob = obs[i]
-    if ob:order() == C.ORDER_FX
-        and ob:family() == FX_HOOK_BLADE
-        and ob:dead() == 0
-        and ob:owner() == self then
-      return ob
-    end
-  end
-  return nil
+  return G.owned(self, C.ORDER_FX, FX_HOOK_BLADE) > 0
 end
 
 -- The captain's live war banner, or nil. Weapons live on the weaplist.
@@ -139,19 +111,10 @@ local function live_grunts(self)
 end
 
 -- A blood stain the captain stands on (within the squared reach), on its
--- floor, or nil. find_nearest_blood is floor-blind and team-blind.
+-- floor, or nil (find_nearest_blood is floor-blind and team-blind; the bot
+-- gates' library adds the floor and the reach).
 local function corpse_underfoot(self, reach_sq)
-  local corpse = og.find_nearest_blood(self)
-  if not corpse then
-    return nil
-  end
-  if corpse:floor() ~= self:floor() then
-    return nil
-  end
-  if self:distance_to_ob_center(corpse) > reach_sq then
-    return nil
-  end
-  return corpse
+  return G.corpse_underfoot(self, reach_sq)
 end
 
 -- ------------------------------------------- slots 1 and 2: HOWL, EAT CORPSE
@@ -404,13 +367,17 @@ end
 -- answers true, exactly as no gate at all. Ranges are code constants (see
 -- lib/ai.lua on per-call tuning reads in gates).
 
--- Howl at a foe within 130 (the orc's own gate), unless HOWL is resting.
--- HOWL has no alternate, so the shift coin the engine drew is left alone.
+-- Howl when a body the yell can stun (a living foe or a generator: a
+-- stunned tent stops spawning) is inside the yell, unless HOWL is resting.
+-- The orc's classic foe search within 130 runs first for its draw and its
+-- foe; the yell itself reaches 160 px plus 20 a level. HOWL has no
+-- alternate, so the shift coin the engine drew is left alone.
 M.ai_howl = orc.howl_gate(function(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  return og.check_special_ai_distance(self, 130)
+  og.check_special_ai_distance(self, 130)
+  return G.targets_within(self, 1, og.combat.yell_radius(self.level))
 end)
 
 -- Eat when below 60 % health and standing on a corpse; otherwise hold. (The
@@ -429,36 +396,85 @@ function M.ai_eat(self)
   return corpse_underfoot(self, 24) ~= nil
 end
 
--- Hook a foe within 90 while no blade is out; fan knives into a crowd.
+-- HOOK BLADE's reach (the blade spirals out to hook_reach, 60 px) and how
+-- far the gate looks for the fan's foes (past any knife's flight).
+local HOOK_GATE_RANGE = 60
+local FAN_GATE_SCAN = 200
+-- The knife's table step and range (core:knife), for the fan's flight.
+local KNIFE_STEP = 5
+local KNIFE_LOS = 7
+
+-- TODO(gates): promote. The foe stands on one of the fan's three lines:
+-- the facing knife_fan throws along (facing_index: curdir first) or one
+-- beside it. G.fan_faces asks the last step's heading instead, which is
+-- where a single fired weapon leaves, not where the fan goes.
+local function on_fan_line(self, foe)
+  local facing = facing_index(self)
+  local heading = G.heading_to(self, foe)
+  if heading == facing then
+    return true
+  end
+  if heading == og.mod(facing + 1, 8) then
+    return true
+  end
+  return heading == og.mod(facing + 7, 8)
+end
+
+-- The living foes on the fan's three lines inside the knife's flight.
+local function foes_in_fan(self)
+  local foes = G.living_foes(self, FAN_GATE_SCAN, true)
+  local n = 0
+  for i = 1, #foes do
+    if on_fan_line(self, foes[i]) then
+      if G.in_flight(self, foes[i], KNIFE_STEP, KNIFE_LOS) then
+        n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+-- HOOK BLADE: a living foe within the blade's reach, no blade out, and the
+-- 40 it costs (the engine keeps the slot for the fan's 30 and does not
+-- check again). KNIFE FAN: two living foes on its three lines within the
+-- knives' flight.
 function M.ai_hook(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  local near = count_living_foes(self, 90)
-  if near >= 1 and not live_blade(self) then
-    self:set_shifter_down(0)
-    return true
+  if G.foes_within(self, 1, HOOK_GATE_RANGE, true) then
+    if not live_blade(self) then
+      if G.can_pay(self, 3, false) then
+        self:set_shifter_down(0)
+        return true
+      end
+    end
   end
-  if near >= 2 then
+  if foes_in_fan(self) >= 2 then
     self:set_shifter_down(1)
     return true
   end
   return false
 end
 
--- Plant a banner on a corpse with friends around and none standing; call
--- the warband when foes press and no grunt is left.
+-- Plant a banner on a corpse with friends around, a foe within 120 to
+-- fight and no banner standing; call the warband when foes press and no
+-- grunt is left.
 function M.ai_banner(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
   local _, allies = og.find_friends_in_range("ob", 96, self)
   local plant = allies >= 2 and corpse_underfoot(self, 1024) ~= nil
+  if plant then
+    -- The flag heals, holds and frightens where a fight is.
+    plant = G.foes_within(self, 1, 120, true)
+  end
   if plant and not live_banner(self) then
     self:set_shifter_down(0)
     return true
   end
-  local pressed = count_living_foes(self, 120) >= 2
+  local pressed = G.foes_within(self, 2, 120, true)
   if pressed and live_grunts(self) == 0 then
     self:set_shifter_down(1)
     return true
