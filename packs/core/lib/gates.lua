@@ -249,13 +249,19 @@ function M.aimed_at(self, target)
   return M.has_heading(self) and M.faces(self, target)
 end
 
+-- The heading to the target is `facing` (0 .. 7) or one of its two
+-- neighbours: the three lines a fan of knives flies along or a bone wall
+-- rises across. The kit passes the facing its own cast uses.
+function M.fan_covers(self, facing, target)
+  local h = M.heading_to(self, target)
+  return h == facing
+      or h == og.mod(facing + 1, 8)
+      or h == og.mod(facing + 7, 8)
+end
+
 -- The target is on the fire heading or one of its two neighbours (a fan).
 function M.fan_faces(self, target)
-  local h = M.heading_to(self, target)
-  local d = M.fire_heading(self)
-  return h == d
-      or h == og.mod(d + 1, 8)
-      or h == og.mod(d + 7, 8)
+  return M.fan_covers(self, M.fire_heading(self), target)
 end
 
 local function straight(heading)

@@ -8722,7 +8722,7 @@ inline constexpr FactPredicate kFacts_mage_bot_freeze_no_foe_fixes_scen99[] = {
         "consequence: with the setting on WARP SPACE and ENERGY WAVE want a foe within 110 px and FREEZE TIME waits for allies at blows, so the alone mage casts nothing"),
 };
 inline constexpr Mutation kMut_mage_bot_freeze_no_foe_fixes_scen99 = {
-    "packs/core/lib/gates.lua", 322,
+    "packs/core/lib/gates.lua", 328,
     "in_ring >= 2",
     "in_ring >= 0",
     "Lets WARP SPACE's ring cast with nobody inside it, so the alone mage casts at nobody: the pinned sound count reads higher."

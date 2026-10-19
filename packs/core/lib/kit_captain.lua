@@ -404,28 +404,15 @@ local FAN_GATE_SCAN = 200
 local KNIFE_STEP = 5
 local KNIFE_LOS = 7
 
--- TODO(gates): promote. The foe stands on one of the fan's three lines:
--- the facing knife_fan throws along (facing_index: curdir first) or one
--- beside it. G.fan_faces asks the last step's heading instead, which is
--- where a single fired weapon leaves, not where the fan goes.
-local function on_fan_line(self, foe)
-  local facing = facing_index(self)
-  local heading = G.heading_to(self, foe)
-  if heading == facing then
-    return true
-  end
-  if heading == og.mod(facing + 1, 8) then
-    return true
-  end
-  return heading == og.mod(facing + 7, 8)
-end
-
--- The living foes on the fan's three lines inside the knife's flight.
+-- The living foes on the fan's three lines inside the knife's flight. The
+-- fan flies along facing_index (curdir first, as knife_fan throws it), not
+-- along the fire heading G.fan_faces reads.
 local function foes_in_fan(self)
   local foes = G.living_foes(self, FAN_GATE_SCAN, true)
+  local facing = facing_index(self)
   local n = 0
   for i = 1, #foes do
-    if on_fan_line(self, foes[i]) then
+    if G.fan_covers(self, facing, foes[i]) then
       if G.in_flight(self, foes[i], KNIFE_STEP, KNIFE_LOS) then
         n = n + 1
       end

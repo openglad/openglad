@@ -1029,6 +1029,39 @@ TEST_F(BotGatesLib, faces_aimed_at_and_fan_faces_read_the_fire_heading)
     EXPECT_EQ("false", a.at("faces_up"));
 }
 
+// fan_covers asks the facing the kit passes (the captain's knife fan and
+// the skeleton's bone wall go along curdir first), and fan_faces is
+// fan_covers on the fire heading. At spawn curdir is DOWN and the fire
+// heading is UP, so the two answer differently for the same foe.
+//
+// RED (fan_covers reading the fire heading): down_on_down is false.
+TEST_F(BotGatesLib, fan_covers_takes_the_facing_the_kit_passes)
+{
+    living* self = caster();
+    ASSERT_NE(nullptr, fighter(0, 200, 300));  // down
+    ASSERT_NE(nullptr, fighter(0, 100, 300));  // down-left
+    ASSERT_NE(nullptr, fighter(0, 300, 300));  // down-right
+    ASSERT_NE(nullptr, fighter(0, 300, 200));  // right
+    ASSERT_NE(nullptr, fighter(0, 100, 100));  // up-left
+    const std::string lua =
+        "    local down = self:curdir()\n"
+        "    og.log('down_on_down', G.fan_covers(self, down, at(200, 300)))\n"
+        "    og.log('dl_on_down', G.fan_covers(self, down, at(100, 300)))\n"
+        "    og.log('dr_on_down', G.fan_covers(self, down, at(300, 300)))\n"
+        "    og.log('right_on_down', G.fan_covers(self, down, at(300, 200)))\n"
+        "    og.log('fan_faces_down', G.fan_faces(self, at(200, 300)))\n"
+        "    og.log('ul_on_up', G.fan_covers(self, C.FACE_UP, at(100, 100)))\n";
+    Answers a = probe(self, lua);
+    EXPECT_EQ("true", a.at("down_on_down"));
+    EXPECT_EQ("true", a.at("dl_on_down"));
+    EXPECT_EQ("true", a.at("dr_on_down"));
+    EXPECT_EQ("false", a.at("right_on_down"))
+        << "RIGHT is two steps from DOWN";
+    EXPECT_EQ("false", a.at("fan_faces_down"))
+        << "the fire heading is UP at spawn";
+    EXPECT_EQ("true", a.at("ul_on_up")) << "(0 + 7) % 8 is UP_LEFT";
+}
+
 // with_classic: the classic gate runs first on both values of the setting
 // (its draws and its foe assignment are the classic bot's); with the
 // setting off its answer stands; with it on, `fixed` decides and is handed

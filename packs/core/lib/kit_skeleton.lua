@@ -599,24 +599,6 @@ end
 -- so a false would skip a draw the setting-off game makes.
 -- ---------------------------------------------------------------------------
 
--- TODO(gates): promote. The foe stands on one of the three lines a wall
--- covers: the skeleton's facing (facing_of: curdir first, as bone_wall
--- places it) or one beside it. G.fan_faces asks the last step's heading,
--- which is where a fired weapon leaves, not where the wall rises.
-local function across_wall_line(self, foe)
-  local fx, fy = facing_of(self)
-  local heading = G.heading_to(self, foe)
-  for spread = -1, 1 do
-    local dir = og.mod(heading + spread + 8, 8) + 1
-    if FACING_X[dir] == fx then
-      if FACING_Y[dir] == fy then
-        return true
-      end
-    end
-  end
-  return false
-end
-
 -- The foe is within STORM_WALL_REACH px of one of this skeleton's
 -- standing wall segments (`weapons` is the weapon list).
 local function at_own_wall(self, foe, weapons)
@@ -703,7 +685,10 @@ function M.ai_wall(self)
   if not foe then
     return false
   end
-  if not across_wall_line(self, foe) then
+  -- The wall rises across facing_of (curdir first, as bone_wall places
+  -- it), not along the fire heading G.fan_faces reads.
+  local fx, fy = facing_of(self)
+  if not G.fan_covers(self, self:facing(fx, fy), foe) then
     return false
   end
   self:set_shifter_down(0)
