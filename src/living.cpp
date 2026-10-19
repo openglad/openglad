@@ -577,6 +577,33 @@ short living::check_special()
 	switch (family)
 	{
 		case FAMILY_SOLDIER:   // Check for foe in range x
+			if (myscreen->gameplay_fixes)
+			{
+				// port of the current game's 1a632de3: the classic window below is
+				// still asked first (its find_near_foe draws), then each slot asks
+				// for its own payoff. CHARGE wants the window and an aim at the foe
+				// (a rush along no heading walks nowhere); BOOMERANG a living foe
+				// inside the blade's widest orbit and no blade out; WHIRLWIND two
+				// bodies inside its ring (a generator counts); DISARM a living foe
+				// blocking the soldier's front, no higher than the soldier's level.
+				short classic = 0;
+				if (!foe)
+					foe = myscreen->find_near_foe(this);
+				if (foe)
+				{
+					distance = (Uint32) distance_to_ob(foe);
+					classic = (distance < 75 && distance > 20);
+				}
+				if (current_special == 1)
+					return (classic && foe && bg_aimed_at(this, foe));
+				if (current_special == 2)
+					return (bg_owned(this, ORDER_FX, FAMILY_BOOMERANG, NULL) == 0
+					        && bg_foes_within(this, 1, 17 + 6*stats->level));
+				if (current_special == 3)
+					return bg_targets_within(this, 2, 32 + 2*stats->level);
+				walker *blocker = bg_ahead_blocked_by_foe(this, 28);
+				return (blocker && blocker->stats->level <= stats->level);
+			}
 			if (foe) // already have a foe ..
 			{
 				distance = (Uint32) distance_to_ob(foe);//Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
