@@ -135,6 +135,13 @@ struct CurvePin
 // brigand fewer, 5: one picket fewer, 8: the terrace-2 bruisers at lvl 1),
 // and they now read 7 6 6, 7 8 7 and 5 8 5 across seeds {42, 1337, 2025}.
 // Every floor holds, no floor moved; see the README's 2026-10-17 update.)
+// (Re-measured 2026-10-19 after the bot payoff gates: the soldier bots'
+// CHARGE now waits for a living foe in the path its rush runs, and seed
+// 42's curve-6 crew kept 1 of 8 at tick 600 on The Old Count's Vault
+// against its floor of 2. The level was eased in the builder (the second
+// breach-watch skeleton, at (7,25), from lvl 3 to lvl 2) and now reads
+// 6 6 7 across seeds {42, 1337, 2025}. No floor moved; see the README's
+// 2026-10-19 update on level 12.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 1},  {5, 3, 5},
     {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 7},  {10, 5, 1},
