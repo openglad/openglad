@@ -152,8 +152,12 @@ counted where the rule says "living foe"; WHIRLWIND and HOWL count it,
 because the spin strikes it and the yell stuns it (fix K).
 
 - **Soldier.** CHARGE wants the classic window, a foe one to three squares
-  off, and the soldier's heading pointed at it: the rush runs along that
-  heading, and a soldier that has not stepped yet rushes nowhere. BOOMERANG
+  off, and a living foe in the path the rush runs. The rush walks three
+  acts of three steps along the soldier's heading and strikes and shoves
+  the first foe its body meets, the window's foe or any other: a foe in
+  the way pays even when the heading does not point at the window's foe,
+  and a foe inside the window but past the nine steps does not. A soldier
+  that has not stepped yet has no heading and rushes nowhere. BOOMERANG
   wants a living foe inside the blade's widest orbit, 17 px plus 6 per
   level, and no blade of this soldier out. WHIRLWIND wants at least two
   bodies it can strike inside the spin (32 px plus 2 per level); one in
@@ -326,8 +330,10 @@ The parity goldens are captures from the old game (branch
   (archmage) and `b6d05567` (the struck archmage, R); the table mirrors
   `93b718e8` and `c14bde27` after them; and `734229df`, which gives the
   ghost's ported gate the current game's 250 px cap on the scare radius.
-  `734229df` is the commit the goldens are captured from: 321 of 321
-  goldens `cmp` equal to a full capture there.
+  After the campaign calibration: `238b5322` (the soldier bot's CHARGE
+  wants a living foe in the path its rush runs) and its table mirror
+  `5d4ddd77`; no golden moved. `5d4ddd77` is the commit the goldens are
+  captured from: 321 of 321 goldens `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -461,12 +467,15 @@ and on both values of New Specials, with their own seeds (42, 1337 and
 2025). Each cell is the crew's survivors at tick 600 for the three seeds.
 The suites' asserting runs (seed 42 against each level's floor and
 ceiling; every seed on the Tower) play the shipped default, Gameplay Fixes
-on and New Specials on. No floor or ceiling was moved. The tables are
-measured with the bot payoff gates (fixes Q and R) in.
+on and New Specials on, and all of them pass. No floor or ceiling was
+moved. The tables are measured with the bot payoff gates (fixes Q and R)
+in, after the calibration that followed them (the soldier's CHARGE rule
+and The Old Count's Vault, below).
 
 With the setting off and New Specials off, every line equals the line
 measured before the bot payoff gates, and the line measured before the
-fixes except the three eased Long Season levels below. With New Specials
+fixes, except the four eased Long Season levels below (2, 5 and 8 before
+the bot gates, 12 after them). With New Specials
 on and the setting off, lines move: the kits' bot rules (the faerie, the
 captain, the skeleton, the elemental, the ghost's WAIL and PHASE and the
 thief's MINE) are behind New Specials, not this setting.
@@ -475,8 +484,8 @@ What moves with the setting on, and why:
 
 - Every bot casts a special only where it pays off (see [Bots](#bots)).
   The crew's elf, archer and barbarian throw only at a foe they face
-  inside the flight, a crew soldier does not CHARGE without a heading
-  toward its foe, and the crew cleric heals only a hurt ally and swings
+  inside the flight, a crew soldier CHARGEs only when a foe stands in the
+  path its rush runs, and the crew cleric heals only a hurt ally and swings
   its mace only with a foe at its orbit. The enemy's bots cast better
   too: a thief bombs only with the crew inside its blast and lays its
   mines under a foe walking at it, elves and archers volley only at
@@ -509,28 +518,28 @@ What moves with the setting on, and why:
 |---|---|---|---|---|---|
 | 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
 | 2 | 2 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 3 | 2 | 8 8 6 | 7 6 8 | 8 8 6 | 8 6 8 |
-| 4 | 3 | 8 8 8 | 8 8 8 | 7 8 7 | 8 8 8 |
-| 5 | 3 | 8 8 4 | 7 6 5 | 8 8 4 | 7 6 5 |
-| 6 | 4 | 5 8 7 | 8 7 6 | 5 8 7 | 8 7 6 |
-| 7 | 4 | 0 0 0 | 1 0 0 | 0 0 0 | 1 0 0 |
-| 8 | 5 | 0 1 4 | 2 0 6 | 1 1 2 | 3 0 6 |
-| 9 | 6 | 2 0 0 | 8 1 2 | 1 1 2 | 8 7 0 |
-| 10 | 5 | 0 0 0 | 0 1 0 | 1 0 0 | 0 0 0 |
-| 11 | 6 | 7 6 6 | 4 7 5 | 6 5 5 | 4 8 7 |
+| 3 | 2 | 8 8 6 | 7 8 5 | 8 8 6 | 7 8 7 |
+| 4 | 3 | 8 8 8 | 8 7 8 | 7 8 7 | 8 7 8 |
+| 5 | 3 | 8 8 4 | 8 6 4 | 8 8 4 | 8 6 4 |
+| 6 | 4 | 5 8 7 | 8 7 7 | 5 8 7 | 8 7 7 |
+| 7 | 4 | 0 0 0 | 1 1 0 | 0 0 0 | 1 1 0 |
+| 8 | 5 | 0 1 4 | 0 0 6 | 1 1 2 | 0 3 6 |
+| 9 | 6 | 2 0 0 | 0 2 2 | 1 1 2 | 0 2 1 |
+| 10 | 5 | 0 0 0 | 0 0 0 | 1 0 0 | 1 0 0 |
+| 11 | 6 | 7 6 6 | 5 6 6 | 6 5 5 | 5 5 4 |
 | 12 | 6 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
-| 13 | 6 | 2 0 0 | 0 1 0 | 0 0 1 | 0 0 0 |
+| 13 | 6 | 2 0 0 | 0 0 0 | 0 0 1 | 2 0 0 |
 | 14 | 7 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
-| 15 | 7 | 3 3 3 | 3 3 5 | 4 2 3 | 4 4 2 |
-| 16 | 8 | 2 5 3 | 3 3 4 | 5 2 3 | 2 4 2 |
-| 17 | 8 | 5 6 4 | 6 6 6 | 5 8 8 | 4 6 7 |
-| 19 | 6 | 6 7 5 | 5 6 5 | 5 6 5 | 6 6 6 |
-| 20 | 7 | 0 0 0 | 0 3 6 | 0 0 0 | 5 0 0 |
-| 21 | 7 | 8 7 8 | 8 7 8 | 8 8 7 | 8 7 7 |
-| 22 | 8 | 0 2 0 | 2 0 0 | 0 1 0 | 0 0 0 |
-| 23 | 8 | 5 6 6 | 7 5 4 | 4 5 4 | 4 5 7 |
-| 24 | 8 | 1 4 7 | 6 5 5 | 5 5 1 | 5 4 2 |
-| 25 | 9 | 8 8 8 | 8 7 8 | 4 6 5 | 8 6 4 |
+| 15 | 7 | 3 3 3 | 4 0 1 | 4 2 3 | 2 1 1 |
+| 16 | 8 | 2 5 3 | 6 3 4 | 5 2 3 | 3 3 2 |
+| 17 | 8 | 5 6 4 | 2 6 7 | 5 8 8 | 5 6 6 |
+| 19 | 6 | 6 7 5 | 5 5 6 | 5 6 5 | 5 7 5 |
+| 20 | 7 | 0 0 0 | 0 0 6 | 0 0 0 | 0 0 0 |
+| 21 | 7 | 8 7 8 | 8 8 7 | 8 8 7 | 8 8 8 |
+| 22 | 8 | 0 2 0 | 2 0 0 | 0 1 0 | 0 2 0 |
+| 23 | 8 | 5 6 6 | 5 4 4 | 4 5 4 | 7 5 7 |
+| 24 | 8 | 1 4 7 | 5 2 3 | 5 5 1 | 3 5 4 |
+| 25 | 9 | 8 8 8 | 8 7 7 | 4 6 5 | 8 4 5 |
 | 26 | 9 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
 
 **Long Season**
@@ -538,21 +547,21 @@ What moves with the setting on, and why:
 | level | crew | New Specials off: setting off | setting on | New Specials on: setting off | setting on |
 |---|---|---|---|---|---|
 | 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 2 | 1 | 7 7 7 | 7 8 6 | 7 7 7 | 7 8 6 |
-| 3 | 2 | 8 7 8 | 7 8 8 | 8 7 8 | 7 8 8 |
-| 4 | 2 | 4 2 3 | 2 3 3 | 4 2 3 | 3 3 5 |
-| 5 | 3 | 8 8 8 | 7 8 8 | 8 8 8 | 7 8 8 |
-| 6 | 3 | 7 6 4 | 5 5 3 | 7 6 4 | 5 5 3 |
-| 7 | 4 | 8 8 6 | 5 7 7 | 8 8 6 | 5 7 7 |
-| 8 | 4 | 3 7 8 | 5 3 8 | 3 7 7 | 6 5 5 |
+| 2 | 1 | 7 7 7 | 6 6 7 | 7 7 7 | 6 6 7 |
+| 3 | 2 | 8 7 8 | 8 8 8 | 8 7 8 | 8 8 8 |
+| 4 | 2 | 4 2 3 | 2 1 3 | 4 2 3 | 2 3 3 |
+| 5 | 3 | 8 8 8 | 8 6 4 | 8 8 8 | 8 6 4 |
+| 6 | 3 | 7 6 4 | 7 6 5 | 7 6 4 | 7 6 5 |
+| 7 | 4 | 8 8 6 | 8 7 8 | 8 8 6 | 8 7 8 |
+| 8 | 4 | 3 7 8 | 7 7 6 | 3 7 7 | 6 7 7 |
 | 9 | 5 | 7 8 7 | 8 8 8 | 8 8 7 | 8 8 8 |
-| 10 | 5 | 6 7 7 | 6 8 4 | 3 6 5 | 6 8 4 |
-| 11 | 5 | 7 7 8 | 7 7 6 | 7 7 8 | 7 7 6 |
-| 12 | 6 | 3 8 8 | 4 4 6 | 3 8 8 | 4 4 6 |
-| 13 | 6 | 5 6 4 | 7 3 5 | 4 4 2 | 7 5 4 |
-| 14 | 7 | 7 7 8 | 8 8 8 | 7 7 8 | 8 8 8 |
+| 10 | 5 | 6 7 7 | 5 6 7 | 3 6 5 | 4 6 7 |
+| 11 | 5 | 7 7 8 | 6 8 7 | 7 7 8 | 6 8 7 |
+| 12 | 6 | 8 5 7 | 6 6 7 | 8 5 7 | 6 6 7 |
+| 13 | 6 | 5 6 4 | 5 8 4 | 4 4 2 | 5 7 4 |
+| 14 | 7 | 7 7 8 | 7 7 8 | 7 7 8 | 7 7 8 |
 | 15 | 7 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 16 | 7 | 6 8 6 | 5 6 7 | 6 8 6 | 5 6 7 |
+| 16 | 7 | 6 8 6 | 6 7 7 | 6 8 6 | 6 7 7 |
 | 17 | 8 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 18 | 8 | 0 0 1 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 19 | 8 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
@@ -561,46 +570,14 @@ What moves with the setting on, and why:
 
 | floor | crew | New Specials off: setting off | setting on | New Specials on: setting off | setting on |
 |---|---|---|---|---|---|
-| 1 | 1 | 8 8 7 | 5 8 7 | 8 8 7 | 5 8 7 |
-| 5 | 2 | 2 4 8 | 1 3 8 | 1 4 8 | 0 1 8 |
-| 10 | 3 | 0 0 0 | 3 0 0 | 0 0 0 | 3 0 0 |
-| 15 | 4 | 0 0 0 | 0 7 0 | 0 0 0 | 0 0 0 |
+| 1 | 1 | 8 8 7 | 8 7 7 | 8 8 7 | 8 7 7 |
+| 5 | 2 | 2 4 8 | 0 0 8 | 1 4 8 | 3 0 8 |
+| 10 | 3 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 15 | 4 | 0 0 0 | 0 4 0 | 0 0 0 | 0 0 0 |
 | 20 | 6 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 
-**Imaginations** (level 1, crew 1): `6 6 6` in all four columns.
-
-**Levels outside their band on the shipped default, after the bot payoff
-gates (open).** On seed 42 five lines read outside their band: Westlands
-8 reads 3 against its ceiling of 2 and Westlands 9 reads 8 against its
-ceiling of 3 (the crew did better than the level allows), Westlands 23
-reads 4 against its floor of 5, Long Season 7 reads 5 against its floor of
-6, and Tower floor 1 reads 5 against its floor of 6. They are treated as
-balance bugs, as the earlier ones were: no floor or ceiling moves and no
-rule is narrowed to pass them; each is fixed in the game or the level
-before this work merges. Before the bot payoff gates the same lines read
-`2 0 2`, `1 1 2`, `5 7 6`, `8 8 6` and `8 8 7`.
-
-Twenty seeds (42, 1337, 2025 and 1 to 17, measured for this check only)
-show how far each of those five moves on average, the shipped default
-against the same game with every bot rule back at its text before the
-bot gates: Westlands 8 from 2.95 to 2.35 survivors, Westlands 9 from 1.35
-to 1.55, Westlands 23 from 6.20 to 5.80, Long Season 7 from 7.40 to 7.30
-and Tower floor 1 from 7.50 to 7.55. None of them moves by more than 0.6.
-Restoring one family's rules at a time, the soldier's alone brings all
-five back inside their bands on seed 42 (it reads 1, 1, 7, 7 and 8 there),
-while its twenty-seed means stay where they are (Westlands 106.0 against
-106.0 summed over the levels, Long Season 110.8 against 109.9). The lines
-whose twenty-seed mean did fall by about a survivor are Long Season 8
-(6.35 to 5.15; the enemy thief's rules account for most of it), Long Season 12 (6.60 to 5.65), Long Season 10 (5.55 to 5.00) and
-Tower floor 15 (2.20 to 0.95); none of them is under its floor on the
-asserted seeds. Summed over the levels, Westlands rose from 104.8 to
-106.0 mean survivors, Long Season fell from 110.8 to 109.9 and the Tower
-from 12.1 to 11.2.
-
-With New Specials on and the setting off, a pair that is measured but not
-asserted, Westlands 23 reads `4 5 4` against its floor of 5 (it read
-`6 7 8` before the kits' bot rules) and Westlands 25 `4 6 5` (it read
-`1 8 7` before them, already under).
+**Imaginations** (level 1, crew 1): `6 6 6` with the setting off, `6 7 6`
+with it on, on both values of New Specials.
 
 **Before the bot payoff gates: levels that fell below their floor, and
 what was done.** Westlands 11 (3 against 4): fix C's INT rule; it then
@@ -619,8 +596,93 @@ was recorded, not fixed, because the same rule took the shipped default
 from 3 to 6 there, and a second rule for one seed of a pair nobody
 asserts would be tuning to a seed.
 
+**After the bot payoff gates: levels outside their band, and what was
+done.** With the gates in, five lines read outside their band on seed 42:
+Westlands 8 read 3 against its ceiling of 2 and Westlands 9 read 8
+against its ceiling of 3 (the crew did better than the level allows),
+Westlands 23 read 4 against its floor of 5, Long Season 7 read 5 against
+its floor of 6, and Tower floor 1 read 5 against its floor of 6. They were
+treated as balance bugs, as the earlier ones were.
+
+- One rule was wrong: the soldier's CHARGE. The gates first asked that
+  the soldier's heading point at the foe in the classic window. The
+  classic rush pays whichever foe is in its path: it runs three acts of
+  three steps along the heading and, after each act, strikes the body it
+  ran into and shoves it four steps. Counted over the crew soldiers'
+  CHARGE rolls on the three seeds, the aimed rule refused about 2,200
+  rushes that would have struck a foe (the window's foe at a slant the
+  eight-way heading missed, or another foe in the way) and allowed about
+  400 that stop short of anyone (a foe 60 to 75 px off is inside the
+  window but past the nine steps). The rule now asks for what the crew was
+  getting: the classic window, and a living foe in the path the rush runs
+  (see [Bots](#bots)). With it all five lines are back in band on seed
+  42: Westlands 8 reads 0, Westlands 9 reads 0, Westlands 23 reads 7, Long
+  Season 7 reads 8 and Tower floor 1 reads 8 (`8 7 7` on the tower's run
+  seeds, each over the floor).
+- One level was eased. The new rule took Long Season 12, The Old Count's
+  Vault (crew 6), to 1 on seed 42 against its floor of 2 (it read 8 and 7
+  on the other two seeds, and its twenty-seed mean rose, 5.65 to 5.90).
+  The second skeleton of the breach watch now stands at level 2 instead of
+  3, the smaller of the two edits tried (taking that skeleton out read
+  `7 4 5`); the level reads `6 6 7`, where it read `1 8 7`. With the
+  setting off it now reads `8 5 7` on both values of New Specials (it read
+  `3 8 8`).
+- No floor and no ceiling moved. With Westlands 8 and 9 at 0 on seed 42
+  no ceiling is breached, so the war rows' rule (the seed-42 reading plus
+  two, at most 7) re-pinned none.
+
+Twenty seeds (42, 1337, 2025 and 1 to 17, measured for this check only)
+show how far those lines and the lines that moved most went on average.
+"Classic" is the shipped default with every bot rule back at its text
+before the bot gates (measured before The Old Count's Vault was eased),
+"first gates" the bot gates with the aimed CHARGE rule, "now" the shipped
+default as merged.
+
+| line | its pin | classic | first gates | now |
+|---|---|---|---|---|
+| Westlands 8 | ceiling 2 | 2.95 | 2.35 | 2.35 |
+| Westlands 9 | ceiling 3 | 1.35 | 1.55 | 1.35 |
+| Westlands 23 | floor 5 | 6.20 | 5.80 | 6.00 |
+| Long Season 7 | floor 6 | 7.40 | 7.30 | 7.75 |
+| Long Season 8 | floor 3 | 6.35 | 5.15 | 5.40 |
+| Long Season 10 | floor 1 | 5.55 | 5.00 | 5.50 |
+| Long Season 12 | floor 2 | 6.60 | 5.65 | 6.20 |
+| Tower floor 1 | floor 6 | 7.50 | 7.55 | 7.30 |
+| Tower floor 15 | floor 0 | 2.20 | 0.95 | 0.95 |
+| Westlands, summed | | 104.8 | 106.0 | 105.8 |
+| Long Season, summed | | 110.8 | 109.9 | 111.0 |
+| Tower, summed | | 12.1 | 11.2 | 11.4 |
+
+One seed's survivors on these lines spread by 0.7 to 2.3, so the
+difference of two twenty-seed means carries a standard error of about
+0.25 to 0.7: a half-survivor move is about one standard error. The
+enemy thief's rules account for most of Long Season 8's fall.
+
+**Recorded, not eased.** Three lines read under their floor on a seed
+the suites do not assert: Long Season 5 (floor 5) reads `8 6 4` (its
+twenty-seed mean went from 6.50 to 6.60), Westlands 5 (floor 6) `8 6 4`
+(it read `7 6 5`, already under on seed 2025; 6.20 to 6.35) and
+Westlands 25 (floor 5) `8 4 5` (it read `8 6 4`, already under; 6.55 to
+6.25). Eight lines fell a point or more on two of the three seeds while
+staying at or over their floor: Westlands 3, 11, 15 and 19 and Long
+Season 2, 4, 10 and 14. Long Season 2 reads exactly its floor of 6 on
+seed 42 and Long Season 14 exactly its floor of 7. Over twenty seeds none
+of the eight moved by more than about one standard error: Westlands 15
+moved most, 2.90 to 2.35, back to the 2.40 it read before the bot gates,
+and Long Season 2 moved 6.65 to 6.20, where answering CHARGE the classic way
+reads lower still (5.95). Easing a level whose twenty-seed mean did not
+fall would tune it to the three measured seeds, so none of these was
+eased.
+
+With New Specials on and the setting off, a pair that is measured but not
+asserted, Westlands 23 reads `4 5 4` against its floor of 5 (it read
+`6 7 8` before the kits' bot rules) and Westlands 25 `4 6 5` (it read
+`1 8 7` before them, already under). With New Specials off and the
+setting on, the other unasserted pair, Westlands 23 reads `5 4 4` (`7 5 4`
+before the CHARGE rule changed).
+
 **The other change outside the setting that moves a calibration line.**
-Besides the three eased Long Season levels, and the kits' bot rules
+Besides the four eased Long Season levels, and the kits' bot rules
 above, one more line moved with the setting off before the bot gates.
 With New Specials on and this setting off, Westlands level 8 reads
 `1 1 2` (seed 42: 1 survivor, the crew dealt 1537 damage) where it read
