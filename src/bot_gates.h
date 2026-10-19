@@ -352,6 +352,21 @@ static inline walker *bg_corpse_underfoot(walker *self, Sint32 reach_sq)
 static const int BG_STEP_X[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
 static const int BG_STEP_Y[8] = { -1, -1, 0, 1, 1, 1, 0, -1 };
 
+// The first of foes whose box, shrunk 1 px on every side as collide()
+// shrinks it, meets the box at (ax, ay) of size aw x ah (already shrunk);
+// collide() compares inclusively.
+static inline walker *bg_foe_meeting(std::list<walker*> &foes, int ax, int ay, int aw, int ah)
+{
+	for (auto f = foes.begin(); f != foes.end(); ++f)
+	{
+		walker *w = *f;
+		int fx = w->xpos + 1, fy = w->ypos + 1, fw = w->sizex - 2, fh = w->sizey - 2;
+		if (ax <= fx + fw && ax + aw >= fx && ay <= fy + fh && ay + ah >= fy)
+			return w;
+	}
+	return NULL;
+}
+
 // collide()'s own compare (both boxes shrunk 1 px a side, inclusive) on
 // the caster's box moved 1 px along curdir.
 static inline walker *bg_ahead_blocked_by_foe(walker *self, Sint32 reach)
@@ -361,12 +376,33 @@ static inline walker *bg_ahead_blocked_by_foe(walker *self, Sint32 reach)
 	int ax = self->xpos + BG_STEP_X[d] + 1, ay = self->ypos + BG_STEP_Y[d] + 1;
 	int aw = self->sizex - 2, ah = self->sizey - 2;
 	std::list<walker*> foes = bg_living_foes(self, reach);
-	for (auto f = foes.begin(); f != foes.end(); ++f)
+	return bg_foe_meeting(foes, ax, ay, aw, ah);
+}
+
+// port of the current game's 31752d32: the living foe a rush along the
+// caster's heading runs into. CHARGE queues COMMAND_RUSH for three acts,
+// and each act walks three steps along lastx/stepsize, lasty/stepsize
+// (walker.cpp, truncated into the command's shorts) and strikes and shoves
+// the body it ran into (stats.cpp). The first living foe whose box meets
+// the caster's box moved k such steps, k = 1 .. steps (collide()'s shrink),
+// or NULL; NULL with no heading, where the rush walks nowhere. From
+// positions alone: a wall or an ally in the way is not modelled.
+static inline walker *bg_rush_strikes(walker *self, int steps)
+{
+	float step = self->stepsize;
+	int ux = (int) (self->lastx / step);
+	int uy = (int) (self->lasty / step);
+	if (ux == 0 && uy == 0) return NULL;
+	int span = abs(ux) > abs(uy) ? abs(ux) : abs(uy);
+	int run = (int) ((float) (steps * span) * step);
+	std::list<walker*> foes = bg_living_foes(self, 2 * run + BLOW_SCAN);
+	int aw = self->sizex - 2, ah = self->sizey - 2;
+	for (int k = 1; k <= steps; k++)
 	{
-		walker *w = *f;
-		int fx = w->xpos + 1, fy = w->ypos + 1, fw = w->sizex - 2, fh = w->sizey - 2;
-		if (ax <= fx + fw && ax + aw >= fx && ay <= fy + fh && ay + ah >= fy)
-			return w;
+		int ax = self->xpos + (int) ((float) (ux * k) * step) + 1;
+		int ay = self->ypos + (int) ((float) (uy * k) * step) + 1;
+		walker *w = bg_foe_meeting(foes, ax, ay, aw, ah);
+		if (w) return w;
 	}
 	return NULL;
 }
