@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `5d4ddd77`
+Old-game commit the goldens are captured from: `31ea23f4`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -515,6 +515,7 @@ setting on, never a row with it off.
 | `734229df` | ghost bot: the SCARE gate's radius capped at 250, as the current game's scare radius is | the bot payoff gates (`a3916aba`) | `src/living.cpp` `living::check_special`, the ghost branch of the shared fire elemental, ghost and orc arm | None of 321: `diff -rq` of the captures at `c14bde27` and after `734229df` is empty (no row spawns a ghost of level 21 or more) | — (nothing moved) |
 | `238b5322` | soldier bot: CHARGE wants a living foe in the path its rush runs along the heading (the window's foe or any other), replacing the aim at its foe | the campaign calibration (`31752d32`) | `src/bot_gates.h` `bg_rush_strikes` (new) and `bg_foe_meeting` (the box test, now shared with `bg_ahead_blocked_by_foe`); `src/living.cpp` `living::check_special` soldier arm, the CHARGE line of the setting-on branch | None of 321: `diff -rq` of the captures at `734229df` and after `238b5322` is empty (`soldier_bot_charge_unaimed_fixes_scen99` has no heading on tick 0, so both readings refuse) | — (nothing moved) |
 | `5d4ddd77` | **table mirror**: the soldier's pins after the new constant, the setting-on CHARGE pin on the rush-path test, the unaimed CHARGE row's wording (recorder-only, `tools/` only) | the campaign calibration (`31752d32`, `a0295c8b`) | `tools/parity_scenario_table.h`: pin lines and texts, one row's header, comment and fact label | None: the capture at `5d4ddd77` is `diff -rq`-identical to the one after `238b5322` | — (no fix ported) |
+| `31ea23f4` | **table mirror**: the turn-undead pin's line after the specials trace (recorder-only, `tools/` only) | the level-play test (`ac82bc3d`) | `tools/parity_scenario_table.h`: the line of `kMut_cleric_turn_no_undead_fixes_scen99` (386 to 398) | None: only a mutation pin's line moves, which no capture reads | — (no fix ported) |
 | — | N: a slot that is not in play says so, whatever the pool (GAMEPLAY_FIXES row "A slot that is not in play says so (Gameplay Fixes N)") | the Gameplay Fixes PR (`4a431120`) | — | none | — (no row can reach it: every spawned pool is far below the 5000 a slot not in play costs, and the old game has no such price) |
 | — | O: METEOR RAIN's bot gate holds its fire over an ally (GAMEPLAY_FIXES row "METEOR RAIN's bot gate holds its fire over an ally (Gameplay Fixes O)") | the Gameplay Fixes PR (`3bbbb93b`) | — | none | — (no row can reach it: METEOR RAIN is a New Specials cast, and the old game has no New Specials) |
 | — | #354: a seat never claims a walker charmed onto its team (GAMEPLAY_FIXES row "A seat never claims a charmed walker (Gameplay Fixes M, #354)") | the Gameplay Fixes PR (`b3b03d9d`, `c5b57b4e`) | — | none | — (no row can reach it: neither the golden capture tool nor the parity test driver runs the seat scans) |
@@ -617,7 +618,12 @@ committed as its golden. `734229df` gave the ghost's ported gate the current gam
 is `diff -rq`-identical to the one at `c14bde27`, and all 321 goldens `cmp` equal to it. No capture log has a `using
 embedded fixture` line.
 
-`5d4ddd77` (2026-10-19) is the pin. The calibration of the four campaigns (`31752d32`) changed the soldier bot's CHARGE gate: with the setting on, the bot charges when the classic window says yes and a living foe stands in the path the rush runs, three acts of three steps along `lastx / stepsize`, `lasty / stepsize`, each box tested as `collide()` tests it; `edfeb3fc`'s aim at the window's foe is gone. `238b5322` ports it as `bg_rush_strikes` in `src/bot_gates.h`. The all-ids capture after it, from an emptied `obj/`, is `diff -rq`-identical to the one at `734229df`: no row moves, as the current game's `og_test_parity` also found (the unaimed row has no heading on tick 0, which both readings refuse). `5d4ddd77` mirrored the table; the capture at it, from an emptied `obj/`, is `diff -rq`-identical again, and all 321 goldens `cmp` equal to it. No capture log has a `using embedded fixture` line.
+`5d4ddd77` (2026-10-19) was the pin until the specials trace. The calibration of the four campaigns (`31752d32`) changed the soldier bot's CHARGE gate: with the setting on, the bot charges when the classic window says yes and a living foe stands in the path the rush runs, three acts of three steps along `lastx / stepsize`, `lasty / stepsize`, each box tested as `collide()` tests it; `edfeb3fc`'s aim at the window's foe is gone. `238b5322` ports it as `bg_rush_strikes` in `src/bot_gates.h`. The all-ids capture after it, from an emptied `obj/`, is `diff -rq`-identical to the one at `734229df`: no row moves, as the current game's `og_test_parity` also found (the unaimed row has no heading on tick 0, which both readings refuse). `5d4ddd77` mirrored the table; the capture at it, from an emptied `obj/`, is `diff -rq`-identical again, and all 321 goldens `cmp` equal to it. No capture log has a `using embedded fixture` line.
+
+`31ea23f4` (2026-10-19) is the pin: a table mirror (recorder-only, `tools/` only) of the current game's `ac82bc3d`, which adds three
+test-only trace lines to `walker::special` for the level-play test, so the one pin below them in
+`src/gameplay/walker_specials.cpp` (`cleric_turn_no_undead_fixes_scen99`, `if (!any_undead)`) moves from line 386 to 398.
+No spawn, seed, budget, predicate or label changes, so no dump does.
 
 The struck arena has no setting-off twin: the two games' classic hit responses differ. The old game's
 `walker::special` always answers 0 (it falls off the end of the family switch), so `if (controller->special())
