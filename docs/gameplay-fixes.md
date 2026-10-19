@@ -283,11 +283,12 @@ ticks on three seeds, and counts every cast. On the shipped default the bots
 cast about 1600 times and 46 different specials, among them the eight Shift
 arms the level reaches (MYSTIC MACE, CHAIN LIGHTNING, TELEPORT MARKER, MINE,
 CHARM OPPONENT, TURN UNDEAD, WAIL, HASTE SELF) and the crew's slot-5
-HEARTBURST and FREEZE TIME, none at nobody (each
-special whose rule names a foe has one within its reach), REVEAL never, and no
-gate says yes to a cast that then refuses for the fact the gate reads. With the
-setting off the same level shows 291 casts at nobody, REVEAL 29 times and 176
-such refusals, so the test tells the rules from their absence.
+HEARTBURST and FREEZE TIME, none at nobody (each special whose rule names a
+foe has one within its reach, worked from the gate's own arithmetic), REVEAL
+never, and no gate says yes to a cast that then refuses for the fact the gate
+reads. With the setting off the same level shows 217 casts at nobody, REVEAL
+29 times and 176 such refusals, so the test tells the rules from their
+absence.
 
 ## Charm and seats
 

@@ -28,7 +28,8 @@
 //   C  REVEAL is never cast by a bot;
 //   D  no cast at nobody: every special whose rule names a foe has a foe
 //      within its documented reach (+32 px of movement) before the tick it
-//      was cast in;
+//      was cast in, the reach worked from the gate's own arithmetic at the
+//      crew's level and at the bots' (8 or less, which D checks too);
 //   E  the gates and the casts agree: no gate says yes to a cast that then
 //      refuses for the fact the gate reads (NO FOE, NO CORPSE, NO UNDEAD, NO
 //      TARGET, NO ALLY), and SPECIAL BUSY and NOT ENOUGH MP refusals stay rare.
@@ -56,6 +57,8 @@
 //   THIEF CLOAK 13/20/13 [46] TAUNT ENEMY 19/15/20 [54] CHARM OPPONENT 3/7/8 [18]
 //         MINE 2/4/3 [9] DROP BOMB 2/1/6 [9]
 //   BARBARIAN HURL BOULDER 2/2/3 [7] EXPLODING BOULDER 1/0/1
+//   refusals after the roll: SPECIAL BUSY 50/50/57 [157] (cap 200), NOT ENOUGH
+//   MP 18/22/21 [61] (cap 100; the shoved cleric's ungated heal not counted)
 //
 // The classic bots (OG_CALIBRATION_GAMEPLAY_FIXES=0) cast MORE and show MORE
 // different specials, because they cast at nobody: A and B alone cannot tell
@@ -66,9 +69,10 @@
 // the same three seeds): 800 / 813 / 864 casts, 52 different specials pooled,
 // and
 //   C  REVEAL cast 29 times;
-//   D  291 casts at nobody (the first: tick 1, a druid summons a faerie at a
-//      foe 192 px away, R 162; elves throwing rocks, thieves bombing, clerics
-//      macing with nobody near);
+//   D  217 casts at nobody (the first: tick 1, a druid summons a faerie at a
+//      foe 192 px away, R 162; clerics macing with nobody near 89, elves
+//      throwing rocks 39, thieves bombing 35 and cloaking 20, druids growing
+//      trees 19);
 //   E  176 fact refusals (the first: tick 16, the cleric's TURN UNDEAD coin
 //      with NO FOE IN RANGE), 1069 SPECIAL BUSY refusals (cap 200), 643 NOT
 //      ENOUGH MP (cap 100; 534 of them the classic cleric macing at an
@@ -82,7 +86,10 @@
 //
 // What this test must not do: change the level, a gate or the pack Lua to go
 // green; swap a seed; drop a special from a list; raise a reach; widen a cap.
-// A red here is the game misbehaving or a rule changing; the remedy for a
+// The one exception: a reach that is wrong against the gate's own arithmetic
+// is fixed in the table, with the gate's line and the sum in its comment
+// (the flight rows below were raised so, from measured envelopes to the
+// bounds of G.in_flight and G.ring_pays). A red here is the game misbehaving or a rule changing; the remedy for a
 // legitimate sim change is more room for the test (more seeds pooled, more
 // ticks), never a narrower one.
 //
@@ -110,6 +117,8 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
 
 #include "unit/westlands_sim_fixture.h"
 
@@ -134,25 +143,73 @@ using SpecialKey = std::pair<std::string, std::string>;
 
 // The reach (px, Manhattan between top-left corners, as distance_to_ob and
 // the gates' finders measure) within which a foe must stand for the special
-// to be cast: its documented reach at the highest level that casts it here
-// (crew 14, bots <= 8) plus 32 px, one tick of movement on both sides of
-// the gate's reading. docs/gameplay-fixes.md "Bots" and
-// docs/new-specials.md name each rule.
-const std::map<SpecialKey, int>& reach_table()
+// to be cast, at the highest level that casts it here (the crew at 14, the
+// placed bots at 8 or less: kBotLevelMax, which D checks), plus 32 px, one
+// tick of movement on both sides of the gate's reading.
+// docs/gameplay-fixes.md "Bots" and docs/new-specials.md name each rule.
+//
+// Two shapes. A gate on distance_to_ob (foes_within, find_foes_in_range,
+// nearest_living_foe) has its radius as the bound: radius + 32.
+// A gate on a weapon's flight (G.in_flight, G.ring_pays; gates.lua
+// flight_px / in_flight, and the barbarian's boulder_reach) bounds only the
+// LARGER edge gap, along the heading the engine's facing() gives: straight
+// within a slope of 0.414 of an axis, else diagonal. With bodies of 32 px at
+// most, a foe in a straight flight S stands within 1.414 (S + 32) and in a
+// diagonal flight D within 2 (D + 32); the row is the larger, plus 32.
+// flight_px: steps = range + level / 3 (+ strength / 23 + dexterity / 31
+// for a hero); straight, steps * 309 / 256 and a step of step * 362 / 256;
+// the reach is (steps - 1) * step. A hero's flight is longer than a bot's,
+// so those rows are keyed by crew and bot, and a bot casting from a crew row
+// would not blunt the bots' teeth.
+struct Reach
 {
-    static const std::map<SpecialKey, int> table = {
+    Reach(int both) // NOLINT(google-explicit-constructor): a table literal
+        : bot(both), crew(both)
+    {
+    }
+    Reach(int bot_reach, int crew_reach)
+        : bot(bot_reach), crew(crew_reach)
+    {
+    }
+    int bot;
+    int crew;
+};
+
+constexpr int kBotLevelMax = 8;
+
+const std::map<SpecialKey, Reach>& reach_table()
+{
+    static const std::map<SpecialKey, Reach> table = {
         {{"SOLDIER", "CHARGE"}, 130},
         {{"SOLDIER", "BOOMERANG"}, 140},       // 17 + 6 * 14 + 32 = 133, rounded up
         {{"SOLDIER", "WHIRLWIND"}, 100},       // 32 + 2 * 14 + 32 = 92, rounded up
         {{"SOLDIER", "DISARM"}, 64},
-        {{"ELF", "ROCKS"}, 130},
-        {{"ELF", "BOUNCING ROCKS"}, 170},
-        {{"ELF", "LOTS OF ROCKS"}, 200},
-        {{"ELF", "MEGA ROCKS"}, 200},
-        {{"ARCHER", "FIRE ARROWS"}, 250},
-        {{"ARCHER", "BARRAGE"}, 250},
-        {{"ARCHER", "EXPLODING BOLT"}, 250},
-        {{"MAGE", "WARP SPACE"}, 64},
+        // living-01-elf.lua volley: G.in_flight(5, 8, los_num / 2), los_num
+        // 2 / 3 / 4 / 5. Bot at 8: 10 steps (12 straight), x los_num / 2.
+        // Crew elf at 14 (strength 83, dexterity 131): 19 steps (22 straight).
+        //   ROCKS bot: straight 77 -> 154, diagonal 45 -> 154; + 32 = 186.
+        //         crew: straight 148 -> 254, diagonal 90 -> 244; + 32 = 286.
+        {{"ELF", "ROCKS"}, {186, 286}},
+        // BOUNCING x3/2 bot 120 -> 214, 70 -> 204; crew 226 -> 364, 135 -> 334.
+        {{"ELF", "BOUNCING ROCKS"}, {246, 396}},
+        // LOTS x4/2 bot 162 -> 274, 95 -> 254; crew 304 -> 475, 185 -> 434.
+        {{"ELF", "LOTS OF ROCKS"}, {306, 507}},
+        // MEGA x5/2 bot 205 -> 335, 120 -> 304; crew 381 -> 584, 230 -> 524.
+        {{"ELF", "MEGA ROCKS"}, {367, 616}},
+        // living-02-archer.lua fixed: slot 1 G.ring_pays(8, 12), slots 2 and
+        // 3 G.in_flight(8, 12). Bot at 8: 14 steps (16 straight), straight
+        // 169 -> 284, diagonal 104 -> 272; + 32 = 316. Crew archer at 14
+        // (strength 58, dexterity 129): 22 steps (26 straight), straight
+        // 282 -> 444, diagonal 168 -> 400; + 32 = 476.
+        {{"ARCHER", "FIRE ARROWS"}, {316, 476}},
+        {{"ARCHER", "BARRAGE"}, {316, 476}},
+        {{"ARCHER", "EXPLODING BOLT"}, {316, 476}},
+        // living-03-mage.lua slot 2: G.ring_pays(UNIT_STEP, 7, add), add at
+        // most 40 / 3 = 13, a step of 1 px. Bot at 8: 23 steps straight,
+        // 22 -> 76; 22 diagonal, 21 -> 106; + 32 = 138. Crew mage at 14
+        // (strength 56, dexterity 84): 31 straight, 30 -> 87; 28 diagonal,
+        // 27 -> 118; + 32 = 150.
+        {{"MAGE", "WARP SPACE"}, {138, 150}},
         {{"MAGE", "ENERGY WAVE"}, 150},
         {{"MAGE", "HEARTBURST"}, 140},         // 80 + 2 * 14 + 32
         {{"ARCHMAGE", "HEARTBURST"}, 130},     // 80 + 2 * 8 + 32 = 128, rounded up
@@ -179,11 +236,23 @@ const std::map<SpecialKey, int>& reach_table()
         {{"DRUID", "PROTECTION"}, 130},
         {{"ORC CAPTAIN", "HOWL"}, 352},        // 160 + 20 * 8 + 32
         {{"ORC CAPTAIN", "HOOK BLADE"}, 92},
-        {{"ORC CAPTAIN", "KNIFE FAN"}, 200},
+        // kit_captain.lua foes_in_fan: G.in_flight(KNIFE_STEP 5, KNIFE_LOS 7).
+        // Bot at 8: 9 steps (10 straight), straight 63 -> 134, diagonal
+        // 40 -> 144; + 32 = 176. No captain in the crew.
+        {{"ORC CAPTAIN", "KNIFE FAN"}, 176},
         {{"ORC CAPTAIN", "WAR BANNER"}, 152},
-        {{"BARBARIAN", "HURL BOULDER"}, 250},
-        {{"BARBARIAN", "EXPLODING BOULDER"}, 250},
-        {{"ELEMENTAL", "STARBURST"}, 150},
+        // living-16-barbarian.lua boulder_target: the larger edge gap within
+        // boulder_reach = 8 * clamp(step, 1, 15); a bot at 8 steps 16 and a
+        // crew barbarian at 14 (strength 170) 1 + 170 / 7 = 25, both held to
+        // 15: 120. Straight 120 -> 214, diagonal 120 -> 304; + 32 = 336.
+        {{"BARBARIAN", "HURL BOULDER"}, 336},
+        {{"BARBARIAN", "EXPLODING BOULDER"}, 336},
+        // living-06-elemental.lua fixed_starburst: G.ring_pays(7, 9); the
+        // classic foe_within(130) runs for its draws and its answer is
+        // dropped (G.with_classic). Bot at 8: 11 steps (13 straight),
+        // straight 118 -> 212, diagonal 70 -> 204; + 32 = 244. No elemental
+        // in the crew.
+        {{"ELEMENTAL", "STARBURST"}, 244},
         {{"ELEMENTAL", "IMMOLATE"}, 64},
         {{"ELEMENTAL", "METEOR RAIN"}, 150},
         {{"SKELETON", "DIG IN"}, 112},         // 80 + 32
@@ -213,6 +282,7 @@ struct Living
     int x;
     int y;
     int floor;
+    int level;
 };
 
 struct Cast
@@ -230,6 +300,7 @@ struct Cast
     SpecialKey key;
     bool crew = false;
     int nearest_foe = -1; // -1: no foe on the floor at all
+    int level = -1;       // the caster's level before the tick; -1: not alive then
 };
 
 struct Refusal
@@ -303,9 +374,18 @@ std::vector<Living> snapshot_livings(GameWorld& world)
             continue;
         out.push_back({w->entity_id(), static_cast<int>(w->team_num()),
                        static_cast<int>(w->xpos()), static_cast<int>(w->ypos()),
-                       static_cast<int>(w->floor())});
+                       static_cast<int>(w->floor()),
+                       w->stats() != nullptr ? static_cast<int>(w->stats()->level()) : -1});
     }
     return out;
+}
+
+int caster_level(const Cast& c, const std::vector<Living>& before)
+{
+    for (const Living& l : before)
+        if (l.id == c.id)
+            return l.level;
+    return -1;
 }
 
 int nearest_foe(const Cast& c, const std::vector<Living>& before)
@@ -376,6 +456,7 @@ Play play_level(std::uint32_t seed)
                          special_label(c.family, c.slot, c.shift, world.new_specials)};
                 c.crew = crew_ids.count(c.id) != 0;
                 c.nearest_foe = nearest_foe(c, before);
+                c.level = caster_level(c, before);
                 p.casts.push_back(c);
                 continue;
             }
@@ -406,7 +487,8 @@ bool is_fact_refusal(const Refusal& r)
 {
     // The cleric's hit response heals with no gate by design
     // (living-05-cleric.lua on_shoved): its "nobody to heal" is not a gate
-    // that said yes.
+    // that said yes. Shift is not tested here, unlike is_counted_nomp: a
+    // slot-1 cast with Shift down is the mace, which never gives this reason.
     if (r.family == FAMILY_CLERIC && r.slot == 1 && r.reason == "NO ALLY NEEDS HEALING")
         return false;
     for (const char* fact : {"NO FOE", "NO CORPSE", "NO UNDEAD", "NO TARGET", "NO ALLY"})
@@ -459,12 +541,14 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         int crew = 0;
         std::set<std::pair<std::uint32_t, unsigned>> casters;
         int max_nearest = -1;
+        int max_bot_level = -1;
         int min_family = 1000;
     };
     std::map<SpecialKey, Row> rows;
     std::map<std::pair<std::string, std::string>, std::map<std::uint32_t, int>> refusal_rows;
     std::vector<std::string> violations;
     std::vector<std::string> unclassified;
+    std::vector<std::string> above_table_level;
     std::vector<std::string> fact_refusals;
     int busy = 0;
     int nomp = 0;
@@ -482,6 +566,8 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
             row.casters.insert({p.seed, c.id});
             row.min_family = std::min(row.min_family, c.family);
             row.max_nearest = std::max(row.max_nearest, c.nearest_foe);
+            if (!c.crew)
+                row.max_bot_level = std::max(row.max_bot_level, c.level);
             if (c.crew)
             {
                 row.crew++;
@@ -502,11 +588,17 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
                 unclassified.push_back(where);
                 continue;
             }
-            if (c.nearest_foe < 0 || c.nearest_foe > reach->second)
+            // The table's rows are bounds at the crew's level and at
+            // kBotLevelMax; a caster above them would be measured against a
+            // reach too short for it.
+            if (c.level > (c.crew ? kCrewLevel : kBotLevelMax))
+                above_table_level.push_back(where + ": level " + std::to_string(c.level));
+            const int r = c.crew ? reach->second.crew : reach->second.bot;
+            if (c.nearest_foe < 0 || c.nearest_foe > r)
                 violations.push_back(where + ": nearest foe " +
                                      (c.nearest_foe < 0 ? std::string("none")
                                                         : std::to_string(c.nearest_foe)) +
-                                     " px, reach " + std::to_string(reach->second));
+                                     " px, reach " + std::to_string(r));
         }
         for (const Refusal& r : p.refusals)
         {
@@ -548,7 +640,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     std::printf("%-12s %-18s", "family", "special");
     for (std::uint32_t seed : kSeeds)
         std::printf(" %6u", seed);
-    std::printf(" %7s %7s %5s %8s\n", "pooled", "casters", "crew", "max foe");
+    std::printf(" %7s %7s %5s %8s %7s\n", "pooled", "casters", "crew", "max foe", "bot lvl");
     for (const auto& [key, row] : ordered)
     {
         std::printf("%-12s %-18s", key.first.c_str(), key.second.c_str());
@@ -557,8 +649,8 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
             const auto it = row->per_seed.find(seed);
             std::printf(" %6d", it == row->per_seed.end() ? 0 : it->second);
         }
-        std::printf(" %7d %7zu %5d %8d\n", row->pooled, row->casters.size(), row->crew,
-                    row->max_nearest);
+        std::printf(" %7d %7zu %5d %8d %7d\n", row->pooled, row->casters.size(), row->crew,
+                    row->max_nearest, row->max_bot_level);
         ::testing::Test::RecordProperty(
             "casts." + property_key(key.first) + "." + property_key(key.second), row->pooled);
     }
@@ -695,6 +787,10 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     EXPECT_TRUE(unclassified.empty())
         << unclassified.size() << " casts of a special the reach table does not name, first: "
         << (unclassified.empty() ? std::string() : unclassified.front());
+    EXPECT_TRUE(above_table_level.empty())
+        << above_table_level.size()
+        << " casts by a caster above the level the reach table is worked at, first: "
+        << (above_table_level.empty() ? std::string() : above_table_level.front());
     EXPECT_EQ(0u, violations.size())
         << "casts with no foe within reach, first: "
         << (violations.empty() ? std::string() : violations.front());
@@ -703,8 +799,9 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     EXPECT_EQ(0u, fact_refusals.size())
         << "a gate said yes and the cast refused for the fact the gate reads, first: "
         << (fact_refusals.empty() ? std::string() : fact_refusals.front());
-    EXPECT_LE(busy, 200) << "SPECIAL BUSY refusals (measured ~100 pooled)";
-    EXPECT_LE(nomp, 100) << "NOT ENOUGH MP refusals after the roll (measured ~50 pooled)";
+    EXPECT_LE(busy, 200) << "SPECIAL BUSY refusals (measured 157 pooled, 50 / 50 / 57)";
+    EXPECT_LE(nomp, 100)
+        << "NOT ENOUGH MP refusals after the roll (measured 61 pooled, 18 / 22 / 21)";
 }
 
 TEST_F(TryxianLevelPlay, same_seed_same_casts)
