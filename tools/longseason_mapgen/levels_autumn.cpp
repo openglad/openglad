@@ -469,8 +469,12 @@ void build_old_counts_vault(const LevelDataHooks& hooks)
     // levels rank-for-rank — the doc's build wiped the curve-6 crew by
     // tick 300 and cleared zero seeds at crew 7; the optional stays the
     // hardest autumn contract on the giant wall's HP and the lvl-9 Count.)
+    // (Bot payoff gates recalibration 2026-10-19: the soldier bots' CHARGE
+    // now waits for a foe in its rush's path, and seed 42's curve-6 crew
+    // kept one of eight at tick 600 against a floor of 2; the second
+    // breach watch sheds a level, to lvl 2.)
     place_living(w, FAMILY_SKELETON, 2, 0, 4, 20, 3); // breach watch
-    place_living(w, FAMILY_SKELETON, 2, 0, 7, 25, 3);
+    place_living(w, FAMILY_SKELETON, 2, 0, 7, 25, 2);
     static constexpr int patrol[8][2] = {{14, 8},  {26, 8},  {38, 8},
                                          {44, 15}, {44, 28}, {38, 35},
                                          {24, 35}, {12, 28}};
