@@ -520,3 +520,32 @@ TEST_F(GameplayFixesBots, skeleton_legion_counts_only_foes_that_can_rise)
     EXPECT_TRUE(kit_gate(skel, 4)) << "three that can rise";
     EXPECT_EQ(1, skel->shifter_down()) << "LEGION";
 }
+
+// ---------------------------------------------------------------------------
+// The faerie (rows 67-72)
+// ---------------------------------------------------------------------------
+
+// BLINK (a hurt faerie with a foe within 30) and GLIMMER (a foe within 60)
+// count living foes: a tent beside her neither frightens her into a hop nor
+// takes a freezing sprinkle.
+//
+// RED (the counts with generators): Value of: kit_gate(f, 1) Actual: true
+// Expected: false "a tent at 20: no blink"; and the same for "a tent at 40:
+// no glimmer".
+TEST_F(GameplayFixesBots, faerie_counts_living_foes_only)
+{
+    living* f = body(add(FAMILY_FAERIE, kBots, 200, 200, 4, 100.0f), 16, 16);
+    ASSERT_NE(nullptr, f);
+    f->stats()->set_hitpoints(150.0f);  // under half
+    walker* t = tent(world(), kFoes, 220, 200);  // 20 px
+    ASSERT_NE(nullptr, t);
+    EXPECT_TRUE(kit_gate(f, 1, 0)) << "New Specials off: the guard's yes";
+    EXPECT_FALSE(kit_gate(f, 1)) << "a tent at 20: no blink";
+    EXPECT_FALSE(kit_gate(f, 2)) << "a tent at 20: no glimmer";
+    living* foe = body(add(FAMILY_SOLDIER, kFoes, 200, 220, 1), 16, 16);  // 20 px
+    ASSERT_NE(nullptr, foe);
+    f->set_shifter_down(1);
+    EXPECT_TRUE(kit_gate(f, 1)) << "a soldier at 20: blink";
+    EXPECT_EQ(0, f->shifter_down()) << "BLINK";
+    EXPECT_TRUE(kit_gate(f, 2)) << "a soldier at 20: glimmer";
+}
