@@ -51,6 +51,21 @@ walker* tent(GameWorld& world, unsigned char team, short x, short y)
     return w;
 }
 
+// A blood stain under `w`'s centre, as a corpse leaves one.
+walker* stain_under(GameWorld& world, walker* w)
+{
+    walker* s = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    if (s == nullptr)
+        return nullptr;
+    s->set_team_num(kFoes);
+    s->set_dead(0);
+    s->set_floor(w->floor());
+    s->center_on(w);
+    s->stats()->set_old_family(FAMILY_SOLDIER);
+    s->stats()->set_level(3);
+    return s;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -165,4 +180,126 @@ TEST_F(GameplayFixesBots, ghost_phase_defers_to_a_scare_it_could_cast)
     EXPECT_TRUE(kit_gate(ghost, 4)) << "SCARE rests: PHASE";
     foe->setxy(260, 200);  // 60 px: outside PHASE's 48
     EXPECT_FALSE(kit_gate(ghost, 4)) << "no foe within 48";
+}
+
+// ---------------------------------------------------------------------------
+// The orc captain (rows 48, 50, 51, 52)
+// ---------------------------------------------------------------------------
+
+// HOWL stuns every body inside the yell, 160 + 20 px per level (180 at
+// level 1), a tent included (a stunned tent stops spawning). The classic
+// 130 is not the howl's reach.
+//
+// RED (the 130 px gate): Value of: kit_gate(cap, 1) Actual: false
+// Expected: true "a tower at 160: inside the yell".
+TEST_F(GameplayFixesBots, captain_howl_wants_a_target_inside_the_yell)
+{
+    living* cap = body(add(FAMILY_BIG_ORC, kBots, 200, 200, 1, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_TOWER1, kFoes, 360, 200, 1), 25, 29);  // 160 px
+    ASSERT_TRUE(cap && foe);
+    EXPECT_TRUE(kit_gate(cap, 1, 0)) << "New Specials off: the guard's yes";
+    cap->set_foe(nullptr);
+    EXPECT_TRUE(kit_gate(cap, 1)) << "a tower at 160: inside the yell";
+    foe->setxy(381, 200);  // 181 px
+    cap->set_foe(nullptr);
+    EXPECT_FALSE(kit_gate(cap, 1)) << "181 px: outside the yell";
+    foe->setxy(380, 200);  // 180 px: the edge
+    cap->set_foe(nullptr);
+    EXPECT_TRUE(kit_gate(cap, 1)) << "180 px: the edge is in";
+    foe->setxy(800, 800);
+    ASSERT_NE(nullptr, tent(world(), kFoes, 300, 200));  // 100 px
+    cap->set_foe(nullptr);
+    EXPECT_TRUE(kit_gate(cap, 1)) << "a tent at 100: the howl stuns it";
+}
+
+// HOOK BLADE spirals out to 60 px: it wants a living foe within 60 on the
+// captain's floor, no blade out, and the 40 it costs (the engine keeps the
+// slot for a pool of 30 to 39, the fan's price, and does not check again).
+//
+// RED (the 90 px gate): Expected equality of these values:
+// (std::pair<bool,int>{false, 9}) ... Which is: (true, 0) "61 px: past
+// the blade"; and (true, 0) for "35 MP: the hook is not affordable".
+TEST_F(GameplayFixesBots, captain_hook_wants_a_foe_at_the_blades_reach_and_the_price)
+{
+    living* cap = body(add(FAMILY_BIG_ORC, kBots, 200, 200, 7, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, kFoes, 250, 200, 1), 16, 16);  // 50 px
+    ASSERT_TRUE(cap && foe);
+    auto ask = [&](short ns) {
+        cap->set_shifter_down(9);
+        const bool yes = kit_gate(cap, 3, ns);
+        return std::pair<bool, int>{yes, cap->shifter_down()};
+    };
+    EXPECT_EQ((std::pair<bool, int>{true, 9}), ask(0)) << "New Specials off: the coin stands";
+    EXPECT_EQ((std::pair<bool, int>{true, 0}), ask(1)) << "50 px: the hook";
+    foe->setxy(261, 200);  // 61 px
+    EXPECT_EQ((std::pair<bool, int>{false, 9}), ask(1)) << "61 px: past the blade";
+    foe->setxy(260, 200);  // 60 px: the edge
+    EXPECT_EQ((std::pair<bool, int>{true, 0}), ask(1)) << "60 px: the blade's reach";
+    cap->stats()->set_magicpoints(35.0f);
+    EXPECT_EQ((std::pair<bool, int>{false, 9}), ask(1)) << "35 MP: the hook is not affordable";
+}
+
+// KNIFE FAN throws three knives: along the captain's facing and the two
+// headings beside it. The fan reads the facing (curdir) as the cast does
+// (kit_captain.lua, knife_fan's facing_index), not the last step's heading.
+// It wants two living foes on those three lines inside the knife's flight:
+// at level 7 a 63 px gap straight, 40 on a diagonal.
+//
+// RED (the 90 px gate): Expected equality of these values:
+// (std::pair<bool,int>{true, 1}) ... Which is: (true, 0) "two on the
+// lines: the fan" (the old gate hooked the foe within 90).
+TEST_F(GameplayFixesBots, captain_fan_wants_two_foes_on_its_three_lines)
+{
+    living* cap = body(add(FAMILY_BIG_ORC, kBots, 200, 200, 7, 100.0f), 16, 16);
+    // Ahead (up) at a 40 px gap, and ahead-right at 40 px gaps on both axes;
+    // both farther than the hook's 60 px.
+    living* ahead = body(add(FAMILY_TOWER1, kFoes, 196, 131, 1), 25, 29);
+    living* right = body(add(FAMILY_TOWER1, kFoes, 256, 131, 1), 25, 29);
+    ASSERT_TRUE(cap && ahead && right);
+    auto ask = [&](short ns) {
+        cap->set_shifter_down(9);
+        const bool yes = kit_gate(cap, 3, ns);
+        return std::pair<bool, int>{yes, cap->shifter_down()};
+    };
+    cap->set_lastx(0.0f);
+    cap->set_lasty(-1.0f);
+    cap->set_curdir(FACE_UP);
+    EXPECT_EQ((std::pair<bool, int>{true, 9}), ask(0)) << "New Specials off: the coin stands";
+    EXPECT_EQ((std::pair<bool, int>{true, 1}), ask(1)) << "two on the lines: the fan";
+
+    cap->set_curdir(FACE_DOWN);  // the last step still up: the fan goes down
+    EXPECT_EQ((std::pair<bool, int>{false, 9}), ask(1)) << "facing away: the knives fly down";
+    cap->set_curdir(FACE_UP);
+
+    right->setxy(196, 276);  // behind, a 60 px gap below (80 px: past the hook)
+    EXPECT_EQ((std::pair<bool, int>{false, 9}), ask(1)) << "one ahead, one behind";
+    right->setxy(256, 131);
+
+    cap->stats()->set_magicpoints(35.0f);  // the hook's 40 out of reach, the fan's 30 not
+    EXPECT_EQ((std::pair<bool, int>{true, 1}), ask(1)) << "35 MP: the fan is affordable";
+}
+
+// WAR BANNER heals, holds and frightens for 900 ticks around the flag: it
+// pays where a fight is, so beside the two allies and the corpse it wants
+// a living foe within 120 px.
+//
+// RED (the banner without the foe): Value of: kit_gate(cap, 4) Actual:
+// true Expected: false "two allies and a corpse, nobody to fight".
+TEST_F(GameplayFixesBots, captain_banner_wants_a_foe_near_the_flag)
+{
+    living* cap = body(add(FAMILY_BIG_ORC, kBots, 200, 200, 10, 200.0f), 16, 16);
+    ASSERT_NE(nullptr, cap);
+    ASSERT_NE(nullptr, stain_under(world(), cap));
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, kBots, 240, 200, 1), 16, 16));
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, kBots, 200, 240, 1), 16, 16));
+    cap->set_shifter_down(9);
+    EXPECT_TRUE(kit_gate(cap, 4, 0)) << "New Specials off: the guard's yes";
+    EXPECT_FALSE(kit_gate(cap, 4)) << "two allies and a corpse, nobody to fight";
+    living* foe = body(add(FAMILY_SOLDIER, kFoes, 300, 200, 1), 16, 16);  // 100 px
+    ASSERT_NE(nullptr, foe);
+    cap->set_shifter_down(9);
+    EXPECT_TRUE(kit_gate(cap, 4)) << "a foe at 100: plant";
+    EXPECT_EQ(0, cap->shifter_down()) << "the banner, not the warband";
+    foe->setxy(321, 200);  // 121 px
+    EXPECT_FALSE(kit_gate(cap, 4)) << "121 px: no fight at the flag";
 }
