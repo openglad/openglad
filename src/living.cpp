@@ -659,11 +659,16 @@ short living::check_special()
 				// living foe inside the scare radius (the classic gate asked for a
 				// foe within 130, which the fright reaches only from level 8). The
 				// classic foe search runs first either way, and SCARE is cast
-				// unshifted.
+				// unshifted. The radius is the current game's scare radius,
+				// capped at 250 from level 21, as the orc's yell below is capped
+				// at 420: a ported gate measures what the current game measures.
 				if (!foe)
 					foe = myscreen->find_near_foe(this);
 				shifter_down = 0;
-				return bg_foes_within(this, 1, 50+10*stats->level);
+				Sint32 scare = 50 + 10*stats->level;
+				if (scare > 250)
+					scare = 250;
+				return bg_foes_within(this, 1, scare);
 			}
 			if (family == FAMILY_FIREELEMENTAL && myscreen->gameplay_fixes)
 			{
