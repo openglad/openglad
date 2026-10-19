@@ -66,6 +66,21 @@ walker* stain_under(GameWorld& world, walker* w)
     return s;
 }
 
+// One segment of `owner`'s bone wall with its top-left at (x, y).
+walker* wall_segment(GameWorld& world, walker* owner, short x, short y)
+{
+    const int family = og::families::resolve_family_string_id(
+        Order::Weapon, "core:bone_wall");
+    walker* seg = world.add_weap_ob(Order::Weapon, family);
+    if (seg == nullptr)
+        return nullptr;
+    seg->set_team_num(owner->team_num());
+    seg->set_owner(owner);
+    seg->set_dead(0);
+    seg->setxy(x, y);
+    return seg;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -387,4 +402,121 @@ TEST_F(GameplayFixesBots, elemental_rekindle_is_not_forced_on_a_pool_that_cannot
     e->set_shifter_down(1);
     EXPECT_TRUE(kit_gate(e, 4)) << "45 MP: REKINDLE";
     EXPECT_EQ(0, e->shifter_down()) << "REKINDLE, not SUPERNOVA";
+}
+
+// ---------------------------------------------------------------------------
+// The skeleton (rows 62, 63, 64, 65, 66)
+// ---------------------------------------------------------------------------
+
+// DIG IN counts living foes: a tent cannot step on the burrow or press the
+// skeleton.
+//
+// RED (the count with generators): Value of: kit_gate(skel, 2) Actual:
+// true Expected: false "a foe and a tent: one foe".
+TEST_F(GameplayFixesBots, skeleton_dig_in_counts_living_foes_only)
+{
+    living* skel = body(add(FAMILY_SKELETON, kBots, 200, 200, 4, 100.0f), 16, 16);
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, kFoes, 250, 200, 1), 16, 16));
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, tent(world(), kFoes, 200, 250));
+    skel->stats()->set_hitpoints(200.0f);  // under 60 %
+    EXPECT_TRUE(kit_gate(skel, 2, 0)) << "New Specials off: the guard's yes";
+    EXPECT_FALSE(kit_gate(skel, 2)) << "a foe and a tent: one foe";
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, kFoes, 150, 200, 1), 16, 16));
+    EXPECT_TRUE(kit_gate(skel, 2)) << "two living foes: dig in";
+}
+
+// BONE WALL rises three segments wide across the skeleton's facing (the
+// cast reads curdir, kit_skeleton.lua facing_of): it pays when the nearest
+// living foe within 60 is on one of the three lines the wall covers.
+//
+// RED (the count alone): Value of: kit_gate(skel, 3) Actual: true
+// Expected: false "a foe at its side: the wall would rise beside it".
+TEST_F(GameplayFixesBots, skeleton_wall_rises_across_the_foes_line)
+{
+    living* skel = body(add(FAMILY_SKELETON, kBots, 200, 200, 4, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, kFoes, 240, 200, 1), 16, 16);  // 40 px east
+    ASSERT_TRUE(skel && foe);
+    skel->stats()->set_hitpoints(200.0f);  // under 70 %
+    skel->set_curdir(FACE_RIGHT);
+    skel->set_lastx(0.0f);
+    skel->set_lasty(0.0f);  // the fire heading is up; the wall follows curdir
+    skel->set_shifter_down(1);
+    EXPECT_TRUE(kit_gate(skel, 3, 0)) << "New Specials off: the guard's yes";
+    EXPECT_EQ(1, skel->shifter_down()) << "New Specials off: the coin stands";
+    EXPECT_TRUE(kit_gate(skel, 3)) << "a foe on the wall's line";
+    EXPECT_EQ(0, skel->shifter_down()) << "the wall, not the storm";
+    foe->setxy(200, 160);  // 40 px north
+    EXPECT_FALSE(kit_gate(skel, 3)) << "a foe at its side: the wall would rise beside it";
+    foe->setxy(230, 175);  // 55 px up-right: the next line
+    EXPECT_TRUE(kit_gate(skel, 3)) << "the wall's end covers the diagonal";
+}
+
+// BONE STORM bursts every standing wall into bones that fly 30 px: it
+// counts the foes at the walls, two within 60 px of a standing segment of
+// this skeleton's, not the foes at the skeleton.
+//
+// RED (the count at the skeleton): Value of: kit_gate(skel, 3) Actual:
+// false Expected: true "two foes at the wall".
+TEST_F(GameplayFixesBots, skeleton_storm_counts_the_foes_at_the_wall)
+{
+    living* skel = body(add(FAMILY_SKELETON, kBots, 200, 200, 4, 100.0f), 16, 16);
+    ASSERT_NE(nullptr, skel);
+    ASSERT_NE(nullptr, wall_segment(world(), skel, 280, 200));  // 80 px east
+    living* a = body(add(FAMILY_SOLDIER, kFoes, 320, 200, 1), 16, 16);  // 40 px past it
+    living* b = body(add(FAMILY_SOLDIER, kFoes, 280, 240, 1), 16, 16);  // 40 px below it
+    ASSERT_TRUE(a && b);
+    skel->set_shifter_down(0);
+    EXPECT_TRUE(kit_gate(skel, 3)) << "two foes at the wall";
+    EXPECT_EQ(1, skel->shifter_down()) << "the storm";
+    a->setxy(200, 240);  // both 40 px from the skeleton, 120 from the wall
+    b->setxy(160, 200);
+    EXPECT_FALSE(kit_gate(skel, 3)) << "two foes at the skeleton, none at the wall";
+    skel->stats()->set_magicpoints(44.0f);
+    a->setxy(320, 200);
+    b->setxy(280, 240);
+    EXPECT_FALSE(kit_gate(skel, 3)) << "44 MP cannot pay the storm";
+}
+
+// REASSEMBLE wards the next death: it pays with a foe near, one within 60,
+// not on a skeleton hurt where nobody is fighting it.
+//
+// RED (no foe asked): Value of: kit_gate(skel, 4) Actual: true Expected:
+// false "hurt, nobody near".
+TEST_F(GameplayFixesBots, skeleton_reassemble_wants_a_foe_near)
+{
+    living* skel = body(add(FAMILY_SKELETON, kBots, 200, 200, 10, 100.0f), 16, 16);
+    ASSERT_NE(nullptr, skel);
+    skel->stats()->set_hitpoints(150.0f);  // under half
+    EXPECT_TRUE(kit_gate(skel, 4, 0)) << "New Specials off: the guard's yes";
+    EXPECT_FALSE(kit_gate(skel, 4)) << "hurt, nobody near";
+    living* foe = body(add(FAMILY_SOLDIER, kFoes, 240, 200, 1), 16, 16);  // 40 px
+    ASSERT_NE(nullptr, foe);
+    skel->set_shifter_down(1);
+    EXPECT_TRUE(kit_gate(skel, 4)) << "hurt, a foe at 40: ward";
+    EXPECT_EQ(0, skel->shifter_down()) << "REASSEMBLE";
+    foe->setxy(261, 200);  // 61 px
+    EXPECT_FALSE(kit_gate(skel, 4)) << "61 px: nobody near";
+}
+
+// LEGION raises the foes this skeleton kills, except the undead: it counts
+// the three foes within 100 among the living that can rise, never a tent or
+// another skeleton.
+//
+// RED (the count of every foe): Value of: kit_gate(skel, 4) Actual: true
+// Expected: false "two that can rise, a skeleton and a tent".
+TEST_F(GameplayFixesBots, skeleton_legion_counts_only_foes_that_can_rise)
+{
+    living* skel = body(add(FAMILY_SKELETON, kBots, 200, 200, 10, 100.0f), 16, 16);
+    living* a = body(add(FAMILY_SOLDIER, kFoes, 250, 200, 1), 16, 16);
+    living* b = body(add(FAMILY_SOLDIER, kFoes, 200, 250, 1), 16, 16);
+    living* undead = body(add(FAMILY_SKELETON, kFoes, 150, 200, 1), 16, 16);
+    ASSERT_TRUE(skel && a && b && undead);
+    ASSERT_NE(nullptr, tent(world(), kFoes, 200, 150));
+    skel->set_shifter_down(0);
+    EXPECT_TRUE(kit_gate(skel, 4, 0)) << "New Specials off: the guard's yes";
+    EXPECT_FALSE(kit_gate(skel, 4)) << "two that can rise, a skeleton and a tent";
+    ASSERT_NE(nullptr, body(add(FAMILY_ORC, kFoes, 150, 150, 1), 16, 16));
+    EXPECT_TRUE(kit_gate(skel, 4)) << "three that can rise";
+    EXPECT_EQ(1, skel->shifter_down()) << "LEGION";
 }
