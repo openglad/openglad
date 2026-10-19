@@ -600,7 +600,7 @@ The mirror also corrects the stale-shift pair's comments and labels, which no du
 `93b718e8`, from an emptied `obj/`, matched all 320 committed goldens and added only the new id, whose capture `cmp`s
 equal to the current game's dump and is committed as its golden; 321 of 321 goldens `cmp` equal to it.
 
-`734229df` (2026-10-19) is the pin. The review of the ports found two rows whose facts did not read what their labels
+`734229df` (2026-10-19) was the pin until the calibration's port: the review of the ports found two rows whose facts did not read what their labels
 said. `thief_bot_charm_or_taunt_fixes_scen99`, retuned at `7bd2d19d`, bombed the soldier on tick 1 and never reached
 the charm rule, so nothing pinned the level test in `gameplay_fixes.lua` (a foe above the thief resists, so the bot
 taunts). The current game's `262b0e80` gives the thief an orc of its own 20 px on its other side, inside its 43 px
