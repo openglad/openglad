@@ -5,6 +5,7 @@
 local C = og.C
 local lc = og.use("living_common")
 local gf = og.use("gameplay_fixes")
+local G = og.use("gates")
 local FX_MARKER = assert(og.family_id("fx", "core:marker"))
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 local WEAPON_WAVE = assert(og.family_id("weapon", "core:wave"))
@@ -20,55 +21,11 @@ local STARBURST_ADD_CAP = 40
 -- of its health. Distance to the mage is not consulted, and the same cue
 -- serves a mage on any team (off the player's team the freeze grants its
 -- own side bonus rounds instead).
---
--- "Within a blow": walker::fire sets the 6 px weapon box 1 px outside the
--- attacker's body, so it reaches gaps 1 to 6; obmap collide() moves the
--- foe's near edge in by 1 px and keeps its far edge, so a body at a gap of
--- 5 still meets the box: a melee blow lands across a gap of at most
--- 6 - 1 = 5 px on each axis, the same at every level
--- (src/gameplay/walker.cpp, src/gameplay/obmap.cpp). A knife thrown from
--- 45 px is not a blow.
-local FREEZE_MELEE_GAP = 5
-
--- The edge-to-edge gap between the bodies of a and b is at most
--- FREEZE_MELEE_GAP on each axis (negative where the boxes overlap).
--- Positions and sizes are METHOD calls: `a.xpos` resolves to the method
--- itself (a function value), never to a number.
-local function at_blows(a, b)
-  local gap_x = og.max(b:xpos() - (a:xpos() + a:sizex()),
-                       a:xpos() - (b:xpos() + b:sizex()))
-  local gap_y = og.max(b:ypos() - (a:ypos() + a:sizey()),
-                       a:ypos() - (b:ypos() + b:sizey()))
-  return gap_x <= FREEZE_MELEE_GAP and gap_y <= FREEZE_MELEE_GAP
-end
-
--- Draw-free: finders and positions only. Foe-major, so a foe at blows with
--- two allies counts once. The allies are every living friend but the mage
--- itself (find_friends_in_range skips the centre); the foes are living
--- bodies only (a tent is nobody's fight).
+-- The fight is the library's (G.allies_fight: foe-major, so a foe at
+-- blows with two allies counts once; living foes only, a tent is nobody's
+-- fight); draw-free, finders and positions only.
 local function freeze_wanted(self)
-  local allies = og.find_friends_in_range("ob", 30000, self)
-  local foes = og.find_foes_in_range("ob", 30000, self)
-  local engaged = 0
-  local hurt = false
-  for i = 1, #foes do
-    local foe = foes[i]
-    if foe and foe:order() == C.ORDER_LIVING then
-      local near = false
-      for j = 1, #allies do
-        local ally = allies[j]
-        if ally and at_blows(ally, foe) then
-          near = true
-          if ally.hp * 4 < ally.max_hp then
-            hurt = true
-          end
-        end
-      end
-      if near then
-        engaged = engaged + 1
-      end
-    end
-  end
+  local engaged, hurt = G.allies_fight(self)
   return engaged >= 3 or hurt
 end
 
