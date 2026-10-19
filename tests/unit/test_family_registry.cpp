@@ -167,10 +167,13 @@ TEST(FamilyRegistry, registry_behavior_lives_in_pack_lua)
         EXPECT_FALSE(has(family, FamilyHook::DoSpecial))
             << get_family_descriptor(family)->name;
 
-    // check_special_ai: families with custom AI gating.
+    // check_special_ai: families with custom AI gating. The elf carries the
+    // Gameplay Fixes bot gate (yes with the setting off, as no gate
+    // answered before).
     for (int family : {FAMILY_SOLDIER, FAMILY_ARCHER, FAMILY_FIREELEMENTAL,
                        FAMILY_GHOST, FAMILY_ORC, FAMILY_THIEF, FAMILY_MAGE,
-                       FAMILY_SLIME, FAMILY_CLERIC, FAMILY_SKELETON})
+                       FAMILY_SLIME, FAMILY_CLERIC, FAMILY_SKELETON,
+                       FAMILY_ELF})
         EXPECT_TRUE(has(family, FamilyHook::CheckSpecialAi))
             << get_family_descriptor(family)->name;
     EXPECT_FALSE(has(FAMILY_DRUID, FamilyHook::CheckSpecialAi));

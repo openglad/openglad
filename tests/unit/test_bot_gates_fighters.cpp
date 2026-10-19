@@ -156,3 +156,106 @@ TEST_F(GameplayFixesBots, soldier_disarm_wants_a_foe_blocking_its_front)
     soldier->set_curdir(-1);
     EXPECT_FALSE(gate(soldier, 4, 1)) << "no direction: nothing is in front";
 }
+
+// ---------------------------------------------------------------------------
+// The elf
+// ---------------------------------------------------------------------------
+
+// ROCKS: the classic elf had no gate. With the setting on the elf's nearest
+// living foe must be faced (the rocks leave along lastx / lasty) and inside
+// the rocks' flight: step 5, range 8; at level 1 a 56 px gap straight and
+// 35 px on a diagonal.
+TEST_F(GameplayFixesBots, elf_rocks_want_the_nearest_foe_faced_inside_the_flight)
+{
+    living* elf = body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_TOWER1, 2, 272, 200, 1), 25, 29);  // a 56 px gap east
+    ASSERT_TRUE(elf && foe);
+    elf->set_lastx(1.0f);
+    elf->set_lasty(0.0f);
+
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_TRUE(gate(elf, 1, 1)) << "a 56 px gap: the rocks reach it";
+
+    foe->setxy(273, 200);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "a 57 px gap: the rocks fall short";
+
+    foe->setxy(272, 200);
+    elf->set_lastx(0.0f);
+    elf->set_lasty(-1.0f);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "aimed up: the rocks fly away from the foe";
+
+    elf->set_lastx(1.0f);
+    elf->set_lasty(1.0f);
+    foe->setxy(251, 251);  // a 35 px gap on both axes
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(elf, 1, 1)) << "on the diagonal at 35 px";
+    foe->setxy(252, 252);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "on the diagonal at 36 px";
+}
+
+// BOUNCING ROCKS fly half again as far (the fired rock's range * 3 / 2): 84
+// px straight and 55 on a diagonal at level 1.
+TEST_F(GameplayFixesBots, elf_bouncing_rocks_reach_half_again)
+{
+    living* elf = body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_TOWER1, 2, 300, 200, 1), 25, 29);  // an 84 px gap east
+    ASSERT_TRUE(elf && foe);
+    elf->set_lastx(1.0f);
+
+    EXPECT_TRUE(gate(elf, 2, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(elf, 2, 1)) << "an 84 px gap";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "out of the plain rocks' flight";
+    foe->setxy(301, 200);
+    EXPECT_TRUE(gate(elf, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 2, 1)) << "an 85 px gap";
+
+    elf->set_lasty(1.0f);
+    foe->setxy(271, 271);  // 55 px on the diagonal
+    EXPECT_TRUE(gate(elf, 2, 1)) << "a 55 px gap on the diagonal";
+    foe->setxy(272, 272);
+    EXPECT_TRUE(gate(elf, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 2, 1)) << "a 56 px gap on the diagonal";
+}
+
+// LOTS OF ROCKS (range * 2: 120 px straight at level 1) wants the nearest
+// foe faced in flight and a second living foe in flight anywhere around.
+TEST_F(GameplayFixesBots, elf_lots_of_rocks_wants_two_foes_in_flight)
+{
+    living* elf = body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* near_foe = body(add(FAMILY_TOWER1, 2, 246, 200, 1), 25, 29);  // a 30 px gap east
+    ASSERT_TRUE(elf && near_foe);
+    elf->set_lastx(1.0f);
+
+    EXPECT_TRUE(gate(elf, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 3, 1)) << "one foe in flight";
+
+    living* behind = body(add(FAMILY_TOWER1, 2, 55, 200, 1), 25, 29);  // a 120 px gap west
+    ASSERT_NE(nullptr, behind);
+    EXPECT_TRUE(gate(elf, 3, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(elf, 3, 1)) << "a second foe in flight behind the elf";
+    behind->setxy(54, 200);
+    EXPECT_FALSE(gate(elf, 3, 1)) << "the second a pixel out of flight";
+}
+
+// MEGA ROCKS (range * 5 / 2: 148 px straight at level 1): the same rule.
+TEST_F(GameplayFixesBots, elf_mega_rocks_wants_two_foes_in_flight)
+{
+    living* elf = body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* near_foe = body(add(FAMILY_TOWER1, 2, 246, 200, 1), 25, 29);  // a 30 px gap east
+    ASSERT_TRUE(elf && near_foe);
+    elf->set_lastx(1.0f);
+
+    EXPECT_TRUE(gate(elf, 4, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 4, 1)) << "one foe in flight";
+
+    living* behind = body(add(FAMILY_TOWER1, 2, 27, 200, 1), 25, 29);  // a 148 px gap west
+    ASSERT_NE(nullptr, behind);
+    EXPECT_TRUE(gate(elf, 4, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(elf, 4, 1)) << "a second foe in flight behind the elf";
+    EXPECT_FALSE(gate(elf, 3, 1)) << "out of LOTS OF ROCKS' shorter flight";
+    behind->setxy(26, 200);
+    EXPECT_FALSE(gate(elf, 4, 1)) << "the second a pixel out of flight";
+}
