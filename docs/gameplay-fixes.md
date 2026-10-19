@@ -64,8 +64,8 @@ usual pause.
 | | special | off (classic) | on |
 |---|---|---|---|
 | A | Soldier DISARM | A won roll against a foe two or more levels above the soldier staggers it by a negative amount, so it attacks sooner. "Fighter Disarmed Enemy!" prints whenever a foe was in reach, even when every roll was lost. | A stagger that is not positive is not applied. With nobody inside the 28 px reach the cast is refused as `NO ONE TO DISARM` and costs nothing. With foes in reach but nobody staggered (every roll lost, or every foe too strong) it is refused as `DISARM RESISTED` and costs half the price (75 of 150 MP) and the usual 5 ticks of busy; the message and the full price come only with a real stagger. |
-| B | Mage and archmage bots | A bot mage casts any special only when no foe or more than three foes are within 110 px (the TELEPORT rule, applied to every slot), so WARP SPACE, FREEZE TIME and ENERGY WAVE go off at nobody, and a mage with 500 magic spends it on a crowd at its own feet. Archmage slots 1 to 3 have no gate at all. | Each slot asks about its own reach (see [Bots](#bots)); FREEZE TIME asks about the allies' fight instead: three foes at blows with allies, or an ally at blows near death. |
-| C | Bot Shift choice | A bot's Shift is a coin: a cleric throws TURN UNDEAD at living foes, a thief tries to charm a foe that will resist, an archmage chains or summons the elemental at random. | The coin is still drawn, then the gate sets Shift on purpose (see [Bots](#bots)); a cleric whose hero lacks the 60 INT for TURN UNDEAD never picks it. |
+| B | Mage and archmage bots | A bot mage casts any special only when no foe or more than three foes are within 110 px (the TELEPORT rule, applied to every slot), so WARP SPACE, FREEZE TIME and ENERGY WAVE go off at nobody, and a mage with 500 magic spends it on a crowd at its own feet. Archmage slots 1 to 3 have no gate at all. | Each slot asks about its own reach; FREEZE TIME asks about the allies' fight instead: three foes at blows with allies, or an ally at blows near death. Every special a bot can roll asks its own payoff rule (see [Bots](#bots)). |
+| C | Bot Shift choice | A bot's Shift is a coin: a cleric throws TURN UNDEAD at living foes, a thief tries to charm a foe that will resist, an archmage chains or summons the elemental at random. | The coin is still drawn, then the gate sets Shift on purpose (see [Bots](#bots)); a cleric whose hero lacks the 60 INT for TURN UNDEAD never picks it. Every Shift arm is its own special with its own rule for a bot; the marker is no longer a coin. |
 | D | Archmage SUMMON ELEMENTAL | The surcharge (half the magic above the slot's price) is taken before the placement check, so `NO ROOM TO SUMMON` still costs half the spare pool. | The surcharge is taken once the elemental stands; no room costs nothing. |
 | E | Cleric TURN UNDEAD | The reach is 4 px per level, so below level 4 it cannot reach a body standing next to the cleric. With living foes in reach and no undead, it spends the slot's magic, plays its sound and turns nothing. | The reach is at least 60 px (the reach RAISE UNDEAD already has). With no undead foe in reach it is refused as `NO UNDEAD IN RANGE`. The roll keeps its classic strength (160 per cleric level), so the wider ring never changes who resists. |
 | F | Archmage MIND CONTROL | A foe that resists goes berserk onto a random team colour, which can be the archmage's own: the "failed" control then joins the caster. | A berserk foe that rolls the caster's colour takes the next colour instead. It still goes berserk; it never joins the caster. |
@@ -76,10 +76,13 @@ usual pause.
 | K | WHIRLWIND, TAUNT, SCARE, HOWL | With nobody in reach each still succeeds: the spin, the taunt, the fright and the howl spend their magic (and SCARE and HOWL start their rest) at nobody. | Each is refused as `NO FOE IN RANGE`. WHIRLWIND, TAUNT and HOWL count anything they can act on, generators included; SCARE counts only living foes, the only ones a fright moves. |
 | L | Bot slot roll | A bot rolls a slot from 1 to (level + 2) / 3 and folds anything above 4 into slot 1: a level-13 mage never rolls HEARTBURST (slot 5), and a level-16 soldier rolls CHARGE half the time. | The roll stops at the family's last named slot that the level has opened, and nothing is folded. |
 | M | Charm and seats | An enemy thief or archmage can charm a hero a player is driving. A seat can be handed a walker that is only on its team because it is charmed. | A driven hero resists (the rule POSSESS already has). A seat never claims a charmed walker (see [Charm and seats](#charm-and-seats)). |
+| Q | Bot payoff gates | Elf, archer, druid, barbarian, soldier, thief, ghost, orc and cleric bots cast specials at nobody, at foes out of reach or with allies in the blast: an elf throws rocks with no foe in sight, a thief drops its bomb at a foe 130 px or more away, a cleric throws its mace with nobody near. | Every special a bot can roll has the rule under which it pays off (see [Bots](#bots)); a Shift arm is its own special for a bot, with its own rule. |
+| R | The struck archmage's order | A struck archmage bot with a foe within 200 px casts its 500-magic summon first and then casts slot 2 twice. | It answers with one HEARTBURST or CHAIN LIGHTNING chosen by the slot-2 rule: no summon, no second cast. Below its flee threshold it still teleports. |
 
-TELEPORT, REVEAL, CLOAK, ENERGY WAVE and CHARGE are unchanged: each does
-something whenever it is cast (ENERGY WAVE crosses walls along the facing;
-CHARGE already refuses `PATH BLOCKED` and otherwise moves the fighter).
+TELEPORT, REVEAL, CLOAK, ENERGY WAVE and CHARGE are unchanged as casts
+(their bot rules are in [Bots](#bots)): each does something whenever it is
+cast (ENERGY WAVE crosses walls along the facing; CHARGE already refuses
+`PATH BLOCKED` and otherwise moves the fighter).
 
 ## Refusals at a glance
 
@@ -107,60 +110,167 @@ volley or bolt).
 A bot picks a slot, draws its Shift coin, drops a Shift it cannot pay, then
 asks the slot's gate whether to cast. With the setting on every draw the
 classic bot makes is still made, in the same order: the gates read the
-world with finders that draw nothing, and where they choose the Shift they
-write it after the coin with `set_shifter_down`, as the classic cleric gate
-already did. A gate that newly says no removes the hit response's one
+world with finders that draw nothing, a family whose classic gate looked
+for a foe still looks for it first, and where a gate chooses the Shift it
+writes it after the coin with `set_shifter_down`, as the classic cleric
+gate already did. A gate that newly says no removes the hit response's one
 follow-up draw on that tick; that happens only with the setting on.
 
-- **Mage.** Slot 1 (TELEPORT) keeps the classic rule: flee when no foe or
-  more than three foes are within 110 px. WARP SPACE and ENERGY WAVE want a
-  foe within the same 110 px. FREEZE TIME is worth its 500 magic for the
-  free blows the time stop hands the allies, so it waits for their fight:
-  at least three foes within a blow of allies (the mage itself not
-  counted), or an ally at blows that is under a quarter of its health. How
-  close the foes stand to the mage is not asked: three foes closing on the
-  mage are a reason for a 15-magic TELEPORT, not a 500-magic freeze. "Within
-  a blow" is the engine's melee reach, a gap of at most 5 px between the two
-  bodies (the 6 px weapon box sits 1 px outside the attacker and reaches
-  gaps 1 to 6, and the collision check moves the other body's near edge in
-  by 1 px), the same at every level; a knife thrown from 45 px is not a
-  blow. A mage on another team takes the same cue for its own freeze, which
-  grants its side bonus rounds; a placed mage holds 50 plus 14 times its
-  level squared magic, so from level 6 up it can pay. HEARTBURST wants a foe
-  inside its own reach (80 + 2 px per level). The TELEPORT MARKER coin is
-  kept: a marker halves an enemy mage's spare magic and sends it back to a
-  known spot, a weakness the player profits from.
-- **Archmage.** TELEPORT has the mage's rule. HEARTBURST or CHAIN LIGHTNING:
-  the coin's choice is kept when it has a target, swapped when only the
-  other has one, and the cast refused when neither has. SUMMON IMAGE or
-  ELEMENTAL wants a foe within 200 px and picks the ELEMENTAL only when the
-  spare magic is at least the slot's own price (500, so 1000 MP or more),
-  else the IMAGE. A struck archmage bot's summon uses the same rule; a
-  player archmage's Shift stays the Shift key. Two things about these gates,
-  stated plainly:
-  - The chain gate uses the chain's reach by level (200 + 7 px per level).
-    The cast itself uses 200 + half the archmage's Intelligence + 2 px per
-    level for an archmage with a character record, so such a bot can be
-    told "the chain has a target" by the gate and then refused
-    `NO FOE IN RANGE` by the cast. The refusal costs nothing. It is a
-    candidate for a later refinement, not a bug in play.
-  - The chain's reach always covers the burst's, so the "chain chosen, no
-    target in chain reach" case can only fall back to no cast; it can never
-    swap to a burst that has a target. The case is kept because it is the
-    honest reading of the rule.
-- **Cleric.** Slots 2 and 3 cast TURN UNDEAD only with an undead foe inside
-  the turn reach, else they raise (a raise with no corpse is refused for
-  free). A cleric whose hero has under 60 INT cannot cast TURN UNDEAD
-  (`60 INT REQUIRED`, 5 busy), so the gate never picks it for such a hero.
-  Slot 1 is unchanged: HEAL with any friend within 60 px, else the MYSTIC
-  MACE at half mana.
-- **Thief.** Slot 3 tries CHARM OPPONENT only when a foe it can take (never
-  charmed, alive, at or below the thief's level, not a hero a player
-  drives) is inside charm reach, else it taunts. CLOAK and POISON CLOUD are
-  unchanged.
+With the setting on, every special a bot can roll has a rule of its own:
+the condition under which that special pays off, judged by what it does
+and what it costs, never the caster's own danger when a cheaper answer
+exists. A Shift arm is its own special for a bot, with its own rule, and
+the rule picks the arm; the coin is still drawn and then overwritten. The
+rules share one small library (`packs/core/lib/gates.lua`) of predicates
+such as "at least N living foes within R px", "the bot faces the foe" and
+"the foe is within the weapon's flight", and the old game carries the same
+predicates once (`src/bot_gates.h`). Three measures recur:
+
+- "Within a blow" is the engine's melee reach, a gap of at most 5 px
+  between the two bodies (the 6 px weapon box sits 1 px outside the
+  attacker and reaches gaps 1 to 6, and the collision check moves the other
+  body's near edge in by 1 px), the same at every level; a knife thrown
+  from 45 px is not a blow.
+- "The flight" of a fired weapon is how far it goes from this caster
+  toward the foe, measured as the gap between the two bodies. A bot's
+  weapon leaves along the heading of its last step (at spawn that is
+  upward, whatever way the sprite looks), so "faces the foe" means that
+  heading points at it. The weapon's table range gains one step per three
+  levels (a hero's character record adds a few more), a straight shot
+  flies about 1.2 times as many steps of 1.4 times the length, and the
+  first step only turns the weapon. A level-1 rock reaches a 35 px gap on a
+  diagonal and 56 px straight; a fire arrow 88 and 147; a fireball 36 and
+  59; a meteor 56 and 89.
+- "The blast" of a bomb, an exploding bolt or an exploding boulder reaches
+  15 px plus 4 px per level, never under 31 nor over 111; allies in it take
+  half the damage and the caster a quarter, so a blast rule refuses when an
+  ally of the caster stands in it.
+
+Every other distance is the engine's ordinary one, between the bodies'
+top-left corners. A generator (a tent, a tower that makes things) is never
+counted where the rule says "living foe"; WHIRLWIND and HOWL count it,
+because the spin strikes it and the yell stuns it (fix K).
+
+- **Soldier.** CHARGE wants the classic window, a foe one to three squares
+  off, and the soldier's heading pointed at it: the rush runs along that
+  heading, and a soldier that has not stepped yet rushes nowhere. BOOMERANG
+  wants a living foe inside the blade's widest orbit, 17 px plus 6 per
+  level, and no blade of this soldier out. WHIRLWIND wants at least two
+  bodies it can strike inside the spin (32 px plus 2 per level); one in
+  reach is what the free swing hits. DISARM wants a living foe blocking the
+  soldier's front within its 28 px reach that is not above the soldier's
+  level.
+- **Elf.** ROCKS and BOUNCING ROCKS want the elf's nearest living foe faced
+  and inside the volley's flight (the bouncing volley flies half again as
+  far). LOTS OF ROCKS and MEGA ROCKS want the same nearest foe faced and in
+  flight, and at least two living foes inside their longer flights. The
+  classic elf threw at nobody.
+- **Archer.** FIRE ARROWS, the ring, wants at least two living foes inside
+  the arrows' flight, or one the archer does not face. BARRAGE wants the
+  archer's foe, a living one, faced and inside the flight. EXPLODING BOLT
+  wants that foe faced and inside the flight, with no ally of the archer,
+  and not the archer, inside the blast around it.
+- **Mage.** Slot 1 keeps the classic rule: TELEPORT when no foe or more
+  than three foes are within 110 px. The TELEPORT MARKER is no longer a
+  coin: with nobody within 110 px the mage marks where it stands when no
+  marker of its own stands yet, a hero has the 75 INT the cast asks, and
+  half the magic left after the price still covers WARP SPACE, so marking
+  never costs it its fight; from then on its wander teleports go home to
+  the marker. WARP SPACE is a point-blank ring: its fireballs crawl one
+  pixel a tick, so at level 7 with a full pool the ring reaches about 20 px
+  around the mage; it wants at least two living foes inside it, or one at
+  the mage's side that it does not face. FREEZE TIME is worth its 500 magic
+  for the free blows the time stop hands the allies, so it waits for their
+  fight: at least three foes within a blow of allies (the mage itself not
+  counted), or an ally at blows that is under a quarter of its health; how
+  close the foes stand to the mage is not asked, and a mage on another
+  team takes the same cue for its own freeze. ENERGY WAVE wants the mage's
+  nearest living foe within 110 px to be one it faces (the wave runs about
+  that far along the heading, through walls). HEARTBURST wants a foe
+  inside its own reach, 80 px plus 2 per level.
+- **Archmage.** TELEPORT and the MARKER have the mage's rules, with
+  HEARTBURST (80) as the special the halved pool must still cover.
+  HEARTBURST or CHAIN LIGHTNING: the coin's choice is kept when it has a
+  target, swapped when only the other has one, and the cast refused when
+  neither has (the chain gate uses the chain's reach by level, 200 px plus
+  7 per level, so a bot with a character record can be told "the chain has
+  a target" and then refused for nothing by the cast, which uses half its
+  Intelligence instead; a candidate for a later refinement). SUMMON
+  ELEMENTAL wants a living foe within 200 px and spare magic of at least
+  the slot's own 500. SUMMON IMAGE, a phantom with one hit point, is a
+  decoy, so it pays before the blows land: at least two living foes within
+  200 px are hunting the archmage and none is within a blow of it yet (at
+  blows, HEARTBURST is the cheaper answer), its health is above the flee
+  threshold (below it TELEPORT is the answer), no phantom of its own
+  stands, and magic is left after the 500 for a HEARTBURST. MIND CONTROL
+  wants a foe it can take (never charmed, not a hero a player drives, not
+  above the archmage's level) inside its reach, 80 px plus 4 per level,
+  and the slot not resting. A struck archmage bot teleports below its flee
+  threshold as before; otherwise it answers with one HEARTBURST or CHAIN
+  LIGHTNING chosen by the slot-2 rule, never with a summon and never with
+  a second cast (the classic game summoned first and then cast slot 2
+  twice). A player archmage's Shift stays the Shift key.
+- **Cleric.** HEAL wants an ally within 60 px that is below its full
+  health (the classic gate healed any friend and the cast refused). MYSTIC
+  MACE wants no such ally, a living foe within 48 px (the mace orbits on a
+  24 px circle and strikes what it touches), no mace of this cleric out,
+  at least half the pool, and a hero with the 50 INT the cast asks. A
+  shoved cleric heals, never maces. Slots 2 and 3 cast TURN UNDEAD only
+  with an undead foe inside the turn reach and the hero's 60 INT; else
+  RAISE UNDEAD wants the nearest stain within 60 px and a living foe
+  within 130, RAISE GHOST the nearest stain within 30 px and a living foe
+  within 130 (the stain finder itself never looks past about 28 px of
+  centre, so a stain is in practice one at the cleric's feet). RESURRECT
+  wants a friendly stain within 30 px; a foe's stain is RAISE GHOST's job
+  at a third of the price.
+- **Thief.** DROP BOMB wants a living foe inside the bomb's blast around
+  the thief and no ally inside it; never a foe beyond it (the classic gate
+  bombed at a foe 130 px or more away). With New Specials on, MINE instead
+  wants a foe past the blast and within 130 px that is walking at the
+  thief, fewer than three mines down, no ally in the blast, and the 70 to
+  pay it; never the coin. CLOAK wants a living foe within 130 px that is
+  hunting the thief, and no invisibility left. TAUNT wants a living foe
+  inside the taunt's reach and an ally inside it too (foes pulled onto a
+  thief nobody backs is the thief's own danger, bought for 100; a tent
+  cannot follow a taunt, so it is no payoff). CHARM OPPONENT, as before,
+  only a foe it can take inside charm reach. POISON CLOUD wants at least
+  two living foes within a blow of the thief and no cloud of the thief's
+  alive.
+- **Ghost.** SCARE wants a living foe inside the scare radius (50 px plus
+  10 per level, at most 250; the classic gate used 130, which the fright
+  reaches only from level 8), and SCARE not resting.
+- **Druid.** GROW TREE wants the druid's nearest living foe within 60 px
+  faced and not yet within a blow (a foe touching the druid blocks the
+  bolt). SUMMON FAERIE wants a living foe within 130 px and no faerie of
+  the druid's alive. REVEAL is never cast by a bot: it changes a radar
+  only a player sees. PROTECTION wants an ally within 60 px with a living
+  foe at blows with it and no fresh circle (none, or one under 50 hp).
+- **Orc.** HOWL wants a body the yell can stun (a living foe or a
+  generator) inside the yell (160 px plus 20 per level, at most 420), not
+  130, and HOWL not resting. EAT CORPSE wants the orc below 60 percent of
+  its health and a stain under it, whatever the foes are doing (the
+  classic gate asked for a foe within 130 and let the meal refuse).
+- **Barbarian.** HURL BOULDER wants the nearest living foe faced and
+  inside the boulder's flight: eight steps of 2 px per level (at most 15;
+  a hero's steps come from its strength), so a 16 px gap at level 1 and
+  120 px from level 8. EXPLODING BOULDER wants that foe to have a second
+  living foe inside the blast around it, with no ally and not the
+  barbarian inside it.
+- **Fire elemental.** STARBURST, the ring of meteors, wants at least two
+  living foes inside the ring's flight, or one the elemental does not
+  face.
+- **Skeleton.** TUNNEL keeps the classic rule, nobody within 80 px, with
+  the classic count.
+- **Slime.** SPLIT and GROW are unchanged: one body becoming two is the
+  slime's whole game, and GROW refuses for free without room.
+- **The New Specials kits** (faerie, captain, skeleton, elemental, ghost,
+  thief) have their rules described in [new-specials.md](new-specials.md);
+  they are behind that setting, not this one.
 - **Every family.** The slot roll stops at the last named, opened slot (fix
   L), so a level-13 mage can roll HEARTBURST and a level-16 soldier rolls
-  each of its four specials equally.
+  each of its four specials equally. An unaffordable roll still folds to
+  slot 1 and the hit response still asks the slot the bot holds; with a
+  payoff rule on every slot neither habit casts at nothing any more.
 
 ## Charm and seats
 
@@ -207,7 +317,17 @@ The parity goldens are captures from the old game (branch
   higher-level foe lasts 25 ticks). After the FREEZE TIME ruling:
   `9b8d4503` (B: the mage bot's FREEZE TIME waits for the allies' fight),
   with the table mirrors `4d0d441e`, `f9000fb9` and `92015aa8` around it.
-  `92015aa8` is the commit the goldens are captured from.
+  After the bot payoff gates ruling (Q and R): the shared predicates
+  `d179d3ae` (no behaviour), the arenas' table mirror `7bd2d19d`, then one
+  commit per family's rule set, `edfeb3fc` (soldier), `a4677a26` (elf),
+  `c6f93cc9` (archer), `3d8ae98a` (mage), `16abf504` (barbarian),
+  `b63c5a29` (cleric), `62bf0963` (thief), `fbe8d6f2` (ghost), `0a42040a`
+  (druid), `a81dbc46` (orc), `99b873be` (fire elemental), `744a8f32`
+  (archmage) and `b6d05567` (the struck archmage, R); the table mirrors
+  `93b718e8` and `c14bde27` after them; and `734229df`, which gives the
+  ghost's ported gate the current game's 250 px cap on the scare radius.
+  `734229df` is the commit the goldens are captured from: 321 of 321
+  goldens `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -225,6 +345,26 @@ The rows with the setting on, by fix:
 | I | `druid_tree_blocked_fixes_scen99` |
 | B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_freeze_alone_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` |
 | M | `thief_bot_charm_hero_fixes_scen99`, `archmage_bot_mind_control_hero_fixes_scen99` |
+| Q | `archer_bot_bolt_at_blows_fixes_scen99`, `archer_bot_ring_one_foe_fixes_scen99`, `archmage_bot_image_one_foe_fixes_scen99`, `barbarian_bot_boulder_far_fixes_scen99`, `barbarian_bot_explode_lone_fixes_scen99`, `cleric_bot_mace_alone_fixes_scen99`, `cleric_bot_resurrect_foe_stain_fixes_scen99`, `druid_bot_faerie_alone_fixes_scen99`, `druid_bot_protection_idle_fixes_scen99`, `druid_bot_tree_behind_fixes_scen99`, `elemental_bot_starburst_one_foe_fixes_scen99`, `elf_bot_rocks_far_fixes_scen99`, `mage_bot_marker_home_fixes_scen99`, `mage_bot_warp_two_at_blows_fixes_scen99`, `soldier_bot_boomerang_far_fixes_scen99`, `soldier_bot_charge_unaimed_fixes_scen99`, `soldier_bot_disarm_front_fixes_scen99`, `soldier_bot_whirlwind_one_foe_fixes_scen99`, `thief_bot_bomb_ally_fixes_scen99`, `thief_bot_bomb_far_fixes_scen99`, `thief_bot_cloud_alone_fixes_scen99` (21 new arenas, each with its setting-off twin `<arena>_scen99`) |
+| R | `archmage_bot_struck_fixes_scen99` (no setting-off twin: see below) |
+
+The bot payoff gates moved five existing rows with the setting on, each
+recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
+(the raise now waits for a corpse), `thief_bot_charm_hero_fixes_scen99` (with
+no ally the taunt is refused), and three rows whose level-1 soldier bot
+stands in its CHARGE window on tick 0 with no heading and now holds the rush:
+`cleric_turn_no_undead_fixes_scen99`, `thief_charm_nearest_fixes_scen99` and
+`thief_bot_charm_or_taunt_fixes_scen99`. The last also had its arena rebuilt
+(an orc of the thief's inside its blast, seed 27, a 20-tick budget) so that
+its setting-on row reaches the charm rule again rather than ending on a
+tick-1 bomb; its setting-off twin `thief_bot_charm_or_taunt_scen99` was
+recaptured with the new arena, the one setting-off golden this work changed,
+and only because its arena changed. Every other setting-off golden is
+byte-identical. Three rows expected to move did not:
+`archmage_hit_stale_shift_fixes_scen99` never strikes the archmage (its
+summon is the bot's own slot-3 roll), and `mage_bot_freeze_no_foe_fixes_scen99`
+and `mage_bot_heartburst_fixes_scen99` record the same bytes under the new
+mage rules.
 
 Rows deliberately not added:
 
@@ -269,6 +409,31 @@ Rows deliberately not added:
   and a full capture moved no golden. The soft cap above an edge of 12
   (the current game's runaway knee) remains the one unported, unreached
   difference.
+- The bot payoff gates whose rule no arena can show (each has a unit test
+  that reaches it instead): BARRAGE (a bot that walked at its foe is aimed
+  at it, and a second foe makes the ring pay too); ENERGY WAVE (the classic
+  gate casts only with no foe or four or more within 110 px, and four
+  towers around the mage always put one on its heading); MIND CONTROL (the
+  cast already refuses for free before anything happens, so the gate's no
+  changes only the tick); RAISE UNDEAD and RAISE GHOST (without a corpse
+  the raise refuses before anything a recording shows); CLOAK
+  (invisibility is not recorded, and a cloak with no hunter differs only
+  in the random stream); SCARE (with the setting on the cast already
+  refuses with no living foe in the radius); REVEAL (a refused REVEAL
+  changes only the druid's busy time); HOWL (every foe within 130 px is
+  within the yell, so the rule only adds casts at 130 to 180 px, where a
+  bot searches its foe for a tick or two); EAT CORPSE (a parity spawn
+  cannot start hurt, and a tower that hurts it is a foe within 130 px
+  within a few ticks). The second to fourth elf volleys and the New
+  Specials kits have no arena either: the volleys share the first volley's
+  rule, and no parity row plays New Specials.
+- `archmage_bot_struck_scen99`: the struck archmage's arena has no
+  setting-off twin, because the two games' classic hit responses differ.
+  The old game's `walker::special` always answers 0, so after a summon its
+  hit response never returns and its "then leave! :)" second cast never
+  happens, while the current game's classic hit response uses the cast's
+  real answer. No golden reaches that difference; it is recorded in the
+  ledger.
 
 ## Not gated
 
@@ -294,33 +459,47 @@ Three changes in this work apply whatever the setting:
 All four calibration suites were measured on both values of the setting,
 and on both values of New Specials, with their own seeds (42, 1337 and
 2025). Each cell is the crew's survivors at tick 600 for the three seeds.
-The suites' asserting runs (seed 42 against each level's floor) play the
-shipped default, Gameplay Fixes on and New Specials on. No floor was
-lowered. Four levels fell under their floors on the shipped default, all
-because the crew did worse, and each was treated as a balance bug:
-Westlands 11 by a rule added to fix C (a cleric bot never picks a TURN
-UNDEAD its hero lacks the INT for), Long Season 2, 5 and 8 by easing the
-levels themselves, whose orders of battle had been tuned against a crew the
-classic HEAL kept above full health. With the setting off and New Specials
-off, every measured line equals the line measured before the fixes, except
-the three eased Long Season levels, whose classic numbers are the new ones
-below.
+The suites' asserting runs (seed 42 against each level's floor and
+ceiling; every seed on the Tower) play the shipped default, Gameplay Fixes
+on and New Specials on. No floor or ceiling was moved. The tables are
+measured with the bot payoff gates (fixes Q and R) in.
+
+With the setting off and New Specials off, every line equals the line
+measured before the bot payoff gates, and the line measured before the
+fixes except the three eased Long Season levels below. With New Specials
+on and the setting off, lines move: the kits' bot rules (the faerie, the
+captain, the skeleton, the elemental, the ghost's WAIL and PHASE and the
+thief's MINE) are behind New Specials, not this setting.
 
 What moves with the setting on, and why:
 
+- Every bot casts a special only where it pays off (see [Bots](#bots)).
+  The crew's elf, archer and barbarian throw only at a foe they face
+  inside the flight, a crew soldier does not CHARGE without a heading
+  toward its foe, and the crew cleric heals only a hurt ally and swings
+  its mace only with a foe at its orbit. The enemy's bots cast better
+  too: a thief bombs only with the crew inside its blast and lays its
+  mines under a foe walking at it, elves and archers volley only at
+  someone, and orcs howl from the yell's full radius. That the crew takes
+  more from them is the game playing as it should.
+- A gate that refuses a cast also skips the random draw the classic
+  bot's hit response made after it, so the whole random stream of a
+  600-tick battle shifts. On one seed a line can move by several
+  survivors either way without any rule being better or worse for the
+  crew; the twenty-seed means below are what tell a real move from that.
 - The crew cleric, from crew level 4 (Westlands 6 to 26, Long Season 7 to
   19, Tower floors 15 and 20), raises instead of throwing TURN UNDEAD at
-  living foes.
+  living foes, and raises only with a corpse at its feet and a foe to
+  fight.
 - A crew barbarian at crew level 7 to 9 rolls EXPLODING BOULDER half the
   time instead of a third (the slot roll stops at its second slot).
-- Enemy mages and archmages keep the magic they used to waste at nobody,
-  and enemy clerics raise instead of fizzling.
+- Enemy mages and archmages keep the magic they used to waste at nobody.
 - The crew cleric's HEAL stops at full health. The classic heal took a
   lightly scratched crew well over its maximum (a soldier at 367 of 286 on
   Westlands 11, the elf at 197 of 154 on Long Season 8), and that extra
   health was spent in the fight. This is what took the early Long Season
-  levels (2, 5 and 8) under their floors on seed 42, and why those levels
-  were eased; levels 3 and 4 move a little, both ways, for the same reason.
+  levels (2, 5 and 8) under their floors on seed 42 before the bot gates,
+  and why those levels were eased.
 - A soldier bot of level 10 and up that is resisted on DISARM now pays
   75 MP and waits 5 ticks (it paid nothing before the ruling).
 
@@ -330,28 +509,28 @@ What moves with the setting on, and why:
 |---|---|---|---|---|---|
 | 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
 | 2 | 2 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 3 | 2 | 8 8 6 | 8 8 7 | 7 8 7 | 8 8 7 |
-| 4 | 3 | 8 8 8 | 8 8 7 | 8 8 7 | 8 7 7 |
-| 5 | 3 | 8 8 4 | 8 5 5 | 8 8 4 | 8 5 5 |
-| 6 | 4 | 5 8 7 | 5 7 8 | 5 8 7 | 5 7 8 |
-| 7 | 4 | 0 0 0 | 0 1 0 | 0 0 0 | 0 0 0 |
-| 8 | 5 | 0 1 4 | 0 1 4 | 1 1 2 | 2 0 2 |
-| 9 | 6 | 2 0 0 | 2 0 0 | 1 1 2 | 1 1 2 |
-| 10 | 5 | 0 0 0 | 0 0 1 | 0 0 0 | 0 0 0 |
-| 11 | 6 | 7 6 6 | 3 4 4 | 4 3 5 | 6 5 6 |
+| 3 | 2 | 8 8 6 | 7 6 8 | 8 8 6 | 8 6 8 |
+| 4 | 3 | 8 8 8 | 8 8 8 | 7 8 7 | 8 8 8 |
+| 5 | 3 | 8 8 4 | 7 6 5 | 8 8 4 | 7 6 5 |
+| 6 | 4 | 5 8 7 | 8 7 6 | 5 8 7 | 8 7 6 |
+| 7 | 4 | 0 0 0 | 1 0 0 | 0 0 0 | 1 0 0 |
+| 8 | 5 | 0 1 4 | 2 0 6 | 1 1 2 | 3 0 6 |
+| 9 | 6 | 2 0 0 | 8 1 2 | 1 1 2 | 8 7 0 |
+| 10 | 5 | 0 0 0 | 0 1 0 | 1 0 0 | 0 0 0 |
+| 11 | 6 | 7 6 6 | 4 7 5 | 6 5 5 | 4 8 7 |
 | 12 | 6 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
-| 13 | 6 | 2 0 0 | 0 0 0 | 0 0 1 | 0 0 1 |
+| 13 | 6 | 2 0 0 | 0 1 0 | 0 0 1 | 0 0 0 |
 | 14 | 7 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
-| 15 | 7 | 3 3 3 | 3 3 3 | 4 0 2 | 5 0 4 |
-| 16 | 8 | 2 5 3 | 3 5 3 | 3 3 2 | 3 4 3 |
-| 17 | 8 | 5 6 4 | 5 4 6 | 6 6 6 | 5 7 5 |
-| 19 | 6 | 6 7 5 | 6 6 7 | 7 5 7 | 7 5 6 |
-| 20 | 7 | 0 0 0 | 0 1 0 | 0 0 0 | 0 0 0 |
-| 21 | 7 | 8 7 8 | 8 8 5 | 8 8 8 | 8 8 8 |
-| 22 | 8 | 0 2 0 | 0 2 0 | 0 0 0 | 1 0 0 |
-| 23 | 8 | 5 6 6 | 4 7 6 | 6 7 8 | 5 7 6 |
-| 24 | 8 | 1 4 7 | 6 5 4 | 4 6 4 | 6 5 2 |
-| 25 | 9 | 8 8 8 | 6 8 5 | 1 8 7 | 8 3 7 |
+| 15 | 7 | 3 3 3 | 3 3 5 | 4 2 3 | 4 4 2 |
+| 16 | 8 | 2 5 3 | 3 3 4 | 5 2 3 | 2 4 2 |
+| 17 | 8 | 5 6 4 | 6 6 6 | 5 8 8 | 4 6 7 |
+| 19 | 6 | 6 7 5 | 5 6 5 | 5 6 5 | 6 6 6 |
+| 20 | 7 | 0 0 0 | 0 3 6 | 0 0 0 | 5 0 0 |
+| 21 | 7 | 8 7 8 | 8 7 8 | 8 8 7 | 8 7 7 |
+| 22 | 8 | 0 2 0 | 2 0 0 | 0 1 0 | 0 0 0 |
+| 23 | 8 | 5 6 6 | 7 5 4 | 4 5 4 | 4 5 7 |
+| 24 | 8 | 1 4 7 | 6 5 5 | 5 5 1 | 5 4 2 |
+| 25 | 9 | 8 8 8 | 8 7 8 | 4 6 5 | 8 6 4 |
 | 26 | 9 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
 
 **Long Season**
@@ -359,81 +538,96 @@ What moves with the setting on, and why:
 | level | crew | New Specials off: setting off | setting on | New Specials on: setting off | setting on |
 |---|---|---|---|---|---|
 | 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 2 | 1 | 7 7 7 | 7 6 6 | 7 7 7 | 7 6 6 |
-| 3 | 2 | 8 7 8 | 7 7 8 | 8 7 8 | 7 7 8 |
-| 4 | 2 | 4 2 3 | 3 1 5 | 3 2 3 | 3 1 5 |
-| 5 | 3 | 8 8 8 | 7 8 7 | 8 8 8 | 7 8 7 |
-| 6 | 3 | 7 6 4 | 7 6 4 | 7 6 4 | 7 6 4 |
-| 7 | 4 | 8 8 6 | 8 8 6 | 8 8 6 | 8 8 6 |
-| 8 | 4 | 3 7 8 | 5 6 6 | 7 6 7 | 5 8 5 |
-| 9 | 5 | 7 8 7 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 10 | 5 | 6 7 7 | 4 5 6 | 7 7 6 | 5 5 4 |
-| 11 | 5 | 7 7 8 | 8 5 7 | 7 7 4 | 7 5 7 |
-| 12 | 6 | 3 8 8 | 3 8 5 | 3 8 8 | 6 8 6 |
-| 13 | 6 | 5 6 4 | 6 6 6 | 4 6 4 | 6 7 4 |
-| 14 | 7 | 7 7 8 | 7 8 8 | 7 7 8 | 8 8 8 |
+| 2 | 1 | 7 7 7 | 7 8 6 | 7 7 7 | 7 8 6 |
+| 3 | 2 | 8 7 8 | 7 8 8 | 8 7 8 | 7 8 8 |
+| 4 | 2 | 4 2 3 | 2 3 3 | 4 2 3 | 3 3 5 |
+| 5 | 3 | 8 8 8 | 7 8 8 | 8 8 8 | 7 8 8 |
+| 6 | 3 | 7 6 4 | 5 5 3 | 7 6 4 | 5 5 3 |
+| 7 | 4 | 8 8 6 | 5 7 7 | 8 8 6 | 5 7 7 |
+| 8 | 4 | 3 7 8 | 5 3 8 | 3 7 7 | 6 5 5 |
+| 9 | 5 | 7 8 7 | 8 8 8 | 8 8 7 | 8 8 8 |
+| 10 | 5 | 6 7 7 | 6 8 4 | 3 6 5 | 6 8 4 |
+| 11 | 5 | 7 7 8 | 7 7 6 | 7 7 8 | 7 7 6 |
+| 12 | 6 | 3 8 8 | 4 4 6 | 3 8 8 | 4 4 6 |
+| 13 | 6 | 5 6 4 | 7 3 5 | 4 4 2 | 7 5 4 |
+| 14 | 7 | 7 7 8 | 8 8 8 | 7 7 8 | 8 8 8 |
 | 15 | 7 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 16 | 7 | 6 8 6 | 7 7 6 | 6 8 6 | 7 7 6 |
+| 16 | 7 | 6 8 6 | 5 6 7 | 6 8 6 | 5 6 7 |
 | 17 | 8 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 18 | 8 | 0 0 1 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 19 | 8 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-
-**Imaginations** (level 1, crew 1): `6 6 6` in all four columns.
 
 **Tower** (floor, crew)
 
 | floor | crew | New Specials off: setting off | setting on | New Specials on: setting off | setting on |
 |---|---|---|---|---|---|
-| 1 | 1 | 8 8 7 | 8 8 7 | 8 8 7 | 8 8 7 |
-| 5 | 2 | 2 4 8 | 2 6 7 | 1 4 8 | 1 6 7 |
-| 10 | 3 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
-| 15 | 4 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 1 | 1 | 8 8 7 | 5 8 7 | 8 8 7 | 5 8 7 |
+| 5 | 2 | 2 4 8 | 1 3 8 | 1 4 8 | 0 1 8 |
+| 10 | 3 | 0 0 0 | 3 0 0 | 0 0 0 | 3 0 0 |
+| 15 | 4 | 0 0 0 | 0 7 0 | 0 0 0 | 0 0 0 |
 | 20 | 6 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 
-**Levels that fell below their floor on the shipped default, and what was
-done.** Westlands 11 (3 against 4): fix C's INT rule; it now reads `6 5 6`.
-Long Season 2 (5 against 6), 5 (2 against 5) and 8 (2 against 3): the
-levels were eased (The Ferry Right has one brigand fewer on the west
-approach, Two Banners one picket fewer, and The Paymaster Vanishes fields
-its five terrace-2 bruisers at level 1 instead of 2); they now read
-`7 6 6`, `7 8 7` and `5 8 5`. No floor moved. Long Season 2's seeds 1337
-and 2025 now sit exactly on its floor of 6. The easing moved the same
-levels' lines with the setting off too, on both values of New Specials:
-Long Season 2 went from `6 8 8` to `7 7 7`, Long Season 5 from `6 6 7` to
-`8 8 8`, and Long Season 8 from `3 8 5` to `3 7 8` (New Specials off) and
-from `6 8 5` to `7 6 7` (New Specials on). None of them is under its floor.
+**Imaginations** (level 1, crew 1): `6 6 6` in all four columns.
 
-On seed 42, the seed the suites assert, every level of every suite is at
-or above its floor and inside its ceiling with the shipped default. The
-other two seeds are measured, not asserted, and some read outside the
-seed-42 bands, with the shipped default as with the classic game:
-Westlands 5 reads `8 5 5` against its floor 6 and Westlands 25 `8 3 7`
-against its floor 5 (the classic game reads `8 8 4` on Westlands 5 and
-`0 1 4` on Westlands 8, whose ceiling is 2).
+**Levels outside their band on the shipped default, after the bot payoff
+gates (open).** On seed 42 five lines read outside their band: Westlands
+8 reads 3 against its ceiling of 2 and Westlands 9 reads 8 against its
+ceiling of 3 (the crew did better than the level allows), Westlands 23
+reads 4 against its floor of 5, Long Season 7 reads 5 against its floor of
+6, and Tower floor 1 reads 5 against its floor of 6. They are treated as
+balance bugs, as the earlier ones were: no floor or ceiling moves and no
+rule is narrowed to pass them; each is fixed in the game or the level
+before this work merges. Before the bot payoff gates the same lines read
+`2 0 2`, `1 1 2`, `5 7 6`, `8 8 6` and `8 8 7`.
 
-With New Specials off and the setting on, a pair that is measured but not
-asserted, two levels read under their floor on seed 42: Westlands 11
-`3 4 4` against 4 (the INT rule moves that pair's seed 42 from 4 to 3 and
-its seed 1337 from 2 to 4) and Westlands 23 `4 7 6` against 5. Long
-Season 8 read `0 4 7` against 3 on that pair before the level was eased;
-it now reads `5 6 6`. The Westlands 11 move on that pair is recorded, not
-fixed: the same rule takes the shipped default from 3 to 6 there, and a
-second rule for one seed of a pair nobody asserts would be tuning to a
-seed.
+Twenty seeds (42, 1337, 2025 and 1 to 17, measured for this check only)
+show how far each of those five moves on average, the shipped default
+against the same game with every bot rule back at its text before the
+bot gates: Westlands 8 from 2.95 to 2.35 survivors, Westlands 9 from 1.35
+to 1.55, Westlands 23 from 6.20 to 5.80, Long Season 7 from 7.40 to 7.30
+and Tower floor 1 from 7.50 to 7.55. None of them moves by more than 0.6.
+Restoring one family's rules at a time, the soldier's alone brings all
+five back inside their bands on seed 42 (it reads 1, 1, 7, 7 and 8 there),
+while its twenty-seed means stay where they are (Westlands 106.0 against
+106.0 summed over the levels, Long Season 110.8 against 109.9). The lines
+whose twenty-seed mean did fall by about a survivor are Long Season 8
+(6.35 to 5.15; the enemy thief's rules account for most of it), Long Season 12 (6.60 to 5.65), Long Season 10 (5.55 to 5.00) and
+Tower floor 15 (2.20 to 0.95); none of them is under its floor on the
+asserted seeds. Summed over the levels, Westlands rose from 104.8 to
+106.0 mean survivors, Long Season fell from 110.8 to 109.9 and the Tower
+from 12.1 to 11.2.
+
+With New Specials on and the setting off, a pair that is measured but not
+asserted, Westlands 23 reads `4 5 4` against its floor of 5 (it read
+`6 7 8` before the kits' bot rules) and Westlands 25 `4 6 5` (it read
+`1 8 7` before them, already under).
+
+**Before the bot payoff gates: levels that fell below their floor, and
+what was done.** Westlands 11 (3 against 4): fix C's INT rule; it then
+read `6 5 6`. Long Season 2 (5 against 6), 5 (2 against 5) and 8 (2
+against 3): the levels were eased (The Ferry Right has one brigand fewer
+on the west approach, Two Banners one picket fewer, and The Paymaster
+Vanishes fields its five terrace-2 bruisers at level 1 instead of 2); they
+then read `7 6 6`, `7 8 7` and `5 8 5`. No floor moved. The easing moved
+the same levels' lines with the setting off too, on both values of New
+Specials: Long Season 2 went from `6 8 8` to `7 7 7`, Long Season 5 from
+`6 6 7` to `8 8 8`, and Long Season 8 from `3 8 5` to `3 7 8` (New
+Specials off) and from `6 8 5` to `7 6 7` (New Specials on). None of them
+was under its floor. With New Specials off and the setting on, Westlands
+11 read `3 4 4` against its floor of 4 on that unasserted pair; the move
+was recorded, not fixed, because the same rule took the shipped default
+from 3 to 6 there, and a second rule for one seed of a pair nobody
+asserts would be tuning to a seed.
 
 **The other change outside the setting that moves a calibration line.**
-Besides the three eased Long Season levels above, one more line moves with
-the setting off. With New Specials on and this setting off, Westlands
-level 8 reads `1 1 2`
-(seed 42: 1 survivor, the crew dealt 1537 damage) where it read `2 1 2`
-(2293 dealt) before this work. The cause is fix O, METEOR RAIN holding its
-fire over an ally: the same run with only that check taken out of the pack
-reads `2 1 2` again, and every Westlands line then equals the measurement
-from before this work. Every other line of every suite is unchanged with
-the setting off, with New Specials on or off, except the three eased Long
-Season levels. Level 8's floor is 0, so no test moves; other than the
-eased levels, it is the one change outside the setting that a calibration
-suite can see.
+Besides the three eased Long Season levels, and the kits' bot rules
+above, one more line moved with the setting off before the bot gates.
+With New Specials on and this setting off, Westlands level 8 reads
+`1 1 2` (seed 42: 1 survivor, the crew dealt 1537 damage) where it read
+`2 1 2` (2293 dealt) before this work. The cause is fix O, METEOR RAIN
+holding its fire over an ally: the same run with only that check taken
+out of the pack read `2 1 2` again. Level 8's floor is 0, so no test
+moves.
 
 ## The scene tests
 
