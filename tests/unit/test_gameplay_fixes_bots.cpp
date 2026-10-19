@@ -27,6 +27,7 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "bot_gate_fixture.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
@@ -46,100 +47,7 @@
 #include <memory>
 #include <string>
 
-namespace {
-
-int kit_marker_family()
-{
-    return og::families::resolve_family_string_id(Order::FX,
-                                                  "core:kit_marker");
-}
-
-class GameplayFixesBots : public ::testing::Test {
-protected:
-    og::test::ScopedPackStoreState pack_store_restore_;
-    std::unique_ptr<TestGameWorld> tw_;
-    og::test::ScopedHookFailureGuard guard_;
-
-    void SetUp() override
-    {
-        og::test::mount_core_pack();
-        // A test elsewhere in the binary may have reset the mod slots that
-        // hold the kits' families (the KitSkeleton fixture's rule).
-        if (kit_marker_family() != 17)
-            (void)og::resources::refresh_pack_scripts();
-        ASSERT_EQ(17, kit_marker_family());
-        fresh_world();
-    }
-
-    void TearDown() override
-    {
-        EXPECT_EQ(0u, guard_.count()) << guard_.message();
-        tw_.reset();
-    }
-
-    // An open field of grass, 1024 px a side, with nobody on it.
-    void fresh_world()
-    {
-        tw_.reset();
-        tw_ = std::make_unique<TestGameWorld>();
-        GameWorld& w = world();
-        w.resize_grid(64, 64);
-        std::fill_n(w.grid.data.get(),
-                    static_cast<std::size_t>(w.grid.w) * w.grid.h,
-                    static_cast<std::uint8_t>(PIX_GRASS1));
-        w.my_team = 0;
-        w.gameplay_fixes = 0;
-    }
-
-    GameWorld& world() { return tw_->world(); }
-
-    // A bot (ACT_RANDOM, no seat) with `mp` mana and no regeneration.
-    living* add(int family, unsigned char team, short x, short y, int level,
-                float mp = 0.0f)
-    {
-        walker* w = world().add_ob(Order::Living, family);
-        if (w == nullptr)
-            return nullptr;
-        w->set_team_num(team);
-        w->set_real_team_num(255);
-        w->setxy(x, y);
-        w->set_act_type(ACT_RANDOM);
-        w->stats()->set_level(static_cast<short>(level));
-        w->stats()->set_max_hitpoints(400.0f);
-        w->stats()->set_hitpoints(400.0f);
-        w->stats()->set_max_magicpoints(std::max(mp, 1.0f));
-        w->stats()->set_magicpoints(mp);
-        w->stats()->set_magic_per_round(0.0f);
-        w->stats()->set_max_magic_delay(1000000);
-        w->set_busy(0.0f);
-        return dynamic_cast<living*>(w);
-    }
-
-    // The family's bot gate for `slot`, with the setting at `fixes`.
-    bool gate(walker* w, int slot, short fixes)
-    {
-        world().gameplay_fixes = fixes;
-        w->set_current_special(static_cast<char>(slot));
-        return og::test::check_special_ai(*get_family_descriptor(w->family()),
-                                          dynamic_cast<living*>(w));
-    }
-
-    // The body a blow is measured against. The fixture does not promise a
-    // sprite, so the tests set the sizes the sprites really have: the common
-    // fighter is 16 by 16 (pix/footman.json, pix/orc.json, pix/mage.json),
-    // the tower 25 by 29 (pix/towersm1.json).
-    template <class W>
-    static W* body(W* w, short sx, short sy)
-    {
-        if (w != nullptr) {
-            w->set_sizex(sx);
-            w->set_sizey(sy);
-        }
-        return w;
-    }
-};
-
-}  // namespace
+using og::test::bot_gates::GameplayFixesBots;
 
 // ---------------------------------------------------------------------------
 // The mage (fix B)
