@@ -6,18 +6,20 @@
  * (at your option) any later version.
  */
 
-// The mage's and the archmage's bots with the Gameplay Fixes setting.
+// The mage's, the archmage's and the orc's bots with the Gameplay Fixes
+// setting.
 //
 // In the classic game the mage's one bot rule ("cast when no foe is within
 // 110 px, or when more than three are") was written for TELEPORT and applied
 // to every slot, so a mage cast WARP SPACE, FREEZE TIME and ENERGY WAVE at
 // nobody and held them back in a fight. The archmage had no rule at all for
 // its first three slots, and its shift (heartburst or chain lightning, image
-// or elemental) was a coin. With the setting on, each slot asks a question
-// about its own reach (FREEZE TIME about the allies' fight, not the mage's
-// own), and the archmage picks the shift that has a target or that it can
-// pay for. With the setting off every gate answers what it
-// answered before, and the shift is left as the coin set it.
+// or elemental, teleport or marker) was a coin; the orc asked for a foe
+// within 130 px whatever it rolled. With the setting on, every special a bot
+// can roll asks the condition under which it pays off, a Shift arm being a
+// special of its own whose rule writes the Shift after the coin
+// (docs/gameplay-fixes.md, "Bots"). With the setting off every gate answers
+// what it answered before, and the shift is left as the coin set it.
 //
 // The gates are asked directly (og::test::check_special_ai), the way
 // living::check_special asks them after the coin; the hit response and the
@@ -933,4 +935,81 @@ TEST_F(GameplayFixesBots, mind_control_skips_a_seated_hero_with_the_setting_on)
     EXPECT_EQ(255, static_cast<int>(hero->real_team_num()));
     EXPECT_EQ(2, static_cast<int>(npc->team_num())) << "the NPC beside it is taken";
     EXPECT_EQ(0, static_cast<int>(npc->real_team_num()));
+}
+
+// ---------------------------------------------------------------------------
+// The orc
+// ---------------------------------------------------------------------------
+
+// HOWL stuns every body the yell reaches, a tent included (a frozen tent
+// makes nothing): 160 px plus 20 per level, 180 at level 1. With the setting
+// on a bot howls at a target inside the yell; the classic gate asked for a
+// foe within 130 px.
+//
+// RED (the classic gate with the setting on): Value of: gate(orc, 1, 1)
+// Actual: false Expected: true "a tower at 160 px: inside the yell".
+TEST_F(GameplayFixesBots, orc_howl_wants_a_target_inside_the_yell)
+{
+    living* orc = body(add(FAMILY_ORC, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* tower = body(add(FAMILY_TOWER1, 2, 360, 200, 1), 25, 29);  // 160 px
+    ASSERT_TRUE(orc && tower);
+    EXPECT_FALSE(gate(orc, 1, 0)) << "the classic answer: no foe within 130";
+    EXPECT_TRUE(gate(orc, 1, 1)) << "a tower at 160 px: inside the yell";
+
+    tower->setxy(380, 200);  // 180 px: the yell's edge
+    EXPECT_TRUE(gate(orc, 1, 1)) << "180 px: the edge is in";
+    tower->setxy(381, 200);  // 181 px
+    EXPECT_FALSE(gate(orc, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(orc, 1, 1)) << "181 px: outside the yell";
+
+    // A tent is something the yell stops.
+    tower->set_dead(1);
+    walker* tent = body(world().add_ob(Order::Generator, FAMILY_TENT), 16, 16);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(2);
+    tent->setxy(300, 200);  // 100 px
+    orc->set_foe(nullptr);
+    EXPECT_TRUE(gate(orc, 1, 0)) << "the classic answer: the tent at 100 px";
+    orc->set_foe(nullptr);
+    EXPECT_TRUE(gate(orc, 1, 1)) << "a tent at 100 px";
+
+    // HOWL resting holds the slot on both values.
+    orc->set_special_rest_slot(1);
+    orc->set_special_rest_left(10);
+    EXPECT_FALSE(gate(orc, 1, 1)) << "resting";
+}
+
+// EAT CORPSE heals the orc from a stain under it (squared centre distance at
+// most 24) and refuses at full health. With the setting on a bot eats when
+// it is below 60 percent of its health and a stain is under it, whatever
+// the foes are doing; the classic gate asked for a foe within 130 px and
+// let the meal refuse.
+//
+// RED (the classic gate with the setting on): Value of: gate(orc, 2, 1)
+// Actual: false Expected: true "hurt, on a corpse, nobody near".
+TEST_F(GameplayFixesBots, orc_eats_when_hurt_on_a_corpse_whatever_the_foe)
+{
+    living* orc = body(add(FAMILY_ORC, 1, 200, 200, 1, 100.0f), 16, 16);
+    ASSERT_NE(nullptr, orc);
+    walker* stain = body(world().add_fx_ob(Order::Treasure, FAMILY_STAIN), 16, 16);
+    ASSERT_NE(nullptr, stain);
+    stain->setxy(200, 200);
+    orc->stats()->set_hitpoints(200.0f);
+    EXPECT_FALSE(gate(orc, 2, 0)) << "the classic answer: no foe within 130";
+    EXPECT_TRUE(gate(orc, 2, 1)) << "hurt, on a corpse, nobody near";
+
+    orc->stats()->set_hitpoints(240.0f);  // 60 percent exactly
+    EXPECT_FALSE(gate(orc, 2, 1)) << "60 percent is not below it";
+    orc->stats()->set_hitpoints(239.0f);
+    EXPECT_TRUE(gate(orc, 2, 1)) << "just below 60 percent";
+
+    stain->setxy(208, 200);  // 8 px off centre: squared distance 64
+    EXPECT_FALSE(gate(orc, 2, 1)) << "the stain 8 px off centre";
+    stain->setxy(200, 200);
+
+    orc->stats()->set_hitpoints(400.0f);
+    living* foe = body(add(FAMILY_SOLDIER, 2, 260, 200, 1), 16, 16);  // 60 px
+    ASSERT_NE(nullptr, foe);
+    EXPECT_TRUE(gate(orc, 2, 0)) << "the classic answer: a foe within 130";
+    EXPECT_FALSE(gate(orc, 2, 1)) << "full health: nothing to eat for";
 }

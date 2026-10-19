@@ -1430,7 +1430,7 @@ inline constexpr Mutation kMut_family_druid_init = {
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
-    "packs/core/families/living-14-orc.lua", 26,
+    "packs/core/families/living-14-orc.lua", 48,
     "hp = 140",
     "hp = 14000",
     "Cranks ORC descriptor HP x100 "
@@ -4181,7 +4181,7 @@ inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_orc_2_scen99 = {
-    "packs/core/families/living-14-orc.lua", 26,
+    "packs/core/families/living-14-orc.lua", 48,
     "hp = 140",
     "hp = 14000",
     "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -6334,7 +6334,7 @@ inline constexpr FactPredicate kFacts_orc_eat_corpse_scen99[] = {
 };
 
 inline constexpr Mutation kMut_orc_eat_corpse_scen99 = {
-    "packs/core/families/living-14-orc.lua", 72,
+    "packs/core/families/living-14-orc.lua", 94,
     "corpse_heal_per_level = 5",
     "corpse_heal_per_level = 0",
     "Zeroes the per-corpse-level heal. Every other step of eat_corpse still runs (find_nearest_blood, the range gate, do_heal_effects, the notice, corpse:death()) and no RNG draw changes, so the mutated dump is identical except the orc's final hp is exactly 5 lower — the exact orc hp pin flips."
