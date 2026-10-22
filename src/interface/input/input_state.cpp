@@ -46,6 +46,7 @@ void InputState::clear()
             p.held[i] = false;
             p.pressed[i] = false;
         }
+        p.belt_cast = 0;
     }
     quit_requested = false;
     timer_wait_request = kNoTimerWaitRequest;
