@@ -12,8 +12,6 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
-#include <openglad/interface/screen.h>
-#include <openglad/interface/session_state.h>
 
 #include "picker_sdl_defs.h"
 
@@ -37,11 +35,6 @@ std::vector<button>& changelog_buttons()
     return buttons;
 }
 
-void changelog_draw_background(void* /*screen_state*/)
-{
-    og::runtime::current_session->myscreen_->clearbuffer();
-}
-
 }  // namespace
 
 const MenuScreenSpec& changelog_menu_screen_spec()
@@ -55,7 +48,8 @@ const MenuScreenSpec& changelog_menu_screen_spec()
         // No lobby exists yet when the page shows, so there is no remote
         // start to follow (the engine test's allowlist names it).
         .remote_start = RemoteStartScope::None,
-        .draw_background = &changelog_draw_background,
+        // No draw_background yet: the runner skips a null one, and the
+        // page's picture arrives with the page itself.
         .exit_value = MENU_REDRAW,
     };
     return spec;
