@@ -15,11 +15,13 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/fps_overlay.h>
 #include <openglad/interface/hud_counter_box.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/families/family_registry.h>
@@ -258,17 +260,21 @@ static void draw_respawn_countdown(screen* s, walker* control,
 // it, so the cell shortens and then gives up. The block is reserved even for
 // a PREF_RADAR_OFF view, so a seat toggling its radar never moves the cell.
 //
+// New Ability Select's full layout grows the bottom-left box to three belt
+// rows above SC/XP (its top at bm-42, not bm-26), so `box_top` names the
+// box's top edge and the cell rides 8px above it: bm-34 classic, bm-50 then.
+//
 // Answers whether it drew, so the seat's own countdown below can step clear.
 static bool draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
-                                  Sint32 bm)
+                                  Sint32 bm, Sint32 box_top)
 {
     if (s->world_.enemy_freeze <= 0)
         return false;
 
     // First 6px row clear of the notification banner.
     const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
-    const Sint32 row = std::max<Sint32>(bm - 34, banner_bottom);
-    if (row + 6 > bm - 26)
+    const Sint32 row = std::max<Sint32>(box_top - 8, banner_bottom);
+    if (row + 6 > box_top)
     {
         TRACE("hud", "freeze_countdown_suppressed row=%d",
               static_cast<int>(row));
@@ -310,19 +316,21 @@ static bool draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
 // When the frozen-time cell drew this frame it keeps its row (it is the
 // world's clock and the classic one) and this cell takes the row above it,
 // if that row is still clear of the notification banner; otherwise it
-// yields. Too narrow a pane drops the label, then the cell.
+// yields. Too narrow a pane drops the label, then the cell. `box_top` is
+// the frozen-time cell's: the bottom-left box's top edge.
 static void draw_seat_timer(screen* s, const walker& control, Sint32 lm,
-                            Sint32 tm, Sint32 rm, Sint32 bm, bool freeze_drew)
+                            Sint32 tm, Sint32 rm, Sint32 bm, Sint32 box_top,
+                            bool freeze_drew)
 {
     const og::sim::SeatTimer timer = og::sim::seat_timer(s->world_, control);
     if (timer.label == nullptr)
         return;
 
     const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
-    Sint32 row = std::max<Sint32>(bm - 34, banner_bottom);
+    Sint32 row = std::max<Sint32>(box_top - 8, banner_bottom);
     if (freeze_drew)
         row -= 6;
-    if (row < banner_bottom || row + 6 > bm - 26)
+    if (row < banner_bottom || row + 6 > box_top)
     {
         TRACE("hud", "seat_timer_suppressed label=%s row=%d", timer.label,
               static_cast<int>(row));
@@ -721,6 +729,100 @@ static void draw_mode_beacons(screen* s, viewscreen* view,
     }
 }
 
+// New Ability Select's HUD (docs/ability-select-design.md): one row per SPEC
+// key for the layer the seat's PHYSICAL SHIFTER picks (held: SHIFTER + 1/2/3;
+// up: 1/2/3), each "<key> <NAME>" cut by og::ui::belt_hud_line. Not the
+// mirrored shifter_down: under the belt that is the alternate bit of the
+// last cast, not the key.
+//
+// Rows. The compact panel (4 seats; P2/P3 of 3) puts them at bm-24/-16/-8
+// inside the box the score mode already draws (SC/XP are hidden there);
+// the full panel stacks them at bm-40/-32/-24 above SC (bm-8) and XP
+// (bm-16), growing the box's top to bm-42 (which moves the frozen-time and
+// seat-timer cells up to bm-50). Budget: 15 glyphs ("S1 " + 12), 24 in a
+// pane 300px or wider.
+//
+// Fit or yield, the frozen-time cell's rule: a row draws only below the
+// notification banner; while it shares the radar's band (rm-64..rm across
+// bm-48..bm-2) its text stops left of rm-64; belt_hud_line drops to the key
+// label alone ("1", "S1") with fewer than 4 name glyphs left; with no room
+// for even that the row is not drawn (trace belt_row_suppressed). The box
+// shrinks to the rows that drew.
+struct BeltHudRow
+{
+    int key = 0;          // 1..3
+    bool shift = false;   // the SHIFTER layer
+    Sint32 y = 0;
+    std::string text;     // "" when the row yields
+    unsigned char ink = 0;
+};
+
+inline constexpr int kBeltHudChars = 15;
+inline constexpr int kBeltHudWideChars = 24;
+inline constexpr Sint32 kBeltHudWidePane = 300;
+inline constexpr Sint32 kBeltHudBoxRight = 98;
+inline constexpr Sint32 kBeltHudWideBoxRight = 150;
+// The bottom-left box's top edge: classic (and compact belt) / full belt.
+inline constexpr Sint32 kHudBoxTop = 26;
+inline constexpr Sint32 kBeltHudFullBoxTop = 42;
+
+static std::array<BeltHudRow, 3> plan_belt_rows(screen* s, walker& control,
+                                                int players, bool compact,
+                                                Sint32 lm, Sint32 tm,
+                                                Sint32 rm, Sint32 bm,
+                                                unsigned char text_color)
+{
+    namespace belt = og::sim::belt;
+    const FamilyDescriptor* const fd = get_family_descriptor(
+        static_cast<int>(control.family()));
+    const belt::Layout layout =
+        belt::resolve(fd, control.stats()->level(), s->world_.new_specials,
+                      belt::bytes_for(control));
+    const bool shift = isPlayerHoldingKey(players, KEY_SHIFTER);
+
+    const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
+    const Sint32 first_row = compact ? bm - 24 : bm - 40;
+    const int budget = (!compact && rm - lm >= kBeltHudWidePane)
+        ? kBeltHudWideChars
+        : kBeltHudChars;
+    const Sint32 x = lm + 2;
+
+    std::array<BeltHudRow, 3> rows;
+    for (int i = 0; i < 3; ++i)
+    {
+        BeltHudRow& row = rows[static_cast<std::size_t>(i)];
+        row.key = i + 1;
+        row.shift = shift;
+        row.y = first_row + 8 * i;
+        if (row.y < banner_bottom)
+        {
+            TRACE("hud", "belt_row_suppressed key=%d", row.key);
+            continue;
+        }
+        const Sint32 right_limit = (row.y + 6 > bm - 48) ? (rm - 64) : rm;
+        const int width = std::min<int>(
+            budget, std::max<int>(0, static_cast<int>((right_limit - x) / 6)));
+        const belt::Resolved& slot =
+            layout[static_cast<std::size_t>(belt::slot_index(row.key, shift))];
+        row.text = og::ui::belt_hud_line(slot, row.key, shift, width);
+        if (row.text.empty())
+        {
+            TRACE("hud", "belt_row_suppressed key=%d", row.key);
+            continue;
+        }
+        if (control.specials_disabled() ||
+            slot.state != belt::SlotState::Castable || !slot.entry)
+            row.ink = static_cast<unsigned char>(GREY);
+        else if (control.stats()->magicpoints() >=
+                 og::sim::cast_cost(control, slot.entry->slot,
+                                    slot.entry->alt))
+            row.ink = text_color;
+        else
+            row.ink = static_cast<unsigned char>(RED);
+    }
+    return rows;
+}
+
 short new_score_panel(screen* s, short /*do_it*/)
 {
 #define L_D(x) x*8
@@ -906,8 +1008,20 @@ short new_score_panel(screen* s, short /*do_it*/)
             // The frozen-time cell is part of the classic HUD block: it rides
             // the same left column, so a view that draws no HUD (a spectator
             // camera, a corpse waiting to respawn) must not draw it either.
-            const bool freeze_drew = draw_freeze_countdown(s, lm, tm, rm, bm);
-            draw_seat_timer(s, *control, lm, tm, rm, bm, freeze_drew);
+            // Deliberately keyed on numviews (humans), never on the camera-
+            // inclusive layout_pane_count() — docs/camera-views-design.md
+            // constraint 7 (a docked camera must not densify seat HUDs).
+            const bool compact_score_panel =
+                s->numviews > 2 && !(s->numviews == 3 && players == 0);
+            // New Ability Select draws the belt rows (plan_belt_rows); in
+            // the full panel they grow the bottom-left box up to bm-42.
+            const bool belt_hud = og::input::ability_select_on();
+            const Sint32 box_top = (belt_hud && !compact_score_panel)
+                ? bm - kBeltHudFullBoxTop
+                : bm - kHudBoxTop;
+            const bool freeze_drew =
+                draw_freeze_countdown(s, lm, tm, rm, bm, box_top);
+            draw_seat_timer(s, *control, lm, tm, rm, bm, box_top, freeze_drew);
 
             // Get the button-drawing info ..
             draw_button = s->viewob[players]->prefs[PREF_OVERLAY];
@@ -993,11 +1107,6 @@ short new_score_panel(screen* s, short /*do_it*/)
             Sint32 score_bottom = bm;
 
             int special_y = score_bottom + special_offset;
-            // Deliberately keyed on numviews (humans), never on the camera-
-            // inclusive layout_pane_count() — docs/camera-views-design.md
-            // constraint 7 (a docked camera must not densify seat HUDs).
-            const bool compact_score_panel =
-                s->numviews > 2 && !(s->numviews == 3 && players == 0);
             TRACE("hud", "panel_density view=%d compact=%d",
                   players, compact_score_panel ? 1 : 0);
             // Don't show score and XP (clutter) when in a small viewport
@@ -1007,8 +1116,44 @@ short new_score_panel(screen* s, short /*do_it*/)
             const bool show_score =
                 s->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON;
 
+            std::array<BeltHudRow, 3> belt_rows{};
+            if (belt_hud)
+                belt_rows = plan_belt_rows(s, *control, players,
+                                           compact_score_panel, lm, tm, rm,
+                                           bm, static_cast<unsigned char>(text_color));
+            // The rows that drew, top and bottom (no rows: 0/0).
+            Sint32 belt_top = 0;
+            Sint32 belt_bottom = 0;
+            for (const BeltHudRow& row : belt_rows)
+            {
+                if (row.text.empty())
+                    continue;
+                if (belt_top == 0)
+                    belt_top = row.y;
+                belt_bottom = row.y + 6;
+            }
+
             // Draw box, if needed
-            if (draw_button)
+            if (draw_button && belt_hud)
+            {
+                // The belt box: the rows that drew, down to the score box's
+                // bottom when SC/XP (or the compact panel's rows) sit there.
+                const Sint32 box_right =
+                    lm + ((!compact_score_panel && rm - lm >= kBeltHudWidePane)
+                              ? kBeltHudWideBoxRight
+                              : kBeltHudBoxRight);
+                Sint32 top = belt_top - 2;
+                Sint32 bottom = belt_bottom;
+                if (show_score || compact_score_panel)
+                {
+                    bottom = score_bottom - 2;
+                    if (belt_top == 0 || score_bottom - 26 < top)
+                        top = score_bottom - 26;
+                }
+                if (belt_top != 0 || show_score)
+                    s->draw_button(lm+1, top, box_right, bottom, 1, 1);
+            }
+            else if (draw_button)
             {
                 if (show_score)
                 {
@@ -1060,32 +1205,47 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
             }
 
-            // Currently-select special
-            // Alternate special name (if not "NONE")
-            // (New Specials: the names as this session's setting shows them.)
-            const FamilyDescriptor* spc_fd = get_family_descriptor(fam);
-            const char* spc_name = og::sim::special_name(spc_fd, spc, s->world_.new_specials);
-            const char* spc_alternate = og::sim::alternate_name(spc_fd, spc, s->world_.new_specials);
-            if (control->shifter_down() &&
-                std::strcmp(spc_alternate, kSpecialNameNone) != 0)
-                message = std::format("SPC: {}", spc_alternate);
-            else
-                message = std::format("SPC: {}", spc_name);
-            TRACE("hud", "spc_row fam=%d text=%s", fam, message.c_str());
-
-            // Disabled-special signifier: a walker whose specials are
-            // switched off (the level's NPC flag) can NEVER fire the
-            // listed special, no matter its MP — grey the line out so it
-            // reads as unavailable rather than merely unaffordable (RED).
-            if (control->specials_disabled())
+            if (belt_hud)
             {
-                mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
-                TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
+                for (const BeltHudRow& row : belt_rows)
+                {
+                    if (row.text.empty())
+                        continue;
+                    mytext.write_xy(lm+2, row.y, row.text.c_str(), row.ink,
+                                    static_cast<short>(1));
+                    TRACE("hud", "belt_row key=%d shift=%d text=%s ink=%d",
+                          row.key, row.shift ? 1 : 0, row.text.c_str(), static_cast<int>(row.ink));
+                }
             }
-            else if (control->stats()->magicpoints() >= og::sim::cast_cost(*control, spc, control->shifter_down() != 0))
-                mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
             else
-                mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
+            {
+                // Currently-select special
+                // Alternate special name (if not "NONE")
+                // (New Specials: the names as this session's setting shows them.)
+                const FamilyDescriptor* spc_fd = get_family_descriptor(fam);
+                const char* spc_name = og::sim::special_name(spc_fd, spc, s->world_.new_specials);
+                const char* spc_alternate = og::sim::alternate_name(spc_fd, spc, s->world_.new_specials);
+                if (control->shifter_down() &&
+                    std::strcmp(spc_alternate, kSpecialNameNone) != 0)
+                    message = std::format("SPC: {}", spc_alternate);
+                else
+                    message = std::format("SPC: {}", spc_name);
+                TRACE("hud", "spc_row fam=%d text=%s", fam, message.c_str());
+
+                // Disabled-special signifier: a walker whose specials are
+                // switched off (the level's NPC flag) can NEVER fire the
+                // listed special, no matter its MP — grey the line out so it
+                // reads as unavailable rather than merely unaffordable (RED).
+                if (control->specials_disabled())
+                {
+                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
+                    TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
+                }
+                else if (control->stats()->magicpoints() >= og::sim::cast_cost(*control, spc, control->shifter_down() != 0))
+                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(text_color), static_cast<short>(1));
+                else
+                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
+            }
 
             // Number of allies, upper right
             if (counter_box.has_value())
