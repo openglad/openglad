@@ -35,6 +35,7 @@
 #include <openglad/core/util.h>
 #include <openglad/core/family_presentation.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/changelog_screen.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_selection.h>
@@ -1943,6 +1944,7 @@ void picker_main(Sint32 argc, char  **argv)
 	// Get main dir ..
 	//strcpy(main_dir, "");
     picker_initialize_shared_menu_state();
+    picker_show_pending_changelog();
     // Load the current saved game, if it exists .. (save0.gtl)
     picker_load_default_save_if_present();
     SdlPickerClient client;
@@ -4066,6 +4068,7 @@ void picker_init()
     Log("picker_init: Initializing picker\n");
 
     picker_initialize_shared_menu_state();
+    picker_show_pending_changelog();
     // Load the current saved game, if it exists
     picker_load_default_save_if_present();
 
