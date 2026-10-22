@@ -4032,6 +4032,21 @@ TEST_F(GladHud, shift_held_shows_the_shift_layer)
     EXPECT_TRUE(trace_contains(
         "hud", belt_row_trace(3, true, "S3 HEARTBURST", DARK_BLUE).c_str()));
     EXPECT_FALSE(trace_contains("hud", "belt_row key=1 shift=0"));
+
+    // A 320-px pane's box is lm+150 wide, room for the 24-glyph rows: its
+    // top bevel (bm-42) reaches past lm+98 and ends at lm+150 (the radar
+    // block starts at rm-64 = lm+256, so lm+152 is clear).
+    //
+    // RED: kBeltHudWideBoxRight 150 -> 98 (the 18-glyph row runs past the
+    // box's right bevel).
+    const viewscreen& v = *scene.s->viewob[0];
+    const auto frame = scene.draw();
+    EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 42) * 320 +
+                                                v.xloc + 140)])
+        << "the box reaches past the 24-glyph row";
+    EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 42) * 320 +
+                                                v.xloc + 152)])
+        << "and ends at lm+150";
 }
 
 // PREF_VIEW_3: a one-seat pane 80 scanlines tall, where every belt row
@@ -4039,7 +4054,8 @@ TEST_F(GladHud, shift_held_shows_the_shift_layer)
 // each row says it yielded.
 //
 // RED: the banner test dropped from plan_belt_rows (rows draw on the feed
-// band and the suppression traces vanish).
+// band and the suppression traces vanish); the box's no-row arm
+// (belt_top == 0 -> top = bm-26) dropped (the score box loses its top).
 TEST_F(GladHud, belt_rows_in_an_80_scanline_pane_yield_to_the_feed)
 {
     ScopedAbilitySelect on(true);
@@ -4057,6 +4073,19 @@ TEST_F(GladHud, belt_rows_in_an_80_scanline_pane_yield_to_the_feed)
     EXPECT_EQ(0, frame_ink(frame, v.xloc, v.yloc + 30, v.endx,
                            v.yloc + 30 + MAX_MESSAGES * 6))
         << "nothing on the feed band";
+
+    // No row drew, but the score shows: the box still stands at bm-26..bm-2
+    // around SC/XP, with nothing at the full panel's bm-42.
+    v.prefs[PREF_SCORE] = PREF_SCORE_ON;
+    const auto scored = scene.draw();
+    v.prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    EXPECT_FALSE(trace_contains("hud", "belt_row key="));
+    EXPECT_NE(0, scored[static_cast<std::size_t>((v.endy - 26) * 320 +
+                                                 v.xloc + 50)])
+        << "the score box's top is bm-26";
+    EXPECT_EQ(0, scored[static_cast<std::size_t>((v.endy - 27) * 320 +
+                                                 v.xloc + 50)])
+        << "nothing above it";
     v.prefs[PREF_VIEW] = PREF_VIEW_FULL;
     v.resize(static_cast<char>(PREF_VIEW_FULL));
 }

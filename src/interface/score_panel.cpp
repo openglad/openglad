@@ -1147,7 +1147,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 if (show_score || compact_score_panel)
                 {
                     bottom = score_bottom - 2;
-                    if (belt_top == 0 || score_bottom - 26 < top)
+                    if (belt_top == 0)
                         top = score_bottom - 26;
                 }
                 if (belt_top != 0 || show_score)
