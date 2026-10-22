@@ -907,6 +907,7 @@ og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_device_seats.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_input_mappings.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_player_hud_settings.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_belt_input.cpp
 )
 
 og_add_unit_group(og_unit_sim FILES
