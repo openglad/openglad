@@ -8,6 +8,8 @@
 #include <openglad/gameplay/families/belt.h>
 
 #include <openglad/gameplay/families/specials_view.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -200,6 +202,11 @@ int slot_index(int key, bool shift) noexcept
 Bytes bytes_for(const Bytes* stored) noexcept
 {
     return stored != nullptr ? *stored : default_bytes();
+}
+
+Bytes bytes_for(const walker& w) noexcept
+{
+    return bytes_for(w.myguy != nullptr ? &w.myguy->belt : nullptr);
 }
 
 Refusal validate_cast(const FamilyDescriptor* fd, int level,
