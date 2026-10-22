@@ -47,6 +47,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/screen.h>
+#include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <openglad/core/util.h>
@@ -10906,12 +10907,21 @@ TEST(GameLoop, mirror_follows_a_possession)
     EXPECT_TRUE(mirror_ghost->hidden()) << "the ghost rides unseen";
     EXPECT_EQ(orc_id, mirror_ghost->possess_link());
 
+    // New Ability Select on (the shipped default): the belt row reads the
+    // body's own class default (a possessed host has no guy of its own).
     trace_clear();
     new_score_panel(s, 1);
-    const std::string orc_row =
-        "spc_row fam=" + std::to_string(FAMILY_ORC) + " text=SPC: HOWL";
-    EXPECT_TRUE(trace_contains("hud", orc_row.c_str()))
-        << "the HUD names the body's own special";
+    EXPECT_TRUE(trace_contains("hud", "belt_row key=1 shift=0 text=1 HOWL "))
+        << "the HUD names the body's own special on key 1";
+    {
+        ScopedAbilitySelect off;  // the classic SPC row
+        trace_clear();
+        new_score_panel(s, 1);
+        const std::string orc_row =
+            "spc_row fam=" + std::to_string(FAMILY_ORC) + " text=SPC: HOWL";
+        EXPECT_TRUE(trace_contains("hud", orc_row.c_str()))
+            << "the HUD names the body's own special";
+    }
 
     drive_tick(make_switch_char_input(0u));
     for (int t = 0; t < 3 && s->viewob[0]->control != nullptr &&

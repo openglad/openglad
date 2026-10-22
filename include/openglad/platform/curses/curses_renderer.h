@@ -45,6 +45,11 @@ public:
     void draw(ITerminal& term, const GameWorld& world, std::uint32_t followed_id,
               bool following = false);
 
+    // New Ability Select: which row of the SPEC keys the status line names,
+    // the SHIFTER row (S1..S3) while the player holds SHIFTER. The caller
+    // sets it from its held keys each frame; false shows keys 1..3.
+    void set_shift_layer(bool held) { shift_layer_ = held; }
+
     // Convert an entity pixel position to a tile cell (GRID_SIZE == 16).
     static void world_to_tile(int xpos, int ypos, int& tile_x, int& tile_y);
 
@@ -69,6 +74,7 @@ private:
 
     Options opt_;
     std::deque<std::string> log_;
+    bool shift_layer_ = false;
 };
 
 } // namespace og::curses

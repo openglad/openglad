@@ -22,6 +22,9 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/video_sdl.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
+#include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <array>
@@ -29,6 +32,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <system_error>
 #include <memory>
 #include <string>
@@ -640,6 +644,9 @@ TEST_F(GladHud, score_panel_wrappers_life_modes_and_the_score_row_are_distinct)
 
 TEST_F(GladHud, quarter_screen_special_is_always_visible)
 {
+    // The classic HUD (SPC row, cells at bm-34); the New Ability Select
+    // twins are the belt_rows_* tests at the end of this file.
+    ScopedAbilitySelect off;
     screen* const s = og::runtime::current_session->myscreen_;
 
     struct ViewSetRestore
@@ -916,6 +923,9 @@ TEST_F(GladHud, follow_caption_draws_and_ai_target_keeps_hud_dark)
 
 TEST_F(GladHud, score_panel_sanitizes_mirrored_identity_and_special_metadata)
 {
+    // The classic HUD (SPC row, cells at bm-34); the New Ability Select
+    // twins are the belt_rows_* tests at the end of this file.
+    ScopedAbilitySelect off;
     screen* const s = og::runtime::current_session->myscreen_;
     viewscreen* const v = s->viewob[0].get();
     ASSERT_NE(nullptr, v);
@@ -1691,6 +1701,9 @@ TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
 
 TEST_F(GladHud, score_panel_greys_special_line_when_specials_disabled)
 {
+    // The classic HUD (SPC row, cells at bm-34); the New Ability Select
+    // twins are the belt_rows_* tests at the end of this file.
+    ScopedAbilitySelect off;
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
     ASSERT_TRUE(v != nullptr);
@@ -2425,6 +2438,9 @@ TEST_F(GladHud, fps_overlay_clears_extended_foes_counter)
 // top-left column and its bottom-left score box both leave free.
 TEST_F(GladHud, freeze_countdown_cell_draws_from_enemy_freeze)
 {
+    // The classic HUD (SPC row, cells at bm-34); the New Ability Select
+    // twins are the belt_rows_* tests at the end of this file.
+    ScopedAbilitySelect off;
     HudObListSwap swap;
     screen* const s = og::runtime::current_session->myscreen_;
     viewscreen* const v = s->viewob[0].get();
@@ -2652,6 +2668,9 @@ void stage_possession(walker& w, std::int16_t ticks)
 // row=<bm-60>.
 TEST_F(GladHud, seat_timer_cell_draws_in_the_freeze_cells_manner)
 {
+    // The classic HUD (SPC row, cells at bm-34); the New Ability Select
+    // twins are the belt_rows_* tests at the end of this file.
+    ScopedAbilitySelect off;
     HudObListSwap swap;
     screen* const s = og::runtime::current_session->myscreen_;
     viewscreen* const v = s->viewob[0].get();
@@ -2744,6 +2763,9 @@ TEST_F(GladHud, seat_timer_cell_draws_in_the_freeze_cells_manner)
 // the freeze's own row and the trace reads row=<bm-34> for the seat.
 TEST_F(GladHud, seat_timer_cell_steps_above_a_running_freeze)
 {
+    // The classic HUD (SPC row, cells at bm-34); the New Ability Select
+    // twins are the belt_rows_* tests at the end of this file.
+    ScopedAbilitySelect off;
     HudObListSwap swap;
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(s->viewob[0] != nullptr);
@@ -3579,6 +3601,9 @@ TEST_F(GladHud, hud_family_word_is_the_registry_name_for_a_pack_family_past_slot
 // SPC: NONE.
 TEST_F(GladHud, hud_special_row_names_the_pack_familys_own_special)
 {
+    // The classic HUD (SPC row, cells at bm-34); the New Ability Select
+    // twins are the belt_rows_* tests at the end of this file.
+    ScopedAbilitySelect off;
     HudPackFamilyGuard pack_guard;
     ASSERT_EQ(1, install_hexknight_pack());
     ASSERT_EQ(NUM_FAMILIES, og::families::resolve_family_string_id(
@@ -3650,4 +3675,494 @@ TEST_F(GladHud, hud_special_row_names_the_pack_familys_own_special)
     spc_row_for(127, 2, 0);
     EXPECT_TRUE(trace_contains("hud", "spc_row fam=127 text=SPC: NONE"))
         << "an unregistered family names no special";
+}
+
+// ---------------------------------------------------------------------------
+// New Ability Select's belt rows (score_panel.cpp plan_belt_rows): with the
+// setting on, the HUD names what each SPEC key casts, three rows for the
+// layer the seat's physical SHIFTER picks, "1 TELEPORT" / "S1 TELEPORT
+// MARKER", cut by og::ui::belt_hud_line. The "belt_row" trace carries each
+// drawn row's exact text and ink; "belt_row_suppressed" each row that
+// yields. The classic SPC row's pins above run with the setting off
+// (ScopedAbilitySelect); these run with it on.
+
+namespace {
+
+// SHIFTER held for `seat` through the touch seam isPlayerHoldingKey ORs in
+// (the web overlay's): no SDL key state needed.
+struct ShifterHeld
+{
+    int seat;
+    bool saved;
+    explicit ShifterHeld(int s, bool held = true)
+        : seat(s),
+          saved(input_hardware_state().touch_keystate[s][KEY_SHIFTER])
+    {
+        input_hardware_state().touch_keystate[seat][KEY_SHIFTER] = held;
+    }
+    ~ShifterHeld()
+    {
+        input_hardware_state().touch_keystate[seat][KEY_SHIFTER] = saved;
+    }
+};
+
+// A guy-owned hero of `family` at `level` with MP to spare, claimed by the
+// seat `user`.
+std::unique_ptr<walker> make_belt_hero(unsigned char family, short level,
+                                       signed char user = 0)
+{
+    guy g(family);
+    g.teamnum = 0;
+    g.upgrade_to_level(level, true);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
+    if (!w)
+        return nullptr;
+    w->set_team_num(0);
+    w->set_dead(0);
+    w->set_user(user);
+    w->setxy(100, 100);
+    w->stats()->set_max_magicpoints(1000.0f);
+    w->stats()->set_magicpoints(1000.0f);
+    return w;
+}
+
+std::string belt_row_trace(int key, bool shift, const std::string& text,
+                           unsigned char ink)
+{
+    return std::format("belt_row key={} shift={} text={} ink={}", key,
+                       shift ? 1 : 0, text, static_cast<int>(ink));
+}
+
+// Non-black pixels of the frame in [x0, x1) x [y0, y1).
+int frame_ink(const std::array<unsigned char, 64000>& frame, int x0, int y0,
+              int x1, int y1)
+{
+    int ink = 0;
+    for (int y = std::max(0, y0); y < std::min(200, y1); ++y)
+        for (int x = std::max(0, x0); x < std::min(320, x1); ++x)
+            ink += frame[static_cast<std::size_t>(y * 320 + x)] != 0;
+    return ink;
+}
+
+// The scene the belt tests share: `seats` views (ready_for_battle), each
+// watching its own hero, HUD prefs pinned. Destructors restore the world
+// and the view set.
+struct BeltHudScene
+{
+    screen* s;
+    HudObListSwap swap;
+    FreezeGuard freeze_guard;
+    NewSpecialsGuard specials_guard;
+    ViewCountGuard view_count_guard;
+    std::vector<walker*> heroes;
+
+    BeltHudScene(int seats, unsigned char family, short level)
+        : s(og::runtime::current_session->myscreen_),
+          freeze_guard(s->world()),
+          specials_guard(s->world()),
+          view_count_guard(*s)
+    {
+        s->ready_for_battle(static_cast<short>(seats));
+        s->world().enemy_freeze = 0;
+        s->world().new_specials = 1;
+        for (int i = 0; i < s->numviews; ++i)
+        {
+            auto hero = make_belt_hero(family, level,
+                                       static_cast<signed char>(i));
+            heroes.push_back(hero.get());
+            s->world().oblist.push_back(std::move(hero));
+            viewscreen& view = *s->viewob[i];
+            view.control = heroes.back();
+            view.prefs[PREF_VIEW] = PREF_VIEW_FULL;
+            view.resize(static_cast<char>(PREF_VIEW_FULL));
+            view.prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+            view.prefs[PREF_LIFE] = PREF_LIFE_OFF;
+            view.prefs[PREF_SCORE] = PREF_SCORE_OFF;
+            view.prefs[PREF_FOES] = PREF_FOES_OFF;
+        }
+    }
+
+    ~BeltHudScene()
+    {
+        for (int i = 0; i < s->numviews; ++i)
+            if (s->viewob[i] != nullptr)
+                s->viewob[i]->control = nullptr;
+    }
+
+    std::array<unsigned char, 64000> draw()
+    {
+        trace_clear();
+        s->clearbuffer();
+        EXPECT_EQ(1, (int)new_score_panel(s, 1));
+        return capture_rendered_frame(*s);
+    }
+};
+
+} // namespace
+
+// Two seats: each pane is a full panel, so the three rows stack at
+// bm-40/-32/-24 above SC (bm-8) and XP (bm-16); the box grows to bm-42 (down
+// to bm-2 with the score shown, to the last row without it), and the
+// frozen-time and seat-timer cells move up from bm-34 to bm-50.
+//
+// RED: plan_belt_rows' full-panel first row bm-40 -> bm-24 (the rows land on
+// SC/XP and the row traces' pixels move); the cells' box_top left at bm-26
+// (the freeze trace reads row=<bm-34>).
+TEST_F(GladHud, belt_rows_full_two_seats_box_bm_42_and_timer_cells_at_bm_50)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(2, FAMILY_MAGE, 7);
+    screen* const s = scene.s;
+    ASSERT_EQ(2, static_cast<int>(s->numviews));
+    s->viewob[0]->prefs[PREF_SCORE] = PREF_SCORE_ON;
+
+    const auto frame = scene.draw();
+    EXPECT_FALSE(trace_contains("hud", "spc_row"))
+        << "the classic SPC row is the setting-off HUD";
+    for (int i = 0; i < 2; ++i)
+    {
+        const viewscreen& v = *s->viewob[i];
+        const int lm = v.xloc;
+        const int bm = v.endy;
+        ASSERT_GE(v.endy - v.yloc, 150) << "a two-seat pane is a tall one";
+        const char* const texts[3] = {"1 TELEPORT", "2 WARP SPACE",
+                                      "3 FREEZE TIME"};
+        for (int k = 1; k <= 3; ++k)
+        {
+            const std::string text = texts[k - 1];
+            EXPECT_TRUE(trace_contains(
+                "hud", belt_row_trace(k, false, text, DARK_BLUE).c_str()))
+                << "seat " << i << " key " << k;
+            const int row = bm - 40 + 8 * (k - 1);
+            EXPECT_GT(frame_ink(frame, lm + 2, row,
+                                lm + 2 + 6 * static_cast<int>(text.size()),
+                                row + 6),
+                      0)
+                << "seat " << i << ": key " << k << " paints at bm-"
+                << bm - row;
+        }
+        // The box's top bevel is the bm-42 scanline, nothing above it.
+        EXPECT_NE(0, frame[static_cast<std::size_t>((bm - 42) * 320 + lm + 50)])
+            << "seat " << i << ": the box top is bm-42";
+        EXPECT_EQ(0, frame[static_cast<std::size_t>((bm - 43) * 320 + lm + 50)])
+            << "seat " << i << ": nothing above the box";
+    }
+    // Seat 0 shows its score: the box runs on down to bm-2 around SC/XP.
+    {
+        const viewscreen& v = *s->viewob[0];
+        EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 2) * 320 +
+                                                    v.xloc + 50)]);
+        EXPECT_GT(frame_ink(frame, v.xloc + 2, v.endy - 8, v.xloc + 20,
+                            v.endy - 2),
+                  0)
+            << "SC keeps its bm-8 row";
+    }
+    // Seat 1 hides it: the box ends under the last row (bm-18).
+    {
+        const viewscreen& v = *s->viewob[1];
+        EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 18) * 320 +
+                                                    v.xloc + 50)]);
+        EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 10) * 320 +
+                                                    v.xloc + 50)]);
+    }
+
+    // The cells: the freeze at bm-50, the seat's clock one row above it,
+    // and at bm-50 itself with no freeze running.
+    const int bm = s->viewob[0]->endy;
+    s->world().enemy_freeze = 30;
+    stage_possession(*scene.heroes[0], 300);
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", ("freeze_countdown left=30 secs=3 row=" +
+                std::to_string(bm - 50)).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", ("seat_timer label=POSSESS ticks=300 secs=25 row=" +
+                std::to_string(bm - 56)).c_str()));
+    s->world().enemy_freeze = 0;
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", ("seat_timer label=POSSESS ticks=300 secs=25 row=" +
+                std::to_string(bm - 50)).c_str()));
+}
+
+// Four seats: compact panels, the rows at bm-24/-16/-8 inside the box the
+// score mode draws (bm-26..bm-2, SC/XP hidden), 15 glyphs each: on the
+// SHIFTER row the Archmage's "S3 SUMMON ELEMENTAL" is cut to
+// "S3 SUMMON ELEME" (12 name glyphs). The frozen-time cell keeps bm-34.
+//
+// RED: kBeltHudChars 15 -> 14 (the cut texts change); the compact first row
+// bm-24 -> bm-40 (no pixels at bm-24, the box top moves).
+TEST_F(GladHud, belt_rows_compact_four_seats_three_rows_fifteen_glyphs)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(4, FAMILY_ARCHMAGE, 12);
+    screen* const s = scene.s;
+    ASSERT_EQ(4, static_cast<int>(s->numviews));
+
+    auto frame = scene.draw();
+    const char* const plain[3] = {"1 TELEPORT", "2 HEARTBURST",
+                                  "3 SUMMON IMAGE"};
+    for (int i = 0; i < 4; ++i)
+    {
+        const viewscreen& v = *s->viewob[i];
+        for (int k = 1; k <= 3; ++k)
+        {
+            EXPECT_TRUE(trace_contains(
+                "hud", belt_row_trace(k, false, plain[k - 1], DARK_BLUE)
+                           .c_str()))
+                << "seat " << i << " key " << k;
+            const int row = v.endy - 24 + 8 * (k - 1);
+            EXPECT_GT(frame_ink(frame, v.xloc + 2, row, v.xloc + 92, row + 6),
+                      0)
+                << "seat " << i << ": key " << k << " paints at bm-"
+                << v.endy - row;
+        }
+        EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 26) * 320 +
+                                                    v.xloc + 50)])
+            << "seat " << i << ": the box top stays bm-26";
+        EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 27) * 320 +
+                                                    v.xloc + 50)])
+            << "seat " << i;
+    }
+
+    ShifterHeld shift(2);
+    frame = scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(1, true, "S1 TELEPORT MAR", DARK_BLUE).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(2, true, "S2 CHAIN LIGHTN", DARK_BLUE).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(3, true, "S3 SUMMON ELEME", DARK_BLUE).c_str()))
+        << "K7: the compact HUD cuts a name to 12 glyphs";
+
+    s->world().enemy_freeze = 30;
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", ("freeze_countdown left=30 secs=3 row=" +
+                std::to_string(s->viewob[0]->endy - 34)).c_str()))
+        << "a compact panel's box keeps its classic top, so the cell does";
+}
+
+// Ink, today's three-state vocabulary: GREY for a key whose ability the
+// level has not opened (it shows " L<level>"), an empty key and a walker
+// whose specials are switched off; RED for one the MP cannot pay; the
+// panel's text colour for one it can.
+//
+// RED: the Locked test dropped from the GREY arm (key 3 reads DARK_BLUE);
+// the cast_cost comparison flipped (castable rows read RED).
+TEST_F(GladHud, belt_rows_ink_grey_locked_red_short_normal_affordable)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 1);
+    walker& hero = *scene.heroes[0];
+
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(1, false, "1 TELEPORT", DARK_BLUE).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", GREY).c_str()))
+        << "a key whose ability opens later is grey with its level";
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", GREY).c_str()));
+
+    hero.stats()->set_magicpoints(0.0f);
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(1, false, "1 TELEPORT", RED).c_str()))
+        << "too little MP reads red";
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", GREY).c_str()))
+        << "locked stays grey, MP or not";
+
+    hero.stats()->set_magicpoints(1000.0f);
+    hero.set_specials_disabled(true);
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(1, false, "1 TELEPORT", GREY).c_str()))
+        << "a walker that never casts reads grey";
+    hero.set_specials_disabled(false);
+
+    // An empty key: a soldier has nothing on SHIFTER + 2.
+    hero.set_family(FAMILY_SOLDIER);
+    ShifterHeld shift(0);
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(2, true, "S2 --", GREY).c_str()));
+
+    // A mirrored family byte with no descriptor (a junk snapshot value, the
+    // classic test's sanitize case) names nothing: every key reads "--".
+    hero.set_family(static_cast<char>(127));
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(1, true, "S1 --", GREY).c_str()));
+    hero.set_family(static_cast<char>(-3));
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(3, true, "S3 --", GREY).c_str()));
+}
+
+// The layer is the seat's PHYSICAL SHIFTER, not the walker's mirrored
+// shifter_down (which under the belt is the alternate bit of the last cast).
+// A full-width pane has room for 24 glyphs: "S1 TELEPORT MARKER" whole.
+//
+// RED: plan_belt_rows reads control.shifter_down() for the layer (the
+// mirrored bit flips the rows with no key held).
+TEST_F(GladHud, shift_held_shows_the_shift_layer)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 13);
+    walker& hero = *scene.heroes[0];
+    ASSERT_GE(scene.s->viewob[0]->endx - scene.s->viewob[0]->xloc, 300)
+        << "one seat is a full-width pane";
+
+    hero.set_shifter_down(1);
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(1, false, "1 TELEPORT", DARK_BLUE).c_str()))
+        << "the mirrored shifter_down does not pick the layer";
+
+    ShifterHeld shift(0);
+    hero.set_shifter_down(0);
+    scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud",
+        belt_row_trace(1, true, "S1 TELEPORT MARKER", DARK_BLUE).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(2, true, "S2 ENERGY WAVE", DARK_BLUE).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(3, true, "S3 HEARTBURST", DARK_BLUE).c_str()));
+    EXPECT_FALSE(trace_contains("hud", "belt_row key=1 shift=0"));
+
+    // A 320-px pane's box is lm+150 wide, room for the 24-glyph rows: its
+    // top bevel (bm-42) reaches past lm+98 and ends at lm+150 (the radar
+    // block starts at rm-64 = lm+256, so lm+152 is clear).
+    //
+    // RED: kBeltHudWideBoxRight 150 -> 98 (the 18-glyph row runs past the
+    // box's right bevel).
+    const viewscreen& v = *scene.s->viewob[0];
+    const auto frame = scene.draw();
+    EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 42) * 320 +
+                                                v.xloc + 140)])
+        << "the box reaches past the 24-glyph row";
+    EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 42) * 320 +
+                                                v.xloc + 152)])
+        << "and ends at lm+150";
+}
+
+// PREF_VIEW_3: a one-seat pane 80 scanlines tall, where every belt row
+// (bm-40 and below) would sit on the notification feed. Nothing is drawn;
+// each row says it yielded.
+//
+// RED: the banner test dropped from plan_belt_rows (rows draw on the feed
+// band and the suppression traces vanish); the box's no-row arm
+// (belt_top == 0 -> top = bm-26) dropped (the score box loses its top).
+TEST_F(GladHud, belt_rows_in_an_80_scanline_pane_yield_to_the_feed)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 13);
+    viewscreen& v = *scene.s->viewob[0];
+    v.prefs[PREF_VIEW] = PREF_VIEW_3;
+    v.resize(static_cast<char>(PREF_VIEW_3));
+    ASSERT_EQ(80, v.endy - v.yloc);
+
+    const auto frame = scene.draw();
+    for (int k = 1; k <= 3; ++k)
+        EXPECT_TRUE(trace_contains(
+            "hud", std::format("belt_row_suppressed key={}", k).c_str()));
+    EXPECT_FALSE(trace_contains("hud", "belt_row key="));
+    EXPECT_EQ(0, frame_ink(frame, v.xloc, v.yloc + 30, v.endx,
+                           v.yloc + 30 + MAX_MESSAGES * 6))
+        << "nothing on the feed band";
+
+    // No row drew, but the score shows: the box still stands at bm-26..bm-2
+    // around SC/XP, with nothing at the full panel's bm-42.
+    v.prefs[PREF_SCORE] = PREF_SCORE_ON;
+    const auto scored = scene.draw();
+    v.prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    EXPECT_FALSE(trace_contains("hud", "belt_row key="));
+    EXPECT_NE(0, scored[static_cast<std::size_t>((v.endy - 26) * 320 +
+                                                 v.xloc + 50)])
+        << "the score box's top is bm-26";
+    EXPECT_EQ(0, scored[static_cast<std::size_t>((v.endy - 27) * 320 +
+                                                 v.xloc + 50)])
+        << "nothing above it";
+    v.prefs[PREF_VIEW] = PREF_VIEW_FULL;
+    v.resize(static_cast<char>(PREF_VIEW_FULL));
+}
+
+// PREF_VIEW_PANELS with three seats: 100px columns. Left of the radar
+// block (rm-64) there are five glyphs, too few for a name, so each row is
+// its key label alone; no pixel lands in the radar block.
+//
+// RED: the radar limit dropped (right_limit = rm): names reach the block.
+TEST_F(GladHud, belt_rows_in_a_100px_column_show_key_labels_clear_of_the_radar)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(3, FAMILY_MAGE, 13);
+    screen* const s = scene.s;
+    ASSERT_EQ(3, static_cast<int>(s->numviews));
+    for (int i = 0; i < 3; ++i)
+    {
+        viewscreen& v = *s->viewob[i];
+        v.prefs[PREF_VIEW] = PREF_VIEW_PANELS;
+        v.resize(static_cast<char>(PREF_VIEW_PANELS));
+        v.prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF; // no box: only text paints
+    }
+
+    const auto frame = scene.draw();
+    for (int k = 1; k <= 3; ++k)
+        EXPECT_TRUE(trace_contains(
+            "hud", belt_row_trace(k, false, std::to_string(k), YELLOW).c_str()))
+            << "key " << k << " shows its label alone";
+    EXPECT_FALSE(trace_contains("hud", "text=1 TELEPORT"));
+    for (int i = 0; i < 3; ++i)
+    {
+        const viewscreen& v = *s->viewob[i];
+        ASSERT_LE(v.endx - v.xloc, 110) << "a narrow column";
+        EXPECT_EQ(0, frame_ink(frame, v.endx - 63, v.endy - 47, v.endx + 1,
+                               v.endy - 1))
+            << "seat " << i << ": nothing in the radar block";
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        s->viewob[i]->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+        s->viewob[i]->resize(static_cast<char>(PREF_VIEW_FULL));
+    }
+}
+
+// Review stills for the PR (scripts/media/capture_ability_select_hud.sh
+// sets OG_FX_CAPTURE_DIR; a normal run writes nothing): 1, 2 and 4 seats,
+// the setting on and off, a freeze and a seat clock running so the moved
+// cells show.
+TEST_F(GladHud, zz_capture_belt_hud)
+{
+    for (const bool ability_select : {true, false})
+    {
+        ScopedAbilitySelect setting(ability_select);
+        for (const int seats : {1, 2, 4})
+        {
+            BeltHudScene scene(seats, FAMILY_ARCHMAGE, 12);
+            for (int i = 0; i < scene.s->numviews; ++i)
+            {
+                viewscreen& v = *scene.s->viewob[i];
+                v.prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+                v.prefs[PREF_SCORE] = PREF_SCORE_ON;
+                v.prefs[PREF_FOES] = PREF_FOES_ON;
+                scene.heroes[static_cast<std::size_t>(i)]->set_current_special(2);
+            }
+            scene.s->world().enemy_freeze = 90;
+            stage_possession(*scene.heroes[0], 300);
+            const auto frame = scene.draw();
+            dump_frame_ppm(frame, std::format("belt_hud_{}p_{}", seats,
+                                              ability_select ? "on" : "off")
+                                      .c_str());
+            if (ability_select && seats != 2)
+            {
+                ShifterHeld shift(0);
+                dump_frame_ppm(scene.draw(),
+                               std::format("belt_hud_{}p_on_shift", seats)
+                                   .c_str());
+            }
+        }
+    }
 }

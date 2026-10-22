@@ -43,6 +43,7 @@
 #include <openglad/resources/save_data.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_ability_select_scope.h"
 #include "test_click_ladder.h"
 #include "test_escape_tail.h"
 #include "test_input_helpers.h"
@@ -932,6 +933,9 @@ TEST(PausePlayerDraw, binding_grid_shows_joystick_names_for_assigned_seat)
 {
     screen* const scr = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, scr);
+    // The classic ACTIONS rows ("SPECIAL: B0" on row 1); the New Ability
+    // Select twin is binding_grid_rows_follow_ability_select below.
+    ScopedAbilitySelect off;
     ControlStateGuard controls;
     JoystickSubsystemGuard subsystem_guard;
     VirtualJoystick pad(2, 6, 0, "OpenGlad pause grid pad");
@@ -989,6 +993,113 @@ TEST(PausePlayerDraw, binding_grid_shows_joystick_names_for_assigned_seat)
     EXPECT_EQ("B0", joy_binding_display_name(
                         player_joy[0].key_type[KEY_SPECIAL],
                         player_joy[0].key_index[KEY_SPECIAL]));
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+// The ACTIONS column draws og::ui::binding_panel_action_rows for the
+// setting in force: off, row 1 is "SPECIAL: 1" and row 6 "SPEC SW: 2" (the
+// SPEC 2 key, which cycles with the setting off, never the unbound slot 11
+// that read "--"); on, rows 1..3 are "SPEC 1/2/3" with keys 1, 2, 3 and the
+// list runs to eight rows (CHAR SW on row 7).
+//
+// RED: the pause panel's actions back on its own seven-row table with
+// KEY_SPECIAL_SWITCH ("SPEC SW: --", and no SPEC 3 row with the setting on).
+TEST(PausePlayerDraw, binding_grid_rows_follow_ability_select)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    ControlStateGuard controls;
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_1);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_2);
+    set_player_key_binding(0, KEY_SPEC3, SDLK_3);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_N);
+
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    const int pitch = scr->text_normal.sizex + 1;
+    const auto row_y = [](int row) { return 93 + 8 * row; };
+
+    {
+        ScopedAbilitySelect off;
+        spec.draw_background(&state);
+        spec.draw_content(&state);
+        expect_glyph_at(scr, '1', 104 + 9 * pitch, row_y(1), DARK_BLUE);  // "SPECIAL: 1"
+        expect_glyph_at(scr, '2', 104 + 9 * pitch, row_y(6), DARK_BLUE);  // "SPEC SW: 2"
+    }
+    {
+        ScopedAbilitySelect on(true);
+        spec.draw_background(&state);
+        spec.draw_content(&state);
+        expect_glyph_at(scr, '1', 104 + 8 * pitch, row_y(1), DARK_BLUE);  // "SPEC 1: 1"
+        expect_glyph_at(scr, '2', 104 + 8 * pitch, row_y(2), DARK_BLUE);  // "SPEC 2: 2"
+        expect_glyph_at(scr, '3', 104 + 8 * pitch, row_y(3), DARK_BLUE);  // "SPEC 3: 3"
+        expect_glyph_at(scr, 'N', 104 + 9 * pitch, row_y(7), DARK_BLUE);  // "CHAR SW: N"
+    }
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+// The REMAP wizard asks for one key per prompt, in order, and the list
+// follows the setting: off, the classic 11 (4-direction) / 15 (8-direction)
+// with SPECIAL SWITCH binding the SPEC 2 key (slot 17); on, 12 / 16 with
+// SPEC 1, SPEC 2 and SPEC 3 and no SPECIAL SWITCH. The "remap" trace names
+// each prompt as it is drawn; under TESTING every prompt is answered with
+// a fake ESC (keep the current key).
+//
+// RED: the ON tables replaced by the classic ones (11 prompts, no SPEC 3);
+// the classic SPECIAL SWITCH back on KEY_SPECIAL_SWITCH (key=11).
+TEST(PausePlayerHandlers, remap_prompts_follow_ability_select)
+{
+    ControlStateGuard controls;
+    NumplayersGuard numplayers(1);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+
+    const auto run = [&](bool ability_select, bool eight_dir) {
+        ScopedAbilitySelect setting(ability_select);
+        set_player_control_mode(
+            0, static_cast<int>(eight_dir ? ControlDirectionMode::EightDirection
+                                          : ControlDirectionMode::FourDirection));
+        trace_clear();
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(og::ui::kPausePlayerRemapIndex, &state));
+    };
+
+    run(false, false);
+    EXPECT_TRUE(trace_contains("remap", "prompt 11/11 key=16 label=LOOK UP (HOLD)"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 7/11 key=17 label=SPECIAL SWITCH"))
+        << "the classic change-special prompt binds the SPEC 2 key";
+    EXPECT_FALSE(trace_contains("remap", "key=11 "));
+    run(false, true);
+    EXPECT_TRUE(trace_contains("remap", "prompt 15/15 key=16"));
+
+    run(true, false);
+    EXPECT_TRUE(trace_contains("remap", "prompt 6/12 key=9 label=SPEC 1"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 7/12 key=17 label=SPEC 2"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 8/12 key=18 label=SPEC 3"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 12/12 key=16 label=LOOK UP (HOLD)"));
+    EXPECT_FALSE(trace_contains("remap", "SPECIAL SWITCH"));
+    run(true, true);
+    EXPECT_TRUE(trace_contains("remap", "prompt 12/16 key=18 label=SPEC 3"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 16/16 key=16"));
 
     og::ui::install_pause_player_state_for_screen(nullptr);
 }

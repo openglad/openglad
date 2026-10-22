@@ -6,6 +6,17 @@ Gameplay Fixes (Gameplay FX, on by
 default) mends Disarm, Turn Undead,
 Heal and more.
 
+SHIFTER: marks an ability's second
+form. With New Ability Select (UI FX,
+on by default) each ability has its
+own key: the three SPEC keys and
+SHIFTER + each. The default puts a
+second form on SHIFTER + its own key
+when that key is free, else the next
+free SHIFTER key.
+TRAIN > ABILITIES shows and changes
+your layout.
+
 SOLDIER
 ========================
 Basic fighter, good all-around.
@@ -87,7 +98,7 @@ Slow healer, generates barriers.
    fallen. SHIFTER: Turn Undead,
    reach 60 pixels or more, undead only.
 3. Raise Ghost: Summon spirits.
-   SHIFTER: Lay spirits to rest.
+   SHIFTER: Turn Undead, as Raise Undead's.
 4. Resurrect: Full resurrection
    of fallen comrades.
 

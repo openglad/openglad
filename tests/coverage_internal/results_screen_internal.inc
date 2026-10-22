@@ -245,3 +245,11 @@ int results_screen_test_exercise_internal()
     trace_clear();
     return failed_check == 0 ? 0 : -failed_check;
 }
+
+// The ability names a troop's results row announces for the level it reached
+// (TroopResult::get_gained_specials), for the New Ability Select tests.
+std::vector<std::string> results_screen_testing_gained_specials(guy* before,
+                                                                walker* after)
+{
+    return TroopResult(before, after).get_gained_specials();
+}
