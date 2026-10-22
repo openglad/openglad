@@ -15,6 +15,7 @@
 #
 # Regenerate after adding or removing a test binary:
 #   grep -h '^P' build/ci-coverage/coverage/lua-raw/*.luacov | cut -f2 | sort -u
+og_test_abilities
 og_test_basecamp
 og_test_curses
 og_test_effects
