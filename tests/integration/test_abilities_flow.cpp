@@ -246,6 +246,7 @@ struct FlowState {
     std::array<std::string, belt::kSlots> opened_faces;
     std::string opened_bench_0;
     std::string opened_bench_1;
+    bool bench_1_shown = true;
     bool selected_key3 = false;
     std::string selected_status;
     bool placed = false;
@@ -315,6 +316,7 @@ int full_flow_injector(void* data)
             interactable_label("belt_" + std::to_string(b));
     state->opened_bench_0 = interactable_label("bench_0");
     state->opened_bench_1 = interactable_label("bench_1");
+    state->bench_1_shown = has_interactable("bench_1");
     capture_presented_frame("abilities_archmage", uxshots_dir());
     ++state->captures;
 
@@ -828,6 +830,9 @@ TEST(AbilitiesLayout, train_door_row_follows_the_setting)
 
 TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
 {
+    // A flow that failed before its own verification leaves its frames in
+    // the ledger; each flow answers for its own captures only.
+    (void)take_captured_frames();
     trace_clear();
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied());
@@ -862,6 +867,7 @@ TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
     EXPECT_EQ("S3 SUMMON ELEMENTAL", state.opened_faces[5]);
     EXPECT_EQ("MIND CONTROL", state.opened_bench_0);
     EXPECT_EQ("", state.opened_bench_1) << "one ability on the bench";
+    EXPECT_FALSE(state.bench_1_shown) << "an empty bench row is hidden";
 
     EXPECT_EQ("SUMMON IMAGE is on key 3.", state.selected_status);
     EXPECT_EQ("SUMMON IMAGE", state.bench_after_place)
@@ -903,6 +909,9 @@ TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
 
 TEST(AbilitiesFlow, setting_off_dims_the_train_door)
 {
+    // A flow that failed before its own verification leaves its frames in
+    // the ledger; each flow answers for its own captures only.
+    (void)take_captured_frames();
     trace_clear();
     ScopedAbilitySelect off;
     og::data::ScopedActiveCompany pin("save0");
@@ -937,6 +946,9 @@ TEST(AbilitiesFlow, setting_off_dims_the_train_door)
 
 TEST(AbilitiesFlow, mage_page_greys_locked_rows_and_the_keyboard_walks_it)
 {
+    // A flow that failed before its own verification leaves its frames in
+    // the ledger; each flow answers for its own captures only.
+    (void)take_captured_frames();
     DirectRunScope scope;
     write_ability_company();
 
@@ -1057,4 +1069,53 @@ TEST(AbilitiesFlow, a_host_go_while_parked_starts_and_commits_nothing)
         << "an edit in flight when the match starts is not committed";
     EXPECT_FALSE(trace_contains("abilities", "commit slot="));
     EXPECT_TRUE(scope.lobby.ready_requests.empty());
+}
+
+// The Base Camp seat panel's ACTIONS column is the shared row list
+// (binding_panel_action_rows): eight rows with the setting on (SPEC 1/2/3),
+// the classic seven with it off. Drawn for real; the eighth line's band
+// carries ink in the first case only.
+TEST(AbilitiesLayout, seat_panel_actions_follow_the_setting)
+{
+    DirectRunScope scope;
+    og::sim::LobbyPlayer p1;
+    p1.player_index = 0;
+    p1.seat_id = 1;
+    scope.lobby.players = {p1};
+    scope.lobby.local_seats = 1;
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = p1.seat_id, .player_index = 0, .local_slot = 0};
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec();
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    const auto ink_on_action_line = [&spec, &state](int line) {
+        test_screen()->clearbuffer();
+        spec.draw_content(&state);
+        int ink = 0;
+        const int y0 = kPlayerScreenPanelLineY + line * 8;
+        for (int y = y0; y < y0 + 7; ++y) {
+            for (int x = 104; x < kPlayerScreenPanelRightX; ++x) {
+                int index = 0;
+                test_screen()->get_pixel(x, y, &index);
+                if (index >= DARK_BLUE && index <= DARK_BLUE + 4)
+                    ++ink;
+            }
+        }
+        return ink;
+    };
+    {
+        ScopedAbilitySelect on(true);
+        EXPECT_GT(ink_on_action_line(6), 0);
+        EXPECT_GT(ink_on_action_line(7), 0)
+            << "the eighth ACTIONS row (CHAR SW) is drawn with the setting on";
+    }
+    {
+        ScopedAbilitySelect off;
+        EXPECT_GT(ink_on_action_line(6), 0);
+        EXPECT_EQ(0, ink_on_action_line(7))
+            << "the classic panel has seven ACTIONS rows";
+    }
+    og::ui::install_seat_settings_state_for_screen(nullptr);
 }
