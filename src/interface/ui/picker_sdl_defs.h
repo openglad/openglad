@@ -818,6 +818,60 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
 // (the G8 sweep of the raw allbuttons_[18] writes when VIEW TEAM retired).
 inline constexpr int kTrainMenuChangeTeamIndex = 17;
 inline constexpr int kTrainMenuSellIndex = 19;
+// The ABILITIES door (New Ability Select), appended in the free x 160..240
+// gap of the y=170 band between ACCEPT and SELL. Dimmed while the setting is
+// off, so the screen stays discoverable.
+inline constexpr int kTrainMenuAbilitiesIndex = 20;
+
+// --- ABILITIES screen layout contract (docs/ability-select-design.md E.1) ---
+// Ordinals: BACK, DEFAULTS, the six belt slots row-major (key 1 | SHIFTER+1,
+// key 2 | SHIFTER+2, key 3 | SHIFTER+3), then the eight bench rows row-major
+// (bench_0 | bench_1, ...). A belt row's id names its belt slot (belt_0..2 =
+// keys 1..3, belt_3..5 = SHIFTER + keys 1..3), not its ordinal.
+inline constexpr int kAbilitiesBackIndex = 0;
+inline constexpr int kAbilitiesDefaultsIndex = 1;
+inline constexpr int kAbilitiesBeltBase = 2;
+inline constexpr int kAbilitiesBenchBase = 8;
+inline constexpr int kAbilitiesBenchRows = 8;
+inline constexpr int kAbilitiesRowCount =
+    kAbilitiesBenchBase + kAbilitiesBenchRows;
+// The grid: two columns of 146 px faces (24 glyphs) with a 4 px gutter,
+// inside the 4..316 panel bevel. Every rect derives from these.
+// The panel is options_panel_draw_background's inverted bevel.
+inline constexpr int kAbilitiesPanelX1 = 4;
+inline constexpr int kAbilitiesPanelY1 = 4;
+inline constexpr int kAbilitiesPanelX2 = 316;
+inline constexpr int kAbilitiesPanelY2 = 196;
+inline constexpr int kAbilitiesLeftColX = 12;
+inline constexpr int kAbilitiesColW = 146;
+inline constexpr int kAbilitiesColGutter = 4;
+inline constexpr int kAbilitiesRightColX =
+    kAbilitiesLeftColX + kAbilitiesColW + kAbilitiesColGutter;
+inline constexpr int kAbilitiesTitleY = 13;
+inline constexpr int kAbilitiesSubtitleY = 24;
+inline constexpr int kAbilitiesBeltTopY = 36;
+inline constexpr int kAbilitiesBeltPitch = 20;
+inline constexpr int kAbilitiesBeltH = 16;
+inline constexpr int kAbilitiesBenchHeaderY = 98;
+inline constexpr int kAbilitiesBenchTopY = 108;
+inline constexpr int kAbilitiesBenchPitch = 12;
+inline constexpr int kAbilitiesBenchH = 11;
+inline constexpr int kAbilitiesStatusY = 160;
+inline constexpr int kAbilitiesFooterY = 176;
+inline constexpr int kAbilitiesFooterH = 16;
+inline constexpr int kAbilitiesBackW = 50;
+static_assert(kAbilitiesRightColX + kAbilitiesColW <= kAbilitiesPanelX2 - 4,
+              "the right column ends inside the panel bevel");
+static_assert(kAbilitiesBenchTopY + 3 * kAbilitiesBenchPitch +
+                      kAbilitiesBenchH < kAbilitiesStatusY,
+              "the last bench row ends above the status line");
+
+namespace og::ui {
+// The full-canvas panel chrome of DIFFICULTY and the options subscreens
+// (clear, black frame, the inverted bevel over 4..316 x 4..196). One
+// implementation (menu_screen_specs.cpp); ABILITIES draws the same panel.
+void options_panel_draw_background(void* screen_state);
+} // namespace og::ui
 
 // --- VIEW LEVEL (scenario viewer) layout contract --------------------------
 inline constexpr int kViewScenarioBackIndex = 0;
