@@ -35,6 +35,7 @@
 #include <format>
 #include <system_error>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -4075,16 +4076,18 @@ TEST_F(GladHud, belt_rows_in_an_80_scanline_pane_yield_to_the_feed)
         << "nothing on the feed band";
 
     // No row drew, but the score shows: the box still stands at bm-26..bm-2
-    // around SC/XP, with nothing at the full panel's bm-42.
+    // around SC/XP, with nothing at the full panel's bm-42. (Probed at
+    // lm+20: in this 108-px pane the box stops at rm-66 = lm+42, clear of
+    // the radar block.)
     v.prefs[PREF_SCORE] = PREF_SCORE_ON;
     const auto scored = scene.draw();
     v.prefs[PREF_SCORE] = PREF_SCORE_OFF;
     EXPECT_FALSE(trace_contains("hud", "belt_row key="));
     EXPECT_NE(0, scored[static_cast<std::size_t>((v.endy - 26) * 320 +
-                                                 v.xloc + 50)])
+                                                 v.xloc + 20)])
         << "the score box's top is bm-26";
     EXPECT_EQ(0, scored[static_cast<std::size_t>((v.endy - 27) * 320 +
-                                                 v.xloc + 50)])
+                                                 v.xloc + 20)])
         << "nothing above it";
     v.prefs[PREF_VIEW] = PREF_VIEW_FULL;
     v.resize(static_cast<char>(PREF_VIEW_FULL));
@@ -4127,6 +4130,341 @@ TEST_F(GladHud, belt_rows_in_a_100px_column_show_key_labels_clear_of_the_radar)
     {
         s->viewob[i]->prefs[PREF_VIEW] = PREF_VIEW_FULL;
         s->viewob[i]->resize(static_cast<char>(PREF_VIEW_FULL));
+    }
+}
+
+namespace {
+
+// The belt box one view drew, from its `belt_box` trace (inclusive corners).
+struct BeltBoxRect
+{
+    bool drew = false;
+    int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+};
+
+BeltBoxRect belt_box_for_view(int view)
+{
+    BeltBoxRect box;
+    const std::string prefix = std::format("belt_box view={} ", view);
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category != "hud")
+            continue;
+        const std::string& line = entry.message;
+        const std::size_t at = line.find(prefix);
+        if (at == std::string::npos)
+            continue;
+        box.drew = std::sscanf(line.c_str() + at + prefix.size(),
+                               "x1=%d y1=%d x2=%d y2=%d", &box.x1, &box.y1,
+                               &box.x2, &box.y2) == 4;
+    }
+    return box;
+}
+
+// The bottom-left box's paint (screen::draw_button with a one-pixel border:
+// the four bevel colours and the face), the only colours its pixels take.
+bool is_box_paint(unsigned char index)
+{
+    return index >= 11 && index <= 15;
+}
+
+// A real radar per seat over a small cobbled level (the radar test's
+// recipe, a_possessing_ghost_does_not_blip_on_the_radar): each anchors to its
+// own pane through radar_block_for_pane, as the game's does.
+struct SeatRadars
+{
+    FixedRandom rng{1};
+    GameContext context;
+    LevelRuntimeData level{1};
+    std::vector<std::unique_ptr<radar>> radars;
+    std::vector<short> saved_start;
+    screen* s;
+
+    explicit SeatRadars(screen* scr) : s(scr)
+    {
+        context.rng = &rng;
+        push_test_context(&context);
+        level.create_new_grid();
+        // Wider than the radar (the default grid is 40 wide): the block is
+        // the full RADAR_X x RADAR_Y, its left edge at rm-64.
+        level.world().resize_grid(RADAR_X + 20, RADAR_Y + 16);
+        for (int y = 0; y < level.world().grid.h; ++y)
+            for (int x = 0; x < level.world().grid.w; ++x)
+                level.world().grid.data[static_cast<std::size_t>(
+                    y * level.world().grid.w + x)] = PIX_COBBLE_1;
+        for (int i = 0; i < s->numviews; ++i)
+        {
+            viewscreen* const v = s->viewob[i].get();
+            saved_start.push_back(v->radarstart);
+            v->radarstart = 1;
+            radars.push_back(std::make_unique<radar>(v, s,
+                                                     static_cast<short>(i)));
+            radars.back()->start(&level);
+        }
+    }
+    ~SeatRadars()
+    {
+        for (std::size_t i = 0; i < saved_start.size(); ++i)
+            s->viewob[i]->radarstart = saved_start[i];
+        pop_test_context();
+    }
+    // The radar drops a view's control that its level does not track (the
+    // heroes live in the session's world), so each view keeps its own.
+    void draw()
+    {
+        for (std::size_t i = 0; i < radars.size(); ++i)
+        {
+            viewscreen* const v = s->viewob[i].get();
+            walker* const control = v->control;
+            EXPECT_EQ(1, (int)radars[i]->draw(&level));
+            v->control = control;
+            const RadarBlock block =
+                radar_block_for_pane(v->endx, v->endy, RADAR_X, RADAR_Y);
+            EXPECT_EQ(block.x, radars[i]->xloc) << "a full-size radar block";
+        }
+    }
+};
+
+} // namespace
+
+// W2-E's overlap: in a two-seat pane (159px) the belt box's right bevel sat
+// at lm+98, three columns inside the radar block (rm-64 = lm+95), for the
+// box's 40 rows. Every seat count, every PREF_VIEW size, score on and off,
+// radar on and off: the box (its `belt_box` trace, checked against its own
+// right bevel's pixels) and the radar's block (radar_block_for_pane at
+// RADAR_X x RADAR_Y, plus the blip edge column the radar's own clip admits)
+// share no pixel. With the radar off no box paint lands in the block; with
+// it on a real radar draws first and the HUD on top never turns one of its
+// pixels into box paint. The box does not move with the radar pref (the
+// block is reserved either way).
+//
+// Not pinned here: the classic SC/XP text, which runs into the block in the
+// 100- and 108-px panes with the setting on or off (it predates the belt;
+// the setting-off HUD is byte-identical by rule).
+//
+// The box also keeps one blank column (rm-65) between its bevel and the
+// block.
+//
+// RED: box_right back to the old lm+98 / lm+150 edge (no rm-66 clamp): the
+// two- and four-seat panes and the 148/152/159-px insets overlap the block.
+TEST_F(GladHud, belt_box_never_overlaps_the_radar_in_any_pane)
+{
+    ScopedAbilitySelect on(true);
+    int boxes_checked = 0;
+    int scored_boxes = 0;
+    int radar_pixels_checked = 0;
+    for (int seats = 1; seats <= 4; ++seats)
+    {
+        for (signed char mode = PREF_VIEW_FULL; mode <= PREF_VIEW_3; ++mode)
+        {
+            for (const bool score : {true, false})
+            {
+                std::array<BeltBoxRect, 4> box_radar_off{};
+                for (const bool radar_on : {false, true})
+                {
+                    BeltHudScene scene(seats, FAMILY_ARCHMAGE, 12);
+                    screen* const s = scene.s;
+                    ASSERT_EQ(seats, static_cast<int>(s->numviews));
+                    for (int i = 0; i < seats; ++i)
+                    {
+                        viewscreen& v = *s->viewob[i];
+                        v.prefs[PREF_VIEW] = mode;
+                        v.resize(static_cast<char>(mode));
+                        v.prefs[PREF_SCORE] =
+                            score ? PREF_SCORE_ON : PREF_SCORE_OFF;
+                        v.prefs[PREF_RADAR] =
+                            radar_on ? PREF_RADAR_ON : PREF_RADAR_OFF;
+                    }
+
+                    s->clearbuffer();
+                    if (radar_on)
+                    {
+                        SeatRadars radars(s);
+                        radars.draw();
+                    }
+                    const auto radar_only = capture_rendered_frame(*s);
+                    // Lit pixels by RGB: a faded (3-4 seat) radar blends to
+                    // colours the palette index read maps to 0.
+                    std::vector<unsigned char> radar_rgb(64000, 0);
+                    for (int y = 0; y < 200; ++y)
+                        for (int x = 0; x < 320; ++x)
+                        {
+                            Uint8 r = 0, g = 0, b = 0;
+                            s->get_pixel(x, y, &r, &g, &b);
+                            radar_rgb[static_cast<std::size_t>(y * 320 + x)] =
+                                (r | g | b) != 0 ? 1 : 0;
+                        }
+                    trace_clear();
+                    EXPECT_EQ(1, (int)new_score_panel(s, 1));
+                    const auto frame = capture_rendered_frame(*s);
+
+                    for (int i = 0; i < seats; ++i)
+                    {
+                        viewscreen& v = *s->viewob[i];
+                        const std::string where = std::format(
+                            "seats={} view={} mode={} score={} radar={} "
+                            "pane=[{},{})x[{},{})",
+                            seats, i, static_cast<int>(mode), score ? 1 : 0,
+                            radar_on ? 1 : 0, v.xloc, v.endx, v.yloc, v.endy);
+                        const RadarBlock block = radar_block_for_pane(
+                            v.endx, v.endy, RADAR_X, RADAR_Y);
+                        // Inclusive corners; the blip clip admits xloc+xview.
+                        const int rx1 = block.x;
+                        const int ry1 = block.y;
+                        const int rx2 = block.x + block.w;
+                        const int ry2 = block.y + block.h;
+                        const BeltBoxRect box = belt_box_for_view(i);
+                        if (box.drew)
+                        {
+                            ++boxes_checked;
+                            scored_boxes += score ? 1 : 0;
+                            // The trace is the drawn box: its right bevel
+                            // (colour 12, drawn last, so it owns the top
+                            // corner no text reaches) is at x2, nothing of
+                            // it past x2.
+                            EXPECT_EQ(12, frame[static_cast<std::size_t>(
+                                              box.y1 * 320 + box.x2)])
+                                << where << ": the right bevel is at x2";
+                            if (!radar_on)
+                            {
+                                EXPECT_FALSE(is_box_paint(
+                                    frame[static_cast<std::size_t>(
+                                        box.y1 * 320 + box.x2 + 1)]))
+                                    << where << ": the box ends at x2";
+                            }
+                            const bool disjoint = box.x2 < rx1 ||
+                                                  rx2 < box.x1 ||
+                                                  box.y2 < ry1 || ry2 < box.y1;
+                            EXPECT_TRUE(disjoint)
+                                << where << ": box [" << box.x1 << ","
+                                << box.x2 << "]x[" << box.y1 << ","
+                                << box.y2 << "] meets the radar [" << rx1
+                                << "," << rx2 << "]x[" << ry1 << "," << ry2
+                                << "]";
+                            if (box.y2 >= ry1 && box.y1 <= ry2)
+                            {
+                                EXPECT_LE(box.x2, rx1 - 2)
+                                    << where << ": a blank column before "
+                                    << "the radar";
+                            }
+                        }
+                        else
+                        {
+                            EXPECT_FALSE(score)
+                                << where << ": the score always has a box";
+                        }
+                        int box_paint_in_block = 0;
+                        int radar_ink = 0;
+                        for (int y = ry1; y <= ry2; ++y)
+                            for (int x = rx1; x <= rx2; ++x)
+                            {
+                                const std::size_t at =
+                                    static_cast<std::size_t>(y * 320 + x);
+                                radar_ink += radar_rgb[at];
+                                if (frame[at] != radar_only[at] &&
+                                    is_box_paint(frame[at]))
+                                    ++box_paint_in_block;
+                            }
+                        EXPECT_EQ(0, box_paint_in_block)
+                            << where << ": box paint in the radar block";
+                        if (radar_on)
+                        {
+                            radar_pixels_checked += radar_ink;
+                            EXPECT_GT(radar_ink, 0)
+                                << where << ": the radar drew";
+                            const BeltBoxRect& off =
+                                box_radar_off[static_cast<std::size_t>(i)];
+                            EXPECT_TRUE(off.drew == box.drew &&
+                                        off.x1 == box.x1 && off.x2 == box.x2 &&
+                                        off.y1 == box.y1 && off.y2 == box.y2)
+                                << where << ": the radar pref moved the box";
+                        }
+                        else
+                        {
+                            EXPECT_EQ(0, radar_ink);
+                            box_radar_off[static_cast<std::size_t>(i)] = box;
+                        }
+                    }
+                    for (int i = 0; i < seats; ++i)
+                    {
+                        s->viewob[i]->prefs[PREF_RADAR] = PREF_RADAR_ON;
+                        s->viewob[i]->prefs[PREF_VIEW] = PREF_VIEW_FULL;
+                        s->viewob[i]->resize(
+                            static_cast<char>(PREF_VIEW_FULL));
+                    }
+                }
+            }
+        }
+    }
+    // 1+2+3+4 panes x 5 sizes x radar on/off with the score on, each with a
+    // box, plus the score-off panes whose rows drew: a vacuous sweep (no
+    // trace, no radar) is a broken test.
+    EXPECT_EQ(100, scored_boxes);
+    EXPECT_GT(boxes_checked, scored_boxes);
+    EXPECT_GT(radar_pixels_checked, 0);
+}
+
+// dump_frame_ppm reads palette indices, and a faded (3-4 seat) radar blends
+// to colours no index names (they read black). This still reads the screen's
+// RGB, so the faded radar shows. Written only under OG_FX_CAPTURE_DIR.
+static void dump_screen_rgb_ppm(screen& scr, const char* scene)
+{
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    if (base == nullptr)
+        return;
+    const std::string dir = std::string(base) + "/" + scene;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    FILE* fp = fopen((dir + "/000.ppm").c_str(), "wb");
+    if (fp == nullptr)
+        return;
+    fprintf(fp, "P6\n320 200\n255\n");
+    for (int y = 0; y < 200; ++y)
+        for (int x = 0; x < 320; ++x)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            scr.get_pixel(x, y, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+// Review stills (OG_FX_CAPTURE_DIR, as zz_capture_belt_hud): the ON HUD over
+// a real radar in a two-seat and a four-seat layout, SHIFTER up and held.
+TEST_F(GladHud, zz_capture_belt_hud_with_radar)
+{
+    ScopedAbilitySelect on(true);
+    for (const int seats : {2, 4})
+    {
+        BeltHudScene scene(seats, FAMILY_ARCHMAGE, 12);
+        screen* const s = scene.s;
+        for (int i = 0; i < s->numviews; ++i)
+        {
+            viewscreen& v = *s->viewob[i];
+            v.prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+            v.prefs[PREF_SCORE] = PREF_SCORE_ON;
+            v.prefs[PREF_FOES] = PREF_FOES_ON;
+            v.prefs[PREF_RADAR] = PREF_RADAR_ON;
+        }
+        for (const bool shift : {false, true})
+        {
+            ShifterHeld held(0, shift);
+            s->clearbuffer();
+            {
+                SeatRadars radars(s);
+                radars.draw();
+            }
+            trace_clear();
+            EXPECT_EQ(1, (int)new_score_panel(s, 1));
+            EXPECT_TRUE(trace_contains("hud", "belt_box view=0"));
+            dump_screen_rgb_ppm(*s,
+                                std::format("belt_hud_radar_{}p_on{}", seats,
+                                            shift ? "_shift" : "")
+                                    .c_str());
+        }
     }
 }
 
