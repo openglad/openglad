@@ -872,6 +872,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::ToggleNewAbilitySelect:
         toggle_effect("effects", "new_ability_select");
+        og::input::refresh_ability_select_cache();
         return REDRAW;
     case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");

@@ -2147,6 +2147,8 @@ struct AbilityPage {
                                        const FamilyDescriptor* fd, int level,
                                        short new_specials,
                                        const og::sim::belt::Bytes& stored);
+// The same page for a guy: its name, family, level and stored belt.
+[[nodiscard]] AbilityPage ability_page(const guy& g, short new_specials);
 
 // The key label of belt slot b: "1".."3", "S1".."S3"; "" out of range.
 [[nodiscard]] std::string ability_key_label(int belt_slot);
@@ -2180,6 +2182,11 @@ void ability_reset(og::sim::belt::Bytes& stored);
 // A new family means a new class default: the stored belt goes back to six
 // DEFAULT bytes (promotion: Mage -> Archmage, Orc -> Orc Captain).
 void reset_belt_for_family_change(og::sim::belt::Bytes& stored);
+
+// The DETAILS page's PROMOTE on `g`, whose class is `fd`: the guy takes the
+// promotion level, becomes fd.promotes_to and starts on that class's default
+// belt. The caller has checked fd.promotes_to >= 0 and the level needed.
+void promote_guy(guy& g, const FamilyDescriptor& fd);
 
 // One ACTIONS row of the binding panels (the Base Camp seat panel and the
 // pause player screen): the label and the key slot (input.h KEY_*) it shows.

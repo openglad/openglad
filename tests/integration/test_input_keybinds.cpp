@@ -2208,6 +2208,25 @@ TEST(InputKeybinds, loader_caches_the_ability_select_setting)
     EXPECT_TRUE(og::input::ability_select_on());
 }
 
+TEST(InputKeybinds, ui_fx_toggle_refreshes_the_ability_select_cache)
+{
+    // The UI FX row flips cfg; the keys read the cached copy, so the row must
+    // refresh it, or the keys keep the old setting until the next boot.
+    ScopedAbilitySelect off;
+    ASSERT_FALSE(og::input::ability_select_on());
+    vbutton b;
+    ASSERT_EQ(2, static_cast<int>(b.do_call(
+        button_action_id(ButtonAction::ToggleNewAbilitySelect), -1)));
+    EXPECT_TRUE(cfg.is_on("effects", "new_ability_select"));
+    EXPECT_TRUE(og::input::ability_select_on())
+        << "turning the row on must reach the keys at once";
+    ASSERT_EQ(2, static_cast<int>(b.do_call(
+        button_action_id(ButtonAction::ToggleNewAbilitySelect), -1)));
+    EXPECT_FALSE(cfg.is_on("effects", "new_ability_select"));
+    EXPECT_FALSE(og::input::ability_select_on())
+        << "turning the row off must reach the keys at once";
+}
+
 TEST(InputKeybinds, restore_settings_refreshes_the_ability_select_cache)
 {
     // RESTORE SETTINGS reloads cfg from the shipped defaults without

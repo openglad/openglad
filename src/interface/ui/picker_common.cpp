@@ -5505,6 +5505,12 @@ AbilityPage ability_page(std::string_view hero_name, const FamilyDescriptor* fd,
     return page;
 }
 
+AbilityPage ability_page(const guy& g, short new_specials)
+{
+    return ability_page(g.name, get_family_descriptor(g.family), g.level,
+                        new_specials, g.belt);
+}
+
 void ability_place(og::sim::belt::Bytes& stored, const FamilyDescriptor* fd,
                    short new_specials, int belt_slot,
                    og::sim::belt::Entry entry)
@@ -5587,12 +5593,16 @@ void reset_belt_for_family_change(og::sim::belt::Bytes& stored)
     ability_reset(stored);
 }
 
-namespace {
+void promote_guy(guy& g, const FamilyDescriptor& fd)
+{
+    const short new_level =
+        fd.promotion_new_level ? fd.promotion_new_level(g.level) : 1;
+    g.upgrade_to_level(new_level);
+    g.family = static_cast<char>(static_cast<unsigned char>(fd.promotes_to));
+    reset_belt_for_family_change(g.belt);
+}
 
-// The belt's SPEC 2 and SPEC 3 key slots (input.h KEY_SPEC2 / KEY_SPEC3):
-// client-only slots past KEY_LOOKUP and, like it, never on the wire.
-inline constexpr int kKeySpec2 = 17;
-inline constexpr int kKeySpec3 = 18;
+namespace {
 
 // Setting off: today's rows, today's order; SPEC SW shows the SPEC 2 key,
 // the key that cycles the special with the setting off.
@@ -5603,15 +5613,15 @@ constexpr BindingPanelRow kClassicActionRows[] = {
     {"SHIFTER", KEY_SHIFTER},
     {"LOOK UP", KEY_LOOKUP},
     {"CHAR SW", KEY_SWITCH},
-    {"SPEC SW", kKeySpec2},
+    {"SPEC SW", KEY_SPEC2},
 };
 
 // Setting on: one row per ability key.
 constexpr BindingPanelRow kAbilitySelectActionRows[] = {
     {"FIRE", KEY_FIRE},
     {"SPEC 1", KEY_SPECIAL},
-    {"SPEC 2", kKeySpec2},
-    {"SPEC 3", kKeySpec3},
+    {"SPEC 2", KEY_SPEC2},
+    {"SPEC 3", KEY_SPEC3},
     {"SHIFTER", KEY_SHIFTER},
     {"YELL", KEY_YELL},
     {"LOOK UP", KEY_LOOKUP},

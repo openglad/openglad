@@ -7761,6 +7761,49 @@ TEST(PickerCommon, ability_edits_refuse_what_is_not_there)
     EXPECT_EQ(belt::default_bytes(), promoted);
 }
 
+// Promotion gives the guy a new class, so the guy starts on that class's
+// default belt: a mage's explicit layout would name the wrong abilities on
+// the Archmage. Proof it can fail: drop the reset from promote_guy and the
+// archmage keeps the mage's six bytes.
+TEST(PickerCommon, promotion_resets_the_belt)
+{
+    init_family_registry();
+    guy mage(FAMILY_MAGE);
+    mage.upgrade_to_level(10);
+    mage.belt = belt::Bytes{0x01, 0x09, 0xFF, 0x00, 0x0A, 0x05};
+    og::ui::promote_guy(mage, core_family(FAMILY_MAGE));
+    EXPECT_EQ(FAMILY_ARCHMAGE, mage.family);
+    EXPECT_EQ(3, mage.level) << "the mage's promotion formula: (10 - 6) / 2 + 1";
+    EXPECT_EQ(belt::default_bytes(), mage.belt);
+
+    guy orc(FAMILY_ORC);
+    orc.upgrade_to_level(5);
+    orc.belt = belt::Bytes{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    og::ui::promote_guy(orc, core_family(FAMILY_ORC));
+    EXPECT_EQ(15, orc.family) << "core:orc_captain, wire id 15";
+    EXPECT_EQ(1, orc.level);
+    EXPECT_EQ(belt::default_bytes(), orc.belt);
+}
+
+// The guy-taking page reads the guy's own name, class, level and belt: the
+// same page as the explicit call. Proof it can fail: pass the default belt
+// instead of g.belt and the cleared key 2 reads WARP SPACE again.
+TEST(PickerCommon, ability_page_of_a_guy_reads_its_belt)
+{
+    init_family_registry();
+    guy hero(FAMILY_MAGE);
+    hero.name = "Merlin";
+    hero.upgrade_to_level(4);
+    og::ui::ability_clear(hero.belt, 1);
+    const og::ui::AbilityPage expected = og::ui::ability_page(
+        "Merlin", &core_family(FAMILY_MAGE), 4, 1, hero.belt);
+    const og::ui::AbilityPage page = og::ui::ability_page(hero, 1);
+    EXPECT_EQ(expected.title, page.title);
+    EXPECT_EQ(belt_texts(expected), belt_texts(page));
+    EXPECT_EQ(bench_texts(expected), bench_texts(page));
+    EXPECT_EQ("2 --", belt_texts(page)[1]);
+}
+
 // The status line names the selected row in plain words and never runs past
 // the 48-glyph line. Proof it can fail: index the bench from 0 instead of 6
 // and the bench row reads as the belt's.
@@ -7808,8 +7851,8 @@ TEST(PickerCommon, ability_key_labels)
 }
 
 // The binding panels' ACTIONS rows: with the setting off, today's seven in
-// today's order with SPEC SW on the SPEC 2 key (slot 17, the key that cycles
-// with the setting off; slot 11 is never bound); with it on, one row per
+// today's order with SPEC SW on the SPEC 2 key (KEY_SPEC2, the key that
+// cycles with the setting off; slot 11 is never bound); with it on, one row per
 // ability key, eight rows, the panel's height.
 TEST(PickerCommon, binding_panel_action_rows_for_both_settings)
 {
@@ -7827,14 +7870,14 @@ TEST(PickerCommon, binding_panel_action_rows_for_both_settings)
                   {"SHIFTER", KEY_SHIFTER},
                   {"LOOK UP", KEY_LOOKUP},
                   {"CHAR SW", KEY_SWITCH},
-                  {"SPEC SW", 17},
+                  {"SPEC SW", KEY_SPEC2},
               }),
               rows_of(false));
     EXPECT_EQ((std::vector<std::pair<std::string, int>>{
                   {"FIRE", KEY_FIRE},
                   {"SPEC 1", KEY_SPECIAL},
-                  {"SPEC 2", 17},
-                  {"SPEC 3", 18},
+                  {"SPEC 2", KEY_SPEC2},
+                  {"SPEC 3", KEY_SPEC3},
                   {"SHIFTER", KEY_SHIFTER},
                   {"YELL", KEY_YELL},
                   {"LOOK UP", KEY_LOOKUP},

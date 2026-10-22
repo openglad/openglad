@@ -2771,7 +2771,8 @@ constexpr int detail_line_y(int x) { return 90 + x * 6; }
 // the specials table as this session sees it; this draws it.
 void render_family_abilities(text& mytext, const guy* g, short new_specials) {
     const auto* fd = get_family_descriptor(g->family);
-    const og::ui::DetailPage page = og::ui::detail_page(fd, g->level, new_specials);
+    const og::ui::DetailPage page = og::ui::detail_page(fd, g->level, new_specials,
+                                                          og::input::ability_select_on());
     for (const og::ui::DetailLine& line : page.lines) {
         const int x = line.right ? DETAIL_MM : DETAIL_LM;
         const int y = detail_line_y(line.row);
@@ -2875,9 +2876,7 @@ Sint32 create_detail_menu(guy *arg1)
        {
            if (fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req)
            {
-               short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;
-               thisguy->upgrade_to_level(new_level);
-               thisguy->family = static_cast<char>(static_cast<unsigned char>(fd->promotes_to));
+               og::ui::promote_guy(*thisguy, *fd);
                // The promotion mutated the REAL team member in place: run
                // the full §3.8 mutation tail — the lobby roster push (every
                // picker menu loop starts with picker_lobby_poll(), which
