@@ -75,6 +75,8 @@ og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
     character.scen_shots = source.scen_shots;
     character.scen_hits = source.scen_hits;
     character.level = source.level;
+    // New Ability Select: the belt rides the lobby (protocol v22).
+    character.belt = source.belt;
     return character;
 }
 
@@ -104,6 +106,8 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // New Ability Select: the belt rides the lobby (protocol v22).
+    result->belt = character.belt;
     // v8: the deploy flag rides the lobby SLOT, not the guy payload. This
     // copy default-deploys; the LOCAL round-trip rebuild overrides it from
     // the slot right after (a benched member must survive the state sync —

@@ -67,6 +67,8 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // New Ability Select: the belt rides the lobby (protocol v22).
+    result->belt = character.belt;
     // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
     // assembly only materializes deployed slots, so mark the guy explicitly.
     result->deployed = true;
@@ -493,6 +495,8 @@ og::sim::LobbySaveDataEquivalent build_local_save_equivalent(
         character.scen_shots = member->scen_shots;
         character.scen_hits = member->scen_hits;
         character.level = member->level;
+        // New Ability Select: the belt rides the lobby (protocol v22).
+        character.belt = member->belt;
 
         equivalent.team_list.push_back(og::sim::LobbyCharacterSlot{
             .slot_index = static_cast<std::uint8_t>(slot_index),
