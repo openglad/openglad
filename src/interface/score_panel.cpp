@@ -762,6 +762,9 @@ inline constexpr int kBeltHudWideChars = 24;
 inline constexpr Sint32 kBeltHudWidePane = 300;
 inline constexpr Sint32 kBeltHudBoxRight = 98;
 inline constexpr Sint32 kBeltHudWideBoxRight = 150;
+// The box's right edge is at most rm-66: the radar block starts at rm-64,
+// and rm-65 stays a blank column between them.
+inline constexpr Sint32 kBeltHudRadarGap = 66;
 // The bottom-left box's top edge: classic (and compact belt) / full belt.
 inline constexpr Sint32 kHudBoxTop = 26;
 inline constexpr Sint32 kBeltHudFullBoxTop = 42;
@@ -1138,10 +1141,17 @@ short new_score_panel(screen* s, short /*do_it*/)
             {
                 // The belt box: the rows that drew, down to the score box's
                 // bottom when SC/XP (or the compact panel's rows) sit there.
-                const Sint32 box_right =
+                // Its right bevel stops one blank column short of the
+                // radar's reserved block (rm-64, the frozen-time cell's
+                // rule; reserved with the radar off too): every
+                // box row lies in the radar's band (bm-48..bm-2), and in a
+                // pane narrower than 164px the classic lm+98 edge would run
+                // into it (it starts at lm+95 in a two-seat pane).
+                const Sint32 box_right = std::min<Sint32>(
                     lm + ((!compact_score_panel && rm - lm >= kBeltHudWidePane)
                               ? kBeltHudWideBoxRight
-                              : kBeltHudBoxRight);
+                              : kBeltHudBoxRight),
+                    rm - kBeltHudRadarGap);
                 Sint32 top = belt_top - 2;
                 Sint32 bottom = belt_bottom;
                 if (show_score || compact_score_panel)
@@ -1151,7 +1161,13 @@ short new_score_panel(screen* s, short /*do_it*/)
                         top = score_bottom - 26;
                 }
                 if (belt_top != 0 || show_score)
+                {
                     s->draw_button(lm+1, top, box_right, bottom, 1, 1);
+                    TRACE("hud", "belt_box view=%d x1=%d y1=%d x2=%d y2=%d",
+                          players, static_cast<int>(lm + 1),
+                          static_cast<int>(top), static_cast<int>(box_right),
+                          static_cast<int>(bottom));
+                }
             }
             else if (draw_button)
             {
