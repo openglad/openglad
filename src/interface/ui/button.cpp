@@ -870,6 +870,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleHealNumbers:
         toggle_effect("effects", "heal_numbers");
         return REDRAW;
+    case ButtonAction::ToggleNewAbilitySelect:
+        toggle_effect("effects", "new_ability_select");
+        return REDRAW;
     case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");
         apply_gore_setting_now();

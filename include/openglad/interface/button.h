@@ -474,6 +474,10 @@ enum class ButtonAction : Sint32
     ToggleNewSpecials = 126,
     // GAMEPLAY FX "Gameplay Fixes" row: the same contract as New Specials.
     ToggleGameplayFixes = 127,
+    // UI FX "New Ability Select" row: one key per ability (SPEC 1/2/3 and
+    // SHIFTER + SPEC 1/2/3). A per-machine preference like every UI FX row;
+    // it never reaches the session or the wire.
+    ToggleNewAbilitySelect = 128,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

@@ -453,12 +453,14 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
           "toggle_new_specials", "toggle_gameplay_fixes"}},
         {"ui_fx",
          "ui_fx_back",
-         {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers"},
+         {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers",
+          "toggle_new_ability_select"},
          {{"toggle_mini_hp_bar", "effects", "mini_hp_bar"},
           {"toggle_damage_numbers", "effects", "damage_numbers"},
-          {"toggle_heal_numbers", "effects", "heal_numbers"}},
+          {"toggle_heal_numbers", "effects", "heal_numbers"},
+          {"toggle_new_ability_select", "effects", "new_ability_select"}},
          {"ui_fx_back", "toggle_mini_hp_bar", "toggle_damage_numbers",
-          "toggle_heal_numbers"}},
+          "toggle_heal_numbers", "toggle_new_ability_select"}},
         {"graphics_fx",
          "graphics_fx_back",
          {"toggle_hit_flash", "toggle_shadows", "toggle_dust",
@@ -478,7 +480,7 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
 
 // The cfg keys menu_effects flips on film; the flip-twice discipline must
 // leave every one of them exactly as it found it.
-constexpr std::array<std::pair<const char*, const char*>, 11> kEffectsCfgKeys = {{
+constexpr std::array<std::pair<const char*, const char*>, 12> kEffectsCfgKeys = {{
     {"effects", "hit_recoil"},
     {"effects", "attack_lunge"},
     {"gameplay", "new_specials"},
@@ -486,6 +488,7 @@ constexpr std::array<std::pair<const char*, const char*>, 11> kEffectsCfgKeys = 
     {"effects", "mini_hp_bar"},
     {"effects", "damage_numbers"},
     {"effects", "heal_numbers"},
+    {"effects", "new_ability_select"},
     {"effects", "weather"},
     {"effects", "shadows"},
     {"effects", "fire_glow"},
@@ -890,8 +893,8 @@ TEST(MenuCapture, zz_capture_menu_effects)
                                              menu_effects_injector, state,
                                              injector_result));
 
-    // 4 + 3 + 5 nav steps down the three screens' left columns.
-    expect_scene_completed(state, injector_result, 12, 3);
+    // 4 + 4 + 5 nav steps down the three screens' left columns.
+    expect_scene_completed(state, injector_result, 13, 3);
     verify_captured_frames("menu_effects", 3);
     const std::vector<FxScreenPlan>& plans = fx_screen_plans();
     for (std::size_t i = 0; i < plans.size(); ++i)

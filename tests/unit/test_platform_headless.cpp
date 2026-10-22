@@ -1165,13 +1165,13 @@ TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
         return stdout_capture.restore();
     };
 
-    // Main is 8 items: 4=options, 6=quit. Options asks slot, seed, specials
-    // and fixes; every visit leaves the fixes blank.
+    // Main is 8 items: 4=options, 6=quit. Options asks slot, seed, specials,
+    // fixes and New Ability Select; every visit leaves the last two blank.
     cfg.apply_setting("gameplay", "new_specials", "on");
     std::string printed = drive(
-        "4\n\n\noff\n\n"      // seeded on -> off
-        "4\n\n\nmaybe\n\n"    // refused, stays off
-        "4\n\n\n\n\n"          // blank: the prompt states the session value
+        "4\n\n\noff\n\n\n"      // seeded on -> off
+        "4\n\n\nmaybe\n\n\n"    // refused, stays off
+        "4\n\n\n\n\n\n"          // blank: the prompt states the session value
         "6\n",
         -1);
     std::size_t at = printed.find("New specials: on. Change (on/off, blank keeps current): ");
@@ -1185,23 +1185,23 @@ TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
         << "the preference followed the answer";
 
     // The preference now seeds off; "on" turns both back on.
-    printed = drive("4\n\n\non\n\n4\n\n\n\n\n6\n", -1);
+    printed = drive("4\n\n\non\n\n\n4\n\n\n\n\n\n6\n", -1);
     at = printed.find("New specials: off. ");
     ASSERT_NE(std::string::npos, at) << printed;
     EXPECT_NE(std::string::npos, printed.find("New specials: on. ", at));
     EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
 
     // --new-specials 0 overrides the cfg seed for this run only.
-    printed = drive("4\n\n\n\n\n6\n", 0);
+    printed = drive("4\n\n\n\n\n\n6\n", 0);
     EXPECT_NE(std::string::npos, printed.find("New specials: off. ")) << printed;
     EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"))
         << "a blank answer writes nothing";
 }
 
-// The Gameplay Fixes prompt is the fourth and last on the Game Settings
-// page, the terminal twin of its Gameplay FX row, with the same contract as
-// the New Specials prompt above: on/off writes the preference AND the
-// session's setting; blank keeps both; anything else is refused.
+// The Gameplay Fixes prompt is the fourth on the Game Settings page, the
+// terminal twin of its Gameplay FX row, with the same contract as the New
+// Specials prompt above: on/off writes the preference AND the session's
+// setting; blank keeps both; anything else is refused.
 TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 {
     const std::string saved_specials = cfg.get_setting("gameplay", "new_specials");
@@ -1230,13 +1230,14 @@ TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
     };
 
     // Main is 8 items: 4=options, 6=quit. Options asks slot, seed, specials,
-    // fixes; the specials answer is blank every time.
+    // fixes and New Ability Select; the specials and New Ability Select
+    // answers are blank every time.
     cfg.apply_setting("gameplay", "new_specials", "on");
     cfg.apply_setting("gameplay", "gameplay_fixes", "on");
     std::string printed = drive(
-        "4\n\n\n\noff\n"      // seeded on -> off
-        "4\n\n\n\nmaybe\n"    // refused, stays off
-        "4\n\n\n\n\n"          // blank: the prompt states the session value
+        "4\n\n\n\noff\n\n"      // seeded on -> off
+        "4\n\n\n\nmaybe\n\n"    // refused, stays off
+        "4\n\n\n\n\n\n"          // blank: the prompt states the session value
         "6\n",
         -1);
     std::size_t at = printed.find(
@@ -1253,17 +1254,72 @@ TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
         << "the New Specials preference is another setting";
 
     // The preference now seeds off; "on" turns both back on.
-    printed = drive("4\n\n\n\non\n4\n\n\n\n\n6\n", -1);
+    printed = drive("4\n\n\n\non\n\n4\n\n\n\n\n\n6\n", -1);
     at = printed.find("Gameplay fixes: off. ");
     ASSERT_NE(std::string::npos, at) << printed;
     EXPECT_NE(std::string::npos, printed.find("Gameplay fixes: on. ", at));
     EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"));
 
     // --gameplay-fixes 0 overrides the cfg seed for this run only.
-    printed = drive("4\n\n\n\n\n6\n", 0);
+    printed = drive("4\n\n\n\n\n\n6\n", 0);
     EXPECT_NE(std::string::npos, printed.find("Gameplay fixes: off. ")) << printed;
     EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"))
         << "a blank answer writes nothing";
+}
+
+// The New Ability Select prompt is the fifth and last on the Game Settings
+// page, the terminal twin of its UI FX row. The setting is per machine and
+// never on the wire, so the prompt states and writes the cfg preference
+// alone: on/off writes it, blank keeps it, anything else is refused.
+TEST(PlatformHeadless, text_picker_ability_select_prompt_writes_cfg_only)
+{
+    const std::string saved_pref =
+        cfg.get_setting("effects", "new_ability_select");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref()
+        {
+            cfg.apply_setting("effects", "new_ability_select", value);
+        }
+    } restore_pref{saved_pref};
+
+    const auto drive = [](const std::string& input) {
+        StdinRedirect stdin_redirect(input);
+        CoutRedirect cout_redirect;
+        StdoutCapture stdout_capture;
+        og::ui::TextPickerConfig config;
+        config.team_families = {FAMILY_SOLDIER};
+        og::ui::TextPickerError error;
+        og::ui::run_text_picker(config, &error);
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+        return stdout_capture.restore();
+    };
+
+    // Main is 8 items: 4=options, 6=quit. Options asks slot, seed, specials,
+    // fixes, then New Ability Select; the first four answers are blank.
+    cfg.apply_setting("effects", "new_ability_select", "on");
+    std::string printed = drive(
+        "4\n\n\n\n\noff\n"      // seeded on -> off
+        "4\n\n\n\n\nmaybe\n"    // refused, stays off
+        "4\n\n\n\n\n\n"          // blank keeps it
+        "6\n");
+    std::size_t at = printed.find(
+        "New ability select: on. Change (on/off, blank keeps current): ");
+    ASSERT_NE(std::string::npos, at) << "the cfg seed is on:\n" << printed;
+    at = printed.find("New ability select: off. ", at);
+    ASSERT_NE(std::string::npos, at) << "the preference followed the answer";
+    EXPECT_NE(std::string::npos, printed.find("Invalid value; on or off.\n", at));
+    EXPECT_NE(std::string::npos, printed.find("New ability select: off. ", at + 1))
+        << "the refused answer changed nothing";
+    EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
+
+    // "on" turns it back on; the input then ends at the prompt, which
+    // returns from the page and writes nothing.
+    printed = drive("4\n\n\n\n\non\n4\n\n\n\n\n");
+    at = printed.find("New ability select: off. ");
+    ASSERT_NE(std::string::npos, at) << printed;
+    EXPECT_NE(std::string::npos, printed.find("New ability select: on. ", at));
+    EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
 }
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
@@ -1295,11 +1351,13 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "not-a-seed\n"
         "\n"        //   New Specials: blank keeps current
         "\n"        //   Gameplay Fixes: blank keeps current
+        "\n"        //   New Ability Select: blank keeps current
         "4\n"       // main: options again
         "textslot\n"
         "123\n"
         "off\n"     //   New Specials: off
         "off\n"     //   Gameplay Fixes: off
+        "\n"        //   New Ability Select: blank keeps current
         "2\n"       // main: continue -> team build (base camp)
         "1\n"       // base camp: roster (deploy flags + sub-prompt)
         "deploy 1\n" //   roster: bench display row 1

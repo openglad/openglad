@@ -33,7 +33,9 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/changelog_screen.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -382,30 +384,44 @@ void gameplay_fx_draw_content(void* /*screen_state*/)
                             pks().gameplay_fx_options_buttons);
 }
 
-// UI FX: informational overlays. Same single-column idiom as GAMEPLAY FX.
+// UI FX: interface settings and overlays. Same single-column idiom as
+// GAMEPLAY FX, on a column of its own: "New Ability Select" is 18 glyphs
+// (108 px), past the 90 px faces, so the whole column is 120 px wide at
+// x 100 (one x, one width; the column's centre stays 160).
+inline constexpr Sint32 kUiFxColX = 100;
+inline constexpr Sint32 kUiFxColW = 120;
+
 constexpr MenuButtonSpec kUiFxRows[] = {
     {.id = "ui_fx_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 3, .down = 1}},
+     .nav = {.up = 4, .down = 1}},
     {.id = "toggle_mini_hp_bar", .label = "Mini HP bar",
-     .x = 115, .y = fx_row_y(0), .w = 90, .h = 15,
+     .x = kUiFxColX, .y = fx_row_y(0), .w = kUiFxColW, .h = 15,
      .action = ButtonAction::ToggleMiniHpBar, .arg = -1,
      .nav = {.up = 0, .down = 2}},
     {.id = "toggle_damage_numbers", .label = "Damage numbers",
-     .x = 115, .y = fx_row_y(1), .w = 90, .h = 15,
+     .x = kUiFxColX, .y = fx_row_y(1), .w = kUiFxColW, .h = 15,
      .action = ButtonAction::ToggleDamageNumbers, .arg = -1,
      .nav = {.up = 1, .down = 3}},
     {.id = "toggle_heal_numbers", .label = "Healing numbers",
-     .x = 115, .y = fx_row_y(2), .w = 90, .h = 15,
+     .x = kUiFxColX, .y = fx_row_y(2), .w = kUiFxColW, .h = 15,
      .action = ButtonAction::ToggleHealNumbers, .arg = -1,
-     .nav = {.up = 2, .down = 0}},
+     .nav = {.up = 2, .down = 4}},
+    // New Ability Select (docs/ability-select-design.md): one key per
+    // ability. A per-machine preference like the rows above, never on the
+    // wire, so it lives here and not under GAMEPLAY FX.
+    {.id = "toggle_new_ability_select", .label = "New Ability Select",
+     .x = kUiFxColX, .y = fx_row_y(3), .w = kUiFxColW, .h = 15,
+     .action = ButtonAction::ToggleNewAbilitySelect, .arg = -1,
+     .nav = {.up = 3, .down = 0}},
 };
 
 constexpr FxToggleDraw kUiFxToggleDraws[] = {
     {1, "effects", "mini_hp_bar"},
     {2, "effects", "damage_numbers"},
     {3, "effects", "heal_numbers"},
+    {4, "effects", "new_ability_select"},
 };
 
 void ui_fx_draw_content(void* /*screen_state*/)
@@ -8678,6 +8694,15 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::MatchSetup,
                 {.kind = Kind::Engine,
                  .spec = &match_setup_menu_screen_spec()});
+            // ABILITIES (New Ability Select): opened from TRAIN, engine
+            // hosted from birth like SETUP and LINEUP.
+            set(MenuScreenId::Abilities,
+                {.kind = Kind::Engine,
+                 .spec = &abilities_menu_screen_spec()});
+            // CHANGELOG!: the once-only page at the picker's shared start.
+            set(MenuScreenId::Changelog,
+                {.kind = Kind::Engine,
+                 .spec = &changelog_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];

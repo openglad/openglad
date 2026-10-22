@@ -114,6 +114,7 @@ static const FxToggleSpec kUiFxToggles[] = {
     {"toggle_mini_hp_bar", "effects", "mini_hp_bar"},
     {"toggle_damage_numbers", "effects", "damage_numbers"},
     {"toggle_heal_numbers", "effects", "heal_numbers"},
+    {"toggle_new_ability_select", "effects", "new_ability_select"},
 };
 
 static const FxToggleSpec kGraphicsFxToggles[] = {
@@ -140,7 +141,7 @@ inline constexpr int kFxMaxToggles = 14;
 
 static const FxScreenSpec kFxScreens[kFxScreenCount] = {
     {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 4},
-    {"ui_fx", "ui_fx_back", kUiFxToggles, 3},
+    {"ui_fx", "ui_fx_back", kUiFxToggles, 4},
     {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 14},
 };
 
