@@ -2221,6 +2221,9 @@ std::unique_ptr<guy> make_base_camp_display_guy(
     result->exp = character.exp;
     result->level = character.level;
     result->teamnum = character.teamnum;
+    // New Ability Select: the TRAIN screen's ABILITIES door reads the belt
+    // off this display guy.
+    result->belt = character.belt;
     return result;
 }
 
