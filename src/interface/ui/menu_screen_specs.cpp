@@ -33,7 +33,9 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/changelog_screen.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -8692,6 +8694,15 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::MatchSetup,
                 {.kind = Kind::Engine,
                  .spec = &match_setup_menu_screen_spec()});
+            // ABILITIES (New Ability Select): opened from TRAIN, engine
+            // hosted from birth like SETUP and LINEUP.
+            set(MenuScreenId::Abilities,
+                {.kind = Kind::Engine,
+                 .spec = &abilities_menu_screen_spec()});
+            // CHANGELOG!: the once-only page at the picker's shared start.
+            set(MenuScreenId::Changelog,
+                {.kind = Kind::Engine,
+                 .spec = &changelog_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];

@@ -416,6 +416,14 @@ enum class MenuScreenId : std::uint8_t {
     // statement a versus campaign's Base Camp opens. Engine-hosted from
     // birth, so the G5 remote-start and G13 shape sweeps cover it.
     MatchSetup,
+    // ABILITIES (docs/ability-select-design.md, New Ability Select): which
+    // ability sits on which SPEC key, opened from TRAIN. Engine-hosted from
+    // birth, TeamBuildScope, so the G5 and G13 sweeps cover it.
+    Abilities,
+    // The CHANGELOG! page, shown once from the picker's shared start before
+    // any lobby exists (so its remote-start scope is None, on the engine
+    // test's allowlist).
+    Changelog,
     Count,
 };
 
