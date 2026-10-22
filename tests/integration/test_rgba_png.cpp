@@ -89,6 +89,55 @@ void put_be32(std::vector<char>& bytes, std::size_t at, std::uint32_t value)
             static_cast<char>((value >> (24 - 8 * i)) & 0xFFu);
 }
 
+void append_be32(std::vector<char>& bytes, std::uint32_t value)
+{
+    bytes.resize(bytes.size() + 4u);
+    put_be32(bytes, bytes.size() - 4u, value);
+}
+
+void append_chunk(std::vector<char>& png, const char* type,
+                  const std::vector<char>& data)
+{
+    append_be32(png, static_cast<std::uint32_t>(data.size()));
+    const std::size_t start = png.size();
+    png.insert(png.end(), type, type + 4);
+    png.insert(png.end(), data.begin(), data.end());
+    append_be32(png, png_crc(png.data() + start, png.size() - start));
+}
+
+// A whole, valid w x 1 RGBA PNG (every pixel transparent black), its one
+// row in a zlib STORED block, so a picture just past the side cap is a
+// small, honest file the decoder WOULD read: only the cap refuses it.
+std::vector<char> one_row_png(std::uint32_t w)
+{
+    std::vector<char> raw(1u + static_cast<std::size_t>(w) * 4u, 0);  // filter 0
+    std::uint32_t a = 1;
+    std::uint32_t b = 0;
+    for (char c : raw) {
+        a = (a + static_cast<std::uint8_t>(c)) % 65521u;
+        b = (b + a) % 65521u;
+    }
+    std::vector<char> zlib = {0x78, 0x01, 0x01};  // header, final stored block
+    const auto len = static_cast<std::uint16_t>(raw.size());
+    zlib.push_back(static_cast<char>(len & 0xFFu));
+    zlib.push_back(static_cast<char>(len >> 8));
+    const auto nlen = static_cast<std::uint16_t>(0xFFFFu - len);
+    zlib.push_back(static_cast<char>(nlen & 0xFFu));
+    zlib.push_back(static_cast<char>(nlen >> 8));
+    zlib.insert(zlib.end(), raw.begin(), raw.end());
+    append_be32(zlib, (b << 16) | a);
+
+    std::vector<char> png = {'\x89', 'P', 'N', 'G', '\r', '\n', '\x1a', '\n'};
+    std::vector<char> ihdr;
+    append_be32(ihdr, w);
+    append_be32(ihdr, 1u);
+    ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});  // 8-bit RGBA, no interlace
+    append_chunk(png, "IHDR", ihdr);
+    append_chunk(png, "IDAT", zlib);
+    append_chunk(png, "IEND", {});
+    return png;
+}
+
 } // namespace
 
 TEST(RgbaPng, decodes_both_shipped_keyboard_pictures)
@@ -171,4 +220,20 @@ TEST(RgbaPng, an_oversize_file_or_picture_is_rejected)
     put_be32(bytes, 29, png_crc(bytes.data() + 12, 17));
     EXPECT_FALSE(og::io::read_rgba_png(
         scratch.write("wide.png", bytes).c_str()));
+}
+
+TEST(RgbaPng, the_side_cap_is_4096_pixels)
+{
+    // The same honest one-row picture either side of the cap: 4096 wide
+    // decodes, 4097 wide is refused (the file is 16 KiB either way, far under
+    // the file cap, so only the side cap can refuse it).
+    const Scratch scratch;
+    const auto at_cap = og::io::read_rgba_png(
+        scratch.write("at_cap.png", one_row_png(4096u)).c_str());
+    ASSERT_TRUE(at_cap) << "the hand-built PNG does not decode";
+    EXPECT_EQ(4096, at_cap->w);
+    EXPECT_EQ(1, at_cap->h);
+    EXPECT_NE(0u, at_cap->serial);
+    EXPECT_FALSE(og::io::read_rgba_png(
+        scratch.write("past_cap.png", one_row_png(4097u)).c_str()));
 }
