@@ -543,12 +543,13 @@ const FamilyDescriptor& core_family(int family_id)
 }  // namespace
 
 // Every core family's page fits the panel at every slot level under either
-// setting (and either New Ability Select state): nothing dropped, nothing cut, every row inside its column, no
-// two lines on one row, and no " Shift: None" under a classic slot that
-// has no alternate. Proof it can fail: kDetailProseChars 23 -> 20 or
-// kDetailRows 12 -> 10 drops lines; dropping the "NONE" test on the Shift
-// line prints " Shift: None" under the soldier's slots; spelling the locked
-// line "level" cuts " Exploding Boulder: level 4" (27).
+// setting (and either New Ability Select state): nothing dropped, nothing
+// cut, every row inside its column, no two lines on one row, and no
+// " Shift: None" under a classic slot that has no alternate. Proof it can
+// fail: kDetailProseChars 23 -> 20 or kDetailRows 12 -> 10 drops lines;
+// dropping the "NONE" test on the Shift line prints " Shift: None" under
+// the soldier's slots; spelling the locked line "level" cuts
+// " Exploding Boulder: level 4" (27).
 TEST(PickerCommon, detail_pages_fit_the_panel_for_every_core_family)
 {
     init_family_registry();

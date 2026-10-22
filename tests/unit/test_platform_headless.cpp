@@ -1198,9 +1198,10 @@ TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
         << "a blank answer writes nothing";
 }
 
-// The Gameplay Fixes prompt is the fourth on the Game Settings page, the terminal twin of its Gameplay FX row, with the same contract as
-// the New Specials prompt above: on/off writes the preference AND the
-// session's setting; blank keeps both; anything else is refused.
+// The Gameplay Fixes prompt is the fourth on the Game Settings page, the
+// terminal twin of its Gameplay FX row, with the same contract as the New
+// Specials prompt above: on/off writes the preference AND the session's
+// setting; blank keeps both; anything else is refused.
 TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 {
     const std::string saved_specials = cfg.get_setting("gameplay", "new_specials");
