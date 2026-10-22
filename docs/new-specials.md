@@ -70,7 +70,11 @@ it:
 - **A priced alternate.** `alternate = { name, mp_cost, new_kit, detail }`:
   with Shift held, the engine gates and charges the alternate's own price,
   and the HUD turns red below it. Without `mp_cost` it costs the slot's
-  price, as every classic alternate does. `detail` is the one line the
+  price, as every classic alternate does. With New Ability Select on, a key
+  that holds the alternate sets the walker's alternate flag from the
+  ability before the cast (the physical Shift key is not read), so the
+  same gate and price apply ([ability-select-design.md](ability-select-design.md),
+  C.7). `detail` is the one line the
   DETAILS screen prints under the alternate's Shift line (below).
 - **The bot drops a shift it cannot pay.** A bot draws its Shift coin as it
   always did. If the coin says Shift and the slot's alternate has a price
@@ -108,7 +112,9 @@ the walker's magic: the cast answers `NO SPECIAL AVAILABLE`
 (`SpecialFailure::Unavailable`) whatever the pool, so a walker forced onto
 a hidden slot casts nothing. Nothing in play reaches that, since the
 player's cycling and the bot's slot pick both read `NONE` and never put a
-walker on a hidden slot; only a test that sets the slot by hand can. The
+walker on a hidden slot, and a New Ability Select key naming a hidden
+ability is refused by the server before the cast (NO ABILITY THERE); only a
+test that sets the slot by hand can. The
 classic fire elemental still casts its starburst from slot 1 (its
 `default_cast`). This refusal applies whatever the Gameplay Fixes setting
 says ([gameplay-fixes.md](gameplay-fixes.md), "Not gated").
@@ -235,8 +241,9 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 ## Player notes
 
 **Thief.**
-- Holding Shift + Special lays mines one per tick, up to the three a thief
-  may have down, as a held key repeats a bomb.
+- Holding Shift + Special (with New Ability Select on, holding the key
+  MINE sits on, SHIFTER + 1 by default) lays mines one per tick, up to the
+  three a thief may have down, as a held key repeats a bomb.
 - A dead thief's mines stay armed until they expire, and still set each
   other off.
 - Mines are invisible to the other team on the SDL screen, on the radar and
@@ -311,8 +318,9 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   setting off the captain has no specials, as in the classic game.
 - EAT CORPSE's row in the specials table says `level = 1`: it is the one
   slot in the game that opens before the classic level for its place
-  (slot N at level 3N - 2). The cycle key, a bot's slot roll, the DETAILS
-  page and the results screen all ask the same rule
+  (slot N at level 3N - 2). The cycle key, the server's check of a New
+  Ability Select key, a bot's slot roll, the DETAILS page and the results
+  screen all ask the same rule
   (`og::sim::slot_open_level`). A level-1 captain has a 25-point pool, so
   one HOWL (25) or one EAT CORPSE (20) a full pool.
 - HOOK BLADE spirals out from the captain like the boomerang, from 12 to
@@ -543,7 +551,9 @@ changes with the New Specials setting and can never name a special the
 character does not have. Each special's text is the `detail` on its row in
 the pack. A slot the character has reached is a block: the name in red
 and its text under it; a slot with an alternate in play adds a
-`Shift: <name>` line and the alternate's one-line `detail`. A slot the
+`Shift: <name>` line (`Also: <name>` with New Ability Select on, where
+SHIFTER is the second row of keys rather than "the alternate") and the
+alternate's one-line `detail`. A slot the
 character has not reached yet is one line at the foot of its column,
 `Hook Blade: lvl 7`. Slots 1 and 2 are in the left column, 3 to 5 in the
 right. A character with no special in play reads `No special abilities.`
