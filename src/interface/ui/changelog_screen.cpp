@@ -46,30 +46,28 @@ constexpr MenuButtonSpec kChangelogRows[] = {
     // and Space all close the page through changelog_frame_tick instead,
     // which ignores a key that was already down when the page opened.
     {.id = "changelog_ok", .label = "OK",
-     .x = 135, .y = 178, .w = 50, .h = 16,
+     .x = 135, .y = kChangelogOkY, .w = 50, .h = 16,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT},
 };
 
-// The page's geometry (menu pixels): the big-font title, the text lines,
-// and the picture band between the text and OK. Nothing is drawn on the
+// The page's geometry is in changelog_screen.h (the title, the text lines,
+// and the picture band between the text and OK). Nothing is drawn on the
 // menu canvas inside the band: the picture's native plane covers it.
-constexpr int kTitleY = 8;
-constexpr int kLinesTopY = 24;
-constexpr int kLinePitch = 8;
-// text_normal's glyph height (pix/text.png: 125 glyphs, 6 px each).
-constexpr int kGlyphH = 6;
-constexpr int kBandX = 4;
-constexpr int kBandY = 62;
-constexpr int kBandW = 312;
-constexpr int kBandH = 110;
-// The last line starts at 24 + 8 * 4 = 56 and ends at 62, the band's top.
-static_assert(kLinesTopY +
-                      kLinePitch * (static_cast<int>(kChangelogMaxLines) - 1) +
-                      kGlyphH <=
-                  kBandY,
-              "the text lines must end above the picture band");
-static_assert(kBandY + kBandH <= kChangelogRows[0].y,
-              "the picture band must end above OK");
+constexpr int kTitleY = kChangelogTitleY;
+constexpr int kLinesTopY = kChangelogLinesTopY;
+constexpr int kLinePitch = kChangelogLinePitch;
+constexpr int kBandX = kChangelogBandX;
+constexpr int kBandY = kChangelogBandY;
+constexpr int kBandW = kChangelogBandW;
+constexpr int kBandH = kChangelogBandH;
+// The last line ends kChangelogBandGap rows above the band, which ends as
+// far above OK.
+static_assert(kChangelogLinesBottomY + kChangelogBandGap <= kBandY,
+              "the text lines must end above the picture band, with a gap");
+static_assert(kBandY + kBandH + kChangelogBandGap <= kChangelogRows[0].y,
+              "the picture band must end above OK, with a gap");
+static_assert(kTitleY + 12 <= kLinesTopY,
+              "the big-font title (12 px) ends above the first line");
 
 std::vector<button>& changelog_buttons()
 {
