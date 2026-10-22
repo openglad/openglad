@@ -5590,7 +5590,7 @@ void reset_belt_for_family_change(og::sim::belt::Bytes& stored)
 namespace {
 
 // The belt's SPEC 2 and SPEC 3 key slots (input.h KEY_SPEC2 / KEY_SPEC3):
-// client-only slots past KEY_LOOKUP, like it never on the wire.
+// client-only slots past KEY_LOOKUP and, like it, never on the wire.
 inline constexpr int kKeySpec2 = 17;
 inline constexpr int kKeySpec3 = 18;
 

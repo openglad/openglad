@@ -7604,12 +7604,15 @@ TEST(PickerCommon, ability_page_fits_24_glyphs_for_every_core_family)
         families++;
         for (const short new_specials : {short{0}, short{1}})
         for (const int level : {1, 4, 7, 10, 13})
-        for (const belt::Bytes& stored : {belt::default_bytes(), emptied})
+        for (const bool all_empty : {false, true})
         {
+            const belt::Bytes& stored =
+                all_empty ? emptied : belt::default_bytes();
             const og::ui::AbilityPage page = og::ui::ability_page(
                 "Bartholomew", fd, level, new_specials, stored);
             const std::string where = std::format(
-                "{} level {} new_specials {}", fd->name, level, new_specials);
+                "{} level {} new_specials {} belt {}", fd->name, level,
+                new_specials, all_empty ? "all EMPTY" : "default");
             EXPECT_EQ(0, page.cut) << where;
             EXPECT_LE(page.title.size(),
                       static_cast<std::size_t>(og::ui::kAbilityTitleChars))
