@@ -7,10 +7,17 @@
  */
 #pragma once
 
+#include <openglad/gameplay/belt_input.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/interface/input.h>
 #include <openglad/platform/curses/terminal.h>
 
+class GameWorld;
+
 #include <array>
+#include <cstdint>
+#include <optional>
 #include <span>
 
 namespace og::curses {
@@ -40,16 +47,22 @@ class CursesInput
 public:
     // Bind to the live player-0 keybindings (current_session->player_keys_[0]).
     CursesInput();
-    // Bind to an explicit 16-entry keycode table (indexed by InputAction). Used by
-    // tests to exercise specific bindings without the global session.
-    explicit CursesInput(std::span<const int, kInputActionCount> keybindings);
+    // Bind to an explicit NUM_KEYS-entry keycode table (indexed by key slot:
+    // InputAction 0..15, then KEY_LOOKUP, KEY_SPEC2, KEY_SPEC3). Used by tests
+    // to exercise specific bindings without the global session.
+    explicit CursesInput(std::span<const int, NUM_KEYS> keybindings);
 
     // Apply one terminal key event (press/repeat/release) to the held/pressed set.
     void feed(const Key& k);
 
     // Produce the InputState for the current frame and clear the pressed edges.
     // Call once per frame after feeding all events read this frame.
-    InputState sample();
+    //
+    // New Ability Select: SPEC 1/2/3 (slots 9, 17, 18) and SHIFTER go through
+    // the same fold as the SDL sampler (og::sim::belt::fold_keys). `belt` is
+    // the followed walker's resolved belt (followed_belt below), nullptr when
+    // the player drives no walker; with the setting off it is not read.
+    InputState sample(const og::sim::belt::Layout* belt = nullptr);
 
     // Clear all held/pressed state (e.g. when leaving a level).
     void reset();
@@ -65,11 +78,18 @@ public:
     static MetaAction meta_for_key(const Key& k);
 
 private:
-    // 16 SDL keycodes indexed by InputAction (the first kInputActionCount
-    // entries of player_keys_[0]; the tail KEY_LOOKUP slot is SDL-client-only).
-    std::span<const int, kInputActionCount> keybindings_;
-    std::array<bool, kInputActionCount> held_{};
-    std::array<bool, kInputActionCount> pressed_edge_{};
+    // The NUM_KEYS SDL keycodes of player_keys_[0], indexed by key slot. The
+    // KEY_LOOKUP slot is resolved but sends nothing (an SDL render-time hold).
+    std::span<const int, NUM_KEYS> keybindings_;
+    std::array<bool, NUM_KEYS> held_{};
+    std::array<bool, NUM_KEYS> pressed_edge_{};
+    og::sim::belt::Latch belt_latch_{};
 };
+
+// The resolved belt of the walker with id `followed_id` in `world` (its guy's
+// bytes, or the class default for a walker without a guy), or nullopt when no
+// such living walker exists. The curses runtime hands it to sample().
+[[nodiscard]] std::optional<og::sim::belt::Layout>
+followed_belt(const GameWorld& world, std::uint32_t followed_id);
 
 } // namespace og::curses

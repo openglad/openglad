@@ -34,7 +34,7 @@ EM_JS(void, og_touch_mirror_set_js, (int player, int key, int down), {
     var names = ['up', 'up_right', 'right', 'down_right', 'down', 'down_left',
                  'left', 'up_left', 'fire', 'special', 'switch',
                  'special_switch', 'yell', 'shifter', 'prefs', 'cheat',
-                 'lookup'];
+                 'lookup', 'spec2', 'spec3'];
     var m = window.__opengladTouchKeys || (window.__opengladTouchKeys = {});
     var pk = m['p' + player] || (m['p' + player] = {});
     pk[names[key]] = !!down;
@@ -111,6 +111,17 @@ EMSCRIPTEN_KEEPALIVE int openglad_web_set_single_seat_device(int on)
     og::input::set_single_seat_device(single_seat);
     og_single_seat_mirror_js(single_seat ? 1 : 0);
     return 1;
+}
+
+// New Ability Select: the overlay's per-frame tick polls the cached setting
+// (og::input::ability_select_on) the way it polls the seat cap, and relabels
+// its SPEC buttons: "1" "2" "3" when on, "SPC" "SP+" (SPEC 3 hidden) when off.
+// Returns 1 for on, 0 for off or before a session exists.
+EMSCRIPTEN_KEEPALIVE int openglad_web_ability_select()
+{
+    if (!session_ready())
+        return 0;
+    return og::input::ability_select_on() ? 1 : 0;
 }
 
 // Back button faking Escape key

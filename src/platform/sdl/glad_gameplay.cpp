@@ -79,6 +79,8 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     result->scen_shots = character.scen_shots;
     result->scen_hits = character.scen_hits;
     result->level = character.level;
+    // New Ability Select: the belt rides the lobby (protocol v22).
+    result->belt = character.belt;
     // v8: the deploy flag rides the lobby SLOT, not the guy payload; roster
     // assembly only materializes deployed slots, so mark the guy explicitly.
     result->deployed = true;

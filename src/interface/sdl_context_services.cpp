@@ -18,6 +18,12 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/gameplay/belt_input.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/core/test_trace.h>
 
 #include <array>
 #include <cstddef>
@@ -25,10 +31,123 @@
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
+namespace
+{
+
+// New Ability Select: the SPEC keys' raw history. The wire's held bits are
+// the previous sample of every other key, but the Special bit is the FOLD's
+// output (a SPEC 2 hold sets it), so the edges of SPEC 1/2/3 need the raw
+// keys of the previous sample. `sent` is the PlayerInput this sampler wrote
+// with them; when the InputState handed in is not that one (a fresh state, a
+// test context swap), the history is stale and the edges come from the bits
+// handed in, which is what the sampler did before the belt.
+struct SpecKeyHistory {
+    bool raw[3] = {false, false, false};
+    PlayerInput sent{};
+    bool valid = false;
+};
+
+std::array<SpecKeyHistory, MAX_PLAYERS>& spec_key_history()
+{
+    static std::array<SpecKeyHistory, MAX_PLAYERS> history{};
+    return history;
+}
+
+bool same_input(const PlayerInput& a, const PlayerInput& b)
+{
+    for (int k = 0; k < NUM_INPUT_KEYS; ++k)
+    {
+        if (a.held[k] != b.held[k] || a.pressed[k] != b.pressed[k])
+            return false;
+    }
+    return a.belt_cast == b.belt_cast;
+}
+
+// The walker local seat `seat` drives (its view's control, the mirror walker
+// in local and networked play), resolved against its guy's belt, or nullptr
+// when the seat drives none (a menu, a dead or empty seat).
+const og::sim::belt::Layout* seat_belt(int seat,
+                                       og::sim::belt::Layout& storage)
+{
+    og::runtime::SessionState* const session = og::runtime::current_session;
+    if (session == nullptr || session->myscreen_ == nullptr)
+        return nullptr;
+    screen& view_screen = *session->myscreen_;
+    if (seat >= view_screen.numviews || !view_screen.viewob[seat])
+        return nullptr;
+    const walker* const control = view_screen.viewob[seat]->control;
+    if (control == nullptr || control->dead() || control->stats() == nullptr)
+        return nullptr;
+    const FamilyDescriptor* const descriptor = get_family_descriptor(
+        static_cast<int>(static_cast<unsigned char>(control->family())));
+    storage = og::sim::belt::resolve(descriptor, control->stats()->level(),
+                                     view_screen.world().new_specials,
+                                     og::sim::belt::bytes_for(*control));
+    return &storage;
+}
+
+// SPEC 1/2/3 + SHIFTER through the belt fold (og::sim::belt::fold_keys):
+// writes the Special and SwitchSpecial bits and belt_cast of `now`. `before`
+// is the PlayerInput the caller handed in, before this sample.
+void fold_spec_keys(int seat, const PlayerInput& before, PlayerInput& now)
+{
+    SpecKeyHistory& history = spec_key_history()[static_cast<std::size_t>(seat)];
+    bool was_raw[3];
+    if (history.valid && same_input(history.sent, before))
+    {
+        for (int i = 0; i < 3; ++i)
+            was_raw[i] = history.raw[i];
+    }
+    else
+    {
+        was_raw[0] = before.is_held(InputAction::Special);
+        was_raw[1] = before.is_held(InputAction::SwitchSpecial);
+        was_raw[2] = false;
+    }
+
+    static constexpr int kSpecKeys[3] = {KEY_SPECIAL, KEY_SPEC2, KEY_SPEC3};
+    og::sim::belt::Keys keys;
+    for (int i = 0; i < 3; ++i)
+    {
+        keys.held[i] = isPlayerHoldingKey(seat, kSpecKeys[i]);
+        keys.pressed[i] = keys.held[i] && !was_raw[i];
+        history.raw[i] = keys.held[i];
+    }
+    keys.shift_held = isPlayerHoldingKey(seat, KEY_SHIFTER);
+
+    // The layout matters only while a SPEC key is down: with none held,
+    // fold_keys answers the same with or without a walker (no bits, the
+    // latch cleared), so the walker is not looked up on idle samples.
+    const bool ability_select = og::input::ability_select_on();
+    og::sim::belt::Layout storage;
+    const og::sim::belt::Layout* belt = nullptr;
+    if (ability_select && (keys.held[0] || keys.held[1] || keys.held[2]))
+        belt = seat_belt(seat, storage);
+
+    const og::sim::belt::Fold fold = og::sim::belt::fold_keys(
+        keys, ability_select, belt,
+        input_hardware_state().belt_latch[seat]);
+    now.held[static_cast<int>(InputAction::Special)] = fold.special_held;
+    now.pressed[static_cast<int>(InputAction::Special)] = fold.special_pressed;
+    now.held[static_cast<int>(InputAction::SwitchSpecial)] = fold.switch_held;
+    now.pressed[static_cast<int>(InputAction::SwitchSpecial)] =
+        fold.switch_pressed;
+    now.belt_cast = fold.belt_cast;
+    if (fold.special_pressed && fold.belt_cast != 0)
+        TRACE("belt", "seat %d sends belt_cast=0x%02x", seat,
+              static_cast<unsigned>(fold.belt_cast));
+
+    history.sent = now;
+    history.valid = true;
+}
+
+} // namespace
+
 void input_state_from_sdl(InputState& out)
 {
     out.timer_wait_request = kNoTimerWaitRequest;
     for (int p = 0; p < MAX_PLAYERS; p++) {
+        const PlayerInput before = out.players[p];
         // Save previous held state to detect press edges
         std::array<bool, NUM_INPUT_KEYS> was_held;
         for (int k = 0; k < NUM_INPUT_KEYS; k++)
@@ -87,6 +206,11 @@ void input_state_from_sdl(InputState& out)
         for (int k = 0; k < NUM_INPUT_KEYS; k++)
             out.players[p].pressed[k] =
                 out.players[p].held[k] && !was_held[static_cast<std::size_t>(k)];
+
+        // New Ability Select: SPEC 1/2/3 (slots 9, 17, 18) + SHIFTER become
+        // the Special and SwitchSpecial bits and the belt byte. Slot 11 (the
+        // retired change-special slot) is never bound; the fold owns its bit.
+        fold_spec_keys(p, before, out.players[p]);
     }
 
     if (og::runtime::current_session != nullptr)
