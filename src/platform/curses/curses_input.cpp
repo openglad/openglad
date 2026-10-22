@@ -163,8 +163,8 @@ InputState CursesInput::sample(const og::sim::belt::Layout* belt)
         keys, og::input::ability_select_on(), belt, belt_latch_);
     p.held[static_cast<int>(InputAction::Special)] = fold.special_held;
     p.pressed[static_cast<int>(InputAction::Special)] = fold.special_pressed;
-    p.held[static_cast<int>(InputAction::SpecialSwitch)] = fold.switch_held;
-    p.pressed[static_cast<int>(InputAction::SpecialSwitch)] = fold.switch_pressed;
+    p.held[static_cast<int>(InputAction::SwitchSpecial)] = fold.switch_held;
+    p.pressed[static_cast<int>(InputAction::SwitchSpecial)] = fold.switch_pressed;
     p.belt_cast = fold.belt_cast;
 
     pressed_edge_.fill(false);

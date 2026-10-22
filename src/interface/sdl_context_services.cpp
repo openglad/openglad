@@ -101,7 +101,7 @@ void fold_spec_keys(int seat, const PlayerInput& before, PlayerInput& now)
     else
     {
         was_raw[0] = before.is_held(InputAction::Special);
-        was_raw[1] = before.is_held(InputAction::SpecialSwitch);
+        was_raw[1] = before.is_held(InputAction::SwitchSpecial);
         was_raw[2] = false;
     }
 
@@ -129,8 +129,8 @@ void fold_spec_keys(int seat, const PlayerInput& before, PlayerInput& now)
         input_hardware_state().belt_latch[seat]);
     now.held[static_cast<int>(InputAction::Special)] = fold.special_held;
     now.pressed[static_cast<int>(InputAction::Special)] = fold.special_pressed;
-    now.held[static_cast<int>(InputAction::SpecialSwitch)] = fold.switch_held;
-    now.pressed[static_cast<int>(InputAction::SpecialSwitch)] =
+    now.held[static_cast<int>(InputAction::SwitchSpecial)] = fold.switch_held;
+    now.pressed[static_cast<int>(InputAction::SwitchSpecial)] =
         fold.switch_pressed;
     now.belt_cast = fold.belt_cast;
     if (fold.special_pressed && fold.belt_cast != 0)

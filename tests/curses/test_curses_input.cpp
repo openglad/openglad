@@ -421,7 +421,7 @@ TEST(CursesInput, spec2_slot_17_is_translated)
     InputState s = input.sample(&belt);
     EXPECT_TRUE(s.players[0].pressed[act(InputAction::Special)]);
     EXPECT_TRUE(s.players[0].held[act(InputAction::Special)]);
-    EXPECT_FALSE(s.players[0].held[act(InputAction::SpecialSwitch)])
+    EXPECT_FALSE(s.players[0].held[act(InputAction::SwitchSpecial)])
         << "nothing cycles under the belt";
     EXPECT_EQ(0x03, s.players[0].belt_cast) << "SPEC 2 = WHIRLWIND, slot 3";
 
@@ -483,14 +483,14 @@ TEST(CursesInput, off_spec2_cycles_and_the_byte_stays_zero)
     CursesInput input(b.k);
     input.feed(press(U'2'));
     InputState s = input.sample(&belt);
-    EXPECT_TRUE(s.players[0].pressed[act(InputAction::SpecialSwitch)]);
+    EXPECT_TRUE(s.players[0].pressed[act(InputAction::SwitchSpecial)]);
     EXPECT_FALSE(s.players[0].held[act(InputAction::Special)]);
     EXPECT_EQ(0, s.players[0].belt_cast);
 
     input.feed(release(U'2'));
     input.feed(press(U'3'));
     s = input.sample(&belt);
-    EXPECT_FALSE(s.players[0].held[act(InputAction::SpecialSwitch)]);
+    EXPECT_FALSE(s.players[0].held[act(InputAction::SwitchSpecial)]);
     EXPECT_FALSE(s.players[0].held[act(InputAction::Special)]);
 
     input.feed(Key::special(KeyCode::LeftAlt));

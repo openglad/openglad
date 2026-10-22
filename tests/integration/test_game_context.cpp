@@ -878,7 +878,7 @@ private:
 };
 
 constexpr int kSpecial = static_cast<int>(InputAction::Special);
-constexpr int kSpecialSwitch = static_cast<int>(InputAction::SpecialSwitch);
+constexpr int kSpecialSwitch = static_cast<int>(InputAction::SwitchSpecial);
 
 } // namespace
 
@@ -1017,6 +1017,16 @@ walker* start_belt_mission(screen& game_screen)
     if (og::runtime::current_game_session == nullptr ||
         !og::runtime::local_transport_active(*og::runtime::current_session))
         return nullptr;
+    // The display world is the snapshot mirror: give the first snapshots a
+    // few ticks to put the hero under seat 1.
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int frame = 0; frame < 10 && game_screen.viewob[0]->control == nullptr;
+         ++frame)
+        game_frame_with_result(game_screen,
+                               og::runtime::current_session->frame_state_, deps);
     return game_screen.viewob[0]->control;
 }
 
@@ -1044,13 +1054,15 @@ GameLoopDeps one_tick_per_frame()
 
 // Presses player 1's SPEC 2 key for one frame, lets go, and runs ticks until
 // the mirror hero's current special moves (or a bounded number of frames).
-int press_spec2_and_read_the_slot(screen& game_screen, walker* hero)
+int press_spec2_and_read_the_slot(screen& game_screen)
 {
     FakeKeyboard keyboard;
     GameLoopFrameState& st = og::runtime::current_session->frame_state_;
     const GameLoopDeps deps = one_tick_per_frame();
     game_frame_with_result(game_screen, st, deps);  // settle, nothing held
-    const int before = hero->current_special();
+    if (game_screen.viewob[0]->control == nullptr)
+        return -1;
+    const int before = game_screen.viewob[0]->control->current_special();
     if (!keyboard.set(0, KEY_SPEC2, true))
         return -1;
     game_frame_with_result(game_screen, st, deps);
@@ -1080,7 +1092,7 @@ TEST(BeltPlay, a_spec2_press_with_the_setting_on_casts_the_guys_slot_2_entry)
     ASSERT_EQ(1, hero->current_special());
 
     trace_clear();
-    const int slot = press_spec2_and_read_the_slot(game_screen, hero);
+    const int slot = press_spec2_and_read_the_slot(game_screen);
     EXPECT_EQ(3, slot)
         << "SPEC 2 must cast the guy's slot-2 entry (WHIRLWIND, slot 3), not "
            "the default BOOMERANG (2) or a cycle";
@@ -1099,7 +1111,7 @@ TEST(BeltPlay, a_spec2_press_with_the_setting_off_cycles_the_special)
     ASSERT_EQ(1, hero->current_special());
 
     trace_clear();
-    const int slot = press_spec2_and_read_the_slot(game_screen, hero);
+    const int slot = press_spec2_and_read_the_slot(game_screen);
     EXPECT_EQ(2, slot) << "with the setting off SPEC 2 cycles 1 -> 2";
     EXPECT_FALSE(trace_contains("special", "cast id="))
         << "the change-special key never casts";
