@@ -409,7 +409,7 @@ void abilities_draw_content(void* /*screen_state*/)
 
 // Every edit runs on the working copy; BACK commits it. Which edit a pick
 // means is the shared rule (ability_pick.h); the traces name what it did.
-void trace_pick(const AbilityPick& pick, int target)
+void trace_pick(const AbilityPick& pick, [[maybe_unused]] int target)
 {
     switch (pick.edit) {
     case AbilityPickEdit::Cleared:
