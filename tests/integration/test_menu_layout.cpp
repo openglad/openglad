@@ -4091,6 +4091,44 @@ TEST(MenuLayout, ui_fx_options_layout_and_nav)
         << "New Ability Select closes the cycle at BACK";
 }
 
+// The New Ability Select row's face is green or red from its own cfg key,
+// effects/new_ability_select, through the production content pass. Proof it
+// can fail: point the row's draw-table entry at another key (heal_numbers)
+// and flipping the setting no longer changes the face, while flipping that
+// other key does.
+TEST(MenuLayout, ui_fx_new_ability_select_face_follows_its_key)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    button* buttons = picker_ui_fx_options_buttons();
+    ASSERT_EQ(5, picker_ui_fx_options_button_count());
+    const button& row = buttons[4];
+    ASSERT_EQ("toggle_new_ability_select", std::string(row.id));
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::UiFx).spec;
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    const std::string saved_select =
+        cfg.get_setting("effects", "new_ability_select");
+    const std::string saved_heal = cfg.get_setting("effects", "heal_numbers");
+    const auto face = [&](const char* select, const char* heal) {
+        cfg.apply_setting("effects", "new_ability_select", select);
+        cfg.apply_setting("effects", "heal_numbers", heal);
+        game->clearbuffer();
+        spec.draw_content(nullptr);
+        return snapshot_canvas_rect(row.x, row.y, row.x + row.sizex,
+                                    row.y + row.sizey);
+    };
+    const std::vector<int> on = face("on", "on");
+    const std::vector<int> off = face("off", "on");
+    const std::vector<int> off_heal_off = face("off", "off");
+    cfg.apply_setting("effects", "new_ability_select", saved_select);
+    cfg.apply_setting("effects", "heal_numbers", saved_heal);
+
+    EXPECT_NE(on, off) << "the face must follow effects/new_ability_select";
+    EXPECT_EQ(off, off_heal_off)
+        << "the face must not follow another row's key";
+}
+
 // GRAPHICS FX subscreen: unique BACK id + 14 effects/* visual toggles on the
 // three-column x=15/115/215 grid (4 full rows at 23px pitch from y=35, plus
 // floor glide and color cycling on a fifth row). Weather is the single display
