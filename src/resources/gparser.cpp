@@ -232,6 +232,10 @@ bool cfg_store::load_settings()
     apply_setting("effects", "hit_anim", "on");
     apply_setting("effects", "damage_numbers", "off");
     apply_setting("effects", "heal_numbers", "on");
+    // New Ability Select (Game Settings -> UI FX): one key per ability. A
+    // per-machine input setting, never on the wire. On by default, and
+    // RESTORE SETTINGS keeps that.
+    apply_setting("effects", "new_ability_select", "on");
     apply_setting("effects", "shadows", "on");
     apply_setting("effects", "reflections", "on");
     apply_setting("effects", "weather", "on");

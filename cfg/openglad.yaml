@@ -11,6 +11,7 @@ effects:
   hit_flash: on
   hit_recoil: off
   mini_hp_bar: on
+  new_ability_select: on
   gore: on
   reflections: on
   ripples: on
