@@ -39,17 +39,49 @@ struct ChangelogEntry {
 // The page's text budget: the lines sit centred in the 4..316 bevel at
 // 6 px a glyph, above the picture band.
 inline constexpr std::size_t kChangelogMaxGlyphs = 48;
-inline constexpr std::size_t kChangelogMaxLines = 5;
+inline constexpr std::size_t kChangelogMaxLines = 6;
+
+// The page's geometry (menu pixels). The panel is the options family's
+// inverted bevel, whose frame lines sit on x 4 and 315: the picture band
+// stays inside them, with kChangelogBandGap rows of bare panel between it
+// and the last text line above and OK below. The band is the keyboard
+// picture's own aspect (1560 x 550), as wide as that height allows.
+inline constexpr int kChangelogTitleY = 8;
+inline constexpr int kChangelogLinesTopY = 22;
+inline constexpr int kChangelogLinePitch = 8;
+// text_normal's glyph height (pix/text.png: 6 px a glyph).
+inline constexpr int kChangelogGlyphH = 6;
+inline constexpr int kChangelogLinesBottomY =
+    kChangelogLinesTopY +
+    kChangelogLinePitch * (static_cast<int>(kChangelogMaxLines) - 1) +
+    kChangelogGlyphH;
+inline constexpr int kChangelogBandGap = 3;
+inline constexpr int kChangelogOkY = 178;
+inline constexpr int kChangelogBandY = kChangelogLinesBottomY + kChangelogBandGap;
+inline constexpr int kChangelogBandH =
+    kChangelogOkY - kChangelogBandGap - kChangelogBandY;
+inline constexpr int kChangelogBandW = 296;
+inline constexpr int kChangelogBandX = (320 - kChangelogBandW) / 2;
+// The bevel's frame lines.
+inline constexpr int kChangelogFrameLeftX = 4;
+inline constexpr int kChangelogFrameRightX = 315;
+static_assert(kChangelogBandX > kChangelogFrameLeftX + 1 &&
+                  kChangelogBandX + kChangelogBandW < kChangelogFrameRightX,
+              "the picture band stays inside the panel's frame lines");
+static_assert(kChangelogBandH * 1560 / 550 <= kChangelogBandW &&
+                  kChangelogBandW - kChangelogBandH * 1560 / 550 <= 2,
+              "the band is the picture's own aspect, height-limited");
 
 // Entry 1: New Ability Select. The picture under the text is the new default
 // keyboard (scripts/keyboard_map/make_keyboard_map.py draws it from the key
 // tables).
 inline constexpr const char* kAbilitySelectLines[] = {
-    "One key per ability: SPEC 1, 2, 3 cast at once.",
+    "One key per ability: SPEC 1, SPEC 2, SPEC 3.",
     "Hold SHIFTER for three more. No more cycling.",
     "TRAIN > ABILITIES puts any ability on any key.",
     "New default keys below; REMAP keeps yours.",
-    "Old way: Settings > UI FX > New Ability Select.",
+    "Old way: turn off New Ability Select in",
+    "GAME SETTINGS > UI FX.",
 };
 
 inline constexpr ChangelogEntry kChangelog[] = {
@@ -83,7 +115,7 @@ constexpr bool entries_fit()
 
 static_assert(changelog_detail::entries_fit(),
               "a CHANGELOG! line is wider than the bevel (48 glyphs), an "
-              "entry has more than five lines, or the ids are not rising to "
+              "entry has more than six lines, or the ids are not rising to "
               "kChangelogLatestId");
 
 const MenuScreenSpec& changelog_menu_screen_spec();

@@ -346,33 +346,89 @@ struct BandCheck
     long band_pixels = 0;
     long band_caps = 0;
     long text_caps = 0;
+    // The picture's extent in menu pixels: the bounding box of its dark
+    // ground (every channel under 60). Nothing else on the page is that
+    // dark: the panel is grey, its frame lines 100 and 196, the ink blue
+    // and red. -1 when no dark pixel was found.
+    double pic_x0 = -1, pic_y0 = -1, pic_x1 = -1, pic_y1 = -1;
 };
 
 // The menu canvas is aspect-fitted into the window; (x, y, w, h) in menu
 // pixels -> the physical rectangle.
 BandCheck check_band(const PhysicalFrame& frame)
 {
+    using og::ui::kChangelogBandH;
+    using og::ui::kChangelogBandW;
+    using og::ui::kChangelogBandX;
+    using og::ui::kChangelogBandY;
+    using og::ui::kChangelogLinesTopY;
     BandCheck check;
     const double scale = std::min(frame.w / 320.0, frame.h / 200.0);
     const double ox = (frame.w - 320.0 * scale) / 2.0;
     const double oy = (frame.h - 200.0 * scale) / 2.0;
     const auto px = [&](double ux) { return static_cast<int>(ox + ux * scale); };
     const auto py = [&](double uy) { return static_cast<int>(oy + uy * scale); };
-    for (int y = py(62) + 2; y < py(172) - 2; y += 2)
-        for (int x = px(4) + 2; x < px(316) - 2; x += 2) {
+    for (int y = py(kChangelogBandY) + 2;
+         y < py(kChangelogBandY + kChangelogBandH) - 2; y += 2)
+        for (int x = px(kChangelogBandX) + 2;
+             x < px(kChangelogBandX + kChangelogBandW) - 2; x += 2) {
             ++check.band_pixels;
             if (is_key_cap_colour(frame.at(x, y)))
                 ++check.band_caps;
         }
-    // The five lines (menu y 24..61) never show the picture. (The title
-    // above them is the big font's own red, a cap colour by this rule; the
-    // lines sit between it and the band, so the picture cannot reach it
-    // without crossing them.)
-    for (int y = py(24); y < py(62) - 1; ++y)
+    // The lines (menu y kChangelogLinesTopY up to the band) never show the
+    // picture. (The title above them is the big font's own red, a cap
+    // colour by this rule; the lines sit between it and the band, so the
+    // picture cannot reach it without crossing them.)
+    for (int y = py(kChangelogLinesTopY); y < py(kChangelogBandY) - 1; ++y)
         for (int x = px(4); x < px(316); ++x)
             if (is_key_cap_colour(frame.at(x, y)))
                 ++check.text_caps;
+    // The picture's ground, over the whole menu canvas (never the
+    // letterbox bars, which are black too).
+    int x0 = frame.w, y0 = frame.h, x1 = -1, y1 = -1;
+    for (int y = py(0); y < py(200); ++y)
+        for (int x = px(0); x < px(320); ++x) {
+            const std::array<Uint8, 3> c = frame.at(x, y);
+            if (std::max({c[0], c[1], c[2]}) >= 60)
+                continue;
+            x0 = std::min(x0, x);
+            y0 = std::min(y0, y);
+            x1 = std::max(x1, x);
+            y1 = std::max(y1, y);
+        }
+    if (x1 >= 0) {
+        check.pic_x0 = (x0 - ox) / scale;
+        check.pic_y0 = (y0 - oy) / scale;
+        check.pic_x1 = (x1 + 1 - ox) / scale;
+        check.pic_y1 = (y1 + 1 - oy) / scale;
+    }
     return check;
+}
+
+// The picture sits inside the panel's frame lines (x 4 and 315), with bare
+// panel between it and the last text line and between it and OK, and is
+// still nearly as wide as the panel (legibility).
+void expect_picture_framed(const BandCheck& band)
+{
+    using og::ui::kChangelogFrameLeftX;
+    using og::ui::kChangelogFrameRightX;
+    using og::ui::kChangelogLinesBottomY;
+    using og::ui::kChangelogOkY;
+    ASSERT_GE(band.pic_x1, 0.0) << "no picture on the page";
+    EXPECT_GE(band.pic_x0, kChangelogFrameLeftX + 1 + 2.0)
+        << "the picture runs over the panel's left frame line (x 4)";
+    EXPECT_LE(band.pic_x1, kChangelogFrameRightX - 2.0)
+        << "the picture runs over the panel's right frame line (x 315)";
+    EXPECT_GE(band.pic_y0, kChangelogLinesBottomY + 2.0)
+        << "no gap between the last text line (ends y "
+        << kChangelogLinesBottomY << ") and the picture (starts y "
+        << band.pic_y0 << ")";
+    EXPECT_LE(band.pic_y1, kChangelogOkY - 2.0)
+        << "no gap between the picture (ends y " << band.pic_y1
+        << ") and OK (y " << kChangelogOkY << ")";
+    EXPECT_GE(band.pic_x1 - band.pic_x0, 280.0)
+        << "the picture shrank below what its labels need";
 }
 
 // The output size for the three captures, put back after.
@@ -428,8 +484,8 @@ TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
     ASSERT_TRUE(first.main_menu_seen);
     EXPECT_TRUE(trace_contains("changelog", "CHANGELOG!: showing id=1 picture=1"));
 
-    // The 320x200 frame: the title in the big font at y 8, the five lines
-    // below it.
+    // The 320x200 frame: the title in the big font at y 8, the six lines
+    // below it, and bare panel under the last one.
     ASSERT_TRUE(first.menu_frame.captured);
     EXPECT_GE(first.menu_frame.nonblack, kCapturedFrameMinNonblackPixels);
     // Rows holding ink inside the bevel: `red` for the title (the big font
@@ -453,7 +509,13 @@ TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
     };
     EXPECT_GE(ink_rows(8, 21, true), 6) << "the title is not at y 8";
     EXPECT_EQ(0, ink_rows(0, 8, true)) << "the title starts above y 8";
-    EXPECT_GE(ink_rows(23, 62, false), 20) << "the five lines are not under it";
+    EXPECT_GE(ink_rows(og::ui::kChangelogLinesTopY,
+                       og::ui::kChangelogLinesBottomY, false),
+              6 * 4)
+        << "the six lines are not under it";
+    EXPECT_EQ(0, ink_rows(og::ui::kChangelogLinesBottomY,
+                          og::ui::kChangelogBandY, false))
+        << "text runs into the gap above the picture";
 
     // The physical frame: the keyboard picture fills its band and stays out
     // of the text.
@@ -463,6 +525,7 @@ TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
         << "the picture band shows no keyboard (" << band.band_caps << " of "
         << band.band_pixels << " samples are key caps)";
     EXPECT_EQ(0, band.text_caps) << "the picture spills into the text";
+    expect_picture_framed(band);
 
     // OK stamped the marker: on the menu thread, in cfg, and on disk.
     EXPECT_EQ(og::ui::kChangelogLatestId, first.marker_on_menu_thread);
@@ -586,8 +649,9 @@ TEST(ChangelogFlow, testing_default_is_trace_only)
 TEST(ChangelogFlow, page_at_three_window_sizes_keeps_the_picture_in_its_band)
 {
     // The same page at the windowed default and two larger outputs. The
-    // picture is drawn at each output's own pixels (the band is 312 x 110
-    // menu pixels: 1248 x 440 at 1280 x 800, 1685 x 594 at 1920 x 1080).
+    // picture is drawn at each output's own pixels (the band is 296 x 104
+    // menu pixels: 1184 x 416 at 1280 x 800, 1598 x 562 at 1920 x 1080),
+    // inside the panel's frame lines with a gap above and below.
     ASSERT_TRUE(E_Screen);
     MarkerRestore restore;
     OutputSize output;
@@ -614,5 +678,6 @@ TEST(ChangelogFlow, page_at_three_window_sizes_keeps_the_picture_in_its_band)
         EXPECT_GT(band.band_caps * 5, band.band_pixels)
             << "the picture band shows no keyboard";
         EXPECT_EQ(0, band.text_caps) << "the picture spills into the text";
+        expect_picture_framed(band);
     }
 }
