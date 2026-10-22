@@ -259,11 +259,21 @@ struct HeldKeys
 };
 HeldKeys* g_held = nullptr;
 
-void release_held_keys(HeldKeys& held)
+// The page reads the fake keystate on the menu thread, so the injector
+// flips it there too (a plain write from this thread is a data race).
+bool set_held_keys_on_main_thread(HeldKeys& held, bool return_escape,
+                                  bool space)
 {
-    held.keys[static_cast<std::size_t>(KEYSTATE_RETURN)] = false;
-    held.keys[static_cast<std::size_t>(KEYSTATE_ESCAPE)] = false;
-    held.keys[static_cast<std::size_t>(KEYSTATE_SPACE)] = false;
+    return run_on_main_thread([&held, return_escape, space] {
+        held.keys[static_cast<std::size_t>(KEYSTATE_RETURN)] = return_escape;
+        held.keys[static_cast<std::size_t>(KEYSTATE_ESCAPE)] = return_escape;
+        held.keys[static_cast<std::size_t>(KEYSTATE_SPACE)] = space;
+    });
+}
+
+bool release_held_keys(HeldKeys& held)
+{
+    return set_held_keys_on_main_thread(held, false, false);
 }
 
 int page_with_held_keys(Flow& flow)
@@ -283,13 +293,16 @@ int page_with_held_keys(Flow& flow)
     held.stayed_up_while_held = has_interactable("changelog_ok") &&
                                 !trace_contains("changelog", "CHANGELOG!: closed");
     // Let go, give the page frames to see it, then press Space again.
-    release_held_keys(held);
+    if (!release_held_keys(held))
+        return give_up(3, "the menu thread never ran the key release");
     if (!wait_for_menu_frames(2))
         return give_up(3, "the page completed no frames after the release");
-    held.keys[static_cast<std::size_t>(KEYSTATE_SPACE)] = true;
+    if (!set_held_keys_on_main_thread(held, false, true))
+        return give_up(4, "the menu thread never ran the Space press");
     held.closed_by_a_new_press =
         wait_for_trace("changelog", "CHANGELOG!: closed id=1", 15000);
-    release_held_keys(held);
+    if (!release_held_keys(held))
+        return give_up(4, "the menu thread never ran the Space release");
     if (!held.closed_by_a_new_press)
         return give_up(4, "a fresh Space did not close the page");
     if (!wait_for_interactable("quit", 15000))

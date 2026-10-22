@@ -16,6 +16,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/video.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/web_control_defaults.h>
 #include <openglad/resources/filesystem_sync.h>
@@ -195,6 +196,11 @@ bool changelog_frame_tick(void* screen_state, int /*frame*/)
 void drain_closing_keys()
 {
     while (closing_key_held()) {
+        // Null outside tests. A test injector lets the keys go on the menu
+        // thread (picker_lobby_client.h), and this loop is the only frame
+        // left to run that hand-off on.
+        if (g_picker_main_thread_pump != nullptr)
+            g_picker_main_thread_pump();
 #ifdef __EMSCRIPTEN__
         emscripten_sleep(1);
 #else
