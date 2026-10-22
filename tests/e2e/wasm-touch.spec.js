@@ -1062,6 +1062,41 @@ test.describe('Touch gameplay controls', () => {
       .toBe(false);
   });
 
+  // New Ability Select (on by default): the SPEC cluster reads 1 2 3, and
+  // SPEC 2 / SPEC 3 reach the engine's touch seam as key slots 17 and 18
+  // (the C++ mirror names them spec2 / spec3 after its bounds check).
+  for (const [selector, name] of [['#tc-spec2', 'spec2'], ['#tc-spec3', 'spec3']]) {
+    test(`${name} button delivers its belt key slot`, async ({ page }) => {
+      test.setTimeout(180_000);
+
+      await seedGameplayInitScript(page);
+      await startSeededGameplayWithOverlay(page);
+
+      await expect
+        .poll(async () => page.evaluate(() => window.__opengladAbilitySelect))
+        .toBe(true);
+      await expect(page.locator('#tc-special')).toHaveText('1');
+      await expect(page.locator('#tc-spec2')).toHaveText('2');
+      await expect(page.locator('#tc-spec3')).toHaveText('3');
+      await expect(page.locator('#tc-spec3')).toBeVisible();
+
+      const center = await elementCenter(page, selector);
+      await dispatchPointer(page, selector, 'pointerdown', center.x, center.y, 57);
+      await expect
+        .poll(async () =>
+          page.evaluate((key) => Boolean(window.__opengladTouchKeys?.[key]), name),
+        )
+        .toBe(true);
+      await page.waitForTimeout(200);
+      await dispatchPointer(page, selector, 'pointerup', center.x, center.y, 57);
+      await expect
+        .poll(async () =>
+          page.evaluate((key) => Boolean(window.__opengladTouchKeys?.[key]), name),
+        )
+        .toBe(false);
+    });
+  }
+
   test('BACK button opens the pause menu, QUIT aborts, and returns to the picker', async ({ page }) => {
     test.setTimeout(180_000);
 
