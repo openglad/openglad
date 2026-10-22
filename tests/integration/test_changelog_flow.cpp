@@ -281,14 +281,14 @@ int page_with_held_keys(Flow& flow)
     if (!wait_for_menu_frames(4, 3000))
         return give_up(2, "the page completed no frames under the held keys");
     held.stayed_up_while_held = has_interactable("changelog_ok") &&
-                                !trace_contains("popup", "CHANGELOG!: closed");
+                                !trace_contains("changelog", "CHANGELOG!: closed");
     // Let go, give the page frames to see it, then press Space again.
     release_held_keys(held);
     if (!wait_for_menu_frames(2))
         return give_up(3, "the page completed no frames after the release");
     held.keys[static_cast<std::size_t>(KEYSTATE_SPACE)] = true;
     held.closed_by_a_new_press =
-        wait_for_trace("popup", "CHANGELOG!: closed id=1", 15000);
+        wait_for_trace("changelog", "CHANGELOG!: closed id=1", 15000);
     release_held_keys(held);
     if (!held.closed_by_a_new_press)
         return give_up(4, "a fresh Space did not close the page");
@@ -426,7 +426,7 @@ TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
                                << first_result;
     ASSERT_TRUE(first.page_seen);
     ASSERT_TRUE(first.main_menu_seen);
-    EXPECT_TRUE(trace_contains("popup", "CHANGELOG!: showing id=1 picture=1"));
+    EXPECT_TRUE(trace_contains("changelog", "CHANGELOG!: showing id=1 picture=1"));
 
     // The 320x200 frame: the title in the big font at y 8, the five lines
     // below it.
@@ -480,8 +480,8 @@ TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
     ASSERT_TRUE(second.main_menu_seen);
     EXPECT_FALSE(second.page_seen_on_return)
         << "the page came back with the marker stamped";
-    EXPECT_TRUE(trace_contains("popup", "CHANGELOG!: pending=0 seen=1"));
-    EXPECT_FALSE(trace_contains("popup", "CHANGELOG!: showing"));
+    EXPECT_TRUE(trace_contains("changelog", "CHANGELOG!: pending=0 seen=1"));
+    EXPECT_FALSE(trace_contains("changelog", "CHANGELOG!: showing"));
 }
 
 TEST(ChangelogFlow, marker_cleared_shows_it_again)
@@ -561,7 +561,7 @@ TEST(ChangelogFlow, demo_session_never_shows_it)
         picker_show_pending_changelog();
     }
     session->non_interactive_ = was;
-    EXPECT_FALSE(trace_contains("popup", "CHANGELOG!"))
+    EXPECT_FALSE(trace_contains("changelog", "CHANGELOG!"))
         << "a demo session must not even consider the page";
     EXPECT_EQ(0, og::ui::changelog_seen_marker())
         << "a demo session must not stamp the marker";
@@ -576,9 +576,9 @@ TEST(ChangelogFlow, testing_default_is_trace_only)
         PageCloser closer;
         picker_show_pending_changelog();
     }
-    EXPECT_TRUE(trace_contains("popup",
+    EXPECT_TRUE(trace_contains("changelog",
                                "CHANGELOG!: pending=1 seen=0 forced=0"));
-    EXPECT_FALSE(trace_contains("popup", "CHANGELOG!: showing"));
+    EXPECT_FALSE(trace_contains("changelog", "CHANGELOG!: showing"));
     EXPECT_EQ(0, og::ui::changelog_seen_marker())
         << "a page nobody saw must not be stamped as seen";
 }

@@ -136,7 +136,7 @@ void changelog_draw_background(void* screen_state)
         return;
     // A missing picture, or no plane (a tiny window, a lost device): the
     // band says where the keys are instead.
-    TRACE("popup", "CHANGELOG!: picture unavailable");
+    TRACE("changelog", "CHANGELOG!: picture unavailable");
     page_screen()->text_normal.write_xy_center(
         160, kBandY + kBandH / 2 - 3, DARK_BLUE, "%s",
         "Keyboard picture: see HELP > Controls");
@@ -242,11 +242,11 @@ void show_entry(const ChangelogEntry& entry)
     if (const char* image =
             changelog_entry_image(entry, og::input::kWebControlDefaults))
         state.picture = og::io::read_rgba_png(image);
-    TRACE("popup", "CHANGELOG!: showing id=%d picture=%d", entry.id,
+    TRACE("changelog", "CHANGELOG!: showing id=%d picture=%d", entry.id,
           state.picture ? 1 : 0);
     publish_changelog_state("open");
     (void)run_menu_screen(changelog_menu_screen_spec(), &state);
-    TRACE("popup", "CHANGELOG!: closed id=%d", entry.id);
+    TRACE("changelog", "CHANGELOG!: closed id=%d", entry.id);
     drain_closing_keys();
 }
 
@@ -298,7 +298,7 @@ void picker_show_pending_changelog()
     const int seen = og::ui::changelog_seen_marker();
     const bool pending = seen < og::ui::kChangelogLatestId;
 #ifdef TESTING
-    TRACE("popup", "CHANGELOG!: pending=%d seen=%d forced=%d", pending ? 1 : 0,
+    TRACE("changelog", "CHANGELOG!: pending=%d seen=%d forced=%d", pending ? 1 : 0,
           seen, og::ui::g_force_changelog ? 1 : 0);
     if (!og::ui::g_force_changelog)
         return;
@@ -326,7 +326,7 @@ void picker_show_pending_changelog()
     (void)cfg.save_settings();
     sync_filesystem();
     og::ui::publish_changelog_state("seen");
-    TRACE("popup", "CHANGELOG!: seen=%d", og::ui::kChangelogLatestId);
+    TRACE("changelog", "CHANGELOG!: seen=%d", og::ui::kChangelogLatestId);
 }
 
 #ifdef TESTING
