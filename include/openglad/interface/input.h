@@ -330,7 +330,7 @@ struct PlayerHudSettings
 };
 // Fills `out` (clamped/sanitized). Returns false when this player's keys
 // were never written — the playerN_hud_migrated version marker is absent
-// (web_default_keys_version precedent) — and the caller runs the one-shot
+// (controls/default_keys_version precedent) — and the caller runs the one-shot
 // keyprefs.dat seed by saving its keyprefs-loaded prefs.
 bool load_player_hud_settings_from_cfg(cfg_store& config, int player_index,
                                        PlayerHudSettings& out);

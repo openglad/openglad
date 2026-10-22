@@ -1133,7 +1133,7 @@ bool load_player_hud_settings_from_cfg(cfg_store& config, int player_index,
                 "controls", hud_setting_name(player_index, "view_zoom")))
             .value_or(0));
     // The migration marker is deliberately NOT defaulted in
-    // cfg_store::load_settings (web_default_keys_version precedent): its
+    // cfg_store::load_settings (controls/default_keys_version precedent): its
     // absence means this player's keys were never written and the caller
     // must run the one-shot keyprefs.dat seed.
     return !config
