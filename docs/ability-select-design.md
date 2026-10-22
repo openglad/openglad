@@ -310,9 +310,12 @@ unbound. `browser_safe_default_key` substitutes these at the read sites.
 **Modifier chords across seats.** With two players on one keyboard, P2's
 look-up (Right Ctrl) held while P1 presses 1/2/3 is Ctrl+1/2/3, a browser
 tab shortcut; P4's 8-direction SHIFTER on Left Alt makes its 4/5/6 Alt+digit.
-The page prevents the default on every key it hands to the game, but
-whether every browser honours that for its own shortcuts is not something
-a test here can prove. The same kind of chord existed before (P2's Right
+The page prevents the default on every key it hands to the game, and
+`tests/e2e/wasm-game.spec.js` ("Modifier chords across seats") tests it: in
+a four-player mission it holds Right Ctrl while pressing 1/2/3 and Left Alt
+while pressing 4/5/6, and every one of those keydowns reaches the game with
+its default prevented. Whether a browser still runs its own shortcut after
+that is up to the browser. The same kind of chord existed before (P2's Right
 Ctrl + P1's old Tab was Ctrl+Tab). Moving web P2's look-up is question
 K.9.
 
@@ -486,7 +489,10 @@ two instead (one ability, one slot). A locked ability can be placed.
 
 - **Door**: a 21st row on TRAIN, `ABILITIES`, in the gap between ACCEPT
   and SELL. With the setting off it shows dimmed, so players can still find
-  it (question K.8).
+  it (question K.8). Dimmed is the menu's one rule for an inert row: a
+  darker face and a pale grey label instead of the blue one
+  (`vbutton::vdisplay`, `BUTTON_DIMMED_LABEL`), the same on every dimmed
+  door.
 - **Screen**: `MenuScreenId::Abilities`, `src/interface/ui/abilities_screen.cpp`,
   layout constants in `src/interface/ui/picker_sdl_defs.h`. Title and
   "Class, level N" at the top; the six slots in two columns (1 | S1, 2 |
@@ -564,15 +570,16 @@ The curses status line shows `1:TELEPORT 2:WARP SPACE 3:FREEZE TIME`
 ### F.1 Shape
 
 `include/openglad/interface/ui/changelog_screen.h` holds a list of entries,
-each an id, a title, up to five lines of at most 48 characters, and an
+each an id, a title, up to six lines of at most 48 characters, and an
 optional picture. Entry 1 is this change:
 
 ```
-One key per ability: SPEC 1, 2, 3 cast at once.
+One key per ability: SPEC 1, SPEC 2, SPEC 3.
 Hold SHIFTER for three more. No more cycling.
 TRAIN > ABILITIES puts any ability on any key.
 New default keys below; REMAP keeps yours.
-Old way: Settings > UI FX > New Ability Select.
+Old way: turn off New Ability Select in
+GAME SETTINGS > UI FX.
 ```
 
 with the keyboard picture under it. Later announcements add entries with
@@ -621,9 +628,12 @@ SDL picker.
   the stamp. A key change without a new picture fails the build.
 - **Drawn by**: `og::io::read_rgba_png` (`src/resources/io/og_file.cpp`)
   and `video::draw_rgba_scaled`, smooth-scaled into the band under the
-  text. If that drawing cannot happen (a tiny window) the band says
+  text. The band (the `kChangelogBand*` constants in `changelog_screen.h`)
+  has the picture's own shape and sits inside the panel's frame lines,
+  with three rows of bare panel above it and below it. If that drawing
+  cannot happen (a tiny window) the band says
   `Keyboard picture: see HELP > Controls`. At 640x400 the picture is soft
-  but readable (question K.4); the five lines carry the rule in words
+  but readable (question K.4); the six lines carry the rule in words
   either way.
 
 ---

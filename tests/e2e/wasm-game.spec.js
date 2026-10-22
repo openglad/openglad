@@ -107,6 +107,59 @@ async function pressAltAndRead(page, phase) {
   return records.map((r) => [r.type, r.defaultPrevented]);
 }
 
+// Modifier chords across seats (docs/ability-select-design.md C.2): with
+// several players on one keyboard, one player's modifier is held while
+// another presses a digit, and the browser sees Ctrl+digit or Alt+digit,
+// its tab-switch shortcuts. Record the settled defaultPrevented of every
+// keydown of the named keys, in the bubble phase (registered after boot,
+// for the reason installAltProbe gives).
+async function installChordProbe(page) {
+  await page.evaluate(() => {
+    window.__chordProbe = [];
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        window.__chordProbe.push({
+          code: e.code,
+          ctrl: e.ctrlKey,
+          alt: e.altKey,
+          defaultPrevented: e.defaultPrevented,
+        });
+      },
+      false,
+    );
+  });
+}
+
+// Hold `modifier`, press each of `digits` (a non-zero hold, as
+// pressAltAndRead), let go, and return the keydowns the page saw, as
+// [code, modifier-flag, defaultPrevented].
+async function pressChordAndRead(page, modifier, digits) {
+  await page.evaluate(() => {
+    window.__chordProbe = [];
+  });
+  await page.keyboard.down(modifier);
+  for (const digit of digits) {
+    await page.keyboard.press(digit, { delay: 75 });
+  }
+  await page.keyboard.up(modifier);
+  const wanted = [modifier, ...digits];
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (codes) => window.__chordProbe.filter((r) => codes.includes(r.code)).length,
+        wanted,
+      ),
+    )
+    .toBe(wanted.length);
+  const records = await page.evaluate(
+    (codes) => window.__chordProbe.filter((r) => codes.includes(r.code)),
+    wanted,
+  );
+  const flag = modifier.startsWith('Control') ? 'ctrl' : 'alt';
+  return records.map((r) => [r.code, r[flag], r.defaultPrevented]);
+}
+
 // Helper: capture a snapshot of canvas pixel data via screenshot
 // (WebGL canvases don't support getImageData via 2d context)
 async function getCanvasScreenshot(page) {
@@ -1312,5 +1365,56 @@ test.describe('Browser Alt containment', () => {
     ]);
 
     assertNoRuntimeErrors(errors, 'Alt while the DOM text field is focused');
+  });
+});
+
+test.describe('Modifier chords across seats', () => {
+  test('Ctrl+digit and Alt+digit chords reach the game and keep their browser default suppressed', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    // Four players on the one keyboard, in a running mission: P1 casts on
+    // 1/2/3, P2 looks up on Right Ctrl, P4 casts on 4/5/6 (and an
+    // 8-direction P4 holds SHIFTER on Left Alt).
+    await page.addInitScript(() => {
+      window.__opengladSeedPlayerCount = 4;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await startSeededSinglePlayerFromPicker(page);
+    await page.waitForFunction(() => window.__opengladNumViews === 4, null, {
+      timeout: 15_000,
+    });
+    await focusCanvas(page);
+    await installChordProbe(page);
+
+    // P2 holds look-up while P1 presses SPEC 1, 2, 3: Ctrl+1/2/3.
+    expect(
+      await pressChordAndRead(page, 'ControlRight', ['Digit1', 'Digit2', 'Digit3']),
+    ).toEqual([
+      ['ControlRight', true, true],
+      ['Digit1', true, true],
+      ['Digit2', true, true],
+      ['Digit3', true, true],
+    ]);
+
+    // Left Alt held while P4 presses SPEC 1, 2, 3: Alt+4/5/6.
+    expect(
+      await pressChordAndRead(page, 'AltLeft', ['Digit4', 'Digit5', 'Digit6']),
+    ).toEqual([
+      ['AltLeft', true, true],
+      ['Digit4', true, true],
+      ['Digit5', true, true],
+      ['Digit6', true, true],
+    ]);
+
+    // The game is still running in this tab.
+    await waitForGameplayProgress(page, 5_000);
+    assertNoRuntimeErrors(errors, 'modifier chords across seats');
   });
 });
