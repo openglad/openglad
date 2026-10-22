@@ -19,7 +19,13 @@
 // reload-surviving stores. IndexedDB names are only checked for the caller's
 // token portion; the "/persist" prefix is Emscripten's IDBFS mount path.
 const { test, expect } = require('@playwright/test');
-const { waitForGameLoad, waitForPickerReady } = require('./wasm_helpers');
+const { waitForGameLoad, waitForPickerReady, installChangelogSkip } = require('./wasm_helpers');
+
+// Every boot in this file skips the once-only CHANGELOG! page
+// (tests/e2e/wasm-changelog.spec.js is the one that shows it).
+test.beforeEach(async ({ page }) => {
+  await installChangelogSkip(page);
+});
 
 const NAMESPACE_WARNING = /__opengladPersistNamespace/;
 // Blank/near-blank canvas captures compress well under this; real frames do not

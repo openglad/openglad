@@ -19,7 +19,14 @@ const {
   waitForGameLoad,
   waitForPickerReady,
   waitForRenderedFrames,
+  installChangelogSkip,
 } = require('./wasm_helpers');
+
+// Every boot in this file skips the once-only CHANGELOG! page
+// (tests/e2e/wasm-changelog.spec.js is the one that shows it).
+test.beforeEach(async ({ page }) => {
+  await installChangelogSkip(page);
+});
 
 // Same heuristic as wasm-game.spec.js: blank/near-blank canvas captures
 // compress to well under this size, real frames do not.
