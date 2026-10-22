@@ -16,6 +16,9 @@
 #              off, and 1 and 4 seats with SHIFTER held
 #              (scripts/media/capture_ability_select_hud.sh, which runs
 #              GladHud.zz_capture_belt_hud in og_test_view)
+#   hud-radar  the ON HUD over a real radar, 2 and 4 seats, SHIFTER up and
+#              held: the belt box stops one blank column short of the radar
+#              (GladHud.zz_capture_belt_hud_with_radar in og_test_view)
 #   radar      a real two-player game with the radar on and the setting on
 #              (GameLoop.zz_capture_splitscreen_gameplay in og_test_game_core),
 #              frame RADAR_FRAME
@@ -26,13 +29,10 @@
 #              UXSHOTS_DIR)
 #   ui-fx      Game Settings > UI FX with the New Ability Select row
 #              (MenuCapture.zz_capture_menu_effects in og_test_menu_ui)
-#   changelog  the CHANGELOG! page with the keyboard picture, captured at the
-#              window's real size (ChangelogFlow.* in og_test_abilities with
-#              OG_CHANGELOG_SHOT_DIR set; every .png or .ppm the tests write
-#              there becomes changelog-<name>.png, unscaled). Until the
-#              CHANGELOG! tests are in the build this step says SKIPPED and
-#              the run still finishes; verify_media.py is then told those
-#              files may be missing.
+#   changelog  the CHANGELOG! page with the keyboard picture at three window
+#              sizes, 640x400, 1280x800 and 1920x1080, kept at the window's
+#              real size (ChangelogFlow.page_at_three_window_sizes_keeps_the_
+#              picture_in_its_band in og_test_abilities, OG_CHANGELOG_SHOT_DIR)
 #
 # Canvas pictures (everything but the CHANGELOG! page) are the game's
 # 320x200 canvas doubled to 640x400 with nearest-neighbour, which keeps the
@@ -58,7 +58,7 @@ case "$BUILD_DIR" in
     *) BUILD_DIR="$REPO_ROOT/$BUILD_DIR" ;;
 esac
 RADAR_FRAME="${RADAR_FRAME:-150}"
-STEPS=(hud radar abilities ui-fx changelog)
+STEPS=(hud hud-radar radar abilities ui-fx changelog)
 
 usage() {
     sed -n '/^# Usage:/,/^# Build first/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
@@ -130,7 +130,9 @@ need_bin() { # need_bin <name>
     exit 1
 }
 
-wanted hud && need_bin og_test_view
+if wanted hud || wanted hud-radar; then
+    need_bin og_test_view
+fi
 wanted radar && need_bin og_test_game_core
 if wanted abilities || wanted changelog; then
     need_bin og_test_abilities
@@ -207,8 +209,6 @@ native_png() {
     printf 'wrote %s\n' "$OUT_DIR/$2.png"
 }
 
-SKIPPED=()
-
 # --- steps ------------------------------------------------------------------
 if wanted hud; then
     # The HUD script owns its test filter and writes one PPM per scene into
@@ -224,6 +224,15 @@ if wanted hud; then
     for scene in 1p_on 1p_off 2p_on 2p_off 4p_on 4p_off 1p_on_shift 4p_on_shift; do
         canvas_png "$WORK_DIR/hud/belt_hud_$scene/000.ppm" \
             "hud-$(printf '%s' "$scene" | tr '_' '-')"
+    done
+fi
+
+if wanted hud-radar; then
+    run_test hud-radar 1 og_test_view 'GladHud.zz_capture_belt_hud_with_radar' \
+        OG_FX_CAPTURE_DIR="$WORK_DIR/hud-radar"
+    for scene in 2p_on 2p_on_shift 4p_on 4p_on_shift; do
+        canvas_png "$WORK_DIR/hud-radar/belt_hud_radar_$scene/000.ppm" \
+            "hud-radar-$(printf '%s' "$scene" | tr '_' '-')"
     done
 fi
 
@@ -251,31 +260,12 @@ if wanted ui-fx; then
 fi
 
 if wanted changelog; then
-    # The CHANGELOG! capture seam: tests named ChangelogFlow.* that write
-    # their physical-size frames into $OG_CHANGELOG_SHOT_DIR. Asked of the
-    # binary rather than assumed, so this step reports a build without them
-    # instead of failing on it.
-    listed="$("$BUILD_DIR/og_test_abilities" --gtest_list_tests \
-        --gtest_filter='ChangelogFlow.*' 2> /dev/null | grep -c '^  ' || true)"
-    if [ "${listed:-0}" -eq 0 ]; then
-        SKIPPED+=(changelog)
-        printf 'SKIPPED changelog: og_test_abilities has no ChangelogFlow tests yet\n' >&2
-    else
-        run_test changelog 2 og_test_abilities 'ChangelogFlow.*' \
-            OG_CHANGELOG_SHOT_DIR="$WORK_DIR/changelog"
-        made=0
-        for shot in "$WORK_DIR"/changelog/*.png "$WORK_DIR"/changelog/*.ppm; do
-            [ -e "$shot" ] || continue
-            base="$(basename "$shot")"
-            base="${base%.*}"
-            native_png "$shot" "changelog-$(printf '%s' "$base" | tr '_' '-')"
-            made=$((made + 1))
-        done
-        if [ "$made" -eq 0 ]; then
-            KEEP_WORK=1
-            die "FAIL: ChangelogFlow.* wrote nothing into OG_CHANGELOG_SHOT_DIR; see $WORK_DIR/changelog.log"
-        fi
-    fi
+    run_test changelog 2 og_test_abilities \
+        'ChangelogFlow.page_at_three_window_sizes_keeps_the_picture_in_its_band' \
+        OG_CHANGELOG_SHOT_DIR="$WORK_DIR/changelog"
+    for size in 640x400 1280x800 1920x1080; do
+        native_png "$WORK_DIR/changelog/changelog_$size.ppm" "changelog-$size"
+    done
 fi
 
 # --- checks -----------------------------------------------------------------
@@ -289,13 +279,6 @@ for step in "${STEPS[@]}"; do
         VERIFY_ARGS+=(--allow-missing "$step")
     fi
 done
-for step in "${SKIPPED[@]+"${SKIPPED[@]}"}"; do
-    VERIFY_ARGS+=(--allow-missing "$step")
-done
 python3 "$REPO_ROOT/scripts/media/verify_media.py" "${VERIFY_ARGS[@]}" "$OUT_DIR"
 
-if [ "${#SKIPPED[@]}" -gt 0 ]; then
-    printf 'NOTE: skipped %s; rerun once those tests are in the build\n' \
-        "${SKIPPED[*]}"
-fi
 printf 'wrote the New Ability Select stills to %s/\n' "$OUT_DIR"

@@ -530,6 +530,10 @@ held.
   cells move up to make room.
 - A row never covers the message feed or the radar: in a pane too small it
   is cut, then shows only its key label (`1`, `S1`), then is left out.
+- The box's right edge stops one blank column short of the radar's block
+  (`kBeltHudRadarGap`, 66 pixels in from the pane's right margin) in every
+  pane narrower than 164 pixels, whether the radar is on or off, so turning
+  the radar on never moves it.
 - Ink: grey when specials are disabled or the slot is locked or empty; red
   when the hero cannot afford it; normal otherwise.
 
@@ -586,14 +590,19 @@ higher ids.
   `picker_init` (`src/interface/ui/picker.cpp`). The marker is the only
   "already shown" state; there is no per-process flag.
 - **Screen**: `MenuScreenId::Changelog`, engine-hosted, with one OK button
-  (Return, Escape and Space close it too; Backspace on web).
+  (Return, Escape and Space close it too; Backspace on web). A key still
+  held from the intro does not close it: the page waits until Return,
+  Escape and Space have all been seen up before any of them counts.
 
 ### F.3 Never in the way of a test or a headless run
 
 The demo and every non-interactive session skip it. Under `TESTING` it only
 writes a trace unless a test forces it on with its own flag. The web tests
-set `window.__opengladSkipChangelogForTests` before the page loads; one web
-test boots without it, clicks OK, reloads and checks the page stays away.
+set `window.__opengladSkipChangelogForTests` before the page loads (the
+older `window.__opengladSkipIntroForTests` skips it too); one web test,
+`tests/e2e/wasm-changelog.spec.js`, boots without it, clicks OK, reloads and
+checks the page stays away, reading `window.__opengladChangelogState`
+(`none`, `open` or `seen`).
 `openglad_text`, `openglad_server` and `openglad_curses` never reach the
 SDL picker.
 
@@ -646,8 +655,9 @@ broken, then restored):
 ## H. Pictures for review
 
 `scripts/media/capture_ability_select.sh` makes every still a reviewer
-needs (the HUD at 1, 2 and 4 seats on and off, a two-seat game with the
-radar, the ABILITIES screen, the UI FX row, the CHANGELOG! page) into
+needs (the HUD at 1, 2 and 4 seats on and off, the HUD over a real radar
+at 2 and 4 seats, a two-seat game with the radar, the ABILITIES screen, the
+UI FX row, the CHANGELOG! page at 640x400, 1280x800 and 1920x1080) into
 `build/media/ability-select/`, and checks them at the end with
 `scripts/media/verify_media.py --set ability-select`. Pictures go to the
 openglad/openglad-screenshots repository, never this one.

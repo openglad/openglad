@@ -28,7 +28,6 @@ Exits non-zero if a file is missing, malformed, or the wrong shape.
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import os
 import shutil
@@ -57,25 +56,21 @@ ABILITY_SELECT = {
     "hud": {f"hud-{scene}.png": CANVAS_STILL for scene in (
         "1p-on", "1p-off", "2p-on", "2p-off", "4p-on", "4p-off",
         "1p-on-shift", "4p-on-shift")},
+    "hud-radar": {f"hud-radar-{scene}.png": CANVAS_STILL for scene in (
+        "2p-on", "2p-on-shift", "4p-on", "4p-on-shift")},
     "radar": {"hud-2p-radar-on.png": CANVAS_STILL},
     "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
         "archmage", "archmage-selected", "archmage-placed", "mage",
         "train-door-off")},
     "ui-fx": {"ui-fx.png": CANVAS_STILL},
+    # The CHANGELOG! page at the window's real size, never the canvas.
+    "changelog": {f"changelog-{w}x{h}.png": ("png", w, h, 1, None, None)
+                  for w, h in ((640, 400), (1280, 800), (1920, 1080))},
 }
-# Groups whose file names the capturing test chooses: at least one file
-# matching the pattern, each a PNG still at least this wide and tall (the
-# CHANGELOG! page is captured at the window's real size, never the canvas).
-ABILITY_SELECT_PATTERNS = {
-    "changelog": ("changelog-*.png", 640, 400),
-}
-
-# set name -> (default directory under build/media, {group: {name: spec}},
-#              {group: (glob, min width, min height)})
+# set name -> (default directory under build/media, {group: {name: spec}})
 SETS = {
-    "lua-classpacks": ("lua-classpacks", {"": LUA_CLASSPACKS}, {}),
-    "ability-select": ("ability-select", ABILITY_SELECT,
-                       ABILITY_SELECT_PATTERNS),
+    "lua-classpacks": ("lua-classpacks", {"": LUA_CLASSPACKS}),
+    "ability-select": ("ability-select", ABILITY_SELECT),
 }
 
 
@@ -118,21 +113,6 @@ def check(path: str, codec: str, want_w: int, want_h: int, want_frames: int,
     return f"still {want_w}x{want_h} {stream.get('pix_fmt')}"
 
 
-def check_pattern(path: str, min_w: int, min_h: int) -> str:
-    stream = probe(path)
-    if stream.get("codec_name") != "png":
-        raise AssertionError(f"{path}: codec {stream.get('codec_name')}, "
-                             "expected png")
-    width, height = stream.get("width", 0), stream.get("height", 0)
-    if width < min_w or height < min_h:
-        raise AssertionError(f"{path}: {width}x{height}, expected at least "
-                             f"{min_w}x{min_h}")
-    frames = int(stream.get("nb_read_frames", "0"))
-    if frames != 1:
-        raise AssertionError(f"{path}: {frames} frames, expected a still")
-    return f"still {width}x{height} {stream.get('pix_fmt')}"
-
-
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description="Structurally verify a set of generated media.")
@@ -144,9 +124,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("dir", nargs="?")
     args = parser.parse_args(argv)
 
-    default_dir, groups, patterns = SETS[args.media_set]
-    unknown = [g for g in args.allow_missing
-               if g not in groups and g not in patterns]
+    default_dir, groups = SETS[args.media_set]
+    unknown = [g for g in args.allow_missing if g not in groups]
     if unknown:
         print(f"no such group in {args.media_set}: {', '.join(unknown)}",
               file=sys.stderr)
@@ -183,31 +162,6 @@ def main(argv: list[str]) -> int:
                 if not os.path.exists(path):
                     raise AssertionError(f"{path}: missing")
                 detail = check(path, *expectation)
-            except AssertionError as error:
-                print(f"  FAIL {name}: {error}")
-                failures += 1
-                continue
-            size = os.path.getsize(path)
-            total += size
-            checked += 1
-            print(f"  ok {name}: {detail}, {size} bytes")
-
-    for group, (glob, min_w, min_h) in patterns.items():
-        names = [f for f in present if fnmatch.fnmatch(f, glob)]
-        known.update(names)
-        if not names:
-            if group in args.allow_missing:
-                print(f"  skip {glob}: group {group} allowed missing")
-            else:
-                expected_total += 1
-                print(f"  FAIL {glob}: no file matches")
-                failures += 1
-            continue
-        for name in names:
-            expected_total += 1
-            path = os.path.join(root, name)
-            try:
-                detail = check_pattern(path, min_w, min_h)
             except AssertionError as error:
                 print(f"  FAIL {name}: {error}")
                 failures += 1
