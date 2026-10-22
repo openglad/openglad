@@ -20,6 +20,7 @@
 #include <vector>
 #include <string>
 #include <format>
+#include <span>
 #ifdef TESTING
 #include <atomic>
 #endif
@@ -30,7 +31,6 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
-#include <openglad/interface/web_control_defaults.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/ui/scroll_view_layout.h>
@@ -491,8 +491,12 @@ short read_campaign_intro(screen *s)
 }
 
 
-// General help text lines (Controls tab)
-static const char* controls_help_lines[] = {
+// General help text lines (Controls tab): the movement block, the action
+// keys for the New Ability Select setting in force, then the combos, the
+// pause menu and the general keys. Both action tables name the one factory
+// key map (input_state.cpp kDefaultFourDirKeys); with the setting off the
+// SPEC 1 key casts the selected special and the SPEC 2 key cycles it.
+static const char* const controls_help_head[] = {
 	"*** GLADIATOR HELP ***",
 	"",
 	"MOVEMENT KEYS (Default)",
@@ -502,20 +506,49 @@ static const char* controls_help_lines[] = {
 	"Switch to 8-direction in Player Controls.",
 	"",
 	"Player 3: I J K L |  Player 4: F T G H",
-	"Yell defaults: P1=E, P2=\\, P3=U, P4=Y",
+	"Yell defaults: P1=E, P2=Enter, P3=O, P4=Y",
 	"Diagonal keys are configurable per player.",
 	"",
+};
+
+// The widest Controls line (50 glyphs, the frame budget): web P1 fires on Z
+// because the browser keeps Ctrl+W.
+static constexpr const char* kHelpFireLine =
+	"Fire:    LCtrl   RShift  Space   V        (web: Z)";
+
+static const char* const controls_help_actions_classic[] = {
 	"ACTION KEYS",
 	"========================",
 	"         P1      P2      P3      P4",
-	og::input::kWebControlDefaults ? "Fire:    Z       .       Space   5"
-	                               : "Fire:    LCtrl   .       Space   5",
-	og::input::kWebControlDefaults ? "Special: X       /       ;       6"
-	                               : "Special: LAlt    /       ;       6",
-	"Switch:  ~/`     Enter   -       =",
-	"Shifter: LShift  RShift  0       8",
-	"Yell:    E       \\       U       Y",
+	kHelpFireLine,
+	"Special: 1       [       8       4",
+	"Next sp: 2       ]       9       5",
+	"Shifter: LShift  /       M       B",
+	"Yell:    E       Enter   O       Y",
+	"Look up: Q       RCtrl   U       R",
+	"Switch:  `       '       -       N",
 	"",
+};
+
+static const char* const controls_help_actions_abilities[] = {
+	"ACTION KEYS (NEW ABILITY SELECT ON)",
+	"========================",
+	"         P1      P2      P3      P4",
+	kHelpFireLine,
+	"Spec 1:  1       [       8       4",
+	"Spec 2:  2       ]       9       5",
+	"Spec 3:  3       \\       0       6",
+	"Shifter: LShift  /       M       B",
+	"Yell:    E       Enter   O       Y",
+	"Look up: Q       RCtrl   U       R",
+	"Switch:  `       '       -       N",
+	"",
+	"SHIFTER + SPEC 1/2/3: the second row.",
+	"TRAIN > ABILITIES sets each key.",
+	"",
+};
+
+static const char* const controls_help_tail[] = {
 	"SPECIAL COMBOS",
 	"========================",
 	"Shifter + Yell: Summon NPCs to",
@@ -546,7 +579,26 @@ static const char* controls_help_lines[] = {
 	                           : "Press ESC to return to menu",
 };
 
-static const int NUM_CONTROLS_LINES = sizeof(controls_help_lines) / sizeof(controls_help_lines[0]);
+// The Controls tab's lines with New Ability Select on (`ability_select`) or
+// off. Built once per setting; the pointers stay valid for the process.
+static std::span<const char* const> controls_help_lines(bool ability_select)
+{
+	static const auto build = [](std::span<const char* const> actions) {
+		std::vector<const char*> lines;
+		lines.insert(lines.end(), std::begin(controls_help_head),
+		             std::end(controls_help_head));
+		lines.insert(lines.end(), actions.begin(), actions.end());
+		lines.insert(lines.end(), std::begin(controls_help_tail),
+		             std::end(controls_help_tail));
+		return lines;
+	};
+	static const std::vector<const char*> classic =
+		build(controls_help_actions_classic);
+	static const std::vector<const char*> abilities =
+		build(controls_help_actions_abilities);
+	return ability_select ? std::span<const char* const>(abilities)
+	                      : std::span<const char* const>(classic);
+}
 
 // Dynamic help content loaded from files
 static std::vector<std::string> classes_help_lines;
@@ -623,7 +675,7 @@ enum class HelpTab {
 
 // Helper struct to hold tab content reference
 struct TabContent {
-	const char** static_lines;           // For controls (static array)
+	const char* const* static_lines;     // For controls (controls_help_lines)
 	const std::vector<std::string>* dynamic_lines;  // For classes/editor (loaded from files)
 	int num_lines;
 	bool is_dynamic;
@@ -640,10 +692,14 @@ static TabContent get_tab_content(HelpTab tab)
 	switch (tab)
 	{
 	case HelpTab::Controls:
-		content.static_lines = controls_help_lines;
-		content.num_lines = NUM_CONTROLS_LINES;
+	{
+		const std::span<const char* const> lines =
+			controls_help_lines(og::input::ability_select_on());
+		content.static_lines = lines.data();
+		content.num_lines = static_cast<int>(lines.size());
 		content.is_dynamic = false;
 		break;
+	}
 	case HelpTab::Classes:
 		content.dynamic_lines = &classes_help_lines;
 		content.num_lines = static_cast<int>(classes_help_lines.size());
@@ -655,10 +711,14 @@ static TabContent get_tab_content(HelpTab tab)
 		content.is_dynamic = true;
 		break;
 	default:
-		content.static_lines = controls_help_lines;
-		content.num_lines = NUM_CONTROLS_LINES;
+	{
+		const std::span<const char* const> lines =
+			controls_help_lines(og::input::ability_select_on());
+		content.static_lines = lines.data();
+		content.num_lines = static_cast<int>(lines.size());
 		content.is_dynamic = false;
 		break;
+	}
 	}
 	return content;
 }

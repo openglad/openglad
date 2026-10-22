@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <memory>
+#include "test_ability_select_scope.h"
 #include <unistd.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -32,7 +33,8 @@ Sint32 help_testing_exercise_internal_paths();
 Sint32 help_testing_exercise_menu_hooks();
 void help_testing_set_force_scroll_text(bool enabled);
 void help_testing_set_page_state(bool page_up, bool page_down);
-Sint32 help_testing_controls_flowed_max_width();
+Sint32 help_testing_controls_flowed_max_width(bool ability_select);
+std::string help_testing_controls_text();
 Sint32 help_testing_classes_flowed_max_width();
 std::string help_testing_classes_text();
 void help_testing_set_line_key_state(bool line_up, bool line_down);
@@ -468,13 +470,50 @@ TEST(HelpSmoke, help_menu_hooks_cover_dispatch_paging_and_null_state)
 // (help_char_budget(kHelpTextBoxWidth)). Every authored Controls line fits —
 // the helper returns -1 if any wrapped — and the widest line exceeds the old
 // 39-char dialog budget, proving the full-width flow is the one measured.
+// Both tables (New Ability Select off and on) are held to the rule; the
+// widest line of each is the 50-glyph Fire line with its "(web: Z)".
 TEST(HelpSmoke, controls_help_lines_flow_within_frame_budget)
 {
-    const Sint32 max_width = help_testing_controls_flowed_max_width();
-    ASSERT_GT(max_width, 39)
-        << "a Controls line wrapped against the full-width budget (or the "
-           "wide action-key lines were removed)";
-    EXPECT_LE(max_width, 50);
+    for (const bool ability_select : {false, true})
+    {
+        const Sint32 max_width =
+            help_testing_controls_flowed_max_width(ability_select);
+        ASSERT_GT(max_width, 39)
+            << "a Controls line wrapped against the full-width budget (or the "
+               "wide action-key lines were removed); ability_select="
+            << ability_select;
+        EXPECT_LE(max_width, 50) << "ability_select=" << ability_select;
+    }
+}
+
+// The Controls tab shows the action table for the setting in force: on,
+// one row per SPEC key and the two lines that say how the second row and
+// the ABILITIES screen work; off, the classic Special / Next sp rows on the
+// same keys. Both name the new default keys (P2 yells on Enter, P3 on O).
+//
+// RED: get_tab_content ignoring the setting (always the classic table).
+TEST(HelpSmoke, controls_help_follows_ability_select)
+{
+    {
+        ScopedAbilitySelect on(true);
+        const std::string text = help_testing_controls_text();
+        EXPECT_NE(std::string::npos, text.find("ACTION KEYS (NEW ABILITY SELECT ON)\n"));
+        EXPECT_NE(std::string::npos, text.find("\nSpec 3:  3       \\       0       6\n"));
+        EXPECT_NE(std::string::npos, text.find("\nSHIFTER + SPEC 1/2/3: the second row.\n"));
+        EXPECT_NE(std::string::npos, text.find("\nTRAIN > ABILITIES sets each key.\n"));
+        EXPECT_EQ(std::string::npos, text.find("Next sp:"));
+        EXPECT_NE(std::string::npos, text.find("Yell defaults: P1=E, P2=Enter, P3=O, P4=Y"));
+    }
+    {
+        ScopedAbilitySelect off;
+        const std::string text = help_testing_controls_text();
+        EXPECT_NE(std::string::npos, text.find("\nSpecial: 1       [       8       4\n"));
+        EXPECT_NE(std::string::npos, text.find("\nNext sp: 2       ]       9       5\n"));
+        EXPECT_EQ(std::string::npos, text.find("Spec 3:"));
+        EXPECT_EQ(std::string::npos, text.find("~"))
+            << "the font has no ~ (it renders as ?)";
+        EXPECT_NE(std::string::npos, text.find("Yell defaults: P1=E, P2=Enter, P3=O, P4=Y"));
+    }
 }
 
 // The CLASSES tab (cfg/help_classes.txt) is written to fit the same 50-char
@@ -536,6 +575,23 @@ TEST(HelpSmoke, classes_help_names_every_new_special)
               text.find("* needs Game Settings -> Gameplay FX\n"
                         "  -> New Specials (on by default)."))
         << "the note naming the New Specials setting is missing";
+}
+
+// The CLASSES tab says what SHIFTER means with New Ability Select on (the
+// default layout keeps a second form on SHIFTER + its own key when free,
+// so every "SHIFTER:" line stays true), and names the cleric's shared Turn
+// Undead once: the ABILITIES screen lists it once.
+TEST(HelpSmoke, classes_help_explains_shifter_under_ability_select)
+{
+    const std::string text = help_testing_classes_text();
+    EXPECT_NE(std::string::npos,
+              text.find("SHIFTER: marks an ability's second\n"
+                        "form. With New Ability Select (UI FX,\n"))
+        << "the paragraph naming the setting is missing";
+    EXPECT_NE(std::string::npos,
+              text.find("TRAIN > ABILITIES shows and changes\n"));
+    EXPECT_NE(std::string::npos,
+              text.find("   SHIFTER: Turn Undead, as Raise Undead's.\n"));
 }
 
 static int overlong_scenario_injector_thread(void* data)
