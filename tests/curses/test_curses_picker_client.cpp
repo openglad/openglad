@@ -30,6 +30,8 @@
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/lobby_state.h>
@@ -630,6 +632,150 @@ TEST(CursesPickerClient, roster_keys_wrap_toggle_deploy_and_show_ready_notice)
            "roster (Esc) - an 'r' that fell through to Train draws 6";
     EXPECT_EQ(strength_before, f.save().team_list[0]->strength)
         << "'r' shows the networked-lobby notice; it must not open training";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// New Ability Select (docs/ability-select-design.md E.3): 'e' on a roster
+// row opens its abilities page. The same pick rule as the SDL screen: a
+// slot, then a bench ability; 'c' empties the highlighted slot; Done
+// commits the copy to the hero.
+namespace {
+struct AbilityPrefScope {
+    std::string saved = cfg.get_setting("effects", "new_ability_select");
+    explicit AbilityPrefScope(bool on)
+    {
+        cfg.apply_setting("effects", "new_ability_select", on ? "on" : "off");
+    }
+    ~AbilityPrefScope()
+    {
+        cfg.apply_setting("effects", "new_ability_select", saved);
+    }
+};
+
+void seat_an_archmage(SaveData& save)
+{
+    save.team_list[0] = std::make_unique<guy>(FAMILY_ARCHMAGE);
+    save.team_list[0]->name = "MERLIN";
+    save.team_list[0]->level = 12;
+    save.team_list[0]->deployed = true;
+    save.new_specials = 1;
+}
+} // namespace
+
+TEST(CursesPickerClient, roster_e_opens_abilities_and_edits_a_slot)
+{
+    PickerFixture f;
+    AbilityPrefScope pref(true);
+    seat_an_archmage(f.save());
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    // The page: rows 1, 2, 3, S1, S2, S3 (selectable 0..5), the Bench
+    // header, MIND CONTROL (selectable 6), Reset (7), Done (8).
+    f.t().push_char(U'e');                // roster row 0: abilities
+    f.t().push_char(U'3');                // key 3 (SUMMON IMAGE) ...
+    f.t().push_special(KeyCode::Enter);   // ... picked
+    f.t().push_char(U'7');                // the bench's MIND CONTROL ...
+    f.t().push_special(KeyCode::Enter);   // ... onto key 3
+    f.t().push_char(U'9');                // Done ...
+    f.t().push_special(KeyCode::Enter);   // ... commits
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const FamilyDescriptor* const fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    og::sim::belt::Bytes expected = og::sim::belt::default_bytes();
+    const og::ui::AbilityPage page =
+        og::ui::ability_page("MERLIN", fd, 12, 1, expected);
+    ASSERT_EQ(1u, page.bench.size());
+    EXPECT_EQ("MIND CONTROL", page.bench[0].name);
+    og::ui::ability_place(expected, fd, 1, 2, *page.bench[0].entry);
+    EXPECT_EQ(expected, f.save().team_list[0]->belt);
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load(og::data::active_company_slot()))
+        << "Done autosaves the active company";
+    ASSERT_TRUE(reloaded.team_list[0]);
+    EXPECT_EQ(expected, reloaded.team_list[0]->belt);
+    EXPECT_NE(f.t().dump().find("e abilities"), std::string::npos)
+        << "the roster hint names the key:\n" << f.t().dump();
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+TEST(CursesPickerClient, abilities_page_pick_rule_and_reset)
+{
+    PickerFixture f;
+    AbilityPrefScope pref(true);
+    seat_an_archmage(f.save());
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_char(U'e');
+    f.t().push_char(U'7');                // MIND CONTROL picked first ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'7');                // ... and let go again
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'7');                // picked once more ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'1');                // ... and key 1 takes it
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'2');                // key 2 picked ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'5');                // ... swaps with SHIFTER+2
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'6');                // SHIFTER+3 picked ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'6');                // ... twice: emptied
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'7');                // 'c' on a bench row: nothing
+    f.t().push_char(U'c');
+    f.t().push_char(U'4');                // 'c' on SHIFTER+1: emptied
+    f.t().push_char(U'c');
+    f.t().push_special(KeyCode::Escape);  // Esc commits, like the SDL BACK
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const FamilyDescriptor* const fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    og::sim::belt::Bytes expected = og::sim::belt::default_bytes();
+    const og::ui::AbilityPage page =
+        og::ui::ability_page("MERLIN", fd, 12, 1, expected);
+    og::ui::ability_place(expected, fd, 1, 0, *page.bench[0].entry);
+    og::ui::ability_swap(expected, fd, 1, 1, 4);
+    og::ui::ability_clear(expected, 5);
+    og::ui::ability_clear(expected, 3);
+    EXPECT_EQ(expected, f.save().team_list[0]->belt);
+
+    // Reset to default: the row above Done (Up from the top wraps to Done).
+    f.t().push_char(U'e');
+    f.t().push_special(KeyCode::Up);      // Done
+    f.t().push_special(KeyCode::Up);      // Reset to default
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Escape);  // commit
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    EXPECT_EQ(og::sim::belt::default_bytes(), f.save().team_list[0]->belt);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+TEST(CursesPickerClient, abilities_page_refuses_with_the_setting_off)
+{
+    PickerFixture f;
+    AbilityPrefScope pref(false);
+    seat_an_archmage(f.save());
+    const og::sim::belt::Bytes before = f.save().team_list[0]->belt;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_char(U'e');                // refused in words ...
+    dismiss(f.t());                       // ... dismissed
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    EXPECT_EQ(before, f.save().team_list[0]->belt);
+    EXPECT_EQ(3, f.t().present_count())
+        << "roster, the refusal notice, roster again (an 'e' that opened "
+           "the page would draw it instead)";
     EXPECT_TRUE(f.t().input_exhausted());
 }
 

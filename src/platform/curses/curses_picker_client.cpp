@@ -26,10 +26,13 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/text_wrap.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/ability_pick.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/menu_binding.h>
@@ -512,9 +515,101 @@ void autosave_company_after_mutation(SaveData& save)
 
 void train_team(Menu& menu, SaveData& save, int seed_slot = -1);
 
+// The ABILITIES page (New Ability Select, docs/ability-select-design.md
+// E.3): the SDL screen's rows from the same model and the same pick rule
+// (ability_pick.h). Pick a slot, then an ability or another slot; 'c'
+// empties the highlighted slot. Done (or Esc, like the SDL BACK) commits the
+// edited copy to the hero and autosaves.
+void equip_team(Menu& menu, SaveData& save, int slot)
+{
+    // The SDL door sits on TRAIN, dimmed with the setting off: the same two
+    // answers here, in words.
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Train, slot)) {
+        menu.show_text("Abilities", {*refused});
+        return;
+    }
+    if (!og::ui::ability_select_pref(cfg)) {
+        menu.show_text("Abilities",
+            {"Abilities need New Ability Select (Game Settings)."});
+        return;
+    }
+    guy& hero = *save.team_list[static_cast<std::size_t>(slot)];
+    const FamilyDescriptor* const fd = get_family_descriptor(hero.family);
+    const short ns = save.new_specials;
+    og::sim::belt::Bytes working = hero.belt;
+    int selected = -1;
+    int cursor = 0;
+
+    for (;;) {
+        const og::ui::AbilityPage page =
+            og::ui::ability_page(hero.name, fd, hero.level, ns, working);
+        const auto marked = [selected](const std::string& text, int pick) {
+            return (selected == pick ? "> " : "  ") + text;
+        };
+        // Rows: the six slots (1, 2, 3, S1, S2, S3), the bench header, the
+        // bench, then the two commands.
+        std::vector<ListEntry> entries;
+        for (int b = 0; b < og::sim::belt::kSlots; ++b)
+            entries.push_back(ListEntry{
+                marked(page.belt[static_cast<std::size_t>(b)].text, b), true});
+        entries.push_back(ListEntry{
+            page.bench.empty() ? "Bench: (none)" : "Bench:", false});
+        const int first_bench = static_cast<int>(entries.size());
+        for (std::size_t i = 0; i < page.bench.size(); ++i)
+            entries.push_back(ListEntry{
+                marked(page.bench[i].text,
+                       og::sim::belt::kSlots + static_cast<int>(i)),
+                true});
+        const int reset_row = static_cast<int>(entries.size());
+        entries.push_back(ListEntry{"Reset to default", true});
+        const int done_row = static_cast<int>(entries.size());
+        entries.push_back(ListEntry{"Done", true});
+
+        char32_t key = 0;
+        const int choice = menu.choose(
+            std::format("{} ({})", page.title, page.subtitle), entries,
+            // The model's status line names the picked row (its key, or
+            // the level it opens at); its nothing-picked line says "Click",
+            // so the terminal shows its own keys instead.
+            (selected >= 0 ? og::ui::ability_status_line(page, selected) + " | "
+                           : std::string()) +
+                "Enter pick | c clear | Esc done",
+            cursor, U"cC", &key);
+        if (choice < 0 || choice == done_row)
+            break;
+        cursor = choice;
+        if (key == U'c' || key == U'C') {
+            if (choice < og::sim::belt::kSlots) {
+                og::ui::ability_clear(working, choice);
+                selected = -1;
+            }
+            continue;
+        }
+        if (choice == reset_row) {
+            og::ui::ability_reset(working);
+            selected = -1;
+        } else if (choice < og::sim::belt::kSlots) {
+            selected = og::ui::ability_pick_belt(working, fd, ns, page,
+                                                 selected, choice).selected;
+        } else {
+            selected = og::ui::ability_pick_bench(working, fd, ns, page,
+                                                  selected,
+                                                  choice - first_bench)
+                           .selected;
+        }
+    }
+
+    if (working == hero.belt)
+        return;
+    hero.belt = working;
+    autosave_company_after_mutation(save);
+}
+
 // §2.5 command roster (curses shape): deploy flags lead each row;
-// Enter = train that character, 'd' = toggle deploy, 'r' = ready (guarded
-// outside networked lobbies), Esc = back.
+// Enter = train that character, 'd' = toggle deploy, 'e' = its abilities,
+// 'r' = ready (guarded outside networked lobbies), Esc = back.
 void view_team_roster(Menu& menu, SaveData& save)
 {
     int cursor = 0;
@@ -545,8 +640,8 @@ void view_team_roster(Menu& menu, SaveData& save)
 
         char32_t key = 0;
         const int choice = menu.choose("Team Roster", entries,
-            "Enter train | d deploy | r ready | Esc back", cursor,
-            U"dDrR", &key);
+            "Enter train | d deploy | e abilities | r ready | Esc back",
+            cursor, U"dDrReE", &key);
         if (choice < 0)
             return;
         cursor = choice;
@@ -574,6 +669,10 @@ void view_team_roster(Menu& menu, SaveData& save)
             // (the curses network lobby keeps its own 'r' key).
             menu.show_text("Ready",
                 {"Ready applies to networked lobbies only."});
+            continue;
+        }
+        if (key == U'e' || key == U'E') {
+            equip_team(menu, save, slot);
             continue;
         }
         train_team(menu, save, slot);
