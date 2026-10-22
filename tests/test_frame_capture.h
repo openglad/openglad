@@ -18,12 +18,17 @@
 
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/sai2x.h>  // E_Screen (the physical readback)
+
+#include "test_interact.h"
 
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -172,6 +177,88 @@ inline void verify_captured_frames(const char* flow, std::size_t expected)
             << flow << ": " << frame.name << " produced no file at "
             << frame.path;
     }
+}
+
+// The PHYSICAL frame: what the window really shows, at the display's own
+// resolution, read back from the renderer (SDL_RenderReadPixels, the
+// tests/integration/test_canvas_scale.cpp precedent). The 320x200 capture
+// above cannot see a native plane (the CHANGELOG! keyboard picture, a world
+// preview): those are composited only at present time, over the menu canvas.
+//
+// Runs the readback on the MENU thread through the frame-top task pump
+// (renderer calls belong to the thread that renders), so it reads the frame
+// the previous iteration presented, before this one draws. Callable from an
+// injector thread while an engine-hosted screen is up; output_dir as above.
+struct PhysicalFrame {
+    std::string name;
+    std::string path;       // "" = no output dir, nothing to write
+    bool captured = false;
+    bool written = false;
+    int w = 0;
+    int h = 0;
+    std::vector<Uint8> rgb;  // w*h*3, RGB row-major
+
+    // The colour at (x, y); black outside the frame.
+    std::array<Uint8, 3> at(int x, int y) const
+    {
+        if (x < 0 || y < 0 || x >= w || y >= h)
+            return {0, 0, 0};
+        const std::size_t i =
+            (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+             static_cast<std::size_t>(x)) * 3u;
+        return {rgb[i], rgb[i + 1], rgb[i + 2]};
+    }
+};
+
+inline PhysicalFrame capture_physical_frame(const char* name,
+                                            const char* output_dir)
+{
+    PhysicalFrame frame;
+    frame.name = name;
+    const bool ran = run_on_main_thread([&frame] {
+        if (!E_Screen || E_Screen->renderer == nullptr)
+            return;
+        SDL_Surface* const raw =
+            SDL_RenderReadPixels(E_Screen->renderer, nullptr);
+        if (raw == nullptr)
+            return;
+        SDL_Surface* const rgb =
+            SDL_ConvertSurface(raw, SDL_PIXELFORMAT_RGB24);
+        SDL_DestroySurface(raw);
+        if (rgb == nullptr)
+            return;
+        frame.w = rgb->w;
+        frame.h = rgb->h;
+        frame.rgb.resize(static_cast<std::size_t>(rgb->w) *
+                         static_cast<std::size_t>(rgb->h) * 3u);
+        for (int y = 0; y < rgb->h; ++y)
+            std::memcpy(frame.rgb.data() + static_cast<std::size_t>(y) *
+                                               static_cast<std::size_t>(rgb->w) * 3u,
+                        static_cast<const Uint8*>(rgb->pixels) +
+                            static_cast<std::ptrdiff_t>(y) * rgb->pitch,
+                        static_cast<std::size_t>(rgb->w) * 3u);
+        SDL_DestroySurface(rgb);
+        frame.captured = true;
+    });
+    if (!ran || !frame.captured)
+        return frame;
+    if (output_dir != nullptr && output_dir[0] != '\0') {
+        std::error_code error;
+        std::filesystem::create_directories(output_dir, error);
+        frame.path = std::string(output_dir) + "/" + name + ".ppm";
+        FILE* f = error ? nullptr : fopen(frame.path.c_str(), "wb");
+        if (f != nullptr) {
+            fprintf(f, "P6\n%d %d\n255\n", frame.w, frame.h);
+            fwrite(frame.rgb.data(), sizeof(Uint8), frame.rgb.size(), f);
+            fclose(f);
+            std::error_code exists_error;
+            frame.written = std::filesystem::exists(frame.path, exists_error) &&
+                            !exists_error;
+            fprintf(stderr, "  [physical shot] wrote %s (%dx%d)\n",
+                    frame.path.c_str(), frame.w, frame.h);
+        }
+    }
+    return frame;
 }
 
 #endif  // _TEST_FRAME_CAPTURE_H__
