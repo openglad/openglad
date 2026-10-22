@@ -4044,19 +4044,51 @@ TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
     EXPECT_EQ(0, buttons[4].nav.down) << "Gameplay Fixes closes the cycle at BACK";
 }
 
-// UI FX subscreen: unique BACK id + the three overlay toggles in a centered
-// column.
+// UI FX subscreen: unique BACK id + the three overlay toggles and the New
+// Ability Select row in one centred column. "New Ability Select" is 18
+// glyphs (108 px), so the column is 120 px wide at x 100 (centre 160).
 TEST(MenuLayout, ui_fx_options_layout_and_nav)
 {
     static const ExpectedFxButton kExpected[] = {
         {"ui_fx_back", "BACK", 10, 10},
-        {"toggle_mini_hp_bar", "Mini HP bar", 115, 35},
-        {"toggle_damage_numbers", "Damage numbers", 115, 58},
-        {"toggle_heal_numbers", "Healing numbers", 115, 81},
+        {"toggle_mini_hp_bar", "Mini HP bar", 100, 35},
+        {"toggle_damage_numbers", "Damage numbers", 100, 58},
+        {"toggle_heal_numbers", "Healing numbers", 100, 81},
+        {"toggle_new_ability_select", "New Ability Select", 100, 104},
     };
     button* buttons = picker_ui_fx_options_buttons();
     const int count = picker_ui_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
+    check_fx_options_screen(buttons, count, kExpected, 5, "ui_fx_options");
+    if (count != 5)
+        return;
+
+    // One column: one x, one width, the effects-grid 23 px pitch, centred
+    // on the 320 px canvas.
+    for (int i = 1; i < count; ++i)
+    {
+        EXPECT_EQ(100, buttons[i].x) << buttons[i].id;
+        EXPECT_EQ(120, buttons[i].sizex) << buttons[i].id;
+        EXPECT_EQ(160, buttons[i].x + buttons[i].sizex / 2) << buttons[i].id;
+        if (i > 1)
+        {
+            EXPECT_EQ(buttons[i - 1].y + 23, buttons[i].y) << buttons[i].id;
+        }
+    }
+    EXPECT_EQ(button_action_id(ButtonAction::ToggleNewAbilitySelect),
+              buttons[4].myfun);
+    EXPECT_EQ(128, button_action_id(ButtonAction::ToggleNewAbilitySelect));
+    // The widest label is drawn centred with no clipping: 18 glyphs, 108 px.
+    EXPECT_EQ(18u, buttons[4].label.size());
+    EXPECT_LE(6 * static_cast<int>(buttons[4].label.size()), buttons[4].sizex);
+
+    // The vertical cycle runs BACK -> each toggle -> BACK, both ways.
+    EXPECT_EQ(1, buttons[0].nav.down);
+    EXPECT_EQ(4, buttons[0].nav.up) << "BACK links up to New Ability Select";
+    EXPECT_EQ(4, buttons[3].nav.down)
+        << "Healing numbers links down to New Ability Select";
+    EXPECT_EQ(3, buttons[4].nav.up);
+    EXPECT_EQ(0, buttons[4].nav.down)
+        << "New Ability Select closes the cycle at BACK";
 }
 
 // GRAPHICS FX subscreen: unique BACK id + 14 effects/* visual toggles on the
