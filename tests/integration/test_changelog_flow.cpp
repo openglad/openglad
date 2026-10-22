@@ -259,33 +259,73 @@ struct HeldKeys
 };
 HeldKeys* g_held = nullptr;
 
-int page_with_held_keys(Flow& flow)
+void release_held_keys(HeldKeys& held)
 {
-    HeldKeys& held = *g_held;
-    if (!wait_for_interactable("changelog_ok", 15000))
-        return leave(flow, 1, "the CHANGELOG! page never came up");
-    flow.page_seen = true;
-    if (!wait_for_menu_frames(4))
-        return leave(flow, 2, "the page completed no frames");
-    held.stayed_up_while_held = has_interactable("changelog_ok") &&
-                                !trace_contains("popup", "CHANGELOG!: closed");
-    // Let go, give the page frames to see it, then press Space again.
     held.keys[static_cast<std::size_t>(KEYSTATE_RETURN)] = false;
     held.keys[static_cast<std::size_t>(KEYSTATE_ESCAPE)] = false;
     held.keys[static_cast<std::size_t>(KEYSTATE_SPACE)] = false;
+}
+
+int page_with_held_keys(Flow& flow)
+{
+    HeldKeys& held = *g_held;
+    // Every way out lets go first: a page that closed under the held keys
+    // waits in its drain for them to come up.
+    const auto give_up = [&](int leg, const char* why) {
+        release_held_keys(held);
+        return leave(flow, leg, why);
+    };
+    if (!wait_for_interactable("changelog_ok", 15000))
+        return give_up(1, "the CHANGELOG! page never came up");
+    flow.page_seen = true;
+    if (!wait_for_menu_frames(4, 3000))
+        return give_up(2, "the page completed no frames under the held keys");
+    held.stayed_up_while_held = has_interactable("changelog_ok") &&
+                                !trace_contains("popup", "CHANGELOG!: closed");
+    // Let go, give the page frames to see it, then press Space again.
+    release_held_keys(held);
     if (!wait_for_menu_frames(2))
-        return leave(flow, 3, "the page completed no frames after the release");
+        return give_up(3, "the page completed no frames after the release");
     held.keys[static_cast<std::size_t>(KEYSTATE_SPACE)] = true;
     held.closed_by_a_new_press =
         wait_for_trace("popup", "CHANGELOG!: closed id=1", 15000);
-    held.keys[static_cast<std::size_t>(KEYSTATE_SPACE)] = false;
+    release_held_keys(held);
     if (!held.closed_by_a_new_press)
-        return leave(flow, 4, "a fresh Space did not close the page");
+        return give_up(4, "a fresh Space did not close the page");
     if (!wait_for_interactable("quit", 15000))
-        return leave(flow, 5, "the page did not lead to the main menu");
+        return give_up(5, "the page did not lead to the main menu");
     flow.main_menu_seen = true;
     return leave(flow, 0, "");
 }
+
+// For the tests that call picker_show_pending_changelog() expecting it to
+// return at once: should the page come up after all, the shared escape tail
+// clicks it shut instead of hanging the binary (the tests then fail on the
+// "CHANGELOG!: showing" trace and the stamped marker).
+constexpr EscapeDoor kPageOnlyDoor[] = {{"changelog_ok", "changelog_ok"}};
+
+struct PageCloser
+{
+    std::atomic<bool> stop{false};
+    SDL_Thread* thread = nullptr;
+    PageCloser()
+    {
+        thread = SDL_CreateThread(
+            [](void* data) -> int {
+                auto& self = *static_cast<PageCloser*>(data);
+                return escape_to_the_main_thread(self.stop, 0, "",
+                                                 kPageOnlyDoor);
+            },
+            "changelog_closer", this);
+    }
+    ~PageCloser()
+    {
+        stop.store(true);
+        SDL_WaitThread(thread, nullptr);
+    }
+    PageCloser(const PageCloser&) = delete;
+    PageCloser& operator=(const PageCloser&) = delete;
+};
 
 // Count the band's key-cap pixels: the four saturated player colours (red
 // 229,72,77; green 48,164,108; yellow 245,180,0; blue 62,142,247). The page's
@@ -516,7 +556,10 @@ TEST(ChangelogFlow, demo_session_never_shows_it)
     ASSERT_NE(nullptr, session);
     const bool was = session->non_interactive_;
     session->non_interactive_ = true;
-    picker_show_pending_changelog();
+    {
+        PageCloser closer;
+        picker_show_pending_changelog();
+    }
     session->non_interactive_ = was;
     EXPECT_FALSE(trace_contains("popup", "CHANGELOG!"))
         << "a demo session must not even consider the page";
@@ -529,7 +572,10 @@ TEST(ChangelogFlow, testing_default_is_trace_only)
     trace_clear();
     MarkerRestore restore;
     ASSERT_FALSE(picker_testing_changelog_forced());
-    picker_show_pending_changelog();
+    {
+        PageCloser closer;
+        picker_show_pending_changelog();
+    }
     EXPECT_TRUE(trace_contains("popup",
                                "CHANGELOG!: pending=1 seen=0 forced=0"));
     EXPECT_FALSE(trace_contains("popup", "CHANGELOG!: showing"));
