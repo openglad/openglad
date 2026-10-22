@@ -22,6 +22,7 @@
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 
@@ -37,6 +38,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -50,7 +52,8 @@ void install_sdl_context_services();
 void popup_dialog(const char* title, const char* message);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
-void glad_init(bool preserve_frame_timing);
+void glad_init(bool preserve_frame_timing,
+               const og::ui::PickerLobbyGameStartConfig* lobby_config);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
@@ -994,9 +997,11 @@ namespace
 {
 
 // One soldier hero (level 13, every slot open) whose SPEC 2 belt slot holds
-// WHIRLWIND (slot 3) instead of the class default BOOMERANG (slot 2), in a
-// real gladiator level behind the in-process server (glad_init installs the
-// local transport: the display world is the snapshot mirror).
+// WHIRLWIND (slot 3) instead of the class default BOOMERANG (slot 2), started
+// the way Base Camp's GO starts a mission: the local lobby builds the start
+// config from the save (make_lobby_character_data), glad_init rebuilds the
+// mission roster from it (make_guy_from_lobby_character) and installs the
+// local transport, so the display world is the in-process server's mirror.
 walker* start_belt_mission(screen& game_screen)
 {
     game_screen.save_data.reset();
@@ -1013,7 +1018,16 @@ walker* start_belt_mission(screen& game_screen)
     game_screen.save_data.team_size = 1;
     if (!game_screen.save_data.save("save0"))
         return nullptr;
-    glad_init(false);
+    std::optional<og::ui::PickerLobbyGameStartConfig> config;
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        config = client->build_game_start_config();
+        client->shutdown();
+    }
+    if (!config.has_value())
+        return nullptr;
+    glad_init(false, &*config);
     if (og::runtime::current_game_session == nullptr ||
         !og::runtime::local_transport_active(*og::runtime::current_session))
         return nullptr;
@@ -1133,6 +1147,12 @@ TEST(BeltPlay, latch_keeps_the_pressed_frames_byte_across_a_render_frame)
     {
         FakeKeyboard keyboard;
         game_frame_with_result(game_screen, st, one_tick_per_frame());
+        // An idle render frame first: the pending input then holds a zero
+        // byte, so the press frame's byte must REPLACE it, and the release
+        // frame's zero must KEEP it.
+        game_frame_with_result(game_screen, st, no_tick);
+        ASSERT_TRUE(st.has_pending_input);
+        ASSERT_EQ(0, st.pending_input.players[0].belt_cast);
         ASSERT_TRUE(keyboard.set(0, KEY_SPEC2, true));
         game_frame_with_result(game_screen, st, no_tick);
         keyboard.set(0, KEY_SPEC2, false);
