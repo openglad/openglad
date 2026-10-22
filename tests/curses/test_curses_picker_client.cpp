@@ -2344,7 +2344,7 @@ TEST(CursesPickerClient, show_options_new_specials_prompt)
     }
 }
 
-// The Gameplay Fixes prompt, the fourth and last: the same contract as the
+// The Gameplay Fixes prompt, the fourth: the same contract as the
 // New Specials prompt above, its own preference and session field.
 TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
 {
@@ -2363,25 +2363,31 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
     cfg.apply_setting("gameplay", "new_specials", "on");
     cfg.apply_setting("gameplay", "gameplay_fixes", "on");
     {   // The constructor seeds the session from the preference; "off"
-        // turns both off.
-        PickerFixture f;
-        ASSERT_EQ(1, f.save().gameplay_fixes) << "the cfg seed";
-        f.t().push_special(KeyCode::Enter);  // keep slot
-        f.t().push_special(KeyCode::Enter);  // keep seed
-        f.t().push_special(KeyCode::Enter);  // keep New Specials
+        // turns both off. The New Ability Select prompt follows this one,
+        // so every frame is kept and searched, not just the last.
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        ASSERT_EQ(1, client.save_data().gameplay_fixes) << "the cfg seed";
+        inner.push_special(KeyCode::Enter);  // keep slot
+        inner.push_special(KeyCode::Enter);  // keep seed
+        inner.push_special(KeyCode::Enter);  // keep New Specials
         for (int i = 0; i < 2; ++i)          // erase the prefilled "on"
-            f.t().push_special(KeyCode::Backspace);
-        f.t().push_string("off");
-        f.t().push_special(KeyCode::Enter);
-        f.client.show_options();
-        EXPECT_EQ(0, f.save().gameplay_fixes) << "the session follows";
+            inner.push_special(KeyCode::Backspace);
+        inner.push_string("off");
+        inner.push_special(KeyCode::Enter);
+        client.show_options();
+        EXPECT_EQ(0, client.save_data().gameplay_fixes) << "the session follows";
         EXPECT_EQ("off", cfg.get_setting("gameplay", "gameplay_fixes"))
             << "the preference follows";
-        EXPECT_EQ(1, f.save().new_specials) << "New Specials is untouched";
+        EXPECT_EQ(1, client.save_data().new_specials) << "New Specials is untouched";
         EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
-        EXPECT_NE(std::string::npos, f.t().dump().find("Gameplay fixes (on/off)"))
-            << f.t().dump();
-        EXPECT_TRUE(f.t().input_exhausted());
+        EXPECT_NE(std::string::npos, term.frames().find("Gameplay fixes (on/off)"))
+            << inner.dump();
+        EXPECT_TRUE(inner.input_exhausted());
     }
     {   // The preference now seeds OFF; "on" turns both back on.
         PickerFixture f;
@@ -2398,20 +2404,26 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
         EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"));
     }
     {   // Anything but on/off is refused and changes nothing.
-        PickerFixture f;
-        f.t().push_special(KeyCode::Enter);
-        f.t().push_special(KeyCode::Enter);
-        f.t().push_special(KeyCode::Enter);
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        inner.push_special(KeyCode::Enter);
+        inner.push_special(KeyCode::Enter);
+        inner.push_special(KeyCode::Enter);
         for (int i = 0; i < 2; ++i)
-            f.t().push_special(KeyCode::Backspace);
-        f.t().push_string("maybe");
-        f.t().push_special(KeyCode::Enter);
-        dismiss(f.t());
-        f.client.show_options();
-        EXPECT_EQ(1, f.save().gameplay_fixes);
+            inner.push_special(KeyCode::Backspace);
+        inner.push_string("maybe");
+        inner.push_special(KeyCode::Enter);
+        dismiss(inner);
+        client.show_options();
+        EXPECT_EQ(1, client.save_data().gameplay_fixes);
         EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"));
-        EXPECT_NE(std::string::npos, f.t().dump().find("Invalid value; on or off."))
-            << f.t().dump();
+        EXPECT_NE(std::string::npos,
+                  term.frames().find("Invalid value; on or off."))
+            << inner.dump();
     }
     {   // A gameplay_fixes 0 in the config overrides the seed for the run,
         // and accepting the prefilled "off" leaves the preference alone.
@@ -2430,6 +2442,75 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
         EXPECT_EQ(0, client.save_data().gameplay_fixes);
         EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"))
             << "accepting the prefilled value writes nothing";
+    }
+}
+
+// The New Ability Select prompt, the fifth and last: the terminal twin of
+// the UI FX row. The setting is per machine and never on the wire, so the
+// prompt reads and writes the cfg preference alone; the session's settings
+// stay as they were.
+TEST(CursesPickerClient, show_options_ability_select_prompt)
+{
+    const std::string saved_pref =
+        cfg.get_setting("effects", "new_ability_select");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref()
+        {
+            cfg.apply_setting("effects", "new_ability_select", value);
+        }
+    } restore{saved_pref};
+
+    cfg.apply_setting("effects", "new_ability_select", "on");
+    {   // Prefilled "on"; "off" writes the preference and nothing else.
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        const short specials_before = client.save_data().new_specials;
+        const short fixes_before = client.save_data().gameplay_fixes;
+        for (int i = 0; i < 4; ++i)          // keep slot, seed, specials, fixes
+            inner.push_special(KeyCode::Enter);
+        for (int i = 0; i < 2; ++i)          // erase the prefilled "on"
+            inner.push_special(KeyCode::Backspace);
+        inner.push_string("off");
+        inner.push_special(KeyCode::Enter);
+        client.show_options();
+        EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
+        EXPECT_EQ(specials_before, client.save_data().new_specials);
+        EXPECT_EQ(fixes_before, client.save_data().gameplay_fixes);
+        EXPECT_NE(std::string::npos,
+                  term.frames().find("New ability select (on/off)"))
+            << inner.dump();
+        EXPECT_TRUE(inner.input_exhausted());
+    }
+    {   // Prefilled "off" now; "on" turns it back on.
+        PickerFixture f;
+        for (int i = 0; i < 4; ++i)
+            f.t().push_special(KeyCode::Enter);
+        for (int i = 0; i < 3; ++i)          // erase the prefilled "off"
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("on");
+        f.t().push_special(KeyCode::Enter);
+        f.client.show_options();
+        EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {   // Anything but on/off is refused and changes nothing.
+        PickerFixture f;
+        for (int i = 0; i < 4; ++i)
+            f.t().push_special(KeyCode::Enter);
+        for (int i = 0; i < 2; ++i)
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("maybe");
+        f.t().push_special(KeyCode::Enter);
+        dismiss(f.t());
+        f.client.show_options();
+        EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+        EXPECT_NE(std::string::npos, f.t().dump().find("Invalid value; on or off."))
+            << f.t().dump();
     }
 }
 

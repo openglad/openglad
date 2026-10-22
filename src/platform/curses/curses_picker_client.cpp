@@ -1821,6 +1821,20 @@ void CursesPickerClient::show_options()
         else
             menu.show_text("Game Settings", {"Invalid value; on or off."});
     }
+
+    // The UI FX "New Ability Select" row: a per-machine preference only
+    // (nothing to synchronize, no session field), so the prompt reads and
+    // writes cfg alone.
+    accepted = false;
+    const std::string belt_current = og::ui::ability_select_pref(cfg) ? "on" : "off";
+    const std::string belt = menu.prompt("Game Settings",
+        "New ability select (on/off): ", belt_current, accepted);
+    if (accepted && belt != belt_current) {
+        if (belt == "on" || belt == "off")
+            og::ui::set_ability_select_pref(cfg, belt == "on");
+        else
+            menu.show_text("Game Settings", {"Invalid value; on or off."});
+    }
 }
 
 void CursesPickerClient::show_help()

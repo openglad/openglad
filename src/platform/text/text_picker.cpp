@@ -414,6 +414,19 @@ public:
                                        /*decides_session=*/true);
         else if (!line.empty())
             std::printf("Invalid value; on or off.\n");
+
+        // The terminal twin of the UI FX "New Ability Select" row: a
+        // per-machine preference only (nothing to synchronize, no session
+        // field), so the prompt states and writes cfg alone.
+        std::printf("New ability select: %s. Change (on/off, blank keeps current): ",
+            og::ui::ability_select_pref(cfg) ? "on" : "off");
+        std::fflush(stdout);
+        if (!read_line(line))
+            return;
+        if (line == "on" || line == "off")
+            og::ui::set_ability_select_pref(cfg, line == "on");
+        else if (!line.empty())
+            std::printf("Invalid value; on or off.\n");
     }
 
     void show_help() override
