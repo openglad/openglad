@@ -13,6 +13,7 @@
 #include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
@@ -21,6 +22,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/timed_effects.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/ui/picker_common.h>
 
 #include <algorithm>
@@ -89,6 +91,40 @@ std::string current_special_name(const walker* w, const GameWorld& world)
         alternate[0] != '\0' && std::strcmp(alternate, "NONE") != 0)
         return alternate;
     return name;
+}
+
+// New Ability Select's status: "1:TELEPORT 2:WARP SPACE 3:FREEZE TIME", the
+// three SPEC keys of the layer `shift` picks ("S1:".."S3:" on the SHIFTER
+// row), each name cut to 10 glyphs, "--" for an empty key; "" when the
+// walker's family has nothing on any of the three keys.
+std::string belt_status(const walker& w, const GameWorld& world, bool shift)
+{
+    namespace belt = og::sim::belt;
+    const belt::Layout layout = belt::resolve(
+        get_family_descriptor(w.family()), w.stats()->level(),
+        world.new_specials, belt::bytes_for(w));
+    constexpr std::size_t kNameChars = 10;
+    std::string line;
+    bool any = false;
+    for (int key = 1; key <= 3; ++key) {
+        const belt::Resolved& slot =
+            layout[static_cast<std::size_t>(belt::slot_index(key, shift))];
+        std::string name = "--";
+        if (slot.state != belt::SlotState::Empty && slot.entry) {
+            name = slot.name;
+            if (name.size() > kNameChars)
+                name.resize(kNameChars);
+            while (!name.empty() && name.back() == ' ')
+                name.pop_back();
+            any = true;
+        }
+        if (!line.empty())
+            line += ' ';
+        line += og::ui::ability_key_label(belt::slot_index(key, shift));
+        line += ':';
+        line += name;
+    }
+    return any ? line : std::string();
 }
 
 } // namespace
@@ -450,15 +486,24 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                 }
             }
         }
-        // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the
-        // player can see what casting fire/special will do.
-        if (followed) {
+        // What the special keys cast, so the player can see what a press
+        // will do. Setting off: the selected special, which the change-
+        // special key (SPEC 2) cycles. New Ability Select on: the three SPEC
+        // keys of the active layer (belt_status), after the score: the list
+        // is long, and an 80-column clip() should eat it before the score.
+        const bool belt_keys = og::input::ability_select_on();
+        if (followed && !belt_keys) {
             const std::string special = current_special_name(followed, world);
             if (!special.empty())
                 line1 += "  Sp:" + special;
         }
         const int team = std::clamp(static_cast<int>(world.my_team), 0, 3);
         line1 += "  Score " + std::to_string(world.m_score[team]);
+        if (followed && belt_keys) {
+            const std::string keys = belt_status(*followed, world, shift_layer_);
+            if (!keys.empty())
+                line1 += "  " + keys;
+        }
         term.put_str(top + 1, left, clip(line1), Color::Default, Color::Default, false);
     }
 }

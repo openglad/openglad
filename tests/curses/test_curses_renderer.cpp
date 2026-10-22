@@ -27,6 +27,8 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 
+#include "test_ability_select_scope.h"
+
 #include <cstring>
 #include <memory>
 #include <string>
@@ -205,6 +207,7 @@ TEST(CursesRenderer, draws_a_border_outside_the_grid)
 // player knows who they are and what casting will do.
 TEST(CursesRenderer, hud_shows_character_name_and_current_special)
 {
+    ScopedAbilitySelect off;  // the classic "Sp:" status
     HandWorld hw(20, 20);
     walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
     hero->set_user(0);
@@ -225,6 +228,7 @@ TEST(CursesRenderer, hud_shows_character_name_and_current_special)
 
 TEST(CursesRenderer, hud_omits_invalid_or_unregistered_specials)
 {
+    ScopedAbilitySelect off;  // the classic "Sp:" status
     HandWorld hw(20, 20);
     walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
     ASSERT_NE(hero, nullptr);
@@ -240,6 +244,51 @@ TEST(CursesRenderer, hud_omits_invalid_or_unregistered_specials)
     hero->set_family(static_cast<char>(127));
     renderer.draw(term, hw.world(), hero->entity_id());
     EXPECT_EQ(term.text_row(1).find("Sp:"), std::string::npos);
+}
+
+// New Ability Select on: the status line names the three SPEC keys of the
+// active layer in place of "Sp:", each name cut to 10 glyphs; holding
+// SHIFTER (set_shift_layer) shows the S1..S3 row. A family with nothing on
+// its keys (an unregistered byte) shows no key list at all.
+//
+// RED: belt_status reads slot_index(key, false) for both layers (the
+// SHIFTER row never shows); the 10-glyph cut dropped.
+TEST(CursesRenderer, hud_names_the_spec_keys_with_ability_select_on)
+{
+    ScopedAbilitySelect on(true);
+    HandWorld hw(20, 20);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    ASSERT_NE(hero, nullptr);
+    hero->set_user(0);
+    auto g = std::make_unique<guy>(FAMILY_SOLDIER);
+    g->name = "Maximus";
+    hero->set_owned_myguy(std::move(g));
+
+    HeadlessTerminal term(24, 140);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), hero->entity_id());
+    const std::string row = term.text_row(1);
+    EXPECT_NE(row.find("1:CHARGE 2:BOOMERANG 3:WHIRLWIND"), std::string::npos)
+        << "row 1 names the three SPEC keys; got: " << row;
+    EXPECT_EQ(row.find("Sp:"), std::string::npos) << row;
+
+    renderer.set_shift_layer(true);
+    renderer.draw(term, hw.world(), hero->entity_id());
+    EXPECT_NE(term.text_row(1).find("S1:DISARM S2:-- S3:--"), std::string::npos)
+        << "the SHIFTER row; got: " << term.text_row(1);
+
+    renderer.set_shift_layer(false);
+    hero->set_family(static_cast<char>(FAMILY_MAGE));
+    renderer.draw(term, hw.world(), hero->entity_id());
+    EXPECT_NE(term.text_row(1).find("2:WARP SPACE 3:FREEZE TIM"), std::string::npos)
+        << "a name past 10 glyphs is cut; got: " << term.text_row(1);
+    EXPECT_EQ(term.text_row(1).find("FREEZE TIME"), std::string::npos)
+        << "the 11-glyph name is not shown whole; got: " << term.text_row(1);
+
+    hero->set_family(static_cast<char>(127));
+    renderer.draw(term, hw.world(), hero->entity_id());
+    EXPECT_EQ(term.text_row(1).find("1:"), std::string::npos)
+        << "nothing on any key: no key list; got: " << term.text_row(1);
 }
 
 // A level exit (Order::Treasure / FAMILY_EXIT) renders as '>' so the player can
