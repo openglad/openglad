@@ -28,3 +28,9 @@ tests/parity/golden/*.json -text
 # included (the lint targets in CMakeLists.txt invoke them by interpreter).
 # A CRLF checkout turns every line into "...\r: command not found".
 *.sh text eol=lf
+
+# The CHANGELOG! keyboard map: tests/unit/test_keyboard_map_asset.cpp compares
+# the text byte for byte and scripts/check_keyboard_map.sh hashes it, so a
+# checkout must never turn its line ends into CRLF.
+scripts/keyboard_map/keyboard_map.txt   text eol=lf
+scripts/keyboard_map/keyboard_map.stamp text eol=lf
