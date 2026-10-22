@@ -589,6 +589,12 @@ TEST(HelpSmoke, classes_help_explains_shifter_under_ability_select)
                         "form. With New Ability Select (UI FX,\n"))
         << "the paragraph naming the setting is missing";
     EXPECT_NE(std::string::npos,
+              text.find("own key: the three SPEC keys and\n"
+                        "SHIFTER + each."))
+        << "the paragraph must name every seat's keys, not P1's 1-3";
+    EXPECT_EQ(std::string::npos, text.find("\n+ "))
+        << "a wrapped line must not start with '+'";
+    EXPECT_NE(std::string::npos,
               text.find("TRAIN > ABILITIES shows and changes\n"));
     EXPECT_NE(std::string::npos,
               text.find("   SHIFTER: Turn Undead, as Raise Undead's.\n"));

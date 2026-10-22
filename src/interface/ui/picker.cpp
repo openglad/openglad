@@ -2525,6 +2525,8 @@ std::vector<std::string> build_player_control_summary_lines(int player_index, bo
 
     const bool eight_dir =
         get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
+    // Unbound look-up (the P4 8-direction default, or user-cleared) shows
+    // "--" instead of the empty string SDL names keycode 0 with.
     const auto name = [player_index](int key) {
         return player_control_key_display_name(player_index, key);
     };
@@ -2553,8 +2555,6 @@ std::vector<std::string> build_player_control_summary_lines(int player_index, bo
                   up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s);
     }
 
-    // Unbound look-up (the P4 8-direction default, or user-cleared) shows
-    // "--" instead of the empty string SDL names keycode 0 with.
     if (og::input::ability_select_on())
     {
         // New Ability Select: one key per ability, so the actions take two

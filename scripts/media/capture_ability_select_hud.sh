@@ -24,6 +24,12 @@ if [ ! -x "$TEST_BIN" ]; then
     exit 1
 fi
 
+# magick comes from the dev shell (`nix develop`).
+command -v magick > /dev/null || {
+    printf 'magick not found; run inside nix develop\n' >&2
+    exit 1
+}
+
 mkdir -p "$MEDIA_DIR"
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
     OG_FX_CAPTURE_DIR="$MEDIA_DIR" \

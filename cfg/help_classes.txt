@@ -9,10 +9,11 @@ Heal and more.
 SHIFTER: marks an ability's second
 form. With New Ability Select (UI FX,
 on by default) each ability has its
-own key, 1-3 and SHIFTER+1-3; the
-default puts a second form on SHIFTER
-+ its own key when that key is free,
-else the next free SHIFTER key.
+own key: the three SPEC keys and
+SHIFTER + each. The default puts a
+second form on SHIFTER + its own key
+when that key is free, else the next
+free SHIFTER key.
 TRAIN > ABILITIES shows and changes
 your layout.
 
