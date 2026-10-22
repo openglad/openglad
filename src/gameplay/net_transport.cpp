@@ -295,9 +295,11 @@ void append_serialized_guy(std::vector<std::uint8_t>& payload,
     append_i16(payload, guy.scen_shots);
     append_i16(payload, guy.scen_hits);
     append_i16(payload, guy.level);
+    for (const std::uint8_t byte : guy.belt)
+        append_u8(payload, byte);
 }
 
-constexpr std::size_t kMinSerializedGuyDataSize = 59;
+constexpr std::size_t kMinSerializedGuyDataSize = 65;
 
 template <typename GuyLike>
 GuyLike read_serialized_guy(PayloadReader& reader)
@@ -332,6 +334,10 @@ GuyLike read_serialized_guy(PayloadReader& reader)
     guy.scen_shots = reader.read_i16();
     guy.scen_hits = reader.read_i16();
     guy.level = reader.read_i16();
+    // As is: resolve() normalises the bytes on use, and the in-process
+    // validator requires a lossless round trip.
+    for (std::uint8_t& byte : guy.belt)
+        byte = reader.read_u8();
     return guy;
 }
 

@@ -2655,4 +2655,167 @@ TEST(GameServerCoverage, a_pack_family_hero_cycles_its_declared_specials)
         << "control: slot 3 needs level 7, the level gate wraps to slot 1";
 }
 
+
+// --- New Ability Select: the belt byte through the server's input merge ----
+//
+// A mage at level 1 has TELEPORT on (1, plain) and TELEPORT MARKER on
+// (1, alt): belt byte 0x01 arms shifter_down 0, byte 0x09 arms shifter_down
+// 1, and the physical Shift key is never held here, so a lost byte (the
+// classic 0) reads as shifter_down 0. shifter_down after the tick says which
+// byte the sim saw. The mage has no MP, so every cast fails (NO MP) and
+// queues nothing: the next tick's input block always runs.
+
+struct BeltSeat {
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    std::unique_ptr<og::sim::GameServer> server;
+    walker* control = nullptr;
+
+    BeltSeat()
+    {
+        server = std::make_unique<og::sim::GameServer>(fixture.world(),
+                                                       fixture.events, transport);
+        transport.set_connected({96u});
+        server->poll_incoming_messages();
+        server->connect_client(96u);
+        control = fixture.world().add_ob(Order::Living, FAMILY_MAGE);
+        control->setxy(64, 64);
+        control->stats()->set_level(1);
+        control->stats()->set_magicpoints(0);
+        control->set_user(0);
+        control->set_act_type(ACT_CONTROL);
+        server->bind_player(96u, 0u, fixture.world().my_team, control);
+        server->step();
+        transport.queue_raw(
+            96u, og::sim::serialize_client_ready_message({.last_applied_tick = 0u}));
+        server->step();
+        control->set_shifter_down(7);  // neither 0 nor 1: the tick must write it
+    }
+
+    [[nodiscard]] std::uint32_t next_tick() const
+    {
+        return fixture.world().tick_count_ + 1u;
+    }
+};
+
+InputState special_frame(bool pressed, bool held, std::uint8_t belt_cast)
+{
+    InputState input;
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = pressed;
+    input.players[0].held[static_cast<int>(InputAction::Special)] = held;
+    input.players[0].belt_cast = belt_cast;
+    return input;
+}
+
+// A tap that landed one tick late (released by the exact tick) keeps its
+// entry beside its OR'd press bit. Proof it can fail: dropping late_belt_cast
+// casts the tap as classic (shifter_down 0).
+TEST(GameServerCoverage, late_press_carries_its_belt_byte)
+{
+    BeltSeat seat;
+    ASSERT_NE(nullptr, seat.control);
+    const std::uint32_t tick = seat.next_tick();
+    seat.transport.queue_raw(96u, input_frame(tick - 1u, special_frame(true, true, 0x09)));
+    seat.transport.queue_raw(96u, input_frame(tick, InputState{}));
+    seat.server->step();
+    EXPECT_EQ(1, seat.control->shifter_down())
+        << "the late press must carry its belt entry (TELEPORT MARKER, the alternate)";
+    EXPECT_EQ(1, seat.control->current_special());
+}
+
+// An exact-tick input brings its own byte; a late press only fills a 0.
+// Proof it can fail: letting the late byte override sets shifter_down 1.
+TEST(GameServerCoverage, exact_tick_byte_wins_over_late)
+{
+    BeltSeat seat;
+    ASSERT_NE(nullptr, seat.control);
+    const std::uint32_t tick = seat.next_tick();
+    seat.transport.queue_raw(96u, input_frame(tick - 1u, special_frame(true, true, 0x09)));
+    seat.transport.queue_raw(96u, input_frame(tick, special_frame(true, true, 0x01)));
+    seat.server->step();
+    EXPECT_EQ(0, seat.control->shifter_down())
+        << "the exact tick's TELEPORT byte wins over the late TELEPORT MARKER byte";
+}
+
+// With no exact-tick input the seat repeats its last known held keys AND
+// their belt byte (a held belt key keeps casting the same entry). Proof it
+// can fail: not copying belt_cast into last_known_input repeats the hold as
+// classic.
+TEST(GameServerCoverage, held_belt_cast_repeats_without_a_fresh_frame)
+{
+    BeltSeat seat;
+    ASSERT_NE(nullptr, seat.control);
+    seat.transport.queue_raw(
+        96u, input_frame(seat.next_tick(), special_frame(true, true, 0x09)));
+    seat.server->step();
+    ASSERT_EQ(1, seat.control->shifter_down());
+    seat.control->set_shifter_down(7);
+    seat.server->step();  // no frame for this tick: the hold repeats
+    EXPECT_EQ(1, seat.control->shifter_down())
+        << "the repeated hold keeps its belt entry";
+}
+
+// A seat parked in its grace window repeats its held Special with its belt
+// byte: clear_pressed clears presses, never the entry. Both sources are
+// covered: the newest pending frame, and last_known_input when nothing is
+// pending. Proof it can fail: clearing belt_cast in clear_pressed reds both.
+TEST(GameServerCoverage, disconnected_seat_repeats_held_belt_cast)
+{
+    {
+        BeltSeat seat;
+        ASSERT_NE(nullptr, seat.control);
+        seat.transport.queue_raw(
+            96u, input_frame(seat.next_tick() + 4u, special_frame(true, true, 0x09)));
+        seat.server->step();
+        seat.transport.set_connected({});
+        seat.server->poll_incoming_messages();
+        ASSERT_EQ(1u, seat.server->disconnected_players().size());
+        const PlayerInput& repeated =
+            seat.server->disconnected_players().front().repeated_input;
+        EXPECT_EQ(0x09, repeated.belt_cast) << "the newest pending frame's entry";
+        EXPECT_TRUE(repeated.held[static_cast<int>(InputAction::Special)]);
+        EXPECT_FALSE(repeated.pressed[static_cast<int>(InputAction::Special)]);
+    }
+    {
+        BeltSeat seat;
+        ASSERT_NE(nullptr, seat.control);
+        seat.transport.queue_raw(
+            96u, input_frame(seat.next_tick(), special_frame(true, true, 0x0A)));
+        seat.server->step();
+        seat.transport.set_connected({});
+        seat.server->poll_incoming_messages();
+        ASSERT_EQ(1u, seat.server->disconnected_players().size());
+        EXPECT_EQ(0x0A,
+                  seat.server->disconnected_players().front().repeated_input.belt_cast)
+            << "last_known_input's entry when nothing is pending";
+    }
+}
+
+// The single-binding heuristic reads the one active slot when the seat's own
+// slot is idle: a slot whose only content is a belt byte is active. Proof it
+// can fail: without the belt_cast term the seat (player 1) reads its idle
+// slot 1 and the parked seat repeats a 0.
+TEST(GameServerCoverage, belt_byte_counts_as_activity)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({96u});
+    server.poll_incoming_messages();
+    walker* const control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(64, 64);
+    server.bind_player(96u, 1u, fixture.world().my_team, control);
+    server.step();
+
+    InputState only_belt;
+    only_belt.players[0].belt_cast = 0x09;
+    transport.queue_raw(96u, input_frame(fixture.world().tick_count_ + 5u, only_belt));
+    server.step();
+    transport.set_connected({});
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    EXPECT_EQ(0x09, server.disconnected_players().front().repeated_input.belt_cast);
+}
+
 } // namespace

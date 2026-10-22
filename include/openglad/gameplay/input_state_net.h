@@ -12,7 +12,7 @@
 namespace og::sim {
 
 inline constexpr std::uint8_t kInputStateProtocolVersion = kNetworkProtocolVersion;
-inline constexpr std::size_t kSerializedInputPayloadSize = 21;
+inline constexpr std::size_t kSerializedInputPayloadSize = 25;
 inline constexpr std::size_t kSerializedInputMessageSize =
     kTransportHeaderSize + kSerializedInputPayloadSize;
 inline constexpr std::size_t kSerializedInputStateSize =
@@ -32,6 +32,8 @@ struct InputStateMessage {
 //   - bits 1-5: timer_wait_request + 1 (0 means no request)
 // - bytes 9-24: four little-endian player bitfields; bits 0-15 map held[],
 //   bits 16-31 map pressed[].
+// - bytes 25-28: players[0..3].belt_cast, copied as is (protocol v22, New
+//   Ability Select; 0 = the classic cast).
 std::array<std::uint8_t, kSerializedInputMessageSize>
 serialize_input(const InputState& input);
 

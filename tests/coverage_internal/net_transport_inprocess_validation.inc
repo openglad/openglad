@@ -126,3 +126,23 @@ inprocess_transport_validation_diagnostics_for_testing()
         event_text,
     };
 }
+
+std::string inprocess_transport_belt_cast_diagnostic_for_testing()
+{
+    InputState input{};
+    InputState different_input = input;
+    different_input.players[2].belt_cast = 0x0A;
+    const std::optional<TransportValidationFailure> failure =
+        find_first_input_difference(4, input, 4, different_input);
+    if (!failure.has_value())
+        return {};
+    try
+    {
+        throw_validation_failure("input probe", *failure);
+    }
+    catch (const std::runtime_error& error)
+    {
+        return std::string(error.what());
+    }
+    throw std::logic_error("detected validation failure did not throw");
+}

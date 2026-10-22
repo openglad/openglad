@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <optional>
 #include <span>
@@ -25,6 +27,7 @@ void expect_player_input_eq(const PlayerInput& expected, const PlayerInput& actu
         ASSERT_EQ(expected.held[key], actual.held[key]) << "held mismatch at key " << key;
         ASSERT_EQ(expected.pressed[key], actual.pressed[key]) << "pressed mismatch at key " << key;
     }
+    ASSERT_EQ(expected.belt_cast, actual.belt_cast) << "belt_cast mismatch";
 }
 
 void expect_input_state_eq(const InputState& expected, const InputState& actual)
@@ -52,6 +55,8 @@ InputState make_directional_pattern()
     set_flags(input.players[3].held, {InputAction::MoveDownLeft, InputAction::MoveUpRight, InputAction::MoveRight, InputAction::Special});
     set_flags(input.players[3].pressed, {InputAction::MoveUpLeft, InputAction::Fire, InputAction::OpenPrefs, InputAction::Cheat});
 
+    input.players[1].belt_cast = 0x0A;
+    input.players[2].belt_cast = 0x07;
     input.quit_requested = true;
     input.timer_wait_request = 7;
     return input;
@@ -127,10 +132,48 @@ TEST(InputStateNet, serialize_emits_expected_wire_format)
     set_flags(input.players[3].held, {InputAction::MoveDownLeft, InputAction::Shift});
     set_flags(input.players[3].pressed, {InputAction::MoveLeft, InputAction::OpenPrefs});
 
+    // New Ability Select (protocol v22): slot 2 with its alternate for
+    // player 1, slot 5 for player 3; players 0 and 2 send the classic 0.
+    input.players[1].belt_cast = 0x0A;
+    input.players[3].belt_cast = 0x05;
+
     input.quit_requested = true;
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> expected = {
-        0x15, 0x02, 0x15, 0x00,
+        0x16, 0x02, 0x19, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x01,
+        0x01, 0x80, 0x01, 0x80,
+        0x02, 0x05, 0x04, 0x08,
+        0x80, 0x00, 0x08, 0x10,
+        0x20, 0x20, 0x40, 0x40,
+        0x00, 0x0A, 0x00, 0x05,
+    };
+
+    const auto bytes = og::sim::serialize_input(input);
+    ASSERT_EQ(bytes, expected);
+}
+
+// The OFF client: a seat with New Ability Select off never sets belt_cast,
+// so its frame is today's (protocol v21) frame byte for byte under the new
+// header, plus four zero belt bytes. The 21 payload bytes below are d758's
+// literal pin, unchanged. Proof it can fail: writing the metadata byte into
+// the belt slots, or packing the belt bytes into the player bitfields, moves
+// a payload byte here.
+TEST(InputStateNet, off_client_input_is_bitwise_todays_input)
+{
+    InputState input{};
+    set_flags(input.players[0].held, {InputAction::MoveUp, InputAction::Cheat});
+    set_flags(input.players[0].pressed, {InputAction::MoveUp, InputAction::Cheat});
+    set_flags(input.players[1].held, {InputAction::MoveUpRight, InputAction::Fire, InputAction::SwitchChar});
+    set_flags(input.players[1].pressed, {InputAction::MoveRight, InputAction::SwitchSpecial});
+    set_flags(input.players[2].held, {InputAction::MoveUpLeft});
+    set_flags(input.players[2].pressed, {InputAction::MoveDownRight, InputAction::Yell});
+    set_flags(input.players[3].held, {InputAction::MoveDownLeft, InputAction::Shift});
+    set_flags(input.players[3].pressed, {InputAction::MoveLeft, InputAction::OpenPrefs});
+    input.quit_requested = true;
+
+    constexpr std::array<std::uint8_t, 21> todays_payload = {
         0x00, 0x00, 0x00, 0x00,
         0x01,
         0x01, 0x80, 0x01, 0x80,
@@ -140,19 +183,68 @@ TEST(InputStateNet, serialize_emits_expected_wire_format)
     };
 
     const auto bytes = og::sim::serialize_input(input);
-    ASSERT_EQ(bytes, expected);
+    ASSERT_EQ(og::sim::kTransportHeaderSize + 21 + 4, bytes.size());
+    for (std::size_t i = 0; i < todays_payload.size(); ++i)
+        EXPECT_EQ(todays_payload[i], bytes[og::sim::kTransportHeaderSize + i])
+            << "payload byte " << i;
+    for (std::size_t i = 0; i < 4; ++i)
+        EXPECT_EQ(0u, bytes[og::sim::kTransportHeaderSize + 21 + i])
+            << "belt byte " << i;
+}
+
+// Every belt byte value survives the codec unchanged for every seat: the
+// codec never clamps (the in-process validator needs a lossless round trip;
+// the server, not the codec, refuses a malformed byte). Proof it can fail:
+// masking the byte with 0x7F on read, or dropping seat 3's byte, goes red.
+TEST(InputStateNet, belt_byte_round_trips_all_256_values)
+{
+    for (int value = 0; value < 256; ++value)
+    {
+        for (int seat = 0; seat < MAX_PLAYERS; ++seat)
+        {
+            InputState input{};
+            input.players[seat].belt_cast = static_cast<std::uint8_t>(value);
+            input.players[seat].held[static_cast<int>(InputAction::Special)] = true;
+            const auto bytes = og::sim::serialize_input(input);
+            const std::optional<InputState> decoded = og::sim::deserialize_input(bytes);
+            ASSERT_TRUE(decoded.has_value());
+            for (int other = 0; other < MAX_PLAYERS; ++other)
+                ASSERT_EQ(other == seat ? value : 0,
+                          decoded->players[other].belt_cast)
+                    << "value " << value << " seat " << seat << " read at " << other;
+        }
+    }
+}
+
+// InputState::clear() resets the belt byte beside held and pressed, or a
+// cleared state carries a stale entry into the next sample.
+TEST(InputStateNet, clear_resets_the_belt_byte)
+{
+    InputState input{};
+    for (int seat = 0; seat < MAX_PLAYERS; ++seat)
+    {
+        input.players[seat].belt_cast = static_cast<std::uint8_t>(0x09 + seat);
+        input.players[seat].held[static_cast<int>(InputAction::Special)] = true;
+    }
+    input.clear();
+    for (int seat = 0; seat < MAX_PLAYERS; ++seat)
+    {
+        EXPECT_EQ(0, input.players[seat].belt_cast) << "seat " << seat;
+        EXPECT_FALSE(input.players[seat].is_held(InputAction::Special));
+    }
 }
 
 TEST(InputStateNet, deserialize_reads_expected_wire_format)
 {
     constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> bytes = {
-        0x15, 0x02, 0x15, 0x00,
+        0x16, 0x02, 0x19, 0x00,
         0x00, 0x00, 0x00, 0x00,
         0x00,
         0x24, 0x00, 0x40, 0x02,
         0x00, 0x41, 0x10, 0x00,
         0x08, 0x88, 0x00, 0x20,
         0x10, 0x10, 0x01, 0x01,
+        0x09, 0x00, 0x07, 0x00,
     };
 
     InputState expected{};
@@ -168,6 +260,9 @@ TEST(InputStateNet, deserialize_reads_expected_wire_format)
     set_flags(expected.players[3].held, {InputAction::MoveDown, InputAction::Yell});
     set_flags(expected.players[3].pressed, {InputAction::MoveUp, InputAction::Fire});
 
+    expected.players[0].belt_cast = 0x09;
+    expected.players[2].belt_cast = 0x07;
+
     const std::optional<InputState> decoded = og::sim::deserialize_input(bytes);
     ASSERT_TRUE(decoded.has_value());
     expect_input_state_eq(expected, *decoded);
@@ -181,6 +276,12 @@ TEST(InputStateNet, deserialize_rejects_wrong_size_version_type_and_length)
     ASSERT_FALSE(
         og::sim::deserialize_input(
             std::span<const std::uint8_t>(bytes.data(), bytes.size() - 1))
+            .has_value());
+    // A protocol-v21 frame (21-byte payload, no belt bytes) is too short.
+    ASSERT_EQ(28u, bytes.size() - 1);
+    ASSERT_FALSE(
+        og::sim::deserialize_input(
+            std::span<const std::uint8_t>(bytes.data(), bytes.size() - 4))
             .has_value());
 
     auto bad_version = bytes;

@@ -491,6 +491,64 @@ TEST(NetTransportInProcess, initial_setup_clamps_oversized_guy_names_at_build)
         << "the world guy keeps its full name; only the wire copy clamps";
 }
 
+// New Ability Select (protocol v22): the server builds InitialSetupGuyData
+// field by field from the world guys (game_server.cpp's launch setup and
+// match_stage.cpp's staged setup both call collect_initial_setup_guys), so
+// the belt must be copied there or every InitialSetup sends six zeros. The
+// broadcast leg runs with validation forced ON: the bytes survive the wire.
+// Proof it can fail: removing `data.belt = source.belt` reds both halves.
+TEST(NetTransportInProcess, collect_initial_setup_guys_carries_the_belt)
+{
+    const og::sim::belt::Bytes belt = {0x01, 0x09, 0xFF, 0x00, 0x0A, 0x05};
+    TestGameWorld fixture;
+    walker* const hero = add_network_player_character(
+        fixture.world(), FAMILY_MAGE, 0, "Belted");
+    ASSERT_NE(nullptr, hero);
+    hero->myguy->belt = belt;
+    walker* const plain = add_network_player_character(
+        fixture.world(), FAMILY_SOLDIER, 0, "Plain");
+    ASSERT_NE(nullptr, plain);
+
+    const std::vector<og::sim::InitialSetupGuyData> guys =
+        og::sim::collect_initial_setup_guys(fixture.world());
+    ASSERT_EQ(2u, guys.size());
+    const auto by_name = [&guys](const char* name) {
+        return std::find_if(guys.begin(), guys.end(),
+                            [name](const og::sim::InitialSetupGuyData& g) {
+                                return g.name == name;
+                            });
+    };
+    ASSERT_NE(guys.end(), by_name("Belted"));
+    EXPECT_EQ(belt, by_name("Belted")->belt);
+    ASSERT_NE(guys.end(), by_name("Plain"));
+    EXPECT_EQ(og::sim::belt::default_bytes(), by_name("Plain")->belt);
+
+    auto server_transport = og::sim::InProcessTransport::create_server(
+        og::sim::InProcessTransport::Options{.validate_serialization = true});
+    server_transport->accept_connections();
+    auto client = server_transport->create_client_transport();
+    og::sim::GameServer server(fixture.world(), fixture.events,
+                               *server_transport);
+    server.connect_client(client->local_peer_id());
+    server.bind_player(client->local_peer_id(), 0u, 0);
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        client->poll_typed();
+    ASSERT_FALSE(messages.empty());
+    ASSERT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup, messages[0].kind);
+    ASSERT_NE(nullptr, messages[0].initial_setup);
+    bool found = false;
+    for (const og::sim::InitialSetupGuyData& guy : messages[0].initial_setup->guys)
+    {
+        if (guy.name != "Belted")
+            continue;
+        found = true;
+        EXPECT_EQ(belt, guy.belt) << "the launch InitialSetup carries the belt";
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST(NetTransportInProcess,
      game_server_applies_set_palette_event_to_authoritative_state)
 {

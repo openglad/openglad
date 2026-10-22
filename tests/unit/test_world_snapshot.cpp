@@ -308,6 +308,7 @@ void expect_guy_snapshot_matches(const guy& live,
     EXPECT_EQ(live.scen_shots, snapshot.scen_shots);
     EXPECT_EQ(live.scen_hits, snapshot.scen_hits);
     EXPECT_EQ(live.level, snapshot.level);
+    EXPECT_EQ(live.belt, snapshot.belt);
 }
 
 void expect_entity_snapshot_matches(
@@ -451,6 +452,7 @@ void expect_guy_snapshot_eq(const og::sim::GuySnapshot& expected,
     EXPECT_EQ(expected.level, actual.level);
     EXPECT_EQ(expected.owner_player_index, actual.owner_player_index);
     EXPECT_EQ(expected.owner_save_slot, actual.owner_save_slot);
+    EXPECT_EQ(expected.belt, actual.belt);
 }
 
 void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
@@ -2012,6 +2014,54 @@ TEST(WorldSnapshot, guy_snapshot_roundtrip_preserves_owner_tags)
     EXPECT_EQ(2u, decoded.guy_snapshots.front().owner_player_index)
         << "owner_player_index must survive the snapshot wire";
     EXPECT_EQ(5u, decoded.guy_snapshots.front().owner_save_slot);
+}
+
+// New Ability Select (snapshot v18): a guy's six belt bytes ride the guy
+// snapshot from the live guy, across the wire, onto a joiner's mirror guy,
+// as is (an item byte and a junk byte included), so the joiner's own key
+// presses resolve against its own layout. Proof it can fail: dropping the
+// copy in apply_guy_snapshot leaves the mirror at six zeros, and reading the
+// belt before owner_save_slot shifts both owner tags.
+TEST(WorldSnapshot, guy_snapshot_round_trips_the_belt)
+{
+    const og::sim::belt::Bytes belt = {0x01, 0x09, 0xFF, 0x00, 0x80, 0x7F};
+
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* actor = source.add_ob(Order::Living, FAMILY_MAGE);
+    ASSERT_NE(nullptr, actor);
+    auto hero = std::make_unique<guy>(FAMILY_MAGE);
+    hero->name = "Belted";
+    hero->owner_player_index = 1;
+    hero->owner_save_slot = 3;
+    hero->belt = belt;
+    actor->set_owned_myguy(std::move(hero));
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    ASSERT_EQ(1u, keyframe.guy_snapshots.size());
+    EXPECT_EQ(belt, keyframe.guy_snapshots.front().belt)
+        << "capture must read the belt off the live guy";
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(keyframe));
+    ASSERT_EQ(1u, decoded.guy_snapshots.size());
+    EXPECT_EQ(belt, decoded.guy_snapshots.front().belt);
+    EXPECT_EQ(1u, decoded.guy_snapshots.front().owner_player_index);
+    EXPECT_EQ(3u, decoded.guy_snapshots.front().owner_save_slot);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, decoded);
+    ASSERT_EQ(1u, mirror.oblist.size());
+    ASSERT_NE(nullptr, mirror.oblist.front().get());
+    ASSERT_NE(nullptr, mirror.oblist.front()->myguy);
+    EXPECT_EQ(belt, mirror.oblist.front()->myguy->belt)
+        << "the joiner's mirror guy must carry the belt";
 }
 
 // The per-level weather kind is world state on the wire: an authoritative

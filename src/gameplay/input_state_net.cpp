@@ -13,6 +13,9 @@ constexpr std::size_t kInputTickOffset = kTransportHeaderSize;
 constexpr std::size_t kInputMetadataOffset =
     kInputTickOffset + sizeof(std::uint32_t);
 constexpr std::size_t kPlayerBitsOffset = kInputMetadataOffset + 1;
+constexpr std::size_t kBeltCastOffset =
+    kPlayerBitsOffset + (static_cast<std::size_t>(MAX_PLAYERS) * 4);
+static_assert(kBeltCastOffset + MAX_PLAYERS == kSerializedInputMessageSize);
 
 // The input wire carries the sender's LOCAL seat slots (per-machine cap);
 // global player indexing (kMaxGlobalPlayers) never widens this format.
@@ -110,6 +113,8 @@ serialize_input(std::uint32_t tick, const InputState& input)
         const std::size_t offset =
             kPlayerBitsOffset + (static_cast<std::size_t>(player) * 4);
         write_u32_le(bytes, offset, pack_player_bits(input.players[player]));
+        bytes[kBeltCastOffset + static_cast<std::size_t>(player)] =
+            input.players[player].belt_cast;
     }
 
     return bytes;
@@ -144,6 +149,10 @@ std::optional<InputStateMessage> deserialize_input_message(
             kPlayerBitsOffset + (static_cast<std::size_t>(player) * 4);
         message.input.players[player] =
             unpack_player_bits(read_u32_le(bytes, offset));
+        // As is, no clamp: the in-process validator requires a lossless
+        // round trip, and the server validates the byte (validate_cast).
+        message.input.players[player].belt_cast =
+            bytes[kBeltCastOffset + static_cast<std::size_t>(player)];
     }
 
     return message;

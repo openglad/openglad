@@ -22,6 +22,11 @@ namespace og::sim {
 // the lossless serializer invariant that guards the production call sites.
 [[nodiscard]] std::array<std::string, 16>
 inprocess_transport_validation_diagnostics_for_testing();
+// The same probe for the New Ability Select belt byte (protocol v22): the
+// rendered failure for two frames that differ only in players[2].belt_cast,
+// or an empty string when the validator saw no difference.
+[[nodiscard]] std::string
+inprocess_transport_belt_cast_diagnostic_for_testing();
 #endif
 
 inline constexpr bool kInProcessTransportValidateSerializationDefault =
