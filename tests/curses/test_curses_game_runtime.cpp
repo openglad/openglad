@@ -7,6 +7,8 @@
  */
 #include <gtest/gtest.h>
 
+#include <array>
+
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_input.h>
 #include <openglad/platform/curses/curses_renderer.h>
@@ -1155,13 +1157,19 @@ private:
 };
 
 // The curses player-1 belt keys: SPEC 1/2/3 on 1/2/3, SHIFTER on LeftShift.
+// CursesInput only borrows its key table (a std::span), so the table is a
+// static that outlives every input built from it; a local array here would
+// leave the returned input reading a dead stack frame.
 CursesInput belt_keys_input()
 {
-    int keys[NUM_KEYS] = {};
-    keys[KEY_SPECIAL] = KEYCODE_1;
-    keys[KEY_SPEC2] = KEYCODE_2;
-    keys[KEY_SPEC3] = KEYCODE_3;
-    keys[KEY_SHIFTER] = KEYCODE_LSHIFT;
+    static const std::array<int, NUM_KEYS> keys = [] {
+        std::array<int, NUM_KEYS> table{};
+        table[KEY_SPECIAL] = KEYCODE_1;
+        table[KEY_SPEC2] = KEYCODE_2;
+        table[KEY_SPEC3] = KEYCODE_3;
+        table[KEY_SHIFTER] = KEYCODE_LSHIFT;
+        return table;
+    }();
     return CursesInput(keys);
 }
 
