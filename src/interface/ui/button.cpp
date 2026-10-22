@@ -918,6 +918,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         cfg.load_settings();
+        og::input::refresh_ability_select_cache();
         // GAME SETTINGS owns presentation/effects settings, not player
         // controls. Put the live modes and both keymaps back into the freshly
         // restored config before it reaches disk.

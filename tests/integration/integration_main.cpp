@@ -149,6 +149,13 @@ void reset_integration_ui_state()
         og::runtime::current_session->myscreen_->save_data.gameplay_fixes = 1;
         og::runtime::current_session->myscreen_->world().gameplay_fixes = 1;
     }
+    // New Ability Select: the shipped default (on), in cfg and in the cached
+    // copy the key fold reads, so a test that turns it off without a
+    // ScopedAbilitySelect (tests/test_ability_select_scope.h) cannot leak
+    // that into the next test (--gtest_shuffle).
+    cfg.apply_setting("effects", "new_ability_select", "on");
+    if (og::runtime::current_session != nullptr)
+        og::input::refresh_ability_select_cache();
     // [LOBBY-R1] The same treatment for the standalone picker lobby client.
     // It is created lazily by almost any picker seam and destroyed only here
     // or by an explicit picker_lobby_shutdown(); a survivor answers the next
@@ -691,6 +698,9 @@ int main(int argc, char** argv)
     // reset in reset_integration_ui_state().
     cfg.apply_setting("gameplay", "new_specials", "on");
     cfg.apply_setting("gameplay", "gameplay_fixes", "on");
+    // New Ability Select: the shipped default (on); see
+    // reset_integration_ui_state() for the per-test re-stamp.
+    cfg.apply_setting("effects", "new_ability_select", "on");
 
     create_global_screen(1);
     init_input();

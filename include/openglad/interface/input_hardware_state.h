@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 
+#include <openglad/gameplay/belt_input.h>
 #include <openglad/interface/input_direction_grace.h>
 
 struct InputHardwareState {
@@ -23,7 +24,7 @@ struct InputHardwareState {
     // Factory keymap identity follows a profile when seats compact. This lets
     // per-seat RESET restore that profile's own layout after remove/add.
     int player_control_default_profiles[4]{0, 1, 2, 3};
-    int player_mode_keys[4][2][17]{};  // [player][mode][key] — key dim == NUM_KEYS
+    int player_mode_keys[4][2][NUM_KEYS]{};  // [player][mode][key]
     // Diagonal release retention (input_state_from_sdl); per player.
     DirectionGraceState direction_grace[4]{};
     // Opposite-direction re-assert over stale holds (input_state_from_sdl);
@@ -52,5 +53,13 @@ struct InputHardwareState {
     // Runtime touch-control seam: held-key state from the web DOM overlay
     // (web_touch_bridge.cpp), OR-ed into isPlayerHoldingKey. key dim ==
     // NUM_KEYS.
-    bool touch_keystate[4][17]{};
+    bool touch_keystate[4][NUM_KEYS]{};
+
+    // New Ability Select (og::input::ability_select_on): the cached cfg
+    // effects/new_ability_select. On is the shipped default.
+    bool ability_select = true;
+    // Per seat: which SPEC key is running and the belt entry it latched at
+    // its press edge (og::sim::belt::fold_keys). Transient, like the grace
+    // state above.
+    og::sim::belt::Latch belt_latch[4]{};
 };

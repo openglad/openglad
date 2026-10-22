@@ -548,8 +548,10 @@ TEST(InputJoystick, joydata_discovers_and_reads_real_virtual_joystick_capabiliti
     // while remaining deterministic and self-contained on headless CI.
     VirtualJoystick axes_device(2, 6, 0, "OpenGlad axes test pad");
     VirtualJoystick hat_device(1, 0, 1, "OpenGlad hat test pad");
+    VirtualJoystick seven_button_device(0, 7, 0, "OpenGlad seven-button test pad");
     ASSERT_NE(nullptr, axes_device.get()) << SDL_GetError();
     ASSERT_NE(nullptr, hat_device.get()) << SDL_GetError();
+    ASSERT_NE(nullptr, seven_button_device.get()) << SDL_GetError();
 
     // Restore every process-global handle exactly after the test.  Declare
     // this guard after the virtual devices so restoration happens before the
@@ -571,14 +573,28 @@ TEST(InputJoystick, joydata_discovers_and_reads_real_virtual_joystick_capabiliti
     EXPECT_EQ(0, axes.key_index[KEY_SPECIAL]);
     EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_FIRE]);
     EXPECT_EQ(1, axes.key_index[KEY_FIRE]);
-    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SPECIAL_SWITCH]);
-    EXPECT_EQ(2, axes.key_index[KEY_SPECIAL_SWITCH]);
+    // New Ability Select: button 2 is SPEC 2 (change special with the
+    // setting off); the retired change-special slot is never bound.
+    EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SPEC2]);
+    EXPECT_EQ(2, axes.key_index[KEY_SPEC2]);
+    EXPECT_EQ(JoyData::NONE, axes.key_type[KEY_SPECIAL_SWITCH]);
     EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_YELL]);
     EXPECT_EQ(3, axes.key_index[KEY_YELL]);
     EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SHIFTER]);
     EXPECT_EQ(4, axes.key_index[KEY_SHIFTER]);
     EXPECT_EQ(JoyData::BUTTON, axes.key_type[KEY_SWITCH]);
     EXPECT_EQ(5, axes.key_index[KEY_SWITCH]);
+    // Six buttons: no seventh for SPEC 3.
+    EXPECT_EQ(JoyData::NONE, axes.key_type[KEY_SPEC3]);
+
+    // A seventh button is SPEC 3.
+    joysticks[2] = seven_button_device.get();
+    const JoyData seven(2);
+    ASSERT_EQ(7, seven.numButtons);
+    EXPECT_EQ(JoyData::BUTTON, seven.key_type[KEY_SPEC3]);
+    EXPECT_EQ(6, seven.key_index[KEY_SPEC3]);
+    EXPECT_EQ(JoyData::BUTTON, seven.key_type[KEY_SPEC2]);
+    EXPECT_EQ(2, seven.key_index[KEY_SPEC2]);
 
     player_joy[0] = axes;
     ASSERT_TRUE(SDL_SetJoystickVirtualButton(axes_device.get(), 0, true));

@@ -97,6 +97,7 @@ set(OG_GAMEPLAY_ENTITY_SOURCES
     ${SRC_DIR}/gameplay/timed_effects.cpp
     ${SRC_DIR}/gameplay/placement.cpp
     ${SRC_DIR}/gameplay/belt.cpp
+    ${SRC_DIR}/gameplay/belt_input.cpp
 )
 
 # gameplay: GameWorld and the per-tick services around it.
